@@ -65,14 +65,13 @@ class RepositoryAuthStateTest {
                         state = "handoff-state",
                         fragment = "fragment",
                         accountSlug = "account",
-                        actorName = "Actor",
                     ),
             )
 
             assertEquals(
                 listOf(
                     PreferenceTransaction(
-                        putStringKeys = setOf("token", "accountSlug", "actorName", "pendingAuthHandoffStateHash"),
+                        putStringKeys = setOf("token", "accountSlug", "pendingAuthHandoffStateHash"),
                         removedKeys = setOf("nonce", "state"),
                     ),
                 ),
@@ -87,13 +86,11 @@ class RepositoryAuthStateTest {
                         state = "handoff-state",
                         fragment = "replacement-fragment",
                         accountSlug = "replacement-account",
-                        actorName = "Replacement Actor",
                     ),
             )
             assertEquals(1, recordingPreferences.appliedTransactions.size)
             assertEquals("nonce-fragment", recreatedRepository.getTokenSync())
             assertEquals("account", recreatedRepository.getUserConfigSync().accountSlug)
-            assertEquals("Actor", recreatedRepository.getActorNameSync())
             assertNull(recreatedRepository.getNonceSync())
             assertNull(recreatedRepository.getStateSync())
         }
@@ -113,12 +110,10 @@ class RepositoryAuthStateTest {
                         state = "old-state",
                         fragment = "replacement-fragment",
                         accountSlug = "replacement-account",
-                        actorName = "Replacement Actor",
                     ),
             )
             assertEquals("nonce-fragment", repository.getTokenSync())
             assertEquals("account", repository.getUserConfigSync().accountSlug)
-            assertEquals("Actor", repository.getActorNameSync())
             assertEquals("new-nonce-", repository.getNonceSync())
             assertEquals("new-state", repository.getStateSync())
         }
@@ -139,12 +134,10 @@ class RepositoryAuthStateTest {
                         state = "handoff-state",
                         fragment = "replacement-fragment",
                         accountSlug = "replacement-account",
-                        actorName = "Replacement Actor",
                     ),
             )
             assertNull(recreatedRepository.getTokenSync())
             assertEquals("account", recreatedRepository.getUserConfigSync().accountSlug)
-            assertEquals("Actor", recreatedRepository.getActorNameSync())
         }
 
     @Test
@@ -165,12 +158,10 @@ class RepositoryAuthStateTest {
                         state = "handoff-state",
                         fragment = "replacement-fragment",
                         accountSlug = "replacement-account",
-                        actorName = "Replacement Actor",
                     ),
             )
             assertEquals("nonce-fragment", recreatedRepository.getTokenSync())
             assertEquals("account", recreatedRepository.getUserConfigSync().accountSlug)
-            assertEquals("Actor", recreatedRepository.getActorNameSync())
         }
 
     private fun newRepository(preferences: SharedPreferences): Repository = Repository(Dispatchers.Unconfined, preferences)
@@ -187,7 +178,6 @@ class RepositoryAuthStateTest {
                     state = state,
                     fragment = "fragment",
                     accountSlug = "account",
-                    actorName = "Actor",
                 ),
         )
     }

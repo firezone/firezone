@@ -1,15 +1,14 @@
 defmodule PortalAPI.Plugs.IngestionRateLimit do
   import Plug.Conn
 
-  @default_refill_rate Portal.Config.fetch_env!(:portal, __MODULE__)[:refill_rate]
-  @default_capacity Portal.Config.fetch_env!(:portal, __MODULE__)[:capacity]
   @cost 1
 
   def init(opts), do: opts
 
   def call(conn, opts) do
-    refill_rate = Keyword.get(opts, :refill_rate, @default_refill_rate)
-    capacity = Keyword.get(opts, :capacity, @default_capacity)
+    config = Portal.Config.fetch_env!(:portal, __MODULE__)
+    refill_rate = Keyword.get(opts, :refill_rate, Keyword.fetch!(config, :refill_rate))
+    capacity = Keyword.get(opts, :capacity, Keyword.fetch!(config, :capacity))
     ip_key = "ingestion:ip:#{ip_to_string(conn.remote_ip)}"
 
     case PortalAPI.RateLimit.hit(ip_key, refill_rate, capacity, @cost) do

@@ -152,6 +152,7 @@ refute_file_contains() {
 @test "gateway-systemd-install: stores token as a systemd credential" {
     run env \
         FIREZONE_ID="test-gateway-id" \
+        FIREZONE_NAME="ignored-gateway-name" \
         FIREZONE_TOKEN="test-secret-token" \
         "$SCRIPT"
 
@@ -161,6 +162,7 @@ refute_file_contains() {
 
     grep -q '^LoadCredential=FIREZONE_TOKEN:/etc/firezone/gateway-token$' "$(service_file)"
     grep -q '^Environment="FIREZONE_ID=test-gateway-id"$' "$(service_file)"
+    refute_file_contains 'FIREZONE_NAME=' "$(service_file)"
     refute_file_contains 'test-secret-token' "$(service_file)"
     refute_file_contains 'FIREZONE_TOKEN=' "$(service_file)"
     grep -q '^test-secret-token$' "$(token_file)"

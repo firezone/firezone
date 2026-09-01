@@ -236,7 +236,7 @@ defmodule Portal.Elastic.SyncTest do
       stub_with_poison(self(), "document_parsing_exception")
 
       log_output =
-        ExUnit.CaptureLog.capture_log([level: :error], fn ->
+        capture_log_for_sink(sink, [level: :error], fn ->
           assert :ok = perform_job(Elastic.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
         end)
 
@@ -288,7 +288,7 @@ defmodule Portal.Elastic.SyncTest do
       stub_with_poison(self(), "cluster_block_exception")
 
       log_output =
-        ExUnit.CaptureLog.capture_log([level: :error], fn ->
+        capture_log_for_sink(sink, [level: :error], fn ->
           assert :ok = perform_job(Elastic.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
         end)
 

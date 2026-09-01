@@ -16,6 +16,7 @@ use std::{
 };
 
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
+use serde::{Deserialize, Serialize};
 use sha2::{Digest as _, Sha256};
 use x509_parser::{
     extensions::{GeneralName, ParsedExtension},
@@ -24,7 +25,7 @@ use x509_parser::{
     prelude::{FromDer as _, X509Certificate},
 };
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
 pub enum SigningAlgorithm {
     RsaSha256,
     EcdsaSha256,
@@ -44,7 +45,7 @@ impl SigningAlgorithm {
 }
 
 /// What a certificate says about one of the claims the clients read.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct Claim {
     /// What the certificate carries, [`None`] when it carries nothing.
     pub value: Option<String>,
@@ -97,11 +98,11 @@ impl Claim {
     }
 }
 
-/// Why the text a certificate gave a claim is not usable as it, read underneath that text.
+/// Why a diagnostics row is not usable as what it names, read underneath its value.
 ///
 /// The clients word these themselves, so an error crosses to them as the error it is rather
 /// than as a sentence: the mobile and Apple clients render them from their own string resources.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq, Hash)]
 pub enum ValidationError {
     Empty,
     TooLong,
@@ -110,10 +111,14 @@ pub enum ValidationError {
     Ambiguous,
     PlaceholderIdentifier,
     UnknownAttribute,
+    NotYetValid,
+    Expired,
+    MissingClientAuthEku,
+    DigitalSignatureNotAllowed,
 }
 
 impl ValidationError {
-    /// A phrase that reads on its own and after the claim it explains.
+    /// A phrase that reads on its own and after the value it explains.
     pub fn label(self) -> &'static str {
         match self {
             Self::Empty => "empty",
@@ -123,11 +128,15 @@ impl ValidationError {
             Self::Ambiguous => "more than one value was given",
             Self::PlaceholderIdentifier => "a placeholder identifier",
             Self::UnknownAttribute => "not an attribute we understand",
+            Self::NotYetValid => "not yet valid",
+            Self::Expired => "expired",
+            Self::MissingClientAuthEku => "required for mutual TLS",
+            Self::DigitalSignatureNotAllowed => "required to sign the TLS handshake",
         }
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct ParsedCertificate {
     pub subject_cn: Option<String>,
     pub subject: String,
@@ -143,9 +152,11 @@ pub struct ParsedCertificate {
     pub serial: String,
     pub has_client_auth_eku: bool,
     pub digital_signature_allowed: bool,
-    pub is_currently_valid: bool,
     /// The instant the validity window was compared against, in seconds since the Unix epoch.
-    pub checked_at_timestamp: i64,
+    ///
+    /// [`None`] when the system clock could not be read, which leaves the window compared
+    /// against nothing rather than against the epoch.
+    pub checked_at_timestamp: Option<i64>,
     pub not_before: String,
     pub not_before_timestamp: i64,
     pub not_after: String,
@@ -183,23 +194,38 @@ impl ParsedCertificate {
         }
         fields.extend([
             field("Serial Number", &self.serial),
-            field("Not Before", &self.not_before),
-            field("Not After", &self.not_after),
-            field(
+            field_with_problem(
+                "Not Before",
+                &self.not_before,
+                self.checked_at_timestamp
+                    .is_some_and(|at| at < self.not_before_timestamp)
+                    .then_some(ValidationError::NotYetValid),
+            ),
+            field_with_problem(
+                "Not After",
+                &self.not_after,
+                self.checked_at_timestamp
+                    .is_some_and(|at| at > self.not_after_timestamp)
+                    .then_some(ValidationError::Expired),
+            ),
+            gate_field(
                 "TLS Client Authentication EKU",
                 if self.has_client_auth_eku {
                     "Yes"
                 } else {
                     "No"
                 },
+                (!self.has_client_auth_eku).then_some(ValidationError::MissingClientAuthEku),
             ),
-            field(
+            gate_field(
                 "Digital Signature Key Usage",
                 if self.digital_signature_allowed {
                     "Allowed"
                 } else {
                     "Not allowed"
                 },
+                (!self.digital_signature_allowed)
+                    .then_some(ValidationError::DigitalSignatureNotAllowed),
             ),
             field(
                 "Signing Algorithm",
@@ -211,6 +237,8 @@ impl ParsedCertificate {
             field("SHA-256 Fingerprint", &self.fingerprint),
         ]);
 
+        fields.retain(DetailField::is_worth_reading);
+
         // What is wrong with a certificate is what the reader came for, so it reads before the
         // rows that are merely true. The sort is stable, which is what keeps a row from moving
         // between two renderings of the same certificate.
@@ -219,14 +247,22 @@ impl ParsedCertificate {
         fields
     }
 
+    /// Whether the validity window covers the instant the certificate was checked at.
+    ///
+    /// A clock that could not be read compares the window against nothing, which is not current.
+    pub fn is_currently_valid(&self) -> bool {
+        self.checked_at_timestamp
+            .is_some_and(|at| at >= self.not_before_timestamp && at <= self.not_after_timestamp)
+    }
+
     /// Who the certificate claims is connecting.
     ///
-    /// Carrying an account, actor or email claim at all commits the session to mutual TLS,
-    /// whatever the claim says: what the portal makes of it is the portal's answer.
+    /// A carried actor email or actor ID adopts the certificate as the session, whether or not
+    /// the client can read a valid value out of it: rejecting a claim is policy, and policy is
+    /// the portal's to make. An account ID scopes an account and names no actor, so it claims
+    /// nobody on its own.
     pub fn identity(&self) -> Identity {
-        let claims_somebody = [&self.account_id, &self.actor_id, &self.actor_email]
-            .into_iter()
-            .any(Claim::is_carried);
+        let claims_somebody = self.actor_email.is_carried() || self.actor_id.is_carried();
 
         if !claims_somebody {
             return Identity::Absent;
@@ -282,7 +318,7 @@ impl ParsedCertificate {
 }
 
 /// Who the certificate claims is connecting.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub enum Identity {
     /// The certificate claims nobody, so the session signs in with a token.
     Absent,
@@ -300,6 +336,23 @@ pub struct DetailField {
     pub value: Option<String>,
     /// Why the value above is not usable, [`None`] when it is.
     pub problem: Option<ValidationError>,
+    pub visibility: Visibility,
+}
+
+/// Whether a row reads on a healthy certificate, or only once something is wrong with it.
+///
+/// A requirement the certificate meets is not what the reader came for, so its row is
+/// [`Visibility::OnlyWhenWrong`] and [`ParsedCertificate::detail_fields`] drops it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Visibility {
+    Always,
+    OnlyWhenWrong,
+}
+
+impl DetailField {
+    fn is_worth_reading(&self) -> bool {
+        self.problem.is_some() || self.visibility == Visibility::Always
+    }
 }
 
 pub fn parse_certificate(der: &[u8], now: SystemTime) -> Option<ParsedCertificate> {
@@ -369,9 +422,6 @@ pub fn parse_certificate(der: &[u8], now: SystemTime) -> Option<ParsedCertificat
         .duration_since(SystemTime::UNIX_EPOCH)
         .ok()
         .and_then(|duration| i64::try_from(duration.as_secs()).ok());
-    let is_currently_valid = now_timestamp.is_some_and(|timestamp| {
-        timestamp >= not_before_timestamp && timestamp <= not_after_timestamp
-    });
 
     let signing_algorithm = {
         let algorithm = &certificate.subject_pki.algorithm;
@@ -416,8 +466,7 @@ pub fn parse_certificate(der: &[u8], now: SystemTime) -> Option<ParsedCertificat
         serial: format_serial(certificate.raw_serial()),
         has_client_auth_eku,
         digital_signature_allowed,
-        is_currently_valid,
-        checked_at_timestamp: now_timestamp.unwrap_or_default(),
+        checked_at_timestamp: now_timestamp,
         not_before: certificate.validity().not_before.to_string(),
         not_before_timestamp,
         not_after: certificate.validity().not_after.to_string(),
@@ -875,6 +924,34 @@ fn field(label: impl Into<String>, value: impl Into<String>) -> DetailField {
         label: label.into(),
         value: Some(value.into()),
         problem: None,
+        visibility: Visibility::Always,
+    }
+}
+
+/// A row for a requirement the certificate as a whole has to meet.
+fn gate_field(
+    label: impl Into<String>,
+    value: impl Into<String>,
+    problem: Option<ValidationError>,
+) -> DetailField {
+    DetailField {
+        label: label.into(),
+        value: Some(value.into()),
+        problem,
+        visibility: Visibility::OnlyWhenWrong,
+    }
+}
+
+fn field_with_problem(
+    label: impl Into<String>,
+    value: impl Into<String>,
+    problem: Option<ValidationError>,
+) -> DetailField {
+    DetailField {
+        label: label.into(),
+        value: Some(value.into()),
+        problem,
+        visibility: Visibility::Always,
     }
 }
 
@@ -884,6 +961,7 @@ fn optional_field(label: impl Into<String>, value: Option<String>) -> DetailFiel
         label: label.into(),
         value,
         problem: None,
+        visibility: Visibility::Always,
     }
 }
 
@@ -892,6 +970,7 @@ fn claim_field(label: impl Into<String>, claim: Claim) -> DetailField {
         label: label.into(),
         value: claim.value,
         problem: claim.error,
+        visibility: Visibility::Always,
     }
 }
 
@@ -906,6 +985,7 @@ fn unrecognised_claim_field(claim: &str) -> DetailField {
         label: attribute.to_owned(),
         value: value.filter(|value| !value.is_empty()).map(str::to_owned),
         problem: Some(ValidationError::UnknownAttribute),
+        visibility: Visibility::Always,
     }
 }
 
@@ -921,4 +1001,68 @@ fn split_claim_attribute(claim: &str) -> (&str, Option<&str>) {
     };
 
     (&claim[..separator], Some(&claim[separator + 1..]))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_valid_actor_id_claims_an_identity_without_an_email() {
+        let mut certificate = certificate();
+        certificate.actor_id = Claim::present("31b57ec2-8a02-4d5e-9b41-5c1f7a0e6f21".to_owned());
+
+        assert_eq!(certificate.identity(), Identity::Claimed { email: None });
+    }
+
+    #[test]
+    fn an_account_id_alone_claims_nobody() {
+        let mut certificate = certificate();
+        certificate.account_id = Claim::present("6f3f8a2c-0b74-4f8a-9b1f-1c2d3e4f5a6b".to_owned());
+
+        assert_eq!(certificate.identity(), Identity::Absent);
+    }
+
+    #[test]
+    fn a_carried_but_invalid_email_still_claims_an_identity() {
+        let mut certificate = certificate();
+        certificate.actor_email = Claim::invalid(
+            "jane.doe(at)example.com",
+            ValidationError::NotAnEmailAddress,
+        );
+
+        assert_eq!(certificate.identity(), Identity::Claimed { email: None });
+    }
+
+    #[test]
+    fn no_identity_attribute_claims_nobody() {
+        assert_eq!(certificate().identity(), Identity::Absent);
+    }
+
+    fn certificate() -> ParsedCertificate {
+        ParsedCertificate {
+            subject_cn: None,
+            subject: String::new(),
+            subject_alternative_names: Vec::new(),
+            actor_email: Claim::absent(),
+            account_id: Claim::absent(),
+            actor_id: Claim::absent(),
+            mdm_device_id: Claim::absent(),
+            device_serial: Claim::absent(),
+            unrecognised_claims: Vec::new(),
+            issuer: String::new(),
+            serial: String::new(),
+            has_client_auth_eku: true,
+            digital_signature_allowed: true,
+            checked_at_timestamp: None,
+            not_before: String::new(),
+            not_before_timestamp: 0,
+            not_after: String::new(),
+            not_after_timestamp: 0,
+            signing_algorithm: None,
+            key_algorithm_oid: String::new(),
+            fingerprint: String::new(),
+            der_bytes: 0,
+        }
+    }
 }

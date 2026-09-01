@@ -194,7 +194,7 @@ defmodule PortalAPI.LogControllerTest do
       conn =
         conn
         |> authorize_conn(actor)
-        |> get(~p"/logs?type=session")
+        |> get(~p"/logs?type=session&begin=2026-05-31T00:00:00Z&end=2026-06-04T00:00:00Z")
 
       assert %{"data" => data} = json_response(conn, 200)
 
@@ -305,27 +305,48 @@ defmodule PortalAPI.LogControllerTest do
       conn =
         conn
         |> authorize_conn(actor)
-        |> get(~p"/logs?type=flow")
+        |> get(~p"/logs?type=flow&begin=2026-05-31T00:00:00Z&end=2026-06-04T00:00:00Z")
 
       assert %{"data" => data} = json_response(conn, 200)
       assert Enum.map(data, & &1["log_id"]) == [newer.log_id, older.log_id]
       assert Enum.all?(data, &(&1["type"] == "flow"))
     end
 
-    test "the window matches flows active inside it, not their ingestion time", %{
+    test "a flow whose reported end precedes its start is still listed", %{
       conn: conn,
       account: account,
       actor: actor
     } do
-      # Spans the whole window despite starting before it.
-      long_lived =
+      # Both timestamps come from the gateway's own clock, so skew can put the
+      # end before the start. That used to make tstzrange raise and fail the
+      # whole listing, not just drop the row.
+      skewed =
         flow_log_fixture(
           account: account,
-          flow_start: ~U[2026-06-01 00:00:00.000000Z],
-          flow_end: ~U[2026-06-05 00:00:00.000000Z]
+          flow_start: ~U[2026-06-02 00:01:00.000000Z],
+          flow_end: ~U[2026-06-02 00:00:00.000000Z]
         )
 
-      # Active inside the window, but ingested long after it.
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> get(~p"/logs?type=flow&begin=2026-06-01T00:00:00Z&end=2026-06-03T00:00:00Z")
+
+      assert %{"data" => data} = json_response(conn, 200)
+      assert Enum.map(data, & &1["log_id"]) == [skewed.log_id]
+
+      # and the reported timestamps are returned as they were recorded
+      assert [entry] = data
+      assert entry["flow_start"] == "2026-06-02T00:01:00.000000Z"
+      assert entry["flow_end"] == "2026-06-02T00:00:00.000000Z"
+    end
+
+    test "the window is when the flow started, not when it was ingested", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      # Started inside the window but ingested long after it.
       late_report =
         flow_log_fixture(
           account: account,
@@ -334,11 +355,20 @@ defmodule PortalAPI.LogControllerTest do
           inserted_at: ~U[2026-06-08 00:00:00.000000Z]
         )
 
-      # Ended before the window began.
+      # Still running, and started inside the window.
+      open_inside =
+        flow_log_fixture(
+          account: account,
+          flow_start: ~U[2026-06-03 12:00:00.000000Z],
+          flow_end: nil
+        )
+
+      # Running through the whole window, but started before it. The window
+      # applies to flow_start only, so this is deliberately not returned.
       flow_log_fixture(
         account: account,
-        flow_start: ~U[2026-06-02 00:00:00.000000Z],
-        flow_end: ~U[2026-06-03 00:00:00.000000Z]
+        flow_start: ~U[2026-06-01 00:00:00.000000Z],
+        flow_end: ~U[2026-06-05 00:00:00.000000Z]
       )
 
       # Started after the window ended.
@@ -354,10 +384,8 @@ defmodule PortalAPI.LogControllerTest do
         |> get(~p"/logs?type=flow&begin=2026-06-03T10:00:00Z&end=2026-06-03T14:00:00Z")
 
       assert %{"data" => data} = json_response(conn, 200)
-
-      assert Enum.map(data, & &1["log_id"]) == [late_report.log_id, long_lived.log_id]
+      assert Enum.map(data, & &1["log_id"]) == [open_inside.log_id, late_report.log_id]
     end
-
     test "renders flow log fields", %{conn: conn, account: account, actor: actor} do
       flow_log =
         flow_log_fixture(

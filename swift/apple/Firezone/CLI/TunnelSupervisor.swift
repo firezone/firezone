@@ -120,7 +120,7 @@ final class TunnelSupervisor {
 
     let error = await lastDisconnectError()
 
-    if let error, Self.isTokenNotFound(error) {
+    if let error, Self.isMissingCredential(error) {
       fail(with: CLIError(noTokenAdvice), emit: emit)
       return
     }
@@ -135,8 +135,8 @@ final class TunnelSupervisor {
     }
   }
 
-  private static func isTokenNotFound(_ error: any Error) -> Bool {
-    let expected = PacketTunnelProviderError.tokenNotFoundInKeychain as NSError
+  private static func isMissingCredential(_ error: any Error) -> Bool {
+    let expected = PacketTunnelProviderError.credentialNotConfigured as NSError
     let actual = error as NSError
     return actual.domain == expected.domain && actual.code == expected.code
   }
@@ -173,7 +173,7 @@ final class TunnelSupervisor {
       // The tunnel is started before this is watching it, so a provider that gave up
       // for want of a token can do so unobserved. Timing out would be an unhelpful way
       // to say that a token is all it needed.
-      if let error = await lastDisconnectError(), Self.isTokenNotFound(error) {
+      if let error = await lastDisconnectError(), Self.isMissingCredential(error) {
         fail(with: CLIError(noTokenAdvice), emit: emit)
         return
       }

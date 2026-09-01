@@ -26,6 +26,8 @@ struct FirezoneApp: App {
     // Initialize Telemetry as early as possible
     Telemetry.start()
 
+    installCertificateParser()
+
     #if DEBUG
       // `--mock-tunnel` runs the real Store against a canned backend (see MockTunnel.swift).
       let store = Store.mockFromCommandLine() ?? Store()
@@ -127,6 +129,57 @@ struct FirezoneApp: App {
         .eraseToAnyPublisher()
     }
   #endif
+}
+
+/// Hands FirezoneKit the certificate parser the settings screen calls back into.
+///
+/// Parsing lives in Rust. FirezoneKit is a Swift package and cannot import the
+/// UniFFI bindings, so every entry point has to install this before a screen
+/// asks for a certificate's details; without it they all report the same parse
+/// failure instead of the certificate they were given.
+@MainActor
+func installCertificateParser() {
+  X509CertificateParser.use { der in
+    guard let parsed = parseClientCertificate(der: der) else { return nil }
+
+    return X509CertificateSummary(
+      fields: parsed.detailFields.map { field in
+        X509CertificateField(
+          label: field.label,
+          value: field.value,
+          problem: field.problem.map { X509ValidationError($0) }
+        )
+      },
+      identity: X509ClaimedIdentity(parsed.identity)
+    )
+  }
+}
+
+extension X509ClaimedIdentity {
+  init(_ identity: Identity) {
+    switch identity {
+    case .absent: self = .absent
+    case .claimed(let email): self = .claimed(email: email)
+    }
+  }
+}
+
+extension X509ValidationError {
+  init(_ error: ValidationError) {
+    switch error {
+    case .empty: self = .empty
+    case .tooLong: self = .tooLong
+    case .notAnEmailAddress: self = .notAnEmailAddress
+    case .notAUuid: self = .notAUuid
+    case .ambiguous: self = .ambiguous
+    case .placeholderIdentifier: self = .placeholderIdentifier
+    case .unknownAttribute: self = .unknownAttribute
+    case .notYetValid: self = .notYetValid
+    case .expired: self = .expired
+    case .missingClientAuthEku: self = .missingClientAuthEku
+    case .digitalSignatureNotAllowed: self = .digitalSignatureNotAllowed
+    }
+  }
 }
 
 #if os(macOS)
@@ -300,6 +353,7 @@ struct FirezoneApp: App {
   @MainActor
   private func uiTestStore() -> Store {
     NSApplication.applyMockPresentation()
+    installCertificateParser()
 
     let store = Store.mockFromCommandLine() ?? Store()
     Task { await store.start() }

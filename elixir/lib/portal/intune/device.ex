@@ -81,9 +81,6 @@ defmodule Portal.Intune.Device do
     field :exchange_access_state_reason, :string
     field :exchange_last_successful_sync_at, :utc_datetime_usec
 
-    field :remote_assistance_session_url, :string
-    field :remote_assistance_session_error_details, :string
-
     field :config_manager_inventory, :boolean
     field :config_manager_modern_apps, :boolean
     field :config_manager_resource_access, :boolean

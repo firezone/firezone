@@ -349,7 +349,7 @@ defmodule Portal.Splunk.SyncTest do
       end)
 
       log_output =
-        ExUnit.CaptureLog.capture_log([level: :error], fn ->
+        capture_log_for_sink(sink, [level: :error], fn ->
           assert :ok = perform_job(Splunk.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
         end)
 
@@ -393,7 +393,7 @@ defmodule Portal.Splunk.SyncTest do
       end)
 
       log_output =
-        ExUnit.CaptureLog.capture_log([level: :error], fn ->
+        capture_log_for_sink(sink, [level: :error], fn ->
           assert :ok = perform_job(Splunk.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
         end)
 
@@ -448,7 +448,7 @@ defmodule Portal.Splunk.SyncTest do
       end)
 
       log_output =
-        ExUnit.CaptureLog.capture_log(fn ->
+        capture_log_for_sink(sink, [], fn ->
           assert :ok = perform_job(Splunk.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
         end)
 
@@ -500,7 +500,7 @@ defmodule Portal.Splunk.SyncTest do
       end)
 
       log_output =
-        ExUnit.CaptureLog.capture_log([level: :error], fn ->
+        capture_log_for_sink(sink, [level: :error], fn ->
           assert :ok = perform_job(Splunk.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
         end)
 

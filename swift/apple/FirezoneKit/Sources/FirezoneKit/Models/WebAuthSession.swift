@@ -30,15 +30,15 @@ struct WebAuthSession {
     let anchor = PresentationAnchor()
 
     // Call @concurrent function to avoid MainActor inference on callback closure
-    let authResponse = try await performAuthentication(
+    let token = try await performAuthentication(
       url: url,
       callbackScheme: scheme,
       authClient: authClient,
       anchor: anchor
     )
 
-    if let authResponse {
-      try await store.signIn(authResponse: authResponse)
+    if let token {
+      try await store.signIn(token: token)
     }
   }
 
@@ -48,7 +48,7 @@ struct WebAuthSession {
     callbackScheme: String,
     authClient: AuthClient,
     anchor: PresentationAnchor
-  ) async throws -> AuthResponse? {
+  ) async throws -> String? {
     // Anchor passed as parameter, keeping strong reference
 
     return try await withCheckedThrowingContinuation { continuation in
@@ -65,9 +65,9 @@ struct WebAuthSession {
             throw error
           }
 
-          let authResponse = try authClient.response(url: returnedURL)
+          let token = try authClient.token(from: returnedURL)
 
-          continuation.resume(returning: authResponse)
+          continuation.resume(returning: token)
         } catch {
           continuation.resume(throwing: error)
         }

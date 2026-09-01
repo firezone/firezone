@@ -13,7 +13,7 @@ let package = Package(
   ],
   dependencies: [
     .package(url: "https://github.com/apple/swift-system", exact: "1.8.1"),
-    .package(url: "https://github.com/getsentry/sentry-cocoa", exact: "9.26.0"),
+    .package(url: "https://github.com/getsentry/sentry-cocoa", exact: "9.26.1"),
   ],
   targets: [
     .target(
@@ -22,7 +22,7 @@ let package = Package(
         .product(name: "SystemPackage", package: "swift-system"),
         .product(name: "Sentry", package: "sentry-cocoa"),
       ],
-      resources: [.copy("Mocks/Scenarios")]
+      resources: [.copy("Mocks/Certificates"), .copy("Mocks/Scenarios")]
     ),
     .testTarget(
       name: "FirezoneKitTests",

@@ -1462,6 +1462,54 @@ defmodule PortalWeb.CoreComponents do
     }
   end
 
+  defp provider_icon_spec("crowdstrike") do
+    %{
+      type: :image,
+      src: ~p"/images/logo-crowdstrike.svg",
+      alt: "CrowdStrike Falcon"
+    }
+  end
+
+  defp provider_icon_spec("sophos") do
+    %{
+      type: :image,
+      src: ~p"/images/logo-sophos.svg",
+      alt: "Sophos XDR"
+    }
+  end
+
+  defp provider_icon_spec("jamf") do
+    %{
+      type: :image,
+      src: ~p"/images/logo-jamf.svg",
+      dark_src: ~p"/images/logo-jamf-dark.svg",
+      alt: "Jamf Pro"
+    }
+  end
+
+  defp provider_icon_spec("workspace_one") do
+    %{
+      type: :image,
+      src: ~p"/images/logo-workspace-one-uem.png",
+      alt: "Workspace ONE UEM"
+    }
+  end
+
+  defp provider_icon_spec("mosyle") do
+    %{
+      type: :image,
+      src: ~p"/images/logo-mosyle.svg",
+      alt: "Mosyle"
+    }
+  end
+
+  defp provider_icon_spec("other") do
+    %{
+      type: :icon,
+      name: "ri-apps-2-add-line"
+    }
+  end
+
   defp provider_icon_spec("okta") do
     %{
       type: :image,

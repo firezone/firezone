@@ -2,8 +2,6 @@
 
 set -euo pipefail
 
-hostname=$(hostname)
-FIREZONE_NAME=${FIREZONE_NAME:-$hostname}
 FIREZONE_ID=${FIREZONE_ID:-}
 FIREZONE_TOKEN=${FIREZONE_TOKEN:-}
 FIREZONE_API_URL=${FIREZONE_API_URL:-wss://api.firezone.dev}
@@ -114,7 +112,6 @@ StateDirectoryMode=0700
 
 LoadCredential=FIREZONE_TOKEN:$TOKEN_FILE
 
-Environment="FIREZONE_NAME=$FIREZONE_NAME"
 Environment="FIREZONE_ID=$FIREZONE_ID"
 Environment="FIREZONE_API_URL=$FIREZONE_API_URL"
 Environment="RUST_LOG=$RUST_LOG"

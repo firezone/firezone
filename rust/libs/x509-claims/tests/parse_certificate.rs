@@ -5,7 +5,7 @@ use std::{
 
 use rcgen::{
     CertificateParams, DnType, ExtendedKeyUsagePurpose, KeyPair, KeyUsagePurpose, SanType,
-    SerialNumber, string::Ia5String,
+    SerialNumber, date_time_ymd, string::Ia5String,
 };
 use x509_claims::{
     Claim, DetailField, Identity, ParsedCertificate, SigningAlgorithm, ValidationError,
@@ -27,7 +27,7 @@ fn recognizes_rsa_client_identity() {
     assert_eq!(metadata.subject_cn.as_deref(), Some(SUBJECT_CN));
     assert!(metadata.has_client_auth_eku);
     assert!(metadata.digital_signature_allowed);
-    assert!(metadata.is_currently_valid);
+    assert!(metadata.is_currently_valid());
     assert_eq!(
         metadata.signing_algorithm,
         Some(SigningAlgorithm::RsaSha256)
@@ -233,7 +233,7 @@ fn diagnostics_show_derived_firezone_attributes() {
 }
 
 #[test]
-fn diagnostics_show_what_a_certificate_lacks_without_judging_it() {
+fn diagnostics_flag_the_requirements_a_certificate_fails() {
     let der = certificate_without_client_identity_extensions();
 
     let metadata = parse_certificate(&der, now()).expect("generated certificate should parse");
@@ -243,20 +243,60 @@ fn diagnostics_show_what_a_certificate_lacks_without_judging_it() {
         Some("No")
     );
     assert_eq!(
+        detail_problem(&metadata, "TLS Client Authentication EKU"),
+        Some(ValidationError::MissingClientAuthEku)
+    );
+    assert_eq!(
         detail_value(&metadata, "Digital Signature Key Usage").as_deref(),
         Some("Not allowed")
     );
     assert_eq!(
+        detail_problem(&metadata, "Digital Signature Key Usage"),
+        Some(ValidationError::DigitalSignatureNotAllowed)
+    );
+
+    let fields = metadata.detail_fields();
+
+    assert_eq!(
+        labels(&fields.iter().take(2).collect::<Vec<_>>()),
+        [
+            "TLS Client Authentication EKU",
+            "Digital Signature Key Usage"
+        ],
+        "a requirement the certificate fails is why it cannot be used, so it reads first"
+    );
+}
+
+#[test]
+fn diagnostics_omit_the_requirements_a_certificate_meets() {
+    let metadata = parse_certificate(RSA_LEAF, now()).expect("fixture should parse");
+    assert!(metadata.has_client_auth_eku);
+    assert!(metadata.digital_signature_allowed);
+
+    for label in [
+        "TLS Client Authentication EKU",
+        "Digital Signature Key Usage",
+    ] {
+        assert!(
+            !metadata
+                .detail_fields()
+                .iter()
+                .any(|field| field.label == label),
+            "a requirement the certificate meets says nothing, so {label} has no row"
+        );
+    }
+}
+
+#[test]
+fn diagnostics_show_an_algorithm_the_parser_cannot_name() {
+    let der = certificate_without_client_identity_extensions();
+
+    let metadata = parse_certificate(&der, now()).expect("generated certificate should parse");
+
+    assert_eq!(
         detail_value(&metadata, "Signing Algorithm").as_deref(),
         Some("1.3.101.112"),
         "an algorithm the parser has no name for should still be shown"
-    );
-    assert!(
-        metadata
-            .detail_fields()
-            .iter()
-            .all(|field| field.problem.is_none()),
-        "what the portal makes of these rows is not a problem with them"
     );
 }
 
@@ -564,8 +604,6 @@ fn diagnostics_read_from_the_identity_down_to_the_encoding() {
             "Serial Number",
             "Not Before",
             "Not After",
-            "TLS Client Authentication EKU",
-            "Digital Signature Key Usage",
             "Signing Algorithm",
             "SHA-256 Fingerprint",
         ],
@@ -610,6 +648,44 @@ fn the_rows_with_a_problem_read_first() {
 }
 
 #[test]
+fn a_certificate_outside_its_validity_window_says_which_date_is_wrong() {
+    let expired = certificate_valid_between(2018, 2020);
+    let not_yet_valid = certificate_valid_between(2030, 2032);
+
+    let expired = parse_certificate(&expired, now()).expect("generated certificate should parse");
+    let not_yet_valid =
+        parse_certificate(&not_yet_valid, now()).expect("generated certificate should parse");
+
+    assert_eq!(
+        detail_problem(&expired, "Not After"),
+        Some(ValidationError::Expired)
+    );
+    assert_eq!(detail_problem(&expired, "Not Before"), None);
+    assert_eq!(
+        detail_problem(&not_yet_valid, "Not Before"),
+        Some(ValidationError::NotYetValid)
+    );
+    assert_eq!(detail_problem(&not_yet_valid, "Not After"), None);
+    assert_eq!(
+        position(&expired.detail_fields(), "Not After"),
+        0,
+        "the date that expired the certificate is what the reader came for"
+    );
+}
+
+#[test]
+fn an_unreadable_clock_leaves_both_validity_dates_unjudged() {
+    let der = certificate_valid_between(2018, 2020);
+
+    let metadata = parse_certificate(&der, a_clock_that_cannot_be_read())
+        .expect("generated certificate should parse");
+
+    assert!(!metadata.is_currently_valid());
+    assert_eq!(detail_problem(&metadata, "Not Before"), None);
+    assert_eq!(detail_problem(&metadata, "Not After"), None);
+}
+
+#[test]
 fn sparse_diagnostics_keep_the_order_without_leaving_gaps() {
     let der = certificate_with_uri_sans(&["firezone://email/alice@example.com"]);
 
@@ -636,8 +712,6 @@ fn sparse_diagnostics_keep_the_order_without_leaving_gaps() {
             "Serial Number",
             "Not Before",
             "Not After",
-            "TLS Client Authentication EKU",
-            "Digital Signature Key Usage",
             "Signing Algorithm",
             "SHA-256 Fingerprint",
         ],
@@ -776,6 +850,24 @@ fn certificate_with_serial(serial: &[u8]) -> Vec<u8> {
     certificate.der().to_vec()
 }
 
+/// A certificate whose validity window opens and closes on the first of January.
+fn certificate_valid_between(first_year: i32, last_year: i32) -> Vec<u8> {
+    let key = KeyPair::generate().expect("should generate a key pair");
+
+    let mut params = CertificateParams::default();
+    params.not_before = date_time_ymd(first_year, 1, 1);
+    params.not_after = date_time_ymd(last_year, 1, 1);
+    params
+        .distinguished_name
+        .push(DnType::CommonName, SUBJECT_CN);
+
+    let certificate = params
+        .self_signed(&key)
+        .expect("should self-sign the certificate");
+
+    certificate.der().to_vec()
+}
+
 fn certificate_with_sans(subject_alt_names: Vec<SanType>) -> Vec<u8> {
     let key = KeyPair::generate().expect("should generate a key pair");
 
@@ -798,8 +890,13 @@ fn now() -> SystemTime {
     SystemTime::UNIX_EPOCH + Duration::from_secs(1_798_761_600)
 }
 
-/// Claiming an identity at all is what suppresses signing in with a token, so the client has to
-/// tell "claims nobody" from "claims somebody it cannot name".
+/// An instant with no Unix timestamp, the way a clock the platform cannot read reaches the parser.
+fn a_clock_that_cannot_be_read() -> SystemTime {
+    SystemTime::UNIX_EPOCH - Duration::from_secs(1)
+}
+
+/// Claiming an identity is what suppresses signing in with a token, so the boundary between
+/// "claims nobody" and "claims somebody" has to sit exactly on the carried identity attributes.
 #[test]
 fn an_identity_is_absent_or_claimed() {
     let identity_of = |uris: &[&str]| {
@@ -838,18 +935,28 @@ fn an_identity_is_absent_or_claimed() {
         );
     }
 
+    assert_eq!(
+        identity_of(&["firezone://account-id/5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3"]),
+        Identity::Absent,
+        "an account alone names no actor"
+    );
+
     for uris in [
-        vec!["firezone://account-id/5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3"],
         vec!["firezone://actor-id/9b4d1c07-6e2a-4f83-8c15-7ad0e39b2c64"],
-        // An address no user could have is a claim on nobody the client can name.
+        // A carried identity attribute claims somebody even where the parser cannot use it:
+        // whether to reject it is the portal's policy, not the client's.
         vec!["firezone://email/jane.doe"],
         vec![
             "firezone://email/jane.doe@example.com",
             "firezone://email/john.doe@example.com",
         ],
-        // An attribute written with no value at all still claims the certificate is somebody's.
         vec!["firezone://email/"],
         vec!["firezone://email"],
+        vec!["firezone://actor-id/not-a-uuid"],
+        vec![
+            "firezone://actor-id/9b4d1c07-6e2a-4f83-8c15-7ad0e39b2c64",
+            "firezone://email/jane.doe",
+        ],
     ] {
         assert_eq!(
             identity_of(&uris),

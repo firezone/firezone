@@ -33,10 +33,49 @@ jobs:
       # narrowing to one ABI keeps coverage identical while avoiding the 4-ABI build.
       - name: Run Android Lint
         run: ./gradlew lint -Pandroid.injected.build.abi=x86_64
-      # AGP 9 only creates unit test components for the tested build type
-      # (debug). Narrowing to one ABI reuses the cargo build from lint above.
-      - name: Run unit tests
-        run: ./gradlew testDebugUnitTest -Pandroid.injected.build.abi=x86_64
+
+  unit-tests:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-android
+        with:
+          sccache-azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
+      # AGP 9 only creates unit test components for the tested build type (debug).
+      # The report task runs the tests, so it stands in for them rather than following them.
+      - name: Run unit tests and report coverage
+        run: ./gradlew createDebugUnitTestCoverageReport -Pandroid.injected.build.abi=x86_64
+      # AGP writes the report under a variant path this pins nothing to, so failing here names
+      # what it did write instead of leaving Coveralls to upload nothing.
+      - name: Find the coverage report
+        run: |
+          report=$(find app/build/reports/coverage -name '*.xml' | head -1)
+
+          if [ -z "$report" ]; then
+            echo "No coverage report was written. What is under app/build/reports:"
+            find app/build/reports -name '*.xml'
+            exit 1
+          fi
+
+          echo "COVERAGE_REPORT=kotlin/android/${report}" >> "$GITHUB_ENV"
+      - uses: coverallsapp/github-action@8d6379e14d29928660c4ba802d8e85393440b329 # v2.3.8
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          file: ${{ env.COVERAGE_REPORT }}
+          format: jacoco
+          # A JaCoCo report locates a file by its package, so without the source root in
+          # front of it nothing Coveralls is given resolves to a file in the repository.
+          base-path: kotlin/android/app/src/main/java
+          flag-name: kotlin-test
+          parallel: true
+
+  screenshots:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-android
+        with:
+          sccache-azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
       # Renders the app's screens to PNGs; nothing is compared against a reference.
       - name: Record screenshots
         run: ./gradlew recordRoborazziDebug -Pandroid.injected.build.abi=x86_64
@@ -45,19 +84,34 @@ jobs:
           name: android-screenshots
           path: kotlin/android/screenshots
 
-  instrumented-tests:
+  emulator-tests:
+    # The tests run against what `build-debug` already produced, so a suite costs an emulator
+    # rather than another Rust build. Adding one is a matrix entry.
+    needs: build_debug
     # The emulator needs KVM, which only the Linux runners provide.
     runs-on: ubuntu-24.04
     # An emulator that never boots would otherwise hold the run open for six hours.
     timeout-minutes: 30
+    strategy:
+      # One suite failing says nothing about the others.
+      fail-fast: false
+      matrix:
+        include:
+          # A suite is a device the tests need, since ownership is the one thing a test cannot
+          # set up for itself. Splitting them wants `--notAnnotation`/`--annotation` rather than
+          # a package, so that every test lands in exactly one suite by construction.
+          - suite: unmanaged
+    name: emulator-tests (${{ matrix.suite }})
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/free-disk-space
         with:
           keep-android: "true"
-      - uses: ./.github/actions/setup-android
+      # Where a local build leaves them, so the task below finds them the same way here.
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          sccache-azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
+          name: Android debug APK
+          path: kotlin/android/app/build/outputs/apk
       # The runner ships /dev/kvm but leaves it readable only by root.
       - name: Grant access to KVM
         run: |
@@ -65,7 +119,7 @@ jobs:
             | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
-      - name: Run instrumented tests
+      - name: Run the tests
         uses: reactivecircus/android-emulator-runner@c9c93e6ba9c4194322e114c40970d5983d9a07cc # v2.38.0
         with:
           api-level: 34
@@ -76,11 +130,72 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           # `script` is not a `run:` step, so it does not pick up the workflow's
           # `working-directory` default and starts at the repository root.
-          # Narrowing the ABI reuses the cargo build the other jobs already do.
           script: >-
-            cd kotlin/android &&
-            ./gradlew connectedDebugAndroidTest
-            -Pandroid.injected.build.abi=x86_64
+            ./kotlin/android/mise-tasks/emulator-tests.sh
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: android-coverage-${{ matrix.suite }}
+          path: kotlin/android/coverage.ec
+
+  emulator-coverage:
+    needs: emulator-tests
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: android-debug-classes
+          path: kotlin/android/classes
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: android-jacoco-cli
+          path: kotlin/android/jacoco-cli
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: android-coverage-*
+          path: kotlin/android/execution-data
+      # The build hands over the JaCoCo that wrote the execution data, which is the only one that
+      # can read it, so no version is named here.
+      - name: Report on the execution data
+        run: |
+          jacoco_cli=$(find jacoco-cli -name '*.jar' | head -1)
+
+          mapfile -t execution_data < <(find execution-data -name '*.ec')
+
+          if [ ${#execution_data[@]} -eq 0 ]; then
+            echo "No suite recorded any execution data. What was downloaded:"
+            find execution-data
+            exit 1
+          fi
+
+          set -o pipefail
+          java -jar "$jacoco_cli" report "${execution_data[@]}" \
+            --classfiles classes \
+            --sourcefiles app/src/main/java \
+            --xml coverage.xml 2>&1 | tee report.log
+
+          # A class whose bytecode JaCoCo cannot match has its execution data dropped and is
+          # reported as uncovered, so a mismatch understates the result instead of failing.
+          if grep -q 'does not match' report.log; then
+            echo "The classes above were not the ones the tests ran against, so their coverage was dropped."
+            exit 1
+          fi
+
+          # A report that resolved no classes still writes valid XML, so it is worth saying so
+          # here rather than uploading an empty one.
+          if ! grep -q '<counter' coverage.xml; then
+            echo "The report counted nothing. The classes it was given:"
+            find classes -name '*.class' | head
+            exit 1
+          fi
+      - uses: coverallsapp/github-action@8d6379e14d29928660c4ba802d8e85393440b329 # v2.3.8
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          file: kotlin/android/coverage.xml
+          format: jacoco
+          base-path: kotlin/android/app/src/main/java
+          flag-name: kotlin-emulator
+          parallel: true
 
   update-release-draft:
     name: update-release-draft
@@ -238,12 +353,31 @@ jobs:
       - uses: ./.github/actions/setup-android
         with:
           sccache-azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
+      # The instrumented tests run against these, so building them here is what spares every
+      # test suite a Rust build of its own. The APK is universal, so it installs on the emulator.
       - name: Build debug APK
         run: |
-          ./gradlew assembleDebug
+          ./gradlew assembleDebug assembleDebugAndroidTest copyJacocoCli collectDebugClasses
       - name: Upload debug APK
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: Android debug APK
           path: |
             ./kotlin/android/app/build/outputs/apk/*
+      # Execution data records which probes ran, and says nothing about what they belong to, so
+      # reporting on it later needs the classes these tests were built from.
+      - name: Upload the compiled classes
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: android-debug-classes
+          # The default is to warn and upload nothing, which only surfaces much later as a
+          # missing artifact in the job that reports on it.
+          if-no-files-found: error
+          path: ./kotlin/android/app/build/debug-classes
+      # Kept apart from the classes: the report reads that directory as the code under test, and
+      # would happily measure JaCoCo itself if the tool sat in it.
+      - name: Upload the reporting tool
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: android-jacoco-cli
+          path: ./kotlin/android/app/build/jacoco-cli

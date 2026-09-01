@@ -144,6 +144,16 @@ jobs:
       id-token: write # OIDC auth
       security-events: write # trivy SARIF upload from setup-mise
 
+  # Gradle only writes its build cache from the default branch, so PR and merge-queue
+  # runs restore nothing unless `main` is built too.
+  kotlin:
+    uses: ./.github/workflows/_kotlin.yml
+    secrets: inherit
+    permissions:
+      contents: write # release draft
+      id-token: write # OIDC auth
+      security-events: write # trivy SARIF upload from setup-mise
+
   coverage-finish:
     name: coverage-finish
     needs: [elixir, rust, swift]

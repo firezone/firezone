@@ -21,6 +21,7 @@ fuzz_target!(|input: Input| {
     };
 
     assert_validity_window(&certificate, input.seconds_since_epoch);
+    assert_the_validity_date_at_fault_says_so(&certificate, input.seconds_since_epoch);
     assert_validity_is_contiguous(
         input.der,
         input.seconds_since_epoch,
@@ -56,8 +57,36 @@ fn assert_validity_window(certificate: &ParsedCertificate, seconds_since_epoch: 
     let window = certificate.not_before_timestamp..=certificate.not_after_timestamp;
 
     assert_eq!(
-        certificate.is_currently_valid,
+        certificate.is_currently_valid(),
         window.contains(&i64::from(seconds_since_epoch))
+    );
+}
+
+/// Asserts that an instant outside the validity window is blamed on the date it falls outside of.
+///
+/// The clients sort the rows carrying a problem to the top, so a window blamed on the wrong end
+/// sends an administrator after a date that is fine.
+fn assert_the_validity_date_at_fault_says_so(
+    certificate: &ParsedCertificate,
+    seconds_since_epoch: u32,
+) {
+    let checked_at = i64::from(seconds_since_epoch);
+    let fields = certificate.detail_fields();
+    let problem_of = |label: &str| {
+        fields
+            .iter()
+            .find(|field| field.label == label)
+            .unwrap_or_else(|| panic!("diagnostics should show {label}"))
+            .problem
+    };
+
+    assert_eq!(
+        problem_of("Not Before"),
+        (checked_at < certificate.not_before_timestamp).then_some(ValidationError::NotYetValid)
+    );
+    assert_eq!(
+        problem_of("Not After"),
+        (checked_at > certificate.not_after_timestamp).then_some(ValidationError::Expired)
     );
 }
 
@@ -76,22 +105,18 @@ fn assert_validity_is_contiguous(der: &[u8], first: u32, second: u32) {
 
 /// Asserts that claiming nobody and claiming somebody stay separate answers.
 ///
-/// The first signs the session in with a token and the second commits it to mutual TLS, so a
-/// certificate that slid from one to the other would authenticate as the wrong thing. A claim
-/// the parser could not use still names somebody: only a usable address reaches the client.
+/// The first signs the session in with a token and the second commits it to mutual TLS with no
+/// token. A carried actor email or actor ID claims somebody whatever it says, since rejecting
+/// a claim is the portal's policy; an account ID names no actor and claims nobody.
 fn assert_the_identity_answers_the_claims(certificate: &ParsedCertificate) {
-    let claims_somebody = [
-        &certificate.account_id,
-        &certificate.actor_id,
-        &certificate.actor_email,
-    ]
-    .into_iter()
-    .any(|claim| claim.value.is_some() || claim.error.is_some());
+    let claims_somebody = [&certificate.actor_email, &certificate.actor_id]
+        .into_iter()
+        .any(|claim| claim.value.is_some() || claim.error.is_some());
 
     match certificate.identity() {
         Identity::Absent => assert!(
             !claims_somebody,
-            "a certificate carrying an identity claim is not absent"
+            "a certificate carrying an identity attribute is not absent"
         ),
         Identity::Claimed { email } => {
             assert!(claims_somebody, "an identity was claimed by nothing");
@@ -206,6 +231,10 @@ fn assert_every_validation_error_reads() {
         ValidationError::Ambiguous,
         ValidationError::PlaceholderIdentifier,
         ValidationError::UnknownAttribute,
+        ValidationError::NotYetValid,
+        ValidationError::Expired,
+        ValidationError::MissingClientAuthEku,
+        ValidationError::DigitalSignatureNotAllowed,
     ]
     .map(ValidationError::label);
 
@@ -263,7 +292,7 @@ fn assert_parsing_is_deterministic(
 fn is_valid_at(der: &[u8], seconds_since_epoch: u32) -> bool {
     parse_certificate(der, instant(seconds_since_epoch))
         .expect("DER that parses once parses at any instant")
-        .is_currently_valid
+        .is_currently_valid()
 }
 
 fn instant(seconds_since_epoch: u32) -> SystemTime {

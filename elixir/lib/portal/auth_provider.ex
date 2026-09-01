@@ -70,6 +70,30 @@ defmodule Portal.AuthProvider do
     end
   end
 
+  @doc """
+  Ensures that an authentication provider is enabled for the requested
+  application context.
+
+  This authorization must happen before a provider issues a portal session or
+  an interactive client token.
+  """
+  @spec validate_context(
+          map(),
+          :portal | :gui_client | :headless_client
+        ) :: :ok | {:error, :invalid_context}
+  def validate_context(%{context: context}, context_type)
+      when context_type in [:gui_client, :headless_client] and
+             context in [:clients_only, :clients_and_portal] do
+    :ok
+  end
+
+  def validate_context(%{context: context}, :portal)
+      when context in [:portal_only, :clients_and_portal] do
+    :ok
+  end
+
+  def validate_context(_provider, _context_type), do: {:error, :invalid_context}
+
   def changeset(%Ecto.Changeset{} = changeset) do
     changeset
     |> validate_required(~w[type]a)

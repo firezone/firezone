@@ -30,6 +30,7 @@ defmodule PortalWeb.UserpassController do
          %Portal.Actor{} = actor <- fetch_actor(account, email),
          :ok <- check_admin(actor, context_type),
          {:ok, actor, _expires_at} <- verify_password(actor, password, conn),
+         :ok <- Portal.AuthProvider.validate_context(provider, context_type),
          {:ok, session_or_token} <- create_session_or_token(conn, actor, provider, params) do
       signed_in(conn, context_type, account, actor, session_or_token, params)
     else
@@ -183,6 +184,12 @@ defmodule PortalWeb.UserpassController do
 
   defp handle_error(conn, {:error, :not_admin}, params) do
     error = "This action requires admin privileges."
+    path = ~p"/#{params["account_id_or_slug"]}"
+    redirect_for_error(conn, error, path)
+  end
+
+  defp handle_error(conn, {:error, :invalid_context}, params) do
+    error = "This authentication method is not available for your sign-in context."
     path = ~p"/#{params["account_id_or_slug"]}"
     redirect_for_error(conn, error, path)
   end

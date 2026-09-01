@@ -21,6 +21,9 @@ enum AdapterError: Error, CustomStringConvertible, LocalizedError {
   /// connlib failed to start
   case connlibConnectError(String)
 
+  /// Neither a sign-in token nor a usable client certificate is available.
+  case authenticationUnavailable(String)
+
   var description: String {
     switch self {
     case .invalidSession(let session):
@@ -28,10 +31,66 @@ enum AdapterError: Error, CustomStringConvertible, LocalizedError {
       return message
     case .connlibConnectError(let error):
       return "connlib failed to start: \(error)"
+    case .authenticationUnavailable(let reason):
+      return "Cannot authenticate without a token or a client certificate: \(reason)"
     }
   }
 
   var errorDescription: String? { description }
+}
+
+/// Presents the keychain-held VPN identity to connlib's TLS stack.
+///
+/// FirezoneKit cannot see the UniFFI types, so the translation between its
+/// `X509SignatureScheme` and connlib's `TlsSignatureScheme` happens here.
+private final class AppleClientTlsIdentity: ClientTlsIdentity, @unchecked Sendable {
+  private let identity: X509ClientIdentity
+
+  init(_ identity: X509ClientIdentity) {
+    self.identity = identity
+  }
+
+  func certificateChain() throws -> [Data] {
+    identity.certificateChain
+  }
+
+  func supportedSignatureSchemes() throws -> [TlsSignatureScheme] {
+    identity.signatureSchemes.map { $0.tlsSignatureScheme }
+  }
+
+  func sign(scheme: TlsSignatureScheme, message: Data) throws -> Data {
+    try identity.sign(scheme: X509SignatureScheme(scheme), message: message)
+  }
+}
+
+extension X509SignatureScheme {
+  fileprivate init(_ scheme: TlsSignatureScheme) {
+    switch scheme {
+    case .rsaPkcs1Sha256: self = .rsaPkcs1Sha256
+    case .rsaPkcs1Sha384: self = .rsaPkcs1Sha384
+    case .rsaPkcs1Sha512: self = .rsaPkcs1Sha512
+    case .rsaPssSha256: self = .rsaPssSha256
+    case .rsaPssSha384: self = .rsaPssSha384
+    case .rsaPssSha512: self = .rsaPssSha512
+    case .ecdsaNistp256Sha256: self = .ecdsaNistp256Sha256
+    case .ecdsaNistp384Sha384: self = .ecdsaNistp384Sha384
+    case .ecdsaNistp521Sha512: self = .ecdsaNistp521Sha512
+    }
+  }
+
+  fileprivate var tlsSignatureScheme: TlsSignatureScheme {
+    switch self {
+    case .rsaPkcs1Sha256: return .rsaPkcs1Sha256
+    case .rsaPkcs1Sha384: return .rsaPkcs1Sha384
+    case .rsaPkcs1Sha512: return .rsaPkcs1Sha512
+    case .rsaPssSha256: return .rsaPssSha256
+    case .rsaPssSha384: return .rsaPssSha384
+    case .rsaPssSha512: return .rsaPssSha512
+    case .ecdsaNistp256Sha256: return .ecdsaNistp256Sha256
+    case .ecdsaNistp384Sha384: return .ecdsaNistp384Sha384
+    case .ecdsaNistp521Sha512: return .ecdsaNistp521Sha512
+    }
+  }
 }
 
 // Loosely inspired from WireGuardAdapter from WireGuardKit
@@ -55,9 +114,6 @@ actor Adapter {
   /// picks up a flag change soon after PostHog re-evaluation.
   private static let featureFlagPollInterval: Duration = .seconds(5)
   private static let resourceNotificationTTL: Duration = .seconds(15)
-
-  // Our local copy of the accountSlug
-  private let accountSlug: String
 
   /// Current network settings for tunnel configuration.
   private var networkSettings = NetworkSettings()
@@ -130,31 +186,37 @@ actor Adapter {
   private var resources: [Resource]?  // swiftlint:disable:this discouraged_optional_collection
   private var connectedDevices: [ConnectedDevice] = []
 
+  /// The account and actor the portal named in `init`, reported up to the app process.
+  private var accountSlug: String?
+  private var actorName: String?
+
   /// Resource notifications waiting for the UI process to poll them.
   private var pendingUnreachableResources: [PendingUnreachableResource]
   private let notificationClock = ContinuousClock()
 
   /// Starting parameters
   private let apiURL: String
-  private let token: Token
+  private let token: Token?
   private let deviceId: String
   private let logFilter: String
+  /// Persistent keychain reference to the client identity MDM put on the VPN profile.
+  private let identityReference: Data?
 
   init(
     apiURL: String,
-    token: Token,
+    token: Token?,
     deviceId: String,
     logFilter: String,
-    accountSlug: String,
     internetResourceEnabled: Bool,
+    identityReference: Data?,
     providerCommandSender: Sender<ProviderCommand>
   ) {
     self.apiURL = apiURL
     self.token = token
     self.deviceId = deviceId
     self.logFilter = logFilter
-    self.accountSlug = accountSlug
     self.internetResourceEnabled = internetResourceEnabled
+    self.identityReference = identityReference
     self.providerCommandSender = providerCommandSender
     self.pendingUnreachableResources = []
     // Start log cleanup immediately - doesn't depend on tunnel being connected
@@ -162,7 +224,7 @@ actor Adapter {
   }
 
   func start() async throws {
-    Log.log("Adapter.start: Starting session for account: \(accountSlug)")
+    Log.log("Adapter.start: Starting session")
 
     // Get device metadata - asynchronously get values from MainActor
     let deviceName: String
@@ -201,18 +263,19 @@ actor Adapter {
       )
     #endif
 
+    let tlsIdentity = try resolveTlsIdentity()
+
     // Create the session
     let session: Session
     do {
       session = try Session.newApple(
         apiUrl: apiURL,
-        token: token.description,
+        token: token?.description,
         deviceId: deviceId,
-        accountSlug: accountSlug,
         deviceName: deviceName,
         deviceInfo: deviceInfo,
         isInternetResourceActive: internetResourceEnabled,
-        tlsIdentity: nil
+        tlsIdentity: tlsIdentity
       )
     } catch let error as ConnlibError {
       throw AdapterError.connlibConnectError(error.message())
@@ -328,6 +391,8 @@ actor Adapter {
         resources: self.resources?.map { self.convertResource($0) },
         connectedDevices: self.connectedDevices.map { FirezoneKit.ConnectedDevice($0) },
         isLogStreamingActive: Log.isStreamingActive,
+        accountSlug: self.accountSlug,
+        actorName: self.actorName,
         comparedTo: request.stateHash
       )
 
@@ -464,6 +529,16 @@ actor Adapter {
         }
       }
 
+    case .connectedToPortal(let accountSlug, let actorName):
+      Log.log("Received ConnectedToPortal event")
+
+      self.accountSlug = accountSlug
+      self.actorName = actorName
+      Telemetry.setUser(
+        firezoneId: FirezoneId(uuid: deviceId).encoded,
+        accountSlug: accountSlug
+      )
+
     case .resourcesUpdated(let resourceList, let connectedDeviceList):
       Log.log("Received ResourcesUpdated event with \(resourceList.count) resources")
 
@@ -490,12 +565,19 @@ actor Adapter {
     case .disconnected(let error):
       let errorMessage = error.message()
       let requiresSignIn = error.requiresSignIn()
-      Log.info("Received Disconnected event: \(errorMessage)")
+      Log.info(
+        "Received Disconnected event (requiresSignIn=\(requiresSignIn)): " + errorMessage)
 
       // iOS shows the notification from the tunnel process because the UI
       // process isn't guaranteed to be alive; macOS handles it from the UI.
       #if os(iOS)
-        SessionNotification.showDisconnectedNotificationiOS(errorMessage)
+        // Only a session ended by an unusable token can be restored by signing in again.
+        // Offering it for anything else sends the user somewhere that cannot help them.
+        if requiresSignIn {
+          SessionNotification.showDisconnectedNotificationiOS(errorMessage)
+        } else {
+          SessionNotification.showDisconnectedNotificationWithoutSignIniOS(errorMessage)
+        }
       #endif
 
       let sendableError = SendableError(errorMessage, requiresSignIn: requiresSignIn)
@@ -517,6 +599,71 @@ actor Adapter {
           receivedAt: notificationClock.now
         ))
     }
+  }
+
+  /// Loads the client certificate to present, if the VPN profile configures one.
+  ///
+  /// An identity that is configured but cannot be read is fatal only when there is no token
+  /// to fall back on. Whether a session may proceed without a certificate is the portal's
+  /// decision, and it reports a far more actionable reason than we could here.
+  private func resolveTlsIdentity() throws -> ClientTlsIdentity? {
+    guard identityReference != nil else {
+      guard token != nil else {
+        throw AdapterError.authenticationUnavailable(
+          "the VPN profile references no client certificate")
+      }
+
+      return nil
+    }
+
+    let identity: X509ClientIdentity?
+
+    do {
+      identity = try X509Identity.load(persistentReference: identityReference)
+    } catch {
+      guard token != nil else {
+        throw AdapterError.authenticationUnavailable(error.localizedDescription)
+      }
+
+      Log.error(
+        "Falling back to the saved sign-in token: \(error.localizedDescription)")
+
+      return nil
+    }
+
+    guard let identity else { return nil }
+
+    let parsed = identity.certificateChain.first.flatMap { parseClientCertificate(der: $0) }
+
+    logClientCertificate(identity, parsed)
+
+    // The portal accepts every client certificate at the TLS layer and judges it at the
+    // application layer, so whether this one is acceptable is not ours to decide.
+    return AppleClientTlsIdentity(identity)
+  }
+
+  private func logClientCertificate(
+    _ identity: X509ClientIdentity, _ parsed: ParsedCertificate?
+  ) {
+    guard let parsed else {
+      Log.warning("Presenting a client certificate we could not parse")
+      return
+    }
+
+    Log.info(
+      "Client certificate "
+        + "(fingerprint=\(parsed.fingerprint), valid=\(parsed.isCurrentlyValid), "
+        + "notAfter=\(parsed.notAfter), clientAuthEku=\(parsed.hasClientAuthEku), "
+        + "mdmDeviceId=\(Self.describe(parsed.mdmDeviceId)), schemes=\(identity.signatureSchemes))"
+    )
+  }
+
+  private static func describe(_ claim: Claim) -> String {
+    let value = claim.value ?? "none"
+
+    guard let error = claim.error else { return value }
+
+    return "\(value) (unusable: \(error))"
   }
 
   private func setSystemDefaultResolvers(_ path: Network.NWPath) async {

@@ -86,12 +86,16 @@ defmodule Portal.Device do
     field :ipv4, Portal.Types.IP, read_after_writes: true
     field :ipv6, Portal.Types.IP, read_after_writes: true
 
-    # Client-only
-    belongs_to :actor, Portal.Actor
+    # Self-reported hardware metadata
     field :device_serial, :string
     field :device_uuid, :string
+
+    # Mobile client-only
     field :identifier_for_vendor, :string
     field :firebase_installation_id, :string
+
+    # Client-only
+    belongs_to :actor, Portal.Actor
     field :hostname, :string
 
     # Device trust. Enforced client-only today, but gateways may adopt
@@ -229,6 +233,8 @@ defmodule Portal.Device do
       :gateway ->
         changeset
         |> validate_required([:site_id])
+        |> validate_length(:device_serial, max: 255)
+        |> validate_length(:device_uuid, max: 255)
         |> validate_gateway_verification()
 
       _ ->

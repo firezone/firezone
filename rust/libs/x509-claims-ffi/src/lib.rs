@@ -38,7 +38,7 @@ pub struct Claim {
     pub error: Option<ValidationError>,
 }
 
-/// Why the text a certificate gave a `firezone://` claim is not usable as it, mirroring
+/// Why a diagnostics row is not usable as what it names, mirroring
 /// [`x509_claims::ValidationError`].
 ///
 /// The clients word these from their own string resources, so the error crosses the binding
@@ -52,6 +52,10 @@ pub enum ValidationError {
     Ambiguous,
     PlaceholderIdentifier,
     UnknownAttribute,
+    NotYetValid,
+    Expired,
+    MissingClientAuthEku,
+    DigitalSignatureNotAllowed,
 }
 
 /// Metadata parsed from a client certificate, mirroring [`x509_claims::ParsedCertificate`].
@@ -98,6 +102,7 @@ pub fn parse_client_certificate(der: Vec<u8>) -> Option<ParsedCertificate> {
 impl From<x509_claims::ParsedCertificate> for ParsedCertificate {
     fn from(parsed: x509_claims::ParsedCertificate) -> Self {
         let identity = Identity::from(parsed.identity());
+        let is_currently_valid = parsed.is_currently_valid();
         let detail_fields = parsed
             .detail_fields()
             .into_iter()
@@ -117,7 +122,7 @@ impl From<x509_claims::ParsedCertificate> for ParsedCertificate {
             serial: parsed.serial,
             has_client_auth_eku: parsed.has_client_auth_eku,
             digital_signature_allowed: parsed.digital_signature_allowed,
-            is_currently_valid: parsed.is_currently_valid,
+            is_currently_valid,
             not_before: parsed.not_before,
             not_before_timestamp: parsed.not_before_timestamp,
             not_after: parsed.not_after,
@@ -170,6 +175,12 @@ impl From<x509_claims::ValidationError> for ValidationError {
             x509_claims::ValidationError::Ambiguous => Self::Ambiguous,
             x509_claims::ValidationError::PlaceholderIdentifier => Self::PlaceholderIdentifier,
             x509_claims::ValidationError::UnknownAttribute => Self::UnknownAttribute,
+            x509_claims::ValidationError::NotYetValid => Self::NotYetValid,
+            x509_claims::ValidationError::Expired => Self::Expired,
+            x509_claims::ValidationError::MissingClientAuthEku => Self::MissingClientAuthEku,
+            x509_claims::ValidationError::DigitalSignatureNotAllowed => {
+                Self::DigitalSignatureNotAllowed
+            }
         }
     }
 }

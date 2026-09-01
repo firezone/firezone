@@ -116,6 +116,41 @@ defmodule PortalAPI.Client.ChannelTest do
     %{subject | context: %{subject.context | user_agent: user_agent}}
   end
 
+  defp assert_x509_account_disable_disconnects_channel(
+         %{account: account, client: client, subject: subject},
+         channel
+       ) do
+    Process.flag(:trap_exit, true)
+    provider = x509_provider_fixture(account: account, is_disabled: false)
+
+    credential = %Portal.Authentication.Credential{
+      id: Ecto.UUID.generate(),
+      type: :x509,
+      auth_provider_id: provider.id
+    }
+
+    join_channel(client, %{subject | credential: credential}, channel: channel)
+    assert_push "init", _init_payload
+
+    account |> Ecto.Changeset.change(is_disabled: true) |> Repo.update!()
+
+    old_data = %{
+      "id" => account.id,
+      "is_disabled" => false
+    }
+
+    assert :ok =
+             Portal.Changes.Hooks.Accounts.on_update(
+               1,
+               old_data,
+               %{old_data | "is_disabled" => true}
+             )
+
+    assert_push "disconnect", %{reason: "token_expired"}
+    assert_receive :socket_drain
+    assert_receive {:EXIT, _pid, :shutdown}
+  end
+
   defp gateway_authorization_generation(channel_pid, resource_id) do
     {generation, _timer_ref, _initiator_token} =
       :sys.get_state(channel_pid).assigns.pending_authorizations |> Map.fetch!(resource_id)
@@ -463,6 +498,28 @@ defmodule PortalAPI.Client.ChannelTest do
 
       assert_push "disconnect", %{reason: "token_expired"}
       assert_receive {:EXIT, _pid, :shutdown}
+    end
+
+    test "sends account slug in init message", %{
+      account: account,
+      client: client,
+      subject: subject
+    } do
+      join_channel(client, subject)
+
+      assert_push "init", %{account_slug: account_slug}
+      assert account_slug == account.slug
+    end
+
+    test "sends actor name in init message", %{
+      actor: actor,
+      client: client,
+      subject: subject
+    } do
+      join_channel(client, subject)
+
+      assert_push "init", %{actor_name: actor_name}
+      assert actor_name == actor.name
     end
 
     test "sends list of available resources after join", %{
@@ -1119,6 +1176,14 @@ defmodule PortalAPI.Client.ChannelTest do
 
       assert_push "disconnect", %{reason: "token_expired"}
       assert_receive {:EXIT, _pid, :shutdown}
+    end
+
+    test "disconnects an X.509 v1 channel when account CDC reports it disabled", context do
+      assert_x509_account_disable_disconnects_channel(context, PortalAPI.Client.Channel)
+    end
+
+    test "disconnects an X.509 v2 channel when account CDC reports it disabled", context do
+      assert_x509_account_disable_disconnects_channel(context, PortalAPI.Client.V2.Channel)
     end
 
     test "cuts the session when its own certificate is revoked", %{

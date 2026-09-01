@@ -3,7 +3,7 @@
   "vpnStatus": "disconnected",
   "systemExtension": "installed",
   "notifications": "authorized",
-  "actorName": "Unknown user",
+  "clientCertificate": "absent",
   "resources": [],
   "connectedDevices": [],
   "favorites": [],

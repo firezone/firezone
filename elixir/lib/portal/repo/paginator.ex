@@ -13,6 +13,13 @@ defmodule Portal.Repo.Paginator do
 
   @default_limit 50
   @max_limit 100
+  # Pagination cursors are signed JSON primitives, never ETF. Keep the complete
+  # token small enough that malformed input cannot consume meaningful work before
+  # it is rejected.
+  @max_encoded_cursor_bytes 2_048
+  @max_decoded_cursor_bytes 1_024
+  @cursor_version 1
+  @cursor_signing_salt "portal-repo-paginator-cursor-v1"
 
   defmodule Metadata do
     @type t :: %__MODULE__{
@@ -297,26 +304,46 @@ defmodule Portal.Repo.Paginator do
   end
 
   @doc false
+  def max_encoded_cursor_bytes, do: @max_encoded_cursor_bytes
+
+  @doc false
   def encode_cursor(direction, cursor_fields, schema) do
-    {direction, compress_cursor(schema, cursor_fields)}
-    |> :erlang.term_to_binary()
-    |> Base.url_encode64(padding: false)
+    payload =
+      [@cursor_version, encode_direction(direction), encode_cursor_values(schema, cursor_fields)]
+      |> JSON.encode!()
+      |> Base.url_encode64(padding: false)
+
+    signature =
+      payload
+      |> cursor_signature()
+      |> Base.url_encode64(padding: false)
+
+    payload <> "." <> signature
   end
 
-  defp compress_cursor(schema, cursor_fields) do
+  defp encode_cursor_values(schema, cursor_fields) do
     Enum.map(cursor_fields, fn {binding, _order, field} ->
       value = fetch_cursor_value(schema, binding, field)
 
       case value do
-        %DateTime{} = dt -> {DateTime, DateTime.to_unix(dt, :nanosecond)}
-        %NaiveDateTime{} = ndt -> {NaiveDateTime, NaiveDateTime.to_iso8601(ndt)}
-        %Date{} = date -> {Date, Date.to_iso8601(date)}
-        %Time{} = time -> {Time, Time.to_iso8601(time)}
+        %DateTime{} = dt -> ["dt", DateTime.to_unix(dt, :nanosecond)]
+        %NaiveDateTime{} = ndt -> ["ndt", NaiveDateTime.to_iso8601(ndt)]
+        %Date{} = date -> ["d", Date.to_iso8601(date)]
+        %Time{} = time -> ["t", Time.to_iso8601(time)]
         nil -> nil
-        other -> {:t, other}
+        other -> encode_cursor_value(other)
       end
     end)
   end
+
+  defp encode_cursor_value(value) when is_binary(value),
+    do: ["b", Base.url_encode64(value, padding: false)]
+
+  defp encode_cursor_value(value) when is_integer(value), do: ["i", value]
+  defp encode_cursor_value(value) when is_float(value), do: ["f", value]
+  defp encode_cursor_value(value) when is_boolean(value), do: ["bool", value]
+
+  defp encode_cursor_value(%Decimal{} = value), do: ["dec", Decimal.to_string(value, :normal)]
 
   defp fetch_cursor_value(schema, binding, field) do
     namespaced = "#{binding}_#{field}"
@@ -327,7 +354,8 @@ defmodule Portal.Repo.Paginator do
     end
   end
 
-  defp validate_cursor_values(cursor_fields, values) do
+  defp validate_cursor_values(cursor_fields, values)
+       when is_list(values) and length(cursor_fields) == length(values) do
     valid? =
       Enum.zip(cursor_fields, values)
       |> Enum.all?(fn
@@ -338,10 +366,18 @@ defmodule Portal.Repo.Paginator do
     if valid?, do: :ok, else: {:error, :invalid_cursor}
   end
 
-  defp decode_cursor(encoded) do
-    with {:ok, etf} <- Base.url_decode64(encoded, padding: false),
-         {direction, values} <- Plug.Crypto.non_executable_binary_to_term(etf, [:safe]) do
-      {:ok, {direction, decompress_cursor(values)}}
+  defp validate_cursor_values(_cursor_fields, _values), do: {:error, :invalid_cursor}
+
+  defp decode_cursor(encoded)
+       when is_binary(encoded) and byte_size(encoded) <= @max_encoded_cursor_bytes do
+    with [payload, encoded_signature] <- String.split(encoded, ".", parts: 2),
+         {:ok, signature} <- Base.url_decode64(encoded_signature, padding: false),
+         true <- valid_signature?(payload, signature),
+         {:ok, json} <- Base.url_decode64(payload, padding: false),
+         true <- byte_size(json) <= @max_decoded_cursor_bytes,
+         {:ok, decoded} <- JSON.decode(json),
+         {:ok, cursor} <- decode_cursor_payload(decoded) do
+      {:ok, cursor}
     else
       _ -> {:error, :invalid_cursor}
     end
@@ -349,14 +385,87 @@ defmodule Portal.Repo.Paginator do
     _e -> {:error, :invalid_cursor}
   end
 
-  defp decompress_cursor(cursor_fields) do
-    Enum.map(cursor_fields, fn
-      nil -> nil
-      {:t, term} -> term
-      {DateTime, iso8601} -> DateTime.from_unix!(iso8601, :nanosecond)
-      {NaiveDateTime, iso8601} -> NaiveDateTime.from_iso8601!(iso8601)
-      {Date, iso8601} -> Date.from_iso8601!(iso8601)
-      {Time, iso8601} -> Time.from_iso8601!(iso8601)
+  defp decode_cursor(_encoded), do: {:error, :invalid_cursor}
+
+  defp decode_cursor_payload([@cursor_version, direction, values]) when is_list(values) do
+    with {:ok, direction} <- decode_direction(direction),
+         {:ok, values} <- decode_cursor_values(values) do
+      {:ok, {direction, values}}
+    end
+  end
+
+  defp decode_cursor_payload(_decoded), do: {:error, :invalid_cursor}
+
+  defp decode_cursor_values(cursor_fields) do
+    Enum.reduce_while(cursor_fields, {:ok, []}, fn cursor_field, {:ok, values} ->
+      case decode_cursor_value(cursor_field) do
+        {:ok, value} -> {:cont, {:ok, [value | values]}}
+        :error -> {:halt, :error}
+      end
     end)
+    |> case do
+      {:ok, values} -> {:ok, Enum.reverse(values)}
+      :error -> {:error, :invalid_cursor}
+    end
+  end
+
+  defp decode_cursor_value(nil), do: {:ok, nil}
+
+  defp decode_cursor_value(["dt", value]) when is_integer(value),
+    do: decode_datetime(DateTime.from_unix(value, :nanosecond))
+
+  defp decode_cursor_value(["ndt", value]) when is_binary(value),
+    do: decode_datetime(NaiveDateTime.from_iso8601(value))
+
+  defp decode_cursor_value(["d", value]) when is_binary(value),
+    do: decode_datetime(Date.from_iso8601(value))
+
+  defp decode_cursor_value(["t", value]) when is_binary(value),
+    do: decode_datetime(Time.from_iso8601(value))
+
+  defp decode_cursor_value(["b", value]) when is_binary(value),
+    do: Base.url_decode64(value, padding: false)
+
+  defp decode_cursor_value(["i", value]) when is_integer(value), do: {:ok, value}
+  defp decode_cursor_value(["f", value]) when is_float(value), do: {:ok, value}
+  defp decode_cursor_value(["bool", value]) when is_boolean(value), do: {:ok, value}
+
+  defp decode_cursor_value(["dec", value]) when is_binary(value) do
+    case Decimal.parse(value) do
+      {decimal, ""} -> {:ok, decimal}
+      _ -> :error
+    end
+  end
+
+  defp decode_cursor_value(_value), do: :error
+
+  defp decode_datetime({:ok, value}), do: {:ok, value}
+  defp decode_datetime(_error), do: :error
+
+  defp encode_direction(:after), do: "a"
+  defp encode_direction(:before), do: "b"
+
+  defp decode_direction("a"), do: {:ok, :after}
+  defp decode_direction("b"), do: {:ok, :before}
+  defp decode_direction(_direction), do: {:error, :invalid_cursor}
+
+  defp valid_signature?(payload, signature) when byte_size(signature) == 32 do
+    Plug.Crypto.secure_compare(signature, cursor_signature(payload))
+  end
+
+  defp valid_signature?(_payload, _signature), do: false
+
+  defp cursor_signature(payload) do
+    :crypto.mac(:hmac, :sha256, cursor_signing_key(), payload)
+  end
+
+  defp cursor_signing_key do
+    # All externally reachable Portal endpoints are configured from the same
+    # secret_key_base. Derive a paginator-specific HMAC key for token signing.
+    secret_key_base =
+      Application.fetch_env!(:portal, PortalWeb.Endpoint)
+      |> Keyword.fetch!(:secret_key_base)
+
+    :crypto.mac(:hmac, :sha256, secret_key_base, @cursor_signing_salt)
   end
 end

@@ -48,6 +48,7 @@ members = [
     "libs/x509-claims",
     "libs/x509-claims-ffi",
     "libs/x509-credential",
+    "libs/x509-keystore",
     "relay/ebpf-shared",
     "relay/ebpf-turn-router",
     "relay/proto",
@@ -184,6 +185,7 @@ rcgen = { version = "0.14.9", default-features = false, features = ["ring"] }
 relay-proto = { path = "relay/proto" }
 reqwest = { version = "0.13.4", default-features = false }
 resolv-conf = "0.7.6"
+ring = "0.17.14"
 ringbuffer = "0.16.0"
 roxmltree = "0.21.1"
 rpassword = "7.5.3"
@@ -265,6 +267,7 @@ winreg = "0.56.0"
 x509-claims = { path = "libs/x509-claims" }
 x509-claims-ffi = { path = "libs/x509-claims-ffi" }
 x509-credential = { path = "libs/x509-credential" }
+x509-keystore = { path = "libs/x509-keystore" }
 x509-parser = "0.18.0"
 zbus = "5.15.0"
 zip = { version = "8.6.0", default-features = false }

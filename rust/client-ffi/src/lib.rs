@@ -120,7 +120,6 @@ pub struct AndroidSessionConfig {
     pub api_url: String,
     pub token: Option<String>,
     pub device_id: String,
-    pub account_slug: String,
     pub device_name: String,
     pub device_info: DeviceInfo,
     pub is_internet_resource_active: bool,
@@ -209,6 +208,10 @@ pub enum Event {
         resources: Vec<Resource>,
         connected_devices: Vec<ConnectedDevice>,
     },
+    ConnectedToPortal {
+        account_slug: String,
+        actor_name: String,
+    },
     AllGatewaysOffline {
         resource_id: String,
     },
@@ -264,7 +267,6 @@ impl Session {
             api_url,
             token,
             device_id,
-            account_slug,
             device_name,
             device_info,
             is_internet_resource_active,
@@ -276,7 +278,6 @@ impl Session {
             api_url,
             token,
             device_id,
-            account_slug,
             Some(device_name),
             device_info,
             is_internet_resource_active,
@@ -291,15 +292,10 @@ impl Session {
 #[cfg(any(target_os = "ios", target_os = "macos"))]
 impl Session {
     #[uniffi::constructor]
-    #[expect(
-        clippy::too_many_arguments,
-        reason = "This is the API we want to expose over FFI."
-    )]
     pub fn new_apple(
         api_url: String,
         token: Option<String>,
         device_id: String,
-        account_slug: String,
         device_name: Option<String>,
         device_info: DeviceInfo,
         is_internet_resource_active: bool,
@@ -318,7 +314,6 @@ impl Session {
             api_url,
             token,
             device_id,
-            account_slug,
             device_name,
             device_info,
             is_internet_resource_active,
@@ -336,10 +331,6 @@ impl Session {
 #[uniffi::export]
 impl Session {
     #[uniffi::constructor]
-    #[expect(
-        clippy::too_many_arguments,
-        reason = "This is the API we want to expose over FFI."
-    )]
     /// Dummy constructor that isn't feature-gated by an OS.
     ///
     /// This only exists to make working on the FFI module from Linux/Windows more convenient without many "unused code" warnings.
@@ -347,7 +338,6 @@ impl Session {
         api_url: String,
         token: Option<String>,
         device_id: String,
-        account_slug: String,
         device_name: Option<String>,
         device_info: DeviceInfo,
         is_internet_resource_active: bool,
@@ -360,7 +350,6 @@ impl Session {
             api_url,
             token,
             device_id,
-            account_slug,
             device_name,
             device_info,
             is_internet_resource_active,
@@ -499,6 +488,21 @@ impl Session {
                     connected_devices,
                 })
             }
+            client_shared::Event::ConnectedToPortal(connected) => {
+                telemetry::set_account_slug(connected.account_slug.clone());
+
+                analytics::identify(
+                    RELEASE.to_owned(),
+                    connected.account_slug.clone(),
+                    None,
+                    None,
+                );
+
+                Some(Event::ConnectedToPortal {
+                    account_slug: connected.account_slug,
+                    actor_name: connected.actor_name,
+                })
+            }
             client_shared::Event::AllGatewaysOffline { resource_id } => {
                 Some(Event::AllGatewaysOffline {
                     resource_id: resource_id.to_string(),
@@ -551,7 +555,6 @@ fn connect(
     api_url: String,
     token: Option<String>,
     device_id: String,
-    account_slug: String,
     device_name: Option<String>,
     device_info: DeviceInfo,
     is_internet_resource_active: bool,
@@ -593,9 +596,10 @@ fn connect(
 
     telemetry::start(&api_url, RELEASE, platform::DSN);
     telemetry::set_firezone_id(device_id.clone());
-    telemetry::set_account_slug(account_slug.clone());
+    // The portal names the account in `init`; until then this session has none.
+    telemetry::set_account_slug(None);
 
-    analytics::identify(RELEASE.to_owned(), account_slug, None, None);
+    analytics::identify(RELEASE.to_owned(), None, None, None);
 
     let certificate = tls_identity
         .map(client_identity::certificate)

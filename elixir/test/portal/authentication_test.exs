@@ -1,5 +1,6 @@
 defmodule Portal.AuthenticationTest do
   use Portal.DataCase, async: true
+  import ExUnit.CaptureLog
   import Portal.Authentication
   import Portal.TokenFixtures
   import Portal.SubjectFixtures
@@ -209,6 +210,14 @@ defmodule Portal.AuthenticationTest do
   end
 
   describe "authenticate/2" do
+    test "does not log malformed tokens" do
+      context = build_context(type: :client)
+
+      assert capture_log(fn ->
+               assert authenticate("invalid.token", context) == {:error, :invalid_token}
+             end) == ""
+    end
+
     test "returns error when token is invalid" do
       context = build_context(type: :client)
 

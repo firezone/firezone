@@ -302,6 +302,11 @@ fn set_identity_attribute(
     value: Option<String>,
     store: fn(&mut state::State, Option<String>),
 ) {
+    match &value {
+        Some(_) => tracing::debug!(%key, "Setting identity attribute"),
+        None => tracing::debug!(%key, "Clearing identity attribute"),
+    }
+
     let _ = STATE.try_write(|state| store(state, value.clone()));
 
     update_user(|user| match value {
@@ -337,6 +342,8 @@ pub fn set_actor_email(actor_email: impl Into<Option<String>>) {
 /// Attaches the Firezone ID to the active Sentry session.
 pub fn set_firezone_id(firezone_id: String) {
     let new_user = compute_user(firezone_id);
+
+    tracing::debug!(user = %new_user.id.as_deref().unwrap_or("<none>"), "Setting user");
 
     let _ = STATE.try_write(|state| state.set_firezone_id(new_user.id.clone()));
 

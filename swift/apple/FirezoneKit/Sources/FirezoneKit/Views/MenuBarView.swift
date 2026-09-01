@@ -69,27 +69,51 @@
           .foregroundStyle(.secondary)
 
       case .disconnected:
-        Button("Sign In") {
-          signIn()
+        Button(startSessionTitle) {
+          startSession()
         }
 
       case .disconnecting:
-        Text("Signing out…")
+        Text(store.endingSessionTitle)
           .foregroundStyle(.secondary)
 
       case .connected, .reasserting, .connecting:
         Group {
-          Text("Signed in as \(store.actorName)")
+          Text(store.sessionHeading)
             .foregroundStyle(.secondary)
 
-          Button("Sign Out") {
-            signOut()
+          Button(endSessionTitle) {
+            endSession()
           }
         }
 
       @unknown default:
         Text("Unknown status")
           .foregroundStyle(.secondary)
+      }
+    }
+
+    /// What the control that starts a session reads, given who the certificate names.
+    var startSessionTitle: String {
+      switch store.certificateIdentity {
+      case .absent: return "Sign In"
+      case .claimed(.some(let email)): return "Connect as \(email)"
+      case .claimed(.none): return "Connect"
+      }
+    }
+
+    /// A session a certificate started is disconnected from rather than signed out of.
+    var endSessionTitle: String {
+      switch store.certificateIdentity {
+      case .absent: return "Sign Out"
+      case .claimed: return "Disconnect"
+      }
+    }
+
+    func startSession() {
+      switch store.certificateIdentity {
+      case .absent: signIn()
+      case .claimed: connect()
       }
     }
 
@@ -104,10 +128,21 @@
       }
     }
 
-    func signOut() {
+    func connect() {
       Task {
         do {
-          try await store.signOut()
+          try await store.connectWithCertificate()
+        } catch {
+          Log.error(error)
+          MacOSAlert.show(for: error)
+        }
+      }
+    }
+
+    func endSession() {
+      Task {
+        do {
+          try await store.endSession()
         } catch {
           Log.error(error)
           MacOSAlert.show(for: error)

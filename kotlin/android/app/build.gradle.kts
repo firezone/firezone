@@ -1,3 +1,5 @@
+import com.android.build.api.artifact.ScopedArtifact
+import com.android.build.api.variant.ScopedArtifacts
 import com.google.firebase.crashlytics.buildtools.gradle.CrashlyticsExtension
 import org.gradle.process.ExecOperations
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
@@ -37,6 +39,12 @@ spotless {
         targetExclude("**/generated/*")
     }
 }
+
+// Execution data is only readable by the JaCoCo that wrote it. The report is generated outside
+// Gradle, so rather than name this version again there, the build hands over the matching tool.
+val jacocoToolVersion = "0.8.13"
+
+val jacocoCli by configurations.creating
 
 android {
     buildFeatures {
@@ -81,6 +89,8 @@ android {
         // Debug Config
         getByName("debug") {
             isDebuggable = true
+            enableUnitTestCoverage = true
+            enableAndroidTestCoverage = true
             resValue("string", "app_name", "\"Firezone (Dev)\"")
 
             buildConfigField("String", "AUTH_URL", "\"https://app.firez.one\"")
@@ -149,6 +159,10 @@ android {
         }
     }
 
+    testCoverage {
+        jacocoVersion = jacocoToolVersion
+    }
+
     // Escalate Slack's Compose lint checks (added via `lintChecks`) to build-failing
     // errors so Compose issues block CI. Other checks keep their default severity.
     // `ComposeM2Api` is intentionally omitted: it is opt-in in the library and this
@@ -179,7 +193,62 @@ android {
     }
 }
 
+tasks.register<Copy>("copyJacocoCli") {
+    from(jacocoCli)
+    into(layout.buildDirectory.dir("jacoco-cli"))
+}
+
+// Reporting on the execution data needs the classes the tests ran against, which are not the ones
+// the compile tasks emit: `@AndroidEntryPoint` classes get rewritten to extend their generated Hilt
+// base class. JaCoCo matches execution data by a hash of the bytecode, so handing it the compile
+// output silently reports every one of those classes as uncovered.
+abstract class CollectClasses
+    @Inject
+    constructor() : DefaultTask() {
+        @get:InputFiles
+        @get:PathSensitive(PathSensitivity.RELATIVE)
+        abstract val jars: ListProperty<RegularFile>
+
+        @get:InputFiles
+        @get:PathSensitive(PathSensitivity.RELATIVE)
+        abstract val dirs: ListProperty<Directory>
+
+        @get:OutputDirectory
+        abstract val outputDir: DirectoryProperty
+
+        @get:Inject
+        abstract val fileSystem: FileSystemOperations
+
+        @TaskAction
+        fun collect() {
+            fileSystem.sync {
+                from(jars)
+                from(dirs)
+                into(outputDir)
+                // Nobody writes or can test the output of a code generator, so counting it only
+                // moves the percentage around. Dagger's top-level classes are already dropped by
+                // JaCoCo because they carry `@DaggerGenerated`; their nested classes are not.
+                exclude(
+                    "uniffi/**",
+                    "dagger/**",
+                    "hilt_aggregated_deps/**",
+                    "dev/firezone/android/databinding/**",
+                    "**/Hilt_*.class",
+                    "**/Dagger*.class",
+                    "**/*_HiltModules*.class",
+                    "**/*Args.class",
+                    "**/*Args\$*.class",
+                    "**/*Directions*.class",
+                    "**/BuildConfig.class",
+                )
+            }
+        }
+    }
+
 dependencies {
+    // The `nodeps` jar is already shaded, so its declared dependencies would only add jars for the
+    // report step to pick the wrong one from.
+    "jacocoCli"("org.jacoco:org.jacoco.cli:$jacocoToolVersion:nodeps") { isTransitive = false }
     // Desugaring - needed for Java 8+ APIs on older Android versions
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
 
@@ -260,6 +329,7 @@ dependencies {
     val composeBom = platform("androidx.compose:compose-bom:2026.08.00")
     implementation(composeBom)
     androidTestImplementation(composeBom)
+    androidTestImplementation("androidx.compose.ui:ui-test-junit4")
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-tooling-preview")
     debugImplementation("androidx.compose.ui:ui-tooling")
@@ -416,22 +486,26 @@ abstract class CargoBuildTask
             val api = apiLevel.get()
             val archiver = File(binDir, "llvm-ar")
 
-            for ((abi, triple) in triples) {
-                val clangPrefix = clangPrefixes.getValue(abi)
-                val clang = File(binDir, "$clangPrefix$api-clang$suffix")
-                val clangxx = File(binDir, "$clangPrefix$api-clang++$suffix")
-                val envTriple = triple.uppercase().replace('-', '_')
+            // Cargo holds an exclusive lock on the target directory, so one invocation per ABI
+            // cannot overlap with the next. Passing every target to a single invocation lets it
+            // schedule all of them against one jobserver instead.
+            execOperations.exec {
+                workingDir = clientFfiDir.get().asFile
+                environment("CARGO_TARGET_DIR", cargoTarget)
+                if (release.get()) {
+                    // Compile the whole dependency graph with line tables so
+                    // Crashlytics gets file/line info in native stack traces.
+                    // AGP strips them from the packaged lib; Crashlytics uploads
+                    // the unstripped one (see unstrippedNativeLibsDir).
+                    environment("CARGO_PROFILE_RELEASE_DEBUG", "line-tables-only")
+                }
 
-                execOperations.exec {
-                    workingDir = clientFfiDir.get().asFile
-                    environment("CARGO_TARGET_DIR", cargoTarget)
-                    if (release.get()) {
-                        // Compile the whole dependency graph with line tables so
-                        // Crashlytics gets file/line info in native stack traces.
-                        // AGP strips them from the packaged lib; Crashlytics uploads
-                        // the unstripped one (see unstrippedNativeLibsDir).
-                        environment("CARGO_PROFILE_RELEASE_DEBUG", "line-tables-only")
-                    }
+                for ((abi, triple) in triples) {
+                    val clangPrefix = clangPrefixes.getValue(abi)
+                    val clang = File(binDir, "$clangPrefix$api-clang$suffix")
+                    val clangxx = File(binDir, "$clangPrefix$api-clang++$suffix")
+                    val envTriple = triple.uppercase().replace('-', '_')
+
                     // Linker for the Rust target plus the C/C++ toolchain for `cc`-built
                     // dependencies such as ring.
                     environment("CARGO_TARGET_${envTriple}_LINKER", clang.absolutePath)
@@ -445,12 +519,16 @@ abstract class CargoBuildTask
                     environment("CC_$triple", clang.absolutePath)
                     environment("CXX_$triple", clangxx.absolutePath)
                     environment("AR_$triple", archiver.absolutePath)
-                    val cargoArgs = mutableListOf("cargo", "build", "--lib", "--target", triple)
-                    if (release.get()) {
-                        cargoArgs.add("--release")
-                    }
-                    commandLine(cargoArgs)
                 }
+
+                val cargoArgs = mutableListOf("cargo", "build", "--lib")
+                for (triple in triples.values) {
+                    cargoArgs.addAll(listOf("--target", triple))
+                }
+                if (release.get()) {
+                    cargoArgs.add("--release")
+                }
+                commandLine(cargoArgs)
             }
 
             // Stage libconnlib.so per ABI.
@@ -572,5 +650,14 @@ androidComponents {
             generateUniffiBindings,
             GenerateUniffiBindings::outputDir,
         )
+
+        val collectClasses =
+            tasks.register<CollectClasses>("collect${variant.name.replaceFirstChar { it.uppercase() }}Classes") {
+                outputDir.set(layout.buildDirectory.dir("${variant.name}-classes"))
+            }
+        variant.artifacts
+            .forScope(ScopedArtifacts.Scope.PROJECT)
+            .use(collectClasses)
+            .toGet(ScopedArtifact.CLASSES, CollectClasses::jars, CollectClasses::dirs)
     }
 }
