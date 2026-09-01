@@ -247,8 +247,6 @@ class Repository
         suspend fun saveAuthCallbackIfStateValid(
             state: String,
             fragment: String,
-            accountSlug: String,
-            actorName: String,
         ): AuthCallbackResult =
             withContext(coroutineDispatcher) {
                 synchronized(authStateLock) {
@@ -273,8 +271,6 @@ class Repository
                                 .putString(TOKEN_KEY, nonce.plus(fragment))
                                 .remove(NONCE_KEY)
                                 .remove(STATE_KEY)
-                                .putString(ACCOUNT_SLUG_KEY, accountSlug)
-                                .putString(ACTOR_NAME_KEY, actorName)
                                 .putString(PENDING_AUTH_HANDOFF_STATE_HASH_KEY, stateHash)
                                 .apply()
 
