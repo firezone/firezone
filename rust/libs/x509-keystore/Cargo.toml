@@ -13,7 +13,7 @@ x509-claims = { workspace = true }
 x509-credential = { workspace = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]
-cryptoki = { workspace = true }
+secrecy = { workspace = true }
 sha2 = { workspace = true }
 tracing = { workspace = true }
 
@@ -27,8 +27,8 @@ windows = { workspace = true, features = [
 windows-core = { workspace = true }
 
 [target.'cfg(target_os = "linux")'.dev-dependencies]
+cryptoki = { workspace = true }
 ring = { workspace = true }
-secrecy = { workspace = true }
 x509-parser = { workspace = true }
 
 [target.'cfg(target_os = "windows")'.dev-dependencies]

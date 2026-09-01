@@ -1,32 +1,21 @@
 //! X.509 client identities held by a PKCS#11 token.
 
+mod rpc;
 #[cfg(test)]
 mod tests;
 
 use std::{
-    collections::BTreeMap,
     fs::File,
     io::Read as _,
     os::unix::fs::MetadataExt as _,
     path::{Path, PathBuf},
-    sync::{Arc, Mutex, PoisonError},
+    sync::Arc,
     time::SystemTime,
 };
 
 use anyhow::{Context as _, Result, bail};
-use cryptoki::{
-    context::{CInitializeArgs, CInitializeFlags, Pkcs11},
-    error::RvError,
-    mechanism::{
-        Mechanism, MechanismType,
-        rsa::{PkcsMgfType, PkcsPssParams},
-    },
-    object::{Attribute, AttributeType, CertificateType, KeyType, ObjectClass, ObjectHandle},
-    session::{Session, UserType},
-    slot::{Slot, TokenInfo},
-    types::AuthPin,
-};
 use rustls::{SignatureScheme, pki_types::CertificateDer};
+use secrecy::{ExposeSecret as _, SecretString};
 use sha2::{Digest as _, Sha256, Sha384, Sha512};
 use x509_claims::{ParsedCertificate, SigningAlgorithm, parse_certificate};
 use x509_credential::SigningError;
@@ -35,6 +24,7 @@ use crate::{
     CandidateCertificate, Error, Identity, Loaded, ReportedCertificate, UnusableCause,
     selected_certificate, sign,
 };
+use rpc::{Attribute, Mechanism, ReturnValue};
 
 /// The directories p11-kit module configuration is read from, the administrator's first.
 ///
@@ -47,29 +37,37 @@ const MODULE_CONFIGURATION_DIRECTORIES: [&str; 2] =
 const PIN_FILE: &str = "/etc/firezone/pkcs11-pin";
 
 pub(crate) fn load(subject_cn: &str) -> Result<Loaded, Error> {
+    let Some(p11_kit) = p11_kit_command() else {
+        return Err(Error::MissingP11Kit);
+    };
     let modules = registered_modules();
 
     if modules.is_empty() {
         return Err(Error::MissingP11Kit);
     }
 
-    load_on(&modules, Path::new(PIN_FILE), subject_cn)
+    load_on(&p11_kit, &modules, Path::new(PIN_FILE), subject_cn)
 }
 
-fn load_on(modules: &[PathBuf], pin_file: &Path, subject_cn: &str) -> Result<Loaded, Error> {
+fn load_on(
+    p11_kit: &Path,
+    modules: &[PathBuf],
+    pin_file: &Path,
+    subject_cn: &str,
+) -> Result<Loaded, Error> {
     let mut failures = Vec::new();
 
     for module in modules {
         // A module that cannot be read leaves its tokens out of reach, the same as holding
-        // none: it may be unloadable, as for a statically linked client, or fail to enumerate,
-        // as when the service behind a driver is not running. One broken module must not hide
+        // none: it may fail to serve, as when its driver is broken, or fail to enumerate,
+        // as when the service behind it is not running. One broken module must not hide
         // the tokens of the others.
-        let candidate = match find_token(module, subject_cn) {
+        let candidate = match find_token(p11_kit, module, subject_cn) {
             Ok(Some(candidate)) => candidate,
             Ok(None) => continue,
             Err(error) => {
                 tracing::debug!(module = %module.display(), "Skipping a PKCS#11 module: {error:#}");
-                // Only the short top-level cause: the raw loader and driver messages behind it
+                // Only the short top-level cause: the raw child and driver messages behind it
                 // are long, and the log carries the full chain.
                 failures.push(format!("{}: {error}", module.display()));
 
@@ -139,7 +137,7 @@ fn select_identity(candidate: Candidate, pin_file: &Path) -> Result<Loaded, Erro
     let key = Arc::new(sign::Key::new(
         algorithm,
         Pkcs11Key {
-            session: Mutex::new(session),
+            session,
             key: private_key,
         },
     ));
@@ -160,22 +158,20 @@ fn select_identity(candidate: Candidate, pin_file: &Path) -> Result<Loaded, Erro
 
 /// A private key on a PKCS#11 token, reached through the session that unlocked it.
 ///
-/// The session is opened and logged into once, while the identity is discovered, and lives as long
-/// as the identity does. A token that wants a PIN would otherwise want one for every handshake
-/// signature, including the ones a reconnect or a change of network makes. `Session` is `Send` but
-/// not `Sync`, so the mutex is what lets rustls sign from whichever thread drives the handshake.
-/// Holding a session also holds the module's context open, which is what keeps `C_Finalize` from
-/// running underneath it.
+/// The session is opened and logged into once, while the identity is discovered, and lives as
+/// long as the identity does. A token that wants a PIN would otherwise want one for every
+/// handshake signature, including the ones a reconnect or a change of network makes. Holding
+/// the session also keeps the `p11-kit remote` child hosting the module running, which is what
+/// keeps the module from being finalized underneath it.
 #[derive(Debug)]
 struct Pkcs11Key {
-    session: Mutex<Session>,
-    key: ObjectHandle,
+    session: rpc::Session,
+    key: u64,
 }
 
 impl sign::Signer for Pkcs11Key {
     fn sign(&self, scheme: SignatureScheme, message: &[u8]) -> Result<Vec<u8>, SigningError> {
-        let session = self.session.lock().unwrap_or_else(PoisonError::into_inner);
-        let signature = sign_with_key(&session, self.key, scheme, message)?;
+        let signature = sign_with_key(&self.session, self.key, scheme, message)?;
 
         Ok(signature)
     }
@@ -186,39 +182,15 @@ impl sign::Signer for Pkcs11Key {
     reason = "rustls only ever asks for a scheme we advertised in `supported_schemes`"
 )]
 fn sign_with_key(
-    session: &Session,
-    key: ObjectHandle,
+    session: &rpc::Session,
+    key: u64,
     scheme: SignatureScheme,
     message: &[u8],
 ) -> Result<Vec<u8>, SigningError> {
     let signature = match scheme {
-        SignatureScheme::RSA_PSS_SHA256 => session.sign(
-            &Mechanism::Sha256RsaPkcsPss(PkcsPssParams {
-                hash_alg: MechanismType::SHA256,
-                mgf: PkcsMgfType::MGF1_SHA256,
-                s_len: 32.into(),
-            }),
-            key,
-            message,
-        ),
-        SignatureScheme::RSA_PSS_SHA384 => session.sign(
-            &Mechanism::Sha384RsaPkcsPss(PkcsPssParams {
-                hash_alg: MechanismType::SHA384,
-                mgf: PkcsMgfType::MGF1_SHA384,
-                s_len: 48.into(),
-            }),
-            key,
-            message,
-        ),
-        SignatureScheme::RSA_PSS_SHA512 => session.sign(
-            &Mechanism::Sha512RsaPkcsPss(PkcsPssParams {
-                hash_alg: MechanismType::SHA512,
-                mgf: PkcsMgfType::MGF1_SHA512,
-                s_len: 64.into(),
-            }),
-            key,
-            message,
-        ),
+        SignatureScheme::RSA_PSS_SHA256 => session.sign(&Mechanism::Sha256RsaPkcsPss, key, message),
+        SignatureScheme::RSA_PSS_SHA384 => session.sign(&Mechanism::Sha384RsaPkcsPss, key, message),
+        SignatureScheme::RSA_PSS_SHA512 => session.sign(&Mechanism::Sha512RsaPkcsPss, key, message),
         SignatureScheme::RSA_PKCS1_SHA256 => session.sign(&Mechanism::Sha256RsaPkcs, key, message),
         SignatureScheme::RSA_PKCS1_SHA384 => session.sign(&Mechanism::Sha384RsaPkcs, key, message),
         SignatureScheme::RSA_PKCS1_SHA512 => session.sign(&Mechanism::Sha512RsaPkcs, key, message),
@@ -239,9 +211,9 @@ fn sign_with_key(
 }
 
 /// Names the cause behind a failure that carries a PKCS#11 return value.
-fn pkcs11_error(error: cryptoki::error::Error) -> SigningError {
+fn pkcs11_error(error: rpc::Error) -> SigningError {
     let reason = error.to_string();
-    let cryptoki::error::Error::Pkcs11(value, _) = error else {
+    let rpc::Error::Token(value) = error else {
         return SigningError::Keystore(reason);
     };
 
@@ -252,51 +224,73 @@ fn pkcs11_error(error: cryptoki::error::Error) -> SigningError {
 ///
 /// A PIN the token rejected and a key whose attributes forbid signing are both refusals: the
 /// token is present and answers, it just will not sign for us.
-#[expect(
-    clippy::wildcard_enum_match_arm,
-    reason = "PKCS#11 defines far more return values than the ones we can act on"
-)]
-fn classify_return_value(value: RvError, reason: String) -> SigningError {
-    match value {
-        RvError::DeviceRemoved => SigningError::KeyUnavailable(reason),
-        RvError::TokenNotPresent => SigningError::KeyUnavailable(reason),
-        RvError::KeyHandleInvalid => SigningError::KeyUnavailable(reason),
-        RvError::ObjectHandleInvalid => SigningError::KeyUnavailable(reason),
-        RvError::SessionHandleInvalid => SigningError::KeyUnavailable(reason),
-        RvError::SessionClosed => SigningError::KeyUnavailable(reason),
-        RvError::PinIncorrect => SigningError::AccessDenied(reason),
-        RvError::PinExpired => SigningError::AccessDenied(reason),
-        RvError::PinLocked => SigningError::AccessDenied(reason),
-        RvError::UserNotLoggedIn => SigningError::AccessDenied(reason),
-        RvError::KeyFunctionNotPermitted => SigningError::AccessDenied(reason),
-        RvError::FunctionCanceled => SigningError::AccessDenied(reason),
+fn classify_return_value(value: ReturnValue, reason: String) -> SigningError {
+    match value.0 {
+        rpc::CKR_DEVICE_REMOVED => SigningError::KeyUnavailable(reason),
+        rpc::CKR_TOKEN_NOT_PRESENT => SigningError::KeyUnavailable(reason),
+        rpc::CKR_KEY_HANDLE_INVALID => SigningError::KeyUnavailable(reason),
+        rpc::CKR_OBJECT_HANDLE_INVALID => SigningError::KeyUnavailable(reason),
+        rpc::CKR_SESSION_HANDLE_INVALID => SigningError::KeyUnavailable(reason),
+        rpc::CKR_SESSION_CLOSED => SigningError::KeyUnavailable(reason),
+        rpc::CKR_PIN_INCORRECT => SigningError::AccessDenied(reason),
+        rpc::CKR_PIN_EXPIRED => SigningError::AccessDenied(reason),
+        rpc::CKR_PIN_LOCKED => SigningError::AccessDenied(reason),
+        rpc::CKR_USER_NOT_LOGGED_IN => SigningError::AccessDenied(reason),
+        rpc::CKR_KEY_FUNCTION_NOT_PERMITTED => SigningError::AccessDenied(reason),
+        rpc::CKR_FUNCTION_CANCELED => SigningError::AccessDenied(reason),
         _ => SigningError::Keystore(reason),
     }
+}
+
+/// Returns the p11-kit command the registered modules are served through.
+fn p11_kit_command() -> Option<PathBuf> {
+    std::env::var_os("PATH")
+        .map(|path| std::env::split_paths(&path).collect::<Vec<_>>())
+        .unwrap_or_default()
+        .into_iter()
+        .chain([PathBuf::from("/usr/bin")])
+        .map(|directory| directory.join("p11-kit"))
+        .find(|candidate| candidate.is_file())
 }
 
 /// Returns every PKCS#11 module registered on this machine, most preferred first.
 ///
 /// The modules are read from p11-kit's configuration rather than through its proxy: the proxy
 /// collapses every module into one `C_GetSlotList`, so a single broken module would take the
-/// tokens of all the others down with it. Loading each module individually keeps them
-/// independent.
+/// tokens of all the others down with it. Serving each module through its own child keeps
+/// them independent.
 fn registered_modules() -> Vec<PathBuf> {
     let directories = module_directories(multiarch_directories());
-    let files = MODULE_CONFIGURATION_DIRECTORIES
+    let program = program_name();
+
+    configured_modules(
+        configuration_files_by_name(),
+        &directories,
+        &|module| module.is_file(),
+        program.as_deref(),
+    )
+}
+
+/// Returns the contents of every module configuration file, each under the name that the
+/// administrator's directory overrides the packaged one by.
+fn configuration_files_by_name() -> Vec<(String, String)> {
+    MODULE_CONFIGURATION_DIRECTORIES
         .into_iter()
         .flat_map(|directory| configuration_files(Path::new(directory)))
         .filter_map(|file| {
-            std::fs::read_to_string(&file)
+            let name = file.file_stem()?.to_str()?.to_owned();
+            let contents = std::fs::read_to_string(&file)
                 .inspect_err(|error| {
                     tracing::debug!(
                         file = %file.display(),
                         "Skipping an unreadable p11-kit module configuration: {error}"
                     );
                 })
-                .ok()
-        });
+                .ok()?;
 
-    configured_modules(files, &directories, &|module| module.is_file())
+            Some((name, contents))
+        })
+        .collect()
 }
 
 /// Returns the `*.module` files below `directory` in name order, none for a missing directory.
@@ -317,22 +311,50 @@ fn configuration_files(directory: &Path) -> Vec<PathBuf> {
     files
 }
 
-/// Returns the modules `files` register, resolved and deduplicated, in the order given.
+/// Returns the modules `files` register, resolved and deduplicated, most preferred first.
 ///
-/// Two configuration files may name one module, e.g. the administrator's copy of a packaged
-/// file; the first mention wins.
+/// p11-kit's own rules are mirrored: the first configuration under a given name wins, so an
+/// administrator's copy of a packaged file replaces it; a module named by two surviving
+/// configurations is loaded once; a module stays out unless it is enabled for `program`; and
+/// the modules are ordered by descending `priority:`, ties by configuration name.
 fn configured_modules(
-    files: impl IntoIterator<Item = String>,
+    files: impl IntoIterator<Item = (String, String)>,
     directories: &[PathBuf],
     installed: &dyn Fn(&Path) -> bool,
+    program: Option<&str>,
 ) -> Vec<PathBuf> {
-    let mut modules = Vec::new();
-
-    for contents in files {
-        let Some(module) = configured_module(&contents, directories, installed) else {
+    let mut configurations = Vec::<(String, ModuleConfiguration)>::new();
+    for (name, contents) in files {
+        if configurations.iter().any(|(seen, _)| *seen == name) {
             continue;
-        };
+        }
 
+        configurations.push((name, parse_configuration(&contents)));
+    }
+
+    let mut registered = configurations
+        .into_iter()
+        .filter_map(|(name, configuration)| {
+            if !is_enabled(&configuration, program) {
+                tracing::debug!(module = name, "Skipping a disabled PKCS#11 module");
+
+                return None;
+            }
+            let value = configuration.module?;
+            if value.is_empty() {
+                return None;
+            }
+            let module = resolve_module(&value, directories, installed)?;
+
+            Some((name, configuration.priority, module))
+        })
+        .collect::<Vec<_>>();
+    registered.sort_by(|(name_a, priority_a, _), (name_b, priority_b, _)| {
+        priority_b.cmp(priority_a).then_with(|| name_a.cmp(name_b))
+    });
+
+    let mut modules = Vec::new();
+    for (_, _, module) in registered {
         if !modules.contains(&module) {
             modules.push(module);
         }
@@ -341,27 +363,96 @@ fn configured_modules(
     modules
 }
 
-/// Returns the module one p11-kit configuration file names, as a path to load.
+/// The settings of one p11-kit module configuration file that bear on loading its module.
+#[derive(Default)]
+struct ModuleConfiguration {
+    module: Option<String>,
+    enable_in: Option<String>,
+    disable_in: Option<String>,
+    priority: i64,
+}
+
+/// Reads the `key: value` lines of a configuration file, the last mention of a key winning.
+fn parse_configuration(contents: &str) -> ModuleConfiguration {
+    let mut configuration = ModuleConfiguration::default();
+
+    for line in contents.lines() {
+        let line = line.trim();
+        if line.starts_with('#') {
+            continue;
+        }
+        let Some((key, value)) = line.split_once(':') else {
+            continue;
+        };
+        let value = value.trim();
+
+        match key.trim() {
+            "module" => configuration.module = Some(value.to_owned()),
+            "enable-in" => configuration.enable_in = Some(value.to_owned()),
+            "disable-in" => configuration.disable_in = Some(value.to_owned()),
+            "priority" => configuration.priority = leading_integer(value),
+            _ => {}
+        }
+    }
+
+    configuration
+}
+
+/// Says whether the configuration enables its module for the program `program`.
 ///
-/// Only the `module:` setting matters here. In particular, `disable-in: p11-kit-proxy` hides a
-/// module from the proxy, which we are not, so it stays loaded. A relative value is looked up in
-/// `directories`, most preferred first; one that is nowhere `installed` resolves against the most
-/// preferred directory, so that loading it fails under the path the configuration meant.
-fn configured_module(
-    contents: &str,
+/// `enable-in` lists the only programs that may load the module and `disable-in` the programs
+/// that may not, either naming us by our executable's name. In particular, the common
+/// `disable-in: p11-kit-proxy` hides a module from the proxy, which we are not, so it stays
+/// loaded.
+fn is_enabled(configuration: &ModuleConfiguration, program: Option<&str>) -> bool {
+    if let Some(enable_in) = &configuration.enable_in {
+        return program.is_some_and(|name| list_contains(enable_in, name));
+    }
+    if let Some(disable_in) = &configuration.disable_in {
+        return program.is_none_or(|name| !list_contains(disable_in, name));
+    }
+
+    true
+}
+
+/// Says whether a comma or whitespace separated list has `name` as an entry.
+fn list_contains(list: &str, name: &str) -> bool {
+    list.split(|character: char| character == ',' || character.is_whitespace())
+        .any(|entry| entry == name)
+}
+
+/// Reads the integer a value begins with, 0 when it begins with none.
+///
+/// p11-kit reads `priority:` with `atoi`, which stops at the first character that is not part
+/// of a number, so a value that goes on after the number still counts.
+fn leading_integer(value: &str) -> i64 {
+    let sign = usize::from(value.starts_with(['+', '-']));
+    let digits = value[sign..]
+        .bytes()
+        .take_while(|byte| byte.is_ascii_digit())
+        .count();
+
+    value[..sign + digits].parse().unwrap_or(0)
+}
+
+/// The name p11-kit's `enable-in` and `disable-in` settings know a program by.
+fn program_name() -> Option<String> {
+    let executable = std::env::current_exe().ok()?;
+    let name = executable.file_name()?.to_str()?.to_owned();
+
+    Some(name)
+}
+
+/// Returns the path a `module:` setting names, as a path to load.
+///
+/// A relative value is looked up in `directories`, most preferred first; one that is nowhere
+/// `installed` resolves against the most preferred directory, so that loading it fails under
+/// the path the configuration meant.
+fn resolve_module(
+    value: &str,
     directories: &[PathBuf],
     installed: &dyn Fn(&Path) -> bool,
 ) -> Option<PathBuf> {
-    let value = contents.lines().find_map(|line| {
-        let (key, value) = line.split_once(':')?;
-
-        (key.trim() == "module").then(|| value.trim())
-    })?;
-
-    if value.is_empty() {
-        return None;
-    }
-
     let module = Path::new(value);
 
     if module.is_absolute() {
@@ -403,38 +494,10 @@ fn multiarch_directories() -> Vec<PathBuf> {
         .collect()
 }
 
-/// The PKCS#11 context each module is used through, kept for the life of the process.
-///
-/// A module may only be initialized once: a second `C_Initialize` answers that it already is, so
-/// two contexts for one module would cut each other off whenever they overlap, as a diagnostics
-/// read and a handshake signature do. Holding on to the context is also what keeps the module
-/// loaded for the sessions still using it.
-static CONTEXTS: Mutex<BTreeMap<PathBuf, Pkcs11>> = Mutex::new(BTreeMap::new());
-
-/// Returns the context for `module_path`, loading and initializing the module on first use.
-fn context(module_path: &Path) -> Result<Pkcs11> {
-    let mut contexts = CONTEXTS.lock().unwrap_or_else(PoisonError::into_inner);
-
-    if let Some(context) = contexts.get(module_path) {
-        return Ok(context.clone());
-    }
-
-    let context = Pkcs11::new(module_path)
-        .with_context(|| format!("Failed to load {}", module_path.display()))?;
-    context
-        .initialize(CInitializeArgs::new(CInitializeFlags::OS_LOCKING_OK))
-        .context("PKCS#11 initialization failed")?;
-    // Only a context that initialized is remembered, so a module that failed to load can be
-    // retried once whatever kept it from loading is fixed.
-    contexts.insert(module_path.to_owned(), context.clone());
-
-    Ok(context)
-}
-
 /// The token Firezone authenticates with, and everything it holds that bears on that.
 struct Token {
     /// The unlocked session every signature made with this token goes through.
-    session: Session,
+    session: rpc::Session,
     /// Every X.509 object on the token, which is what the chain of a certificate is built from.
     objects: Vec<CertificateObject>,
     /// The objects whose subject common name is the one Firezone looks for.
@@ -447,15 +510,16 @@ struct Token {
 /// [`unlock_token`] then unlocks only the one that turns out to hold ours. Logging into each
 /// token in turn would instead spend the PIN attempts of tokens that have nothing to do with
 /// Firezone.
-fn find_token(module: &Path, subject_cn: &str) -> Result<Option<Candidate>> {
-    let pkcs11 = context(module)?;
+fn find_token(p11_kit: &Path, module: &Path, subject_cn: &str) -> Result<Option<Candidate>> {
+    let pkcs11 = rpc::Module::load(p11_kit, module)
+        .with_context(|| format!("Failed to load {}", module.display()))?;
     let slots = pkcs11
-        .get_slots_with_token()
+        .slots_with_tokens()
         .context("Failed to enumerate PKCS#11 tokens")?;
 
     for slot in slots {
         let Some(candidate) = search_slot(&pkcs11, slot, subject_cn)
-            .inspect_err(|error| tracing::debug!(?slot, "Skipping a PKCS#11 token: {error:#}"))
+            .inspect_err(|error| tracing::debug!(slot, "Skipping a PKCS#11 token: {error:#}"))
             .ok()
             .flatten()
         else {
@@ -471,13 +535,13 @@ fn find_token(module: &Path, subject_cn: &str) -> Result<Option<Candidate>> {
 /// Unlocks the candidate's token and reads how each matching certificate can be used.
 fn unlock_token(candidate: Candidate, pin_file: &Path) -> Result<Token> {
     let Candidate {
-        info,
+        flags,
         session,
         objects,
         matches,
     } = candidate;
 
-    unlock(&session, &info, pin_file)?;
+    unlock(&session, flags, pin_file)?;
 
     let certificates = matches
         .into_iter()
@@ -493,20 +557,21 @@ fn unlock_token(candidate: Candidate, pin_file: &Path) -> Result<Token> {
 
 /// A token that holds at least one certificate for the subject common name we look for.
 struct Candidate {
-    info: TokenInfo,
-    session: Session,
+    flags: LoginFlags,
+    session: rpc::Session,
     objects: Vec<CertificateObject>,
     /// The index of each matching object in `objects`, alongside what its certificate says.
     matches: Vec<(usize, ParsedCertificate)>,
 }
 
 /// Reads the certificates on `slot`, before any login, to see whether the token is one of ours.
-fn search_slot(pkcs11: &Pkcs11, slot: Slot, subject_cn: &str) -> Result<Option<Candidate>> {
-    let info = pkcs11
-        .get_token_info(slot)
+fn search_slot(pkcs11: &rpc::Module, slot: u64, subject_cn: &str) -> Result<Option<Candidate>> {
+    let flags = pkcs11
+        .token_flags(slot)
         .context("Failed to read the token information")?;
+    let flags = LoginFlags::from_bits(flags);
     let session = pkcs11
-        .open_ro_session(slot)
+        .open_session(slot)
         .context("Failed to open the token")?;
     let objects = certificate_objects(&session)?;
     let now = SystemTime::now();
@@ -532,7 +597,7 @@ fn search_slot(pkcs11: &Pkcs11, slot: Slot, subject_cn: &str) -> Result<Option<C
     }
 
     Ok(Some(Candidate {
-        info,
+        flags,
         session,
         objects,
         matches,
@@ -540,9 +605,7 @@ fn search_slot(pkcs11: &Pkcs11, slot: Slot, subject_cn: &str) -> Result<Option<C
 }
 
 /// Unlocks the token, if it asks to be, with the PIN Firezone keeps on disk.
-fn unlock(session: &Session, info: &TokenInfo, pin_file: &Path) -> Result<()> {
-    let flags = LoginFlags::from(info);
-
+fn unlock(session: &rpc::Session, flags: LoginFlags, pin_file: &Path) -> Result<()> {
     match login_requirement(flags)? {
         Login::NotRequired => {
             tracing::debug!("The PKCS#11 token hands out its keys without a login");
@@ -576,14 +639,15 @@ struct LoginFlags {
     user_pin_count_low: bool,
 }
 
-impl From<&TokenInfo> for LoginFlags {
-    fn from(info: &TokenInfo) -> Self {
+impl LoginFlags {
+    fn from_bits(flags: u64) -> Self {
         Self {
-            login_required: info.login_required(),
-            protected_authentication_path: info.protected_authentication_path(),
-            user_pin_locked: info.user_pin_locked(),
-            user_pin_final_try: info.user_pin_final_try(),
-            user_pin_count_low: info.user_pin_count_low(),
+            login_required: flags & rpc::TOKEN_FLAG_LOGIN_REQUIRED != 0,
+            protected_authentication_path: flags & rpc::TOKEN_FLAG_PROTECTED_AUTHENTICATION_PATH
+                != 0,
+            user_pin_locked: flags & rpc::TOKEN_FLAG_USER_PIN_LOCKED != 0,
+            user_pin_final_try: flags & rpc::TOKEN_FLAG_USER_PIN_FINAL_TRY != 0,
+            user_pin_count_low: flags & rpc::TOKEN_FLAG_USER_PIN_COUNT_LOW != 0,
         }
     }
 }
@@ -629,16 +693,16 @@ fn rejected_pin_reason(flags: LoginFlags) -> String {
 
 /// Logs into the token, treating a login an overlapping session already did as success.
 ///
-/// PKCS#11 tracks the login per token rather than per session, so a token that another session of
-/// this process unlocked is unlocked for this one too, and logging in again is refused.
-fn log_in(session: &Session, pin: &AuthPin) -> Result<()> {
-    let Err(error) = session.login(UserType::User, Some(pin)) else {
+/// PKCS#11 tracks the login per token rather than per session, so a token that another session
+/// on this module unlocked is unlocked for this one too, and logging in again is refused.
+fn log_in(session: &rpc::Session, pin: &SecretString) -> Result<()> {
+    let Err(error) = session.login_user(pin.expose_secret().as_bytes()) else {
         return Ok(());
     };
 
     if matches!(
         error,
-        cryptoki::error::Error::Pkcs11(RvError::UserAlreadyLoggedIn, _)
+        rpc::Error::Token(ReturnValue(rpc::CKR_USER_ALREADY_LOGGED_IN))
     ) {
         return Ok(());
     }
@@ -654,7 +718,7 @@ fn log_in(session: &Session, pin: &AuthPin) -> Result<()> {
 /// # Errors
 ///
 /// Returns an error if the file is missing or unreadable, or if it is not root's alone.
-fn read_pin(path: &Path) -> Result<AuthPin> {
+fn read_pin(path: &Path) -> Result<SecretString> {
     let mut file = File::open(path)
         .with_context(|| format!("Failed to open the PKCS#11 PIN file '{}'", path.display()))?;
     let metadata = file
@@ -668,7 +732,7 @@ fn read_pin(path: &Path) -> Result<AuthPin> {
         .with_context(|| format!("Failed to read '{}'", path.display()))?;
 
     // A PIN may deliberately begin or end with a space, so only the line ending is stripped.
-    Ok(AuthPin::from(contents.trim_end_matches(['\n', '\r'])))
+    Ok(SecretString::from(contents.trim_end_matches(['\n', '\r'])))
 }
 
 /// Refuses a PIN file that any account other than root can get at.
@@ -698,12 +762,12 @@ fn ensure_root_only(mode: u32, uid: u32, path: &Path) -> Result<()> {
 struct Certificate {
     der: Vec<u8>,
     metadata: ParsedCertificate,
-    key: Option<ObjectHandle>,
+    key: Option<u64>,
 }
 
 /// Says whether the token can sign with a certificate it holds, and how it describes it.
 fn describe_certificate(
-    session: &Session,
+    session: &rpc::Session,
     object: &CertificateObject,
     metadata: ParsedCertificate,
 ) -> Result<Certificate> {
@@ -743,22 +807,22 @@ struct CertificateObject {
     label: Option<String>,
 }
 
-fn certificate_objects(session: &Session) -> Result<Vec<CertificateObject>> {
+fn certificate_objects(session: &rpc::Session) -> Result<Vec<CertificateObject>> {
     let handles = session
         .find_objects(&[
-            Attribute::Class(ObjectClass::CERTIFICATE),
-            Attribute::CertificateType(CertificateType::X_509),
+            Attribute::ulong(rpc::ATTRIBUTE_CLASS, rpc::OBJECT_CLASS_CERTIFICATE),
+            Attribute::ulong(rpc::ATTRIBUTE_CERTIFICATE_TYPE, rpc::CERTIFICATE_TYPE_X_509),
         ])
         .context("Failed to enumerate PKCS#11 certificates")?;
     let mut certificates = Vec::new();
 
     for handle in handles {
-        let attributes = match session.get_attributes(
+        let attributes = match session.byte_array_attributes(
             handle,
             &[
-                AttributeType::Value,
-                AttributeType::Id,
-                AttributeType::Label,
+                rpc::ATTRIBUTE_VALUE,
+                rpc::ATTRIBUTE_ID,
+                rpc::ATTRIBUTE_LABEL,
             ],
         ) {
             Ok(attributes) => attributes,
@@ -768,50 +832,48 @@ fn certificate_objects(session: &Session) -> Result<Vec<CertificateObject>> {
             }
         };
 
-        let mut der = None;
-        let mut id = None;
-        let mut label = None;
-        for attribute in attributes {
-            #[expect(
-                clippy::wildcard_enum_match_arm,
-                reason = "PKCS#11 may return attributes we did not ask for"
-            )]
-            match attribute {
-                Attribute::Value(value) => der = Some(value),
-                Attribute::Id(value) => id = Some(value),
-                Attribute::Label(value) => label = String::from_utf8(value).ok(),
-                _ => {}
-            }
-        }
+        let Ok([der, id, label]) = <[Option<Vec<u8>>; 3]>::try_from(attributes) else {
+            continue;
+        };
+        let Some(der) = der else {
+            continue;
+        };
 
-        if let Some(der) = der {
-            certificates.push(CertificateObject { der, id, label });
-        }
+        certificates.push(CertificateObject {
+            der,
+            id,
+            label: label.and_then(|bytes| String::from_utf8(bytes).ok()),
+        });
     }
 
     Ok(certificates)
 }
 
 fn find_private_key(
-    session: &Session,
+    session: &rpc::Session,
     id: Option<&[u8]>,
     label: Option<&str>,
     algorithm: Option<SigningAlgorithm>,
-) -> Result<Option<ObjectHandle>> {
+) -> Result<Option<u64>> {
     let key_type = match algorithm {
-        Some(SigningAlgorithm::RsaSha256) => KeyType::RSA,
-        Some(SigningAlgorithm::EcdsaSha256) => KeyType::EC,
-        Some(SigningAlgorithm::EcdsaSha384) => KeyType::EC,
-        Some(SigningAlgorithm::EcdsaSha512) => KeyType::EC,
+        Some(SigningAlgorithm::RsaSha256) => rpc::KEY_TYPE_RSA,
+        Some(SigningAlgorithm::EcdsaSha256) => rpc::KEY_TYPE_EC,
+        Some(SigningAlgorithm::EcdsaSha384) => rpc::KEY_TYPE_EC,
+        Some(SigningAlgorithm::EcdsaSha512) => rpc::KEY_TYPE_EC,
         None => return Ok(None),
     };
     let mut template = vec![
-        Attribute::Class(ObjectClass::PRIVATE_KEY),
-        Attribute::KeyType(key_type),
+        Attribute::ulong(rpc::ATTRIBUTE_CLASS, rpc::OBJECT_CLASS_PRIVATE_KEY),
+        Attribute::ulong(rpc::ATTRIBUTE_KEY_TYPE, key_type),
     ];
     match (id, label) {
-        (Some(id), _) => template.push(Attribute::Id(id.to_vec())),
-        (None, Some(label)) => template.push(Attribute::Label(label.as_bytes().to_vec())),
+        (Some(id), _) => template.push(Attribute::bytes(rpc::ATTRIBUTE_ID, id.to_vec())),
+        (None, Some(label)) => {
+            template.push(Attribute::bytes(
+                rpc::ATTRIBUTE_LABEL,
+                label.as_bytes().to_vec(),
+            ));
+        }
         (None, None) => return Ok(None),
     }
 

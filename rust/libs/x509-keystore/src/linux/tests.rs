@@ -1,9 +1,11 @@
 //! Tests for the PKCS#11 backend, including its calls into a token.
 //!
-//! The tests that reach into a token run against SoftHSM, loaded directly rather than found
-//! through the p11-kit registration a deployment goes through. Each of them initialises its own
-//! token below a temporary directory that `SOFTHSM2_CONF` names, so they never touch a
-//! developer's real token store and cannot collide with one another.
+//! The tests that reach into a token run against SoftHSM, served through `p11-kit remote` the
+//! way a deployment's modules are, though named directly rather than found through the
+//! registration. Each of them initialises its own token below a temporary directory that
+//! `SOFTHSM2_CONF` names, so they never touch a developer's real token store and cannot collide
+//! with one another. Provisioning the tokens loads SoftHSM in-process through `cryptoki`,
+//! which is what a real PKCS#11 device's enrollment tooling does.
 
 use std::{
     fs,
@@ -12,7 +14,14 @@ use std::{
     sync::{Mutex, MutexGuard, PoisonError},
 };
 
-use cryptoki::{slot::Slot, types::Ulong};
+use cryptoki::{
+    context::{CInitializeArgs, CInitializeFlags, Pkcs11},
+    mechanism::Mechanism,
+    object::{Attribute, AttributeType, CertificateType, ObjectClass, ObjectHandle},
+    session::{Session, UserType},
+    slot::Slot,
+    types::{AuthPin, Ulong},
+};
 use ring::signature::{
     ECDSA_P256_SHA256_ASN1, RSA_PKCS1_2048_8192_SHA256, RSA_PKCS1_2048_8192_SHA384,
     RSA_PKCS1_2048_8192_SHA512, RSA_PSS_2048_8192_SHA256, RSA_PSS_2048_8192_SHA384,
@@ -31,7 +40,12 @@ fn an_unloadable_module_is_an_unreadable_keystore() {
     let modules = [PathBuf::from("/nonexistent/example-pkcs11.so")];
     let pin_file = Path::new("/nonexistent/pkcs11-pin");
 
-    let Err(error) = load_on(&modules, pin_file, "dev.firezone.device-trust") else {
+    let Err(error) = load_on(
+        Path::new("/nonexistent/p11-kit"),
+        &modules,
+        pin_file,
+        "dev.firezone.device-trust",
+    ) else {
         panic!("a keystore whose every module failed should be reported as unreadable");
     };
 
@@ -57,16 +71,16 @@ fn reads_the_module_a_configuration_file_names() {
         PathBuf::from("/usr/lib/pkcs11"),
     ];
     let installed = |module: &Path| module == Path::new("/usr/lib/pkcs11/opensc-pkcs11.so");
+    let files = [(
+        "opensc".to_owned(),
+        "# The OpenSC driver.\nmodule: opensc-pkcs11.so\ndisable-in: p11-kit-proxy\n".to_owned(),
+    )];
 
-    let resolved = configured_module(
-        "# The OpenSC driver.\nmodule: opensc-pkcs11.so\ndisable-in: p11-kit-proxy\n",
-        &directories,
-        &installed,
-    );
+    let modules = configured_modules(files, &directories, &installed, Some("firezone-tunnel"));
 
     assert_eq!(
-        resolved,
-        Some(PathBuf::from("/usr/lib/pkcs11/opensc-pkcs11.so")),
+        modules,
+        [PathBuf::from("/usr/lib/pkcs11/opensc-pkcs11.so")],
         "a relative module resolves against the directory that holds it, and `disable-in` \
          only disables a module for the proxy, which we are not"
     );
@@ -74,29 +88,41 @@ fn reads_the_module_a_configuration_file_names() {
 
 #[test]
 fn an_absolute_module_is_loaded_from_where_the_configuration_says() {
-    let resolved = configured_module(
-        "module: /opt/example/example-pkcs11.so\n",
+    let files = [(
+        "example".to_owned(),
+        "module: /opt/example/example-pkcs11.so\n".to_owned(),
+    )];
+
+    let modules = configured_modules(
+        files,
         &[PathBuf::from("/usr/lib64/pkcs11")],
         &|_: &Path| false,
+        None,
     );
 
-    assert_eq!(
-        resolved,
-        Some(PathBuf::from("/opt/example/example-pkcs11.so"))
-    );
+    assert_eq!(modules, [PathBuf::from("/opt/example/example-pkcs11.so")]);
 }
 
 #[test]
 fn registered_modules_are_deduplicated_by_resolved_path() {
     let directories = [PathBuf::from("/usr/lib64/pkcs11")];
     let files = [
-        "module: libsofthsm2.so\n".to_owned(),
-        "module: /usr/lib64/pkcs11/libsofthsm2.so\n".to_owned(),
-        "trust-policy: yes\n".to_owned(),
-        "module: p11-kit-trust.so\ndisable-in: p11-kit-proxy\n".to_owned(),
+        (
+            "a-softhsm".to_owned(),
+            "module: libsofthsm2.so\n".to_owned(),
+        ),
+        (
+            "b-softhsm-again".to_owned(),
+            "module: /usr/lib64/pkcs11/libsofthsm2.so\n".to_owned(),
+        ),
+        ("c-empty".to_owned(), "trust-policy: yes\n".to_owned()),
+        (
+            "d-trust".to_owned(),
+            "module: p11-kit-trust.so\ndisable-in: p11-kit-proxy\n".to_owned(),
+        ),
     ];
 
-    let modules = configured_modules(files, &directories, &|_: &Path| false);
+    let modules = configured_modules(files, &directories, &|_: &Path| false, None);
 
     assert_eq!(
         modules,
@@ -107,6 +133,82 @@ fn registered_modules_are_deduplicated_by_resolved_path() {
             PathBuf::from("/usr/lib64/pkcs11/p11-kit-trust.so"),
         ],
         "one file without a `module:` line and one duplicate should be dropped"
+    );
+}
+
+#[test]
+fn modules_follow_their_configured_priority() {
+    let directories = [PathBuf::from("/usr/lib64/pkcs11")];
+    let files = [
+        ("b".to_owned(), "module: b.so\n".to_owned()),
+        (
+            "c".to_owned(),
+            "module: c.so\npriority: 10 # The highest.\n".to_owned(),
+        ),
+        ("a".to_owned(), "module: a.so\npriority: 0\n".to_owned()),
+    ];
+
+    let modules = configured_modules(files, &directories, &|_: &Path| false, None);
+
+    assert_eq!(
+        modules,
+        [
+            PathBuf::from("/usr/lib64/pkcs11/c.so"),
+            PathBuf::from("/usr/lib64/pkcs11/a.so"),
+            PathBuf::from("/usr/lib64/pkcs11/b.so"),
+        ],
+        "the highest priority goes first and a tie falls back to the configuration name, \
+         with a comment after the number ignored the way p11-kit's `atoi` ignores it"
+    );
+}
+
+#[test]
+fn a_module_reserved_for_other_programs_is_skipped() {
+    let directories = [PathBuf::from("/usr/lib64/pkcs11")];
+    let files = [
+        (
+            "gnome".to_owned(),
+            "module: gnome.so\nenable-in: seahorse, gnome-keyring\n".to_owned(),
+        ),
+        (
+            "blocked".to_owned(),
+            "module: blocked.so\ndisable-in: firezone-tunnel\n".to_owned(),
+        ),
+        ("open".to_owned(), "module: open.so\n".to_owned()),
+    ];
+
+    let modules = configured_modules(
+        files,
+        &directories,
+        &|_: &Path| false,
+        Some("firezone-tunnel"),
+    );
+
+    assert_eq!(
+        modules,
+        [PathBuf::from("/usr/lib64/pkcs11/open.so")],
+        "`enable-in` reserves a module for the programs it lists, and `disable-in` \
+         withholds one from them"
+    );
+}
+
+#[test]
+fn the_administrators_configuration_overrides_the_packaged_one() {
+    let directories = [PathBuf::from("/usr/lib64/pkcs11")];
+    let files = [
+        (
+            "softhsm2".to_owned(),
+            "module: /opt/custom/libsofthsm2.so\n".to_owned(),
+        ),
+        ("softhsm2".to_owned(), "module: libsofthsm2.so\n".to_owned()),
+    ];
+
+    let modules = configured_modules(files, &directories, &|_: &Path| false, None);
+
+    assert_eq!(
+        modules,
+        [PathBuf::from("/opt/custom/libsofthsm2.so")],
+        "of two configurations under one name, the first one offered wins entirely"
     );
 }
 
@@ -366,20 +468,23 @@ fn strips_only_the_line_ending_of_a_pin() {
 
 #[test]
 fn names_the_cause_behind_a_token_failure() {
+    /// `CKR_DEVICE_ERROR`, which the classification has no case for.
+    const DEVICE_ERROR: u64 = 0x0000_0030;
+
     assert!(matches!(
-        classify_return_value(RvError::DeviceRemoved, String::new()),
+        classify_return_value(ReturnValue(rpc::CKR_DEVICE_REMOVED), String::new()),
         SigningError::KeyUnavailable(_)
     ));
     assert!(matches!(
-        classify_return_value(RvError::SessionHandleInvalid, String::new()),
+        classify_return_value(ReturnValue(rpc::CKR_SESSION_HANDLE_INVALID), String::new()),
         SigningError::KeyUnavailable(_)
     ));
     assert!(matches!(
-        classify_return_value(RvError::PinLocked, String::new()),
+        classify_return_value(ReturnValue(rpc::CKR_PIN_LOCKED), String::new()),
         SigningError::AccessDenied(_)
     ));
     assert!(matches!(
-        classify_return_value(RvError::DeviceError, String::new()),
+        classify_return_value(ReturnValue(DEVICE_ERROR), String::new()),
         SigningError::Keystore(_)
     ));
 }
@@ -488,6 +593,7 @@ fn verification_algorithm(scheme: SignatureScheme) -> &'static dyn VerificationA
 struct Token {
     directory: PathBuf,
     subject_cn: String,
+    p11_kit: PathBuf,
     module: PathBuf,
     pin_file: PathBuf,
     certificate: Vec<u8>,
@@ -500,6 +606,7 @@ impl Token {
 
     fn load_of(&self, subject_cn: &str) -> Result<Loaded, Error> {
         super::load_on(
+            &self.p11_kit,
             std::slice::from_ref(&self.module),
             &self.pin_file,
             subject_cn,
@@ -546,14 +653,15 @@ fn provision_token(suffix: &str, algorithm: KeyAlgorithm) -> Token {
 
     // SAFETY: `serialize_token_access` holds off every other test that sets or reads this variable,
     // and the remaining tests in this binary are pure functions that never touch the environment.
+    // The `p11-kit remote` children inherit the variable when the backend spawns them.
     unsafe { std::env::set_var("SOFTHSM2_CONF", &configuration) };
-    unload_module();
 
     let certificate = initialize_token(&module, &label, &subject_cn, algorithm);
 
     Token {
         directory,
         subject_cn,
+        p11_kit: p11_kit_command(),
         module,
         pin_file,
         certificate,
@@ -588,16 +696,14 @@ fn softhsm_module() -> PathBuf {
         })
 }
 
-/// Drops the contexts the backend cached, which unloads the module along with the last of them.
+/// Returns the p11-kit command the backend serves the module through.
 ///
-/// SoftHSM reads `SOFTHSM2_CONF` while it initializes, so a context left over from an earlier test
-/// would keep answering out of that test's token store. Unloading is also what lets the setup below
-/// initialize the module itself.
-fn unload_module() {
-    CONTEXTS
-        .lock()
-        .unwrap_or_else(PoisonError::into_inner)
-        .clear();
+/// A missing command fails the test rather than skipping it: a skipped test reports coverage
+/// the run does not have.
+fn p11_kit_command() -> PathBuf {
+    super::p11_kit_command().unwrap_or_else(|| {
+        panic!("p11-kit is missing; install the `p11-kit` package to run this test")
+    })
 }
 
 /// Sets up the token's PINs, generates its key pair and stores a certificate for it.
