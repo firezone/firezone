@@ -16,8 +16,9 @@ require_adb() {
         exit 1
     }
 
-    adb get-state >/dev/null 2>&1 || {
-        echo "error: no device is attached" >&2
+    local state
+    state="$(adb get-state 2>&1)" || {
+        echo "error: no usable device: ${state}" >&2
         exit 1
     }
 }
@@ -26,14 +27,26 @@ require_adb() {
 # device's own user otherwise. Everything downstream targets it, so a task reads the same whichever
 # topology is in place.
 managed_user() {
-    adb shell dpm list-owners |
+    # `adb shell` merges the remote command's complaints into stdout, where the pipeline below
+    # would swallow them, so a failed listing has to be reported before anything filters it.
+    local owners
+    owners="$(adb shell dpm list-owners 2>&1)" || {
+        echo "error: 'adb shell dpm list-owners' failed:" >&2
+        echo "${owners}" >&2
+        exit 1
+    }
+
+    echo "${owners}" |
         tr -d '\r' |
         sed -n "s/^User  *\([0-9][0-9]*\):.*${DPC_PACKAGE}.*/\1/p" |
         head -1
 }
 
 require_owner() {
-    if [ -z "$(managed_user)" ]; then
+    local owned
+    owned="$(managed_user)"
+
+    if [ -z "${owned}" ]; then
         echo "error: ${DPC_PACKAGE} owns no user on this device" >&2
         echo "       run 'mise run //kotlin/android:managed-device:provision' first" >&2
         exit 1
