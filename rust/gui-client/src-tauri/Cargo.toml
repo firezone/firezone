@@ -70,6 +70,7 @@ tracing-subscriber = { workspace = true, features = ["env-filter"] }
 tunnel-bypass-resolver = { workspace = true }
 url = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
+x509-keystore = { workspace = true }
 zip = { workspace = true, features = ["deflate", "time"] }
 
 # Windows and macOS keep Tauri's built-in tray.

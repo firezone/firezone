@@ -3,6 +3,7 @@
   "vpnStatus": "disconnected",
   "systemExtension": "installed",
   "notifications": "authorized",
+  "clientCertificate": "absent",
   "resources": [],
   "connectedDevices": [],
   "favorites": [],

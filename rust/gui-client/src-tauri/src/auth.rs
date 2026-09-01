@@ -197,6 +197,15 @@ impl Auth {
         Ok(())
     }
 
+    /// Adopt the certificate the Tunnel service holds as the session.
+    ///
+    /// The certificate authenticates every connect anew, so there is nothing to persist and
+    /// nothing to read back at startup. The portal names the actor and account once connlib
+    /// reaches it, the same as for a browser session.
+    pub(crate) fn sign_in_with_certificate(&mut self) {
+        self.state = State::SignedIn;
+    }
+
     /// Start a new sign-in flow, replacing any ongoing flow
     ///
     /// Returns parameters used to make a URL for the web browser to open

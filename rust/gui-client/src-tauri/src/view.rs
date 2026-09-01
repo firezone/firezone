@@ -42,6 +42,152 @@ pub struct AdvancedSettingsChanged(pub AdvancedSettingsViewModel);
 #[derive(Clone, serde::Serialize, specta::Type, tauri_specta::Event)]
 pub struct LogsRecounted(pub FileCount);
 
+/// The platform keystore's certificate as the X.509 page renders it.
+#[derive(Clone, serde::Serialize, specta::Type, tauri_specta::Event)]
+pub struct X509CertificateChanged(pub X509Certificate);
+
+/// What the Tunnel service last loaded from the platform keystore.
+#[derive(Clone, serde::Serialize, specta::Type)]
+pub enum X509Certificate {
+    /// The keystore holds this certificate, described by the parser's rows.
+    Loaded {
+        identity: X509Identity,
+        fields: Vec<X509DetailField>,
+    },
+    /// The keystore holds no client certificate.
+    Absent,
+    /// The keystore could not hand out a client identity.
+    Error(X509Error),
+}
+
+/// Mirrors [`x509_keystore::ClientIdentity`], which decides what the sign-in control says.
+#[derive(Clone, serde::Serialize, specta::Type)]
+pub enum X509Identity {
+    Absent,
+    Claimed { email: Option<String> },
+}
+
+/// Mirrors [`x509_keystore::Error`] so the frontend writes the sentence it shows.
+#[derive(Clone, serde::Serialize, specta::Type)]
+pub enum X509Error {
+    UnreadableStore { store: String, error: String },
+    MissingP11Kit,
+    UnreadablePkcs11Keystore { modules: Vec<String> },
+    IdentityUnavailable { message: String },
+    UnreadableKeystore { message: String },
+}
+
+/// A label-value row of the certificate, and what is wrong with it.
+#[derive(Clone, serde::Serialize, specta::Type)]
+pub struct X509DetailField {
+    pub label: String,
+    /// What the row carries, [`None`] when it carries nothing.
+    pub value: Option<String>,
+    /// Why the value is not usable as what the row names, [`None`] when it is.
+    pub problem: Option<X509ValidationError>,
+}
+
+/// Mirrors [`x509_keystore::ValidationError`].
+#[derive(Clone, serde::Serialize, specta::Type)]
+pub enum X509ValidationError {
+    Empty,
+    TooLong,
+    NotAnEmailAddress,
+    NotAUuid,
+    Ambiguous,
+    PlaceholderIdentifier,
+    UnknownAttribute,
+    NotYetValid,
+    Expired,
+    MissingClientAuthEku,
+    DigitalSignatureNotAllowed,
+}
+
+impl From<&std::result::Result<Option<x509_keystore::ParsedCertificate>, x509_keystore::Error>>
+    for X509Certificate
+{
+    fn from(
+        x509: &std::result::Result<Option<x509_keystore::ParsedCertificate>, x509_keystore::Error>,
+    ) -> Self {
+        match x509 {
+            Ok(Some(certificate)) => Self::Loaded {
+                identity: X509Identity::from(&certificate.identity()),
+                fields: certificate
+                    .detail_fields()
+                    .into_iter()
+                    .map(X509DetailField::from)
+                    .collect(),
+            },
+            Ok(None) => Self::Absent,
+            Err(error) => Self::Error(X509Error::from(error)),
+        }
+    }
+}
+
+impl From<&x509_keystore::ClientIdentity> for X509Identity {
+    fn from(identity: &x509_keystore::ClientIdentity) -> Self {
+        match identity {
+            x509_keystore::ClientIdentity::Absent => Self::Absent,
+            x509_keystore::ClientIdentity::Claimed { email } => Self::Claimed {
+                email: email.clone(),
+            },
+        }
+    }
+}
+
+impl From<&x509_keystore::Error> for X509Error {
+    fn from(error: &x509_keystore::Error) -> Self {
+        match error {
+            x509_keystore::Error::UnreadableStore { store, error } => Self::UnreadableStore {
+                store: store.clone(),
+                error: error.clone(),
+            },
+            x509_keystore::Error::MissingP11Kit => Self::MissingP11Kit,
+            x509_keystore::Error::UnreadablePkcs11Keystore { modules } => {
+                Self::UnreadablePkcs11Keystore {
+                    modules: modules.clone(),
+                }
+            }
+            x509_keystore::Error::IdentityUnavailable { message } => Self::IdentityUnavailable {
+                message: message.clone(),
+            },
+            x509_keystore::Error::UnreadableKeystore { message } => Self::UnreadableKeystore {
+                message: message.clone(),
+            },
+        }
+    }
+}
+
+impl From<x509_keystore::DetailField> for X509DetailField {
+    fn from(field: x509_keystore::DetailField) -> Self {
+        Self {
+            label: field.label,
+            value: field.value,
+            problem: field.problem.map(X509ValidationError::from),
+        }
+    }
+}
+
+impl From<x509_keystore::ValidationError> for X509ValidationError {
+    fn from(error: x509_keystore::ValidationError) -> Self {
+        match error {
+            x509_keystore::ValidationError::Empty => Self::Empty,
+            x509_keystore::ValidationError::TooLong => Self::TooLong,
+            x509_keystore::ValidationError::NotAnEmailAddress => Self::NotAnEmailAddress,
+            x509_keystore::ValidationError::NotAUuid => Self::NotAUuid,
+            x509_keystore::ValidationError::Ambiguous => Self::Ambiguous,
+            x509_keystore::ValidationError::PlaceholderIdentifier => Self::PlaceholderIdentifier,
+            x509_keystore::ValidationError::UnknownAttribute => Self::UnknownAttribute,
+            x509_keystore::ValidationError::NotYetValid => Self::NotYetValid,
+            x509_keystore::ValidationError::Expired => Self::Expired,
+            x509_keystore::ValidationError::MissingClientAuthEku => Self::MissingClientAuthEku,
+            x509_keystore::ValidationError::DigitalSignatureNotAllowed => {
+                Self::DigitalSignatureNotAllowed
+            }
+        }
+    }
+}
+
 #[tauri::command]
 #[specta::specta]
 pub async fn clear_logs(managed: tauri::State<'_, Managed>) -> Result<()> {
@@ -186,5 +332,98 @@ pub struct Error(String);
 impl From<anyhow::Error> for Error {
     fn from(error: anyhow::Error) -> Self {
         Self(format!("{error:#}"))
+    }
+}
+
+/// The tauri-specta registry of every command and event the frontend calls.
+///
+/// One constructor serves the app and the bindings test, so the TypeScript the app exports on
+/// startup and the committed file the test pins cannot diverge.
+pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
+    tauri_specta::Builder::<tauri::Wry>::new()
+        .events(tauri_specta::collect_events![
+            SessionChanged,
+            GeneralSettingsChanged,
+            AdvancedSettingsChanged,
+            LogsRecounted,
+            X509CertificateChanged,
+        ])
+        .commands(tauri_specta::collect_commands![
+            clear_logs,
+            export_logs,
+            apply_advanced_settings,
+            reset_advanced_settings,
+            apply_general_settings,
+            reset_general_settings,
+            sign_in,
+            sign_out,
+            update_state,
+        ])
+        .typ::<Error>()
+}
+
+/// How the TypeScript bindings are rendered.
+///
+/// No external formatter: the export has to produce the same bytes on every machine that runs
+/// it, including one that has no Node toolchain.
+pub fn typescript_exporter() -> specta_typescript::Typescript {
+    specta_typescript::Typescript::default()
+        .bigint(specta_typescript::BigIntExportBehavior::Number)
+        .header("/* eslint-disable */\n// @ts-nocheck\n/* tslint:disable */\n")
+}
+
+/// Where the committed bindings live.
+pub fn bindings_path() -> std::path::PathBuf {
+    std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../src-frontend/generated/bindings.ts")
+}
+
+/// Rewrites the committed bindings from the current view types.
+///
+/// The debug build runs this on startup; `cargo run -p firezone-gui-client --example
+/// export-bindings` runs it without a display server.
+pub fn export_bindings() -> anyhow::Result<()> {
+    export_bindings_to(&bindings_path())
+}
+
+/// Exports the bindings to `path`, normalized so the committed file satisfies the repo's
+/// hooks: no trailing whitespace, one trailing newline, no formatter involved.
+fn export_bindings_to(path: &std::path::Path) -> anyhow::Result<()> {
+    specta_builder()
+        .export(typescript_exporter(), path)
+        .context("Failed to export TypeScript bindings")?;
+
+    let exported = std::fs::read_to_string(path).context("Failed to read exported bindings")?;
+    let mut normalized = exported
+        .lines()
+        .map(str::trim_end)
+        .collect::<Vec<_>>()
+        .join("\n");
+    normalized.push('\n');
+    std::fs::write(path, normalized).context("Failed to write normalized bindings")?;
+
+    Ok(())
+}
+
+// Not on Windows: referencing the `tauri::Wry`-typed builder from a test makes the test
+// executable import WebView2Loader.dll, which is not beside it, so the process fails to
+// load before any test runs.
+#[cfg(all(test, not(target_os = "windows")))]
+mod tests {
+    use super::*;
+
+    /// The debug build re-exports the bindings on startup, so a committed file that differs
+    /// from the export dirties the tree of everyone who runs the app.
+    #[test]
+    fn the_committed_bindings_are_what_the_app_exports() {
+        let directory = tempfile::tempdir().unwrap();
+        let exported = directory.path().join("bindings.ts");
+
+        export_bindings_to(&exported).unwrap();
+
+        assert_eq!(
+            std::fs::read_to_string(exported).unwrap(),
+            std::fs::read_to_string(bindings_path()).unwrap(),
+            "the committed bindings.ts is stale: run `cargo run -p firezone-gui-client --example export-bindings`"
+        );
     }
 }

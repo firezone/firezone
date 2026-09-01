@@ -10,7 +10,8 @@ round a subpixel the same way twice, so a channel moves by one wherever text is
 drawn. And a control drawn on a material composites at one of two levels a few
 steps apart, uniformly across the whole of itself: iOS 26 draws the navigation
 bar's back button that way, and it settles on either 35 or 38 in the dark
-appearance.
+appearance. macOS composites the window title against the titlebar's material
+the same way, a further 13 steps apart.
 
 Nobody can see either, but git can, and left alone they put a re-render commit on
 every pull request that touches the clients.
@@ -28,8 +29,9 @@ EDGE_TOLERANCE = 1
 
 # What a material's two levels span, and how much of the picture one control
 # drawn on it covers. The back button measures 5 steps across 0.42% of the
-# screen, so both leave room without reaching a change worth seeing.
-PATCH_TOLERANCE = 6
+# screen and the macOS window title 13 steps across 0.19%, so both leave room
+# without reaching a change worth seeing.
+PATCH_TOLERANCE = 14
 PATCH_FRACTION = 0.01
 
 

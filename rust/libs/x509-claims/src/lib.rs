@@ -16,6 +16,7 @@ use std::{
 };
 
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
+use serde::{Deserialize, Serialize};
 use sha2::{Digest as _, Sha256};
 use x509_parser::{
     extensions::{GeneralName, ParsedExtension},
@@ -24,7 +25,7 @@ use x509_parser::{
     prelude::{FromDer as _, X509Certificate},
 };
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
 pub enum SigningAlgorithm {
     RsaSha256,
     EcdsaSha256,
@@ -44,7 +45,7 @@ impl SigningAlgorithm {
 }
 
 /// What a certificate says about one of the claims the clients read.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct Claim {
     /// What the certificate carries, [`None`] when it carries nothing.
     pub value: Option<String>,
@@ -101,7 +102,7 @@ impl Claim {
 ///
 /// The clients word these themselves, so an error crosses to them as the error it is rather
 /// than as a sentence: the mobile and Apple clients render them from their own string resources.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq, Hash)]
 pub enum ValidationError {
     Empty,
     TooLong,
@@ -135,7 +136,7 @@ impl ValidationError {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct ParsedCertificate {
     pub subject_cn: Option<String>,
     pub subject: String,
@@ -317,7 +318,7 @@ impl ParsedCertificate {
 }
 
 /// Who the certificate claims is connecting.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub enum Identity {
     /// The certificate claims nobody, so the session signs in with a token.
     Absent,

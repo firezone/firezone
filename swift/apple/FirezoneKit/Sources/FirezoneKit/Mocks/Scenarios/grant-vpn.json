@@ -3,6 +3,7 @@
   "vpnStatus": "invalid",
   "systemExtension": "needsInstall",
   "notifications": "authorized",
+  "clientCertificate": "absent",
   "resources": [],
   "connectedDevices": [],
   "favorites": [],
