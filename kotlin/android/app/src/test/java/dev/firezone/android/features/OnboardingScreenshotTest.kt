@@ -10,6 +10,7 @@ import com.github.takahirom.roborazzi.RobolectricDeviceQualifiers
 import com.github.takahirom.roborazzi.captureRoboImage
 import com.github.takahirom.roborazzi.roborazziSystemPropertyOutputDirectory
 import dev.firezone.android.R
+import dev.firezone.android.features.permission.certificate.ui.compose.CertificatePermissionScreen
 import dev.firezone.android.features.permission.vpn.ui.VpnPermissionActivity
 import dev.firezone.android.features.session.ui.compose.FirezoneTheme
 import dev.firezone.android.features.signin.ui.compose.SignInScreen
@@ -68,6 +69,18 @@ class OnboardingScreenshotTest {
             }
         }
     }
+
+    @OptIn(ExperimentalRoborazziApi::class)
+    @Test
+    fun certificatePermission() =
+        captureRoboImage("${roborazziSystemPropertyOutputDirectory()}/certificate-permission.png") {
+            FirezoneTheme {
+                CertificatePermissionScreen(
+                    onSelectCertificate = {},
+                    onSkip = {},
+                )
+            }
+        }
 
     @Test
     fun vpnPermission() = capture("vpn-permission", VpnPermissionActivity::class.java)
