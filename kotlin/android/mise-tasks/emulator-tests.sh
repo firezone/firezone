@@ -7,7 +7,10 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "${SCRIPT_DIR}/.."
 
 APK_DIR="app/build/outputs/apk"
-RUNNER="dev.firezone.android.test/dev.firezone.android.core.HiltTestRunner"
+APP_PACKAGE="dev.firezone.android"
+RUNNER="${APP_PACKAGE}.test/dev.firezone.android.core.HiltTestRunner"
+# The app's own directory is the one place the runner can write and `run-as` can read.
+COVERAGE_ON_DEVICE="/data/data/${APP_PACKAGE}/coverage.ec"
 
 find_apk() {
     find "$APK_DIR" -type f -name "$1" -exec ls -t {} + 2>/dev/null | head -1
@@ -50,7 +53,9 @@ done
 
 echo "==> Running the tests..."
 # Guarded because bash 3.2, which macOS still ships, treats an empty array as unset.
-result="$(adb shell am instrument -w ${filter[@]+"${filter[@]}"} "$RUNNER")"
+result="$(adb shell am instrument -w \
+    -e coverage true -e coverageFile "$COVERAGE_ON_DEVICE" \
+    ${filter[@]+"${filter[@]}"} "$RUNNER")"
 
 echo "$result"
 
@@ -63,3 +68,15 @@ case "$result" in
     exit 1
     ;;
 esac
+
+# The execution data is written into the app's private directory, which only `run-as` reaches,
+# and only for a debuggable build.
+echo "==> Collecting the execution data..."
+adb shell run-as "$APP_PACKAGE" cat "$COVERAGE_ON_DEVICE" >coverage.ec
+
+if [ ! -s coverage.ec ]; then
+    echo "error: the run recorded no execution data at ${COVERAGE_ON_DEVICE}" >&2
+    exit 1
+fi
+
+echo "    $(wc -c <coverage.ec) bytes"
