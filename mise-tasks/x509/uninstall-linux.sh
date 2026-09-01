@@ -80,5 +80,3 @@ fi
 echo
 echo "The Client has no identity to find now. A connected Tunnel service holds its PKCS#11"
 echo "session until it restarts, so restart it to see the change."
-echo
-echo "'firezone-headless-client x509' prints what it makes of the store."

@@ -235,5 +235,3 @@ echo
 echo "The token is in the system store and its PIN is at ${PIN_PATH}, which is all the Client"
 echo "needs: it loads p11-kit's proxy module and takes the certificate whose subject common name is"
 echo "${SUBJECT_CN}. There is nothing to configure, packaged Tunnel service included."
-echo
-echo "'firezone-headless-client x509' prints what it makes of the token."
