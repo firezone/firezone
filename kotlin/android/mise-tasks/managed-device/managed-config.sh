@@ -1,11 +1,15 @@
 #!/usr/bin/env bash
 #MISE description="Point the app's managed configuration at a certificate alias, or clear it"
 #USAGE flag "--alias <alias>" help="Alias to configure; the configuration is cleared when omitted"
-set -euo pipefail
+set -Eeuo pipefail
+# Any failure `set -e` would swallow names itself, so no death is ever silent.
+trap 'echo "error: ${BASH_SOURCE[0]}:${LINENO}: command failed with exit $?: ${BASH_COMMAND}" >&2' ERR
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=./lib.sh
 source "${SCRIPT_DIR}/lib.sh"
+
+require_parsed_flags "$@"
 
 # X509_CERTIFICATE_ALIAS_RESTRICTION in `core/data/Repository.kt`.
 RESTRICTION_KEY="x509CertificateAlias"

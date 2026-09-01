@@ -10,6 +10,29 @@ certificate_dir() {
     echo "${XDG_CACHE_HOME:-${HOME}/.cache}/firezone/x509"
 }
 
+# A mise too old to parse the `#USAGE` spec passes `--flag` through as a positional argument
+# and sets no `usage_` variable, which would silently run the task without the flag.
+require_parsed_flags() {
+    local argument variable value
+    for argument in "$@"; do
+        case "$argument" in
+        --*)
+            variable="usage_$(echo "${argument#--}" | cut -d= -f1 | tr '-' '_')"
+            value="${argument#*=}"
+            if [ "$value" = "$argument" ]; then
+                value=true
+            fi
+            if [ -z "${!variable:-}" ]; then
+                echo "error: ${argument} reached the task unparsed: this mise did not read the #USAGE flags." >&2
+                echo "       Update mise, or pass the flag as an environment variable instead, e.g.:" >&2
+                echo "           ${variable}=${value} mise run <task>" >&2
+                exit 1
+            fi
+            ;;
+        esac
+    done
+}
+
 require_adb() {
     command -v adb >/dev/null || {
         echo "error: adb is not on PATH; run 'mise run //kotlin/android:setup' first" >&2
@@ -44,7 +67,7 @@ managed_user() {
 
 require_owner() {
     local owned
-    owned="$(managed_user)"
+    owned="$(managed_user)" || exit
 
     if [ -z "${owned}" ]; then
         echo "error: ${DPC_PACKAGE} owns no user on this device" >&2
@@ -54,7 +77,7 @@ require_owner() {
 }
 
 find_apk() {
-    find ../../app/build/outputs/apk -type f -name "$1" -exec ls -t {} + 2>/dev/null | head -1
+    find ../../app/build/outputs/apk -type f -name "$1" -exec ls -t {} + 2>/dev/null | head -1 || true
 }
 
 # Installing a key pair and pushing managed configuration are owner-only APIs that no `adb` command

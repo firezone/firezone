@@ -1,17 +1,21 @@
 #!/usr/bin/env bash
 #MISE description="Make the test Device Policy Controller the owner of the attached device or of a work profile"
 #USAGE flag "--work-profile" help="Own a managed work profile rather than the device, the way a personally-owned device is managed"
-set -euo pipefail
+set -Eeuo pipefail
+# Any failure `set -e` would swallow names itself, so no death is ever silent.
+trap 'echo "error: ${BASH_SOURCE[0]}:${LINENO}: command failed with exit $?: ${BASH_COMMAND}" >&2' ERR
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=./lib.sh
 source "${SCRIPT_DIR}/lib.sh"
 
+require_parsed_flags "$@"
+
 cd "${SCRIPT_DIR}/../.."
 
 require_adb
 
-owned="$(managed_user)"
+owned="$(managed_user)" || exit
 
 if [ -n "$owned" ]; then
     echo "==> ${DPC_PACKAGE} already owns user ${owned}."
@@ -19,13 +23,13 @@ if [ -n "$owned" ]; then
 fi
 
 # CI restores a prebuilt APK where a build would cost the emulator job a toolchain.
-dpc_apk="$(find dpc/build -type f -name '*.apk' -exec ls -t {} + 2>/dev/null | head -1)"
+dpc_apk="$(find dpc/build -type f -name '*.apk' -exec ls -t {} + 2>/dev/null | head -1)" || true
 
 if [ -z "$dpc_apk" ]; then
     echo "==> Building the DPC..."
     ./gradlew --quiet :dpc:assembleDebug
 
-    dpc_apk="$(find dpc/build -type f -name '*.apk' -exec ls -t {} + | head -1)"
+    dpc_apk="$(find dpc/build -type f -name '*.apk' -exec ls -t {} + 2>/dev/null | head -1)" || true
 fi
 
 if [ -z "$dpc_apk" ]; then

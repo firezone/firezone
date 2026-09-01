@@ -4,11 +4,15 @@
 #USAGE flag "--password <password>" help="PKCS#12 password the certificate was packed with [default: firezone]"
 #USAGE flag "--file <file>" help="PKCS#12 to install; read from the certificate cache when omitted"
 #USAGE flag "--no-grant" help="Withhold the key from the app, which is what an administrator of a personally-owned device can do"
-set -euo pipefail
+set -Eeuo pipefail
+# Any failure `set -e` would swallow names itself, so no death is ever silent.
+trap 'echo "error: ${BASH_SOURCE[0]}:${LINENO}: command failed with exit $?: ${BASH_COMMAND}" >&2' ERR
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=./lib.sh
 source "${SCRIPT_DIR}/lib.sh"
+
+require_parsed_flags "$@"
 
 alias_name="${usage_alias:-firezone-client}"
 password="${usage_password:-firezone}"

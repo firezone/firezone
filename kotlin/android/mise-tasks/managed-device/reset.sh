@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 #MISE description="Give up ownership of the attached device and remove the test DPC"
-set -euo pipefail
+set -Eeuo pipefail
+# Any failure `set -e` would swallow names itself, so no death is ever silent.
+trap 'echo "error: ${BASH_SOURCE[0]}:${LINENO}: command failed with exit $?: ${BASH_COMMAND}" >&2' ERR
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=./lib.sh
@@ -8,7 +10,7 @@ source "${SCRIPT_DIR}/lib.sh"
 
 require_adb
 
-user_id="$(managed_user)"
+user_id="$(managed_user)" || exit
 
 if [ -z "$user_id" ]; then
     echo "==> ${DPC_PACKAGE} owns nothing on this device."
