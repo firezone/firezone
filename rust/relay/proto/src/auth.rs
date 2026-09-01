@@ -12,8 +12,8 @@
 //! The portal uses this secret to generate credentials for each TURN client.
 //! The credentials take the form of:
 //!
-//! - username: `{unix_expiry_timestamp}:{salt}`
-//! - password: `sha256({unix_expiry_timestamp}:{relay_secret}:{salt})`
+//! - account-bound username: `{unix_expiry_timestamp}:{account_hash}:{salt}`
+//! - account-bound password: `sha256({username}:{relay_secret})`
 //!
 //! As such, a TURN client can never create a set of credentials themselves because they are missing the `relay_secret`.
 //! In addition, a relay can validate such a username and password combination without having to store any state other than the `relay_secret`.
@@ -40,8 +40,8 @@ use bytecodec::Encode;
 use once_cell::sync::Lazy;
 use rand::RngExt;
 use secrecy::{ExposeSecret, SecretString};
-use sha2::Sha256;
 use sha2::digest::FixedOutput;
+use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
 use std::time::{Duration, SystemTime};
@@ -61,7 +61,7 @@ pub(crate) trait MessageIntegrityExt {
         relay_secret: &SecretString,
         username: &str,
         now: SystemTime,
-    ) -> Result<(), Error>;
+    ) -> Result<String, Error>;
 }
 
 impl MessageIntegrityExt for MessageIntegrity {
@@ -70,24 +70,25 @@ impl MessageIntegrityExt for MessageIntegrity {
         relay_secret: &SecretString,
         username: &str,
         now: SystemTime,
-    ) -> Result<(), Error> {
-        let (expiry, salt) = split_username(username)?;
+    ) -> Result<String, Error> {
+        let username = parse_username(username)?;
+        let expiry = username.expiry();
         let expires_at = systemtime_from_unix(expiry).ok_or(Error::InvalidUsername)?;
 
         if expires_at < now {
             return Err(Error::Expired);
         }
 
-        let password = generate_password(relay_secret, expiry, salt);
+        let password = generate_password_for_username(relay_secret, &username);
 
         self.check_long_term_credential(
-            &Username::new(format!("{expiry}:{salt}")).map_err(|_| Error::InvalidUsername)?,
+            &Username::new(username.as_str().to_owned()).map_err(|_| Error::InvalidUsername)?,
             &FIREZONE,
             &password,
         )
         .map_err(|_| Error::InvalidPassword)?;
 
-        Ok(())
+        Ok(username.account().to_owned())
     }
 }
 
@@ -106,8 +107,8 @@ impl AuthenticatedMessage {
         username: &Username,
         mut message: Message<Attribute>,
     ) -> Result<Self, Error> {
-        let (expiry, salt) = split_username(username.name())?;
-        let password = generate_password(relay_secret, expiry, salt);
+        let parsed_username = parse_username(username.name())?;
+        let password = generate_password_for_username(relay_secret, &parsed_username);
 
         let message_integrity =
             MessageIntegrity::new_long_term_credential(&message, username, &FIREZONE, &password)?;
@@ -254,32 +255,61 @@ pub(crate) enum Error {
     CannotAuthenticate(#[from] bytecodec::Error),
 }
 
-pub(crate) fn split_username(username: &str) -> Result<(u64, &str), Error> {
-    let [expiry, username_salt]: [&str; 2] = username
-        .split(':')
-        .collect::<Vec<&str>>()
-        .try_into()
-        .map_err(|_| Error::InvalidUsername)?;
-
-    let expiry_unix_timestamp = expiry.parse::<u64>().map_err(|_| Error::InvalidUsername)?;
-
-    Ok((expiry_unix_timestamp, username_salt))
+struct ParsedUsername<'a> {
+    raw: &'a str,
+    expiry: u64,
+    account: &'a str,
 }
 
-pub fn generate_password(relay_secret: &SecretString, expiry: u64, username_salt: &str) -> String {
-    use sha2::Digest as _;
+impl<'a> ParsedUsername<'a> {
+    fn as_str(&self) -> &'a str {
+        self.raw
+    }
 
+    fn expiry(&self) -> u64 {
+        self.expiry
+    }
+
+    fn account(&self) -> &'a str {
+        self.account
+    }
+}
+
+fn parse_username(username: &str) -> Result<ParsedUsername<'_>, Error> {
+    let parts = username.split(':').collect::<Vec<&str>>();
+
+    let (expiry, account) = match parts.as_slice() {
+        [expiry, account, salt] if !account.is_empty() && !salt.is_empty() => (*expiry, *account),
+        _ => return Err(Error::InvalidUsername),
+    };
+
+    let expiry = expiry.parse::<u64>().map_err(|_| Error::InvalidUsername)?;
+
+    Ok(ParsedUsername {
+        raw: username,
+        expiry,
+        account,
+    })
+}
+
+pub fn generate_password(relay_secret: &SecretString, username: &str) -> String {
     let mut hasher = Sha256::default();
-
-    hasher.update(format!("{expiry}"));
+    hasher.update(username);
     hasher.update(":");
     hasher.update(relay_secret.expose_secret());
-    hasher.update(":");
-    hasher.update(username_salt);
 
-    let array = hasher.finalize_fixed();
+    BASE64_STANDARD_NO_PAD.encode(hasher.finalize_fixed().as_slice())
+}
 
-    BASE64_STANDARD_NO_PAD.encode(array.as_slice())
+pub fn hash_account_id(account_id: &str) -> String {
+    BASE64_STANDARD_NO_PAD.encode(Sha256::digest(account_id).as_slice())
+}
+
+fn generate_password_for_username(
+    relay_secret: &SecretString,
+    username: &ParsedUsername<'_>,
+) -> String {
+    generate_password(relay_secret, username.as_str())
 }
 
 /// Converts a UNIX timestamp in seconds to a [`SystemTime`].
@@ -305,35 +335,78 @@ mod tests {
     #[test]
     fn generate_password_test_vector() {
         let expiry = 60 * 60 * 24 * 365 * 60;
+        let username = format!("{expiry}:account:{SAMPLE_USERNAME}");
 
-        let password = generate_password(&RELAY_SECRET_1.into(), expiry, SAMPLE_USERNAME);
+        let password = generate_password(&RELAY_SECRET_1.into(), &username);
 
-        assert_eq!(password, "00hqldgk5xLeKKOB+xls9mHMVtgqzie9DulfgQwMv68")
+        assert_eq!(password, "NQjDRIWM/rciGma9AI95ZGJ+lljzOQLtXs61DOJnT1I")
     }
 
     #[test]
     fn generate_password_test_vector_elixir() {
         let expiry = 1685984278;
-        let password = generate_password(
-            &"1cab293a-4032-46f4-862a-40e5d174b0d2".into(),
-            expiry,
-            "uvdgKvS9GXYZ_vmv",
-        );
-        assert_eq!(password, "6xUIoZ+QvxKhRasLifwfRkMXl+ETLJUsFkHlXjlHAkg")
+        let account_id = "00000000-0000-0000-0000-000000000000";
+        let account_hash = hash_account_id(account_id);
+        let username = format!("{expiry}:{account_hash}:uvdgKvS9GXYZ_vmv");
+        let password = generate_password(&"1cab293a-4032-46f4-862a-40e5d174b0d2".into(), &username);
+        assert_eq!(account_hash, "Erk3fL5+XJTopw2dI5KVI9FK+pVHkxMPijlZx7hJrKg");
+        assert_eq!(password, "vNbf+vO+nDVJ2fcJjghxKu6oJVLDJbm9G6kh3XTySFA")
     }
 
     #[test]
     fn smoke() {
-        let message_integrity =
-            message_integrity(&RELAY_SECRET_1.into(), 1685200000, "n23JJ2wKKtt30oXi");
+        let account = "account";
+        let message_integrity = message_integrity(
+            &RELAY_SECRET_1.into(),
+            1685200000,
+            account,
+            "n23JJ2wKKtt30oXi",
+        );
 
         let result = message_integrity.verify(
             &RELAY_SECRET_1.into(),
-            "1685200000:n23JJ2wKKtt30oXi",
+            "1685200000:account:n23JJ2wKKtt30oXi",
             systemtime_from_unix(1685200000 - 1000).unwrap(),
         );
 
-        result.expect("credentials to be valid");
+        assert_eq!(result.unwrap(), account);
+    }
+
+    #[test]
+    fn account_bound_credentials_bind_the_account_to_the_password() {
+        let expiry = 1685200000;
+        let account = "tYfHnH7PcN7e2TU4kl6hZ0w2l7s0mH85ySL0Vzjo0Fg";
+        let username = format!("{expiry}:{account}:n23JJ2wKKtt30oXi");
+        let parsed = parse_username(&username).unwrap();
+        let password = generate_password_for_username(&RELAY_SECRET_1.into(), &parsed);
+        let message_integrity = MessageIntegrity::new_long_term_credential(
+            &sample_message(),
+            &Username::new(username.clone()).unwrap(),
+            &FIREZONE,
+            &password,
+        )
+        .unwrap();
+
+        assert_eq!(
+            message_integrity
+                .verify(
+                    &RELAY_SECRET_1.into(),
+                    &username,
+                    systemtime_from_unix(expiry - 1_000).unwrap(),
+                )
+                .unwrap(),
+            account
+        );
+
+        let different_account = username.replacen(account, "other-account", 1);
+        assert!(matches!(
+            message_integrity.verify(
+                &RELAY_SECRET_1.into(),
+                &different_account,
+                systemtime_from_unix(expiry - 1_000).unwrap(),
+            ),
+            Err(Error::InvalidPassword)
+        ));
     }
 
     #[test]
@@ -341,12 +414,13 @@ mod tests {
         let message_integrity = message_integrity(
             &RELAY_SECRET_1.into(),
             1685200000 - 1000,
+            "account",
             "n23JJ2wKKtt30oXi",
         );
 
         let result = message_integrity.verify(
             &RELAY_SECRET_1.into(),
-            "1685199000:n23JJ2wKKtt30oXi",
+            "1685199000:account:n23JJ2wKKtt30oXi",
             systemtime_from_unix(1685200000).unwrap(),
         );
 
@@ -355,12 +429,16 @@ mod tests {
 
     #[test]
     fn different_relay_secret_makes_password_invalid() {
-        let message_integrity =
-            message_integrity(&RELAY_SECRET_2.into(), 1685200000, "n23JJ2wKKtt30oXi");
+        let message_integrity = message_integrity(
+            &RELAY_SECRET_2.into(),
+            1685200000,
+            "account",
+            "n23JJ2wKKtt30oXi",
+        );
 
         let result = message_integrity.verify(
             &RELAY_SECRET_1.into(),
-            "1685200000:n23JJ2wKKtt30oXi",
+            "1685200000:account:n23JJ2wKKtt30oXi",
             systemtime_from_unix(168520000 + 1000).unwrap(),
         );
 
@@ -369,8 +447,12 @@ mod tests {
 
     #[test]
     fn invalid_username_format_fails() {
-        let message_integrity =
-            message_integrity(&RELAY_SECRET_2.into(), 1685200000, "n23JJ2wKKtt30oXi");
+        let message_integrity = message_integrity(
+            &RELAY_SECRET_2.into(),
+            1685200000,
+            "account",
+            "n23JJ2wKKtt30oXi",
+        );
 
         let result = message_integrity.verify(
             &RELAY_SECRET_1.into(),
@@ -384,11 +466,11 @@ mod tests {
     #[test]
     fn oversized_unix_expiry_is_invalid_username() {
         let message_integrity =
-            message_integrity(&RELAY_SECRET_1.into(), u64::MAX, SAMPLE_USERNAME);
+            message_integrity(&RELAY_SECRET_1.into(), u64::MAX, "account", SAMPLE_USERNAME);
 
         let result = message_integrity.verify(
             &RELAY_SECRET_1.into(),
-            &format!("{}:{SAMPLE_USERNAME}", u64::MAX),
+            &format!("{}:account:{SAMPLE_USERNAME}", u64::MAX),
             systemtime_from_unix(1685200000).unwrap(),
         );
 
@@ -482,10 +564,12 @@ mod tests {
     fn message_integrity(
         relay_secret: &SecretString,
         username_expiry: u64,
+        account: &str,
         username_salt: &str,
     ) -> MessageIntegrity {
-        let username = Username::new(format!("{username_expiry}:{username_salt}")).unwrap();
-        let password = generate_password(relay_secret, username_expiry, username_salt);
+        let username =
+            Username::new(format!("{username_expiry}:{account}:{username_salt}")).unwrap();
+        let password = generate_password(relay_secret, username.name());
 
         MessageIntegrity::new_long_term_credential(
             &sample_message(),

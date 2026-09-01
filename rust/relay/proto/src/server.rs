@@ -81,12 +81,22 @@ pub struct Server<R> {
 
     auth_secret: SecretString,
 
+    /// Maps the account hash carried in a TURN credential to the raw account
+    /// UUID received from the Portal. Allocations retain the raw UUID.
+    accounts_by_hash: HashMap<String, String>,
+
     nonces: Nonces,
 
     allocations_up_down_counter: UpDownCounter<i64>,
     data_relayed: u64, // Tracked separately because OTel instruments don't expose their current value :(
     relayed_packet_size_histogram: Histogram<u64>,
     responses_counter: Counter<u64>,
+}
+
+#[derive(Debug)]
+struct VerifiedUsername {
+    username: Username,
+    account: String,
 }
 
 /// The commands returned from a [`Server`].
@@ -195,6 +205,7 @@ where
             channel_numbers_by_client_and_peer: Default::default(),
             pending_commands: Default::default(),
             auth_secret: SecretString::from(hex::encode(rng.random::<[u8; 32]>())),
+            accounts_by_hash: Default::default(),
             rng,
             nonces: Default::default(),
             allocations_up_down_counter,
@@ -207,6 +218,54 @@ where
 
     pub fn auth_secret(&self) -> &SecretString {
         &self.auth_secret
+    }
+
+    /// Enables account-bound TURN authentication with a complete snapshot.
+    /// Existing allocations that are absent from the snapshot are deleted so
+    /// their sockets and fast-path channel bindings are torn down as well.
+    pub fn set_accounts(&mut self, accounts: impl IntoIterator<Item = String>) {
+        let accounts_by_hash = accounts
+            .into_iter()
+            .map(|account| (auth::hash_account_id(&account), account))
+            .collect::<HashMap<_, _>>();
+
+        let revoked_allocations = self
+            .allocations
+            .values()
+            .filter_map(|allocation| {
+                (!accounts_by_hash.contains_key(&auth::hash_account_id(&allocation.account)))
+                    .then_some(allocation.port)
+            })
+            .collect::<Vec<_>>();
+
+        self.accounts_by_hash = accounts_by_hash;
+
+        for allocation in revoked_allocations {
+            self.delete_allocation(allocation);
+        }
+    }
+
+    pub fn add_account(&mut self, account: String) {
+        self.accounts_by_hash
+            .insert(auth::hash_account_id(&account), account);
+    }
+
+    /// Removes an account immediately, including its existing allocations and
+    /// channel bindings. Deleting the bindings emits the existing commands
+    /// that remove the Linux eBPF fast-path entries.
+    pub fn remove_account(&mut self, account: &str) {
+        self.accounts_by_hash
+            .remove(&auth::hash_account_id(account));
+
+        let allocations = self
+            .allocations
+            .values()
+            .filter_map(|allocation| (allocation.account == account).then_some(allocation.port))
+            .collect::<Vec<_>>();
+
+        for allocation in allocations {
+            self.delete_allocation(allocation);
+        }
     }
 
     pub fn public_address(&self) -> IpStack {
@@ -484,7 +543,8 @@ where
         sender: ClientSocket,
         now: Instant,
     ) -> Result<(), Message<Attribute>> {
-        let username = self.verify_auth(sender, request)?;
+        let verified_username = self.verify_auth(sender, request)?;
+        let username = verified_username.username;
 
         if let Some(allocation) = self.allocations.get(&sender) {
             let (error_response, msg) = make_error_response(AllocationMismatch, request);
@@ -540,6 +600,7 @@ where
             &effective_lifetime,
             first_relay_address,
             maybe_second_relay_addr,
+            verified_username.account,
         );
 
         let mut message = success_response(ALLOCATE, request.transaction_id());
@@ -611,7 +672,8 @@ where
         sender: ClientSocket,
         now: Instant,
     ) -> Result<(), Message<Attribute>> {
-        let username = self.verify_auth(sender, request)?;
+        let verified_username = self.verify_auth(sender, request)?;
+        let username = verified_username.username;
 
         // TODO: Verify that this is the correct error code.
         let Some(allocation) = self.allocations.get_mut(&sender) else {
@@ -620,6 +682,13 @@ where
 
             return Err(error_response);
         };
+
+        if allocation.account != verified_username.account {
+            let (error_response, msg) = make_error_response(Unauthorized, request);
+            tracing::warn!(target: "relay", %sender, "{msg}: Credential belongs to a different account");
+
+            return Err(error_response);
+        }
 
         let effective_lifetime = request.effective_lifetime();
 
@@ -660,7 +729,8 @@ where
         sender: ClientSocket,
         now: Instant,
     ) -> Result<(), Message<Attribute>> {
-        let username = self.verify_auth(sender, request)?;
+        let verified_username = self.verify_auth(sender, request)?;
+        let username = verified_username.username;
 
         let Some(allocation) = self.allocations.get_mut(&sender) else {
             let (error_response, msg) = make_error_response(AllocationMismatch, request);
@@ -669,6 +739,13 @@ where
 
             return Err(error_response);
         };
+
+        if allocation.account != verified_username.account {
+            let (error_response, msg) = make_error_response(Unauthorized, request);
+            tracing::warn!(target: "relay", %sender, "{msg}: Credential belongs to a different account");
+
+            return Err(error_response);
+        }
 
         // Note: `channel_number` is enforced to be in the correct range.
         let requested_channel = request.channel_number();
@@ -769,7 +846,7 @@ where
         request: &CreatePermission,
         sender: ClientSocket,
     ) -> Result<(), Message<Attribute>> {
-        let username = self.verify_auth(sender, request)?;
+        let username = self.verify_auth(sender, request)?.username;
 
         self.authenticate_and_send(
             &username,
@@ -818,7 +895,7 @@ where
         &mut self,
         sender: ClientSocket,
         request: &(impl StunRequest + ProtectedRequest),
-    ) -> Result<Username, Message<Attribute>> {
+    ) -> Result<VerifiedUsername, Message<Attribute>> {
         let message_integrity = request.message_integrity().ok_or_else(|| {
             let (error_response, msg) = make_error_response(Unauthorized, request);
             tracing::warn!(target: "relay", "{msg}: Missing `MessageIntegrity` attribute");
@@ -855,7 +932,7 @@ where
             error_response
         })?;
 
-        message_integrity
+        let account_hash = message_integrity
             .verify(&self.auth_secret, username.name(), SystemTime::now()) // This is impure but we don't need to control this in our tests.
             .map_err(|e| {
                 let (error_response, msg) = make_error_response(Unauthorized, request);
@@ -872,7 +949,17 @@ where
                 error_response
             })?;
 
-        Ok(username.clone())
+        let Some(account) = self.accounts_by_hash.get(&account_hash).cloned() else {
+            let (error_response, msg) = make_error_response(Unauthorized, request);
+            tracing::debug!(target: "relay", "{msg}: Account is not enabled for TURN");
+
+            return Err(error_response);
+        };
+
+        Ok(VerifiedUsername {
+            username: username.clone(),
+            account,
+        })
     }
 
     fn create_new_allocation(
@@ -881,6 +968,7 @@ where
         lifetime: &Lifetime,
         first_relay_addr: IpAddr,
         second_relay_addr: Option<IpAddr>,
+        account: String,
     ) -> Allocation {
         assert!(
             self.clients_by_allocation.len() < self.max_available_ports() as usize,
@@ -900,6 +988,7 @@ where
             expires_at: now + lifetime.lifetime(),
             first_relay_addr,
             second_relay_addr,
+            account,
         }
     }
 
@@ -1154,6 +1243,7 @@ struct Allocation {
 
     first_relay_addr: IpAddr,
     second_relay_addr: Option<IpAddr>,
+    account: String,
 }
 
 #[derive(Debug, Clone)]
@@ -1399,7 +1489,105 @@ fn earliest(left: Option<Instant>, right: Option<Instant>) -> Option<Instant> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rand::{SeedableRng as _, rngs::StdRng};
     use std::net::{Ipv4Addr, Ipv6Addr};
+
+    #[test]
+    fn adding_account_is_idempotent() {
+        let account = "account-hash".to_owned();
+        let mut server = Server::new(
+            Ipv4Addr::LOCALHOST,
+            StdRng::seed_from_u64(0),
+            3478,
+            49_152..=49_153,
+        );
+
+        server.set_accounts([]);
+        server.add_account(account.clone());
+        server.add_account(account.clone());
+
+        assert_eq!(server.accounts_by_hash.len(), 1);
+        assert_eq!(
+            server
+                .accounts_by_hash
+                .get(&auth::hash_account_id(&account)),
+            Some(&account)
+        );
+    }
+
+    #[test]
+    fn removing_account_deletes_its_allocations_and_channel_bindings() {
+        let now = Instant::now();
+        let client = ClientSocket::new(SocketAddr::from(([127, 0, 0, 1], 50_000)));
+        let peer = PeerSocket::new(SocketAddr::from(([127, 0, 0, 2], 50_001)));
+        let port = AllocationPort::new(49_152);
+        let channel = ChannelNumber::new(ChannelNumber::MIN).unwrap();
+        let account = "account-hash".to_owned();
+        let mut server = Server::new(
+            Ipv4Addr::LOCALHOST,
+            StdRng::seed_from_u64(0),
+            3478,
+            49_152..=49_153,
+        );
+
+        server.set_accounts([account.clone()]);
+        server.allocations.insert(
+            client,
+            Allocation {
+                port,
+                expires_at: now + Duration::from_secs(600),
+                first_relay_addr: Ipv4Addr::LOCALHOST.into(),
+                second_relay_addr: None,
+                account: account.clone(),
+            },
+        );
+        server.clients_by_allocation.insert(port, client);
+        server
+            .allocations_by_username
+            .insert(Username::new("username".to_owned()).unwrap(), port);
+        server.channels_by_client_and_number.insert(
+            (client, channel),
+            Channel {
+                expiry: now + Duration::from_secs(600),
+                peer_address: peer,
+                allocation: port,
+                bound: true,
+            },
+        );
+        server
+            .channel_numbers_by_client_and_peer
+            .insert((client, peer), channel);
+        server
+            .channel_and_client_by_port_and_peer
+            .insert((port, peer), (client, channel));
+
+        server.remove_account(&account);
+
+        assert_eq!(server.num_allocations(), 0);
+        assert_eq!(server.num_active_channels(), 0);
+        assert_eq!(
+            server.next_command(),
+            Some(Command::DeleteChannelBinding {
+                client,
+                channel_number: channel,
+                peer,
+                allocation_port: port,
+            })
+        );
+        assert_eq!(
+            server.next_command(),
+            Some(Command::FreeAllocation {
+                port,
+                family: AddressFamily::V4,
+            })
+        );
+
+        server.remove_account(&account);
+
+        assert_eq!(server.num_allocations(), 0);
+        assert_eq!(server.num_active_channels(), 0);
+        assert_eq!(server.next_command(), None);
+    }
 
     // Tests for requirements listed in https://www.rfc-editor.org/rfc/rfc8656#name-receiving-an-allocate-reque.
 

@@ -19,6 +19,8 @@ pub(crate) struct SimRelay {
     created_at: SystemTime,
 }
 
+const ACCOUNT_ID: &str = "00000000-0000-0000-0000-000000000000";
+
 pub(crate) fn map_explode<'a>(
     relays: impl Iterator<Item = (&'a RelayId, &'a Host<SimRelay>)> + 'a,
     username: impl Into<String>,
@@ -38,12 +40,13 @@ pub(crate) fn map_explode<'a>(
 
 impl SimRelay {
     pub(crate) fn new(seed: u64, ip4: Option<Ipv4Addr>, ip6: Option<Ipv6Addr>) -> Self {
-        let sut = relay_proto::Server::new(
+        let mut sut = relay_proto::Server::new(
             IpStack::from((ip4, ip6)),
             rand::rngs::StdRng::seed_from_u64(seed),
             3478,
             49152..=65535,
         );
+        sut.set_accounts([ACCOUNT_ID.to_owned()]);
 
         Self {
             sut,
@@ -186,9 +189,13 @@ impl SimRelay {
             .expect("expiry must be later than UNIX_EPOCH")
             .as_secs();
 
-        let password = relay_proto::auth::generate_password(auth_secret, secs, username);
+        let username = format!(
+            "{secs}:{}:{username}",
+            relay_proto::auth::hash_account_id(ACCOUNT_ID)
+        );
+        let password = relay_proto::auth::generate_password(auth_secret, &username);
 
-        (format!("{secs}:{username}"), password)
+        (username, password)
     }
 }
 

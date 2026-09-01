@@ -251,6 +251,7 @@ async fn try_main(args: Args) -> Result<()> {
         "relay",
         JoinMessage {
             stamp_secret: server.auth_secret().expose_secret().to_string(),
+            turn_account_validation: true,
         },
         || {
             ExponentialBackoffBuilder::default()
@@ -401,14 +402,25 @@ where
 #[serde(rename_all = "snake_case", tag = "event", content = "payload")]
 enum IngressMessages {
     Init(Init),
+    AccountAdded(Account),
+    AccountRemoved(Account),
 }
 
 #[derive(serde::Deserialize, Debug)]
-struct Init {}
+struct Init {
+    #[serde(default)]
+    account_ids: Vec<String>,
+}
+
+#[derive(serde::Deserialize, Debug)]
+struct Account {
+    account_id: String,
+}
 
 #[derive(serde::Serialize, PartialEq, Debug, Clone)]
 struct JoinMessage {
     stamp_secret: String,
+    turn_account_validation: bool,
 }
 
 fn make_rng(seed: Option<u64>) -> StdRng {
@@ -680,7 +692,22 @@ where
 
             // Priority 5: Handle portal messages
             match self.event_rx.poll_recv(cx) {
-                Poll::Ready(Some(Ok(IngressMessages::Init(Init {})))) => {
+                Poll::Ready(Some(Ok(IngressMessages::Init(init)))) => {
+                    tracing::info!(
+                        num_accounts = init.account_ids.len(),
+                        "Received TURN account list"
+                    );
+                    self.server.set_accounts(init.account_ids);
+                    tick.want_continue();
+                }
+                Poll::Ready(Some(Ok(IngressMessages::AccountAdded(account)))) => {
+                    tracing::info!(account_id = %account.account_id, "Added account to TURN allow list");
+                    self.server.add_account(account.account_id);
+                    tick.want_continue();
+                }
+                Poll::Ready(Some(Ok(IngressMessages::AccountRemoved(account)))) => {
+                    tracing::info!(account_id = %account.account_id, "Removed account from TURN allow list");
+                    self.server.remove_account(&account.account_id);
                     tick.want_continue();
                 }
                 Poll::Ready(Some(Err(e))) => {
