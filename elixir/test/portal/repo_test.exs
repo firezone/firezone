@@ -555,7 +555,7 @@ defmodule Portal.RepoTest do
                {:error, :invalid_cursor}
     end
 
-    test "rejects a cursor whose authenticated payload was modified", %{
+    test "rejects a cursor whose signature was modified", %{
       query_module: query_module,
       queryable: queryable
     } do
@@ -565,9 +565,9 @@ defmodule Portal.RepoTest do
           inserted_at: ~U[2000-01-01 00:00:00.000000Z]
         })
 
-      last_byte_index = byte_size(cursor) - 1
-      replacement = if binary_part(cursor, last_byte_index, 1) == "A", do: "B", else: "A"
-      modified_cursor = binary_part(cursor, 0, last_byte_index) <> replacement
+      [payload, signature] = String.split(cursor, ".", parts: 2)
+      replacement = if binary_part(signature, 0, 1) == "A", do: "B", else: "A"
+      modified_cursor = payload <> "." <> replacement <> binary_part(signature, 1, byte_size(signature) - 1)
 
       assert list(queryable, query_module, page: [cursor: modified_cursor]) ==
                {:error, :invalid_cursor}
