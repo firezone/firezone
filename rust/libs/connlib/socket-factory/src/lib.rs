@@ -736,7 +736,30 @@ impl UdpSocket {
         dst: SocketAddr,
         payload: &[u8],
     ) -> io::Result<Vec<u8>> {
-        self.inner.send_to(payload, dst).await?;
+        let src_ip = self
+            .source_ip_resolver
+            .as_ref()
+            .map(|resolve| resolve(dst.ip()))
+            .transpose()?;
+
+        // A plain `send_to` cannot carry a source IP; sending via [`quinn_udp`] pins the
+        // resolved source through a control message, like all other sends on our sockets.
+        let state = quinn_udp::UdpSocketState::new(UdpSockRef::from(&self.inner))?;
+        let transmit = Transmit {
+            destination: dst,
+            ecn: None,
+            contents: payload,
+            segment_size: None,
+            src_ip,
+        };
+
+        // A `Transmit` without a `segment_size` is a single datagram, so a successful send is complete.
+        let _ = self
+            .inner
+            .async_io(Interest::WRITABLE, || {
+                state.try_send(UdpSockRef::from(&self.inner), &transmit)
+            })
+            .await?;
 
         let mut buffer = vec![0u8; BUF_SIZE];
 
