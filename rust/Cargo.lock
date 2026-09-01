@@ -571,7 +571,7 @@ dependencies = [
  "anyhow",
  "cargo_metadata 0.23.0",
  "rustc_version",
- "which 8.0.5",
+ "which 8.0.6",
 ]
 
 [[package]]
@@ -2216,7 +2216,7 @@ dependencies = [
  "incremental-inet-checksum",
  "ip-packet",
  "network-types",
- "which 8.0.5",
+ "which 8.0.6",
 ]
 
 [[package]]
@@ -9525,9 +9525,9 @@ dependencies = [
 
 [[package]]
 name = "which"
-version = "8.0.5"
+version = "8.0.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8f3ef584124b911bcc3875c2f1472e80f24361ceb789bd1c62b3e9a3df9ff43c"
+checksum = "bae2f2b2b816647a1cab1acc91f5bd20812d53cb344382635ec2181940c8034f"
 dependencies = [
  "libc",
 ]
