@@ -12,6 +12,11 @@
         android:title="@string/advanced_settings_title" />
 
     <item
+        android:id="@+id/settingsX509"
+        android:icon="@drawable/rounded_verified_user_black_24dp"
+        android:title="@string/x509_settings_title" />
+
+    <item
         android:id="@+id/settingsLogs"
         android:icon="@drawable/rounded_description_black_24dp"
         android:title="@string/log_settings_title" />

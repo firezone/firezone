@@ -33,8 +33,9 @@ import dev.firezone.android.R
 fun ProfileMenu(
     actorName: String,
     onSettings: () -> Unit,
-    onSignOut: () -> Unit,
+    onEndSession: () -> Unit,
     modifier: Modifier = Modifier,
+    endSessionLabel: String = stringResource(R.string.sign_out),
 ) {
     var expanded by rememberSaveable { mutableStateOf(false) }
 
@@ -60,10 +61,10 @@ fun ProfileMenu(
                 contentPadding = PaddingValues(horizontal = 16.dp),
             )
             DropdownMenuItem(
-                text = { Text(stringResource(R.string.sign_out)) },
+                text = { Text(endSessionLabel) },
                 onClick = {
                     expanded = false
-                    onSignOut()
+                    onEndSession()
                 },
                 leadingIcon = { Icon(painterResource(R.drawable.rounded_logout_24dp), contentDescription = null) },
                 contentPadding = PaddingValues(horizontal = 16.dp),

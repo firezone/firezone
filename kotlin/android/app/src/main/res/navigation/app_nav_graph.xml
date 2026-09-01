@@ -37,4 +37,8 @@
         android:id="@+id/notificationPermissionActivity"
         android:name="dev.firezone.android.features.permission.notification.ui.NotificationPermissionActivity" />
 
+    <activity
+        android:id="@+id/certificatePermissionActivity"
+        android:name="dev.firezone.android.features.permission.certificate.ui.CertificatePermissionActivity" />
+
 </navigation>

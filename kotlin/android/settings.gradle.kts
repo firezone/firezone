@@ -65,3 +65,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "Firezone App"
 include(":app")
+include(":dpc")

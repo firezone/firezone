@@ -12,7 +12,7 @@ plugins {
     id("com.google.dagger.hilt.android")
     id("com.google.gms.google-services")
     id("com.google.firebase.crashlytics")
-    id("com.diffplug.spotless") version "8.10.0"
+    id("com.diffplug.spotless")
     id("kotlin-parcelize")
     id("androidx.navigation.safeargs")
     id("com.google.devtools.ksp")
@@ -161,6 +161,15 @@ android {
         }
     }
 
+    // The BouncyCastle jars behind the instrumented tests each ship these, and the androidTest
+    // resource merge refuses duplicates.
+    packaging {
+        resources {
+            excludes += "META-INF/LICENSE.md"
+            excludes += "META-INF/versions/*/OSGI-INF/MANIFEST.MF"
+        }
+    }
+
     testCoverage {
         jacocoVersion = jacocoToolVersion
     }
@@ -289,6 +298,8 @@ dependencies {
     androidTestImplementation("androidx.test.espresso:espresso-core:3.7.0")
     androidTestImplementation("androidx.test.espresso:espresso-contrib:3.7.0")
     androidTestImplementation("androidx.test.uiautomator:uiautomator:2.4.0")
+    // Mints the test certificates; the platform offers no way to build one.
+    androidTestImplementation("org.bouncycastle:bcpkix-jdk18on:1.85")
     // Unit Tests
     testImplementation("com.google.dagger:hilt-android-testing:2.60.1")
 

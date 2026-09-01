@@ -33,7 +33,7 @@ class SampleSessionActivity : AppCompatActivity() {
                     onAddFavorite = { id -> favorites = Favorites(HashSet(favorites.inner).apply { add(id) }) },
                     onRemoveFavorite = { id -> favorites = Favorites(HashSet(favorites.inner).apply { remove(id) }) },
                     onSettings = ::finish,
-                    onSignOut = ::finish,
+                    onEndSession = ::finish,
                 )
             }
         }

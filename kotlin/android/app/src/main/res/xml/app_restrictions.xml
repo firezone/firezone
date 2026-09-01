@@ -60,4 +60,10 @@
         android:key="connectOnStart"
         android:restrictionType="bool"
         android:title="@string/config_connect_on_start_title" />
+
+    <restriction
+        android:description="@string/config_x509_certificate_alias_description"
+        android:key="x509CertificateAlias"
+        android:restrictionType="string"
+        android:title="@string/config_x509_certificate_alias_title" />
 </restrictions>

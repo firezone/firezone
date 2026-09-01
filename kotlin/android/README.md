@@ -85,6 +85,34 @@ directly. For example:
 export PATH="$HOME/.cargo/bin:$PATH"
 ```
 
+## Managed test device
+
+The `managed-device:*` tasks drive the test Device Policy Controller in `dpc/`
+by broadcast, which puts an attached emulator into every state an X.509-managed
+device can be in without a human at the screen: a certificate the app may use,
+one installed without a grant, an alias with nothing behind it, or nothing
+configured. The ungranted state is what a personally-owned device carrying a
+work profile looks like, and it is what sends the app to the certificate screen.
+
+```bash
+mise run //kotlin/android:managed-device:provision
+mise run //kotlin/android:managed-device:install-certificate --no-grant
+mise run //kotlin/android:managed-device:managed-config --alias firezone-client
+```
+
+`provision` makes the DPC the owner of the device, or of a work profile with
+`--work-profile`; a device owner can only be set on an emulator that carries no
+accounts, so pick an image without Play Services. The certificate comes from
+the shared X.509 tasks, so issue one first:
+
+```bash
+mise run //:x509:create-ca
+mise run //:x509:gen-certificate device
+```
+
+`gen-certificate user --email <email> --account-id <account-id>` issues one
+that carries an actor as well. `reset` gives the device back.
+
 ## Release Setup
 
 We release from GitHub CI, so this shouldn't be necessary. But if you're looking

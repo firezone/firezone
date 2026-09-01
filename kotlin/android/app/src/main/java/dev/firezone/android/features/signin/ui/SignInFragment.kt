@@ -6,18 +6,26 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.fragment.app.Fragment
+import androidx.fragment.app.viewModels
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.fragment.findNavController
 import dagger.hilt.android.AndroidEntryPoint
 import dev.firezone.android.R
 import dev.firezone.android.features.auth.ui.AuthActivity
+import dev.firezone.android.features.session.ui.SessionActivity
 import dev.firezone.android.features.session.ui.compose.FirezoneTheme
 import dev.firezone.android.features.signin.ui.compose.SignInScreen
+import dev.firezone.android.tunnel.TunnelService
+import uniffi.x509claims.Identity
 
 @AndroidEntryPoint
 internal class SignInFragment : Fragment() {
+    private val viewModel: SignInViewModel by viewModels()
+
     override fun onCreateView(
         inflater: LayoutInflater,
         container: ViewGroup?,
@@ -26,12 +34,13 @@ internal class SignInFragment : Fragment() {
         ComposeView(requireContext()).apply {
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
             setContent {
+                val identity by viewModel.certificateIdentityStateFlow.collectAsStateWithLifecycle()
+
                 FirezoneTheme {
                     SignInScreen(
-                        onSignIn = {
-                            startActivity(Intent(requireContext(), AuthActivity::class.java))
-                            requireActivity().finish()
-                        },
+                        signInLabel = startSessionLabel(requireContext(), identity),
+                        promptLabel = startSessionPrompt(requireContext(), identity),
+                        onSignIn = { startSession(identity) },
                         onSettings = {
                             val bundle = Bundle().apply { putBoolean("isUserSignedIn", false) }
                             findNavController().navigate(R.id.settingsActivity, bundle)
@@ -40,4 +49,31 @@ internal class SignInFragment : Fragment() {
                 }
             }
         }
+
+    override fun onResume() {
+        super.onResume()
+
+        // The administrator can grant the certificate while this screen is open.
+        viewModel.refreshCertificateIdentity()
+    }
+
+    private fun startSession(identity: Identity) {
+        when (identity) {
+            Identity.Absent -> {
+                startActivity(Intent(requireContext(), AuthActivity::class.java))
+                requireActivity().finish()
+            }
+
+            is Identity.Claimed -> {
+                // The certificate is the credential, so connect instead of opening a browser.
+                TunnelService.start(requireContext())
+                startActivity(
+                    Intent(requireContext(), SessionActivity::class.java).apply {
+                        flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                    },
+                )
+                requireActivity().finish()
+            }
+        }
+    }
 }

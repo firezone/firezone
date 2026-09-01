@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Package visibility hides every other app from us, and `grantKeyPairToApp` resolves the
+         grantee on the caller's behalf, so without this it reports the app as not installed. -->
+    <queries>
+        <package android:name="dev.firezone.android" />
+    </queries>
+
+    <application android:label="Firezone Test DPC">
+        <receiver
+            android:name=".AdminReceiver"
+            android:permission="android.permission.BIND_DEVICE_ADMIN"
+            android:exported="true">
+            <meta-data
+                android:name="android.app.device_admin"
+                android:resource="@xml/device_admin" />
+            <intent-filter>
+                <action android:name="android.app.action.DEVICE_ADMIN_ENABLED" />
+                <action android:name="android.app.action.PROFILE_PROVISIONING_COMPLETE" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Driven by `am broadcast` so provisioning a device needs no UI, unlike TestDPC. -->
+        <receiver
+            android:name=".ProvisionReceiver"
+            android:exported="true" />
+    </application>
+
+</manifest>

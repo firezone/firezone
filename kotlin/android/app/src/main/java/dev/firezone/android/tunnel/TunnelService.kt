@@ -26,6 +26,8 @@ import dev.firezone.android.core.Telemetry
 import dev.firezone.android.core.data.Repository
 import dev.firezone.android.core.data.ResourceState
 import dev.firezone.android.core.data.isEnabled
+import dev.firezone.android.core.x509.X509Identity
+import dev.firezone.android.core.x509.X509IdentityException
 import dev.firezone.android.tunnel.model.Cidr
 import dev.firezone.android.tunnel.model.ConnectedDevice
 import dev.firezone.android.tunnel.model.Resource
@@ -33,6 +35,7 @@ import dev.firezone.android.tunnel.model.ResourceType
 import dev.firezone.android.tunnel.model.Site
 import dev.firezone.android.tunnel.model.StatusEnum
 import dev.firezone.android.tunnel.model.isInternetResource
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -64,6 +67,7 @@ import uniffi.connlib.logCleanupDefaultMaxSizeMb
 import uniffi.connlib.startTelemetry
 import uniffi.connlib.stopTelemetry
 import uniffi.connlib.use
+import uniffi.x509claims.Identity
 import java.nio.file.Files
 import java.nio.file.Paths
 import javax.inject.Inject
@@ -84,6 +88,9 @@ class TunnelService : VpnService() {
     @Inject
     internal lateinit var sessionFactory: SessionFactory
 
+    @Inject
+    internal lateinit var x509Identity: X509Identity
+
     private var tunnelIpv4Address: String? = null
     private var tunnelIpv6Address: String? = null
     private var tunnelDnsAddresses: MutableList<String> = mutableListOf()
@@ -99,18 +106,31 @@ class TunnelService : VpnService() {
 
     var startedByUser: Boolean = false
     private var commandChannel: Channel<TunnelCommand>? = null
-    private val serviceScope = CoroutineScope(SupervisorJob())
+
+    // A `SupervisorJob` keeps one failed child from cancelling its siblings, but an exception it
+    // does not handle still reaches the thread's default handler and takes the process with it.
+    // Reporting the failure and leaving the service to reset its own state is always better than
+    // killing the app underneath the user.
+    private val serviceExceptionHandler =
+        CoroutineExceptionHandler { _, throwable ->
+            Log.e(TAG, "Unhandled exception in the tunnel service", throwable)
+        }
+    private val serviceScope = CoroutineScope(SupervisorJob() + serviceExceptionHandler)
 
     private val _serviceState = MutableStateFlow(State.DOWN)
     private val _resourcesState = MutableStateFlow<List<Resource>>(emptyList())
     private val _connectedDevicesState = MutableStateFlow<List<ConnectedDevice>>(emptyList())
     private val _actorNameState = MutableStateFlow<String?>(null)
+    private val _certificateIdentityState = MutableStateFlow<Identity>(Identity.Absent)
 
     // A `StateFlow` replays its current value to every new collector, so a newly bound SessionActivity catches up on its own.
     val serviceState: StateFlow<State> = _serviceState.asStateFlow()
     val resourcesState: StateFlow<List<Resource>> = _resourcesState.asStateFlow()
     val connectedDevicesState: StateFlow<List<ConnectedDevice>> = _connectedDevicesState.asStateFlow()
     val actorNameState: StateFlow<String?> = _actorNameState.asStateFlow()
+
+    /** Who the session's client certificate says is connecting, which decides how the session ends. */
+    val certificateIdentityState: StateFlow<Identity> = _certificateIdentityState.asStateFlow()
 
     var tunnelResources: List<Resource>
         get() = _resourcesState.value
@@ -227,10 +247,12 @@ class TunnelService : VpnService() {
                 val newAppRestrictions = restrictionsManager.applicationRestrictions
                 serviceScope.launch { repo.saveManagedConfiguration(newAppRestrictions).collect {} }
                 val changed = MANAGED_CONFIGURATIONS.any { newAppRestrictions.getString(it) != appRestrictions.getString(it) }
+                // The next `connect()` reads the token and the certificate alias off this bundle,
+                // so refresh it even when the tunnel itself stays as it is.
+                appRestrictions = newAppRestrictions
                 if (!changed) {
                     return
                 }
-                appRestrictions = newAppRestrictions
 
                 buildVpnService()
             }
@@ -312,11 +334,15 @@ class TunnelService : VpnService() {
     }
 
     private fun connect() {
-        val token = appRestrictions.getString("token") ?: repo.getTokenSync()
+        val token =
+            (appRestrictions.getString("token") ?: repo.getTokenSync())
+                ?.takeUnless(String::isBlank)
+        val certificateAlias = repo.getX509CertificateAliasSync(appRestrictions)
         val config = repo.getConfigSync()
         resourceState = repo.getInternetResourceStateSync()
 
-        if (!token.isNullOrBlank()) {
+        // A client certificate authenticates on its own, so either credential is enough.
+        if (token != null || certificateAlias != null) {
             tunnelState = State.CONNECTING
             // Dismiss any previous disconnected notifications
             TunnelNotification.dismissDisconnectedNotification(this)
@@ -348,6 +374,12 @@ class TunnelService : VpnService() {
                             identifierForVendor = null,
                         )
 
+                    // The KeyChain blocks on a system service and connlib reads the identity while
+                    // it constructs the session, so load it before we get there.
+                    val identity =
+                        withContext(Dispatchers.IO) { x509Identity.load(certificateAlias) }
+                    _certificateIdentityState.value = identity?.identity ?: Identity.Absent
+
                     sessionFactory
                         .open(
                             AndroidSessionConfig(
@@ -358,7 +390,9 @@ class TunnelService : VpnService() {
                                 isInternetResourceActive = resourceState.isEnabled(),
                                 deviceInfo = deviceInfo,
                             ),
-                            tlsIdentity = null,
+                            // The portal judges a client certificate at the application layer, so
+                            // whether this one is acceptable is not ours to decide.
+                            tlsIdentity = identity?.tlsIdentity,
                         ).use { session ->
                             startNetworkMonitoring()
                             startLogCleanup()
@@ -387,6 +421,13 @@ class TunnelService : VpnService() {
                 } catch (e: ConnlibException) {
                     Log.e(TAG, "Failed to start session", e)
                     e.close()
+                } catch (e: X509IdentityException) {
+                    Log.e(TAG, "Failed to load the client certificate", e)
+                    val advice = "Contact your administrator for support."
+                    showErrorNotification(
+                        "Client certificate unavailable",
+                        e.message?.takeUnless(String::isBlank)?.let { "$it $advice" } ?: advice,
+                    )
                 } finally {
                     commandChannel = null
                     tunnelState = State.DOWN
@@ -680,6 +721,10 @@ class TunnelService : VpnService() {
                                 }
 
                                 is Event.Disconnected -> {
+                                    Log.i(TAG, "Disconnected by connlib: ${event.error.message()}")
+
+                                    // Certificate failures leave the saved token usable, so only
+                                    // discard it when connlib says a new sign-in is required.
                                     if (event.error.requiresSignIn()) {
                                         repo.clearToken()
                                     }

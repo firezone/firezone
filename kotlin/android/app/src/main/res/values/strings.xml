@@ -20,21 +20,62 @@
 	<string name="log_filter">Log Filter</string>
 	<string name="button_reset_to_defaults">Reset to Defaults</string>
 	<!-- Diagnostic Logs Settings -->
+	<string name="x509_settings_title">X.509</string>
 	<string name="log_settings_title">Logs</string>
 	<string name="share_diagnostic_logs">Export Logs</string>
 	<string name="log_directory_size">Log directory size: %1$s</string>
 	<string name="clear_log_directory">Clear Log Directory</string>
 
+	<!-- Client Certificate -->
+	<string name="x509_certificate_title">Client certificate</string>
+	<string name="x509_no_certificate_title">No client certificate</string>
+	<string name="x509_issued_by">Issued by %1$s</string>
+	<string name="x509_valid_until">Valid until %1$s</string>
+	<string name="x509_select_certificate">Select certificate</string>
+	<string name="x509_selection_title">Select your client certificate</string>
+	<string name="x509_selection_description">
+		A certificate has been installed on this device but Firezone has not been granted access.
+		Please click \'Select certificate\' and select it on the presented system pop-up. Firezone
+		cannot use the installed certificate beforehand. You can change or revert this permission
+		in the X.509 settings tab at any time.
+	</string>
+	<string name="x509_forget_certificate">Forget Selection</string>
+	<string name="x509_loading">Reading the KeyChain…</string>
+	<string name="x509_no_certificate_selected">No RSA or EC certificate was selected.</string>
+	<string name="x509_not_released">
+		Android has not released this certificate to Firezone. Selecting it grants access.
+	</string>
+	<string name="x509_error_title">Unable to read the client certificate</string>
+	<string name="x509_unreadable">Firezone could not read this certificate.</string>
+	<string name="x509_contact_admin">Contact your administrator for support.</string>
+	<string name="x509_claim_absent">Not present</string>
+	<string name="x509_claim_empty">Empty</string>
+	<string name="x509_claim_too_long">Longer than 255 characters</string>
+	<string name="x509_claim_not_an_email_address">Not a valid email address</string>
+	<string name="x509_claim_not_a_uuid">Not a UUID</string>
+	<string name="x509_claim_ambiguous">More than one value was given</string>
+	<string name="x509_claim_placeholder_identifier">Placeholder identifier</string>
+	<string name="x509_claim_unknown_attribute">Unrecognised attribute</string>
+	<string name="x509_claim_not_yet_valid">Not yet valid</string>
+	<string name="x509_claim_expired">Expired</string>
+	<string name="x509_claim_missing_client_auth_eku">Required for mutual TLS</string>
+	<string name="x509_claim_digital_signature_not_allowed">Required to sign the TLS handshake</string>
+
 	<!-- Sign In -->
 	<string name="sign_in">Sign In</string>
+	<string name="connect">Connect</string>
+	<string name="connect_as">Connect as %1$s</string>
 	<string name="settings">Settings</string>
 	<string name="sign_in_welcome">Welcome to Firezone.</string>
 	<string name="sign_in_prompt">Sign in to access Resources.</string>
+	<string name="sign_in_certificate_hint">This device has a certificate that identifies you.</string>
 
 	<!-- Sign Out -->
 	<string name="resources">Resources</string>
 	<string name="connected_devices">Connected Devices</string>
 	<string name="sign_out">Sign Out</string>
+	<string name="disconnect">Disconnect</string>
+	<string name="connected_as">Connected as %1$s</string>
 
 	<!-- Profile -->
 	<string name="profile">Profile</string>
@@ -116,6 +157,12 @@
 	<string name="config_connect_on_start_title">Connect on Start</string>
 	<string name="config_connect_on_start_description">
 		Whether Firezone should automatically try to connect when the app is launched.
+	</string>
+	<string name="config_x509_certificate_alias_title">Client Certificate Alias</string>
+	<string name="config_x509_certificate_alias_description">
+		The system KeyChain alias of the client certificate used for mutual TLS. The device policy
+		controller must install the key pair and grant dev.firezone.android access to it. Leave
+		empty to disable certificate authentication.
 	</string>
 
 	<string name="managed_setting_info_description">

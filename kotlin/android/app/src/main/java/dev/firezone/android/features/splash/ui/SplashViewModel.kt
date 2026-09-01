@@ -14,11 +14,13 @@ import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.firezone.android.core.ApplicationMode
 import dev.firezone.android.core.data.Repository
+import dev.firezone.android.core.x509.CertificateUser
 import dev.firezone.android.tunnel.TunnelService
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import uniffi.x509claims.Identity
 import javax.inject.Inject
 
 private const val REQUEST_DELAY = 1000L
@@ -30,6 +32,7 @@ internal class SplashViewModel
         private val repo: Repository,
         private val applicationRestrictions: Bundle,
         private val applicationMode: ApplicationMode,
+        private val certificateUser: CertificateUser,
     ) : ViewModel() {
         private val actionMutableStateFlow = MutableStateFlow<ViewAction?>(null)
         val actionStateFlow: StateFlow<ViewAction?> = actionMutableStateFlow
@@ -54,10 +57,19 @@ internal class SplashViewModel
                     return@launch
                 }
 
+                // An administrator can configure a certificate that only the user can release, which
+                // is what a work profile on a personally-owned device looks like. Ask once per
+                // launch: pressing on without it only fails later, at the tunnel.
+                if (!certificateSelectionOffered && certificateUser.needsSelection()) {
+                    certificateSelectionOffered = true
+                    actionMutableStateFlow.value = ViewAction.NavigateToCertificatePermission
+                    return@launch
+                }
+
                 val token = applicationRestrictions.getString("token") ?: repo.getTokenSync()
 
-                // If we don't have a token, we can't connect.
-                if (token.isNullOrBlank()) {
+                // Without a token we can only connect if a client certificate claims an identity.
+                if (token.isNullOrBlank() && certificateUser.identity() == Identity.Absent) {
                     actionMutableStateFlow.value = ViewAction.NavigateToSignIn
                     return@launch
                 }
@@ -118,10 +130,22 @@ internal class SplashViewModel
             return true
         }
 
+        private companion object {
+            /**
+             * Survives the ViewModel so the screen appears once per launch rather than every time
+             * the splash re-checks, and returns on the next start while the certificate is still
+             * out of reach.
+             */
+            @Volatile
+            private var certificateSelectionOffered = false
+        }
+
         internal sealed class ViewAction {
             object NavigateToVpnPermission : ViewAction()
 
             object NavigateToNotificationPermission : ViewAction()
+
+            object NavigateToCertificatePermission : ViewAction()
 
             object NavigateToSettings : ViewAction()
 
