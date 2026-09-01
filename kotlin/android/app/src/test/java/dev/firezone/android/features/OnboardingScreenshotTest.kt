@@ -7,7 +7,7 @@ import com.github.takahirom.roborazzi.ExperimentalRoborazziApi
 import com.github.takahirom.roborazzi.RobolectricDeviceQualifiers
 import com.github.takahirom.roborazzi.captureRoboImage
 import com.github.takahirom.roborazzi.roborazziSystemPropertyOutputDirectory
-import dev.firezone.android.features.permission.certificate.ui.compose.CertificatePermissionScreen
+import dev.firezone.android.features.permission.ui.compose.CertificatePermissionScreen
 import dev.firezone.android.features.permission.ui.compose.NotificationPermissionScreen
 import dev.firezone.android.features.permission.ui.compose.VpnPermissionScreen
 import dev.firezone.android.features.signin.ui.compose.SignInScreen

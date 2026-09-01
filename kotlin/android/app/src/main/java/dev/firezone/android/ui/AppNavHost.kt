@@ -6,6 +6,8 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.VpnService
 import android.os.Build
+import android.widget.Toast
+import androidx.activity.compose.LocalActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
@@ -21,7 +23,10 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import dev.firezone.android.R
 import dev.firezone.android.features.auth.ui.AuthActivity
+import dev.firezone.android.features.permission.ui.CertificatePermissionViewModel
+import dev.firezone.android.features.permission.ui.compose.CertificatePermissionScreen
 import dev.firezone.android.features.permission.ui.compose.NotificationPermissionScreen
 import dev.firezone.android.features.permission.ui.compose.VpnPermissionScreen
 import dev.firezone.android.features.session.ui.SessionActivity
@@ -34,6 +39,7 @@ private const val ROUTE_SPLASH = "splash"
 private const val ROUTE_SIGN_IN = "sign-in"
 private const val ROUTE_VPN_PERMISSION = "vpn-permission"
 private const val ROUTE_NOTIFICATION_PERMISSION = "notification-permission"
+private const val ROUTE_CERTIFICATE_PERMISSION = "certificate-permission"
 
 @Composable
 fun AppNavHost(
@@ -50,6 +56,7 @@ fun AppNavHost(
         composable(ROUTE_NOTIFICATION_PERMISSION) {
             NotificationPermissionRoute(navController, onNotificationPermissionRequested)
         }
+        composable(ROUTE_CERTIFICATE_PERMISSION) { CertificatePermissionRoute(navController) }
     }
 }
 
@@ -81,6 +88,10 @@ private fun SplashRoute(
                 navController.navigateOnce(ROUTE_NOTIFICATION_PERMISSION)
             }
 
+            is SplashViewModel.ViewAction.NavigateToCertificatePermission -> {
+                navController.navigateOnce(ROUTE_CERTIFICATE_PERMISSION)
+            }
+
             is SplashViewModel.ViewAction.NavigateToSignIn -> {
                 navController.navigateOnce(ROUTE_SIGN_IN)
             }
@@ -108,6 +119,31 @@ private fun SignInRoute(onSignInLaunched: () -> Unit) {
             onSignInLaunched()
         },
         onSettings = { context.startActivity(SettingsActivity.createIntent(context, isUserSignedIn = false)) },
+    )
+}
+
+@Composable
+private fun CertificatePermissionRoute(
+    navController: NavHostController,
+    viewModel: CertificatePermissionViewModel = hiltViewModel(),
+) {
+    val activity = LocalActivity.current ?: return
+
+    CertificatePermissionScreen(
+        onSelectCertificate = {
+            viewModel.chooseCertificate(activity) { released ->
+                activity.runOnUiThread {
+                    if (released) {
+                        navController.popBackStack()
+                    } else {
+                        Toast
+                            .makeText(activity, R.string.device_trust_no_certificate_selected, Toast.LENGTH_LONG)
+                            .show()
+                    }
+                }
+            }
+        },
+        onSkip = { navController.popBackStack() },
     )
 }
 

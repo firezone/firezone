@@ -54,11 +54,28 @@ fun NotificationPermissionScreen(
 }
 
 @Composable
+fun CertificatePermissionScreen(
+    onSelectCertificate: () -> Unit,
+    onSkip: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    PermissionScreen(
+        title = stringResource(R.string.device_trust_selection_title),
+        description = stringResource(R.string.device_trust_selection_description),
+        onRequestPermission = onSelectCertificate,
+        modifier = modifier,
+        confirmLabel = stringResource(R.string.device_trust_select_certificate),
+        onSkip = onSkip,
+    )
+}
+
+@Composable
 private fun PermissionScreen(
     title: String,
     description: String,
     onRequestPermission: () -> Unit,
     modifier: Modifier = Modifier,
+    confirmLabel: String = stringResource(R.string.request_permission),
     onSkip: (() -> Unit)? = null,
 ) {
     Scaffold(modifier = modifier) { innerPadding ->
@@ -85,7 +102,7 @@ private fun PermissionScreen(
             Spacer(Modifier.height(24.dp))
 
             Button(onClick = onRequestPermission, modifier = Modifier.fillMaxWidth()) {
-                Text(stringResource(R.string.request_permission))
+                Text(confirmLabel)
             }
             if (onSkip != null) {
                 // Brand orange marks the call to action, which here is granting the permission.
