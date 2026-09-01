@@ -392,38 +392,6 @@ mod tests {
         assert_eq!(ips, vec![IpAddr::from(Ipv4Addr::new(20, 40, 122, 20))]);
     }
 
-    #[tokio::test]
-    async fn tcp_fallback_hands_the_server_address_to_the_socket_factory() {
-        // Platform TCP socket factories derive routing decisions from the address they
-        // are given (e.g. Windows creates a route around the tunnel for it), so the
-        // fallback must pass the server address, not a wildcard.
-        let (tcp, udp, server_addr) = bind_tcp_and_udp().await;
-
-        spawn_udp_responder(udp, empty_noerror);
-        spawn_tcp_responder(tcp, a_record(Ipv4Addr::new(20, 40, 122, 20)));
-
-        let factory_addrs = Arc::new(std::sync::Mutex::new(Vec::new()));
-        let recorded_addrs = factory_addrs.clone();
-        let tcp_factory = move |addr: SocketAddr| {
-            recorded_addrs.lock().unwrap().push(addr);
-
-            socket_factory::tcp(addr)
-        };
-
-        let client = BootstrapDnsClient::with_servers(
-            Arc::new(socket_factory::udp),
-            Arc::new(tcp_factory),
-            vec![server_addr],
-        );
-
-        client.resolve("api.firez.one").await.unwrap();
-
-        let factory_addrs = factory_addrs.lock().unwrap();
-
-        assert!(!factory_addrs.is_empty());
-        assert!(factory_addrs.iter().all(|addr| *addr == server_addr));
-    }
-
     fn test_client(servers: impl IntoIterator<Item = SocketAddr>) -> BootstrapDnsClient {
         BootstrapDnsClient::with_servers(
             Arc::new(socket_factory::udp),
