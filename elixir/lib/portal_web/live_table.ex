@@ -228,7 +228,7 @@ defmodule PortalWeb.LiveTable do
           phx-click="filter"
           phx-value-table_id={@live_table_id}
           phx-value-filter={nil}
-          class="inline-flex items-center gap-1 px-2.5 h-8 rounded text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface)] cursor-pointer transition-colors shrink-0"
+          class="order-last inline-flex items-center gap-1 px-2.5 h-8 rounded text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface)] cursor-pointer transition-colors shrink-0"
           title="Clear all filters"
         >
           <.icon name="ri-close-line" class="w-3.5 h-3.5" /> Reset
