@@ -12,6 +12,11 @@ serde = { workspace = true, features = ["derive"] }
 x509-claims = { workspace = true }
 x509-credential = { workspace = true }
 
+[target.'cfg(target_os = "linux")'.dependencies]
+secrecy = { workspace = true }
+sha2 = { workspace = true }
+tracing = { workspace = true }
+
 [target.'cfg(target_os = "windows")'.dependencies]
 sha2 = { workspace = true }
 tracing = { workspace = true }
@@ -20,6 +25,11 @@ windows = { workspace = true, features = [
     "Win32_Security_Cryptography",
 ] }
 windows-core = { workspace = true }
+
+[target.'cfg(target_os = "linux")'.dev-dependencies]
+cryptoki = { workspace = true }
+ring = { workspace = true }
+x509-parser = { workspace = true }
 
 [target.'cfg(target_os = "windows")'.dev-dependencies]
 base64 = { workspace = true, features = ["std"] }
