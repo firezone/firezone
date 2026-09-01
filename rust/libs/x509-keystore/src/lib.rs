@@ -118,11 +118,11 @@ impl fmt::Display for Error {
                 "The Windows certificate store {store} could not be read: {error}"
             ),
             Self::MissingP11Kit => formatter.write_str(
-                "No PKCS#11 module is registered, so no X.509 client identity certificate can be found. Firezone reads certificates through PKCS#11 modules registered with p11-kit. See https://www.firezone.dev/kb/reference/device-certificates for what to install.",
+                "No PKCS#11 module is registered, so no X.509 client identity certificate can be found. Firezone reads certificates through PKCS#11 modules registered with p11-kit. See https://www.firezone.dev/kb/install/linux for what to install.",
             ),
             Self::UnreadablePkcs11Keystore { modules } => write!(
                 formatter,
-                "The PKCS#11 keystore cannot be read, so no X.509 client identity certificate can be found: {}. See https://www.firezone.dev/kb/reference/device-certificates for what the keystore needs installed and running.",
+                "The PKCS#11 keystore cannot be read, so no X.509 client identity certificate can be found: {}. See https://www.firezone.dev/kb/install/linux for what the keystore needs installed and running.",
                 join(modules, "; ")
             ),
             Self::IdentityUnavailable { message } => formatter.write_str(message),
