@@ -1,5 +1,5 @@
 ---
-name: "Cache the Xcode build"
+name: "Restore the Xcode build"
 description: "Restores the package checkouts and the build products of an Xcode build, so a build whose sources have not changed recompiles almost nothing."
 inputs:
   path:
@@ -8,6 +8,19 @@ inputs:
   key:
     description: "Stable key prefix telling these build products apart from every other build's (e.g. platform and configuration)."
     required: true
+outputs:
+  build-key:
+    description: "Key the build products were looked up under. Hand it to `save-xcode-build` rather than recomputing it."
+    value: ${{ steps.keys.outputs.build }}
+  packages-key:
+    description: "Key the package checkouts were looked up under. Hand it to `save-xcode-build` rather than recomputing it."
+    value: ${{ steps.keys.outputs.packages }}
+  build-cache-hit:
+    description: "'true' when the build products came back under the exact key, so there is nothing to save."
+    value: ${{ steps.build.outputs.cache-hit }}
+  packages-cache-hit:
+    description: "'true' when the checkouts came back under the exact key, so there is nothing to save."
+    value: ${{ steps.packages.outputs.cache-hit }}
 runs:
   using: "composite"
   steps:
@@ -37,40 +50,19 @@ runs:
           echo "packages-prefix=${packages_prefix}"
         } >> "$GITHUB_OUTPUT"
 
-    # Only `main` writes, hence the split between the read-write pair below and
-    # the read-only pair after it. A cache saved from a pull request or merge
-    # queue branch lives in that branch's own scope, where no other run can read
-    # it, yet it still counts against the repository's quota and evicts the `main`
-    # entries that every run does read.
-    #
     # The checkouts are a pure function of the resolved versions, so an older set
     # is still a head start on resolving the current one.
-    - name: Restore & save the package checkouts (main)
-      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-      if: github.ref == 'refs/heads/main'
-      with:
-        path: ${{ inputs.path }}/SourcePackages
-        key: ${{ steps.keys.outputs.packages }}
-        restore-keys: ${{ steps.keys.outputs.packages-prefix }}
-
-    - name: Restore & save the build products (main)
-      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-      if: github.ref == 'refs/heads/main'
-      with:
-        path: ${{ inputs.path }}/Build
-        key: ${{ steps.keys.outputs.build }}
-
     - name: Restore the package checkouts
+      id: packages
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-      if: github.ref != 'refs/heads/main'
       with:
         path: ${{ inputs.path }}/SourcePackages
         key: ${{ steps.keys.outputs.packages }}
         restore-keys: ${{ steps.keys.outputs.packages-prefix }}
 
     - name: Restore the build products
+      id: build
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-      if: github.ref != 'refs/heads/main'
       with:
         path: ${{ inputs.path }}/Build
         key: ${{ steps.keys.outputs.build }}
