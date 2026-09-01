@@ -10,6 +10,8 @@ pub mod updates;
 mod uptime;
 mod view;
 
+pub use view::export_bindings;
+
 // TODO: See how many of these we can make private.
 pub mod auth;
 pub mod controller;
