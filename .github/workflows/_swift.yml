@@ -149,13 +149,13 @@ jobs:
       # counts against the repository's quota and evicts the `main` entries that
       # every run does read.
       - name: Save the package checkouts
-        if: (github.ref_name == 'main' || github.head_ref == 'speed-up-apple-screenshots') && steps.packages-cache.outputs.cache-hit != 'true'
+        if: github.ref_name == 'main' && steps.packages-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ runner.temp }}/DerivedData/SourcePackages
           key: ${{ steps.cache-keys.outputs.packages }}
       - name: Save the build products
-        if: (github.ref_name == 'main' || github.head_ref == 'speed-up-apple-screenshots') && steps.build-cache.outputs.cache-hit != 'true'
+        if: github.ref_name == 'main' && steps.build-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ runner.temp }}/DerivedData/Build
