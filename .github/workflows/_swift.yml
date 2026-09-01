@@ -98,6 +98,9 @@ jobs:
           osascript -e "tell application \"System Events\" to tell every desktop \
             to set picture to \"${GITHUB_WORKSPACE}/swift/apple/FirezoneUITests/Resources/screenshot-backdrop.png\"" \
             || echo "::warning::Could not set the desktop picture; the window corners stay at the mercy of the wallpaper"
+      - name: Boot the simulator
+        if: matrix.platform == 'ios'
+        run: mise run //swift/apple:boot-simulator
       # A cold DerivedData recompiles the app, its extension and both package
       # dependencies from scratch, which is the bulk of the run. The key names
       # every file the build products are a function of, so a hit can only ever

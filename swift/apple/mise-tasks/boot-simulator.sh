@@ -2,9 +2,19 @@
 #MISE description="Boot the gallery's pinned iOS simulator with a fixed status bar"
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# Pinned rather than resolved as "latest": a newer runtime redraws the gallery.
+SIMULATOR_NAME="${SIMULATOR_NAME:-iPhone 17}"
+SIMULATOR_RUNTIME="${SIMULATOR_RUNTIME:-com.apple.CoreSimulator.SimRuntime.iOS-26-2}"
 
-udid="${1:-$("${SCRIPT_DIR}/simulator-udid.sh")}"
+udid=$(xcrun simctl list devices available -j | jq -r \
+  --arg name "${SIMULATOR_NAME}" --arg runtime "${SIMULATOR_RUNTIME}" \
+  '.devices[$runtime] // [] | map(select(.name == $name)) | first | .udid // empty')
+
+if [ -z "${udid}" ]; then
+  echo "No ${SIMULATOR_NAME} on ${SIMULATOR_RUNTIME}; available devices:" >&2
+  xcrun simctl list devices available >&2
+  exit 1
+fi
 
 xcrun simctl bootstatus "${udid}" -b
 
@@ -43,3 +53,7 @@ xcrun simctl spawn "${udid}" defaults write com.apple.donotdisturb.DoNotDisturbS
   2>/dev/null || echo "::warning::Could not turn on Do Not Disturb via its settings"
 
 echo "${udid}"
+
+if [ -n "${GITHUB_ENV:-}" ]; then
+  echo "SIMULATOR_UDID=${udid}" >>"${GITHUB_ENV}"
+fi
