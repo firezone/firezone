@@ -354,7 +354,7 @@ dependencies {
     // 32.2.x, so it loads. 1.5.0 rewrote ComposeViewModelForwarding to flag forwarding
     // inside nested blocks; our UI model that wraps a resource is named `ResourceUiModel`
     // (not `*ViewModel`) so the check doesn't mistake it for a real ViewModel.
-    lintChecks("com.slack.lint.compose:compose-lint-checks:1.5.4")
+    lintChecks("com.slack.lint.compose:compose-lint-checks:1.5.5")
 
     // Screenshots. Roborazzi draws Compose through Robolectric's native graphics, so the
     // screens render on the JVM without an emulator.
