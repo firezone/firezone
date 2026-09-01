@@ -1,5 +1,6 @@
 //! Integration tests for [`socket_factory::UdpSocket::handshake`], exercising it through its public API.
 
+#[cfg(target_os = "linux")]
 use std::net::{IpAddr, Ipv4Addr};
 
 use socket_factory::udp;
