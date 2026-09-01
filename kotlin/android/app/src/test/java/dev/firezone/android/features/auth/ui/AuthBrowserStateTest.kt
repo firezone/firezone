@@ -1,10 +1,20 @@
 // Licensed under Apache 2.0 (C) 2026 Firezone, Inc.
 package dev.firezone.android.features.auth.ui
 
+import androidx.lifecycle.Lifecycle
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class AuthBrowserStateTest {
+    @Test
+    fun `auth actions wait until the activity is resumed`() {
+        assertFalse(Lifecycle.State.CREATED.isAtLeast(authActionCollectionMinState))
+        assertFalse(Lifecycle.State.STARTED.isAtLeast(authActionCollectionMinState))
+        assertTrue(Lifecycle.State.RESUMED.isAtLeast(authActionCollectionMinState))
+    }
+
     @Test
     fun `starts authentication before launching a browser`() {
         val action = AuthBrowserState.NOT_STARTED.resumeAction()

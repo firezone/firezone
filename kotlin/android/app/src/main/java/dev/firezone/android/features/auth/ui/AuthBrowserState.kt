@@ -1,6 +1,10 @@
 // Licensed under Apache 2.0 (C) 2026 Firezone, Inc.
 package dev.firezone.android.features.auth.ui
 
+import androidx.lifecycle.Lifecycle
+
+internal val authActionCollectionMinState = Lifecycle.State.RESUMED
+
 internal enum class AuthBrowserState {
     NOT_STARTED,
     LAUNCHED,

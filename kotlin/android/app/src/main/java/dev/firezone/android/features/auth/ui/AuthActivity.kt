@@ -50,7 +50,7 @@ class AuthActivity : AppCompatActivity(R.layout.activity_auth) {
 
     private fun setupActionObservers() {
         lifecycleScope.launch {
-            repeatOnLifecycle(Lifecycle.State.STARTED) {
+            repeatOnLifecycle(authActionCollectionMinState) {
                 viewModel.actionStateFlow.collect { action ->
                     action?.let {
                         viewModel.clearAction()
