@@ -145,6 +145,53 @@ defmodule PortalWeb.EmailOTPControllerTest do
       assert email.to == [{"", actor.email}]
     end
 
+    test "does not disclose recipient email rate limiting", %{
+      conn: conn,
+      account: account,
+      provider: provider
+    } do
+      actor =
+        actor_fixture(
+          type: :account_admin_user,
+          account: account,
+          allow_email_otp_sign_in: true
+        )
+
+      on_exit(fn ->
+        Portal.Mailer.RateLimiter.reset_rate_limit({:sign_in_link, actor.email})
+      end)
+
+      for _ <- 1..3 do
+        conn =
+          post(conn, ~p"/#{account.id}/sign_in/email_otp/#{provider.id}", %{
+            "email" => %{"email" => actor.email}
+        })
+
+        assert flash(conn, :error) == nil
+        assert_received {:email, email}
+        assert email.to == [{"", actor.email}]
+      end
+
+      rate_limited_conn =
+        post(conn, ~p"/#{account.id}/sign_in/email_otp/#{provider.id}", %{
+          "email" => %{"email" => actor.email}
+        })
+
+      unknown_email = "unknown-#{Ecto.UUID.generate()}@example.com"
+
+      unknown_email_conn =
+        post(conn, ~p"/#{account.id}/sign_in/email_otp/#{provider.id}", %{
+          "email" => %{"email" => unknown_email}
+        })
+
+      assert rate_limited_conn.status == unknown_email_conn.status
+      assert flash(rate_limited_conn, :error) == flash(unknown_email_conn, :error)
+      assert redirected_to(rate_limited_conn) =~
+               ~p"/#{account.id}/sign_in/email_otp/#{provider.id}"
+
+      refute_received {:email, _}
+    end
+
     # Note: This scenario shouldn't be possible in practice because a DB constraint
     # prevents api_client actors from having emails, but we test for defense in depth.
     test "does not send email for api_client actor type", %{

@@ -110,7 +110,7 @@ defmodule PortalWeb.EmailOTPController do
   end
 
   defp maybe_send_email_otp(conn, account, email, params, auth_provider_id) do
-    {actor_id, passcode_id, error} =
+    {actor_id, passcode_id, _} =
       Portal.Timing.execute_with_constant_time(
         fn ->
           with {:ok, actor} <- Database.fetch_actor_by_email(account, email),
@@ -148,17 +148,9 @@ defmodule PortalWeb.EmailOTPController do
 
     conn = PortalWeb.Cookie.EmailOTP.put(conn, cookie)
 
-    case error do
-      :rate_limited ->
-        put_flash(
-          conn,
-          :error,
-          "You're attempting to do that too quickly. Wait a few minutes and try again."
-        )
-
-      _ ->
-        conn
-    end
+    # Keep delivery rate limiting internal so it cannot be used to determine
+    # whether an address belongs to an eligible actor.
+    conn
   end
 
   defp send_email_otp(conn, actor, code, auth_provider_id, params) do
