@@ -139,7 +139,7 @@ ip_network_table = { version = "0.2.0", default-features = false }
 is = "0.11.0"
 itertools = "0.15.0"
 jni = "0.22.4"
-jsonschema = { version = "0.49.5", default-features = false }
+jsonschema = { version = "0.51.0", default-features = false }
 keyring-core = "1.0.0"
 known-dirs = { path = "libs/known-dirs" }
 known-folders = "1.4.2"
