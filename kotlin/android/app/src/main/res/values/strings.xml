@@ -31,11 +31,13 @@
 	<string name="x509_no_certificate_title">No client certificate</string>
 	<string name="x509_issued_by">Issued by %1$s</string>
 	<string name="x509_valid_until">Valid until %1$s</string>
-	<string name="x509_select_certificate">Select Certificate</string>
+	<string name="x509_select_certificate">Select certificate</string>
 	<string name="x509_selection_title">Select your client certificate</string>
 	<string name="x509_selection_description">
-		Firezone signs you in with a certificate from the system KeyChain, and Android only releases
-		it once you choose it. You are asked this once: Android remembers your choice.
+		A certificate has been installed on this device but Firezone has not been granted access.
+		Please click \'Select certificate\' and select it on the presented system pop-up. Firezone
+		cannot use the installed certificate beforehand. You can change or revert this permission
+		in the X.509 settings tab at any time.
 	</string>
 	<string name="x509_forget_certificate">Forget Selection</string>
 	<string name="x509_loading">Reading the KeyChain…</string>
