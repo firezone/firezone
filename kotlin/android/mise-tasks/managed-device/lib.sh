@@ -76,6 +76,57 @@ require_owner() {
     fi
 }
 
+# One `Account {name=..., type=...}` line per account the device carries, as `dumpsys account`
+# prints them.
+device_accounts() {
+    adb shell dumpsys account 2>&1 |
+        tr -d '\r' |
+        sed -n 's/^ *\(Account {.*}\)$/\1/p'
+}
+
+# `dpm set-device-owner` reports accounts in the way for two unrelated reasons: the device carries
+# one, or the policy service has not finished the account calculation it starts on
+# ACTION_BOOT_COMPLETED and answers "there are already some accounts" until it has. An emulator the
+# tests just booted loses that race, so what the device actually carries decides between waiting
+# the calculation out and reporting the accounts.
+set_device_owner() {
+    local deadline=$((SECONDS + 60)) out accounts
+
+    while true; do
+        if out="$(adb shell dpm set-device-owner "${DPC_ADMIN}" 2>&1)"; then
+            echo "    ${out}"
+            return 0
+        fi
+
+        case "${out}" in
+        *"already some accounts"*) ;;
+        *)
+            echo "error: 'adb shell dpm set-device-owner' failed:" >&2
+            echo "${out}" >&2
+            exit 1
+            ;;
+        esac
+
+        accounts="$(device_accounts)"
+
+        if [ -n "${accounts}" ]; then
+            echo "error: a device owner cannot be set over the accounts this device carries:" >&2
+            echo "${accounts}" | sed 's/^/           /' >&2
+            echo "       Remove them, or wipe the emulator and retry:" >&2
+            echo "           emulator -avd <name> -wipe-data" >&2
+            exit 1
+        fi
+
+        if [ "${SECONDS}" -ge "${deadline}" ]; then
+            echo "error: the device carries no accounts and kept refusing a device owner:" >&2
+            echo "${out}" >&2
+            exit 1
+        fi
+
+        sleep 1
+    done
+}
+
 find_apk() {
     find ../../app/build/outputs/apk -type f -name "$1" -exec ls -t {} + 2>/dev/null | head -1 || true
 }

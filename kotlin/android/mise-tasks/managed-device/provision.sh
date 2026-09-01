@@ -44,13 +44,7 @@ if [ "${usage_work_profile:-}" != "true" ]; then
     # A device owner can only be set while the device carries no accounts and nobody owns it yet,
     # which is why this wants a freshly wiped emulator rather than the one you sign into.
     echo "==> Making it the device owner..."
-    if ! adb shell dpm set-device-owner "$DPC_ADMIN"; then
-        echo >&2
-        echo "error: the device refused a device owner." >&2
-        echo "       It has to carry no accounts and no other owner. Wipe the emulator and retry:" >&2
-        echo "           emulator -avd <name> -wipe-data" >&2
-        exit 1
-    fi
+    set_device_owner
 
     adb shell dpm list-owners
     exit 0
