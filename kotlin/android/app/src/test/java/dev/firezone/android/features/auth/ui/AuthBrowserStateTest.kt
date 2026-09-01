@@ -44,4 +44,24 @@ class AuthBrowserStateTest {
 
         assertEquals(AuthBrowserState.NOT_STARTED, restoredState)
     }
+
+    @Test
+    fun `unknown saved state starts a new authentication flow`() {
+        val restoredState = AuthBrowserState.restore("unknown")
+
+        assertEquals(AuthBrowserState.NOT_STARTED, restoredState)
+        assertEquals(AuthBrowserState.Action.START_AUTH_FLOW, restoredState.resumeAction())
+    }
+
+    @Test
+    fun `browser acknowledgement is ignored unless the browser is unavailable`() {
+        assertEquals(
+            AuthBrowserState.Action.NONE,
+            AuthBrowserState.NOT_STARTED.browserRequiredAcknowledgementAction(),
+        )
+        assertEquals(
+            AuthBrowserState.Action.NONE,
+            AuthBrowserState.LAUNCHED.browserRequiredAcknowledgementAction(),
+        )
+    }
 }

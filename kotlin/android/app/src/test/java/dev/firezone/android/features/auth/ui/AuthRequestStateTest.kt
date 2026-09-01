@@ -30,6 +30,16 @@ class AuthRequestStateTest {
         assertFalse(restoredState.claimGeneration())
     }
 
+    @Test
+    fun `retries generation after an unsuccessful attempt`() {
+        val state = AuthRequestState(SavedStateHandle())
+        check(state.claimGeneration())
+
+        state.releaseGeneration()
+
+        assertTrue(state.claimGeneration())
+    }
+
     private companion object {
         private const val AUTH_URL = "https://app.example.com/account?state=state&nonce=nonce"
     }
