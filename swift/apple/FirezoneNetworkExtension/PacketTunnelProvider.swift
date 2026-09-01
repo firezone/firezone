@@ -84,22 +84,51 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     // Extract token from options before any async work
     let passedToken = options?["token"] as? String
 
-    // Load token synchronously - Keychain access is thread-safe
-    let token = loadToken(passedToken: passedToken)
-
-    // MDM installs the mutual-TLS identity on the VPN profile itself. When one is
-    // present it authenticates the session, so a token is no longer required.
-    let identityReference =
+    // The profile's own identity reference, the fallback when the app pinned none.
+    let profileIdentityReference =
       (protocolConfiguration as? NETunnelProviderProtocol)?.identityReference
+
+    let token: Token?
+    let identityReference: Data?
+
+    // The app says what this session authenticates with and pins the certificate it
+    // displayed. A start that states no intent, from the system or an older app, keeps
+    // deriving the decision from what can be found.
+    switch options?["authentication"] as? String {
+    case "certificate":
+      guard
+        let reference = options?["identityReference"] as? Data ?? profileIdentityReference
+      else {
+        completionHandler(PacketTunnelProviderError.certificateNotConfigured)
+        return
+      }
+
+      token = nil
+      identityReference = reference
+    case "tokenAndCertificate":
+      // Keychain access is thread-safe, so the token loads synchronously.
+      guard let loaded = loadToken(passedToken: passedToken) else {
+        completionHandler(PacketTunnelProviderError.credentialNotConfigured)
+        return
+      }
+
+      token = loaded
+      identityReference = options?["identityReference"] as? Data ?? profileIdentityReference
+    default:
+      token = loadToken(passedToken: passedToken)
+      identityReference = profileIdentityReference
+
+      guard token != nil || identityReference != nil
+      else {
+        completionHandler(PacketTunnelProviderError.credentialNotConfigured)
+        return
+      }
+    }
+
     Log.info(
       "VPN client certificate "
-        + (identityReference.map { "is configured (\($0.count) bytes)" } ?? "is not configured"))
-
-    guard token != nil || identityReference != nil
-    else {
-      completionHandler(PacketTunnelProviderError.credentialNotConfigured)
-      return
-    }
+        + (identityReference.map { "will be presented (\($0.count) bytes)" }
+          ?? "will not be presented"))
 
     // Try to save the token back to the Keychain but continue if we can't
     if let token { handleTokenSave(token) }

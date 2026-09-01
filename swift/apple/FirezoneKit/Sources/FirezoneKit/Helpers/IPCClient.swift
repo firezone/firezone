@@ -37,17 +37,53 @@ public enum IPCClient {
   private static let stopTimeout: Duration = .seconds(5)
   private static let stopPollInterval: Duration = .milliseconds(100)
 
-  // Auto-connect: the GUI must save providerConfiguration before calling this so
-  // any MDM forced overrides are available to the provider.
+  /// What the app wants a session to authenticate with.
+  ///
+  /// The app resolves this from the identity it displayed and the token it holds, and the
+  /// provider acts on it instead of re-deriving the decision from whatever it can find. The
+  /// identity reference pins the certificate the app showed, so the provider presents that
+  /// one rather than a fresh lookup's answer.
+  public enum TunnelAuthentication {
+    /// The certificate is the credential; no token is sent.
+    case certificate(identityReference: Data?)
+    /// The token is the credential, read from the keychain when not passed, and the
+    /// certificate rides along where one is configured.
+    case tokenAndCertificate(token: String?, identityReference: Data?)
+  }
+
+  // The GUI must save providerConfiguration before calling this so any MDM forced
+  // overrides are available to the provider.
+  @MainActor
+  public static func start(
+    session: any TunnelSessionProtocol,
+    authentication: TunnelAuthentication
+  ) throws {
+    var options: [String: NSObject] = [:]
+
+    switch authentication {
+    case .certificate(let identityReference):
+      options["authentication"] = "certificate" as NSObject
+      if let identityReference {
+        options["identityReference"] = identityReference as NSObject
+      }
+    case .tokenAndCertificate(let token, let identityReference):
+      options["authentication"] = "tokenAndCertificate" as NSObject
+      if let token {
+        options["token"] = token as NSObject
+      }
+      if let identityReference {
+        options["identityReference"] = identityReference as NSObject
+      }
+    }
+
+    try session.startTunnel(options: options)
+  }
+
+  /// A start that states no intent, as the system's own starts do: the provider derives the
+  /// credentials from the keychain and the profile.
   @MainActor
   public static func start(session: any TunnelSessionProtocol) throws {
     try session.startTunnel(options: nil)
-  }
-
-  // Sign in
-  @MainActor
-  public static func start(session: any TunnelSessionProtocol, token: String) throws {
-    try session.startTunnel(options: ["token": token as NSObject])
   }
 
   /// Stops the tunnel if it is running, and waits for the provider to go away.

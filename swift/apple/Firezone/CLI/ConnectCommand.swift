@@ -112,7 +112,11 @@ extension FirezoneCLI {
         ?? ProcessInfo.processInfo.environment["FIREZONE_TOKEN"].flatMap(Token.init)
 
       if let supplied {
-        try IPCClient.start(session: session, token: supplied.description)
+        try IPCClient.start(
+          session: session,
+          authentication: .tokenAndCertificate(
+            token: supplied.description, identityReference: nil)
+        )
       } else {
         try IPCClient.start(session: session)
       }

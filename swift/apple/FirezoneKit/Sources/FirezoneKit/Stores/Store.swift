@@ -487,7 +487,9 @@ public final class Store: ObservableObject {
 
       defer {
         if stoppedTunnel, let session {
-          do { try IPCClient.start(session: session) } catch { Log.error(error) }
+          do {
+            try IPCClient.start(session: session, authentication: startAuthentication())
+          } catch { Log.error(error) }
         }
       }
 
@@ -541,7 +543,7 @@ public final class Store: ObservableObject {
       // Replacing the system extension puts a running tunnel back up itself.
       guard ![.connected, .connecting, .reasserting].contains(session.status) else { return }
 
-      try IPCClient.start(session: session)
+      try IPCClient.start(session: session, authentication: startAuthentication())
     }
   }
   func installVPNConfiguration() async throws {
@@ -684,7 +686,27 @@ public final class Store: ObservableObject {
     guard let session = try manager().session() else {
       throw VPNConfigurationManagerError.managerNotInitialized
     }
-    try IPCClient.start(session: session, token: token)
+    try IPCClient.start(
+      session: session,
+      authentication: .tokenAndCertificate(token: token, identityReference: identityReference())
+    )
+  }
+
+  /// What a start the user did not spell out authenticates with.
+  ///
+  /// A certificate that claims an identity is the credential on its own; otherwise the
+  /// provider signs in with the stored token and presents the certificate alongside it.
+  private func startAuthentication() -> IPCClient.TunnelAuthentication {
+    if case .claimed = certificateIdentity {
+      return .certificate(identityReference: identityReference())
+    }
+
+    return .tokenAndCertificate(token: nil, identityReference: identityReference())
+  }
+
+  /// The keychain reference of the certificate the app displayed, [`nil`] when none is loadable.
+  private func identityReference() -> Data? {
+    try? manager().identityReference()
   }
 
   /// Starts the session without a token: the portal authenticates the mutual-TLS
@@ -699,7 +721,10 @@ public final class Store: ObservableObject {
     guard let session = try manager().session() else {
       throw VPNConfigurationManagerError.managerNotInitialized
     }
-    try IPCClient.start(session: session)
+    try IPCClient.start(
+      session: session,
+      authentication: .certificate(identityReference: identityReference())
+    )
   }
 
   func signOut() async throws {
