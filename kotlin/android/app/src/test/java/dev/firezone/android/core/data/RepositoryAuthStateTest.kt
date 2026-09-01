@@ -64,14 +64,13 @@ class RepositoryAuthStateTest {
                     .saveAuthCallbackIfStateValid(
                         state = "handoff-state",
                         fragment = "fragment",
-                        accountSlug = "account",
                     ),
             )
 
             assertEquals(
                 listOf(
                     PreferenceTransaction(
-                        putStringKeys = setOf("token", "accountSlug", "pendingAuthHandoffStateHash"),
+                        putStringKeys = setOf("token", "pendingAuthHandoffStateHash"),
                         removedKeys = setOf("nonce", "state"),
                     ),
                 ),
@@ -85,12 +84,10 @@ class RepositoryAuthStateTest {
                     .saveAuthCallbackIfStateValid(
                         state = "handoff-state",
                         fragment = "replacement-fragment",
-                        accountSlug = "replacement-account",
                     ),
             )
             assertEquals(1, recordingPreferences.appliedTransactions.size)
             assertEquals("nonce-fragment", recreatedRepository.getTokenSync())
-            assertEquals("account", recreatedRepository.getUserConfigSync().accountSlug)
             assertNull(recreatedRepository.getNonceSync())
             assertNull(recreatedRepository.getStateSync())
         }
@@ -109,11 +106,9 @@ class RepositoryAuthStateTest {
                     .saveAuthCallbackIfStateValid(
                         state = "old-state",
                         fragment = "replacement-fragment",
-                        accountSlug = "replacement-account",
                     ),
             )
             assertEquals("nonce-fragment", repository.getTokenSync())
-            assertEquals("account", repository.getUserConfigSync().accountSlug)
             assertEquals("new-nonce-", repository.getNonceSync())
             assertEquals("new-state", repository.getStateSync())
         }
@@ -133,11 +128,9 @@ class RepositoryAuthStateTest {
                     .saveAuthCallbackIfStateValid(
                         state = "handoff-state",
                         fragment = "replacement-fragment",
-                        accountSlug = "replacement-account",
                     ),
             )
             assertNull(recreatedRepository.getTokenSync())
-            assertEquals("account", recreatedRepository.getUserConfigSync().accountSlug)
         }
 
     @Test
@@ -157,11 +150,9 @@ class RepositoryAuthStateTest {
                     .saveAuthCallbackIfStateValid(
                         state = "handoff-state",
                         fragment = "replacement-fragment",
-                        accountSlug = "replacement-account",
                     ),
             )
             assertEquals("nonce-fragment", recreatedRepository.getTokenSync())
-            assertEquals("account", recreatedRepository.getUserConfigSync().accountSlug)
         }
 
     private fun newRepository(preferences: SharedPreferences): Repository = Repository(Dispatchers.Unconfined, preferences)
@@ -177,7 +168,6 @@ class RepositoryAuthStateTest {
                 .saveAuthCallbackIfStateValid(
                     state = state,
                     fragment = "fragment",
-                    accountSlug = "account",
                 ),
         )
     }

@@ -57,14 +57,10 @@ internal class CustomUriViewModel
                 return ViewAction.AuthFlowError("Unknown path segment: ${uri?.lastPathSegment}")
             }
 
-            val accountSlug = uri.getQueryParameter(QUERY_ACCOUNT_SLUG)
             val state = uri.getQueryParameter(QUERY_CLIENT_STATE)
             val fragment = uri.getQueryParameter(QUERY_CLIENT_AUTH_FRAGMENT)
             val missingParameterErrors =
                 buildList {
-                    if (accountSlug.isNullOrBlank()) {
-                        add("Account slug was missing or empty")
-                    }
                     if (state.isNullOrBlank()) {
                         add("State parameter was missing or empty")
                     }
@@ -76,7 +72,6 @@ internal class CustomUriViewModel
                 return ViewAction.AuthFlowError(missingParameterErrors)
             }
 
-            checkNotNull(accountSlug)
             checkNotNull(state)
             checkNotNull(fragment)
 
@@ -84,7 +79,6 @@ internal class CustomUriViewModel
                 repo.saveAuthCallbackIfStateValid(
                     state = state,
                     fragment = fragment,
-                    accountSlug = accountSlug,
                 )
             return when (result) {
                 AuthCallbackResult.NEW_HANDOFF,
@@ -112,7 +106,6 @@ internal class CustomUriViewModel
 
         companion object {
             private const val PATH_CALLBACK = "handle_client_sign_in_callback"
-            private const val QUERY_ACCOUNT_SLUG = "account_slug"
             private const val QUERY_CLIENT_STATE = "state"
             private const val QUERY_CLIENT_AUTH_FRAGMENT = "fragment"
 

@@ -221,7 +221,7 @@ class TunnelE2eTest {
     private fun signIn() =
         runBlocking {
             repo.saveNonceAndStateSync(nonce = "", state = SIGN_IN_STATE)
-            repo.saveAuthCallbackIfStateValid(state = SIGN_IN_STATE, fragment = TOKEN, accountSlug = "callback-account")
+            repo.saveAuthCallbackIfStateValid(state = SIGN_IN_STATE, fragment = TOKEN)
         }
 
     private fun awaitSession(): FakeSession = runBlocking { withTimeout(TIMEOUT_MS) { FakeSessionFactory.awaitSession() } }
