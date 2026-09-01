@@ -213,9 +213,14 @@ defmodule Portal.AuthenticationTest do
     test "does not log malformed tokens" do
       context = build_context(type: :client)
 
-      assert capture_log(fn ->
-               assert authenticate("invalid.token", context) == {:error, :invalid_token}
-             end) == ""
+      # capture_log/1 captures the whole deployment's log, not this process's,
+      # so an empty string only holds while no other async test happens to log.
+      log =
+        capture_log(fn ->
+          assert authenticate("invalid.token", context) == {:error, :invalid_token}
+        end)
+
+      refute log =~ "invalid.token"
     end
 
     test "returns error when token is invalid" do
