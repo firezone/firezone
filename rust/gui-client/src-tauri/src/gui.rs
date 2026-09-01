@@ -401,45 +401,13 @@ pub fn run(rt: &Runtime, config: RunConfig, reloader: logging::FilterReloadHandl
         anyhow::Ok(ctrl_task)
     });
 
-    let tauri_specta_builder = tauri_specta::Builder::<tauri::Wry>::new()
-        .events(tauri_specta::collect_events![
-            crate::view::SessionChanged,
-            crate::view::GeneralSettingsChanged,
-            crate::view::AdvancedSettingsChanged,
-            crate::view::LogsRecounted,
-            crate::view::X509CertificateChanged,
-        ])
-        .commands(tauri_specta::collect_commands![
-            crate::view::clear_logs,
-            crate::view::export_logs,
-            crate::view::apply_advanced_settings,
-            crate::view::reset_advanced_settings,
-            crate::view::apply_general_settings,
-            crate::view::reset_general_settings,
-            crate::view::sign_in,
-            crate::view::sign_out,
-            crate::view::update_state,
-        ])
-        .typ::<crate::view::Error>();
+    let tauri_specta_builder = crate::view::specta_builder();
 
     #[cfg(debug_assertions)]
     {
-        let bindings_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../src-frontend/generated/bindings.ts")
-            .canonicalize()
-            .context("Failed to create absolute path to bindings file")?;
+        tracing::debug!(path = %crate::view::bindings_path().display(), "Exporting TypeScript bindings");
 
-        tracing::debug!(path = %bindings_path.display(), "Exporting TypeScript bindings");
-
-        tauri_specta_builder
-            .export(
-                specta_typescript::Typescript::default()
-                    .bigint(specta_typescript::BigIntExportBehavior::Number)
-                    .header("/* eslint-disable */\n// @ts-nocheck\n/* tslint:disable */\n")
-                    .formatter(specta_typescript::formatter::prettier),
-                bindings_path,
-            )
-            .context("Failed to export TypeScript bindings")?;
+        crate::view::export_bindings()?;
     }
 
     tauri::Builder::default()

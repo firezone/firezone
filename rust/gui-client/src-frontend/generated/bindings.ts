@@ -6,258 +6,217 @@
 
 /** user-defined commands **/
 
+
 export const commands = {
-  async clearLogs(): Promise<Result<null, Error>> {
+async clearLogs() : Promise<Result<null, Error>> {
     try {
-      return { status: "ok", data: await TAURI_INVOKE("clear_logs") };
-    } catch (e) {
-      if (e instanceof Error) throw e;
-      else return { status: "error", error: e as any };
-    }
-  },
-  async exportLogs(): Promise<Result<null, Error>> {
+    return { status: "ok", data: await TAURI_INVOKE("clear_logs") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async exportLogs() : Promise<Result<null, Error>> {
     try {
-      return { status: "ok", data: await TAURI_INVOKE("export_logs") };
-    } catch (e) {
-      if (e instanceof Error) throw e;
-      else return { status: "error", error: e as any };
-    }
-  },
-  async applyAdvancedSettings(
-    settings: AdvancedSettings
-  ): Promise<Result<null, Error>> {
+    return { status: "ok", data: await TAURI_INVOKE("export_logs") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async applyAdvancedSettings(settings: AdvancedSettings) : Promise<Result<null, Error>> {
     try {
-      return {
-        status: "ok",
-        data: await TAURI_INVOKE("apply_advanced_settings", { settings }),
-      };
-    } catch (e) {
-      if (e instanceof Error) throw e;
-      else return { status: "error", error: e as any };
-    }
-  },
-  async resetAdvancedSettings(): Promise<Result<null, Error>> {
+    return { status: "ok", data: await TAURI_INVOKE("apply_advanced_settings", { settings }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async resetAdvancedSettings() : Promise<Result<null, Error>> {
     try {
-      return {
-        status: "ok",
-        data: await TAURI_INVOKE("reset_advanced_settings"),
-      };
-    } catch (e) {
-      if (e instanceof Error) throw e;
-      else return { status: "error", error: e as any };
-    }
-  },
-  async applyGeneralSettings(
-    settings: GeneralSettingsForm
-  ): Promise<Result<null, Error>> {
+    return { status: "ok", data: await TAURI_INVOKE("reset_advanced_settings") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async applyGeneralSettings(settings: GeneralSettingsForm) : Promise<Result<null, Error>> {
     try {
-      return {
-        status: "ok",
-        data: await TAURI_INVOKE("apply_general_settings", { settings }),
-      };
-    } catch (e) {
-      if (e instanceof Error) throw e;
-      else return { status: "error", error: e as any };
-    }
-  },
-  async resetGeneralSettings(): Promise<Result<null, Error>> {
+    return { status: "ok", data: await TAURI_INVOKE("apply_general_settings", { settings }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async resetGeneralSettings() : Promise<Result<null, Error>> {
     try {
-      return {
-        status: "ok",
-        data: await TAURI_INVOKE("reset_general_settings"),
-      };
-    } catch (e) {
-      if (e instanceof Error) throw e;
-      else return { status: "error", error: e as any };
-    }
-  },
-  async signIn(): Promise<Result<null, Error>> {
+    return { status: "ok", data: await TAURI_INVOKE("reset_general_settings") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async signIn() : Promise<Result<null, Error>> {
     try {
-      return { status: "ok", data: await TAURI_INVOKE("sign_in") };
-    } catch (e) {
-      if (e instanceof Error) throw e;
-      else return { status: "error", error: e as any };
-    }
-  },
-  async signOut(): Promise<Result<null, Error>> {
+    return { status: "ok", data: await TAURI_INVOKE("sign_in") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async signOut() : Promise<Result<null, Error>> {
     try {
-      return { status: "ok", data: await TAURI_INVOKE("sign_out") };
-    } catch (e) {
-      if (e instanceof Error) throw e;
-      else return { status: "error", error: e as any };
-    }
-  },
-  async updateState(): Promise<Result<null, Error>> {
+    return { status: "ok", data: await TAURI_INVOKE("sign_out") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async updateState() : Promise<Result<null, Error>> {
     try {
-      return { status: "ok", data: await TAURI_INVOKE("update_state") };
-    } catch (e) {
-      if (e instanceof Error) throw e;
-      else return { status: "error", error: e as any };
-    }
-  },
-};
+    return { status: "ok", data: await TAURI_INVOKE("update_state") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+}
+}
 
 /** user-defined events **/
 
+
 export const events = __makeEvents__<{
-  advancedSettingsChanged: AdvancedSettingsChanged;
-  generalSettingsChanged: GeneralSettingsChanged;
-  logsRecounted: LogsRecounted;
-  sessionChanged: SessionChanged;
-  x509CertificateChanged: X509CertificateChanged;
+advancedSettingsChanged: AdvancedSettingsChanged,
+generalSettingsChanged: GeneralSettingsChanged,
+logsRecounted: LogsRecounted,
+sessionChanged: SessionChanged,
+x509CertificateChanged: X509CertificateChanged
 }>({
-  advancedSettingsChanged: "advanced-settings-changed",
-  generalSettingsChanged: "general-settings-changed",
-  logsRecounted: "logs-recounted",
-  sessionChanged: "session-changed",
-  x509CertificateChanged: "x509-certificate-changed",
-});
+advancedSettingsChanged: "advanced-settings-changed",
+generalSettingsChanged: "general-settings-changed",
+logsRecounted: "logs-recounted",
+sessionChanged: "session-changed",
+x509CertificateChanged: "x509-certificate-changed"
+})
 
 /** user-defined constants **/
 
+
+
 /** user-defined types **/
 
-export type AdvancedSettings = {
-  auth_url: string;
-  api_url: string;
-  log_filter: string;
-};
-export type AdvancedSettingsChanged = AdvancedSettingsViewModel;
-export type AdvancedSettingsViewModel = {
-  auth_url: string;
-  auth_url_is_managed: boolean;
-  api_url: string;
-  api_url_is_managed: boolean;
-  log_filter: string;
-  log_filter_is_managed: boolean;
-};
-export type Error = string;
-export type FileCount = { bytes: number; files: number };
-export type GeneralSettingsChanged = GeneralSettingsViewModel;
-export type GeneralSettingsForm = {
-  start_minimized: boolean;
-  start_on_login: boolean;
-  connect_on_start: boolean;
-  account_slug: string;
-};
-export type GeneralSettingsViewModel = {
-  start_minimized: boolean;
-  start_on_login: boolean;
-  connect_on_start: boolean;
-  connect_on_start_is_managed: boolean;
-  account_slug: string;
-  account_slug_is_managed: boolean;
-};
-export type LogsRecounted = FileCount;
-export type SessionChanged = SessionViewModel;
-export type SessionViewModel =
-  | { SignedIn: { account_slug: string; actor_name: string } }
-  | "Loading"
-  | "SignedOut";
+export type AdvancedSettings = { auth_url: string; api_url: string; log_filter: string }
+export type AdvancedSettingsChanged = AdvancedSettingsViewModel
+export type AdvancedSettingsViewModel = { auth_url: string; auth_url_is_managed: boolean; api_url: string; api_url_is_managed: boolean; log_filter: string; log_filter_is_managed: boolean }
+export type Error = string
+export type FileCount = { bytes: number; files: number }
+export type GeneralSettingsChanged = GeneralSettingsViewModel
+export type GeneralSettingsForm = { start_minimized: boolean; start_on_login: boolean; connect_on_start: boolean; account_slug: string }
+export type GeneralSettingsViewModel = { start_minimized: boolean; start_on_login: boolean; connect_on_start: boolean; connect_on_start_is_managed: boolean; account_slug: string; account_slug_is_managed: boolean }
+export type LogsRecounted = FileCount
+export type SessionChanged = SessionViewModel
+export type SessionViewModel = { SignedIn: { account_slug: string; actor_name: string } } | "Loading" | "SignedOut"
 /**
  * What the Tunnel service last loaded from the platform keystore.
  */
 export type X509Certificate =
-  | { Loaded: { identity: X509Identity; fields: X509DetailField[] } }
-  | "Absent"
-  | { Error: X509Error };
+/**
+ * The keystore holds this certificate, described by the parser's rows.
+ */
+{ Loaded: { identity: X509Identity; fields: X509DetailField[] } } |
+/**
+ * The keystore holds no client certificate.
+ */
+"Absent" |
+/**
+ * The keystore could not hand out a client identity.
+ */
+{ Error: X509Error }
 /**
  * The platform keystore's certificate as the X.509 page renders it.
  */
-export type X509CertificateChanged = X509Certificate;
+export type X509CertificateChanged = X509Certificate
 /**
  * A label-value row of the certificate, and what is wrong with it.
  */
-export type X509DetailField = {
-  label: string;
-  value: string | null;
-  problem: X509ValidationError | null;
-};
+export type X509DetailField = { label: string;
+/**
+ * What the row carries, [`None`] when it carries nothing.
+ */
+value: string | null;
+/**
+ * Why the value is not usable as what the row names, [`None`] when it is.
+ */
+problem: X509ValidationError | null }
 /**
  * Mirrors [`x509_keystore::Error`] so the frontend writes the sentence it shows.
  */
-export type X509Error =
-  | { UnreadableStore: { store: string; error: string } }
-  | "MissingP11Kit"
-  | { UnreadablePkcs11Keystore: { modules: string[] } }
-  | { IdentityUnavailable: { message: string } }
-  | { UnreadableKeystore: { message: string } };
+export type X509Error = { UnreadableStore: { store: string; error: string } } | "MissingP11Kit" | { UnreadablePkcs11Keystore: { modules: string[] } } | { IdentityUnavailable: { message: string } } | { UnreadableKeystore: { message: string } }
 /**
  * Mirrors [`x509_keystore::ClientIdentity`], which decides what the sign-in control says.
  */
-export type X509Identity = "Absent" | { Claimed: { email: string | null } };
+export type X509Identity = "Absent" | { Claimed: { email: string | null } }
 /**
  * Mirrors [`x509_keystore::ValidationError`].
  */
-export type X509ValidationError =
-  | "Empty"
-  | "TooLong"
-  | "NotAnEmailAddress"
-  | "NotAUuid"
-  | "Ambiguous"
-  | "PlaceholderIdentifier"
-  | "UnknownAttribute"
-  | "NotYetValid"
-  | "Expired"
-  | "MissingClientAuthEku"
-  | "DigitalSignatureNotAllowed";
+export type X509ValidationError = "Empty" | "TooLong" | "NotAnEmailAddress" | "NotAUuid" | "Ambiguous" | "PlaceholderIdentifier" | "UnknownAttribute" | "NotYetValid" | "Expired" | "MissingClientAuthEku" | "DigitalSignatureNotAllowed"
 
 /** tauri-specta globals **/
 
 import {
-  invoke as TAURI_INVOKE,
-  Channel as TAURI_CHANNEL,
+	invoke as TAURI_INVOKE,
+	Channel as TAURI_CHANNEL,
 } from "@tauri-apps/api/core";
 import * as TAURI_API_EVENT from "@tauri-apps/api/event";
 import { type WebviewWindow as __WebviewWindow__ } from "@tauri-apps/api/webviewWindow";
 
 type __EventObj__<T> = {
-  listen: (
-    cb: TAURI_API_EVENT.EventCallback<T>
-  ) => ReturnType<typeof TAURI_API_EVENT.listen<T>>;
-  once: (
-    cb: TAURI_API_EVENT.EventCallback<T>
-  ) => ReturnType<typeof TAURI_API_EVENT.once<T>>;
-  emit: null extends T
-    ? (payload?: T) => ReturnType<typeof TAURI_API_EVENT.emit>
-    : (payload: T) => ReturnType<typeof TAURI_API_EVENT.emit>;
+	listen: (
+		cb: TAURI_API_EVENT.EventCallback<T>,
+	) => ReturnType<typeof TAURI_API_EVENT.listen<T>>;
+	once: (
+		cb: TAURI_API_EVENT.EventCallback<T>,
+	) => ReturnType<typeof TAURI_API_EVENT.once<T>>;
+	emit: null extends T
+		? (payload?: T) => ReturnType<typeof TAURI_API_EVENT.emit>
+		: (payload: T) => ReturnType<typeof TAURI_API_EVENT.emit>;
 };
 
 export type Result<T, E> =
-  | { status: "ok"; data: T }
-  | { status: "error"; error: E };
+	| { status: "ok"; data: T }
+	| { status: "error"; error: E };
 
 function __makeEvents__<T extends Record<string, any>>(
-  mappings: Record<keyof T, string>
+	mappings: Record<keyof T, string>,
 ) {
-  return new Proxy(
-    {} as unknown as {
-      [K in keyof T]: __EventObj__<T[K]> & {
-        (handle: __WebviewWindow__): __EventObj__<T[K]>;
-      };
-    },
-    {
-      get: (_, event) => {
-        const name = mappings[event as keyof T];
+	return new Proxy(
+		{} as unknown as {
+			[K in keyof T]: __EventObj__<T[K]> & {
+				(handle: __WebviewWindow__): __EventObj__<T[K]>;
+			};
+		},
+		{
+			get: (_, event) => {
+				const name = mappings[event as keyof T];
 
-        return new Proxy((() => {}) as any, {
-          apply: (_, __, [window]: [__WebviewWindow__]) => ({
-            listen: (arg: any) => window.listen(name, arg),
-            once: (arg: any) => window.once(name, arg),
-            emit: (arg: any) => window.emit(name, arg),
-          }),
-          get: (_, command: keyof __EventObj__<any>) => {
-            switch (command) {
-              case "listen":
-                return (arg: any) => TAURI_API_EVENT.listen(name, arg);
-              case "once":
-                return (arg: any) => TAURI_API_EVENT.once(name, arg);
-              case "emit":
-                return (arg: any) => TAURI_API_EVENT.emit(name, arg);
-            }
-          },
-        });
-      },
-    }
-  );
+				return new Proxy((() => {}) as any, {
+					apply: (_, __, [window]: [__WebviewWindow__]) => ({
+						listen: (arg: any) => window.listen(name, arg),
+						once: (arg: any) => window.once(name, arg),
+						emit: (arg: any) => window.emit(name, arg),
+					}),
+					get: (_, command: keyof __EventObj__<any>) => {
+						switch (command) {
+							case "listen":
+								return (arg: any) => TAURI_API_EVENT.listen(name, arg);
+							case "once":
+								return (arg: any) => TAURI_API_EVENT.once(name, arg);
+							case "emit":
+								return (arg: any) => TAURI_API_EVENT.emit(name, arg);
+						}
+					},
+				});
+			},
+		},
+	);
 }
