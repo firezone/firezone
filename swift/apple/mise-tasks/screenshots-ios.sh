@@ -6,12 +6,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 APPLE_DIR="${SCRIPT_DIR}/.."
 RESULT_DIR="${RESULT_BUNDLE_DIR:-${TMPDIR:-/tmp}}"
 
-UDID="${SIMULATOR_UDID:-$(xcrun simctl list devices booted -j \
-  | jq -r '[.devices[][]] | first | .udid // empty')}"
-if [ -z "${UDID}" ]; then
-  echo "No booted simulator; run the boot-simulator task first" >&2
-  exit 1
-fi
+UDID="${SIMULATOR_UDID:-$("${SCRIPT_DIR}/simulator-udid.sh")}"
 
 extra_args=()
 if [ -n "${DERIVED_DATA_PATH:-}" ]; then
@@ -19,6 +14,13 @@ if [ -n "${DERIVED_DATA_PATH:-}" ]; then
 fi
 
 cd "${APPLE_DIR}"
+
+# Only the test runs need the simulator, so it boots alongside the build rather
+# than before it: settling the device down takes three minutes of its own.
+boot_log="$(mktemp)"
+trap 'rm -f "${boot_log}"' EXIT
+"${SCRIPT_DIR}/boot-simulator.sh" "${UDID}" >"${boot_log}" 2>&1 &
+boot=$!
 
 # The simulator asks for no signing, and the entitlements need a profile.
 xcodebuild build-for-testing \
@@ -33,6 +35,11 @@ xcodebuild build-for-testing \
     DEVELOPMENT_TEAM= \
     PROVISIONING_PROFILE_SPECIFIER= \
     ONLY_ACTIVE_ARCH=YES
+
+boot_status=0
+wait "${boot}" || boot_status=$?
+cat "${boot_log}"
+[ "${boot_status}" -eq 0 ] || exit "${boot_status}"
 
 # An appearance belongs to the device rather than to a launch, so the suite runs
 # once per appearance with `simctl ui` in between.

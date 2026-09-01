@@ -98,9 +98,39 @@ jobs:
           osascript -e "tell application \"System Events\" to tell every desktop \
             to set picture to \"${GITHUB_WORKSPACE}/swift/apple/FirezoneUITests/Resources/screenshot-backdrop.png\"" \
             || echo "::warning::Could not set the desktop picture; the window corners stay at the mercy of the wallpaper"
-      - name: Boot the simulator
-        if: matrix.platform == 'ios'
-        run: mise run //swift/apple:boot-simulator
+      # A cold DerivedData recompiles the app, its extension and both package
+      # dependencies from scratch, which is the bulk of the run. The key names
+      # every file the build products are a function of, so a hit can only ever
+      # be the build of those same sources: hence no restore-keys.
+      - name: Compute the build cache keys
+        id: cache-keys
+        run: |
+          {
+            echo "build=v1-xcode-build-${{ matrix.platform }}-${{ runner.arch }}-${{ env.XCODE_VERSION }}-${{ hashFiles('swift/apple/**', '!swift/apple/screenshots/**', 'rust/**/*.rs', 'rust/**/Cargo.toml', 'rust/Cargo.lock', 'rust/rust-toolchain.toml', 'rust/**/.cargo/config.toml') }}"
+            echo "packages=v1-spm-${{ runner.arch }}-${{ env.XCODE_VERSION }}-${{ hashFiles('swift/apple/FirezoneKit/Package.resolved') }}"
+          } >> "$GITHUB_OUTPUT"
+      # The checkouts are a pure function of the resolved versions, so an older
+      # set is still a head start on resolving the current one.
+      - name: Restore the package checkouts
+        id: packages-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/DerivedData/SourcePackages
+          key: ${{ steps.cache-keys.outputs.packages }}
+          restore-keys: v1-spm-${{ runner.arch }}-${{ env.XCODE_VERSION }}-
+      - name: Restore the build products
+        id: build-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/DerivedData/Build
+          key: ${{ steps.cache-keys.outputs.build }}
+      # Xcode decides what to rebuild from file timestamps, and a checkout stamps
+      # every file with the moment it was written, which on its own would age out
+      # the entire restored build. A constant stamps identical sources
+      # identically, and the key above covers those same sources, so what the
+      # timestamps claim is up to date is what the cache was written from.
+      - name: Date the sources deterministically
+        run: find swift/apple -type f -exec touch -t 202601010000 {} +
       - name: Photograph the ${{ matrix.platform }} screens
         # The runner context only exists at step level.
         env:
@@ -111,6 +141,22 @@ jobs:
         with:
           name: ${{ matrix.platform }}-screenshots
           path: swift/apple/screenshots/${{ matrix.platform }}
+      # Only `main` writes. A cache saved from a PR or merge-queue branch lives
+      # in that branch's own scope, where no other run can read it, yet it still
+      # counts against the repository's quota and evicts the `main` entries that
+      # every run does read.
+      - name: Save the package checkouts
+        if: github.ref_name == 'main' && steps.packages-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/DerivedData/SourcePackages
+          key: ${{ steps.cache-keys.outputs.packages }}
+      - name: Save the build products
+        if: github.ref_name == 'main' && steps.build-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/DerivedData/Build
+          key: ${{ steps.cache-keys.outputs.build }}
       # The result bundles hold XCUITest's own failure screenshots and logs.
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: failure()

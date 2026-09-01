@@ -24,10 +24,15 @@ runs:
       env:
         AZURE_CONNECTION_STRING: ${{ inputs.azure-connection-string }}
       run: |
+        # Without the timeout, the server exits ten idle minutes after the last
+        # compile. The screenshot jobs spend longer than that photographing
+        # screens afterwards, so the stats read at the end of the job come from
+        # a server started to answer them and report zero of everything.
         {
           echo "SCCACHE_AZURE_CONNECTION_STRING=$AZURE_CONNECTION_STRING"
           echo "SCCACHE_AZURE_BLOB_CONTAINER=cache"
           echo "SCCACHE_AZURE_KEY_PREFIX=firezone"
+          echo "SCCACHE_IDLE_TIMEOUT=0"
           echo "RUSTC_WRAPPER=$SCCACHE_PATH"
         } >> "$GITHUB_ENV"
 
