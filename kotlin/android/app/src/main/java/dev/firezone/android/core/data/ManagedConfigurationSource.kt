@@ -5,7 +5,6 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
-import android.content.RestrictionsManager
 import android.os.Bundle
 import androidx.core.content.ContextCompat
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -18,6 +17,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import javax.inject.Inject
+import javax.inject.Provider
 import javax.inject.Singleton
 
 internal data class ManagedConfigurationUpdate(
@@ -30,7 +30,9 @@ internal class ManagedConfigurationSource
     @Inject
     constructor(
         @ApplicationContext private val context: Context,
-        private val restrictionsManager: RestrictionsManager,
+        // A provider rather than the bundle itself: an admin can change the restrictions while
+        // the app runs, so every refresh has to read them again.
+        private val applicationRestrictions: Provider<Bundle>,
         private val repository: Repository,
         @ApplicationScope private val applicationScope: CoroutineScope,
     ) {
@@ -80,7 +82,7 @@ internal class ManagedConfigurationSource
 
         internal suspend fun refreshUpdate(): ManagedConfigurationUpdate =
             refreshMutex.withLock {
-                applyRestrictionsLocked(restrictionsManager.applicationRestrictions)
+                applyRestrictionsLocked(applicationRestrictions.get())
             }
 
         internal suspend fun refresh(readRestrictions: suspend () -> Bundle): ManagedConfiguration =

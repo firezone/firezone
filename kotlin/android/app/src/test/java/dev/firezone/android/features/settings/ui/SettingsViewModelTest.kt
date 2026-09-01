@@ -3,7 +3,6 @@ package dev.firezone.android.features.settings.ui
 
 import android.app.Application
 import android.content.Context
-import android.content.RestrictionsManager
 import android.content.SharedPreferences
 import android.os.Bundle
 import android.os.Looper
@@ -24,6 +23,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config as RobolectricConfig
+import javax.inject.Provider
 
 @RunWith(RobolectricTestRunner::class)
 @RobolectricConfig(sdk = [34], application = Application::class)
@@ -41,7 +41,7 @@ class SettingsViewModelTest {
         managedConfigurationSource =
             ManagedConfigurationSource(
                 context,
-                context.getSystemService(RestrictionsManager::class.java)!!,
+                Provider { Bundle() },
                 repository,
                 CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
             )

@@ -4,6 +4,7 @@ package dev.firezone.android.core.di
 import android.content.Context
 import android.content.RestrictionsManager
 import android.content.SharedPreferences
+import android.os.Bundle
 import androidx.core.content.getSystemService
 import dagger.Module
 import dagger.Provides
@@ -18,9 +19,9 @@ import javax.inject.Singleton
 @InstallIn(SingletonComponent::class)
 class DataModule {
     @Provides
-    internal fun provideRestrictionsManager(
+    internal fun provideApplicationRestrictions(
         @ApplicationContext context: Context,
-    ): RestrictionsManager = context.getSystemService()!!
+    ): Bundle = context.getSystemService<RestrictionsManager>()!!.applicationRestrictions
 
     @Singleton
     @Provides

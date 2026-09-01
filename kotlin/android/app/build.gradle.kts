@@ -289,6 +289,7 @@ dependencies {
     kspAndroidTest("com.google.dagger:hilt-android-compiler:2.60.1")
     androidTestImplementation("androidx.test:runner:1.7.0")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.7.0")
+    androidTestImplementation("androidx.test.uiautomator:uiautomator:2.4.0")
     // Mints the test certificates; the platform offers no way to build one.
     androidTestImplementation("org.bouncycastle:bcpkix-jdk18on:1.85")
     // Unit Tests
