@@ -11,8 +11,11 @@ import dev.firezone.android.core.data.model.Config
 import dev.firezone.android.core.data.model.ManagedConfigStatus
 import dev.firezone.android.core.data.model.ManagedConfiguration
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.withContext
 import java.security.MessageDigest
 import javax.inject.Inject
@@ -212,6 +215,16 @@ class Repository
 
         fun getNonceSync(): String? = sharedPreferences.getString(NONCE_KEY, null)
 
+        fun saveAccountSlug(value: String): Flow<Unit> =
+            flow {
+                emit(
+                    sharedPreferences
+                        .edit()
+                        .putString(ACCOUNT_SLUG_KEY, value)
+                        .apply(),
+                )
+            }.flowOn(coroutineDispatcher)
+
         fun saveDeviceIdSync(value: String): Unit =
             sharedPreferences
                 .edit()
@@ -318,7 +331,7 @@ class Repository
 
         private fun isLogFilterManaged(): Boolean = sharedPreferences.contains(MANAGED_LOG_FILTER_KEY)
 
-        private fun isAccountSlugManaged(): Boolean = sharedPreferences.contains(MANAGED_ACCOUNT_SLUG_KEY)
+        fun isAccountSlugManaged(): Boolean = sharedPreferences.contains(MANAGED_ACCOUNT_SLUG_KEY)
 
         private fun isStartOnLoginManaged(): Boolean = sharedPreferences.contains(MANAGED_START_ON_LOGIN_KEY)
 

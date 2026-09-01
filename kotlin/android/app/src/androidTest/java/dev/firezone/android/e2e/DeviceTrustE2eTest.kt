@@ -27,7 +27,6 @@ import dev.firezone.android.tunnel.launchApp
 import dev.firezone.android.tunnel.resumedActivity
 import dev.firezone.android.tunnel.startTunnelService
 import dev.firezone.android.tunnel.stopTunnelService
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertArrayEquals
@@ -87,7 +86,7 @@ class DeviceTrustE2eTest {
     fun aDeviceCertificateAccompaniesThePortalToken() {
         val certificate = testIdentity(SERIAL_CLAIM)
         givenCertificate(certificate)
-        runBlocking { repo.saveToken(TOKEN).first() }
+        signIn()
 
         startTunnelService()
         val session = awaitSession()
@@ -109,7 +108,7 @@ class DeviceTrustE2eTest {
 
     @Test
     fun aTokenAloneConnectsWithoutACertificate() {
-        runBlocking { repo.saveToken(TOKEN).first() }
+        signIn()
 
         startTunnelService()
         val session = awaitSession()
@@ -132,6 +131,14 @@ class DeviceTrustE2eTest {
     private fun givenCertificate(certificate: TestIdentity) {
         FakeKeyChain.install(ALIAS, certificate, granted = true)
         repo.saveX509CertificateAliasSync(ALIAS)
+    }
+
+    /** Stores a token the way the app does, which is the only way one is ever written. */
+    private fun signIn() {
+        runBlocking {
+            repo.saveNonceAndStateSync(nonce = NONCE, state = STATE)
+            repo.saveAuthCallbackIfStateValid(state = STATE, fragment = FRAGMENT)
+        }
     }
 
     private fun awaitSession(): FakeSession = runBlocking { withTimeout(TIMEOUT_MS) { FakeSessionFactory.awaitSession() } }
@@ -177,7 +184,10 @@ class DeviceTrustE2eTest {
 
     private companion object {
         const val ALIAS = "firezone-e2e"
-        const val TOKEN = "browser-token"
+        const val NONCE = "browser-"
+        const val FRAGMENT = "token"
+        const val TOKEN = NONCE + FRAGMENT
+        const val STATE = "browser-state"
         const val TIMEOUT_MS = 20_000L
 
         const val SERIAL_CLAIM = "firezone://serial/EMU-4711"

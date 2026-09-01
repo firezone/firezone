@@ -29,7 +29,6 @@ class CertificateAccessTest {
     private val restrictions = Bundle()
     private val repository =
         Repository(
-            RuntimeEnvironment.getApplication(),
             Dispatchers.Unconfined,
             RuntimeEnvironment
                 .getApplication()

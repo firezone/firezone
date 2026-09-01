@@ -108,7 +108,6 @@ internal class CustomUriViewModel
             private const val PATH_CALLBACK = "handle_client_sign_in_callback"
             private const val QUERY_CLIENT_STATE = "state"
             private const val QUERY_CLIENT_AUTH_FRAGMENT = "fragment"
-            private const val QUERY_ACTOR_NAME = "actor_name"
 
             private const val TAG = "CustomUriViewModel"
         }
