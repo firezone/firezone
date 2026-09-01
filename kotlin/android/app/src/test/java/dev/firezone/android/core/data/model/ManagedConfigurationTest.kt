@@ -36,7 +36,7 @@ class ManagedConfigurationTest {
         assertTrue(ManagedConfiguration().requiresSessionReconnect(ManagedConfiguration(token = "token")))
         assertTrue(ManagedConfiguration(deviceName = "managed-device").requiresSessionReconnect(previous))
         assertTrue(ManagedConfiguration(apiUrl = "wss://api.example.com").requiresSessionReconnect(previous))
-        assertTrue(ManagedConfiguration(accountSlug = "example").requiresSessionReconnect(previous))
+        assertFalse(ManagedConfiguration(accountSlug = "example").requiresSessionReconnect(previous))
         assertFalse(ManagedConfiguration(authUrl = "https://app.example.com").requiresSessionReconnect(previous))
         assertFalse(ManagedConfiguration(logFilter = "debug").requiresSessionReconnect(previous))
         assertFalse(ManagedConfiguration(startOnLogin = true).requiresSessionReconnect(previous))

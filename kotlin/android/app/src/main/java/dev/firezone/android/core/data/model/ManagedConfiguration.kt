@@ -31,8 +31,7 @@ internal data class ManagedConfiguration(
     fun requiresSessionReconnect(previous: ManagedConfiguration): Boolean =
         token != previous.token ||
             deviceName != previous.deviceName ||
-            apiUrl != previous.apiUrl ||
-            accountSlug != previous.accountSlug
+            apiUrl != previous.apiUrl
 
     fun requiresVpnRebuild(previous: ManagedConfiguration): Boolean =
         allowedApplications != previous.allowedApplications ||
