@@ -32,6 +32,7 @@ use secrecy::ExposeSecret as _;
 use x509_parser::prelude::{FromDer as _, X509Certificate};
 
 use super::*;
+use crate::DetailField;
 use crate::sign::{der_encode_ecdsa_signature, der_integer, encode_der_length};
 
 #[test]
@@ -251,6 +252,29 @@ fn signs_with_the_token_key_of_an_ecdsa_certificate() {
 
 #[test]
 #[ignore = "Requires the SoftHSM PKCS#11 module and writes to a temporary token store"]
+fn describes_the_provisioned_certificate_it_loads() {
+    let _serialized = serialize_token_access();
+    let token = provision_token("describe", KeyAlgorithm::Rsa);
+
+    let report = token
+        .load()
+        .expect("the SoftHSM token should be readable")
+        .certificate
+        .expect("the provisioned certificate should be selected as the client identity");
+
+    let fields = report.certificate.detail_fields();
+    assert_eq!(
+        field_value(&fields, "Common Name"),
+        Some(token.subject_cn.as_str())
+    );
+    assert_eq!(
+        field_value(&fields, "Signing Algorithm"),
+        Some("SHA256withRSA")
+    );
+}
+
+#[test]
+#[ignore = "Requires the SoftHSM PKCS#11 module and writes to a temporary token store"]
 fn reports_no_identity_when_no_certificate_matches() {
     let _serialized = serialize_token_access();
     let token = provision_token("absent", KeyAlgorithm::Rsa);
@@ -260,6 +284,7 @@ fn reports_no_identity_when_no_certificate_matches() {
         .load_of(&subject_cn)
         .expect("the SoftHSM token should be readable");
 
+    assert!(loaded.certificate.is_none());
     assert!(loaded.identity.is_none());
 }
 
@@ -508,6 +533,14 @@ fn leaf_of(identity: &Identity) -> Vec<u8> {
         .expect("the identity should carry a certificate chain");
 
     leaf.to_vec()
+}
+
+/// Returns the diagnostics section titled `title`.
+/// Returns the value of the row labelled `label`, if the certificate's rows have one.
+fn field_value<'a>(fields: &'a [DetailField], label: &str) -> Option<&'a str> {
+    let field = fields.iter().find(|field| field.label == label)?;
+
+    field.value.as_deref()
 }
 
 /// Signs [`MESSAGE`] with every scheme the key advertises and verifies each signature against the

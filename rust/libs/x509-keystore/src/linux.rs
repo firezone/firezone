@@ -21,7 +21,8 @@ use x509_claims::{ParsedCertificate, SigningAlgorithm, parse_certificate};
 use x509_credential::SigningError;
 
 use crate::{
-    CandidateCertificate, Error, Identity, Loaded, UnusableCause, selected_certificate, sign,
+    CandidateCertificate, Error, Identity, Loaded, ReportedCertificate, UnusableCause,
+    selected_certificate, sign,
 };
 use rpc::{Attribute, Mechanism, ReturnValue};
 
@@ -104,11 +105,16 @@ fn select_identity(candidate: Candidate, pin_file: &Path) -> Result<Loaded, Erro
     };
     let certificate = certificates.swap_remove(index);
 
-    // Skipping a certificate that was provisioned for Firezone reads to an administrator as
-    // if none had been, so say which rule it failed instead of connecting without it.
+    // A certificate that was provisioned for Firezone but fails one of our rules must not read
+    // to an administrator as if none had been: it is reported with the rule it failed, and
+    // nothing is presented.
     if let Some(cause) = certificate.unusable() {
-        return Err(Error::IdentityUnavailable {
-            message: format!("The PKCS#11 token holds no usable Firezone client identity: {cause}"),
+        return Ok(Loaded {
+            certificate: Some(ReportedCertificate {
+                certificate: certificate.metadata,
+                unusable: Some(cause),
+            }),
+            identity: None,
         });
     }
 
@@ -142,7 +148,10 @@ fn select_identity(candidate: Candidate, pin_file: &Path) -> Result<Loaded, Erro
     );
 
     Ok(Loaded {
-        certificate: None,
+        certificate: Some(ReportedCertificate {
+            certificate: certificate.metadata,
+            unusable: None,
+        }),
         identity: Some(Identity { chain, key }),
     })
 }
