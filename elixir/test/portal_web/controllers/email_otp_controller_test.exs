@@ -145,7 +145,7 @@ defmodule PortalWeb.EmailOTPControllerTest do
       assert email.to == [{"", actor.email}]
     end
 
-    test "does not disclose recipient email rate limiting", %{
+    test "rate limits eligible and unknown addresses identically", %{
       conn: conn,
       account: account,
       provider: provider
@@ -157,8 +157,11 @@ defmodule PortalWeb.EmailOTPControllerTest do
           allow_email_otp_sign_in: true
         )
 
+      unknown_email = "unknown-#{Ecto.UUID.generate()}@example.com"
+
       on_exit(fn ->
         Portal.Mailer.RateLimiter.reset_rate_limit({:sign_in_link, actor.email})
+        Portal.Mailer.RateLimiter.reset_rate_limit({:sign_in_link, unknown_email})
       end)
 
       for _ <- 1..3 do
@@ -177,7 +180,18 @@ defmodule PortalWeb.EmailOTPControllerTest do
           "email" => %{"email" => actor.email}
         })
 
-      unknown_email = "unknown-#{Ecto.UUID.generate()}@example.com"
+      assert flash(rate_limited_conn, :error) ==
+               "You're attempting to do that too quickly. Wait a few minutes and try again."
+      refute_received {:email, _}
+
+      for _ <- 1..3 do
+        conn =
+          post(conn, ~p"/#{account.id}/sign_in/email_otp/#{provider.id}", %{
+            "email" => %{"email" => unknown_email}
+          })
+
+        assert flash(conn, :error) == nil
+      end
 
       unknown_email_conn =
         post(conn, ~p"/#{account.id}/sign_in/email_otp/#{provider.id}", %{

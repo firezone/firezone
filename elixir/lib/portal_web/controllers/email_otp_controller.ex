@@ -110,10 +110,13 @@ defmodule PortalWeb.EmailOTPController do
   end
 
   defp maybe_send_email_otp(conn, account, email, params, auth_provider_id) do
-    {actor_id, passcode_id, _} =
+    {actor_id, passcode_id, error} =
       Portal.Timing.execute_with_constant_time(
         fn ->
-          with {:ok, actor} <- Database.fetch_actor_by_email(account, email),
+          # Apply recipient throttling before the actor lookup so its public
+          # feedback cannot reveal whether the address belongs to an eligible actor.
+          with :ok <- rate_limit_email_otp(email),
+               {:ok, actor} <- Database.fetch_actor_by_email(account, email),
                {:ok, otp} <- Authentication.create_one_time_passcode(account, actor),
                {:ok, _} <- send_email_otp(conn, actor, otp.code, auth_provider_id, params) do
             {actor.id, otp.id, nil}
@@ -148,9 +151,29 @@ defmodule PortalWeb.EmailOTPController do
 
     conn = PortalWeb.Cookie.EmailOTP.put(conn, cookie)
 
-    # Keep delivery rate limiting internal so it cannot be used to determine
-    # whether an address belongs to an eligible actor.
-    conn
+    case error do
+      :rate_limited ->
+        put_flash(
+          conn,
+          :error,
+          "You're attempting to do that too quickly. Wait a few minutes and try again."
+        )
+
+      _ ->
+        conn
+    end
+  end
+
+  defp rate_limit_email_otp(email) do
+    case Portal.Mailer.RateLimiter.rate_limit(
+           {:sign_in_link, email},
+           3,
+           :timer.minutes(5),
+           fn -> :ok end
+         ) do
+      {:ok, :ok} -> :ok
+      {:error, :rate_limited} -> {:error, :rate_limited}
+    end
   end
 
   defp send_email_otp(conn, actor, code, auth_provider_id, params) do
@@ -163,11 +186,7 @@ defmodule PortalWeb.EmailOTPController do
       conn.remote_ip,
       sanitize(params)
     )
-    |> Portal.Mailer.deliver_with_rate_limit(
-      rate_limit_key: {:sign_in_link, actor.email},
-      rate_limit: 3,
-      rate_limit_interval: :timer.minutes(5)
-    )
+    |> Portal.Mailer.deliver()
   end
 
   defp check_admin(%Portal.Actor{type: :account_admin_user}, _context_type), do: :ok
