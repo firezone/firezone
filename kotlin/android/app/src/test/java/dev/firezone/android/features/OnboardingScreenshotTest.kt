@@ -14,6 +14,7 @@ import dev.firezone.android.features.permission.vpn.ui.VpnPermissionActivity
 import dev.firezone.android.features.session.ui.compose.FirezoneTheme
 import dev.firezone.android.features.signin.ui.compose.SignInScreen
 import dev.firezone.android.features.signin.ui.startSessionLabel
+import dev.firezone.android.features.signin.ui.startSessionPrompt
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.Robolectric
@@ -53,18 +54,16 @@ class OnboardingScreenshotTest {
     @OptIn(ExperimentalRoborazziApi::class)
     @Test
     fun signInWithCertificate() {
-        val label =
-            startSessionLabel(
-                RuntimeEnvironment.getApplication(),
-                Identity.Claimed(email = "jane.doe@example.com"),
-            )
+        val identity = Identity.Claimed(email = "jane.doe@example.com")
+        val application = RuntimeEnvironment.getApplication()
 
         captureRoboImage("${roborazziSystemPropertyOutputDirectory()}/sign-in-certificate.png") {
             FirezoneTheme {
                 SignInScreen(
                     onSignIn = {},
                     onSettings = {},
-                    signInLabel = label,
+                    signInLabel = startSessionLabel(application, identity),
+                    promptLabel = startSessionPrompt(application, identity),
                 )
             }
         }

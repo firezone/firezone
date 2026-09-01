@@ -66,6 +66,7 @@
 	<string name="settings">Settings</string>
 	<string name="sign_in_welcome">Welcome to Firezone.</string>
 	<string name="sign_in_prompt">Sign in to access Resources.</string>
+	<string name="sign_in_certificate_hint">This device has a certificate that identifies you.</string>
 
 	<!-- Sign Out -->
 	<string name="resources">Resources</string>

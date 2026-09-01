@@ -13,3 +13,12 @@ internal fun startSessionLabel(
         Identity.Absent -> context.getString(R.string.sign_in)
         is Identity.Claimed -> identity.email?.let { context.getString(R.string.connect_as, it) } ?: context.getString(R.string.connect)
     }
+
+internal fun startSessionPrompt(
+    context: Context,
+    identity: Identity,
+): String =
+    when (identity) {
+        Identity.Absent -> context.getString(R.string.sign_in_prompt)
+        is Identity.Claimed -> context.getString(R.string.sign_in_certificate_hint)
+    }

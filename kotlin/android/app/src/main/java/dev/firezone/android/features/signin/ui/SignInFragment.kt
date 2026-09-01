@@ -39,6 +39,7 @@ internal class SignInFragment : Fragment() {
                 FirezoneTheme {
                     SignInScreen(
                         signInLabel = startSessionLabel(requireContext(), identity),
+                        promptLabel = startSessionPrompt(requireContext(), identity),
                         onSignIn = { startSession(identity) },
                         onSettings = {
                             val bundle = Bundle().apply { putBoolean("isUserSignedIn", false) }
