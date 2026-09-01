@@ -143,6 +143,14 @@ class CustomUriViewModelTest {
     }
 
     @Test
+    fun `unknown and missing callback paths do not mutate credentials`() {
+        assertInvalidCallbackDoesNotMutateCredentials(
+            Intent(Intent.ACTION_VIEW, Uri.parse("firezone-fd0020211111://unknown")),
+        )
+        assertInvalidCallbackDoesNotMutateCredentials(Intent(Intent.ACTION_VIEW))
+    }
+
+    @Test
     fun `concurrent callbacks complete after consuming state once`() =
         runBlocking {
             val context = RuntimeEnvironment.getApplication()
