@@ -22,9 +22,11 @@ defmodule PortalWeb.EmailOTPController do
         } = params
       )
       when is_binary(email) do
+    context_type = context_type(params)
+
     with {:ok, account} <- Database.fetch_account_by_id_or_slug(account_id_or_slug),
          {:ok, _provider} <- Database.fetch_provider_by_id(account, auth_provider_id) do
-      conn = maybe_send_email_otp(conn, account, email, params, auth_provider_id)
+      conn = maybe_send_email_otp(conn, account, email, params, auth_provider_id, context_type)
 
       redirect_params = sanitize(params)
 
@@ -64,7 +66,8 @@ defmodule PortalWeb.EmailOTPController do
     %{"account_id_or_slug" => account_id_or_slug, "auth_provider_id" => auth_provider_id} = params
     context_type = context_type(params)
 
-    with {:ok, actor_id, passcode_id, email} <- fetch_state(conn),
+    with {:ok, actor_id, passcode_id, email, initiated_context_type} <- fetch_state(conn),
+         :ok <- validate_initiated_context(initiated_context_type, context_type),
          {:ok, account} <- Database.fetch_account_by_id_or_slug(account_id_or_slug),
          {:ok, provider} <- Database.fetch_provider_by_id(account, auth_provider_id),
          false <- client_sign_in_restricted?(account, context_type),
@@ -76,6 +79,7 @@ defmodule PortalWeb.EmailOTPController do
              entered_code
            ),
          :ok <- check_admin(passcode.actor, context_type),
+         :ok <- Portal.AuthProvider.validate_context(provider, context_type),
          {:ok, session_or_token} <-
            create_session_or_token(conn, passcode.actor, provider, params) do
       {:ok,
@@ -101,15 +105,20 @@ defmodule PortalWeb.EmailOTPController do
 
   defp fetch_state(conn) do
     case PortalWeb.Cookie.EmailOTP.fetch(conn) do
-      %PortalWeb.Cookie.EmailOTP{actor_id: actor_id, passcode_id: passcode_id, email: email} ->
-        {:ok, actor_id, passcode_id, email}
+      %PortalWeb.Cookie.EmailOTP{
+        actor_id: actor_id,
+        passcode_id: passcode_id,
+        email: email,
+        context_type: context_type
+      } ->
+        {:ok, actor_id, passcode_id, email, context_type}
 
       nil ->
         :error
     end
   end
 
-  defp maybe_send_email_otp(conn, account, email, params, auth_provider_id) do
+  defp maybe_send_email_otp(conn, account, email, params, auth_provider_id, context_type) do
     {actor_id, passcode_id, error} =
       Portal.Timing.execute_with_constant_time(
         fn ->
@@ -143,7 +152,8 @@ defmodule PortalWeb.EmailOTPController do
     cookie = %PortalWeb.Cookie.EmailOTP{
       actor_id: actor_id,
       passcode_id: passcode_id,
-      email: email
+      email: email,
+      context_type: context_type
     }
 
     conn = PortalWeb.Cookie.EmailOTP.put(conn, cookie)
@@ -306,6 +316,12 @@ defmodule PortalWeb.EmailOTPController do
     redirect_for_error(conn, error, path)
   end
 
+  defp handle_error(conn, {:error, :invalid_context}, params) do
+    error = "This authentication method is not available for your sign-in context."
+    path = ~p"/#{params["account_id_or_slug"]}"
+    redirect_for_error(conn, error, path)
+  end
+
   defp handle_error(conn, true, params) do
     error =
       "This account is temporarily suspended from client authentication " <>
@@ -360,6 +376,9 @@ defmodule PortalWeb.EmailOTPController do
   defp context_type(%{"as" => "gui-client"}), do: :gui_client
   defp context_type(%{"as" => "headless-client"}), do: :headless_client
   defp context_type(_), do: :portal
+
+  defp validate_initiated_context(context_type, context_type), do: :ok
+  defp validate_initiated_context(_initiated_context_type, _context_type), do: {:error, :invalid_context}
 
   defmodule Database do
     import Ecto.Query

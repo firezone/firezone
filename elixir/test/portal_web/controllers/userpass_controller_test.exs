@@ -9,7 +9,7 @@ defmodule PortalWeb.UserpassControllerTest do
 
   setup do
     account = account_fixture()
-    provider = userpass_provider_fixture(account: account)
+    provider = userpass_provider_fixture(account: account, context: :clients_and_portal)
     password_hash = Portal.Crypto.hash(:argon2, @password)
 
     {:ok, account: account, provider: provider, password_hash: password_hash}
@@ -440,6 +440,86 @@ defmodule PortalWeb.UserpassControllerTest do
 
       # Portal sign-in should still be allowed so admins can manage billing
       assert redirected_to(conn) =~ "/sites"
+    end
+
+    test "rejects portal sign-in when provider context is clients_only", %{
+      conn: conn,
+      account: account,
+      provider: provider,
+      password_hash: password_hash
+    } do
+      provider
+      |> Ecto.Changeset.change(context: :clients_only)
+      |> Portal.Repo.update!()
+
+      actor =
+        create_actor_with_password(
+          %{type: :account_admin_user, account: account},
+          password_hash
+        )
+
+      conn =
+        post(conn, ~p"/#{account.id}/sign_in/userpass/#{provider.id}", %{
+          "userpass" => %{"idp_id" => actor.email, "secret" => @password}
+        })
+
+      assert redirected_to(conn) == ~p"/#{account.id}"
+      assert flash(conn, :error) == "This authentication method is not available for your sign-in context."
+    end
+
+    test "rejects GUI client sign-in when provider context is portal_only", %{
+      conn: conn,
+      account: account,
+      provider: provider,
+      password_hash: password_hash
+    } do
+      provider
+      |> Ecto.Changeset.change(context: :portal_only)
+      |> Portal.Repo.update!()
+
+      actor =
+        create_actor_with_password(
+          %{type: :account_admin_user, account: account},
+          password_hash
+        )
+
+      conn =
+        post(conn, ~p"/#{account.id}/sign_in/userpass/#{provider.id}", %{
+          "userpass" => %{"idp_id" => actor.email, "secret" => @password},
+          "as" => "client",
+          "state" => "test-state",
+          "nonce" => "test-nonce"
+        })
+
+      assert redirected_to(conn) == ~p"/#{account.id}"
+      assert flash(conn, :error) == "This authentication method is not available for your sign-in context."
+    end
+
+    test "rejects headless client sign-in when provider context is portal_only", %{
+      conn: conn,
+      account: account,
+      provider: provider,
+      password_hash: password_hash
+    } do
+      provider
+      |> Ecto.Changeset.change(context: :portal_only)
+      |> Portal.Repo.update!()
+
+      actor =
+        create_actor_with_password(
+          %{type: :account_admin_user, account: account},
+          password_hash
+        )
+
+      conn =
+        post(conn, ~p"/#{account.id}/sign_in/userpass/#{provider.id}", %{
+          "userpass" => %{"idp_id" => actor.email, "secret" => @password},
+          "as" => "headless-client",
+          "state" => "test-state"
+        })
+
+      assert redirected_to(conn) == ~p"/#{account.id}"
+      assert flash(conn, :error) == "This authentication method is not available for your sign-in context."
     end
   end
 end
