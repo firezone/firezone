@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 #MISE description="Issue a throwaway X.509 client certificate and pack it as a PKCS#12"
 #USAGE cmd "user" help="Carries an actor, so a Client can sign in as a portal identity" {
-#USAGE     flag "--email <email>" help="Actor email to put in the certificate" required=#true
+#USAGE     flag "--email <email>" help="Actor email to put in the certificate"
+#USAGE     flag "--actor-id <actor_id>" help="Actor UUID to put in the certificate"
 #USAGE     flag "--account-id <account_id>" help="Account UUID to put in the certificate" required=#true
 #USAGE     flag "--serial <serial>" help="Device serial to attest as; read from this machine when omitted"
 #USAGE     flag "--alias <alias>" help="Name the key is stored under [default: firezone-client]"
@@ -120,10 +121,23 @@ URI.1 = firezone://serial/${serial}
 EOF
 
 if [ "$kind" = "user" ]; then
-    cat >>"${OUT_DIR}/client.cnf" <<EOF
-URI.2 = firezone://email/${usage_email:?}
-URI.3 = firezone://account-id/${usage_account_id:?}
-EOF
+    # The portal matches the actor by email or by UUID, so a certificate carrying neither
+    # claims nobody.
+    if [ -z "${usage_email:-}" ] && [ -z "${usage_actor_id:-}" ]; then
+        echo "error: a user certificate needs --email and/or --actor-id" >&2
+        exit 1
+    fi
+
+    san=2
+    if [ -n "${usage_email:-}" ]; then
+        echo "URI.${san} = firezone://email/${usage_email}" >>"${OUT_DIR}/client.cnf"
+        san=$((san + 1))
+    fi
+    if [ -n "${usage_actor_id:-}" ]; then
+        echo "URI.${san} = firezone://actor-id/${usage_actor_id}" >>"${OUT_DIR}/client.cnf"
+        san=$((san + 1))
+    fi
+    echo "URI.${san} = firezone://account-id/${usage_account_id:?}" >>"${OUT_DIR}/client.cnf"
 fi
 
 echo "==> Issuing a ${kind} certificate as ${SUBJECT_CN}..."

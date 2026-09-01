@@ -260,7 +260,7 @@ jobs:
           RELEASE_NAME: "${{ matrix.release-name }}"
       - name: Setup sentry CLI
         if: "${{ github.event_name == 'workflow_dispatch' }}"
-        uses: matbour/setup-sentry-cli@3e938c54b3018bdd019973689ef984e033b0454b #v2.0.0
+        uses: matbour/setup-sentry-cli@ff4fff773f5e628fa214ebd19e46fb7289454ee2 #v3.0.0
         with:
           token: ${{ secrets.SENTRY_AUTH_TOKEN }}
           organization: firezone-inc

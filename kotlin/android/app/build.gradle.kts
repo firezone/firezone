@@ -308,8 +308,8 @@ dependencies {
     implementation("com.squareup.retrofit2:converter-moshi:3.0.0")
 
     // OkHttp
-    implementation("com.squareup.okhttp3:okhttp:5.4.0")
-    implementation("com.squareup.okhttp3:logging-interceptor:5.4.0")
+    implementation("com.squareup.okhttp3:okhttp:5.5.0")
+    implementation("com.squareup.okhttp3:logging-interceptor:5.5.0")
 
     // Moshi
     implementation("com.squareup.moshi:moshi-kotlin:1.15.2")
@@ -327,7 +327,7 @@ dependencies {
     androidTestImplementation("androidx.fragment:fragment-testing:1.9.0")
 
     // Import the BoM for the Firebase platform
-    implementation(platform("com.google.firebase:firebase-bom:34.17.0"))
+    implementation(platform("com.google.firebase:firebase-bom:34.18.0"))
 
     // Add the dependencies for the Crashlytics and Analytics libraries
     // When using the BoM, you don't specify versions in Firebase library dependencies
@@ -365,7 +365,7 @@ dependencies {
     // 32.2.x, so it loads. 1.5.0 rewrote ComposeViewModelForwarding to flag forwarding
     // inside nested blocks; our UI model that wraps a resource is named `ResourceUiModel`
     // (not `*ViewModel`) so the check doesn't mistake it for a real ViewModel.
-    lintChecks("com.slack.lint.compose:compose-lint-checks:1.5.4")
+    lintChecks("com.slack.lint.compose:compose-lint-checks:1.5.5")
 
     // Screenshots. Roborazzi draws Compose through Robolectric's native graphics, so the
     // screens render on the JVM without an emulator.
