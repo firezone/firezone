@@ -122,7 +122,10 @@ defmodule PortalWeb.EmailOTPController do
     {actor_id, passcode_id, error} =
       Portal.Timing.execute_with_constant_time(
         fn ->
-          with {:ok, actor} <- Database.fetch_actor_by_email(account, email),
+          # Apply recipient throttling before the actor lookup so its public
+          # feedback cannot reveal whether the address belongs to an eligible actor.
+          with :ok <- rate_limit_email_otp(email),
+               {:ok, actor} <- Database.fetch_actor_by_email(account, email),
                {:ok, otp} <- Authentication.create_one_time_passcode(account, actor),
                {:ok, _} <- send_email_otp(conn, actor, otp.code, auth_provider_id, params) do
             {actor.id, otp.id, nil}
@@ -171,6 +174,18 @@ defmodule PortalWeb.EmailOTPController do
     end
   end
 
+  defp rate_limit_email_otp(email) do
+    case Portal.Mailer.RateLimiter.rate_limit(
+           {:sign_in_link, email},
+           3,
+           :timer.minutes(5),
+           fn -> :ok end
+         ) do
+      {:ok, :ok} -> :ok
+      {:error, :rate_limited} -> {:error, :rate_limited}
+    end
+  end
+
   defp send_email_otp(conn, actor, code, auth_provider_id, params) do
     Portal.Mailer.AuthEmail.sign_in_link_email(
       actor,
@@ -181,11 +196,7 @@ defmodule PortalWeb.EmailOTPController do
       conn.remote_ip,
       sanitize(params)
     )
-    |> Portal.Mailer.deliver_with_rate_limit(
-      rate_limit_key: {:sign_in_link, actor.email},
-      rate_limit: 3,
-      rate_limit_interval: :timer.minutes(5)
-    )
+    |> Portal.Mailer.deliver()
   end
 
   defp check_admin(%Portal.Actor{type: :account_admin_user}, _context_type), do: :ok
