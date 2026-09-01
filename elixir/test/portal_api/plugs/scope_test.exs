@@ -88,13 +88,23 @@ defmodule PortalAPI.Plugs.ScopeTest do
     end
   end
 
-  describe "an unscoped credential" do
-    test "is unrestricted, so tokens minted before scopes keep working", %{
-      conn: conn,
-      actor: actor
-    } do
-      conn = conn |> authorize_conn(actor) |> get(~p"/resources")
+  describe "a credential that predates scopes" do
+    test "keeps working with the scopes the migration backfilled", %{conn: conn, actor: actor} do
+      conn =
+        conn
+        |> authorize_conn(actor, Portal.Scope.all())
+        |> get(~p"/resources")
+
       assert json_response(conn, 200)
+    end
+
+    test "is unrestricted when its type carries no scopes at all" do
+      account = Portal.AccountFixtures.account_fixture()
+      actor = Portal.ActorFixtures.actor_fixture(type: :account_admin_user, account: account)
+      subject = Portal.SubjectFixtures.subject_fixture(account: account, actor: actor)
+
+      assert subject.credential.scopes == nil
+      assert Portal.Scope.permit(:resources, :post, subject) == :ok
     end
   end
 

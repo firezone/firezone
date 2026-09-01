@@ -11,9 +11,9 @@ defmodule PortalAPI.Scopes do
   gateway join a site, so neither follows from being allowed to list clients or
   gateways.
 
-  A controller that is neither mapped nor listed in `unscoped/0` is refused, so
-  adding a route without deciding what it is scoped by cannot quietly widen
-  every existing credential.
+  A controller that is not mapped is refused, so adding a route without
+  deciding what it is scoped by cannot quietly widen every existing
+  credential.
   """
 
   @entity_by_controller %{
