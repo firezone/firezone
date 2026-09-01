@@ -2,14 +2,18 @@ defmodule PortalAPI.Router do
   use PortalAPI, :router
 
   pipeline :api do
+    plug :accepts, ["json"]
+    # Authentication and the account limiter use only request metadata. Keep
+    # them ahead of the body parser so rejected requests never buffer or decode
+    # an attacker-controlled JSON body.
+    plug PortalAPI.Plugs.Auth
+    plug PortalAPI.Plugs.RateLimit
+
     plug Plug.Parsers,
       parsers: [:json],
       pass: ["*/*"],
       json_decoder: Phoenix.json_library()
 
-    plug :accepts, ["json"]
-    plug PortalAPI.Plugs.Auth
-    plug PortalAPI.Plugs.RateLimit
     plug PortalAPI.Plugs.RequestLog
     plug PortalAPI.Plugs.ValidateUUIDParams
   end
@@ -31,17 +35,19 @@ defmodule PortalAPI.Router do
   end
 
   pipeline :ingestion do
+    plug :accepts, ["json"]
+    # Rate limiting is keyed on the source IP and runs before token
+    # verification and parsing. The ingest token is entirely in the
+    # Authorization header, so it can also be authenticated before reading the
+    # body.
+    plug PortalAPI.Plugs.IngestionRateLimit
+    plug PortalAPI.Plugs.FlowLogAuth
+
     plug Plug.Parsers,
       parsers: [:json],
       pass: ["*/*"],
       json_decoder: Phoenix.json_library(),
       length: 10_000_000
-
-    plug :accepts, ["json"]
-    # Auth is the per-authorization ingest token in the Authorization header,
-    # verified in the controller (it needs the token's account_id to load the
-    # signing key). Rate limiting is keyed on the source IP.
-    plug PortalAPI.Plugs.IngestionRateLimit
   end
 
   scope "/ingestion", PortalAPI do

@@ -14,7 +14,6 @@ defmodule PortalAPI.FlowLogController do
   import Ecto.Changeset
   alias OpenApiSpex.Schema
   alias Portal.FlowLog
-  alias Portal.FlowLogToken
   alias Portal.Types.LogId
   alias PortalAPI.ProblemDetails
   alias PortalAPI.Schemas.ProblemDetails, as: ProblemDetailsSchema
@@ -81,9 +80,9 @@ defmodule PortalAPI.FlowLogController do
   end
 
   def create(conn, %{"flow_logs" => records}) when is_list(records) do
-    with {:ok, claims} <- authenticate(conn),
-         :ok <- ensure_uploads_enabled(claims),
-         :ok <- ensure_single_authorization(records, claims) do
+    claims = conn.assigns.flow_log_claims
+
+    with :ok <- ensure_single_authorization(records, claims) do
       now = DateTime.utc_now()
 
       {valid, errors} =
@@ -108,16 +107,6 @@ defmodule PortalAPI.FlowLogController do
         })
       end
     else
-      {:error, :unauthenticated} ->
-        ProblemDetails.send(conn, 401, "Authentication credentials were missing or invalid.")
-
-      {:error, :uploads_disabled} ->
-        ProblemDetails.send(
-          conn,
-          401,
-          "Flow log uploads are not enabled for this authorization"
-        )
-
       {:error, :multiple_authorizations} ->
         ProblemDetails.send(
           conn,
@@ -130,25 +119,6 @@ defmodule PortalAPI.FlowLogController do
   def create(conn, _params) do
     ProblemDetails.send(conn, 400, "Expected a \"flow_logs\" array")
   end
-
-  # The single per-authorization ingest token authenticates the whole request.
-  # An unknown account, a bad signature, an expired or malformed token, and a
-  # missing header all collapse to the same 401 so the endpoint reveals nothing.
-  defp authenticate(conn) do
-    with ["Bearer " <> token] <- get_req_header(conn, "authorization"),
-         {:ok, claims} <- FlowLogToken.verify(token) do
-      {:ok, claims}
-    else
-      _ -> {:error, :unauthenticated}
-    end
-  end
-
-  # Tokens are minted for every authorization so devices always receive their
-  # attribution, but the `uploads_enabled` claim carries the policy's opt-in.
-  # Devices honor it client-side; this is the server-side backstop. A token
-  # without the claim fails closed.
-  defp ensure_uploads_enabled(%{"uploads_enabled" => true}), do: :ok
-  defp ensure_uploads_enabled(_claims), do: {:error, :uploads_disabled}
 
   # The token names exactly one policy authorization; a record that declares a
   # different one means the reporter mixed authorizations into one request, which
