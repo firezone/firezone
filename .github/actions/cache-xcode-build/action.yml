@@ -1,0 +1,85 @@
+---
+name: "Cache the Xcode build"
+description: "Restores the package checkouts and the build products of an Xcode build, so a build whose sources have not changed recompiles almost nothing."
+inputs:
+  path:
+    description: "DerivedData directory the build is told to use."
+    required: true
+  key:
+    description: "Stable key prefix telling these build products apart from every other build's (e.g. platform and configuration)."
+    required: true
+runs:
+  using: "composite"
+  steps:
+    # A cold DerivedData recompiles the app, its extension and both package
+    # dependencies from scratch, which is the bulk of the run. The build key names
+    # every file the build products are a function of, so a hit can only ever be
+    # the build of those same sources: hence no restore-keys further down.
+    #
+    # The packages key carries no `key` discriminator, so every caller shares one
+    # entry: the checkouts are the same sources whatever gets built from them, and
+    # a copy per caller would cost the repository's cache quota ~800 MB each.
+    # Callers running in parallel therefore race to write it, and the loser says
+    # so ("another job may be creating this cache") and carries on.
+    - name: Compute the cache keys
+      id: keys
+      shell: bash
+      # Build products are not portable across Xcode versions, so keying on an
+      # unset version would serve a 26.2 build to a job asking for a 27 one.
+      run: |
+        : "${XCODE_VERSION:?the calling job must pin the Xcode version}"
+
+        packages_prefix="v1-spm-${{ runner.arch }}-${XCODE_VERSION}-"
+
+        {
+          echo "build=v1-xcode-build-${{ inputs.key }}-${{ runner.arch }}-${XCODE_VERSION}-${{ hashFiles('swift/apple/**', '!swift/apple/screenshots/**', 'rust/**/*.rs', 'rust/**/Cargo.toml', 'rust/Cargo.lock', 'rust/rust-toolchain.toml', 'rust/**/.cargo/config.toml') }}"
+          echo "packages=${packages_prefix}${{ hashFiles('swift/apple/FirezoneKit/Package.resolved') }}"
+          echo "packages-prefix=${packages_prefix}"
+        } >> "$GITHUB_OUTPUT"
+
+    # Only `main` writes, hence the split between the read-write pair below and
+    # the read-only pair after it. A cache saved from a pull request or merge
+    # queue branch lives in that branch's own scope, where no other run can read
+    # it, yet it still counts against the repository's quota and evicts the `main`
+    # entries that every run does read.
+    #
+    # The checkouts are a pure function of the resolved versions, so an older set
+    # is still a head start on resolving the current one.
+    - name: Restore & save the package checkouts (main)
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      if: github.ref == 'refs/heads/main'
+      with:
+        path: ${{ inputs.path }}/SourcePackages
+        key: ${{ steps.keys.outputs.packages }}
+        restore-keys: ${{ steps.keys.outputs.packages-prefix }}
+
+    - name: Restore & save the build products (main)
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      if: github.ref == 'refs/heads/main'
+      with:
+        path: ${{ inputs.path }}/Build
+        key: ${{ steps.keys.outputs.build }}
+
+    - name: Restore the package checkouts
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      if: github.ref != 'refs/heads/main'
+      with:
+        path: ${{ inputs.path }}/SourcePackages
+        key: ${{ steps.keys.outputs.packages }}
+        restore-keys: ${{ steps.keys.outputs.packages-prefix }}
+
+    - name: Restore the build products
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      if: github.ref != 'refs/heads/main'
+      with:
+        path: ${{ inputs.path }}/Build
+        key: ${{ steps.keys.outputs.build }}
+
+    # Xcode decides what to rebuild from file timestamps, and a checkout stamps
+    # every file with the moment it was written, which on its own would age out
+    # the entire restored build. A constant stamps identical sources identically,
+    # and the key above covers those same sources, so what the timestamps claim is
+    # up to date is what the cache was written from.
+    - name: Date the sources deterministically
+      shell: bash
+      run: find swift/apple -type f -exec touch -t 202601010000 {} +
