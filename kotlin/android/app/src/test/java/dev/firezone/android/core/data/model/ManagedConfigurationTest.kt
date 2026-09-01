@@ -26,6 +26,28 @@ class ManagedConfigurationTest {
 
         assertFalse(configuration.connectOnStart!!)
         assertNull(configuration.startOnLogin)
+        assertNull(configuration.x509CertificateAlias)
+
+        val blankAlias =
+            ManagedConfiguration.from(
+                Bundle().apply {
+                    putString("x509CertificateAlias", "")
+                },
+            )
+
+        assertEquals("", blankAlias.x509CertificateAlias)
+        assertTrue(blankAlias.isX509CertificateAliasManaged())
+
+        val nullAlias =
+            ManagedConfiguration.from(
+                Bundle().apply {
+                    putString("x509CertificateAlias", null)
+                },
+            )
+
+        assertNull(nullAlias.x509CertificateAlias)
+        assertTrue(nullAlias.isX509CertificateAliasManaged())
+        assertNull(nullAlias.resolveX509CertificateAlias("user-alias"))
     }
 
     @Test
@@ -36,6 +58,13 @@ class ManagedConfigurationTest {
         assertTrue(ManagedConfiguration().requiresSessionReconnect(ManagedConfiguration(token = "token")))
         assertTrue(ManagedConfiguration(deviceName = "managed-device").requiresSessionReconnect(previous))
         assertTrue(ManagedConfiguration(apiUrl = "wss://api.example.com").requiresSessionReconnect(previous))
+        assertTrue(ManagedConfiguration(x509CertificateAlias = "managed-alias").requiresSessionReconnect(previous))
+        assertTrue(ManagedConfiguration(x509CertificateAliasManaged = true).requiresSessionReconnect(previous))
+        assertTrue(
+            ManagedConfiguration().requiresSessionReconnect(
+                ManagedConfiguration(x509CertificateAlias = "managed-alias"),
+            ),
+        )
         assertFalse(ManagedConfiguration(accountSlug = "example").requiresSessionReconnect(previous))
         assertFalse(ManagedConfiguration(authUrl = "https://app.example.com").requiresSessionReconnect(previous))
         assertFalse(ManagedConfiguration(logFilter = "debug").requiresSessionReconnect(previous))
@@ -77,6 +106,23 @@ class ManagedConfigurationTest {
     fun `managed authentication failure preserves saved user credentials`() {
         assertFalse(CredentialOrigin.MANAGED.shouldClearSavedCredentials(requiresSignIn = true))
         assertTrue(CredentialOrigin.USER.shouldClearSavedCredentials(requiresSignIn = true))
+    }
+
+    @Test
+    fun `managed certificate alias overrides disables and restores the user selection`() {
+        val userAlias = "user-alias"
+
+        assertEquals(userAlias, ManagedConfiguration().resolveX509CertificateAlias(userAlias))
+        assertEquals(
+            "managed-alias",
+            ManagedConfiguration(x509CertificateAlias = "managed-alias")
+                .resolveX509CertificateAlias(userAlias),
+        )
+        assertNull(
+            ManagedConfiguration(x509CertificateAlias = "")
+                .resolveX509CertificateAlias(userAlias),
+        )
+        assertEquals(userAlias, ManagedConfiguration().resolveX509CertificateAlias(userAlias))
     }
 
     @Test

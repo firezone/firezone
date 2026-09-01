@@ -32,6 +32,7 @@ import dev.firezone.android.core.data.model.ManagedConfiguration
 import dev.firezone.android.core.data.model.SessionCredential
 import dev.firezone.android.core.data.model.shouldClearSavedCredentials
 import dev.firezone.android.core.x509.X509Identity
+import dev.firezone.android.core.x509.X509IdentityException
 import dev.firezone.android.tunnel.model.Cidr
 import dev.firezone.android.tunnel.model.ConnectedDevice
 import dev.firezone.android.tunnel.model.Resource
@@ -417,6 +418,10 @@ class TunnelService : VpnService() {
 
     private fun createConnection(managedConfiguration: ManagedConfiguration): ConnectionParameters? {
         val credential = managedConfiguration.resolveSessionCredential(tokenStore.get()) ?: return null
+        val certificateAlias =
+            managedConfiguration.resolveX509CertificateAlias(
+                repo.getUserX509CertificateAliasSync(),
+            )
 
         return ConnectionParameters(
             commandChannel =
@@ -425,6 +430,7 @@ class TunnelService : VpnService() {
                     onUndeliveredElement = { command -> command.closeOwnedResources() },
                 ),
             credential = credential,
+            certificateAlias = certificateAlias,
             config = repo.getEffectiveConfig(repo.getUserConfigSync(), managedConfiguration),
             resourceState = repo.getInternetResourceStateSync(),
             managedConfiguration = managedConfiguration,
@@ -438,21 +444,6 @@ class TunnelService : VpnService() {
         // Dismiss any previous disconnected notifications
         TunnelNotification.dismissDisconnectedNotification(this)
 
-        val firebaseInstallationId =
-            runCatching { Tasks.await(FirebaseInstallations.getInstance().id) }
-                .getOrElse { exception ->
-                    Log.d(TAG, "Failed to obtain firebase installation id: $exception")
-                    null
-                }
-
-        val deviceInfo =
-            DeviceInfo(
-                firebaseInstallationId = firebaseInstallationId,
-                deviceUuid = null,
-                deviceSerial = null,
-                identifierForVendor = null,
-            )
-
         val context = this
 
         serviceScope.launch {
@@ -461,7 +452,8 @@ class TunnelService : VpnService() {
                 val deviceIdValue = deviceId()
                 Telemetry.setEnvironmentOrClose(connection.config.apiUrl)
                 Telemetry.setFirezoneId(deviceIdValue)
-                Telemetry.setAccountSlug(connection.config.accountSlug)
+                // The portal names the account in `init`; until then this session has none.
+                Telemetry.setAccountSlug(null)
 
                 configureLogger(
                     logDir(this@TunnelService),
@@ -469,20 +461,32 @@ class TunnelService : VpnService() {
                     flowLogsDir(this@TunnelService),
                 )
 
-                Session
-                    .newAndroid(
-                        config =
-                            AndroidSessionConfig(
-                                apiUrl = connection.config.apiUrl,
-                                token = connection.credential.token,
-                                accountSlug = connection.config.accountSlug,
-                                deviceId = deviceIdValue,
-                                deviceName = getDeviceName(connection.managedConfiguration),
-                                isInternetResourceActive = resourceState.isEnabled(),
-                                deviceInfo = deviceInfo,
-                            ),
-                        protectSocket = protectSocketCallback,
-                        tlsIdentity = null,
+                val deviceInfo =
+                    DeviceInfo(
+                        firebaseInstallationId = firebaseInstallationId(),
+                        deviceUuid = null,
+                        deviceSerial = null,
+                        identifierForVendor = null,
+                    )
+
+                // The KeyChain blocks on a system service and connlib reads the identity while
+                // it constructs the session, so load it before we get there.
+                val identity =
+                    withContext(Dispatchers.IO) { x509Identity.load(connection.certificateAlias) }
+
+                sessionFactory
+                    .open(
+                        AndroidSessionConfig(
+                            apiUrl = connection.config.apiUrl,
+                            token = connection.credential.token,
+                            deviceId = deviceIdValue,
+                            deviceName = getDeviceName(connection.managedConfiguration),
+                            isInternetResourceActive = resourceState.isEnabled(),
+                            deviceInfo = deviceInfo,
+                        ),
+                        // The token authenticates the user. A configured certificate attests
+                        // the device, and the portal decides whether to accept it.
+                        tlsIdentity = identity?.tlsIdentity,
                     ).use { session ->
                         startNetworkMonitoring()
                         startLogCleanup()
@@ -511,6 +515,13 @@ class TunnelService : VpnService() {
             } catch (e: ConnlibException) {
                 Log.e(TAG, "Failed to start session", e)
                 e.close()
+            } catch (e: X509IdentityException) {
+                Log.e(TAG, "Failed to load the client certificate", e)
+                val advice = "Contact your administrator for support."
+                showErrorNotification(
+                    "Client certificate unavailable",
+                    e.message?.takeUnless(String::isBlank)?.let { "$it $advice" } ?: advice,
+                )
             } finally {
                 beginConnectionCompletion(connection)
                 stopNetworkMonitoring()
@@ -747,6 +758,7 @@ class TunnelService : VpnService() {
     private data class ConnectionParameters(
         val commandChannel: Channel<TunnelCommand>,
         val credential: SessionCredential,
+        val certificateAlias: String?,
         val config: Config,
         val resourceState: ResourceState,
         val managedConfiguration: ManagedConfiguration,

@@ -189,25 +189,11 @@ class Repository
                 emit(editor.apply())
             }.flowOn(coroutineDispatcher)
 
-        /**
-         * The KeyChain alias of the client certificate to present to the portal.
-         *
-         * A managed configuration overrides whatever the user picked, and one that sets the alias to
-         * an empty value turns certificate-based device attestation off entirely.
-         */
-        fun getX509CertificateAliasSync(applicationRestrictions: Bundle): String? =
-            if (isX509CertificateAliasManaged(applicationRestrictions)) {
-                applicationRestrictions
-                    .getString(X509_CERTIFICATE_ALIAS_RESTRICTION)
-                    ?.takeUnless(String::isBlank)
-            } else {
-                sharedPreferences
-                    .getString(X509_CERTIFICATE_ALIAS_KEY, null)
-                    ?.takeUnless(String::isBlank)
-            }
-
-        fun isX509CertificateAliasManaged(applicationRestrictions: Bundle): Boolean =
-            applicationRestrictions.containsKey(X509_CERTIFICATE_ALIAS_RESTRICTION)
+        /** The user-selected KeyChain alias, before a managed configuration is applied. */
+        fun getUserX509CertificateAliasSync(): String? =
+            sharedPreferences
+                .getString(X509_CERTIFICATE_ALIAS_KEY, null)
+                ?.takeUnless(String::isBlank)
 
         fun saveX509CertificateAliasSync(alias: String?) {
             sharedPreferences.edit().apply {

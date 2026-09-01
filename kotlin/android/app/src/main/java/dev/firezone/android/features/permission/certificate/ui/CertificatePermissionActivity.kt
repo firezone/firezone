@@ -6,12 +6,15 @@ import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.compose.setContent
 import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.lifecycleScope
 import dagger.hilt.android.AndroidEntryPoint
 import dev.firezone.android.R
+import dev.firezone.android.core.data.ManagedConfigurationSource
 import dev.firezone.android.core.data.Repository
 import dev.firezone.android.core.x509.KeyChain
 import dev.firezone.android.features.permission.certificate.ui.compose.CertificatePermissionScreen
 import dev.firezone.android.features.session.ui.compose.FirezoneTheme
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 /**
@@ -28,7 +31,7 @@ class CertificatePermissionActivity : AppCompatActivity() {
     lateinit var repository: Repository
 
     @Inject
-    lateinit var applicationRestrictions: Bundle
+    internal lateinit var managedConfigurationSource: ManagedConfigurationSource
 
     @Inject
     lateinit var keyChain: KeyChain
@@ -47,19 +50,32 @@ class CertificatePermissionActivity : AppCompatActivity() {
     }
 
     private fun chooseCertificate() {
-        val configuredAlias = repository.getX509CertificateAliasSync(applicationRestrictions)
+        lifecycleScope.launch {
+            val managedConfiguration = managedConfigurationSource.refresh()
+            val configuredAlias =
+                managedConfiguration.resolveX509CertificateAlias(
+                    repository.getUserX509CertificateAliasSync(),
+                )
 
-        // Android answers on a binder thread, so anything touching the UI hops back itself.
-        keyChain.choosePrivateKeyAlias(this, requestUri(), configuredAlias) { alias ->
-            // KeyChain takes the configured alias as a pre-selection only, so the user can
-            // hand back a different one, which leaves the configured certificate still refused.
-            if (alias != null && alias == configuredAlias) {
-                finish()
-            } else {
-                runOnUiThread {
-                    Toast
-                        .makeText(this, R.string.device_trust_no_certificate_selected, Toast.LENGTH_LONG)
-                        .show()
+            // Android answers on a binder thread, so anything touching the UI hops back itself.
+            keyChain.choosePrivateKeyAlias(
+                this@CertificatePermissionActivity,
+                requestUri(),
+                configuredAlias,
+            ) { alias ->
+                // KeyChain takes the configured alias as a pre-selection only, so the user can
+                // hand back a different one, which leaves the configured certificate still refused.
+                if (alias != null && alias == configuredAlias) {
+                    finish()
+                } else {
+                    runOnUiThread {
+                        Toast
+                            .makeText(
+                                this@CertificatePermissionActivity,
+                                R.string.device_trust_no_certificate_selected,
+                                Toast.LENGTH_LONG,
+                            ).show()
+                    }
                 }
             }
         }

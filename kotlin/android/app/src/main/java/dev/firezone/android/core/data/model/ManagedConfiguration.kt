@@ -2,6 +2,7 @@
 package dev.firezone.android.core.data.model
 
 import android.os.Bundle
+import dev.firezone.android.core.data.X509_CERTIFICATE_ALIAS_RESTRICTION
 
 internal enum class CredentialOrigin {
     MANAGED,
@@ -27,11 +28,16 @@ internal data class ManagedConfiguration(
     val accountSlug: String? = null,
     val startOnLogin: Boolean? = null,
     val connectOnStart: Boolean? = null,
+    /** Raw alias value; [x509CertificateAliasManaged] preserves whether the key was present. */
+    val x509CertificateAlias: String? = null,
+    val x509CertificateAliasManaged: Boolean = x509CertificateAlias != null,
 ) {
     fun requiresSessionReconnect(previous: ManagedConfiguration): Boolean =
         token != previous.token ||
             deviceName != previous.deviceName ||
-            apiUrl != previous.apiUrl
+            apiUrl != previous.apiUrl ||
+            x509CertificateAlias != previous.x509CertificateAlias ||
+            x509CertificateAliasManaged != previous.x509CertificateAliasManaged
 
     fun requiresVpnRebuild(previous: ManagedConfiguration): Boolean =
         allowedApplications != previous.allowedApplications ||
@@ -65,6 +71,15 @@ internal data class ManagedConfiguration(
         return resolvedToken?.takeIf { it.isNotBlank() }?.let { SessionCredential(it, origin) }
     }
 
+    fun resolveX509CertificateAlias(userAlias: String?): String? =
+        if (x509CertificateAliasManaged) {
+            x509CertificateAlias?.takeUnless(String::isBlank)
+        } else {
+            userAlias?.takeUnless(String::isBlank)
+        }
+
+    fun isX509CertificateAliasManaged(): Boolean = x509CertificateAliasManaged
+
     companion object {
         fun from(bundle: Bundle): ManagedConfiguration =
             ManagedConfiguration(
@@ -78,6 +93,8 @@ internal data class ManagedConfiguration(
                 accountSlug = bundle.getString(ACCOUNT_SLUG_KEY),
                 startOnLogin = bundle.getBooleanOrNull(START_ON_LOGIN_KEY),
                 connectOnStart = bundle.getBooleanOrNull(CONNECT_ON_START_KEY),
+                x509CertificateAlias = bundle.getString(X509_CERTIFICATE_ALIAS_RESTRICTION),
+                x509CertificateAliasManaged = bundle.containsKey(X509_CERTIFICATE_ALIAS_RESTRICTION),
             )
 
         private fun Bundle.getBooleanOrNull(key: String): Boolean? =

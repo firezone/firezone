@@ -58,16 +58,17 @@ internal class SplashViewModel
                     return@launch
                 }
 
+                val managedConfiguration = managedConfigurationSource.refresh()
+
                 // An administrator can configure a certificate that only the user can release, which
                 // is what a work profile on a personally-owned device looks like. Ask once per
                 // launch: pressing on without it only fails later, at the tunnel.
-                if (!certificateSelectionOffered && certificateAccess.needsSelection()) {
+                if (!certificateSelectionOffered && certificateAccess.needsSelection(managedConfiguration)) {
                     certificateSelectionOffered = true
                     actionMutableStateFlow.value = ViewAction.NavigateToCertificatePermission
                     return@launch
                 }
 
-                val managedConfiguration = managedConfigurationSource.refresh()
                 val credential = managedConfiguration.resolveSessionCredential(tokenStore.get())
 
                 if (credential == null) {
