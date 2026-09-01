@@ -13,7 +13,7 @@ use std::{
     time::SystemTime,
 };
 
-use anyhow::{Context as _, Result, anyhow, bail};
+use anyhow::{Context as _, Result, bail};
 use rustls::{SignatureScheme, pki_types::CertificateDer};
 use secrecy::{ExposeSecret as _, SecretString};
 use sha2::{Digest as _, Sha256, Sha384, Sha512};
@@ -35,16 +35,12 @@ const PIN_FILE: &str = "/etc/firezone/pkcs11-pin";
 
 pub(crate) fn identity(subject_cn: &str) -> Result<Option<Identity>, Error> {
     let Some(p11_kit) = p11_kit_command() else {
-        return Err(Error::identity_unavailable(anyhow!(
-            "Failed to find the p11-kit command: Firezone reads PKCS#11 tokens through p11-kit, which has to be installed"
-        )));
+        return Err(Error::MissingP11Kit);
     };
     let modules = registered_modules();
 
     if modules.is_empty() {
-        return Err(Error::identity_unavailable(anyhow!(
-            "No PKCS#11 module is registered with p11-kit, so there is no keystore to read certificates through"
-        )));
+        return Err(Error::MissingP11Kit);
     }
 
     identity_on(&p11_kit, &modules, Path::new(PIN_FILE), subject_cn)
