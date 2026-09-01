@@ -86,6 +86,14 @@ impl ClientOnGateway {
         resolved_ips: BTreeSet<IpAddr>,
         proxy_ips: BTreeSet<IpAddr>,
     ) -> Result<()> {
+        // Proxy IPs are chosen by the Client; anything we accept here ends up in our routing table.
+        for proxy_ip in &proxy_ips {
+            anyhow::ensure!(
+                is_dns_addr(*proxy_ip),
+                "Proxy IP {proxy_ip} is not within {IPV4_RESOURCES} or {IPV6_RESOURCES}"
+            );
+        }
+
         if self.have_proxy_ips_been_reassigned(&name, &proxy_ips) {
             tracing::info!("Client has re-assigned proxy IPs, resetting DNS resource NAT");
 
@@ -1348,6 +1356,32 @@ mod tests {
             "TCP/{} packet to shared proxy IP should be forwarded",
             foo_allowed_port2(),
         );
+    }
+
+    #[test]
+    fn rejects_proxy_ips_outside_reserved_ranges() {
+        let mut peer = ClientOnGateway::new(client_id(), client_tun(), gateway_tun());
+        peer.add_resource(foo_dns_resource(), None, Instant::now());
+
+        let bad_ips = [
+            "1.1.1.1",              // Public internet.
+            "100.64.0.1",           // CG-NAT but reserved for Client tunnel IPs.
+            "2606:4700:4700::1111", // Public internet.
+            "fd00:2021:1111::1",    // Reserved for Client tunnel IPs.
+        ];
+
+        for bad_ip in bad_ips {
+            let result = peer.setup_nat(
+                foo_name().parse().unwrap(),
+                foo_resource_id(),
+                BTreeSet::from([foo_real_ip1().into()]),
+                BTreeSet::from([proxy_ip4_1(), bad_ip.parse().unwrap()]),
+            );
+
+            assert!(result.is_err(), "{bad_ip} should be rejected as proxy IP");
+        }
+
+        assert!(peer.permanent_translations.is_empty());
     }
 
     #[test]
