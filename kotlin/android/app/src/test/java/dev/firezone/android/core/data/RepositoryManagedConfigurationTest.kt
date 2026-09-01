@@ -150,6 +150,25 @@ class RepositoryManagedConfigurationTest {
             assertTrue(defaults.connectOnStart)
         }
 
+    @Test
+    fun `revoking managed settings preserves the user certificate alias`() =
+        runBlocking {
+            repository.saveX509CertificateAliasSync("user-alias")
+            val managedRestrictions =
+                Bundle().apply {
+                    putString(AUTH_URL_KEY, "https://managed.example.com")
+                    putString(X509_CERTIFICATE_ALIAS_RESTRICTION, "managed-alias")
+                }
+            repository.saveManagedConfiguration(managedRestrictions).first()
+
+            assertEquals("managed-alias", repository.getX509CertificateAliasSync(managedRestrictions))
+
+            val revokedRestrictions = Bundle()
+            repository.saveManagedConfiguration(revokedRestrictions).first()
+
+            assertEquals("user-alias", repository.getX509CertificateAliasSync(revokedRestrictions))
+        }
+
     private fun allManagedConfig(): Bundle =
         Bundle().apply {
             putString(AUTH_URL_KEY, "https://managed.example.com")
