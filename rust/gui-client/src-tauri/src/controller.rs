@@ -45,7 +45,7 @@ pub struct Controller<I: GuiIntegration> {
     // Sign-in state with the portal / deep links
     auth: auth::Auth,
     clear_logs_callback: Option<oneshot::Sender<Result<(), String>>>,
-    x509: Result<Option<x509_keystore::ParsedCertificate>, x509_keystore::Error>,
+    x509: Result<Option<x509_keystore::ReportedCertificate>, x509_keystore::Error>,
     ipc_client: ipc::ClientWrite<service::ClientMsg>,
     ipc_rx: ipc::ClientRead<service::ServerMsg>,
     integration: I,
@@ -81,7 +81,7 @@ pub trait GuiIntegration {
     fn notify_logs_recounted(&self, file_count: &FileCount) -> Result<()>;
     fn notify_x509_changed(
         &self,
-        x509: &Result<Option<x509_keystore::ParsedCertificate>, x509_keystore::Error>,
+        x509: &Result<Option<x509_keystore::ReportedCertificate>, x509_keystore::Error>,
     ) -> Result<()>;
 
     /// Also opens non-URLs
@@ -1080,10 +1080,13 @@ impl<I: GuiIntegration> Controller<I> {
     }
 
     /// Who the certificate the Tunnel service last loaded claims is connecting.
+    ///
+    /// An identity is only claimed by a certificate the service can present: an unusable one
+    /// authenticates nothing, so it must not suppress the browser sign-in.
     fn client_identity(&self) -> x509_keystore::ClientIdentity {
         match &self.x509 {
-            Ok(Some(certificate)) => certificate.identity(),
-            Ok(None) => x509_keystore::ClientIdentity::Absent,
+            Ok(Some(report)) if report.presentable() => report.certificate.identity(),
+            Ok(_) => x509_keystore::ClientIdentity::Absent,
             Err(_) => x509_keystore::ClientIdentity::Absent,
         }
     }
@@ -1122,7 +1125,7 @@ async fn receive_hello(
     String,
     AdvancedSettings,
     MdmSettings,
-    Result<Option<x509_keystore::ParsedCertificate>, x509_keystore::Error>,
+    Result<Option<x509_keystore::ReportedCertificate>, x509_keystore::Error>,
 )> {
     const TIMEOUT: Duration = Duration::from_secs(5);
 
@@ -1255,9 +1258,9 @@ mod tests {
         let mut mock_tunnel = test_controller.tunnel_service_ipc_accept().await;
         mock_tunnel.send_hello().await;
 
-        let expected = Ok(Some(parsed_certificate(
+        let expected = Ok(Some(usable(parsed_certificate(
             x509_keystore::ClientIdentity::Absent,
-        )));
+        ))));
         mock_tunnel
             .tx
             .send(&service::ServerMsg::X509Certificate(expected.clone()))
@@ -1365,7 +1368,7 @@ mod tests {
         let mut test_controller = Controller::start_for_test();
         let mut mock_tunnel = test_controller.tunnel_service_ipc_accept().await;
         mock_tunnel
-            .send_hello_with_x509(Ok(Some(certificate_with_invalid_claims())))
+            .send_hello_with_x509(Ok(Some(usable(certificate_with_invalid_claims()))))
             .await;
         test_controller
             .wait_integration(|i| i.x509.first().cloned())
@@ -1388,6 +1391,36 @@ mod tests {
             test_controller.integration().opened_urls.is_empty(),
             "should not have opened a browser"
         );
+    }
+
+    #[tokio::test]
+    async fn an_unusable_certificate_signs_in_through_the_browser() {
+        let _guard = logging::test("debug");
+        let mut test_controller = Controller::start_for_test();
+        let mut mock_tunnel = test_controller.tunnel_service_ipc_accept().await;
+        mock_tunnel
+            .send_hello_with_x509(Ok(Some(x509_keystore::ReportedCertificate {
+                certificate: parsed_certificate(x509_keystore::ClientIdentity::Claimed {
+                    email: Some("jane@example.com".to_owned()),
+                }),
+                unusable: Some(x509_keystore::UnusableCause::KeyMissing),
+            })))
+            .await;
+        test_controller
+            .wait_integration(|i| i.x509.first().cloned())
+            .await
+            .expect("the greeting's certificate should reach the GUI");
+
+        test_controller
+            .ctrl_tx
+            .send(ControllerRequest::SignIn)
+            .await
+            .unwrap();
+
+        let url = test_controller
+            .wait_integration(|i| i.opened_urls.first().cloned())
+            .await;
+        assert!(url.contains("as=gui-client"), "{url}");
     }
 
     #[tokio::test]
@@ -1854,7 +1887,7 @@ mod tests {
         general_settings: Vec<GeneralSettings>,
         advanced_settings: Vec<AdvancedSettings>,
         file_counts: Vec<FileCount>,
-        x509: Vec<Result<Option<x509_keystore::ParsedCertificate>, x509_keystore::Error>>,
+        x509: Vec<Result<Option<x509_keystore::ReportedCertificate>, x509_keystore::Error>>,
         opened_urls: Vec<String>,
         tray_icons: Vec<system_tray::Icon>,
         tray_states: Vec<system_tray::AppState>,
@@ -1902,7 +1935,7 @@ mod tests {
 
         fn notify_x509_changed(
             &self,
-            x509: &Result<Option<x509_keystore::ParsedCertificate>, x509_keystore::Error>,
+            x509: &Result<Option<x509_keystore::ReportedCertificate>, x509_keystore::Error>,
         ) -> Result<()> {
             self.lock().x509.push(x509.clone());
 
@@ -1988,7 +2021,7 @@ mod tests {
         async fn send_hello_with_x509(
             &mut self,
             x509_certificate: Result<
-                Option<x509_keystore::ParsedCertificate>,
+                Option<x509_keystore::ReportedCertificate>,
                 x509_keystore::Error,
             >,
         ) {
@@ -2049,7 +2082,7 @@ mod tests {
 
         /// Greets the controller with a keystore whose certificate claims `identity`.
         async fn send_hello_claiming(&mut self, identity: x509_keystore::ClientIdentity) {
-            self.send_hello_with_x509(Ok(Some(parsed_certificate(identity))))
+            self.send_hello_with_x509(Ok(Some(usable(parsed_certificate(identity)))))
                 .await
         }
 
@@ -2184,6 +2217,14 @@ mod tests {
             key_algorithm_oid: "1.2.840.113549.1.1.1".to_owned(),
             fingerprint: "90:E4:45:C9:E2:8E:8F:5B".to_owned(),
             der_bytes: 1024,
+        }
+    }
+
+    /// A certificate the keystore can present for mutual TLS.
+    fn usable(certificate: x509_keystore::ParsedCertificate) -> x509_keystore::ReportedCertificate {
+        x509_keystore::ReportedCertificate {
+            certificate,
+            unusable: None,
         }
     }
 

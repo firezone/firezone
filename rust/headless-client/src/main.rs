@@ -370,12 +370,12 @@ fn try_main() -> Result<()> {
     // A keystore we cannot read must not keep the Client from connecting: without p11-kit, or
     // with only broken PKCS#11 modules, we connect without a certificate. Anything else that
     // keeps an identity from being handed over still fails the connect.
-    let certificate = match x509_keystore::identity() {
+    let certificate = match x509_keystore::load() {
         Err(
             x509_keystore::Error::MissingP11Kit
             | x509_keystore::Error::UnreadablePkcs11Keystore { .. },
         ) => Ok(None),
-        other => other,
+        other => other.map(|loaded| loaded.identity),
     }
     .and_then(|identity| {
         identity
@@ -585,14 +585,22 @@ fn try_main() -> Result<()> {
     reason = "This diagnostics command is designed to print to stdout"
 )]
 fn handle_x509() -> Result<()> {
-    let Some(identity) = x509_keystore::identity()? else {
+    let loaded = x509_keystore::load()?;
+    let Some(report) = loaded.certificate else {
         println!("The platform keystore holds no Firezone client certificate.");
 
         return Ok(());
     };
-    let certificate = identity.certificate;
 
-    for field in certificate.detail_fields() {
+    // No X.509 attribute says whether we hold a key we can sign with, so the row names what
+    // the keystore looked for.
+    if let Some(cause) = &report.unusable {
+        println!("Private Key:");
+        println!("  Not present");
+        println!("  ({cause})");
+    }
+
+    for field in report.certificate.detail_fields() {
         println!("{}:", field.label);
 
         for line in field.value.as_deref().unwrap_or("Not present").split('\n') {
@@ -604,7 +612,12 @@ fn handle_x509() -> Result<()> {
         }
     }
 
-    match certificate.identity() {
+    // An identity is only claimed by a certificate the client can present.
+    if !report.presentable() {
+        return Ok(());
+    }
+
+    match report.certificate.identity() {
         x509_keystore::ClientIdentity::Absent => {}
         x509_keystore::ClientIdentity::Claimed { email } => {
             let named = email

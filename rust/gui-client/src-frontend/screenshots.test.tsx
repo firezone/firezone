@@ -15,6 +15,7 @@ import {
   SessionViewModel,
   X509Certificate,
   X509DetailField,
+  X509UnusableCause,
   X509ValidationError,
 } from "./generated/bindings";
 import "./main.css";
@@ -89,7 +90,11 @@ interface Row {
 }
 
 function row(label: string, { value, problem }: Row): X509DetailField {
-  return { label, value, problem: problem ?? null };
+  return {
+    label,
+    value,
+    problem: problem === undefined ? null : { Invalid: problem },
+  };
 }
 
 function present(value: string): Row {
@@ -97,7 +102,10 @@ function present(value: string): Row {
 }
 
 // The rows in the order `x509_claims::ParsedCertificate::detail_fields` builds them.
-function loadedCertificate(certificate: Certificate): X509Certificate {
+function loadedCertificate(
+  certificate: Certificate,
+  unusable?: X509UnusableCause
+): X509Certificate {
   // `x509_claims::ParsedCertificate::detail_fields` reads the rows with a problem first, so a
   // mock that left them in place would draw a screen the client cannot produce.
   const fields = [
@@ -115,14 +123,37 @@ function loadedCertificate(certificate: Certificate): X509Certificate {
     row("SHA-256 Fingerprint", present(certificate.fingerprint)),
   ];
 
+  // An identity is only claimed by a certificate the service can present, and only by a
+  // carried identity attribute: `x509_claims::ParsedCertificate::identity`.
+  const claimed =
+    unusable === undefined &&
+    (certificate.actorEmail.value !== null ||
+      certificate.actorEmail.problem !== undefined);
+
   return {
     Loaded: {
-      identity:
-        certificate.actorEmail.value !== null &&
-        certificate.actorEmail.problem === undefined
-          ? { Claimed: { email: certificate.actorEmail.value } }
-          : "Absent",
+      identity: claimed
+        ? {
+            Claimed: {
+              email:
+                certificate.actorEmail.problem === undefined
+                  ? certificate.actorEmail.value
+                  : null,
+            },
+          }
+        : "Absent",
       fields: [
+        // The private-key row leads when the keystore cannot sign with the certificate:
+        // `x509_keystore::ReportedCertificate::detail_fields`.
+        ...(unusable === undefined
+          ? []
+          : [
+              {
+                label: "Private Key",
+                value: null,
+                problem: { Unusable: unusable },
+              },
+            ]),
         ...fields.filter((field) => field.problem !== null),
         ...fields.filter((field) => field.problem === null),
       ],
@@ -218,7 +249,7 @@ const screens: Record<string, Screen> = {
   },
   "x509-unusable": {
     route: "/x509",
-    x509: { Error: { NoUsableIdentity: { causes: ["KeyMissing"] } } },
+    x509: loadedCertificate(windowsCertificate, "KeyMissing"),
   },
   "diagnostics-no-logs": { route: "/diagnostics" },
   diagnostics: {

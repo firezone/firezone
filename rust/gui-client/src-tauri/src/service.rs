@@ -102,7 +102,7 @@ pub enum ServerMsg {
         firezone_id: String,
         advanced_settings: AdvancedSettings,
         mdm_settings: MdmSettings,
-        x509_certificate: Result<Option<x509_keystore::ParsedCertificate>, x509_keystore::Error>,
+        x509_certificate: Result<Option<x509_keystore::ReportedCertificate>, x509_keystore::Error>,
     },
     /// The Tunnel service finished clearing its log dir.
     ClearedLogs(Result<(), String>),
@@ -129,7 +129,7 @@ pub enum ServerMsg {
     /// `Hello` carries the first load; this arrives for every [`ClientMsg::ReloadX509`] and
     /// whenever we re-read the keystore to sign in, which covers everything the certificate
     /// screen renders.
-    X509Certificate(Result<Option<x509_keystore::ParsedCertificate>, x509_keystore::Error>),
+    X509Certificate(Result<Option<x509_keystore::ReportedCertificate>, x509_keystore::Error>),
     /// The Tunnel service is terminating, maybe due to a software update
     ///
     /// This is a hint that the Client should exit with a message like,
@@ -246,7 +246,7 @@ async fn ipc_listen(
 /// Handles one IPC client
 struct Handler<'a> {
     /// The keystore load this GUI connection displays and presents.
-    keystore: Result<Option<x509_keystore::Identity>, x509_keystore::Error>,
+    keystore: Result<x509_keystore::Loaded, x509_keystore::Error>,
     device_id: DeviceId,
     dns_controller: &'a mut DnsController,
     ipc_rx: ipc::ServerRead<ClientMsg>,
@@ -349,27 +349,30 @@ impl Session {
 
 /// Reads the keystore off the runtime, because it can block on a TPM or a smart card and the
 /// connlib eventloop shares this runtime's single worker.
-async fn load_identity() -> Result<Option<x509_keystore::Identity>, x509_keystore::Error> {
-    let identity = tokio::task::spawn_blocking(x509_keystore::identity)
+async fn load_keystore() -> Result<x509_keystore::Loaded, x509_keystore::Error> {
+    let result = tokio::task::spawn_blocking(x509_keystore::load)
         .await
         .map_err(|error| x509_keystore::Error::UnreadableKeystore {
             message: format!("Failed to join the keystore task: {error}"),
-        })??;
+        })
+        .and_then(std::convert::identity);
 
-    Ok(identity)
+    // The page shows only the top of the story; the whole of it goes to the log.
+    tracing::debug!(
+        result = ?result.as_ref().map(|loaded| &loaded.certificate),
+        "Read the platform keystore"
+    );
+
+    result
 }
 
 /// What the GUI shows of a held keystore load.
 fn x509_of(
-    keystore: &Result<Option<x509_keystore::Identity>, x509_keystore::Error>,
-) -> Result<Option<x509_keystore::ParsedCertificate>, x509_keystore::Error> {
+    keystore: &Result<x509_keystore::Loaded, x509_keystore::Error>,
+) -> Result<Option<x509_keystore::ReportedCertificate>, x509_keystore::Error> {
     keystore
         .as_ref()
-        .map(|identity| {
-            identity
-                .as_ref()
-                .map(|identity| identity.certificate.clone())
-        })
+        .map(|loaded| loaded.certificate.clone())
         .map_err(Clone::clone)
 }
 
@@ -484,7 +487,7 @@ impl<'a> Handler<'a> {
         // read the same held reference, so what is shown is what is presented. Bounded,
         // because a keystore that answers slowly, or never, must not hold up the greeting past
         // the deadline the GUI gives us to prove we are alive.
-        let keystore = tokio::time::timeout(Duration::from_secs(3), load_identity())
+        let keystore = tokio::time::timeout(Duration::from_secs(3), load_keystore())
             .await
             .map_err(|_| x509_keystore::Error::UnreadableKeystore {
                 message: "Timed out reading the keystore after 3s".to_owned(),
@@ -609,9 +612,7 @@ impl<'a> Handler<'a> {
 
                 let authentication = authentication.clone();
                 let is_internet_resource_active = *is_internet_resource_active;
-                let result = self
-                    .try_connect(authentication, is_internet_resource_active)
-                    .await;
+                let result = self.try_connect(authentication, is_internet_resource_active);
 
                 if let Some(e) = result
                     .as_ref()
@@ -756,9 +757,7 @@ impl<'a> Handler<'a> {
                 // there must not report the previous one's.
                 telemetry::set_account_slug(None);
 
-                let result = self
-                    .try_connect(authentication.clone(), is_internet_resource_active)
-                    .await;
+                let result = self.try_connect(authentication.clone(), is_internet_resource_active);
 
                 if let Some(e) = result
                     .as_ref()
@@ -779,7 +778,7 @@ impl<'a> Handler<'a> {
                 self.handle_connect_result(result).await?;
             }
             ClientMsg::ReloadX509 => {
-                self.keystore = load_identity().await;
+                self.keystore = load_keystore().await;
                 self.send_ipc(ServerMsg::X509Certificate(x509_of(&self.keystore)))
                     .await?;
             }
@@ -862,7 +861,7 @@ impl<'a> Handler<'a> {
 
     /// One keystore read serves the whole attempt: the certificate presented to the portal and
     /// the one pushed to the GUI come from the same walk, so they cannot diverge.
-    async fn try_connect(
+    fn try_connect(
         &mut self,
         authentication: Authentication,
         is_internet_resource_active: bool,
@@ -879,15 +878,23 @@ impl<'a> Handler<'a> {
         // the GUI shows the greeting's error), while a connect the certificate itself
         // authenticates has nothing without it.
         let (token, certificate) = match (authentication, &self.keystore) {
-            (Authentication::Certificate, Ok(Some(identity))) => {
+            (
+                Authentication::Certificate,
+                Ok(x509_keystore::Loaded {
+                    identity: Some(identity),
+                    ..
+                }),
+            ) => {
                 let certificate = identity
                     .client_certificate()
                     .context("Failed to read the platform keystore")?;
 
                 (None, Some(certificate))
             }
-            (Authentication::Certificate, Ok(None)) => {
-                bail!("Cannot authenticate: the platform keystore holds no client certificate")
+            (Authentication::Certificate, Ok(_)) => {
+                bail!(
+                    "Cannot authenticate: the platform keystore holds no presentable client certificate"
+                )
             }
             (Authentication::Certificate, Err(error)) => {
                 return Err(anyhow::Error::new(error.clone())
@@ -895,14 +902,20 @@ impl<'a> Handler<'a> {
             }
             (Authentication::Token(token), Ok(_)) => (Some(token), None),
             (Authentication::Token(token), Err(_)) => (Some(token), None),
-            (Authentication::TokenAndCertificate(token), Ok(Some(identity))) => {
+            (
+                Authentication::TokenAndCertificate(token),
+                Ok(x509_keystore::Loaded {
+                    identity: Some(identity),
+                    ..
+                }),
+            ) => {
                 let certificate = identity
                     .client_certificate()
                     .context("Failed to read the platform keystore")?;
 
                 (Some(token), Some(certificate))
             }
-            (Authentication::TokenAndCertificate(token), Ok(None)) => (Some(token), None),
+            (Authentication::TokenAndCertificate(token), Ok(_)) => (Some(token), None),
             (
                 Authentication::TokenAndCertificate(token),
                 Err(

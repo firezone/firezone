@@ -3,7 +3,7 @@ import {
   X509Certificate,
   X509DetailField,
   X509Error,
-  X509UnusableCause,
+  X509FieldProblem,
   X509ValidationError,
 } from "../generated/bindings";
 import RemixIcon from "./RemixIcon";
@@ -41,14 +41,6 @@ function errorText(error: X509Error): string {
     )}. See https://www.firezone.dev/kb/install/linux for what the keystore needs installed and running.`;
   }
 
-  if ("NoUsableIdentity" in error) {
-    const { causes } = error.NoUsableIdentity;
-
-    return `The keystore holds no usable Firezone client identity: ${causes
-      .map(causeText)
-      .join("; ")}`;
-  }
-
   if ("IdentityUnavailable" in error) {
     return error.IdentityUnavailable.message;
   }
@@ -56,16 +48,14 @@ function errorText(error: X509Error): string {
   return `The platform keystore could not be read: ${error.UnreadableKeystore.message}`;
 }
 
-function causeText(cause: X509UnusableCause): string {
-  if (cause === "KeyMissing") {
-    return "the keystore holds no private key for this certificate";
+function problemText(problem: X509FieldProblem): string {
+  if ("Invalid" in problem) {
+    return VALIDATION_ERROR_TEXT[problem.Invalid];
   }
 
-  if (cause === "UnsupportedKeyAlgorithm") {
-    return "we cannot sign with this certificate's key algorithm";
-  }
-
-  return `the keystore would not hand over the private key: ${cause.KeyRefused.error}`;
+  // The debug log carries which keystore rule blocked the key; the page only has to say that
+  // one did.
+  return "the keystore could not be accessed";
 }
 
 function FieldValue({ value }: { value: string | null }) {
@@ -77,11 +67,11 @@ function FieldValue({ value }: { value: string | null }) {
 }
 
 // Reads underneath the value it belongs to, the way a form shows an error on its input.
-function FieldProblem({ problem }: { problem: X509ValidationError }) {
+function FieldProblem({ problem }: { problem: X509FieldProblem }) {
   return (
     <span className="mt-1 flex gap-1.5 font-sans text-warning">
       <RemixIcon className="mt-0.5 h-3.5 w-3.5 shrink-0" name="alert" />
-      {VALIDATION_ERROR_TEXT[problem]}
+      {problemText(problem)}
     </span>
   );
 }

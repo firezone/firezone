@@ -1,9 +1,10 @@
 //! X.509 client identities held by a desktop platform keystore.
 //!
-//! [`identity`] walks the keystore once and hands out both faces of the selected identity: the
-//! [`ClientCertificate`] that authenticates the portal connection, and what that certificate
-//! says. Loading once and reusing the result keeps the certificate a client presents and the one
-//! it describes the same, even when the keystore changes between two reads.
+//! [`load`] walks the keystore once and hands out both faces of the selected certificate: the
+//! [`Identity`] that authenticates the portal connection where the certificate is usable, and
+//! what that certificate says either way. Loading once and reusing the result keeps the
+//! certificate a client presents and the one it describes the same, even when the keystore
+//! changes between two reads.
 //!
 //! Reading certificates and evaluating Firezone's rules for them is `x509-claims`'s job; this
 //! crate only talks to the keystores. Private-key material never leaves them: every handshake
@@ -15,8 +16,8 @@ use rustls::pki_types::CertificateDer;
 use serde::{Deserialize, Serialize};
 use x509_credential::PrivateKey;
 
-/// Re-exported because [`Identity`] carries a [`ParsedCertificate`]: a caller reading its
-/// claims, rows and identity needs to name their types.
+/// Re-exported because [`ReportedCertificate`] carries a [`ParsedCertificate`]: a caller
+/// reading its claims, rows and identity needs to name their types.
 pub use x509_claims::{
     Claim, DetailField, Identity as ClientIdentity, ParsedCertificate, ValidationError,
 };
@@ -33,22 +34,51 @@ use unsupported as keystore;
 /// The subject common name of the certificates Firezone's MDM integrations provision.
 const SUBJECT_COMMON_NAME: &str = "dev.firezone.device-trust";
 
-/// The X.509 client identity the platform keystore holds, if any.
+/// What the platform keystore holds for Firezone, walked once.
 ///
 /// # Errors
 ///
 /// Returns an error whenever the walk fails; which failures a caller tolerates is its policy.
-pub fn identity() -> Result<Option<Identity>, Error> {
-    keystore::identity(SUBJECT_COMMON_NAME)
+pub fn load() -> Result<Loaded, Error> {
+    keystore::load(SUBJECT_COMMON_NAME)
+}
+
+/// One walk of the platform keystore.
+#[derive(Default)]
+pub struct Loaded {
+    /// The selected matching certificate, when one parsed.
+    pub certificate: Option<ReportedCertificate>,
+    /// The identity to present for mutual TLS, [`None`] when the selected certificate cannot
+    /// be presented or nothing matched.
+    pub identity: Option<Identity>,
+}
+
+/// The certificate the keystore selected, and why it cannot be presented when it cannot.
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+pub struct ReportedCertificate {
+    /// What the certificate says.
+    pub certificate: ParsedCertificate,
+    /// Why the keystore cannot sign with the certificate's private key, [`None`] when it can.
+    pub unusable: Option<UnusableCause>,
+}
+
+impl ReportedCertificate {
+    /// Whether the keystore can present this certificate for mutual TLS.
+    ///
+    /// Nothing but a keystore rule blocks presenting: the parser's problems are the portal's
+    /// to judge.
+    pub fn presentable(&self) -> bool {
+        self.unusable.is_none()
+    }
 }
 
 /// A client identity a keystore backend selected.
+///
+/// What the certificate says lives on the [`ReportedCertificate`] beside it.
 pub struct Identity {
     /// The end-entity certificate first, then as many issuers as the keystore could resolve.
     pub(crate) chain: Vec<CertificateDer<'static>>,
     pub(crate) key: Arc<dyn PrivateKey>,
-    /// What the end-entity certificate says.
-    pub certificate: ParsedCertificate,
 }
 
 impl Identity {
@@ -86,8 +116,6 @@ pub enum Error {
     ///
     /// Each entry names one module and what loading or reading it said.
     UnreadablePkcs11Keystore { modules: Vec<String> },
-    /// Every certificate that matched the subject common name is unusable for mutual TLS.
-    NoUsableIdentity { causes: Vec<UnusableCause> },
     /// The keystore holds a matching identity it could not hand over, e.g. a token that rejects
     /// its PIN, described in the platform's own words.
     IdentityUnavailable { message: String },
@@ -127,11 +155,6 @@ impl fmt::Display for Error {
                 "The PKCS#11 keystore cannot be read, so no X.509 client identity certificate can be found: {}. See https://www.firezone.dev/kb/install/linux for what the keystore needs installed and running.",
                 join(modules, "; ")
             ),
-            Self::NoUsableIdentity { causes } => write!(
-                formatter,
-                "The keystore holds no usable Firezone client identity: {}",
-                join(causes, "; ")
-            ),
             Self::IdentityUnavailable { message } => formatter.write_str(message),
             Self::UnreadableKeystore { message } => write!(
                 formatter,
@@ -161,11 +184,11 @@ pub(crate) trait CandidateCertificate {
     fn not_before_timestamp(&self) -> i64;
 }
 
-/// Returns the certificate a backend presents as the client identity, as an index into
-/// `certificates`.
+/// Returns the certificate a backend selects, as an index into `certificates`.
 ///
 /// The most recently issued usable certificate wins, so a rotation hands over the renewal
-/// rather than the certificate it replaced.
+/// rather than the certificate it replaced. When nothing is usable, the newest matching
+/// certificate is still selected so the report can say why it cannot be presented.
 #[cfg(any(target_os = "linux", target_os = "windows"))]
 #[allow(
     dead_code,
@@ -177,17 +200,13 @@ pub(crate) fn selected_certificate<C: CandidateCertificate>(certificates: &[C]) 
         .enumerate()
         .filter(|(_, certificate)| certificate.unusable().is_none())
         .max_by_key(|(_, certificate)| certificate.not_before_timestamp())
+        .or_else(|| {
+            certificates
+                .iter()
+                .enumerate()
+                .max_by_key(|(_, certificate)| certificate.not_before_timestamp())
+        })
         .map(|(index, _)| index)
-}
-
-/// Says why each certificate that matched the subject common name cannot be used.
-#[cfg(any(target_os = "linux", target_os = "windows"))]
-#[allow(
-    dead_code,
-    reason = "only the keystore backends rank candidates, and not every build compiles one"
-)]
-pub(crate) fn unusable_causes<C: CandidateCertificate>(certificates: &[C]) -> Vec<UnusableCause> {
-    certificates.iter().filter_map(C::unusable).collect()
 }
 
 /// What keeps one matching certificate from being presented for mutual TLS.
@@ -229,32 +248,15 @@ fn join(items: &[impl fmt::Display], separator: &str) -> String {
         .join(separator)
 }
 
-#[cfg(test)]
+#[cfg(all(test, any(target_os = "linux", target_os = "windows")))]
 mod tests {
     use super::*;
 
-    #[test]
-    fn the_error_names_every_unusable_cause() {
-        let error = Error::NoUsableIdentity {
-            causes: vec![
-                UnusableCause::KeyMissing,
-                UnusableCause::UnsupportedKeyAlgorithm,
-            ],
-        };
-
-        assert_eq!(
-            error.to_string(),
-            "The keystore holds no usable Firezone client identity: the keystore holds no private key for this certificate; we cannot sign with this certificate's key algorithm"
-        );
-    }
-
-    #[cfg(any(target_os = "linux", target_os = "windows"))]
     struct Candidate {
         unusable: Option<UnusableCause>,
         not_before: i64,
     }
 
-    #[cfg(any(target_os = "linux", target_os = "windows"))]
     impl CandidateCertificate for Candidate {
         fn unusable(&self) -> Option<UnusableCause> {
             self.unusable.clone()
@@ -265,7 +267,6 @@ mod tests {
         }
     }
 
-    #[cfg(any(target_os = "linux", target_os = "windows"))]
     #[test]
     fn the_newest_usable_certificate_wins() {
         let certificates = [
@@ -284,7 +285,22 @@ mod tests {
         ];
 
         assert_eq!(selected_certificate(&certificates), Some(2));
-        assert_eq!(unusable_causes(&certificates), [UnusableCause::KeyMissing]);
         assert_eq!(selected_certificate::<Candidate>(&[]), None);
+    }
+
+    #[test]
+    fn with_nothing_usable_the_newest_certificate_is_still_selected() {
+        let certificates = [
+            Candidate {
+                unusable: Some(UnusableCause::KeyMissing),
+                not_before: 1,
+            },
+            Candidate {
+                unusable: Some(UnusableCause::UnsupportedKeyAlgorithm),
+                not_before: 2,
+            },
+        ];
+
+        assert_eq!(selected_certificate(&certificates), Some(1));
     }
 }

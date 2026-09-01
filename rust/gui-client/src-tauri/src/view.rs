@@ -73,7 +73,6 @@ pub enum X509Error {
     UnreadableStore { store: String, error: String },
     MissingP11Kit,
     UnreadablePkcs11Keystore { modules: Vec<String> },
-    NoUsableIdentity { causes: Vec<X509UnusableCause> },
     IdentityUnavailable { message: String },
     UnreadableKeystore { message: String },
 }
@@ -92,8 +91,15 @@ pub struct X509DetailField {
     pub label: String,
     /// What the row carries, [`None`] when it carries nothing.
     pub value: Option<String>,
-    /// Why the value is not usable as what the row names, [`None`] when it is.
-    pub problem: Option<X509ValidationError>,
+    /// What is wrong with the value, [`None`] when nothing is.
+    pub problem: Option<X509FieldProblem>,
+}
+
+/// What is wrong with a row: a value the parser flagged, or the keystore's private key.
+#[derive(Clone, serde::Serialize, specta::Type)]
+pub enum X509FieldProblem {
+    Invalid(X509ValidationError),
+    Unusable(X509UnusableCause),
 }
 
 /// Mirrors [`x509_keystore::ValidationError`].
@@ -112,25 +118,53 @@ pub enum X509ValidationError {
     DigitalSignatureNotAllowed,
 }
 
-impl From<&std::result::Result<Option<x509_keystore::ParsedCertificate>, x509_keystore::Error>>
+impl From<&std::result::Result<Option<x509_keystore::ReportedCertificate>, x509_keystore::Error>>
     for X509Certificate
 {
     fn from(
-        x509: &std::result::Result<Option<x509_keystore::ParsedCertificate>, x509_keystore::Error>,
+        x509: &std::result::Result<
+            Option<x509_keystore::ReportedCertificate>,
+            x509_keystore::Error,
+        >,
     ) -> Self {
         match x509 {
-            Ok(Some(certificate)) => Self::Loaded {
-                identity: X509Identity::from(&certificate.identity()),
-                fields: certificate
-                    .detail_fields()
-                    .into_iter()
-                    .map(X509DetailField::from)
-                    .collect(),
+            Ok(Some(report)) => Self::Loaded {
+                // An identity is only claimed by a certificate we can present: an unusable
+                // one authenticates nothing, so the sign-in control must not offer it.
+                identity: if report.presentable() {
+                    X509Identity::from(&report.certificate.identity())
+                } else {
+                    X509Identity::Absent
+                },
+                fields: detail_fields(report),
             },
             Ok(None) => Self::Absent,
             Err(error) => Self::Error(X509Error::from(error)),
         }
     }
+}
+
+/// The X.509 page's rows: the parser's, led by the private-key row where the keystore
+/// cannot sign with the certificate.
+fn detail_fields(report: &x509_keystore::ReportedCertificate) -> Vec<X509DetailField> {
+    let unusable = report.unusable.clone().map(|cause| X509DetailField {
+        // No X.509 attribute says whether we hold a key we can sign with, so the row names
+        // what the keystore looked for.
+        label: "Private Key".to_owned(),
+        value: None,
+        problem: Some(X509FieldProblem::Unusable(X509UnusableCause::from(cause))),
+    });
+
+    unusable
+        .into_iter()
+        .chain(
+            report
+                .certificate
+                .detail_fields()
+                .into_iter()
+                .map(X509DetailField::from),
+        )
+        .collect()
 }
 
 impl From<&x509_keystore::ClientIdentity> for X509Identity {
@@ -157,13 +191,6 @@ impl From<&x509_keystore::Error> for X509Error {
                     modules: modules.clone(),
                 }
             }
-            x509_keystore::Error::NoUsableIdentity { causes } => Self::NoUsableIdentity {
-                causes: causes
-                    .iter()
-                    .cloned()
-                    .map(X509UnusableCause::from)
-                    .collect(),
-            },
             x509_keystore::Error::IdentityUnavailable { message } => Self::IdentityUnavailable {
                 message: message.clone(),
             },
@@ -189,7 +216,9 @@ impl From<x509_keystore::DetailField> for X509DetailField {
         Self {
             label: field.label,
             value: field.value,
-            problem: field.problem.map(X509ValidationError::from),
+            problem: field
+                .problem
+                .map(|error| X509FieldProblem::Invalid(X509ValidationError::from(error))),
         }
     }
 }

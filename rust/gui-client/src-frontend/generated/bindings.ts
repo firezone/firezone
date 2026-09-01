@@ -171,7 +171,7 @@ export type X509CertificateChanged = X509Certificate;
 export type X509DetailField = {
   label: string;
   value: string | null;
-  problem: X509ValidationError | null;
+  problem: X509FieldProblem | null;
 };
 /**
  * Mirrors [`x509_keystore::Error`] so the frontend writes the sentence it shows.
@@ -180,9 +180,14 @@ export type X509Error =
   | { UnreadableStore: { store: string; error: string } }
   | "MissingP11Kit"
   | { UnreadablePkcs11Keystore: { modules: string[] } }
-  | { NoUsableIdentity: { causes: X509UnusableCause[] } }
   | { IdentityUnavailable: { message: string } }
   | { UnreadableKeystore: { message: string } };
+/**
+ * What is wrong with a row: a value the parser flagged, or the keystore's private key.
+ */
+export type X509FieldProblem =
+  | { Invalid: X509ValidationError }
+  | { Unusable: X509UnusableCause };
 /**
  * Mirrors [`x509_keystore::ClientIdentity`], which decides what the sign-in control says.
  */
