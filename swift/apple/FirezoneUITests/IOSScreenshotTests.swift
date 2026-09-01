@@ -138,12 +138,18 @@
     ///
     /// `swipeUp()` is a flick: the list keeps travelling after the finger leaves
     /// it and comes to rest a little further along each time. Pressing before the
-    /// drag makes it a scroll, which stops where it is let go.
+    /// drag makes it a scroll, but the drag still hands the list a velocity of its
+    /// own, so the finger has to come to a stop before it lifts.
     private func scrollDown(in app: XCUIApplication) {
       let from = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.8))
       let to = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.3))
 
-      from.press(forDuration: 0.2, thenDragTo: to)
+      from.press(
+        forDuration: 0.2,
+        thenDragTo: to,
+        withVelocity: .slow,
+        thenHoldForDuration: 0.5
+      )
     }
 
     /// SwiftUI has drawn the iOS tab bar as different controls across releases,
