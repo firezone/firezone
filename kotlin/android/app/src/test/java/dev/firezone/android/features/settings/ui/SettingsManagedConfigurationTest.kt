@@ -5,8 +5,8 @@ import android.app.Application
 import android.content.Context
 import android.os.Bundle
 import android.os.Looper
-import dev.firezone.android.core.data.ManagedConfigurationSource
 import dev.firezone.android.core.data.ManagedConfigurationReader
+import dev.firezone.android.core.data.ManagedConfigurationSource
 import dev.firezone.android.core.data.Repository
 import dev.firezone.android.core.data.model.Config
 import kotlinx.coroutines.CoroutineScope
