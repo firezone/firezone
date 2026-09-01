@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
@@ -13,12 +14,19 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dagger.hilt.android.AndroidEntryPoint
+import dev.firezone.android.R
+import dev.firezone.android.core.x509.KeyChain
 import dev.firezone.android.features.settings.ui.compose.SettingsScreen
 import dev.firezone.android.ui.theme.FirezoneTheme
+import javax.inject.Inject
 
 @AndroidEntryPoint
 internal class SettingsActivity : AppCompatActivity() {
     private val viewModel: SettingsViewModel by viewModels()
+    private val deviceTrustViewModel: DeviceTrustSettingsViewModel by viewModels()
+
+    @Inject
+    internal lateinit var keyChain: KeyChain
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -28,6 +36,7 @@ internal class SettingsActivity : AppCompatActivity() {
         setContent {
             FirezoneTheme {
                 val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+                val deviceTrustState by deviceTrustViewModel.uiStateFlow.collectAsStateWithLifecycle()
                 val action by viewModel.actionStateFlow.collectAsStateWithLifecycle()
 
                 LaunchedEffect(action) {
@@ -45,6 +54,10 @@ internal class SettingsActivity : AppCompatActivity() {
                     managedStatus = uiState.managedStatus,
                     isSaveEnabled = uiState.isSaveButtonEnabled,
                     logSizeBytes = uiState.logSizeBytes,
+                    deviceTrustState = deviceTrustState,
+                    // Device Trust has nothing to say until a certificate is configured, whether
+                    // by an administrator or by the user.
+                    hasConfiguredCertificateAlias = deviceTrustState.alias != null,
                     warnBeforeSaving = isUserSignedIn,
                     onAuthUrlChange = viewModel::onAuthUrlChanged,
                     onApiUrlChange = viewModel::onApiUrlChanged,
@@ -56,6 +69,9 @@ internal class SettingsActivity : AppCompatActivity() {
                     onClearLogs = { viewModel.deleteLogDirectory(applicationContext) },
                     onExportLogs = { viewModel.createLogZip(applicationContext) },
                     onLogsShown = { viewModel.onViewResume(applicationContext) },
+                    onSelectCertificate = ::chooseCertificate,
+                    onForgetCertificate = deviceTrustViewModel::forgetSelection,
+                    onDeviceTrustShown = deviceTrustViewModel::loadDetails,
                     onSave = viewModel::onSaveSettingsCompleted,
                     onCancel = viewModel::onCancel,
                 )
@@ -69,12 +85,34 @@ internal class SettingsActivity : AppCompatActivity() {
         super.onResume()
         viewModel.populateFieldsFromConfig()
         viewModel.onViewResume(applicationContext)
+        // The administrator can install or revoke the certificate while this screen is open.
+        deviceTrustViewModel.loadDetails()
     }
 
     override fun onStop() {
         super.onStop()
         if (isFinishing) {
             viewModel.deleteLogZip(this@SettingsActivity)
+        }
+    }
+
+    private fun chooseCertificate() {
+        // Android answers on a binder thread, so the ViewModel takes the alias directly and only
+        // the toast has to hop onto the main thread.
+        keyChain.choosePrivateKeyAlias(
+            this,
+            deviceTrustViewModel.keyChainRequestUri(),
+            deviceTrustViewModel.uiStateFlow.value.alias,
+        ) { alias ->
+            if (alias == null) {
+                runOnUiThread {
+                    Toast
+                        .makeText(this, R.string.device_trust_no_certificate_selected, Toast.LENGTH_LONG)
+                        .show()
+                }
+            } else {
+                deviceTrustViewModel.onAliasSelected(alias)
+            }
         }
     }
 

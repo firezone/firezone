@@ -9,9 +9,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -28,7 +26,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.em
 import dev.firezone.android.R
 import dev.firezone.android.features.settings.ui.DeviceTrustSettingsViewModel
 import dev.firezone.android.ui.theme.FirezoneTheme
@@ -95,46 +92,16 @@ internal fun DeviceTrustSettingsScreen(
         // Under the card when there is nothing to say about a certificate, under the rows when
         // there is: either way the button follows what it acts on.
         if (needsSelection) {
-            SettingsButton(
-                text = stringResource(R.string.device_trust_select_certificate),
-                onClick = onSelectCertificate,
-            )
+            OutlinedButton(onClick = onSelectCertificate, modifier = Modifier.fillMaxWidth()) {
+                Text(stringResource(R.string.device_trust_select_certificate))
+            }
         }
 
         if (canForget) {
-            SettingsButton(
-                text = stringResource(R.string.device_trust_forget_certificate),
-                onClick = onForgetCertificate,
-            )
+            OutlinedButton(onClick = onForgetCertificate, modifier = Modifier.fillMaxWidth()) {
+                Text(stringResource(R.string.device_trust_forget_certificate))
+            }
         }
-    }
-}
-
-/**
- * An outlined button drawn the way the other settings tabs draw theirs.
- *
- * Those are `Widget.MaterialComponents.Button.OutlinedButton` in XML, which is squarer than the
- * Material 3 default and letters its label in upper case.
- */
-@Composable
-private fun SettingsButton(
-    text: String,
-    onClick: () -> Unit,
-) {
-    OutlinedButton(
-        onClick = onClick,
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(4.dp),
-        colors =
-            ButtonDefaults.outlinedButtonColors(
-                contentColor = MaterialTheme.colorScheme.onSurface,
-            ),
-    ) {
-        Text(
-            text = text.uppercase(),
-            style = MaterialTheme.typography.labelLarge,
-            letterSpacing = 0.09.em,
-        )
     }
 }
 

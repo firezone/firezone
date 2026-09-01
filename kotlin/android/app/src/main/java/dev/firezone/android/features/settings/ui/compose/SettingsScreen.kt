@@ -22,6 +22,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -31,20 +32,42 @@ import androidx.compose.ui.res.stringResource
 import dev.firezone.android.R
 import dev.firezone.android.core.data.model.Config
 import dev.firezone.android.core.data.model.ManagedConfigStatus
+import dev.firezone.android.features.settings.ui.DeviceTrustSettingsViewModel
 import kotlinx.coroutines.launch
 
-private const val PAGE_GENERAL = 0
-private const val PAGE_ADVANCED = 1
-private const val PAGE_LOGS = 2
-private const val PAGE_COUNT = 3
+/** A settings page and how the navigation bar names it. */
+internal enum class SettingsPage(
+    val labelRes: Int,
+    val iconRes: Int,
+) {
+    GENERAL(R.string.general_settings_title, R.drawable.rounded_discover_tune_black_24dp),
+    ADVANCED(R.string.advanced_settings_title, R.drawable.rounded_settings_black_24dp),
+    DEVICE_TRUST(R.string.device_trust_settings_title, R.drawable.rounded_verified_user_black_24dp),
+    LOGS(R.string.log_settings_title, R.drawable.rounded_description_black_24dp),
+}
+
+/** The pages to show, in order. */
+internal fun settingsPages(hasConfiguredCertificateAlias: Boolean): List<SettingsPage> =
+    buildList {
+        add(SettingsPage.GENERAL)
+        add(SettingsPage.ADVANCED)
+
+        if (hasConfiguredCertificateAlias) {
+            add(SettingsPage.DEVICE_TRUST)
+        }
+
+        add(SettingsPage.LOGS)
+    }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(
+internal fun SettingsScreen(
     config: Config,
     managedStatus: ManagedConfigStatus,
     isSaveEnabled: Boolean,
     logSizeBytes: Long,
+    deviceTrustState: DeviceTrustSettingsViewModel.UiState,
+    hasConfiguredCertificateAlias: Boolean,
     warnBeforeSaving: Boolean,
     onAuthUrlChange: (String) -> Unit,
     onApiUrlChange: (String) -> Unit,
@@ -56,18 +79,27 @@ fun SettingsScreen(
     onClearLogs: () -> Unit,
     onExportLogs: () -> Unit,
     onLogsShown: () -> Unit,
+    onSelectCertificate: () -> Unit,
+    onForgetCertificate: () -> Unit,
+    onDeviceTrustShown: () -> Unit,
     onSave: () -> Unit,
     onCancel: () -> Unit,
     modifier: Modifier = Modifier,
     buildSha: String = stringResource(R.string.git_sha),
 ) {
-    val pagerState = rememberPagerState(pageCount = { PAGE_COUNT })
+    val pages = remember(hasConfiguredCertificateAlias) { settingsPages(hasConfiguredCertificateAlias) }
+    val pagerState = rememberPagerState(pageCount = { pages.size })
     val scope = rememberCoroutineScope()
     var showSaveWarning by rememberSaveable { mutableStateOf(false) }
 
-    // The log directory grows while the app runs, so re-measure it each time the page is shown.
-    LaunchedEffect(pagerState.currentPage) {
-        if (pagerState.currentPage == PAGE_LOGS) onLogsShown()
+    // Forgetting the certificate drops a page, so the index can outrun the list for a frame.
+    val currentPage = pages.getOrNull(pagerState.currentPage)
+
+    // The log directory grows while the app runs, and an administrator can install or revoke the
+    // certificate, so both are re-read each time their page is shown.
+    LaunchedEffect(currentPage) {
+        if (currentPage == SettingsPage.LOGS) onLogsShown()
+        if (currentPage == SettingsPage.DEVICE_TRUST) onDeviceTrustShown()
     }
 
     Scaffold(
@@ -103,30 +135,20 @@ fun SettingsScreen(
             // The tabs jump without smooth scrolling, so that crossing the bar does not drag
             // every page in between across the screen.
             NavigationBar(containerColor = MaterialTheme.colorScheme.background) {
-                SettingsTab(
-                    selected = pagerState.currentPage == PAGE_GENERAL,
-                    labelRes = R.string.general_settings_title,
-                    iconRes = R.drawable.rounded_discover_tune_black_24dp,
-                    onClick = { scope.launch { pagerState.scrollToPage(PAGE_GENERAL) } },
-                )
-                SettingsTab(
-                    selected = pagerState.currentPage == PAGE_ADVANCED,
-                    labelRes = R.string.advanced_settings_title,
-                    iconRes = R.drawable.rounded_settings_black_24dp,
-                    onClick = { scope.launch { pagerState.scrollToPage(PAGE_ADVANCED) } },
-                )
-                SettingsTab(
-                    selected = pagerState.currentPage == PAGE_LOGS,
-                    labelRes = R.string.log_settings_title,
-                    iconRes = R.drawable.rounded_description_black_24dp,
-                    onClick = { scope.launch { pagerState.scrollToPage(PAGE_LOGS) } },
-                )
+                pages.forEachIndexed { index, page ->
+                    SettingsTab(
+                        selected = pagerState.currentPage == index,
+                        labelRes = page.labelRes,
+                        iconRes = page.iconRes,
+                        onClick = { scope.launch { pagerState.scrollToPage(index) } },
+                    )
+                }
             }
         },
     ) { innerPadding ->
         HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize().padding(innerPadding)) { page ->
-            when (page) {
-                PAGE_GENERAL -> {
+            when (pages[page]) {
+                SettingsPage.GENERAL -> {
                     GeneralSettingsPage(
                         config = config,
                         managedStatus = managedStatus,
@@ -136,7 +158,7 @@ fun SettingsScreen(
                     )
                 }
 
-                PAGE_ADVANCED -> {
+                SettingsPage.ADVANCED -> {
                     AdvancedSettingsPage(
                         config = config,
                         managedStatus = managedStatus,
@@ -148,7 +170,15 @@ fun SettingsScreen(
                     )
                 }
 
-                PAGE_LOGS -> {
+                SettingsPage.DEVICE_TRUST -> {
+                    DeviceTrustSettingsScreen(
+                        state = deviceTrustState,
+                        onSelectCertificate = onSelectCertificate,
+                        onForgetCertificate = onForgetCertificate,
+                    )
+                }
+
+                SettingsPage.LOGS -> {
                     LogSettingsPage(
                         logSizeBytes = logSizeBytes,
                         onClearLogs = onClearLogs,
