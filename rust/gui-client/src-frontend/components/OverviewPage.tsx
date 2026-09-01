@@ -51,8 +51,7 @@ interface SignedOutProps {
 const TOKEN_HINT =
   "You can sign in by clicking the Firezone icon in the taskbar or by " +
   "clicking the button below.";
-const CERTIFICATE_HINT =
-  "This device has a certificate Firezone presents to your account.";
+const CERTIFICATE_HINT = "This device has a certificate that identifies you.";
 
 // A certificate that claims an identity connects over mutual TLS, so the
 // control says so and the browser is never opened.
