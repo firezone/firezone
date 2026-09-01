@@ -227,6 +227,22 @@ abstract class CollectClasses
                 from(jars)
                 from(dirs)
                 into(outputDir)
+                // Nobody writes or can test the output of a code generator, so counting it only
+                // moves the percentage around. Dagger's top-level classes are already dropped by
+                // JaCoCo because they carry `@DaggerGenerated`; their nested classes are not.
+                exclude(
+                    "uniffi/**",
+                    "dagger/**",
+                    "hilt_aggregated_deps/**",
+                    "dev/firezone/android/databinding/**",
+                    "**/Hilt_*.class",
+                    "**/Dagger*.class",
+                    "**/*_HiltModules*.class",
+                    "**/*Args.class",
+                    "**/*Args\$*.class",
+                    "**/*Directions*.class",
+                    "**/BuildConfig.class",
+                )
             }
         }
     }
