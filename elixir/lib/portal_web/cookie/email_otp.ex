@@ -3,13 +3,14 @@ defmodule PortalWeb.Cookie.EmailOTP do
   Cookie for email OTP authentication state.
   """
 
-  @enforce_keys [:actor_id, :passcode_id, :email]
-  defstruct [:actor_id, :passcode_id, :email]
+  @enforce_keys [:actor_id, :passcode_id, :email, :context_type]
+  defstruct [:actor_id, :passcode_id, :email, :context_type]
 
   @type t :: %__MODULE__{
           actor_id: Ecto.UUID.t(),
           passcode_id: Ecto.UUID.t(),
-          email: String.t()
+          email: String.t(),
+          context_type: :portal | :gui_client | :headless_client
         }
 
   @cookie_key "email_otp"
@@ -56,19 +57,36 @@ defmodule PortalWeb.Cookie.EmailOTP do
     end
   end
 
-  defp to_binary(%__MODULE__{actor_id: actor_id, passcode_id: passcode_id, email: email}) do
-    {Ecto.UUID.dump!(actor_id), Ecto.UUID.dump!(passcode_id), email}
+  defp to_binary(%__MODULE__{
+         actor_id: actor_id,
+         passcode_id: passcode_id,
+         email: email,
+         context_type: context_type
+       }) do
+    {Ecto.UUID.dump!(actor_id), Ecto.UUID.dump!(passcode_id), email, context_type}
     |> :erlang.term_to_binary()
   end
 
   # sobelow_skip ["Misc.BinToTerm"]
   defp from_binary(binary) when is_binary(binary) do
-    {actor_id, passcode_id, email} = :erlang.binary_to_term(binary, [:safe])
+    {actor_id, passcode_id, email, context_type} =
+      case :erlang.binary_to_term(binary, [:safe]) do
+        {actor_id, passcode_id, email, context_type}
+        when context_type in [:portal, :gui_client, :headless_client] ->
+          {actor_id, passcode_id, email, context_type}
+
+        # Cookies issued before context was bound to the OTP flow can safely be
+        # treated as portal-only. A verification request that asks for a client
+        # credential will be rejected as a context switch.
+        {actor_id, passcode_id, email} ->
+          {actor_id, passcode_id, email, :portal}
+      end
 
     %__MODULE__{
       actor_id: Ecto.UUID.load!(actor_id),
       passcode_id: Ecto.UUID.load!(passcode_id),
-      email: email
+      email: email,
+      context_type: context_type
     }
   rescue
     _ -> nil

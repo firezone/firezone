@@ -219,7 +219,7 @@ defmodule PortalWeb.OIDCController do
       provider: provider
     } = auth_context
 
-    with :ok <- validate_context(provider, context_type),
+    with :ok <- Portal.AuthProvider.validate_context(provider, context_type),
          :ok <- ensure_client_sign_in_allowed(account, context_type),
          {:ok, tokens} <- PortalWeb.OIDC.exchange_code(provider, code, verifier),
          {:ok, claims} <- PortalWeb.OIDC.verify_token(provider, tokens["id_token"], verifier),
@@ -628,7 +628,7 @@ defmodule PortalWeb.OIDCController do
          },
          entered_code
        ) do
-    with :ok <- validate_context(provider, context_type),
+    with :ok <- Portal.AuthProvider.validate_context(provider, context_type),
          :ok <- ensure_client_sign_in_allowed(account, context_type),
          {:ok, identity, pending_identity_ids} <-
            Database.verify_and_promote_pending_identity(
@@ -726,19 +726,6 @@ defmodule PortalWeb.OIDCController do
        do: :ok
 
   defp check_actor(_actor, _context_type), do: {:error, :not_admin}
-
-  defp validate_context(%{context: context}, t)
-       when t in [:gui_client, :headless_client] and
-              context in [:clients_only, :clients_and_portal] do
-    :ok
-  end
-
-  defp validate_context(%{context: context}, :portal)
-       when context in [:portal_only, :clients_and_portal] do
-    :ok
-  end
-
-  defp validate_context(_provider, _context_type), do: {:error, :invalid_context}
 
   defp ensure_client_sign_in_allowed(account, context_type)
        when context_type in [:gui_client, :headless_client] do
