@@ -90,6 +90,42 @@ class SplashLaunchFlowTest {
     }
 
     @Test
+    fun `does not connect when connect on start is disabled`() {
+        val action =
+            SplashLaunchFlow(SavedStateHandle()).permissionsReady(
+                hasToken = true,
+                isTunnelRunning = false,
+                connectOnStart = false,
+            )
+
+        assertEquals(SplashLaunchFlow.Action.SIGN_IN, action)
+    }
+
+    @Test
+    fun `does not connect without a token`() {
+        val action =
+            SplashLaunchFlow(SavedStateHandle()).permissionsReady(
+                hasToken = false,
+                isTunnelRunning = false,
+                connectOnStart = true,
+            )
+
+        assertEquals(SplashLaunchFlow.Action.SIGN_IN, action)
+    }
+
+    @Test
+    fun `opens an already running tunnel without reconnecting`() {
+        val action =
+            SplashLaunchFlow(SavedStateHandle()).permissionsReady(
+                hasToken = true,
+                isTunnelRunning = true,
+                connectOnStart = true,
+            )
+
+        assertEquals(SplashLaunchFlow.Action.OPEN_SESSION, action)
+    }
+
+    @Test
     fun `recreation before permissions are ready preserves the initial launch`() {
         val savedStateHandle = SavedStateHandle()
 
