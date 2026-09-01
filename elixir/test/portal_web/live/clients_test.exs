@@ -89,6 +89,18 @@ defmodule PortalWeb.ClientsTest do
       end
     end
 
+    test "offers the trust levels to filter by", %{conn: conn, account: account, actor: actor} do
+      client_fixture(account: account, actor: actor)
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/clients")
+
+      assert html =~ "All trust levels"
+      refute html =~ "All Trust levels"
+    end
+
     test "filters by attestation level", %{conn: conn, account: account, actor: actor} do
       verified_actor = actor_fixture(account: account, name: "Verified Owner")
 
