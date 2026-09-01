@@ -165,10 +165,18 @@ jobs:
             exit 1
           fi
 
+          set -o pipefail
           java -jar "$jacoco_cli" report "${execution_data[@]}" \
             --classfiles classes \
             --sourcefiles app/src/main/java \
-            --xml coverage.xml
+            --xml coverage.xml 2>&1 | tee report.log
+
+          # A class whose bytecode JaCoCo cannot match has its execution data dropped and is
+          # reported as uncovered, so a mismatch understates the result instead of failing.
+          if grep -q 'does not match' report.log; then
+            echo "The classes above were not the ones the tests ran against, so their coverage was dropped."
+            exit 1
+          fi
 
           # A report that resolved no classes still writes valid XML, so it is worth saying so
           # here rather than uploading an empty one.

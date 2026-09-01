@@ -1,3 +1,5 @@
+import com.android.build.api.artifact.ScopedArtifact
+import com.android.build.api.variant.ScopedArtifacts
 import com.google.firebase.crashlytics.buildtools.gradle.CrashlyticsExtension
 import org.gradle.process.ExecOperations
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
@@ -198,12 +200,36 @@ tasks.register<Copy>("copyJacocoCli") {
     into(layout.buildDirectory.dir("jacoco-cli"))
 }
 
-// Reporting on the execution data needs the classes the tests were built from. Taken from the
-// compile tasks because their names are stable across AGP versions where their output paths are not.
-tasks.register<Copy>("collectDebugClasses") {
-    from(tasks.named("compileDebugKotlin"), tasks.named("compileDebugJavaWithJavac"))
-    into(layout.buildDirectory.dir("debug-classes"))
-}
+// Reporting on the execution data needs the classes the tests ran against, which are not the ones
+// the compile tasks emit: `@AndroidEntryPoint` classes get rewritten to extend their generated Hilt
+// base class. JaCoCo matches execution data by a hash of the bytecode, so handing it the compile
+// output silently reports every one of those classes as uncovered.
+abstract class CollectClasses
+    @Inject
+    constructor() : DefaultTask() {
+        @get:InputFiles
+        @get:PathSensitive(PathSensitivity.RELATIVE)
+        abstract val jars: ListProperty<RegularFile>
+
+        @get:InputFiles
+        @get:PathSensitive(PathSensitivity.RELATIVE)
+        abstract val dirs: ListProperty<Directory>
+
+        @get:OutputDirectory
+        abstract val outputDir: DirectoryProperty
+
+        @get:Inject
+        abstract val fileSystem: FileSystemOperations
+
+        @TaskAction
+        fun collect() {
+            fileSystem.sync {
+                from(jars)
+                from(dirs)
+                into(outputDir)
+            }
+        }
+    }
 
 dependencies {
     // The `nodeps` jar is already shaded, so its declared dependencies would only add jars for the
@@ -618,5 +644,14 @@ androidComponents {
             generateUniffiBindings,
             GenerateUniffiBindings::outputDir,
         )
+
+        val collectClasses =
+            tasks.register<CollectClasses>("collect${variant.name.replaceFirstChar { it.uppercase() }}Classes") {
+                outputDir.set(layout.buildDirectory.dir("${variant.name}-classes"))
+            }
+        variant.artifacts
+            .forScope(ScopedArtifacts.Scope.PROJECT)
+            .use(collectClasses)
+            .toGet(ScopedArtifact.CLASSES, CollectClasses::jars, CollectClasses::dirs)
     }
 }
