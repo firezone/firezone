@@ -42,22 +42,15 @@ pub struct AdvancedSettingsChanged(pub AdvancedSettingsViewModel);
 #[derive(Clone, serde::Serialize, specta::Type, tauri_specta::Event)]
 pub struct LogsRecounted(pub FileCount);
 
-/// The platform keystore's certificate as the X.509 page renders it.
+/// The platform keystore's certificate as the device trust page renders it.
 #[derive(Clone, serde::Serialize, specta::Type, tauri_specta::Event)]
-pub struct X509CertificateChanged(pub X509Certificate);
+pub struct X509CertificateChanged(pub Option<X509Certificate>);
 
-/// What the Tunnel service last loaded from the platform keystore.
+/// A certificate the Tunnel service loaded from the platform keystore.
 #[derive(Clone, serde::Serialize, specta::Type)]
-pub enum X509Certificate {
-    /// The keystore holds this certificate, described by the parser's rows.
-    Loaded {
-        identity: X509Identity,
-        fields: Vec<X509DetailField>,
-    },
-    /// The keystore holds no client certificate.
-    Absent,
-    /// The keystore could not hand out a client identity.
-    Error(X509Error),
+pub struct X509Certificate {
+    pub identity: X509Identity,
+    pub fields: Vec<X509DetailField>,
 }
 
 /// Mirrors [`x509_keystore::ClientIdentity`], which decides what the sign-in control says.
@@ -65,16 +58,6 @@ pub enum X509Certificate {
 pub enum X509Identity {
     Absent,
     Claimed { email: Option<String> },
-}
-
-/// Mirrors [`x509_keystore::Error`] so the frontend writes the sentence it shows.
-#[derive(Clone, serde::Serialize, specta::Type)]
-pub enum X509Error {
-    UnreadableStore { store: String, error: String },
-    MissingP11Kit,
-    UnreadablePkcs11Keystore { modules: Vec<String> },
-    IdentityUnavailable { message: String },
-    UnreadableKeystore { message: String },
 }
 
 /// A label-value row of the certificate, and what is wrong with it.
@@ -103,23 +86,21 @@ pub enum X509ValidationError {
     DigitalSignatureNotAllowed,
 }
 
-impl From<&std::result::Result<Option<x509_keystore::ParsedCertificate>, x509_keystore::Error>>
-    for X509Certificate
-{
-    fn from(
-        x509: &std::result::Result<Option<x509_keystore::ParsedCertificate>, x509_keystore::Error>,
-    ) -> Self {
-        match x509 {
-            Ok(Some(certificate)) => Self::Loaded {
-                identity: X509Identity::from(&certificate.identity()),
-                fields: certificate
-                    .detail_fields()
-                    .into_iter()
-                    .map(X509DetailField::from)
-                    .collect(),
-            },
-            Ok(None) => Self::Absent,
-            Err(error) => Self::Error(X509Error::from(error)),
+impl From<Option<&x509_keystore::ParsedCertificate>> for X509CertificateChanged {
+    fn from(certificate: Option<&x509_keystore::ParsedCertificate>) -> Self {
+        Self(certificate.map(X509Certificate::from))
+    }
+}
+
+impl From<&x509_keystore::ParsedCertificate> for X509Certificate {
+    fn from(certificate: &x509_keystore::ParsedCertificate) -> Self {
+        Self {
+            identity: X509Identity::from(&certificate.identity()),
+            fields: certificate
+                .detail_fields()
+                .into_iter()
+                .map(X509DetailField::from)
+                .collect(),
         }
     }
 }
@@ -130,29 +111,6 @@ impl From<&x509_keystore::ClientIdentity> for X509Identity {
             x509_keystore::ClientIdentity::Absent => Self::Absent,
             x509_keystore::ClientIdentity::Claimed { email } => Self::Claimed {
                 email: email.clone(),
-            },
-        }
-    }
-}
-
-impl From<&x509_keystore::Error> for X509Error {
-    fn from(error: &x509_keystore::Error) -> Self {
-        match error {
-            x509_keystore::Error::UnreadableStore { store, error } => Self::UnreadableStore {
-                store: store.clone(),
-                error: error.clone(),
-            },
-            x509_keystore::Error::MissingP11Kit => Self::MissingP11Kit,
-            x509_keystore::Error::UnreadablePkcs11Keystore { modules } => {
-                Self::UnreadablePkcs11Keystore {
-                    modules: modules.clone(),
-                }
-            }
-            x509_keystore::Error::IdentityUnavailable { message } => Self::IdentityUnavailable {
-                message: message.clone(),
-            },
-            x509_keystore::Error::UnreadableKeystore { message } => Self::UnreadableKeystore {
-                message: message.clone(),
             },
         }
     }

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Route, Routes } from "react-router";
+import { Navigate, Route, Routes } from "react-router";
 import About from "./AboutPage";
 import AdvancedSettingsPage from "./AdvancedSettingsPage";
 import ColorPalette from "./ColorPalettePage";
@@ -27,7 +27,7 @@ export default function App() {
     useState<GeneralSettingsViewModel | null>(null);
   const [advancedSettings, setAdvancedSettings] =
     useState<AdvancedSettingsViewModel | null>(null);
-  const [x509, setX509] = useState<X509Certificate | null>(null);
+  const [x509, setX509] = useState<X509Certificate | null>();
   const [settingsOpen, setSettingsOpen] = useState(true);
 
   useEffect(() => {
@@ -84,7 +84,10 @@ export default function App() {
           path="/advanced-settings"
           element={<Titlebar title="Advanced Settings" />}
         />
-        <Route path="/x509" element={<Titlebar title="X.509" />} />
+        <Route
+          path="/x509"
+          element={x509 ? <Titlebar title="Device Trust" /> : null}
+        />
         <Route path="/diagnostics" element={<Titlebar title="Diagnostics" />} />
         <Route path="/about" element={<Titlebar title="About" />} />
         <Route
@@ -142,11 +145,13 @@ export default function App() {
                   </ul>
                 )}
               </li>
-              <li>
-                <ReactRouterSidebarItem icon="certificate" href="/x509">
-                  X.509
-                </ReactRouterSidebarItem>
-              </li>
+              {x509 && (
+                <li>
+                  <ReactRouterSidebarItem icon="certificate" href="/x509">
+                    Device Trust
+                  </ReactRouterSidebarItem>
+                </li>
+              )}
               <li>
                 <ReactRouterSidebarItem icon="database" href="/diagnostics">
                   Diagnostics
@@ -174,13 +179,7 @@ export default function App() {
               path="/overview"
               element={
                 <Overview
-                  identity={
-                    x509 !== null &&
-                    typeof x509 === "object" &&
-                    "Loaded" in x509
-                      ? x509.Loaded.identity
-                      : "Absent"
-                  }
+                  identity={x509?.identity ?? "Absent"}
                   session={session}
                   signIn={commands.signIn}
                   signOut={commands.signOut}
@@ -207,7 +206,16 @@ export default function App() {
                 />
               }
             />
-            <Route path="/x509" element={<X509Page certificate={x509} />} />
+            <Route
+              path="/x509"
+              element={
+                x509 === null ? (
+                  <Navigate replace to="/overview" />
+                ) : x509 === undefined ? null : (
+                  <X509Page certificate={x509} />
+                )
+              }
+            />
             <Route
               path="/diagnostics"
               element={

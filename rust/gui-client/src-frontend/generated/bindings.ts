@@ -117,25 +117,13 @@ export type LogsRecounted = FileCount
 export type SessionChanged = SessionViewModel
 export type SessionViewModel = { SignedIn: { account_slug: string; actor_name: string } } | "Loading" | "SignedOut"
 /**
- * What the Tunnel service last loaded from the platform keystore.
+ * A certificate the Tunnel service loaded from the platform keystore.
  */
-export type X509Certificate =
+export type X509Certificate = { identity: X509Identity; fields: X509DetailField[] }
 /**
- * The keystore holds this certificate, described by the parser's rows.
+ * The platform keystore's certificate as the device trust page renders it.
  */
-{ Loaded: { identity: X509Identity; fields: X509DetailField[] } } |
-/**
- * The keystore holds no client certificate.
- */
-"Absent" |
-/**
- * The keystore could not hand out a client identity.
- */
-{ Error: X509Error }
-/**
- * The platform keystore's certificate as the X.509 page renders it.
- */
-export type X509CertificateChanged = X509Certificate
+export type X509CertificateChanged = X509Certificate | null
 /**
  * A label-value row of the certificate, and what is wrong with it.
  */
@@ -148,10 +136,6 @@ value: string | null;
  * Why the value is not usable as what the row names, [`None`] when it is.
  */
 problem: X509ValidationError | null }
-/**
- * Mirrors [`x509_keystore::Error`] so the frontend writes the sentence it shows.
- */
-export type X509Error = { UnreadableStore: { store: string; error: string } } | "MissingP11Kit" | { UnreadablePkcs11Keystore: { modules: string[] } } | { IdentityUnavailable: { message: string } } | { UnreadableKeystore: { message: string } }
 /**
  * Mirrors [`x509_keystore::ClientIdentity`], which decides what the sign-in control says.
  */

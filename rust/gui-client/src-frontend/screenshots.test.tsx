@@ -32,7 +32,7 @@ interface Screen {
   session?: SessionViewModel;
   generalSettings?: GeneralSettingsViewModel;
   advancedSettings?: AdvancedSettingsViewModel;
-  /// What the keystore holds, as the typed states the screen turns into sentences.
+  /// The certificate the keystore holds, when the device trust tab is available.
   x509?: X509Certificate;
   logCount?: FileCount;
   // Label of a field to leave the pointer over, for a screen whose tooltip is the point.
@@ -122,22 +122,20 @@ function loadedCertificate(certificate: Certificate): X509Certificate {
     certificate.actorEmail.problem !== undefined;
 
   return {
-    Loaded: {
-      identity: claimed
-        ? {
-            Claimed: {
-              email:
-                certificate.actorEmail.problem === undefined
-                  ? certificate.actorEmail.value
-                  : null,
-            },
-          }
-        : "Absent",
-      fields: [
-        ...fields.filter((field) => field.problem !== null),
-        ...fields.filter((field) => field.problem === null),
-      ],
-    },
+    identity: claimed
+      ? {
+          Claimed: {
+            email:
+              certificate.actorEmail.problem === undefined
+                ? certificate.actorEmail.value
+                : null,
+          },
+        }
+      : "Absent",
+    fields: [
+      ...fields.filter((field) => field.problem !== null),
+      ...fields.filter((field) => field.problem === null),
+    ],
   };
 }
 
@@ -211,17 +209,9 @@ const screens: Record<string, Screen> = {
     },
     hover: "Auth Base URL",
   },
-  "x509-empty": {
-    route: "/x509",
-    x509: "Absent",
-  },
   "x509-happy": {
     route: "/x509",
     x509: loadedCertificate(windowsCertificate),
-  },
-  "x509-missing-package-linux": {
-    route: "/x509",
-    x509: { Error: "MissingP11Kit" },
   },
   "x509-invalid-attribute": {
     route: "/x509",

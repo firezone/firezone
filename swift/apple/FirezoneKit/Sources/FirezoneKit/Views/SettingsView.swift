@@ -119,12 +119,14 @@ public struct SettingsView: View {
                 }
                 .badge(viewModel.isValid() ? nil : "!")
                 .tag(Tab.advanced)
-              certificateTab
-                .tabItem {
-                  Image(systemName: "rosette")
-                  Text("X.509")
-                }
-                .tag(Tab.x509)
+              if store.x509CertificateDetails != nil {
+                certificateTab
+                  .tabItem {
+                    Image(systemName: "rosette")
+                    Text("Device Trust")
+                  }
+                  .tag(Tab.x509)
+              }
               logsTab
                 .tabItem {
                   Image(systemName: "doc.text")
@@ -183,11 +185,13 @@ public struct SettingsView: View {
               Text("Advanced")
             }
             .tag(Tab.advanced)
-          certificateTab
-            .tabItem {
-              Text("X.509")
-            }
-            .tag(Tab.x509)
+          if store.x509CertificateDetails != nil {
+            certificateTab
+              .tabItem {
+                Text("Device Trust")
+              }
+              .tag(Tab.x509)
+          }
           logsTab
             .tabItem {
               Text("Diagnostic Logs")
@@ -558,29 +562,28 @@ public struct SettingsView: View {
     #endif
   }
 
+  @ViewBuilder
   private var certificateTab: some View {
     #if os(macOS)
       ScrollView {
         HStack {
           Spacer()
-          clientCertificateSettings
-            .frame(maxWidth: 600)
+          if let details = store.x509CertificateDetails {
+            X509SettingsView(details: details)
+              .frame(maxWidth: 600)
+          }
           Spacer()
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical)
       }
     #elseif os(iOS)
-      clientCertificateSettings
+      if let details = store.x509CertificateDetails {
+        X509SettingsView(details: details)
+      }
     #else
       #error("Unsupported platform")
     #endif
-  }
-
-  private var clientCertificateSettings: some View {
-    let keychain = X509CertificateSource.keychain { try store.manager().identityReference() }
-
-    return X509SettingsView(source: store.x509CertificateSource ?? keychain)
   }
 
   private func saveAllSettingsAndDismiss() async throws {

@@ -363,6 +363,10 @@ async fn load_identity() -> Result<Option<x509_keystore::Identity>, x509_keystor
 fn x509_of(
     keystore: &Result<Option<x509_keystore::Identity>, x509_keystore::Error>,
 ) -> Result<Option<x509_keystore::ParsedCertificate>, x509_keystore::Error> {
+    if let Err(error) = keystore {
+        tracing::debug!(%error, "Failed to read the platform keystore");
+    }
+
     keystore
         .as_ref()
         .map(|identity| {

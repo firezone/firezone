@@ -81,7 +81,7 @@ pub trait GuiIntegration {
     fn notify_logs_recounted(&self, file_count: &FileCount) -> Result<()>;
     fn notify_x509_changed(
         &self,
-        x509: &Result<Option<x509_keystore::ParsedCertificate>, x509_keystore::Error>,
+        certificate: Option<&x509_keystore::ParsedCertificate>,
     ) -> Result<()>;
 
     /// Also opens non-URLs
@@ -800,10 +800,6 @@ impl<I: GuiIntegration> Controller<I> {
                     .show_notification("Failed to save settings", &err)?;
             }
             service::ServerMsg::X509Certificate(result) => {
-                if let Err(error) = &result {
-                    tracing::debug!("Failed to read the platform keystore: {error}");
-                }
-
                 self.x509 = result;
 
                 self.notify_x509_changed()?;
@@ -1074,7 +1070,8 @@ impl<I: GuiIntegration> Controller<I> {
 
     /// Tells the GUI what the Tunnel service last loaded from the keystore.
     fn notify_x509_changed(&self) -> Result<()> {
-        self.integration.notify_x509_changed(&self.x509)?;
+        let certificate = self.x509.as_ref().ok().and_then(Option::as_ref);
+        self.integration.notify_x509_changed(certificate)?;
 
         Ok(())
     }
@@ -1255,12 +1252,10 @@ mod tests {
         let mut mock_tunnel = test_controller.tunnel_service_ipc_accept().await;
         mock_tunnel.send_hello().await;
 
-        let expected = Ok(Some(parsed_certificate(
-            x509_keystore::ClientIdentity::Absent,
-        )));
+        let expected = Some(parsed_certificate(x509_keystore::ClientIdentity::Absent));
         mock_tunnel
             .tx
-            .send(&service::ServerMsg::X509Certificate(expected.clone()))
+            .send(&service::ServerMsg::X509Certificate(Ok(expected.clone())))
             .await
             .unwrap();
 
@@ -1273,7 +1268,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_keystore_read_failure_in_the_greeting_reaches_the_gui() {
+    async fn a_keystore_read_failure_in_the_greeting_is_hidden_from_the_gui() {
         let _guard = logging::test("debug");
         let mut test_controller = Controller::start_for_test();
         let mut mock_tunnel = test_controller.tunnel_service_ipc_accept().await;
@@ -1287,12 +1282,7 @@ mod tests {
             .wait_integration(|i| i.x509.first().cloned())
             .await;
 
-        assert_eq!(
-            x509,
-            Err(x509_keystore::Error::UnreadableKeystore {
-                message: "Failed to enumerate PKCS#11 tokens".to_owned(),
-            })
-        );
+        assert_eq!(x509, None);
     }
 
     #[tokio::test]
@@ -1854,7 +1844,7 @@ mod tests {
         general_settings: Vec<GeneralSettings>,
         advanced_settings: Vec<AdvancedSettings>,
         file_counts: Vec<FileCount>,
-        x509: Vec<Result<Option<x509_keystore::ParsedCertificate>, x509_keystore::Error>>,
+        x509: Vec<Option<x509_keystore::ParsedCertificate>>,
         opened_urls: Vec<String>,
         tray_icons: Vec<system_tray::Icon>,
         tray_states: Vec<system_tray::AppState>,
@@ -1902,9 +1892,9 @@ mod tests {
 
         fn notify_x509_changed(
             &self,
-            x509: &Result<Option<x509_keystore::ParsedCertificate>, x509_keystore::Error>,
+            certificate: Option<&x509_keystore::ParsedCertificate>,
         ) -> Result<()> {
-            self.lock().x509.push(x509.clone());
+            self.lock().x509.push(certificate.cloned());
 
             Ok(())
         }

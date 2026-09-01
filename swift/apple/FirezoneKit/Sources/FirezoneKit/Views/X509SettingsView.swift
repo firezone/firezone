@@ -8,74 +8,31 @@ import SwiftUI
 
 /// Shows the client certificate the VPN profile references, for support and diagnostics.
 struct X509SettingsView: View {
-  /// Where the certificate comes from, so that one can be handed in for a screenshot.
-  let source: X509CertificateSource
-
-  private enum LoadState {
-    case loading
-    case notConfigured
-    case failed(String)
-    case loaded(X509CertificateSummary, keyProblem: String?)
-  }
-
-  @State private var loadState: LoadState = .loading
-
-  init(source: X509CertificateSource) {
-    self.source = source
-  }
+  let details: X509CertificateDetails
 
   var body: some View {
     #if os(iOS)
       // A phone fits one column, so each field becomes its own form row.
       Form {
-        switch loadState {
-        case .loading:
-          Section {
-            ProgressView()
-              .frame(maxWidth: .infinity)
-          }
+        Section { card(details.summary, keyProblem: details.keyProblem) }
 
-        case .notConfigured:
-          Section { emptyCard(error: nil) }
-
-        case .failed(let message):
-          Section { emptyCard(error: message) }
-
-        case .loaded(let summary, let keyProblem):
-          Section { card(summary, keyProblem: keyProblem) }
-
-          Section {
-            ForEach(summary.fields, id: \.self) { field in
-              VStack(alignment: .leading, spacing: 2) {
-                Text(field.label)
-                  .font(.caption)
-                  .foregroundStyle(.secondary)
-                claimValue(field.value)
-                fieldProblem(field.problem)
-              }
+        Section {
+          ForEach(details.summary.fields, id: \.self) { field in
+            VStack(alignment: .leading, spacing: 2) {
+              Text(field.label)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+              claimValue(field.value)
+              fieldProblem(field.problem)
             }
           }
         }
       }
-      .onAppear { Task { await reload() } }
     #else
       VStack(alignment: .leading, spacing: 12) {
-        switch loadState {
-        case .loading:
-          ProgressView()
-
-        case .notConfigured:
-          emptyCard(error: nil)
-
-        case .failed(let message):
-          emptyCard(error: message)
-
-        case .loaded(let summary, let keyProblem):
-          card(summary, keyProblem: keyProblem)
-          details(summary)
-        }
+        card(details.summary, keyProblem: details.keyProblem)
+        certificateFields(details.summary)
       }
-      .onAppear { Task { await reload() } }
     #endif
   }
 
@@ -88,15 +45,6 @@ struct X509SettingsView: View {
     ) {
       if let keyProblem {
         notice(keyProblem, title: "Firezone cannot use the certificate's private key")
-      }
-    }
-  }
-
-  /// The card when there is nothing to identify: no certificate, or one we could not read.
-  private func emptyCard(error: String?) -> some View {
-    cardLayout(title: "No client certificate") {
-      if let error {
-        notice(error, title: "The client certificate could not be read")
       }
     }
   }
@@ -172,7 +120,7 @@ struct X509SettingsView: View {
     }
   }
 
-  private func details(_ summary: X509CertificateSummary) -> some View {
+  private func certificateFields(_ summary: X509CertificateSummary) -> some View {
     Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 12, verticalSpacing: 8) {
       ForEach(summary.fields, id: \.self) { field in
         GridRow {
@@ -221,29 +169,4 @@ struct X509SettingsView: View {
     #endif
   }
 
-  @MainActor
-  private func reload() async {
-    loadState = .loading
-
-    do {
-      let (certificate, keyProblem) = try await source.read()
-
-      guard let certificate else {
-        loadState = .notConfigured
-
-        return
-      }
-
-      guard let summary = X509CertificateParser.summary(of: certificate) else {
-        loadState = .failed("Its bytes are not an X.509 certificate.")
-
-        return
-      }
-
-      loadState = .loaded(summary, keyProblem: keyProblem)
-    } catch {
-      Log.error("Failed to read the client certificate: \(error.localizedDescription)")
-      loadState = .failed(error.localizedDescription)
-    }
-  }
 }

@@ -20,7 +20,7 @@
 	<string name="log_filter">Log Filter</string>
 	<string name="button_reset_to_defaults">Reset to Defaults</string>
 	<!-- Diagnostic Logs Settings -->
-	<string name="x509_settings_title">X.509</string>
+	<string name="x509_settings_title">Device Trust</string>
 	<string name="log_settings_title">Logs</string>
 	<string name="share_diagnostic_logs">Export Logs</string>
 	<string name="log_directory_size">Log directory size: %1$s</string>
@@ -28,7 +28,6 @@
 
 	<!-- Client Certificate -->
 	<string name="x509_certificate_title">Client certificate</string>
-	<string name="x509_no_certificate_title">No client certificate</string>
 	<string name="x509_issued_by">Issued by %1$s</string>
 	<string name="x509_valid_until">Valid until %1$s</string>
 	<string name="x509_select_certificate">Select certificate</string>
@@ -37,7 +36,7 @@
 		A certificate has been installed on this device but Firezone has not been granted access.
 		Please click \'Select certificate\' and select it on the presented system pop-up. Firezone
 		cannot use the installed certificate beforehand. You can change or revert this permission
-		in the X.509 settings tab at any time.
+		in the Device Trust settings tab at any time.
 	</string>
 	<string name="x509_forget_certificate">Forget Selection</string>
 	<string name="x509_loading">Reading the KeyChain…</string>

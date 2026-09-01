@@ -52,7 +52,6 @@ internal fun X509SettingsScreen(
     // names the certificate, yet only the user can release the key behind it, so the chooser stays
     // reachable there as well.
     val keyIsWithheld = state.alias != null && !state.isLoading && !state.isUsable
-    val canSelect = keyIsWithheld || (!state.isManaged && state.alias == null)
 
     // An administrator's alias is not the user's to clear, and neither is one whose key is still
     // withheld: that screen asks for a grant, and offering to forget the certificate in the same
@@ -94,7 +93,7 @@ internal fun X509SettingsScreen(
 
         // Under the card when there is nothing to say about a certificate, under the rows when
         // there is: either way the button follows what it acts on.
-        if (canSelect) {
+        if (keyIsWithheld) {
             SettingsButton(
                 text = stringResource(R.string.x509_select_certificate),
                 onClick = onSelectCertificate,
@@ -200,11 +199,7 @@ private fun CertificateCard(state: X509SettingsViewModel.UiState) {
 
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(
-                    text =
-                        when {
-                            state.alias == null -> stringResource(R.string.x509_no_certificate_title)
-                            else -> commonName ?: stringResource(R.string.x509_certificate_title)
-                        },
+                    text = commonName ?: stringResource(R.string.x509_certificate_title),
                     style = MaterialTheme.typography.titleMedium,
                 )
 
@@ -373,18 +368,6 @@ private fun X509SettingsScreenInvalidClaimsPreview() {
                             DetailField("Issuer", "CN=Example Corp Device CA, O=Example Corp", null),
                         ),
                 ),
-            onSelectCertificate = {},
-            onForgetCertificate = {},
-        )
-    }
-}
-
-@Preview(showSystemUi = true)
-@Composable
-private fun X509SettingsScreenNoCertificatePreview() {
-    FirezoneTheme {
-        X509SettingsScreen(
-            state = X509SettingsViewModel.UiState(),
             onSelectCertificate = {},
             onForgetCertificate = {},
         )

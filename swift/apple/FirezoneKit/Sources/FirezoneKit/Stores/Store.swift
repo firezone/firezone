@@ -23,8 +23,8 @@ public final class Store: ObservableObject {
   /// The actor the portal named in `init`, `nil` until it arrives.
   @Published private(set) var actorName: String?
 
-  /// Who the client certificate says is connecting, which decides what the controls offer.
-  @Published private(set) var certificateIdentity: X509ClaimedIdentity = .absent
+  /// The client certificate the settings screen can display.
+  @Published private(set) var x509CertificateDetails: X509CertificateDetails?
   @Published private(set) var favorites: Favorites
   @Published private(set) var resourceList: ResourceList = .loading
   @Published private(set) var connectedDevices: [ConnectedDevice] = []
@@ -40,6 +40,11 @@ public final class Store: ObservableObject {
     guard let actorName else { return state }
 
     return "\(state) as \(actorName)"
+  }
+
+  /// Who the loaded client certificate says is connecting.
+  var certificateIdentity: X509ClaimedIdentity {
+    x509CertificateDetails?.summary.identity ?? .absent
   }
 
   /// How a session ending reads, matching the control the user pressed to end it.
@@ -405,8 +410,8 @@ public final class Store: ObservableObject {
         try await initSystemExtension()
         Log.debug("Startup: initVPNConfiguration")
         try await initVPNConfiguration()
-        Log.debug("Startup: loadCertificateIdentity")
-        await loadCertificateIdentity()
+        Log.debug("Startup: loadCertificateDetails")
+        await loadCertificateDetails()
         Telemetry.setEnvironmentOrClose(configuration.apiURL)
         #if os(macOS)
           Log.debug("Startup: drainFlowLogsOnLaunch")
@@ -509,26 +514,33 @@ public final class Store: ObservableObject {
     }
   }
 
-  private func loadCertificateIdentity() async {
+  private func loadCertificateDetails() async {
     let keychain = X509CertificateSource.keychain { try self.manager().identityReference() }
     let source = x509CertificateSource ?? keychain
 
     do {
-      guard let certificate = try await source.read().certificate else {
-        certificateIdentity = .absent
+      let reading = try await source.read()
+      guard let certificate = reading.certificate else {
+        x509CertificateDetails = nil
 
         return
       }
 
-      // A certificate we cannot parse claims nobody: it is still presented to the portal,
-      // but the session signs in with a token and the portal judges what it was handed.
-      let summary = X509CertificateParser.summary(of: certificate)
+      guard let summary = X509CertificateParser.summary(of: certificate) else {
+        Log.debug("The configured client certificate is not a valid X.509 certificate")
+        x509CertificateDetails = nil
 
-      certificateIdentity = summary?.identity ?? .absent
+        return
+      }
+
+      x509CertificateDetails = X509CertificateDetails(
+        summary: summary,
+        keyProblem: reading.keyProblem
+      )
     } catch {
-      Log.error("Failed to read the client certificate: \(error.localizedDescription)")
+      Log.debug("Failed to read the client certificate: \(error.localizedDescription)")
 
-      certificateIdentity = .absent
+      x509CertificateDetails = nil
     }
   }
 

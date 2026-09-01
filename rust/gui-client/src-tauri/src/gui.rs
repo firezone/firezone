@@ -146,9 +146,9 @@ impl GuiIntegration for TauriIntegration {
 
     fn notify_x509_changed(
         &self,
-        x509: &Result<Option<x509_keystore::ParsedCertificate>, x509_keystore::Error>,
+        certificate: Option<&x509_keystore::ParsedCertificate>,
     ) -> Result<()> {
-        X509CertificateChanged(x509.into())
+        X509CertificateChanged::from(certificate)
             .emit(&self.app)
             .context("Failed to emit `x509_certificate_changed` event")?;
 

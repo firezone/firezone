@@ -80,9 +80,6 @@ class SettingsScreenshotTest {
     fun x509SettingsWithCertificate() = captureX509Page("x509-filled", usableCertificate)
 
     @Test
-    fun x509SettingsWithoutCertificate() = captureX509Page("x509-empty", noCertificate)
-
-    @Test
     fun x509SettingsWithInvalidClaim() = captureX509Page("x509-invalid-claim", certificateWithInvalidClaim)
 
     @Test
@@ -111,7 +108,7 @@ class SettingsScreenshotTest {
     ) {
         x509ScreenshotState = state
 
-        captureSettingsPage(name, R.id.settingsX509)
+        captureSettingsPage(name, R.id.settingsX509, hasConfiguredCertificateAlias = true)
     }
 
     private fun captureX509PageEnd(
@@ -120,7 +117,12 @@ class SettingsScreenshotTest {
     ) {
         x509ScreenshotState = state
 
-        captureSettingsPage(name, R.id.settingsX509, scrollToEnd = true)
+        captureSettingsPage(
+            name,
+            R.id.settingsX509,
+            scrollToEnd = true,
+            hasConfiguredCertificateAlias = true,
+        )
     }
 
     @OptIn(ExperimentalRoborazziApi::class)
@@ -128,11 +130,13 @@ class SettingsScreenshotTest {
         name: String,
         navigationItemId: Int,
         scrollToEnd: Boolean = false,
+        hasConfiguredCertificateAlias: Boolean = false,
     ) {
         seedLogDirectory()
+        settingsScreenshotPages = settingsPages(hasConfiguredCertificateAlias)
 
         val activity = Robolectric.buildActivity(SettingsScreenshotActivity::class.java).setup().get()
-        activity.showPage(settingsPages.indexOfFirst { it.first == navigationItemId })
+        activity.showPage(settingsScreenshotPages.indexOfFirst { it.first == navigationItemId })
         shadowOf(Looper.getMainLooper()).idle()
 
         // The advanced page shows the commit the app was built from, which changes with
@@ -198,6 +202,7 @@ private const val CERTIFICATE_ALIAS = "firezone-device"
 
 // The state `X509ScreenshotFragment` renders, set before the activity reaches the X.509 page.
 private var x509ScreenshotState = X509SettingsViewModel.UiState()
+private var settingsScreenshotPages = settingsPages(hasConfiguredCertificateAlias = false)
 
 // A certificate the KeyChain released and whose every claim holds a usable value.
 private val usableCertificate =
@@ -214,9 +219,6 @@ private val usableCertificate =
 // The same certificate, handed down by an administrator and released by the KeyChain, which
 // leaves the user nothing to pick or clear.
 private val managedCertificate = usableCertificate.copy(isManaged = true)
-
-// No administrator handed a certificate down and the user picked none.
-private val noCertificate = X509SettingsViewModel.UiState()
 
 // The same certificate, spelling the actor's email in a way that is not usable as one. Claims
 // have no say in whether a certificate can be presented, so Firezone still signs in with it.
@@ -334,14 +336,17 @@ internal class SettingsScreenshotActivity : AppCompatActivity() {
         binding = ActivitySettingsBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
+        binding.bottomNavigation.menu
+            .findItem(R.id.settingsX509)
+            .isVisible = settingsScreenshotPages.any { it.first == R.id.settingsX509 }
         binding.viewPager.adapter =
             object : FragmentStateAdapter(this) {
-                override fun getItemCount(): Int = settingsPages.size
+                override fun getItemCount(): Int = settingsScreenshotPages.size
 
                 override fun createFragment(position: Int): Fragment =
-                    when (settingsPages[position].first) {
+                    when (settingsScreenshotPages[position].first) {
                         R.id.settingsX509 -> X509ScreenshotFragment()
-                        else -> settingsPages[position].second()
+                        else -> settingsScreenshotPages[position].second()
                     }
             }
 
@@ -359,7 +364,7 @@ internal class SettingsScreenshotActivity : AppCompatActivity() {
     fun showPage(position: Int) {
         binding.viewPager.setCurrentItem(position, false)
         binding.bottomNavigation.menu
-            .findItem(settingsPages[position].first)
+            .findItem(settingsScreenshotPages[position].first)
             .isChecked = true
     }
 }

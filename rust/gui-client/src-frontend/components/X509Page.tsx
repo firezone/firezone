@@ -2,7 +2,6 @@ import React from "react";
 import {
   X509Certificate,
   X509DetailField,
-  X509Error,
   X509ValidationError,
 } from "../generated/bindings";
 import RemixIcon from "./RemixIcon";
@@ -20,32 +19,6 @@ const VALIDATION_ERROR_TEXT: Record<X509ValidationError, string> = {
   MissingClientAuthEku: "required for mutual TLS",
   DigitalSignatureNotAllowed: "required to sign the TLS handshake",
 };
-
-function errorText(error: X509Error): string {
-  if (error === "MissingP11Kit") {
-    return "No PKCS#11 module is registered, so no X.509 client identity certificate can be found. Firezone reads certificates through PKCS#11 modules registered with p11-kit. See https://www.firezone.dev/kb/install/linux for what to install.";
-  }
-
-  if ("UnreadableStore" in error) {
-    const { store, error: cause } = error.UnreadableStore;
-
-    return `The Windows certificate store ${store} could not be read: ${cause}`;
-  }
-
-  if ("UnreadablePkcs11Keystore" in error) {
-    const { modules } = error.UnreadablePkcs11Keystore;
-
-    return `The PKCS#11 keystore cannot be read, so no X.509 client identity certificate can be found: ${modules.join(
-      "; "
-    )}. See https://www.firezone.dev/kb/install/linux for what the keystore needs installed and running.`;
-  }
-
-  if ("IdentityUnavailable" in error) {
-    return error.IdentityUnavailable.message;
-  }
-
-  return `The platform keystore could not be read: ${error.UnreadableKeystore.message}`;
-}
 
 function FieldValue({ value }: { value: string | null }) {
   if (value === null) {
@@ -69,23 +42,9 @@ function presentField(fields: X509DetailField[], label: string): string | null {
   return fields.find((field) => field.label === label)?.value ?? null;
 }
 
-function Warning({ error }: { error: X509Error }) {
-  return (
-    <div className="mt-4 flex gap-2.5 rounded border border-warning/30 bg-warning-light p-3 text-sm text-warning">
-      <RemixIcon className="mt-0.5 h-4 w-4 shrink-0" name="alert" />
-      {/* A knowledge-base URL is one long word, and a flex item is by default as
-          wide as its longest word. Left alone it makes the box wider than the
-          page and takes the right-hand border off the window with it. */}
-      <p className="min-w-0 break-words">{errorText(error)}</p>
-    </div>
-  );
-}
-
-// What the card says Firezone does with the certificate the keystore holds, if it holds one,
-// and the mark that leads it.
+// What the card says Firezone does with the certificate, and the mark that leads it.
 function SummaryCard({ certificate }: { certificate: X509Certificate }) {
-  const loaded = typeof certificate === "object" && "Loaded" in certificate;
-  const fields = loaded ? certificate.Loaded.fields : [];
+  const fields = certificate.fields;
   const commonName = presentField(fields, "Common Name");
   const subject = presentField(fields, "Subject");
   const issuer = presentField(fields, "Issuer");
@@ -97,9 +56,7 @@ function SummaryCard({ certificate }: { certificate: X509Certificate }) {
         <RemixIcon className="h-8 w-8 text-subtle" name="certificate" />
         <div className="min-w-0">
           <h2 className="break-words text-base font-semibold tracking-tight text-heading">
-            {loaded
-              ? (commonName ?? subject ?? "Client certificate")
-              : "No client certificate"}
+            {commonName ?? subject ?? "Client certificate"}
           </h2>
           {issuer !== null && (
             <p className="mt-0.5 break-words text-sm text-body">
@@ -113,14 +70,6 @@ function SummaryCard({ certificate }: { certificate: X509Certificate }) {
           )}
         </div>
       </div>
-      {certificate === "Absent" && (
-        <p className="mt-2 text-xs text-subtle">
-          Firezone did not find a certificate to identify this device.
-        </p>
-      )}
-      {typeof certificate === "object" && "Error" in certificate && (
-        <Warning error={certificate.Error} />
-      )}
     </section>
   );
 }
@@ -151,22 +100,12 @@ function DetailFields({ fields }: { fields: X509DetailField[] }) {
 export default function X509Page({
   certificate,
 }: {
-  certificate: X509Certificate | null;
+  certificate: X509Certificate;
 }) {
   return (
     <div className="page max-w-3xl space-y-4">
-      {certificate === null ? (
-        <div className="panel p-4 text-body">
-          Reading the platform keystore…
-        </div>
-      ) : (
-        <>
-          <SummaryCard certificate={certificate} />
-          {typeof certificate === "object" && "Loaded" in certificate && (
-            <DetailFields fields={certificate.Loaded.fields} />
-          )}
-        </>
-      )}
+      <SummaryCard certificate={certificate} />
+      <DetailFields fields={certificate.fields} />
     </div>
   );
 }

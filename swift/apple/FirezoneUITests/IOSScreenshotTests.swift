@@ -24,10 +24,8 @@
     /// carries the name of the scenario it was taken from.
     private static let certificateScenarios = [
       "x509-filled",
-      "x509-empty",
       "x509-unknown-attribute",
       "x509-expired",
-      "x509-unreadable",
     ]
 
     func testGrantVPN() throws {

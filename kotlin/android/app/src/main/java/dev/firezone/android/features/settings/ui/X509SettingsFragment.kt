@@ -40,7 +40,7 @@ class X509SettingsFragment : Fragment() {
                     X509SettingsScreen(
                         state = state,
                         onSelectCertificate = ::chooseCertificate,
-                        onForgetCertificate = viewModel::forgetSelection,
+                        onForgetCertificate = ::forgetCertificate,
                     )
                 }
             }
@@ -73,5 +73,13 @@ class X509SettingsFragment : Fragment() {
                 viewModel.onAliasSelected(alias)
             }
         }
+    }
+
+    private fun forgetCertificate() {
+        viewModel.forgetSelection()
+
+        // The activity fixes its page set at creation so the pager and navigation always agree.
+        // Recreating it makes the now-unconfigured Device Trust page disappear too.
+        requireActivity().recreate()
     }
 }

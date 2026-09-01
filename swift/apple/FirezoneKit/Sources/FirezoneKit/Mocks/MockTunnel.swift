@@ -74,8 +74,6 @@
       case unknownAttribute = "unknown-attribute"
       /// A certificate whose validity window has passed.
       case expired
-      /// Bytes that are not a certificate, which the client cannot read.
-      case unreadable
     }
   }
 
@@ -133,9 +131,6 @@
       switch self {
       case .absent:
         return nil
-
-      case .unreadable:
-        return Data("These bytes are not a certificate.".utf8)
 
       case .usable, .unknownAttribute, .expired:
         guard let url = Self.url(of: rawValue) else {

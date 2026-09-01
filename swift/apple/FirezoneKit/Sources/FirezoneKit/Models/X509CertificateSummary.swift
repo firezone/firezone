@@ -76,6 +76,17 @@ public struct X509CertificateSummary: Equatable, Sendable {
   }
 }
 
+/// A certificate the settings screen can display, plus any problem with its private key.
+public struct X509CertificateDetails: Equatable, Sendable {
+  public let summary: X509CertificateSummary
+  public let keyProblem: String?
+
+  public init(summary: X509CertificateSummary, keyProblem: String?) {
+    self.summary = summary
+    self.keyProblem = keyProblem
+  }
+}
+
 /// Where the app installs the certificate parser.
 ///
 /// Parsing happens in Rust and reaches Swift through the `x509claims` UniFFI

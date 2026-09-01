@@ -26,10 +26,8 @@
     /// The scenarios describing the states of the certificate tab.
     private static let certificateScenarios = [
       "x509-filled",
-      "x509-empty",
       "x509-unknown-attribute",
       "x509-expired",
-      "x509-unreadable",
     ]
 
     private var brightness: [String: Double] = [:]
