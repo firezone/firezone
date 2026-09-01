@@ -199,8 +199,8 @@ class TunnelE2eTest {
         awaitText("J")
         preparePendingHandoff()
         composeRule.onNodeWithText("J").performClick()
-        awaitText("Sign out")
-        composeRule.onNodeWithText("Sign out").performClick()
+        awaitText("Sign Out")
+        composeRule.onNodeWithText("Sign Out").performClick()
 
         await("authentication state to be cleared") { repo.getTokenSync() == null }
         assertAuthenticationStateCleared()
