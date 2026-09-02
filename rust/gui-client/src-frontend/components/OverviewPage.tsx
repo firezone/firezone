@@ -51,9 +51,7 @@ const TOKEN_HINT =
 function SignedOut({ signIn }: SignedOutProps) {
   return (
     <div className="flex flex-col items-center gap-4">
-      <p className="text-sm text-body">
-        {TOKEN_HINT}
-      </p>
+      <p className="text-sm text-body">{TOKEN_HINT}</p>
       <Button onClick={signIn} variant="primary">
         Sign in
       </Button>
@@ -76,8 +74,7 @@ function SignedIn({ actorName, accountSlug, signOut }: SignedInProps) {
   return (
     <div className="flex flex-col items-center gap-4">
       <p className="text-sm text-body">
-        You are currently signed into
-        &nbsp;
+        You are currently signed into &nbsp;
         <span className="font-bold text-heading">{accountSlug}</span>
         &nbsp;as&nbsp;
         <span className="font-bold text-heading">{actorName}</span>
