@@ -8,15 +8,6 @@ use std::time::SystemTime;
 
 uniffi::setup_scaffolding!();
 
-/// Who the certificate claims is connecting, mirroring [`x509_claims::Identity`].
-#[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
-pub enum Identity {
-    /// The certificate claims nobody, so the session signs in with a token.
-    Absent,
-    /// The certificate claims somebody, named by `email` where one could be read.
-    Claimed { email: Option<String> },
-}
-
 /// A row for certificate diagnostics screens, mirroring [`x509_claims::DetailField`].
 ///
 /// The value reads on top and the problem, if there is one, underneath it.
@@ -47,8 +38,6 @@ pub struct Claim {
 pub enum ValidationError {
     Empty,
     TooLong,
-    NotAnEmailAddress,
-    NotAUuid,
     Ambiguous,
     PlaceholderIdentifier,
     UnknownAttribute,
@@ -65,11 +54,9 @@ pub struct ParsedCertificate {
     pub subject: String,
     /// Human-readable renderings of all subject alternative names.
     pub subject_alternative_names: Vec<String>,
-    pub actor_email: Claim,
-    pub account_id: Claim,
     pub mdm_device_id: Claim,
     pub device_serial: Claim,
-    /// `firezone://` names whose attribute the parser does not read, e.g. a typo in a template.
+    /// `firezone://` names whose attribute the parser does not recognise, e.g. a template typo.
     pub unrecognised_claims: Vec<String>,
     pub issuer: String,
     pub serial: String,
@@ -84,7 +71,6 @@ pub struct ParsedCertificate {
     /// Colon-separated uppercase hex SHA-256 fingerprint of the DER bytes.
     pub fingerprint: String,
     pub der_bytes: u64,
-    pub identity: Identity,
     /// Ready-to-display diagnostics rows derived from the fields above.
     pub detail_fields: Vec<DetailField>,
 }
@@ -101,7 +87,6 @@ pub fn parse_client_certificate(der: Vec<u8>) -> Option<ParsedCertificate> {
 
 impl From<x509_claims::ParsedCertificate> for ParsedCertificate {
     fn from(parsed: x509_claims::ParsedCertificate) -> Self {
-        let identity = Identity::from(parsed.identity());
         let is_currently_valid = parsed.is_currently_valid();
         let detail_fields = parsed
             .detail_fields()
@@ -113,8 +98,6 @@ impl From<x509_claims::ParsedCertificate> for ParsedCertificate {
             subject_cn: parsed.subject_cn,
             subject: parsed.subject,
             subject_alternative_names: parsed.subject_alternative_names,
-            actor_email: Claim::from(parsed.actor_email),
-            account_id: Claim::from(parsed.account_id),
             mdm_device_id: Claim::from(parsed.mdm_device_id),
             device_serial: Claim::from(parsed.device_serial),
             unrecognised_claims: parsed.unrecognised_claims,
@@ -131,17 +114,7 @@ impl From<x509_claims::ParsedCertificate> for ParsedCertificate {
                 .map(|algorithm| algorithm.label().to_owned()),
             fingerprint: parsed.fingerprint,
             der_bytes: parsed.der_bytes as u64,
-            identity,
             detail_fields,
-        }
-    }
-}
-
-impl From<x509_claims::Identity> for Identity {
-    fn from(identity: x509_claims::Identity) -> Self {
-        match identity {
-            x509_claims::Identity::Absent => Self::Absent,
-            x509_claims::Identity::Claimed { email } => Self::Claimed { email },
         }
     }
 }
@@ -170,8 +143,6 @@ impl From<x509_claims::ValidationError> for ValidationError {
         match error {
             x509_claims::ValidationError::Empty => Self::Empty,
             x509_claims::ValidationError::TooLong => Self::TooLong,
-            x509_claims::ValidationError::NotAnEmailAddress => Self::NotAnEmailAddress,
-            x509_claims::ValidationError::NotAUuid => Self::NotAUuid,
             x509_claims::ValidationError::Ambiguous => Self::Ambiguous,
             x509_claims::ValidationError::PlaceholderIdentifier => Self::PlaceholderIdentifier,
             x509_claims::ValidationError::UnknownAttribute => Self::UnknownAttribute,

@@ -9,11 +9,11 @@ defmodule PortalWeb.Resources.Components do
       flow_log_uploads_toggle: 1
     ]
 
-  import PortalWeb.Clients.Components,
+  import PortalWeb.Devices.Components,
     only: [
-      client_status_badge: 1,
-      client_verified_badge: 1,
-      client_os: 1
+      device_status_badge: 1,
+      device_verified_badge: 1,
+      device_os: 1
     ]
 
   alias __MODULE__.Database
@@ -506,9 +506,9 @@ defmodule PortalWeb.Resources.Components do
     """
   end
 
-  attr :selected_clients, :list, required: true
-  attr :client_search_results, :any, default: nil
-  attr :client_search, :string, default: ""
+  attr :selected_devices, :list, required: true
+  attr :device_search_results, :any, default: nil
+  attr :device_search, :string, default: ""
 
   def resource_device_pool_section(assigns) do
     ~H"""
@@ -517,12 +517,12 @@ defmodule PortalWeb.Resources.Components do
         Devices <span class="text-muted font-normal">(optional)</span>
       </span>
       <p class="mb-2 text-xs text-subtle">
-        Select clients to include in this pool.
+        Select devices to include in this pool.
       </p>
-      <.client_picker
-        selected_clients={@selected_clients}
-        client_search={@client_search}
-        client_search_results={@client_search_results}
+      <.device_picker
+        selected_devices={@selected_devices}
+        device_search={@device_search}
+        device_search_results={@device_search_results}
       />
     </div>
     """
@@ -772,48 +772,48 @@ defmodule PortalWeb.Resources.Components do
     """
   end
 
-  attr :selected_clients, :list, required: true
-  attr :client_search_results, :any, default: nil
-  attr :client_search, :string, default: ""
+  attr :selected_devices, :list, required: true
+  attr :device_search_results, :any, default: nil
+  attr :device_search, :string, default: ""
 
-  def client_picker(assigns) do
+  def device_picker(assigns) do
     ~H"""
     <div class="space-y-1">
-      <div class="relative mb-2" phx-click-away="blur_client_search">
+      <div class="relative mb-2" phx-click-away="blur_device_search">
         <.icon
           name="ri-search-line"
           class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-subtle pointer-events-none"
         />
         <input
           type="text"
-          name="client_search"
-          value={@client_search}
-          placeholder="Search clients to add…"
-          phx-change="search_client"
+          name="device_search"
+          value={@device_search}
+          placeholder="Search devices to add…"
+          phx-change="search_device"
           phx-debounce="300"
-          phx-focus="focus_client_search"
+          phx-focus="focus_device_search"
           autocomplete="off"
           data-1p-ignore
           class="w-full pl-7 pr-3 py-1.5 text-xs rounded border border-border bg-raised text-heading placeholder:text-muted outline-none focus:border-border-focus focus:ring-1 focus:ring-border-focus/30 transition-colors"
         />
       </div>
 
-      <ul :if={@selected_clients != []} class="space-y-1 mb-1">
-        <li :for={client <- @selected_clients}>
+      <ul :if={@selected_devices != []} class="space-y-1 mb-1">
+        <li :for={device <- @selected_devices}>
           <div class="flex items-center gap-3 px-3 py-2.5 rounded-lg border border-brand bg-brand-muted">
             <div class="flex items-center justify-center w-7 h-7 rounded-full bg-raised border border-border shrink-0">
               <.icon name="ri-computer-line" class="w-4 h-4 text-brand" />
             </div>
             <div class="flex-1 min-w-0">
-              <p class="text-sm font-medium text-brand truncate">{client.name}</p>
-              <p class="text-[10px] text-subtle truncate">{client_details(client)}</p>
+              <p class="text-sm font-medium text-brand truncate">{device.name}</p>
+              <p class="text-[10px] text-subtle truncate">{device_details(device)}</p>
             </div>
             <button
               type="button"
-              phx-click="remove_client"
-              phx-value-client_id={client.id}
+              phx-click="remove_device"
+              phx-value-device_id={device.id}
               class="shrink-0 flex items-center justify-center w-5 h-5 rounded text-brand/50 hover:text-brand transition-colors"
-              aria-label="Remove client"
+              aria-label="Remove device"
             >
               <.icon name="ri-close-line" class="w-3.5 h-3.5" />
             </button>
@@ -821,38 +821,38 @@ defmodule PortalWeb.Resources.Components do
         </li>
       </ul>
 
-      <ul :if={@client_search_results != nil && @client_search_results != []} class="space-y-1">
-        <li :for={client <- @client_search_results}>
+      <ul :if={@device_search_results != nil && @device_search_results != []} class="space-y-1">
+        <li :for={device <- @device_search_results}>
           <button
             type="button"
-            phx-click="add_client"
-            phx-value-client_id={client.id}
+            phx-click="add_device"
+            phx-value-device_id={device.id}
             class="flex items-center gap-3 px-3 py-2.5 w-full rounded-lg border border-border bg-raised hover:border-border-emphasis hover:bg-surface cursor-pointer transition-colors"
           >
             <div class="flex items-center justify-center w-7 h-7 rounded-full bg-raised border border-border shrink-0">
               <.icon name="ri-computer-line" class="w-4 h-4 text-subtle" />
             </div>
             <div class="flex-1 min-w-0 text-left">
-              <p class="text-sm font-medium text-heading truncate">{client.name}</p>
-              <p class="text-[10px] text-subtle truncate">{client_details(client)}</p>
+              <p class="text-sm font-medium text-heading truncate">{device.name}</p>
+              <p class="text-[10px] text-subtle truncate">{device_details(device)}</p>
             </div>
             <span class={[
               "w-1.5 h-1.5 rounded-full shrink-0",
-              if(client.online?, do: "bg-success", else: "bg-neutral-status")
+              if(device.online?, do: "bg-success", else: "bg-neutral-status")
             ]} />
           </button>
         </li>
       </ul>
 
       <div
-        :if={@client_search_results == []}
+        :if={@device_search_results == []}
         class="flex items-center justify-center h-16 text-xs text-subtle"
       >
-        No clients found
+        No devices found
       </div>
 
       <div
-        :if={@selected_clients == [] && is_nil(@client_search_results)}
+        :if={@selected_devices == [] && is_nil(@device_search_results)}
         class="flex items-center justify-center h-12 text-xs text-subtle"
       >
         Search above to add devices
@@ -861,13 +861,13 @@ defmodule PortalWeb.Resources.Components do
     """
   end
 
-  defp client_details(client) do
+  defp device_details(device) do
     [
-      Portal.Types.INET.to_string(client.ipv4),
-      Portal.Types.INET.to_string(client.ipv6),
-      client.device_serial,
-      client.device_uuid,
-      client.id
+      Portal.Types.INET.to_string(device.ipv4),
+      Portal.Types.INET.to_string(device.ipv6),
+      device.device_serial,
+      device.device_uuid,
+      device.id
     ]
     |> Enum.reject(&(&1 in [nil, ""]))
     |> Enum.join(" | ")
@@ -940,9 +940,9 @@ defmodule PortalWeb.Resources.Components do
 
           <.resource_device_pool_section
             :if={to_string(@resource_form[:type].value) == "static_device_pool"}
-            selected_clients={@resource_form_selected_clients}
-            client_search={@resource_form_client_search}
-            client_search_results={@resource_form_client_search_results}
+            selected_devices={@resource_form_selected_devices}
+            device_search={@resource_form_device_search}
+            device_search_results={@resource_form_device_search_results}
           />
 
           <.resource_dns_ip_stack_section
@@ -978,9 +978,9 @@ defmodule PortalWeb.Resources.Components do
   attr :account, :any, required: true
   attr :resource, :any, required: true
   attr :pool_member_ids, :list, default: []
-  attr :pool_clients, :list, default: []
-  attr :clients_expanded_id, :string, default: nil
-  attr :online_client_ids, :any, default: %MapSet{}
+  attr :pool_devices, :list, default: []
+  attr :devices_expanded_id, :string, default: nil
+  attr :online_device_ids, :any, default: %MapSet{}
   attr :presence_tick, :integer, default: 0
   attr :groups, :list, default: []
   attr :policy_authorizations, :list, default: []
@@ -1009,7 +1009,7 @@ defmodule PortalWeb.Resources.Components do
                 resource={@resource}
                 presence_tick={@presence_tick}
                 pool_member_ids={@pool_member_ids}
-                online_client_ids={@online_client_ids}
+                online_device_ids={@online_device_ids}
               />
             </div>
             <p
@@ -1039,16 +1039,16 @@ defmodule PortalWeb.Resources.Components do
             resource={@resource}
             tab={@tab}
             groups_count={length(@groups)}
-            clients_count={length(@pool_clients)}
+            devices_count={length(@pool_devices)}
             panel_view={@panel_view}
           />
-          <.resource_clients_tab
-            :if={@tab == :clients}
+          <.resource_devices_tab
+            :if={@tab == :devices}
             account={@account}
-            clients={@pool_clients}
-            online_client_ids={@online_client_ids}
+            devices={@pool_devices}
+            online_device_ids={@online_device_ids}
             presence_tick={@presence_tick}
-            expanded_id={@clients_expanded_id}
+            expanded_id={@devices_expanded_id}
           />
           <.resource_access_list
             :if={@tab == :groups && @panel_view == :list}
@@ -1086,7 +1086,7 @@ defmodule PortalWeb.Resources.Components do
   attr :resource, :any, required: true
   attr :tab, :atom, required: true
   attr :groups_count, :integer, default: 0
-  attr :clients_count, :integer, default: 0
+  attr :devices_count, :integer, default: 0
   attr :panel_view, :atom, required: true
 
   def resource_tabs(assigns) do
@@ -1098,12 +1098,12 @@ defmodule PortalWeb.Resources.Components do
       <button
         :if={@resource.type == :static_device_pool}
         role="tab"
-        aria-selected={@tab == :clients}
+        aria-selected={@tab == :devices}
         phx-click="switch_resource_tab"
-        phx-value-tab="clients"
+        phx-value-tab="devices"
         class={[
           "flex items-center gap-1.5 px-1 py-2.5 mr-5 text-xs font-medium border-b-2 transition-colors",
-          if(@tab == :clients,
+          if(@tab == :devices,
             do: "border-brand text-brand",
             else: "border-transparent text-body hover:text-heading"
           )
@@ -1112,12 +1112,12 @@ defmodule PortalWeb.Resources.Components do
         Pool Members
         <span class={[
           "tabular-nums px-1.5 py-0.5 rounded text-[10px] font-semibold",
-          if(@tab == :clients,
+          if(@tab == :devices,
             do: "bg-brand-muted text-brand",
             else: "bg-raised text-subtle"
           )
         ]}>
-          {@clients_count}
+          {@devices_count}
         </span>
       </button>
       <button
@@ -1169,16 +1169,16 @@ defmodule PortalWeb.Resources.Components do
   end
 
   attr :account, :any, required: true
-  attr :clients, :list, default: []
-  attr :online_client_ids, :any, default: %MapSet{}
+  attr :devices, :list, default: []
+  attr :online_device_ids, :any, default: %MapSet{}
   attr :presence_tick, :integer, default: 0
   attr :expanded_id, :string, default: nil
 
-  def resource_clients_tab(assigns) do
+  def resource_devices_tab(assigns) do
     ~H"""
     <div class="flex-1 flex flex-col overflow-hidden">
       <div
-        :if={@clients == []}
+        :if={@devices == []}
         class="flex flex-col items-center justify-center h-full gap-2 px-6 text-center"
       >
         <.icon name="ri-error-warning-line" class="w-8 h-8 text-warning" />
@@ -1188,7 +1188,7 @@ defmodule PortalWeb.Resources.Components do
           effect. Edit this Resource to add devices.
         </p>
       </div>
-      <div :if={@clients != []} class="flex-1 overflow-y-auto">
+      <div :if={@devices != []} class="flex-1 overflow-y-auto">
         <table class="w-full text-xs">
           <thead class="sticky top-0 bg-surface z-10">
             <tr class="border-b border-border text-subtle">
@@ -1200,39 +1200,42 @@ defmodule PortalWeb.Resources.Components do
             </tr>
           </thead>
           <tbody>
-            <%= for client <- @clients do %>
+            <%= for device <- @devices do %>
               <tr
-                phx-click="toggle_pool_client_row"
-                phx-keydown="toggle_pool_client_row"
+                phx-click="toggle_pool_device_row"
+                phx-keydown="toggle_pool_device_row"
                 phx-key="Enter"
-                phx-value-id={client.id}
+                phx-value-id={device.id}
                 tabindex="0"
                 class="border-b border-border hover:bg-raised cursor-pointer focus:outline-none focus:bg-raised"
               >
                 <td class="px-4 py-2 text-heading">
                   <div class="flex items-center gap-1.5">
-                    <span class="truncate">{client.name}</span>
-                    <.client_verified_badge client={client} />
+                    <span class="truncate">{device.name}</span>
+                    <.device_verified_badge device={device} />
                   </div>
                 </td>
                 <td class="px-4 py-2 text-body">
-                  {if client.actor, do: client.actor.name, else: "—"}
+                  {if device.actor, do: device.actor.name, else: "—"}
                 </td>
                 <td class="px-4 py-2 text-subtle font-mono">
                   <.copy
-                    id={"pool-member-#{client.id}-ipv4"}
+                    id={"pool-member-#{device.id}-ipv4"}
                     class="flex items-center gap-1.5"
                   >
-                    {client.ipv4}
+                    {device.ipv4}
                   </.copy>
                 </td>
                 <td class="px-4 py-2">
-                  <.client_status_badge online?={MapSet.member?(@online_client_ids, client.id)} />
+                  <.device_status_badge
+                    device={device}
+                    online?={MapSet.member?(@online_device_ids, device.id)}
+                  />
                 </td>
                 <td class="px-4 py-2 text-subtle">
                   <.icon
                     name={
-                      if @expanded_id == client.id,
+                      if @expanded_id == device.id,
                         do: "ri-arrow-up-s-line",
                         else: "ri-arrow-down-s-line"
                     }
@@ -1240,60 +1243,60 @@ defmodule PortalWeb.Resources.Components do
                   />
                 </td>
               </tr>
-              <tr :if={@expanded_id == client.id} class="border-b border-border bg-raised">
+              <tr :if={@expanded_id == device.id} class="border-b border-border bg-raised">
                 <td colspan="5" class="px-4 py-3">
                   <div class="grid grid-cols-2 gap-x-8 gap-y-3 text-xs">
-                    <div :if={client.actor}>
+                    <div :if={device.actor}>
                       <p class="text-subtle font-medium mb-1">Owner</p>
                       <.link
-                        navigate={~p"/#{@account}/actors/#{client.actor.id}"}
+                        navigate={~p"/#{@account}/actors/#{device.actor.id}"}
                         class="text-brand hover:underline"
                       >
-                        {client.actor.name}
+                        {device.actor.name}
                       </.link>
-                      <p :if={client.actor.email} class="text-subtle mt-0.5">
-                        {client.actor.email}
+                      <p :if={device.actor.email} class="text-subtle mt-0.5">
+                        {device.actor.email}
                       </p>
                     </div>
-                    <div :if={client.last_seen_at}>
+                    <div :if={device.last_seen_at}>
                       <p class="text-subtle font-medium mb-1">Operating System</p>
-                      <.client_os client={client} />
+                      <.device_os device={device} />
                     </div>
                     <div>
                       <p class="text-subtle font-medium mb-1">Tunnel IPv4</p>
                       <.copy
-                        id={"pool-member-#{client.id}-detail-ipv4"}
+                        id={"pool-member-#{device.id}-detail-ipv4"}
                         class="flex items-center gap-1.5 text-heading font-mono"
                       >
-                        {client.ipv4}
+                        {device.ipv4}
                       </.copy>
                     </div>
                     <div>
                       <p class="text-subtle font-medium mb-1">Tunnel IPv6</p>
                       <.copy
-                        id={"pool-member-#{client.id}-detail-ipv6"}
+                        id={"pool-member-#{device.id}-detail-ipv6"}
                         class="flex items-start gap-1.5 text-heading font-mono break-all"
                       >
-                        {client.ipv6}
+                        {device.ipv6}
                       </.copy>
                     </div>
-                    <div :if={client.last_seen_at}>
+                    <div :if={device.last_seen_at}>
                       <p class="text-subtle font-medium mb-1">Last Seen</p>
                       <p class="text-heading">
-                        <.relative_datetime datetime={client.last_seen_at} />
+                        <.relative_datetime datetime={device.last_seen_at} />
                       </p>
                     </div>
-                    <div :if={client.device_serial}>
+                    <div :if={device.device_serial}>
                       <p class="text-subtle font-medium mb-1">Serial Number</p>
-                      <p class="text-heading font-mono">{client.device_serial}</p>
+                      <p class="text-heading font-mono">{device.device_serial}</p>
                     </div>
                     <div>
-                      <p class="text-subtle font-medium mb-1">Client</p>
+                      <p class="text-subtle font-medium mb-1">Device</p>
                       <.link
-                        navigate={~p"/#{@account}/clients/#{client.id}"}
+                        navigate={~p"/#{@account}/devices/#{device.id}"}
                         class="text-brand hover:underline font-mono break-all"
                       >
-                        {client.id}
+                        {device.id}
                       </.link>
                     </div>
                   </div>
@@ -1764,7 +1767,7 @@ defmodule PortalWeb.Resources.Components do
                         <p class="text-subtle font-medium mb-1">
                           {case row.initiating_device && row.initiating_device.type do
                             :gateway -> "Initiator (Gateway)"
-                            :client -> "Initiator (Client)"
+                            :client -> "Initiator (Device)"
                             _ -> "Initiator"
                           end}
                         </p>
@@ -1781,7 +1784,7 @@ defmodule PortalWeb.Resources.Components do
                         <p class="text-subtle font-medium mb-1">
                           {case row.receiving_device && row.receiving_device.type do
                             :gateway -> "Receiver (Gateway)"
-                            :client -> "Receiver (Client)"
+                            :client -> "Receiver (Device)"
                             _ -> "Receiver"
                           end}
                         </p>
@@ -1977,7 +1980,7 @@ defmodule PortalWeb.Resources.Components do
             Delete this resource?
           </p>
           <p class="text-xs text-error/70 mb-3">
-            All Policies associated with this Resource will also be deleted and all Clients will immediately lose access.
+            All Policies associated with this Resource will also be deleted and all devices will immediately lose access.
           </p>
           <div class="flex items-center gap-1.5">
             <.button type="button" phx-click="cancel_delete_resource" size="xs">
@@ -2025,10 +2028,10 @@ defmodule PortalWeb.Resources.Components do
   attr :resource, :any, required: true
   attr :presence_tick, :integer, default: 0
   attr :pool_member_ids, :list, default: []
-  attr :online_client_ids, :any, default: %MapSet{}
+  attr :online_device_ids, :any, default: %MapSet{}
 
   def resource_status_badge(%{resource: %{type: :static_device_pool}} = assigns) do
-    online = Enum.count(assigns.pool_member_ids, &MapSet.member?(assigns.online_client_ids, &1))
+    online = Enum.count(assigns.pool_member_ids, &MapSet.member?(assigns.online_device_ids, &1))
     assigns = assign(assigns, online: online, total: length(assigns.pool_member_ids))
 
     ~H"""
@@ -2119,95 +2122,95 @@ defmodule PortalWeb.Resources.Components do
       |> Safe.all()
     end
 
-    def get_client(client_id, subject) do
-      from(c in Device, as: :clients)
-      |> where([clients: c], c.type == :client)
-      |> where([clients: c], c.id == ^client_id)
+    def get_device(device_id, subject) do
+      from(d in Device, as: :devices)
+      |> where([devices: d], d.type == :client)
+      |> where([devices: d], d.id == ^device_id)
       |> Safe.scoped(subject)
       |> Safe.one()
     end
 
-    def search_clients(search_term, _subject, _selected_clients) when search_term in [nil, ""],
+    def search_devices(search_term, _subject, _selected_devices) when search_term in [nil, ""],
       do: nil
 
-    def search_clients(search_term, subject, selected_clients) do
-      selected_ids = Enum.map(selected_clients, & &1.id)
+    def search_devices(search_term, subject, selected_devices) do
+      selected_ids = Enum.map(selected_devices, & &1.id)
       online_ids = Portal.Presence.Clients.online_client_ids(subject.account.id)
       pattern = "%#{search_term}%"
 
       query =
-        from(c in Device, as: :clients)
-        |> where([clients: c], c.type == :client)
-        |> join(:inner, [clients: c], a in assoc(c, :actor),
-          on: a.account_id == c.account_id,
+        from(d in Device, as: :devices)
+        |> where([devices: d], d.type == :client)
+        |> join(:inner, [devices: d], a in assoc(d, :actor),
+          on: a.account_id == d.account_id,
           as: :actors
         )
-        |> where([clients: c], c.id not in ^selected_ids)
-        |> where(^client_search_filter(pattern))
-        |> order_by([clients: c], desc: c.id in ^online_ids)
+        |> where([devices: d], d.id not in ^selected_ids)
+        |> where(^device_search_filter(pattern))
+        |> order_by([devices: d], desc: d.id in ^online_ids)
         |> limit(10)
 
       case query |> Safe.scoped(subject) |> Safe.all() do
         {:error, _} ->
           []
 
-        clients ->
-          Enum.map(clients, &%{&1 | online?: &1.id in online_ids})
+        devices ->
+          Enum.map(devices, &%{&1 | online?: &1.id in online_ids})
       end
     end
 
-    defp client_search_filter(pattern) do
+    defp device_search_filter(pattern) do
       dynamic(
-        [clients: c, actors: a],
-        ilike(c.name, ^pattern) or
+        [devices: d, actors: a],
+        ilike(d.name, ^pattern) or
           ilike(a.name, ^pattern) or
           ilike(coalesce(a.email, ""), ^pattern) or
-          ilike(type(c.id, :string), ^pattern) or
-          ilike(type(c.ipv4, :string), ^pattern) or
-          ilike(type(c.ipv6, :string), ^pattern) or
+          ilike(type(d.id, :string), ^pattern) or
+          ilike(type(d.ipv4, :string), ^pattern) or
+          ilike(type(d.ipv6, :string), ^pattern) or
           ^device_identifier_filter(pattern)
       )
     end
 
     defp device_identifier_filter(pattern) do
       Enum.reduce(@device_identifier_fields, dynamic(false), fn field, dyn ->
-        dynamic([clients: c], ^dyn or ilike(coalesce(field(c, ^field), ""), ^pattern))
+        dynamic([devices: d], ^dyn or ilike(coalesce(field(d, ^field), ""), ^pattern))
       end)
     end
 
-    def validate_selected_clients([], _subject), do: {:ok, []}
+    def validate_selected_devices([], _subject), do: {:ok, []}
 
-    def validate_selected_clients(selected_clients, subject) do
+    def validate_selected_devices(selected_devices, subject) do
       ids =
-        selected_clients
+        selected_devices
         |> Enum.map(& &1.id)
         |> Enum.uniq()
 
-      from(c in Device, as: :clients)
-      |> where([clients: c], c.type == :client)
-      |> where([clients: c], c.id in ^ids)
+      from(d in Device, as: :devices)
+      |> where([devices: d], d.type == :client)
+      |> where([devices: d], d.id in ^ids)
       |> Safe.scoped(subject)
       |> Safe.all()
       |> case do
         {:error, _} ->
-          {:error, :invalid_clients}
+          {:error, :invalid_devices}
 
-        clients when length(clients) == length(ids) ->
-          {:ok, clients}
+        devices when length(devices) == length(ids) ->
+          {:ok, devices}
 
         _ ->
-          {:error, :invalid_clients}
+          {:error, :invalid_devices}
       end
     end
 
     def sync_static_pool_members(
           %Portal.Resource{type: :static_device_pool} = resource,
-          clients,
+          devices,
           subject
         ) do
-      selected_client_ids = clients |> Enum.map(& &1.id) |> Enum.uniq()
+      selected_device_ids = devices |> Enum.map(& &1.id) |> Enum.uniq()
 
-      existing_client_ids =
+      existing_device_ids =
         from(m in StaticDevicePoolMember,
           where: m.resource_id == ^resource.id,
           select: m.device_id
@@ -2219,8 +2222,8 @@ defmodule PortalWeb.Resources.Components do
           ids -> ids
         end
 
-      to_remove = existing_client_ids -- selected_client_ids
-      to_add = selected_client_ids -- existing_client_ids
+      to_remove = existing_device_ids -- selected_device_ids
+      to_add = selected_device_ids -- existing_device_ids
 
       with :ok <- maybe_delete_pool_members(resource, to_remove, subject),
            :ok <- maybe_insert_pool_members(resource, to_add, subject) do
@@ -2228,7 +2231,7 @@ defmodule PortalWeb.Resources.Components do
       end
     end
 
-    def sync_static_pool_members(%Portal.Resource{} = resource, _clients, subject) do
+    def sync_static_pool_members(%Portal.Resource{} = resource, _devices, subject) do
       case from(m in StaticDevicePoolMember, where: m.resource_id == ^resource.id)
            |> Safe.scoped(subject)
            |> Safe.delete_all() do

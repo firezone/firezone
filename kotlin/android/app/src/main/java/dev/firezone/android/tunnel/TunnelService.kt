@@ -25,6 +25,7 @@ import dev.firezone.android.core.Log
 import dev.firezone.android.core.Telemetry
 import dev.firezone.android.core.data.Repository
 import dev.firezone.android.core.data.ResourceState
+import dev.firezone.android.core.data.TokenStore
 import dev.firezone.android.core.data.isEnabled
 import dev.firezone.android.core.x509.X509Identity
 import dev.firezone.android.core.x509.X509IdentityException
@@ -67,7 +68,6 @@ import uniffi.connlib.logCleanupDefaultMaxSizeMb
 import uniffi.connlib.startTelemetry
 import uniffi.connlib.stopTelemetry
 import uniffi.connlib.use
-import uniffi.x509claims.Identity
 import java.nio.file.Files
 import java.nio.file.Paths
 import javax.inject.Inject
@@ -78,6 +78,9 @@ import kotlin.coroutines.cancellation.CancellationException
 class TunnelService : VpnService() {
     @Inject
     internal lateinit var repo: Repository
+
+    @Inject
+    internal lateinit var tokenStore: TokenStore
 
     @Inject
     internal lateinit var appRestrictions: Bundle
@@ -121,16 +124,12 @@ class TunnelService : VpnService() {
     private val _resourcesState = MutableStateFlow<List<Resource>>(emptyList())
     private val _connectedDevicesState = MutableStateFlow<List<ConnectedDevice>>(emptyList())
     private val _actorNameState = MutableStateFlow<String?>(null)
-    private val _certificateIdentityState = MutableStateFlow<Identity>(Identity.Absent)
 
     // A `StateFlow` replays its current value to every new collector, so a newly bound SessionActivity catches up on its own.
     val serviceState: StateFlow<State> = _serviceState.asStateFlow()
     val resourcesState: StateFlow<List<Resource>> = _resourcesState.asStateFlow()
     val connectedDevicesState: StateFlow<List<ConnectedDevice>> = _connectedDevicesState.asStateFlow()
     val actorNameState: StateFlow<String?> = _actorNameState.asStateFlow()
-
-    /** Who the session's client certificate says is connecting, which decides how the session ends. */
-    val certificateIdentityState: StateFlow<Identity> = _certificateIdentityState.asStateFlow()
 
     var tunnelResources: List<Resource>
         get() = _resourcesState.value
@@ -335,14 +334,13 @@ class TunnelService : VpnService() {
 
     private fun connect() {
         val token =
-            (appRestrictions.getString("token") ?: repo.getTokenSync())
+            (appRestrictions.getString("token") ?: tokenStore.get())
                 ?.takeUnless(String::isBlank)
         val certificateAlias = repo.getX509CertificateAliasSync(appRestrictions)
         val config = repo.getConfigSync()
         resourceState = repo.getInternetResourceStateSync()
 
-        // A client certificate authenticates on its own, so either credential is enough.
-        if (token != null || certificateAlias != null) {
+        if (token != null) {
             tunnelState = State.CONNECTING
             // Dismiss any previous disconnected notifications
             TunnelNotification.dismissDisconnectedNotification(this)
@@ -376,9 +374,8 @@ class TunnelService : VpnService() {
 
                     // The KeyChain blocks on a system service and connlib reads the identity while
                     // it constructs the session, so load it before we get there.
-                    val identity =
+                    val certificate =
                         withContext(Dispatchers.IO) { x509Identity.load(certificateAlias) }
-                    _certificateIdentityState.value = identity?.identity ?: Identity.Absent
 
                     sessionFactory
                         .open(
@@ -390,9 +387,9 @@ class TunnelService : VpnService() {
                                 isInternetResourceActive = resourceState.isEnabled(),
                                 deviceInfo = deviceInfo,
                             ),
-                            // The portal judges a client certificate at the application layer, so
-                            // whether this one is acceptable is not ours to decide.
-                            tlsIdentity = identity?.tlsIdentity,
+                            // The token authenticates the user. A configured certificate attests
+                            // the device, and the portal decides whether to accept it.
+                            tlsIdentity = certificate?.tlsIdentity,
                         ).use { session ->
                             startNetworkMonitoring()
                             startLogCleanup()
@@ -723,10 +720,8 @@ class TunnelService : VpnService() {
                                 is Event.Disconnected -> {
                                     Log.i(TAG, "Disconnected by connlib: ${event.error.message()}")
 
-                                    // Certificate failures leave the saved token usable, so only
-                                    // discard it when connlib says a new sign-in is required.
                                     if (event.error.requiresSignIn()) {
-                                        repo.clearToken()
+                                        tokenStore.clear()
                                     }
 
                                     stopReason = StopReason.Disconnected(event.error.message())

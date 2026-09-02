@@ -74,6 +74,11 @@ defmodule Portal.PubSub do
       |> Portal.PubSub.subscribe()
     end
 
+    @spec subscribe_to_accounts() :: :ok | {:error, term()}
+    def subscribe_to_accounts do
+      Portal.PubSub.subscribe(accounts_topic())
+    end
+
     @spec broadcast(String.t(), entity(), term()) :: :ok
     def broadcast(account_id, entity, payload) do
       region = Portal.Config.get_env(:portal, :region, "")
@@ -86,8 +91,22 @@ defmodule Portal.PubSub do
       :ok
     end
 
+    @spec broadcast_account(term()) :: :ok
+    def broadcast_account(payload) do
+      region = Portal.Config.get_env(:portal, :region, "")
+
+      for node <- target_nodes(region) do
+        Phoenix.PubSub.direct_broadcast!(node, Portal.PubSub, accounts_topic(), payload)
+      end
+
+      :ok
+    end
+
     defp account_topic(account_id), do: "account:#{account_id}"
     defp entity_topic(account_id, entity), do: "account:#{account_id}:#{entity}"
+    defp accounts_topic do
+      Portal.Config.get_env(:portal, :account_changes_topic, "accounts")
+    end
 
     # In dev / test region we don't have a cluster / region; send to self
     defp target_nodes(""), do: [Node.self()]

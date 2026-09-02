@@ -9,7 +9,6 @@ use compositor::Image;
 use connlib_model::{ConnectedDeviceView, ResourceId, ResourceStatus, ResourceView};
 use std::collections::HashSet;
 use url::Url;
-use x509_keystore::ClientIdentity;
 
 use crate::updates::Release;
 
@@ -70,7 +69,6 @@ const DEVICES: &str = "Devices";
 /// Anything beyond this is summarized as "And N more devices…".
 const MAX_DEVICES_INLINE: usize = 20;
 const SIGN_OUT: &str = "Sign out";
-const DISCONNECT: &str = "Disconnect";
 const DISCONNECT_AND_QUIT: &str = "Disconnect and quit Firezone";
 const DISABLE: &str = "Disable this resource";
 const ENABLE: &str = "Enable this resource";
@@ -111,7 +109,6 @@ pub(crate) fn icon_from_state(state: &AppState) -> Icon {
 
 pub struct AppState {
     pub connlib: ConnlibState,
-    pub identity: ClientIdentity,
     pub release: Option<Release>,
     pub hide_admin_portal_menu_item: bool,
     pub support_url: Option<Url>,
@@ -121,7 +118,6 @@ impl Default for AppState {
     fn default() -> AppState {
         AppState {
             connlib: ConnlibState::Loading,
-            identity: ClientIdentity::Absent,
             release: None,
             hide_admin_portal_menu_item: false,
             support_url: None,
@@ -143,10 +139,8 @@ impl AppState {
         let menu = match self.connlib {
             ConnlibState::Loading => Menu::default().disabled("Loading..."),
             ConnlibState::Quitting => Menu::default().disabled("Quitting..."),
-            ConnlibState::SignedIn(x) => signed_in(&x, &self.identity),
-            ConnlibState::SignedOut => {
-                Menu::default().item(Event::SignIn, start_session_title(&self.identity))
-            }
+            ConnlibState::SignedIn(x) => signed_in(&x),
+            ConnlibState::SignedOut => Menu::default().item(Event::SignIn, "Sign In"),
             ConnlibState::WaitingForBrowser => signing_in("Waiting for browser..."),
             ConnlibState::WaitingForPortal => signing_in("Connecting to Firezone Portal..."),
             ConnlibState::WaitingForTunnel => signing_in("Raising tunnel..."),
@@ -262,7 +256,7 @@ impl Default for Icon {
     }
 }
 
-fn signed_in(signed_in: &SignedIn, identity: &ClientIdentity) -> Menu {
+fn signed_in(signed_in: &SignedIn) -> Menu {
     let SignedIn {
         actor_name,
         favorite_resources,
@@ -276,8 +270,8 @@ fn signed_in(signed_in: &SignedIn, identity: &ClientIdentity) -> Menu {
         .any(|res| favorite_resources.contains(&res.id()));
 
     let mut menu = Menu::default()
-        .disabled(session_heading(identity, actor_name))
-        .item(Event::SignOut, end_session_title(identity))
+        .disabled(session_heading(actor_name))
+        .item(Event::SignOut, SIGN_OUT)
         .separator();
 
     tracing::debug!(
@@ -383,32 +377,11 @@ fn device_submenu(device: &ConnectedDeviceView) -> Menu {
     menu
 }
 
-fn start_session_title(identity: &ClientIdentity) -> String {
-    match identity {
-        ClientIdentity::Absent => "Sign In".to_owned(),
-        ClientIdentity::Claimed { email: Some(email) } => format!("Connect as {email}"),
-        ClientIdentity::Claimed { email: None } => "Connect".to_owned(),
-    }
-}
-
-fn session_heading(identity: &ClientIdentity, actor_name: &str) -> String {
-    let state = match identity {
-        ClientIdentity::Absent => "Signed in",
-        ClientIdentity::Claimed { .. } => "Connected",
-    };
-
+fn session_heading(actor_name: &str) -> String {
     if actor_name.is_empty() {
-        state.to_owned()
+        "Signed in".to_owned()
     } else {
-        format!("{state} as {actor_name}")
-    }
-}
-
-/// A session a certificate started is disconnected from rather than signed out of.
-fn end_session_title(identity: &ClientIdentity) -> &'static str {
-    match identity {
-        ClientIdentity::Absent => SIGN_OUT,
-        ClientIdentity::Claimed { .. } => DISCONNECT,
+        format!("Signed in as {actor_name}")
     }
 }
 
@@ -512,7 +485,6 @@ mod tests {
                 connected_devices: Vec::new(),
                 internet_resource_enabled,
             }),
-            identity: ClientIdentity::Absent,
             release: None,
             hide_admin_portal_menu_item: false,
             support_url: None,
@@ -616,75 +588,6 @@ mod tests {
             .item(Event::ShowWindow(Window::Settings), "Settings")
             .separator()
             .item(Event::Quit, QUIT_TEXT_SIGNED_OUT);
-
-        assert_eq!(
-            actual,
-            expected,
-            "{}",
-            serde_json::to_string_pretty(&actual).unwrap()
-        );
-    }
-
-    #[test]
-    fn claimed_certificate_with_email_offers_connecting_as_them() {
-        let actual = AppState {
-            connlib: ConnlibState::SignedOut,
-            identity: ClientIdentity::Claimed {
-                email: Some("jane@example.com".to_owned()),
-            },
-            ..Default::default()
-        }
-        .into_menu();
-
-        let expected = Menu::default()
-            .item(Event::SignIn, "Connect as jane@example.com")
-            .add_bottom_section(None, QUIT_TEXT_SIGNED_OUT, true, None);
-
-        assert_eq!(
-            actual,
-            expected,
-            "{}",
-            serde_json::to_string_pretty(&actual).unwrap()
-        );
-    }
-
-    #[test]
-    fn claimed_certificate_without_email_offers_connecting() {
-        let actual = AppState {
-            connlib: ConnlibState::SignedOut,
-            identity: ClientIdentity::Claimed { email: None },
-            ..Default::default()
-        }
-        .into_menu();
-
-        let expected = Menu::default()
-            .item(Event::SignIn, "Connect")
-            .add_bottom_section(None, QUIT_TEXT_SIGNED_OUT, true, None);
-
-        assert_eq!(
-            actual,
-            expected,
-            "{}",
-            serde_json::to_string_pretty(&actual).unwrap()
-        );
-    }
-
-    #[test]
-    fn claimed_certificate_session_disconnects_rather_than_signs_out() {
-        let actual = AppState {
-            identity: ClientIdentity::Claimed {
-                email: Some("jane@example.com".to_owned()),
-            },
-            ..signed_in(vec![], HashSet::default(), None)
-        }
-        .into_menu();
-
-        let expected = Menu::default()
-            .disabled("Connected as Jane Doe")
-            .item(Event::SignOut, DISCONNECT)
-            .separator()
-            .disabled(RESOURCES)
-            .add_bottom_section(None, DISCONNECT_AND_QUIT, true, None);
 
         assert_eq!(
             actual,

@@ -56,6 +56,7 @@ struct GrantVPNView: View {
     #elseif os(macOS)
       VStack(
         alignment: .center,
+        spacing: 24,
         content: {
           Spacer()
           Image("LogoText")
@@ -63,8 +64,6 @@ struct GrantVPNView: View {
             .scaledToFit()
             .frame(maxWidth: 400)
             .padding(.horizontal, 10)
-          Spacer()
-          Spacer()
           Text(
             """
             Firezone needs you to enable a System Extension and allow a VPN configuration in order to function.
@@ -73,8 +72,6 @@ struct GrantVPNView: View {
           .font(.title2)
           .multilineTextAlignment(.center)
           .padding(EdgeInsets(top: 0, leading: 10, bottom: 0, trailing: 15))
-          Spacer()
-          Spacer()
           HStack(alignment: .top) {
             Spacer()
             VStack(alignment: .center) {
@@ -132,11 +129,11 @@ struct GrantVPNView: View {
             }.opacity(isInstalled() ? 1.0 : 0.5)
             Spacer()
           }
-          Spacer()
+          // Takes the taller column's height, so both buttons line up right under their steps.
+          .fixedSize(horizontal: false, vertical: true)
           Spacer()
         }
       )
-      Spacer()
     #endif
   }
 

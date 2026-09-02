@@ -142,35 +142,23 @@ func installCertificateParser() {
   X509CertificateParser.use { der in
     guard let parsed = parseClientCertificate(der: der) else { return nil }
 
-    return X509CertificateSummary(
+    return DeviceTrustCertificateSummary(
       fields: parsed.detailFields.map { field in
-        X509CertificateField(
+        DeviceTrustCertificateField(
           label: field.label,
           value: field.value,
-          problem: field.problem.map { X509ValidationError($0) }
+          problem: field.problem.map { DeviceTrustValidationError($0) }
         )
-      },
-      identity: X509ClaimedIdentity(parsed.identity)
+      }
     )
   }
 }
 
-extension X509ClaimedIdentity {
-  init(_ identity: Identity) {
-    switch identity {
-    case .absent: self = .absent
-    case .claimed(let email): self = .claimed(email: email)
-    }
-  }
-}
-
-extension X509ValidationError {
+extension DeviceTrustValidationError {
   init(_ error: ValidationError) {
     switch error {
     case .empty: self = .empty
     case .tooLong: self = .tooLong
-    case .notAnEmailAddress: self = .notAnEmailAddress
-    case .notAUuid: self = .notAUuid
     case .ambiguous: self = .ambiguous
     case .placeholderIdentifier: self = .placeholderIdentifier
     case .unknownAttribute: self = .unknownAttribute

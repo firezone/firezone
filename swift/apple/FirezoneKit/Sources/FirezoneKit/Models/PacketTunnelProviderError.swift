@@ -10,7 +10,6 @@ public enum PacketTunnelProviderError: Error, CustomNSError, LocalizedError {
   case providerConfigurationIsInvalid
   case firezoneIdIsInvalid
   case credentialNotConfigured
-  case certificateNotConfigured
 
   public static var errorDomain: String {
     "FirezoneKit.PacketTunnelProviderError"
@@ -21,7 +20,6 @@ public enum PacketTunnelProviderError: Error, CustomNSError, LocalizedError {
     case .providerConfigurationIsInvalid: 0
     case .firezoneIdIsInvalid: 1
     case .credentialNotConfigured: 2
-    case .certificateNotConfigured: 3
     }
   }
 
@@ -32,9 +30,7 @@ public enum PacketTunnelProviderError: Error, CustomNSError, LocalizedError {
     case .firezoneIdIsInvalid:
       return "The device identifier could not be read."
     case .credentialNotConfigured:
-      return "Neither a sign-in token nor a client certificate is configured."
-    case .certificateNotConfigured:
-      return "The certificate was meant to authenticate this session, but none is loadable."
+      return "A sign-in token is not configured."
     }
   }
 }

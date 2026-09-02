@@ -37,43 +37,23 @@ public enum IPCClient {
   private static let stopTimeout: Duration = .seconds(5)
   private static let stopPollInterval: Duration = .milliseconds(100)
 
-  /// What the app wants a session to authenticate with.
-  ///
-  /// The app resolves this from the identity it displayed and the token it holds, and the
-  /// provider acts on it instead of re-deriving the decision from whatever it can find. The
-  /// identity reference pins the certificate the app showed, so the provider presents that
-  /// one rather than a fresh lookup's answer.
-  public enum TunnelAuthentication {
-    /// The certificate is the credential; no token is sent.
-    case certificate(identityReference: Data?)
-    /// The token is the credential, read from the keychain when not passed, and the
-    /// certificate rides along where one is configured.
-    case tokenAndCertificate(token: String?, identityReference: Data?)
-  }
-
   // The GUI must save providerConfiguration before calling this so any MDM forced
   // overrides are available to the provider.
+  // A `nil` token asks the provider to load the saved token. The identity reference
+  // pins the optional device certificate the app displayed.
   @MainActor
   public static func start(
     session: any TunnelSessionProtocol,
-    authentication: TunnelAuthentication
+    token: String?,
+    identityReference: Data?
   ) throws {
-    var options: [String: NSObject] = [:]
+    var options: [String: NSObject] = ["authentication": "tokenAndCertificate" as NSObject]
 
-    switch authentication {
-    case .certificate(let identityReference):
-      options["authentication"] = "certificate" as NSObject
-      if let identityReference {
-        options["identityReference"] = identityReference as NSObject
-      }
-    case .tokenAndCertificate(let token, let identityReference):
-      options["authentication"] = "tokenAndCertificate" as NSObject
-      if let token {
-        options["token"] = token as NSObject
-      }
-      if let identityReference {
-        options["identityReference"] = identityReference as NSObject
-      }
+    if let token {
+      options["token"] = token as NSObject
+    }
+    if let identityReference {
+      options["identityReference"] = identityReference as NSObject
     }
 
     try session.startTunnel(options: options)
@@ -216,33 +196,6 @@ public enum IPCClient {
       try fd.writeAll(chunk.data)
 
       if chunk.done { break }
-    }
-  }
-
-  /// Returns a stream of VPN status updates for the given session.
-  ///
-  /// Filters `NEVPNStatusDidChange` notifications to only those matching `session`.
-  /// The caller is responsible for consuming the stream in a task they manage.
-  public static func vpnStatusUpdates(
-    session: any TunnelSessionProtocol
-  ) -> AsyncStream<NEVPNStatus> {
-    AsyncStream { continuation in
-      let task = Task {
-        for await notification in NotificationCenter.default.notifications(
-          named: .NEVPNStatusDidChange)
-        {
-          guard let notificationSession = notification.object as? NETunnelProviderSession
-          else {
-            return
-          }
-
-          if notificationSession === session {
-            continuation.yield(notificationSession.status)
-          }
-        }
-        continuation.finish()
-      }
-      continuation.onTermination = { _ in task.cancel() }
     }
   }
 

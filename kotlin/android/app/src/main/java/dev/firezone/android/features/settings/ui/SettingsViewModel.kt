@@ -57,6 +57,8 @@ internal class SettingsViewModel
         private val _managedStatusStateFlow = MutableStateFlow<ManagedConfigStatus?>(null)
         val managedStatusStateFlow: StateFlow<ManagedConfigStatus?> = _managedStatusStateFlow
 
+        private var shouldResetFavoritesOnSave = false
+
         fun populateFieldsFromConfig() {
             viewModelScope.launch {
                 repo.getConfig().collect {
@@ -88,6 +90,10 @@ internal class SettingsViewModel
         fun onSaveSettingsCompleted() {
             viewModelScope.launch {
                 repo.saveSettings(config).collect {
+                    if (shouldResetFavoritesOnSave) {
+                        repo.resetFavorites()
+                        shouldResetFavoritesOnSave = false
+                    }
                     actionMutableStateFlow.value = ViewAction.NavigateBack
                 }
             }
@@ -180,7 +186,7 @@ internal class SettingsViewModel
 
         fun resetSettingsToDefaults() {
             config = repo.getDefaultConfigSync()
-            repo.resetFavorites()
+            shouldResetFavoritesOnSave = true
             _configStateFlow.value = config
             _managedStatusStateFlow.value = repo.getManagedStatus()
             onFieldUpdated()

@@ -58,7 +58,7 @@ class CertificatePermissionActivity : AppCompatActivity() {
             } else {
                 runOnUiThread {
                     Toast
-                        .makeText(this, R.string.x509_no_certificate_selected, Toast.LENGTH_LONG)
+                        .makeText(this, R.string.device_trust_no_certificate_selected, Toast.LENGTH_LONG)
                         .show()
                 }
             }

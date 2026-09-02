@@ -50,7 +50,6 @@ fun SessionScreen(
     onSettings: () -> Unit,
     onEndSession: () -> Unit,
     modifier: Modifier = Modifier,
-    endSessionLabel: String = stringResource(R.string.sign_out),
 ) {
     val hasFavorites = favorites.inner.isNotEmpty()
     var selectedTab by rememberSaveable { mutableIntStateOf(TAB_FAVORITES) }
@@ -97,7 +96,6 @@ fun SessionScreen(
                     actorName = profileName,
                     onSettings = onSettings,
                     onEndSession = onEndSession,
-                    endSessionLabel = endSessionLabel,
                 )
             }
         },

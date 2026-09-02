@@ -14,13 +14,13 @@ import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.firezone.android.core.ApplicationMode
 import dev.firezone.android.core.data.Repository
-import dev.firezone.android.core.x509.CertificateUser
+import dev.firezone.android.core.data.TokenStore
+import dev.firezone.android.core.x509.CertificateAccess
 import dev.firezone.android.tunnel.TunnelService
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
-import uniffi.x509claims.Identity
 import javax.inject.Inject
 
 private const val REQUEST_DELAY = 1000L
@@ -30,9 +30,10 @@ internal class SplashViewModel
     @Inject
     constructor(
         private val repo: Repository,
+        private val tokenStore: TokenStore,
         private val applicationRestrictions: Bundle,
         private val applicationMode: ApplicationMode,
-        private val certificateUser: CertificateUser,
+        private val certificateAccess: CertificateAccess,
     ) : ViewModel() {
         private val actionMutableStateFlow = MutableStateFlow<ViewAction?>(null)
         val actionStateFlow: StateFlow<ViewAction?> = actionMutableStateFlow
@@ -60,16 +61,15 @@ internal class SplashViewModel
                 // An administrator can configure a certificate that only the user can release, which
                 // is what a work profile on a personally-owned device looks like. Ask once per
                 // launch: pressing on without it only fails later, at the tunnel.
-                if (!certificateSelectionOffered && certificateUser.needsSelection()) {
+                if (!certificateSelectionOffered && certificateAccess.needsSelection()) {
                     certificateSelectionOffered = true
                     actionMutableStateFlow.value = ViewAction.NavigateToCertificatePermission
                     return@launch
                 }
 
-                val token = applicationRestrictions.getString("token") ?: repo.getTokenSync()
+                val token = applicationRestrictions.getString("token") ?: tokenStore.get()
 
-                // Without a token we can only connect if a client certificate claims an identity.
-                if (token.isNullOrBlank() && certificateUser.identity() == Identity.Absent) {
+                if (token.isNullOrBlank()) {
                     actionMutableStateFlow.value = ViewAction.NavigateToSignIn
                     return@launch
                 }

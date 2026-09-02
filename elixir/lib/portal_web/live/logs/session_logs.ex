@@ -3,7 +3,7 @@ defmodule PortalWeb.Logs.SessionLogs do
 
   import PortalWeb.Logs.Components
 
-  alias PortalWeb.Clients
+  alias PortalWeb.Devices
   alias __MODULE__.Database
 
   @table_id "session_logs"
@@ -304,7 +304,7 @@ defmodule PortalWeb.Logs.SessionLogs do
     log
     |> ua()
     |> Kernel.||("")
-    |> Clients.Components.get_client_os_name_and_version()
+    |> Devices.Components.os_name_and_version()
     |> String.trim()
   end
 

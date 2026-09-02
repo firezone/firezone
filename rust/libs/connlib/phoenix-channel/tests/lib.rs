@@ -139,6 +139,57 @@ async fn client_clears_local_message_on_connect() {
 }
 
 #[tokio::test]
+async fn ignores_unknown_messages() {
+    let _guard = logging::test("debug,wire::api=trace");
+
+    let listener = TcpListener::bind("0.0.0.0:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+
+    let server = tokio::spawn(async move {
+        let (stream, _) = listener.accept().await.unwrap();
+        let mut ws = tokio_tungstenite::accept_async(stream).await.unwrap();
+
+        loop {
+            match ws.next().await {
+                Some(Ok(Message::Text(text))) => match text.as_str() {
+                    JOIN_REQUEST => ws.send(Message::text(JOIN_REPLY)).await.unwrap(),
+                    BAR_REQUEST => {
+                        ws.send(Message::text(UNKNOWN_MESSAGE)).await.unwrap();
+                        ws.send(Message::text(FOO_MESSAGE)).await.unwrap();
+                    }
+                    other => panic!("Unexpected message: {other}"),
+                },
+                Some(Ok(Message::Close(_))) => continue,
+                Some(other) => panic!("Unexpected message: {other:?}"),
+                None => break,
+            }
+        }
+    });
+
+    let mut channel = make_test_channel("localhost", port, default_backoff);
+
+    let client = async move {
+        connect(&mut channel, Duration::ZERO);
+        poll_until_connected(&mut channel).await;
+
+        channel.send("test", OutboundMsg::Bar).unwrap();
+        let msg = next_message(&mut channel).await;
+        assert!(matches!(msg, InboundMsg::Foo));
+
+        channel.close().unwrap();
+        poll_until_closed(&mut channel).await;
+    };
+
+    let (join_res, _) = tokio::time::timeout(
+        Duration::from_secs(2),
+        futures::future::join(server, client),
+    )
+    .await
+    .unwrap();
+    join_res.unwrap();
+}
+
+#[tokio::test]
 async fn replies_with_close_frame_upon_close() {
     let _guard = logging::test("debug,wire::api=trace");
 
@@ -593,6 +644,8 @@ const JOIN_REPLY: &str =
     r#"{"event":"phx_reply","ref":0,"topic":"test","payload":{"status":"ok","response":{}}}"#;
 const BAR_REQUEST: &str = r#"{"topic":"test","event":"bar","ref":1}"#;
 const FOO_MESSAGE: &str = r#"{"topic":"test","event":"foo","payload":null}"#;
+/// A message with an event the channel does not know.
+const UNKNOWN_MESSAGE: &str = r#"{"topic":"test","event":"unknown_event","payload":{"foo":"bar"}}"#;
 /// A reply carrying a reference the channel never sent.
 const UNMATCHED_REPLY: &str =
     r#"{"event":"phx_reply","ref":9999,"topic":"phoenix","payload":{"status":"ok","response":{}}}"#;

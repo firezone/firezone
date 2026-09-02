@@ -929,7 +929,7 @@ defmodule Portal.Dev.AccountPopulation do
     token
   end
 
-  defp subject_for(account) do
+  defp subject_for(%Portal.Account{} = account) do
     %Subject{
       account: account,
       actor: %Actor{
@@ -938,7 +938,10 @@ defmodule Portal.Dev.AccountPopulation do
         type: :account_admin_user,
         name: "Population Script"
       },
-      credential: %Credential{id: Ecto.UUID.generate(), type: :token},
+      credential: %Credential.PortalSession{
+        id: Ecto.UUID.generate(),
+        auth_provider_id: Ecto.UUID.generate()
+      },
       expires_at: DateTime.add(DateTime.utc_now(), 1, :hour),
       context: %Context{
         type: :client,

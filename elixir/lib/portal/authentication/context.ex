@@ -27,6 +27,7 @@ defmodule Portal.Authentication.Context do
   alias Portal.Geo
 
   def build(remote_ip, user_agent, headers, type) do
+    remote_ip = Portal.Types.IP.unmap(remote_ip)
     {region, city, {lat, lon}} = Geo.locate(remote_ip, headers)
 
     %__MODULE__{

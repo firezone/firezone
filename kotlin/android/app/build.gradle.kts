@@ -297,6 +297,7 @@ dependencies {
     androidTestImplementation("androidx.navigation:navigation-testing:2.9.7")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.7.0")
     androidTestImplementation("androidx.test.espresso:espresso-contrib:3.7.0")
+    androidTestImplementation("androidx.test.espresso:espresso-intents:3.7.0")
     androidTestImplementation("androidx.test.uiautomator:uiautomator:2.4.0")
     // Mints the test certificates; the platform offers no way to build one.
     androidTestImplementation("org.bouncycastle:bcpkix-jdk18on:1.85")

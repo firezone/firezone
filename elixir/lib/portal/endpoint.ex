@@ -29,10 +29,13 @@ defmodule Portal.Endpoint do
   # they are dropped with the rest. Everything behind this endpoint reads the
   # connection and does not look at these headers again.
   def apply_forwarded_headers(%Plug.Conn{} = conn, _opts) do
+    conn = %{conn | remote_ip: Portal.Types.IP.unmap(conn.remote_ip)}
+
     if from_trusted_proxy?(conn) do
       conn
       |> Plug.RewriteOn.call(@rewrite_on)
       |> RemoteIp.call(@remote_ip)
+      |> then(&%{&1 | remote_ip: Portal.Types.IP.unmap(&1.remote_ip)})
     else
       Enum.reduce(@proxy_headers, conn, &Plug.Conn.delete_req_header(&2, &1))
     end

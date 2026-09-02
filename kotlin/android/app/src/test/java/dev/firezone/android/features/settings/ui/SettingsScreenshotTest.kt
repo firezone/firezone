@@ -33,7 +33,7 @@ import dev.firezone.android.R
 import dev.firezone.android.core.data.Repository
 import dev.firezone.android.databinding.ActivitySettingsBinding
 import dev.firezone.android.features.session.ui.compose.FirezoneTheme
-import dev.firezone.android.features.settings.ui.compose.X509SettingsScreen
+import dev.firezone.android.features.settings.ui.compose.DeviceTrustSettingsScreen
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -48,7 +48,6 @@ import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import uniffi.x509claims.DetailField
-import uniffi.x509claims.ValidationError
 import java.io.File
 import java.io.RandomAccessFile
 import dev.firezone.android.core.data.model.Config as FirezoneConfig
@@ -65,8 +64,9 @@ import dev.firezone.android.core.data.model.Config as FirezoneConfig
     qualifiers = RobolectricDeviceQualifiers.Pixel5,
 )
 class SettingsScreenshotTest {
-    // Reaches into the Compose content the fragments host, which the scrolled X.509 captures have
-    // to drive. The rule hosts nothing itself; the activity below is still Robolectric's to build.
+    // Reaches into the Compose content the fragments host, which the scrolled Device Trust
+    // captures have to drive. The rule hosts nothing itself; the activity below is still
+    // Robolectric's to build.
     @get:Rule
     val composeRule = createEmptyComposeRule()
 
@@ -77,50 +77,46 @@ class SettingsScreenshotTest {
     fun advancedSettings() = captureSettingsPage("settings-advanced", R.id.settingsAdvanced)
 
     @Test
-    fun x509SettingsWithCertificate() = captureX509Page("x509-filled", usableCertificate)
+    fun deviceTrustSettingsWithCertificate() = captureDeviceTrustPage("device-trust-filled", availableCertificate)
 
     @Test
-    fun x509SettingsWithoutCertificate() = captureX509Page("x509-empty", noCertificate)
+    fun deviceTrustSettingsRequiringSelection() = captureDeviceTrustPage("device-trust-selection-required", selectionRequiredCertificate)
 
     @Test
-    fun x509SettingsWithInvalidClaim() = captureX509Page("x509-invalid-claim", certificateWithInvalidClaim)
-
-    @Test
-    fun x509SettingsWithUnusableCertificate() = captureX509Page("x509-unusable", unusableCertificate)
-
-    @Test
-    fun x509SettingsWithExpiredCertificate() = captureX509Page("x509-expired", expiredCertificate)
-
-    @Test
-    fun x509SettingsWithUnreadableCertificate() = captureX509Page("x509-unreadable", unreadableCertificate)
+    fun deviceTrustSettingsWithExpiredCertificate() = captureDeviceTrustPage("device-trust-expired", expiredCertificate)
 
     // The buttons follow the rows, so only the end of the scroll shows what an administrator's
     // certificate takes away: the same certificate, picked by the user, still offers Forget.
     @Test
-    fun x509SettingsWithManagedCertificate() = captureX509PageEnd("x509-managed-scrolled", managedCertificate)
+    fun deviceTrustSettingsWithManagedCertificate() = captureDeviceTrustPageEnd("device-trust-managed-scrolled", managedCertificate)
 
     @Test
-    fun x509SettingsWithUnmanagedCertificate() = captureX509PageEnd("x509-unmanaged-scrolled", usableCertificate)
+    fun deviceTrustSettingsWithUnmanagedCertificate() = captureDeviceTrustPageEnd("device-trust-unmanaged-scrolled", availableCertificate)
 
     @Test
     fun logSettings() = captureSettingsPage("settings-logs", R.id.settingsLogs)
 
-    private fun captureX509Page(
+    private fun captureDeviceTrustPage(
         name: String,
-        state: X509SettingsViewModel.UiState,
+        state: DeviceTrustSettingsViewModel.UiState,
     ) {
-        x509ScreenshotState = state
+        deviceTrustScreenshotState = state
 
-        captureSettingsPage(name, R.id.settingsX509)
+        captureSettingsPage(name, R.id.settingsDeviceTrust, hasConfiguredCertificateAlias = true)
     }
 
-    private fun captureX509PageEnd(
+    private fun captureDeviceTrustPageEnd(
         name: String,
-        state: X509SettingsViewModel.UiState,
+        state: DeviceTrustSettingsViewModel.UiState,
     ) {
-        x509ScreenshotState = state
+        deviceTrustScreenshotState = state
 
-        captureSettingsPage(name, R.id.settingsX509, scrollToEnd = true)
+        captureSettingsPage(
+            name,
+            R.id.settingsDeviceTrust,
+            scrollToEnd = true,
+            hasConfiguredCertificateAlias = true,
+        )
     }
 
     @OptIn(ExperimentalRoborazziApi::class)
@@ -128,11 +124,13 @@ class SettingsScreenshotTest {
         name: String,
         navigationItemId: Int,
         scrollToEnd: Boolean = false,
+        hasConfiguredCertificateAlias: Boolean = false,
     ) {
         seedLogDirectory()
+        settingsScreenshotPages = settingsPages(hasConfiguredCertificateAlias)
 
         val activity = Robolectric.buildActivity(SettingsScreenshotActivity::class.java).setup().get()
-        activity.showPage(settingsPages.indexOfFirst { it.first == navigationItemId })
+        activity.showPage(settingsScreenshotPages.indexOfFirst { it.first == navigationItemId })
         shadowOf(Looper.getMainLooper()).idle()
 
         // The advanced page shows the commit the app was built from, which changes with
@@ -196,97 +194,53 @@ private val sampleConfig =
 // The alias the certificate below is filed under in the system KeyChain.
 private const val CERTIFICATE_ALIAS = "firezone-device"
 
-// The state `X509ScreenshotFragment` renders, set before the activity reaches the X.509 page.
-private var x509ScreenshotState = X509SettingsViewModel.UiState()
+// The state `DeviceTrustScreenshotFragment` renders, set before the activity reaches Device Trust.
+private var deviceTrustScreenshotState = DeviceTrustSettingsViewModel.UiState()
+private var settingsScreenshotPages = settingsPages(hasConfiguredCertificateAlias = false)
 
-// A certificate the KeyChain released and whose every claim holds a usable value.
-private val usableCertificate =
-    X509SettingsViewModel.UiState(
+// A certificate the KeyChain released and whose every claim holds a value.
+private val availableCertificate =
+    DeviceTrustSettingsViewModel.UiState(
         alias = CERTIFICATE_ALIAS,
-        isUsable = true,
-        details =
-            certificateDetails(
-                actorEmail = row("Actor Email", "jane.doe@example.com"),
-                unmatchedNames = emptyList(),
-            ),
+        details = certificateDetails(),
     )
 
 // The same certificate, handed down by an administrator and released by the KeyChain, which
 // leaves the user nothing to pick or clear.
-private val managedCertificate = usableCertificate.copy(isManaged = true)
-
-// No administrator handed a certificate down and the user picked none.
-private val noCertificate = X509SettingsViewModel.UiState()
-
-// The same certificate, spelling the actor's email in a way that is not usable as one. Claims
-// have no say in whether a certificate can be presented, so Firezone still signs in with it.
-private val certificateWithInvalidClaim =
-    X509SettingsViewModel.UiState(
-        alias = CERTIFICATE_ALIAS,
-        isUsable = true,
-        details =
-            certificateDetails(
-                actorEmail = row("Actor Email", "jane.doe.example.com", ValidationError.NOT_AN_EMAIL_ADDRESS),
-                unmatchedNames = listOf("URI: firezone://email/jane.doe.example.com"),
-            ),
-    )
+private val managedCertificate = availableCertificate.copy(isManaged = true)
 
 // An alias the KeyChain holds a certificate for but has not released to Firezone, which leaves
 // the app with nothing to present and nothing to read.
-private val unusableCertificate =
-    X509SettingsViewModel.UiState(
+private val selectionRequiredCertificate =
+    DeviceTrustSettingsViewModel.UiState(
         alias = CERTIFICATE_ALIAS,
-        isUsable = false,
+        needsSelection = true,
     )
 
 // A certificate whose validity window has passed. Only the portal decides whether that matters,
 // so the screen shows the date and says nothing about it.
 private val expiredCertificate =
-    X509SettingsViewModel.UiState(
+    DeviceTrustSettingsViewModel.UiState(
         alias = CERTIFICATE_ALIAS,
-        isUsable = true,
         details =
             certificateDetails(
-                actorEmail = row("Actor Email", "jane.doe@example.com"),
-                unmatchedNames = emptyList(),
                 notBefore = row("Not Before", "Jan  5 09:00:00 2024 +00:00"),
                 notAfter = row("Not After", "Jan  5 09:00:00 2025 +00:00"),
             ),
     )
 
-// A certificate the KeyChain released and the parser could not read, which leaves no row to show.
-private val unreadableCertificate =
-    X509SettingsViewModel.UiState(
-        alias = CERTIFICATE_ALIAS,
-        isUsable = true,
-        certificateIsUnreadable = true,
-    )
-
 // One certificate as the Rust parser describes it, in the order the screen lists its rows.
 // Every value is pinned, so a capture only moves when the screen does.
 private fun certificateDetails(
-    actorEmail: DetailField,
-    unmatchedNames: List<String>,
     notBefore: DetailField = row("Not Before", "Jan  5 09:00:00 2026 +00:00"),
     notAfter: DetailField = row("Not After", "Jan  5 09:00:00 2027 +00:00"),
 ): List<DetailField> =
-    // `x509_claims::ParsedCertificate::detail_fields` reads the rows with a problem first, so a
-    // mock that left them in place would draw a screen the client cannot produce.
     buildList {
-        add(row("Common Name", "jane.doe@example.com"))
-        add(row("Subject", "CN=jane.doe@example.com, O=Example Corp"))
+        add(row("Common Name", "firezone-device"))
+        add(row("Subject", "CN=firezone-device, O=Example Corp"))
         add(row("Issuer", "CN=Example Corp Device CA, O=Example Corp"))
-        add(actorEmail)
-        add(row("Account ID", "5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3"))
         add(row("MDM Device ID", "9b4d1c07-6e2a-4f83-8c15-7ad0e39b2c64"))
         add(row("Device Serial", "C02XK1ZGJGH5"))
-
-        // The parser lists the alternative names no claim row shows, which is where a name it
-        // could not read a usable claim from ends up.
-        if (unmatchedNames.isNotEmpty()) {
-            add(row("Subject Alternative Names", unmatchedNames.joinToString("\n")))
-        }
-
         add(row("Serial Number", "4a:1f:8c:52:0d:9b:36:e7:11:c4:58:a3:7f:20:6b:d9"))
         add(notBefore)
         add(notAfter)
@@ -298,14 +252,13 @@ private fun certificateDetails(
                     "10:D8:63:4C:B5:27:9E:0A:F1:6D:82:34:C7:5E:19:AB",
             ),
         )
-    }.sortedBy { it.problem == null }
+    }
 
-// A row as the parser hands it over: what the certificate said, and what is wrong with it.
+// A row as the parser hands it over.
 private fun row(
     label: String,
     value: String?,
-    problem: ValidationError? = null,
-): DetailField = DetailField(label, value, problem)
+): DetailField = DetailField(label, value, null)
 
 // Hosts the settings pages the way `SettingsActivity` does, with the Hilt graph replaced by
 // a view model built by hand from preferences seeded with `sampleConfig`.
@@ -334,14 +287,17 @@ internal class SettingsScreenshotActivity : AppCompatActivity() {
         binding = ActivitySettingsBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
+        binding.bottomNavigation.menu
+            .findItem(R.id.settingsDeviceTrust)
+            .isVisible = settingsScreenshotPages.any { it.first == R.id.settingsDeviceTrust }
         binding.viewPager.adapter =
             object : FragmentStateAdapter(this) {
-                override fun getItemCount(): Int = settingsPages.size
+                override fun getItemCount(): Int = settingsScreenshotPages.size
 
                 override fun createFragment(position: Int): Fragment =
-                    when (settingsPages[position].first) {
-                        R.id.settingsX509 -> X509ScreenshotFragment()
-                        else -> settingsPages[position].second()
+                    when (settingsScreenshotPages[position].first) {
+                        R.id.settingsDeviceTrust -> DeviceTrustScreenshotFragment()
+                        else -> settingsScreenshotPages[position].second()
                     }
             }
 
@@ -359,14 +315,14 @@ internal class SettingsScreenshotActivity : AppCompatActivity() {
     fun showPage(position: Int) {
         binding.viewPager.setCurrentItem(position, false)
         binding.bottomNavigation.menu
-            .findItem(settingsPages[position].first)
+            .findItem(settingsScreenshotPages[position].first)
             .isChecked = true
     }
 }
 
-// Shows the X.509 page the way `X509SettingsFragment` does, on a fixture rather than on a Hilt
-// graph and the system KeyChain, so each state of the screen can be photographed on its own.
-internal class X509ScreenshotFragment : Fragment() {
+// Shows Device Trust the way `DeviceTrustSettingsFragment` does, on a fixture rather than on a
+// Hilt graph and the system KeyChain, so each state of the screen can be photographed on its own.
+internal class DeviceTrustScreenshotFragment : Fragment() {
     override fun onCreateView(
         inflater: LayoutInflater,
         container: ViewGroup?,
@@ -376,8 +332,8 @@ internal class X509ScreenshotFragment : Fragment() {
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
             setContent {
                 FirezoneTheme {
-                    X509SettingsScreen(
-                        state = x509ScreenshotState,
+                    DeviceTrustSettingsScreen(
+                        state = deviceTrustScreenshotState,
                         onSelectCertificate = {},
                         onForgetCertificate = {},
                     )

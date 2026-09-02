@@ -261,7 +261,8 @@ defmodule PortalAPI.Gateway.Channel.Shared do
             Views.Relay.render_many(
               relays,
               socket.assigns.gateway.public_key,
-              @relay_credentials_expire_at
+              @relay_credentials_expire_at,
+              socket.assigns.gateway.account_id
             )
         })
 
@@ -714,7 +715,8 @@ defmodule PortalAPI.Gateway.Channel.Shared do
         Views.Relay.render_many(
           relays,
           socket.assigns.gateway.public_key,
-          @relay_credentials_expire_at
+          @relay_credentials_expire_at,
+          socket.assigns.gateway.account_id
         )
     })
 
@@ -798,7 +800,8 @@ defmodule PortalAPI.Gateway.Channel.Shared do
         Views.Relay.render_many(
           relays,
           socket.assigns.gateway.public_key,
-          @relay_credentials_expire_at
+          @relay_credentials_expire_at,
+          socket.assigns.gateway.account_id
         ),
       # These aren't used but needed for API compatibility
       config: %{

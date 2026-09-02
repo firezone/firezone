@@ -1,15 +1,15 @@
 import React, { useEffect, useState } from "react";
-import { Route, Routes } from "react-router";
+import { Navigate, Route, Routes } from "react-router";
 import About from "./AboutPage";
 import AdvancedSettingsPage from "./AdvancedSettingsPage";
 import ColorPalette from "./ColorPalettePage";
+import DeviceTrustPage from "./DeviceTrustPage";
 import Diagnostics from "./DiagnosticsPage";
 import GeneralSettingsPage from "./GeneralSettingsPage";
 import Overview from "./OverviewPage";
 import ReactRouterSidebarItem from "./ReactRouterSidebarItem";
 import RemixIcon from "./RemixIcon";
 import Titlebar from "./Titlebar";
-import X509Page from "./X509Page";
 import {
   AdvancedSettingsViewModel,
   commands,
@@ -27,7 +27,8 @@ export default function App() {
     useState<GeneralSettingsViewModel | null>(null);
   const [advancedSettings, setAdvancedSettings] =
     useState<AdvancedSettingsViewModel | null>(null);
-  const [x509, setX509] = useState<X509Certificate | null>(null);
+  const [deviceTrustCertificate, setDeviceTrustCertificate] =
+    useState<X509Certificate | null>();
   const [settingsOpen, setSettingsOpen] = useState(true);
 
   useEffect(() => {
@@ -52,12 +53,11 @@ export default function App() {
       console.log("logs_recounted", { file_count: event.payload });
       setLogCount(event.payload);
     });
-    const x509CertificateChangedUnlisten = events.x509CertificateChanged.listen(
-      (event) => {
+    const deviceTrustCertificateChangedUnlisten =
+      events.x509CertificateChanged.listen((event) => {
         console.log("x509_certificate_changed", { certificate: event.payload });
-        setX509(event.payload);
-      }
-    );
+        setDeviceTrustCertificate(event.payload);
+      });
 
     commands.updateState();
 
@@ -66,7 +66,7 @@ export default function App() {
       generalSettingsChangedUnlisten.then((unlisten) => unlisten());
       advancedSettingsChangedUnlisten.then((unlisten) => unlisten());
       logsRecountedUnlisten.then((unlisten) => unlisten());
-      x509CertificateChangedUnlisten.then((unlisten) => unlisten());
+      deviceTrustCertificateChangedUnlisten.then((unlisten) => unlisten());
     };
   }, []);
 
@@ -84,7 +84,12 @@ export default function App() {
           path="/advanced-settings"
           element={<Titlebar title="Advanced Settings" />}
         />
-        <Route path="/x509" element={<Titlebar title="X.509" />} />
+        <Route
+          path="/device-trust"
+          element={
+            deviceTrustCertificate ? <Titlebar title="Device Trust" /> : null
+          }
+        />
         <Route path="/diagnostics" element={<Titlebar title="Diagnostics" />} />
         <Route path="/about" element={<Titlebar title="About" />} />
         <Route
@@ -142,11 +147,16 @@ export default function App() {
                   </ul>
                 )}
               </li>
-              <li>
-                <ReactRouterSidebarItem icon="certificate" href="/x509">
-                  X.509
-                </ReactRouterSidebarItem>
-              </li>
+              {deviceTrustCertificate && (
+                <li>
+                  <ReactRouterSidebarItem
+                    icon="certificate"
+                    href="/device-trust"
+                  >
+                    Device Trust
+                  </ReactRouterSidebarItem>
+                </li>
+              )}
               <li>
                 <ReactRouterSidebarItem icon="database" href="/diagnostics">
                   Diagnostics
@@ -174,13 +184,6 @@ export default function App() {
               path="/overview"
               element={
                 <Overview
-                  identity={
-                    x509 !== null &&
-                    typeof x509 === "object" &&
-                    "Loaded" in x509
-                      ? x509.Loaded.identity
-                      : "Absent"
-                  }
                   session={session}
                   signIn={commands.signIn}
                   signOut={commands.signOut}
@@ -207,7 +210,16 @@ export default function App() {
                 />
               }
             />
-            <Route path="/x509" element={<X509Page certificate={x509} />} />
+            <Route
+              path="/device-trust"
+              element={
+                deviceTrustCertificate === null ? (
+                  <Navigate replace to="/overview" />
+                ) : deviceTrustCertificate === undefined ? null : (
+                  <DeviceTrustPage certificate={deviceTrustCertificate} />
+                )
+              }
+            />
             <Route
               path="/diagnostics"
               element={

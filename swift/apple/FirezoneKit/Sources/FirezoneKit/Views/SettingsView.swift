@@ -86,7 +86,7 @@ public struct SettingsView: View {
   public enum Tab: Hashable {
     case general
     case advanced
-    case x509
+    case deviceTrust
     case logs
   }
 
@@ -119,12 +119,14 @@ public struct SettingsView: View {
                 }
                 .badge(viewModel.isValid() ? nil : "!")
                 .tag(Tab.advanced)
-              certificateTab
-                .tabItem {
-                  Image(systemName: "rosette")
-                  Text("X.509")
-                }
-                .tag(Tab.x509)
+              if store.deviceTrustCertificateSummary != nil {
+                deviceTrustTab
+                  .tabItem {
+                    Image(systemName: "rosette")
+                    Text("Device Trust")
+                  }
+                  .tag(Tab.deviceTrust)
+              }
               logsTab
                 .tabItem {
                   Image(systemName: "doc.text")
@@ -183,11 +185,13 @@ public struct SettingsView: View {
               Text("Advanced")
             }
             .tag(Tab.advanced)
-          certificateTab
-            .tabItem {
-              Text("X.509")
-            }
-            .tag(Tab.x509)
+          if store.deviceTrustCertificateSummary != nil {
+            deviceTrustTab
+              .tabItem {
+                Text("Device Trust")
+              }
+              .tag(Tab.deviceTrust)
+          }
           logsTab
             .tabItem {
               Text("Diagnostic Logs")
@@ -558,29 +562,28 @@ public struct SettingsView: View {
     #endif
   }
 
-  private var certificateTab: some View {
+  @ViewBuilder
+  private var deviceTrustTab: some View {
     #if os(macOS)
       ScrollView {
         HStack {
           Spacer()
-          clientCertificateSettings
-            .frame(maxWidth: 600)
+          if let summary = store.deviceTrustCertificateSummary {
+            DeviceTrustSettingsView(summary: summary)
+              .frame(maxWidth: 600)
+          }
           Spacer()
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical)
       }
     #elseif os(iOS)
-      clientCertificateSettings
+      if let summary = store.deviceTrustCertificateSummary {
+        DeviceTrustSettingsView(summary: summary)
+      }
     #else
       #error("Unsupported platform")
     #endif
-  }
-
-  private var clientCertificateSettings: some View {
-    let keychain = X509CertificateSource.keychain { try store.manager().identityReference() }
-
-    return X509SettingsView(source: store.x509CertificateSource ?? keychain)
   }
 
   private func saveAllSettingsAndDismiss() async throws {

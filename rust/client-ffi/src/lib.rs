@@ -569,11 +569,9 @@ fn connect(
         identifier_for_vendor: device_info.identifier_for_vendor,
         firebase_installation_id: device_info.firebase_installation_id,
     };
-    let token = token.map(SecretString::from);
-
-    if token.is_none() && tls_identity.is_none() {
-        return Err(anyhow!("Cannot authenticate without a token or a client certificate").into());
-    }
+    let token = token
+        .map(SecretString::from)
+        .ok_or_else(|| anyhow!("Cannot authenticate without a token"))?;
 
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(1)
@@ -619,7 +617,7 @@ fn connect(
 
     let portal = PhoenixChannel::disconnected(
         url,
-        token,
+        Some(token),
         get_user_agent(platform::COMPONENT, platform::VERSION),
         "client",
         (),

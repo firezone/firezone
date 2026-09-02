@@ -14,7 +14,8 @@ defmodule Portal.Relay do
     :ipv6,
     :port,
     :lat,
-    :lon
+    :lon,
+    :turn_account_validation
   ]
 
   @type t :: %__MODULE__{
@@ -24,7 +25,8 @@ defmodule Portal.Relay do
           ipv6: String.t() | nil,
           port: integer(),
           lat: float() | nil,
-          lon: float() | nil
+          lon: float() | nil,
+          turn_account_validation: boolean()
         }
 
   @doc """
