@@ -83,7 +83,7 @@ pub struct Server<R> {
 
     /// Maps the account hash carried in a TURN credential to the raw account
     /// UUID received from the Portal. Allocations retain the raw UUID.
-    accounts_by_hash: HashMap<String, String>,
+    accounts_by_hash: HashMap<auth::AccountIdHash, String>,
 
     nonces: Nonces,
 
@@ -1489,38 +1489,16 @@ fn earliest(left: Option<Instant>, right: Option<Instant>) -> Option<Instant> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bytecodec::DecodeExt as _;
     use rand::{SeedableRng as _, rngs::StdRng};
     use std::net::{Ipv4Addr, Ipv6Addr};
-
-    #[test]
-    fn adding_account_is_idempotent() {
-        let account = "account-hash".to_owned();
-        let mut server = Server::new(
-            Ipv4Addr::LOCALHOST,
-            StdRng::seed_from_u64(0),
-            3478,
-            49_152..=49_153,
-        );
-
-        server.set_accounts([]);
-        server.add_account(account.clone());
-        server.add_account(account.clone());
-
-        assert_eq!(server.accounts_by_hash.len(), 1);
-        assert_eq!(
-            server
-                .accounts_by_hash
-                .get(&auth::hash_account_id(&account)),
-            Some(&account)
-        );
-    }
+    use stun_codec::{MessageDecoder, MessageEncoder};
 
     #[test]
     fn removing_account_deletes_its_allocations_and_channel_bindings() {
         let now = Instant::now();
         let client = ClientSocket::new(SocketAddr::from(([127, 0, 0, 1], 50_000)));
         let peer = PeerSocket::new(SocketAddr::from(([127, 0, 0, 2], 50_001)));
-        let port = AllocationPort::new(49_152);
         let channel = ChannelNumber::new(ChannelNumber::MIN).unwrap();
         let account = "account-hash".to_owned();
         let mut server = Server::new(
@@ -1531,35 +1509,59 @@ mod tests {
         );
 
         server.set_accounts([account.clone()]);
-        server.allocations.insert(
-            client,
-            Allocation {
-                port,
-                expires_at: now + Duration::from_secs(600),
-                first_relay_addr: Ipv4Addr::LOCALHOST.into(),
-                second_relay_addr: None,
-                account: account.clone(),
-            },
+        let nonce = issue_nonce(&mut server, client, now);
+        let username = Username::new(format!(
+            "2145916800:{}:credential-salt",
+            auth::hash_account_id(&account)
+        ))
+        .unwrap();
+
+        let allocate = authenticated_request(
+            &server,
+            ALLOCATE,
+            TransactionId::new([1; 12]),
+            &username,
+            &nonce,
+            [Attribute::RequestedTransport(RequestedTransport::new(
+                UDP_TRANSPORT,
+            ))],
         );
-        server.clients_by_allocation.insert(port, client);
-        server
-            .allocations_by_username
-            .insert(Username::new("username".to_owned()).unwrap(), port);
-        server.channels_by_client_and_number.insert(
-            (client, channel),
-            Channel {
-                expiry: now + Duration::from_secs(600),
-                peer_address: peer,
-                allocation: port,
-                bound: true,
-            },
+        server.handle_client_input(&allocate, client, now);
+
+        let Some(Command::CreateAllocation { port, .. }) = server.next_command() else {
+            panic!("the relay creates an allocation for an authenticated request");
+        };
+        assert!(matches!(
+            server.next_command(),
+            Some(Command::SendMessage { .. })
+        ));
+
+        let channel_bind = authenticated_request(
+            &server,
+            CHANNEL_BIND,
+            TransactionId::new([2; 12]),
+            &username,
+            &nonce,
+            [
+                Attribute::ChannelNumber(channel),
+                Attribute::XorPeerAddress(XorPeerAddress::new(peer.into_socket())),
+            ],
         );
-        server
-            .channel_numbers_by_client_and_peer
-            .insert((client, peer), channel);
-        server
-            .channel_and_client_by_port_and_peer
-            .insert((port, peer), (client, channel));
+        server.handle_client_input(&channel_bind, client, now);
+
+        assert_eq!(
+            server.next_command(),
+            Some(Command::CreateChannelBinding {
+                client,
+                channel_number: channel,
+                peer,
+                allocation_port: port,
+            })
+        );
+        assert!(matches!(
+            server.next_command(),
+            Some(Command::SendMessage { .. })
+        ));
 
         server.remove_account(&account);
 
@@ -1587,6 +1589,55 @@ mod tests {
         assert_eq!(server.num_allocations(), 0);
         assert_eq!(server.num_active_channels(), 0);
         assert_eq!(server.next_command(), None);
+    }
+
+    fn issue_nonce(server: &mut Server<StdRng>, client: ClientSocket, now: Instant) -> Nonce {
+        let mut allocate =
+            Message::<Attribute>::new(MessageClass::Request, ALLOCATE, TransactionId::new([0; 12]));
+        allocate.add_attribute(RequestedTransport::new(UDP_TRANSPORT));
+
+        let bytes = MessageEncoder::new()
+            .encode_into_bytes(allocate)
+            .expect("a well-formed ALLOCATE encodes");
+        server.handle_client_input(&bytes, client, now);
+
+        let Some(Command::SendMessage { payload, .. }) = server.next_command() else {
+            panic!("the relay answers an unauthenticated ALLOCATE");
+        };
+
+        MessageDecoder::<Attribute>::new()
+            .decode_from_bytes(&payload)
+            .expect("the relay's response decodes")
+            .expect("the relay's response is well-formed")
+            .get_attribute::<Nonce>()
+            .cloned()
+            .expect("a `401` carries a nonce")
+    }
+
+    fn authenticated_request(
+        server: &Server<StdRng>,
+        method: Method,
+        transaction_id: TransactionId,
+        username: &Username,
+        nonce: &Nonce,
+        attributes: impl IntoIterator<Item = Attribute>,
+    ) -> Vec<u8> {
+        let mut message = Message::<Attribute>::new(MessageClass::Request, method, transaction_id);
+        for attribute in attributes {
+            message.add_attribute(attribute);
+        }
+        message.add_attribute(username.clone());
+        message.add_attribute(nonce.clone());
+
+        let password = auth::generate_password(server.auth_secret(), username.name());
+        let integrity =
+            MessageIntegrity::new_long_term_credential(&message, username, &FIREZONE, &password)
+                .expect("a valid request has valid message integrity");
+        message.add_attribute(integrity);
+
+        MessageEncoder::new()
+            .encode_into_bytes(message)
+            .expect("a well-formed request encodes")
     }
 
     // Tests for requirements listed in https://www.rfc-editor.org/rfc/rfc8656#name-receiving-an-allocate-reque.

@@ -44,6 +44,7 @@ use sha2::digest::FixedOutput;
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
+use std::fmt;
 use std::time::{Duration, SystemTime};
 use stun_codec::Message;
 use stun_codec::rfc5389::attributes::{MessageIntegrity, Realm, Username};
@@ -61,7 +62,7 @@ pub(crate) trait MessageIntegrityExt {
         relay_secret: &SecretString,
         username: &str,
         now: SystemTime,
-    ) -> Result<String, Error>;
+    ) -> Result<AccountIdHash, Error>;
 }
 
 impl MessageIntegrityExt for MessageIntegrity {
@@ -70,7 +71,7 @@ impl MessageIntegrityExt for MessageIntegrity {
         relay_secret: &SecretString,
         username: &str,
         now: SystemTime,
-    ) -> Result<String, Error> {
+    ) -> Result<AccountIdHash, Error> {
         let username = parse_username(username)?;
         let expiry = username.expiry();
         let expires_at = systemtime_from_unix(expiry).ok_or(Error::InvalidUsername)?;
@@ -88,7 +89,7 @@ impl MessageIntegrityExt for MessageIntegrity {
         )
         .map_err(|_| Error::InvalidPassword)?;
 
-        Ok(username.account().to_owned())
+        Ok(AccountIdHash(username.account().to_owned()))
     }
 }
 
@@ -255,6 +256,16 @@ pub(crate) enum Error {
     CannotAuthenticate(#[from] bytecodec::Error),
 }
 
+/// The SHA-256 account ID digest carried in an account-bound TURN credential.
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub struct AccountIdHash(String);
+
+impl fmt::Display for AccountIdHash {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
 struct ParsedUsername<'a> {
     raw: &'a str,
     expiry: u64,
@@ -301,8 +312,8 @@ pub fn generate_password(relay_secret: &SecretString, username: &str) -> String 
     BASE64_STANDARD_NO_PAD.encode(hasher.finalize_fixed().as_slice())
 }
 
-pub fn hash_account_id(account_id: &str) -> String {
-    BASE64_STANDARD_NO_PAD.encode(Sha256::digest(account_id).as_slice())
+pub fn hash_account_id(account_id: &str) -> AccountIdHash {
+    AccountIdHash(BASE64_STANDARD_NO_PAD.encode(Sha256::digest(account_id).as_slice()))
 }
 
 fn generate_password_for_username(
@@ -349,7 +360,10 @@ mod tests {
         let account_hash = hash_account_id(account_id);
         let username = format!("{expiry}:{account_hash}:uvdgKvS9GXYZ_vmv");
         let password = generate_password(&"1cab293a-4032-46f4-862a-40e5d174b0d2".into(), &username);
-        assert_eq!(account_hash, "Erk3fL5+XJTopw2dI5KVI9FK+pVHkxMPijlZx7hJrKg");
+        assert_eq!(
+            account_hash.to_string(),
+            "Erk3fL5+XJTopw2dI5KVI9FK+pVHkxMPijlZx7hJrKg"
+        );
         assert_eq!(password, "vNbf+vO+nDVJ2fcJjghxKu6oJVLDJbm9G6kh3XTySFA")
     }
 
@@ -369,7 +383,7 @@ mod tests {
             systemtime_from_unix(1685200000 - 1000).unwrap(),
         );
 
-        assert_eq!(result.unwrap(), account);
+        assert_eq!(result.unwrap().to_string(), account);
     }
 
     #[test]
@@ -394,7 +408,8 @@ mod tests {
                     &username,
                     systemtime_from_unix(expiry - 1_000).unwrap(),
                 )
-                .unwrap(),
+                .unwrap()
+                .to_string(),
             account
         );
 
