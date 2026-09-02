@@ -16,7 +16,7 @@ use bufferpool::{Buffer, VecBuf};
 use dns_types::DoHUrl;
 use futures::{
     FutureExt as _, TryFutureExt as _,
-    future::{BoxFuture, Shared},
+    future::{BoxFuture, Remote, RemoteHandle, Shared},
 };
 use futures_bounded::FuturesTupleSet;
 use http_client::HttpClient;
@@ -74,12 +74,53 @@ struct DnsQueryMetaData {
 }
 
 enum DohClient {
-    Connecting(Bootstrap),
+    Connecting {
+        /// Dropping this before it completes makes polling `handle` panic; [`Io::reset`] drops the waiting queries along with it.
+        driver: Remote<BoxFuture<'static, BootstrapResult>>,
+        handle: Shared<RemoteHandle<BootstrapResult>>,
+    },
     Connected(HttpClient),
 }
 
-/// Shared between the [`Io`] event-loop, which drives it, and the queries waiting on it.
-type Bootstrap = Shared<BoxFuture<'static, Result<HttpClient, Arc<anyhow::Error>>>>;
+/// `anyhow::Error` is not `Clone`, which the output of a [`Shared`] future has to be.
+type BootstrapResult = Result<HttpClient, Arc<anyhow::Error>>;
+
+impl DohClient {
+    /// Only polling `driver` advances the bootstrap; `handle` merely observes its result.
+    fn connecting(
+        bootstrap_dns_client: &BootstrapDnsClient,
+        socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
+        server: &DoHUrl,
+    ) -> Self {
+        let addresses = bootstrap_dns_client.resolve(server.host());
+        let server = server.clone();
+
+        let (driver, handle) = tokio::time::timeout(DNS_QUERY_TIMEOUT, async move {
+            tracing::debug!(%server, "Bootstrapping DoH client");
+
+            let addresses = addresses.await?;
+            let http_client =
+                HttpClient::new(server.host().to_string(), addresses, socket_factory).await?;
+
+            tracing::debug!(%server, "Bootstrapped DoH client");
+
+            Ok(http_client)
+        })
+        .map(|result| {
+            result
+                .map_err(anyhow::Error::new)
+                .flatten()
+                .map_err(Arc::new)
+        })
+        .boxed()
+        .remote_handle();
+
+        Self::Connecting {
+            driver,
+            handle: handle.shared(),
+        }
+    }
+}
 
 /// Represents all IO sources that may be ready during a single event-loop tick.
 ///
@@ -244,27 +285,31 @@ impl Io {
         // We purposely don't want to block the event loop here because we can do plenty of other work while this is running.
         let _ = self.nameservers.poll(cx);
 
-        self.doh_clients
-            .extract_if(.., |url, client| {
-                let DohClient::Connecting(bootstrap) = client else {
-                    return false;
-                };
+        let mut failed_bootstraps = Vec::new();
 
-                match bootstrap.poll_unpin(cx) {
-                    Poll::Ready(Ok(http_client)) => {
-                        *client = DohClient::Connected(http_client);
+        for (url, client) in self.doh_clients.iter_mut() {
+            let DohClient::Connecting { driver, handle } = client else {
+                continue;
+            };
 
-                        false
-                    }
-                    Poll::Ready(Err(e)) => {
-                        tracing::debug!(%url, "Failed to bootstrap DoH client: {e:#}");
+            if driver.poll_unpin(cx).is_pending() {
+                continue;
+            }
 
-                        true
-                    }
-                    Poll::Pending => false,
+            match handle.poll_unpin(cx) {
+                Poll::Ready(Ok(http_client)) => *client = DohClient::Connected(http_client),
+                Poll::Ready(Err(e)) => {
+                    tracing::debug!(%url, "Failed to bootstrap DoH client: {e:#}");
+
+                    failed_bootstraps.push(url.clone());
                 }
-            })
-            .for_each(drop);
+                Poll::Pending => {}
+            }
+        }
+
+        for url in failed_bootstraps {
+            self.doh_clients.remove(&url);
+        }
 
         let network = self.sockets.poll_recv_from(cx);
 
@@ -536,59 +581,36 @@ impl Io {
 
     /// Ensures a DoH client for `server` exists or is being bootstrapped.
     pub(crate) fn bootstrap_doh_client(&mut self, server: DoHUrl) {
-        drop(self.doh_client(server));
+        self.doh_client_entry(server);
     }
 
-    /// Returns the DoH client for `server`, bootstrapping a new one if there is none or its connection is closed.
+    /// Resolves to the DoH client for `server` once it is connected.
     fn doh_client(&mut self, server: DoHUrl) -> BoxFuture<'static, Result<HttpClient>> {
-        let bootstrap = match self.doh_clients.get(&server) {
-            Some(DohClient::Connected(client)) if !client.is_closed() => {
-                return futures::future::ready(Ok(client.clone())).boxed();
+        match self.doh_client_entry(server) {
+            DohClient::Connected(client) => futures::future::ready(Ok(client.clone())).boxed(),
+            DohClient::Connecting { handle, .. } => {
+                handle.clone().map_err(|e| anyhow::anyhow!("{e:#}")).boxed()
             }
-            Some(DohClient::Connected(_)) => {
-                tracing::debug!(%server, "DoH connection is closed");
-
-                self.start_doh_bootstrap(server)
-            }
-            Some(DohClient::Connecting(bootstrap)) => bootstrap.clone(),
-            None => self.start_doh_bootstrap(server),
-        };
-
-        bootstrap.map_err(|e| anyhow::anyhow!("{e:#}")).boxed()
+        }
     }
 
-    fn start_doh_bootstrap(&mut self, server: DoHUrl) -> Bootstrap {
-        let socket_factory = self.tcp_socket_factory.clone();
-        let addresses = self.bootstrap_dns_client.resolve(server.host());
+    /// Returns the entry for `server`, replacing a closed client with a fresh bootstrap.
+    fn doh_client_entry(&mut self, server: DoHUrl) -> &DohClient {
+        if let Some(DohClient::Connected(client)) = self.doh_clients.get(&server)
+            && client.is_closed()
+        {
+            tracing::debug!(%server, "DoH connection is closed");
 
-        let bootstrap = tokio::time::timeout(DNS_QUERY_TIMEOUT, {
-            let server = server.clone();
+            self.doh_clients.remove(&server);
+        }
 
-            async move {
-                tracing::debug!(%server, "Bootstrapping DoH client");
-
-                let addresses = addresses.await?;
-                let http_client =
-                    HttpClient::new(server.host().to_string(), addresses, socket_factory).await?;
-
-                tracing::debug!(%server, "Bootstrapped DoH client");
-
-                Ok(http_client)
-            }
+        self.doh_clients.entry(server).or_insert_with_key(|server| {
+            DohClient::connecting(
+                &self.bootstrap_dns_client,
+                self.tcp_socket_factory.clone(),
+                server,
+            )
         })
-        .map(|result| {
-            result
-                .map_err(anyhow::Error::new)
-                .flatten()
-                .map_err(Arc::new)
-        })
-        .boxed()
-        .shared();
-
-        self.doh_clients
-            .insert(server, DohClient::Connecting(bootstrap.clone()));
-
-        bootstrap
     }
 
     pub(crate) fn send_udp_dns_response(
@@ -676,7 +698,7 @@ mod tests {
 
         assert!(matches!(
             io.doh_clients.get(&DoHUrl::cloudflare()),
-            Some(DohClient::Connecting(_))
+            Some(DohClient::Connecting { .. })
         ));
     }
 

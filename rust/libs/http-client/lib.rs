@@ -136,8 +136,8 @@ impl HttpClient {
                     client
                         .send_request(request)
                         .await
-                        .context(Closed)
-                        .context("Failed to send HTTP/2 request")?
+                        .context("Failed to send HTTP/2 request")
+                        .context(Closed)?
                 }
                 Sender::H1(mutex) => {
                     // HTTP/1.1 carries the host in a `Host` header (HTTP/2 uses the
@@ -158,8 +158,8 @@ impl HttpClient {
                     client
                         .send_request(request)
                         .await
-                        .context(Closed)
-                        .context("Failed to send HTTP/1.1 request")?
+                        .context("Failed to send HTTP/1.1 request")
+                        .context(Closed)?
                 }
             };
 
@@ -168,8 +168,8 @@ impl HttpClient {
             let body = incoming
                 .collect()
                 .await
-                .context(Closed)
-                .context("Failed to receive HTTP response body")?;
+                .context("Failed to receive HTTP response body")
+                .context(Closed)?;
 
             Ok(http::Response::from_parts(parts, body.to_bytes()))
         })
