@@ -7,7 +7,8 @@ defmodule PortalAPI.Schemas.ClientToken do
 
     OpenApiSpex.schema(%{
       title: "ClientToken",
-      description: "Client Token metadata",
+      description:
+        "Client Token metadata. Token values cannot be retrieved after creation.",
       type: :object,
       properties: %{
         id: %Schema{type: :string, format: :uuid, description: "Client Token ID"},
@@ -123,8 +124,10 @@ defmodule PortalAPI.Schemas.ClientToken do
     alias PortalAPI.Schemas.ClientToken
 
     OpenApiSpex.schema(%{
-      title: "ClientTokenResponse",
-      description: "Response schema for Client Token metadata",
+      title: "ClientTokenShowResponse",
+      description:
+        "Response schema for Client Token metadata. " <>
+          "Token values cannot be retrieved after creation.",
       type: :object,
       properties: %{
         data: ClientToken.Schema
@@ -149,7 +152,9 @@ defmodule PortalAPI.Schemas.ClientToken do
 
     OpenApiSpex.schema(%{
       title: "ClientTokenListResponse",
-      description: "Response schema for multiple Client Tokens",
+      description:
+        "Response schema for multiple Client Tokens. " <>
+          "Token values cannot be retrieved after creation.",
       type: :object,
       properties: %{
         data: %Schema{description: "Client Token metadata", type: :array, items: ClientToken.Schema},

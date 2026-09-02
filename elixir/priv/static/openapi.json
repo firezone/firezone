@@ -836,7 +836,7 @@
         "type": "object"
       },
       "ClientToken": {
-        "description": "Client Token metadata",
+        "description": "Client Token metadata. Token values cannot be retrieved after creation.",
         "example": {
           "actor_id": "43a7f82f-831a-4a9d-8f17-c66c2bb6e205",
           "expires_at": "2025-01-15T12:34:56.789Z",
@@ -1978,7 +1978,7 @@
         "type": "object"
       },
       "ClientTokenListResponse": {
-        "description": "Response schema for multiple Client Tokens",
+        "description": "Response schema for multiple Client Tokens. Token values cannot be retrieved after creation.",
         "example": {
           "data": [
             {
@@ -3426,6 +3426,25 @@
           }
         },
         "title": "PolicyUpdateParams",
+        "type": "object"
+      },
+      "ClientTokenShowResponse": {
+        "description": "Response schema for Client Token metadata. Token values cannot be retrieved after creation.",
+        "example": {
+          "data": {
+            "actor_id": "43a7f82f-831a-4a9d-8f17-c66c2bb6e205",
+            "expires_at": "2025-01-15T12:34:56.789Z",
+            "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
+            "inserted_at": "2025-01-15T12:34:56.789Z",
+            "updated_at": "2025-01-15T12:34:56.789Z"
+          }
+        },
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ClientToken"
+          }
+        },
+        "title": "ClientTokenShowResponse",
         "type": "object"
       },
       "DefenderDevice": {
@@ -9441,6 +9460,7 @@
       },
       "get": {
         "callbacks": {},
+        "description": "Retrieves metadata about an Actor's Client Tokens. Token values cannot be retrieved after creation.",
         "operationId": "PortalAPI.ClientTokenController.index",
         "parameters": [
           {
@@ -9791,6 +9811,7 @@
       },
       "get": {
         "callbacks": {},
+        "description": "Retrieves metadata about a Client Token. Token values cannot be retrieved after creation.",
         "operationId": "PortalAPI.ClientTokenController.show",
         "parameters": [
           {
@@ -9819,7 +9840,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ClientTokenResponse"
+                  "$ref": "#/components/schemas/ClientTokenShowResponse"
                 }
               }
             },

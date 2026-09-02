@@ -12,6 +12,9 @@ defmodule PortalAPI.ClientTokenController do
   # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :index,
     summary: "List Client Tokens for service_account, account_user, or account_admin_user actors",
+    description:
+      "Retrieves metadata about an Actor's Client Tokens. " <>
+        "Token values cannot be retrieved after creation.",
     parameters: [
       actor_id: [
         in: :path,
@@ -52,6 +55,9 @@ defmodule PortalAPI.ClientTokenController do
   # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :show,
     summary: "Show a Client Token for service_account, account_user, or account_admin_user actors",
+    description:
+      "Retrieves metadata about a Client Token. " <>
+        "Token values cannot be retrieved after creation.",
     parameters: [
       actor_id: [
         in: :path,
