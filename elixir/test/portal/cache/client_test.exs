@@ -250,7 +250,7 @@ defmodule Portal.Cache.ClientTest do
       group = group_fixture(account: account)
       membership_fixture(account: account, actor: actor, group: group)
 
-      resource = static_device_pool_resource_fixture(account: account, clients: [target_client])
+      resource = static_device_pool_resource_fixture(account: account, devices: [target_client])
       policy_fixture(account: account, group: group, resource: resource)
 
       client = %{
@@ -286,7 +286,7 @@ defmodule Portal.Cache.ClientTest do
       group = group_fixture(account: account)
       membership_fixture(account: account, actor: actor, group: group)
 
-      resource = static_device_pool_resource_fixture(account: account, clients: [target_client])
+      resource = static_device_pool_resource_fixture(account: account, devices: [target_client])
       policy_fixture(account: account, group: group, resource: resource)
 
       client = %{
@@ -348,7 +348,7 @@ defmodule Portal.Cache.ClientTest do
       group = group_fixture(account: account)
       membership_fixture(account: account, actor: actor, group: group)
 
-      resource = static_device_pool_resource_fixture(account: account, clients: [target_client])
+      resource = static_device_pool_resource_fixture(account: account, devices: [target_client])
       policy_fixture(account: account, group: group, resource: resource)
 
       client = %{
@@ -397,7 +397,7 @@ defmodule Portal.Cache.ClientTest do
       group = group_fixture(account: account)
       membership_fixture(account: account, actor: actor, group: group)
 
-      resource = static_device_pool_resource_fixture(account: account, clients: [target_client])
+      resource = static_device_pool_resource_fixture(account: account, devices: [target_client])
       policy_fixture(account: account, group: group, resource: resource)
 
       client = %{
@@ -648,7 +648,7 @@ defmodule Portal.Cache.ClientTest do
       ipv6_tuple = target.ipv6.address
 
       pool =
-        static_device_pool_resource_fixture(account: account, clients: [])
+        static_device_pool_resource_fixture(account: account, devices: [])
 
       rid_bytes = Ecto.UUID.dump!(pool.id)
 
@@ -685,7 +685,7 @@ defmodule Portal.Cache.ClientTest do
       did_a = Ecto.UUID.dump!(target_a.id)
       did_b = Ecto.UUID.dump!(target_b.id)
 
-      pool = static_device_pool_resource_fixture(account: account, clients: [])
+      pool = static_device_pool_resource_fixture(account: account, devices: [])
       rid_bytes = Ecto.UUID.dump!(pool.id)
 
       cacheable_pool = Cacheable.to_cache(pool)
@@ -770,7 +770,7 @@ defmodule Portal.Cache.ClientTest do
       did_a = Ecto.UUID.dump!(target_a.id)
       did_b = Ecto.UUID.dump!(target_b.id)
 
-      pool = static_device_pool_resource_fixture(account: account, clients: [])
+      pool = static_device_pool_resource_fixture(account: account, devices: [])
       rid_bytes = Ecto.UUID.dump!(pool.id)
 
       cacheable_pool = Cacheable.to_cache(pool)
@@ -843,7 +843,7 @@ defmodule Portal.Cache.ClientTest do
       did_a = Ecto.UUID.dump!(target_a.id)
       did_b = Ecto.UUID.dump!(target_b.id)
 
-      pool = static_device_pool_resource_fixture(account: account, clients: [])
+      pool = static_device_pool_resource_fixture(account: account, devices: [])
       rid_bytes = Ecto.UUID.dump!(pool.id)
 
       cacheable_pool = Cacheable.to_cache(pool)
@@ -899,7 +899,7 @@ defmodule Portal.Cache.ClientTest do
       pool =
         static_device_pool_resource_fixture(
           account: account,
-          clients: [target_a, target_b]
+          devices: [target_a, target_b]
         )
 
       policy_fixture(account: account, group: group, resource: pool)
@@ -930,7 +930,7 @@ defmodule Portal.Cache.ClientTest do
       actor = actor_fixture(type: :account_admin_user, account: account)
       subject = subject_fixture(account: account, actor: actor, type: :client)
 
-      pool = static_device_pool_resource_fixture(account: account, clients: [])
+      pool = static_device_pool_resource_fixture(account: account, devices: [])
       rid_bytes = Ecto.UUID.dump!(pool.id)
 
       cacheable_pool = Cacheable.to_cache(pool)

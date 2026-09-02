@@ -235,8 +235,8 @@ defmodule PortalAPI.ClientController do
     alias Portal.Device
 
     def list_clients(subject, opts \\ []) do
-      from(d in Device, as: :clients)
-      |> where([clients: d], d.type == :client)
+      from(d in Device, as: :devices)
+      |> where([devices: d], d.type == :client)
       |> Safe.scoped(subject)
       |> Safe.list(__MODULE__, opts)
     end
@@ -259,7 +259,7 @@ defmodule PortalAPI.ClientController do
     end
 
     defp filter_by_name(queryable, name) do
-      dynamic = dynamic([clients: d], d.name == ^name)
+      dynamic = dynamic([devices: d], d.name == ^name)
       {queryable, dynamic}
     end
 
@@ -267,14 +267,14 @@ defmodule PortalAPI.ClientController do
     # per account, so this can still match more than one row - callers
     # must handle that rather than assuming a single result.
     defp filter_by_firezone_id(queryable, firezone_id) do
-      dynamic = dynamic([clients: d], d.firezone_id == ^firezone_id)
+      dynamic = dynamic([devices: d], d.firezone_id == ^firezone_id)
       {queryable, dynamic}
     end
 
     def cursor_fields do
       [
-        {:clients, :asc, :inserted_at},
-        {:clients, :asc, :id}
+        {:devices, :asc, :inserted_at},
+        {:devices, :asc, :id}
       ]
     end
 
@@ -286,8 +286,8 @@ defmodule PortalAPI.ClientController do
 
     def fetch_client(id, subject) do
       result =
-        from(d in Device, as: :clients)
-        |> where([clients: d], d.id == ^id and d.type == :client)
+        from(d in Device, as: :devices)
+        |> where([devices: d], d.id == ^id and d.type == :client)
         |> Safe.scoped(subject)
         |> Safe.one()
 

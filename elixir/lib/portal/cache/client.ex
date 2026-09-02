@@ -1067,14 +1067,14 @@ defmodule Portal.Cache.Client do
         on: m.account_id == r.account_id,
         as: :members
       )
-      |> join(:inner, [members: m], c in assoc(m, :client),
-        on: c.account_id == m.account_id,
-        as: :clients
+      |> join(:inner, [members: m], d in assoc(m, :client),
+        on: d.account_id == m.account_id,
+        as: :devices
       )
-      |> where([clients: c], c.type == :client)
+      |> where([devices: d], d.type == :client)
       |> select(
-        [resources: r, members: m, clients: c],
-        {r.id, m.device_id, c.ipv4, c.ipv6}
+        [resources: r, members: m, devices: d],
+        {r.id, m.device_id, d.ipv4, d.ipv6}
       )
       |> Safe.scoped(subject)
       |> Safe.all()

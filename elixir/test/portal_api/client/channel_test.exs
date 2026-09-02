@@ -2223,7 +2223,7 @@ defmodule PortalAPI.Client.ChannelTest do
       # Client is not verified, so resource should not be accessible
       refute_push "resource_created_or_updated", _payload
 
-      verified_client = verify_client(client)
+      verified_client = verify_device(client)
 
       send(socket.channel_pid, %Changes.Change{
         lsn: 200,
@@ -5541,7 +5541,7 @@ defmodule PortalAPI.Client.ChannelTest do
         )
 
       pool_resource =
-        static_device_pool_resource_fixture(account: account, clients: [target_client])
+        static_device_pool_resource_fixture(account: account, devices: [target_client])
 
       policy_fixture(account: account, group: group, resource: pool_resource)
 
@@ -5775,7 +5775,7 @@ defmodule PortalAPI.Client.ChannelTest do
            target_client: target_client
          } do
       pool =
-        static_device_pool_resource_fixture(account: account, clients: [target_client])
+        static_device_pool_resource_fixture(account: account, devices: [target_client])
 
       # Create a policy in another group the actor is not a member of — the resource
       # is therefore not in the actor's connectable_resources.
@@ -6531,7 +6531,7 @@ defmodule PortalAPI.Client.ChannelTest do
       target_client: target_client
     } do
       static_pool =
-        static_device_pool_resource_fixture(account: account, clients: [target_client])
+        static_device_pool_resource_fixture(account: account, devices: [target_client])
 
       policy_fixture(account: account, group: group, resource: static_pool)
 
@@ -6728,7 +6728,7 @@ defmodule PortalAPI.Client.ChannelTest do
       target_client = client_fixture(account: account, actor: target_actor) |> fetch_device!()
 
       pool_resource =
-        static_device_pool_resource_fixture(account: account, clients: [target_client])
+        static_device_pool_resource_fixture(account: account, devices: [target_client])
 
       policy_fixture(account: account, group: group, resource: pool_resource)
 
@@ -6773,8 +6773,8 @@ defmodule PortalAPI.Client.ChannelTest do
       target_actor = actor_fixture(account: account)
       target_client = client_fixture(account: account, actor: target_actor) |> fetch_device!()
 
-      pool_a = static_device_pool_resource_fixture(account: account, clients: [target_client])
-      pool_b = static_device_pool_resource_fixture(account: account, clients: [target_client])
+      pool_a = static_device_pool_resource_fixture(account: account, devices: [target_client])
+      pool_b = static_device_pool_resource_fixture(account: account, devices: [target_client])
       policy_fixture(account: account, group: group, resource: pool_a)
       policy_fixture(account: account, group: group, resource: pool_b)
 
@@ -6819,7 +6819,7 @@ defmodule PortalAPI.Client.ChannelTest do
       target_client = client_fixture(account: account, actor: target_actor) |> fetch_device!()
 
       pool_resource =
-        static_device_pool_resource_fixture(account: account, clients: [target_client])
+        static_device_pool_resource_fixture(account: account, devices: [target_client])
 
       policy_fixture(account: account, group: group, resource: pool_resource)
 
@@ -7170,7 +7170,7 @@ defmodule PortalAPI.Client.ChannelTest do
       pool_resource =
         Portal.ResourceFixtures.static_device_pool_resource_fixture(
           account: account,
-          clients: [target_client]
+          devices: [target_client]
         )
 
       policy_fixture(account: account, group: group, resource: pool_resource)
