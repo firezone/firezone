@@ -14,6 +14,7 @@ import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.firezone.android.core.ApplicationMode
 import dev.firezone.android.core.data.Repository
+import dev.firezone.android.core.data.TokenStore
 import dev.firezone.android.core.x509.CertificateAccess
 import dev.firezone.android.tunnel.TunnelService
 import kotlinx.coroutines.delay
@@ -29,6 +30,7 @@ internal class SplashViewModel
     @Inject
     constructor(
         private val repo: Repository,
+        private val tokenStore: TokenStore,
         private val applicationRestrictions: Bundle,
         private val applicationMode: ApplicationMode,
         private val certificateAccess: CertificateAccess,
@@ -65,7 +67,7 @@ internal class SplashViewModel
                     return@launch
                 }
 
-                val token = applicationRestrictions.getString("token") ?: repo.getTokenSync()
+                val token = applicationRestrictions.getString("token") ?: tokenStore.get()
 
                 if (token.isNullOrBlank()) {
                     actionMutableStateFlow.value = ViewAction.NavigateToSignIn

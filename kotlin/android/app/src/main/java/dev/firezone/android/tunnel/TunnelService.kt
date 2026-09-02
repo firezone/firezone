@@ -25,6 +25,7 @@ import dev.firezone.android.core.Log
 import dev.firezone.android.core.Telemetry
 import dev.firezone.android.core.data.Repository
 import dev.firezone.android.core.data.ResourceState
+import dev.firezone.android.core.data.TokenStore
 import dev.firezone.android.core.data.isEnabled
 import dev.firezone.android.core.x509.X509Identity
 import dev.firezone.android.core.x509.X509IdentityException
@@ -77,6 +78,9 @@ import kotlin.coroutines.cancellation.CancellationException
 class TunnelService : VpnService() {
     @Inject
     internal lateinit var repo: Repository
+
+    @Inject
+    internal lateinit var tokenStore: TokenStore
 
     @Inject
     internal lateinit var appRestrictions: Bundle
@@ -330,7 +334,7 @@ class TunnelService : VpnService() {
 
     private fun connect() {
         val token =
-            (appRestrictions.getString("token") ?: repo.getTokenSync())
+            (appRestrictions.getString("token") ?: tokenStore.get())
                 ?.takeUnless(String::isBlank)
         val certificateAlias = repo.getX509CertificateAliasSync(appRestrictions)
         val config = repo.getConfigSync()
@@ -717,7 +721,7 @@ class TunnelService : VpnService() {
                                     Log.i(TAG, "Disconnected by connlib: ${event.error.message()}")
 
                                     if (event.error.requiresSignIn()) {
-                                        repo.clearToken()
+                                        tokenStore.clear()
                                     }
 
                                     stopReason = StopReason.Disconnected(event.error.message())
