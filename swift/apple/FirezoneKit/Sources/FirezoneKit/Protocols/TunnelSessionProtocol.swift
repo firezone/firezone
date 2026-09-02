@@ -11,6 +11,8 @@
 ///
 /// The methods mirror Apple's API exactly, which lets `NETunnelProviderSession`
 /// conform via an empty extension — there is no "real" wrapper to keep in sync.
+/// Status changes travel the same way as Apple's: a conformer posts
+/// `NEVPNStatusDidChange` with itself as the notification's object.
 public protocol TunnelSessionProtocol: AnyObject, Sendable {
   var status: NEVPNStatus { get }
   // swiftlint:disable:next discouraged_optional_collection

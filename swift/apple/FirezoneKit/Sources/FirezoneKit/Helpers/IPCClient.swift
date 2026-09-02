@@ -201,8 +201,9 @@ public enum IPCClient {
 
   /// Returns a stream of VPN status updates for the given session.
   ///
-  /// Filters `NEVPNStatusDidChange` notifications to only those matching `session`.
-  /// The caller is responsible for consuming the stream in a task they manage.
+  /// Every connection in the process posts `NEVPNStatusDidChange` with itself as the
+  /// object; only `session`'s are passed on. The caller is responsible for consuming the
+  /// stream in a task they manage.
   public static func vpnStatusUpdates(
     session: any TunnelSessionProtocol
   ) -> AsyncStream<NEVPNStatus> {
@@ -211,14 +212,10 @@ public enum IPCClient {
         for await notification in NotificationCenter.default.notifications(
           named: .NEVPNStatusDidChange)
         {
-          guard let notificationSession = notification.object as? NETunnelProviderSession
-          else {
-            return
-          }
+          guard let sender = notification.object as? any TunnelSessionProtocol, sender === session
+          else { continue }
 
-          if notificationSession === session {
-            continuation.yield(notificationSession.status)
-          }
+          continuation.yield(session.status)
         }
         continuation.finish()
       }
