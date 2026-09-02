@@ -3,7 +3,6 @@ package dev.firezone.android.features.auth.ui
 
 import android.net.Uri
 import androidx.lifecycle.ViewModel
-import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.firezone.android.core.data.Repository
 import dev.firezone.android.features.auth.AuthCallbackHandler
@@ -11,7 +10,6 @@ import dev.firezone.android.features.auth.AuthCallbackOutcome
 import dev.firezone.android.features.auth.PendingAuthSession
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.launch
 import java.security.SecureRandom
 import javax.inject.Inject
 
@@ -26,7 +24,6 @@ internal class AuthViewModel
         private val actionMutableStateFlow = MutableStateFlow<ViewAction?>(null)
         val actionStateFlow: StateFlow<ViewAction?> = actionMutableStateFlow
         private var hasStartedAuthFlow = false
-        private var isProcessingAuthCallback = false
         private var authState: String? = null
 
         fun startAuthFlow() {
@@ -35,35 +32,26 @@ internal class AuthViewModel
             }
             hasStartedAuthFlow = true
 
-            viewModelScope.launch {
-                val state = generateRandomString(NONCE_LENGTH)
-                val nonce = generateRandomString(NONCE_LENGTH)
-                authState = state
-                pendingAuthSession.begin(nonce = nonce, state = state)
-                val config = repo.getConfigSync()
-                val authUrl = "${config.authUrl}/${config.accountSlug}?state=$state&nonce=$nonce&as=gui-client"
+            val state = generateRandomString(NONCE_LENGTH)
+            val nonce = generateRandomString(NONCE_LENGTH)
+            authState = state
+            pendingAuthSession.begin(nonce = nonce, state = state)
+            val config = repo.getConfigSync()
+            val authUrl = "${config.authUrl}/${config.accountSlug}?state=$state&nonce=$nonce&as=gui-client"
 
-                actionMutableStateFlow.value =
-                    ViewAction.LaunchAuthFlow(authUrl)
-            }
+            actionMutableStateFlow.value =
+                ViewAction.LaunchAuthFlow(authUrl)
         }
 
         fun processAuthCallback(uri: Uri?) {
-            isProcessingAuthCallback = true
-            viewModelScope.launch {
-                try {
-                    val action = handleAuthCallback(uri)
-                    if (action is ViewAction.AuthFlowError) {
-                        cancelAuthFlow()
-                    }
-                    actionMutableStateFlow.value = action
-                } finally {
-                    isProcessingAuthCallback = false
-                }
+            val action = handleAuthCallback(uri)
+            if (action is ViewAction.AuthFlowError) {
+                cancelAuthFlow()
             }
+            actionMutableStateFlow.value = action
         }
 
-        internal suspend fun handleAuthCallback(uri: Uri?): ViewAction =
+        private fun handleAuthCallback(uri: Uri?): ViewAction =
             when (val outcome = authCallbackHandler.handle(uri)) {
                 is AuthCallbackOutcome.Success -> {
                     authState = null
@@ -83,7 +71,6 @@ internal class AuthViewModel
 
         fun canRestoreAuthFlow(): Boolean =
             hasStartedAuthFlow ||
-                isProcessingAuthCallback ||
                 actionMutableStateFlow.value != null ||
                 pendingAuthSession.hasPendingRequest()
 

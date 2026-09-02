@@ -70,16 +70,6 @@ class Repository
         private val _favorites =
             MutableStateFlow(Favorites(HashSet(sharedPreferences.getStringSet(FAVORITE_RESOURCES_KEY, null).orEmpty())))
         val favorites = _favorites.asStateFlow()
-        private val credentialsLock = Any()
-
-        init {
-            sharedPreferences
-                .edit()
-                .remove(LEGACY_NONCE_KEY)
-                .remove(LEGACY_STATE_KEY)
-                .remove(LEGACY_PENDING_AUTH_HANDOFF_STATE_HASH_KEY)
-                .apply()
-        }
 
         fun getConfigSync(): Config = getUserConfigSync().withManagedOverrides()
 
@@ -215,13 +205,6 @@ class Repository
             saveFavoritesSync()
         }
 
-        fun getToken(): Flow<String?> =
-            flow {
-                emit(sharedPreferences.getString(TOKEN_KEY, null))
-            }.flowOn(coroutineDispatcher)
-
-        fun getTokenSync(): String? = sharedPreferences.getString(TOKEN_KEY, null)
-
         fun getAccountSlug(): Flow<String?> =
             flow {
                 emit(sharedPreferences.getString(ACCOUNT_SLUG_KEY, null))
@@ -254,27 +237,6 @@ class Repository
                 .edit()
                 .putString(ENABLED_INTERNET_RESOURCE_KEY, Gson().toJson(value))
                 .apply()
-
-        fun saveToken(value: String): Flow<Unit> =
-            flow {
-                synchronized(credentialsLock) {
-                    sharedPreferences
-                        .edit()
-                        .putString(TOKEN_KEY, value)
-                        .apply()
-                }
-
-                emit(Unit)
-            }.flowOn(coroutineDispatcher)
-
-        fun clearCredentials() {
-            synchronized(credentialsLock) {
-                sharedPreferences
-                    .edit()
-                    .remove(TOKEN_KEY)
-                    .apply()
-            }
-        }
 
         fun getManagedStatus(): ManagedConfigStatus =
             ManagedConfigStatus(
@@ -362,10 +324,6 @@ class Repository
             private const val MANAGED_ACCOUNT_SLUG_KEY = "managedAccountSlug"
             private const val MANAGED_START_ON_LOGIN_KEY = "managedStartOnLogin"
             private const val MANAGED_CONNECT_ON_START_KEY = "managedConnectOnStart"
-            private const val TOKEN_KEY = "token"
-            private const val LEGACY_NONCE_KEY = "nonce"
-            private const val LEGACY_STATE_KEY = "state"
-            private const val LEGACY_PENDING_AUTH_HANDOFF_STATE_HASH_KEY = "pendingAuthHandoffStateHash"
             private const val DEVICE_ID_KEY = "deviceId"
             private const val ENABLED_INTERNET_RESOURCE_KEY = "enabledInternetResource"
             private const val NOTIFICATION_PERMISSION_REQUESTED_KEY = "notificationPermissionRequested"

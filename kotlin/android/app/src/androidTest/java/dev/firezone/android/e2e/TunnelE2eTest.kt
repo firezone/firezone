@@ -14,6 +14,7 @@ import androidx.test.core.app.ApplicationProvider
 import dagger.hilt.android.testing.HiltAndroidRule
 import dagger.hilt.android.testing.HiltAndroidTest
 import dev.firezone.android.core.data.Repository
+import dev.firezone.android.core.data.TokenStore
 import dev.firezone.android.tunnel.ACCOUNT_SLUG
 import dev.firezone.android.tunnel.ACTOR_NAME
 import dev.firezone.android.tunnel.FakeDisconnectError
@@ -31,7 +32,6 @@ import dev.firezone.android.tunnel.launchApp
 import dev.firezone.android.tunnel.resumedActivity
 import dev.firezone.android.tunnel.startTunnelService
 import dev.firezone.android.tunnel.stopTunnelService
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
@@ -59,6 +59,9 @@ class TunnelE2eTest {
 
     @Inject
     lateinit var repo: Repository
+
+    @Inject
+    internal lateinit var tokenStore: TokenStore
 
     @Inject
     lateinit var preferences: SharedPreferences
@@ -172,7 +175,7 @@ class TunnelE2eTest {
         awaitSignInScreen()
         assertEquals("the portal hung up", awaitDisconnectedNotification())
         // The token is still good, so the disconnect must not have discarded it.
-        assertEquals(TOKEN, repo.getTokenSync())
+        assertEquals(TOKEN, tokenStore.get())
     }
 
     @Test
@@ -185,7 +188,7 @@ class TunnelE2eTest {
 
         awaitSignInScreen()
         assertEquals("your session expired", awaitDisconnectedNotification())
-        assertNull(repo.getTokenSync())
+        assertNull(tokenStore.get())
     }
 
     @Test
@@ -199,8 +202,8 @@ class TunnelE2eTest {
         awaitText("Sign Out")
         composeRule.onNodeWithText("Sign Out").performClick()
 
-        await("the token to be cleared") { repo.getTokenSync() == null }
-        assertNull(repo.getTokenSync())
+        await("the token to be cleared") { tokenStore.get() == null }
+        assertNull(tokenStore.get())
     }
 
     @Test
@@ -234,7 +237,7 @@ class TunnelE2eTest {
         return awaitSession()
     }
 
-    private fun signIn() = runBlocking { repo.saveToken(TOKEN).first() }
+    private fun signIn() = tokenStore.save(TOKEN)
 
     private fun awaitSession(): FakeSession = runBlocking { withTimeout(TIMEOUT_MS) { FakeSessionFactory.awaitSession() } }
 

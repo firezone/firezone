@@ -2,20 +2,19 @@
 package dev.firezone.android.features.auth
 
 import android.net.Uri
-import dev.firezone.android.core.data.Repository
-import kotlinx.coroutines.flow.first
+import dev.firezone.android.core.data.TokenStore
 import javax.inject.Inject
 
 internal class AuthCallbackHandler
     @Inject
     constructor(
         private val pendingAuthSession: PendingAuthSession,
-        private val repo: Repository,
+        private val tokenStore: TokenStore,
     ) {
-        suspend fun handle(uri: Uri?): AuthCallbackOutcome {
+        fun handle(uri: Uri?): AuthCallbackOutcome {
             val outcome = pendingAuthSession.complete(uri)
             if (outcome is AuthCallbackOutcome.Success) {
-                repo.saveToken(outcome.token).first()
+                tokenStore.save(outcome.token)
             }
 
             return outcome

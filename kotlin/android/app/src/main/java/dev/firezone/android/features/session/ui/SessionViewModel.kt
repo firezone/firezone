@@ -5,17 +5,17 @@ import androidx.lifecycle.ViewModel
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.firezone.android.core.data.Favorites
 import dev.firezone.android.core.data.Repository
+import dev.firezone.android.core.data.TokenStore
 import kotlinx.coroutines.flow.StateFlow
 import javax.inject.Inject
 
 @HiltViewModel
 internal class SessionViewModel
     @Inject
-    constructor() : ViewModel() {
-        // Must be `internal` because Dagger does not support injection into `private` fields
-        @Inject
-        internal lateinit var repo: Repository
-
+    constructor(
+        private val repo: Repository,
+        private val tokenStore: TokenStore,
+    ) : ViewModel() {
         val favorites: StateFlow<Favorites>
             get() = repo.favorites
 
@@ -27,5 +27,5 @@ internal class SessionViewModel
             repo.removeFavoriteResource(id)
         }
 
-        fun clearCredentials() = repo.clearCredentials()
+        fun clearToken() = tokenStore.clear()
     }
