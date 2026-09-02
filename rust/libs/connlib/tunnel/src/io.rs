@@ -16,9 +16,10 @@ use bufferpool::{Buffer, VecBuf};
 use dns_types::DoHUrl;
 use futures::{
     FutureExt as _, TryFutureExt as _,
-    future::{BoxFuture, Remote, RemoteHandle, Shared},
+    channel::oneshot,
+    future::{BoxFuture, Shared},
 };
-use futures_bounded::FuturesTupleSet;
+use futures_bounded::{FuturesMap, FuturesTupleSet, PushError};
 use http_client::HttpClient;
 use ip_packet::{Ecn, IpPacket};
 use nameserver_set::NameserverSet;
@@ -54,6 +55,7 @@ pub struct Io {
 
     bootstrap_dns_client: BootstrapDnsClient,
     doh_clients: BTreeMap<DoHUrl, DohClient>,
+    doh_clients_bootstrap: FuturesMap<DoHUrl, Result<HttpClient>>,
 
     timeout: Timeout,
 
@@ -74,52 +76,9 @@ struct DnsQueryMetaData {
 }
 
 enum DohClient {
-    Connecting {
-        /// Dropping this before it completes makes polling `handle` panic; [`Io::reset`] drops the waiting queries along with it.
-        driver: Remote<BoxFuture<'static, BootstrapResult>>,
-        handle: Shared<RemoteHandle<BootstrapResult>>,
-    },
+    /// Resolves once the bootstrap driven by [`Io`] has connected, or fails once it gave up.
+    Connecting(Shared<oneshot::Receiver<HttpClient>>),
     Connected(HttpClient),
-}
-
-/// `anyhow::Error` is not `Clone`, which the output of a [`Shared`] future has to be.
-type BootstrapResult = Result<HttpClient, Arc<anyhow::Error>>;
-
-impl DohClient {
-    /// Only polling `driver` advances the bootstrap; `handle` merely observes its result.
-    fn connecting(
-        bootstrap_dns_client: &BootstrapDnsClient,
-        socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
-        server: &DoHUrl,
-    ) -> Self {
-        let addresses = bootstrap_dns_client.resolve(server.host());
-        let server = server.clone();
-
-        let (driver, handle) = tokio::time::timeout(DNS_QUERY_TIMEOUT, async move {
-            tracing::debug!(%server, "Bootstrapping DoH client");
-
-            let addresses = addresses.await?;
-            let http_client =
-                HttpClient::new(server.host().to_string(), addresses, socket_factory).await?;
-
-            tracing::debug!(%server, "Bootstrapped DoH client");
-
-            Ok(http_client)
-        })
-        .map(|result| {
-            result
-                .map_err(anyhow::Error::new)
-                .flatten()
-                .map_err(Arc::new)
-        })
-        .boxed()
-        .remote_handle();
-
-        Self::Connecting {
-            driver,
-            handle: handle.shared(),
-        }
-    }
 }
 
 /// Represents all IO sources that may be ready during a single event-loop tick.
@@ -208,6 +167,10 @@ impl Io {
                 1000,
             ),
             doh_clients: Default::default(),
+            doh_clients_bootstrap: FuturesMap::new(
+                || futures_bounded::Delay::tokio(DNS_QUERY_TIMEOUT),
+                10,
+            ),
             gso_queue: UdpGsoQueue::new(),
             tun: Device::new(),
             udp_dns_server: Default::default(),
@@ -285,30 +248,17 @@ impl Io {
         // We purposely don't want to block the event loop here because we can do plenty of other work while this is running.
         let _ = self.nameservers.poll(cx);
 
-        let mut failed_bootstraps = Vec::new();
-
-        for (url, client) in self.doh_clients.iter_mut() {
-            let DohClient::Connecting { driver, handle } = client else {
-                continue;
-            };
-
-            if driver.poll_unpin(cx).is_pending() {
-                continue;
-            }
-
-            match handle.poll_unpin(cx) {
-                Poll::Ready(Ok(http_client)) => *client = DohClient::Connected(http_client),
-                Poll::Ready(Err(e)) => {
+        while let Poll::Ready((url, result)) = self.doh_clients_bootstrap.poll_unpin(cx) {
+            match result.map_err(anyhow::Error::new).flatten() {
+                Ok(client) => {
+                    self.doh_clients.insert(url, DohClient::Connected(client));
+                }
+                Err(e) => {
                     tracing::debug!(%url, "Failed to bootstrap DoH client: {e:#}");
 
-                    failed_bootstraps.push(url.clone());
+                    self.doh_clients.remove(&url);
                 }
-                Poll::Pending => {}
             }
-        }
-
-        for url in failed_bootstraps {
-            self.doh_clients.remove(&url);
         }
 
         let network = self.sockets.poll_recv_from(cx);
@@ -504,6 +454,8 @@ impl Io {
         self.gso_queue.clear();
         self.dns_queries =
             FuturesTupleSet::new(|| futures_bounded::Delay::tokio(DNS_QUERY_TIMEOUT), 1000);
+        self.doh_clients_bootstrap =
+            FuturesMap::new(|| futures_bounded::Delay::tokio(DNS_QUERY_TIMEOUT), 10);
         self.nameservers.evaluate();
 
         for (server, _) in std::mem::take(&mut self.doh_clients) {
@@ -587,15 +539,24 @@ impl Io {
     /// Resolves to the DoH client for `server` once it is connected.
     fn doh_client(&mut self, server: DoHUrl) -> BoxFuture<'static, Result<HttpClient>> {
         match self.doh_client_entry(server) {
-            DohClient::Connected(client) => futures::future::ready(Ok(client.clone())).boxed(),
-            DohClient::Connecting { handle, .. } => {
-                handle.clone().map_err(|e| anyhow::anyhow!("{e:#}")).boxed()
+            Some(DohClient::Connected(client)) => {
+                futures::future::ready(Ok(client.clone())).boxed()
             }
+            Some(DohClient::Connecting(client)) => client
+                .clone()
+                .map_err(|oneshot::Canceled| anyhow::anyhow!("Failed to bootstrap DoH client"))
+                .boxed(),
+            None => futures::future::ready(Err(anyhow::anyhow!(
+                "Too many DoH clients are bootstrapping"
+            )))
+            .boxed(),
         }
     }
 
     /// Returns the entry for `server`, replacing a closed client with a fresh bootstrap.
-    fn doh_client_entry(&mut self, server: DoHUrl) -> &DohClient {
+    ///
+    /// `None` if the bootstrap could not be started.
+    fn doh_client_entry(&mut self, server: DoHUrl) -> Option<&DohClient> {
         if let Some(DohClient::Connected(client)) = self.doh_clients.get(&server)
             && client.is_closed()
         {
@@ -604,13 +565,43 @@ impl Io {
             self.doh_clients.remove(&server);
         }
 
-        self.doh_clients.entry(server).or_insert_with_key(|server| {
-            DohClient::connecting(
-                &self.bootstrap_dns_client,
-                self.tcp_socket_factory.clone(),
-                server,
-            )
-        })
+        if !self.doh_clients.contains_key(&server) {
+            let (ready, client) = oneshot::channel();
+            let addresses = self.bootstrap_dns_client.resolve(server.host());
+            let socket_factory = self.tcp_socket_factory.clone();
+
+            let bootstrap = {
+                let server = server.clone();
+
+                async move {
+                    tracing::debug!(%server, "Bootstrapping DoH client");
+
+                    let addresses = addresses.await?;
+                    let http_client =
+                        HttpClient::new(server.host().to_string(), addresses, socket_factory)
+                            .await?;
+
+                    tracing::debug!(%server, "Bootstrapped DoH client");
+
+                    let _ = ready.send(http_client.clone());
+
+                    Ok(http_client)
+                }
+            };
+
+            match self
+                .doh_clients_bootstrap
+                .try_push(server.clone(), bootstrap)
+            {
+                Ok(()) | Err(PushError::Replaced(_)) => {}
+                Err(PushError::BeyondCapacity(_)) => return None,
+            }
+
+            self.doh_clients
+                .insert(server.clone(), DohClient::Connecting(client.shared()));
+        }
+
+        self.doh_clients.get(&server)
     }
 
     pub(crate) fn send_udp_dns_response(
@@ -698,7 +689,7 @@ mod tests {
 
         assert!(matches!(
             io.doh_clients.get(&DoHUrl::cloudflare()),
-            Some(DohClient::Connecting { .. })
+            Some(DohClient::Connecting(_))
         ));
     }
 
