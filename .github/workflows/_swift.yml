@@ -56,16 +56,27 @@ jobs:
   # Photographs the real app against the mocked backend (see MockTunnel.swift) and
   # hands the captures to commit-screenshots. Nothing is compared against a reference.
   screenshots:
-    name: ${{ matrix.platform }}-screenshots
-    runs-on: macos-26
+    name: ${{ matrix.name }}-screenshots
+    runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
       matrix:
         include:
           # The app target embeds the tunnel extension, which compiles connlib.
-          - platform: macos
+          # SwiftUI lays a window out with the macOS release it runs on rather
+          # than the SDK it was built with, so the macOS screens are drawn on
+          # every release CI can run.
+          - name: macos-26
+            platform: macos
+            runner: macos-26
             rust-target: aarch64-apple-darwin
-          - platform: ios
+          - name: macos-15
+            platform: macos
+            runner: macos-15
+            rust-target: aarch64-apple-darwin
+          - name: ios
+            platform: ios
+            runner: macos-26
             rust-target: aarch64-apple-ios-sim
     env:
       XCODE_VERSION: "26.2"
@@ -87,6 +98,7 @@ jobs:
       # can be traced to the chip that drew it.
       - name: Name the hardware under the VM
         run: |
+          sw_vers -productVersion
           sysctl -n hw.model machdep.cpu.brand_string
           system_profiler SPDisplaysDataType | grep -E "Chipset|Model|Metal" || true
       # The wallpaper shows through the window corners, and macOS shifts it over the day.
@@ -105,7 +117,7 @@ jobs:
         id: xcode-build
         with:
           path: ${{ runner.temp }}/DerivedData
-          key: ${{ matrix.platform }}
+          key: ${{ matrix.name }}
       - name: Photograph the ${{ matrix.platform }} screens
         # The runner context only exists at step level.
         env:
@@ -114,7 +126,7 @@ jobs:
         run: mise run //swift/apple:screenshots-${{ matrix.platform }}
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: ${{ matrix.platform }}-screenshots
+          name: ${{ matrix.name }}-screenshots
           path: swift/apple/screenshots/${{ matrix.platform }}
       # Only `main` writes, so a pull request cannot evict what every run reads.
       # `success()` is spelled out because naming a condition replaces the
@@ -128,7 +140,7 @@ jobs:
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: failure()
         with:
-          name: ${{ matrix.platform }}-screenshots-xcresult
+          name: ${{ matrix.name }}-screenshots-xcresult
           path: ${{ runner.temp }}/FirezoneUITests-*.xcresult
 
   static-analysis:
