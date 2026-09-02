@@ -36,8 +36,8 @@ type ConnectionDriver = Pin<Box<dyn Future<Output = ()> + Send>>;
 ///
 /// One instance is tied to a given host. It negotiates HTTP/2 if the server
 /// supports it (ALPN `h2`) and falls back to HTTP/1.1 otherwise. The connection is
-/// maintained for the client's lifetime; if it fails, [`Closed`] is returned and
-/// the client becomes permanently unusable and should be discarded.
+/// maintained for the client's lifetime; once it fails, every request errors with
+/// [`Closed`] and the client should be discarded.
 #[derive(Clone)]
 pub struct HttpClient {
     host: String,
@@ -136,6 +136,7 @@ impl HttpClient {
                     client
                         .send_request(request)
                         .await
+                        .context(Closed)
                         .context("Failed to send HTTP/2 request")?
                 }
                 Sender::H1(mutex) => {
@@ -157,6 +158,7 @@ impl HttpClient {
                     client
                         .send_request(request)
                         .await
+                        .context(Closed)
                         .context("Failed to send HTTP/1.1 request")?
                 }
             };
@@ -166,6 +168,7 @@ impl HttpClient {
             let body = incoming
                 .collect()
                 .await
+                .context(Closed)
                 .context("Failed to receive HTTP response body")?;
 
             Ok(http::Response::from_parts(parts, body.to_bytes()))
@@ -173,6 +176,11 @@ impl HttpClient {
     }
 }
 
+/// The connection behind an [`HttpClient`] is closed or has failed.
+///
+/// A transport error on a persistent connection leaves it dead or dying, so
+/// every request that hits one carries this error, not only those sent after
+/// [`HttpClient::is_closed`] starts reporting `true`.
 #[derive(thiserror::Error, Debug)]
 #[error("The connection is closed")]
 pub struct Closed;
