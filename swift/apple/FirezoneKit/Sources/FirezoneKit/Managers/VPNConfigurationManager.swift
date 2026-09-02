@@ -156,15 +156,15 @@ public final class VPNConfigurationManager {
       }
     }
 
-    guard let selected = candidates.first(where: \.hasIdentityReference) ?? candidates.first else {
-      Log.info("No Firezone VPN configuration was found")
-      return nil
-    }
-
     if candidates.count > 1 {
       Log.warning(
         "Found \(candidates.count) Firezone VPN configurations; preferring one with a client certificate"
       )
+    }
+
+    guard let selected = candidates.first(where: \.hasIdentityReference) ?? candidates.first else {
+      Log.info("No Firezone VPN configuration was found")
+      return nil
     }
 
     let missingProviderBundleIdentifier = selected.configuration.providerBundleIdentifier == nil
