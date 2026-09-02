@@ -78,6 +78,25 @@ class SettingsManagedConfigurationTest {
         }
 
     @Test
+    fun `device trust availability follows the managed alias overlay`() =
+        runBlocking {
+            repository.saveX509CertificateAliasSync("user-alias")
+
+            source.applyRestrictions(
+                Bundle().apply {
+                    putString("x509CertificateAlias", "")
+                },
+            )
+            assertFalse(viewModel.hasConfiguredCertificateAlias())
+
+            source.applyRestrictions(Bundle())
+            assertTrue(viewModel.hasConfiguredCertificateAlias())
+
+            repository.saveX509CertificateAliasSync(null)
+            assertFalse(viewModel.hasConfiguredCertificateAlias())
+        }
+
+    @Test
     fun `canceling a reset keeps favorites and managed values`() =
         runBlocking {
             repository.addFavoriteResource(FAVORITE_ID)

@@ -16,10 +16,8 @@ import androidx.viewpager2.adapter.FragmentStateAdapter
 import androidx.viewpager2.widget.ViewPager2
 import dagger.hilt.android.AndroidEntryPoint
 import dev.firezone.android.R
-import dev.firezone.android.core.data.Repository
 import dev.firezone.android.databinding.ActivitySettingsBinding
 import kotlinx.coroutines.launch
-import javax.inject.Inject
 
 /** The navigation item and the page it shows, in order. */
 internal fun settingsPages(hasConfiguredCertificateAlias: Boolean): List<Pair<Int, () -> Fragment>> =
@@ -38,20 +36,9 @@ internal fun settingsPages(hasConfiguredCertificateAlias: Boolean): List<Pair<In
 internal class SettingsActivity : AppCompatActivity() {
     private lateinit var binding: ActivitySettingsBinding
     private val viewModel: SettingsViewModel by viewModels()
-    private val pages: List<Pair<Int, () -> Fragment>> by lazy {
-        settingsPages(
-            hasConfiguredCertificateAlias =
-                repository.getX509CertificateAliasSync(applicationRestrictions) != null,
-        )
-    }
+    private lateinit var pages: List<Pair<Int, () -> Fragment>>
     private var lastFocusedView: View? = null
     private var lastSelectedPage = -1
-
-    @Inject
-    lateinit var repository: Repository
-
-    @Inject
-    lateinit var applicationRestrictions: Bundle
 
     private val navigationSelectionSync =
         object : ViewPager2.OnPageChangeCallback() {
@@ -89,8 +76,12 @@ internal class SettingsActivity : AppCompatActivity() {
         binding = ActivitySettingsBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        setupViews()
         setupStateObservers()
+
+        lifecycleScope.launch {
+            pages = settingsPages(viewModel.hasConfiguredCertificateAlias())
+            setupViews()
+        }
 
         viewModel.deleteLogZip(this@SettingsActivity)
     }

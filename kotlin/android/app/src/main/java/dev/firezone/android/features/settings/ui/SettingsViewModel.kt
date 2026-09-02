@@ -73,6 +73,12 @@ internal class SettingsViewModel
             viewModelScope.launch { managedConfigurationSource.refresh() }
         }
 
+        suspend fun hasConfiguredCertificateAlias(): Boolean {
+            val configuration = managedConfigurationSource.configuration.value ?: managedConfigurationSource.refresh()
+
+            return configuration.resolveX509CertificateAlias(repo.getUserX509CertificateAliasSync()) != null
+        }
+
         fun onViewResume(context: Context) {
             val directory = File(context.cacheDir.absolutePath + "/logs")
             viewModelScope.launch(Dispatchers.IO) {
