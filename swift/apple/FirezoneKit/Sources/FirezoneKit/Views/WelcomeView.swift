@@ -20,7 +20,7 @@ struct WelcomeView: View {
         Image("LogoText")
           .resizable()
           .scaledToFit()
-          .frame(maxWidth: 300)
+          .frame(maxWidth: 150)
           .padding(.horizontal, 10)
           .padding(.vertical, 10)
         Text(
