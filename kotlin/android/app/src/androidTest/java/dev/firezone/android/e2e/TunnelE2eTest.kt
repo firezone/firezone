@@ -13,7 +13,6 @@ import androidx.compose.ui.test.performClick
 import androidx.test.core.app.ApplicationProvider
 import dagger.hilt.android.testing.HiltAndroidRule
 import dagger.hilt.android.testing.HiltAndroidTest
-import dev.firezone.android.core.data.AuthCallbackResult
 import dev.firezone.android.core.data.Repository
 import dev.firezone.android.tunnel.ACCOUNT_SLUG
 import dev.firezone.android.tunnel.ACTOR_NAME
@@ -177,33 +176,31 @@ class TunnelE2eTest {
     }
 
     @Test
-    fun aDisconnectErrorThatRequiresSigningInAgainDiscardsAllAuthenticationState() {
+    fun aDisconnectErrorThatRequiresSigningInAgainDiscardsToken() {
         val session = signInAndConnect()
         launchApp()
         awaitSessionScreen()
-        preparePendingHandoff()
 
         session.emit(Event.Disconnected(FakeDisconnectError(signInRequired = true, text = "your session expired")))
 
         awaitSignInScreen()
         assertEquals("your session expired", awaitDisconnectedNotification())
-        assertAuthenticationStateCleared()
+        assertNull(repo.getTokenSync())
     }
 
     @Test
-    fun signingOutDiscardsAllAuthenticationState() {
+    fun signingOutDiscardsToken() {
         val session = signInAndConnect()
         session.emit(Event.ConnectedToPortal(accountSlug = ACCOUNT_SLUG, actorName = ACTOR_NAME))
         launchApp()
 
         awaitText("J")
-        preparePendingHandoff()
         composeRule.onNodeWithText("J").performClick()
         awaitText("Sign Out")
         composeRule.onNodeWithText("Sign Out").performClick()
 
-        await("authentication state to be cleared") { repo.getTokenSync() == null }
-        assertAuthenticationStateCleared()
+        await("the token to be cleared") { repo.getTokenSync() == null }
+        assertNull(repo.getTokenSync())
     }
 
     @Test
@@ -238,36 +235,6 @@ class TunnelE2eTest {
     }
 
     private fun signIn() = runBlocking { repo.saveToken(TOKEN).first() }
-
-    private fun preparePendingHandoff() {
-        repo.saveNonceAndStateSync(nonce = "pending-nonce-", state = PENDING_STATE)
-        assertEquals(
-            AuthCallbackResult.NEW_HANDOFF,
-            runBlocking {
-                repo
-                    .saveAuthCallbackIfStateValid(
-                        state = PENDING_STATE,
-                        fragment = "pending-fragment",
-                    ).first()
-            },
-        )
-    }
-
-    private fun assertAuthenticationStateCleared() {
-        assertNull(repo.getTokenSync())
-        assertNull(repo.getNonceSync())
-        assertNull(repo.getStateSync())
-        assertEquals(
-            AuthCallbackResult.INVALID,
-            runBlocking {
-                repo
-                    .saveAuthCallbackIfStateValid(
-                        state = PENDING_STATE,
-                        fragment = "replacement-fragment",
-                    ).first()
-            },
-        )
-    }
 
     private fun awaitSession(): FakeSession = runBlocking { withTimeout(TIMEOUT_MS) { FakeSessionFactory.awaitSession() } }
 
@@ -321,7 +288,6 @@ class TunnelE2eTest {
             .getSystemService(NotificationManager::class.java)
 
     private companion object {
-        const val PENDING_STATE = "pending-state"
         const val TOKEN = "stored-token"
         const val TIMEOUT_MS = 20_000L
     }

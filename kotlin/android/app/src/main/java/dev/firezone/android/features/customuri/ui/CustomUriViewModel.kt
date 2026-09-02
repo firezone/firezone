@@ -8,11 +8,10 @@ import com.google.firebase.Firebase
 import com.google.firebase.crashlytics.crashlytics
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.firezone.android.core.Log
-import dev.firezone.android.core.data.AuthCallbackResult
-import dev.firezone.android.core.data.Repository
+import dev.firezone.android.features.auth.AuthCallbackHandler
+import dev.firezone.android.features.auth.AuthCallbackOutcome
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -22,13 +21,12 @@ import javax.inject.Inject
 internal class CustomUriViewModel
     @Inject
     constructor(
-        private val repo: Repository,
+        private val authCallbackHandler: AuthCallbackHandler,
     ) : ViewModel() {
         private val actionMutableStateFlow = MutableStateFlow<ViewAction?>(null)
         val actionStateFlow: StateFlow<ViewAction?> = actionMutableStateFlow
         private val callbackMutex = Mutex()
         private var hasPublishedTerminalAction = false
-        private var pendingHandoffState: String? = null
 
         fun parseCustomUri(intent: Intent) {
             viewModelScope.launch { processCustomUri(intent) }
@@ -52,67 +50,17 @@ internal class CustomUriViewModel
             }
         }
 
-        internal suspend fun handleCustomUri(intent: Intent): ViewAction {
-            val uri = intent.data
-            if (uri?.host != PATH_CALLBACK) {
-                return ViewAction.AuthFlowError("Unknown path segment: ${uri?.lastPathSegment}")
+        internal suspend fun handleCustomUri(intent: Intent): ViewAction =
+            when (val outcome = authCallbackHandler.handle(intent.data)) {
+                is AuthCallbackOutcome.Success -> ViewAction.AuthFlowComplete
+                is AuthCallbackOutcome.Error -> ViewAction.AuthFlowError(outcome.errors)
             }
-
-            val state = uri.getQueryParameter(QUERY_CLIENT_STATE)
-            val fragment = uri.getQueryParameter(QUERY_CLIENT_AUTH_FRAGMENT)
-            val missingParameterErrors =
-                buildList {
-                    if (state.isNullOrBlank()) {
-                        add("State parameter was missing or empty")
-                    }
-                    if (fragment.isNullOrBlank()) {
-                        add("Auth fragment was missing or empty")
-                    }
-                }
-            if (missingParameterErrors.isNotEmpty()) {
-                return ViewAction.AuthFlowError(missingParameterErrors)
-            }
-
-            checkNotNull(state)
-            checkNotNull(fragment)
-
-            val result =
-                repo
-                    .saveAuthCallbackIfStateValid(
-                        state = state,
-                        fragment = fragment,
-                    ).firstOrNull()
-            return when (result) {
-                AuthCallbackResult.NEW_HANDOFF,
-                AuthCallbackResult.PENDING_HANDOFF,
-                -> {
-                    pendingHandoffState = state
-                    ViewAction.AuthFlowComplete
-                }
-
-                AuthCallbackResult.INVALID,
-                null,
-                -> {
-                    ViewAction.AuthFlowError("Invalid state parameter")
-                }
-            }
-        }
-
-        fun acknowledgeAuthFlowComplete() {
-            val state = pendingHandoffState ?: return
-            repo.acknowledgeAuthCallbackHandoff(state)
-            pendingHandoffState = null
-        }
 
         fun clearAction() {
             actionMutableStateFlow.value = null
         }
 
         companion object {
-            private const val PATH_CALLBACK = "handle_client_sign_in_callback"
-            private const val QUERY_CLIENT_STATE = "state"
-            private const val QUERY_CLIENT_AUTH_FRAGMENT = "fragment"
-
             private const val TAG = "CustomUriViewModel"
         }
 

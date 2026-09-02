@@ -16,7 +16,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
-import java.security.MessageDigest
 import javax.inject.Inject
 
 const val ON_SYMBOL: String = "<->"
@@ -58,12 +57,6 @@ class Favorites(
     val inner: HashSet<String>,
 )
 
-enum class AuthCallbackResult {
-    NEW_HANDOFF,
-    PENDING_HANDOFF,
-    INVALID,
-}
-
 class Repository
     @Inject
     constructor(
@@ -77,7 +70,16 @@ class Repository
         private val _favorites =
             MutableStateFlow(Favorites(HashSet(sharedPreferences.getStringSet(FAVORITE_RESOURCES_KEY, null).orEmpty())))
         val favorites = _favorites.asStateFlow()
-        private val authStateLock = Any()
+        private val credentialsLock = Any()
+
+        init {
+            sharedPreferences
+                .edit()
+                .remove(LEGACY_NONCE_KEY)
+                .remove(LEGACY_STATE_KEY)
+                .remove(LEGACY_PENDING_AUTH_HANDOFF_STATE_HASH_KEY)
+                .apply()
+        }
 
         fun getConfigSync(): Config = getUserConfigSync().withManagedOverrides()
 
@@ -220,14 +222,10 @@ class Repository
 
         fun getTokenSync(): String? = sharedPreferences.getString(TOKEN_KEY, null)
 
-        fun getStateSync(): String? = sharedPreferences.getString(STATE_KEY, null)
-
         fun getAccountSlug(): Flow<String?> =
             flow {
                 emit(sharedPreferences.getString(ACCOUNT_SLUG_KEY, null))
             }.flowOn(coroutineDispatcher)
-
-        fun getNonceSync(): String? = sharedPreferences.getString(NONCE_KEY, null)
 
         fun saveAccountSlug(value: String): Flow<Unit> =
             flow {
@@ -257,93 +255,23 @@ class Repository
                 .putString(ENABLED_INTERNET_RESOURCE_KEY, Gson().toJson(value))
                 .apply()
 
-        fun saveNonceAndStateSync(
-            nonce: String,
-            state: String,
-        ) {
-            synchronized(authStateLock) {
-                sharedPreferences
-                    .edit()
-                    .putString(NONCE_KEY, nonce)
-                    .putString(STATE_KEY, state)
-                    .remove(PENDING_AUTH_HANDOFF_STATE_HASH_KEY)
-                    .apply()
-            }
-        }
-
         fun saveToken(value: String): Flow<Unit> =
             flow {
-                val nonce = sharedPreferences.getString(NONCE_KEY, "").orEmpty()
-                emit(
+                synchronized(credentialsLock) {
                     sharedPreferences
                         .edit()
-                        .putString(TOKEN_KEY, nonce.plus(value))
-                        .apply(),
-                )
-            }.flowOn(coroutineDispatcher)
-
-        fun saveAuthCallbackIfStateValid(
-            state: String,
-            fragment: String,
-        ): Flow<AuthCallbackResult> =
-            flow {
-                val result =
-                    synchronized(authStateLock) {
-                        val stateHash = hashAuthState(state)
-                        val pendingStateHash = sharedPreferences.getString(PENDING_AUTH_HANDOFF_STATE_HASH_KEY, null)
-                        val isPendingHandoff = constantTimeEquals(pendingStateHash, stateHash)
-                        val expectedState = sharedPreferences.getString(STATE_KEY, "").orEmpty()
-                        val nonce = sharedPreferences.getString(NONCE_KEY, "").orEmpty()
-                        val hasValidRequest =
-                            expectedState.isNotBlank() &&
-                                nonce.isNotBlank() &&
-                                constantTimeEquals(expectedState, state)
-                        when {
-                            isPendingHandoff -> {
-                                AuthCallbackResult.PENDING_HANDOFF
-                            }
-
-                            !hasValidRequest -> {
-                                AuthCallbackResult.INVALID
-                            }
-
-                            else -> {
-                                sharedPreferences
-                                    .edit()
-                                    .putString(TOKEN_KEY, nonce.plus(fragment))
-                                    .remove(NONCE_KEY)
-                                    .remove(STATE_KEY)
-                                    .putString(PENDING_AUTH_HANDOFF_STATE_HASH_KEY, stateHash)
-                                    .apply()
-
-                                AuthCallbackResult.NEW_HANDOFF
-                            }
-                        }
-                    }
-
-                emit(result)
-            }.flowOn(coroutineDispatcher)
-
-        fun acknowledgeAuthCallbackHandoff(state: String): Boolean =
-            synchronized(authStateLock) {
-                val stateHash = hashAuthState(state)
-                val pendingStateHash = sharedPreferences.getString(PENDING_AUTH_HANDOFF_STATE_HASH_KEY, null)
-                val isPendingHandoff = constantTimeEquals(pendingStateHash, stateHash)
-                if (isPendingHandoff) {
-                    sharedPreferences.edit().remove(PENDING_AUTH_HANDOFF_STATE_HASH_KEY).apply()
+                        .putString(TOKEN_KEY, value)
+                        .apply()
                 }
 
-                isPendingHandoff
-            }
+                emit(Unit)
+            }.flowOn(coroutineDispatcher)
 
         fun clearCredentials() {
-            synchronized(authStateLock) {
+            synchronized(credentialsLock) {
                 sharedPreferences
                     .edit()
                     .remove(TOKEN_KEY)
-                    .remove(NONCE_KEY)
-                    .remove(STATE_KEY)
-                    .remove(PENDING_AUTH_HANDOFF_STATE_HASH_KEY)
                     .apply()
             }
         }
@@ -419,23 +347,6 @@ class Repository
                     },
             )
 
-        private fun hashAuthState(state: String): String =
-            MessageDigest
-                .getInstance("SHA-256")
-                .digest(state.toByteArray(Charsets.UTF_8))
-                .joinToString(separator = "") { byte -> "%02x".format(byte.toInt() and 0xff) }
-
-        private fun constantTimeEquals(
-            expected: String?,
-            actual: String,
-        ): Boolean =
-            expected?.let {
-                MessageDigest.isEqual(
-                    it.toByteArray(Charsets.UTF_8),
-                    actual.toByteArray(Charsets.UTF_8),
-                )
-            } ?: false
-
         companion object {
             private const val AUTH_URL_KEY = "authUrl"
             private const val API_URL_KEY = "apiUrl"
@@ -452,9 +363,9 @@ class Repository
             private const val MANAGED_START_ON_LOGIN_KEY = "managedStartOnLogin"
             private const val MANAGED_CONNECT_ON_START_KEY = "managedConnectOnStart"
             private const val TOKEN_KEY = "token"
-            private const val NONCE_KEY = "nonce"
-            private const val STATE_KEY = "state"
-            private const val PENDING_AUTH_HANDOFF_STATE_HASH_KEY = "pendingAuthHandoffStateHash"
+            private const val LEGACY_NONCE_KEY = "nonce"
+            private const val LEGACY_STATE_KEY = "state"
+            private const val LEGACY_PENDING_AUTH_HANDOFF_STATE_HASH_KEY = "pendingAuthHandoffStateHash"
             private const val DEVICE_ID_KEY = "deviceId"
             private const val ENABLED_INTERNET_RESOURCE_KEY = "enabledInternetResource"
             private const val NOTIFICATION_PERMISSION_REQUESTED_KEY = "notificationPermissionRequested"
