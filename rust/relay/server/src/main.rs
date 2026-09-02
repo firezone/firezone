@@ -398,16 +398,11 @@ where
 }
 
 #[derive(Debug, serde::Deserialize)]
-#[serde(untagged)]
-enum IngressMessages {
-    Known(KnownIngressMessage),
-    Unknown(UnknownIngressMessage),
-}
-
-#[derive(Debug, serde::Deserialize)]
 #[serde(rename_all = "snake_case", tag = "event", content = "payload")]
-enum KnownIngressMessage {
+enum IngressMessages {
     Init(Init),
+    #[serde(untagged)]
+    Unknown(UnknownIngressMessage),
 }
 
 #[derive(serde::Deserialize, Debug)]
@@ -692,9 +687,7 @@ where
 
             // Priority 5: Handle portal messages
             match self.event_rx.poll_recv(cx) {
-                Poll::Ready(Some(Ok(IngressMessages::Known(KnownIngressMessage::Init(
-                    Init {},
-                ))))) => {
+                Poll::Ready(Some(Ok(IngressMessages::Init(Init {})))) => {
                     tick.want_continue();
                 }
                 Poll::Ready(Some(Ok(IngressMessages::Unknown(UnknownIngressMessage {
@@ -871,10 +864,7 @@ mod tests {
 
         let msg = serde_json::from_str::<IngressMessages>(json).unwrap();
 
-        assert!(matches!(
-            msg,
-            IngressMessages::Known(KnownIngressMessage::Init(Init {}))
-        ));
+        assert!(matches!(msg, IngressMessages::Init(Init {})));
     }
 
     #[test]
