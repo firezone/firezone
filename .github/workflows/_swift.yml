@@ -69,8 +69,12 @@ jobs:
           # The app target embeds the tunnel extension, which compiles connlib.
           - platform: macos
             rust-target: aarch64-apple-darwin
+            probe-view: FirstTimeView.swift
+            probe-edit: "maxWidth: 430 -> maxWidth: 200"
           - platform: ios
             rust-target: aarch64-apple-ios-sim
+            probe-view: WelcomeView.swift
+            probe-edit: "maxWidth: 300 -> maxWidth: 150"
     env:
       XCODE_VERSION: "26.2"
       # GIT_SHA stays unset: the settings screens print it as their build
@@ -114,22 +118,23 @@ jobs:
         run: |
           views=swift/apple/FirezoneKit/Sources/FirezoneKit/Views
 
-          python3 - "$views" <<'PY'
+          python3 - "$views/${{ matrix.probe-view }}" "${{ matrix.probe-edit }}" <<'PY'
           import pathlib, sys
 
-          for name in ("FirstTimeView.swift", "GrantVPNView.swift"):
-              path = pathlib.Path(sys.argv[1], name)
-              data = path.read_bytes()
-              edited = data.replace(b"on 4/2/24", b"on 4/3/24", 1)
-              assert edited != data and len(edited) == len(data), name
-              path.write_bytes(edited)
+          path, edit = pathlib.Path(sys.argv[1]), sys.argv[2]
+          before, after = edit.split(" -> ")
+          data = path.read_text()
+          edited = data.replace(before, after, 1)
+          assert edited != data, edit
+          path.write_text(edited)
           PY
 
-          # Both files now differ from the build the cache was written from by
-          # the same single byte. Only their timestamps differ: one carries the
-          # stamp the restore applied, the other predates it.
-          touch -t 202601010000 "$views/FirstTimeView.swift"
-          touch -t 202501010000 "$views/GrantVPNView.swift"
+          # macOS leaves the timestamp the restore applied, so only the content
+          # differs. iOS additionally stamps the file with the moment of the edit,
+          # which is newer than anything in the restored products.
+          if [ "${{ matrix.platform }}" = "ios" ]; then
+            touch "$views/${{ matrix.probe-view }}"
+          fi
       - name: Photograph the ${{ matrix.platform }} screens
         # The runner context only exists at step level.
         env:
@@ -141,9 +146,9 @@ jobs:
         run: |
           views=swift/apple/FirezoneKit/Sources/FirezoneKit/Views
 
-          stat -f "%N %z %Sm" -t "%F %T" "$views/FirstTimeView.swift" "$views/GrantVPNView.swift"
+          stat -f "%N %z %Sm" -t "%F %T" "$views/${{ matrix.probe-view }}"
+          grep -n "maxWidth" "$views/${{ matrix.probe-view }}"
           echo "cache-hit=${{ steps.xcode-build.outputs.cache-hit }}"
-          echo "key=${{ steps.xcode-build.outputs.key }}"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ${{ matrix.platform }}-screenshots
