@@ -101,6 +101,11 @@ jobs:
       - name: Boot the simulator
         if: matrix.platform == 'ios'
         run: mise run //swift/apple:boot-simulator
+      - uses: ./.github/actions/restore-xcode-build
+        id: xcode-build
+        with:
+          path: ${{ runner.temp }}/DerivedData
+          key: ${{ matrix.platform }}
       - name: Photograph the ${{ matrix.platform }} screens
         # The runner context only exists at step level.
         env:
@@ -111,6 +116,14 @@ jobs:
         with:
           name: ${{ matrix.platform }}-screenshots
           path: swift/apple/screenshots/${{ matrix.platform }}
+      # Only `main` writes, so a pull request cannot evict what every run reads.
+      # `success()` is spelled out because naming a condition replaces the
+      # implicit one.
+      - uses: ./.github/actions/save-xcode-build
+        if: success() && github.ref_name == 'main' && steps.xcode-build.outputs.cache-hit != 'true'
+        with:
+          path: ${{ runner.temp }}/DerivedData
+          key: ${{ steps.xcode-build.outputs.key }}
       # The result bundles hold XCUITest's own failure screenshots and logs.
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: failure()

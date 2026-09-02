@@ -1,0 +1,17 @@
+---
+name: "Save the Xcode build"
+description: "Saves the build products of an Xcode build under the key `restore-xcode-build` looked them up with."
+inputs:
+  path:
+    description: "DerivedData directory the build was told to use."
+    required: true
+  key:
+    description: "`key` output of `restore-xcode-build`."
+    required: true
+runs:
+  using: "composite"
+  steps:
+    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ inputs.path }}/Build
+        key: ${{ inputs.key }}
