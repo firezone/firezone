@@ -69,10 +69,8 @@ jobs:
           # The app target embeds the tunnel extension, which compiles connlib.
           - platform: macos
             rust-target: aarch64-apple-darwin
-            probe-stamp: "202501010000" # older than the restore stamp
           - platform: ios
             rust-target: aarch64-apple-ios-sim
-            probe-stamp: "202701010000" # newer than the restore stamp
     env:
       XCODE_VERSION: "26.2"
       # GIT_SHA stays unset: the settings screens print it as their build
@@ -112,17 +110,40 @@ jobs:
         with:
           path: ${{ runner.temp }}/DerivedData
           key: ${{ matrix.platform }}
-      - name: Probe how the build system compares input timestamps
+      - name: Probe what invalidates a restored build
         run: |
-          f=swift/apple/FirezoneKit/Sources/FirezoneKit/Views/FirstTimeView.swift
-          touch -t ${{ matrix.probe-stamp }} "$f"
-          stat -f "%N %Sm" -t "%F %T" "$f"
+          views=swift/apple/FirezoneKit/Sources/FirezoneKit/Views
+
+          python3 - "$views" <<'PY'
+          import pathlib, sys
+
+          for name in ("FirstTimeView.swift", "GrantVPNView.swift"):
+              path = pathlib.Path(sys.argv[1], name)
+              data = path.read_bytes()
+              edited = data.replace(b"on 4/2/24", b"on 4/3/24", 1)
+              assert edited != data and len(edited) == len(data), name
+              path.write_bytes(edited)
+          PY
+
+          # Both files now differ from the build the cache was written from by
+          # the same single byte. Only their timestamps differ: one carries the
+          # stamp the restore applied, the other predates it.
+          touch -t 202601010000 "$views/FirstTimeView.swift"
+          touch -t 202501010000 "$views/GrantVPNView.swift"
       - name: Photograph the ${{ matrix.platform }} screens
         # The runner context only exists at step level.
         env:
           DERIVED_DATA_PATH: ${{ runner.temp }}/DerivedData
           RESULT_BUNDLE_DIR: ${{ runner.temp }}
         run: mise run //swift/apple:screenshots-${{ matrix.platform }}
+      - name: Report the probe
+        if: always()
+        run: |
+          views=swift/apple/FirezoneKit/Sources/FirezoneKit/Views
+
+          stat -f "%N %z %Sm" -t "%F %T" "$views/FirstTimeView.swift" "$views/GrantVPNView.swift"
+          echo "cache-hit=${{ steps.xcode-build.outputs.cache-hit }}"
+          echo "key=${{ steps.xcode-build.outputs.key }}"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ${{ matrix.platform }}-screenshots
