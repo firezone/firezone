@@ -123,14 +123,6 @@ public final class VPNConfigurationManager {
     return VPNConfigurationManager(from: manager)
   }
 
-  public static func load(using factory: TunnelProviderManagerFactory) async throws
-    -> VPNConfigurationManager?
-  {
-    try await load(
-      using: factory,
-      providerBundleIdentifier: NETunnelProviderManager.extensionBundleIdentifier)
-  }
-
   /// A candidate configuration and what we could learn about where it came from.
   private struct Candidate {
     let manager: any TunnelProviderManager
@@ -138,10 +130,9 @@ public final class VPNConfigurationManager {
     let isManaged: Bool
   }
 
-  static func load(
-    using factory: TunnelProviderManagerFactory,
-    providerBundleIdentifier: String
-  ) async throws -> VPNConfigurationManager? {
+  public static func load(using factory: TunnelProviderManagerFactory) async throws
+    -> VPNConfigurationManager?
+  {
     // MDM chooses the user-visible description, so it cannot identify our configuration.
     // The provider bundle identifier is the stable link between both app-created and
     // MDM-installed configurations and our extension.
@@ -155,7 +146,7 @@ public final class VPNConfigurationManager {
       // associated it with this app through the payload's VPNSubType. Our own
       // initializer always sets it.
       if let configured = configuration.providerBundleIdentifier,
-        configured != providerBundleIdentifier
+        configured != manager.extensionBundleIdentifier
       {
         return nil
       }
@@ -192,7 +183,7 @@ public final class VPNConfigurationManager {
     {
       Log.warning(
         "The managed VPN profile has no ProviderBundleIdentifier, so the tunnel cannot start "
-          + "from it; the payload needs \(providerBundleIdentifier)."
+          + "from it; the payload needs \(selected.manager.extensionBundleIdentifier)."
       )
     }
 
