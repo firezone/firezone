@@ -33,7 +33,7 @@ runs:
       run: |
         : "${XCODE_VERSION:?the calling job must pin the Xcode version}"
 
-        prefix="v1-xcode-build-${{ inputs.key }}-${{ runner.arch }}-${XCODE_VERSION}-"
+        prefix="v2-xcode-build-${{ inputs.key }}-${{ runner.arch }}-${XCODE_VERSION}-"
 
         echo "prefix=${prefix}" >> "$GITHUB_OUTPUT"
         echo "value=${prefix}${{ hashFiles('swift/apple/**', '!swift/apple/screenshots/**') }}" >> "$GITHUB_OUTPUT"
@@ -46,7 +46,9 @@ runs:
       id: restore
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
-        path: ${{ inputs.path }}/Build
+        path: |
+          ${{ inputs.path }}/Build
+          ${{ inputs.path }}/SourcePackages
         key: ${{ steps.key.outputs.value }}
         restore-keys: ${{ steps.key.outputs.prefix }}
 
