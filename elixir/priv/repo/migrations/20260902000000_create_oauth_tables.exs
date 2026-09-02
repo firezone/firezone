@@ -34,8 +34,8 @@ defmodule Portal.Repo.Migrations.CreateOauthTables do
     create(unique_index(:oauth_clients, [:client_id]))
 
     # One standing consent: this actor allows this client these scopes. Kept
-    # apart from the tokens so revoking access in the portal survives the
-    # client refreshing, and so a returning client is not re-prompted.
+    # apart from the tokens so that it is what the portal shows and revokes,
+    # while the tokens under it come and go as the client refreshes.
     create table(:oauth_grants, primary_key: false) do
       add(:account_id, references(:accounts, type: :binary_id, on_delete: :delete_all),
         null: false,
