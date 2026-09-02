@@ -44,4 +44,11 @@ defmodule Portal.Types.IP do
 
   def to_string(ip) when is_binary(ip), do: ip
   def to_string(%Postgrex.INET{} = inet), do: Portal.Types.INET.to_string(inet)
+
+  # A dual-stack listener reports IPv4 peers as ::ffff:a.b.c.d.
+  def unmap({0, 0, 0, 0, 0, 0xFFFF, w, x}) do
+    {Bitwise.bsr(w, 8), Bitwise.band(w, 0xFF), Bitwise.bsr(x, 8), Bitwise.band(x, 0xFF)}
+  end
+
+  def unmap(address), do: address
 end
