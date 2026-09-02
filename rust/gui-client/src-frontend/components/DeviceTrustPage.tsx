@@ -8,14 +8,14 @@ import RemixIcon from "./RemixIcon";
 
 const VALIDATION_ERROR_TEXT: Record<X509ValidationError, string> = {
   Empty: "empty",
-  TooLong: "longer than 255 characters",
-  Ambiguous: "more than one value was given",
-  PlaceholderIdentifier: "a placeholder identifier",
-  UnknownAttribute: "not an attribute we understand",
+  TooLong: "too long",
+  Ambiguous: "ambiguous",
+  PlaceholderIdentifier: "placeholder identifier",
+  UnknownAttribute: "unrecognized attribute",
   NotYetValid: "not yet valid",
   Expired: "expired",
-  MissingClientAuthEku: "required for mutual TLS",
-  DigitalSignatureNotAllowed: "required to sign the TLS handshake",
+  MissingClientAuthEku: "missing client authentication EKU",
+  DigitalSignatureNotAllowed: "digital signature not allowed",
 };
 
 function FieldValue({ value }: { value: string | null }) {
@@ -95,7 +95,7 @@ function DetailFields({ fields }: { fields: X509DetailField[] }) {
   );
 }
 
-export default function X509Page({
+export default function DeviceTrustPage({
   certificate,
 }: {
   certificate: X509Certificate;

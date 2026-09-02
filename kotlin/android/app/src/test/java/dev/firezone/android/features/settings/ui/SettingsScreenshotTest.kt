@@ -33,7 +33,7 @@ import dev.firezone.android.R
 import dev.firezone.android.core.data.Repository
 import dev.firezone.android.databinding.ActivitySettingsBinding
 import dev.firezone.android.features.session.ui.compose.FirezoneTheme
-import dev.firezone.android.features.settings.ui.compose.X509SettingsScreen
+import dev.firezone.android.features.settings.ui.compose.DeviceTrustSettingsScreen
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -64,8 +64,9 @@ import dev.firezone.android.core.data.model.Config as FirezoneConfig
     qualifiers = RobolectricDeviceQualifiers.Pixel5,
 )
 class SettingsScreenshotTest {
-    // Reaches into the Compose content the fragments host, which the scrolled X.509 captures have
-    // to drive. The rule hosts nothing itself; the activity below is still Robolectric's to build.
+    // Reaches into the Compose content the fragments host, which the scrolled Device Trust
+    // captures have to drive. The rule hosts nothing itself; the activity below is still
+    // Robolectric's to build.
     @get:Rule
     val composeRule = createEmptyComposeRule()
 
@@ -76,43 +77,43 @@ class SettingsScreenshotTest {
     fun advancedSettings() = captureSettingsPage("settings-advanced", R.id.settingsAdvanced)
 
     @Test
-    fun x509SettingsWithCertificate() = captureX509Page("x509-filled", availableCertificate)
+    fun deviceTrustSettingsWithCertificate() = captureDeviceTrustPage("device-trust-filled", availableCertificate)
 
     @Test
-    fun x509SettingsRequiringSelection() = captureX509Page("x509-selection-required", selectionRequiredCertificate)
+    fun deviceTrustSettingsRequiringSelection() = captureDeviceTrustPage("device-trust-selection-required", selectionRequiredCertificate)
 
     @Test
-    fun x509SettingsWithExpiredCertificate() = captureX509Page("x509-expired", expiredCertificate)
+    fun deviceTrustSettingsWithExpiredCertificate() = captureDeviceTrustPage("device-trust-expired", expiredCertificate)
 
     // The buttons follow the rows, so only the end of the scroll shows what an administrator's
     // certificate takes away: the same certificate, picked by the user, still offers Forget.
     @Test
-    fun x509SettingsWithManagedCertificate() = captureX509PageEnd("x509-managed-scrolled", managedCertificate)
+    fun deviceTrustSettingsWithManagedCertificate() = captureDeviceTrustPageEnd("device-trust-managed-scrolled", managedCertificate)
 
     @Test
-    fun x509SettingsWithUnmanagedCertificate() = captureX509PageEnd("x509-unmanaged-scrolled", availableCertificate)
+    fun deviceTrustSettingsWithUnmanagedCertificate() = captureDeviceTrustPageEnd("device-trust-unmanaged-scrolled", availableCertificate)
 
     @Test
     fun logSettings() = captureSettingsPage("settings-logs", R.id.settingsLogs)
 
-    private fun captureX509Page(
+    private fun captureDeviceTrustPage(
         name: String,
-        state: X509SettingsViewModel.UiState,
+        state: DeviceTrustSettingsViewModel.UiState,
     ) {
-        x509ScreenshotState = state
+        deviceTrustScreenshotState = state
 
-        captureSettingsPage(name, R.id.settingsX509, hasConfiguredCertificateAlias = true)
+        captureSettingsPage(name, R.id.settingsDeviceTrust, hasConfiguredCertificateAlias = true)
     }
 
-    private fun captureX509PageEnd(
+    private fun captureDeviceTrustPageEnd(
         name: String,
-        state: X509SettingsViewModel.UiState,
+        state: DeviceTrustSettingsViewModel.UiState,
     ) {
-        x509ScreenshotState = state
+        deviceTrustScreenshotState = state
 
         captureSettingsPage(
             name,
-            R.id.settingsX509,
+            R.id.settingsDeviceTrust,
             scrollToEnd = true,
             hasConfiguredCertificateAlias = true,
         )
@@ -193,13 +194,13 @@ private val sampleConfig =
 // The alias the certificate below is filed under in the system KeyChain.
 private const val CERTIFICATE_ALIAS = "firezone-device"
 
-// The state `X509ScreenshotFragment` renders, set before the activity reaches the X.509 page.
-private var x509ScreenshotState = X509SettingsViewModel.UiState()
+// The state `DeviceTrustScreenshotFragment` renders, set before the activity reaches Device Trust.
+private var deviceTrustScreenshotState = DeviceTrustSettingsViewModel.UiState()
 private var settingsScreenshotPages = settingsPages(hasConfiguredCertificateAlias = false)
 
 // A certificate the KeyChain released and whose every claim holds a value.
 private val availableCertificate =
-    X509SettingsViewModel.UiState(
+    DeviceTrustSettingsViewModel.UiState(
         alias = CERTIFICATE_ALIAS,
         details = certificateDetails(),
     )
@@ -211,7 +212,7 @@ private val managedCertificate = availableCertificate.copy(isManaged = true)
 // An alias the KeyChain holds a certificate for but has not released to Firezone, which leaves
 // the app with nothing to present and nothing to read.
 private val selectionRequiredCertificate =
-    X509SettingsViewModel.UiState(
+    DeviceTrustSettingsViewModel.UiState(
         alias = CERTIFICATE_ALIAS,
         needsSelection = true,
     )
@@ -219,7 +220,7 @@ private val selectionRequiredCertificate =
 // A certificate whose validity window has passed. Only the portal decides whether that matters,
 // so the screen shows the date and says nothing about it.
 private val expiredCertificate =
-    X509SettingsViewModel.UiState(
+    DeviceTrustSettingsViewModel.UiState(
         alias = CERTIFICATE_ALIAS,
         details =
             certificateDetails(
@@ -287,15 +288,15 @@ internal class SettingsScreenshotActivity : AppCompatActivity() {
         setContentView(binding.root)
 
         binding.bottomNavigation.menu
-            .findItem(R.id.settingsX509)
-            .isVisible = settingsScreenshotPages.any { it.first == R.id.settingsX509 }
+            .findItem(R.id.settingsDeviceTrust)
+            .isVisible = settingsScreenshotPages.any { it.first == R.id.settingsDeviceTrust }
         binding.viewPager.adapter =
             object : FragmentStateAdapter(this) {
                 override fun getItemCount(): Int = settingsScreenshotPages.size
 
                 override fun createFragment(position: Int): Fragment =
                     when (settingsScreenshotPages[position].first) {
-                        R.id.settingsX509 -> X509ScreenshotFragment()
+                        R.id.settingsDeviceTrust -> DeviceTrustScreenshotFragment()
                         else -> settingsScreenshotPages[position].second()
                     }
             }
@@ -319,9 +320,9 @@ internal class SettingsScreenshotActivity : AppCompatActivity() {
     }
 }
 
-// Shows the X.509 page the way `X509SettingsFragment` does, on a fixture rather than on a Hilt
-// graph and the system KeyChain, so each state of the screen can be photographed on its own.
-internal class X509ScreenshotFragment : Fragment() {
+// Shows Device Trust the way `DeviceTrustSettingsFragment` does, on a fixture rather than on a
+// Hilt graph and the system KeyChain, so each state of the screen can be photographed on its own.
+internal class DeviceTrustScreenshotFragment : Fragment() {
     override fun onCreateView(
         inflater: LayoutInflater,
         container: ViewGroup?,
@@ -331,8 +332,8 @@ internal class X509ScreenshotFragment : Fragment() {
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
             setContent {
                 FirezoneTheme {
-                    X509SettingsScreen(
-                        state = x509ScreenshotState,
+                    DeviceTrustSettingsScreen(
+                        state = deviceTrustScreenshotState,
                         onSelectCertificate = {},
                         onForgetCertificate = {},
                     )

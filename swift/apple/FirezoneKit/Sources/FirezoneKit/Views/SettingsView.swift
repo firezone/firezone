@@ -86,7 +86,7 @@ public struct SettingsView: View {
   public enum Tab: Hashable {
     case general
     case advanced
-    case x509
+    case deviceTrust
     case logs
   }
 
@@ -119,13 +119,13 @@ public struct SettingsView: View {
                 }
                 .badge(viewModel.isValid() ? nil : "!")
                 .tag(Tab.advanced)
-              if store.x509CertificateSummary != nil {
-                certificateTab
+              if store.deviceTrustCertificateSummary != nil {
+                deviceTrustTab
                   .tabItem {
                     Image(systemName: "rosette")
                     Text("Device Trust")
                   }
-                  .tag(Tab.x509)
+                  .tag(Tab.deviceTrust)
               }
               logsTab
                 .tabItem {
@@ -185,12 +185,12 @@ public struct SettingsView: View {
               Text("Advanced")
             }
             .tag(Tab.advanced)
-          if store.x509CertificateSummary != nil {
-            certificateTab
+          if store.deviceTrustCertificateSummary != nil {
+            deviceTrustTab
               .tabItem {
                 Text("Device Trust")
               }
-              .tag(Tab.x509)
+              .tag(Tab.deviceTrust)
           }
           logsTab
             .tabItem {
@@ -563,13 +563,13 @@ public struct SettingsView: View {
   }
 
   @ViewBuilder
-  private var certificateTab: some View {
+  private var deviceTrustTab: some View {
     #if os(macOS)
       ScrollView {
         HStack {
           Spacer()
-          if let summary = store.x509CertificateSummary {
-            X509SettingsView(summary: summary)
+          if let summary = store.deviceTrustCertificateSummary {
+            DeviceTrustSettingsView(summary: summary)
               .frame(maxWidth: 600)
           }
           Spacer()
@@ -578,8 +578,8 @@ public struct SettingsView: View {
         .padding(.vertical)
       }
     #elseif os(iOS)
-      if let summary = store.x509CertificateSummary {
-        X509SettingsView(summary: summary)
+      if let summary = store.deviceTrustCertificateSummary {
+        DeviceTrustSettingsView(summary: summary)
       }
     #else
       #error("Unsupported platform")

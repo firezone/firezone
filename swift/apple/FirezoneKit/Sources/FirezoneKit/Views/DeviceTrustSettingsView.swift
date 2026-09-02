@@ -1,5 +1,5 @@
 //
-//  X509SettingsView.swift
+//  DeviceTrustSettingsView.swift
 //  (c) 2026 Firezone, Inc.
 //  LICENSE: Apache-2.0
 //
@@ -7,8 +7,8 @@
 import SwiftUI
 
 /// Shows the client certificate the VPN profile references, for support and diagnostics.
-struct X509SettingsView: View {
-  let summary: X509CertificateSummary
+struct DeviceTrustSettingsView: View {
+  let summary: DeviceTrustCertificateSummary
 
   var body: some View {
     #if os(iOS)
@@ -37,7 +37,7 @@ struct X509SettingsView: View {
   }
 
   /// Identifies the certificate the way a keychain viewer does, before any of the detail.
-  private func card(_ summary: X509CertificateSummary) -> some View {
+  private func card(_ summary: DeviceTrustCertificateSummary) -> some View {
     cardLayout(
       title: title(of: summary),
       subtitle: value("Issuer", of: summary).map { "Issued by \($0)" },
@@ -88,18 +88,18 @@ struct X509SettingsView: View {
   }
 
   /// What the card leads with, falling back until something names the certificate.
-  private func title(of summary: X509CertificateSummary) -> String {
+  private func title(of summary: DeviceTrustCertificateSummary) -> String {
     value("Common Name", of: summary) ?? value("Subject", of: summary) ?? "Client certificate"
   }
 
   /// The value of one of the parser's rows, `nil` unless the certificate carries it.
   ///
   /// Rows are looked up by the label the parser gives them.
-  private func value(_ label: String, of summary: X509CertificateSummary) -> String? {
+  private func value(_ label: String, of summary: DeviceTrustCertificateSummary) -> String? {
     summary.fields.first(where: { $0.label == label })?.value
   }
 
-  private func certificateFields(_ summary: X509CertificateSummary) -> some View {
+  private func certificateFields(_ summary: DeviceTrustCertificateSummary) -> some View {
     Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 12, verticalSpacing: 8) {
       ForEach(summary.fields, id: \.self) { field in
         GridRow {
@@ -131,7 +131,7 @@ struct X509SettingsView: View {
 
   /// Reads underneath the value it belongs to, the way a form shows an error on its input.
   @ViewBuilder
-  private func fieldProblem(_ problem: X509ValidationError?) -> some View {
+  private func fieldProblem(_ problem: DeviceTrustValidationError?) -> some View {
     if let problem {
       Label(problem.label, systemImage: "exclamationmark.triangle")
         .font(.system(valueTextStyle))

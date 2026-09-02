@@ -16,12 +16,12 @@ import dagger.hilt.android.AndroidEntryPoint
 import dev.firezone.android.R
 import dev.firezone.android.core.x509.KeyChain
 import dev.firezone.android.features.session.ui.compose.FirezoneTheme
-import dev.firezone.android.features.settings.ui.compose.X509SettingsScreen
+import dev.firezone.android.features.settings.ui.compose.DeviceTrustSettingsScreen
 import javax.inject.Inject
 
 @AndroidEntryPoint
-class X509SettingsFragment : Fragment() {
-    private val viewModel: X509SettingsViewModel by viewModels()
+class DeviceTrustSettingsFragment : Fragment() {
+    private val viewModel: DeviceTrustSettingsViewModel by viewModels()
 
     @Inject
     lateinit var keyChain: KeyChain
@@ -37,7 +37,7 @@ class X509SettingsFragment : Fragment() {
                 val state by viewModel.uiStateFlow.collectAsStateWithLifecycle()
 
                 FirezoneTheme {
-                    X509SettingsScreen(
+                    DeviceTrustSettingsScreen(
                         state = state,
                         onSelectCertificate = ::chooseCertificate,
                         onForgetCertificate = ::forgetCertificate,
@@ -66,7 +66,7 @@ class X509SettingsFragment : Fragment() {
             if (alias == null) {
                 activity.runOnUiThread {
                     Toast
-                        .makeText(activity, R.string.x509_no_certificate_selected, Toast.LENGTH_LONG)
+                        .makeText(activity, R.string.device_trust_no_certificate_selected, Toast.LENGTH_LONG)
                         .show()
                 }
             } else {

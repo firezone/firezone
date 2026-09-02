@@ -108,18 +108,18 @@ pub enum ValidationError {
 }
 
 impl ValidationError {
-    /// A phrase that reads on its own and after the value it explains.
+    /// A short error label that reads on its own and after the value it explains.
     pub fn label(self) -> &'static str {
         match self {
             Self::Empty => "empty",
-            Self::TooLong => "longer than 255 characters",
-            Self::Ambiguous => "more than one value was given",
-            Self::PlaceholderIdentifier => "a placeholder identifier",
-            Self::UnknownAttribute => "not an attribute we understand",
+            Self::TooLong => "too long",
+            Self::Ambiguous => "ambiguous",
+            Self::PlaceholderIdentifier => "placeholder identifier",
+            Self::UnknownAttribute => "unrecognized attribute",
             Self::NotYetValid => "not yet valid",
             Self::Expired => "expired",
-            Self::MissingClientAuthEku => "required for mutual TLS",
-            Self::DigitalSignatureNotAllowed => "required to sign the TLS handshake",
+            Self::MissingClientAuthEku => "missing client authentication EKU",
+            Self::DigitalSignatureNotAllowed => "digital signature not allowed",
         }
     }
 }

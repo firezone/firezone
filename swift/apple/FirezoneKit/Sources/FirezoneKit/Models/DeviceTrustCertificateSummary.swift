@@ -1,16 +1,16 @@
 //
-//  X509CertificateSummary.swift
+//  DeviceTrustCertificateSummary.swift
 //  (c) 2026 Firezone, Inc.
 //  LICENSE: Apache-2.0
 //
 
 import Foundation
 
-/// Why the text a certificate gave a `firezone://` claim is not usable as it.
+/// Why a certificate diagnostics field is not usable as what it names.
 ///
 /// Mirrors `ValidationError` of the `x509claims` bindings, which FirezoneKit cannot import.
 /// The parser ships the error rather than a sentence so that each client words it itself.
-public enum X509ValidationError: Hashable, Sendable {
+public enum DeviceTrustValidationError: Hashable, Sendable {
   case empty
   case tooLong
   case ambiguous
@@ -21,30 +21,30 @@ public enum X509ValidationError: Hashable, Sendable {
   case missingClientAuthEku
   case digitalSignatureNotAllowed
 
-  /// A phrase that reads after the claim it explains.
+  /// The concise phrase displayed beneath the field.
   public var label: String {
     switch self {
     case .empty: return "empty"
-    case .tooLong: return "longer than 255 characters"
-    case .ambiguous: return "more than one value was given"
-    case .placeholderIdentifier: return "a placeholder identifier"
-    case .unknownAttribute: return "not an attribute we understand"
+    case .tooLong: return "too long"
+    case .ambiguous: return "ambiguous"
+    case .placeholderIdentifier: return "placeholder identifier"
+    case .unknownAttribute: return "unrecognized attribute"
     case .notYetValid: return "not yet valid"
     case .expired: return "expired"
-    case .missingClientAuthEku: return "required for mutual TLS"
-    case .digitalSignatureNotAllowed: return "required to sign the TLS handshake"
+    case .missingClientAuthEku: return "missing client authentication EKU"
+    case .digitalSignatureNotAllowed: return "digital signature not allowed"
     }
   }
 }
 
 /// One row of the certificate diagnostics screen.
-public struct X509CertificateField: Hashable, Sendable {
+public struct DeviceTrustCertificateField: Hashable, Sendable {
   public let label: String
   public let value: String?
   /// Why the value above is not usable, `nil` when it is.
-  public let problem: X509ValidationError?
+  public let problem: DeviceTrustValidationError?
 
-  public init(label: String, value: String?, problem: X509ValidationError?) {
+  public init(label: String, value: String?, problem: DeviceTrustValidationError?) {
     self.label = label
     self.value = value
     self.problem = problem
@@ -52,11 +52,11 @@ public struct X509CertificateField: Hashable, Sendable {
 }
 
 /// What the parser made of the client certificate the VPN profile references.
-public struct X509CertificateSummary: Equatable, Sendable {
+public struct DeviceTrustCertificateSummary: Equatable, Sendable {
   /// Rows to render, in the order the parser produced them.
-  public let fields: [X509CertificateField]
+  public let fields: [DeviceTrustCertificateField]
 
-  public init(fields: [X509CertificateField]) {
+  public init(fields: [DeviceTrustCertificateField]) {
     self.fields = fields
   }
 }
@@ -70,7 +70,7 @@ public struct X509CertificateSummary: Equatable, Sendable {
 @MainActor
 public enum X509CertificateParser {
   /// `nil` for bytes that are not a certificate.
-  public typealias Parse = @Sendable (Data) -> X509CertificateSummary?
+  public typealias Parse = @Sendable (Data) -> DeviceTrustCertificateSummary?
 
   private static var parse: Parse?
 
@@ -78,7 +78,7 @@ public enum X509CertificateParser {
     Self.parse = parse
   }
 
-  static func summary(of der: Data) -> X509CertificateSummary? {
+  static func summary(of der: Data) -> DeviceTrustCertificateSummary? {
     guard let parse else {
       Log.warning("No X.509 certificate parser was installed")
 

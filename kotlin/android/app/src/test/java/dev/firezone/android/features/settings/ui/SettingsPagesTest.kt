@@ -13,7 +13,7 @@ class SettingsPagesTest {
             settingsPages(hasConfiguredCertificateAlias = false).map { it.first },
         )
         assertEquals(
-            listOf(R.id.settingsGeneral, R.id.settingsAdvanced, R.id.settingsX509, R.id.settingsLogs),
+            listOf(R.id.settingsGeneral, R.id.settingsAdvanced, R.id.settingsDeviceTrust, R.id.settingsLogs),
             settingsPages(hasConfiguredCertificateAlias = true).map { it.first },
         )
     }

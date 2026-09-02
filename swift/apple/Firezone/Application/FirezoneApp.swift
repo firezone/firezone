@@ -142,19 +142,19 @@ func installCertificateParser() {
   X509CertificateParser.use { der in
     guard let parsed = parseClientCertificate(der: der) else { return nil }
 
-    return X509CertificateSummary(
+    return DeviceTrustCertificateSummary(
       fields: parsed.detailFields.map { field in
-        X509CertificateField(
+        DeviceTrustCertificateField(
           label: field.label,
           value: field.value,
-          problem: field.problem.map { X509ValidationError($0) }
+          problem: field.problem.map { DeviceTrustValidationError($0) }
         )
       }
     )
   }
 }
 
-extension X509ValidationError {
+extension DeviceTrustValidationError {
   init(_ error: ValidationError) {
     switch error {
     case .empty: self = .empty

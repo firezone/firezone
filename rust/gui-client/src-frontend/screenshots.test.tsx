@@ -33,7 +33,7 @@ interface Screen {
   generalSettings?: GeneralSettingsViewModel;
   advancedSettings?: AdvancedSettingsViewModel;
   /// The certificate the keystore holds, when the device trust tab is available.
-  x509?: X509Certificate;
+  deviceTrustCertificate?: X509Certificate;
   logCount?: FileCount;
   // Label of a field to leave the pointer over, for a screen whose tooltip is the point.
   hover?: string;
@@ -161,9 +161,9 @@ const screens: Record<string, Screen> = {
     },
     hover: "Auth Base URL",
   },
-  "x509-happy": {
-    route: "/x509",
-    x509: loadedCertificate(windowsCertificate),
+  "device-trust-happy": {
+    route: "/device-trust",
+    deviceTrustCertificate: loadedCertificate(windowsCertificate),
   },
   "diagnostics-no-logs": { route: "/diagnostics" },
   diagnostics: {
@@ -245,7 +245,10 @@ for (const [name, screen] of Object.entries(screens)) {
           await events.generalSettingsChanged.emit(screen.generalSettings);
         if (screen.advancedSettings)
           await events.advancedSettingsChanged.emit(screen.advancedSettings);
-        if (screen.x509) await events.x509CertificateChanged.emit(screen.x509);
+        if (screen.deviceTrustCertificate)
+          await events.x509CertificateChanged.emit(
+            screen.deviceTrustCertificate
+          );
         if (screen.logCount) await events.logsRecounted.emit(screen.logCount);
       });
 

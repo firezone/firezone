@@ -44,7 +44,7 @@ import javax.inject.Inject
  * permission. Only the portal is stood in for, by the scripted session factory.
  */
 @HiltAndroidTest
-class X509DeviceTrustE2eTest {
+class DeviceTrustE2eTest {
     @get:Rule(order = 0)
     val hiltRule = HiltAndroidRule(this)
 
@@ -119,7 +119,7 @@ class X509DeviceTrustE2eTest {
     }
 
     @Test
-    fun anUngrantedManagedCertificateRoutesToTheCertificateScreen() {
+    fun anUngrantedManagedCertificateRoutesToDeviceTrust() {
         FakeKeyChain.install(ALIAS, testIdentity(SERIAL_CLAIM), granted = false)
         TestRestrictions.bundle.putString(X509_CERTIFICATE_ALIAS_RESTRICTION, ALIAS)
 

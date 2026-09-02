@@ -144,7 +144,7 @@ impl GuiIntegration for TauriIntegration {
         Ok(())
     }
 
-    fn notify_x509_changed(
+    fn notify_device_trust_changed(
         &self,
         certificate: Option<&x509_keystore::ParsedCertificate>,
     ) -> Result<()> {

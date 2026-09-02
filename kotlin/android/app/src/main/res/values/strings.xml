@@ -20,40 +20,40 @@
 	<string name="log_filter">Log Filter</string>
 	<string name="button_reset_to_defaults">Reset to Defaults</string>
 	<!-- Diagnostic Logs Settings -->
-	<string name="x509_settings_title">Device Trust</string>
+	<string name="device_trust_settings_title">Device Trust</string>
 	<string name="log_settings_title">Logs</string>
 	<string name="share_diagnostic_logs">Export Logs</string>
 	<string name="log_directory_size">Log directory size: %1$s</string>
 	<string name="clear_log_directory">Clear Log Directory</string>
 
-	<!-- Client Certificate -->
-	<string name="x509_certificate_title">Client certificate</string>
-	<string name="x509_issued_by">Issued by %1$s</string>
-	<string name="x509_valid_until">Valid until %1$s</string>
-	<string name="x509_select_certificate">Select certificate</string>
-	<string name="x509_selection_title">Select your client certificate</string>
-	<string name="x509_selection_description">
+	<!-- Device Trust Certificate -->
+	<string name="device_trust_certificate_title">Client certificate</string>
+	<string name="device_trust_issued_by">Issued by %1$s</string>
+	<string name="device_trust_valid_until">Valid until %1$s</string>
+	<string name="device_trust_select_certificate">Select certificate</string>
+	<string name="device_trust_selection_title">Select your client certificate</string>
+	<string name="device_trust_selection_description">
 		A certificate has been installed on this device but Firezone has not been granted access.
 		Please click \'Select certificate\' and select it on the presented system pop-up. Firezone
 		cannot use the installed certificate beforehand. You can change or revert this permission
 		in the Device Trust settings tab at any time.
 	</string>
-	<string name="x509_forget_certificate">Forget Selection</string>
-	<string name="x509_loading">Reading the KeyChain…</string>
-	<string name="x509_no_certificate_selected">No RSA or EC certificate was selected.</string>
-	<string name="x509_not_released">
+	<string name="device_trust_forget_certificate">Forget Selection</string>
+	<string name="device_trust_loading">Reading the KeyChain…</string>
+	<string name="device_trust_no_certificate_selected">No RSA or EC certificate was selected.</string>
+	<string name="device_trust_not_released">
 		Android has not released this certificate to Firezone. Selecting it grants access.
 	</string>
-	<string name="x509_claim_absent">Not present</string>
-	<string name="x509_claim_empty">Empty</string>
-	<string name="x509_claim_too_long">Longer than 255 characters</string>
-	<string name="x509_claim_ambiguous">More than one value was given</string>
-	<string name="x509_claim_placeholder_identifier">Placeholder identifier</string>
-	<string name="x509_claim_unknown_attribute">Unrecognised attribute</string>
-	<string name="x509_claim_not_yet_valid">Not yet valid</string>
-	<string name="x509_claim_expired">Expired</string>
-	<string name="x509_claim_missing_client_auth_eku">Required for mutual TLS</string>
-	<string name="x509_claim_digital_signature_not_allowed">Required to sign the TLS handshake</string>
+	<string name="device_trust_claim_absent">Not present</string>
+	<string name="device_trust_claim_empty">Empty</string>
+	<string name="device_trust_claim_too_long">Too long</string>
+	<string name="device_trust_claim_ambiguous">Ambiguous</string>
+	<string name="device_trust_claim_placeholder_identifier">Placeholder identifier</string>
+	<string name="device_trust_claim_unknown_attribute">Unrecognized attribute</string>
+	<string name="device_trust_claim_not_yet_valid">Not yet valid</string>
+	<string name="device_trust_claim_expired">Expired</string>
+	<string name="device_trust_claim_missing_client_auth_eku">Missing client authentication EKU</string>
+	<string name="device_trust_claim_digital_signature_not_allowed">Digital signature not allowed</string>
 
 	<!-- Sign In -->
 	<string name="sign_in">Sign In</string>

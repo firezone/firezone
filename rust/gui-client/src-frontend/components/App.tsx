@@ -3,13 +3,13 @@ import { Navigate, Route, Routes } from "react-router";
 import About from "./AboutPage";
 import AdvancedSettingsPage from "./AdvancedSettingsPage";
 import ColorPalette from "./ColorPalettePage";
+import DeviceTrustPage from "./DeviceTrustPage";
 import Diagnostics from "./DiagnosticsPage";
 import GeneralSettingsPage from "./GeneralSettingsPage";
 import Overview from "./OverviewPage";
 import ReactRouterSidebarItem from "./ReactRouterSidebarItem";
 import RemixIcon from "./RemixIcon";
 import Titlebar from "./Titlebar";
-import X509Page from "./X509Page";
 import {
   AdvancedSettingsViewModel,
   commands,
@@ -27,7 +27,8 @@ export default function App() {
     useState<GeneralSettingsViewModel | null>(null);
   const [advancedSettings, setAdvancedSettings] =
     useState<AdvancedSettingsViewModel | null>(null);
-  const [x509, setX509] = useState<X509Certificate | null>();
+  const [deviceTrustCertificate, setDeviceTrustCertificate] =
+    useState<X509Certificate | null>();
   const [settingsOpen, setSettingsOpen] = useState(true);
 
   useEffect(() => {
@@ -52,12 +53,11 @@ export default function App() {
       console.log("logs_recounted", { file_count: event.payload });
       setLogCount(event.payload);
     });
-    const x509CertificateChangedUnlisten = events.x509CertificateChanged.listen(
-      (event) => {
+    const deviceTrustCertificateChangedUnlisten =
+      events.x509CertificateChanged.listen((event) => {
         console.log("x509_certificate_changed", { certificate: event.payload });
-        setX509(event.payload);
-      }
-    );
+        setDeviceTrustCertificate(event.payload);
+      });
 
     commands.updateState();
 
@@ -66,7 +66,7 @@ export default function App() {
       generalSettingsChangedUnlisten.then((unlisten) => unlisten());
       advancedSettingsChangedUnlisten.then((unlisten) => unlisten());
       logsRecountedUnlisten.then((unlisten) => unlisten());
-      x509CertificateChangedUnlisten.then((unlisten) => unlisten());
+      deviceTrustCertificateChangedUnlisten.then((unlisten) => unlisten());
     };
   }, []);
 
@@ -85,8 +85,10 @@ export default function App() {
           element={<Titlebar title="Advanced Settings" />}
         />
         <Route
-          path="/x509"
-          element={x509 ? <Titlebar title="Device Trust" /> : null}
+          path="/device-trust"
+          element={
+            deviceTrustCertificate ? <Titlebar title="Device Trust" /> : null
+          }
         />
         <Route path="/diagnostics" element={<Titlebar title="Diagnostics" />} />
         <Route path="/about" element={<Titlebar title="About" />} />
@@ -145,9 +147,12 @@ export default function App() {
                   </ul>
                 )}
               </li>
-              {x509 && (
+              {deviceTrustCertificate && (
                 <li>
-                  <ReactRouterSidebarItem icon="certificate" href="/x509">
+                  <ReactRouterSidebarItem
+                    icon="certificate"
+                    href="/device-trust"
+                  >
                     Device Trust
                   </ReactRouterSidebarItem>
                 </li>
@@ -206,12 +211,12 @@ export default function App() {
               }
             />
             <Route
-              path="/x509"
+              path="/device-trust"
               element={
-                x509 === null ? (
+                deviceTrustCertificate === null ? (
                   <Navigate replace to="/overview" />
-                ) : x509 === undefined ? null : (
-                  <X509Page certificate={x509} />
+                ) : deviceTrustCertificate === undefined ? null : (
+                  <DeviceTrustPage certificate={deviceTrustCertificate} />
                 )
               }
             />

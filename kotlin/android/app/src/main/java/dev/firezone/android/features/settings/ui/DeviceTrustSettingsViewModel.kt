@@ -21,7 +21,7 @@ import uniffi.x509claims.parseClientCertificate
 import javax.inject.Inject
 
 @HiltViewModel
-internal class X509SettingsViewModel
+internal class DeviceTrustSettingsViewModel
     @Inject
     constructor(
         private val repository: Repository,
@@ -134,6 +134,6 @@ internal class X509SettingsViewModel
         )
 
         private companion object {
-            private const val TAG = "X509SettingsViewModel"
+            private const val TAG = "DeviceTrustSettingsViewModel"
         }
     }

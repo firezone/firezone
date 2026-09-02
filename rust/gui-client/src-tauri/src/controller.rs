@@ -79,7 +79,7 @@ pub trait GuiIntegration {
         advanced_settings: AdvancedSettings,
     ) -> Result<()>;
     fn notify_logs_recounted(&self, file_count: &FileCount) -> Result<()>;
-    fn notify_x509_changed(
+    fn notify_device_trust_changed(
         &self,
         certificate: Option<&x509_keystore::ParsedCertificate>,
     ) -> Result<()>;
@@ -271,14 +271,14 @@ impl<I: GuiIntegration> Controller<I> {
     pub async fn main_loop(mut self) -> Result<()> {
         self.update_telemetry_context().await?;
         self.maybe_start_session().await?;
-        self.notify_x509_changed()?;
+        self.notify_device_trust_changed()?;
         self.refresh_ui_state();
 
         if !ran_before::get().await? || !self.general_settings.start_minimized {
             let (_, session_view_model) = self.build_ui_state();
 
             self.integration.show_overview_page(&session_view_model)?;
-            self.reload_x509().await?;
+            self.reload_device_trust().await?;
         }
 
         loop {
@@ -594,7 +594,7 @@ impl<I: GuiIntegration> Controller<I> {
                         self.advanced_settings.clone(),
                     )?,
                 };
-                self.reload_x509().await?;
+                self.reload_device_trust().await?;
 
                 // When the About or Settings windows are hidden / shown, log the
                 // run ID and uptime. This makes it easy to check client stability on
@@ -623,7 +623,7 @@ impl<I: GuiIntegration> Controller<I> {
             }
             UpdateState => {
                 self.notify_settings_changed()?;
-                self.notify_x509_changed()?;
+                self.notify_device_trust_changed()?;
 
                 let file_count = logging::count_logs().await?;
                 self.integration.notify_logs_recounted(&file_count)?;
@@ -767,7 +767,7 @@ impl<I: GuiIntegration> Controller<I> {
             service::ServerMsg::X509Certificate(result) => {
                 self.x509 = result;
 
-                self.notify_x509_changed()?;
+                self.notify_device_trust_changed()?;
                 self.refresh_ui_state();
             }
             service::ServerMsg::GatewayVersionMismatch { resource_id } => {
@@ -816,7 +816,7 @@ impl<I: GuiIntegration> Controller<I> {
                 let (_, session_view_model) = self.build_ui_state();
 
                 self.integration.show_overview_page(&session_view_model)?;
-                self.reload_x509().await?;
+                self.reload_device_trust().await?;
             }
         }
 
@@ -1026,16 +1026,16 @@ impl<I: GuiIntegration> Controller<I> {
     /// Asks the Tunnel service to re-read the platform keystore.
     ///
     /// Sent for every shown window: the tray menu re-shows the same windows for the life of
-    /// the process, so only this keeps the X.509 page's certificate current. Fire-and-forget:
+    /// the process, so only this keeps the Device Trust page's certificate current. Fire-and-forget:
     /// the fresh read arrives as an ordinary [`service::ServerMsg::X509Certificate`] push.
-    async fn reload_x509(&mut self) -> Result<()> {
+    async fn reload_device_trust(&mut self) -> Result<()> {
         self.send_ipc(&service::ClientMsg::ReloadX509).await
     }
 
     /// Tells the GUI what the Tunnel service last loaded from the keystore.
-    fn notify_x509_changed(&self) -> Result<()> {
+    fn notify_device_trust_changed(&self) -> Result<()> {
         let certificate = self.x509.as_ref().ok().and_then(Option::as_ref);
-        self.integration.notify_x509_changed(certificate)?;
+        self.integration.notify_device_trust_changed(certificate)?;
 
         Ok(())
     }
@@ -1707,7 +1707,7 @@ mod tests {
             Ok(())
         }
 
-        fn notify_x509_changed(
+        fn notify_device_trust_changed(
             &self,
             certificate: Option<&x509_keystore::ParsedCertificate>,
         ) -> Result<()> {

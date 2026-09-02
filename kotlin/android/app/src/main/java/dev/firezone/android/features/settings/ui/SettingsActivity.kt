@@ -28,7 +28,7 @@ internal fun settingsPages(hasConfiguredCertificateAlias: Boolean): List<Pair<In
         add(R.id.settingsAdvanced to { AdvancedSettingsFragment() })
 
         if (hasConfiguredCertificateAlias) {
-            add(R.id.settingsX509 to { X509SettingsFragment() })
+            add(R.id.settingsDeviceTrust to { DeviceTrustSettingsFragment() })
         }
 
         add(R.id.settingsLogs to { LogSettingsFragment() })
@@ -101,8 +101,8 @@ internal class SettingsActivity : AppCompatActivity() {
 
         with(binding) {
             bottomNavigation.menu
-                .findItem(R.id.settingsX509)
-                .isVisible = pages.any { it.first == R.id.settingsX509 }
+                .findItem(R.id.settingsDeviceTrust)
+                .isVisible = pages.any { it.first == R.id.settingsDeviceTrust }
             viewPager.adapter = adapter
 
             // ViewPager2 clears focus whenever onPageSelected is dispatched, and its
