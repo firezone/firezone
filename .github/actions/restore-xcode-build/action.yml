@@ -20,34 +20,57 @@ runs:
   steps:
     # A cold DerivedData recompiles the app, its extension and both package
     # dependencies from scratch, which is the bulk of the run. The key names every
-    # Swift source the build products are a function of, so a hit can only ever be
-    # the build of those same sources: hence no restore-keys below. connlib is not
-    # among them: cargo builds it into `rust/target` on every run, sccache makes
+    # Swift source the build products are a function of; connlib is not among
+    # them, because cargo builds it into `rust/target` on every run, sccache makes
     # that cheap, and Xcode relinks against the fresh archive and recompiles the
     # extension against the regenerated bindings because both are newer than the
     # restored products.
     - name: Compute the cache key
       id: key
       shell: bash
-      # Build products are not portable across Xcode versions, so keying on an
-      # unset version would serve a 26.2 build to a job asking for a 27 one.
+      # Build products are not portable across platforms, architectures or Xcode
+      # versions, so the prefix the fallback stops at pins all three.
       run: |
         : "${XCODE_VERSION:?the calling job must pin the Xcode version}"
 
-        echo "value=v1-xcode-build-${{ inputs.key }}-${{ runner.arch }}-${XCODE_VERSION}-${{ hashFiles('swift/apple/**', '!swift/apple/screenshots/**') }}" >> "$GITHUB_OUTPUT"
+        prefix="v2-xcode-build-${{ inputs.key }}-${{ runner.arch }}-${XCODE_VERSION}-"
 
+        echo "prefix=${prefix}" >> "$GITHUB_OUTPUT"
+        echo "value=${prefix}${{ hashFiles('swift/apple/**', '!swift/apple/screenshots/**') }}" >> "$GITHUB_OUTPUT"
+
+    # The `swift` job runs because `swift/apple` changed, so the exact key mostly
+    # misses and falling back to the newest build of the same platform is what a
+    # pull request actually gets. A hit on the exact key means the products are
+    # already a build of these very sources and there is nothing new to save.
     - name: Restore the build products
       id: restore
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ${{ inputs.path }}/Build
         key: ${{ steps.key.outputs.value }}
+        restore-keys: ${{ steps.key.outputs.prefix }}
 
-    # Xcode decides what to rebuild from file timestamps, and a checkout stamps
-    # every file with the moment it was written, which on its own would age out
-    # the entire restored build. A constant stamps identical sources identically,
-    # and the key above covers those same sources, so what the timestamps claim is
-    # up to date is what the cache was written from.
-    - name: Date the sources deterministically
+    # A checkout dates every file by the moment it was written, which would date
+    # the whole tree past the products restored above. Dating by content keeps a
+    # file the cached build already saw at the date it saw it, and can never hand
+    # an edited file the date of the version it replaced.
+    - name: Date the sources by their content
       shell: bash
-      run: find swift/apple -type f -exec touch -t 202601010000 {} +
+      run: |
+        python3 - swift/apple <<'PY'
+        import hashlib, os, sys
+
+        # Ten years of seconds from 1990: safely in the past, and far more values
+        # than the few hundred files that have to stay apart.
+        EPOCH, WINDOW = 631152000, 315360000
+
+        for directory, _, names in os.walk(sys.argv[1]):
+            for name in names:
+                path = os.path.join(directory, name)
+                if os.path.islink(path):
+                    continue
+                with open(path, "rb") as handle:
+                    digest = hashlib.sha256(handle.read()).digest()
+                date = (EPOCH + int.from_bytes(digest, "big") % WINDOW) * 10**9
+                os.utime(path, ns=(date, date))
+        PY

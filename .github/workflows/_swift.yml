@@ -69,12 +69,8 @@ jobs:
           # The app target embeds the tunnel extension, which compiles connlib.
           - platform: macos
             rust-target: aarch64-apple-darwin
-            probe-view: FirstTimeView.swift
-            probe-edit: "maxWidth: 430 -> maxWidth: 200"
           - platform: ios
             rust-target: aarch64-apple-ios-sim
-            probe-view: WelcomeView.swift
-            probe-edit: "maxWidth: 300 -> maxWidth: 150"
     env:
       XCODE_VERSION: "26.2"
       # GIT_SHA stays unset: the settings screens print it as their build
@@ -114,41 +110,12 @@ jobs:
         with:
           path: ${{ runner.temp }}/DerivedData
           key: ${{ matrix.platform }}
-      - name: Probe what invalidates a restored build
-        run: |
-          views=swift/apple/FirezoneKit/Sources/FirezoneKit/Views
-
-          python3 - "$views/${{ matrix.probe-view }}" "${{ matrix.probe-edit }}" <<'PY'
-          import pathlib, sys
-
-          path, edit = pathlib.Path(sys.argv[1]), sys.argv[2]
-          before, after = edit.split(" -> ")
-          data = path.read_text()
-          edited = data.replace(before, after, 1)
-          assert edited != data, edit
-          path.write_text(edited)
-          PY
-
-          # macOS leaves the timestamp the restore applied, so only the content
-          # differs. iOS additionally stamps the file with the moment of the edit,
-          # which is newer than anything in the restored products.
-          if [ "${{ matrix.platform }}" = "ios" ]; then
-            touch "$views/${{ matrix.probe-view }}"
-          fi
       - name: Photograph the ${{ matrix.platform }} screens
         # The runner context only exists at step level.
         env:
           DERIVED_DATA_PATH: ${{ runner.temp }}/DerivedData
           RESULT_BUNDLE_DIR: ${{ runner.temp }}
         run: mise run //swift/apple:screenshots-${{ matrix.platform }}
-      - name: Report the probe
-        if: always()
-        run: |
-          views=swift/apple/FirezoneKit/Sources/FirezoneKit/Views
-
-          stat -f "%N %z %Sm" -t "%F %T" "$views/${{ matrix.probe-view }}"
-          grep -n "maxWidth" "$views/${{ matrix.probe-view }}"
-          echo "cache-hit=${{ steps.xcode-build.outputs.cache-hit }}"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ${{ matrix.platform }}-screenshots
