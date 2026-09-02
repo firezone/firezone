@@ -266,6 +266,23 @@ impl fmt::Display for AccountIdHash {
     }
 }
 
+/// An account UUID received from the Portal.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, serde::Deserialize)]
+#[serde(transparent)]
+pub struct AccountId(Uuid);
+
+impl From<Uuid> for AccountId {
+    fn from(value: Uuid) -> Self {
+        Self(value)
+    }
+}
+
+impl fmt::Display for AccountId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
 struct ParsedUsername<'a> {
     raw: &'a str,
     expiry: u64,
@@ -312,8 +329,8 @@ pub fn generate_password(relay_secret: &SecretString, username: &str) -> String 
     BASE64_STANDARD_NO_PAD.encode(hasher.finalize_fixed().as_slice())
 }
 
-pub fn hash_account_id(account_id: &str) -> AccountIdHash {
-    AccountIdHash(BASE64_STANDARD_NO_PAD.encode(Sha256::digest(account_id).as_slice()))
+pub fn hash_account_id(account_id: &AccountId) -> AccountIdHash {
+    AccountIdHash(BASE64_STANDARD_NO_PAD.encode(Sha256::digest(account_id.to_string()).as_slice()))
 }
 
 fn generate_password_for_username(
@@ -356,8 +373,8 @@ mod tests {
     #[test]
     fn generate_password_test_vector_elixir() {
         let expiry = 1685984278;
-        let account_id = "00000000-0000-0000-0000-000000000000";
-        let account_hash = hash_account_id(account_id);
+        let account_id = AccountId::from(Uuid::nil());
+        let account_hash = hash_account_id(&account_id);
         let username = format!("{expiry}:{account_hash}:uvdgKvS9GXYZ_vmv");
         let password = generate_password(&"1cab293a-4032-46f4-862a-40e5d174b0d2".into(), &username);
         assert_eq!(

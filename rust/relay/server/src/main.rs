@@ -11,7 +11,7 @@ use eventloop_budget::Budget;
 use firezone_relay::sockets::Sockets;
 use firezone_relay::{
     AddressFamily, AllocationPort, ChannelData, ClientSocket, Command, IpStack, PeerSocket, Server,
-    Sleep, VERSION, control_endpoint, ebpf, sockets,
+    Sleep, VERSION, auth::AccountId, control_endpoint, ebpf, sockets,
 };
 use futures::{FutureExt, future};
 use logging::{FilterReloadHandle, err_with_src, sentry_layer};
@@ -409,12 +409,12 @@ enum IngressMessages {
 #[derive(serde::Deserialize, Debug)]
 struct Init {
     #[serde(default)]
-    account_ids: Vec<String>,
+    account_ids: Vec<AccountId>,
 }
 
 #[derive(serde::Deserialize, Debug)]
 struct Account {
-    account_id: String,
+    account_id: AccountId,
 }
 
 #[derive(serde::Serialize, PartialEq, Debug, Clone)]

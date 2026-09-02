@@ -83,7 +83,7 @@ pub struct Server<R> {
 
     /// Maps the account hash carried in a TURN credential to the raw account
     /// UUID received from the Portal. Allocations retain the raw UUID.
-    accounts_by_hash: HashMap<auth::AccountIdHash, String>,
+    accounts_by_hash: HashMap<auth::AccountIdHash, auth::AccountId>,
 
     nonces: Nonces,
 
@@ -96,7 +96,7 @@ pub struct Server<R> {
 #[derive(Debug)]
 struct VerifiedUsername {
     username: Username,
-    account: String,
+    account: auth::AccountId,
 }
 
 /// The commands returned from a [`Server`].
@@ -223,7 +223,7 @@ where
     /// Enables account-bound TURN authentication with a complete snapshot.
     /// Existing allocations that are absent from the snapshot are deleted so
     /// their sockets and fast-path channel bindings are torn down as well.
-    pub fn set_accounts(&mut self, accounts: impl IntoIterator<Item = String>) {
+    pub fn set_accounts(&mut self, accounts: impl IntoIterator<Item = auth::AccountId>) {
         let accounts_by_hash = accounts
             .into_iter()
             .map(|account| (auth::hash_account_id(&account), account))
@@ -245,7 +245,7 @@ where
         }
     }
 
-    pub fn add_account(&mut self, account: String) {
+    pub fn add_account(&mut self, account: auth::AccountId) {
         self.accounts_by_hash
             .insert(auth::hash_account_id(&account), account);
     }
@@ -253,14 +253,14 @@ where
     /// Removes an account immediately, including its existing allocations and
     /// channel bindings. Deleting the bindings emits the existing commands
     /// that remove the Linux eBPF fast-path entries.
-    pub fn remove_account(&mut self, account: &str) {
+    pub fn remove_account(&mut self, account: &auth::AccountId) {
         self.accounts_by_hash
             .remove(&auth::hash_account_id(account));
 
         let allocations = self
             .allocations
             .values()
-            .filter_map(|allocation| (allocation.account == account).then_some(allocation.port))
+            .filter_map(|allocation| (allocation.account == *account).then_some(allocation.port))
             .collect::<Vec<_>>();
 
         for allocation in allocations {
@@ -968,7 +968,7 @@ where
         lifetime: &Lifetime,
         first_relay_addr: IpAddr,
         second_relay_addr: Option<IpAddr>,
-        account: String,
+        account: auth::AccountId,
     ) -> Allocation {
         assert!(
             self.clients_by_allocation.len() < self.max_available_ports() as usize,
@@ -1243,7 +1243,7 @@ struct Allocation {
 
     first_relay_addr: IpAddr,
     second_relay_addr: Option<IpAddr>,
-    account: String,
+    account: auth::AccountId,
 }
 
 #[derive(Debug, Clone)]
@@ -1493,6 +1493,7 @@ mod tests {
     use rand::{SeedableRng as _, rngs::StdRng};
     use std::net::{Ipv4Addr, Ipv6Addr};
     use stun_codec::{MessageDecoder, MessageEncoder};
+    use uuid::Uuid;
 
     #[test]
     fn removing_account_deletes_its_allocations_and_channel_bindings() {
@@ -1500,7 +1501,7 @@ mod tests {
         let client = ClientSocket::new(SocketAddr::from(([127, 0, 0, 1], 50_000)));
         let peer = PeerSocket::new(SocketAddr::from(([127, 0, 0, 2], 50_001)));
         let channel = ChannelNumber::new(ChannelNumber::MIN).unwrap();
-        let account = "account-hash".to_owned();
+        let account = auth::AccountId::from(Uuid::nil());
         let mut server = Server::new(
             Ipv4Addr::LOCALHOST,
             StdRng::seed_from_u64(0),
@@ -1508,7 +1509,7 @@ mod tests {
             49_152..=49_153,
         );
 
-        server.set_accounts([account.clone()]);
+        server.set_accounts([account]);
         let nonce = issue_nonce(&mut server, client, now);
         let username = Username::new(format!(
             "2145916800:{}:credential-salt",

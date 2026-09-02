@@ -22,17 +22,16 @@ use libfuzzer_sys::fuzz_target;
 use rand::{SeedableRng as _, rngs::StdRng};
 use relay_proto::{
     Attribute, ClientSocket, Command, Server,
-    auth::{generate_password, hash_account_id},
+    auth::{AccountId, generate_password, hash_account_id},
 };
 use std::net::{Ipv4Addr, SocketAddr};
 use std::time::Instant;
 use stun_codec::rfc5389::attributes::{MessageIntegrity, Nonce, Realm, Username};
 use stun_codec::{Message, MessageDecoder, MessageEncoder};
+use uuid::Uuid;
 
 const RELAY_IP: Ipv4Addr = Ipv4Addr::new(10, 0, 0, 1);
 const CLIENT: SocketAddr = SocketAddr::new(std::net::IpAddr::V4(Ipv4Addr::new(10, 0, 0, 2)), 51820);
-const FUZZ_ACCOUNT_ID: &str = "00000000-0000-0000-0000-000000000000";
-
 #[derive(Arbitrary, Debug)]
 struct Input<'a> {
     /// Decode the datagram as a STUN message and re-encode it before handing it over.
@@ -44,7 +43,7 @@ struct Input<'a> {
 
 fuzz_target!(|input: Input<'_>| {
     let mut server = Server::new(RELAY_IP, StdRng::seed_from_u64(0), 3478, 49152..=65535);
-    server.set_accounts([FUZZ_ACCOUNT_ID.to_owned()]);
+    server.set_accounts([AccountId::from(Uuid::nil())]);
     let client = ClientSocket::new(CLIENT);
     let now = Instant::now();
 
@@ -122,7 +121,7 @@ fn account_bound_username(username: &Username) -> Option<Username> {
 
     Username::new(format!(
         "{expiry}:{}:{salt}",
-        hash_account_id(FUZZ_ACCOUNT_ID)
+        hash_account_id(&AccountId::from(Uuid::nil()))
     ))
     .ok()
 }

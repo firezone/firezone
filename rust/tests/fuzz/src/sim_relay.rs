@@ -11,6 +11,7 @@ use std::{
     net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
     time::{Duration, Instant, SystemTime},
 };
+use uuid::Uuid;
 
 pub(crate) struct SimRelay {
     pub(crate) sut: relay_proto::Server<StdRng>,
@@ -18,8 +19,6 @@ pub(crate) struct SimRelay {
 
     created_at: SystemTime,
 }
-
-const ACCOUNT_ID: &str = "00000000-0000-0000-0000-000000000000";
 
 pub(crate) fn map_explode<'a>(
     relays: impl Iterator<Item = (&'a RelayId, &'a Host<SimRelay>)> + 'a,
@@ -46,7 +45,7 @@ impl SimRelay {
             3478,
             49152..=65535,
         );
-        sut.set_accounts([ACCOUNT_ID.to_owned()]);
+        sut.set_accounts([relay_proto::auth::AccountId::from(Uuid::nil())]);
 
         Self {
             sut,
@@ -191,7 +190,7 @@ impl SimRelay {
 
         let username = format!(
             "{secs}:{}:{username}",
-            relay_proto::auth::hash_account_id(ACCOUNT_ID)
+            relay_proto::auth::hash_account_id(&relay_proto::auth::AccountId::from(Uuid::nil()))
         );
         let password = relay_proto::auth::generate_password(auth_secret, &username);
 
