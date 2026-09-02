@@ -1884,7 +1884,7 @@ defmodule Portal.Repo.Seeds do
     system_subject = %Authentication.Subject{
       account: account,
       actor: %Actor{type: :system, id: Ecto.UUID.generate(), name: "System"},
-      credential: %Authentication.Credential{type: :token, id: Ecto.UUID.generate(), scopes: nil},
+      credential: %Authentication.Credential.ClientToken{id: Ecto.UUID.generate()},
       expires_at: DateTime.utc_now() |> DateTime.add(1, :hour),
       context: %Authentication.Context{
         type: :client,
@@ -1953,7 +1953,10 @@ defmodule Portal.Repo.Seeds do
     other_system_subject = %Authentication.Subject{
       account: other_account,
       actor: %Actor{type: :system, id: Ecto.UUID.generate(), name: "System"},
-      credential: %Authentication.Credential{type: :portal_session, id: Ecto.UUID.generate(), scopes: nil},
+      credential: %Authentication.Credential.PortalSession{
+        id: Ecto.UUID.generate(),
+        auth_provider_id: Ecto.UUID.generate()
+      },
       expires_at: DateTime.utc_now() |> DateTime.add(1, :hour),
       context: %Authentication.Context{
         type: :portal,
@@ -2249,7 +2252,10 @@ defmodule Portal.Repo.Seeds do
     admin_subject = %Authentication.Subject{
       account: account,
       actor: admin_actor,
-      credential: %Authentication.Credential{type: :portal_session, id: Ecto.UUID.generate(), scopes: nil},
+      credential: %Authentication.Credential.PortalSession{
+        id: Ecto.UUID.generate(),
+        auth_provider_id: userpass_provider.id
+      },
       expires_at: DateTime.utc_now() |> DateTime.add(1, :hour),
       context: %Authentication.Context{
         type: :portal,
@@ -2261,7 +2267,10 @@ defmodule Portal.Repo.Seeds do
     unprivileged_subject = %Authentication.Subject{
       account: account,
       actor: unprivileged_actor,
-      credential: %Authentication.Credential{type: :token, id: unprivileged_client_token.id, scopes: nil},
+      credential: %Authentication.Credential.ClientToken{
+        id: unprivileged_client_token.id,
+        auth_provider_id: unprivileged_client_token.auth_provider_id
+      },
       expires_at: unprivileged_client_token.expires_at,
       context: %Authentication.Context{
         type: :client,
@@ -2295,7 +2304,7 @@ defmodule Portal.Repo.Seeds do
     pool_member_subject = %Authentication.Subject{
       account: account,
       actor: pool_member_actor,
-      credential: %Authentication.Credential{type: :token, id: pool_member_token.id, scopes: nil},
+      credential: %Authentication.Credential.ClientToken{id: pool_member_token.id},
       expires_at: pool_member_token.expires_at,
       context: %Authentication.Context{
         type: :client,
