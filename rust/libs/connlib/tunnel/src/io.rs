@@ -341,6 +341,8 @@ impl Io {
 
                 meta.retried = true;
                 self.queue_dns_query(doh::send(client, server, meta.query.clone()), meta);
+                // `doh_clients_bootstrap` was already polled this tick and only wakes on a push into an empty set.
+                cx.waker().wake_by_ref();
 
                 continue;
             }
