@@ -3,6 +3,120 @@ defmodule PortalWeb.PageComponents do
   use PortalWeb, :verified_routes
   import PortalWeb.CoreComponents
 
+  @doc """
+  The read/write permission picker.
+
+  Shared by the API token form and the OAuth consent screen so the two always
+  look the same. They post to different fields and drive the shortcut buttons
+  differently - a LiveView handles them with `phx-click`, a plain form submits
+  them as a named button - but neither needs JavaScript.
+  """
+  attr :scopes, :list, required: true, doc: "The scopes currently selected"
+  attr :field_name, :string, required: true, doc: "Name for each checkbox"
+  attr :error, :string, default: nil
+  attr :select_mode, :atom, default: :live, values: [:live, :submit]
+
+  def scope_picker(assigns) do
+    assigns = assign(assigns, :entities, sorted_scope_entities())
+
+    ~H"""
+    <fieldset>
+      <div class="flex items-center justify-between mb-1">
+        <legend class="block text-xs font-medium text-body">Permissions</legend>
+
+        <div class="flex items-center gap-2 text-xs">
+          <.scope_preset_button mode={@select_mode} preset="none">Select none</.scope_preset_button>
+          <span class="text-subtle">·</span>
+          <.scope_preset_button mode={@select_mode} preset="read">
+            Select read-only
+          </.scope_preset_button>
+          <span class="text-subtle">·</span>
+          <.scope_preset_button mode={@select_mode} preset="all">Select all</.scope_preset_button>
+        </div>
+      </div>
+
+      <p class="mb-3 text-xs text-subtle">
+        Always allow only the minimal permissions you need.
+      </p>
+      <!-- Submits the key even when nothing is ticked. -->
+      <input type="hidden" name={@field_name} value="" />
+
+      <div class={[
+        "rounded border divide-y divide-border",
+        (@error && "border-error ring-1 ring-error/30") || "border-border"
+      ]}>
+        <div class="flex items-center px-3 py-2 bg-raised">
+          <span class="flex-1 text-xs font-medium text-subtle">Scope</span>
+          <span class="w-16 text-center text-xs font-medium text-subtle">Read</span>
+          <span class="w-16 text-center text-xs font-medium text-subtle">Write</span>
+        </div>
+
+        <div :for={{entity, levels} <- @entities} class="flex items-center px-3 py-2">
+          <div class="flex-1 pr-4">
+            <span class="block text-sm text-heading">{Portal.Scope.label(entity)}</span>
+            <span class="block text-xs text-subtle">{Portal.Scope.description(entity)}</span>
+          </div>
+
+          <span :for={level <- [:read, :write]} class="w-16 flex justify-center">
+            <input
+              :if={level in levels}
+              type="checkbox"
+              name={@field_name}
+              value={Portal.Scope.to_string(entity, level)}
+              checked={scope_checked?(@scopes, entity, level)}
+              disabled={scope_locked?(@scopes, entity, level)}
+              class="w-4 h-4 text-brand border-border rounded disabled:opacity-50"
+            />
+          </span>
+        </div>
+      </div>
+
+      <p :if={@error} class="mt-2 flex items-center gap-2 text-sm text-error">
+        <.icon name="ri-alert-line" class="h-4 w-4 flex-none" />{@error}
+      </p>
+    </fieldset>
+    """
+  end
+
+  attr :mode, :atom, required: true
+  attr :preset, :string, required: true
+  slot :inner_block, required: true
+
+  defp scope_preset_button(assigns) do
+    ~H"""
+    <button
+      type={if @mode == :live, do: "button", else: "submit"}
+      phx-click={if @mode == :live, do: "select_scopes"}
+      phx-value-preset={if @mode == :live, do: @preset}
+      name={if @mode == :submit, do: "preset"}
+      value={if @mode == :submit, do: @preset}
+      class="text-brand hover:underline"
+    >
+      {render_slot(@inner_block)}
+    </button>
+    """
+  end
+
+  defp sorted_scope_entities do
+    Enum.sort_by(Portal.Scope.levels_by_entity(), fn {entity, _levels} ->
+      Portal.Scope.label(entity)
+    end)
+  end
+
+  defp scope_checked?(scopes, entity, :read) do
+    Portal.Scope.to_string(entity, :read) in scopes or
+      Portal.Scope.to_string(entity, :write) in scopes
+  end
+
+  defp scope_checked?(scopes, entity, level),
+    do: Portal.Scope.to_string(entity, level) in scopes
+
+  # A locked box submits nothing, which is why scopes are expanded on read-back.
+  defp scope_locked?(scopes, entity, :read),
+    do: Portal.Scope.to_string(entity, :write) in scopes
+
+  defp scope_locked?(_scopes, _entity, _level), do: false
+
   attr :id, :string, default: nil, doc: "The id of the section"
   slot :title, required: true, doc: "The title of the section to be displayed"
   slot :action, required: false, doc: "A slot for action to the right from title"

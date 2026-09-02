@@ -1,5 +1,6 @@
 defmodule PortalAPI.Client.Channel.Shared do
   use PortalAPI, :channel
+  alias Portal.Authentication.Credential
   alias PortalAPI.Client.Views
 
   alias Portal.{
@@ -1882,7 +1883,7 @@ defmodule PortalAPI.Client.Channel.Shared do
          %{
            assigns: %{
              subject: %{
-               credential: %{type: :x509, auth_provider_id: auth_provider_id}
+               credential: %Credential.X509{auth_provider_id: auth_provider_id}
              }
            }
          } = socket
@@ -1898,7 +1899,7 @@ defmodule PortalAPI.Client.Channel.Shared do
          %{
            assigns: %{
              subject: %{
-               credential: %{type: :x509, auth_provider_id: auth_provider_id}
+               credential: %Credential.X509{auth_provider_id: auth_provider_id}
              }
            }
          } = socket
@@ -2517,7 +2518,7 @@ defmodule PortalAPI.Client.Channel.Shared do
       "initiator_actor_id" => actor.id,
       "initiator_actor_email" => actor.email,
       "initiator_actor_name" => actor.name,
-      "initiator_auth_provider_id" => credential.auth_provider_id,
+      "initiator_auth_provider_id" => Credential.auth_provider_id(credential),
       # The authorization happens now; both tokens share the same authorized_at
       # so the two sides of the flow agree on the trusted flow_start floor.
       "authorized_at" => DateTime.to_iso8601(DateTime.utc_now()),
@@ -2638,7 +2639,7 @@ defmodule PortalAPI.Client.Channel.Shared do
          assigns: %{
            subject: %{
              actor: %{id: actor_id},
-             credential: %{type: :x509, auth_provider_id: auth_provider_id}
+             credential: %Credential.X509{auth_provider_id: auth_provider_id}
            }
          }
        }) do

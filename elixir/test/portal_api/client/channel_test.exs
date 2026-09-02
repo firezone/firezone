@@ -123,9 +123,8 @@ defmodule PortalAPI.Client.ChannelTest do
     Process.flag(:trap_exit, true)
     provider = x509_provider_fixture(account: account, is_disabled: false)
 
-    credential = %Portal.Authentication.Credential{
+    credential = %Portal.Authentication.Credential.X509{
       id: Ecto.UUID.generate(),
-      type: :x509,
       auth_provider_id: provider.id
     }
 
@@ -1113,9 +1112,8 @@ defmodule PortalAPI.Client.ChannelTest do
       Process.flag(:trap_exit, true)
       provider = x509_provider_fixture(account: account, is_disabled: false)
 
-      credential = %Portal.Authentication.Credential{
+      credential = %Portal.Authentication.Credential.X509{
         id: Ecto.UUID.generate(),
-        type: :x509,
         auth_provider_id: provider.id
       }
 
@@ -1150,9 +1148,8 @@ defmodule PortalAPI.Client.ChannelTest do
       Process.flag(:trap_exit, true)
       provider = x509_provider_fixture(account: account, is_disabled: false)
 
-      credential = %Portal.Authentication.Credential{
+      credential = %Portal.Authentication.Credential.X509{
         id: Ecto.UUID.generate(),
-        type: :x509,
         auth_provider_id: provider.id
       }
 
