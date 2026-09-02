@@ -23,31 +23,17 @@ public final class Store: ObservableObject {
   /// The actor the portal named in `init`, `nil` until it arrives.
   @Published private(set) var actorName: String?
 
-  /// Who the client certificate says is connecting, which decides what the controls offer.
-  @Published private(set) var certificateIdentity: X509ClaimedIdentity = .absent
+  /// The client certificate the settings screen can display.
+  @Published private(set) var deviceTrustCertificateSummary: DeviceTrustCertificateSummary?
   @Published private(set) var favorites: Favorites
   @Published private(set) var resourceList: ResourceList = .loading
   @Published private(set) var connectedDevices: [ConnectedDevice] = []
 
-  /// How a running session reads, which the certificate decides along with the controls.
+  /// How a running session reads once the portal has named the actor.
   var sessionHeading: String {
-    let state: String
-    switch certificateIdentity {
-    case .absent: state = "Signed in"
-    case .claimed: state = "Connected"
-    }
+    guard let actorName else { return "Signed in" }
 
-    guard let actorName else { return state }
-
-    return "\(state) as \(actorName)"
-  }
-
-  /// How a session ending reads, matching the control the user pressed to end it.
-  var endingSessionTitle: String {
-    switch certificateIdentity {
-    case .absent: return "Signing out…"
-    case .claimed: return "Disconnecting…"
-    }
+    return "Signed in as \(actorName)"
   }
 
   // Encapsulate Tunnel status here to make it easier for other components to observe
@@ -405,8 +391,8 @@ public final class Store: ObservableObject {
         try await initSystemExtension()
         Log.debug("Startup: initVPNConfiguration")
         try await initVPNConfiguration()
-        Log.debug("Startup: loadCertificateIdentity")
-        await loadCertificateIdentity()
+        Log.debug("Startup: loadDeviceTrustCertificateSummary")
+        await loadDeviceTrustCertificateSummary()
         Telemetry.setEnvironmentOrClose(configuration.apiURL)
         #if os(macOS)
           Log.debug("Startup: drainFlowLogsOnLaunch")
@@ -488,7 +474,11 @@ public final class Store: ObservableObject {
       defer {
         if stoppedTunnel, let session {
           do {
-            try IPCClient.start(session: session, authentication: startAuthentication())
+            try IPCClient.start(
+              session: session,
+              token: nil,
+              identityReference: identityReference()
+            )
           } catch { Log.error(error) }
         }
       }
@@ -509,26 +499,29 @@ public final class Store: ObservableObject {
     }
   }
 
-  private func loadCertificateIdentity() async {
+  private func loadDeviceTrustCertificateSummary() async {
     let keychain = X509CertificateSource.keychain { try self.manager().identityReference() }
     let source = x509CertificateSource ?? keychain
 
     do {
-      guard let certificate = try await source.read().certificate else {
-        certificateIdentity = .absent
+      guard let certificate = try await source.read() else {
+        deviceTrustCertificateSummary = nil
 
         return
       }
 
-      // A certificate we cannot parse claims nobody: it is still presented to the portal,
-      // but the session signs in with a token and the portal judges what it was handed.
-      let summary = X509CertificateParser.summary(of: certificate)
+      guard let summary = X509CertificateParser.summary(of: certificate) else {
+        Log.debug("The configured client certificate is not a valid X.509 certificate")
+        deviceTrustCertificateSummary = nil
 
-      certificateIdentity = summary?.identity ?? .absent
+        return
+      }
+
+      deviceTrustCertificateSummary = summary
     } catch {
-      Log.error("Failed to read the client certificate: \(error.localizedDescription)")
+      Log.debug("Failed to read the client certificate: \(error.localizedDescription)")
 
-      certificateIdentity = .absent
+      deviceTrustCertificateSummary = nil
     }
   }
 
@@ -543,7 +536,11 @@ public final class Store: ObservableObject {
       // Replacing the system extension puts a running tunnel back up itself.
       guard ![.connected, .connecting, .reasserting].contains(session.status) else { return }
 
-      try IPCClient.start(session: session, authentication: startAuthentication())
+      try IPCClient.start(
+        session: session,
+        token: nil,
+        identityReference: identityReference()
+      )
     }
   }
   func installVPNConfiguration() async throws {
@@ -688,20 +685,9 @@ public final class Store: ObservableObject {
     }
     try IPCClient.start(
       session: session,
-      authentication: .tokenAndCertificate(token: token, identityReference: identityReference())
+      token: token,
+      identityReference: identityReference()
     )
-  }
-
-  /// What a start the user did not spell out authenticates with.
-  ///
-  /// A certificate that claims an identity is the credential on its own; otherwise the
-  /// provider signs in with the stored token and presents the certificate alongside it.
-  private func startAuthentication() -> IPCClient.TunnelAuthentication {
-    if case .claimed = certificateIdentity {
-      return .certificate(identityReference: identityReference())
-    }
-
-    return .tokenAndCertificate(token: nil, identityReference: identityReference())
   }
 
   /// The keychain reference of the certificate the app displayed, [`nil`] when none is loadable.
@@ -709,37 +695,11 @@ public final class Store: ObservableObject {
     try? manager().identityReference()
   }
 
-  /// Starts the session without a token: the portal authenticates the mutual-TLS
-  /// connection itself, so nothing has to go through the browser first.
-  func connectWithCertificate() async throws {
-    try await manager().save(configuration: configuration)
-    try await manager().enable()
-
-    shownAlertIds.removeAll()
-    userDefaults.removeObject(forKey: "shownAlertIds")
-
-    guard let session = try manager().session() else {
-      throw VPNConfigurationManagerError.managerNotInitialized
-    }
-    try IPCClient.start(
-      session: session,
-      authentication: .certificate(identityReference: identityReference())
-    )
-  }
-
   func signOut() async throws {
     guard let session = try manager().session() else {
       throw VPNConfigurationManagerError.managerNotInitialized
     }
     try await IPCClient.signOut(session: session)
-  }
-
-  /// Ends the session the way its controls read it: only signing out gives up the token.
-  func endSession() async throws {
-    switch certificateIdentity {
-    case .absent: try await signOut()
-    case .claimed: requestStop()
-    }
   }
 
   // Calculates the total size of our logs by summing the size of the

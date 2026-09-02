@@ -185,7 +185,7 @@ class Repository
          * The KeyChain alias of the client certificate to present to the portal.
          *
          * A managed configuration overrides whatever the user picked, and one that sets the alias to
-         * an empty value turns certificate authentication off entirely.
+         * an empty value turns certificate-based device attestation off entirely.
          */
         fun getX509CertificateAliasSync(applicationRestrictions: Bundle): String? =
             if (isX509CertificateAliasManaged(applicationRestrictions)) {

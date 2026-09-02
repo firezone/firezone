@@ -100,14 +100,14 @@ private fun ContentBlock(
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text(
-            text = stringResource(R.string.x509_selection_title),
+            text = stringResource(R.string.device_trust_selection_title),
             fontFamily = FontFamily(Font(R.font.source_sans_pro)),
             fontSize = 24.sp,
             textAlign = TextAlign.Center,
             modifier = Modifier.padding(top = 36.dp),
         )
         Text(
-            text = stringResource(R.string.x509_selection_description),
+            text = stringResource(R.string.device_trust_selection_description),
             style = MaterialTheme.typography.bodyLarge.copy(lineHeight = TextUnit.Unspecified),
             textAlign = TextAlign.Center,
             modifier = Modifier.padding(top = 16.dp),
@@ -124,7 +124,7 @@ private fun ContentBlock(
                     .padding(top = 24.dp)
                     .fillMaxWidth(),
         ) {
-            Text(stringResource(R.string.x509_select_certificate))
+            Text(stringResource(R.string.device_trust_select_certificate))
         }
         TextButton(
             onClick = onSkip,

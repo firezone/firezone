@@ -31,33 +31,32 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import dev.firezone.android.R
 import dev.firezone.android.features.session.ui.compose.FirezoneTheme
-import dev.firezone.android.features.settings.ui.X509SettingsViewModel
+import dev.firezone.android.features.settings.ui.DeviceTrustSettingsViewModel
 import uniffi.x509claims.DetailField
 import uniffi.x509claims.ValidationError
 
 /**
- * Shows which client certificate this device signs in with and what it contains.
+ * Shows which client certificate this device presents for device trust and what it contains.
  *
  * The screen is read-only when an administrator dictates the certificate, which is the case on
  * managed devices; otherwise the user picks one from the system KeyChain.
  */
 @Composable
-internal fun X509SettingsScreen(
-    state: X509SettingsViewModel.UiState,
+internal fun DeviceTrustSettingsScreen(
+    state: DeviceTrustSettingsViewModel.UiState,
     onSelectCertificate: () -> Unit,
     onForgetCertificate: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    // An alias whose key the KeyChain withholds is the personally-owned case: the administrator
-    // names the certificate, yet only the user can release the key behind it, so the chooser stays
+    // An alias whose certificate the KeyChain withholds is the personally-owned case: the
+    // administrator names the certificate, yet only the user can release it, so the chooser stays
     // reachable there as well.
-    val keyIsWithheld = state.alias != null && !state.isLoading && !state.isUsable
-    val canSelect = keyIsWithheld || (!state.isManaged && state.alias == null)
+    val needsSelection = state.alias != null && !state.isLoading && state.needsSelection
 
-    // An administrator's alias is not the user's to clear, and neither is one whose key is still
-    // withheld: that screen asks for a grant, and offering to forget the certificate in the same
-    // breath asks the reader to both make a selection and undo one.
-    val canForget = !state.isManaged && state.alias != null && !keyIsWithheld
+    // An administrator's alias is not the user's to clear, and neither is one whose certificate is
+    // still withheld: that screen asks for a grant, and offering to forget the certificate in the
+    // same breath asks the reader to both make a selection and undo one.
+    val canForget = !state.isManaged && state.alias != null && !needsSelection
 
     Column(
         modifier
@@ -68,10 +67,11 @@ internal fun X509SettingsScreen(
     ) {
         CertificateCard(state)
 
-        // The KeyChain answers a missing grant with a null key rather than an error, so this state
-        // would otherwise be a card naming a certificate with nothing underneath it to say why.
-        if (keyIsWithheld && state.error == null) {
-            WarningBanner(stringResource(R.string.x509_not_released))
+        // The KeyChain answers a missing grant with no certificate rather than an error, so this
+        // state would otherwise be a card naming a certificate with nothing underneath it to say
+        // why.
+        if (needsSelection) {
+            WarningBanner(stringResource(R.string.device_trust_not_released))
         }
 
         if (state.isLoading) {
@@ -81,7 +81,7 @@ internal fun X509SettingsScreen(
             ) {
                 CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
                 Text(
-                    text = stringResource(R.string.x509_loading),
+                    text = stringResource(R.string.device_trust_loading),
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
@@ -94,16 +94,16 @@ internal fun X509SettingsScreen(
 
         // Under the card when there is nothing to say about a certificate, under the rows when
         // there is: either way the button follows what it acts on.
-        if (canSelect) {
+        if (needsSelection) {
             SettingsButton(
-                text = stringResource(R.string.x509_select_certificate),
+                text = stringResource(R.string.device_trust_select_certificate),
                 onClick = onSelectCertificate,
             )
         }
 
         if (canForget) {
             SettingsButton(
-                text = stringResource(R.string.x509_forget_certificate),
+                text = stringResource(R.string.device_trust_forget_certificate),
                 onClick = onForgetCertificate,
             )
         }
@@ -170,16 +170,10 @@ private fun WarningBanner(text: String) {
  * issued it and how long it lasts.
  */
 @Composable
-private fun CertificateCard(state: X509SettingsViewModel.UiState) {
+private fun CertificateCard(state: DeviceTrustSettingsViewModel.UiState) {
     val commonName = state.details.valueOf(COMMON_NAME_LABEL) ?: state.details.valueOf(SUBJECT_LABEL)
     val issuer = state.details.valueOf(ISSUER_LABEL)
     val notAfter = state.details.valueOf(NOT_AFTER_LABEL)
-    val readFailure =
-        when {
-            state.error != null -> state.error
-            state.certificateIsUnreadable -> stringResource(R.string.x509_unreadable)
-            else -> null
-        }
 
     Card(Modifier.fillMaxWidth()) {
         Row(
@@ -190,27 +184,18 @@ private fun CertificateCard(state: X509SettingsViewModel.UiState) {
                 painter = painterResource(R.drawable.rounded_verified_user_black_24dp),
                 contentDescription = null,
                 modifier = Modifier.size(32.dp),
-                tint =
-                    if (readFailure != null) {
-                        MaterialTheme.colorScheme.error
-                    } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    },
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(
-                    text =
-                        when {
-                            state.alias == null -> stringResource(R.string.x509_no_certificate_title)
-                            else -> commonName ?: stringResource(R.string.x509_certificate_title)
-                        },
+                    text = commonName ?: stringResource(R.string.device_trust_certificate_title),
                     style = MaterialTheme.typography.titleMedium,
                 )
 
                 if (issuer != null) {
                     Text(
-                        text = stringResource(R.string.x509_issued_by, issuer),
+                        text = stringResource(R.string.device_trust_issued_by, issuer),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -218,48 +203,13 @@ private fun CertificateCard(state: X509SettingsViewModel.UiState) {
 
                 if (notAfter != null) {
                     Text(
-                        text = stringResource(R.string.x509_valid_until, notAfter),
+                        text = stringResource(R.string.device_trust_valid_until, notAfter),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-
-                if (readFailure != null) {
-                    Notice(
-                        title = stringResource(R.string.x509_error_title),
-                        body = readFailure,
-                    )
-                }
             }
         }
-    }
-}
-
-/** How the card says that the certificate could not be read. */
-@Composable
-private fun Notice(
-    title: String,
-    body: String,
-) {
-    Column(
-        Modifier.padding(top = 4.dp),
-        verticalArrangement = Arrangement.spacedBy(2.dp),
-    ) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.titleSmall,
-            color = MaterialTheme.colorScheme.error,
-        )
-        Text(
-            text = body,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.error,
-        )
-        Text(
-            text = stringResource(R.string.x509_contact_admin),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.error,
-        )
     }
 }
 
@@ -282,7 +232,7 @@ private fun DetailField(field: DetailField) {
             )
         } else {
             Text(
-                text = stringResource(R.string.x509_claim_absent),
+                text = stringResource(R.string.device_trust_claim_absent),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -305,17 +255,15 @@ private fun ClaimProblem(error: ValidationError) {
 /** The string resource wording a problem, which the parser leaves to each client. */
 private fun ValidationError.phrase(): Int =
     when (this) {
-        ValidationError.EMPTY -> R.string.x509_claim_empty
-        ValidationError.TOO_LONG -> R.string.x509_claim_too_long
-        ValidationError.NOT_AN_EMAIL_ADDRESS -> R.string.x509_claim_not_an_email_address
-        ValidationError.NOT_A_UUID -> R.string.x509_claim_not_a_uuid
-        ValidationError.AMBIGUOUS -> R.string.x509_claim_ambiguous
-        ValidationError.PLACEHOLDER_IDENTIFIER -> R.string.x509_claim_placeholder_identifier
-        ValidationError.UNKNOWN_ATTRIBUTE -> R.string.x509_claim_unknown_attribute
-        ValidationError.NOT_YET_VALID -> R.string.x509_claim_not_yet_valid
-        ValidationError.EXPIRED -> R.string.x509_claim_expired
-        ValidationError.MISSING_CLIENT_AUTH_EKU -> R.string.x509_claim_missing_client_auth_eku
-        ValidationError.DIGITAL_SIGNATURE_NOT_ALLOWED -> R.string.x509_claim_digital_signature_not_allowed
+        ValidationError.EMPTY -> R.string.device_trust_claim_empty
+        ValidationError.TOO_LONG -> R.string.device_trust_claim_too_long
+        ValidationError.AMBIGUOUS -> R.string.device_trust_claim_ambiguous
+        ValidationError.PLACEHOLDER_IDENTIFIER -> R.string.device_trust_claim_placeholder_identifier
+        ValidationError.UNKNOWN_ATTRIBUTE -> R.string.device_trust_claim_unknown_attribute
+        ValidationError.NOT_YET_VALID -> R.string.device_trust_claim_not_yet_valid
+        ValidationError.EXPIRED -> R.string.device_trust_claim_expired
+        ValidationError.MISSING_CLIENT_AUTH_EKU -> R.string.device_trust_claim_missing_client_auth_eku
+        ValidationError.DIGITAL_SIGNATURE_NOT_ALLOWED -> R.string.device_trust_claim_digital_signature_not_allowed
     }
 
 private fun List<DetailField>.valueOf(label: String): String? = firstOrNull { it.label == label }?.value
@@ -330,61 +278,21 @@ private const val NOT_AFTER_LABEL = "Not After"
 // a preview that wraps its content would leave the rows no height at all.
 @Preview(showSystemUi = true)
 @Composable
-private fun X509SettingsScreenPreview() {
+private fun DeviceTrustSettingsScreenPreview() {
     FirezoneTheme {
-        X509SettingsScreen(
+        DeviceTrustSettingsScreen(
             state =
-                X509SettingsViewModel.UiState(
+                DeviceTrustSettingsViewModel.UiState(
                     alias = "firezone-device",
                     isManaged = true,
-                    isUsable = true,
                     details =
                         listOf(
-                            DetailField("Common Name", "jane.doe@example.com", null),
-                            DetailField("Subject", "CN=jane.doe@example.com, O=Example Corp", null),
+                            DetailField("Common Name", "firezone-device", null),
+                            DetailField("Subject", "CN=firezone-device, O=Example Corp", null),
                             DetailField("Issuer", "CN=Example Corp Device CA, O=Example Corp", null),
                             DetailField("Not After", "2027-01-31 23:59:59 UTC", null),
-                            DetailField("Account ID", null, null),
                         ),
                 ),
-            onSelectCertificate = {},
-            onForgetCertificate = {},
-        )
-    }
-}
-
-@Preview(showSystemUi = true)
-@Composable
-private fun X509SettingsScreenInvalidClaimsPreview() {
-    FirezoneTheme {
-        X509SettingsScreen(
-            state =
-                X509SettingsViewModel.UiState(
-                    alias = "firezone-device",
-                    isManaged = true,
-                    isUsable = true,
-                    // The parser reads the rows with a problem first.
-                    details =
-                        listOf(
-                            DetailField("Actor Email", "jane.doe.example.com", ValidationError.NOT_AN_EMAIL_ADDRESS),
-                            DetailField("Account ID", null, ValidationError.EMPTY),
-                            DetailField("Common Name", "jane.doe@example.com", null),
-                            DetailField("Not After", "2024-01-31 23:59:59 UTC", null),
-                            DetailField("Issuer", "CN=Example Corp Device CA, O=Example Corp", null),
-                        ),
-                ),
-            onSelectCertificate = {},
-            onForgetCertificate = {},
-        )
-    }
-}
-
-@Preview(showSystemUi = true)
-@Composable
-private fun X509SettingsScreenNoCertificatePreview() {
-    FirezoneTheme {
-        X509SettingsScreen(
-            state = X509SettingsViewModel.UiState(),
             onSelectCertificate = {},
             onForgetCertificate = {},
         )

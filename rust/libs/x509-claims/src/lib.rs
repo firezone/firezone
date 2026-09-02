@@ -59,14 +59,6 @@ impl Claim {
         self.value.as_deref().filter(|_| self.error.is_none())
     }
 
-    /// Whether the certificate wrote this attribute at all, whatever it wrote in it.
-    ///
-    /// An attribute written with an empty value has no value to show, so the error is the
-    /// only trace it leaves.
-    fn is_carried(&self) -> bool {
-        self.value.is_some() || self.error.is_some()
-    }
-
     fn present(value: String) -> Self {
         Self {
             value: Some(value),
@@ -100,14 +92,12 @@ impl Claim {
 
 /// Why a diagnostics row is not usable as what it names, read underneath its value.
 ///
-/// The clients word these themselves, so an error crosses to them as the error it is rather
-/// than as a sentence: the mobile and Apple clients render them from their own string resources.
+/// Each client renderer words these itself, so an error crosses to it as the error it is rather
+/// than as presentation copy.
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq, Hash)]
 pub enum ValidationError {
     Empty,
     TooLong,
-    NotAnEmailAddress,
-    NotAUuid,
     Ambiguous,
     PlaceholderIdentifier,
     UnknownAttribute,
@@ -117,36 +107,14 @@ pub enum ValidationError {
     DigitalSignatureNotAllowed,
 }
 
-impl ValidationError {
-    /// A phrase that reads on its own and after the value it explains.
-    pub fn label(self) -> &'static str {
-        match self {
-            Self::Empty => "empty",
-            Self::TooLong => "longer than 255 characters",
-            Self::NotAnEmailAddress => "not a valid email address",
-            Self::NotAUuid => "not a UUID",
-            Self::Ambiguous => "more than one value was given",
-            Self::PlaceholderIdentifier => "a placeholder identifier",
-            Self::UnknownAttribute => "not an attribute we understand",
-            Self::NotYetValid => "not yet valid",
-            Self::Expired => "expired",
-            Self::MissingClientAuthEku => "required for mutual TLS",
-            Self::DigitalSignatureNotAllowed => "required to sign the TLS handshake",
-        }
-    }
-}
-
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct ParsedCertificate {
     pub subject_cn: Option<String>,
     pub subject: String,
     pub subject_alternative_names: Vec<String>,
-    pub actor_email: Claim,
-    pub account_id: Claim,
-    pub actor_id: Claim,
     pub mdm_device_id: Claim,
     pub device_serial: Claim,
-    /// `firezone://` names whose attribute this parser does not read, e.g. a typo in a template.
+    /// `firezone://` names whose attribute this parser does not recognise, e.g. a template typo.
     pub unrecognised_claims: Vec<String>,
     pub issuer: String,
     pub serial: String,
@@ -177,9 +145,6 @@ impl ParsedCertificate {
             optional_field("Common Name", self.subject_cn.clone()),
             field("Subject", &self.subject),
             field("Issuer", &self.issuer),
-            claim_field("Actor Email", self.actor_email.clone()),
-            claim_field("Account ID", self.account_id.clone()),
-            claim_field("Actor ID", self.actor_id.clone()),
             claim_field("MDM Device ID", self.mdm_device_id.clone()),
             claim_field("Device Serial", self.device_serial.clone()),
         ];
@@ -255,24 +220,6 @@ impl ParsedCertificate {
             .is_some_and(|at| at >= self.not_before_timestamp && at <= self.not_after_timestamp)
     }
 
-    /// Who the certificate claims is connecting.
-    ///
-    /// A carried actor email or actor ID adopts the certificate as the session, whether or not
-    /// the client can read a valid value out of it: rejecting a claim is policy, and policy is
-    /// the portal's to make. An account ID scopes an account and names no actor, so it claims
-    /// nobody on its own.
-    pub fn identity(&self) -> Identity {
-        let claims_somebody = self.actor_email.is_carried() || self.actor_id.is_carried();
-
-        if !claims_somebody {
-            return Identity::Absent;
-        }
-
-        Identity::Claimed {
-            email: self.actor_email.valid().map(str::to_owned),
-        }
-    }
-
     /// The subject alternative names that no claim row shows.
     ///
     /// The claim rows are parsed out of the URI names, so a name one of them displays would
@@ -294,7 +241,7 @@ impl ParsedCertificate {
             // A bare device ID has no attribute and is matched by the URI as a whole.
             return self.matches_a_valid_claim(uri);
         };
-        if !known_attribute(&attribute) {
+        if !recognised_attribute(&attribute) {
             // An unrecognised claim gets a row of its own.
             return true;
         }
@@ -305,25 +252,11 @@ impl ParsedCertificate {
 
     /// Whether one of the claim rows holds `value`, compared the way the claims are matched.
     fn matches_a_valid_claim(&self, value: &str) -> bool {
-        [
-            &self.actor_email,
-            &self.account_id,
-            &self.mdm_device_id,
-            &self.device_serial,
-        ]
-        .into_iter()
-        .filter_map(|claim| claim.valid())
-        .any(|valid| valid.to_lowercase() == value.to_lowercase())
+        [&self.mdm_device_id, &self.device_serial]
+            .into_iter()
+            .filter_map(|claim| claim.valid())
+            .any(|valid| valid.to_lowercase() == value.to_lowercase())
     }
-}
-
-/// Who the certificate claims is connecting.
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
-pub enum Identity {
-    /// The certificate claims nobody, so the session signs in with a token.
-    Absent,
-    /// The certificate claims somebody, named by `email` where one could be read.
-    Claimed { email: Option<String> },
 }
 
 /// A row for the clients' certificate diagnostics screens.
@@ -396,9 +329,6 @@ pub fn parse_certificate(der: &[u8], now: SystemTime) -> Option<ParsedCertificat
         })
         .flat_map(split_comma_joined_uris)
         .collect::<Vec<_>>();
-    let actor_email = extract_actor_email(&uri_subject_alternative_names);
-    let account_id = extract_account_id(&uri_subject_alternative_names);
-    let actor_id = extract_actor_id(&uri_subject_alternative_names);
     let mdm_device_id = extract_mdm_device_id(&uri_subject_alternative_names);
     let device_serial = extract_device_serial(&uri_subject_alternative_names);
     let unrecognised_claims = extract_unrecognised_claims(&uri_subject_alternative_names);
@@ -456,9 +386,6 @@ pub fn parse_certificate(der: &[u8], now: SystemTime) -> Option<ParsedCertificat
         subject_cn,
         subject: certificate.subject().to_string(),
         subject_alternative_names,
-        actor_email,
-        account_id,
-        actor_id,
         mdm_device_id,
         device_serial,
         unrecognised_claims,
@@ -490,50 +417,6 @@ fn format_key_algorithm(algorithm: &AlgorithmIdentifier<'_>) -> String {
     };
 
     format!("{oid} ({})", parameters.to_id_string())
-}
-
-fn extract_actor_email(uris: &[&str]) -> Claim {
-    let emails = firezone_attribute_values(uris, "email")
-        .into_iter()
-        .map(|value| {
-            let value = value?;
-            if !valid_email(&value) {
-                return Err(Invalid {
-                    value,
-                    error: ValidationError::NotAnEmailAddress,
-                });
-            }
-
-            Ok(value.to_lowercase())
-        })
-        .collect();
-
-    resolve_claim(emails, str::to_owned)
-}
-
-fn extract_account_id(uris: &[&str]) -> Claim {
-    resolve_claim(uuid_values(uris, "account-id"), str::to_owned)
-}
-
-fn uuid_values(uris: &[&str], attribute: &str) -> Vec<Result<String, Invalid>> {
-    firezone_attribute_values(uris, attribute)
-        .into_iter()
-        .map(|value| {
-            let value = value?;
-            let Ok(uuid) = uuid::Uuid::parse_str(&value) else {
-                return Err(Invalid {
-                    value,
-                    error: ValidationError::NotAUuid,
-                });
-            };
-
-            Ok(uuid.hyphenated().to_string().to_lowercase())
-        })
-        .collect()
-}
-
-fn extract_actor_id(uris: &[&str]) -> Claim {
-    resolve_claim(uuid_values(uris, "actor-id"), str::to_owned)
 }
 
 fn extract_device_serial(uris: &[&str]) -> Claim {
@@ -616,22 +499,13 @@ fn firezone_claim(uri: &str) -> Option<(String, &str)> {
     }
     let (attribute, value) = match remainder.split_once('/') {
         Some(pair) => pair,
-        // A name that stops at the attribute still claims it, with no value in it. Only
-        // where the attribute is one we read, though: a bare device identifier is a name in
-        // its own right rather than an empty claim.
-        None if known_attribute(&remainder.to_ascii_lowercase()) => (remainder, ""),
+        // A name that stops at a recognised attribute still carries it with no value. Other
+        // bare values may be device identifiers in their own right rather than empty claims.
+        None if recognised_attribute(&remainder.to_ascii_lowercase()) => (remainder, ""),
         None => return None,
     };
 
     Some((attribute.to_ascii_lowercase(), value))
-}
-
-fn valid_email(value: &str) -> bool {
-    if !valid_identifier(value) || value.chars().any(char::is_whitespace) {
-        return false;
-    }
-    let mut parts = value.split('@');
-    matches!((parts.next(), parts.next(), parts.next()), (Some(local), Some(domain), None) if !local.is_empty() && !domain.is_empty())
 }
 
 fn percent_decode(value: &str) -> Option<String> {
@@ -733,15 +607,20 @@ fn extract_unrecognised_claims(uris: &[&str]) -> Vec<String> {
     uris.iter()
         .copied()
         .filter(|uri| {
-            firezone_claim(uri).is_some_and(|(attribute, _)| !known_attribute(&attribute))
+            firezone_claim(uri).is_some_and(|(attribute, _)| !recognised_attribute(&attribute))
         })
         .map(format_claim_value)
         .collect()
 }
 
-/// Whether the parser reads this `firezone://` attribute at all, however it uses the value.
-fn known_attribute(attribute: &str) -> bool {
-    matches!(attribute, "email" | "account-id" | "actor-id") || mdm_attribute(attribute)
+/// Whether this `firezone://` attribute is understood or deliberately ignored.
+fn recognised_attribute(attribute: &str) -> bool {
+    ignored_attribute(attribute) || mdm_attribute(attribute)
+}
+
+/// User attributes from the first X.509 prototype have no meaning for device trust.
+fn ignored_attribute(attribute: &str) -> bool {
+    matches!(attribute, "email" | "account-id" | "actor-id")
 }
 
 /// Whether the attribute is an identifier an MDM writes into a certificate, including the ones
@@ -974,7 +853,7 @@ fn claim_field(label: impl Into<String>, claim: Claim) -> DetailField {
     }
 }
 
-/// The row for a `firezone://` name whose attribute the parser does not read.
+/// The row for a `firezone://` name whose attribute the parser does not recognise.
 ///
 /// Splitting the name lets it read like every other claim: the attribute labels the row and
 /// its value fills it, so a template with a typo shows what it wrote as well as where.
@@ -1001,68 +880,4 @@ fn split_claim_attribute(claim: &str) -> (&str, Option<&str>) {
     };
 
     (&claim[..separator], Some(&claim[separator + 1..]))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn a_valid_actor_id_claims_an_identity_without_an_email() {
-        let mut certificate = certificate();
-        certificate.actor_id = Claim::present("31b57ec2-8a02-4d5e-9b41-5c1f7a0e6f21".to_owned());
-
-        assert_eq!(certificate.identity(), Identity::Claimed { email: None });
-    }
-
-    #[test]
-    fn an_account_id_alone_claims_nobody() {
-        let mut certificate = certificate();
-        certificate.account_id = Claim::present("6f3f8a2c-0b74-4f8a-9b1f-1c2d3e4f5a6b".to_owned());
-
-        assert_eq!(certificate.identity(), Identity::Absent);
-    }
-
-    #[test]
-    fn a_carried_but_invalid_email_still_claims_an_identity() {
-        let mut certificate = certificate();
-        certificate.actor_email = Claim::invalid(
-            "jane.doe(at)example.com",
-            ValidationError::NotAnEmailAddress,
-        );
-
-        assert_eq!(certificate.identity(), Identity::Claimed { email: None });
-    }
-
-    #[test]
-    fn no_identity_attribute_claims_nobody() {
-        assert_eq!(certificate().identity(), Identity::Absent);
-    }
-
-    fn certificate() -> ParsedCertificate {
-        ParsedCertificate {
-            subject_cn: None,
-            subject: String::new(),
-            subject_alternative_names: Vec::new(),
-            actor_email: Claim::absent(),
-            account_id: Claim::absent(),
-            actor_id: Claim::absent(),
-            mdm_device_id: Claim::absent(),
-            device_serial: Claim::absent(),
-            unrecognised_claims: Vec::new(),
-            issuer: String::new(),
-            serial: String::new(),
-            has_client_auth_eku: true,
-            digital_signature_allowed: true,
-            checked_at_timestamp: None,
-            not_before: String::new(),
-            not_before_timestamp: 0,
-            not_after: String::new(),
-            not_after_timestamp: 0,
-            signing_algorithm: None,
-            key_algorithm_oid: String::new(),
-            fingerprint: String::new(),
-            der_bytes: 0,
-        }
-    }
 }

@@ -1,9 +1,9 @@
 //! X.509 client identities held by a desktop platform keystore.
 //!
 //! [`identity`] walks the keystore once and hands out both faces of the selected identity: the
-//! [`ClientCertificate`] that authenticates the portal connection, and what that certificate
-//! says. Loading once and reusing the result keeps the certificate a client presents and the one
-//! it describes the same, even when the keystore changes between two reads.
+//! [`ClientCertificate`] presented to the portal for device attestation, and its parsed metadata.
+//! Loading once and reusing the result keeps the certificate a client presents and the one it
+//! describes the same, even when the keystore changes between two reads.
 //!
 //! Reading certificates and evaluating Firezone's rules for them is `x509-claims`'s job; this
 //! crate only talks to the keystores. Private-key material never leaves them: every handshake
@@ -16,10 +16,8 @@ use serde::{Deserialize, Serialize};
 use x509_credential::PrivateKey;
 
 /// Re-exported because [`Identity`] carries a [`ParsedCertificate`]: a caller reading its
-/// claims, rows and identity needs to name their types.
-pub use x509_claims::{
-    Claim, DetailField, Identity as ClientIdentity, ParsedCertificate, ValidationError,
-};
+/// device claims and rows needs to name their types.
+pub use x509_claims::{Claim, DetailField, ParsedCertificate, ValidationError};
 /// Re-exported because [`Identity::client_certificate`] hands out a [`ClientCertificate`].
 pub use x509_credential::ClientCertificate;
 

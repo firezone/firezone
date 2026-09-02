@@ -16,24 +16,42 @@ import androidx.viewpager2.adapter.FragmentStateAdapter
 import androidx.viewpager2.widget.ViewPager2
 import dagger.hilt.android.AndroidEntryPoint
 import dev.firezone.android.R
+import dev.firezone.android.core.data.Repository
 import dev.firezone.android.databinding.ActivitySettingsBinding
 import kotlinx.coroutines.launch
+import javax.inject.Inject
 
 /** The navigation item and the page it shows, in order. */
-internal val settingsPages: List<Pair<Int, () -> Fragment>> =
-    listOf(
-        R.id.settingsGeneral to { GeneralSettingsFragment() },
-        R.id.settingsAdvanced to { AdvancedSettingsFragment() },
-        R.id.settingsX509 to { X509SettingsFragment() },
-        R.id.settingsLogs to { LogSettingsFragment() },
-    )
+internal fun settingsPages(hasConfiguredCertificateAlias: Boolean): List<Pair<Int, () -> Fragment>> =
+    buildList {
+        add(R.id.settingsGeneral to { GeneralSettingsFragment() })
+        add(R.id.settingsAdvanced to { AdvancedSettingsFragment() })
+
+        if (hasConfiguredCertificateAlias) {
+            add(R.id.settingsDeviceTrust to { DeviceTrustSettingsFragment() })
+        }
+
+        add(R.id.settingsLogs to { LogSettingsFragment() })
+    }
 
 @AndroidEntryPoint
 internal class SettingsActivity : AppCompatActivity() {
     private lateinit var binding: ActivitySettingsBinding
     private val viewModel: SettingsViewModel by viewModels()
+    private val pages: List<Pair<Int, () -> Fragment>> by lazy {
+        settingsPages(
+            hasConfiguredCertificateAlias =
+                repository.getX509CertificateAliasSync(applicationRestrictions) != null,
+        )
+    }
     private var lastFocusedView: View? = null
     private var lastSelectedPage = -1
+
+    @Inject
+    lateinit var repository: Repository
+
+    @Inject
+    lateinit var applicationRestrictions: Bundle
 
     private val navigationSelectionSync =
         object : ViewPager2.OnPageChangeCallback() {
@@ -42,7 +60,7 @@ internal class SettingsActivity : AppCompatActivity() {
                 // the pager. Checking the item rather than assigning `selectedItemId`, which would
                 // call back into the item listener and drive the pager again.
                 binding.bottomNavigation.menu
-                    .findItem(settingsPages[position].first)
+                    .findItem(pages[position].first)
                     .isChecked = true
             }
         }
@@ -82,6 +100,9 @@ internal class SettingsActivity : AppCompatActivity() {
         val adapter = SettingsPagerAdapter(this)
 
         with(binding) {
+            bottomNavigation.menu
+                .findItem(R.id.settingsDeviceTrust)
+                .isVisible = pages.any { it.first == R.id.settingsDeviceTrust }
             viewPager.adapter = adapter
 
             // ViewPager2 clears focus whenever onPageSelected is dispatched, and its
@@ -96,7 +117,7 @@ internal class SettingsActivity : AppCompatActivity() {
             viewPager.registerOnPageChangeCallback(navigationSelectionSync)
 
             bottomNavigation.setOnItemSelectedListener { item ->
-                val position = settingsPages.indexOfFirst { it.first == item.itemId }
+                val position = pages.indexOfFirst { it.first == item.itemId }
 
                 if (position < 0) {
                     return@setOnItemSelectedListener false
@@ -172,8 +193,8 @@ internal class SettingsActivity : AppCompatActivity() {
     private inner class SettingsPagerAdapter(
         activity: FragmentActivity,
     ) : FragmentStateAdapter(activity) {
-        override fun getItemCount(): Int = settingsPages.size
+        override fun getItemCount(): Int = pages.size
 
-        override fun createFragment(position: Int): Fragment = settingsPages[position].second()
+        override fun createFragment(position: Int): Fragment = pages[position].second()
     }
 }

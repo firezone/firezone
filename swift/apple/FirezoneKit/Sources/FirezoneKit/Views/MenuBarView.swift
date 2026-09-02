@@ -69,12 +69,12 @@
           .foregroundStyle(.secondary)
 
       case .disconnected:
-        Button(startSessionTitle) {
-          startSession()
+        Button("Sign In") {
+          signIn()
         }
 
       case .disconnecting:
-        Text(store.endingSessionTitle)
+        Text("Signing out…")
           .foregroundStyle(.secondary)
 
       case .connected, .reasserting, .connecting:
@@ -82,38 +82,14 @@
           Text(store.sessionHeading)
             .foregroundStyle(.secondary)
 
-          Button(endSessionTitle) {
-            endSession()
+          Button("Sign Out") {
+            signOut()
           }
         }
 
       @unknown default:
         Text("Unknown status")
           .foregroundStyle(.secondary)
-      }
-    }
-
-    /// What the control that starts a session reads, given who the certificate names.
-    var startSessionTitle: String {
-      switch store.certificateIdentity {
-      case .absent: return "Sign In"
-      case .claimed(.some(let email)): return "Connect as \(email)"
-      case .claimed(.none): return "Connect"
-      }
-    }
-
-    /// A session a certificate started is disconnected from rather than signed out of.
-    var endSessionTitle: String {
-      switch store.certificateIdentity {
-      case .absent: return "Sign Out"
-      case .claimed: return "Disconnect"
-      }
-    }
-
-    func startSession() {
-      switch store.certificateIdentity {
-      case .absent: signIn()
-      case .claimed: connect()
       }
     }
 
@@ -128,21 +104,10 @@
       }
     }
 
-    func connect() {
+    func signOut() {
       Task {
         do {
-          try await store.connectWithCertificate()
-        } catch {
-          Log.error(error)
-          MacOSAlert.show(for: error)
-        }
-      }
-    }
-
-    func endSession() {
-      Task {
-        do {
-          try await store.endSession()
+          try await store.signOut()
         } catch {
           Log.error(error)
           MacOSAlert.show(for: error)

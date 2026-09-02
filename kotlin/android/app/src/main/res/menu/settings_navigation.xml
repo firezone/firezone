@@ -12,9 +12,9 @@
         android:title="@string/advanced_settings_title" />
 
     <item
-        android:id="@+id/settingsX509"
+        android:id="@+id/settingsDeviceTrust"
         android:icon="@drawable/rounded_verified_user_black_24dp"
-        android:title="@string/x509_settings_title" />
+        android:title="@string/device_trust_settings_title" />
 
     <item
         android:id="@+id/settingsLogs"

@@ -3,7 +3,6 @@ package dev.firezone.android.core.x509
 
 import dev.firezone.android.core.Log
 import uniffi.connlib.ClientTlsIdentity
-import uniffi.x509claims.Identity
 import uniffi.x509claims.ParsedCertificate
 import uniffi.x509claims.parseClientCertificate
 import java.security.GeneralSecurityException
@@ -19,7 +18,7 @@ class X509IdentityException(
 ) : Exception(message, cause)
 
 /**
- * The client identity Firezone presents to the portal, together with what its leaf certificate says.
+ * The TLS identity Firezone presents to the portal, together with its parsed leaf certificate.
  *
  * [certificate] is `null` when the parser did not understand the leaf, which limits what we can say
  * about the identity, not what we present.
@@ -28,19 +27,10 @@ data class LoadedX509Identity(
     val alias: String,
     val tlsIdentity: ClientTlsIdentity,
     val certificate: ParsedCertificate?,
-) {
-    /**
-     * Who the certificate says is connecting, which decides what the sign-in screen offers.
-     *
-     * A leaf we could not parse claims nobody: the certificate is still presented, but the
-     * session signs in with a token and the portal judges what it was handed.
-     */
-    val identity: Identity
-        get() = certificate?.identity ?: Identity.Absent
-}
+)
 
 /**
- * Reads client identities out of the system KeyChain.
+ * Reads client TLS identities out of the system KeyChain.
  *
  * Every call reaches the KeyChain system service and blocks, so callers must stay off the main
  * thread.

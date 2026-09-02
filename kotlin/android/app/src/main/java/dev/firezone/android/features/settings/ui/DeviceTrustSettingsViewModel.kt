@@ -8,7 +8,7 @@ import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.firezone.android.core.Log
 import dev.firezone.android.core.data.Repository
-import dev.firezone.android.core.x509.X509Identity
+import dev.firezone.android.core.x509.KeyChain
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -17,15 +17,16 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import uniffi.x509claims.DetailField
+import uniffi.x509claims.parseClientCertificate
 import javax.inject.Inject
 
 @HiltViewModel
-internal class X509SettingsViewModel
+internal class DeviceTrustSettingsViewModel
     @Inject
     constructor(
         private val repository: Repository,
         private val applicationRestrictions: Bundle,
-        private val x509Identity: X509Identity,
+        private val keyChain: KeyChain,
     ) : ViewModel() {
         private val uiMutableStateFlow = MutableStateFlow(UiState())
         val uiStateFlow: StateFlow<UiState> = uiMutableStateFlow
@@ -46,28 +47,54 @@ internal class X509SettingsViewModel
 
             loadJob =
                 viewModelScope.launch {
-                    val identity =
+                    val chain =
                         try {
-                            withContext(Dispatchers.IO) { x509Identity.load(alias) }
+                            withContext(Dispatchers.IO) {
+                                try {
+                                    keyChain.certificateChain(alias)
+                                } catch (exception: InterruptedException) {
+                                    Thread.currentThread().interrupt()
+
+                                    throw exception
+                                }
+                            }
                         } catch (exception: CancellationException) {
                             throw exception
                         } catch (exception: Exception) {
-                            Log.w(TAG, "Failed to read the client certificate diagnostics", exception)
-                            uiMutableStateFlow.value =
-                                uiMutableStateFlow.value.copy(
-                                    isLoading = false,
-                                    error = exception.message ?: exception.javaClass.simpleName,
-                                )
+                            Log.d(TAG, "Could not read the certificate of alias '$alias'", exception)
+                            uiMutableStateFlow.value = uiMutableStateFlow.value.copy(isLoading = false)
 
                             return@launch
                         }
 
+                    if (chain.isNullOrEmpty()) {
+                        uiMutableStateFlow.value =
+                            uiMutableStateFlow.value.copy(
+                                isLoading = false,
+                                needsSelection = true,
+                            )
+
+                        return@launch
+                    }
+
+                    val certificate =
+                        try {
+                            parseClientCertificate(chain.first().encoded)
+                        } catch (exception: Exception) {
+                            Log.d(TAG, "Could not parse the certificate of alias '$alias'", exception)
+                            uiMutableStateFlow.value = uiMutableStateFlow.value.copy(isLoading = false)
+
+                            return@launch
+                        }
+
+                    if (certificate == null) {
+                        Log.d(TAG, "Could not parse the certificate of alias '$alias'")
+                    }
+
                     uiMutableStateFlow.value =
                         uiMutableStateFlow.value.copy(
                             isLoading = false,
-                            isUsable = identity != null,
-                            certificateIsUnreadable = identity != null && identity.certificate == null,
-                            details = identity?.certificate?.detailFields.orEmpty(),
+                            details = certificate?.detailFields.orEmpty(),
                         )
                 }
         }
@@ -102,14 +129,11 @@ internal class X509SettingsViewModel
             val isManaged: Boolean = false,
             val isLoading: Boolean = false,
             val details: List<DetailField> = emptyList(),
-            val error: String? = null,
-            /** Whether the KeyChain released the key for [alias]. */
-            val isUsable: Boolean = false,
-            /** Whether the KeyChain released a leaf this client cannot parse as a certificate. */
-            val certificateIsUnreadable: Boolean = false,
+            /** Whether Android must grant this app access to the configured certificate. */
+            val needsSelection: Boolean = false,
         )
 
         private companion object {
-            private const val TAG = "X509SettingsViewModel"
+            private const val TAG = "DeviceTrustSettingsViewModel"
         }
     }

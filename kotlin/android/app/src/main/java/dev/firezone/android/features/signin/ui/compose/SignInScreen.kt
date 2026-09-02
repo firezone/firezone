@@ -29,8 +29,6 @@ fun SignInScreen(
     onSignIn: () -> Unit,
     onSettings: () -> Unit,
     modifier: Modifier = Modifier,
-    signInLabel: String = stringResource(R.string.sign_in),
-    promptLabel: String = stringResource(R.string.sign_in_prompt),
 ) {
     Scaffold(
         modifier = modifier,
@@ -56,7 +54,7 @@ fun SignInScreen(
                 textAlign = TextAlign.Center,
             )
             Text(
-                text = promptLabel,
+                text = stringResource(R.string.sign_in_prompt),
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
@@ -69,7 +67,7 @@ fun SignInScreen(
                 onClick = onSignIn,
                 contentPadding = PaddingValues(horizontal = 32.dp, vertical = 12.dp),
             ) {
-                Text(text = signInLabel)
+                Text(text = stringResource(R.string.sign_in))
             }
         }
     }

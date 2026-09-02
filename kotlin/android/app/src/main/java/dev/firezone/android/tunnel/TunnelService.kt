@@ -67,7 +67,6 @@ import uniffi.connlib.logCleanupDefaultMaxSizeMb
 import uniffi.connlib.startTelemetry
 import uniffi.connlib.stopTelemetry
 import uniffi.connlib.use
-import uniffi.x509claims.Identity
 import java.nio.file.Files
 import java.nio.file.Paths
 import javax.inject.Inject
@@ -121,16 +120,12 @@ class TunnelService : VpnService() {
     private val _resourcesState = MutableStateFlow<List<Resource>>(emptyList())
     private val _connectedDevicesState = MutableStateFlow<List<ConnectedDevice>>(emptyList())
     private val _actorNameState = MutableStateFlow<String?>(null)
-    private val _certificateIdentityState = MutableStateFlow<Identity>(Identity.Absent)
 
     // A `StateFlow` replays its current value to every new collector, so a newly bound SessionActivity catches up on its own.
     val serviceState: StateFlow<State> = _serviceState.asStateFlow()
     val resourcesState: StateFlow<List<Resource>> = _resourcesState.asStateFlow()
     val connectedDevicesState: StateFlow<List<ConnectedDevice>> = _connectedDevicesState.asStateFlow()
     val actorNameState: StateFlow<String?> = _actorNameState.asStateFlow()
-
-    /** Who the session's client certificate says is connecting, which decides how the session ends. */
-    val certificateIdentityState: StateFlow<Identity> = _certificateIdentityState.asStateFlow()
 
     var tunnelResources: List<Resource>
         get() = _resourcesState.value
@@ -341,8 +336,7 @@ class TunnelService : VpnService() {
         val config = repo.getConfigSync()
         resourceState = repo.getInternetResourceStateSync()
 
-        // A client certificate authenticates on its own, so either credential is enough.
-        if (token != null || certificateAlias != null) {
+        if (token != null) {
             tunnelState = State.CONNECTING
             // Dismiss any previous disconnected notifications
             TunnelNotification.dismissDisconnectedNotification(this)
@@ -376,9 +370,8 @@ class TunnelService : VpnService() {
 
                     // The KeyChain blocks on a system service and connlib reads the identity while
                     // it constructs the session, so load it before we get there.
-                    val identity =
+                    val certificate =
                         withContext(Dispatchers.IO) { x509Identity.load(certificateAlias) }
-                    _certificateIdentityState.value = identity?.identity ?: Identity.Absent
 
                     sessionFactory
                         .open(
@@ -390,9 +383,9 @@ class TunnelService : VpnService() {
                                 isInternetResourceActive = resourceState.isEnabled(),
                                 deviceInfo = deviceInfo,
                             ),
-                            // The portal judges a client certificate at the application layer, so
-                            // whether this one is acceptable is not ours to decide.
-                            tlsIdentity = identity?.tlsIdentity,
+                            // The token authenticates the user. A configured certificate attests
+                            // the device, and the portal decides whether to accept it.
+                            tlsIdentity = certificate?.tlsIdentity,
                         ).use { session ->
                             startNetworkMonitoring()
                             startLogCleanup()
@@ -723,8 +716,6 @@ class TunnelService : VpnService() {
                                 is Event.Disconnected -> {
                                     Log.i(TAG, "Disconnected by connlib: ${event.error.message()}")
 
-                                    // Certificate failures leave the saved token usable, so only
-                                    // discard it when connlib says a new sign-in is required.
                                     if (event.error.requiresSignIn()) {
                                         repo.clearToken()
                                     }

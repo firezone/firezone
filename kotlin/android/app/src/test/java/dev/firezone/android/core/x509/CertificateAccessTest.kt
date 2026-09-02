@@ -18,18 +18,13 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
-import uniffi.x509claims.Identity
 import java.security.PrivateKey
 import java.security.cert.X509Certificate
 
-/**
- * The routing half of the sign-in decision matrix: which alias is read and what a withheld or
- * missing certificate decides. What a present certificate claims is parsed by native code, so
- * those rows live in the instrumented `X509SignInE2eTest`.
- */
+/** Pins which configured alias is checked before Android asks the user for access. */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], application = Application::class)
-class CertificateUserTest {
+class CertificateAccessTest {
     private val keyChain = WithholdingKeyChain()
     private val restrictions = Bundle()
     private val repository =
@@ -38,14 +33,13 @@ class CertificateUserTest {
             Dispatchers.Unconfined,
             RuntimeEnvironment
                 .getApplication()
-                .getSharedPreferences("certificate-user-test", Context.MODE_PRIVATE),
+                .getSharedPreferences("certificate-access-test", Context.MODE_PRIVATE),
         )
-    private val certificateUser = CertificateUser(repository, restrictions, X509Identity(keyChain))
+    private val certificateAccess = CertificateAccess(repository, restrictions, keyChain)
 
     @Test
-    fun `no configured alias needs no selection and claims nobody`() {
-        assertFalse(runBlocking { certificateUser.needsSelection() })
-        assertEquals(Identity.Absent, runBlocking { certificateUser.identity() })
+    fun `no configured alias needs no selection`() {
+        assertFalse(runBlocking { certificateAccess.needsSelection() })
         assertEquals(emptySet<String>(), keyChain.requestedAliases.toSet())
     }
 
@@ -53,23 +47,25 @@ class CertificateUserTest {
     fun `an alias the KeyChain withholds needs selection`() {
         repository.saveX509CertificateAliasSync("user-alias")
 
-        assertTrue(runBlocking { certificateUser.needsSelection() })
+        assertTrue(runBlocking { certificateAccess.needsSelection() })
+        assertEquals(listOf("user-alias"), keyChain.requestedAliases)
     }
 
     @Test
-    fun `a withheld certificate claims nobody`() {
-        repository.saveX509CertificateAliasSync("user-alias")
-
-        assertEquals(Identity.Absent, runBlocking { certificateUser.identity() })
-    }
-
-    @Test
-    fun `a blank managed alias turns certificate authentication off`() {
+    fun `a blank managed alias turns certificate access off`() {
         restrictions.putString(X509_CERTIFICATE_ALIAS_RESTRICTION, "")
         repository.saveX509CertificateAliasSync("user-alias")
 
-        assertFalse(runBlocking { certificateUser.needsSelection() })
+        assertFalse(runBlocking { certificateAccess.needsSelection() })
         assertEquals(emptySet<String>(), keyChain.requestedAliases.toSet())
+    }
+
+    @Test
+    fun `a KeyChain read failure is left for the session`() {
+        repository.saveX509CertificateAliasSync("user-alias")
+        keyChain.readFailure = IllegalStateException("KeyChain service unavailable")
+
+        assertFalse(runBlocking { certificateAccess.needsSelection() })
     }
 
     @Test
@@ -77,7 +73,7 @@ class CertificateUserTest {
         restrictions.putString(X509_CERTIFICATE_ALIAS_RESTRICTION, "managed-alias")
         repository.saveX509CertificateAliasSync("user-alias")
 
-        runBlocking { certificateUser.needsSelection() }
+        runBlocking { certificateAccess.needsSelection() }
 
         assertEquals(setOf("managed-alias"), keyChain.requestedAliases.toSet())
     }
@@ -85,17 +81,17 @@ class CertificateUserTest {
     /** A KeyChain that holds nothing we may read, the way an unprovisioned device does. */
     private class WithholdingKeyChain : KeyChain {
         val requestedAliases = mutableListOf<String>()
+        var readFailure: RuntimeException? = null
 
         override fun certificateChain(alias: String): List<X509Certificate>? {
             requestedAliases += alias
+            readFailure?.let { throw it }
 
             return null
         }
 
         override fun privateKey(alias: String): PrivateKey? {
-            requestedAliases += alias
-
-            return null
+            error("checking certificate access must not open its private key")
         }
 
         override fun choosePrivateKeyAlias(

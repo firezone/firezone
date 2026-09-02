@@ -21,9 +21,6 @@ enum AdapterError: Error, CustomStringConvertible, LocalizedError {
   /// connlib failed to start
   case connlibConnectError(String)
 
-  /// Neither a sign-in token nor a usable client certificate is available.
-  case authenticationUnavailable(String)
-
   var description: String {
     switch self {
     case .invalidSession(let session):
@@ -31,8 +28,6 @@ enum AdapterError: Error, CustomStringConvertible, LocalizedError {
       return message
     case .connlibConnectError(let error):
       return "connlib failed to start: \(error)"
-    case .authenticationUnavailable(let reason):
-      return "Cannot authenticate without a token or a client certificate: \(reason)"
     }
   }
 
@@ -196,7 +191,7 @@ actor Adapter {
 
   /// Starting parameters
   private let apiURL: String
-  private let token: Token?
+  private let token: Token
   private let deviceId: String
   private let logFilter: String
   /// Persistent keychain reference to the client identity MDM put on the VPN profile.
@@ -204,7 +199,7 @@ actor Adapter {
 
   init(
     apiURL: String,
-    token: Token?,
+    token: Token,
     deviceId: String,
     logFilter: String,
     internetResourceEnabled: Bool,
@@ -270,7 +265,7 @@ actor Adapter {
     do {
       session = try Session.newApple(
         apiUrl: apiURL,
-        token: token?.description,
+        token: token.description,
         deviceId: deviceId,
         deviceName: deviceName,
         deviceInfo: deviceInfo,
@@ -603,30 +598,17 @@ actor Adapter {
 
   /// Loads the client certificate to present, if the VPN profile configures one.
   ///
-  /// An identity that is configured but cannot be read is fatal only when there is no token
-  /// to fall back on. Whether a session may proceed without a certificate is the portal's
-  /// decision, and it reports a far more actionable reason than we could here.
+  /// A configured identity that cannot be read is ignored because the sign-in token
+  /// remains the session credential. The portal decides whether device trust is required.
   private func resolveTlsIdentity() throws -> ClientTlsIdentity? {
-    guard identityReference != nil else {
-      guard token != nil else {
-        throw AdapterError.authenticationUnavailable(
-          "the VPN profile references no client certificate")
-      }
-
-      return nil
-    }
+    guard let identityReference else { return nil }
 
     let identity: X509ClientIdentity?
 
     do {
       identity = try X509Identity.load(persistentReference: identityReference)
     } catch {
-      guard token != nil else {
-        throw AdapterError.authenticationUnavailable(error.localizedDescription)
-      }
-
-      Log.error(
-        "Falling back to the saved sign-in token: \(error.localizedDescription)")
+      Log.error("Failed to load the client certificate: \(error.localizedDescription)")
 
       return nil
     }

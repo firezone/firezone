@@ -1,14 +1,6 @@
 #!/usr/bin/env bash
 #MISE description="Issue a throwaway X.509 client certificate and pack it as a PKCS#12"
-#USAGE cmd "user" help="Carries an actor, so a Client can sign in as a portal identity" {
-#USAGE     flag "--email <email>" help="Actor email to put in the certificate"
-#USAGE     flag "--actor-id <actor_id>" help="Actor UUID to put in the certificate"
-#USAGE     flag "--account-id <account_id>" help="Account UUID to put in the certificate" required=#true
-#USAGE     flag "--serial <serial>" help="Device serial to attest as; read from this machine when omitted"
-#USAGE     flag "--alias <alias>" help="Name the key is stored under [default: firezone-client]"
-#USAGE     flag "--password <password>" help="PKCS#12 export password [default: firezone]"
-#USAGE }
-#USAGE cmd "device" help="Carries no actor, so the certificate can only attest the device" {
+#USAGE cmd "device" help="Carries a device identifier for attestation" {
 #USAGE     flag "--serial <serial>" help="Device serial to attest as; read from this machine when omitted"
 #USAGE     flag "--alias <alias>" help="Name the key is stored under [default: firezone-client]"
 #USAGE     flag "--password <password>" help="PKCS#12 export password [default: firezone]"
@@ -19,7 +11,7 @@ set -euo pipefail
 umask 077
 
 # The Clients only consider a certificate whose subject common name is this one, and read
-# everything else about it out of URI subject alternative names of the form
+# device identifiers from URI subject alternative names of the form
 # `firezone://<attribute>/<value>`.
 SUBJECT_CN="dev.firezone.device-trust"
 
@@ -65,12 +57,11 @@ read_machine_serial() {
     printf '%s' "$serial"
 }
 
-if [ -z "${usage_cmd:-}" ]; then
-    echo "error: expected 'user' or 'device'; see 'mise run //:x509:gen-certificate --help'" >&2
+if [ "${usage_cmd:-}" != "device" ]; then
+    echo "error: expected 'device'; see 'mise run //:x509:gen-certificate --help'" >&2
     exit 1
 fi
 
-kind="$usage_cmd"
 alias="${usage_alias:-firezone-client}"
 password="${usage_password:-firezone}"
 
@@ -79,8 +70,6 @@ if [ -n "${usage_serial:-}" ]; then
 elif serial="$(read_machine_serial)"; then
     echo "==> Read this machine's serial: ${serial}"
 else
-    # Every identifier the portal recognises is a device identifier; an actor alone does not
-    # satisfy `device_identifiers/1`, so a certificate without one is refused whatever its kind.
     echo "error: could not read this machine's serial; pass --serial <serial>" >&2
     exit 1
 fi
@@ -120,27 +109,7 @@ subjectAltName = @san
 URI.1 = firezone://serial/${serial}
 EOF
 
-if [ "$kind" = "user" ]; then
-    # The portal matches the actor by email or by UUID, so a certificate carrying neither
-    # claims nobody.
-    if [ -z "${usage_email:-}" ] && [ -z "${usage_actor_id:-}" ]; then
-        echo "error: a user certificate needs --email and/or --actor-id" >&2
-        exit 1
-    fi
-
-    san=2
-    if [ -n "${usage_email:-}" ]; then
-        echo "URI.${san} = firezone://email/${usage_email}" >>"${OUT_DIR}/client.cnf"
-        san=$((san + 1))
-    fi
-    if [ -n "${usage_actor_id:-}" ]; then
-        echo "URI.${san} = firezone://actor-id/${usage_actor_id}" >>"${OUT_DIR}/client.cnf"
-        san=$((san + 1))
-    fi
-    echo "URI.${san} = firezone://account-id/${usage_account_id:?}" >>"${OUT_DIR}/client.cnf"
-fi
-
-echo "==> Issuing a ${kind} certificate as ${SUBJECT_CN}..."
+echo "==> Issuing a device certificate as ${SUBJECT_CN}..."
 openssl req -new -newkey rsa:2048 -nodes \
     -config "${OUT_DIR}/client.cnf" \
     -keyout "$client_key" \
