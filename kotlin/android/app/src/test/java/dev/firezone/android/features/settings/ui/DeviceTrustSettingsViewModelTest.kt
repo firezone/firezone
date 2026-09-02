@@ -12,7 +12,6 @@ import dev.firezone.android.core.data.ManagedConfigurationSource
 import dev.firezone.android.core.data.Repository
 import dev.firezone.android.core.data.X509_CERTIFICATE_ALIAS_RESTRICTION
 import dev.firezone.android.core.x509.KeyChain
-import dev.firezone.android.core.x509.X509Identity
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -33,16 +32,16 @@ import java.security.cert.X509Certificate
 
 @RunWith(RobolectricTestRunner::class)
 @Config(application = Application::class)
-class X509SettingsViewModelTest {
+class DeviceTrustSettingsViewModelTest {
     private val restrictions = Bundle()
     private lateinit var repository: Repository
     private lateinit var source: ManagedConfigurationSource
-    private lateinit var viewModel: X509SettingsViewModel
+    private lateinit var viewModel: DeviceTrustSettingsViewModel
 
     @Before
     fun setUp() {
         val application: Application = RuntimeEnvironment.getApplication()
-        val preferences = application.getSharedPreferences("x509-settings-view-model-test", Context.MODE_PRIVATE)
+        val preferences = application.getSharedPreferences("device-trust-settings-test", Context.MODE_PRIVATE)
         preferences.edit().clear().commit()
         restrictions.clear()
         repository = Repository(application, Dispatchers.Unconfined, preferences)
@@ -53,7 +52,13 @@ class X509SettingsViewModelTest {
                 repository,
                 CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
             )
-        viewModel = X509SettingsViewModel(repository, source, X509Identity(WithholdingKeyChain()))
+        viewModel =
+            DeviceTrustSettingsViewModel(
+                repository = repository,
+                managedConfigurationSource = source,
+                keyChain = WithholdingKeyChain(),
+                coroutineDispatcher = Dispatchers.Unconfined,
+            )
     }
 
     @Test
