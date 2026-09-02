@@ -116,13 +116,9 @@ jobs:
         with:
           name: ${{ matrix.platform }}-screenshots
           path: swift/apple/screenshots/${{ matrix.platform }}
-      # Only `main` writes, and only what it did not already have. A cache saved
-      # from a pull request or merge queue branch lives in that branch's own
-      # scope, where no other run can read it, yet it still counts against the
-      # repository's quota and evicts the `main` entries that every run does
-      # read. `success()` is spelled out because naming any condition at all
-      # replaces the implicit one, which would otherwise publish the build
-      # products of a capture that failed.
+      # Only `main` writes, so a pull request cannot evict what every run reads.
+      # `success()` is spelled out because naming a condition replaces the
+      # implicit one.
       - uses: ./.github/actions/save-xcode-build
         if: success() && github.ref_name == 'main' && steps.xcode-build.outputs.cache-hit != 'true'
         with:
