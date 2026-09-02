@@ -2,6 +2,9 @@ name: Build macOS/iOS app
 on:
   workflow_call:
   workflow_dispatch:
+  push:
+    branches:
+      - xcode-cache-content-mtimes
 
 jobs:
   update-release-draft:
@@ -26,6 +29,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   test:
+    if: github.event_name != 'push'
     runs-on: macos-26
     permissions:
       security-events: write # trivy SARIF upload from setup-mise
@@ -65,8 +69,10 @@ jobs:
           # The app target embeds the tunnel extension, which compiles connlib.
           - platform: macos
             rust-target: aarch64-apple-darwin
+            probe-stamp: "202501010000" # older than the restore stamp
           - platform: ios
             rust-target: aarch64-apple-ios-sim
+            probe-stamp: "202701010000" # newer than the restore stamp
     env:
       XCODE_VERSION: "26.2"
       # GIT_SHA stays unset: the settings screens print it as their build
@@ -106,6 +112,11 @@ jobs:
         with:
           path: ${{ runner.temp }}/DerivedData
           key: ${{ matrix.platform }}
+      - name: Probe how the build system compares input timestamps
+        run: |
+          f=swift/apple/FirezoneKit/Sources/FirezoneKit/Views/FirstTimeView.swift
+          touch -t ${{ matrix.probe-stamp }} "$f"
+          stat -f "%N %Sm" -t "%F %T" "$f"
       - name: Photograph the ${{ matrix.platform }} screens
         # The runner context only exists at step level.
         env:
@@ -132,6 +143,7 @@ jobs:
           path: ${{ runner.temp }}/FirezoneUITests-*.xcresult
 
   static-analysis:
+    if: github.event_name != 'push'
     runs-on: macos-26
     permissions:
       security-events: write # trivy SARIF upload from setup-mise
