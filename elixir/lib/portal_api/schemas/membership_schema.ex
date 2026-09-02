@@ -86,12 +86,11 @@ defmodule PortalAPI.Schemas.Membership do
   end
 
   defmodule ListResponse do
-    require OpenApiSpex
-    alias OpenApiSpex.Schema
+    use PortalAPI.Schemas.Object
     alias PortalAPI.Schemas.Membership
     alias PortalAPI.Schemas.PaginationMetadata
 
-    OpenApiSpex.schema(%{
+    object(%{
       title: "MembershipListResponse",
       description: "Response schema for Memberships",
       type: :object,
@@ -107,10 +106,9 @@ defmodule PortalAPI.Schemas.Membership do
   end
 
   defmodule MembershipResponse do
-    require OpenApiSpex
-    alias OpenApiSpex.Schema
+    use PortalAPI.Schemas.Object
 
-    OpenApiSpex.schema(%{
+    object(%{
       title: "MembershipResponse",
       description: "Response schema for Membership Updates",
       type: :object,

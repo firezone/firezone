@@ -274,11 +274,10 @@ defmodule PortalAPI.Schemas.Policy do
   end
 
   defmodule Response do
-    require OpenApiSpex
-    alias OpenApiSpex.Schema
+    use PortalAPI.Schemas.Object
     alias PortalAPI.Schemas.Policy
 
-    OpenApiSpex.schema(%{
+    object(%{
       title: "PolicyResponse",
       description: "Response schema for single Policy",
       type: :object,
@@ -289,12 +288,11 @@ defmodule PortalAPI.Schemas.Policy do
   end
 
   defmodule ListResponse do
-    require OpenApiSpex
-    alias OpenApiSpex.Schema
+    use PortalAPI.Schemas.Object
     alias PortalAPI.Schemas.Policy
     alias PortalAPI.Schemas.PaginationMetadata
 
-    OpenApiSpex.schema(%{
+    object(%{
       title: "PolicyListResponse",
       description: "Response schema for multiple Policies",
       type: :object,

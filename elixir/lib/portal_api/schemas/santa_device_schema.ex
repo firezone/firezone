@@ -93,10 +93,9 @@ defmodule PortalAPI.Schemas.SantaDevice do
   end
 
   defmodule Response do
-    require OpenApiSpex
-    alias OpenApiSpex.Schema
+    use PortalAPI.Schemas.Object
 
-    OpenApiSpex.schema(%{
+    object(%{
       title: "SantaDeviceResponse",
       type: :object,
       properties: %{data: PortalAPI.Schemas.SantaDevice.Schema}
@@ -104,11 +103,10 @@ defmodule PortalAPI.Schemas.SantaDevice do
   end
 
   defmodule ListResponse do
-    require OpenApiSpex
-    alias OpenApiSpex.Schema
+    use PortalAPI.Schemas.Object
     alias PortalAPI.Schemas.PaginationMetadata
 
-    OpenApiSpex.schema(%{
+    object(%{
       title: "SantaDeviceListResponse",
       type: :object,
       properties: %{

@@ -38,10 +38,9 @@ defmodule PortalAPI.Schemas.IruPostureProvider do
   end
 
   defmodule Response do
-    require OpenApiSpex
-    alias OpenApiSpex.Schema
+    use PortalAPI.Schemas.Object
 
-    OpenApiSpex.schema(%{
+    object(%{
       title: "IruPostureProviderResponse",
       type: :object,
       properties: %{data: PortalAPI.Schemas.IruPostureProvider.Schema}
@@ -49,11 +48,10 @@ defmodule PortalAPI.Schemas.IruPostureProvider do
   end
 
   defmodule ListResponse do
-    require OpenApiSpex
-    alias OpenApiSpex.Schema
+    use PortalAPI.Schemas.Object
     alias PortalAPI.Schemas.PaginationMetadata
 
-    OpenApiSpex.schema(%{
+    object(%{
       title: "IruPostureProviderListResponse",
       type: :object,
       properties: %{

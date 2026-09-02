@@ -172,11 +172,10 @@ defmodule PortalAPI.Schemas.Actor do
   end
 
   defmodule Response do
-    require OpenApiSpex
-    alias OpenApiSpex.Schema
+    use PortalAPI.Schemas.Object
     alias PortalAPI.Schemas.Actor
 
-    OpenApiSpex.schema(%{
+    object(%{
       title: "ActorResponse",
       description: "Response schema for single Actor",
       type: :object,
@@ -187,12 +186,11 @@ defmodule PortalAPI.Schemas.Actor do
   end
 
   defmodule ListResponse do
-    require OpenApiSpex
-    alias OpenApiSpex.Schema
+    use PortalAPI.Schemas.Object
     alias PortalAPI.Schemas.Actor
     alias PortalAPI.Schemas.PaginationMetadata
 
-    OpenApiSpex.schema(%{
+    object(%{
       title: "ActorsResponse",
       description: "Response schema for multiple Actors",
       type: :object,

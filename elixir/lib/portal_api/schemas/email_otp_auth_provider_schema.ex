@@ -38,11 +38,10 @@ defmodule PortalAPI.Schemas.EmailOTPAuthProvider do
   end
 
   defmodule Response do
-    require OpenApiSpex
-    alias OpenApiSpex.Schema
+    use PortalAPI.Schemas.Object
     alias PortalAPI.Schemas.EmailOTPAuthProvider
 
-    OpenApiSpex.schema(%{
+    object(%{
       title: "EmailOTPAuthProviderResponse",
       description: "Response schema for single Email OTP Auth Provider",
       type: :object,
@@ -53,12 +52,11 @@ defmodule PortalAPI.Schemas.EmailOTPAuthProvider do
   end
 
   defmodule ListResponse do
-    require OpenApiSpex
-    alias OpenApiSpex.Schema
+    use PortalAPI.Schemas.Object
     alias PortalAPI.Schemas.EmailOTPAuthProvider
     alias PortalAPI.Schemas.PaginationMetadata
 
-    OpenApiSpex.schema(%{
+    object(%{
       title: "EmailOTPAuthProviderListResponse",
       description: "Response schema for multiple Email OTP Auth Providers",
       type: :object,

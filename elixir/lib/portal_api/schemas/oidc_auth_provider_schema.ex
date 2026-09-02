@@ -46,11 +46,10 @@ defmodule PortalAPI.Schemas.OIDCAuthProvider do
   end
 
   defmodule Response do
-    require OpenApiSpex
-    alias OpenApiSpex.Schema
+    use PortalAPI.Schemas.Object
     alias PortalAPI.Schemas.OIDCAuthProvider
 
-    OpenApiSpex.schema(%{
+    object(%{
       title: "OIDCAuthProviderResponse",
       description: "Response schema for single OIDC Auth Provider",
       type: :object,
@@ -61,12 +60,11 @@ defmodule PortalAPI.Schemas.OIDCAuthProvider do
   end
 
   defmodule ListResponse do
-    require OpenApiSpex
-    alias OpenApiSpex.Schema
+    use PortalAPI.Schemas.Object
     alias PortalAPI.Schemas.OIDCAuthProvider
     alias PortalAPI.Schemas.PaginationMetadata
 
-    OpenApiSpex.schema(%{
+    object(%{
       title: "OIDCAuthProviderListResponse",
       description: "Response schema for multiple OIDC Auth Providers",
       type: :object,

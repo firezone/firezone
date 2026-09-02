@@ -271,6 +271,45 @@ defmodule PortalAPI.JSONTest do
       %{schemas: spec.components.schemas}
     end
 
+    # Properties the API may legitimately omit, so `required` would over-promise.
+    # `:all` marks a request body, where a partial payload is the point.
+    @partial_properties %{
+      # A limit the account does not have is left out entirely.
+      "AccountLimits" => :all,
+      # Omitted when nil rather than sent as null.
+      "Resource" => ["ip_stack", "site_id"],
+      "GatewayCreate" => :all,
+      "GatewayCreateRequest" => :all,
+      "PolicyCreateParams" => :all,
+      "PolicyUpdateParams" => :all,
+      "FlowLogIngestRecord" => :all
+    }
+
+    test "every response schema declares its properties required", %{schemas: schemas} do
+      optional =
+        for {name, schema} <- schemas,
+            is_map(schema.properties),
+            schema.properties != %{},
+            allowed = Map.get(@partial_properties, name, []),
+            allowed != :all,
+            missing = keys(schema.properties) |> MapSet.difference(keys(schema.required || [])),
+            missing = MapSet.difference(missing, MapSet.new(allowed)),
+            MapSet.size(missing) > 0,
+            do: {name, Enum.sort(missing)}
+
+      assert optional == [],
+             """
+             These schemas declare properties the API always returns without
+             marking them required, so a generated client treats them as
+             optional:
+
+             #{format(optional)}
+
+             Build the schema with `object/1` to derive `required`, or add it to
+             @partial_properties if the payload is genuinely partial.
+             """
+    end
+
     test "no two schema modules share an OpenAPI title" do
       # OpenApiSpex keys components.schemas by title, so two modules with the
       # same title silently collapse into one and every $ref to that title
@@ -400,7 +439,8 @@ defmodule PortalAPI.JSONTest do
       ArgumentError -> :__unknown__
     end
 
-    defp keys(map), do: map |> Map.keys() |> Enum.map(&to_string/1) |> MapSet.new()
+    defp keys(map) when is_map(map), do: keys(Map.keys(map))
+    defp keys(list) when is_list(list), do: MapSet.new(list, &to_string/1)
 
     defp format(entries),
       do: Enum.map_join(entries, "\n", fn {path, keys} -> "  #{path}: #{inspect(keys)}" end)

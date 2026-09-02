@@ -41,11 +41,10 @@ defmodule PortalAPI.Schemas.OktaAuthProvider do
   end
 
   defmodule Response do
-    require OpenApiSpex
-    alias OpenApiSpex.Schema
+    use PortalAPI.Schemas.Object
     alias PortalAPI.Schemas.OktaAuthProvider
 
-    OpenApiSpex.schema(%{
+    object(%{
       title: "OktaAuthProviderResponse",
       description: "Response schema for single Okta Auth Provider",
       type: :object,
@@ -56,12 +55,11 @@ defmodule PortalAPI.Schemas.OktaAuthProvider do
   end
 
   defmodule ListResponse do
-    require OpenApiSpex
-    alias OpenApiSpex.Schema
+    use PortalAPI.Schemas.Object
     alias PortalAPI.Schemas.OktaAuthProvider
     alias PortalAPI.Schemas.PaginationMetadata
 
-    OpenApiSpex.schema(%{
+    object(%{
       title: "OktaAuthProviderListResponse",
       description: "Response schema for multiple Okta Auth Providers",
       type: :object,

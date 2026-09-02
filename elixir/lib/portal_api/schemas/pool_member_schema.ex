@@ -99,12 +99,11 @@ defmodule PortalAPI.Schemas.PoolMember do
   end
 
   defmodule ListResponse do
-    require OpenApiSpex
-    alias OpenApiSpex.Schema
+    use PortalAPI.Schemas.Object
     alias PortalAPI.Schemas.PaginationMetadata
     alias PortalAPI.Schemas.PoolMember
 
-    OpenApiSpex.schema(%{
+    object(%{
       title: "PoolMemberListResponse",
       description: "Response schema for Pool Members",
       type: :object,
@@ -120,10 +119,9 @@ defmodule PortalAPI.Schemas.PoolMember do
   end
 
   defmodule PoolMemberResponse do
-    require OpenApiSpex
-    alias OpenApiSpex.Schema
+    use PortalAPI.Schemas.Object
 
-    OpenApiSpex.schema(%{
+    object(%{
       title: "PoolMemberResponse",
       description: "Response schema for Pool Member updates",
       type: :object,

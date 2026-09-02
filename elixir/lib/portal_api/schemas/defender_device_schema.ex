@@ -102,10 +102,9 @@ defmodule PortalAPI.Schemas.DefenderDevice do
   end
 
   defmodule Response do
-    require OpenApiSpex
-    alias OpenApiSpex.Schema
+    use PortalAPI.Schemas.Object
 
-    OpenApiSpex.schema(%{
+    object(%{
       title: "DefenderDeviceResponse",
       type: :object,
       properties: %{data: PortalAPI.Schemas.DefenderDevice.Schema}
@@ -113,11 +112,10 @@ defmodule PortalAPI.Schemas.DefenderDevice do
   end
 
   defmodule ListResponse do
-    require OpenApiSpex
-    alias OpenApiSpex.Schema
+    use PortalAPI.Schemas.Object
     alias PortalAPI.Schemas.PaginationMetadata
 
-    OpenApiSpex.schema(%{
+    object(%{
       title: "DefenderDeviceListResponse",
       type: :object,
       properties: %{

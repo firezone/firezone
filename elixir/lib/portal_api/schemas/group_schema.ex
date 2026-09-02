@@ -117,11 +117,10 @@ defmodule PortalAPI.Schemas.Group do
   end
 
   defmodule Response do
-    require OpenApiSpex
-    alias OpenApiSpex.Schema
+    use PortalAPI.Schemas.Object
     alias PortalAPI.Schemas.Group
 
-    OpenApiSpex.schema(%{
+    object(%{
       title: "GroupResponse",
       description: "Response schema for single Group",
       type: :object,
@@ -132,12 +131,11 @@ defmodule PortalAPI.Schemas.Group do
   end
 
   defmodule ListResponse do
-    require OpenApiSpex
-    alias OpenApiSpex.Schema
+    use PortalAPI.Schemas.Object
     alias PortalAPI.Schemas.Group
     alias PortalAPI.Schemas.PaginationMetadata
 
-    OpenApiSpex.schema(%{
+    object(%{
       title: "GroupListResponse",
       description: "Response schema for multiple Groups",
       type: :object,

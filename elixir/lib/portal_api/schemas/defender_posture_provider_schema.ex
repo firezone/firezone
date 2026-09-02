@@ -28,10 +28,9 @@ defmodule PortalAPI.Schemas.DefenderPostureProvider do
   end
 
   defmodule Response do
-    require OpenApiSpex
-    alias OpenApiSpex.Schema
+    use PortalAPI.Schemas.Object
 
-    OpenApiSpex.schema(%{
+    object(%{
       title: "DefenderPostureProviderResponse",
       type: :object,
       properties: %{data: PortalAPI.Schemas.DefenderPostureProvider.Schema}
@@ -39,11 +38,10 @@ defmodule PortalAPI.Schemas.DefenderPostureProvider do
   end
 
   defmodule ListResponse do
-    require OpenApiSpex
-    alias OpenApiSpex.Schema
+    use PortalAPI.Schemas.Object
     alias PortalAPI.Schemas.PaginationMetadata
 
-    OpenApiSpex.schema(%{
+    object(%{
       title: "DefenderPostureProviderListResponse",
       type: :object,
       properties: %{

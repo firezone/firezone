@@ -137,10 +137,9 @@ defmodule PortalAPI.Schemas.IntuneDevice do
   end
 
   defmodule Response do
-    require OpenApiSpex
-    alias OpenApiSpex.Schema
+    use PortalAPI.Schemas.Object
 
-    OpenApiSpex.schema(%{
+    object(%{
       title: "IntuneDeviceResponse",
       type: :object,
       properties: %{data: PortalAPI.Schemas.IntuneDevice.Schema}
@@ -148,11 +147,10 @@ defmodule PortalAPI.Schemas.IntuneDevice do
   end
 
   defmodule ListResponse do
-    require OpenApiSpex
-    alias OpenApiSpex.Schema
+    use PortalAPI.Schemas.Object
     alias PortalAPI.Schemas.PaginationMetadata
 
-    OpenApiSpex.schema(%{
+    object(%{
       title: "IntuneDeviceListResponse",
       type: :object,
       properties: %{

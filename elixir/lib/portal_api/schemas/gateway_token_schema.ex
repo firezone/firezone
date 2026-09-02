@@ -20,10 +20,10 @@ defmodule PortalAPI.Schemas.GatewayToken do
   end
 
   defmodule Response do
-    require OpenApiSpex
+    use PortalAPI.Schemas.Object
     alias PortalAPI.Schemas.GatewayToken
 
-    OpenApiSpex.schema(%{
+    object(%{
       title: "GatewayTokenResponse",
       description: "Response schema for a new Gateway Token",
       type: :object,
@@ -34,10 +34,9 @@ defmodule PortalAPI.Schemas.GatewayToken do
   end
 
   defmodule DeletedResponse do
-    require OpenApiSpex
-    alias OpenApiSpex.Schema
+    use PortalAPI.Schemas.Object
 
-    OpenApiSpex.schema(%{
+    object(%{
       title: "DeletedGatewayTokenResponse",
       description: "Response schema for a deleted Gateway Token",
       type: :object,
@@ -54,10 +53,9 @@ defmodule PortalAPI.Schemas.GatewayToken do
   end
 
   defmodule DeletedAllResponse do
-    require OpenApiSpex
-    alias OpenApiSpex.Schema
+    use PortalAPI.Schemas.Object
 
-    OpenApiSpex.schema(%{
+    object(%{
       title: "DeletedGatewayTokensResponse",
       description: "Response schema for deleted Gateway Tokens",
       type: :object,

@@ -57,11 +57,10 @@ defmodule PortalAPI.Schemas.GoogleDirectory do
   end
 
   defmodule Response do
-    require OpenApiSpex
-    alias OpenApiSpex.Schema
+    use PortalAPI.Schemas.Object
     alias PortalAPI.Schemas.GoogleDirectory
 
-    OpenApiSpex.schema(%{
+    object(%{
       title: "GoogleDirectoryResponse",
       description: "Response schema for single Google Directory",
       type: :object,
@@ -72,12 +71,11 @@ defmodule PortalAPI.Schemas.GoogleDirectory do
   end
 
   defmodule ListResponse do
-    require OpenApiSpex
-    alias OpenApiSpex.Schema
+    use PortalAPI.Schemas.Object
     alias PortalAPI.Schemas.GoogleDirectory
     alias PortalAPI.Schemas.PaginationMetadata
 
-    OpenApiSpex.schema(%{
+    object(%{
       title: "GoogleDirectoryListResponse",
       description: "Response schema for multiple Google Directories",
       type: :object,

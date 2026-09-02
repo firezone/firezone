@@ -166,9 +166,9 @@ defmodule PortalAPI.Schemas.SentinelOneDevice do
   end
 
   defmodule Response do
-    require OpenApiSpex
+    use PortalAPI.Schemas.Object
 
-    OpenApiSpex.schema(%{
+    object(%{
       title: "SentinelOneDeviceResponse",
       type: :object,
       properties: %{data: PortalAPI.Schemas.SentinelOneDevice.Schema}
@@ -176,11 +176,10 @@ defmodule PortalAPI.Schemas.SentinelOneDevice do
   end
 
   defmodule ListResponse do
-    require OpenApiSpex
-    alias OpenApiSpex.Schema
+    use PortalAPI.Schemas.Object
     alias PortalAPI.Schemas.PaginationMetadata
 
-    OpenApiSpex.schema(%{
+    object(%{
       title: "SentinelOneDeviceListResponse",
       type: :object,
       properties: %{

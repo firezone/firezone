@@ -28,10 +28,9 @@ defmodule PortalAPI.Schemas.IntunePostureProvider do
   end
 
   defmodule Response do
-    require OpenApiSpex
-    alias OpenApiSpex.Schema
+    use PortalAPI.Schemas.Object
 
-    OpenApiSpex.schema(%{
+    object(%{
       title: "IntunePostureProviderResponse",
       type: :object,
       properties: %{data: PortalAPI.Schemas.IntunePostureProvider.Schema}
@@ -39,11 +38,10 @@ defmodule PortalAPI.Schemas.IntunePostureProvider do
   end
 
   defmodule ListResponse do
-    require OpenApiSpex
-    alias OpenApiSpex.Schema
+    use PortalAPI.Schemas.Object
     alias PortalAPI.Schemas.PaginationMetadata
 
-    OpenApiSpex.schema(%{
+    object(%{
       title: "IntunePostureProviderListResponse",
       type: :object,
       properties: %{

@@ -69,11 +69,10 @@ defmodule PortalAPI.Schemas.ExternalIdentity do
   end
 
   defmodule Response do
-    require OpenApiSpex
-    alias OpenApiSpex.Schema
+    use PortalAPI.Schemas.Object
     alias PortalAPI.Schemas.ExternalIdentity
 
-    OpenApiSpex.schema(%{
+    object(%{
       title: "ExternalIdentityResponse",
       description: "Response schema for single External Identity",
       type: :object,
@@ -84,12 +83,11 @@ defmodule PortalAPI.Schemas.ExternalIdentity do
   end
 
   defmodule ListResponse do
-    require OpenApiSpex
-    alias OpenApiSpex.Schema
+    use PortalAPI.Schemas.Object
     alias PortalAPI.Schemas.ExternalIdentity
     alias PortalAPI.Schemas.PaginationMetadata
 
-    OpenApiSpex.schema(%{
+    object(%{
       title: "ExternalIdentityListResponse",
       description: "Response schema for multiple External Identities",
       type: :object,

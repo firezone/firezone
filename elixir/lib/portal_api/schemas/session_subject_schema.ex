@@ -8,10 +8,9 @@ defmodule PortalAPI.Schemas.SessionSubject do
   """
 
   defmodule Client do
-    require OpenApiSpex
-    alias OpenApiSpex.Schema
+    use PortalAPI.Schemas.Object
 
-    OpenApiSpex.schema(%{
+    object(%{
       title: "ClientSessionSubject",
       description: """
       Subject of a session created by a Client (`context: "client"`).
@@ -85,10 +84,9 @@ defmodule PortalAPI.Schemas.SessionSubject do
   end
 
   defmodule Gateway do
-    require OpenApiSpex
-    alias OpenApiSpex.Schema
+    use PortalAPI.Schemas.Object
 
-    OpenApiSpex.schema(%{
+    object(%{
       title: "GatewaySessionSubject",
       description: """
       Subject of a session created by a Gateway (`context: "gateway"`).

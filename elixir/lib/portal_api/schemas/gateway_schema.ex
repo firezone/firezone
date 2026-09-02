@@ -155,11 +155,10 @@ defmodule PortalAPI.Schemas.Gateway do
   end
 
   defmodule ProvisionResponse do
-    require OpenApiSpex
-    alias OpenApiSpex.Schema
+    use PortalAPI.Schemas.Object
     alias PortalAPI.Schemas.Gateway
 
-    OpenApiSpex.schema(%{
+    object(%{
       title: "GatewayProvisionResponse",
       description: """
       Response schema for a newly provisioned Gateway. Includes the \
@@ -226,11 +225,10 @@ defmodule PortalAPI.Schemas.Gateway do
   end
 
   defmodule Response do
-    require OpenApiSpex
-    alias OpenApiSpex.Schema
+    use PortalAPI.Schemas.Object
     alias PortalAPI.Schemas.Gateway
 
-    OpenApiSpex.schema(%{
+    object(%{
       title: "GatewayResponse",
       description: "Response schema for single Gateway",
       type: :object,
@@ -241,12 +239,11 @@ defmodule PortalAPI.Schemas.Gateway do
   end
 
   defmodule ListResponse do
-    require OpenApiSpex
-    alias OpenApiSpex.Schema
+    use PortalAPI.Schemas.Object
     alias PortalAPI.Schemas.Gateway
     alias PortalAPI.Schemas.PaginationMetadata
 
-    OpenApiSpex.schema(%{
+    object(%{
       title: "GatewaysResponse",
       description: "Response schema for multiple Gateways",
       type: :object,

@@ -50,11 +50,10 @@ defmodule PortalAPI.Schemas.EntraAuthProvider do
   end
 
   defmodule Response do
-    require OpenApiSpex
-    alias OpenApiSpex.Schema
+    use PortalAPI.Schemas.Object
     alias PortalAPI.Schemas.EntraAuthProvider
 
-    OpenApiSpex.schema(%{
+    object(%{
       title: "EntraAuthProviderResponse",
       description: "Response schema for single Entra Auth Provider",
       type: :object,
@@ -65,12 +64,11 @@ defmodule PortalAPI.Schemas.EntraAuthProvider do
   end
 
   defmodule ListResponse do
-    require OpenApiSpex
-    alias OpenApiSpex.Schema
+    use PortalAPI.Schemas.Object
     alias PortalAPI.Schemas.EntraAuthProvider
     alias PortalAPI.Schemas.PaginationMetadata
 
-    OpenApiSpex.schema(%{
+    object(%{
       title: "EntraAuthProviderListResponse",
       description: "Response schema for multiple Entra Auth Providers",
       type: :object,

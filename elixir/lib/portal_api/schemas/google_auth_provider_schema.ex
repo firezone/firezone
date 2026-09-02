@@ -39,11 +39,10 @@ defmodule PortalAPI.Schemas.GoogleAuthProvider do
   end
 
   defmodule Response do
-    require OpenApiSpex
-    alias OpenApiSpex.Schema
+    use PortalAPI.Schemas.Object
     alias PortalAPI.Schemas.GoogleAuthProvider
 
-    OpenApiSpex.schema(%{
+    object(%{
       title: "GoogleAuthProviderResponse",
       description: "Response schema for single Google Auth Provider",
       type: :object,
@@ -54,12 +53,11 @@ defmodule PortalAPI.Schemas.GoogleAuthProvider do
   end
 
   defmodule ListResponse do
-    require OpenApiSpex
-    alias OpenApiSpex.Schema
+    use PortalAPI.Schemas.Object
     alias PortalAPI.Schemas.GoogleAuthProvider
     alias PortalAPI.Schemas.PaginationMetadata
 
-    OpenApiSpex.schema(%{
+    object(%{
       title: "GoogleAuthProviderListResponse",
       description: "Response schema for multiple Google Auth Providers",
       type: :object,

@@ -36,10 +36,9 @@ defmodule PortalAPI.Schemas.SantaPostureProvider do
   end
 
   defmodule Response do
-    require OpenApiSpex
-    alias OpenApiSpex.Schema
+    use PortalAPI.Schemas.Object
 
-    OpenApiSpex.schema(%{
+    object(%{
       title: "SantaPostureProviderResponse",
       type: :object,
       properties: %{data: PortalAPI.Schemas.SantaPostureProvider.Schema}
@@ -47,11 +46,10 @@ defmodule PortalAPI.Schemas.SantaPostureProvider do
   end
 
   defmodule ListResponse do
-    require OpenApiSpex
-    alias OpenApiSpex.Schema
+    use PortalAPI.Schemas.Object
     alias PortalAPI.Schemas.PaginationMetadata
 
-    OpenApiSpex.schema(%{
+    object(%{
       title: "SantaPostureProviderListResponse",
       type: :object,
       properties: %{

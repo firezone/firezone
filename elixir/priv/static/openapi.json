@@ -9,6 +9,9 @@
             "$ref": "#/components/schemas/EntraDirectory"
           }
         },
+        "required": [
+          "data"
+        ],
         "title": "EntraDirectoryResponse",
         "type": "object"
       },
@@ -24,6 +27,10 @@
             "$ref": "#/components/schemas/PaginationMetadata"
           }
         },
+        "required": [
+          "data",
+          "metadata"
+        ],
         "title": "IruDeviceListResponse",
         "type": "object"
       },
@@ -34,6 +41,9 @@
             "$ref": "#/components/schemas/Actor"
           }
         },
+        "required": [
+          "data"
+        ],
         "title": "ActorResponse",
         "type": "object"
       },
@@ -51,6 +61,10 @@
             "$ref": "#/components/schemas/PaginationMetadata"
           }
         },
+        "required": [
+          "data",
+          "metadata"
+        ],
         "title": "GoogleAuthProviderListResponse",
         "type": "object"
       },
@@ -61,6 +75,9 @@
             "$ref": "#/components/schemas/Group"
           }
         },
+        "required": [
+          "data"
+        ],
         "title": "GroupResponse",
         "type": "object"
       },
@@ -71,6 +88,9 @@
             "$ref": "#/components/schemas/GoogleDirectory"
           }
         },
+        "required": [
+          "data"
+        ],
         "title": "GoogleDirectoryResponse",
         "type": "object"
       },
@@ -195,6 +215,9 @@
             "$ref": "#/components/schemas/SentinelOneDevice"
           }
         },
+        "required": [
+          "data"
+        ],
         "title": "SentinelOneDeviceResponse",
         "type": "object"
       },
@@ -210,6 +233,10 @@
             "$ref": "#/components/schemas/PaginationMetadata"
           }
         },
+        "required": [
+          "data",
+          "metadata"
+        ],
         "title": "IntuneDeviceListResponse",
         "type": "object"
       },
@@ -467,6 +494,10 @@
             "$ref": "#/components/schemas/PaginationMetadata"
           }
         },
+        "required": [
+          "data",
+          "metadata"
+        ],
         "title": "IntunePostureProviderListResponse",
         "type": "object"
       },
@@ -639,6 +670,9 @@
             "$ref": "#/components/schemas/Gateway"
           }
         },
+        "required": [
+          "data"
+        ],
         "title": "GatewayResponse",
         "type": "object"
       },
@@ -732,6 +766,9 @@
             "$ref": "#/components/schemas/ClientTokenWithSecret"
           }
         },
+        "required": [
+          "data"
+        ],
         "title": "ClientTokenCreateResponse",
         "type": "object"
       },
@@ -968,6 +1005,9 @@
             "$ref": "#/components/schemas/EntraAuthProvider"
           }
         },
+        "required": [
+          "data"
+        ],
         "title": "EntraAuthProviderResponse",
         "type": "object"
       },
@@ -1565,6 +1605,9 @@
             "$ref": "#/components/schemas/IntuneDevice"
           }
         },
+        "required": [
+          "data"
+        ],
         "title": "IntuneDeviceResponse",
         "type": "object"
       },
@@ -1593,6 +1636,9 @@
             "$ref": "#/components/schemas/OktaDirectory"
           }
         },
+        "required": [
+          "data"
+        ],
         "title": "OktaDirectoryResponse",
         "type": "object"
       },
@@ -1642,6 +1688,16 @@
             "type": "string"
           }
         },
+        "required": [
+          "gateway_id",
+          "ip",
+          "ip_city",
+          "ip_lat",
+          "ip_lon",
+          "ip_region",
+          "token_id",
+          "user_agent"
+        ],
         "title": "GatewaySessionSubject",
         "type": "object"
       },
@@ -1652,6 +1708,9 @@
             "$ref": "#/components/schemas/GatewayToken"
           }
         },
+        "required": [
+          "data"
+        ],
         "title": "GatewayTokenResponse",
         "type": "object"
       },
@@ -1735,6 +1794,9 @@
             "type": "object"
           }
         },
+        "required": [
+          "data"
+        ],
         "title": "DeletedClientTokenResponse",
         "type": "object"
       },
@@ -1814,6 +1876,21 @@
             "type": "string"
           }
         },
+        "required": [
+          "actor_email",
+          "actor_id",
+          "actor_name",
+          "actor_type",
+          "auth_provider_id",
+          "device_id",
+          "ip",
+          "ip_city",
+          "ip_lat",
+          "ip_lon",
+          "ip_region",
+          "token_id",
+          "user_agent"
+        ],
         "title": "ClientSessionSubject",
         "type": "object"
       },
@@ -2190,6 +2267,9 @@
             "$ref": "#/components/schemas/Site"
           }
         },
+        "required": [
+          "data"
+        ],
         "title": "SiteResponse",
         "type": "object"
       },
@@ -2207,6 +2287,10 @@
             "$ref": "#/components/schemas/PaginationMetadata"
           }
         },
+        "required": [
+          "data",
+          "metadata"
+        ],
         "title": "ClientTokenListResponse",
         "type": "object"
       },
@@ -2222,6 +2306,10 @@
             "$ref": "#/components/schemas/PaginationMetadata"
           }
         },
+        "required": [
+          "data",
+          "metadata"
+        ],
         "title": "IruPostureProviderListResponse",
         "type": "object"
       },
@@ -2331,6 +2419,9 @@
             "$ref": "#/components/schemas/Policy"
           }
         },
+        "required": [
+          "data"
+        ],
         "title": "PolicyResponse",
         "type": "object"
       },
@@ -2350,6 +2441,9 @@
             "type": "object"
           }
         },
+        "required": [
+          "data"
+        ],
         "title": "DeletedClientTokensResponse",
         "type": "object"
       },
@@ -2367,6 +2461,10 @@
             "$ref": "#/components/schemas/PaginationMetadata"
           }
         },
+        "required": [
+          "data",
+          "metadata"
+        ],
         "title": "GroupListResponse",
         "type": "object"
       },
@@ -2376,6 +2474,9 @@
             "$ref": "#/components/schemas/IntunePostureProvider"
           }
         },
+        "required": [
+          "data"
+        ],
         "title": "IntunePostureProviderResponse",
         "type": "object"
       },
@@ -2393,6 +2494,10 @@
             "$ref": "#/components/schemas/PaginationMetadata"
           }
         },
+        "required": [
+          "data",
+          "metadata"
+        ],
         "title": "OktaAuthProviderListResponse",
         "type": "object"
       },
@@ -2413,6 +2518,9 @@
             "type": "object"
           }
         },
+        "required": [
+          "data"
+        ],
         "title": "DeletedGatewayTokenResponse",
         "type": "object"
       },
@@ -2430,6 +2538,10 @@
             "$ref": "#/components/schemas/PaginationMetadata"
           }
         },
+        "required": [
+          "data",
+          "metadata"
+        ],
         "title": "EntraAuthProviderListResponse",
         "type": "object"
       },
@@ -2572,6 +2684,10 @@
             "$ref": "#/components/schemas/PaginationMetadata"
           }
         },
+        "required": [
+          "data",
+          "metadata"
+        ],
         "title": "DefenderDeviceListResponse",
         "type": "object"
       },
@@ -2589,6 +2705,10 @@
             "$ref": "#/components/schemas/PaginationMetadata"
           }
         },
+        "required": [
+          "data",
+          "metadata"
+        ],
         "title": "ExternalIdentityListResponse",
         "type": "object"
       },
@@ -2623,6 +2743,10 @@
             "$ref": "#/components/schemas/PaginationMetadata"
           }
         },
+        "required": [
+          "data",
+          "metadata"
+        ],
         "title": "ClientsResponse",
         "type": "object"
       },
@@ -2640,6 +2764,10 @@
             "$ref": "#/components/schemas/PaginationMetadata"
           }
         },
+        "required": [
+          "data",
+          "metadata"
+        ],
         "title": "GoogleDirectoryListResponse",
         "type": "object"
       },
@@ -2657,6 +2785,10 @@
             "$ref": "#/components/schemas/PaginationMetadata"
           }
         },
+        "required": [
+          "data",
+          "metadata"
+        ],
         "title": "GatewaysResponse",
         "type": "object"
       },
@@ -2697,6 +2829,9 @@
             "$ref": "#/components/schemas/Resource"
           }
         },
+        "required": [
+          "data"
+        ],
         "title": "ResourceResponse",
         "type": "object"
       },
@@ -2707,6 +2842,9 @@
             "$ref": "#/components/schemas/ExternalIdentity"
           }
         },
+        "required": [
+          "data"
+        ],
         "title": "ExternalIdentityResponse",
         "type": "object"
       },
@@ -2716,6 +2854,9 @@
             "$ref": "#/components/schemas/SantaDevice"
           }
         },
+        "required": [
+          "data"
+        ],
         "title": "SantaDeviceResponse",
         "type": "object"
       },
@@ -2837,6 +2978,10 @@
             "$ref": "#/components/schemas/PaginationMetadata"
           }
         },
+        "required": [
+          "data",
+          "metadata"
+        ],
         "title": "OktaDirectoryListResponse",
         "type": "object"
       },
@@ -2846,6 +2991,9 @@
             "$ref": "#/components/schemas/DefenderPostureProvider"
           }
         },
+        "required": [
+          "data"
+        ],
         "title": "DefenderPostureProviderResponse",
         "type": "object"
       },
@@ -2855,6 +3003,9 @@
             "$ref": "#/components/schemas/SentinelOnePostureProvider"
           }
         },
+        "required": [
+          "data"
+        ],
         "title": "SentinelOnePostureProviderResponse",
         "type": "object"
       },
@@ -2902,6 +3053,9 @@
             "$ref": "#/components/schemas/OktaAuthProvider"
           }
         },
+        "required": [
+          "data"
+        ],
         "title": "OktaAuthProviderResponse",
         "type": "object"
       },
@@ -2983,6 +3137,19 @@
             "type": "string"
           }
         },
+        "required": [
+          "actor_email",
+          "actor_id",
+          "actor_name",
+          "actor_type",
+          "auth_provider_id",
+          "ip",
+          "ip_city",
+          "ip_lat",
+          "ip_lon",
+          "ip_region",
+          "user_agent"
+        ],
         "title": "Subject",
         "type": "object"
       },
@@ -2992,6 +3159,9 @@
             "$ref": "#/components/schemas/IruPostureProvider"
           }
         },
+        "required": [
+          "data"
+        ],
         "title": "IruPostureProviderResponse",
         "type": "object"
       },
@@ -3018,6 +3188,9 @@
             ]
           }
         },
+        "required": [
+          "data"
+        ],
         "title": "GatewayProvisionResponse",
         "type": "object"
       },
@@ -3087,6 +3260,10 @@
             "$ref": "#/components/schemas/PaginationMetadata"
           }
         },
+        "required": [
+          "data",
+          "metadata"
+        ],
         "title": "ActorsResponse",
         "type": "object"
       },
@@ -3097,6 +3274,9 @@
             "$ref": "#/components/schemas/GoogleAuthProvider"
           }
         },
+        "required": [
+          "data"
+        ],
         "title": "GoogleAuthProviderResponse",
         "type": "object"
       },
@@ -3172,6 +3352,9 @@
             "type": "object"
           }
         },
+        "required": [
+          "data"
+        ],
         "title": "MembershipResponse",
         "type": "object"
       },
@@ -3189,6 +3372,10 @@
             "$ref": "#/components/schemas/PaginationMetadata"
           }
         },
+        "required": [
+          "data",
+          "metadata"
+        ],
         "title": "MembershipListResponse",
         "type": "object"
       },
@@ -3290,6 +3477,9 @@
             "type": "object"
           }
         },
+        "required": [
+          "data"
+        ],
         "title": "DeletedGatewayTokensResponse",
         "type": "object"
       },
@@ -3351,6 +3541,9 @@
             "$ref": "#/components/schemas/ClientToken"
           }
         },
+        "required": [
+          "data"
+        ],
         "title": "ClientTokenShowResponse",
         "type": "object"
       },
@@ -4266,6 +4459,9 @@
             "$ref": "#/components/schemas/X509AuthProvider"
           }
         },
+        "required": [
+          "data"
+        ],
         "title": "X509AuthProviderResponse",
         "type": "object"
       },
@@ -4299,6 +4495,10 @@
             "$ref": "#/components/schemas/PaginationMetadata"
           }
         },
+        "required": [
+          "data",
+          "metadata"
+        ],
         "title": "DefenderPostureProviderListResponse",
         "type": "object"
       },
@@ -4409,6 +4609,10 @@
             "type": "object"
           }
         },
+        "required": [
+          "data",
+          "metadata"
+        ],
         "title": "LogsResponse",
         "type": "object"
       },
@@ -4424,6 +4628,10 @@
             "$ref": "#/components/schemas/PaginationMetadata"
           }
         },
+        "required": [
+          "data",
+          "metadata"
+        ],
         "title": "SentinelOnePostureProviderListResponse",
         "type": "object"
       },
@@ -4446,6 +4654,9 @@
             "type": "object"
           }
         },
+        "required": [
+          "data"
+        ],
         "title": "PoolMemberResponse",
         "type": "object"
       },
@@ -4678,6 +4889,10 @@
             "$ref": "#/components/schemas/PaginationMetadata"
           }
         },
+        "required": [
+          "data",
+          "metadata"
+        ],
         "title": "SantaDeviceListResponse",
         "type": "object"
       },
@@ -4687,6 +4902,9 @@
             "$ref": "#/components/schemas/DefenderDevice"
           }
         },
+        "required": [
+          "data"
+        ],
         "title": "DefenderDeviceResponse",
         "type": "object"
       },
@@ -4697,6 +4915,9 @@
             "$ref": "#/components/schemas/EmailOTPAuthProvider"
           }
         },
+        "required": [
+          "data"
+        ],
         "title": "EmailOTPAuthProviderResponse",
         "type": "object"
       },
@@ -4714,6 +4935,10 @@
             "$ref": "#/components/schemas/PaginationMetadata"
           }
         },
+        "required": [
+          "data",
+          "metadata"
+        ],
         "title": "EntraDirectoryListResponse",
         "type": "object"
       },
@@ -4832,6 +5057,10 @@
             "$ref": "#/components/schemas/PaginationMetadata"
           }
         },
+        "required": [
+          "data",
+          "metadata"
+        ],
         "title": "OIDCAuthProviderListResponse",
         "type": "object"
       },
@@ -5133,9 +5362,10 @@
           }
         },
         "required": [
-          "type",
+          "detail",
+          "status",
           "title",
-          "status"
+          "type"
         ],
         "title": "ProblemDetails",
         "type": "object"
@@ -5152,6 +5382,10 @@
             "$ref": "#/components/schemas/PaginationMetadata"
           }
         },
+        "required": [
+          "data",
+          "metadata"
+        ],
         "title": "SantaPostureProviderListResponse",
         "type": "object"
       },
@@ -5263,6 +5497,7 @@
           }
         },
         "required": [
+          "ports",
           "protocol"
         ],
         "title": "ResourceFilter",
@@ -5386,6 +5621,9 @@
             "$ref": "#/components/schemas/Log"
           }
         },
+        "required": [
+          "data"
+        ],
         "title": "LogResponse",
         "type": "object"
       },
@@ -5395,6 +5633,9 @@
             "$ref": "#/components/schemas/SantaPostureProvider"
           }
         },
+        "required": [
+          "data"
+        ],
         "title": "SantaPostureProviderResponse",
         "type": "object"
       },
@@ -5405,6 +5646,9 @@
             "$ref": "#/components/schemas/Client"
           }
         },
+        "required": [
+          "data"
+        ],
         "title": "ClientResponse",
         "type": "object"
       },
@@ -5685,9 +5929,10 @@
           }
         },
         "required": [
-          "type",
-          "title",
+          "detail",
           "status",
+          "title",
+          "type",
           "validation_errors"
         ],
         "title": "ValidationProblemDetails",
@@ -5746,6 +5991,10 @@
             "$ref": "#/components/schemas/PaginationMetadata"
           }
         },
+        "required": [
+          "data",
+          "metadata"
+        ],
         "title": "SentinelOneDeviceListResponse",
         "type": "object"
       },
@@ -5991,6 +6240,10 @@
             "$ref": "#/components/schemas/PaginationMetadata"
           }
         },
+        "required": [
+          "data",
+          "metadata"
+        ],
         "title": "PoolMemberListResponse",
         "type": "object"
       },
@@ -6432,6 +6685,10 @@
             "$ref": "#/components/schemas/PaginationMetadata"
           }
         },
+        "required": [
+          "data",
+          "metadata"
+        ],
         "title": "SiteListResponse",
         "type": "object"
       },
@@ -6449,6 +6706,10 @@
             "$ref": "#/components/schemas/PaginationMetadata"
           }
         },
+        "required": [
+          "data",
+          "metadata"
+        ],
         "title": "PolicyListResponse",
         "type": "object"
       },
@@ -6466,6 +6727,10 @@
             "$ref": "#/components/schemas/PaginationMetadata"
           }
         },
+        "required": [
+          "data",
+          "metadata"
+        ],
         "title": "EmailOTPAuthProviderListResponse",
         "type": "object"
       },
@@ -6510,6 +6775,10 @@
             "$ref": "#/components/schemas/PaginationMetadata"
           }
         },
+        "required": [
+          "data",
+          "metadata"
+        ],
         "title": "ResourceListResponse",
         "type": "object"
       },
@@ -7055,6 +7324,9 @@
             "$ref": "#/components/schemas/IruDevice"
           }
         },
+        "required": [
+          "data"
+        ],
         "title": "IruDeviceResponse",
         "type": "object"
       },
@@ -7065,6 +7337,9 @@
             "$ref": "#/components/schemas/OIDCAuthProvider"
           }
         },
+        "required": [
+          "data"
+        ],
         "title": "OIDCAuthProviderResponse",
         "type": "object"
       }

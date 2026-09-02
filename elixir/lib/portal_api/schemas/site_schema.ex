@@ -73,11 +73,10 @@ defmodule PortalAPI.Schemas.Site do
   end
 
   defmodule Response do
-    require OpenApiSpex
-    alias OpenApiSpex.Schema
+    use PortalAPI.Schemas.Object
     alias PortalAPI.Schemas.Site
 
-    OpenApiSpex.schema(%{
+    object(%{
       title: "SiteResponse",
       description: "Response schema for single Site",
       type: :object,
@@ -88,12 +87,11 @@ defmodule PortalAPI.Schemas.Site do
   end
 
   defmodule ListResponse do
-    require OpenApiSpex
-    alias OpenApiSpex.Schema
+    use PortalAPI.Schemas.Object
     alias PortalAPI.Schemas.Site
     alias PortalAPI.Schemas.PaginationMetadata
 
-    OpenApiSpex.schema(%{
+    object(%{
       title: "SiteListResponse",
       description: "Response schema for multiple Sites",
       type: :object,

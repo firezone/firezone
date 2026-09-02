@@ -464,10 +464,10 @@ defmodule PortalAPI.Schemas.Log do
   end
 
   defmodule Response do
-    require OpenApiSpex
+    use PortalAPI.Schemas.Object
     alias PortalAPI.Schemas.Log
 
-    OpenApiSpex.schema(%{
+    object(%{
       title: "LogResponse",
       description: "Response schema for a single Log entry.",
       type: :object,
@@ -478,11 +478,10 @@ defmodule PortalAPI.Schemas.Log do
   end
 
   defmodule ListResponse do
-    require OpenApiSpex
-    alias OpenApiSpex.Schema
+    use PortalAPI.Schemas.Object
     alias PortalAPI.Schemas.Log
 
-    OpenApiSpex.schema(%{
+    object(%{
       title: "LogsResponse",
       description: """
       Response schema for a page of Log entries.

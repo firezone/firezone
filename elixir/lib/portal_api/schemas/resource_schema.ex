@@ -41,10 +41,9 @@ defmodule PortalAPI.Schemas.Resource do
   end
 
   defmodule Filter do
-    require OpenApiSpex
-    alias OpenApiSpex.Schema
+    use PortalAPI.Schemas.Object
 
-    OpenApiSpex.schema(%{
+    object(%{
       title: "ResourceFilter",
       description: "Traffic filter restricting the protocols and ports the Resource exposes",
       type: :object,
@@ -62,7 +61,6 @@ defmodule PortalAPI.Schemas.Resource do
           items: %Schema{type: :string}
         }
       },
-      required: [:protocol],
       example: %{
         "protocol" => "tcp",
         "ports" => ["80", "443", "8000 - 9000"]
@@ -228,11 +226,10 @@ defmodule PortalAPI.Schemas.Resource do
   end
 
   defmodule Response do
-    require OpenApiSpex
-    alias OpenApiSpex.Schema
+    use PortalAPI.Schemas.Object
     alias PortalAPI.Schemas.Resource
 
-    OpenApiSpex.schema(%{
+    object(%{
       title: "ResourceResponse",
       description: "Response schema for single Resource",
       type: :object,
@@ -243,12 +240,11 @@ defmodule PortalAPI.Schemas.Resource do
   end
 
   defmodule ListResponse do
-    require OpenApiSpex
-    alias OpenApiSpex.Schema
+    use PortalAPI.Schemas.Object
     alias PortalAPI.Schemas.Resource
     alias PortalAPI.Schemas.PaginationMetadata
 
-    OpenApiSpex.schema(%{
+    object(%{
       title: "ResourceListResponse",
       description: "Response schema for multiple Resources",
       type: :object,

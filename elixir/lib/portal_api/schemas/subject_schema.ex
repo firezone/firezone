@@ -1,8 +1,7 @@
 defmodule PortalAPI.Schemas.Subject do
-  require OpenApiSpex
-  alias OpenApiSpex.Schema
+  use PortalAPI.Schemas.Object
 
-  OpenApiSpex.schema(%{
+  object(%{
     title: "Subject",
     description: """
     Identifies the actor and request context that initiated an action.

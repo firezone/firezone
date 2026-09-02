@@ -95,10 +95,10 @@ defmodule PortalAPI.Schemas.ClientToken do
   end
 
   defmodule Response do
-    require OpenApiSpex
+    use PortalAPI.Schemas.Object
     alias PortalAPI.Schemas.ClientToken
 
-    OpenApiSpex.schema(%{
+    object(%{
       title: "ClientTokenCreateResponse",
       description: "Response schema for a new Client Token",
       type: :object,
@@ -109,10 +109,10 @@ defmodule PortalAPI.Schemas.ClientToken do
   end
 
   defmodule ShowResponse do
-    require OpenApiSpex
+    use PortalAPI.Schemas.Object
     alias PortalAPI.Schemas.ClientToken
 
-    OpenApiSpex.schema(%{
+    object(%{
       title: "ClientTokenShowResponse",
       description: "Response schema for Client Token metadata",
       type: :object,
@@ -123,12 +123,11 @@ defmodule PortalAPI.Schemas.ClientToken do
   end
 
   defmodule ListResponse do
-    require OpenApiSpex
-    alias OpenApiSpex.Schema
+    use PortalAPI.Schemas.Object
     alias PortalAPI.Schemas.ClientToken
     alias PortalAPI.Schemas.PaginationMetadata
 
-    OpenApiSpex.schema(%{
+    object(%{
       title: "ClientTokenListResponse",
       description: "Response schema for multiple Client Tokens",
       type: :object,
@@ -140,10 +139,9 @@ defmodule PortalAPI.Schemas.ClientToken do
   end
 
   defmodule DeletedResponse do
-    require OpenApiSpex
-    alias OpenApiSpex.Schema
+    use PortalAPI.Schemas.Object
 
-    OpenApiSpex.schema(%{
+    object(%{
       title: "DeletedClientTokenResponse",
       description: "Response schema for a deleted Client Token",
       type: :object,
@@ -160,10 +158,9 @@ defmodule PortalAPI.Schemas.ClientToken do
   end
 
   defmodule DeletedAllResponse do
-    require OpenApiSpex
-    alias OpenApiSpex.Schema
+    use PortalAPI.Schemas.Object
 
-    OpenApiSpex.schema(%{
+    object(%{
       title: "DeletedClientTokensResponse",
       description: "Response schema for deleted Client Tokens",
       type: :object,

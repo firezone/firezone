@@ -21,10 +21,10 @@ defmodule PortalAPI.Schemas.X509AuthProvider do
   end
 
   defmodule Response do
-    require OpenApiSpex
+    use PortalAPI.Schemas.Object
     alias PortalAPI.Schemas.X509AuthProvider
 
-    OpenApiSpex.schema(%{
+    object(%{
       title: "X509AuthProviderResponse",
       description: "Response schema for a single X.509 Auth Provider",
       type: :object,

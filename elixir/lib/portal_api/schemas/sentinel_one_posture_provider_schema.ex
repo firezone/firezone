@@ -27,9 +27,9 @@ defmodule PortalAPI.Schemas.SentinelOnePostureProvider do
   end
 
   defmodule Response do
-    require OpenApiSpex
+    use PortalAPI.Schemas.Object
 
-    OpenApiSpex.schema(%{
+    object(%{
       title: "SentinelOnePostureProviderResponse",
       type: :object,
       properties: %{data: PortalAPI.Schemas.SentinelOnePostureProvider.Schema}
@@ -37,11 +37,10 @@ defmodule PortalAPI.Schemas.SentinelOnePostureProvider do
   end
 
   defmodule ListResponse do
-    require OpenApiSpex
-    alias OpenApiSpex.Schema
+    use PortalAPI.Schemas.Object
     alias PortalAPI.Schemas.PaginationMetadata
 
-    OpenApiSpex.schema(%{
+    object(%{
       title: "SentinelOnePostureProviderListResponse",
       type: :object,
       properties: %{
