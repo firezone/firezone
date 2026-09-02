@@ -15,21 +15,20 @@ defmodule Portal.Authentication.Credential do
   - `X509` - Ephemeral credentials authenticated by a client certificate. These
     have an `auth_provider_id`, but no persisted client token.
 
-  Every kind keeps an `auth_provider_id`, so a reader that does not care which
-  kind it holds can still ask. Only an API token has `scopes`; ask through
-  `scopes/1` rather than the field, which is why the other kinds do not have to
-  carry a nil that reads as a value.
+  Each kind carries only the fields it has: an API token has scopes and no auth
+  provider, and the rest have an auth provider and no scopes. Ask across kinds
+  through `scopes/1` and `auth_provider_id/1` rather than reaching for a field,
+  so no kind has to hold a nil that reads as a value.
   """
 
   defmodule APIToken do
     @moduledoc "An API token, the only credential that carries scopes."
     @enforce_keys [:id, :scopes]
-    defstruct [:id, :scopes, auth_provider_id: nil]
+    defstruct [:id, :scopes]
 
     @type t :: %__MODULE__{
             id: Ecto.UUID.t(),
-            scopes: [String.t()],
-            auth_provider_id: nil
+            scopes: [String.t()]
           }
   end
 
@@ -80,4 +79,17 @@ defmodule Portal.Authentication.Credential do
   def scopes(%ClientToken{}), do: nil
   def scopes(%PortalSession{}), do: nil
   def scopes(%X509{}), do: nil
+
+  @doc """
+  The auth provider a credential was minted through, or `nil` for a kind that
+  is not minted through one.
+
+  A clause per kind for the same reason as `scopes/1`: an API token has no auth
+  provider at all, rather than one that happens to be empty.
+  """
+  @spec auth_provider_id(t()) :: Ecto.UUID.t() | nil
+  def auth_provider_id(%APIToken{}), do: nil
+  def auth_provider_id(%ClientToken{auth_provider_id: id}), do: id
+  def auth_provider_id(%PortalSession{auth_provider_id: id}), do: id
+  def auth_provider_id(%X509{auth_provider_id: id}), do: id
 end

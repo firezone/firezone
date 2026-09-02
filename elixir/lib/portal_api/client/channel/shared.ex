@@ -2515,7 +2515,7 @@ defmodule PortalAPI.Client.Channel.Shared do
       "initiator_actor_id" => actor.id,
       "initiator_actor_email" => actor.email,
       "initiator_actor_name" => actor.name,
-      "initiator_auth_provider_id" => credential.auth_provider_id,
+      "initiator_auth_provider_id" => Credential.auth_provider_id(credential),
       # The authorization happens now; both tokens share the same authorized_at
       # so the two sides of the flow agree on the trusted flow_start floor.
       "authorized_at" => DateTime.to_iso8601(DateTime.utc_now()),

@@ -1,5 +1,6 @@
 defmodule Portal.Cache.Client do
   alias __MODULE__.Database
+  alias Portal.Authentication.Credential
 
   @moduledoc """
     This cache is used in the client channel to maintain a materialized view of the client access state.
@@ -139,7 +140,7 @@ defmodule Portal.Cache.Client do
       for({_id, %{resource_id: ^rid_bytes} = p} <- cache.policies, do: p)
       |> longest_conforming_policy_for_client(
         client,
-        subject.credential.auth_provider_id,
+        Credential.auth_provider_id(subject.credential),
         subject.expires_at
       )
 
@@ -235,7 +236,7 @@ defmodule Portal.Cache.Client do
 
     raw_connectable =
       cache.policies
-      |> conforming_resource_ids(client, subject.credential.auth_provider_id)
+      |> conforming_resource_ids(client, Credential.auth_provider_id(subject.credential))
       |> adapted_resources(cache.resources, client)
 
     {pool_members, device_addresses} = load_pool_state(raw_connectable, subject)
