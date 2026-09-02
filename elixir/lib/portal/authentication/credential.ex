@@ -16,32 +16,47 @@ defmodule Portal.Authentication.Credential do
   tokens that predate scopes were backfilled - so `nil` here means only that
   the credential type does not participate in scopes at all, which is the case
   for every type governed purely by its actor. See `Portal.Scope`.
+
+  Each variant below pins both `scopes` and `auth_provider_id`, so the two
+  rules this doc states are checked rather than described: only an API token
+  carries scopes, and only the types minted through a sign-in flow carry an
+  auth provider. A struct typespec leaves any key it does not name as
+  `term()`, so omitting them would let either be anything.
   """
 
   @type api_token :: %__MODULE__{
           type: :api_token,
           id: Ecto.UUID.t(),
+          auth_provider_id: nil,
           scopes: [String.t()]
         }
 
-  @type non_interactive_client_token :: %__MODULE__{type: :client_token, id: Ecto.UUID.t()}
+  @type non_interactive_client_token :: %__MODULE__{
+          type: :client_token,
+          id: Ecto.UUID.t(),
+          auth_provider_id: nil,
+          scopes: nil
+        }
 
   @type interactive_client_token :: %__MODULE__{
           type: :client_token,
           id: Ecto.UUID.t(),
-          auth_provider_id: Ecto.UUID.t()
+          auth_provider_id: Ecto.UUID.t(),
+          scopes: nil
         }
 
   @type portal_session :: %__MODULE__{
           type: :portal_session,
           id: Ecto.UUID.t(),
-          auth_provider_id: Ecto.UUID.t()
+          auth_provider_id: Ecto.UUID.t(),
+          scopes: nil
         }
 
   @type x509 :: %__MODULE__{
           type: :x509,
           id: Ecto.UUID.t(),
-          auth_provider_id: Ecto.UUID.t()
+          auth_provider_id: Ecto.UUID.t(),
+          scopes: nil
         }
 
   @type t ::

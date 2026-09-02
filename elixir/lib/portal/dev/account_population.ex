@@ -938,7 +938,12 @@ defmodule Portal.Dev.AccountPopulation do
         type: :account_admin_user,
         name: "Population Script"
       },
-      credential: %Credential{id: Ecto.UUID.generate(), type: :token, scopes: nil},
+      credential: %Credential{
+        id: Ecto.UUID.generate(),
+        type: :portal_session,
+        auth_provider_id: Ecto.UUID.generate(),
+        scopes: nil
+      },
       expires_at: DateTime.add(DateTime.utc_now(), 1, :hour),
       context: %Context{
         type: :client,
