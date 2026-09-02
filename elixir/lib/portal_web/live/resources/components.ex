@@ -1227,7 +1227,10 @@ defmodule PortalWeb.Resources.Components do
                   </.copy>
                 </td>
                 <td class="px-4 py-2">
-                  <.device_status_badge online?={MapSet.member?(@online_device_ids, device.id)} />
+                  <.device_status_badge
+                    device={device}
+                    online?={MapSet.member?(@online_device_ids, device.id)}
+                  />
                 </td>
                 <td class="px-4 py-2 text-subtle">
                   <.icon
