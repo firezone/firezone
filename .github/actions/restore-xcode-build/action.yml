@@ -57,8 +57,10 @@ runs:
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ${{ inputs.path }}/SourcePackages
-        key: ${{ steps.keys.outputs.packages }}
-        restore-keys: ${{ steps.keys.outputs.packages-prefix }}
+        # Measurement only, reverted in the commit that follows: a key nothing
+        # can match, so the build runs with its products restored and its
+        # checkouts absent, which is what tells us whether the two are coupled.
+        key: measure-without-the-package-checkouts
 
     - name: Restore the build products
       id: build
