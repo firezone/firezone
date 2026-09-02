@@ -35,7 +35,7 @@ class CertificateAccessTest {
                 .getApplication()
                 .getSharedPreferences("certificate-access-test", Context.MODE_PRIVATE),
         )
-    private val certificateAccess = CertificateAccess(repository, restrictions, keyChain)
+    private val certificateAccess = CertificateAccess(repository, restrictions, keyChain, Dispatchers.Unconfined)
 
     @Test
     fun `no configured alias needs no selection`() {

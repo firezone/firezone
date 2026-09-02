@@ -4,8 +4,9 @@ package dev.firezone.android.core.x509
 import android.os.Bundle
 import dev.firezone.android.core.Log
 import dev.firezone.android.core.data.Repository
+import dev.firezone.android.core.di.IoDispatcher
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
@@ -16,6 +17,7 @@ class CertificateAccess
         private val repository: Repository,
         private val applicationRestrictions: Bundle,
         private val keyChain: KeyChain,
+        @IoDispatcher private val coroutineDispatcher: CoroutineDispatcher,
     ) {
         /**
          * Whether this device has a configured alias whose certificate Android will not hand over.
@@ -26,7 +28,7 @@ class CertificateAccess
          * offering the chooser is more useful than failing later when the tunnel starts.
          */
         suspend fun needsSelection(): Boolean =
-            withContext(Dispatchers.IO) {
+            withContext(coroutineDispatcher) {
                 val alias =
                     repository.getX509CertificateAliasSync(applicationRestrictions)
                         ?: return@withContext false

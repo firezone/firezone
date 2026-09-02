@@ -64,7 +64,12 @@ class SplashViewModelTest {
             )
         val applicationRestrictions = Bundle()
         val certificateAccess =
-            CertificateAccess(repository, applicationRestrictions, SystemKeyChain(context))
+            CertificateAccess(
+                repository,
+                applicationRestrictions,
+                SystemKeyChain(context),
+                Dispatchers.Unconfined,
+            )
 
         return SplashViewModel(
             repo = repository,
