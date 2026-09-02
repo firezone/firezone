@@ -61,8 +61,7 @@ struct VPNConfigurationManagerTests {
     ])
 
     let manager = try #require(
-      await VPNConfigurationManager.load(
-        using: factory, providerBundleIdentifier: providerBundleIdentifier))
+      await VPNConfigurationManager.load(using: factory))
 
     #expect(!manager.isManaged)
     #expect(try manager.identityReference() == nil)
@@ -78,8 +77,7 @@ struct VPNConfigurationManagerTests {
     ])
 
     let manager = try #require(
-      await VPNConfigurationManager.load(
-        using: factory, providerBundleIdentifier: providerBundleIdentifier))
+      await VPNConfigurationManager.load(using: factory))
 
     #expect(manager.isManaged)
     #expect(try manager.identityReference() == reference)
@@ -91,8 +89,7 @@ struct VPNConfigurationManagerTests {
     let factory = StubFactory([StubTunnelProviderManager(providerBundleIdentifier: nil)])
 
     let manager = try #require(
-      await VPNConfigurationManager.load(
-        using: factory, providerBundleIdentifier: providerBundleIdentifier))
+      await VPNConfigurationManager.load(using: factory))
 
     #expect(manager.isManaged)
   }
@@ -104,8 +101,7 @@ struct VPNConfigurationManagerTests {
       StubTunnelProviderManager(providerBundleIdentifier: "com.example.vpn.extension")
     ])
 
-    let manager = try await VPNConfigurationManager.load(
-      using: factory, providerBundleIdentifier: providerBundleIdentifier)
+    let manager = try await VPNConfigurationManager.load(using: factory)
 
     #expect(manager == nil)
   }
@@ -121,8 +117,7 @@ struct VPNConfigurationManagerTests {
     ])
 
     let manager = try #require(
-      await VPNConfigurationManager.load(
-        using: factory, providerBundleIdentifier: providerBundleIdentifier))
+      await VPNConfigurationManager.load(using: factory))
 
     #expect(try manager.identityReference() == reference)
   }
@@ -135,8 +130,7 @@ struct VPNConfigurationManagerTests {
     let factory = StubFactory([stub])
 
     let manager = try #require(
-      await VPNConfigurationManager.load(
-        using: factory, providerBundleIdentifier: providerBundleIdentifier))
+      await VPNConfigurationManager.load(using: factory))
 
     try await manager.save(providerConfiguration: ["accountSlug": "other"])
 
@@ -157,8 +151,7 @@ struct VPNConfigurationManagerTests {
     ])
 
     let manager = try #require(
-      await VPNConfigurationManager.load(
-        using: factory, providerBundleIdentifier: providerBundleIdentifier))
+      await VPNConfigurationManager.load(using: factory))
     try await manager.loadConfiguration(into: configuration, userDefaults: defaults)
 
     #expect(configuration.isVPNConfigurationManaged)

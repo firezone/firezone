@@ -177,6 +177,18 @@
 
       seedConfiguration(with: scenario)
 
+      let session = MockTunnelSession(
+        status: scenario.vpnStatus.status,
+        resources: scenario.resources,
+        connectedDevices: scenario.connectedDevices,
+        actorName: scenario.actorName,
+        providerLogFolderSize: scenario.providerLogFolderSize
+      )
+      let tunnelManagerFactory = MockTunnelProviderManagerFactory(
+        manager: MockTunnelProviderManager(session: session),
+        installed: scenario.hasVPNConfiguration
+      )
+
       #if os(macOS)
         return Store(
           sessionNotification: MockSessionNotification(decision: scenario.notifications.status),
@@ -184,14 +196,14 @@
             status: scenario.systemExtension.status
           ),
           updateChecker: MockUpdateChecker(),
-          tunnelManagerFactory: MockTunnelProviderManagerFactory(scenario: scenario),
+          tunnelManagerFactory: tunnelManagerFactory,
           x509CertificateSource: scenario.clientCertificate.source,
           logDirectory: logDirectory ?? MockFixtures.makeLogDirectory()
         )
       #else
         return Store(
           sessionNotification: MockSessionNotification(decision: scenario.notifications.status),
-          tunnelManagerFactory: MockTunnelProviderManagerFactory(scenario: scenario),
+          tunnelManagerFactory: tunnelManagerFactory,
           x509CertificateSource: scenario.clientCertificate.source,
           logDirectory: logDirectory ?? MockFixtures.makeLogDirectory()
         )
@@ -337,141 +349,6 @@
     }
   #endif
 
-  /// Answers `pollUpdates` with the scenario's snapshot and reports its tunnel status.
-  private final class MockTunnelSession: TunnelSessionProtocol {
-    private let scenario: MockScenario
-
-    var status: NEVPNStatus { scenario.vpnStatus.status }
-
-    /// Drops to zero when a clear is acknowledged, so the settings screen shows
-    /// the size a real provider would report afterwards.
-    ///
-    /// nonisolated(unsafe): the session is Sendable, but the mock is only ever
-    /// driven from the main actor.
-    nonisolated(unsafe) private var providerLogFolderSize: Int64
-
-    init(scenario: MockScenario) {
-      self.scenario = scenario
-      self.providerLogFolderSize = scenario.providerLogFolderSize
-    }
-
-    // swiftlint:disable:next discouraged_optional_collection
-    func startTunnel(options: [String: Any]?) throws {}
-    func stopTunnel() {}
-
-    func fetchLastDisconnectError(completionHandler: @escaping @Sendable (Error?) -> Void) {
-      completionHandler(nil)
-    }
-
-    func sendProviderMessage(_ messageData: Data, responseHandler: ((Data?) -> Void)?) throws {
-      guard let responseHandler else { return }
-
-      let message: ProviderMessage
-      do {
-        message = try PropertyListDecoder().decode(ProviderMessage.self, from: messageData)
-      } catch {
-        Log.warning("MockTunnelSession: ignoring undecodable ProviderMessage: \(error)")
-        responseHandler(nil)
-        return
-      }
-
-      // Listed exhaustively (no `default`) so adding a `ProviderMessage` variant
-      // fails to compile here and forces a decision about the mock's response.
-      switch message {
-      case .pollUpdates(let request):
-        do {
-          let stateChange = try ConnlibState.makeIfChanged(
-            resources: scenario.resources,
-            connectedDevices: scenario.connectedDevices,
-            isLogStreamingActive: false,
-            actorName: scenario.actorName,
-            comparedTo: request.stateHash
-          )
-
-          responseHandler(
-            try PropertyListEncoder().encode(
-              StatePollResponse(
-                stateChange: stateChange,
-                notifications: []
-              )
-            )
-          )
-        } catch {
-          Log.warning("MockTunnelSession: failed to encode state updates: \(error)")
-          responseHandler(nil)
-        }
-      case .getLogFolderSize:
-        // The provider answers with the raw bytes of an `Int64`.
-        responseHandler(withUnsafeBytes(of: providerLogFolderSize) { Data($0) })
-      case .clearLogs:
-        // The provider answers a successful clear with an empty response.
-        providerLogFolderSize = 0
-        responseHandler(nil)
-      case .exportLogs:
-        // The provider streams plist-encoded `LogChunk`s; everything fits in one
-        // final chunk here.
-        do {
-          responseHandler(
-            try PropertyListEncoder().encode(
-              LogChunk(done: true, data: MockFixtures.exportedTunnelLogs)
-            )
-          )
-        } catch {
-          Log.warning("MockTunnelSession: failed to encode the log chunk: \(error)")
-          responseHandler(nil)
-        }
-      case .setInternetResourceEnabled, .signOut, .getEncodedFirezoneId, .drainFlowLogs:
-        responseHandler(nil)
-      }
-    }
-  }
-
-  /// Both factory methods hand back the same `MockTunnelProviderManager`, so session
-  /// identity survives a reload and `Store` can subscribe to one mock session for the
-  /// life of the app.
-  @MainActor
-  private final class MockTunnelProviderManagerFactory: TunnelProviderManagerFactory {
-    private let scenario: MockScenario
-    private let manager: MockTunnelProviderManager
-
-    init(scenario: MockScenario) {
-      self.scenario = scenario
-      self.manager = MockTunnelProviderManager(scenario: scenario)
-    }
-
-    func loadAllFromPreferences() async throws -> [any TunnelProviderManager] {
-      scenario.hasVPNConfiguration ? [manager] : []
-    }
-
-    func createManager() -> any TunnelProviderManager { manager }
-  }
-
-  @MainActor
-  private final class MockTunnelProviderManager: TunnelProviderManager {
-    var isEnabled = true
-    var localizedDescription: String? = VPNConfigurationManager.bundleDescription
-    var protocolConfiguration: NEVPNProtocol?
-    var tunnelSession: (any TunnelSessionProtocol)? { session }
-    // Only the system would read this, to launch the extension; the mock never talks to
-    // the system, so the shipped identifier serves as well as a derived one.
-    let extensionBundleIdentifier = "dev.firezone.firezone.network-extension"
-
-    private let session: MockTunnelSession
-
-    init(scenario: MockScenario) {
-      session = MockTunnelSession(scenario: scenario)
-
-      let proto = NETunnelProviderProtocol()
-      proto.providerConfiguration = Configuration.shared.toProviderConfiguration()
-      proto.providerBundleIdentifier = extensionBundleIdentifier
-      proto.serverAddress = "Firezone"
-      protocolConfiguration = proto
-    }
-
-    func saveToPreferences() async throws {}
-    func loadFromPreferences() async throws {}
-  }
-
   #if os(macOS)
     @MainActor
     private final class MockSystemExtensionManager: SystemExtensionManagerProtocol {
@@ -495,14 +372,25 @@
     }
   #endif
 
-  /// Reports the scenario's answer to the notification prompt.
+  /// Reports the scenario's answer to the notification prompt and keeps what it was
+  /// asked to show.
   ///
   /// Both platforms use it: the real `SessionNotification` reaches
   /// `UNUserNotificationCenter`, which raises rather than returning an error when
   /// the process has no app bundle, so it cannot be built from a test.
   @MainActor
-  private final class MockSessionNotification: SessionNotificationProtocol {
+  final class MockSessionNotification: SessionNotificationProtocol {
+    enum Shown: Equatable {
+      case resource(title: String, body: String)
+      #if os(macOS)
+        case signedOut(String?)
+        case disconnected(String?)
+        case restartRequired
+      #endif
+    }
+
     var signInHandler: () async -> Void = {}
+    private(set) var shown: [Shown] = []
 
     private let decision: UNAuthorizationStatus
 
@@ -512,23 +400,27 @@
 
     func askUserForNotificationPermissions() async throws -> UNAuthorizationStatus { decision }
     func loadAuthorizationStatus() async -> UNAuthorizationStatus { decision }
-    func showResourceNotification(title: String, body: String) async {}
+
+    func showResourceNotification(title: String, body: String) async {
+      shown.append(.resource(title: title, body: body))
+    }
 
     #if os(macOS)
-      func showSignedOutAlertMacOS(_ message: String?) async {}
-      func showDisconnectedAlertMacOS(_ message: String?) async {}
-      func showRestartRequiredAlertMacOS() {}
+      func showSignedOutAlertMacOS(_ message: String?) async {
+        shown.append(.signedOut(message))
+      }
+
+      func showDisconnectedAlertMacOS(_ message: String?) async {
+        shown.append(.disconnected(message))
+      }
+
+      func showRestartRequiredAlertMacOS() {
+        shown.append(.restartRequired)
+      }
     #endif
   }
 
   private enum MockFixtures {
-    /// The provider streams the bytes of a ZIP archive, so answer with the
-    /// smallest valid one: an empty end-of-central-directory record. An export
-    /// produced against the mock then unzips cleanly.
-    static let exportedTunnelLogs = Data(
-      [0x50, 0x4B, 0x05, 0x06] + [UInt8](repeating: 0, count: 18)
-    )
-
     /// A throwaway log directory seeded with two files of fixed contents, so
     /// the computed app-side log size is real and deterministic.
     static func makeLogDirectory() -> URL {

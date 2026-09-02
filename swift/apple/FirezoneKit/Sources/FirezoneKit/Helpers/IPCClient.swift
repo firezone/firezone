@@ -199,33 +199,6 @@ public enum IPCClient {
     }
   }
 
-  /// Returns a stream of VPN status updates for the given session.
-  ///
-  /// Filters `NEVPNStatusDidChange` notifications to only those matching `session`.
-  /// The caller is responsible for consuming the stream in a task they manage.
-  public static func vpnStatusUpdates(
-    session: any TunnelSessionProtocol
-  ) -> AsyncStream<NEVPNStatus> {
-    AsyncStream { continuation in
-      let task = Task {
-        for await notification in NotificationCenter.default.notifications(
-          named: .NEVPNStatusDidChange)
-        {
-          guard let notificationSession = notification.object as? NETunnelProviderSession
-          else {
-            return
-          }
-
-          if notificationSession === session {
-            continuation.yield(notificationSession.status)
-          }
-        }
-        continuation.finish()
-      }
-      continuation.onTermination = { _ in task.cancel() }
-    }
-  }
-
   /// Sends `message` to the provider, waking a stopped tunnel first if asked to.
   ///
   /// Polling opts out: cycle-starting from the poll loop would wake the extension

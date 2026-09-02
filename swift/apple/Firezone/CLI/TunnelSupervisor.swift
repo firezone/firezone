@@ -77,7 +77,7 @@ final class TunnelSupervisor {
   // MARK: - Status
 
   private func watchStatus(emit: AsyncStream<Action>.Continuation) async {
-    for await status in IPCClient.vpnStatusUpdates(session: session) {
+    for await status in session.statusUpdates() {
       await handle(status: status, emit: emit)
     }
   }

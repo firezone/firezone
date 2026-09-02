@@ -34,6 +34,10 @@ private final class RecordingTunnelSession: TunnelSessionProtocol, @unchecked Se
     status = .connected
   }
 
+  func statusUpdates() -> AsyncStream<NEVPNStatus> {
+    AsyncStream { $0.finish() }
+  }
+
   func stopTunnel() {
     stopTunnelCallCount += 1
     status = .disconnected
