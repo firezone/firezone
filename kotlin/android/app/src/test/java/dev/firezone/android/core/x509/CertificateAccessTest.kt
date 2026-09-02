@@ -35,7 +35,7 @@ class CertificateAccessTest {
                 .getApplication()
                 .getSharedPreferences("certificate-access-test", Context.MODE_PRIVATE),
         )
-    private val certificateAccess = CertificateAccess(repository, restrictions, X509Identity(keyChain))
+    private val certificateAccess = CertificateAccess(repository, restrictions, keyChain)
 
     @Test
     fun `no configured alias needs no selection`() {
@@ -48,6 +48,7 @@ class CertificateAccessTest {
         repository.saveX509CertificateAliasSync("user-alias")
 
         assertTrue(runBlocking { certificateAccess.needsSelection() })
+        assertEquals(listOf("user-alias"), keyChain.requestedAliases)
     }
 
     @Test
@@ -57,6 +58,14 @@ class CertificateAccessTest {
 
         assertFalse(runBlocking { certificateAccess.needsSelection() })
         assertEquals(emptySet<String>(), keyChain.requestedAliases.toSet())
+    }
+
+    @Test
+    fun `a KeyChain read failure is left for the session`() {
+        repository.saveX509CertificateAliasSync("user-alias")
+        keyChain.readFailure = IllegalStateException("KeyChain service unavailable")
+
+        assertFalse(runBlocking { certificateAccess.needsSelection() })
     }
 
     @Test
@@ -72,17 +81,17 @@ class CertificateAccessTest {
     /** A KeyChain that holds nothing we may read, the way an unprovisioned device does. */
     private class WithholdingKeyChain : KeyChain {
         val requestedAliases = mutableListOf<String>()
+        var readFailure: RuntimeException? = null
 
         override fun certificateChain(alias: String): List<X509Certificate>? {
             requestedAliases += alias
+            readFailure?.let { throw it }
 
             return null
         }
 
         override fun privateKey(alias: String): PrivateKey? {
-            requestedAliases += alias
-
-            return null
+            error("checking certificate access must not open its private key")
         }
 
         override fun choosePrivateKeyAlias(

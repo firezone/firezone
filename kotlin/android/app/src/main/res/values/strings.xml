@@ -44,9 +44,6 @@
 	<string name="x509_not_released">
 		Android has not released this certificate to Firezone. Selecting it grants access.
 	</string>
-	<string name="x509_error_title">Unable to read the client certificate</string>
-	<string name="x509_unreadable">Firezone could not read this certificate.</string>
-	<string name="x509_contact_admin">Contact your administrator for support.</string>
 	<string name="x509_claim_absent">Not present</string>
 	<string name="x509_claim_empty">Empty</string>
 	<string name="x509_claim_too_long">Longer than 255 characters</string>

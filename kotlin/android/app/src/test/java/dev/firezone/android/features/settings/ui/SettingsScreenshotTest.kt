@@ -76,16 +76,13 @@ class SettingsScreenshotTest {
     fun advancedSettings() = captureSettingsPage("settings-advanced", R.id.settingsAdvanced)
 
     @Test
-    fun x509SettingsWithCertificate() = captureX509Page("x509-filled", usableCertificate)
+    fun x509SettingsWithCertificate() = captureX509Page("x509-filled", availableCertificate)
 
     @Test
-    fun x509SettingsWithUnusableCertificate() = captureX509Page("x509-unusable", unusableCertificate)
+    fun x509SettingsRequiringSelection() = captureX509Page("x509-selection-required", selectionRequiredCertificate)
 
     @Test
     fun x509SettingsWithExpiredCertificate() = captureX509Page("x509-expired", expiredCertificate)
-
-    @Test
-    fun x509SettingsWithUnreadableCertificate() = captureX509Page("x509-unreadable", unreadableCertificate)
 
     // The buttons follow the rows, so only the end of the scroll shows what an administrator's
     // certificate takes away: the same certificate, picked by the user, still offers Forget.
@@ -93,7 +90,7 @@ class SettingsScreenshotTest {
     fun x509SettingsWithManagedCertificate() = captureX509PageEnd("x509-managed-scrolled", managedCertificate)
 
     @Test
-    fun x509SettingsWithUnmanagedCertificate() = captureX509PageEnd("x509-unmanaged-scrolled", usableCertificate)
+    fun x509SettingsWithUnmanagedCertificate() = captureX509PageEnd("x509-unmanaged-scrolled", availableCertificate)
 
     @Test
     fun logSettings() = captureSettingsPage("settings-logs", R.id.settingsLogs)
@@ -200,24 +197,23 @@ private const val CERTIFICATE_ALIAS = "firezone-device"
 private var x509ScreenshotState = X509SettingsViewModel.UiState()
 private var settingsScreenshotPages = settingsPages(hasConfiguredCertificateAlias = false)
 
-// A certificate the KeyChain released and whose every claim holds a usable value.
-private val usableCertificate =
+// A certificate the KeyChain released and whose every claim holds a value.
+private val availableCertificate =
     X509SettingsViewModel.UiState(
         alias = CERTIFICATE_ALIAS,
-        isUsable = true,
         details = certificateDetails(),
     )
 
 // The same certificate, handed down by an administrator and released by the KeyChain, which
 // leaves the user nothing to pick or clear.
-private val managedCertificate = usableCertificate.copy(isManaged = true)
+private val managedCertificate = availableCertificate.copy(isManaged = true)
 
 // An alias the KeyChain holds a certificate for but has not released to Firezone, which leaves
 // the app with nothing to present and nothing to read.
-private val unusableCertificate =
+private val selectionRequiredCertificate =
     X509SettingsViewModel.UiState(
         alias = CERTIFICATE_ALIAS,
-        isUsable = false,
+        needsSelection = true,
     )
 
 // A certificate whose validity window has passed. Only the portal decides whether that matters,
@@ -225,20 +221,11 @@ private val unusableCertificate =
 private val expiredCertificate =
     X509SettingsViewModel.UiState(
         alias = CERTIFICATE_ALIAS,
-        isUsable = true,
         details =
             certificateDetails(
                 notBefore = row("Not Before", "Jan  5 09:00:00 2024 +00:00"),
                 notAfter = row("Not After", "Jan  5 09:00:00 2025 +00:00"),
             ),
-    )
-
-// A certificate the KeyChain released and the parser could not read, which leaves no row to show.
-private val unreadableCertificate =
-    X509SettingsViewModel.UiState(
-        alias = CERTIFICATE_ALIAS,
-        isUsable = true,
-        certificateIsUnreadable = true,
     )
 
 // One certificate as the Rust parser describes it, in the order the screen lists its rows.

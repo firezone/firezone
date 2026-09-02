@@ -48,15 +48,15 @@ internal fun X509SettingsScreen(
     onForgetCertificate: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    // An alias whose key the KeyChain withholds is the personally-owned case: the administrator
-    // names the certificate, yet only the user can release the key behind it, so the chooser stays
+    // An alias whose certificate the KeyChain withholds is the personally-owned case: the
+    // administrator names the certificate, yet only the user can release it, so the chooser stays
     // reachable there as well.
-    val keyIsWithheld = state.alias != null && !state.isLoading && !state.isUsable
+    val needsSelection = state.alias != null && !state.isLoading && state.needsSelection
 
-    // An administrator's alias is not the user's to clear, and neither is one whose key is still
-    // withheld: that screen asks for a grant, and offering to forget the certificate in the same
-    // breath asks the reader to both make a selection and undo one.
-    val canForget = !state.isManaged && state.alias != null && !keyIsWithheld
+    // An administrator's alias is not the user's to clear, and neither is one whose certificate is
+    // still withheld: that screen asks for a grant, and offering to forget the certificate in the
+    // same breath asks the reader to both make a selection and undo one.
+    val canForget = !state.isManaged && state.alias != null && !needsSelection
 
     Column(
         modifier
@@ -67,9 +67,10 @@ internal fun X509SettingsScreen(
     ) {
         CertificateCard(state)
 
-        // The KeyChain answers a missing grant with a null key rather than an error, so this state
-        // would otherwise be a card naming a certificate with nothing underneath it to say why.
-        if (keyIsWithheld && state.error == null) {
+        // The KeyChain answers a missing grant with no certificate rather than an error, so this
+        // state would otherwise be a card naming a certificate with nothing underneath it to say
+        // why.
+        if (needsSelection) {
             WarningBanner(stringResource(R.string.x509_not_released))
         }
 
@@ -93,7 +94,7 @@ internal fun X509SettingsScreen(
 
         // Under the card when there is nothing to say about a certificate, under the rows when
         // there is: either way the button follows what it acts on.
-        if (keyIsWithheld) {
+        if (needsSelection) {
             SettingsButton(
                 text = stringResource(R.string.x509_select_certificate),
                 onClick = onSelectCertificate,
@@ -173,12 +174,6 @@ private fun CertificateCard(state: X509SettingsViewModel.UiState) {
     val commonName = state.details.valueOf(COMMON_NAME_LABEL) ?: state.details.valueOf(SUBJECT_LABEL)
     val issuer = state.details.valueOf(ISSUER_LABEL)
     val notAfter = state.details.valueOf(NOT_AFTER_LABEL)
-    val readFailure =
-        when {
-            state.error != null -> state.error
-            state.certificateIsUnreadable -> stringResource(R.string.x509_unreadable)
-            else -> null
-        }
 
     Card(Modifier.fillMaxWidth()) {
         Row(
@@ -189,12 +184,7 @@ private fun CertificateCard(state: X509SettingsViewModel.UiState) {
                 painter = painterResource(R.drawable.rounded_verified_user_black_24dp),
                 contentDescription = null,
                 modifier = Modifier.size(32.dp),
-                tint =
-                    if (readFailure != null) {
-                        MaterialTheme.colorScheme.error
-                    } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    },
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -218,43 +208,8 @@ private fun CertificateCard(state: X509SettingsViewModel.UiState) {
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-
-                if (readFailure != null) {
-                    Notice(
-                        title = stringResource(R.string.x509_error_title),
-                        body = readFailure,
-                    )
-                }
             }
         }
-    }
-}
-
-/** How the card says that the certificate could not be read. */
-@Composable
-private fun Notice(
-    title: String,
-    body: String,
-) {
-    Column(
-        Modifier.padding(top = 4.dp),
-        verticalArrangement = Arrangement.spacedBy(2.dp),
-    ) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.titleSmall,
-            color = MaterialTheme.colorScheme.error,
-        )
-        Text(
-            text = body,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.error,
-        )
-        Text(
-            text = stringResource(R.string.x509_contact_admin),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.error,
-        )
     }
 }
 
@@ -330,7 +285,6 @@ private fun X509SettingsScreenPreview() {
                 X509SettingsViewModel.UiState(
                     alias = "firezone-device",
                     isManaged = true,
-                    isUsable = true,
                     details =
                         listOf(
                             DetailField("Common Name", "firezone-device", null),

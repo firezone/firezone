@@ -15,13 +15,13 @@ class CertificateAccess
     constructor(
         private val repository: Repository,
         private val applicationRestrictions: Bundle,
-        private val x509Identity: X509Identity,
+        private val keyChain: KeyChain,
     ) {
         /**
-         * Whether this device has a configured alias whose key Android will not hand over.
+         * Whether this device has a configured alias whose certificate Android will not hand over.
          *
          * A personally-owned device carrying a work profile cannot be granted the key by its
-         * administrator, and the KeyChain reports the alias as absent until the user picks it once.
+         * administrator, and the KeyChain reports the certificate as absent until the user picks it once.
          * A grant that is later revoked, or a certificate that is removed, lands here too, because
          * offering the chooser is more useful than failing later when the tunnel starts.
          */
@@ -32,13 +32,18 @@ class CertificateAccess
                         ?: return@withContext false
 
                 try {
-                    x509Identity.load(alias) == null
+                    keyChain.certificateChain(alias).isNullOrEmpty()
                 } catch (exception: CancellationException) {
                     throw exception
-                } catch (exception: Exception) {
-                    Log.d(TAG, "The alias '$alias' needs to be selected by the user", exception)
+                } catch (exception: InterruptedException) {
+                    Thread.currentThread().interrupt()
+                    Log.d(TAG, "Could not check access to the certificate of alias '$alias'", exception)
 
-                    true
+                    false
+                } catch (exception: Exception) {
+                    Log.d(TAG, "Could not check access to the certificate of alias '$alias'", exception)
+
+                    false
                 }
             }
 
