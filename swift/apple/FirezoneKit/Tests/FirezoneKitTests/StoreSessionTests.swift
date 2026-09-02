@@ -49,8 +49,9 @@
 
       try await app.store.signIn(token: Self.token)
 
-      #expect(app.tunnel.startOptions?["authentication"] as? String == "tokenAndCertificate")
-      #expect(app.tunnel.startOptions?["token"] as? String == Self.token)
+      let start = try #require(app.tunnel.starts.last)
+      #expect(start["authentication"] as? String == "tokenAndCertificate")
+      #expect(start["token"] as? String == Self.token)
       try await waitUntil { app.store.vpnStatus == .connected }
     }
 

@@ -20,8 +20,7 @@
     private(set) var status: NEVPNStatus
 
     /// What the next poll reports; `nil` resources are a portal that has not sent `init`.
-    // swiftlint:disable:next discouraged_optional_collection
-    var resources: [Resource]?
+    var resources: [Resource]?  // swiftlint:disable:this discouraged_optional_collection
     var connectedDevices: [ConnectedDevice]
     var actorName: String?
     var accountSlug: String?
@@ -35,9 +34,8 @@
     /// status falls back to disconnected with this as the last disconnect error.
     var startFailure: (any Error)?
 
-    /// The options of the most recent start, cycle starts included.
-    // swiftlint:disable:next discouraged_optional_collection
-    private(set) var startOptions: [String: Any]?
+    /// The options of every start, cycle starts included.
+    private(set) var starts: [[String: Any]] = []
     private(set) var messages: [ProviderMessage] = []
     private var lastDisconnectError: (any Error)?
 
@@ -57,7 +55,7 @@
 
     // swiftlint:disable:next discouraged_optional_collection
     func startTunnel(options: [String: Any]?) throws {
-      startOptions = options
+      starts.append(options ?? [:])
       lastDisconnectError = nil
       transition(to: .connecting)
 
