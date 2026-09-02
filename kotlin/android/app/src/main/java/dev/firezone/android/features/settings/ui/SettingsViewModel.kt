@@ -74,7 +74,7 @@ internal class SettingsViewModel
         }
 
         suspend fun hasConfiguredCertificateAlias(): Boolean {
-            val configuration = managedConfigurationSource.configuration.value ?: managedConfigurationSource.refresh()
+            val configuration = managedConfigurationSource.refresh()
 
             return configuration.resolveX509CertificateAlias(repo.getUserX509CertificateAliasSync()) != null
         }

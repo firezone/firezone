@@ -29,6 +29,7 @@ import org.robolectric.annotation.Config as RobolectricConfig
 @RunWith(RobolectricTestRunner::class)
 @RobolectricConfig(application = Application::class)
 class SettingsManagedConfigurationTest {
+    private val restrictions = Bundle()
     private lateinit var repository: Repository
     private lateinit var source: ManagedConfigurationSource
     private lateinit var viewModel: SettingsViewModel
@@ -39,11 +40,12 @@ class SettingsManagedConfigurationTest {
         val sharedPreferences =
             context.getSharedPreferences("settings-managed-configuration-test", Context.MODE_PRIVATE)
         sharedPreferences.edit().clear().commit()
+        restrictions.clear()
         repository = Repository(context, Dispatchers.Unconfined, sharedPreferences)
         source =
             ManagedConfigurationSource(
                 context,
-                ManagedConfigurationReader { Bundle() },
+                ManagedConfigurationReader { Bundle(restrictions) },
                 repository,
                 CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
             )
@@ -83,14 +85,10 @@ class SettingsManagedConfigurationTest {
         runBlocking {
             repository.saveX509CertificateAliasSync("user-alias")
 
-            source.applyRestrictions(
-                Bundle().apply {
-                    putString(X509_CERTIFICATE_ALIAS_RESTRICTION, "")
-                },
-            )
+            restrictions.putString(X509_CERTIFICATE_ALIAS_RESTRICTION, "")
             assertFalse(viewModel.hasConfiguredCertificateAlias())
 
-            source.applyRestrictions(Bundle())
+            restrictions.clear()
             assertTrue(viewModel.hasConfiguredCertificateAlias())
 
             repository.saveX509CertificateAliasSync(null)
