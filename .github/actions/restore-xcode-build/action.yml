@@ -20,8 +20,12 @@ runs:
   steps:
     # A cold DerivedData recompiles the app, its extension and both package
     # dependencies from scratch, which is the bulk of the run. The key names every
-    # file the build products are a function of, so a hit can only ever be the
-    # build of those same sources: hence no restore-keys below.
+    # Swift source the build products are a function of, so a hit can only ever be
+    # the build of those same sources: hence no restore-keys below. connlib is not
+    # among them: cargo builds it into `rust/target` on every run, sccache makes
+    # that cheap, and Xcode relinks against the fresh archive and recompiles the
+    # extension against the regenerated bindings because both are newer than the
+    # restored products.
     - name: Compute the cache key
       id: key
       shell: bash
@@ -30,7 +34,7 @@ runs:
       run: |
         : "${XCODE_VERSION:?the calling job must pin the Xcode version}"
 
-        echo "value=v1-xcode-build-${{ inputs.key }}-${{ runner.arch }}-${XCODE_VERSION}-${{ hashFiles('swift/apple/**', '!swift/apple/screenshots/**', 'rust/**/*.rs', 'rust/**/Cargo.toml', 'rust/Cargo.lock', 'rust/rust-toolchain.toml', 'rust/**/.cargo/config.toml') }}" >> "$GITHUB_OUTPUT"
+        echo "value=v1-xcode-build-${{ inputs.key }}-${{ runner.arch }}-${XCODE_VERSION}-${{ hashFiles('swift/apple/**', '!swift/apple/screenshots/**') }}" >> "$GITHUB_OUTPUT"
 
     - name: Restore the build products
       id: restore
