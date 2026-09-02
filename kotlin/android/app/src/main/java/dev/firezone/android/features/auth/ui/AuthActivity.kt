@@ -73,8 +73,14 @@ class AuthActivity : AppCompatActivity(R.layout.activity_auth) {
 
     private fun handleAuthResult(result: AuthTabIntent.AuthResult) {
         when (result.resultCode) {
-            AuthTabIntent.RESULT_OK -> viewModel.processAuthCallback(result.resultUri)
-            AuthTabIntent.RESULT_CANCELED -> returnToSignIn()
+            AuthTabIntent.RESULT_OK -> {
+                viewModel.processAuthCallback(result.resultUri)
+            }
+
+            AuthTabIntent.RESULT_CANCELED -> {
+                returnToSignIn()
+            }
+
             else -> {
                 viewModel.cancelAuthFlow()
                 failAuthFlow(listOf("Authentication browser could not complete the redirect"))

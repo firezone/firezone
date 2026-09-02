@@ -122,8 +122,7 @@ class CustomUriViewModelTest {
             assertTrue(repository.getTokenSync() in setOf("nonce-fragment-0", "nonce-fragment-1"))
         }
 
-    private fun newViewModel(): CustomUriViewModel =
-        CustomUriViewModel(AuthCallbackHandler(pendingAuthSession, repository))
+    private fun newViewModel(): CustomUriViewModel = CustomUriViewModel(AuthCallbackHandler(pendingAuthSession, repository))
 
     private fun callbackIntent(
         state: String?,

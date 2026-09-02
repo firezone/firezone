@@ -70,7 +70,9 @@ internal class AuthViewModel
                     ViewAction.AuthFlowComplete
                 }
 
-                is AuthCallbackOutcome.Error -> ViewAction.AuthFlowError(outcome.errors)
+                is AuthCallbackOutcome.Error -> {
+                    ViewAction.AuthFlowError(outcome.errors)
+                }
             }
 
         fun cancelAuthFlow() {
