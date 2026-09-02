@@ -8,9 +8,8 @@ import android.os.Looper
 import androidx.lifecycle.SavedStateHandle
 import dev.firezone.android.core.ApplicationMode
 import dev.firezone.android.core.data.Repository
-import dev.firezone.android.core.x509.CertificateUser
+import dev.firezone.android.core.x509.CertificateAccess
 import dev.firezone.android.core.x509.SystemKeyChain
-import dev.firezone.android.core.x509.X509Identity
 import kotlinx.coroutines.Dispatchers
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
@@ -64,13 +63,14 @@ class SplashViewModelTest {
                 sharedPreferences = context.getSharedPreferences("splash-view-model-test", Context.MODE_PRIVATE),
             )
         val applicationRestrictions = Bundle()
-        val certificateUser = CertificateUser(repository, applicationRestrictions, X509Identity(SystemKeyChain(context)))
+        val certificateAccess =
+            CertificateAccess(repository, applicationRestrictions, SystemKeyChain(context))
 
         return SplashViewModel(
             repo = repository,
             applicationRestrictions = applicationRestrictions,
             applicationMode = ApplicationMode.TESTING,
-            certificateUser = certificateUser,
+            certificateAccess = certificateAccess,
             savedStateHandle = SavedStateHandle(),
         )
     }

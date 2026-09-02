@@ -45,6 +45,22 @@ class SplashLaunchFlowTest {
     }
 
     @Test
+    fun `certificate permission does not replace a token`() {
+        val launchFlow = SplashLaunchFlow(SavedStateHandle())
+
+        val permissionAction = launchFlow.certificatePermissionRequired()
+        val resumedAction =
+            launchFlow.permissionsReady(
+                hasToken = false,
+                isTunnelRunning = false,
+                connectOnStart = true,
+            )
+
+        assertEquals(SplashLaunchFlow.Action.REQUEST_CERTIFICATE_PERMISSION, permissionAction)
+        assertEquals(SplashLaunchFlow.Action.SIGN_IN, resumedAction)
+    }
+
+    @Test
     fun `connects after skipping or denying notification permission during initial launch`() {
         listOf("skipped", "denied").forEach { outcome ->
             val launchFlow = SplashLaunchFlow(SavedStateHandle())
