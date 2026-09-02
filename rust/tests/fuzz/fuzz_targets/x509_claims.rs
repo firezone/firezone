@@ -5,10 +5,7 @@
 //! Every claim the clients and the portal act on is asserted against the certificate it
 //! was read from, so a parse that succeeds also has to be internally consistent.
 
-use std::{
-    collections::HashSet,
-    time::{Duration, SystemTime, UNIX_EPOCH},
-};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use arbitrary::Arbitrary;
 use libfuzzer_sys::fuzz_target;
@@ -31,7 +28,6 @@ fuzz_target!(|input: Input| {
     assert_device_serial_is_printable(&certificate);
     assert_claims_are_rendered_as_they_were_read(&certificate);
     assert_unrecognised_claims_are_shown(&certificate);
-    assert_every_validation_error_reads();
     assert_fingerprint_covers_the_input(&certificate, input.der);
     assert_serial_is_bounded(&certificate);
     assert_detail_fields_are_labelled(&certificate);
@@ -163,31 +159,6 @@ fn assert_unrecognised_claims_are_shown(certificate: &ParsedCertificate) {
             "{claim} has no row"
         );
     }
-}
-
-/// Asserts that every error a claim can carry renders a phrase of its own.
-///
-/// The clients show these to an administrator, so a blank phrase says nothing and two errors
-/// sharing one phrase sends them after the wrong part of their certificate template.
-fn assert_every_validation_error_reads() {
-    let labels = [
-        ValidationError::Empty,
-        ValidationError::TooLong,
-        ValidationError::Ambiguous,
-        ValidationError::PlaceholderIdentifier,
-        ValidationError::UnknownAttribute,
-        ValidationError::NotYetValid,
-        ValidationError::Expired,
-        ValidationError::MissingClientAuthEku,
-        ValidationError::DigitalSignatureNotAllowed,
-    ]
-    .map(ValidationError::label);
-
-    for label in labels {
-        assert!(!label.is_empty());
-    }
-
-    assert_eq!(labels.iter().collect::<HashSet<_>>().len(), labels.len());
 }
 
 /// Asserts that the fingerprint identifies the very bytes that were parsed.

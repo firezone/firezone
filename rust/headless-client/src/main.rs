@@ -29,6 +29,7 @@ use std::{
 };
 use telemetry::{SentryMeterProvider, analytics, otel};
 use tokio::time::Instant;
+use x509_keystore::ValidationError;
 
 #[cfg(target_os = "linux")]
 #[path = "linux.rs"]
@@ -597,11 +598,25 @@ fn handle_x509() -> Result<()> {
         }
 
         if let Some(problem) = field.problem {
-            println!("  ({})", problem.label());
+            println!("  ({})", validation_error_text(problem));
         }
     }
 
     Ok(())
+}
+
+fn validation_error_text(error: ValidationError) -> &'static str {
+    match error {
+        ValidationError::Empty => "Empty",
+        ValidationError::TooLong => "Too long",
+        ValidationError::Ambiguous => "Ambiguous",
+        ValidationError::PlaceholderIdentifier => "Placeholder identifier",
+        ValidationError::UnknownAttribute => "Unrecognized attribute",
+        ValidationError::NotYetValid => "Not yet valid",
+        ValidationError::Expired => "Expired",
+        ValidationError::MissingClientAuthEku => "Missing client authentication EKU",
+        ValidationError::DigitalSignatureNotAllowed => "Digital signature not allowed",
+    }
 }
 
 /// Constructs the authentication URL for browser-based sign-in.

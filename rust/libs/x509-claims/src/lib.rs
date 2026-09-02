@@ -92,8 +92,8 @@ impl Claim {
 
 /// Why a diagnostics row is not usable as what it names, read underneath its value.
 ///
-/// The clients word these themselves, so an error crosses to them as the error it is rather
-/// than as a sentence: the mobile and Apple clients render them from their own string resources.
+/// Each client renderer words these itself, so an error crosses to it as the error it is rather
+/// than as presentation copy.
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq, Hash)]
 pub enum ValidationError {
     Empty,
@@ -105,23 +105,6 @@ pub enum ValidationError {
     Expired,
     MissingClientAuthEku,
     DigitalSignatureNotAllowed,
-}
-
-impl ValidationError {
-    /// A short error label that reads on its own and after the value it explains.
-    pub fn label(self) -> &'static str {
-        match self {
-            Self::Empty => "Empty",
-            Self::TooLong => "Too long",
-            Self::Ambiguous => "Ambiguous",
-            Self::PlaceholderIdentifier => "Placeholder identifier",
-            Self::UnknownAttribute => "Unrecognized attribute",
-            Self::NotYetValid => "Not yet valid",
-            Self::Expired => "Expired",
-            Self::MissingClientAuthEku => "Missing client authentication EKU",
-            Self::DigitalSignatureNotAllowed => "Digital signature not allowed",
-        }
-    }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
