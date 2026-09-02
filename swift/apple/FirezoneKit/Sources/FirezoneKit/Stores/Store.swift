@@ -24,7 +24,7 @@ public final class Store: ObservableObject {
   @Published private(set) var actorName: String?
 
   /// The client certificate the settings screen can display.
-  @Published private(set) var x509CertificateDetails: X509CertificateDetails?
+  @Published private(set) var x509CertificateSummary: X509CertificateSummary?
   @Published private(set) var favorites: Favorites
   @Published private(set) var resourceList: ResourceList = .loading
   @Published private(set) var connectedDevices: [ConnectedDevice] = []
@@ -391,8 +391,8 @@ public final class Store: ObservableObject {
         try await initSystemExtension()
         Log.debug("Startup: initVPNConfiguration")
         try await initVPNConfiguration()
-        Log.debug("Startup: loadCertificateDetails")
-        await loadCertificateDetails()
+        Log.debug("Startup: loadCertificateSummary")
+        await loadCertificateSummary()
         Telemetry.setEnvironmentOrClose(configuration.apiURL)
         #if os(macOS)
           Log.debug("Startup: drainFlowLogsOnLaunch")
@@ -499,33 +499,29 @@ public final class Store: ObservableObject {
     }
   }
 
-  private func loadCertificateDetails() async {
+  private func loadCertificateSummary() async {
     let keychain = X509CertificateSource.keychain { try self.manager().identityReference() }
     let source = x509CertificateSource ?? keychain
 
     do {
-      let reading = try await source.read()
-      guard let certificate = reading.certificate else {
-        x509CertificateDetails = nil
+      guard let certificate = try await source.read() else {
+        x509CertificateSummary = nil
 
         return
       }
 
       guard let summary = X509CertificateParser.summary(of: certificate) else {
         Log.debug("The configured client certificate is not a valid X.509 certificate")
-        x509CertificateDetails = nil
+        x509CertificateSummary = nil
 
         return
       }
 
-      x509CertificateDetails = X509CertificateDetails(
-        summary: summary,
-        keyProblem: reading.keyProblem
-      )
+      x509CertificateSummary = summary
     } catch {
       Log.debug("Failed to read the client certificate: \(error.localizedDescription)")
 
-      x509CertificateDetails = nil
+      x509CertificateSummary = nil
     }
   }
 

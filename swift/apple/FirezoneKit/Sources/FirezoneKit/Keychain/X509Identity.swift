@@ -164,24 +164,6 @@ public enum X509Identity {
     return SecCertificateCopyData(certificate) as Data
   }
 
-  /// Why the identity's private key cannot sign a handshake, `nil` when it can.
-  ///
-  /// Runs the checks `load(persistentReference:)` runs, without producing a signature: a
-  /// signature could make the keychain prompt for access, which a diagnostics screen must
-  /// not. An access control that denies only the Network Extension cannot be seen from the
-  /// app, so a key this reports as healthy can still refuse the tunnel's signature.
-  public static func privateKeyProblem(persistentReference: Data) -> String? {
-    do {
-      let identity = try loadIdentity(persistentReference: persistentReference)
-      let privateKey = try copyPrivateKey(identity: identity)
-      _ = try signatureSchemes(for: privateKey)
-
-      return nil
-    } catch {
-      return error.localizedDescription
-    }
-  }
-
   private static func loadIdentity(persistentReference: Data) throws -> SecIdentity {
     // An identity is a virtual keychain item backed by a certificate and its private
     // key. Without an explicit class, macOS can resolve the persistent reference to

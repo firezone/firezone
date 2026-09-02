@@ -8,16 +8,16 @@ import SwiftUI
 
 /// Shows the client certificate the VPN profile references, for support and diagnostics.
 struct X509SettingsView: View {
-  let details: X509CertificateDetails
+  let summary: X509CertificateSummary
 
   var body: some View {
     #if os(iOS)
       // A phone fits one column, so each field becomes its own form row.
       Form {
-        Section { card(details.summary, keyProblem: details.keyProblem) }
+        Section { card(summary) }
 
         Section {
-          ForEach(details.summary.fields, id: \.self) { field in
+          ForEach(summary.fields, id: \.self) { field in
             VStack(alignment: .leading, spacing: 2) {
               Text(field.label)
                 .font(.caption)
@@ -30,30 +30,25 @@ struct X509SettingsView: View {
       }
     #else
       VStack(alignment: .leading, spacing: 12) {
-        card(details.summary, keyProblem: details.keyProblem)
-        certificateFields(details.summary)
+        card(summary)
+        certificateFields(summary)
       }
     #endif
   }
 
   /// Identifies the certificate the way a keychain viewer does, before any of the detail.
-  private func card(_ summary: X509CertificateSummary, keyProblem: String?) -> some View {
+  private func card(_ summary: X509CertificateSummary) -> some View {
     cardLayout(
       title: title(of: summary),
       subtitle: value("Issuer", of: summary).map { "Issued by \($0)" },
       validity: value("Not After", of: summary).map { "Valid until \($0)" }
-    ) {
-      if let keyProblem {
-        notice(keyProblem, title: "Firezone cannot use the certificate's private key")
-      }
-    }
+    )
   }
 
-  private func cardLayout<Warning: View>(
+  private func cardLayout(
     title: String,
     subtitle: String? = nil,
-    validity: String? = nil,
-    @ViewBuilder warning: () -> Warning
+    validity: String? = nil
   ) -> some View {
     let content = VStack(alignment: .leading, spacing: 10) {
       HStack(alignment: .top, spacing: 12) {
@@ -81,8 +76,6 @@ struct X509SettingsView: View {
           }
         }
       }
-
-      warning()
     }
     .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -104,20 +97,6 @@ struct X509SettingsView: View {
   /// Rows are looked up by the label the parser gives them.
   private func value(_ label: String, of summary: X509CertificateSummary) -> String? {
     summary.fields.first(where: { $0.label == label })?.value
-  }
-
-  /// How the screen says that something is wrong with the certificate.
-  private func notice(_ message: String, title: String) -> some View {
-    VStack(alignment: .leading, spacing: 6) {
-      Label(title, systemImage: "exclamationmark.triangle")
-        .font(.callout)
-      Text(message)
-        .font(.callout)
-        .textSelection(.enabled)
-      Text("Contact your administrator for support.")
-        .font(.callout)
-        .foregroundStyle(.secondary)
-    }
   }
 
   private func certificateFields(_ summary: X509CertificateSummary) -> some View {

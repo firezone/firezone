@@ -119,7 +119,7 @@ public struct SettingsView: View {
                 }
                 .badge(viewModel.isValid() ? nil : "!")
                 .tag(Tab.advanced)
-              if store.x509CertificateDetails != nil {
+              if store.x509CertificateSummary != nil {
                 certificateTab
                   .tabItem {
                     Image(systemName: "rosette")
@@ -185,7 +185,7 @@ public struct SettingsView: View {
               Text("Advanced")
             }
             .tag(Tab.advanced)
-          if store.x509CertificateDetails != nil {
+          if store.x509CertificateSummary != nil {
             certificateTab
               .tabItem {
                 Text("Device Trust")
@@ -568,8 +568,8 @@ public struct SettingsView: View {
       ScrollView {
         HStack {
           Spacer()
-          if let details = store.x509CertificateDetails {
-            X509SettingsView(details: details)
+          if let summary = store.x509CertificateSummary {
+            X509SettingsView(summary: summary)
               .frame(maxWidth: 600)
           }
           Spacer()
@@ -578,8 +578,8 @@ public struct SettingsView: View {
         .padding(.vertical)
       }
     #elseif os(iOS)
-      if let details = store.x509CertificateDetails {
-        X509SettingsView(details: details)
+      if let summary = store.x509CertificateSummary {
+        X509SettingsView(summary: summary)
       }
     #else
       #error("Unsupported platform")
