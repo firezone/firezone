@@ -127,8 +127,8 @@ public final class VPNConfigurationManager {
   private struct Candidate {
     let manager: any TunnelProviderManager
     let configuration: NETunnelProviderProtocol
-    let hasIdentityReference: Bool
-    let isManaged: Bool
+
+    var hasIdentityReference: Bool { configuration.identityReference != nil }
   }
 
   public static func load(using factory: TunnelProviderManagerFactory) async throws
@@ -152,15 +152,7 @@ public final class VPNConfigurationManager {
         return nil
       }
 
-      let hasIdentityReference = configuration.identityReference != nil
-
-      // Captured before the repair below fills in the provider bundle identifier.
-      return Candidate(
-        manager: manager,
-        configuration: configuration,
-        hasIdentityReference: hasIdentityReference,
-        isManaged: configuration.providerBundleIdentifier == nil || hasIdentityReference
-      )
+      return Candidate(manager: manager, configuration: configuration)
     }
 
     guard let selected = candidates.first(where: \.hasIdentityReference) ?? candidates.first else {
@@ -174,13 +166,16 @@ public final class VPNConfigurationManager {
       )
     }
 
+    let missingProviderBundleIdentifier = selected.configuration.providerBundleIdentifier == nil
+    let isManaged = missingProviderBundleIdentifier || selected.hasIdentityReference
+
     Log.info(
-      "Loaded the Firezone VPN configuration (managed=\(selected.isManaged), clientCertificate=\(selected.hasIdentityReference))"
+      "Loaded the Firezone VPN configuration (managed=\(isManaged), clientCertificate=\(selected.hasIdentityReference))"
     )
 
     // Some MDMs (for example Intune's built-in VPN payload) cannot set ProviderBundleIdentifier,
     // and the tunnel cannot start from a profile without it. Fill it in ourselves.
-    if selected.configuration.providerBundleIdentifier == nil {
+    if missingProviderBundleIdentifier {
       Log.warning(
         "The managed VPN profile has no ProviderBundleIdentifier; "
           + "setting it to \(selected.manager.extensionBundleIdentifier)"
@@ -193,7 +188,7 @@ public final class VPNConfigurationManager {
       try await selected.manager.loadFromPreferences()
     }
 
-    return VPNConfigurationManager(from: selected.manager, isManaged: selected.isManaged)
+    return VPNConfigurationManager(from: selected.manager, isManaged: isManaged)
   }
 
   // If another VPN is activated on the system, ours becomes disabled. This is provided so that we may call it before
