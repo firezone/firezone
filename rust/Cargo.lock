@@ -3027,6 +3027,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "tunnel-proto",
+ "uuid",
  "x509-claims",
 ]
 
@@ -6294,6 +6295,7 @@ dependencies = [
  "proptest",
  "rand 0.10.2",
  "secrecy",
+ "serde",
  "sha2 0.11.0",
  "smallvec",
  "stun_codec",
