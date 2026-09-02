@@ -8,6 +8,7 @@ import android.os.Looper
 import dev.firezone.android.core.data.ManagedConfigurationReader
 import dev.firezone.android.core.data.ManagedConfigurationSource
 import dev.firezone.android.core.data.Repository
+import dev.firezone.android.core.data.X509_CERTIFICATE_ALIAS_RESTRICTION
 import dev.firezone.android.core.data.model.Config
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -84,7 +85,7 @@ class SettingsManagedConfigurationTest {
 
             source.applyRestrictions(
                 Bundle().apply {
-                    putString("x509CertificateAlias", "")
+                    putString(X509_CERTIFICATE_ALIAS_RESTRICTION, "")
                 },
             )
             assertFalse(viewModel.hasConfiguredCertificateAlias())
