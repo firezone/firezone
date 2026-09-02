@@ -65,7 +65,6 @@
 	<string name="resources">Resources</string>
 	<string name="connected_devices">Connected Devices</string>
 	<string name="sign_out">Sign Out</string>
-	<string name="connected_as">Connected as %1$s</string>
 
 	<!-- Profile -->
 	<string name="profile">Profile</string>
