@@ -94,8 +94,9 @@ defmodule Portal.Scope do
   and a resource on the way - and the required scopes should follow the
   operation the caller asked for, not the lookups a changeset happens to do.
   """
-  def permit(entity, method, %Subject{credential: %Credential{scopes: scopes}}) do
+  def permit(entity, method, %Subject{credential: credential}) do
     required = required(entity, method)
+    scopes = Credential.scopes(credential)
 
     if satisfies?(scopes, required) do
       :ok

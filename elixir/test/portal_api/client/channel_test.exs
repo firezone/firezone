@@ -123,11 +123,9 @@ defmodule PortalAPI.Client.ChannelTest do
     Process.flag(:trap_exit, true)
     provider = x509_provider_fixture(account: account, is_disabled: false)
 
-    credential = %Portal.Authentication.Credential{
+    credential = %Portal.Authentication.Credential.X509{
       id: Ecto.UUID.generate(),
-      type: :x509,
-      auth_provider_id: provider.id,
-      scopes: nil
+      auth_provider_id: provider.id
     }
 
     join_channel(client, %{subject | credential: credential}, channel: channel)
@@ -1114,11 +1112,9 @@ defmodule PortalAPI.Client.ChannelTest do
       Process.flag(:trap_exit, true)
       provider = x509_provider_fixture(account: account, is_disabled: false)
 
-      credential = %Portal.Authentication.Credential{
+      credential = %Portal.Authentication.Credential.X509{
         id: Ecto.UUID.generate(),
-        type: :x509,
-        auth_provider_id: provider.id,
-        scopes: nil
+        auth_provider_id: provider.id
       }
 
       join_channel(client, %{subject | credential: credential})
@@ -1152,11 +1148,9 @@ defmodule PortalAPI.Client.ChannelTest do
       Process.flag(:trap_exit, true)
       provider = x509_provider_fixture(account: account, is_disabled: false)
 
-      credential = %Portal.Authentication.Credential{
+      credential = %Portal.Authentication.Credential.X509{
         id: Ecto.UUID.generate(),
-        type: :x509,
-        auth_provider_id: provider.id,
-        scopes: nil
+        auth_provider_id: provider.id
       }
 
       join_channel(client, %{subject | credential: credential})

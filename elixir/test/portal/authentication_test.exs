@@ -11,6 +11,7 @@ defmodule Portal.AuthenticationTest do
   import Portal.GatewaySessionFixtures
   import Portal.SiteFixtures
   alias Portal.Authentication
+  alias Portal.Authentication.Credential
   alias Portal.ClientToken
 
   describe "create_non_interactive_client_token/3" do
@@ -1370,7 +1371,7 @@ defmodule Portal.AuthenticationTest do
       context = build_context(type: :client)
 
       assert {:ok, subject} = build_subject(token, context)
-      assert subject.credential.type == :client_token
+      assert %Credential.ClientToken{} = subject.credential
       assert subject.credential.id == token.id
       assert subject.context == context
     end
@@ -1384,7 +1385,7 @@ defmodule Portal.AuthenticationTest do
       context = build_context(type: :api_client)
 
       assert {:ok, subject} = build_subject(token, context)
-      assert subject.credential.type == :api_token
+      assert %Credential.APIToken{} = subject.credential
       assert subject.credential.id == token.id
       assert subject.actor.id == actor.id
     end

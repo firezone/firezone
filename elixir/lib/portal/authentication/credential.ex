@@ -2,72 +2,82 @@ defmodule Portal.Authentication.Credential do
   @moduledoc """
   Represents the authentication credential used to create a Subject.
 
-  The `type` field takes one of four values:
-  - `:api_token` - API tokens for api_client actors. `auth_provider_id` is always nil.
-  - `:client_token` - Client tokens. `auth_provider_id` is set when the token was
+  One struct per kind, rather than one struct with a `type` field, so a kind
+  that does not exist cannot be written down: `%Credential.Token{}` is a
+  compile error where `type: :token` was a value nothing rejected.
+
+  - `APIToken` - API tokens for api_client actors. Carries scopes, and never an
+    auth provider.
+  - `ClientToken` - Client tokens. `auth_provider_id` is set when the token was
     minted from an interactive sign-in flow (OIDC, Email/OTP, userpass) and nil
     when the token was issued directly by an admin (no sign-in flow).
-  - `:portal_session` - Portal sessions for web users. `auth_provider_id` is always set.
-  - `:x509` - Ephemeral credentials authenticated by a client certificate. These
+  - `PortalSession` - Portal sessions for web users.
+  - `X509` - Ephemeral credentials authenticated by a client certificate. These
     have an `auth_provider_id`, but no persisted client token.
 
-  `scopes` narrows what the credential may reach through the public API. An
-  API token always carries an explicit list - the column is not null and the
-  tokens that predate scopes were backfilled - so `nil` here means only that
-  the credential type does not participate in scopes at all, which is the case
-  for every type governed purely by its actor. See `Portal.Scope`.
-
-  Each variant below pins both `scopes` and `auth_provider_id`, so the two
-  rules this doc states are checked rather than described: only an API token
-  carries scopes, and only the types minted through a sign-in flow carry an
-  auth provider. A struct typespec leaves any key it does not name as
-  `term()`, so omitting them would let either be anything.
+  Every kind keeps an `auth_provider_id`, so a reader that does not care which
+  kind it holds can still ask. Only an API token has `scopes`; ask through
+  `scopes/1` rather than the field, which is why the other kinds do not have to
+  carry a nil that reads as a value.
   """
 
-  @type api_token :: %__MODULE__{
-          type: :api_token,
-          id: Ecto.UUID.t(),
-          auth_provider_id: nil,
-          scopes: [String.t()]
-        }
+  defmodule APIToken do
+    @moduledoc "An API token, the only credential that carries scopes."
+    @enforce_keys [:id, :scopes]
+    defstruct [:id, :scopes, auth_provider_id: nil]
 
-  @type non_interactive_client_token :: %__MODULE__{
-          type: :client_token,
-          id: Ecto.UUID.t(),
-          auth_provider_id: nil,
-          scopes: nil
-        }
+    @type t :: %__MODULE__{
+            id: Ecto.UUID.t(),
+            scopes: [String.t()],
+            auth_provider_id: nil
+          }
+  end
 
-  @type interactive_client_token :: %__MODULE__{
-          type: :client_token,
-          id: Ecto.UUID.t(),
-          auth_provider_id: Ecto.UUID.t(),
-          scopes: nil
-        }
+  defmodule ClientToken do
+    @moduledoc "A client token, with an auth provider only when signed in through one."
+    @enforce_keys [:id]
+    defstruct [:id, :auth_provider_id]
 
-  @type portal_session :: %__MODULE__{
-          type: :portal_session,
-          id: Ecto.UUID.t(),
-          auth_provider_id: Ecto.UUID.t(),
-          scopes: nil
-        }
+    @type t :: %__MODULE__{
+            id: Ecto.UUID.t(),
+            auth_provider_id: Ecto.UUID.t() | nil
+          }
+  end
 
-  @type x509 :: %__MODULE__{
-          type: :x509,
-          id: Ecto.UUID.t(),
-          auth_provider_id: Ecto.UUID.t(),
-          scopes: nil
-        }
+  defmodule PortalSession do
+    @moduledoc "A portal session, always minted through an auth provider."
+    @enforce_keys [:id, :auth_provider_id]
+    defstruct [:id, :auth_provider_id]
 
-  @type t ::
-          api_token()
-          | non_interactive_client_token()
-          | interactive_client_token()
-          | portal_session()
-          | x509()
+    @type t :: %__MODULE__{
+            id: Ecto.UUID.t(),
+            auth_provider_id: Ecto.UUID.t()
+          }
+  end
 
-  # Enforced rather than defaulted: a nil default made a scope-governed
-  # credential built without scopes read as unrestricted.
-  @enforce_keys [:type, :id, :scopes]
-  defstruct [:type, :id, :auth_provider_id, :scopes]
+  defmodule X509 do
+    @moduledoc "A credential proved by a client certificate, with no persisted token."
+    @enforce_keys [:id, :auth_provider_id]
+    defstruct [:id, :auth_provider_id]
+
+    @type t :: %__MODULE__{
+            id: Ecto.UUID.t(),
+            auth_provider_id: Ecto.UUID.t()
+          }
+  end
+
+  @type t :: APIToken.t() | ClientToken.t() | PortalSession.t() | X509.t()
+
+  @doc """
+  The scopes a credential narrows the public API to, or `nil` for a kind that
+  does not participate in scopes at all. See `Portal.Scope`.
+
+  A clause per kind rather than a catch-all, so a kind added later has to say
+  whether it is scope-governed instead of inheriting "unrestricted".
+  """
+  @spec scopes(t()) :: [String.t()] | nil
+  def scopes(%APIToken{scopes: scopes}), do: scopes
+  def scopes(%ClientToken{}), do: nil
+  def scopes(%PortalSession{}), do: nil
+  def scopes(%X509{}), do: nil
 end

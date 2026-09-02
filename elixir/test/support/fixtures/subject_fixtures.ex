@@ -64,11 +64,9 @@ defmodule Portal.SubjectFixtures do
               portal_session_fixture(session_attrs)
             end)
 
-          credential = %Credential{
-            type: :portal_session,
+          credential = %Credential.PortalSession{
             id: session.id,
-            auth_provider_id: session.auth_provider_id,
-            scopes: nil
+            auth_provider_id: session.auth_provider_id
           }
 
           {session.expires_at, credential}
@@ -84,11 +82,9 @@ defmodule Portal.SubjectFixtures do
               client_token_fixture(token_attrs)
             end)
 
-          credential = %Credential{
-            type: :client_token,
+          credential = %Credential.ClientToken{
             id: token.id,
-            auth_provider_id: token.auth_provider_id,
-            scopes: nil
+            auth_provider_id: token.auth_provider_id
           }
 
           {token.expires_at, credential}
@@ -104,7 +100,7 @@ defmodule Portal.SubjectFixtures do
               api_token_fixture(token_attrs)
             end)
 
-          credential = %Credential{type: :api_token, id: token.id, scopes: token.scopes}
+          credential = %Credential.APIToken{id: token.id, scopes: token.scopes}
 
           {token.expires_at, credential}
       end

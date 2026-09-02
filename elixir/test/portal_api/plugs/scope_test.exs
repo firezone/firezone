@@ -51,14 +51,17 @@ defmodule PortalAPI.Plugs.ScopeTest do
   end
 
   describe "composition with Safe.permit/3" do
-    test "a scope narrows but never widens what the actor may do" do
+    # Granting a scope to an actor who could not otherwise use it is no longer
+    # expressible: only an API token carries scopes, and an api_client actor
+    # already passes Safe.permit/3 on every entity a scope can name. What is
+    # left to check is the same property from the other side, that clearing the
+    # scope check never implies clearing the actor's own.
+    test "clearing the scope check never clears the actor's own permissions" do
       account = Portal.AccountFixtures.account_fixture()
       actor = Portal.ActorFixtures.actor_fixture(type: :account_user, account: account)
+      subject = Portal.SubjectFixtures.subject_fixture(account: account, actor: actor)
 
-      subject =
-        Portal.SubjectFixtures.subject_fixture(account: account, actor: actor)
-        |> put_in([Access.key!(:credential), Access.key!(:scopes)], ["groups:write"])
-
+      assert Portal.Authentication.Credential.scopes(subject.credential) == nil
       assert Portal.Scope.permit(:groups, :post, subject) == :ok
 
       assert Portal.Safe.permit(:insert, Portal.Group, subject) == {:error, :unauthorized}
@@ -103,7 +106,7 @@ defmodule PortalAPI.Plugs.ScopeTest do
       actor = Portal.ActorFixtures.actor_fixture(type: :account_admin_user, account: account)
       subject = Portal.SubjectFixtures.subject_fixture(account: account, actor: actor)
 
-      assert subject.credential.scopes == nil
+      assert Portal.Authentication.Credential.scopes(subject.credential) == nil
       assert Portal.Scope.permit(:resources, :post, subject) == :ok
     end
   end
