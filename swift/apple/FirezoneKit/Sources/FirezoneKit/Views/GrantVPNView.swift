@@ -72,12 +72,18 @@ struct GrantVPNView: View {
           .font(.title2)
           .multilineTextAlignment(.center)
           .padding(EdgeInsets(top: 0, leading: 10, bottom: 0, trailing: 15))
-          HStack(alignment: .top) {
-            Spacer()
-            VStack(alignment: .center) {
+          // The buttons share a row, so they sit right under the steps whichever
+          // column runs longer, with no spacer for macOS 15 to size as unbounded.
+          Grid(alignment: .top, horizontalSpacing: 60, verticalSpacing: 10) {
+            GridRow {
               Text("Step 1: Enable the system extension")
                 .font(.title)
                 .strikethrough(isInstalled(), color: .primary)
+              Text("Step 2: Allow the VPN configuration")
+                .font(.title)
+                .opacity(stepTwoOpacity)
+            }
+            GridRow {
               Text(
                 """
                 1. Click the "Enable System Extension" button below.
@@ -87,9 +93,17 @@ struct GrantVPNView: View {
                 """
               )
               .font(.body)
-              .padding(.vertical, 10)
               .opacity(isInstalled() ? 0.5 : 1.0)
-              Spacer()
+              Text(
+                """
+                1. Click the "Grant VPN Permission" button below.
+                2. Click "Allow" in the dialog that appears.
+                """
+              )
+              .font(.body)
+              .opacity(stepTwoOpacity)
+            }
+            GridRow {
               Button(
                 action: {
                   installSystemExtension()
@@ -101,20 +115,6 @@ struct GrantVPNView: View {
               .buttonStyle(.borderedProminent)
               .controlSize(.large)
               .disabled(isInstalled())
-            }
-            Spacer()
-            VStack(alignment: .center) {
-              Text("Step 2: Allow the VPN configuration")
-                .font(.title)
-              Text(
-                """
-                1. Click the "Grant VPN Permission" button below.
-                2. Click "Allow" in the dialog that appears.
-                """
-              )
-              .font(.body)
-              .padding(.vertical, 10)
-              Spacer()
               Button(
                 action: {
                   installVPNConfiguration()
@@ -126,11 +126,9 @@ struct GrantVPNView: View {
               .buttonStyle(.borderedProminent)
               .controlSize(.large)
               .disabled(!isInstalled())
-            }.opacity(isInstalled() ? 1.0 : 0.5)
-            Spacer()
+              .opacity(stepTwoOpacity)
+            }
           }
-          // Takes the taller column's height, so both buttons line up right under their steps.
-          .fixedSize(horizontal: false, vertical: true)
           Spacer()
         }
       )
@@ -177,6 +175,10 @@ struct GrantVPNView: View {
 
     func isInstalled() -> Bool {
       return store.systemExtensionStatus == .installed
+    }
+
+    private var stepTwoOpacity: Double {
+      isInstalled() ? 1.0 : 0.5
     }
   #endif
 
