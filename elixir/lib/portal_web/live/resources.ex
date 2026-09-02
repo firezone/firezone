@@ -1513,7 +1513,7 @@ defmodule PortalWeb.Resources do
           ids -> ids
         end
 
-      from(c in Device, as: :devices)
+      from(d in Device, as: :devices)
       |> where([devices: d], d.type == :client)
       |> where([devices: d], d.id in ^device_ids)
       |> preload(:actor)

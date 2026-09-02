@@ -627,7 +627,10 @@ defmodule PortalWeb.LiveTable do
           checked={@form[@filter.name].value == value}
           class="hidden"
         />
-        {label}
+        <span class="inline-flex items-center gap-1">
+          <.icon :if={@filter.icons[value]} name={@filter.icons[value]} class="w-3.5 h-3.5" />
+          {label}
+        </span>
       </label>
     </div>
     """

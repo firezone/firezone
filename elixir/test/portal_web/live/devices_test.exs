@@ -12,6 +12,7 @@ defmodule PortalWeb.DevicesTest do
   import Portal.IruFixtures
   import Portal.SantaFixtures
   import Portal.SentinelOneFixtures
+  import Portal.SubjectFixtures
   import Portal.DeviceFixtures
   import Portal.ClientSessionFixtures
   import Portal.GroupFixtures
@@ -205,8 +206,8 @@ defmodule PortalWeb.DevicesTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/devices/#{client.id}")
 
-      assert html =~ "Reported by Client"
-      assert html =~ "The Firezone Client reads and reports these values."
+      assert html =~ "Self-Reported"
+      assert html =~ "The software on this device reads and reports these values."
       assert html =~ "X.509 Device Trust"
       assert html =~ ~p"/#{account}/settings/trust_anchors"
     end
@@ -229,7 +230,7 @@ defmodule PortalWeb.DevicesTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/devices/#{client.id}")
 
-      assert html =~ "Reported by Client"
+      assert html =~ "Self-Reported"
       refute html =~ "to strongly identify this device"
     end
 
@@ -1498,6 +1499,219 @@ defmodule PortalWeb.DevicesTest do
     end
   end
 
+
+  describe "gateways" do
+    test "lists gateways alongside clients", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      client = client_fixture(account: account, actor: actor, name: "Eng Laptop")
+      site = site_fixture(account: account, name: "AWS US-East")
+      gateway = gateway_fixture(account: account, site: site, name: "gw-alpha")
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/devices")
+
+      assert html =~ client.name
+      assert html =~ gateway.name
+      assert html =~ site.name
+      assert html =~ ~p"/#{account}/sites/#{site}"
+    end
+
+    test "counts both kinds in the total", %{account: account, actor: actor} do
+      client_fixture(account: account, actor: actor)
+      gateway_fixture(account: account)
+
+      subject = admin_subject_fixture(account: account, actor: actor)
+
+      assert PortalWeb.Devices.Database.count_devices(subject) == 2
+    end
+
+    test "shows a server icon for a gateway rather than an OS icon", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      gateway = gateway_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/devices")
+
+      assert has_element?(lv, "#device-#{gateway.id} .ri-server-line")
+    end
+
+    test "finds a gateway by its site name", %{conn: conn, account: account, actor: actor} do
+      site = site_fixture(account: account, name: "Frankfurt Edge")
+      gateway = gateway_fixture(account: account, site: site)
+      other = client_fixture(account: account, actor: actor, name: "Unrelated Laptop")
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/devices?#{%{"devices_filter[search]" => "Frankfurt"}}")
+
+      assert html =~ gateway.name
+      refute html =~ other.name
+    end
+
+    test "opens a read-only panel for a gateway", %{conn: conn, account: account, actor: actor} do
+      site = site_fixture(account: account, name: "AWS US-East")
+      gateway = gateway_fixture(account: account, site: site)
+
+      {:ok, lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/devices/#{gateway.id}")
+
+      assert html =~ gateway.name
+      assert html =~ "Gateway"
+      assert html =~ site.name
+
+      refute has_element?(lv, "button[phx-click='open_device_edit_form']")
+      refute has_element?(lv, "button[phx-click='verify_device']")
+      refute has_element?(lv, "button[phx-click='confirm_delete_device']")
+    end
+
+    test "shows what the gateway reported about itself", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      gateway = gateway_fixture(account: account)
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/devices/#{gateway.id}")
+
+      assert html =~ "Reported"
+      assert html =~ gateway.firezone_id
+      assert html =~ gateway.last_seen_version
+    end
+
+    test "matches a gateway on the serial it self-reports", %{conn: conn} do
+      enable_device_posture()
+      account = device_posture_account_fixture()
+      actor = admin_actor_fixture(account: account)
+
+      intune_device_fixture(
+        provider: intune_posture_provider_fixture(account: account),
+        device_name: "GW-INVENTORY-01",
+        serial_number: "GW-SERIAL"
+      )
+
+      gateway = gateway_fixture(account: account, device_serial: "GW-SERIAL")
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/devices/#{gateway.id}?tab=posture")
+
+      assert html =~ "GW-INVENTORY-01"
+      assert html =~ "Self-reported serial"
+    end
+
+    test "sends the edit route for a gateway back to its panel", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      gateway = gateway_fixture(account: account)
+
+      assert {:error, {:live_redirect, %{to: to}}} =
+               conn
+               |> authorize_conn(actor)
+               |> live(~p"/#{account}/devices/#{gateway.id}/edit")
+
+      assert to == ~p"/#{account}/devices/#{gateway.id}"
+    end
+
+    test "ignores an edit or delete event for a gateway", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      gateway = gateway_fixture(account: account, name: "keep-me")
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/devices/#{gateway.id}")
+
+      render_click(lv, "submit_device_edit_form", %{"device" => %{"name" => "renamed"}})
+      render_click(lv, "delete_device", %{})
+
+      assert Repo.get_by!(Device, id: gateway.id).name == "keep-me"
+    end
+
+    test "filters by type", %{conn: conn, account: account, actor: actor} do
+      client = client_fixture(account: account, actor: actor, name: "Typed Laptop")
+      gateway = gateway_fixture(account: account, name: "typed-gw")
+
+      conn = authorize_conn(conn, actor)
+
+      {:ok, _lv, html} =
+        live(conn, ~p"/#{account}/devices?#{%{"devices_filter[type]" => "client"}}")
+
+      assert html =~ client.name
+      refute html =~ gateway.name
+
+      {:ok, _lv, html} =
+        live(conn, ~p"/#{account}/devices?#{%{"devices_filter[type]" => "gateway"}}")
+
+      assert html =~ gateway.name
+      refute html =~ client.name
+    end
+
+    test "shows the type and the last seen location on the panel", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      gateway =
+        gateway_fixture(
+          account: account,
+          last_seen_remote_ip_location_city: "Frankfurt",
+          last_seen_remote_ip_location_region: "DE",
+          last_seen_remote_ip_location_lat: 50.11,
+          last_seen_remote_ip_location_lon: 8.68
+        )
+
+      {:ok, lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/devices/#{gateway.id}")
+
+      assert html =~ "Type"
+      refute html =~ "Kind"
+      assert html =~ "Location"
+      assert html =~ "Frankfurt, Germany"
+      assert html =~ "50.110, 8.680"
+      assert has_element?(lv, "svg[aria-label='Location map']")
+    end
+
+    test "leaves gateways out of the None trust level", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      client = client_fixture(account: account, actor: actor, name: "Unverified Laptop")
+      gateway = gateway_fixture(account: account, name: "gw-untrusted")
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/devices?#{%{"devices_filter[attestation]" => "none"}}")
+
+      assert html =~ client.name
+      refute html =~ gateway.name
+    end
+  end
   defp issuer_der(common_name) do
     :public_key.der_encode(
       :Name,

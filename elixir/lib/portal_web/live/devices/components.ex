@@ -2,6 +2,7 @@ defmodule PortalWeb.Devices.Components do
   use PortalWeb, :component_library
   import PortalWeb.CoreComponents
   alias Portal.ComponentVersions
+  alias PortalWeb.Logs
 
   def actor_show_url(account, actor, return_to \\ nil)
 
@@ -58,16 +59,53 @@ defmodule PortalWeb.Devices.Components do
   end
 
   def device_os_icon(assigns) do
-    assigns = assign(assigns, :user_agent, device_user_agent(assigns.device))
+    assigns =
+      assigns
+      |> assign(:user_agent, device_user_agent(assigns.device))
+      |> assign(:icon, device_icon_name(assigns.device))
+      |> assign(:label, device_icon_label(assigns.device))
 
     ~H"""
-    <.icon
-      name={os_icon_name(@user_agent)}
-      title={os_name_and_version(@user_agent)}
-      class="w-5 h-5"
-    />
+    <.icon name={@icon} title={@label} class="w-5 h-5" />
     """
   end
+
+  attr :account, :any, required: true
+  attr :device, :any, required: true
+  attr :return_to, :string, default: nil
+
+  def device_owner_cell(%{device: %{type: :gateway}} = assigns) do
+    assigns = assign(assigns, :site, loaded(assigns.device.site))
+
+    ~H"""
+    <.link
+      :if={@site}
+      navigate={~p"/#{@account}/sites/#{@site}"}
+      class="text-sm text-brand hover:underline"
+    >
+      {@site.name}
+    </.link>
+    <span :if={is_nil(@site)} class="text-xs text-muted">—</span>
+    """
+  end
+
+  def device_owner_cell(assigns) do
+    assigns = assign(assigns, :actor, loaded(assigns.device.actor))
+
+    ~H"""
+    <.actor_name_and_role
+      :if={@actor}
+      account={@account}
+      actor={@actor}
+      class="text-sm"
+      return_to={@return_to}
+    />
+    <span :if={is_nil(@actor)} class="text-xs text-muted">—</span>
+    """
+  end
+
+  defp loaded(%Ecto.Association.NotLoaded{}), do: nil
+  defp loaded(other), do: other
 
   def device_os_name_and_version(assigns) do
     assigns = assign(assigns, :user_agent, device_user_agent(assigns.device))
@@ -370,6 +408,7 @@ defmodule PortalWeb.Devices.Components do
               certificate={@certificate}
             />
             <.device_network_section device={@device} />
+            <.device_location_section device={@device} />
           </div>
           <.device_posture_tab
             :if={@tab == :posture}
@@ -394,6 +433,30 @@ defmodule PortalWeb.Devices.Components do
         />
       </div>
     </div>
+    """
+  end
+
+  attr :tab, :string, required: true
+  attr :label, :string, required: true
+  attr :selected, :boolean, required: true
+
+  def device_tab(assigns) do
+    ~H"""
+    <button
+      role="tab"
+      aria-selected={@selected}
+      phx-click="switch_device_tab"
+      phx-value-tab={@tab}
+      class={[
+        "flex items-center gap-1.5 px-1 py-2.5 mr-5 text-xs font-medium border-b-2 transition-colors",
+        if(@selected,
+          do: "border-brand text-brand",
+          else: "border-transparent text-body hover:text-heading"
+        )
+      ]}
+    >
+      {@label}
+    </button>
     """
   end
 
@@ -470,7 +533,7 @@ defmodule PortalWeb.Devices.Components do
                         <p class="text-subtle font-medium mb-1">
                           {case row.initiating_device && row.initiating_device.type do
                             :gateway -> "Initiator (Gateway)"
-                            :client -> "Initiator (Client)"
+                            :client -> "Initiator (Device)"
                             _ -> "Initiator"
                           end}
                         </p>
@@ -487,7 +550,7 @@ defmodule PortalWeb.Devices.Components do
                         <p class="text-subtle font-medium mb-1">
                           {case row.receiving_device && row.receiving_device.type do
                             :gateway -> "Receiver (Gateway)"
-                            :client -> "Receiver (Client)"
+                            :client -> "Receiver (Device)"
                             _ -> "Receiver"
                           end}
                         </p>
@@ -563,7 +626,7 @@ defmodule PortalWeb.Devices.Components do
         </div>
         <%!-- Right: actions --%>
         <div class="flex items-center gap-1.5 shrink-0">
-          <.button phx-click="open_device_edit_form" size="xs">
+          <.button :if={@device.type == :client} phx-click="open_device_edit_form" size="xs">
             <.icon name="ri-pencil-line" class="w-3.5 h-3.5" /> Edit
           </.button>
           <.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
@@ -575,6 +638,25 @@ defmodule PortalWeb.Devices.Components do
 
   attr :account, :any, required: true
   attr :device, :any, required: true
+
+  def device_owner_section(%{device: %{type: :gateway}} = assigns) do
+    assigns = assign(assigns, :site, loaded(assigns.device.site))
+
+    ~H"""
+    <div :if={@site} class="px-5 pt-4 pb-3 border-b border-border">
+      <.section_heading title="Site" hint="Managed from its Site" />
+      <.link
+        navigate={~p"/#{@account}/sites/#{@site}"}
+        class="flex items-center gap-3 px-3 py-2.5 rounded border border-border bg-raised hover:border-border-strong transition-colors group"
+      >
+        <.icon name="ri-map-pin-line" class="w-4 h-4 shrink-0 text-subtle" />
+        <p class="text-sm font-medium text-heading group-hover:text-brand truncate transition-colors">
+          {@site.name}
+        </p>
+      </.link>
+    </div>
+    """
+  end
 
   def device_owner_section(assigns) do
     ~H"""
@@ -633,7 +715,7 @@ defmodule PortalWeb.Devices.Components do
   def device_section(assigns) do
     ~H"""
     <div class="px-5 pt-4 pb-3 border-b border-border">
-      <.section_heading title="Reported by Client">
+      <.section_heading title="Self-Reported">
         <:info>
           <.popover placement="right">
             <:target>
@@ -641,8 +723,8 @@ defmodule PortalWeb.Devices.Components do
             </:target>
             <:content>
               <p>
-                The Firezone Client reads and reports these values. Only trust them if you trust
-                the actor and device.
+                The software on this device reads and reports these values. Only trust them if
+                you trust the device and whoever operates it.
               </p>
               <p :if={is_nil(@device.last_attested_at)} class="mt-1">
                 Set up
@@ -661,6 +743,19 @@ defmodule PortalWeb.Devices.Components do
       <dl class="space-y-3">
         <.device_detail_row :if={@device.last_seen_at} label="Operating System">
           <.device_os device={@device} />
+        </.device_detail_row>
+        <.device_detail_row :if={@device.last_seen_version} label="Version">
+          <.version current={@device.last_seen_version} latest={latest_version(@device)} />
+        </.device_detail_row>
+        <.device_detail_row :if={@device.last_seen_user_agent} label="User Agent">
+          <span class="font-mono text-[11px] text-body break-all">
+            {@device.last_seen_user_agent}
+          </span>
+        </.device_detail_row>
+        <.device_detail_row :if={@device.hostname} label="Hostname">
+          <span class="font-mono text-xs text-body break-all">
+            {@device.hostname}
+          </span>
         </.device_detail_row>
         <.device_detail_row :if={@device.device_serial} label="Serial Number">
           <span class="font-mono text-sm text-heading font-medium">
@@ -691,7 +786,7 @@ defmodule PortalWeb.Devices.Components do
 
   def device_network_section(assigns) do
     ~H"""
-    <div class="px-5 pt-4 pb-3">
+    <div class="px-5 pt-4 pb-3 border-b border-border">
       <.section_heading title="Network" />
       <dl class="space-y-3">
         <.device_detail_row :if={@device.last_seen_remote_ip} label="Remote IP">
@@ -714,27 +809,43 @@ defmodule PortalWeb.Devices.Components do
     """
   end
 
-  attr :tab, :string, required: true
-  attr :label, :string, required: true
-  attr :selected, :boolean, required: true
+  attr :device, :any, required: true
 
-  def device_tab(assigns) do
+  def device_location_section(assigns) do
     ~H"""
-    <button
-      role="tab"
-      aria-selected={@selected}
-      phx-click="switch_device_tab"
-      phx-value-tab={@tab}
-      class={[
-        "flex items-center gap-1.5 px-1 py-2.5 mr-5 text-xs font-medium border-b-2 transition-colors",
-        if(@selected,
-          do: "border-brand text-brand",
-          else: "border-transparent text-body hover:text-heading"
-        )
-      ]}
-    >
-      {@label}
-    </button>
+    <div class="px-5 pt-4 pb-3">
+      <.section_heading title="Location" />
+      <Logs.Components.location_map
+        lat={@device.last_seen_remote_ip_location_lat}
+        lon={@device.last_seen_remote_ip_location_lon}
+      >
+        <:caption>
+          <div class="flex items-center justify-between gap-2 text-xs">
+            <div class="flex items-center gap-2 min-w-0">
+              <.icon name="ri-map-pin-line" class="w-3.5 h-3.5 shrink-0 text-subtle" />
+              <span class="text-heading truncate">{device_location_caption(@device)}</span>
+              <span
+                :if={@device.last_seen_remote_ip}
+                class="font-mono text-[10px] text-subtle shrink-0"
+              >
+                · {Portal.Types.INET.to_string(@device.last_seen_remote_ip)}
+              </span>
+            </div>
+            <span
+              :if={
+                is_number(@device.last_seen_remote_ip_location_lat) and
+                  is_number(@device.last_seen_remote_ip_location_lon)
+              }
+              class="font-mono text-[10px] text-subtle tabular-nums shrink-0"
+            >
+              {format_coord(@device.last_seen_remote_ip_location_lat)}, {format_coord(
+                @device.last_seen_remote_ip_location_lon
+              )}
+            </span>
+          </div>
+        </:caption>
+      </Logs.Components.location_map>
+    </div>
     """
   end
 
@@ -1021,10 +1132,12 @@ defmodule PortalWeb.Devices.Components do
     ~H"""
     <div class="w-1/3 shrink-0 overflow-y-auto p-4 space-y-5">
       <.device_details_card device={@device} />
-      <div class="border-t border-border"></div>
-      <.device_actions device={@device} confirm_unverify_device={@confirm_unverify_device} />
-      <div class="border-t border-border"></div>
-      <.device_danger_zone confirm_delete_device={@confirm_delete_device} />
+      <%= if @device.type == :client do %>
+        <div class="border-t border-border"></div>
+        <.device_actions device={@device} confirm_unverify_device={@confirm_unverify_device} />
+        <div class="border-t border-border"></div>
+        <.device_danger_zone confirm_delete_device={@confirm_delete_device} />
+      <% end %>
     </div>
     """
   end
@@ -1036,6 +1149,9 @@ defmodule PortalWeb.Devices.Components do
     <section>
       <.section_heading title="Details" />
       <dl class="space-y-2.5">
+        <.device_detail_row label="Type">
+          <span class="text-xs text-body">{device_kind_label(@device)}</span>
+        </.device_detail_row>
         <.device_detail_row label="Device ID">
           <span class="font-mono text-[11px] text-body break-all">
             {@device.id}
@@ -1067,7 +1183,7 @@ defmodule PortalWeb.Devices.Components do
             <.relative_datetime datetime={@device.last_attested_at} />
           </span>
         </.device_detail_row>
-        <.device_detail_row label="Trust level">
+        <.device_detail_row :if={@device.type == :client} label="Trust level">
           <:info>
             <.popover placement="left">
               <:target>
@@ -1079,10 +1195,7 @@ defmodule PortalWeb.Devices.Components do
           <.device_verified_status device={@device} />
         </.device_detail_row>
         <.device_detail_row label="Version">
-          <.version
-            current={@device.last_seen_version}
-            latest={ComponentVersions.client_version(@device)}
-          />
+          <.version current={@device.last_seen_version} latest={latest_version(@device)} />
         </.device_detail_row>
         <.device_detail_row label="Last Seen">
           <span class="text-xs text-body">
@@ -1245,14 +1358,18 @@ defmodule PortalWeb.Devices.Components do
   end
 
   attr :title, :string, required: true
+  attr :hint, :string, default: nil
   slot :info, doc: "Rendered beside the title, for a popover explaining the section"
 
   def section_heading(assigns) do
     ~H"""
-    <h3 class="flex items-center gap-1 text-[10px] font-semibold tracking-widest uppercase text-subtle mb-3">
-      {@title}
-      {render_slot(@info)}
-    </h3>
+    <div class="mb-3 flex items-baseline justify-between gap-3">
+      <h3 class="flex items-center gap-1 text-[10px] font-semibold tracking-widest uppercase text-subtle">
+        {@title}
+        {render_slot(@info)}
+      </h3>
+      <span :if={@hint} class="text-[10px] text-subtle">{@hint}</span>
+    </div>
     """
   end
 
@@ -1318,10 +1435,10 @@ defmodule PortalWeb.Devices.Components do
     }
   end
 
-  defp trust_state(_client), do: nil
+  defp trust_state(_device), do: nil
 
-  defp trust_hint(client) do
-    case trust_state(client) do
+  defp trust_hint(device) do
+    case trust_state(device) do
       %{title: title} -> title
       nil -> "No certificate or admin has vouched for the values this Device reports."
     end
@@ -1434,6 +1551,41 @@ defmodule PortalWeb.Devices.Components do
     "This serial is reported by #{posture_provider_label(provider)} and matches " <>
       "the attested device ID from an X.509 certificate."
   end
+
+  defp device_icon_name(%{type: :gateway}), do: "ri-server-line"
+  defp device_icon_name(device), do: os_icon_name(device.last_seen_user_agent)
+
+  defp device_icon_label(%{type: :gateway} = device) do
+    case os_name_and_version(device.last_seen_user_agent) do
+      "" -> "Gateway"
+      os -> "Gateway on#{os}"
+    end
+  end
+
+  defp device_icon_label(device) do
+    case os_name_and_version(device.last_seen_user_agent) do
+      "" -> "Client"
+      os -> "Client on#{os}"
+    end
+  end
+
+  def latest_version(%{type: :gateway}), do: ComponentVersions.gateway_version()
+  def latest_version(device), do: ComponentVersions.client_version(device)
+
+  defp device_kind_label(%{type: :gateway}), do: "Gateway"
+  defp device_kind_label(_device), do: "Client"
+
+  defp device_location_caption(device) do
+    region_code = device.last_seen_remote_ip_location_region
+    region = if region_code, do: Portal.Geo.country_common_name!(region_code) || region_code
+
+    case Enum.reject([device.last_seen_remote_ip_location_city, region], &(&1 in [nil, ""])) do
+      [] -> "Location unknown"
+      parts -> Enum.join(parts, ", ")
+    end
+  end
+
+  defp format_coord(n) when is_number(n), do: :erlang.float_to_binary(n * 1.0, decimals: 3)
 
   defp posture_provider_label(:intune), do: "Microsoft Intune"
   defp posture_provider_label(:iru), do: "Iru"

@@ -1,7 +1,7 @@
 defmodule PortalWeb.Devices do
   use PortalWeb, :live_view
   import PortalWeb.Devices.Components
-  alias Portal.{Presence.Clients, ComponentVersions}
+  alias Portal.Presence
   alias Portal.Changes.Change
   alias Portal.Device
   alias Portal.PubSub
@@ -12,7 +12,8 @@ defmodule PortalWeb.Devices do
     subject = socket.assigns.subject
 
     if connected?(socket) do
-      :ok = Clients.Account.subscribe(subject.account.id)
+      :ok = Presence.Clients.Account.subscribe(subject.account.id)
+      :ok = Presence.Gateways.Account.subscribe(subject.account.id)
       :ok = PubSub.Changes.subscribe(socket.assigns.account.id, :devices)
     end
 
@@ -24,14 +25,14 @@ defmodule PortalWeb.Devices do
       |> assign_async(:devices_count, fn -> {:ok, %{devices_count: Database.count_devices(subject)}} end)
       |> assign(
         device_pools: [],
-        policy_authorizations: [],
-        policy_authorizations_page: 1,
-        policy_authorizations_has_next: false,
-        policy_authorizations_expanded_id: nil,
         device_posture: [],
         device_certificate: nil,
         posture_providers_connected?: false,
-        serials_by_device: %{}
+        serials_by_device: %{},
+        policy_authorizations: [],
+        policy_authorizations_page: 1,
+        policy_authorizations_has_next: false,
+        policy_authorizations_expanded_id: nil
       )
       |> assign(base_device_assigns())
       |> assign_live_table("devices",
@@ -69,14 +70,14 @@ defmodule PortalWeb.Devices do
          |> assign(show_device_assigns(tab))
          |> assign(
            device_pools: Database.list_device_pools(device, socket.assigns.subject),
-           policy_authorizations: policy_authorizations,
-           policy_authorizations_page: page,
-           policy_authorizations_has_next: has_next,
-           policy_authorizations_expanded_id: nil,
            device_posture: Database.list_posture_for_device(device, socket.assigns.subject),
            device_certificate: Database.certificate_status(device, socket.assigns.subject),
            posture_providers_connected?:
-             Database.posture_providers_connected?(socket.assigns.subject)
+             Database.posture_providers_connected?(socket.assigns.subject),
+           policy_authorizations: policy_authorizations,
+           policy_authorizations_page: page,
+           policy_authorizations_has_next: has_next,
+           policy_authorizations_expanded_id: nil
          )}
     end
   end
@@ -87,6 +88,9 @@ defmodule PortalWeb.Devices do
     case Database.get_device_for_panel(id, socket.assigns.subject) do
       nil ->
         redirect_to_devices_index(socket, "Device does not exist.")
+
+      %Device{type: :gateway} = device ->
+        {:noreply, push_patch(socket, to: ~p"/#{socket.assigns.account}/devices/#{device.id}")}
 
       device ->
         changeset = Database.change_device(device)
@@ -103,17 +107,12 @@ defmodule PortalWeb.Devices do
 
     {:noreply,
      socket
-     |> assign(
-       selected_device: nil,
-       device_pools: [],
-       device_posture: [],
-       device_certificate: nil
-     )
+     |> assign(selected_device: nil, device_pools: [], device_posture: [], device_certificate: nil)
      |> assign(base_device_assigns())}
   end
 
   def handle_devices_update!(socket, list_opts) do
-    list_opts = Keyword.put(list_opts, :preload, [:actor, :online?])
+    list_opts = Keyword.put(list_opts, :preload, [:actor, :site, :online?])
 
     with {:ok, devices, metadata} <- Database.list_devices(socket.assigns.subject, list_opts) do
       {:ok,
@@ -134,7 +133,7 @@ defmodule PortalWeb.Devices do
         </:icon>
         <:title>Devices</:title>
         <:description>
-          End-user devices and servers that access your protected Resources.
+          Machines in your organization running a Firezone client or gateway.
         </:description>
         <:action>
           <.docs_action path="/deploy/clients" />
@@ -182,21 +181,13 @@ defmodule PortalWeb.Devices do
             </div>
           </:col>
           <:col :let={device} label="Owner">
-            <.actor_name_and_role
-              account={@account}
-              actor={device.actor}
-              class="text-sm"
-              return_to={@return_to}
-            />
+            <.device_owner_cell account={@account} device={device} return_to={@return_to} />
           </:col>
           <:col :let={device} label="Serial" class="w-44">
             <.serial_cell serial={Map.get(@serials_by_device, device.id)} />
           </:col>
           <:col :let={device} field={{:devices, :last_seen_version}} label="Version" class="w-32">
-            <.version
-              current={device.last_seen_version}
-              latest={ComponentVersions.client_version(device)}
-            />
+            <.version current={device.last_seen_version} latest={latest_version(device)} />
           </:col>
           <:col :let={device} label="Status" class="w-28">
             <.device_status_badge online?={device.online?} />
@@ -353,6 +344,17 @@ defmodule PortalWeb.Devices do
     {:noreply, assign(socket, policy_authorizations_expanded_id: expanded)}
   end
 
+  def handle_event(event, _params, %{assigns: %{selected_device: %Device{type: :gateway}}} = socket)
+      when event in [
+             "open_device_edit_form",
+             "submit_device_edit_form",
+             "verify_device",
+             "unverify_device",
+             "delete_device"
+           ] do
+    {:noreply, socket}
+  end
+
   def handle_event("open_device_edit_form", _params, socket) do
     {:noreply,
      push_patch(socket,
@@ -379,12 +381,12 @@ defmodule PortalWeb.Devices do
     changeset = Database.change_device(socket.assigns.selected_device, attrs)
 
     case Database.update_device(changeset, socket.assigns.subject) do
-      {:ok, updated_client} ->
+      {:ok, updated_device} ->
         {:noreply,
          socket
          |> put_flash(:success, "Device updated successfully.")
          |> reload_live_table!("devices")
-         |> push_patch(to: ~p"/#{socket.assigns.account}/devices/#{updated_client.id}")}
+         |> push_patch(to: ~p"/#{socket.assigns.account}/devices/#{updated_device.id}")}
 
       {:error, changeset} ->
         {:noreply,
@@ -424,11 +426,11 @@ defmodule PortalWeb.Devices do
     device = socket.assigns.selected_device
 
     case Database.verify_device(device, socket.assigns.subject) do
-      {:ok, updated_client} ->
+      {:ok, updated_device} ->
         {:noreply,
          socket
          |> put_flash(:success, "Device \"#{device.name}\" was verified.")
-         |> assign_updated_selected_device(updated_client)
+         |> assign_updated_selected_device(updated_device)
          |> merge_state(:device_confirm, unverify?: false)
          |> reload_live_table!("devices")}
 
@@ -449,11 +451,11 @@ defmodule PortalWeb.Devices do
     device = socket.assigns.selected_device
 
     case Database.remove_device_verification(device, socket.assigns.subject) do
-      {:ok, updated_client} ->
+      {:ok, updated_device} ->
         {:noreply,
          socket
          |> put_flash(:success, "Device \"#{device.name}\" was unverified.")
-         |> assign_updated_selected_device(updated_client)
+         |> assign_updated_selected_device(updated_device)
          |> merge_state(:device_confirm, unverify?: false)
          |> reload_live_table!("devices")}
 
@@ -482,11 +484,11 @@ defmodule PortalWeb.Devices do
     end
   end
 
-  defp assign_updated_selected_device(socket, updated_client) do
+  defp assign_updated_selected_device(socket, updated_device) do
     selected_device = %{
       socket.assigns.selected_device
-      | verified_at: updated_client.verified_at,
-        updated_at: updated_client.updated_at
+      | verified_at: updated_device.verified_at,
+        updated_at: updated_device.updated_at
     }
 
     assign(socket, :selected_device, selected_device)
@@ -511,7 +513,7 @@ defmodule PortalWeb.Devices do
      |> push_patch(to: ~p"/#{socket.assigns.account}/devices?#{socket.assigns.query_params}")}
   end
 
-  def handle_info(%Change{op: :insert, struct: %Device{type: :client}} = change, socket) do
+  def handle_info(%Change{op: :insert, struct: %Device{}} = change, socket) do
     {:noreply,
      socket
      |> update(:devices_count, fn
@@ -521,7 +523,7 @@ defmodule PortalWeb.Devices do
      |> mark_stale_if_unreflected(change)}
   end
 
-  def handle_info(%Change{op: :delete, old_struct: %Device{type: :client}} = change, socket) do
+  def handle_info(%Change{op: :delete, old_struct: %Device{}} = change, socket) do
     {:noreply,
      socket
      |> update(:devices_count, fn
@@ -531,28 +533,30 @@ defmodule PortalWeb.Devices do
      |> mark_stale_if_unreflected(change)}
   end
 
-  def handle_info(%Change{struct: %Device{type: :client}} = change, socket) do
+  def handle_info(%Change{struct: %Device{}} = change, socket) do
     {:noreply, mark_stale_if_unreflected(socket, change)}
   end
 
-  def handle_info(%Change{struct: %Device{type: :gateway}}, socket), do: {:noreply, socket}
-  def handle_info(%Change{old_struct: %Device{type: :gateway}}, socket), do: {:noreply, socket}
+  def handle_info(%Phoenix.Socket.Broadcast{topic: "presences:account_clients:" <> _rest} = event, socket) do
+    handle_presence_event(event, socket)
+  end
 
-  def handle_info(
-        %Phoenix.Socket.Broadcast{topic: "presences:account_clients:" <> _account_id} = event,
-        socket
-      ) do
-    rendered_client_ids = Enum.map(socket.assigns.devices, & &1.id)
+  def handle_info(%Phoenix.Socket.Broadcast{topic: "presences:account_gateways:" <> _rest} = event, socket) do
+    handle_presence_event(event, socket)
+  end
 
-    if presence_updates_any_id?(event, rendered_client_ids) do
+  def handle_info(message, socket), do: PortalWeb.Live.Helpers.handle_info_fallback(message, socket)
+
+  defp handle_presence_event(event, socket) do
+    rendered_ids = Enum.map(socket.assigns.devices, & &1.id)
+
+    if presence_updates_any_id?(event, rendered_ids) do
       socket = reload_live_table!(socket, "devices")
       {:noreply, socket}
     else
       {:noreply, socket}
     end
   end
-
-  def handle_info(message, socket), do: PortalWeb.Live.Helpers.handle_info_fallback(message, socket)
 
   defp mark_stale_if_unreflected(socket, change) do
     if PortalWeb.LiveTable.view_reflects_change?(socket.assigns.devices, change) do
@@ -567,7 +571,7 @@ defmodule PortalWeb.Devices do
     import Ecto.Query
     import Portal.Changeset
     import Portal.Repo.Query
-    alias Portal.{Presence.Clients, Safe}
+    alias Portal.{Presence.Clients, Presence.Gateways, Safe}
     alias Portal.Device
     alias Portal.Policy
     alias Portal.PolicyAuthorization
@@ -581,7 +585,6 @@ defmodule PortalWeb.Devices do
 
     def count_devices(subject) do
       from(d in Device, as: :devices)
-      |> where([devices: d], d.type == :client)
       |> Safe.scoped(subject)
       |> Safe.aggregate(:count)
     end
@@ -614,22 +617,25 @@ defmodule PortalWeb.Devices do
 
     defp page_query(_subject) do
       from(d in Device, as: :devices)
-      |> where([devices: d], d.type == :client)
     end
 
     defp maybe_filter_by_presence(base_query, presence, subject) do
       case presence do
         "online" ->
-          ids = Clients.online_client_ids(subject.account.id)
+          ids = online_device_ids(subject.account.id)
           where(base_query, [devices: d], d.id in ^ids)
 
         "offline" ->
-          ids = Clients.online_client_ids(subject.account.id)
+          ids = online_device_ids(subject.account.id)
           where(base_query, [devices: d], d.id not in ^ids)
 
         _ ->
           base_query
       end
+    end
+
+    defp online_device_ids(account_id) do
+      Clients.online_client_ids(account_id) ++ Map.keys(Gateways.Account.list(account_id))
     end
 
     defp list_device_ids(filtered_query, paginator_opts, subject) do
@@ -662,8 +668,11 @@ defmodule PortalWeb.Devices do
         :actor, devices ->
           Safe.preload(devices, :actor)
 
+        :site, devices ->
+          Safe.preload(devices, :site)
+
         :online?, devices ->
-          Clients.preload_clients_presence(devices)
+          preload_presence(devices)
 
         _other, devices ->
           devices
@@ -684,8 +693,8 @@ defmodule PortalWeb.Devices do
             {:ok, Portal.Device.t()} | {:error, Ecto.Changeset.t()}
     def update_device(changeset, subject) do
       case Safe.scoped(changeset, subject) |> Safe.update() do
-        {:ok, updated_client} ->
-          {:ok, Clients.preload_clients_presence([updated_client]) |> List.first()}
+        {:ok, updated_device} ->
+          {:ok, List.first(preload_presence([updated_device]))}
 
         {:error, reason} ->
           {:error, reason}
@@ -714,31 +723,39 @@ defmodule PortalWeb.Devices do
             {:ok, Portal.Device.t()} | {:error, term()}
     def delete_device(device, subject) do
       case Safe.scoped(device, subject) |> Safe.delete() do
-        {:ok, deleted_client} ->
-          {:ok, Clients.preload_clients_presence([deleted_client]) |> List.first()}
+        {:ok, deleted_device} ->
+          {:ok, List.first(preload_presence([deleted_device]))}
 
         {:error, reason} ->
           {:error, reason}
       end
     end
 
+    # Each type has its own presence, so ask both and keep the input order.
+    def preload_presence(devices) do
+      {gateways, clients} = Enum.split_with(devices, &(&1.type == :gateway))
+
+      by_id =
+        (Clients.preload_clients_presence(clients) ++
+           Gateways.preload_gateways_presence(gateways))
+        |> Map.new(&{&1.id, &1})
+
+      Enum.map(devices, &Map.fetch!(by_id, &1.id))
+    end
+
     @spec get_device_for_panel(binary(), Portal.Authentication.Subject.t()) ::
             Portal.Device.t() | nil
     def get_device_for_panel(id, subject) do
       device =
-        from(c in Device, as: :devices)
-        |> where([devices: d], d.type == :client)
+        from(d in Device, as: :devices)
         |> where([devices: d], d.id == ^id)
-        |> preload([:actor])
+        |> preload([:actor, :site])
         |> Safe.scoped(subject)
         |> Safe.one()
 
       case device do
-        %Device{type: :client} ->
-          Clients.preload_clients_presence([device]) |> List.first()
-
-        _ ->
-          nil
+        %Device{} -> List.first(preload_presence([device]))
+        _refused_or_missing -> nil
       end
     end
 
@@ -773,7 +790,8 @@ defmodule PortalWeb.Devices do
     def preloads do
       [
         :actor,
-        online?: &Clients.preload_clients_presence/1
+        :site,
+        online?: &preload_presence/1
       ]
     end
 
@@ -781,9 +799,20 @@ defmodule PortalWeb.Devices do
       [
         %Portal.Repo.Filter{
           name: :search,
-          title: "Device or Actor",
+          title: "Device, Actor or Site",
           type: {:string, :websearch},
           fun: &filter_by_search_fts/2
+        },
+        %Portal.Repo.Filter{
+          name: :type,
+          title: "Type",
+          type: :string,
+          values: [
+            {"Client", "client"},
+            {"Gateway", "gateway"}
+          ],
+          icons: %{"client" => "ri-computer-line", "gateway" => "ri-server-line"},
+          fun: &filter_by_type/2
         },
         %Portal.Repo.Filter{
           name: :attestation,
@@ -809,29 +838,49 @@ defmodule PortalWeb.Devices do
       ]
     end
 
+    # Left joins: an inner join on actor or site drops the other type from every search.
     def filter_by_search_fts(queryable, search_term) do
       queryable =
         if has_named_binding?(queryable, :actors) do
           queryable
         else
-          join(queryable, :inner, [devices: d], a in assoc(d, :actor),
+          join(queryable, :left, [devices: d], a in assoc(d, :actor),
             on: a.account_id == d.account_id,
             as: :actors
           )
         end
 
+      queryable =
+        if has_named_binding?(queryable, :sites) do
+          queryable
+        else
+          join(queryable, :left, [devices: d], s in assoc(d, :site),
+            on: s.account_id == d.account_id,
+            as: :sites
+          )
+        end
+
       {queryable,
        dynamic(
-         [devices: devices, actors: actors],
+         [devices: devices, actors: actors, sites: sites],
          fulltext_search(actors.name, ^search_term) or
            fulltext_search(devices.name, ^search_term) or
-           fulltext_search(actors.email, ^search_term)
+           fulltext_search(actors.email, ^search_term) or
+           fulltext_search(sites.name, ^search_term)
        )}
     end
 
     # A device that attested is badged "Attested" rather than "Verified" however
     # its verified_at reads, so the two options have to be exclusive here too or
     # the filter would disagree with the panel.
+    def filter_by_type(queryable, "client") do
+      {queryable, dynamic([devices: devices], devices.type == :client)}
+    end
+
+    def filter_by_type(queryable, "gateway") do
+      {queryable, dynamic([devices: devices], devices.type == :gateway)}
+    end
+
     def filter_by_attestation(queryable, "verified") do
       {queryable,
        dynamic(
@@ -848,7 +897,8 @@ defmodule PortalWeb.Devices do
       {queryable,
        dynamic(
          [devices: devices],
-         is_nil(devices.verified_at) and is_nil(devices.last_attested_at)
+         devices.type == :client and is_nil(devices.verified_at) and
+           is_nil(devices.last_attested_at)
        )}
     end
 
@@ -955,7 +1005,7 @@ defmodule PortalWeb.Devices do
               via: :intune | nil
             }
           ]
-    def list_posture_for_device(%Device{type: :client} = device, subject) do
+    def list_posture_for_device(%Device{} = device, subject) do
       keys = match_keys(device)
       providers = list_posture_providers(subject)
 

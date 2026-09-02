@@ -89,6 +89,7 @@ defmodule Portal.Repo.Filter do
             | Range.t()
             | (Portal.Authentication.Subject.t() -> values() | Range.t())
             | nil,
+          icons: %{term() => String.t()},
           fun: fun()
         }
 
@@ -96,6 +97,7 @@ defmodule Portal.Repo.Filter do
             title: nil,
             type: nil,
             values: nil,
+            icons: %{},
             fun: nil
 
   @doc """
