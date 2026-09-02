@@ -126,6 +126,7 @@ public final class VPNConfigurationManager {
   /// A candidate configuration and what we could learn about where it came from.
   private struct Candidate {
     let manager: any TunnelProviderManager
+    let configuration: NETunnelProviderProtocol
     let hasIdentityReference: Bool
     let isManaged: Bool
   }
@@ -153,8 +154,10 @@ public final class VPNConfigurationManager {
 
       let hasIdentityReference = configuration.identityReference != nil
 
+      // Captured before the repair below fills in the provider bundle identifier.
       return Candidate(
         manager: manager,
+        configuration: configuration,
         hasIdentityReference: hasIdentityReference,
         isManaged: configuration.providerBundleIdentifier == nil || hasIdentityReference
       )
@@ -177,17 +180,14 @@ public final class VPNConfigurationManager {
 
     // Some MDMs (for example Intune's built-in VPN payload) cannot set ProviderBundleIdentifier,
     // and the tunnel cannot start from a profile without it. Fill it in ourselves.
-    if selected.isManaged,
-      let configuration = selected.manager.protocolConfiguration as? NETunnelProviderProtocol,
-      configuration.providerBundleIdentifier == nil
-    {
+    if selected.configuration.providerBundleIdentifier == nil {
       Log.warning(
         "The managed VPN profile has no ProviderBundleIdentifier; "
           + "setting it to \(selected.manager.extensionBundleIdentifier)"
       )
 
-      configuration.providerBundleIdentifier = selected.manager.extensionBundleIdentifier
-      selected.manager.protocolConfiguration = configuration
+      selected.configuration.providerBundleIdentifier = selected.manager.extensionBundleIdentifier
+      selected.manager.protocolConfiguration = selected.configuration
 
       try await selected.manager.saveToPreferences()
       try await selected.manager.loadFromPreferences()
