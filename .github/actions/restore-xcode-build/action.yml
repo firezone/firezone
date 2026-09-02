@@ -33,7 +33,7 @@ runs:
       run: |
         : "${XCODE_VERSION:?the calling job must pin the Xcode version}"
 
-        prefix="v2-xcode-build-${{ inputs.key }}-${{ runner.arch }}-${XCODE_VERSION}-"
+        prefix="v3-xcode-build-${{ inputs.key }}-${{ runner.arch }}-${XCODE_VERSION}-"
 
         echo "prefix=${prefix}" >> "$GITHUB_OUTPUT"
         echo "value=${prefix}${{ hashFiles('swift/apple/**', '!swift/apple/screenshots/**') }}" >> "$GITHUB_OUTPUT"
@@ -52,11 +52,27 @@ runs:
         key: ${{ steps.key.outputs.value }}
         restore-keys: ${{ steps.key.outputs.prefix }}
 
-    # Xcode keys its incremental database on the dates of the sources it is about
-    # to build, and a checkout dates every file by the moment it was written,
-    # which would strand the database that came with the products above. A
-    # constant keeps that key independent of what a pull request edited, and the
-    # edit is still rebuilt because the tasks under it compare content.
-    - name: Date the sources deterministically
+    # A checkout dates every file by the moment it was written, which would date
+    # the whole tree past the products restored above. Dating by content keeps a
+    # file the cached build already saw at the date it saw it, and can never hand
+    # an edited file the date of the version it replaced.
+    - name: Date the sources by their content
       shell: bash
-      run: find swift/apple -type f -exec touch -t 202601010000 {} +
+      run: |
+        python3 - swift/apple <<'PY'
+        import hashlib, os, sys
+
+        # Ten years of seconds from 1990: safely in the past, and far more values
+        # than the few hundred files that have to stay apart.
+        EPOCH, WINDOW = 631152000, 315360000
+
+        for directory, _, names in os.walk(sys.argv[1]):
+            for name in names:
+                path = os.path.join(directory, name)
+                if os.path.islink(path):
+                    continue
+                with open(path, "rb") as handle:
+                    digest = hashlib.sha256(handle.read()).digest()
+                date = (EPOCH + int.from_bytes(digest, "big") % WINDOW) * 10**9
+                os.utime(path, ns=(date, date))
+        PY
