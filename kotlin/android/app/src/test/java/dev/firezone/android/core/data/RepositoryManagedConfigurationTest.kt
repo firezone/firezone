@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import android.os.Bundle
 import dev.firezone.android.core.data.model.ManagedConfigStatus
+import dev.firezone.android.core.data.model.ManagedConfiguration
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -161,12 +162,22 @@ class RepositoryManagedConfigurationTest {
                 }
             repository.saveManagedConfiguration(managedRestrictions).first()
 
-            assertEquals("managed-alias", repository.getX509CertificateAliasSync(managedRestrictions))
+            assertEquals(
+                "managed-alias",
+                ManagedConfiguration
+                    .from(managedRestrictions)
+                    .resolveX509CertificateAlias(repository.getUserX509CertificateAliasSync()),
+            )
 
             val revokedRestrictions = Bundle()
             repository.saveManagedConfiguration(revokedRestrictions).first()
 
-            assertEquals("user-alias", repository.getX509CertificateAliasSync(revokedRestrictions))
+            assertEquals(
+                "user-alias",
+                ManagedConfiguration
+                    .from(revokedRestrictions)
+                    .resolveX509CertificateAlias(repository.getUserX509CertificateAliasSync()),
+            )
         }
 
     private fun allManagedConfig(): Bundle =
