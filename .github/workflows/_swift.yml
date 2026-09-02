@@ -102,7 +102,7 @@ jobs:
         if: matrix.platform == 'ios'
         run: mise run //swift/apple:boot-simulator
       - uses: ./.github/actions/restore-xcode-build
-        id: xcode-cache
+        id: xcode-build
         with:
           path: ${{ runner.temp }}/DerivedData
           key: ${{ matrix.platform }}
@@ -116,13 +116,18 @@ jobs:
         with:
           name: ${{ matrix.platform }}-screenshots
           path: swift/apple/screenshots/${{ matrix.platform }}
+      # Only `main` writes, and only what it did not already have. A cache saved
+      # from a pull request or merge queue branch lives in that branch's own
+      # scope, where no other run can read it, yet it still counts against the
+      # repository's quota and evicts the `main` entries that every run does
+      # read. `success()` is spelled out because naming any condition at all
+      # replaces the implicit one, which would otherwise publish the build
+      # products of a capture that failed.
       - uses: ./.github/actions/save-xcode-build
+        if: success() && github.ref_name == 'main' && steps.xcode-build.outputs.cache-hit != 'true'
         with:
           path: ${{ runner.temp }}/DerivedData
-          build-key: ${{ steps.xcode-cache.outputs.build-key }}
-          packages-key: ${{ steps.xcode-cache.outputs.packages-key }}
-          build-cache-hit: ${{ steps.xcode-cache.outputs.build-cache-hit }}
-          packages-cache-hit: ${{ steps.xcode-cache.outputs.packages-cache-hit }}
+          key: ${{ steps.xcode-build.outputs.key }}
       # The result bundles hold XCUITest's own failure screenshots and logs.
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: failure()

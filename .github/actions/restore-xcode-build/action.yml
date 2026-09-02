@@ -1,6 +1,6 @@
 ---
 name: "Restore the Xcode build"
-description: "Restores the package checkouts and the build products of an Xcode build, so a build whose sources have not changed recompiles almost nothing."
+description: "Restores the build products of an Xcode build, so a build whose sources have not changed recompiles almost nothing."
 inputs:
   path:
     description: "DerivedData directory the build is told to use."
@@ -9,65 +9,35 @@ inputs:
     description: "Stable key prefix telling these build products apart from every other build's (e.g. platform and configuration)."
     required: true
 outputs:
-  build-key:
+  key:
     description: "Key the build products were looked up under. Hand it to `save-xcode-build` rather than recomputing it."
-    value: ${{ steps.keys.outputs.build }}
-  packages-key:
-    description: "Key the package checkouts were looked up under. Hand it to `save-xcode-build` rather than recomputing it."
-    value: ${{ steps.keys.outputs.packages }}
-  build-cache-hit:
+    value: ${{ steps.key.outputs.value }}
+  cache-hit:
     description: "'true' when the build products came back under the exact key, so there is nothing to save."
-    value: ${{ steps.build.outputs.cache-hit }}
-  packages-cache-hit:
-    description: "'true' when the checkouts came back under the exact key, so there is nothing to save."
-    value: ${{ steps.packages.outputs.cache-hit }}
+    value: ${{ steps.restore.outputs.cache-hit }}
 runs:
   using: "composite"
   steps:
     # A cold DerivedData recompiles the app, its extension and both package
-    # dependencies from scratch, which is the bulk of the run. The build key names
-    # every file the build products are a function of, so a hit can only ever be
-    # the build of those same sources: hence no restore-keys further down.
-    #
-    # The packages key carries no `key` discriminator, so every caller shares one
-    # entry: the checkouts are the same sources whatever gets built from them, and
-    # a copy per caller would cost the repository's cache quota ~800 MB each.
-    # Callers running in parallel therefore race to write it, and the loser says
-    # so ("another job may be creating this cache") and carries on.
-    - name: Compute the cache keys
-      id: keys
+    # dependencies from scratch, which is the bulk of the run. The key names every
+    # file the build products are a function of, so a hit can only ever be the
+    # build of those same sources: hence no restore-keys below.
+    - name: Compute the cache key
+      id: key
       shell: bash
       # Build products are not portable across Xcode versions, so keying on an
       # unset version would serve a 26.2 build to a job asking for a 27 one.
       run: |
         : "${XCODE_VERSION:?the calling job must pin the Xcode version}"
 
-        packages_prefix="v1-spm-${{ runner.arch }}-${XCODE_VERSION}-"
-
-        {
-          echo "build=v1-xcode-build-${{ inputs.key }}-${{ runner.arch }}-${XCODE_VERSION}-${{ hashFiles('swift/apple/**', '!swift/apple/screenshots/**', 'rust/**/*.rs', 'rust/**/Cargo.toml', 'rust/Cargo.lock', 'rust/rust-toolchain.toml', 'rust/**/.cargo/config.toml') }}"
-          echo "packages=${packages_prefix}${{ hashFiles('swift/apple/FirezoneKit/Package.resolved') }}"
-          echo "packages-prefix=${packages_prefix}"
-        } >> "$GITHUB_OUTPUT"
-
-    # The checkouts are a pure function of the resolved versions, so an older set
-    # is still a head start on resolving the current one.
-    - name: Restore the package checkouts
-      id: packages
-      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-      with:
-        path: ${{ inputs.path }}/SourcePackages
-        # Measurement only, reverted in the commit that follows: a key nothing
-        # can match, so the build runs with its products restored and its
-        # checkouts absent, which is what tells us whether the two are coupled.
-        key: measure-without-the-package-checkouts
+        echo "value=v1-xcode-build-${{ inputs.key }}-${{ runner.arch }}-${XCODE_VERSION}-${{ hashFiles('swift/apple/**', '!swift/apple/screenshots/**', 'rust/**/*.rs', 'rust/**/Cargo.toml', 'rust/Cargo.lock', 'rust/rust-toolchain.toml', 'rust/**/.cargo/config.toml') }}" >> "$GITHUB_OUTPUT"
 
     - name: Restore the build products
-      id: build
+      id: restore
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ${{ inputs.path }}/Build
-        key: ${{ steps.keys.outputs.build }}
+        key: ${{ steps.key.outputs.value }}
 
     # Xcode decides what to rebuild from file timestamps, and a checkout stamps
     # every file with the moment it was written, which on its own would age out

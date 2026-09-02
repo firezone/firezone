@@ -1,39 +1,17 @@
 ---
 name: "Save the Xcode build"
-description: "Saves what `restore-xcode-build` looked up and did not find, under the keys it computed."
+description: "Saves the build products of an Xcode build under the key `restore-xcode-build` looked them up with."
 inputs:
   path:
     description: "DerivedData directory the build was told to use."
     required: true
-  build-key:
-    description: "`build-key` output of `restore-xcode-build`."
-    required: true
-  packages-key:
-    description: "`packages-key` output of `restore-xcode-build`."
-    required: true
-  build-cache-hit:
-    description: "`build-cache-hit` output of `restore-xcode-build`."
-    required: true
-  packages-cache-hit:
-    description: "`packages-cache-hit` output of `restore-xcode-build`."
+  key:
+    description: "`key` output of `restore-xcode-build`."
     required: true
 runs:
   using: "composite"
   steps:
-    # Only `main` writes. A cache saved from a pull request or merge queue branch
-    # lives in that branch's own scope, where no other run can read it, yet it
-    # still counts against the repository's quota and evicts the `main` entries
-    # that every run does read.
-    - name: Save the package checkouts
-      if: github.ref == 'refs/heads/main' && inputs.packages-cache-hit != 'true'
-      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-      with:
-        path: ${{ inputs.path }}/SourcePackages
-        key: ${{ inputs.packages-key }}
-
-    - name: Save the build products
-      if: github.ref == 'refs/heads/main' && inputs.build-cache-hit != 'true'
-      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ${{ inputs.path }}/Build
-        key: ${{ inputs.build-key }}
+        key: ${{ inputs.key }}
