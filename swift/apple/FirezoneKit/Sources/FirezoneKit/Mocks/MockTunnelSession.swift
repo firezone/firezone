@@ -11,8 +11,7 @@
   /// Stands in for the provider behind `NETunnelProviderSession`.
   ///
   /// Answers the app's messages from state a scenario or a test sets, and moves through
-  /// the statuses a start or stop would, posting `NEVPNStatusDidChange` the way the real
-  /// session does so that `Store` observes it through the same notification.
+  /// the statuses a start or stop would.
   ///
   /// `@unchecked Sendable`: the protocol is `Sendable`, but the mock is only ever driven
   /// from the main actor.
@@ -38,6 +37,7 @@
     private(set) var starts: [[String: Any]] = []
     private(set) var messages: [ProviderMessage] = []
     private var lastDisconnectError: (any Error)?
+    private var statusObservers: [AsyncStream<NEVPNStatus>.Continuation] = []
 
     init(
       status: NEVPNStatus,
@@ -66,6 +66,10 @@
       }
 
       transition(to: .connected)
+    }
+
+    func statusUpdates() -> AsyncStream<NEVPNStatus> {
+      AsyncStream { statusObservers.append($0) }
     }
 
     func stopTunnel() {
@@ -146,7 +150,10 @@
 
     private func transition(to newStatus: NEVPNStatus) {
       status = newStatus
-      NotificationCenter.default.post(name: .NEVPNStatusDidChange, object: self)
+
+      for observer in statusObservers {
+        observer.yield(newStatus)
+      }
     }
 
     /// The provider streams the bytes of a ZIP archive, so answer with the smallest

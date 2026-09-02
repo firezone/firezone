@@ -287,7 +287,7 @@ public final class Store: ObservableObject {
       throw VPNConfigurationManagerError.managerNotInitialized
     }
 
-    let statusStream = IPCClient.vpnStatusUpdates(session: session)
+    let statusStream = session.statusUpdates()
 
     vpnStatusTask = CancellableTask { [weak self] in
       for await status in statusStream {
