@@ -120,6 +120,10 @@ defmodule PortalAPI.JSON do
       MapSet.difference(alias_keys, declared),
       "The left-hand side of :aliases is the payload key, which must be a declared property.")
 
+    bail!(view, "lists :computed keys the OpenAPI schema does not declare",
+      MapSet.difference(computed, declared),
+      "A computed value still has to be a declared property of #{inspect(schema_module)}.")
+
     bail!(view, "declares fields that #{inspect(struct_module)} does not have",
       MapSet.difference(exposed, known),
       "Remove them from #{inspect(schema_module)}, or list them as :computed if the view supplies them.")
@@ -160,13 +164,18 @@ defmodule PortalAPI.JSON do
   Builds a payload containing exactly the OpenAPI schema's declared fields.
 
   Values are taken from `source` by key; `computed` supplies fields the struct
-  does not carry. The compile-time checks in `__using__/1` make a mismatch here
-  unreachable, so this raises only if called directly with a mismatched pair.
+  does not carry. Both are narrowed to the declared fields, so a stray computed
+  key cannot widen the payload beyond the schema. Rendering stays total: a key
+  the schema does not declare is dropped rather than raised on, since this runs
+  on every response. Declaring one is caught at compile time instead, and a
+  misspelled key still raises here because the field it was meant to supply
+  goes missing.
   """
   @spec render(struct(), module(), map()) :: map()
   def render(source, schema_module, computed \\ %{}) do
     fields = schema_module.field_names()
-    payload = source |> Map.take(fields) |> Map.merge(computed)
+    payload = source |> Map.take(fields) |> Map.merge(Map.take(computed, fields))
+
     optional =
       if Code.ensure_loaded?(schema_module) and
            function_exported?(schema_module, :optional_field_names, 0),
@@ -174,8 +183,13 @@ defmodule PortalAPI.JSON do
          else: []
 
     case (fields -- Map.keys(payload)) -- optional do
-      [] -> payload
-      missing -> raise ArgumentError, "#{inspect(schema_module)} declares unprovided fields: #{inspect(missing)}"
+      [] ->
+        payload
+
+      missing ->
+        raise ArgumentError,
+              "#{inspect(schema_module)} declares fields the payload does not provide: " <>
+                "#{inspect(missing)}"
     end
   end
 

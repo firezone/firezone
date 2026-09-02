@@ -72,6 +72,19 @@ defmodule PortalAPI.JSONTest do
       end
     end
 
+    test "rejects a :computed key the schema does not declare" do
+      assert_raise CompileError, ~r/lists :computed keys the OpenAPI schema does not declare/, fn ->
+        JSON.__verify__!(
+          @view,
+          Portal.Entra.Directory,
+          PortalAPI.Schemas.EntraDirectory.Schema,
+          [:not_a_property],
+          [:error_email_count, :is_verified],
+          []
+        )
+      end
+    end
+
     test "rejects an alias key the schema does not declare" do
       assert_raise CompileError, ~r/aliases keys the OpenAPI schema does not declare/, fn ->
         JSON.__verify__!(
@@ -112,8 +125,30 @@ defmodule PortalAPI.JSONTest do
 
   describe "render/3" do
     test "raises when a declared field is neither on the struct nor computed" do
-      assert_raise ArgumentError, ~r/declares unprovided fields/, fn ->
+      assert_raise ArgumentError, ~r/declares fields the payload does not provide/, fn ->
         JSON.render(%Portal.Site{}, PortalAPI.Schemas.EntraDirectory.Schema)
+      end
+    end
+
+    test "drops a computed key the schema does not declare" do
+      payload =
+        JSON.render(
+          %Portal.Site{id: Ecto.UUID.generate(), name: "vpc"},
+          PortalAPI.Schemas.Site.Schema,
+          %{surprise: "undeclared"}
+        )
+
+      assert Enum.sort(Map.keys(payload)) == PortalAPI.Schemas.Site.Schema.field_names()
+    end
+
+    test "still raises when a misspelled computed key leaves its field missing" do
+      # `type` is not a struct field, so it can only come from `computed`.
+      assert_raise ArgumentError, ~r/does not provide.*type/s, fn ->
+        JSON.render(
+          %Portal.Iru.PostureProvider{id: Ecto.UUID.generate()},
+          PortalAPI.Schemas.IruPostureProvider.Schema,
+          %{typ: "iru", name: "Iru"}
+        )
       end
     end
 
