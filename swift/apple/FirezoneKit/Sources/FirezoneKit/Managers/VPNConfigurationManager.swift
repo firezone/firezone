@@ -142,17 +142,18 @@ public final class VPNConfigurationManager {
       guard let configuration = manager.protocolConfiguration as? NETunnelProviderProtocol
       else { return nil }
 
-      // A com.apple.vpn.managed payload can leave this unset even though
-      // loadAllFromPreferences returned the configuration for us: NetworkExtension
-      // associated it with this app through the payload's VPNSubType. Our own
-      // initializer always sets it.
-      if let configured = configuration.providerBundleIdentifier,
-        configured != manager.extensionBundleIdentifier
-      {
+      switch configuration.providerBundleIdentifier {
+      case nil:
+        // A com.apple.vpn.managed payload can leave this unset even though
+        // loadAllFromPreferences returned the configuration for us: NetworkExtension
+        // associated it with this app through the payload's VPNSubType. Our own
+        // initializer always sets it.
+        return Candidate(manager: manager, configuration: configuration)
+      case .some(manager.extensionBundleIdentifier):
+        return Candidate(manager: manager, configuration: configuration)
+      default:
         return nil
       }
-
-      return Candidate(manager: manager, configuration: configuration)
     }
 
     guard let selected = candidates.first(where: \.hasIdentityReference) ?? candidates.first else {
