@@ -557,7 +557,6 @@ defmodule PortalWeb.Devices.Components do
           <div class="flex items-center gap-2">
             <h2 class="text-sm font-semibold text-heading truncate">{@device.name}</h2>
             <.device_status_badge device={@device} />
-            <.device_verified_badge device={@device} />
           </div>
           <p class="font-mono text-xs text-subtle mt-0.5 truncate">{@device.id}</p>
         </div>
