@@ -39,7 +39,6 @@ xcodebuild build \
     FIREZONE_NO_TELEMETRY="$no_telemetry" \
     CODE_SIGN_STYLE=Manual \
     CODE_SIGN_IDENTITY="$code_sign_identity" \
-    PACKET_TUNNEL_PROVIDER_SUFFIX=-systemextension \
     OTHER_CODE_SIGN_FLAGS="--timestamp" \
     CODE_SIGN_INJECT_BASE_ENTITLEMENTS=NO \
     CONFIGURATION_BUILD_DIR="$temp_dir" \
@@ -50,7 +49,7 @@ xcodebuild build \
     -project "$project_file" \
     -skipMacroValidation \
     -configuration Release \
-    -scheme Firezone \
+    -scheme FirezoneStandalone \
     -sdk macosx \
     -destination 'platform=macOS'
 

@@ -16,6 +16,57 @@ You may consider using a macOS VM (such as Parallels Desktop) to test the
 standalone macOS client, as it can be easier to test different macOS versions
 and configurations without risking your main machine.
 
+## macOS build variants
+
+macOS ships two builds of the same app. They differ in how the tunnel runs.
+
+|                       | App Store                              | Standalone                                               |
+| --------------------- | -------------------------------------- | -------------------------------------------------------- |
+| Xcode target / scheme | `Firezone`                             | `FirezoneStandalone`                                     |
+| Tunnel                | app extension, in `Contents/PlugIns`   | system extension, in `Contents/Library/SystemExtensions` |
+| Tunnel entitlement    | `packet-tunnel-provider`               | `packet-tunnel-provider-systemextension`                 |
+| Signed with           | Apple Distribution                     | Developer ID Application                                 |
+| Shipped as            | a `.pkg` uploaded to App Store Connect | a `.dmg` and a `.pkg` attached to a GitHub release       |
+
+The `Firezone` target also builds the iOS app. iOS has always worked the way the
+macOS App Store build now does: one app, one app extension inside it.
+
+Both builds keep the same bundle identifiers, `dev.firezone.firezone` for the
+app and `dev.firezone.firezone.network-extension` for the tunnel. They are one
+product shipped two ways, and only one of them can be on a Mac at a time.
+Keeping the identifiers is what lets a Mac move between them and keep its
+settings, its MDM configuration profile and the device id the tunnel stored. It
+also means the two builds take one App ID between them, with a separate
+provisioning profile each.
+
+What the split changes when the app is running:
+
+- An app extension only exists while the tunnel is up, and it runs as you. It
+  shares the app's group container, so the app reads, clears and exports the
+  tunnel's logs by reading the files itself. There is nothing to install and
+  nothing for the user to approve.
+- A system extension keeps running after the tunnel goes down, and it runs as
+  root with its own group container. The app has to install it, ask the user to
+  approve it, and talk to it over IPC to do anything with its logs.
+
+A build cannot carry both. Apple takes only the app extension packaging on the
+App Store, and only the system extension packaging for Developer ID, so two
+things are standalone only:
+
+- Serving a tunnel before anyone logs in. An app extension lives in a login
+  session, and at the login window there is none.
+- Using a client certificate that MDM installed at device scope. That
+  certificate sits in the System keychain, and its private key needs root. A
+  certificate installed at user scope works in either build.
+
+Both of those need MDM, and MDM deploys the standalone `.pkg`, so the capability
+is where it is needed.
+
+Code that has to tell the two apart reads `BundleHelper.tunnelProviderKind`.
+That comes from the `TunnelProviderKind` key every bundle declares in its
+Info.plist, so the app, the tunnel and the headless client all get the same
+answer.
+
 ## Building
 
 1. Add required Rust targets:
@@ -94,6 +145,9 @@ iPhone or iPad. Network Extensions can't be debugged in the iOS simulator.
    scripts/build/macos-standalone.sh
    ```
 
+   `macos-appstore.sh` builds the `Firezone` scheme and `macos-standalone.sh`
+   builds `FirezoneStandalone`.
+
 ## Developing
 
 ### Prerequisites
@@ -155,6 +209,13 @@ mise tasks              # List all available tasks
 mise run <task>         # Run a task (e.g. mise run build)
 ```
 
+`build`, `install` and `cli` build the standalone variant, which is what most
+Macs run. Set `VARIANT=appstore` to work on the other one:
+
+```sh
+VARIANT=appstore mise run build
+```
+
 From the repository root:
 
 ```sh
@@ -179,11 +240,14 @@ mise run cli -- connect --account-slug my-account
 `connect` is the default, so plain `firezone-cli` brings the tunnel up and stays
 in the foreground until you stop it. `sign-out` drops the stored token.
 
-It talks to the same system extension as the GUI and will not start without it.
-`extension status` reports whether that extension is installed and matches the
-build, and exits non-zero when it does not, so a setup script can check before
-going further. It cannot install the extension, since installing one needs a
-user to approve it. Launch the app once to do that.
+In the standalone build it talks to the same system extension as the GUI and
+will not start without it. `extension status` reports whether that extension is
+installed and matches the build, and exits non-zero when it does not, so a setup
+script can check before going further. It cannot install the extension, since
+installing one needs a user to approve it. Launch the app once to do that.
+
+In the App Store build there is no system extension: the tunnel ships inside the
+app. `extension status` says so and always succeeds.
 
 These environment variables are read when the matching flag is absent:
 
@@ -327,6 +391,13 @@ item is missing. You can remove the keychain item with the following command:
 ```bash
 security delete-generic-password -s "dev.firezone.firezone"
 ```
+
+The tunnel is what writes the token, so which keychain holds it depends on the
+build. The App Store build's app extension runs as you and writes to your login
+keychain, which the command above reaches. The standalone build's system
+extension runs as root and writes to the system keychain, so run it under `sudo`
+there. Switching a Mac between the two builds leaves the token behind in the
+other keychain, and the user has to sign in again.
 
 ## Generating new signing certificates and provisioning profiles for app store distribution
 

@@ -24,6 +24,8 @@
 	<string>$(MACOSX_DEPLOYMENT_TARGET)</string>
 	<key>AppGroupIdentifier</key>
 	<string>$(APP_GROUP_ID)</string>
+	<key>TunnelProviderKind</key>
+	<string>$(TUNNEL_PROVIDER_KIND)</string>
 	<key>NoTelemetry</key>
 	<string>$(FIREZONE_NO_TELEMETRY)</string>
 	<key>NSHumanReadableCopyright</key>

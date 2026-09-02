@@ -9,11 +9,13 @@ CONFIGURATION="${CONFIGURATION:-Debug}"
 cd "${APPLE_DIR}"
 
 echo "Cleaning Xcode build"
-xcodebuild clean \
-    -project Firezone.xcodeproj \
-    -scheme Firezone \
-    -configuration "${CONFIGURATION}" \
-    -sdk macosx
+for scheme in Firezone FirezoneStandalone; do
+    xcodebuild clean \
+        -project Firezone.xcodeproj \
+        -scheme "${scheme}" \
+        -configuration "${CONFIGURATION}" \
+        -sdk macosx
+done
 
 echo "Cleaning Rust build artifacts"
 cd "${RUST_DIR}/client-ffi" && cargo clean

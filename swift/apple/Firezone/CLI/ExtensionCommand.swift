@@ -14,9 +14,14 @@ import Foundation
 /// against the requesting bundle's `Contents/Library/SystemExtensions`, and the
 /// extension lives in `Firezone.app` rather than in here, so only the app can
 /// install it.
+///
+/// The App Store build has no system extension at all: its tunnel is an app extension
+/// that ships inside the app, so there is nothing to install or report on.
 enum SystemExtension {
   @MainActor
   static func requireInstalled() async throws {
+    guard BundleHelper.tunnelProviderKind == .systemExtension else { return }
+
     switch try await SystemExtensionManager().check() {
     case .installed:
       Log.info("System extension is up to date")
@@ -59,6 +64,12 @@ extension FirezoneCLI {
       @MainActor
       func run() async throws {
         Log.useCLIOutput()
+
+        guard BundleHelper.tunnelProviderKind == .systemExtension else {
+          print("bundled with the app")
+
+          return
+        }
 
         switch try await SystemExtensionManager().check() {
         case .installed:

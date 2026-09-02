@@ -47,6 +47,8 @@
   <false/>
   <key>GitSha</key>
   <string>$(GIT_SHA)</string>
+  <key>TunnelProviderKind</key>
+  <string>$(TUNNEL_PROVIDER_KIND)</string>
   <key>NoTelemetry</key>
   <string>$(FIREZONE_NO_TELEMETRY)</string>
 	<key>LSEnvironment</key>

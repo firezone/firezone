@@ -9,23 +9,42 @@ import Foundation
 @preconcurrency import NetworkExtension
 import SystemPackage
 
-/// Convenience module for smoothing over the differences between exporting logs on macOS and iOS.
+/// Convenience module for smoothing over the differences between exporting logs from a
+/// bundled provider and from a system extension.
 ///
-/// On macOS, we must export the app's log dir and tunnel's log dir separately to temp files, and then join
-/// these into a final compressed archive saved at the user's specified location. This is because Apple Archive
-/// compression APIs do not easily allow compressing from multiple disparate paths in one go; only a single
-/// source directory is supported.
+/// A bundled provider writes into the same group container as the app, so the app
+/// compresses the whole log directory itself with no help from the tunnel process, thus
+/// avoiding IPC. Every iOS build and the Mac App Store build take this path.
 ///
-/// On iOS, the app process can compress the entire log directory itself, with no help from the tunnel process,
-/// thus avoiding IPC. In this case we write directly to the provided archiveURL.
+/// A system extension runs as root and so writes into a different group container. Its
+/// logs have to be fetched over IPC into a temp file and joined with the app's own
+/// archive, because the Apple Archive compression APIs only take a single source
+/// directory.
+enum LogExporter {
+  enum ExportError: Error {
+    case invalidSourceDirectory
+    case invalidFileHandle
+    case documentDirectoryNotAvailable
+  }
+
+  // @concurrent: zipping a large log tree must not run on the main actor.
+  /// Compresses `logFolderURL` straight into `archiveURL`, with no help from the tunnel.
+  @concurrent
+  static func export(to archiveURL: URL, from logFolderURL: URL) async throws {
+    // Remove existing archive if it exists
+    try? fileManager.removeItem(at: archiveURL)
+
+    // Write final log archive
+    try ZipService.createZip(
+      source: logFolderURL,
+      to: archiveURL
+    )
+  }
+}
 
 #if os(macOS)
-  enum LogExporter {
-    enum ExportError: Error {
-      case invalidSourceDirectory
-      case invalidFileHandle
-    }
-
+  extension LogExporter {
+    /// Joins the app's logs with the ones the system extension hands over IPC.
     @MainActor
     static func export(
       to archiveURL: URL,
@@ -97,25 +116,7 @@ import SystemPackage
 #endif
 
 #if os(iOS)
-  enum LogExporter {
-    enum ExportError: Error {
-      case invalidSourceDirectory
-      case documentDirectoryNotAvailable
-    }
-
-    // @concurrent: zipping a large log tree must not run on the main actor.
-    @concurrent
-    static func export(to archiveURL: URL, from logFolderURL: URL) async throws {
-      // Remove existing archive if it exists
-      try? fileManager.removeItem(at: archiveURL)
-
-      // Write final log archive
-      try ZipService.createZip(
-        source: logFolderURL,
-        to: archiveURL
-      )
-    }
-
+  extension LogExporter {
     static func tempFile() throws -> URL {
       let fileName = "firezone_logs_\(now()).zip"
 

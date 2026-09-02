@@ -29,8 +29,8 @@
 		8D5047FB2CE6AA37009802E9 /* FirezoneNetworkExtension-Bridging-Header.h in Sources */ = {isa = PBXBuildFile; fileRef = 6FE455112A5D13A2006549B1 /* FirezoneNetworkExtension-Bridging-Header.h */; };
 		8D5047FE2CE6AA54009802E9 /* PacketTunnelProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05833DFA28F73B070008FAB0 /* PacketTunnelProvider.swift */; };
 		8DC08BD72B297DB400675F46 /* FirezoneNetworkExtension-Bridging-Header.h in Sources */ = {isa = PBXBuildFile; fileRef = 6FE455112A5D13A2006549B1 /* FirezoneNetworkExtension-Bridging-Header.h */; };
-		8DC1699D2CFF77D1006801B5 /* dev.firezone.firezone.network-extension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 05CF1CF0290B1CEE00CF4755 /* dev.firezone.firezone.network-extension.appex */; platformFilter = ios; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
-		8DC169A02CFF77D1006801B5 /* dev.firezone.firezone.network-extension.systemextension in Embed System Extensions */ = {isa = PBXBuildFile; fileRef = 8D5047E32CE6A8F4009802E9 /* dev.firezone.firezone.network-extension.systemextension */; platformFilters = (macos, ); settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		8DC1699D2CFF77D1006801B5 /* dev.firezone.firezone.network-extension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 05CF1CF0290B1CEE00CF4755 /* dev.firezone.firezone.network-extension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		8DC169A02CFF77D1006801B5 /* dev.firezone.firezone.network-extension.systemextension in Embed System Extensions */ = {isa = PBXBuildFile; fileRef = 8D5047E32CE6A8F4009802E9 /* dev.firezone.firezone.network-extension.systemextension */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		8DC333F92D2FA85200E627D5 /* libresolv.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = 8DC333F72D2FA85200E627D5 /* libresolv.tbd */; };
 		8DC333FA2D2FA85200E627D5 /* libresolv.9.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = 8DC333F82D2FA85200E627D5 /* libresolv.9.tbd */; };
 		8DC333FB2D2FA89100E627D5 /* SystemConfiguration.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 6FFECD5B2AD6998400E00273 /* SystemConfiguration.framework */; };
@@ -58,6 +58,21 @@
 		FZUIT0012E90000000000001 /* AppScreenshotTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FZUIT0012E90000000000010 /* AppScreenshotTests.swift */; };
 		FZUIT0012E90000000000002 /* ScreenshotDelivery.swift in Sources */ = {isa = PBXBuildFile; fileRef = FZUIT0012E90000000000012 /* ScreenshotDelivery.swift */; };
 		FZUIT0012E90000000000003 /* IOSScreenshotTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FZUIT0012E90000000000013 /* IOSScreenshotTests.swift */; };
+		FZSA00000000000000000020 /* FirezoneApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8DCC021C28D512AC007E12D2 /* FirezoneApp.swift */; };
+		FZSA00000000000000000021 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D0F0A032E9A000100BEEF02 /* main.swift */; };
+		FZSA00000000000000000022 /* x509claims.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7C0DE012E90000000000001 /* x509claims.swift */; };
+		FZSA00000000000000000023 /* FirezoneCLI.swift in Sources */ = {isa = PBXBuildFile; fileRef = FZ0CLI012E80000000000010 /* FirezoneCLI.swift */; };
+		FZSA00000000000000000024 /* SignIn.swift in Sources */ = {isa = PBXBuildFile; fileRef = FZ0CLI012E80000000000014 /* SignIn.swift */; };
+		FZSA00000000000000000025 /* TunnelSupervisor.swift in Sources */ = {isa = PBXBuildFile; fileRef = FZ0CLI012E80000000000015 /* TunnelSupervisor.swift */; };
+		FZSA00000000000000000026 /* ConnectCommand.swift in Sources */ = {isa = PBXBuildFile; fileRef = FZ0CLI012E80000000000016 /* ConnectCommand.swift */; };
+		FZSA00000000000000000027 /* SignOutCommand.swift in Sources */ = {isa = PBXBuildFile; fileRef = FZ0CLI012E80000000000017 /* SignOutCommand.swift */; };
+		FZSA00000000000000000028 /* ExtensionCommand.swift in Sources */ = {isa = PBXBuildFile; fileRef = FZ0CLI012E80000000000018 /* ExtensionCommand.swift */; };
+		FZSA00000000000000000050 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 8DA12C322BB7DA04007D91EB /* PrivacyInfo.xcprivacy */; };
+		FZSA00000000000000000051 /* Preview Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 8DCC022928D512AE007E12D2 /* Preview Assets.xcassets */; };
+		FZSA00000000000000000052 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 8DCC022528D512AE007E12D2 /* Assets.xcassets */; };
+		FZSA00000000000000000030 /* NetworkExtension.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 05D3BB1628FDBD8A00BC3727 /* NetworkExtension.framework */; };
+		FZSA00000000000000000031 /* FirezoneKit in Frameworks */ = {isa = PBXBuildFile; productRef = FZSA00000000000000000040 /* FirezoneKit */; };
+		FZSA00000000000000000032 /* ArgumentParser in Frameworks */ = {isa = PBXBuildFile; productRef = FZSA00000000000000000041 /* ArgumentParser */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -66,7 +81,7 @@
 			containerPortal = 8DCC021128D512AC007E12D2 /* Project object */;
 			proxyType = 1;
 			remoteGlobalIDString = 05CF1CEF290B1CEE00CF4755;
-			remoteInfo = FirezoneNetworkExtensioniOS;
+			remoteInfo = FirezoneNetworkExtensionAppex;
 		};
 		8DC169A12CFF77D1006801B5 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -88,6 +103,20 @@
 			proxyType = 1;
 			remoteGlobalIDString = 8DCC021828D512AC007E12D2;
 			remoteInfo = Firezone;
+		};
+		FZSA00000000000000000071 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 8DCC021128D512AC007E12D2 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 9A1000082F10000100BEEF01;
+			remoteInfo = KeepFirezoneRunning;
+		};
+		FZSA00000000000000000091 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 8DCC021128D512AC007E12D2 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = FZSA00000000000000000001;
+			remoteInfo = FirezoneStandalone;
 		};
 /* End PBXContainerItemProxy section */
 
@@ -147,8 +176,8 @@
 		8DCC022928D512AE007E12D2 /* Preview Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Preview Assets.xcassets"; sourceTree = "<group>"; };
 		8DD2C4C3297B37BA00F984BF /* FirezoneKit */ = {isa = PBXFileReference; lastKnownFileType = wrapper; path = FirezoneKit; sourceTree = "<group>"; };
 		8DDD0E8B2ADC6657001FA7E9 /* config.xcconfig */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.xcconfig; name = config.xcconfig; path = xcconfig/config.xcconfig; sourceTree = "<group>"; };
-		8DE1077A2D2313EB00DB5A45 /* Info.iOS.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.iOS.plist; sourceTree = "<group>"; };
-		8DE1077B2D2313EB00DB5A45 /* Info.macOS.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.macOS.plist; sourceTree = "<group>"; };
+		8DE1077A2D2313EB00DB5A45 /* Info.appex.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.appex.plist; sourceTree = "<group>"; };
+		8DE1077B2D2313EB00DB5A45 /* Info.systemextension.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.systemextension.plist; sourceTree = "<group>"; };
 		9A1000022F10000100BEEF01 /* KeepFirezoneRunning.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = KeepFirezoneRunning.entitlements; sourceTree = "<group>"; };
 		9A1000032F10000100BEEF01 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		9A1000042F10000100BEEF01 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
@@ -166,6 +195,9 @@
 		FZUIT0012E90000000000012 /* ScreenshotDelivery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenshotDelivery.swift; sourceTree = "<group>"; };
 		FZUIT0012E90000000000013 /* IOSScreenshotTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IOSScreenshotTests.swift; sourceTree = "<group>"; };
 		FZUIT0012E90000000000011 /* FirezoneUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = FirezoneUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		FZSA00000000000000000080 /* FirezoneStandalone.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = FirezoneStandalone.entitlements; sourceTree = "<group>"; };
+		FZSA00000000000000000081 /* FirezoneNetworkExtensionStandalone.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = FirezoneNetworkExtensionStandalone.entitlements; sourceTree = "<group>"; };
+		FZSA00000000000000000002 /* Firezone.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Firezone.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -214,19 +246,30 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		FZSA00000000000000000009 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				FZSA00000000000000000030 /* NetworkExtension.framework in Frameworks */,
+				FZSA00000000000000000031 /* FirezoneKit in Frameworks */,
+				FZSA00000000000000000032 /* ArgumentParser in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
 		05833DF928F73B070008FAB0 /* FirezoneNetworkExtension */ = {
 			isa = PBXGroup;
 			children = (
-				8DE1077A2D2313EB00DB5A45 /* Info.iOS.plist */,
-				8DE1077B2D2313EB00DB5A45 /* Info.macOS.plist */,
+				8DE1077A2D2313EB00DB5A45 /* Info.appex.plist */,
+				8DE1077B2D2313EB00DB5A45 /* Info.systemextension.plist */,
 				6C09DC14A4A04715A37BC04C /* Channel.swift */,
 				8D0000012D41000000A2 /* NetworkPathUpdates.swift */,
 				8D0000012D41000000B1 /* ProviderCommand.swift */,
 				E14DC5E933BD4F63A844A8A6 /* SessionEventLoop.swift */,
 				05CF1CF6290B1CEE00CF4755 /* FirezoneNetworkExtension.entitlements */,
+				FZSA00000000000000000081 /* FirezoneNetworkExtensionStandalone.entitlements */,
 				8D5047E82CE6A8F4009802E9 /* main.swift */,
 				177FB893F19457A113042247 /* Adapter.swift */,
 				6F0EDF232E79B00000D6D632 /* FirezoneId.swift */,
@@ -296,6 +339,7 @@
 			isa = PBXGroup;
 			children = (
 				8DCC021928D512AC007E12D2 /* Firezone.app */,
+				FZSA00000000000000000002 /* Firezone.app */,
 				9A1000052F10000100BEEF01 /* KeepFirezoneRunning.app */,
 				05CF1CF0290B1CEE00CF4755 /* dev.firezone.firezone.network-extension.appex */,
 				8D5047E32CE6A8F4009802E9 /* dev.firezone.firezone.network-extension.systemextension */,
@@ -308,6 +352,7 @@
 			isa = PBXGroup;
 			children = (
 				8D1D405C2CFF6F5200E669F9 /* Firezone.entitlements */,
+				FZSA00000000000000000080 /* FirezoneStandalone.entitlements */,
 				8D1D405D2CFF6F5D00E669F9 /* Info.plist */,
 				D7C0DE012E90000000000007 /* Firezone-Bridging-Header.h */,
 				8DDD0E8B2ADC6657001FA7E9 /* config.xcconfig */,
@@ -371,9 +416,9 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		05CF1CEF290B1CEE00CF4755 /* FirezoneNetworkExtensioniOS */ = {
+		05CF1CEF290B1CEE00CF4755 /* FirezoneNetworkExtensionAppex */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 05CF1CFA290B1CEE00CF4755 /* Build configuration list for PBXNativeTarget "FirezoneNetworkExtensioniOS" */;
+			buildConfigurationList = 05CF1CFA290B1CEE00CF4755 /* Build configuration list for PBXNativeTarget "FirezoneNetworkExtensionAppex" */;
 			buildPhases = (
 				8D8555832D0A7CBB00A1EA09 /* Build Connlib */,
 				05CF1CEC290B1CEE00CF4755 /* Sources */,
@@ -384,11 +429,11 @@
 			);
 			dependencies = (
 			);
-			name = FirezoneNetworkExtensioniOS;
+			name = FirezoneNetworkExtensionAppex;
 			packageProductDependencies = (
 				794C38142970A2660029F38F /* FirezoneKit */,
 			);
-			productName = FirezoneNetworkExtensioniOS;
+			productName = FirezoneNetworkExtensionAppex;
 			productReference = 05CF1CF0290B1CEE00CF4755 /* dev.firezone.firezone.network-extension.appex */;
 			productType = "com.apple.product-type.app-extension";
 		};
@@ -423,8 +468,8 @@
 				8DCC021628D512AC007E12D2 /* Frameworks */,
 				8DCC021728D512AC007E12D2 /* Resources */,
 				8D0F0A012E9A000100BEEF01 /* Bundle keep app running agent */,
+				FZSA00000000000000000014 /* Drop a stale system extension */,
 				8DC169A32CFF77D1006801B5 /* Embed Foundation Extensions */,
-				8DC169A42CFF77D1006801B5 /* Embed System Extensions */,
 				8D0F0A042E9A000100BEEF03 /* Link headless client */,
 			);
 			buildRules = (
@@ -432,7 +477,6 @@
 			dependencies = (
 				9A10000C2F10000100BEEF01 /* PBXTargetDependency */,
 				8DC1699F2CFF77D1006801B5 /* PBXTargetDependency */,
-				8DC169A22CFF77D1006801B5 /* PBXTargetDependency */,
 			);
 			name = Firezone;
 			packageProductDependencies = (
@@ -474,6 +518,7 @@
 			);
 			dependencies = (
 				FZUIT0012E90000000000051 /* PBXTargetDependency */,
+				FZSA00000000000000000090 /* PBXTargetDependency */,
 			);
 			name = FirezoneUITests;
 			packageProductDependencies = (
@@ -481,6 +526,34 @@
 			productName = FirezoneUITests;
 			productReference = FZUIT0012E90000000000011 /* FirezoneUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+		FZSA00000000000000000001 /* FirezoneStandalone */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = FZSA00000000000000000003 /* Build configuration list for PBXNativeTarget "FirezoneStandalone" */;
+			buildPhases = (
+				FZSA00000000000000000007 /* Generate build number */,
+				FZSA00000000000000000008 /* Sources */,
+				FZSA00000000000000000009 /* Frameworks */,
+				FZSA00000000000000000010 /* Resources */,
+				FZSA00000000000000000011 /* Bundle keep app running agent */,
+				FZSA00000000000000000012 /* Drop a stale app extension */,
+				8DC169A42CFF77D1006801B5 /* Embed System Extensions */,
+				FZSA00000000000000000013 /* Link headless client */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				FZSA00000000000000000070 /* PBXTargetDependency */,
+				8DC169A22CFF77D1006801B5 /* PBXTargetDependency */,
+			);
+			name = FirezoneStandalone;
+			packageProductDependencies = (
+				FZSA00000000000000000040 /* FirezoneKit */,
+				FZSA00000000000000000041 /* ArgumentParser */,
+			);
+			productName = FirezoneStandalone;
+			productReference = FZSA00000000000000000002 /* Firezone.app */;
+			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
 
@@ -506,6 +579,9 @@
 					9A1000082F10000100BEEF01 = {
 						CreatedOnToolsVersion = 16.4;
 					};
+					FZSA00000000000000000001 = {
+						CreatedOnToolsVersion = 26.2;
+					};
 					FZUIT0012E90000000000040 = {
 						CreatedOnToolsVersion = 26.2;
 						TestTargetID = 8DCC021828D512AC007E12D2;
@@ -529,8 +605,9 @@
 			projectRoot = "";
 			targets = (
 				8DCC021828D512AC007E12D2 /* Firezone */,
+				FZSA00000000000000000001 /* FirezoneStandalone */,
 				9A1000082F10000100BEEF01 /* KeepFirezoneRunning */,
-				05CF1CEF290B1CEE00CF4755 /* FirezoneNetworkExtensioniOS */,
+				05CF1CEF290B1CEE00CF4755 /* FirezoneNetworkExtensionAppex */,
 				8D5047E22CE6A8F4009802E9 /* FirezoneNetworkExtensionmacOS */,
 				FZUIT0012E90000000000040 /* FirezoneUITests */,
 			);
@@ -576,6 +653,16 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		FZSA00000000000000000010 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				FZSA00000000000000000050 /* PrivacyInfo.xcprivacy in Resources */,
+				FZSA00000000000000000051 /* Preview Assets.xcassets in Resources */,
+				FZSA00000000000000000052 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
@@ -599,7 +686,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "set -eu\nif [ \"${PLATFORM_NAME}\" != \"macosx\" ]; then\n  exit 0\nfi\nhelper_src=\"${BUILT_PRODUCTS_DIR}/KeepFirezoneRunning.app\"\nhelper_dir=\"${TARGET_BUILD_DIR}/${CONTENTS_FOLDER_PATH}/Library/LoginItems\"\nhelper_dst=\"${helper_dir}/KeepFirezoneRunning.app\"\nplist_template=\"${SRCROOT}/Firezone/LaunchAgents/dev.firezone.firezone.keep-app-running.plist.template\"\nplist_dir=\"${TARGET_BUILD_DIR}/${CONTENTS_FOLDER_PATH}/Library/LaunchAgents\"\nplist_dst=\"${plist_dir}/${PRODUCT_BUNDLE_IDENTIFIER}.keep-app-running.plist\"\nmkdir -p \"${helper_dir}\" \"${plist_dir}\"\nrm -rf \"${helper_dst}\"\n/usr/bin/ditto \"${helper_src}\" \"${helper_dst}\"\n/usr/bin/sed \"s#__PRODUCT_BUNDLE_IDENTIFIER__#${PRODUCT_BUNDLE_IDENTIFIER}#g\" \"${plist_template}\" > \"${plist_dst}\"\n";
+			shellScript = "set -eu\nif [ \"${PLATFORM_NAME}\" != \"macosx\" ]; then\n  exit 0\nfi\nhelper_src=\"${BUILT_PRODUCTS_DIR}/KeepFirezoneRunning.app\"\nhelper_dir=\"${TARGET_BUILD_DIR}/${CONTENTS_FOLDER_PATH}/Library/LoginItems\"\nhelper_dst=\"${helper_dir}/KeepFirezoneRunning.app\"\nplist_template=\"${SRCROOT}/Firezone/LaunchAgents/dev.firezone.firezone.keep-app-running.plist.template\"\nplist_dir=\"${TARGET_BUILD_DIR}/${CONTENTS_FOLDER_PATH}/Library/LaunchAgents\"\nplist_dst=\"${plist_dir}/${PRODUCT_BUNDLE_IDENTIFIER}.keep-app-running.plist\"\n# The two macOS apps build into one products directory and name their agent after\n# their own bundle id, so clear the folder rather than adding to it.\nrm -rf \"${plist_dir}\"\nmkdir -p \"${helper_dir}\" \"${plist_dir}\"\nrm -rf \"${helper_dst}\"\n/usr/bin/ditto \"${helper_src}\" \"${helper_dst}\"\n/usr/bin/sed \"s#__PRODUCT_BUNDLE_IDENTIFIER__#${PRODUCT_BUNDLE_IDENTIFIER}#g\" \"${plist_template}\" > \"${plist_dst}\"\n";
 		};
 		8D0F0A042E9A000100BEEF03 /* Link headless client */ = {
 			isa = PBXShellScriptBuildPhase;
@@ -695,6 +782,93 @@
 			shellPath = /bin/sh;
 			shellScript = "export PLATFORM_NAME=\"${PLATFORM_NAME}\"\nexport CONFIGURATION=\"${CONFIGURATION}\"\nexport NATIVE_ARCH=\"${ARCHS}\"\nexport RUST_TARGET_DIR=\"${RUST_TARGET_DIR}\"\n./mise-tasks/build-rust.sh\n";
 		};
+		FZSA00000000000000000007 /* Generate build number */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Generate build number";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(SRCROOT)/Firezone/xcconfig/dynamic_build_number.xcconfig",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# Set the project (build) version to the current epoch so that it monotonically increases\nseconds_since_epoch=$(date +%s)\necho \"CURRENT_PROJECT_VERSION = $seconds_since_epoch\" > \"${SRCROOT}/Firezone/xcconfig/dynamic_build_number.xcconfig\"\n";
+		};
+		FZSA00000000000000000011 /* Bundle keep app running agent */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(BUILT_PRODUCTS_DIR)/KeepFirezoneRunning.app",
+				"$(SRCROOT)/Firezone/LaunchAgents/dev.firezone.firezone.keep-app-running.plist.template",
+			);
+			name = "Bundle keep app running agent";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(TARGET_BUILD_DIR)/$(CONTENTS_FOLDER_PATH)/Library/LoginItems/KeepFirezoneRunning.app",
+				"$(TARGET_BUILD_DIR)/$(CONTENTS_FOLDER_PATH)/Library/LaunchAgents/$(PRODUCT_BUNDLE_IDENTIFIER).keep-app-running.plist",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -eu\nif [ \"${PLATFORM_NAME}\" != \"macosx\" ]; then\n  exit 0\nfi\nhelper_src=\"${BUILT_PRODUCTS_DIR}/KeepFirezoneRunning.app\"\nhelper_dir=\"${TARGET_BUILD_DIR}/${CONTENTS_FOLDER_PATH}/Library/LoginItems\"\nhelper_dst=\"${helper_dir}/KeepFirezoneRunning.app\"\nplist_template=\"${SRCROOT}/Firezone/LaunchAgents/dev.firezone.firezone.keep-app-running.plist.template\"\nplist_dir=\"${TARGET_BUILD_DIR}/${CONTENTS_FOLDER_PATH}/Library/LaunchAgents\"\nplist_dst=\"${plist_dir}/${PRODUCT_BUNDLE_IDENTIFIER}.keep-app-running.plist\"\n# The two macOS apps build into one products directory and name their agent after\n# their own bundle id, so clear the folder rather than adding to it.\nrm -rf \"${plist_dir}\"\nmkdir -p \"${helper_dir}\" \"${plist_dir}\"\nrm -rf \"${helper_dst}\"\n/usr/bin/ditto \"${helper_src}\" \"${helper_dst}\"\n/usr/bin/sed \"s#__PRODUCT_BUNDLE_IDENTIFIER__#${PRODUCT_BUNDLE_IDENTIFIER}#g\" \"${plist_template}\" > \"${plist_dst}\"\n";
+		};
+		FZSA00000000000000000013 /* Link headless client */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+			);
+			name = "Link headless client";
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -eu\nif [ \"${PLATFORM_NAME}\" != \"macosx\" ]; then\n  exit 0\nfi\n# The headless client is the app's own binary under another name, so that it runs\n# with the app's identity and sees the app's VPN configuration.\nln -sf \"${EXECUTABLE_NAME}\" \"${TARGET_BUILD_DIR}/${EXECUTABLE_FOLDER_PATH}/firezone-cli\"\n";
+		};
+		FZSA00000000000000000014 /* Drop a stale system extension */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+			);
+			name = "Drop a stale system extension";
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -eu\nif [ \"${PLATFORM_NAME}\" != \"macosx\" ]; then\n  exit 0\nfi\nrm -rf \"${TARGET_BUILD_DIR}/${CONTENTS_FOLDER_PATH}/Library/SystemExtensions\"\n";
+		};
+		FZSA00000000000000000012 /* Drop a stale app extension */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+			);
+			name = "Drop a stale app extension";
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -eu\nrm -rf \"${TARGET_BUILD_DIR}/${CONTENTS_FOLDER_PATH}/PlugIns\"\n";
+		};
 /* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -769,20 +943,32 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		FZSA00000000000000000008 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				FZSA00000000000000000020 /* FirezoneApp.swift in Sources */,
+				FZSA00000000000000000021 /* main.swift in Sources */,
+				FZSA00000000000000000022 /* x509claims.swift in Sources */,
+				FZSA00000000000000000023 /* FirezoneCLI.swift in Sources */,
+				FZSA00000000000000000024 /* SignIn.swift in Sources */,
+				FZSA00000000000000000025 /* TunnelSupervisor.swift in Sources */,
+				FZSA00000000000000000026 /* ConnectCommand.swift in Sources */,
+				FZSA00000000000000000027 /* SignOutCommand.swift in Sources */,
+				FZSA00000000000000000028 /* ExtensionCommand.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
 		8DC1699F2CFF77D1006801B5 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			platformFilter = ios;
-			target = 05CF1CEF290B1CEE00CF4755 /* FirezoneNetworkExtensioniOS */;
+			target = 05CF1CEF290B1CEE00CF4755 /* FirezoneNetworkExtensionAppex */;
 			targetProxy = 8DC1699E2CFF77D1006801B5 /* PBXContainerItemProxy */;
 		};
 		8DC169A22CFF77D1006801B5 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			platformFilters = (
-				macos,
-			);
 			target = 8D5047E22CE6A8F4009802E9 /* FirezoneNetworkExtensionmacOS */;
 			targetProxy = 8DC169A12CFF77D1006801B5 /* PBXContainerItemProxy */;
 		};
@@ -796,8 +982,22 @@
 		};
 		FZUIT0012E90000000000051 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
+			platformFilter = ios;
 			target = 8DCC021828D512AC007E12D2 /* Firezone */;
 			targetProxy = FZUIT0012E90000000000050 /* PBXContainerItemProxy */;
+		};
+		FZSA00000000000000000070 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 9A1000082F10000100BEEF01 /* KeepFirezoneRunning */;
+			targetProxy = FZSA00000000000000000071 /* PBXContainerItemProxy */;
+		};
+		FZSA00000000000000000090 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			platformFilters = (
+				macos,
+			);
+			target = FZSA00000000000000000001 /* FirezoneStandalone */;
+			targetProxy = FZSA00000000000000000091 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -812,35 +1012,46 @@
 				CURRENT_PROJECT_VERSION = "$(inherited)";
 				DEVELOPMENT_TEAM = "$(inherited)";
 				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_INCOMING_NETWORK_CONNECTIONS = YES;
 				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
 				FRAMEWORK_SEARCH_PATHS = "";
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = FirezoneNetworkExtension/Info.iOS.plist;
+				INFOPLIST_FILE = FirezoneNetworkExtension/Info.appex.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = FirezoneNetworkExtension;
 				INFOPLIST_KEY_LSUIElement = YES;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
-				INFOPLIST_KEY_NSSystemExtensionUsageDescription = "Firezone tunnel service";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
+				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
 				"LIBRARY_SEARCH_PATHS[sdk=iphoneos*][arch=arm64]" = "$(RUST_TARGET_DIR)/aarch64-apple-ios/debug";
 				"LIBRARY_SEARCH_PATHS[sdk=iphonesimulator*][arch=arm64]" = "$(RUST_TARGET_DIR)/aarch64-apple-ios-sim/debug";
 				"LIBRARY_SEARCH_PATHS[sdk=iphonesimulator*][arch=x86_64]" = "$(RUST_TARGET_DIR)/x86_64-apple-ios/debug";
+				"LIBRARY_SEARCH_PATHS[sdk=macosx*][arch=arm64]" = "$(RUST_TARGET_DIR)/aarch64-apple-darwin/debug";
+				"LIBRARY_SEARCH_PATHS[sdk=macosx*][arch=arm64e]" = "$(RUST_TARGET_DIR)/aarch64-apple-darwin/debug";
+				"LIBRARY_SEARCH_PATHS[sdk=macosx*][arch=x86_64]" = "$(RUST_TARGET_DIR)/x86_64-apple-darwin/debug";
 				MACOSX_DEPLOYMENT_TARGET = 13.0;
 				MARKETING_VERSION = "$(inherited)";
 				ONLY_ACTIVE_ARCH = YES;
 				OTHER_LDFLAGS = "-lconnlib";
 				OTHER_SWIFT_FLAGS = "-D UNIFFI";
-				PRODUCT_BUNDLE_IDENTIFIER = "$(inherited).network-extension";
+				REGISTER_APP_GROUPS = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(TUNNEL_PROVIDER_BUNDLE_ID)";
 				PRODUCT_NAME = "$(PRODUCT_BUNDLE_IDENTIFIER)";
 				PROVISIONING_PROFILE_SPECIFIER = "$(NE_PROFILE_ID)";
-				SDKROOT = iphoneos;
+				SDKROOT = auto;
 				SKIP_INSTALL = YES;
-				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = UNIFFI;
 				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_INCLUDE_PATHS = "$(PROJECT_DIR)/FirezoneNetworkExtension/Connlib/Generated";
 				SWIFT_OBJC_BRIDGING_HEADER = "FirezoneNetworkExtension/FirezoneNetworkExtension-Bridging-Header.h";
 				SWIFT_OBJC_INTERFACE_HEADER_NAME = "";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
@@ -861,34 +1072,45 @@
 				CURRENT_PROJECT_VERSION = "$(inherited)";
 				DEVELOPMENT_TEAM = "$(inherited)";
 				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_INCOMING_NETWORK_CONNECTIONS = YES;
 				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
 				FRAMEWORK_SEARCH_PATHS = "";
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = FirezoneNetworkExtension/Info.iOS.plist;
+				INFOPLIST_FILE = FirezoneNetworkExtension/Info.appex.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = FirezoneNetworkExtension;
 				INFOPLIST_KEY_LSUIElement = YES;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
-				INFOPLIST_KEY_NSSystemExtensionUsageDescription = "Firezone tunnel service";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
+				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
 				"LIBRARY_SEARCH_PATHS[sdk=iphoneos*][arch=arm64]" = "$(RUST_TARGET_DIR)/aarch64-apple-ios/release";
 				"LIBRARY_SEARCH_PATHS[sdk=iphonesimulator*][arch=arm64]" = "$(RUST_TARGET_DIR)/aarch64-apple-ios-sim/release";
 				"LIBRARY_SEARCH_PATHS[sdk=iphonesimulator*][arch=x86_64]" = "$(RUST_TARGET_DIR)/x86_64-apple-ios/release";
+				"LIBRARY_SEARCH_PATHS[sdk=macosx*][arch=arm64]" = "$(RUST_TARGET_DIR)/aarch64-apple-darwin/release";
+				"LIBRARY_SEARCH_PATHS[sdk=macosx*][arch=arm64e]" = "$(RUST_TARGET_DIR)/aarch64-apple-darwin/release";
+				"LIBRARY_SEARCH_PATHS[sdk=macosx*][arch=x86_64]" = "$(RUST_TARGET_DIR)/x86_64-apple-darwin/release";
 				MACOSX_DEPLOYMENT_TARGET = 13.0;
 				MARKETING_VERSION = "$(inherited)";
 				OTHER_LDFLAGS = "-lconnlib";
 				OTHER_SWIFT_FLAGS = "-D UNIFFI";
-				PRODUCT_BUNDLE_IDENTIFIER = "$(inherited).network-extension";
+				REGISTER_APP_GROUPS = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(TUNNEL_PROVIDER_BUNDLE_ID)";
 				PRODUCT_NAME = "$(PRODUCT_BUNDLE_IDENTIFIER)";
 				PROVISIONING_PROFILE_SPECIFIER = "$(NE_PROFILE_ID)";
-				SDKROOT = iphoneos;
+				SDKROOT = auto;
 				SKIP_INSTALL = YES;
-				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = UNIFFI;
 				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_INCLUDE_PATHS = "$(PROJECT_DIR)/FirezoneNetworkExtension/Connlib/Generated";
 				SWIFT_OBJC_BRIDGING_HEADER = "FirezoneNetworkExtension/FirezoneNetworkExtension-Bridging-Header.h";
 				SWIFT_OBJC_INTERFACE_HEADER_NAME = "";
 				SWIFT_VERSION = 6.2;
@@ -902,7 +1124,7 @@
 		8D5047F12CE6A8F4009802E9 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				CODE_SIGN_ENTITLEMENTS = FirezoneNetworkExtension/FirezoneNetworkExtension.entitlements;
+				CODE_SIGN_ENTITLEMENTS = FirezoneNetworkExtension/FirezoneNetworkExtensionStandalone.entitlements;
 				CODE_SIGN_IDENTITY = "$(inherited)";
 				CODE_SIGN_STYLE = "$(inherited)";
 				CURRENT_PROJECT_VERSION = "$(inherited)";
@@ -911,8 +1133,9 @@
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_INCOMING_NETWORK_CONNECTIONS = YES;
 				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
+				TUNNEL_PROVIDER_KIND = "system-extension";
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = FirezoneNetworkExtension/Info.macOS.plist;
+				INFOPLIST_FILE = FirezoneNetworkExtension/Info.systemextension.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = FirezoneNetworkExtension;
 				INFOPLIST_KEY_LSUIElement = YES;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
@@ -928,7 +1151,7 @@
 				MARKETING_VERSION = "$(inherited)";
 				OTHER_LDFLAGS = "-lconnlib";
 				OTHER_SWIFT_FLAGS = "-D UNIFFI";
-				PRODUCT_BUNDLE_IDENTIFIER = "$(inherited).network-extension";
+				PRODUCT_BUNDLE_IDENTIFIER = "$(TUNNEL_PROVIDER_BUNDLE_ID)";
 				PRODUCT_NAME = "$(PRODUCT_BUNDLE_IDENTIFIER)";
 				PROVISIONING_PROFILE_SPECIFIER = "$(NE_PROFILE_ID)";
 				REGISTER_APP_GROUPS = YES;
@@ -947,7 +1170,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CLANG_ENABLE_MODULES = YES;
-				CODE_SIGN_ENTITLEMENTS = FirezoneNetworkExtension/FirezoneNetworkExtension.entitlements;
+				CODE_SIGN_ENTITLEMENTS = FirezoneNetworkExtension/FirezoneNetworkExtensionStandalone.entitlements;
 				CODE_SIGN_IDENTITY = "$(inherited)";
 				CODE_SIGN_STYLE = "$(inherited)";
 				CURRENT_PROJECT_VERSION = "$(inherited)";
@@ -957,8 +1180,9 @@
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_INCOMING_NETWORK_CONNECTIONS = YES;
 				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
+				TUNNEL_PROVIDER_KIND = "system-extension";
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = FirezoneNetworkExtension/Info.macOS.plist;
+				INFOPLIST_FILE = FirezoneNetworkExtension/Info.systemextension.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = FirezoneNetworkExtension;
 				INFOPLIST_KEY_LSUIElement = YES;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
@@ -974,7 +1198,7 @@
 				MARKETING_VERSION = "$(inherited)";
 				OTHER_LDFLAGS = "-lconnlib";
 				OTHER_SWIFT_FLAGS = "-D UNIFFI";
-				PRODUCT_BUNDLE_IDENTIFIER = "$(inherited).network-extension";
+				PRODUCT_BUNDLE_IDENTIFIER = "$(TUNNEL_PROVIDER_BUNDLE_ID)";
 				PRODUCT_NAME = "$(PRODUCT_BUNDLE_IDENTIFIER)";
 				PROVISIONING_PROFILE_SPECIFIER = "$(NE_PROFILE_ID)";
 				REGISTER_APP_GROUPS = YES;
@@ -1346,34 +1570,45 @@
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = "$(inherited)";
 				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_INCOMING_NETWORK_CONNECTIONS = YES;
 				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
 				FRAMEWORK_SEARCH_PATHS = "";
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = FirezoneNetworkExtension/Info.iOS.plist;
+				INFOPLIST_FILE = FirezoneNetworkExtension/Info.appex.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = FirezoneNetworkExtension;
 				INFOPLIST_KEY_LSUIElement = YES;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
-				INFOPLIST_KEY_NSSystemExtensionUsageDescription = "Firezone tunnel service";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
+				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
 				"LIBRARY_SEARCH_PATHS[sdk=iphoneos*][arch=arm64]" = "$(RUST_TARGET_DIR)/aarch64-apple-ios/release";
 				"LIBRARY_SEARCH_PATHS[sdk=iphonesimulator*][arch=arm64]" = "$(RUST_TARGET_DIR)/aarch64-apple-ios-sim/release";
 				"LIBRARY_SEARCH_PATHS[sdk=iphonesimulator*][arch=x86_64]" = "$(RUST_TARGET_DIR)/x86_64-apple-ios/release";
+				"LIBRARY_SEARCH_PATHS[sdk=macosx*][arch=arm64]" = "$(RUST_TARGET_DIR)/aarch64-apple-darwin/release";
+				"LIBRARY_SEARCH_PATHS[sdk=macosx*][arch=arm64e]" = "$(RUST_TARGET_DIR)/aarch64-apple-darwin/release";
+				"LIBRARY_SEARCH_PATHS[sdk=macosx*][arch=x86_64]" = "$(RUST_TARGET_DIR)/x86_64-apple-darwin/release";
 				MACOSX_DEPLOYMENT_TARGET = 13.0;
 				MARKETING_VERSION = "$(inherited)";
 				OTHER_LDFLAGS = "-lconnlib";
 				OTHER_SWIFT_FLAGS = "-D UNIFFI";
-				PRODUCT_BUNDLE_IDENTIFIER = "$(inherited).network-extension";
+				REGISTER_APP_GROUPS = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(TUNNEL_PROVIDER_BUNDLE_ID)";
 				PRODUCT_NAME = "$(PRODUCT_BUNDLE_IDENTIFIER)";
 				PROVISIONING_PROFILE_SPECIFIER = "$(NE_PROFILE_ID)";
-				SDKROOT = iphoneos;
+				SDKROOT = auto;
 				SKIP_INSTALL = YES;
-				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = UNIFFI;
 				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_INCLUDE_PATHS = "$(PROJECT_DIR)/FirezoneNetworkExtension/Connlib/Generated";
 				SWIFT_OBJC_BRIDGING_HEADER = "FirezoneNetworkExtension/FirezoneNetworkExtension-Bridging-Header.h";
 				SWIFT_OBJC_INTERFACE_HEADER_NAME = "";
 				SWIFT_VERSION = 6.2;
@@ -1388,7 +1623,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CLANG_ENABLE_MODULES = YES;
-				CODE_SIGN_ENTITLEMENTS = FirezoneNetworkExtension/FirezoneNetworkExtension.entitlements;
+				CODE_SIGN_ENTITLEMENTS = FirezoneNetworkExtension/FirezoneNetworkExtensionStandalone.entitlements;
 				CODE_SIGN_IDENTITY = "$(inherited)";
 				CODE_SIGN_STYLE = "$(inherited)";
 				COPY_PHASE_STRIP = NO;
@@ -1400,8 +1635,9 @@
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_INCOMING_NETWORK_CONNECTIONS = YES;
 				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
+				TUNNEL_PROVIDER_KIND = "system-extension";
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = FirezoneNetworkExtension/Info.macOS.plist;
+				INFOPLIST_FILE = FirezoneNetworkExtension/Info.systemextension.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = FirezoneNetworkExtension;
 				INFOPLIST_KEY_LSUIElement = YES;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
@@ -1417,7 +1653,7 @@
 				MARKETING_VERSION = "$(inherited)";
 				OTHER_LDFLAGS = "-lconnlib";
 				OTHER_SWIFT_FLAGS = "-D UNIFFI";
-				PRODUCT_BUNDLE_IDENTIFIER = "$(inherited).network-extension";
+				PRODUCT_BUNDLE_IDENTIFIER = "$(TUNNEL_PROVIDER_BUNDLE_ID)";
 				PRODUCT_NAME = "$(PRODUCT_BUNDLE_IDENTIFIER)";
 				PROVISIONING_PROFILE_SPECIFIER = "$(NE_PROFILE_ID)";
 				REGISTER_APP_GROUPS = YES;
@@ -1599,6 +1835,7 @@
 				SWIFT_VERSION = 6.2;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				TEST_TARGET_NAME = Firezone;
+				"TEST_TARGET_NAME[sdk=macosx*]" = FirezoneStandalone;
 			};
 			name = Debug;
 		};
@@ -1632,6 +1869,7 @@
 				SWIFT_VERSION = 6.2;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				TEST_TARGET_NAME = Firezone;
+				"TEST_TARGET_NAME[sdk=macosx*]" = FirezoneStandalone;
 			};
 			name = Release;
 		};
@@ -1666,13 +1904,168 @@
 				SWIFT_VERSION = 6.2;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				TEST_TARGET_NAME = Firezone;
+				"TEST_TARGET_NAME[sdk=macosx*]" = FirezoneStandalone;
+			};
+			name = Profile;
+		};
+		FZSA00000000000000000004 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_ENTITLEMENTS = Firezone/FirezoneStandalone.entitlements;
+				CODE_SIGN_IDENTITY = "$(inherited)";
+				CODE_SIGN_STYLE = "$(inherited)";
+				CURRENT_PROJECT_VERSION = "$(inherited)";
+				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = "$(inherited)";
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
+				ENABLE_PREVIEWS = YES;
+				ENABLE_USER_SELECTED_FILES = readwrite;
+				TUNNEL_PROVIDER_KIND = "system-extension";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Firezone/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = Firezone;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
+				INFOPLIST_KEY_LSUIElement = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = "";
+				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
+				"LIBRARY_SEARCH_PATHS[arch=arm64]" = "$(RUST_TARGET_DIR)/aarch64-apple-darwin/debug";
+				"LIBRARY_SEARCH_PATHS[arch=arm64e]" = "$(RUST_TARGET_DIR)/aarch64-apple-darwin/debug";
+				"LIBRARY_SEARCH_PATHS[arch=x86_64]" = "$(RUST_TARGET_DIR)/x86_64-apple-darwin/debug";
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				MARKETING_VERSION = "$(inherited)";
+				OTHER_LDFLAGS = "-lconnlib";
+				PRODUCT_BUNDLE_IDENTIFIER = "$(MAIN_APP_BUNDLE_ID)";
+				PRODUCT_NAME = Firezone;
+				PROVISIONING_PROFILE_SPECIFIER = "$(APP_PROFILE_ID)";
+				REGISTER_APP_GROUPS = YES;
+				SDKROOT = macosx;
+				SUPPORTED_PLATFORMS = macosx;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_INSTALL_OBJC_HEADER = NO;
+				SWIFT_OBJC_BRIDGING_HEADER = "Firezone/Firezone-Bridging-Header.h";
+				SWIFT_OBJC_INTERFACE_HEADER_NAME = "";
+				SWIFT_VERSION = 6.2;
+				TVOS_DEPLOYMENT_TARGET = "";
+				WATCHOS_DEPLOYMENT_TARGET = "";
+				SWIFT_INSTALL_MODULE = YES;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		FZSA00000000000000000005 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_ENTITLEMENTS = Firezone/FirezoneStandalone.entitlements;
+				CODE_SIGN_IDENTITY = "$(inherited)";
+				CODE_SIGN_STYLE = "$(inherited)";
+				CURRENT_PROJECT_VERSION = "$(inherited)";
+				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = "$(inherited)";
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
+				ENABLE_PREVIEWS = YES;
+				ENABLE_USER_SELECTED_FILES = readwrite;
+				TUNNEL_PROVIDER_KIND = "system-extension";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Firezone/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = Firezone;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
+				INFOPLIST_KEY_LSUIElement = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = "";
+				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
+				"LIBRARY_SEARCH_PATHS[arch=arm64]" = "$(RUST_TARGET_DIR)/aarch64-apple-darwin/release";
+				"LIBRARY_SEARCH_PATHS[arch=arm64e]" = "$(RUST_TARGET_DIR)/aarch64-apple-darwin/release";
+				"LIBRARY_SEARCH_PATHS[arch=x86_64]" = "$(RUST_TARGET_DIR)/x86_64-apple-darwin/release";
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				MARKETING_VERSION = "$(inherited)";
+				OTHER_LDFLAGS = "-lconnlib";
+				PRODUCT_BUNDLE_IDENTIFIER = "$(MAIN_APP_BUNDLE_ID)";
+				PRODUCT_NAME = Firezone;
+				PROVISIONING_PROFILE_SPECIFIER = "$(APP_PROFILE_ID)";
+				REGISTER_APP_GROUPS = YES;
+				SDKROOT = macosx;
+				SUPPORTED_PLATFORMS = macosx;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_INSTALL_OBJC_HEADER = NO;
+				SWIFT_OBJC_BRIDGING_HEADER = "Firezone/Firezone-Bridging-Header.h";
+				SWIFT_OBJC_INTERFACE_HEADER_NAME = "";
+				SWIFT_VERSION = 6.2;
+				TVOS_DEPLOYMENT_TARGET = "";
+				WATCHOS_DEPLOYMENT_TARGET = "";
+				DEFINES_MODULE = NO;
+				DEVELOPMENT_ASSET_PATHS = "\"Firezone/Preview Content\"";
+				PRODUCT_MODULE_NAME = "$(PRODUCT_NAME:c99extidentifier)";
+				SWIFT_INSTALL_MODULE = NO;
+			};
+			name = Release;
+		};
+		FZSA00000000000000000006 /* Profile */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_ENTITLEMENTS = Firezone/FirezoneStandalone.entitlements;
+				CODE_SIGN_IDENTITY = "$(inherited)";
+				CODE_SIGN_STYLE = "$(inherited)";
+				CURRENT_PROJECT_VERSION = "$(inherited)";
+				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = "$(inherited)";
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
+				ENABLE_PREVIEWS = YES;
+				ENABLE_USER_SELECTED_FILES = readwrite;
+				TUNNEL_PROVIDER_KIND = "system-extension";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Firezone/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = Firezone;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
+				INFOPLIST_KEY_LSUIElement = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = "";
+				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
+				"LIBRARY_SEARCH_PATHS[arch=arm64]" = "$(RUST_TARGET_DIR)/aarch64-apple-darwin/release";
+				"LIBRARY_SEARCH_PATHS[arch=arm64e]" = "$(RUST_TARGET_DIR)/aarch64-apple-darwin/release";
+				"LIBRARY_SEARCH_PATHS[arch=x86_64]" = "$(RUST_TARGET_DIR)/x86_64-apple-darwin/release";
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				MARKETING_VERSION = "$(inherited)";
+				OTHER_LDFLAGS = "-lconnlib";
+				PRODUCT_BUNDLE_IDENTIFIER = "$(MAIN_APP_BUNDLE_ID)";
+				PRODUCT_NAME = Firezone;
+				PROVISIONING_PROFILE_SPECIFIER = "$(APP_PROFILE_ID)";
+				REGISTER_APP_GROUPS = YES;
+				SDKROOT = macosx;
+				SUPPORTED_PLATFORMS = macosx;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_INSTALL_OBJC_HEADER = NO;
+				SWIFT_OBJC_BRIDGING_HEADER = "Firezone/Firezone-Bridging-Header.h";
+				SWIFT_OBJC_INTERFACE_HEADER_NAME = "";
+				SWIFT_VERSION = 6.2;
+				TVOS_DEPLOYMENT_TARGET = "";
+				WATCHOS_DEPLOYMENT_TARGET = "";
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEFINES_MODULE = NO;
+				DEVELOPMENT_ASSET_PATHS = "\"Firezone/Preview Content\"";
+				PRODUCT_MODULE_NAME = "$(PRODUCT_NAME:c99extidentifier)";
+				SWIFT_INSTALL_MODULE = NO;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
 			};
 			name = Profile;
 		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		05CF1CFA290B1CEE00CF4755 /* Build configuration list for PBXNativeTarget "FirezoneNetworkExtensioniOS" */ = {
+		05CF1CFA290B1CEE00CF4755 /* Build configuration list for PBXNativeTarget "FirezoneNetworkExtensionAppex" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				05CF1CFB290B1CEE00CF4755 /* Debug */,
@@ -1732,6 +2125,16 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
+		FZSA00000000000000000003 /* Build configuration list for PBXNativeTarget "FirezoneStandalone" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				FZSA00000000000000000004 /* Debug */,
+				FZSA00000000000000000005 /* Release */,
+				FZSA00000000000000000006 /* Profile */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 /* End XCConfigurationList section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -1748,6 +2151,15 @@
 			productName = FirezoneKit;
 		};
 		FZ0CLI012E80000000000030 /* ArgumentParser */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = FZ0CLI012E80000000000300 /* XCRemoteSwiftPackageReference "swift-argument-parser" */;
+			productName = ArgumentParser;
+		};
+		FZSA00000000000000000040 /* FirezoneKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = FirezoneKit;
+		};
+		FZSA00000000000000000041 /* ArgumentParser */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = FZ0CLI012E80000000000300 /* XCRemoteSwiftPackageReference "swift-argument-parser" */;
 			productName = ArgumentParser;

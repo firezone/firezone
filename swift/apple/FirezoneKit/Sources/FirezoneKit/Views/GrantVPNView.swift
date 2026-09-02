@@ -65,72 +65,26 @@ struct GrantVPNView: View {
             .padding(.horizontal, 10)
           Spacer()
           Spacer()
-          Text(
-            """
-            Firezone needs you to enable a System Extension and allow a VPN configuration in order to function.
-            """
-          )
-          .font(.title2)
-          .multilineTextAlignment(.center)
-          .padding(EdgeInsets(top: 0, leading: 10, bottom: 0, trailing: 15))
+          Text(needsSystemExtension ? Self.twoStepPrompt : Self.vpnOnlyPrompt)
+            .font(.title2)
+            .multilineTextAlignment(.center)
+            .padding(EdgeInsets(top: 0, leading: 10, bottom: 0, trailing: 15))
           Spacer()
           Spacer()
-          HStack(alignment: .top) {
-            Spacer()
-            VStack(alignment: .center) {
-              Text("Step 1: Enable the system extension")
-                .font(.title)
-                .strikethrough(isInstalled(), color: .primary)
-              Text(
-                """
-                1. Click the "Enable System Extension" button below.
-                2. Click "Open System Settings" in the dialog that appears.
-                3. Ensure the FirezoneNetworkExtension is toggled ON.
-                4. Click Done.
-                """
-              )
-              .font(.body)
-              .padding(.vertical, 10)
-              .opacity(isInstalled() ? 0.5 : 1.0)
+          if needsSystemExtension {
+            HStack(alignment: .top) {
               Spacer()
-              Button(
-                action: {
-                  installSystemExtension()
-                },
-                label: {
-                  Label("Enable System Extension", systemImage: "gearshape")
-                }
+              systemExtensionStep
+              Spacer()
+              vpnConfigurationStep(
+                title: "Step 2: Allow the VPN configuration",
+                enabled: isInstalled()
               )
-              .buttonStyle(.borderedProminent)
-              .controlSize(.large)
-              .disabled(isInstalled())
+              .opacity(isInstalled() ? 1.0 : 0.5)
+              Spacer()
             }
-            Spacer()
-            VStack(alignment: .center) {
-              Text("Step 2: Allow the VPN configuration")
-                .font(.title)
-              Text(
-                """
-                1. Click the "Grant VPN Permission" button below.
-                2. Click "Allow" in the dialog that appears.
-                """
-              )
-              .font(.body)
-              .padding(.vertical, 10)
-              Spacer()
-              Button(
-                action: {
-                  installVPNConfiguration()
-                },
-                label: {
-                  Label("Grant VPN Permission", systemImage: "network.badge.shield.half.filled")
-                }
-              )
-              .buttonStyle(.borderedProminent)
-              .controlSize(.large)
-              .disabled(!isInstalled())
-            }.opacity(isInstalled() ? 1.0 : 0.5)
-            Spacer()
+          } else {
+            vpnConfigurationStep(title: "Allow the VPN configuration", enabled: true)
           }
           Spacer()
           Spacer()
@@ -141,6 +95,79 @@ struct GrantVPNView: View {
   }
 
   #if os(macOS)
+    private static let twoStepPrompt =
+      "Firezone needs you to enable a System Extension and allow a VPN configuration in order to function."
+    private static let vpnOnlyPrompt =
+      "Firezone needs you to allow a VPN configuration in order to function."
+
+    /// Whether this build asks the user to enable a system extension.
+    ///
+    /// The Mac App Store build carries its tunnel inside the app, so the only thing
+    /// left to ask for is the VPN configuration, exactly as on iOS.
+    private var needsSystemExtension: Bool {
+      BundleHelper.tunnelProviderKind == .systemExtension
+    }
+
+    @ViewBuilder
+    private var systemExtensionStep: some View {
+      VStack(alignment: .center) {
+        Text("Step 1: Enable the system extension")
+          .font(.title)
+          .strikethrough(isInstalled(), color: .primary)
+        Text(
+          """
+          1. Click the "Enable System Extension" button below.
+          2. Click "Open System Settings" in the dialog that appears.
+          3. Ensure the FirezoneNetworkExtension is toggled ON.
+          4. Click Done.
+          """
+        )
+        .font(.body)
+        .padding(.vertical, 10)
+        .opacity(isInstalled() ? 0.5 : 1.0)
+        Spacer()
+        Button(
+          action: {
+            installSystemExtension()
+          },
+          label: {
+            Label("Enable System Extension", systemImage: "gearshape")
+          }
+        )
+        .buttonStyle(.borderedProminent)
+        .controlSize(.large)
+        .disabled(isInstalled())
+      }
+    }
+
+    @ViewBuilder
+    private func vpnConfigurationStep(title: String, enabled: Bool) -> some View {
+      VStack(alignment: .center) {
+        Text(title)
+          .font(.title)
+        Text(
+          """
+          1. Click the "Grant VPN Permission" button below.
+          2. Click "Allow" in the dialog that appears.
+          """
+        )
+        .font(.body)
+        .padding(.vertical, 10)
+        Spacer()
+        Button(
+          action: {
+            installVPNConfiguration()
+          },
+          label: {
+            Label("Grant VPN Permission", systemImage: "network.badge.shield.half.filled")
+          }
+        )
+        .buttonStyle(.borderedProminent)
+        .controlSize(.large)
+        .disabled(!enabled)
+      }
+    }
+
     func installSystemExtension() {
       Task {
         do {

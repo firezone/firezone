@@ -73,6 +73,21 @@
     func tryInstall() async throws -> SystemExtensionStatus
   }
 
+  /// Stands in for the manager in a build whose provider is bundled as an app
+  /// extension.
+  ///
+  /// Such a provider ships inside the app and needs no install, no approval and no
+  /// version comparison, so there is nothing for the user to do and nothing that can
+  /// go stale. Reporting it installed is what leaves the rest of the app, which is
+  /// written against a system extension, with nothing to ask for.
+  @MainActor
+  public struct BundledExtensionManager: SystemExtensionManagerProtocol {
+    public init() {}
+
+    public func check() async throws -> SystemExtensionStatus { .installed }
+    public func tryInstall() async throws -> SystemExtensionStatus { .installed }
+  }
+
   enum SystemExtensionRequestType {
     case install
     case check

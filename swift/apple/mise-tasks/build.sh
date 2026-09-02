@@ -11,6 +11,18 @@ GIT_SHA="$(git rev-parse HEAD 2>/dev/null || echo "unknown")"
 PLATFORM="${PLATFORM:-macOS}"
 CONFIGURATION="${CONFIGURATION:-Debug}"
 
+# macOS ships two variants: `standalone` carries the tunnel as a system extension it
+# installs, `appstore` bundles it as an app extension. They are separate app targets.
+VARIANT="${VARIANT:-standalone}"
+case "${VARIANT}" in
+standalone) SCHEME="FirezoneStandalone" ;;
+appstore) SCHEME="Firezone" ;;
+*)
+    echo "Unknown VARIANT '${VARIANT}'; expected 'standalone' or 'appstore'" >&2
+    exit 1
+    ;;
+esac
+
 cd "${APPLE_DIR}"
 
 if [ ! -f buildServer.json ]; then
@@ -26,7 +38,7 @@ if [ ! -f Firezone/xcconfig/dynamic_build_number.xcconfig ]; then
     echo "CURRENT_PROJECT_VERSION = $(date +%s)" > Firezone/xcconfig/dynamic_build_number.xcconfig
 fi
 
-echo "Building Xcode project for ${PLATFORM}, ${ARCH}"
+echo "Building Xcode project for ${PLATFORM}, ${ARCH} (${VARIANT})"
 echo "Git SHA: ${GIT_SHA}"
 
 # PRETTY=1 force on, PRETTY=0 force off, unset = auto-detect xcbeautify
@@ -53,7 +65,7 @@ xcodebuild_args=(
     # Dev builds sign automatically; xcodebuild won't fetch or create a profile without this.
     # Release builds pass explicit profile ids instead, so they never reach for it.
     -allowProvisioningUpdates
-    -scheme Firezone
+    -scheme "${SCHEME}"
     -configuration "${CONFIGURATION}"
     -sdk macosx
     -destination "platform=${PLATFORM},arch=${ARCH}"

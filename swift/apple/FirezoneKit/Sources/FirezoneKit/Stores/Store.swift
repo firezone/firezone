@@ -139,7 +139,7 @@ public final class Store: ObservableObject {
       self.updateChecker =
         updateChecker ?? UpdateChecker(configuration: configuration, userDefaults: userDefaults)
       self.sessionNotification = sessionNotification
-      self.systemExtensionManager = systemExtensionManager ?? SystemExtensionManager()
+      self.systemExtensionManager = systemExtensionManager ?? Self.defaultSystemExtensionManager()
       self.tunnelManagerFactory = tunnelManagerFactory
       self.x509CertificateSource = x509CertificateSource
       self.logDirectory = logDirectory
@@ -271,6 +271,17 @@ public final class Store: ObservableObject {
         return "MenuBarIconConnecting3"
       @unknown default:
         return "MenuBarIconSignedOut"
+      }
+    }
+
+    /// The manager for however this build's provider ships.
+    ///
+    /// A bundled provider is already there, so the app asks the system about a system
+    /// extension only when it ships one.
+    private static func defaultSystemExtensionManager() -> any SystemExtensionManagerProtocol {
+      switch BundleHelper.tunnelProviderKind {
+      case .systemExtension: return SystemExtensionManager()
+      case .appExtension: return BundledExtensionManager()
       }
     }
 
@@ -759,6 +770,10 @@ public final class Store: ObservableObject {
     let appLogSize = await Log.size(of: logDirectory)
 
     #if os(macOS)
+      guard BundleHelper.tunnelProviderKind == .systemExtension else {
+        return UInt64(clamping: appLogSize)
+      }
+
       do {
         guard let session = try manager().session() else {
           throw VPNConfigurationManagerError.managerNotInitialized
@@ -796,6 +811,8 @@ public final class Store: ObservableObject {
     }.value
 
     #if os(macOS)
+      guard BundleHelper.tunnelProviderKind == .systemExtension else { return }
+
       guard let session = try manager().session() else {
         throw VPNConfigurationManagerError.managerNotInitialized
       }
@@ -809,6 +826,12 @@ public final class Store: ObservableObject {
       guard let logDirectory else {
         throw LogExporter.ExportError.invalidSourceDirectory
       }
+
+      guard BundleHelper.tunnelProviderKind == .systemExtension else {
+        try await LogExporter.export(to: destination, from: logDirectory)
+        return
+      }
+
       guard let session = try manager().session() else {
         throw VPNConfigurationManagerError.managerNotInitialized
       }
@@ -946,8 +969,12 @@ public final class Store: ObservableObject {
 
   #if os(macOS)
     // `vpnStatus == nil` means no Sign In button yet, so the cycle start can't race one.
+    //
+    // Only a system extension can hold a spool while the tunnel is down; a bundled
+    // provider is not running to be asked, and drains on its next connect instead.
     private func drainFlowLogsOnLaunch() async {
-      guard vpnStatus == nil,
+      guard BundleHelper.tunnelProviderKind == .systemExtension,
+        vpnStatus == nil,
         let session = try? manager().session(),
         session.status == .disconnected
       else { return }

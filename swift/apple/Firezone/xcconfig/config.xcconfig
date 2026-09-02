@@ -1,7 +1,23 @@
 // Apple Developer account-specific configuration
 DEVELOPMENT_TEAM = 47R2M6779T
+
+// Bundle identifiers.
+//
+// The App Store and standalone macOS apps are one product shipped two ways, so they
+// share both identifiers. Only one of them can be installed on a Mac, and keeping the
+// identifiers means a Mac that switches between them keeps its settings, its MDM
+// configuration profile and the device id the provider stored.
 MAIN_APP_BUNDLE_ID = dev.firezone.firezone
+TUNNEL_PROVIDER_BUNDLE_ID = dev.firezone.firezone.network-extension
+
 PRODUCT_BUNDLE_IDENTIFIER = $(MAIN_APP_BUNDLE_ID)
+
+// How the tunnel provider ships. Bundled as an app extension it rides inside the
+// app, shares its container and only runs while the tunnel does. The standalone
+// macOS targets override this with `system-extension`, which the app installs into
+// the system and which then runs as root, outside the app's container.
+TUNNEL_PROVIDER_KIND = app-extension
+
 APP_GROUP_ID[sdk=macosx*] = 47R2M6779T.dev.firezone.firezone
 APP_GROUP_ID_PRE_1_4_0[sdk=macosx*] = 47R2M6779T.group.dev.firezone.firezone
 APP_GROUP_ID[sdk=iphoneos*] = group.dev.firezone.firezone
