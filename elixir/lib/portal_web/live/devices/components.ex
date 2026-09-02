@@ -556,8 +556,7 @@ defmodule PortalWeb.Devices.Components do
         <div class="min-w-0 flex-1">
           <div class="flex items-center gap-2">
             <h2 class="text-sm font-semibold text-heading truncate">{@device.name}</h2>
-            <.device_status_badge online?={@device.online?} />
-            <.device_verified_badge device={@device} />
+            <.device_status_badge device={@device} />
           </div>
           <p class="font-mono text-xs text-subtle mt-0.5 truncate">{@device.id}</p>
         </div>
@@ -1272,11 +1271,21 @@ defmodule PortalWeb.Devices.Components do
     """
   end
 
-  attr :online?, :boolean, required: true
+  attr :device, :any, required: true
+  attr :online?, :boolean, default: nil, doc: "overrides device.online?"
 
   def device_status_badge(assigns) do
+    online? = if is_nil(assigns.online?), do: assigns.device.online?, else: assigns.online?
+    attested = online? and not is_nil(assigns.device.last_attested_at)
+
+    assigns = assign(assigns, online?: online?, attested: attested)
+
     ~H"""
-    <.status_badge style={if @online?, do: :success, else: :neutral}>
+    <.status_badge
+      style={if @online?, do: :success, else: :neutral}
+      icon={if @attested, do: "ri-shield-keyhole-line"}
+      icon_title={if @attested, do: "Attested"}
+    >
       {if @online?, do: "Online", else: "Offline"}
     </.status_badge>
     """

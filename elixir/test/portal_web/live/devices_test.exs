@@ -192,6 +192,36 @@ defmodule PortalWeb.DevicesTest do
     end
   end
 
+  describe "status badge" do
+    test "shows the device trust shield on an online attested device", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      attested =
+        client_fixture(account: account, actor: actor, last_attested_at: DateTime.utc_now())
+
+      plain = client_fixture(account: account, actor: actor)
+
+      offline =
+        client_fixture(account: account, actor: actor, last_attested_at: DateTime.utc_now())
+
+      :ok = Portal.Presence.Clients.Account.track(account.id, attested.id)
+      :ok = Portal.Presence.Clients.Account.track(account.id, plain.id)
+
+      conn = authorize_conn(conn, actor)
+      {:ok, lv, _html} = live(conn, ~p"/#{account}/devices")
+
+      assert has_element?(lv, "#device-#{attested.id} [title='Attested'].ri-shield-keyhole-line")
+      refute has_element?(lv, "#device-#{plain.id} [title='Attested']")
+      refute has_element?(lv, "#device-#{offline.id} [title='Attested']")
+
+      {:ok, lv, _html} = live(conn, ~p"/#{account}/devices/#{attested.id}")
+
+      assert has_element?(lv, "#device-panel [title='Attested'].ri-shield-keyhole-line")
+    end
+  end
+
   describe ":show action" do
     test "cautions that the device reports its own fields", %{
       conn: conn,

@@ -199,7 +199,7 @@ defmodule PortalWeb.Devices do
             />
           </:col>
           <:col :let={device} label="Status" class="w-28">
-            <.device_status_badge online?={device.online?} />
+            <.device_status_badge device={device} />
           </:col>
           <:col
             :let={device}

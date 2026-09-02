@@ -1789,9 +1789,12 @@ defmodule PortalWeb.CoreComponents do
     <.status_badge style={:warning}>Degraded</.status_badge>
     <.status_badge style={:danger}>Disabled</.status_badge>
     <.status_badge style={:success} dot={false}>Active</.status_badge>
+    <.status_badge style={:success} icon="ri-shield-keyhole-line">Online</.status_badge>
   """
   attr :style, :atom, required: true, values: [:success, :warning, :danger, :neutral]
   attr :dot, :boolean, default: true
+  attr :icon, :string, default: nil, doc: "replaces the dot"
+  attr :icon_title, :string, default: nil
   slot :inner_block, required: true
 
   def status_badge(assigns) do
@@ -1800,7 +1803,12 @@ defmodule PortalWeb.CoreComponents do
       "inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium",
       badge_pill_class(@style)
     ]}>
-      <span :if={@dot} class={["w-1.5 h-1.5 rounded-full shrink-0", badge_dot_class(@style)]}></span>
+      <.icon :if={@icon} name={@icon} title={@icon_title} class="w-3 h-3 shrink-0" />
+      <span
+        :if={@dot and is_nil(@icon)}
+        class={["w-1.5 h-1.5 rounded-full shrink-0", badge_dot_class(@style)]}
+      >
+      </span>
       {render_slot(@inner_block)}
     </span>
     """
