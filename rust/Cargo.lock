@@ -2699,6 +2699,7 @@ dependencies = [
  "rustls",
  "secrecy",
  "serde",
+ "serde_json",
  "socket-factory",
  "socket2",
  "stun_codec",

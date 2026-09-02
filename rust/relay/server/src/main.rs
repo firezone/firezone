@@ -398,13 +398,25 @@ where
 }
 
 #[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "snake_case", tag = "event", content = "payload")]
+#[serde(untagged)]
 enum IngressMessages {
+    Known(KnownIngressMessage),
+    Unknown(UnknownIngressMessage),
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "snake_case", tag = "event", content = "payload")]
+enum KnownIngressMessage {
     Init(Init),
 }
 
 #[derive(serde::Deserialize, Debug)]
 struct Init {}
+
+#[derive(Debug, serde::Deserialize)]
+struct UnknownIngressMessage {
+    event: String,
+}
 
 #[derive(serde::Serialize, PartialEq, Debug, Clone)]
 struct JoinMessage {
@@ -680,7 +692,16 @@ where
 
             // Priority 5: Handle portal messages
             match self.event_rx.poll_recv(cx) {
-                Poll::Ready(Some(Ok(IngressMessages::Init(Init {})))) => {
+                Poll::Ready(Some(Ok(IngressMessages::Known(KnownIngressMessage::Init(
+                    Init {},
+                ))))) => {
+                    tick.want_continue();
+                }
+                Poll::Ready(Some(Ok(IngressMessages::Unknown(UnknownIngressMessage {
+                    event,
+                })))) => {
+                    tracing::warn!(target: "relay", %event, "Ignoring unknown message from portal");
+
                     tick.want_continue();
                 }
                 Poll::Ready(Some(Err(e))) => {
@@ -843,6 +864,30 @@ fn make_otel_metadata() -> opentelemetry_sdk::Resource {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn deserializes_init_message() {
+        let json = r#"{"topic":"relay","ref":null,"event":"init","payload":{}}"#;
+
+        let msg = serde_json::from_str::<IngressMessages>(json).unwrap();
+
+        assert!(matches!(
+            msg,
+            IngressMessages::Known(KnownIngressMessage::Init(Init {}))
+        ));
+    }
+
+    #[test]
+    fn unknown_message_deserializes_with_its_event_name() {
+        let json = r#"{"topic":"relay","ref":null,"event":"new_event","payload":{"foo":"bar"}}"#;
+
+        let msg = serde_json::from_str::<IngressMessages>(json).unwrap();
+
+        let IngressMessages::Unknown(UnknownIngressMessage { event }) = msg else {
+            panic!("expected unknown message, got {msg:?}");
+        };
+        assert_eq!(event, "new_event");
+    }
 
     #[test]
     fn prints_humanfriendly_throughput() {
