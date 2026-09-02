@@ -33,15 +33,16 @@ runs:
       run: |
         : "${XCODE_VERSION:?the calling job must pin the Xcode version}"
 
-        prefix="v3-xcode-build-${{ inputs.key }}-${{ runner.arch }}-${XCODE_VERSION}-"
+        prefix="v2-xcode-build-${{ inputs.key }}-${{ runner.arch }}-${XCODE_VERSION}-"
 
         echo "prefix=${prefix}" >> "$GITHUB_OUTPUT"
         echo "value=${prefix}${{ hashFiles('swift/apple/**', '!swift/apple/screenshots/**') }}" >> "$GITHUB_OUTPUT"
 
     # The `swift` job runs because `swift/apple` changed, so the exact key mostly
     # misses and falling back to the newest build of the same platform is what a
-    # pull request actually gets. A hit on the exact key means the products are
-    # already a build of these very sources and there is nothing new to save.
+    # pull request gets; a hit on the exact key means there is nothing new to save.
+    # The package checkouts travel with the products because Xcode clones them
+    # afresh otherwise, and sources dated afresh rebuild every package target.
     - name: Restore the build products
       id: restore
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -53,9 +54,10 @@ runs:
         restore-keys: ${{ steps.key.outputs.prefix }}
 
     # A checkout dates every file by the moment it was written, which would date
-    # the whole tree past the products restored above. Dating by content keeps a
-    # file the cached build already saw at the date it saw it, and can never hand
-    # an edited file the date of the version it replaced.
+    # the whole tree past the products restored above. Dating by content is what
+    # keeps the fallback honest: under a constant date an edited view kept the
+    # date its predecessor had been built under, was not recompiled, and the run
+    # photographed the predecessor.
     - name: Date the sources by their content
       shell: bash
       run: |

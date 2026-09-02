@@ -2,9 +2,6 @@ name: Build macOS/iOS app
 on:
   workflow_call:
   workflow_dispatch:
-  push:
-    branches:
-      - xcode-cache-content-mtimes
 
 jobs:
   update-release-draft:
@@ -29,7 +26,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   test:
-    if: github.event_name != 'push'
     runs-on: macos-26
     permissions:
       security-events: write # trivy SARIF upload from setup-mise
@@ -115,20 +111,7 @@ jobs:
         env:
           DERIVED_DATA_PATH: ${{ runner.temp }}/DerivedData
           RESULT_BUNDLE_DIR: ${{ runner.temp }}
-        run: mise run //swift/apple:screenshots-${{ matrix.platform }} > "${RUNNER_TEMP}/build.log" 2>&1
-      - name: Report what the build did
-        if: always()
-        run: |
-          echo "cache-hit=${{ steps.xcode-build.outputs.cache-hit }}"
-          echo "key=${{ steps.xcode-build.outputs.key }}"
-          echo "SwiftCompile tasks: $(grep -c SwiftCompile "${RUNNER_TEMP}/build.log" || true)"
-          grep -oE "SwiftDriver [A-Za-z]+ normal" "${RUNNER_TEMP}/build.log" | sort -u || true
-          tail -n 30 "${RUNNER_TEMP}/build.log"
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        if: always()
-        with:
-          name: ${{ matrix.platform }}-build-log
-          path: ${{ runner.temp }}/build.log
+        run: mise run //swift/apple:screenshots-${{ matrix.platform }}
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ${{ matrix.platform }}-screenshots
@@ -137,7 +120,7 @@ jobs:
       # `success()` is spelled out because naming a condition replaces the
       # implicit one.
       - uses: ./.github/actions/save-xcode-build
-        if: success() && (github.ref_name == 'main' || github.ref_name == 'xcode-cache-content-mtimes') && steps.xcode-build.outputs.cache-hit != 'true'
+        if: success() && github.ref_name == 'main' && steps.xcode-build.outputs.cache-hit != 'true'
         with:
           path: ${{ runner.temp }}/DerivedData
           key: ${{ steps.xcode-build.outputs.key }}
@@ -149,7 +132,6 @@ jobs:
           path: ${{ runner.temp }}/FirezoneUITests-*.xcresult
 
   static-analysis:
-    if: github.event_name != 'push'
     runs-on: macos-26
     permissions:
       security-events: write # trivy SARIF upload from setup-mise
