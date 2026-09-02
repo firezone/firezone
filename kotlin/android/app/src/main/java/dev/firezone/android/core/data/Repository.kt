@@ -1,7 +1,6 @@
 // Licensed under Apache 2.0 (C) 2024 Firezone, Inc.
 package dev.firezone.android.core.data
 
-import android.content.Context
 import android.content.SharedPreferences
 import android.os.Bundle
 import com.google.gson.Gson
@@ -10,12 +9,14 @@ import com.google.gson.reflect.TypeToken
 import dev.firezone.android.BuildConfig
 import dev.firezone.android.core.data.model.Config
 import dev.firezone.android.core.data.model.ManagedConfigStatus
+import dev.firezone.android.core.data.model.ManagedConfiguration
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.withContext
 import java.security.MessageDigest
 import javax.inject.Inject
 
@@ -58,10 +59,15 @@ class Favorites(
     val inner: HashSet<String>,
 )
 
+enum class AuthCallbackResult {
+    NEW_HANDOFF,
+    PENDING_HANDOFF,
+    INVALID,
+}
+
 class Repository
     @Inject
     constructor(
-        private val context: Context,
         private val coroutineDispatcher: CoroutineDispatcher,
         private val sharedPreferences: SharedPreferences,
     ) {
@@ -71,52 +77,48 @@ class Repository
         private val _favorites =
             MutableStateFlow(Favorites(HashSet(sharedPreferences.getStringSet(FAVORITE_RESOURCES_KEY, null).orEmpty())))
         val favorites = _favorites.asStateFlow()
+        private val authStateLock = Any()
 
         fun getConfigSync(): Config = getUserConfigSync().withManagedOverrides()
 
-        fun getConfig(): Flow<Config> =
-            flow {
-                emit(getConfigSync())
-            }.flowOn(coroutineDispatcher)
+        fun getUserConfigSync(): Config {
+            val defaults = getDefaultUserConfigSync()
 
-        fun getDefaultConfigSync(): Config = getBuildDefaultConfig().withManagedOverrides()
+            return Config(
+                authUrl = sharedPreferences.getString(AUTH_URL_KEY, null) ?: defaults.authUrl,
+                apiUrl = sharedPreferences.getString(API_URL_KEY, null) ?: defaults.apiUrl,
+                logFilter = sharedPreferences.getString(LOG_FILTER_KEY, null) ?: defaults.logFilter,
+                accountSlug = sharedPreferences.getString(ACCOUNT_SLUG_KEY, null) ?: defaults.accountSlug,
+                startOnLogin = sharedPreferences.getBoolean(START_ON_LOGIN_KEY, defaults.startOnLogin),
+                connectOnStart = sharedPreferences.getBoolean(CONNECT_ON_START_KEY, defaults.connectOnStart),
+            )
+        }
 
-        fun getDefaultConfig(): Flow<Config> =
-            flow {
-                emit(getDefaultConfigSync())
-            }.flowOn(coroutineDispatcher)
+        internal fun getEffectiveConfig(
+            userConfig: Config,
+            managedConfiguration: ManagedConfiguration,
+        ): Config = managedConfiguration.applyTo(userConfig)
 
-        fun saveSettings(value: Config): Flow<Unit> =
-            flow {
-                val managedStatus = getManagedStatus()
-                val editor = sharedPreferences.edit()
+        internal fun getEffectiveConfigFromPersistedManaged(userConfig: Config): Config = userConfig.withManagedOverrides()
 
-                if (!managedStatus.isAuthUrlManaged) {
-                    editor.putString(AUTH_URL_KEY, value.authUrl)
-                }
-                if (!managedStatus.isApiUrlManaged) {
-                    editor.putString(API_URL_KEY, value.apiUrl)
-                }
-                if (!managedStatus.isLogFilterManaged) {
-                    editor.putString(LOG_FILTER_KEY, value.logFilter)
-                }
-                if (!managedStatus.isAccountSlugManaged) {
-                    editor.putString(ACCOUNT_SLUG_KEY, value.accountSlug)
-                }
-                if (!managedStatus.isStartOnLoginManaged) {
-                    editor.putBoolean(START_ON_LOGIN_KEY, value.startOnLogin)
-                }
-                if (!managedStatus.isConnectOnStartManaged) {
-                    editor.putBoolean(CONNECT_ON_START_KEY, value.connectOnStart)
-                }
+        fun getDefaultUserConfigSync(): Config =
+            Config(
+                authUrl = BuildConfig.AUTH_URL,
+                apiUrl = BuildConfig.API_URL,
+                logFilter = BuildConfig.LOG_FILTER,
+                accountSlug = "",
+                startOnLogin = false,
+                connectOnStart = false,
+            )
 
-                emit(editor.apply())
-            }.flowOn(coroutineDispatcher)
+        suspend fun saveUserConfig(value: Config) {
+            withContext(coroutineDispatcher) { saveUserConfigSync(value) }
+        }
 
         // TODO: Consider adding support for the legacy managed configuration keys like token,
         //  allowedApplications, etc from pilot customer.
-        fun saveManagedConfiguration(bundle: Bundle): Flow<Unit> =
-            flow {
+        suspend fun saveManagedConfiguration(bundle: Bundle) {
+            withContext(coroutineDispatcher) {
                 val editor = sharedPreferences.edit()
 
                 if (bundle.containsKey(AUTH_URL_KEY)) {
@@ -150,8 +152,9 @@ class Repository
                     editor.remove(MANAGED_CONNECT_ON_START_KEY)
                 }
 
-                emit(editor.apply())
-            }.flowOn(coroutineDispatcher)
+                editor.apply()
+            }
+        }
 
         /**
          * The KeyChain alias of the client certificate to present to the portal.
@@ -206,19 +209,9 @@ class Repository
             saveFavoritesSync()
         }
 
-        fun getToken(): Flow<String?> =
-            flow {
-                emit(sharedPreferences.getString(TOKEN_KEY, null))
-            }.flowOn(coroutineDispatcher)
-
         fun getTokenSync(): String? = sharedPreferences.getString(TOKEN_KEY, null)
 
         fun getStateSync(): String? = sharedPreferences.getString(STATE_KEY, null)
-
-        fun getAccountSlug(): Flow<String?> =
-            flow {
-                emit(sharedPreferences.getString(ACCOUNT_SLUG_KEY, null))
-            }.flowOn(coroutineDispatcher)
 
         fun getNonceSync(): String? = sharedPreferences.getString(NONCE_KEY, null)
 
@@ -250,55 +243,75 @@ class Repository
                 .putString(ENABLED_INTERNET_RESOURCE_KEY, Gson().toJson(value))
                 .apply()
 
-        fun saveNonce(value: String): Flow<Unit> =
-            flow {
-                emit(saveNonceSync(value))
-            }.flowOn(coroutineDispatcher)
+        fun saveNonceAndStateSync(
+            nonce: String,
+            state: String,
+        ) {
+            synchronized(authStateLock) {
+                sharedPreferences
+                    .edit()
+                    .putString(NONCE_KEY, nonce)
+                    .putString(STATE_KEY, state)
+                    .remove(PENDING_AUTH_HANDOFF_STATE_HASH_KEY)
+                    .apply()
+            }
+        }
 
-        fun saveNonceSync(value: String) = sharedPreferences.edit().putString(NONCE_KEY, value).apply()
+        suspend fun saveAuthCallbackIfStateValid(
+            state: String,
+            fragment: String,
+        ): AuthCallbackResult =
+            withContext(coroutineDispatcher) {
+                synchronized(authStateLock) {
+                    val stateHash = hashAuthState(state)
+                    val pendingStateHash = sharedPreferences.getString(PENDING_AUTH_HANDOFF_STATE_HASH_KEY, null)
+                    val isPendingHandoff = constantTimeEquals(pendingStateHash, stateHash)
+                    val expectedState = sharedPreferences.getString(STATE_KEY, "").orEmpty()
+                    val isExpectedState = constantTimeEquals(expectedState, state)
+                    when {
+                        isPendingHandoff -> {
+                            AuthCallbackResult.PENDING_HANDOFF
+                        }
 
-        fun saveState(value: String): Flow<Unit> =
-            flow {
-                emit(saveStateSync(value))
-            }.flowOn(coroutineDispatcher)
+                        !isExpectedState -> {
+                            AuthCallbackResult.INVALID
+                        }
 
-        fun saveStateSync(value: String) = sharedPreferences.edit().putString(STATE_KEY, value).apply()
+                        else -> {
+                            val nonce = sharedPreferences.getString(NONCE_KEY, "").orEmpty()
+                            sharedPreferences
+                                .edit()
+                                .putString(TOKEN_KEY, nonce.plus(fragment))
+                                .remove(NONCE_KEY)
+                                .remove(STATE_KEY)
+                                .putString(PENDING_AUTH_HANDOFF_STATE_HASH_KEY, stateHash)
+                                .apply()
 
-        fun saveToken(value: String): Flow<Unit> =
-            flow {
-                val nonce = sharedPreferences.getString(NONCE_KEY, "").orEmpty()
-                emit(
-                    sharedPreferences
-                        .edit()
-                        .putString(TOKEN_KEY, nonce.plus(value))
-                        .apply(),
-                )
-            }.flowOn(coroutineDispatcher)
+                            AuthCallbackResult.NEW_HANDOFF
+                        }
+                    }
+                }
+            }
 
-        fun validateState(value: String): Flow<Boolean> =
-            flow {
-                val state = sharedPreferences.getString(STATE_KEY, "").orEmpty()
-                emit(MessageDigest.isEqual(state.toByteArray(), value.toByteArray()))
-            }.flowOn(coroutineDispatcher)
+        fun acknowledgeAuthCallbackHandoff(state: String): Boolean =
+            synchronized(authStateLock) {
+                val stateHash = hashAuthState(state)
+                val pendingStateHash = sharedPreferences.getString(PENDING_AUTH_HANDOFF_STATE_HASH_KEY, null)
+                val isPendingHandoff = constantTimeEquals(pendingStateHash, stateHash)
+                if (isPendingHandoff) {
+                    sharedPreferences.edit().remove(PENDING_AUTH_HANDOFF_STATE_HASH_KEY).apply()
+                }
+
+                isPendingHandoff
+            }
 
         fun clearToken() {
-            sharedPreferences.edit().apply {
-                remove(TOKEN_KEY)
-                apply()
-            }
-        }
-
-        fun clearNonce() {
-            sharedPreferences.edit().apply {
-                remove(NONCE_KEY)
-                apply()
-            }
-        }
-
-        fun clearState() {
-            sharedPreferences.edit().apply {
-                remove(STATE_KEY)
-                apply()
+            synchronized(authStateLock) {
+                sharedPreferences.edit().apply {
+                    remove(TOKEN_KEY)
+                    remove(PENDING_AUTH_HANDOFF_STATE_HASH_KEY)
+                    apply()
+                }
             }
         }
 
@@ -312,17 +325,17 @@ class Repository
                 isConnectOnStartManaged = isConnectOnStartManaged(),
             )
 
-        fun isAuthUrlManaged(): Boolean = sharedPreferences.contains(MANAGED_AUTH_URL_KEY)
+        private fun isAuthUrlManaged(): Boolean = sharedPreferences.contains(MANAGED_AUTH_URL_KEY)
 
-        fun isApiUrlManaged(): Boolean = sharedPreferences.contains(MANAGED_API_URL_KEY)
+        private fun isApiUrlManaged(): Boolean = sharedPreferences.contains(MANAGED_API_URL_KEY)
 
-        fun isLogFilterManaged(): Boolean = sharedPreferences.contains(MANAGED_LOG_FILTER_KEY)
+        private fun isLogFilterManaged(): Boolean = sharedPreferences.contains(MANAGED_LOG_FILTER_KEY)
 
         fun isAccountSlugManaged(): Boolean = sharedPreferences.contains(MANAGED_ACCOUNT_SLUG_KEY)
 
-        fun isStartOnLoginManaged(): Boolean = sharedPreferences.contains(MANAGED_START_ON_LOGIN_KEY)
+        private fun isStartOnLoginManaged(): Boolean = sharedPreferences.contains(MANAGED_START_ON_LOGIN_KEY)
 
-        fun isConnectOnStartManaged(): Boolean = sharedPreferences.contains(MANAGED_CONNECT_ON_START_KEY)
+        private fun isConnectOnStartManaged(): Boolean = sharedPreferences.contains(MANAGED_CONNECT_ON_START_KEY)
 
         fun hasRequestedNotificationPermission(): Boolean = sharedPreferences.getBoolean(NOTIFICATION_PERMISSION_REQUESTED_KEY, false)
 
@@ -330,28 +343,16 @@ class Repository
             sharedPreferences.edit().putBoolean(NOTIFICATION_PERMISSION_REQUESTED_KEY, true).apply()
         }
 
-        private fun getUserConfigSync(): Config {
-            val defaults = getBuildDefaultConfig()
-
-            return Config(
-                authUrl = sharedPreferences.getString(AUTH_URL_KEY, null) ?: defaults.authUrl,
-                apiUrl = sharedPreferences.getString(API_URL_KEY, null) ?: defaults.apiUrl,
-                logFilter = sharedPreferences.getString(LOG_FILTER_KEY, null) ?: defaults.logFilter,
-                accountSlug = sharedPreferences.getString(ACCOUNT_SLUG_KEY, null) ?: defaults.accountSlug,
-                startOnLogin = sharedPreferences.getBoolean(START_ON_LOGIN_KEY, defaults.startOnLogin),
-                connectOnStart = sharedPreferences.getBoolean(CONNECT_ON_START_KEY, defaults.connectOnStart),
-            )
-        }
-
-        private fun getBuildDefaultConfig(): Config =
-            Config(
-                authUrl = BuildConfig.AUTH_URL,
-                apiUrl = BuildConfig.API_URL,
-                logFilter = BuildConfig.LOG_FILTER,
-                accountSlug = "",
-                startOnLogin = false,
-                connectOnStart = false,
-            )
+        private fun saveUserConfigSync(value: Config) =
+            sharedPreferences
+                .edit()
+                .putString(AUTH_URL_KEY, value.authUrl)
+                .putString(API_URL_KEY, value.apiUrl)
+                .putString(LOG_FILTER_KEY, value.logFilter)
+                .putString(ACCOUNT_SLUG_KEY, value.accountSlug)
+                .putBoolean(START_ON_LOGIN_KEY, value.startOnLogin)
+                .putBoolean(CONNECT_ON_START_KEY, value.connectOnStart)
+                .apply()
 
         private fun Config.withManagedOverrides(): Config =
             copy(
@@ -373,6 +374,23 @@ class Repository
                     },
             )
 
+        private fun hashAuthState(state: String): String =
+            MessageDigest
+                .getInstance("SHA-256")
+                .digest(state.toByteArray(Charsets.UTF_8))
+                .joinToString(separator = "") { byte -> "%02x".format(byte.toInt() and 0xff) }
+
+        private fun constantTimeEquals(
+            expected: String?,
+            actual: String,
+        ): Boolean =
+            expected?.let {
+                MessageDigest.isEqual(
+                    it.toByteArray(Charsets.UTF_8),
+                    actual.toByteArray(Charsets.UTF_8),
+                )
+            } ?: false
+
         companion object {
             private const val AUTH_URL_KEY = "authUrl"
             private const val API_URL_KEY = "apiUrl"
@@ -391,6 +409,7 @@ class Repository
             private const val TOKEN_KEY = "token"
             private const val NONCE_KEY = "nonce"
             private const val STATE_KEY = "state"
+            private const val PENDING_AUTH_HANDOFF_STATE_HASH_KEY = "pendingAuthHandoffStateHash"
             private const val DEVICE_ID_KEY = "deviceId"
             private const val ENABLED_INTERNET_RESOURCE_KEY = "enabledInternetResource"
             private const val NOTIFICATION_PERMISSION_REQUESTED_KEY = "notificationPermissionRequested"

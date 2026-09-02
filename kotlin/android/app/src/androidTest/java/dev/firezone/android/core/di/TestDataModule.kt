@@ -1,12 +1,10 @@
 // Licensed under Apache 2.0 (C) 2026 Firezone, Inc.
 package dev.firezone.android.core.di
 
-import android.content.Context
 import android.content.SharedPreferences
 import android.os.Bundle
 import dagger.Module
 import dagger.Provides
-import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import dagger.hilt.testing.TestInstallIn
 import dev.firezone.android.core.data.Repository
@@ -28,8 +26,7 @@ object TestDataModule {
     @Provides
     @Singleton
     internal fun provideRepository(
-        @ApplicationContext context: Context,
         @IoDispatcher coroutineDispatcher: CoroutineDispatcher,
         sharedPreferences: SharedPreferences,
-    ): Repository = Repository(context, coroutineDispatcher, sharedPreferences)
+    ): Repository = Repository(coroutineDispatcher, sharedPreferences)
 }

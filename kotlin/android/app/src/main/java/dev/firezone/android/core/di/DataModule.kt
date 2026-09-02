@@ -2,6 +2,7 @@
 package dev.firezone.android.core.di
 
 import android.content.Context
+import android.content.RestrictionsManager
 import android.content.SharedPreferences
 import android.os.Bundle
 import androidx.core.content.getSystemService
@@ -20,17 +21,15 @@ class DataModule {
     @Provides
     internal fun provideApplicationRestrictions(
         @ApplicationContext context: Context,
-    ): Bundle = (context.getSystemService(Context.RESTRICTIONS_SERVICE) as android.content.RestrictionsManager).applicationRestrictions
+    ): Bundle = context.getSystemService<RestrictionsManager>()!!.applicationRestrictions
 
     @Singleton
     @Provides
     internal fun provideRepository(
-        @ApplicationContext context: Context,
         @IoDispatcher coroutineDispatcher: CoroutineDispatcher,
         sharedPreferences: SharedPreferences,
     ): Repository =
         Repository(
-            context,
             coroutineDispatcher,
             sharedPreferences,
         )

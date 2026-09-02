@@ -1,178 +1,92 @@
 // Licensed under Apache 2.0 (C) 2024 Firezone, Inc.
 package dev.firezone.android.features.settings.ui
 
+import android.content.ClipData
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
-import android.view.View
-import android.view.ViewTreeObserver
+import android.widget.Toast
+import androidx.activity.compose.setContent
 import androidx.activity.viewModels
-import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
-import androidx.fragment.app.Fragment
-import androidx.fragment.app.FragmentActivity
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.lifecycleScope
-import androidx.lifecycle.repeatOnLifecycle
-import androidx.viewpager2.adapter.FragmentStateAdapter
-import androidx.viewpager2.widget.ViewPager2
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dagger.hilt.android.AndroidEntryPoint
 import dev.firezone.android.R
-import dev.firezone.android.core.data.Repository
-import dev.firezone.android.databinding.ActivitySettingsBinding
-import kotlinx.coroutines.launch
+import dev.firezone.android.core.x509.KeyChain
+import dev.firezone.android.features.settings.ui.compose.SettingsScreen
+import dev.firezone.android.ui.theme.FirezoneTheme
 import javax.inject.Inject
-
-/** The navigation item and the page it shows, in order. */
-internal fun settingsPages(hasConfiguredCertificateAlias: Boolean): List<Pair<Int, () -> Fragment>> =
-    buildList {
-        add(R.id.settingsGeneral to { GeneralSettingsFragment() })
-        add(R.id.settingsAdvanced to { AdvancedSettingsFragment() })
-
-        if (hasConfiguredCertificateAlias) {
-            add(R.id.settingsDeviceTrust to { DeviceTrustSettingsFragment() })
-        }
-
-        add(R.id.settingsLogs to { LogSettingsFragment() })
-    }
 
 @AndroidEntryPoint
 internal class SettingsActivity : AppCompatActivity() {
-    private lateinit var binding: ActivitySettingsBinding
     private val viewModel: SettingsViewModel by viewModels()
-    private val pages: List<Pair<Int, () -> Fragment>> by lazy {
-        settingsPages(
-            hasConfiguredCertificateAlias =
-                repository.getX509CertificateAliasSync(applicationRestrictions) != null,
-        )
-    }
-    private var lastFocusedView: View? = null
-    private var lastSelectedPage = -1
+    private val deviceTrustViewModel: DeviceTrustSettingsViewModel by viewModels()
 
     @Inject
-    lateinit var repository: Repository
-
-    @Inject
-    lateinit var applicationRestrictions: Bundle
-
-    private val navigationSelectionSync =
-        object : ViewPager2.OnPageChangeCallback() {
-            override fun onPageSelected(position: Int) {
-                // By id rather than by menu position, which would assume the menu is ordered like
-                // the pager. Checking the item rather than assigning `selectedItemId`, which would
-                // call back into the item listener and drive the pager again.
-                binding.bottomNavigation.menu
-                    .findItem(pages[position].first)
-                    .isChecked = true
-            }
-        }
-
-    private val focusTracker =
-        ViewTreeObserver.OnGlobalFocusChangeListener { _, newFocus ->
-            if (newFocus != null) {
-                lastFocusedView = newFocus
-            }
-        }
-
-    private val pageReselectionFocusRestorer =
-        object : ViewPager2.OnPageChangeCallback() {
-            override fun onPageSelected(position: Int) {
-                if (position == lastSelectedPage) {
-                    lastFocusedView
-                        ?.takeIf { it.isAttachedToWindow && !it.hasFocus() }
-                        ?.requestFocus()
-                }
-                lastSelectedPage = position
-            }
-        }
+    internal lateinit var keyChain: KeyChain
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        binding = ActivitySettingsBinding.inflate(layoutInflater)
-        setContentView(binding.root)
 
-        setupViews()
-        setupStateObservers()
+        val isUserSignedIn = intent.getBooleanExtra(EXTRA_IS_USER_SIGNED_IN, false)
 
-        viewModel.populateFieldsFromConfig()
-        viewModel.deleteLogZip(this@SettingsActivity)
-    }
+        setContent {
+            FirezoneTheme {
+                val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+                val deviceTrustState by deviceTrustViewModel.uiStateFlow.collectAsStateWithLifecycle()
+                val action by viewModel.actionStateFlow.collectAsStateWithLifecycle()
 
-    private fun setupViews() {
-        val adapter = SettingsPagerAdapter(this)
-
-        with(binding) {
-            bottomNavigation.menu
-                .findItem(R.id.settingsDeviceTrust)
-                .isVisible = pages.any { it.first == R.id.settingsDeviceTrust }
-            viewPager.adapter = adapter
-
-            // ViewPager2 clears focus whenever onPageSelected is dispatched, and its
-            // ScrollEventAdapter re-dispatches the current page when the IME-driven
-            // window resize relayouts the pager (pages > 0 produce a scroll delta on
-            // relayout, which is why only the first tab was unaffected). External
-            // callbacks run after the internal focus clearer, so when the current page
-            // is "re-selected" we hand focus back to the view that just lost it.
-            // See https://issuetracker.google.com/issues/140656866
-            window.decorView.viewTreeObserver.addOnGlobalFocusChangeListener(focusTracker)
-            viewPager.registerOnPageChangeCallback(pageReselectionFocusRestorer)
-            viewPager.registerOnPageChangeCallback(navigationSelectionSync)
-
-            bottomNavigation.setOnItemSelectedListener { item ->
-                val position = pages.indexOfFirst { it.first == item.itemId }
-
-                if (position < 0) {
-                    return@setOnItemSelectedListener false
-                }
-
-                // Without smooth scrolling, so that jumping across the bar does not create and
-                // then discard every fragment in between.
-                viewPager.setCurrentItem(position, false)
-
-                true
-            }
-
-            val isUserSignedIn = intent.getBooleanExtra("isUserSignedIn", false)
-            if (isUserSignedIn) {
-                btSaveSettings.setOnClickListener {
-                    showSaveWarningDialog()
-                }
-            } else {
-                btSaveSettings.setOnClickListener {
-                    viewModel.onSaveSettingsCompleted()
-                }
-            }
-
-            btCancel.setOnClickListener {
-                viewModel.onCancel()
-            }
-        }
-    }
-
-    private fun setupStateObservers() {
-        lifecycleScope.launch {
-            repeatOnLifecycle(Lifecycle.State.STARTED) {
-                viewModel.uiState.collect { uiState ->
-                    with(binding) {
-                        btSaveSettings.isEnabled = uiState.isSaveButtonEnabled
+                LaunchedEffect(action) {
+                    action?.let {
+                        viewModel.clearAction()
+                        when (it) {
+                            is SettingsViewModel.ViewAction.NavigateBack -> finish()
+                            is SettingsViewModel.ViewAction.ShareLogs -> shareLogs(it.uri)
+                        }
                     }
                 }
+
+                SettingsScreen(
+                    config = uiState.config,
+                    managedStatus = uiState.managedStatus,
+                    isSaveEnabled = uiState.isSaveButtonEnabled,
+                    logSizeBytes = uiState.logSizeBytes,
+                    deviceTrustState = deviceTrustState,
+                    // Device Trust has nothing to say until a certificate is configured, whether
+                    // by an administrator or by the user.
+                    hasConfiguredCertificateAlias = deviceTrustState.alias != null,
+                    warnBeforeSaving = isUserSignedIn,
+                    onAuthUrlChange = viewModel::onAuthUrlChanged,
+                    onApiUrlChange = viewModel::onApiUrlChanged,
+                    onLogFilterChange = viewModel::onLogFilterChanged,
+                    onAccountSlugChange = viewModel::onAccountSlugChanged,
+                    onStartOnLoginChange = viewModel::onStartOnLoginChanged,
+                    onConnectOnStartChange = viewModel::onConnectOnStartChanged,
+                    onResetToDefaults = viewModel::resetSettingsToDefaults,
+                    onClearLogs = { viewModel.deleteLogDirectory(applicationContext) },
+                    onExportLogs = { viewModel.createLogZip(applicationContext) },
+                    onLogsShown = { viewModel.onViewResume(applicationContext) },
+                    onSelectCertificate = ::chooseCertificate,
+                    onForgetCertificate = deviceTrustViewModel::forgetSelection,
+                    onDeviceTrustShown = deviceTrustViewModel::loadDetails,
+                    onSave = viewModel::onSaveSettingsCompleted,
+                    onCancel = viewModel::onCancel,
+                )
             }
         }
+
+        viewModel.deleteLogZip(this@SettingsActivity)
     }
 
     override fun onResume() {
         super.onResume()
-        viewModel.onViewResume(this@SettingsActivity)
-    }
-
-    private fun showSaveWarningDialog() {
-        AlertDialog.Builder(this).apply {
-            setTitle("Warning")
-            setMessage("Some changed settings will not be applied until you sign out and sign back in.")
-            setPositiveButton("Okay") { _, _ ->
-                viewModel.onSaveSettingsCompleted()
-            }
-            create().show()
-        }
+        viewModel.populateFieldsFromConfig()
+        viewModel.onViewResume(applicationContext)
+        // The administrator can install or revoke the certificate while this screen is open.
+        deviceTrustViewModel.loadDetails()
     }
 
     override fun onStop() {
@@ -182,19 +96,46 @@ internal class SettingsActivity : AppCompatActivity() {
         }
     }
 
-    override fun onDestroy() {
-        window.decorView.viewTreeObserver.removeOnGlobalFocusChangeListener(focusTracker)
-        binding.viewPager.unregisterOnPageChangeCallback(pageReselectionFocusRestorer)
-        binding.viewPager.unregisterOnPageChangeCallback(navigationSelectionSync)
-        lastFocusedView = null
-        super.onDestroy()
+    private fun chooseCertificate() {
+        // Android answers on a binder thread, so the ViewModel takes the alias directly and only
+        // the toast has to hop onto the main thread.
+        keyChain.choosePrivateKeyAlias(
+            this,
+            deviceTrustViewModel.keyChainRequestUri(),
+            deviceTrustViewModel.uiStateFlow.value.alias,
+        ) { alias ->
+            if (alias == null) {
+                runOnUiThread {
+                    Toast
+                        .makeText(this, R.string.device_trust_no_certificate_selected, Toast.LENGTH_LONG)
+                        .show()
+                }
+            } else {
+                deviceTrustViewModel.onAliasSelected(alias)
+            }
+        }
     }
 
-    private inner class SettingsPagerAdapter(
-        activity: FragmentActivity,
-    ) : FragmentStateAdapter(activity) {
-        override fun getItemCount(): Int = pages.size
+    private fun shareLogs(uri: Uri) {
+        val sendIntent =
+            Intent(Intent.ACTION_SEND).apply {
+                type = "application/zip"
+                putExtra(Intent.EXTRA_SUBJECT, "Sharing diagnostic logs")
+                putExtra(Intent.EXTRA_STREAM, uri)
+                clipData = ClipData.newRawUri("Diagnostic logs", uri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+        startActivity(Intent.createChooser(sendIntent, null))
+    }
 
-        override fun createFragment(position: Int): Fragment = pages[position].second()
+    companion object {
+        private const val EXTRA_IS_USER_SIGNED_IN = "isUserSignedIn"
+
+        fun createIntent(
+            context: Context,
+            isUserSignedIn: Boolean,
+        ): Intent =
+            Intent(context, SettingsActivity::class.java)
+                .putExtra(EXTRA_IS_USER_SIGNED_IN, isUserSignedIn)
     }
 }

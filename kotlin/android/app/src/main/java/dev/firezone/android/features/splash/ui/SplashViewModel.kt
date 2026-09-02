@@ -5,17 +5,17 @@ import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
-import android.os.Bundle
 import androidx.core.content.ContextCompat
-import androidx.lifecycle.LiveData
-import androidx.lifecycle.MutableLiveData
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.firezone.android.core.ApplicationMode
+import dev.firezone.android.core.data.ManagedConfigurationSource
 import dev.firezone.android.core.data.Repository
 import dev.firezone.android.core.x509.CertificateAccess
 import dev.firezone.android.tunnel.TunnelService
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -29,73 +29,100 @@ internal class SplashViewModel
     @Inject
     constructor(
         private val repo: Repository,
-        private val applicationRestrictions: Bundle,
+        private val managedConfigurationSource: ManagedConfigurationSource,
         private val applicationMode: ApplicationMode,
         private val certificateAccess: CertificateAccess,
+        savedStateHandle: SavedStateHandle,
     ) : ViewModel() {
         private val actionMutableStateFlow = MutableStateFlow<ViewAction?>(null)
+        private val launchFlow = SplashLaunchFlow(savedStateHandle)
+        private var checkTunnelStateJob: Job? = null
         val actionStateFlow: StateFlow<ViewAction?> = actionMutableStateFlow
 
-        internal fun checkTunnelState(
-            context: Context,
-            isInitialLaunch: Boolean = false,
-        ) {
-            viewModelScope.launch {
-                // Stay a while and enjoy the logo
-                delay(REQUEST_DELAY)
+        internal fun checkTunnelState(context: Context) {
+            checkTunnelStateJob?.cancel()
+            checkTunnelStateJob =
+                viewModelScope.launch {
+                    // Stay a while and enjoy the logo
+                    delay(REQUEST_DELAY)
 
-                // If we don't have VPN permission, we can't continue.
-                if (!hasVpnPermissions(context) && applicationMode != ApplicationMode.TESTING) {
-                    actionMutableStateFlow.value = ViewAction.NavigateToVpnPermission
-                    return@launch
+                    // If we don't have VPN permission, we can't continue.
+                    if (!hasVpnPermissions(context) && applicationMode != ApplicationMode.TESTING) {
+                        publish(launchFlow.vpnPermissionRequired(), context)
+                        return@launch
+                    }
+
+                    // Check if we need to request notification permission (only once)
+                    if (shouldRequestNotificationPermission(context)) {
+                        publish(launchFlow.notificationPermissionRequired(), context)
+                        return@launch
+                    }
+
+                    // An administrator can configure a certificate that only the user can release, which
+                    // is what a work profile on a personally-owned device looks like. Ask once per
+                    // launch: pressing on without it only fails later, at the tunnel.
+                    if (!certificateSelectionOffered && certificateAccess.needsSelection()) {
+                        certificateSelectionOffered = true
+                        actionMutableStateFlow.value = ViewAction.NavigateToCertificatePermission
+                        return@launch
+                    }
+
+                    val managedConfiguration = managedConfigurationSource.refresh()
+                    val credential = managedConfiguration.resolveSessionCredential(repo.getTokenSync())
+                    val isRunning = TunnelService.isRunning(context)
+                    val connectOnStart =
+                        repo
+                            .getEffectiveConfig(repo.getUserConfigSync(), managedConfiguration)
+                            .connectOnStart
+
+                    publish(
+                        launchFlow.permissionsReady(
+                            hasToken = credential != null,
+                            isTunnelRunning = isRunning,
+                            connectOnStart = connectOnStart,
+                        ),
+                        context,
+                    )
                 }
-
-                // Check if we need to request notification permission (only once)
-                if (shouldRequestNotificationPermission(context)) {
-                    actionMutableStateFlow.value = ViewAction.NavigateToNotificationPermission
-                    return@launch
-                }
-
-                // An administrator can configure a certificate that only the user can release, which
-                // is what a work profile on a personally-owned device looks like. Ask once per
-                // launch: pressing on without it only fails later, at the tunnel.
-                if (!certificateSelectionOffered && certificateAccess.needsSelection()) {
-                    certificateSelectionOffered = true
-                    actionMutableStateFlow.value = ViewAction.NavigateToCertificatePermission
-                    return@launch
-                }
-
-                val token = applicationRestrictions.getString("token") ?: repo.getTokenSync()
-
-                if (token.isNullOrBlank()) {
-                    actionMutableStateFlow.value = ViewAction.NavigateToSignIn
-                    return@launch
-                }
-
-                val isRunning = TunnelService.isRunning(context)
-
-                // If the service is already running, we can go directly to the session.
-                if (isRunning) {
-                    actionMutableStateFlow.value = ViewAction.NavigateToSession
-                    return@launch
-                }
-
-                val connectOnStart = repo.getConfigSync().connectOnStart
-
-                // If this is the initial launch and connectOnStart is true, try to connect
-                if (isInitialLaunch && connectOnStart) {
-                    TunnelService.start(context)
-                    actionMutableStateFlow.value = ViewAction.NavigateToSession
-                    return@launch
-                }
-
-                // If we get here, we shouldn't start the tunnel, so show the sign in screen
-                actionMutableStateFlow.value = ViewAction.NavigateToSignIn
-            }
         }
 
         internal fun clearAction() {
             actionMutableStateFlow.value = null
+        }
+
+        internal fun cancelTunnelStateCheck() {
+            checkTunnelStateJob?.cancel()
+            checkTunnelStateJob = null
+            clearAction()
+        }
+
+        private fun publish(
+            action: SplashLaunchFlow.Action,
+            context: Context,
+        ) {
+            actionMutableStateFlow.value =
+                when (action) {
+                    SplashLaunchFlow.Action.REQUEST_VPN_PERMISSION -> {
+                        ViewAction.NavigateToVpnPermission
+                    }
+
+                    SplashLaunchFlow.Action.REQUEST_NOTIFICATION_PERMISSION -> {
+                        ViewAction.NavigateToNotificationPermission
+                    }
+
+                    SplashLaunchFlow.Action.SIGN_IN -> {
+                        ViewAction.NavigateToSignIn
+                    }
+
+                    SplashLaunchFlow.Action.OPEN_SESSION -> {
+                        ViewAction.NavigateToSession
+                    }
+
+                    SplashLaunchFlow.Action.CONNECT_AND_OPEN_SESSION -> {
+                        TunnelService.start(context)
+                        ViewAction.NavigateToSession
+                    }
+                }
         }
 
         private fun hasVpnPermissions(context: Context): Boolean = android.net.VpnService.prepare(context) == null
@@ -144,8 +171,6 @@ internal class SplashViewModel
             object NavigateToNotificationPermission : ViewAction()
 
             object NavigateToCertificatePermission : ViewAction()
-
-            object NavigateToSettings : ViewAction()
 
             object NavigateToSignIn : ViewAction()
 

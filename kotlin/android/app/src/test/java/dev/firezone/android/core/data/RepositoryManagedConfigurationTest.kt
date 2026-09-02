@@ -7,7 +7,6 @@ import android.content.SharedPreferences
 import android.os.Bundle
 import dev.firezone.android.core.data.model.ManagedConfigStatus
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -32,14 +31,14 @@ class RepositoryManagedConfigurationTest {
                 .getApplication()
                 .getSharedPreferences("managed-configuration-test", Context.MODE_PRIVATE)
         sharedPreferences.edit().clear().commit()
-        repository = Repository(RuntimeEnvironment.getApplication(), Dispatchers.Unconfined, sharedPreferences)
+        repository = Repository(Dispatchers.Unconfined, sharedPreferences)
     }
 
     @Test
     fun `latest managed configuration replaces previous overlay`() =
         runBlocking {
-            repository.saveSettings(userConfig).first()
-            repository.saveManagedConfiguration(allManagedConfig()).first()
+            repository.saveUserConfig(userConfig)
+            repository.saveManagedConfiguration(allManagedConfig())
 
             repository
                 .saveManagedConfiguration(
@@ -47,7 +46,7 @@ class RepositoryManagedConfigurationTest {
                         putString(API_URL_KEY, "wss://replacement.example.com")
                         putBoolean(CONNECT_ON_START_KEY, false)
                     },
-                ).first()
+                )
 
             assertEquals(
                 userConfig.copy(
@@ -72,65 +71,45 @@ class RepositoryManagedConfigurationTest {
     @Test
     fun `revoking managed configuration restores user values`() =
         runBlocking {
-            repository.saveSettings(userConfig).first()
-            repository.saveManagedConfiguration(allManagedConfig()).first()
+            repository.saveUserConfig(userConfig)
+            repository.saveManagedConfiguration(allManagedConfig())
 
-            repository.saveManagedConfiguration(Bundle()).first()
+            repository.saveManagedConfiguration(Bundle())
 
             assertEquals(userConfig, repository.getConfigSync())
             assertEquals(unmanagedStatus, repository.getManagedStatus())
         }
 
     @Test
-    fun `saving settings preserves underlying values for managed fields`() =
+    fun `saving user settings does not replace active managed values`() =
         runBlocking {
-            repository.saveSettings(userConfig).first()
+            repository.saveUserConfig(userConfig)
             repository
                 .saveManagedConfiguration(
                     Bundle().apply {
                         putString(AUTH_URL_KEY, "https://managed.example.com")
                         putBoolean(CONNECT_ON_START_KEY, false)
                     },
-                ).first()
+                )
 
-            repository
-                .saveSettings(
-                    repository.getConfigSync().copy(
-                        logFilter = "trace",
-                        accountSlug = "changed-account",
-                    ),
-                ).first()
-            repository.saveManagedConfiguration(Bundle()).first()
-
-            assertEquals(
+            val editedUserConfig =
                 userConfig.copy(
+                    authUrl = "https://unsaved.example.com",
                     logFilter = "trace",
                     accountSlug = "changed-account",
+                )
+            repository.saveUserConfig(editedUserConfig)
+
+            assertEquals(
+                editedUserConfig.copy(
+                    authUrl = "https://managed.example.com",
+                    connectOnStart = false,
                 ),
                 repository.getConfigSync(),
             )
-        }
+            repository.saveManagedConfiguration(Bundle())
 
-    @Test
-    fun `saving cannot replace any managed underlying field`() =
-        runBlocking {
-            repository.saveSettings(userConfig).first()
-            repository.saveManagedConfiguration(allManagedConfig()).first()
-
-            repository
-                .saveSettings(
-                    FirezoneConfig(
-                        authUrl = "https://attempted.example.com",
-                        apiUrl = "wss://attempted.example.com",
-                        logFilter = "trace",
-                        accountSlug = "attempted-account",
-                        startOnLogin = true,
-                        connectOnStart = false,
-                    ),
-                ).first()
-            repository.saveManagedConfiguration(Bundle()).first()
-
-            assertEquals(userConfig, repository.getConfigSync())
+            assertEquals(editedUserConfig, repository.getConfigSync())
         }
 
     @Test
@@ -142,9 +121,12 @@ class RepositoryManagedConfigurationTest {
                         putString(AUTH_URL_KEY, "https://managed.example.com")
                         putBoolean(CONNECT_ON_START_KEY, true)
                     },
-                ).first()
+                )
 
-            val defaults = repository.getDefaultConfigSync()
+            val defaults =
+                repository.getEffectiveConfigFromPersistedManaged(
+                    repository.getDefaultUserConfigSync(),
+                )
 
             assertEquals("https://managed.example.com", defaults.authUrl)
             assertTrue(defaults.connectOnStart)
@@ -159,12 +141,12 @@ class RepositoryManagedConfigurationTest {
                     putString(AUTH_URL_KEY, "https://managed.example.com")
                     putString(X509_CERTIFICATE_ALIAS_RESTRICTION, "managed-alias")
                 }
-            repository.saveManagedConfiguration(managedRestrictions).first()
+            repository.saveManagedConfiguration(managedRestrictions)
 
             assertEquals("managed-alias", repository.getX509CertificateAliasSync(managedRestrictions))
 
             val revokedRestrictions = Bundle()
-            repository.saveManagedConfiguration(revokedRestrictions).first()
+            repository.saveManagedConfiguration(revokedRestrictions)
 
             assertEquals("user-alias", repository.getX509CertificateAliasSync(revokedRestrictions))
         }

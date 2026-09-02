@@ -5,6 +5,7 @@ import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import androidx.activity.compose.setContent
 import androidx.activity.viewModels
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
@@ -16,36 +17,50 @@ import dagger.hilt.android.AndroidEntryPoint
 import dev.firezone.android.R
 import dev.firezone.android.core.Log
 import dev.firezone.android.core.presentation.MainActivity
-import dev.firezone.android.databinding.ActivityAuthBinding
+import dev.firezone.android.features.auth.ui.compose.AuthScreen
+import dev.firezone.android.ui.theme.FirezoneTheme
 import kotlinx.coroutines.launch
 
 @AndroidEntryPoint
-class AuthActivity : AppCompatActivity(R.layout.activity_auth) {
-    private lateinit var binding: ActivityAuthBinding
+class AuthActivity : AppCompatActivity() {
     private val viewModel: AuthViewModel by viewModels()
-    private var hasLaunchedCustomTab = false
+    private var browserState = AuthBrowserState.NOT_STARTED
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        binding = ActivityAuthBinding.inflate(layoutInflater)
+        browserState = AuthBrowserState.restore(savedInstanceState?.getString(BROWSER_STATE_KEY))
+
+        setContent {
+            FirezoneTheme {
+                AuthScreen()
+            }
+        }
 
         setupActionObservers()
+
+        if (browserState == AuthBrowserState.UNAVAILABLE) {
+            showBrowserRequiredError()
+        }
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        outState.putString(BROWSER_STATE_KEY, browserState.name)
+        super.onSaveInstanceState(outState)
     }
 
     override fun onResume() {
+        // Snapshot this before `super` advances the lifecycle. A restored issued URL can replay as
+        // soon as the Activity reaches RESUMED and mark the browser launched during that call.
+        val resumeAction = browserState.resumeAction()
         super.onResume()
 
-        if (hasLaunchedCustomTab) {
-            // User returned from Custom Tab without completing auth, navigate back to main app
-            navigateToSignIn()
-        } else {
-            viewModel.onActivityResume()
-        }
+        handleAction(resumeAction)
     }
 
     private fun setupActionObservers() {
         lifecycleScope.launch {
-            repeatOnLifecycle(Lifecycle.State.STARTED) {
+            // Let the first resume interpret restored browser state before replaying an issued URL.
+            repeatOnLifecycle(Lifecycle.State.RESUMED) {
                 viewModel.actionStateFlow.collect { action ->
                     action?.let {
                         viewModel.clearAction()
@@ -59,13 +74,16 @@ class AuthActivity : AppCompatActivity(R.layout.activity_auth) {
     }
 
     private fun setupWebView(url: String) {
-        hasLaunchedCustomTab = true
+        if (browserState != AuthBrowserState.NOT_STARTED) {
+            return
+        }
 
         val url = Uri.parse(url)
 
         // Try to use Custom Tabs with the default browser first
         try {
             launchCustomTabsIntent(url)
+            browserState = AuthBrowserState.LAUNCHED
             return
         } catch (e: ActivityNotFoundException) {
             Log.d(TAG, "CustomTabs don't appear to be available, falling back to ACTION_VIEW intent")
@@ -74,7 +92,9 @@ class AuthActivity : AppCompatActivity(R.layout.activity_auth) {
         // Fallback to default browser if Custom Tabs unavailable
         try {
             launchActionViewIntent(url)
+            browserState = AuthBrowserState.LAUNCHED
         } catch (e: ActivityNotFoundException) {
+            browserState = AuthBrowserState.UNAVAILABLE
             showBrowserRequiredError()
         }
     }
@@ -101,6 +121,14 @@ class AuthActivity : AppCompatActivity(R.layout.activity_auth) {
         finish()
     }
 
+    private fun handleAction(action: AuthBrowserState.Action) {
+        when (action) {
+            AuthBrowserState.Action.START_AUTH_FLOW -> viewModel.onActivityResume()
+            AuthBrowserState.Action.NAVIGATE_TO_SIGN_IN -> navigateToSignIn()
+            AuthBrowserState.Action.NONE -> Unit
+        }
+    }
+
     private fun showBrowserRequiredError() {
         AlertDialog
             .Builder(this)
@@ -109,12 +137,13 @@ class AuthActivity : AppCompatActivity(R.layout.activity_auth) {
             .setPositiveButton(
                 R.string.error_dialog_button_text,
             ) { _, _ ->
-                this@AuthActivity.finish()
+                handleAction(browserState.browserRequiredAcknowledgementAction())
             }.setIcon(R.drawable.ic_firezone_logo)
             .show()
     }
 
     companion object {
+        private const val BROWSER_STATE_KEY = "browserState"
         private const val TAG = "AuthActivity"
     }
 }

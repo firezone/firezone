@@ -1,9 +1,11 @@
 // Licensed under Apache 2.0 (C) 2024 Firezone, Inc.
 package dev.firezone.android.features.auth.ui
 
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dev.firezone.android.core.data.ManagedConfigurationSource
 import dev.firezone.android.core.data.Repository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -16,22 +18,36 @@ internal class AuthViewModel
     @Inject
     constructor(
         private val repo: Repository,
+        private val managedConfigurationSource: ManagedConfigurationSource,
+        savedStateHandle: SavedStateHandle,
     ) : ViewModel() {
-        private val actionMutableStateFlow = MutableStateFlow<ViewAction?>(null)
+        private val requestState = AuthRequestState(savedStateHandle)
+        private val actionMutableStateFlow =
+            MutableStateFlow<ViewAction?>(requestState.issuedUrl?.let(ViewAction::LaunchAuthFlow))
         val actionStateFlow: StateFlow<ViewAction?> = actionMutableStateFlow
 
-        fun onActivityResume() =
-            viewModelScope.launch {
-                val state = generateRandomString(NONCE_LENGTH)
-                val nonce = generateRandomString(NONCE_LENGTH)
-                repo.saveNonceSync(nonce)
-                repo.saveStateSync(state)
-                val config = repo.getConfigSync()
-                val authUrl = "${config.authUrl}/${config.accountSlug}?state=$state&nonce=$nonce&as=gui-client"
-
-                actionMutableStateFlow.value =
-                    ViewAction.LaunchAuthFlow(authUrl)
+        fun onActivityResume() {
+            if (!requestState.claimGeneration()) {
+                return
             }
+
+            viewModelScope.launch {
+                try {
+                    val managedConfiguration = managedConfigurationSource.refresh()
+                    val state = generateRandomString(NONCE_LENGTH)
+                    val nonce = generateRandomString(NONCE_LENGTH)
+                    repo.saveNonceAndStateSync(nonce = nonce, state = state)
+                    val config = repo.getEffectiveConfig(repo.getUserConfigSync(), managedConfiguration)
+                    val authUrl = "${config.authUrl}/${config.accountSlug}?state=$state&nonce=$nonce&as=gui-client"
+
+                    requestState.markIssued(authUrl)
+                    actionMutableStateFlow.value =
+                        ViewAction.LaunchAuthFlow(authUrl)
+                } finally {
+                    requestState.releaseGeneration()
+                }
+            }
+        }
 
         fun clearAction() {
             actionMutableStateFlow.value = null

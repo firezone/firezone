@@ -31,7 +31,6 @@ import dev.firezone.android.tunnel.launchApp
 import dev.firezone.android.tunnel.resumedActivity
 import dev.firezone.android.tunnel.startTunnelService
 import dev.firezone.android.tunnel.stopTunnelService
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
@@ -219,7 +218,12 @@ class TunnelE2eTest {
         return awaitSession()
     }
 
-    private fun signIn() = runBlocking { repo.saveToken(TOKEN).first() }
+    private fun signIn() {
+        runBlocking {
+            repo.saveNonceAndStateSync(nonce = NONCE, state = STATE)
+            repo.saveAuthCallbackIfStateValid(state = STATE, fragment = FRAGMENT)
+        }
+    }
 
     private fun awaitSession(): FakeSession = runBlocking { withTimeout(TIMEOUT_MS) { FakeSessionFactory.awaitSession() } }
 
@@ -273,7 +277,10 @@ class TunnelE2eTest {
             .getSystemService(NotificationManager::class.java)
 
     private companion object {
-        const val TOKEN = "stored-token"
+        const val NONCE = "stored-"
+        const val FRAGMENT = "token"
+        const val TOKEN = NONCE + FRAGMENT
+        const val STATE = "stored-state"
         const val TIMEOUT_MS = 20_000L
     }
 }

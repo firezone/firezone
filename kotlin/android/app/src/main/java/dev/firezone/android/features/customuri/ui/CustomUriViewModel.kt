@@ -8,12 +8,13 @@ import com.google.firebase.Firebase
 import com.google.firebase.crashlytics.crashlytics
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.firezone.android.core.Log
+import dev.firezone.android.core.data.AuthCallbackResult
 import dev.firezone.android.core.data.Repository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.collect
-import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import javax.inject.Inject
 
 @HiltViewModel
@@ -24,46 +25,79 @@ internal class CustomUriViewModel
     ) : ViewModel() {
         private val actionMutableStateFlow = MutableStateFlow<ViewAction?>(null)
         val actionStateFlow: StateFlow<ViewAction?> = actionMutableStateFlow
+        private val callbackMutex = Mutex()
+        private var hasPublishedTerminalAction = false
+        private var pendingHandoffState: String? = null
 
         fun parseCustomUri(intent: Intent) {
-            viewModelScope.launch {
-                val accumulatedErrors = mutableListOf<String>()
-                val error = { msg: String ->
-                    accumulatedErrors += msg
-                    Firebase.crashlytics.log(msg)
-                    Log.e(TAG, msg)
+            viewModelScope.launch { processCustomUri(intent) }
+        }
+
+        internal suspend fun processCustomUri(intent: Intent) {
+            callbackMutex.withLock {
+                if (hasPublishedTerminalAction) {
+                    return@withLock
                 }
 
-                when (intent.data?.host) {
-                    PATH_CALLBACK -> {
-                        intent.data?.getQueryParameter(QUERY_CLIENT_STATE)?.let { state ->
-                            if (repo.validateState(state).firstOrNull() != true) {
-                                error("Invalid state parameter $state")
-                            }
-                        }
-                        intent.data?.getQueryParameter(QUERY_CLIENT_AUTH_FRAGMENT)?.let { fragment ->
-                            if (fragment.isNotBlank()) {
-                                // Save token, then clear nonce and state since we don't
-                                // need to keep them around anymore
-                                repo.saveToken(fragment).collect()
-                                repo.clearNonce()
-                                repo.clearState()
-                            } else {
-                                error("Auth fragment was empty")
-                            }
-                        }
-                    }
-
-                    else -> {
-                        error("Unknown path segment: ${intent.data?.lastPathSegment}")
+                val action = handleCustomUri(intent)
+                hasPublishedTerminalAction = true
+                if (action is ViewAction.AuthFlowError) {
+                    action.errors.forEach { error ->
+                        Firebase.crashlytics.log(error)
+                        Log.e(TAG, error)
                     }
                 }
-                if (accumulatedErrors.isNotEmpty()) {
-                    actionMutableStateFlow.value = ViewAction.AuthFlowError(accumulatedErrors)
-                } else {
-                    actionMutableStateFlow.value = ViewAction.AuthFlowComplete
+                actionMutableStateFlow.value = action
+            }
+        }
+
+        internal suspend fun handleCustomUri(intent: Intent): ViewAction {
+            val uri = intent.data
+            if (uri?.host != PATH_CALLBACK) {
+                return ViewAction.AuthFlowError("Unknown path segment: ${uri?.lastPathSegment}")
+            }
+
+            val state = uri.getQueryParameter(QUERY_CLIENT_STATE)
+            val fragment = uri.getQueryParameter(QUERY_CLIENT_AUTH_FRAGMENT)
+            val missingParameterErrors =
+                buildList {
+                    if (state.isNullOrBlank()) {
+                        add("State parameter was missing or empty")
+                    }
+                    if (fragment.isNullOrBlank()) {
+                        add("Auth fragment was missing or empty")
+                    }
+                }
+            if (missingParameterErrors.isNotEmpty()) {
+                return ViewAction.AuthFlowError(missingParameterErrors)
+            }
+
+            checkNotNull(state)
+            checkNotNull(fragment)
+
+            val result =
+                repo.saveAuthCallbackIfStateValid(
+                    state = state,
+                    fragment = fragment,
+                )
+            return when (result) {
+                AuthCallbackResult.NEW_HANDOFF,
+                AuthCallbackResult.PENDING_HANDOFF,
+                -> {
+                    pendingHandoffState = state
+                    ViewAction.AuthFlowComplete
+                }
+
+                AuthCallbackResult.INVALID -> {
+                    ViewAction.AuthFlowError("Invalid state parameter")
                 }
             }
+        }
+
+        fun acknowledgeAuthFlowComplete() {
+            val state = pendingHandoffState ?: return
+            repo.acknowledgeAuthCallbackHandoff(state)
+            pendingHandoffState = null
         }
 
         fun clearAction() {
