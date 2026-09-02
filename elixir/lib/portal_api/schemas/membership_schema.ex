@@ -102,26 +102,6 @@ defmodule PortalAPI.Schemas.Membership do
           items: Membership.Schema
         },
         metadata: PaginationMetadata
-      },
-      example: %{
-        "data" => [
-          %{
-            "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-            "name" => "John Doe",
-            "type" => "account_user"
-          },
-          %{
-            "id" => "cc9f561a-444d-4083-ab38-0abc6cf2314c",
-            "name" => "Jane Smith",
-            "type" => "account_admin_user"
-          }
-        ],
-        "metadata" => %{
-          "limit" => 10,
-          "total" => 100,
-          "prev_page" => "123123425",
-          "next_page" => "98776234123"
-        }
       }
     })
   end
@@ -145,14 +125,6 @@ defmodule PortalAPI.Schemas.Membership do
               items: %Schema{type: :string, format: :uuid, description: "Actor ID"}
             }
           }
-        }
-      },
-      example: %{
-        "data" => %{
-          "actor_ids" => [
-            "4ddfa557-7dfc-484f-894c-2024ec3fe9f7",
-            "89d22f71-939d-442d-b148-897b730adfb4"
-          ]
         }
       }
     })

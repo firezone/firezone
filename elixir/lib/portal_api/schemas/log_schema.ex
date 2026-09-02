@@ -78,6 +78,7 @@ defmodule PortalAPI.Schemas.Log do
     use PortalAPI.Schemas.Object
 
     alias PortalAPI.Schemas
+    alias PortalAPI.Schemas.SessionSubject
 
     object(%{
       title: "SessionLog",
@@ -107,7 +108,20 @@ defmodule PortalAPI.Schemas.Log do
           enum: ["client", "gateway", "portal"],
           description: "The kind of session that was created."
         },
-        subject: Schemas.Subject
+        subject: %Schema{
+          nullable: true,
+          description: """
+          Who established the session and from where. The shape depends on
+          `context`, which is the field to switch on:
+
+          - `client`: a `ClientSessionSubject` - the actor, plus the Client and
+            token the session was established with.
+          - `gateway`: a `GatewaySessionSubject` - the Gateway and its token. A
+            Gateway authenticates as itself, so no actor fields are recorded.
+          - `portal`: a plain `Subject`.
+          """,
+          oneOf: [SessionSubject.Client, SessionSubject.Gateway, Schemas.Subject]
+        }
       },
       example: %{
         "type" => "session",
@@ -116,7 +130,10 @@ defmodule PortalAPI.Schemas.Log do
         "context" => "client",
         "subject" => %{
           "actor_id" => "84e7f82f-831a-4a9d-8f17-c66c2bb6e205",
+          "actor_name" => "Admin User",
           "actor_email" => "admin@example.com",
+          "actor_type" => "account_admin_user",
+          "auth_provider_id" => "98776234-1234-5678-9012-345678901234",
           "device_id" => "11e7f82f-831a-4a9d-8f17-c66c2bb6e205",
           "token_id" => "22e7f82f-831a-4a9d-8f17-c66c2bb6e205",
           "ip" => "189.172.73.1",
@@ -164,11 +181,11 @@ defmodule PortalAPI.Schemas.Log do
           format: :"date-time",
           description: "RFC 3339 timestamp identifying when the flow was ingested."
         },
-        initiator_device_id: %Schema{
+        initiator_device_id: %Schema{example: "11e7f82f-831a-4a9d-8f17-c66c2bb6e205",
           type: :string,
           description: "ID of the Client that opened the flow. Always a Client."
         },
-        responder_device_id: %Schema{
+        responder_device_id: %Schema{example: "9d3a1c40-5f2b-4c8e-9a71-0b6d4e2f8c13",
           type: :string,
           description: """
           ID of the device the flow was opened to: the Gateway serving the
@@ -185,11 +202,11 @@ defmodule PortalAPI.Schemas.Log do
             Clients report either role.
           """
         },
-        policy_authorization_id: %Schema{
+        policy_authorization_id: %Schema{example: "6fa1d58f-0289-42e6-a3ba-7edfa46ee2d5",
           type: :string,
           description: "ID of the Policy Authorization that permitted the flow."
         },
-        policy_id: %Schema{
+        policy_id: %Schema{example: "46f997d1-77c8-4936-8655-8f050dffbfa4",
           type: :string,
           description: "ID of the Policy that permitted the flow."
         },
@@ -229,14 +246,14 @@ defmodule PortalAPI.Schemas.Log do
           format: :"date-time",
           description: "When the Policy Authorization expires."
         },
-        initiator_auth_provider_id: %Schema{
+        initiator_auth_provider_id: %Schema{example: "7b2c1e40-9f3a-4d21-8c5e-1a2b3c4d5e6f",
           type: :string,
           nullable: true,
           description: """
           ID of the Auth Provider the initiating Client authenticated with.
           """
         },
-        initiator_actor_id: %Schema{
+        initiator_actor_id: %Schema{example: "84e7f82f-831a-4a9d-8f17-c66c2bb6e205",
           type: :string,
           nullable: true,
           description: """
@@ -245,61 +262,61 @@ defmodule PortalAPI.Schemas.Log do
           flows the receiving Client's own Actor is not recorded here.
           """
         },
-        initiator_actor_name: %Schema{type: :string, nullable: true},
-        initiator_actor_email: %Schema{type: :string, nullable: true},
-        initiator_client_version: %Schema{
+        initiator_actor_name: %Schema{example: "John Doe", type: :string, nullable: true},
+        initiator_actor_email: %Schema{example: "user@example.com", type: :string, nullable: true},
+        initiator_client_version: %Schema{example: "1.5.1",
           type: :string,
           nullable: true,
           description: "Firezone Client version reported by the initiating Client."
         },
-        initiator_device_os_name: %Schema{
+        initiator_device_os_name: %Schema{example: "macOS",
           type: :string,
           nullable: true,
           description: "Operating system reported by the initiating Client."
         },
-        initiator_device_os_version: %Schema{
+        initiator_device_os_version: %Schema{example: "15.5",
           type: :string,
           nullable: true,
           description: "Operating system version reported by the initiating Client."
         },
-        initiator_device_serial: %Schema{
+        initiator_device_serial: %Schema{example: "C02ABC123",
           type: :string,
           nullable: true,
           description: "Device serial number reported by the initiating Client."
         },
-        initiator_device_uuid: %Schema{
+        initiator_device_uuid: %Schema{example: "0C4A8D24-FA9F-4E56-9B57-40D0D46A245E",
           type: :string,
           nullable: true,
           description: "Device UUID reported by the initiating Client."
         },
-        initiator_device_identifier_for_vendor: %Schema{
+        initiator_device_identifier_for_vendor: %Schema{example: "C242BC21-AB4A-4F6D-B755-F50E2B5B51B7",
           type: :string,
           nullable: true,
           description: "Vendor identifier reported by the initiating Client."
         },
-        initiator_device_firebase_installation_id: %Schema{
+        initiator_device_firebase_installation_id: %Schema{example: "firebase-installation-id",
           type: :string,
           nullable: true,
           description: "Firebase installation ID reported by the initiating Client."
         },
-        resource_id: %Schema{type: :string, description: "ID of the Resource accessed."},
-        resource_name: %Schema{type: :string},
-        resource_address: %Schema{
+        resource_id: %Schema{example: "44e7f82f-831a-4a9d-8f17-c66c2bb6e205", type: :string, description: "ID of the Resource accessed."},
+        resource_name: %Schema{example: "GitLab", type: :string},
+        resource_address: %Schema{example: "gitlab.company.com",
           type: :string,
           nullable: true,
           description: "Resource address, when the Resource type has one."
         },
-        inner_src_ip: %Schema{
+        inner_src_ip: %Schema{example: "100.64.0.1",
           type: :string,
           description: "Tunnel IP of the initiator, on both entries of the flow."
         },
-        inner_dst_ip: %Schema{
+        inner_dst_ip: %Schema{example: "10.0.0.5",
           type: :string,
           description: "Tunnel IP of the responder, on both entries of the flow."
         },
         inner_src_port: %Schema{type: :integer},
         inner_dst_port: %Schema{type: :integer},
-        inner_domain: %Schema{
+        inner_domain: %Schema{example: "gitlab.company.com",
           type: :string,
           nullable: true,
           description: "Domain name for flows to DNS Resources."
@@ -362,45 +379,6 @@ defmodule PortalAPI.Schemas.Log do
           description:
             "Bytes sent initiator-to-responder, as counted by the reporting side. Null while the flow is open."
         }
-      },
-      example: %{
-        "type" => "flow",
-        "log_id" => "f00060db0c2c8eb400000000",
-        "timestamp" => "2026-05-26T12:34:56.789Z",
-        "initiator_device_id" => "11e7f82f-831a-4a9d-8f17-c66c2bb6e205",
-        "responder_device_id" => "9d3a1c40-5f2b-4c8e-9a71-0b6d4e2f8c13",
-        "role" => "responder",
-        "policy_authorization_id" => "6fa1d58f-0289-42e6-a3ba-7edfa46ee2d5",
-        "policy_id" => "46f997d1-77c8-4936-8655-8f050dffbfa4",
-        "protocol" => "tcp",
-        "flow_start" => "2026-05-26T12:30:00.000Z",
-        "flow_end" => "2026-05-26T12:34:00.000Z",
-        "last_packet" => "2026-05-26T12:33:58.000Z",
-        "authorized_at" => "2026-05-26T12:29:00.000Z",
-        "authorization_expires_at" => "2026-05-26T20:29:00.000Z",
-        "initiator_actor_email" => "user@example.com",
-        "initiator_client_version" => "1.5.1",
-        "initiator_device_os_name" => "macOS",
-        "initiator_device_os_version" => "15.5",
-        "resource_id" => "44e7f82f-831a-4a9d-8f17-c66c2bb6e205",
-        "resource_name" => "GitLab",
-        "resource_address" => "gitlab.company.com",
-        "inner_src_ip" => "100.64.0.1",
-        "inner_dst_ip" => "10.0.0.5",
-        "inner_src_port" => 54_321,
-        "inner_dst_port" => 443,
-        "outers" => [
-          %{
-            "src_ip" => "203.0.113.10",
-            "src_port" => 51_820,
-            "dst_ip" => "198.51.100.5",
-            "dst_port" => 51_820
-          }
-        ],
-        "rx_packets" => 100,
-        "tx_packets" => 80,
-        "rx_bytes" => 102_400,
-        "tx_bytes" => 20_480
       }
     })
   end
@@ -521,26 +499,6 @@ defmodule PortalAPI.Schemas.Log do
           items: Log.Item
         },
         metadata: %Schema{description: "Pagination metadata", type: :object}
-      },
-      example: %{
-        "data" => [
-          %{
-            "type" => "change",
-            "log_id" => "c00060db0c2c8eb400000000",
-            "timestamp" => "2026-05-26T12:34:56.789Z",
-            "object" => "actors",
-            "operation" => "update",
-            "before" => %{"name" => "Jane Doe"},
-            "after" => %{"name" => "Jane Smith"},
-            "subject" => nil
-          }
-        ],
-        "metadata" => %{
-          "count" => 1,
-          "limit" => 50,
-          "next_page" => nil,
-          "prev_page" => nil
-        }
       }
     })
   end

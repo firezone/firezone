@@ -11,8 +11,8 @@ defmodule PortalAPI.Schemas.OIDCAuthProvider do
       properties: %{
         id: %Schema{type: :string, format: :uuid, description: "Provider ID"},
         account_id: %Schema{type: :string, format: :uuid, description: "Account ID"},
-        name: %Schema{type: :string, description: "Provider name"},
-        issuer: %Schema{type: :string, description: "Issuer"},
+        name: %Schema{example: "OIDC Provider", type: :string, description: "Provider name"},
+        issuer: %Schema{example: "https://idp.example.com", type: :string, description: "Issuer"},
         context: %Schema{
           type: :string,
           description: "Context",
@@ -28,8 +28,8 @@ defmodule PortalAPI.Schemas.OIDCAuthProvider do
         },
         is_disabled: %Schema{type: :boolean, description: "Whether provider is disabled"},
         is_default: %Schema{type: :boolean, description: "Whether provider is default"},
-        client_id: %Schema{type: :string, description: "Client ID"},
-        discovery_document_uri: %Schema{type: :string, description: "Discovery document URI"},
+        client_id: %Schema{example: "my-client-id", type: :string, description: "Client ID"},
+        discovery_document_uri: %Schema{example: "https://idp.example.com/.well-known/openid-configuration", type: :string, description: "Discovery document URI"},
         email_verification_method: %Schema{
           type: :string,
           description: "How sign-in verifies the email claim",
@@ -41,12 +41,6 @@ defmodule PortalAPI.Schemas.OIDCAuthProvider do
           description: "Creation timestamp"
         },
         updated_at: %Schema{type: :string, format: :"date-time", description: "Update timestamp"}
-      },
-      example: %{
-        "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-        "name" => "OIDC Provider",
-        "client_id" => "my-client-id",
-        "email_verification_method" => "claim"
       }
     })
   end
@@ -62,13 +56,6 @@ defmodule PortalAPI.Schemas.OIDCAuthProvider do
       type: :object,
       properties: %{
         data: OIDCAuthProvider.Schema
-      },
-      example: %{
-        "data" => %{
-          "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-          "name" => "OIDC Provider",
-          "email_verification_method" => "claim"
-        }
       }
     })
   end
@@ -90,15 +77,6 @@ defmodule PortalAPI.Schemas.OIDCAuthProvider do
           items: OIDCAuthProvider.Schema
         },
         metadata: PaginationMetadata
-      },
-      example: %{
-        "data" => [
-          %{
-            "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-            "name" => "OIDC Provider",
-            "email_verification_method" => "claim"
-          }
-        ]
       }
     })
   end

@@ -11,17 +11,11 @@ defmodule PortalAPI.Schemas.X509AuthProvider do
       properties: %{
         id: %Schema{type: :string, format: :uuid, description: "Provider ID"},
         account_id: %Schema{type: :string, format: :uuid, description: "Account ID"},
-        name: %Schema{type: :string, description: "Provider name"},
+        name: %Schema{example: "X.509", type: :string, description: "Provider name"},
         context: %Schema{type: :string, description: "Context", enum: ["clients_only"]},
         is_disabled: %Schema{type: :boolean, description: "Whether provider is disabled"},
         inserted_at: %Schema{type: :string, format: :"date-time", description: "Creation timestamp"},
         updated_at: %Schema{type: :string, format: :"date-time", description: "Update timestamp"}
-      },
-      example: %{
-        "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-        "name" => "X.509",
-        "context" => "clients_only",
-        "is_disabled" => true
       }
     })
   end

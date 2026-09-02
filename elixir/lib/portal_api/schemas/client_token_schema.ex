@@ -49,8 +49,10 @@ defmodule PortalAPI.Schemas.ClientToken do
     alias PortalAPI.Schemas.ClientToken
 
     OpenApiSpex.schema(%{
-      title: "ClientTokenResponse",
-      description: "Client Token response",
+      title: "ClientTokenWithSecret",
+      description:
+        "Client Token as returned when it is created, including the encoded secret. " <>
+          "The secret is shown once and cannot be retrieved later.",
       type: :object,
       properties: %{
         id: %Schema{type: :string, format: :uuid, description: "Client Token ID"},
@@ -102,16 +104,6 @@ defmodule PortalAPI.Schemas.ClientToken do
       type: :object,
       properties: %{
         data: ClientToken.ResponseSchema
-      },
-      example: %{
-        "data" => %{
-          "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-          "actor_id" => "43a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-          "expires_at" => "2025-01-15T12:34:56.789Z",
-          "inserted_at" => "2025-01-15T12:34:56.789Z",
-          "updated_at" => "2025-01-15T12:34:56.789Z",
-          "token" => "secret-token-here"
-        }
       }
     })
   end
@@ -121,20 +113,11 @@ defmodule PortalAPI.Schemas.ClientToken do
     alias PortalAPI.Schemas.ClientToken
 
     OpenApiSpex.schema(%{
-      title: "ClientTokenResponse",
+      title: "ClientTokenShowResponse",
       description: "Response schema for Client Token metadata",
       type: :object,
       properties: %{
         data: ClientToken.Schema
-      },
-      example: %{
-        "data" => %{
-          "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-          "actor_id" => "43a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-          "expires_at" => "2025-01-15T12:34:56.789Z",
-          "inserted_at" => "2025-01-15T12:34:56.789Z",
-          "updated_at" => "2025-01-15T12:34:56.789Z"
-        }
       }
     })
   end
@@ -152,23 +135,6 @@ defmodule PortalAPI.Schemas.ClientToken do
       properties: %{
         data: %Schema{description: "Client Token metadata", type: :array, items: ClientToken.Schema},
         metadata: PaginationMetadata
-      },
-      example: %{
-        "data" => [
-          %{
-            "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-            "actor_id" => "43a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-            "expires_at" => "2025-01-15T12:34:56.789Z",
-            "inserted_at" => "2025-01-15T12:34:56.789Z",
-            "updated_at" => "2025-01-15T12:34:56.789Z"
-          }
-        ],
-        "metadata" => %{
-          "limit" => 10,
-          "count" => 1,
-          "prev_page" => nil,
-          "next_page" => nil
-        }
       }
     })
   end
@@ -188,11 +154,6 @@ defmodule PortalAPI.Schemas.ClientToken do
             id: %Schema{type: :string, format: :uuid, description: "Client Token ID"}
           },
           required: [:id]
-        }
-      },
-      example: %{
-        "data" => %{
-          "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205"
         }
       }
     })
@@ -216,11 +177,6 @@ defmodule PortalAPI.Schemas.ClientToken do
             }
           },
           required: [:deleted_count]
-        }
-      },
-      example: %{
-        "data" => %{
-          "deleted_count" => 3
         }
       }
     })

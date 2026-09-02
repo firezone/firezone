@@ -11,8 +11,8 @@ defmodule PortalAPI.Schemas.EmailOTPAuthProvider do
       properties: %{
         id: %Schema{type: :string, format: :uuid, description: "Provider ID"},
         account_id: %Schema{type: :string, format: :uuid, description: "Account ID"},
-        name: %Schema{type: :string, description: "Provider name"},
-        issuer: %Schema{type: :string, description: "Issuer"},
+        name: %Schema{example: "Email OTP", type: :string, description: "Provider name"},
+        issuer: %Schema{example: "firezone", type: :string, description: "Issuer"},
         context: %Schema{
           type: :string,
           description: "Context",
@@ -33,11 +33,6 @@ defmodule PortalAPI.Schemas.EmailOTPAuthProvider do
           description: "Creation timestamp"
         },
         updated_at: %Schema{type: :string, format: :"date-time", description: "Update timestamp"}
-      },
-      example: %{
-        "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-        "name" => "Email OTP",
-        "issuer" => "firezone"
       }
     })
   end
@@ -53,12 +48,6 @@ defmodule PortalAPI.Schemas.EmailOTPAuthProvider do
       type: :object,
       properties: %{
         data: EmailOTPAuthProvider.Schema
-      },
-      example: %{
-        "data" => %{
-          "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-          "name" => "Email OTP"
-        }
       }
     })
   end
@@ -80,14 +69,6 @@ defmodule PortalAPI.Schemas.EmailOTPAuthProvider do
           items: EmailOTPAuthProvider.Schema
         },
         metadata: PaginationMetadata
-      },
-      example: %{
-        "data" => [
-          %{
-            "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-            "name" => "Email OTP"
-          }
-        ]
       }
     })
   end

@@ -11,11 +11,11 @@ defmodule PortalAPI.Schemas.GoogleDirectory do
       properties: %{
         id: %Schema{type: :string, format: :uuid, description: "Directory ID"},
         account_id: %Schema{type: :string, format: :uuid, description: "Account ID"},
-        name: %Schema{type: :string, description: "Directory name"},
-        domain: %Schema{type: :string, description: "Google Workspace domain"},
-        impersonation_email: %Schema{type: :string, description: "Impersonation email"},
+        name: %Schema{example: "Google", type: :string, description: "Directory name"},
+        domain: %Schema{example: "example.com", type: :string, description: "Google Workspace domain"},
+        impersonation_email: %Schema{example: "admin@example.com", type: :string, description: "Impersonation email"},
         is_disabled: %Schema{type: :boolean, description: "Whether directory is disabled"},
-        disabled_reason: %Schema{
+        disabled_reason: %Schema{example: "Sync failed on 5 consecutive attempts",
           type: :string,
           nullable: true,
           description: "Reason for disabling"
@@ -26,7 +26,7 @@ defmodule PortalAPI.Schemas.GoogleDirectory do
           nullable: true,
           description: "Last sync timestamp"
         },
-        error_message: %Schema{
+        error_message: %Schema{example: "invalid_grant: token has expired or been revoked",
           type: :string,
           nullable: true,
           description: "Last error message"
@@ -52,11 +52,6 @@ defmodule PortalAPI.Schemas.GoogleDirectory do
           description: "Creation timestamp"
         },
         updated_at: %Schema{type: :string, format: :"date-time", description: "Update timestamp"}
-      },
-      example: %{
-        "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-        "name" => "Google",
-        "domain" => "example.com"
       }
     })
   end
@@ -72,12 +67,6 @@ defmodule PortalAPI.Schemas.GoogleDirectory do
       type: :object,
       properties: %{
         data: GoogleDirectory.Schema
-      },
-      example: %{
-        "data" => %{
-          "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-          "name" => "Google"
-        }
       }
     })
   end
@@ -99,14 +88,6 @@ defmodule PortalAPI.Schemas.GoogleDirectory do
           items: GoogleDirectory.Schema
         },
         metadata: PaginationMetadata
-      },
-      example: %{
-        "data" => [
-          %{
-            "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-            "name" => "Google"
-          }
-        ]
       }
     })
   end

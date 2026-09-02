@@ -11,8 +11,8 @@ defmodule PortalAPI.Schemas.EntraAuthProvider do
       properties: %{
         id: %Schema{type: :string, format: :uuid, description: "Provider ID"},
         account_id: %Schema{type: :string, format: :uuid, description: "Account ID"},
-        name: %Schema{type: :string, description: "Provider name"},
-        issuer: %Schema{type: :string, description: "Issuer"},
+        name: %Schema{example: "Entra", type: :string, description: "Provider name"},
+        issuer: %Schema{example: "https://login.microsoftonline.com/tenant-id/v2.0", type: :string, description: "Issuer"},
         context: %Schema{
           type: :string,
           description: "Context",
@@ -45,11 +45,6 @@ defmodule PortalAPI.Schemas.EntraAuthProvider do
           description: "Creation timestamp"
         },
         updated_at: %Schema{type: :string, format: :"date-time", description: "Update timestamp"}
-      },
-      example: %{
-        "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-        "name" => "Entra",
-        "issuer" => "https://login.microsoftonline.com/tenant-id/v2.0"
       }
     })
   end
@@ -65,12 +60,6 @@ defmodule PortalAPI.Schemas.EntraAuthProvider do
       type: :object,
       properties: %{
         data: EntraAuthProvider.Schema
-      },
-      example: %{
-        "data" => %{
-          "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-          "name" => "Entra"
-        }
       }
     })
   end
@@ -92,14 +81,6 @@ defmodule PortalAPI.Schemas.EntraAuthProvider do
           items: EntraAuthProvider.Schema
         },
         metadata: PaginationMetadata
-      },
-      example: %{
-        "data" => [
-          %{
-            "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-            "name" => "Entra"
-          }
-        ]
       }
     })
   end

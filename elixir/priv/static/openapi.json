@@ -4,12 +4,6 @@
     "schemas": {
       "EntraDirectoryResponse": {
         "description": "Response schema for single Entra Directory",
-        "example": {
-          "data": {
-            "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-            "name": "Entra"
-          }
-        },
         "properties": {
           "data": {
             "$ref": "#/components/schemas/EntraDirectory"
@@ -35,20 +29,6 @@
       },
       "ActorResponse": {
         "description": "Response schema for single Actor",
-        "example": {
-          "data": {
-            "allow_email_otp_sign_in": false,
-            "created_by_directory_id": null,
-            "email": "john.doe@example.com",
-            "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-            "inserted_at": "2024-01-01T00:00:00Z",
-            "is_disabled": false,
-            "last_seen_at": "2024-01-15T10:30:00Z",
-            "name": "John Doe",
-            "type": "account_admin_user",
-            "updated_at": "2024-01-15T10:30:00Z"
-          }
-        },
         "properties": {
           "data": {
             "$ref": "#/components/schemas/Actor"
@@ -59,14 +39,6 @@
       },
       "GoogleAuthProviderListResponse": {
         "description": "Response schema for multiple Google Auth Providers",
-        "example": {
-          "data": [
-            {
-              "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-              "name": "Google"
-            }
-          ]
-        },
         "properties": {
           "data": {
             "description": "Google Auth Provider details",
@@ -84,19 +56,6 @@
       },
       "GroupResponse": {
         "description": "Response schema for single Group",
-        "example": {
-          "data": {
-            "directory_id": null,
-            "email": null,
-            "entity_type": "group",
-            "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-            "idp_id": null,
-            "inserted_at": "2024-01-15T10:30:00Z",
-            "name": "Engineering",
-            "synced_at": null,
-            "updated_at": "2024-01-15T10:30:00Z"
-          }
-        },
         "properties": {
           "data": {
             "$ref": "#/components/schemas/Group"
@@ -107,12 +66,6 @@
       },
       "GoogleDirectoryResponse": {
         "description": "Response schema for single Google Directory",
-        "example": {
-          "data": {
-            "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-            "name": "Google"
-          }
-        },
         "properties": {
           "data": {
             "$ref": "#/components/schemas/GoogleDirectory"
@@ -594,11 +547,6 @@
       },
       "OktaAuthProvider": {
         "description": "Okta Auth Provider",
-        "example": {
-          "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-          "name": "Okta",
-          "okta_domain": "example.okta.com"
-        },
         "properties": {
           "account_id": {
             "description": "Account ID",
@@ -607,6 +555,7 @@
           },
           "client_id": {
             "description": "Client ID",
+            "example": "my-client-id",
             "type": "string"
           },
           "client_session_lifetime_secs": {
@@ -642,14 +591,17 @@
           },
           "issuer": {
             "description": "Issuer",
+            "example": "https://example.okta.com",
             "type": "string"
           },
           "name": {
             "description": "Provider name",
+            "example": "Okta",
             "type": "string"
           },
           "okta_domain": {
             "description": "Okta domain",
+            "example": "example.okta.com",
             "type": "string"
           },
           "portal_session_lifetime_secs": {
@@ -682,15 +634,6 @@
       },
       "GatewayResponse": {
         "description": "Response schema for single Gateway",
-        "example": {
-          "data": {
-            "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-            "ipv4": "1.2.3.4",
-            "ipv6": "",
-            "name": "vpc-us-east",
-            "online": true
-          }
-        },
         "properties": {
           "data": {
             "$ref": "#/components/schemas/Gateway"
@@ -784,19 +727,9 @@
       },
       "ClientTokenCreateResponse": {
         "description": "Response schema for a new Client Token",
-        "example": {
-          "data": {
-            "actor_id": "43a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-            "expires_at": "2025-01-15T12:34:56.789Z",
-            "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-            "inserted_at": "2025-01-15T12:34:56.789Z",
-            "token": "secret-token-here",
-            "updated_at": "2025-01-15T12:34:56.789Z"
-          }
-        },
         "properties": {
           "data": {
-            "$ref": "#/components/schemas/ClientTokenResponse"
+            "$ref": "#/components/schemas/ClientTokenWithSecret"
           }
         },
         "title": "ClientTokenCreateResponse",
@@ -939,11 +872,6 @@
       },
       "EntraAuthProvider": {
         "description": "Entra Auth Provider",
-        "example": {
-          "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-          "issuer": "https://login.microsoftonline.com/tenant-id/v2.0",
-          "name": "Entra"
-        },
         "properties": {
           "account_id": {
             "description": "Account ID",
@@ -995,10 +923,12 @@
           },
           "issuer": {
             "description": "Issuer",
+            "example": "https://login.microsoftonline.com/tenant-id/v2.0",
             "type": "string"
           },
           "name": {
             "description": "Provider name",
+            "example": "Entra",
             "type": "string"
           },
           "portal_session_lifetime_secs": {
@@ -1033,12 +963,6 @@
       },
       "EntraAuthProviderResponse": {
         "description": "Response schema for single Entra Auth Provider",
-        "example": {
-          "data": {
-            "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-            "name": "Entra"
-          }
-        },
         "properties": {
           "data": {
             "$ref": "#/components/schemas/EntraAuthProvider"
@@ -1067,20 +991,6 @@
       },
       "ExternalIdentity": {
         "description": "External Identity",
-        "example": {
-          "account_id": "5e6f7d8c-9b0a-1c2d-3e4f-5a6b7c8d9e0f",
-          "actor_id": "cdfa97e6-cca1-41db-8fc7-864daedb46df",
-          "directory_id": "9f8e7d6c-5b4a-3c2b-1a0e-9f8e7d6c5b4a",
-          "family_name": "Doe",
-          "given_name": "John",
-          "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-          "idp_id": "2551705710219359",
-          "inserted_at": "2025-01-15T12:34:56.789Z",
-          "issuer": "https://accounts.google.com",
-          "name": "John Doe",
-          "picture": "https://example.com/avatar.jpg",
-          "synced_at": "2025-01-15T12:34:56.789Z"
-        },
         "properties": {
           "account_id": {
             "description": "Account ID",
@@ -1099,18 +1009,22 @@
           },
           "email": {
             "description": "Email address, falling back to the IdP identifier when unset",
+            "example": "user@example.com",
             "type": "string"
           },
           "family_name": {
             "description": "Family name",
+            "example": "Doe",
             "type": "string"
           },
           "firezone_avatar_url": {
             "description": "Firezone-hosted avatar URL",
+            "example": "https://avatars.firezone.dev/u/2551705710219359.png",
             "type": "string"
           },
           "given_name": {
             "description": "Given name",
+            "example": "John",
             "type": "string"
           },
           "id": {
@@ -1120,6 +1034,7 @@
           },
           "idp_id": {
             "description": "IDP-specific identifier for this identity",
+            "example": "2551705710219359",
             "type": "string"
           },
           "inserted_at": {
@@ -1129,30 +1044,37 @@
           },
           "issuer": {
             "description": "Identity issuer URL (e.g., 'https://accounts.google.com', 'https://company.okta.com')",
+            "example": "https://accounts.google.com",
             "type": "string"
           },
           "middle_name": {
             "description": "Middle name",
+            "example": "Quincy",
             "type": "string"
           },
           "name": {
             "description": "Full name",
+            "example": "John Doe",
             "type": "string"
           },
           "nickname": {
             "description": "Nickname",
+            "example": "johnny",
             "type": "string"
           },
           "picture": {
             "description": "Profile picture URL",
+            "example": "https://example.com/avatar.jpg",
             "type": "string"
           },
           "preferred_username": {
             "description": "Preferred username",
+            "example": "jdoe",
             "type": "string"
           },
           "profile": {
             "description": "Profile URL",
+            "example": "https://example.com/users/jdoe",
             "type": "string"
           },
           "synced_at": {
@@ -1666,12 +1588,6 @@
       },
       "OktaDirectoryResponse": {
         "description": "Response schema for single Okta Directory",
-        "example": {
-          "data": {
-            "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-            "name": "Okta"
-          }
-        },
         "properties": {
           "data": {
             "$ref": "#/components/schemas/OktaDirectory"
@@ -1680,14 +1596,57 @@
         "title": "OktaDirectoryResponse",
         "type": "object"
       },
-      "GatewayTokenResponse": {
-        "description": "Response schema for a new Gateway Token",
-        "example": {
-          "data": {
-            "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-            "token": "secret-token-here"
+      "GatewaySessionSubject": {
+        "description": "Subject of a session created by a Gateway (`context: \"gateway\"`).\n\nA Gateway authenticates with a token rather than as an actor, so no actor\nfields are recorded.\n",
+        "properties": {
+          "gateway_id": {
+            "description": "Identifier of the Gateway the session was established from.",
+            "format": "uuid",
+            "nullable": true,
+            "type": "string"
+          },
+          "ip": {
+            "description": "IP address the session came from.",
+            "nullable": true,
+            "type": "string"
+          },
+          "ip_city": {
+            "description": "Geo-located city for `ip`, if known.",
+            "nullable": true,
+            "type": "string"
+          },
+          "ip_lat": {
+            "description": "Geo-located latitude for `ip`, if known.",
+            "nullable": true,
+            "type": "number"
+          },
+          "ip_lon": {
+            "description": "Geo-located longitude for `ip`, if known.",
+            "nullable": true,
+            "type": "number"
+          },
+          "ip_region": {
+            "description": "Geo-located region for `ip`, if known.",
+            "nullable": true,
+            "type": "string"
+          },
+          "token_id": {
+            "description": "Identifier of the Gateway token the session was established with.",
+            "format": "uuid",
+            "nullable": true,
+            "type": "string"
+          },
+          "user_agent": {
+            "description": "User agent reported by the Gateway.",
+            "nullable": true,
+            "type": "string"
           }
         },
+        "title": "GatewaySessionSubject",
+        "type": "object"
+      },
+      "GatewayTokenResponse": {
+        "description": "Response schema for a new Gateway Token",
         "properties": {
           "data": {
             "$ref": "#/components/schemas/GatewayToken"
@@ -1761,11 +1720,6 @@
       },
       "DeletedClientTokenResponse": {
         "description": "Response schema for a deleted Client Token",
-        "example": {
-          "data": {
-            "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205"
-          }
-        },
         "properties": {
           "data": {
             "properties": {
@@ -1784,6 +1738,85 @@
         "title": "DeletedClientTokenResponse",
         "type": "object"
       },
+      "ClientSessionSubject": {
+        "description": "Subject of a session created by a Client (`context: \"client\"`).\n\nA `Subject` plus the Client and token the session was established with.\n",
+        "properties": {
+          "actor_email": {
+            "description": "Email address of the actor, if any.",
+            "nullable": true,
+            "type": "string"
+          },
+          "actor_id": {
+            "description": "Identifier of the actor that signed in.",
+            "format": "uuid",
+            "type": "string"
+          },
+          "actor_name": {
+            "description": "Display name of the actor.",
+            "type": "string"
+          },
+          "actor_type": {
+            "description": "Type of the actor.",
+            "enum": [
+              "account_user",
+              "account_admin_user",
+              "service_account",
+              "api_client"
+            ],
+            "type": "string"
+          },
+          "auth_provider_id": {
+            "description": "Identifier of the authentication provider that authenticated the actor.",
+            "format": "uuid",
+            "nullable": true,
+            "type": "string"
+          },
+          "device_id": {
+            "description": "Identifier of the Client the session was established from.",
+            "format": "uuid",
+            "nullable": true,
+            "type": "string"
+          },
+          "ip": {
+            "description": "IP address the session came from.",
+            "nullable": true,
+            "type": "string"
+          },
+          "ip_city": {
+            "description": "Geo-located city for `ip`, if known.",
+            "nullable": true,
+            "type": "string"
+          },
+          "ip_lat": {
+            "description": "Geo-located latitude for `ip`, if known.",
+            "nullable": true,
+            "type": "number"
+          },
+          "ip_lon": {
+            "description": "Geo-located longitude for `ip`, if known.",
+            "nullable": true,
+            "type": "number"
+          },
+          "ip_region": {
+            "description": "Geo-located region for `ip`, if known.",
+            "nullable": true,
+            "type": "string"
+          },
+          "token_id": {
+            "description": "Identifier of the Client token the session was established with.",
+            "format": "uuid",
+            "nullable": true,
+            "type": "string"
+          },
+          "user_agent": {
+            "description": "User agent reported by the Client.",
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "title": "ClientSessionSubject",
+        "type": "object"
+      },
       "SessionLog": {
         "description": "A single Session Log entry, recording one Client, Gateway, or Portal\nsession that was created, along with the auth context it was created\nwith.\n",
         "example": {
@@ -1792,6 +1825,9 @@
           "subject": {
             "actor_email": "admin@example.com",
             "actor_id": "84e7f82f-831a-4a9d-8f17-c66c2bb6e205",
+            "actor_name": "Admin User",
+            "actor_type": "account_admin_user",
+            "auth_provider_id": "98776234-1234-5678-9012-345678901234",
             "device_id": "11e7f82f-831a-4a9d-8f17-c66c2bb6e205",
             "ip": "189.172.73.1",
             "ip_city": "Mexico City",
@@ -1820,7 +1856,19 @@
             "type": "string"
           },
           "subject": {
-            "$ref": "#/components/schemas/Subject"
+            "description": "Who established the session and from where. The shape depends on\n`context`, which is the field to switch on:\n\n- `client`: a `ClientSessionSubject` - the actor, plus the Client and\n  token the session was established with.\n- `gateway`: a `GatewaySessionSubject` - the Gateway and its token. A\n  Gateway authenticates as itself, so no actor fields are recorded.\n- `portal`: a plain `Subject`.\n",
+            "nullable": true,
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ClientSessionSubject"
+              },
+              {
+                "$ref": "#/components/schemas/GatewaySessionSubject"
+              },
+              {
+                "$ref": "#/components/schemas/Subject"
+              }
+            ]
           },
           "timestamp": {
             "description": "RFC 3339 timestamp identifying when the session was created.",
@@ -2137,12 +2185,6 @@
       },
       "SiteResponse": {
         "description": "Response schema for single Site",
-        "example": {
-          "data": {
-            "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-            "name": "vpc-us-east"
-          }
-        },
         "properties": {
           "data": {
             "$ref": "#/components/schemas/Site"
@@ -2153,23 +2195,6 @@
       },
       "ClientTokenListResponse": {
         "description": "Response schema for multiple Client Tokens",
-        "example": {
-          "data": [
-            {
-              "actor_id": "43a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-              "expires_at": "2025-01-15T12:34:56.789Z",
-              "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-              "inserted_at": "2025-01-15T12:34:56.789Z",
-              "updated_at": "2025-01-15T12:34:56.789Z"
-            }
-          ],
-          "metadata": {
-            "count": 1,
-            "limit": 10,
-            "next_page": null,
-            "prev_page": null
-          }
-        },
         "properties": {
           "data": {
             "description": "Client Token metadata",
@@ -2202,11 +2227,6 @@
       },
       "GoogleDirectory": {
         "description": "Google Directory",
-        "example": {
-          "domain": "example.com",
-          "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-          "name": "Google"
-        },
         "properties": {
           "account_id": {
             "description": "Account ID",
@@ -2215,15 +2235,18 @@
           },
           "disabled_reason": {
             "description": "Reason for disabling",
+            "example": "Sync failed on 5 consecutive attempts",
             "nullable": true,
             "type": "string"
           },
           "domain": {
             "description": "Google Workspace domain",
+            "example": "example.com",
             "type": "string"
           },
           "error_message": {
             "description": "Last error message",
+            "example": "invalid_grant: token has expired or been revoked",
             "nullable": true,
             "type": "string"
           },
@@ -2249,6 +2272,7 @@
           },
           "impersonation_email": {
             "description": "Impersonation email",
+            "example": "admin@example.com",
             "type": "string"
           },
           "inserted_at": {
@@ -2262,6 +2286,7 @@
           },
           "name": {
             "description": "Directory name",
+            "example": "Google",
             "type": "string"
           },
           "orgunit_sync_enabled": {
@@ -2301,26 +2326,6 @@
       },
       "PolicyResponse": {
         "description": "Response schema for single Policy",
-        "example": {
-          "data": {
-            "conditions": [
-              {
-                "operator": "is_in",
-                "property": "remote_ip_location_region",
-                "values": [
-                  "US",
-                  "CA"
-                ]
-              }
-            ],
-            "description": "Policy to allow something",
-            "flow_log_uploads_enabled": true,
-            "group_id": "88eae9ce-9179-48c6-8430-770e38dd4775",
-            "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-            "is_disabled": false,
-            "resource_id": "a9f60587-793c-46ae-8525-597f43ab2fb1"
-          }
-        },
         "properties": {
           "data": {
             "$ref": "#/components/schemas/Policy"
@@ -2331,11 +2336,6 @@
       },
       "DeletedClientTokensResponse": {
         "description": "Response schema for deleted Client Tokens",
-        "example": {
-          "data": {
-            "deleted_count": 3
-          }
-        },
         "properties": {
           "data": {
             "properties": {
@@ -2355,38 +2355,6 @@
       },
       "GroupListResponse": {
         "description": "Response schema for multiple Groups",
-        "example": {
-          "data": [
-            {
-              "directory_id": null,
-              "email": null,
-              "entity_type": "group",
-              "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-              "idp_id": null,
-              "inserted_at": "2024-01-15T10:30:00Z",
-              "name": "Engineering",
-              "synced_at": null,
-              "updated_at": "2024-01-15T10:30:00Z"
-            },
-            {
-              "directory_id": "6b4e3a2c-1234-5678-9abc-def012345678",
-              "email": "firezone-sync-admins@example.com",
-              "entity_type": "group",
-              "id": "4ae929a7-1973-43f2-a1a8-9221b91a4c0e",
-              "idp_id": "google-workspace-group-123",
-              "inserted_at": "2024-01-10T08:15:00Z",
-              "name": "firezone-sync-admins",
-              "synced_at": "2024-01-14T16:00:00Z",
-              "updated_at": "2024-01-14T16:45:00Z"
-            }
-          ],
-          "metadata": {
-            "limit": 10,
-            "next_page": "98776234123",
-            "prev_page": "123123425",
-            "total": 100
-          }
-        },
         "properties": {
           "data": {
             "description": "Group details",
@@ -2413,14 +2381,6 @@
       },
       "OktaAuthProviderListResponse": {
         "description": "Response schema for multiple Okta Auth Providers",
-        "example": {
-          "data": [
-            {
-              "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-              "name": "Okta"
-            }
-          ]
-        },
         "properties": {
           "data": {
             "description": "Okta Auth Provider details",
@@ -2438,11 +2398,6 @@
       },
       "DeletedGatewayTokenResponse": {
         "description": "Response schema for a deleted Gateway Token",
-        "example": {
-          "data": {
-            "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205"
-          }
-        },
         "properties": {
           "data": {
             "properties": {
@@ -2463,14 +2418,6 @@
       },
       "EntraAuthProviderListResponse": {
         "description": "Response schema for multiple Entra Auth Providers",
-        "example": {
-          "data": [
-            {
-              "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-              "name": "Entra"
-            }
-          ]
-        },
         "properties": {
           "data": {
             "description": "Entra Auth Provider details",
@@ -2518,12 +2465,6 @@
       },
       "OIDCAuthProvider": {
         "description": "OIDC Auth Provider",
-        "example": {
-          "client_id": "my-client-id",
-          "email_verification_method": "claim",
-          "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-          "name": "OIDC Provider"
-        },
         "properties": {
           "account_id": {
             "description": "Account ID",
@@ -2532,6 +2473,7 @@
           },
           "client_id": {
             "description": "Client ID",
+            "example": "my-client-id",
             "type": "string"
           },
           "client_session_lifetime_secs": {
@@ -2549,6 +2491,7 @@
           },
           "discovery_document_uri": {
             "description": "Discovery document URI",
+            "example": "https://idp.example.com/.well-known/openid-configuration",
             "type": "string"
           },
           "email_verification_method": {
@@ -2580,10 +2523,12 @@
           },
           "issuer": {
             "description": "Issuer",
+            "example": "https://idp.example.com",
             "type": "string"
           },
           "name": {
             "description": "Provider name",
+            "example": "OIDC Provider",
             "type": "string"
           },
           "portal_session_lifetime_secs": {
@@ -2632,44 +2577,6 @@
       },
       "ExternalIdentityListResponse": {
         "description": "Response schema for multiple External Identities",
-        "example": {
-          "data": [
-            {
-              "account_id": "5e6f7d8c-9b0a-1c2d-3e4f-5a6b7c8d9e0f",
-              "actor_id": "8f44a02b-b8eb-406f-8202-4274bf60ebd0",
-              "directory_id": "9f8e7d6c-5b4a-3c2b-1a0e-9f8e7d6c5b4a",
-              "family_name": "Doe",
-              "given_name": "John",
-              "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-              "idp_id": "2551705710219359",
-              "inserted_at": "2025-01-15T12:34:56.789Z",
-              "issuer": "https://accounts.google.com",
-              "name": "John Doe",
-              "picture": "https://example.com/avatar1.jpg",
-              "synced_at": "2025-01-15T12:34:56.789Z"
-            },
-            {
-              "account_id": "5e6f7d8c-9b0a-1c2d-3e4f-5a6b7c8d9e0f",
-              "actor_id": "38c92cda-1ddb-45b3-9d1a-7efc375e00c1",
-              "directory_id": "1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d",
-              "family_name": "Smith",
-              "given_name": "Jane",
-              "id": "8a70eb96-e74b-4cdc-91b8-48c05ef74d4c",
-              "idp_id": "2638957392736483",
-              "inserted_at": "2025-01-15T11:22:33.456Z",
-              "issuer": "https://company.okta.com",
-              "name": "Jane Smith",
-              "picture": "https://example.com/avatar2.jpg",
-              "synced_at": "2025-01-15T11:22:33.456Z"
-            }
-          ],
-          "metadata": {
-            "limit": 10,
-            "next_page": "98776234123",
-            "prev_page": "123123425",
-            "total": 100
-          }
-        },
         "properties": {
           "data": {
             "description": "External Identity details",
@@ -2704,61 +2611,6 @@
       },
       "ClientsResponse": {
         "description": "Response schema for multiple Clients",
-        "example": {
-          "data": [
-            {
-              "actor_id": "6ecc106b-75c1-48a5-846c-14782180c1ff",
-              "created_at": "2025-01-01T00:00:00Z",
-              "device_serial": "GCCFX0DBQ6L5",
-              "device_uuid": "7A461FF9-0BE2-64A9-A418-539D9A21827B",
-              "firebase_installation_id": null,
-              "firezone_id": "b5bb9d8014a0f9b1d61e21e796d78dccdf1352f23cd32812f4850b878ae4944c",
-              "hostname": "johns-macbook.example.com",
-              "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-              "identifier_for_vendor": null,
-              "ipv4": "100.64.0.1",
-              "ipv6": "fd00:2021:1111::1",
-              "last_attested_cert_fingerprint": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
-              "last_attested_cert_serial": "4A:2F:00:8C:11:03:9E:5B",
-              "last_attested_device_serial": "GCCFX0DBQ6L5",
-              "last_attested_device_uuid": "7A461FF9-0BE2-64A9-A418-539D9A21827B",
-              "last_attested_mdm_device_id": "5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3",
-              "name": "John's Macbook Air",
-              "online": true,
-              "updated_at": "2025-01-01T00:00:00Z",
-              "verified_at": "2025-01-01T00:00:00Z"
-            },
-            {
-              "actor_id": "2ecc106b-75c1-48a5-846c-14782180c1ff",
-              "created_at": "2025-01-01T00:00:00Z",
-              "device_serial": null,
-              "device_uuid": null,
-              "firebase_installation_id": null,
-              "firezone_id": "6c37c0042f40bbb16e007d0d6c8e77c0ac2cab3cc3b923c42d1157a934e436ac",
-              "hostname": null,
-              "id": "9a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-              "identifier_for_vendor": "7A461FF9-0BE2-64A9-A418-539D9A21827B",
-              "ipv4": "100.64.0.2",
-              "ipv6": "fd00:2021:1111::2",
-              "last_attested_at": null,
-              "last_attested_cert_fingerprint": null,
-              "last_attested_cert_serial": null,
-              "last_attested_device_serial": null,
-              "last_attested_device_uuid": null,
-              "last_attested_mdm_device_id": null,
-              "name": "iPad",
-              "online": false,
-              "updated_at": "2025-01-01T00:00:00Z",
-              "verified_at": null
-            }
-          ],
-          "metadata": {
-            "limit": 2,
-            "next_page": "98776234123",
-            "prev_page": "123123425",
-            "total": 100
-          }
-        },
         "properties": {
           "data": {
             "description": "Clients details",
@@ -2776,14 +2628,6 @@
       },
       "GoogleDirectoryListResponse": {
         "description": "Response schema for multiple Google Directories",
-        "example": {
-          "data": [
-            {
-              "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-              "name": "Google"
-            }
-          ]
-        },
         "properties": {
           "data": {
             "description": "Google Directory details",
@@ -2801,30 +2645,6 @@
       },
       "GatewaysResponse": {
         "description": "Response schema for multiple Gateways",
-        "example": {
-          "data": [
-            {
-              "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-              "ipv4": "1.2.3.4",
-              "ipv6": "",
-              "name": "vpc-us-east",
-              "online": true
-            },
-            {
-              "id": "6ecc106b-75c1-48a5-846c-14782180c1ff",
-              "ipv4": "5.6.7.8",
-              "ipv6": "",
-              "name": "vpc-us-west",
-              "online": true
-            }
-          ],
-          "metadata": {
-            "limit": 10,
-            "next_page": "98776234123",
-            "prev_page": "123123425",
-            "total": 100
-          }
-        },
         "properties": {
           "data": {
             "description": "Gateways details",
@@ -2872,16 +2692,6 @@
       },
       "ResourceResponse": {
         "description": "Response schema for single Resource",
-        "example": {
-          "data": {
-            "address": "10.0.0.10",
-            "address_description": "Production Database",
-            "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-            "name": "Prod DB",
-            "site_id": "0642e09d-b3a2-47e4-9cd1-c2195faeeb67",
-            "type": "ip"
-          }
-        },
         "properties": {
           "data": {
             "$ref": "#/components/schemas/Resource"
@@ -2892,22 +2702,6 @@
       },
       "ExternalIdentityResponse": {
         "description": "Response schema for single External Identity",
-        "example": {
-          "data": {
-            "account_id": "5e6f7d8c-9b0a-1c2d-3e4f-5a6b7c8d9e0f",
-            "actor_id": "cdfa97e6-cca1-41db-8fc7-864daedb46df",
-            "directory_id": "9f8e7d6c-5b4a-3c2b-1a0e-9f8e7d6c5b4a",
-            "family_name": "Doe",
-            "given_name": "John",
-            "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-            "idp_id": "2551705710219359",
-            "inserted_at": "2025-01-15T12:34:56.789Z",
-            "issuer": "https://accounts.google.com",
-            "name": "John Doe",
-            "picture": "https://example.com/avatar.jpg",
-            "synced_at": "2025-01-15T12:34:56.789Z"
-          }
-        },
         "properties": {
           "data": {
             "$ref": "#/components/schemas/ExternalIdentity"
@@ -2927,11 +2721,6 @@
       },
       "OktaDirectory": {
         "description": "Okta Directory",
-        "example": {
-          "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-          "name": "Okta",
-          "okta_domain": "example.okta.com"
-        },
         "properties": {
           "account_id": {
             "description": "Account ID",
@@ -2940,15 +2729,18 @@
           },
           "client_id": {
             "description": "Client ID",
+            "example": "0oa1b2c3d4e5EXAMPLE",
             "type": "string"
           },
           "disabled_reason": {
             "description": "Reason for disabling",
+            "example": "Sync failed on 5 consecutive attempts",
             "nullable": true,
             "type": "string"
           },
           "error_message": {
             "description": "Last error message",
+            "example": "invalid_grant: token has expired or been revoked",
             "nullable": true,
             "type": "string"
           },
@@ -2974,14 +2766,17 @@
           },
           "kid": {
             "description": "Key ID",
+            "example": "kid-2f8a1c9e",
             "type": "string"
           },
           "name": {
             "description": "Directory name",
+            "example": "Okta",
             "type": "string"
           },
           "okta_domain": {
             "description": "Okta domain",
+            "example": "example.okta.com",
             "type": "string"
           },
           "synced_at": {
@@ -3030,14 +2825,6 @@
       },
       "OktaDirectoryListResponse": {
         "description": "Response schema for multiple Okta Directories",
-        "example": {
-          "data": [
-            {
-              "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-              "name": "Okta"
-            }
-          ]
-        },
         "properties": {
           "data": {
             "description": "Okta Directory details",
@@ -3110,12 +2897,6 @@
       },
       "OktaAuthProviderResponse": {
         "description": "Response schema for single Okta Auth Provider",
-        "example": {
-          "data": {
-            "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-            "name": "Okta"
-          }
-        },
         "properties": {
           "data": {
             "$ref": "#/components/schemas/OktaAuthProvider"
@@ -3216,16 +2997,6 @@
       },
       "GatewayProvisionResponse": {
         "description": "Response schema for a newly provisioned Gateway. Includes the one-time token secret - it is not shown again.\n",
-        "example": {
-          "data": {
-            "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-            "ipv4": null,
-            "ipv6": null,
-            "name": "vpc-us-east",
-            "online": false,
-            "token": "eyJhbGc..."
-          }
-        },
         "properties": {
           "data": {
             "allOf": [
@@ -3252,12 +3023,6 @@
       },
       "X509AuthProvider": {
         "description": "X.509 Auth Provider",
-        "example": {
-          "context": "clients_only",
-          "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-          "is_disabled": true,
-          "name": "X.509"
-        },
         "properties": {
           "account_id": {
             "description": "Account ID",
@@ -3287,6 +3052,7 @@
           },
           "name": {
             "description": "Provider name",
+            "example": "X.509",
             "type": "string"
           },
           "updated_at": {
@@ -3309,40 +3075,6 @@
       },
       "ActorsResponse": {
         "description": "Response schema for multiple Actors",
-        "example": {
-          "data": [
-            {
-              "allow_email_otp_sign_in": false,
-              "created_by_directory_id": null,
-              "email": "john.doe@example.com",
-              "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-              "inserted_at": "2024-01-01T00:00:00Z",
-              "is_disabled": false,
-              "last_seen_at": "2024-01-15T10:30:00Z",
-              "name": "John Doe",
-              "type": "account_admin_user",
-              "updated_at": "2024-01-15T10:30:00Z"
-            },
-            {
-              "allow_email_otp_sign_in": true,
-              "created_by_directory_id": "98776234-1234-5678-9012-345678901234",
-              "email": "jane.smith@example.com",
-              "id": "84e7f82f-831a-4a9d-8f17-c66c2bb6e205",
-              "inserted_at": "2024-01-02T00:00:00Z",
-              "is_disabled": false,
-              "last_seen_at": "2024-01-14T15:45:00Z",
-              "name": "Jane Smith",
-              "type": "account_user",
-              "updated_at": "2024-01-14T15:45:00Z"
-            }
-          ],
-          "metadata": {
-            "limit": 10,
-            "next_page": "98776234123",
-            "prev_page": "123123425",
-            "total": 100
-          }
-        },
         "properties": {
           "data": {
             "description": "Actors details",
@@ -3360,12 +3092,6 @@
       },
       "GoogleAuthProviderResponse": {
         "description": "Response schema for single Google Auth Provider",
-        "example": {
-          "data": {
-            "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-            "name": "Google"
-          }
-        },
         "properties": {
           "data": {
             "$ref": "#/components/schemas/GoogleAuthProvider"
@@ -3429,14 +3155,6 @@
       },
       "MembershipResponse": {
         "description": "Response schema for Membership Updates",
-        "example": {
-          "data": {
-            "actor_ids": [
-              "4ddfa557-7dfc-484f-894c-2024ec3fe9f7",
-              "89d22f71-939d-442d-b148-897b730adfb4"
-            ]
-          }
-        },
         "properties": {
           "data": {
             "description": "Memberships",
@@ -3459,26 +3177,6 @@
       },
       "MembershipListResponse": {
         "description": "Response schema for Memberships",
-        "example": {
-          "data": [
-            {
-              "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-              "name": "John Doe",
-              "type": "account_user"
-            },
-            {
-              "id": "cc9f561a-444d-4083-ab38-0abc6cf2314c",
-              "name": "Jane Smith",
-              "type": "account_admin_user"
-            }
-          ],
-          "metadata": {
-            "limit": 10,
-            "next_page": "98776234123",
-            "prev_page": "123123425",
-            "total": 100
-          }
-        },
         "properties": {
           "data": {
             "description": "Membership details",
@@ -3578,11 +3276,6 @@
       },
       "DeletedGatewayTokensResponse": {
         "description": "Response schema for deleted Gateway Tokens",
-        "example": {
-          "data": {
-            "deleted_count": 5
-          }
-        },
         "properties": {
           "data": {
             "properties": {
@@ -3649,6 +3342,16 @@
           }
         },
         "title": "PolicyUpdateParams",
+        "type": "object"
+      },
+      "ClientTokenShowResponse": {
+        "description": "Response schema for Client Token metadata",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ClientToken"
+          }
+        },
+        "title": "ClientTokenShowResponse",
         "type": "object"
       },
       "DefenderDevice": {
@@ -3861,6 +3564,58 @@
           "vm_subscription_id"
         ],
         "title": "DefenderDevice",
+        "type": "object"
+      },
+      "ClientTokenWithSecret": {
+        "description": "Client Token as returned when it is created, including the encoded secret. The secret is shown once and cannot be retrieved later.",
+        "example": {
+          "actor_id": "43a7f82f-831a-4a9d-8f17-c66c2bb6e205",
+          "expires_at": "2025-01-15T12:34:56.789Z",
+          "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
+          "inserted_at": "2025-01-15T12:34:56.789Z",
+          "token": "secret-token-here",
+          "updated_at": "2025-01-15T12:34:56.789Z"
+        },
+        "properties": {
+          "actor_id": {
+            "description": "Actor ID",
+            "format": "uuid",
+            "type": "string"
+          },
+          "expires_at": {
+            "description": "Expiration",
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "description": "Client Token ID",
+            "format": "uuid",
+            "type": "string"
+          },
+          "inserted_at": {
+            "description": "Creation timestamp",
+            "format": "date-time",
+            "type": "string"
+          },
+          "token": {
+            "description": "Encoded token secret",
+            "type": "string"
+          },
+          "updated_at": {
+            "description": "Update timestamp",
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "actor_id",
+          "expires_at",
+          "inserted_at",
+          "updated_at",
+          "token"
+        ],
+        "title": "ClientTokenWithSecret",
         "type": "object"
       },
       "SentinelOneDevice": {
@@ -4439,29 +4194,15 @@
       },
       "Resource": {
         "description": "Resource",
-        "example": {
-          "address": "10.0.0.10",
-          "address_description": "Production Database",
-          "filters": [
-            {
-              "ports": [
-                "5432"
-              ],
-              "protocol": "tcp"
-            }
-          ],
-          "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-          "name": "Prod DB",
-          "site_id": "0642e09d-b3a2-47e4-9cd1-c2195faeeb67",
-          "type": "ip"
-        },
         "properties": {
           "address": {
             "description": "Resource address",
+            "example": "10.0.0.10",
             "type": "string"
           },
           "address_description": {
             "description": "Resource address description",
+            "example": "Production Database",
             "type": "string"
           },
           "filters": {
@@ -4487,6 +4228,7 @@
           },
           "name": {
             "description": "Resource name",
+            "example": "Prod DB",
             "type": "string"
           },
           "site_id": {
@@ -4562,11 +4304,6 @@
       },
       "EntraDirectory": {
         "description": "Entra Directory",
-        "example": {
-          "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-          "name": "Entra",
-          "tenant_id": "12345678-1234-1234-1234-123456789012"
-        },
         "properties": {
           "account_id": {
             "description": "Account ID",
@@ -4575,6 +4312,7 @@
           },
           "disabled_reason": {
             "description": "Reason for disabling",
+            "example": "Sync failed on 5 consecutive attempts",
             "nullable": true,
             "type": "string"
           },
@@ -4588,6 +4326,7 @@
           },
           "error_message": {
             "description": "Last error message",
+            "example": "invalid_grant: token has expired or been revoked",
             "nullable": true,
             "type": "string"
           },
@@ -4613,6 +4352,7 @@
           },
           "name": {
             "description": "Directory name",
+            "example": "Entra",
             "type": "string"
           },
           "sync_all_groups": {
@@ -4627,6 +4367,7 @@
           },
           "tenant_id": {
             "description": "Microsoft Entra tenant ID",
+            "example": "12345678-1234-1234-1234-123456789012",
             "type": "string"
           },
           "updated_at": {
@@ -4655,30 +4396,6 @@
       },
       "LogsResponse": {
         "description": "Response schema for a page of Log entries.\n\nEntries are returned most recent first. Each page contains at most 100\nentries (50 by default); use the `metadata.next_page` cursor to fetch\nthe following page.\n",
-        "example": {
-          "data": [
-            {
-              "after": {
-                "name": "Jane Smith"
-              },
-              "before": {
-                "name": "Jane Doe"
-              },
-              "log_id": "c00060db0c2c8eb400000000",
-              "object": "actors",
-              "operation": "update",
-              "subject": null,
-              "timestamp": "2026-05-26T12:34:56.789Z",
-              "type": "change"
-            }
-          ],
-          "metadata": {
-            "count": 1,
-            "limit": 50,
-            "next_page": null,
-            "prev_page": null
-          }
-        },
         "properties": {
           "data": {
             "description": "Log entries for the requested window.",
@@ -4712,14 +4429,6 @@
       },
       "PoolMemberResponse": {
         "description": "Response schema for Pool Member updates",
-        "example": {
-          "data": {
-            "device_ids": [
-              "4ddfa557-7dfc-484f-894c-2024ec3fe9f7",
-              "89d22f71-939d-442d-b148-897b730adfb4"
-            ]
-          }
-        },
         "properties": {
           "data": {
             "description": "Pool members",
@@ -4981,66 +4690,8 @@
         "title": "DefenderDeviceResponse",
         "type": "object"
       },
-      "ClientTokenResponse": {
-        "description": "Client Token response",
-        "example": {
-          "actor_id": "43a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-          "expires_at": "2025-01-15T12:34:56.789Z",
-          "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-          "inserted_at": "2025-01-15T12:34:56.789Z",
-          "token": "secret-token-here",
-          "updated_at": "2025-01-15T12:34:56.789Z"
-        },
-        "properties": {
-          "actor_id": {
-            "description": "Actor ID",
-            "format": "uuid",
-            "type": "string"
-          },
-          "expires_at": {
-            "description": "Expiration",
-            "format": "date-time",
-            "type": "string"
-          },
-          "id": {
-            "description": "Client Token ID",
-            "format": "uuid",
-            "type": "string"
-          },
-          "inserted_at": {
-            "description": "Creation timestamp",
-            "format": "date-time",
-            "type": "string"
-          },
-          "token": {
-            "description": "Encoded token secret",
-            "type": "string"
-          },
-          "updated_at": {
-            "description": "Update timestamp",
-            "format": "date-time",
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "actor_id",
-          "expires_at",
-          "inserted_at",
-          "updated_at",
-          "token"
-        ],
-        "title": "ClientTokenResponse",
-        "type": "object"
-      },
       "EmailOTPAuthProviderResponse": {
         "description": "Response schema for single Email OTP Auth Provider",
-        "example": {
-          "data": {
-            "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-            "name": "Email OTP"
-          }
-        },
         "properties": {
           "data": {
             "$ref": "#/components/schemas/EmailOTPAuthProvider"
@@ -5051,14 +4702,6 @@
       },
       "EntraDirectoryListResponse": {
         "description": "Response schema for multiple Entra Directories",
-        "example": {
-          "data": [
-            {
-              "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-              "name": "Entra"
-            }
-          ]
-        },
         "properties": {
           "data": {
             "description": "Entra Directory details",
@@ -5177,15 +4820,6 @@
       },
       "OIDCAuthProviderListResponse": {
         "description": "Response schema for multiple OIDC Auth Providers",
-        "example": {
-          "data": [
-            {
-              "email_verification_method": "claim",
-              "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-              "name": "OIDC Provider"
-            }
-          ]
-        },
         "properties": {
           "data": {
             "description": "OIDC Auth Provider details",
@@ -5766,31 +5400,6 @@
       },
       "ClientResponse": {
         "description": "Response schema for single Client",
-        "example": {
-          "data": {
-            "actor_id": "6ecc106b-75c1-48a5-846c-14782180c1ff",
-            "created_at": "2025-01-01T00:00:00Z",
-            "device_serial": "GCCFX0DBQ6L5",
-            "device_uuid": "7A461FF9-0BE2-64A9-A418-539D9A21827B",
-            "firebase_installation_id": null,
-            "firezone_id": "b5bb9d8014a0f9b1d61e21e796d78dccdf1352f23cd32812f4850b878ae4944c",
-            "hostname": "johns-macbook.example.com",
-            "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-            "identifier_for_vendor": null,
-            "ipv4": "100.64.0.1",
-            "ipv6": "fd00:2021:1111::1",
-            "last_attested_at": "2025-01-01T00:00:00Z",
-            "last_attested_cert_fingerprint": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
-            "last_attested_cert_serial": "4A:2F:00:8C:11:03:9E:5B",
-            "last_attested_device_serial": "GCCFX0DBQ6L5",
-            "last_attested_device_uuid": "7A461FF9-0BE2-64A9-A418-539D9A21827B",
-            "last_attested_mdm_device_id": "5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3",
-            "name": "John's Macbook Air",
-            "online": true,
-            "updated_at": "2025-01-01T00:00:00Z",
-            "verified_at": "2025-01-01T00:00:00Z"
-          }
-        },
         "properties": {
           "data": {
             "$ref": "#/components/schemas/Client"
@@ -5916,11 +5525,6 @@
       },
       "EmailOTPAuthProvider": {
         "description": "Email OTP Auth Provider",
-        "example": {
-          "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-          "issuer": "firezone",
-          "name": "Email OTP"
-        },
         "properties": {
           "account_id": {
             "description": "Account ID",
@@ -5956,10 +5560,12 @@
           },
           "issuer": {
             "description": "Issuer",
+            "example": "firezone",
             "type": "string"
           },
           "name": {
             "description": "Provider name",
+            "example": "Email OTP",
             "type": "string"
           },
           "portal_session_lifetime_secs": {
@@ -6167,11 +5773,6 @@
       },
       "GoogleAuthProvider": {
         "description": "Google Auth Provider",
-        "example": {
-          "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-          "issuer": "https://accounts.google.com",
-          "name": "Google"
-        },
         "properties": {
           "account_id": {
             "description": "Account ID",
@@ -6211,10 +5812,12 @@
           },
           "issuer": {
             "description": "Issuer",
+            "example": "https://accounts.google.com",
             "type": "string"
           },
           "name": {
             "description": "Provider name",
+            "example": "Google",
             "type": "string"
           },
           "portal_session_lifetime_secs": {
@@ -6376,26 +5979,6 @@
       },
       "PoolMemberListResponse": {
         "description": "Response schema for Pool Members",
-        "example": {
-          "data": [
-            {
-              "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-              "last_seen_at": "2024-01-15T10:30:00Z",
-              "name": "jane-laptop"
-            },
-            {
-              "id": "cc9f561a-444d-4083-ab38-0abc6cf2314c",
-              "last_seen_at": null,
-              "name": "field-tablet-02"
-            }
-          ],
-          "metadata": {
-            "limit": 10,
-            "next_page": "98776234123",
-            "prev_page": "123123425",
-            "total": 100
-          }
-        },
         "properties": {
           "data": {
             "description": "Pool member details",
@@ -6555,45 +6138,6 @@
       },
       "FlowLog": {
         "description": "A single Flow Log entry, recording one network flow as accounted by one\nof its two endpoints.\n\nBoth endpoints of a flow report it independently, so a flow yields up to\ntwo entries that differ only in `role` and in the counters each side\nobserved. Every other field is oriented from the initiator regardless of\nwhich side reported the entry: `inner_src_*` is always the initiator,\n`inner_dst_*` always the responder, and `tx_*` always counts\ninitiator-to-responder traffic. `outers` records each outer network path\nin the order it was observed. Comparing the two entries of a flow is how\nreported traffic is cross-checked.\n",
-        "example": {
-          "authorization_expires_at": "2026-05-26T20:29:00.000Z",
-          "authorized_at": "2026-05-26T12:29:00.000Z",
-          "flow_end": "2026-05-26T12:34:00.000Z",
-          "flow_start": "2026-05-26T12:30:00.000Z",
-          "initiator_actor_email": "user@example.com",
-          "initiator_client_version": "1.5.1",
-          "initiator_device_id": "11e7f82f-831a-4a9d-8f17-c66c2bb6e205",
-          "initiator_device_os_name": "macOS",
-          "initiator_device_os_version": "15.5",
-          "inner_dst_ip": "10.0.0.5",
-          "inner_dst_port": 443,
-          "inner_src_ip": "100.64.0.1",
-          "inner_src_port": 54321,
-          "last_packet": "2026-05-26T12:33:58.000Z",
-          "log_id": "f00060db0c2c8eb400000000",
-          "outers": [
-            {
-              "dst_ip": "198.51.100.5",
-              "dst_port": 51820,
-              "src_ip": "203.0.113.10",
-              "src_port": 51820
-            }
-          ],
-          "policy_authorization_id": "6fa1d58f-0289-42e6-a3ba-7edfa46ee2d5",
-          "policy_id": "46f997d1-77c8-4936-8655-8f050dffbfa4",
-          "protocol": "tcp",
-          "resource_address": "gitlab.company.com",
-          "resource_id": "44e7f82f-831a-4a9d-8f17-c66c2bb6e205",
-          "resource_name": "GitLab",
-          "responder_device_id": "9d3a1c40-5f2b-4c8e-9a71-0b6d4e2f8c13",
-          "role": "responder",
-          "rx_bytes": 102400,
-          "rx_packets": 100,
-          "timestamp": "2026-05-26T12:34:56.789Z",
-          "tx_bytes": 20480,
-          "tx_packets": 80,
-          "type": "flow"
-        },
         "properties": {
           "log_id": {
             "description": "Opaque identifier for the Flow Log entry. A 24-character lowercase\nhexadecimal string starting with `f`.\n",
@@ -6602,6 +6146,7 @@
           },
           "initiator_device_id": {
             "description": "ID of the Client that opened the flow. Always a Client.",
+            "example": "11e7f82f-831a-4a9d-8f17-c66c2bb6e205",
             "type": "string"
           },
           "last_packet": {
@@ -6612,15 +6157,18 @@
           },
           "inner_dst_ip": {
             "description": "Tunnel IP of the responder, on both entries of the flow.",
+            "example": "10.0.0.5",
             "type": "string"
           },
           "initiator_auth_provider_id": {
             "description": "ID of the Auth Provider the initiating Client authenticated with.\n",
+            "example": "7b2c1e40-9f3a-4d21-8c5e-1a2b3c4d5e6f",
             "nullable": true,
             "type": "string"
           },
           "initiator_device_uuid": {
             "description": "Device UUID reported by the initiating Client.",
+            "example": "0C4A8D24-FA9F-4E56-9B57-40D0D46A245E",
             "nullable": true,
             "type": "string"
           },
@@ -6632,11 +6180,13 @@
           },
           "initiator_device_identifier_for_vendor": {
             "description": "Vendor identifier reported by the initiating Client.",
+            "example": "C242BC21-AB4A-4F6D-B755-F50E2B5B51B7",
             "nullable": true,
             "type": "string"
           },
           "policy_authorization_id": {
             "description": "ID of the Policy Authorization that permitted the flow.",
+            "example": "6fa1d58f-0289-42e6-a3ba-7edfa46ee2d5",
             "type": "string"
           },
           "tx_bytes": {
@@ -6646,6 +6196,7 @@
           },
           "initiator_client_version": {
             "description": "Firezone Client version reported by the initiating Client.",
+            "example": "1.5.1",
             "nullable": true,
             "type": "string"
           },
@@ -6662,6 +6213,7 @@
           },
           "initiator_device_os_name": {
             "description": "Operating system reported by the initiating Client.",
+            "example": "macOS",
             "nullable": true,
             "type": "string"
           },
@@ -6688,18 +6240,22 @@
           },
           "initiator_device_firebase_installation_id": {
             "description": "Firebase installation ID reported by the initiating Client.",
+            "example": "firebase-installation-id",
             "nullable": true,
             "type": "string"
           },
           "inner_src_ip": {
             "description": "Tunnel IP of the initiator, on both entries of the flow.",
+            "example": "100.64.0.1",
             "type": "string"
           },
           "responder_device_id": {
             "description": "ID of the device the flow was opened to: the Gateway serving the\nResource, or the receiving Client for device-to-device flows.\n",
+            "example": "9d3a1c40-5f2b-4c8e-9a71-0b6d4e2f8c13",
             "type": "string"
           },
           "initiator_actor_email": {
+            "example": "user@example.com",
             "nullable": true,
             "type": "string"
           },
@@ -6753,6 +6309,7 @@
           },
           "resource_id": {
             "description": "ID of the Resource accessed.",
+            "example": "44e7f82f-831a-4a9d-8f17-c66c2bb6e205",
             "type": "string"
           },
           "inner_src_port": {
@@ -6775,38 +6332,46 @@
           },
           "initiator_device_os_version": {
             "description": "Operating system version reported by the initiating Client.",
+            "example": "15.5",
             "nullable": true,
             "type": "string"
           },
           "inner_domain": {
             "description": "Domain name for flows to DNS Resources.",
+            "example": "gitlab.company.com",
             "nullable": true,
             "type": "string"
           },
           "initiator_actor_id": {
             "description": "ID of the Actor who opened the flow. This is always the initiating\nClient's Actor. A Gateway has no Actor, and for device-to-device\nflows the receiving Client's own Actor is not recorded here.\n",
+            "example": "84e7f82f-831a-4a9d-8f17-c66c2bb6e205",
             "nullable": true,
             "type": "string"
           },
           "initiator_actor_name": {
+            "example": "John Doe",
             "nullable": true,
             "type": "string"
           },
           "resource_address": {
             "description": "Resource address, when the Resource type has one.",
+            "example": "gitlab.company.com",
             "nullable": true,
             "type": "string"
           },
           "initiator_device_serial": {
             "description": "Device serial number reported by the initiating Client.",
+            "example": "C02ABC123",
             "nullable": true,
             "type": "string"
           },
           "resource_name": {
+            "example": "GitLab",
             "type": "string"
           },
           "policy_id": {
             "description": "ID of the Policy that permitted the flow.",
+            "example": "46f997d1-77c8-4936-8655-8f050dffbfa4",
             "type": "string"
           }
         },
@@ -6855,24 +6420,6 @@
       },
       "SiteListResponse": {
         "description": "Response schema for multiple Sites",
-        "example": {
-          "data": [
-            {
-              "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-              "name": "vpc-us-east"
-            },
-            {
-              "id": "6301d7d2-4938-4123-87de-282c01cca656",
-              "name": "vpc-us-west"
-            }
-          ],
-          "metadata": {
-            "limit": 10,
-            "next_page": "98776234123",
-            "prev_page": "123123425",
-            "total": 100
-          }
-        },
         "properties": {
           "data": {
             "description": "Site details",
@@ -6890,43 +6437,6 @@
       },
       "PolicyListResponse": {
         "description": "Response schema for multiple Policies",
-        "example": {
-          "data": [
-            {
-              "conditions": [
-                {
-                  "operator": "is_in",
-                  "property": "remote_ip_location_region",
-                  "values": [
-                    "US",
-                    "CA"
-                  ]
-                }
-              ],
-              "description": "Policy to allow something",
-              "flow_log_uploads_enabled": true,
-              "group_id": "88eae9ce-9179-48c6-8430-770e38dd4775",
-              "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-              "is_disabled": false,
-              "resource_id": "a9f60587-793c-46ae-8525-597f43ab2fb1"
-            },
-            {
-              "conditions": [],
-              "description": "Policy to allow something else",
-              "flow_log_uploads_enabled": false,
-              "group_id": "343385a2-5437-4c66-8744-1332421ff736",
-              "id": "6301d7d2-4938-4123-87de-282c01cca656",
-              "is_disabled": true,
-              "resource_id": "9876bd25-0f6c-48fb-a9fd-196ba9be86e5"
-            }
-          ],
-          "metadata": {
-            "limit": 10,
-            "next_page": "98776234123",
-            "prev_page": "123123425",
-            "total": 100
-          }
-        },
         "properties": {
           "data": {
             "description": "Policy details",
@@ -6944,14 +6454,6 @@
       },
       "EmailOTPAuthProviderListResponse": {
         "description": "Response schema for multiple Email OTP Auth Providers",
-        "example": {
-          "data": [
-            {
-              "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-              "name": "Email OTP"
-            }
-          ]
-        },
         "properties": {
           "data": {
             "description": "Email OTP Auth Provider details",
@@ -6996,32 +6498,6 @@
       },
       "ResourceListResponse": {
         "description": "Response schema for multiple Resources",
-        "example": {
-          "data": [
-            {
-              "address": "10.0.0.10",
-              "address_description": "Production Database",
-              "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-              "name": "Prod DB",
-              "site_id": "0642e09d-b3a2-47e4-9cd1-c2195faeeb67",
-              "type": "ip"
-            },
-            {
-              "address": "10.0.0.20",
-              "address_description": "Production Admin Dashboard",
-              "id": "3b9451c9-5616-48f8-827f-009ace22d015",
-              "name": "Admin Dashboard",
-              "site_id": "0642e09d-b3a2-47e4-9cd1-c2195faeeb67",
-              "type": "ip"
-            }
-          ],
-          "metadata": {
-            "limit": 10,
-            "next_page": "98776234123",
-            "prev_page": "123123425",
-            "total": 100
-          }
-        },
         "properties": {
           "data": {
             "description": "Resource details",
@@ -7584,13 +7060,6 @@
       },
       "OIDCAuthProviderResponse": {
         "description": "Response schema for single OIDC Auth Provider",
-        "example": {
-          "data": {
-            "email_verification_method": "claim",
-            "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-            "name": "OIDC Provider"
-          }
-        },
         "properties": {
           "data": {
             "$ref": "#/components/schemas/OIDCAuthProvider"
@@ -10370,7 +9839,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ClientTokenResponse"
+                  "$ref": "#/components/schemas/ClientTokenShowResponse"
                 }
               }
             },

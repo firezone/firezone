@@ -83,12 +83,6 @@ defmodule PortalAPI.Schemas.Site do
       type: :object,
       properties: %{
         data: Site.Schema
-      },
-      example: %{
-        "data" => %{
-          "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-          "name" => "vpc-us-east"
-        }
       }
     })
   end
@@ -110,24 +104,6 @@ defmodule PortalAPI.Schemas.Site do
           items: Site.Schema
         },
         metadata: PaginationMetadata
-      },
-      example: %{
-        "data" => [
-          %{
-            "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-            "name" => "vpc-us-east"
-          },
-          %{
-            "id" => "6301d7d2-4938-4123-87de-282c01cca656",
-            "name" => "vpc-us-west"
-          }
-        ],
-        "metadata" => %{
-          "limit" => 10,
-          "total" => 100,
-          "prev_page" => "123123425",
-          "next_page" => "98776234123"
-        }
       }
     })
   end

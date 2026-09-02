@@ -29,12 +29,6 @@ defmodule PortalAPI.Schemas.GatewayToken do
       type: :object,
       properties: %{
         data: GatewayToken.Schema
-      },
-      example: %{
-        "data" => %{
-          "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-          "token" => "secret-token-here"
-        }
       }
     })
   end
@@ -54,11 +48,6 @@ defmodule PortalAPI.Schemas.GatewayToken do
             id: %Schema{type: :string, format: :uuid, description: "Gateway Token ID"}
           },
           required: [:id]
-        }
-      },
-      example: %{
-        "data" => %{
-          "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205"
         }
       }
     })
@@ -82,11 +71,6 @@ defmodule PortalAPI.Schemas.GatewayToken do
             }
           },
           required: [:deleted_count]
-        }
-      },
-      example: %{
-        "data" => %{
-          "deleted_count" => 5
         }
       }
     })

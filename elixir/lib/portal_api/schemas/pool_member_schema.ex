@@ -115,26 +115,6 @@ defmodule PortalAPI.Schemas.PoolMember do
           items: PoolMember.Schema
         },
         metadata: PaginationMetadata
-      },
-      example: %{
-        "data" => [
-          %{
-            "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-            "name" => "jane-laptop",
-            "last_seen_at" => "2024-01-15T10:30:00Z"
-          },
-          %{
-            "id" => "cc9f561a-444d-4083-ab38-0abc6cf2314c",
-            "name" => "field-tablet-02",
-            "last_seen_at" => nil
-          }
-        ],
-        "metadata" => %{
-          "limit" => 10,
-          "total" => 100,
-          "prev_page" => "123123425",
-          "next_page" => "98776234123"
-        }
       }
     })
   end
@@ -158,14 +138,6 @@ defmodule PortalAPI.Schemas.PoolMember do
               items: %Schema{type: :string, format: :uuid, description: "Client ID"}
             }
           }
-        }
-      },
-      example: %{
-        "data" => %{
-          "device_ids" => [
-            "4ddfa557-7dfc-484f-894c-2024ec3fe9f7",
-            "89d22f71-939d-442d-b148-897b730adfb4"
-          ]
         }
       }
     })

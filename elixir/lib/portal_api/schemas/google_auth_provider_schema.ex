@@ -11,8 +11,8 @@ defmodule PortalAPI.Schemas.GoogleAuthProvider do
       properties: %{
         id: %Schema{type: :string, format: :uuid, description: "Provider ID"},
         account_id: %Schema{type: :string, format: :uuid, description: "Account ID"},
-        name: %Schema{type: :string, description: "Provider name"},
-        issuer: %Schema{type: :string, description: "Issuer"},
+        name: %Schema{example: "Google", type: :string, description: "Provider name"},
+        issuer: %Schema{example: "https://accounts.google.com", type: :string, description: "Issuer"},
         context: %Schema{
           type: :string,
           description: "Context",
@@ -34,11 +34,6 @@ defmodule PortalAPI.Schemas.GoogleAuthProvider do
           description: "Creation timestamp"
         },
         updated_at: %Schema{type: :string, format: :"date-time", description: "Update timestamp"}
-      },
-      example: %{
-        "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-        "name" => "Google",
-        "issuer" => "https://accounts.google.com"
       }
     })
   end
@@ -54,12 +49,6 @@ defmodule PortalAPI.Schemas.GoogleAuthProvider do
       type: :object,
       properties: %{
         data: GoogleAuthProvider.Schema
-      },
-      example: %{
-        "data" => %{
-          "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-          "name" => "Google"
-        }
       }
     })
   end
@@ -81,14 +70,6 @@ defmodule PortalAPI.Schemas.GoogleAuthProvider do
           items: GoogleAuthProvider.Schema
         },
         metadata: PaginationMetadata
-      },
-      example: %{
-        "data" => [
-          %{
-            "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-            "name" => "Google"
-          }
-        ]
       }
     })
   end

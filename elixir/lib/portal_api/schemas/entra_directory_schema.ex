@@ -11,10 +11,10 @@ defmodule PortalAPI.Schemas.EntraDirectory do
       properties: %{
         id: %Schema{type: :string, format: :uuid, description: "Directory ID"},
         account_id: %Schema{type: :string, format: :uuid, description: "Account ID"},
-        name: %Schema{type: :string, description: "Directory name"},
-        tenant_id: %Schema{type: :string, description: "Microsoft Entra tenant ID"},
+        name: %Schema{example: "Entra", type: :string, description: "Directory name"},
+        tenant_id: %Schema{example: "12345678-1234-1234-1234-123456789012", type: :string, description: "Microsoft Entra tenant ID"},
         is_disabled: %Schema{type: :boolean, description: "Whether directory is disabled"},
-        disabled_reason: %Schema{
+        disabled_reason: %Schema{example: "Sync failed on 5 consecutive attempts",
           type: :string,
           nullable: true,
           description: "Reason for disabling"
@@ -25,7 +25,7 @@ defmodule PortalAPI.Schemas.EntraDirectory do
           nullable: true,
           description: "Last sync timestamp"
         },
-        error_message: %Schema{
+        error_message: %Schema{example: "invalid_grant: token has expired or been revoked",
           type: :string,
           nullable: true,
           description: "Last error message"
@@ -48,11 +48,6 @@ defmodule PortalAPI.Schemas.EntraDirectory do
           description: "Creation timestamp"
         },
         updated_at: %Schema{type: :string, format: :"date-time", description: "Update timestamp"}
-      },
-      example: %{
-        "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-        "name" => "Entra",
-        "tenant_id" => "12345678-1234-1234-1234-123456789012"
       }
     })
   end
@@ -68,12 +63,6 @@ defmodule PortalAPI.Schemas.EntraDirectory do
       type: :object,
       properties: %{
         data: EntraDirectory.Schema
-      },
-      example: %{
-        "data" => %{
-          "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-          "name" => "Entra"
-        }
       }
     })
   end
@@ -95,14 +84,6 @@ defmodule PortalAPI.Schemas.EntraDirectory do
           items: EntraDirectory.Schema
         },
         metadata: PaginationMetadata
-      },
-      example: %{
-        "data" => [
-          %{
-            "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-            "name" => "Entra"
-          }
-        ]
       }
     })
   end

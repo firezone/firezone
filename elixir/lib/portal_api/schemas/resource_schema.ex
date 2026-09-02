@@ -10,9 +10,9 @@ defmodule PortalAPI.Schemas.Resource do
       type: :object,
       properties: %{
         id: %Schema{type: :string, format: :uuid, description: "Resource ID"},
-        name: %Schema{type: :string, description: "Resource name"},
-        address: %Schema{type: :string, description: "Resource address"},
-        address_description: %Schema{type: :string, description: "Resource address description"},
+        name: %Schema{example: "Prod DB", type: :string, description: "Resource name"},
+        address: %Schema{example: "10.0.0.10", type: :string, description: "Resource address"},
+        address_description: %Schema{example: "Production Database", type: :string, description: "Resource address description"},
         type: %Schema{
           type: :string,
           description: "Resource type. For `static_device_pool`, `address` is not applicable.",
@@ -35,17 +35,6 @@ defmodule PortalAPI.Schemas.Resource do
           description: "Traffic filters restricting the protocols and ports the Resource exposes",
           items: PortalAPI.Schemas.Resource.Filter
         }
-      },
-      example: %{
-        "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-        "name" => "Prod DB",
-        "address" => "10.0.0.10",
-        "address_description" => "Production Database",
-        "type" => "ip",
-        "filters" => [
-          %{"protocol" => "tcp", "ports" => ["5432"]}
-        ],
-        "site_id" => "0642e09d-b3a2-47e4-9cd1-c2195faeeb67"
       }
     },
       optional: [:ip_stack, :site_id])
@@ -249,16 +238,6 @@ defmodule PortalAPI.Schemas.Resource do
       type: :object,
       properties: %{
         data: Resource.Schema
-      },
-      example: %{
-        "data" => %{
-          "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-          "name" => "Prod DB",
-          "address" => "10.0.0.10",
-          "address_description" => "Production Database",
-          "type" => "ip",
-          "site_id" => "0642e09d-b3a2-47e4-9cd1-c2195faeeb67"
-        }
       }
     })
   end
@@ -276,32 +255,6 @@ defmodule PortalAPI.Schemas.Resource do
       properties: %{
         data: %Schema{description: "Resource details", type: :array, items: Resource.Schema},
         metadata: PaginationMetadata
-      },
-      example: %{
-        "data" => [
-          %{
-            "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-            "name" => "Prod DB",
-            "address" => "10.0.0.10",
-            "address_description" => "Production Database",
-            "type" => "ip",
-            "site_id" => "0642e09d-b3a2-47e4-9cd1-c2195faeeb67"
-          },
-          %{
-            "id" => "3b9451c9-5616-48f8-827f-009ace22d015",
-            "name" => "Admin Dashboard",
-            "address" => "10.0.0.20",
-            "address_description" => "Production Admin Dashboard",
-            "type" => "ip",
-            "site_id" => "0642e09d-b3a2-47e4-9cd1-c2195faeeb67"
-          }
-        ],
-        "metadata" => %{
-          "limit" => 10,
-          "total" => 100,
-          "prev_page" => "123123425",
-          "next_page" => "98776234123"
-        }
       }
     })
   end

@@ -11,8 +11,8 @@ defmodule PortalAPI.Schemas.OktaAuthProvider do
       properties: %{
         id: %Schema{type: :string, format: :uuid, description: "Provider ID"},
         account_id: %Schema{type: :string, format: :uuid, description: "Account ID"},
-        name: %Schema{type: :string, description: "Provider name"},
-        issuer: %Schema{type: :string, description: "Issuer"},
+        name: %Schema{example: "Okta", type: :string, description: "Provider name"},
+        issuer: %Schema{example: "https://example.okta.com", type: :string, description: "Issuer"},
         context: %Schema{
           type: :string,
           description: "Context",
@@ -28,19 +28,14 @@ defmodule PortalAPI.Schemas.OktaAuthProvider do
         },
         is_disabled: %Schema{type: :boolean, description: "Whether provider is disabled"},
         is_default: %Schema{type: :boolean, description: "Whether provider is default"},
-        client_id: %Schema{type: :string, description: "Client ID"},
-        okta_domain: %Schema{type: :string, description: "Okta domain"},
+        client_id: %Schema{example: "my-client-id", type: :string, description: "Client ID"},
+        okta_domain: %Schema{example: "example.okta.com", type: :string, description: "Okta domain"},
         inserted_at: %Schema{
           type: :string,
           format: :"date-time",
           description: "Creation timestamp"
         },
         updated_at: %Schema{type: :string, format: :"date-time", description: "Update timestamp"}
-      },
-      example: %{
-        "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-        "name" => "Okta",
-        "okta_domain" => "example.okta.com"
       }
     })
   end
@@ -56,12 +51,6 @@ defmodule PortalAPI.Schemas.OktaAuthProvider do
       type: :object,
       properties: %{
         data: OktaAuthProvider.Schema
-      },
-      example: %{
-        "data" => %{
-          "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-          "name" => "Okta"
-        }
       }
     })
   end
@@ -83,14 +72,6 @@ defmodule PortalAPI.Schemas.OktaAuthProvider do
           items: OktaAuthProvider.Schema
         },
         metadata: PaginationMetadata
-      },
-      example: %{
-        "data" => [
-          %{
-            "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-            "name" => "Okta"
-          }
-        ]
       }
     })
   end

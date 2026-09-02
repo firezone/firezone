@@ -127,19 +127,6 @@ defmodule PortalAPI.Schemas.Group do
       type: :object,
       properties: %{
         data: Group.Schema
-      },
-      example: %{
-        "data" => %{
-          "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-          "name" => "Engineering",
-          "email" => nil,
-          "entity_type" => "group",
-          "directory_id" => nil,
-          "idp_id" => nil,
-          "synced_at" => nil,
-          "inserted_at" => "2024-01-15T10:30:00Z",
-          "updated_at" => "2024-01-15T10:30:00Z"
-        }
       }
     })
   end
@@ -157,38 +144,6 @@ defmodule PortalAPI.Schemas.Group do
       properties: %{
         data: %Schema{description: "Group details", type: :array, items: Group.Schema},
         metadata: PaginationMetadata
-      },
-      example: %{
-        "data" => [
-          %{
-            "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-            "name" => "Engineering",
-            "email" => nil,
-            "entity_type" => "group",
-            "directory_id" => nil,
-            "idp_id" => nil,
-            "synced_at" => nil,
-            "inserted_at" => "2024-01-15T10:30:00Z",
-            "updated_at" => "2024-01-15T10:30:00Z"
-          },
-          %{
-            "id" => "4ae929a7-1973-43f2-a1a8-9221b91a4c0e",
-            "name" => "firezone-sync-admins",
-            "email" => "firezone-sync-admins@example.com",
-            "entity_type" => "group",
-            "directory_id" => "6b4e3a2c-1234-5678-9abc-def012345678",
-            "idp_id" => "google-workspace-group-123",
-            "synced_at" => "2024-01-14T16:00:00Z",
-            "inserted_at" => "2024-01-10T08:15:00Z",
-            "updated_at" => "2024-01-14T16:45:00Z"
-          }
-        ],
-        "metadata" => %{
-          "limit" => 10,
-          "total" => 100,
-          "prev_page" => "123123425",
-          "next_page" => "98776234123"
-        }
       }
     })
   end

@@ -179,16 +179,6 @@ defmodule PortalAPI.Schemas.Gateway do
             }
           ]
         }
-      },
-      example: %{
-        "data" => %{
-          "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-          "name" => "vpc-us-east",
-          "ipv4" => nil,
-          "ipv6" => nil,
-          "online" => false,
-          "token" => "eyJhbGc..."
-        }
       }
     })
   end
@@ -246,15 +236,6 @@ defmodule PortalAPI.Schemas.Gateway do
       type: :object,
       properties: %{
         data: Gateway.Schema
-      },
-      example: %{
-        "data" => %{
-          "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-          "name" => "vpc-us-east",
-          "ipv4" => "1.2.3.4",
-          "ipv6" => "",
-          "online" => true
-        }
       }
     })
   end
@@ -272,30 +253,6 @@ defmodule PortalAPI.Schemas.Gateway do
       properties: %{
         data: %Schema{description: "Gateways details", type: :array, items: Gateway.Schema},
         metadata: PaginationMetadata
-      },
-      example: %{
-        "data" => [
-          %{
-            "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-            "name" => "vpc-us-east",
-            "ipv4" => "1.2.3.4",
-            "ipv6" => "",
-            "online" => true
-          },
-          %{
-            "id" => "6ecc106b-75c1-48a5-846c-14782180c1ff",
-            "name" => "vpc-us-west",
-            "ipv4" => "5.6.7.8",
-            "ipv6" => "",
-            "online" => true
-          }
-        ],
-        "metadata" => %{
-          "limit" => 10,
-          "total" => 100,
-          "prev_page" => "123123425",
-          "next_page" => "98776234123"
-        }
       }
     })
   end
