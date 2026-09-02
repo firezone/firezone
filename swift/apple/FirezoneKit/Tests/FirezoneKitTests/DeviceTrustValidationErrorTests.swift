@@ -13,15 +13,15 @@ struct DeviceTrustValidationErrorTests {
   @Test("Validation errors use concise display labels")
   func usesConciseDisplayLabels() {
     let labels: [(DeviceTrustValidationError, String)] = [
-      (.empty, "empty"),
-      (.tooLong, "too long"),
-      (.ambiguous, "ambiguous"),
-      (.placeholderIdentifier, "placeholder identifier"),
-      (.unknownAttribute, "unrecognized attribute"),
-      (.notYetValid, "not yet valid"),
-      (.expired, "expired"),
-      (.missingClientAuthEku, "missing client authentication EKU"),
-      (.digitalSignatureNotAllowed, "digital signature not allowed"),
+      (.empty, "Empty"),
+      (.tooLong, "Too long"),
+      (.ambiguous, "Ambiguous"),
+      (.placeholderIdentifier, "Placeholder identifier"),
+      (.unknownAttribute, "Unrecognized attribute"),
+      (.notYetValid, "Not yet valid"),
+      (.expired, "Expired"),
+      (.missingClientAuthEku, "Missing client authentication EKU"),
+      (.digitalSignatureNotAllowed, "Digital signature not allowed"),
     ]
 
     for (error, label) in labels {

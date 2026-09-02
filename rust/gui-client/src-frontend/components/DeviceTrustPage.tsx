@@ -7,15 +7,15 @@ import {
 import RemixIcon from "./RemixIcon";
 
 const VALIDATION_ERROR_TEXT: Record<X509ValidationError, string> = {
-  Empty: "empty",
-  TooLong: "too long",
-  Ambiguous: "ambiguous",
-  PlaceholderIdentifier: "placeholder identifier",
-  UnknownAttribute: "unrecognized attribute",
-  NotYetValid: "not yet valid",
-  Expired: "expired",
-  MissingClientAuthEku: "missing client authentication EKU",
-  DigitalSignatureNotAllowed: "digital signature not allowed",
+  Empty: "Empty",
+  TooLong: "Too long",
+  Ambiguous: "Ambiguous",
+  PlaceholderIdentifier: "Placeholder identifier",
+  UnknownAttribute: "Unrecognized attribute",
+  NotYetValid: "Not yet valid",
+  Expired: "Expired",
+  MissingClientAuthEku: "Missing client authentication EKU",
+  DigitalSignatureNotAllowed: "Digital signature not allowed",
 };
 
 function FieldValue({ value }: { value: string | null }) {

@@ -111,15 +111,15 @@ impl ValidationError {
     /// A short error label that reads on its own and after the value it explains.
     pub fn label(self) -> &'static str {
         match self {
-            Self::Empty => "empty",
-            Self::TooLong => "too long",
-            Self::Ambiguous => "ambiguous",
-            Self::PlaceholderIdentifier => "placeholder identifier",
-            Self::UnknownAttribute => "unrecognized attribute",
-            Self::NotYetValid => "not yet valid",
-            Self::Expired => "expired",
-            Self::MissingClientAuthEku => "missing client authentication EKU",
-            Self::DigitalSignatureNotAllowed => "digital signature not allowed",
+            Self::Empty => "Empty",
+            Self::TooLong => "Too long",
+            Self::Ambiguous => "Ambiguous",
+            Self::PlaceholderIdentifier => "Placeholder identifier",
+            Self::UnknownAttribute => "Unrecognized attribute",
+            Self::NotYetValid => "Not yet valid",
+            Self::Expired => "Expired",
+            Self::MissingClientAuthEku => "Missing client authentication EKU",
+            Self::DigitalSignatureNotAllowed => "Digital signature not allowed",
         }
     }
 }

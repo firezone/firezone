@@ -24,15 +24,15 @@ public enum DeviceTrustValidationError: Hashable, Sendable {
   /// The concise phrase displayed beneath the field.
   public var label: String {
     switch self {
-    case .empty: return "empty"
-    case .tooLong: return "too long"
-    case .ambiguous: return "ambiguous"
-    case .placeholderIdentifier: return "placeholder identifier"
-    case .unknownAttribute: return "unrecognized attribute"
-    case .notYetValid: return "not yet valid"
-    case .expired: return "expired"
-    case .missingClientAuthEku: return "missing client authentication EKU"
-    case .digitalSignatureNotAllowed: return "digital signature not allowed"
+    case .empty: return "Empty"
+    case .tooLong: return "Too long"
+    case .ambiguous: return "Ambiguous"
+    case .placeholderIdentifier: return "Placeholder identifier"
+    case .unknownAttribute: return "Unrecognized attribute"
+    case .notYetValid: return "Not yet valid"
+    case .expired: return "Expired"
+    case .missingClientAuthEku: return "Missing client authentication EKU"
+    case .digitalSignatureNotAllowed: return "Digital signature not allowed"
     }
   }
 }
