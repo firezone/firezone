@@ -10,6 +10,7 @@ import android.net.Uri
 import androidx.browser.auth.AuthTabIntent
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.espresso.intent.ActivityResultFunction
+import androidx.test.espresso.intent.Intents
 import androidx.test.espresso.intent.Intents.intended
 import androidx.test.espresso.intent.Intents.intending
 import androidx.test.espresso.intent.matcher.IntentMatchers.hasAction
@@ -32,6 +33,7 @@ import dev.firezone.android.tunnel.finishAllActivities
 import dev.firezone.android.tunnel.grantNotificationPermission
 import dev.firezone.android.tunnel.grantVpnConsent
 import dev.firezone.android.tunnel.stopTunnelService
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.hamcrest.Matcher
@@ -98,6 +100,7 @@ class AuthFlowE2eTest {
 
             launchAuthActivity()
 
+            awaitIntent(mainActivityReturnIntent())
             intended(mainActivityReturnIntent())
             val captured = checkNotNull(attempt.get())
             assertTrue(pendingAuthSession.hasPendingRequest())
@@ -159,6 +162,15 @@ class AuthFlowE2eTest {
             .build()
 
     private suspend fun awaitSession(): FakeSession = withTimeout(TIMEOUT_MS) { FakeSessionFactory.awaitSession() }
+
+    // The activity reaches its hand-off from a coroutine, which Espresso's idle sync does not
+    // cover, so the intent is waited for rather than asserted the moment the activity starts.
+    private suspend fun awaitIntent(matcher: Matcher<Intent>) =
+        withTimeout(TIMEOUT_MS) {
+            while (Intents.getIntents().none { matcher.matches(it) }) {
+                delay(50)
+            }
+        }
 
     private fun authTabIntent(): Matcher<Intent> =
         allOf(
