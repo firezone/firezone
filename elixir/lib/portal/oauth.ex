@@ -129,7 +129,7 @@ defmodule Portal.OAuth do
   """
   def exchange(params, expected_resource) do
     with {:ok, encoded} <- fetch_param(params, "code"),
-         {:ok, verifier} <- fetch_param(params, "code_verifier"),
+         {:ok, verifier} <- fetch_verifier(params),
          {:ok, client_id} <- fetch_param(params, "client_id"),
          {:ok, {nonce, account_id, id, fragment}} <-
            decode(encoded, "mcp_code"),
@@ -179,7 +179,9 @@ defmodule Portal.OAuth do
   """
   def revoke(encoded) when is_binary(encoded) do
     Enum.each(["mcp", "mcp_refresh"], fn type ->
-      with {:ok, {_nonce, account_id, id, _fragment}} <- decode(encoded, type) do
+      with {:ok, {nonce, account_id, id, fragment}} <- decode(encoded, type),
+           {:ok, token} <- Database.fetch_token(account_id, id),
+           :ok <- verify_revoked_secret(token, type, nonce, fragment) do
         Database.delete_token(account_id, id)
       end
     end)
@@ -325,6 +327,33 @@ defmodule Portal.OAuth do
     end
   end
 
+  # RFC 7636 fixes the length, so a verifier short enough to guess is refused
+  # before it is compared against the challenge.
+  defp fetch_verifier(params) do
+    case fetch_param(params, "code_verifier") do
+      {:ok, verifier} when byte_size(verifier) in 43..128 -> {:ok, verifier}
+      {:ok, _verifier} -> {:error, :invalid_verifier}
+      error -> error
+    end
+  end
+
+  # Checked even though revocation always answers 200: without it a refresh
+  # secret that has already been rotated out, and so can no longer refresh
+  # anything, could still delete the pair that replaced it.
+  defp verify_revoked_secret(%OAuthToken{} = token, "mcp", nonce, fragment),
+    do: Authentication.verify_fragment(token.secret_hash, token.secret_salt, nonce, fragment)
+
+  defp verify_revoked_secret(
+         %OAuthToken{refresh_secret_hash: hash, refresh_secret_salt: salt},
+         "mcp_refresh",
+         nonce,
+         fragment
+       )
+       when is_binary(hash) and is_binary(salt),
+       do: Authentication.verify_fragment(hash, salt, nonce, fragment)
+
+  defp verify_revoked_secret(_token, _type, _nonce, _fragment), do: :error
+
   defp validate_audience(%OAuthToken{} = token, expected_resource) do
     if token.resource == expected_resource do
       :ok
@@ -377,6 +406,10 @@ defmodule Portal.OAuth do
       secret_hash: access_hash,
       refresh_secret_salt: refresh_salt,
       refresh_secret_hash: refresh_hash,
+      # Taken from the grant rather than carried over, so approving the same
+      # client again with fewer permissions reaches the token it is already
+      # holding instead of waiting out its refresh window.
+      scopes: token.oauth_grant.scopes,
       expires_at: DateTime.add(now, @access_ttl_seconds, :second),
       refresh_expires_at: DateTime.add(now, @refresh_ttl_seconds, :second)
     })
@@ -499,7 +532,21 @@ defmodule Portal.OAuth do
       from(tokens in OAuthToken,
         where: tokens.account_id == ^account_id,
         where: tokens.id == ^id,
-        where: tokens.refresh_expires_at > ^now
+        where: tokens.refresh_expires_at > ^now,
+        preload: [:oauth_grant]
+      )
+      |> Safe.unscoped()
+      |> Safe.one()
+      |> case do
+        nil -> {:error, :unknown_token}
+        token -> {:ok, token}
+      end
+    end
+
+    def fetch_token(account_id, id) do
+      from(tokens in OAuthToken,
+        where: tokens.account_id == ^account_id,
+        where: tokens.id == ^id
       )
       |> Safe.unscoped()
       |> Safe.one()

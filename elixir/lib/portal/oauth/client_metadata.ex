@@ -19,6 +19,10 @@ defmodule Portal.OAuth.ClientMetadata do
 
   @loopback_hosts ~w[localhost 127.0.0.1 ::1]
 
+  # Navigating to any of these runs in the page that navigates, so none of them
+  # is ever a place to send an authorization code.
+  @script_schemes ~w[javascript vbscript data blob file filesystem about view-source]
+
   @max_icon_bytes 64 * 1024
   # Raster only. An SVG can carry script, and while that does not run from an
   # img tag it is not worth storing and serving back.
@@ -153,12 +157,28 @@ defmodule Portal.OAuth.ClientMetadata do
   defp validate_document(document, client_id) do
     with %{"client_id" => ^client_id, "client_name" => name, "redirect_uris" => uris}
          when is_binary(name) and is_list(uris) <- document,
-         true <- uris != [] and Enum.all?(uris, &is_binary/1) do
+         true <- uris != [] and Enum.all?(uris, &usable_redirect_uri?/1) do
       :ok
     else
       _other -> {:error, :invalid_document}
     end
   end
+
+  # Checked when the document is stored rather than when a request arrives, so
+  # a URI that survives to `validate_redirect_uri/2` is already known to be one
+  # a browser can be sent to. https, the http loopback of RFC 8252 section 7.3,
+  # and the private-use schemes of section 7.1 that native apps register - but
+  # never a scheme that runs script in the page doing the navigating.
+  defp usable_redirect_uri?(uri) when is_binary(uri) do
+    case URI.parse(uri) do
+      %URI{scheme: "https", host: host} when is_binary(host) -> true
+      %URI{scheme: "http", host: host} when host in @loopback_hosts -> true
+      %URI{scheme: scheme} when is_binary(scheme) -> scheme not in @script_schemes
+      _other -> false
+    end
+  end
+
+  defp usable_redirect_uri?(_uri), do: false
 
   # Best effort and never fatal: a client without a usable icon still connects,
   # it just shows its initial instead. Tried in the order a client would expect

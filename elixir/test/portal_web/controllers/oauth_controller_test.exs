@@ -735,6 +735,26 @@ defmodule PortalWeb.OAuthControllerTest do
     end
   end
 
+  describe "a native app redirect" do
+    test "sends the code to the app's own scheme", %{conn: conn, account: account, actor: actor} do
+      client = oauth_client_fixture(redirect_uris: ["com.example.app:/callback"])
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_oauth_conn(actor)
+        |> live(
+          ~p"/#{account}/oauth/authorize?#{%{authorize_params(client) | "redirect_uri" => "com.example.app:/callback"}}"
+        )
+
+      {:error, {:redirect, %{to: location}}} =
+        render_submit(lv, "allow", %{"scope" => ["policies:read"]})
+
+      assert String.starts_with?(location, "com.example.app:/callback?")
+      assert %{"code" => code} = location |> URI.parse() |> Map.get(:query) |> URI.decode_query()
+      assert is_binary(code)
+    end
+  end
+
   describe "POST /oauth/revoke" do
     test "always answers 200, whatever it is handed", %{conn: conn, account: account, actor: actor} do
       {_token, access, _refresh} = oauth_token_fixture(account: account, actor: actor)

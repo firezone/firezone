@@ -160,7 +160,24 @@ defmodule PortalWeb.OAuthConsent do
       |> Enum.reject(fn {_key, value} -> is_nil(value) end)
       |> URI.encode_query()
 
-    redirect(socket, external: URI.to_string(%{uri | query: query}))
+    redirect(socket, external: external_destination(URI.to_string(%{uri | query: query})))
+  end
+
+  # LiveView refuses a scheme it does not recognise when it is handed a plain
+  # string, and a native app registers exactly that (RFC 8252 section 7.1), so
+  # the scheme is passed apart from the rest to say it is deliberate. Only the
+  # schemes a client's metadata document is allowed to carry reach this point.
+  defp external_destination(url) do
+    case URI.parse(url) do
+      %URI{scheme: scheme} when scheme in ["http", "https"] ->
+        url
+
+      %URI{scheme: scheme} when is_binary(scheme) ->
+        {scheme, String.replace_prefix(url, scheme <> ":", "")}
+
+      _other ->
+        url
+    end
   end
 
   defp redirect_host(redirect_uri) do

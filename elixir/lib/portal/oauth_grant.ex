@@ -2,9 +2,9 @@ defmodule Portal.OAuthGrant do
   @moduledoc """
   One actor's standing consent for one OAuth client.
 
-  Kept apart from the tokens it backs so that revoking access in the portal
-  outlives any token the client is holding, and so a client that has already
-  been approved does not ask again on every reconnect.
+  Kept apart from the tokens it backs so that it is what the person sees and
+  revokes in the portal: the tokens come and go as the client refreshes, and
+  deleting the grant takes every one of them with it.
   """
 
   use Ecto.Schema

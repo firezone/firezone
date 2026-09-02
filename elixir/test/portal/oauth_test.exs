@@ -9,6 +9,7 @@ defmodule Portal.OAuthTest do
   alias Portal.OAuth
 
   @verifier "a-code-verifier-long-enough-to-satisfy-the-pkce-rules"
+  @other_verifier "a-different-verifier-that-is-also-long-enough-to-pass"
   @resource "https://api.example.test/mcp"
 
   setup do
@@ -204,7 +205,14 @@ defmodule Portal.OAuthTest do
 
     test "rejects a wrong verifier", context do
       code = consent(context)
-      params = %{exchange_params(context, code) | "code_verifier" => "not-the-verifier"}
+      params = %{exchange_params(context, code) | "code_verifier" => @other_verifier}
+
+      assert {:error, "invalid_grant", _description} = OAuth.exchange(params, @resource)
+    end
+
+    test "rejects a verifier shorter than PKCE allows", context do
+      code = consent(context)
+      params = %{exchange_params(context, code) | "code_verifier" => "too-short"}
 
       assert {:error, "invalid_grant", _description} = OAuth.exchange(params, @resource)
     end
@@ -274,6 +282,27 @@ defmodule Portal.OAuthTest do
       assert {:error, "invalid_grant", _description} =
                OAuth.refresh(%{"refresh_token" => access}, @resource)
     end
+
+    test "narrows the token to what the grant now allows", %{account: account, actor: actor} do
+      scopes = ["policies:read", "policies:write"]
+      grant = oauth_grant_fixture(account: account, actor: actor, scopes: scopes)
+
+      {_token, _access, refresh} =
+        oauth_token_fixture(
+          account: account,
+          actor: actor,
+          grant: grant,
+          scopes: scopes,
+          resource: @resource
+        )
+
+      grant
+      |> Ecto.Changeset.change(scopes: ["policies:read"])
+      |> Portal.Repo.update!()
+
+      assert {:ok, response} = OAuth.refresh(%{"refresh_token" => refresh}, @resource)
+      assert response.scope == "policies:read"
+    end
   end
 
   describe "revoke/1" do
@@ -289,6 +318,19 @@ defmodule Portal.OAuthTest do
 
       assert :ok = OAuth.revoke("nonsense")
       assert :ok = OAuth.revoke("")
+    end
+
+    test "ignores a refresh secret that was already rotated out", %{
+      account: account,
+      actor: actor
+    } do
+      {token, _access, refresh} =
+        oauth_token_fixture(account: account, actor: actor, resource: @resource)
+
+      assert {:ok, _response} = OAuth.refresh(%{"refresh_token" => refresh}, @resource)
+
+      assert :ok = OAuth.revoke(refresh)
+      assert Portal.Repo.get_by(Portal.OAuthToken, id: token.id, account_id: account.id)
     end
   end
 
