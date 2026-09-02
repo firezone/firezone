@@ -395,7 +395,8 @@ defmodule Portal.Presence do
                ipv6: relay.ipv6,
                port: relay.port,
                lat: relay.lat,
-               lon: relay.lon
+               lon: relay.lon,
+               turn_account_validation: relay.turn_account_validation == true
              }) do
         :ok
       end
@@ -434,7 +435,8 @@ defmodule Portal.Presence do
             ipv6: meta.ipv6,
             port: meta.port,
             lat: Map.get(meta, :lat),
-            lon: Map.get(meta, :lon)
+            lon: Map.get(meta, :lon),
+            turn_account_validation: Map.get(meta, :turn_account_validation, false)
           }
         end)
 
