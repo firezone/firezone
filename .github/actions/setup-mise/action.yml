@@ -29,6 +29,7 @@ runs:
       if: ${{ runner.os != 'Windows' }}
       run: echo "MISE_SCAN_PATH=$HOME/.local/share/mise/installs" >> "$GITHUB_ENV"
 
+    # Only `main` writes the cache, see setup-rust-binary-cache/action.yml for why.
     - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
       id: mise-1
       continue-on-error: true
@@ -38,6 +39,7 @@ runs:
         install_args: ${{ inputs.install_args }}
         reshim: true
         cache_key_prefix: "mise-v2"
+        cache_save: ${{ github.ref == 'refs/heads/main' }}
 
     - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
       if: ${{ steps.mise-1.outcome == 'failure' }}
@@ -49,6 +51,7 @@ runs:
         install_args: ${{ inputs.install_args }}
         reshim: true
         cache_key_prefix: "mise-v2"
+        cache_save: ${{ github.ref == 'refs/heads/main' }}
 
     - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
       if: ${{ steps.mise-2.outcome == 'failure' }}
@@ -58,6 +61,7 @@ runs:
         install_args: ${{ inputs.install_args }}
         reshim: true
         cache_key_prefix: "mise-v2"
+        cache_save: ${{ github.ref == 'refs/heads/main' }}
 
     # Some tools (currently: firebase-tools) ship as a single self-extracting
     # binary and only materialize their bundled deps on first invocation, into
