@@ -175,16 +175,22 @@ public final class VPNConfigurationManager {
       "Loaded the Firezone VPN configuration (managed=\(selected.isManaged), clientCertificate=\(selected.hasIdentityReference))"
     )
 
-    // Some MDM-generated VPN payloads omit the system-extension link. Say so here: adoption
-    // runs at launch and on every preferences reload, so a re-pushed profile is re-checked.
+    // Some MDMs (for example Intune's built-in VPN payload) cannot set ProviderBundleIdentifier,
+    // and the tunnel cannot start from a profile without it. Fill it in ourselves.
     if selected.isManaged,
-      (selected.manager.protocolConfiguration as? NETunnelProviderProtocol)?
-        .providerBundleIdentifier == nil
+      let configuration = selected.manager.protocolConfiguration as? NETunnelProviderProtocol,
+      configuration.providerBundleIdentifier == nil
     {
       Log.warning(
-        "The managed VPN profile has no ProviderBundleIdentifier, so the tunnel cannot start "
-          + "from it; the payload needs \(selected.manager.extensionBundleIdentifier)."
+        "The managed VPN profile has no ProviderBundleIdentifier; "
+          + "setting it to \(selected.manager.extensionBundleIdentifier)"
       )
+
+      configuration.providerBundleIdentifier = selected.manager.extensionBundleIdentifier
+      selected.manager.protocolConfiguration = configuration
+
+      try await selected.manager.saveToPreferences()
+      try await selected.manager.loadFromPreferences()
     }
 
     return VPNConfigurationManager(from: selected.manager, isManaged: selected.isManaged)
