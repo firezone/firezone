@@ -18,6 +18,127 @@ defmodule PortalAPI.GatewayTokenControllerTest do
     }
   end
 
+  describe "index/2" do
+    test "returns error when not authorized", %{conn: conn, account: account} do
+      site = site_fixture(%{account: account})
+      conn = get(conn, "/sites/#{site.id}/gateway_tokens")
+
+      assert %{"type" => "about:blank", "status" => 401, "title" => "Unauthorized"} =
+               json_response(conn, 401)
+    end
+
+    test "lists a site's own tokens and its gateways' tokens", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      site = site_fixture(%{account: account})
+      gateway = gateway_fixture(account: account, site: site)
+      site_token = gateway_token_fixture(account: account, site: site)
+      gateway_token = gateway_token_fixture(gateway: gateway)
+
+      other_site = site_fixture(%{account: account})
+      other_token = gateway_token_fixture(account: account, site: other_site)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> get("/sites/#{site.id}/gateway_tokens")
+
+      assert %{"data" => data} = json_response(conn, 200)
+      ids = Enum.map(data, & &1["id"])
+
+      assert site_token.id in ids
+      assert gateway_token.id in ids
+      refute other_token.id in ids
+    end
+
+    test "renders metadata and never a token value", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      site = site_fixture(%{account: account})
+      gateway = gateway_fixture(account: account, site: site)
+      token = gateway_token_fixture(gateway: gateway)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> get("/sites/#{site.id}/gateway_tokens")
+
+      assert %{"data" => data} = json_response(conn, 200)
+      assert entry = Enum.find(data, &(&1["id"] == token.id))
+
+      assert entry["gateway_id"] == gateway.id
+      assert entry["site_id"] == nil
+      assert entry["rotated_at"] == nil
+      assert entry["inserted_at"]
+      refute Map.has_key?(entry, "token")
+    end
+
+    test "returns not found when site does not exist", %{conn: conn, actor: actor} do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> get("/sites/#{Ecto.UUID.generate()}/gateway_tokens")
+
+      assert %{"type" => "about:blank", "status" => 404, "title" => "Not Found"} =
+               json_response(conn, 404)
+    end
+  end
+
+  describe "show/2" do
+    test "returns error when not authorized", %{conn: conn, account: account} do
+      site = site_fixture(%{account: account})
+      token = gateway_token_fixture(account: account, site: site)
+      conn = get(conn, "/sites/#{site.id}/gateway_tokens/#{token.id}")
+
+      assert %{"type" => "about:blank", "status" => 401, "title" => "Unauthorized"} =
+               json_response(conn, 401)
+    end
+
+    test "renders metadata and never a token value", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      site = site_fixture(%{account: account})
+      token = gateway_token_fixture(account: account, site: site)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> get("/sites/#{site.id}/gateway_tokens/#{token.id}")
+
+      assert %{"data" => data} = json_response(conn, 200)
+
+      assert data["id"] == token.id
+      assert data["site_id"] == site.id
+      assert data["gateway_id"] == nil
+      assert data["inserted_at"]
+      refute Map.has_key?(data, "token")
+    end
+
+    test "returns not found for a token belonging to another site", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      site = site_fixture(%{account: account})
+      other_site = site_fixture(%{account: account})
+      token = gateway_token_fixture(account: account, site: other_site)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> get("/sites/#{site.id}/gateway_tokens/#{token.id}")
+
+      assert %{"type" => "about:blank", "status" => 404, "title" => "Not Found"} =
+               json_response(conn, 404)
+    end
+  end
+
   describe "create/2" do
     test "returns error when not authorized", %{conn: conn, account: account} do
       site = site_fixture(%{account: account})

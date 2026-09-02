@@ -3,6 +3,7 @@ defmodule PortalAPI.GatewayTokenController do
   use OpenApiSpex.ControllerSpecs
   alias Portal.Authentication
   alias PortalAPI.Error
+  alias PortalAPI.Pagination
   alias PortalAPI.Schemas.ProblemDetails
   alias __MODULE__.Database
 
@@ -11,6 +12,94 @@ defmodule PortalAPI.GatewayTokenController do
   # Single-owner tokens replace multi-owner Site tokens; this endpoint is
   # deprecated ahead of its own removal, independent of any API versioning.
   @multi_owner_token_sunset_at ~D[2026-10-01]
+
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
+  operation :index,
+    summary: "List Gateway Tokens for a Site",
+    description:
+      "Retrieves metadata about a Site's Gateway Tokens, including the ones bound to a " <>
+        "single Gateway in it. Token values cannot be retrieved after creation.",
+    parameters: [
+      site_id: [
+        in: :path,
+        description: "Site ID",
+        type: :string,
+        example: "00000000-0000-0000-0000-000000000000"
+      ],
+      limit: [in: :query, description: "Limit Gateway Tokens returned", type: :integer],
+      page_cursor: [in: :query, description: "Next/Prev page cursor", type: :string]
+    ],
+    responses:
+      [
+        ok:
+          {"Gateway Token List Response", "application/json",
+           PortalAPI.Schemas.GatewayToken.ListResponse}
+      ] ++
+        ProblemDetails.responses([
+          :bad_request,
+          :unauthorized,
+          :not_found,
+          :too_many_requests
+        ])
+
+  # coveralls-ignore-stop
+
+  @spec index(Plug.Conn.t(), map()) :: Plug.Conn.t()
+  def index(conn, %{"site_id" => site_id} = params) do
+    subject = conn.assigns.subject
+
+    with {:ok, list_opts} <- Pagination.params_to_list_opts(params),
+         {:ok, site} <- Database.fetch_site(site_id, subject),
+         {:ok, tokens, metadata} <- Database.list_tokens(site, subject, list_opts) do
+      render(conn, :index, tokens: tokens, metadata: metadata)
+    else
+      error -> Error.handle(conn, error)
+    end
+  end
+
+  # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
+  operation :show,
+    summary: "Show a Gateway Token",
+    description:
+      "Retrieves metadata about a Gateway Token. " <>
+        "Token values cannot be retrieved after creation.",
+    parameters: [
+      site_id: [
+        in: :path,
+        description: "Site ID",
+        type: :string,
+        example: "00000000-0000-0000-0000-000000000000"
+      ],
+      id: [
+        in: :path,
+        description: "Token ID",
+        type: :string,
+        example: "00000000-0000-0000-0000-000000000000"
+      ]
+    ],
+    responses:
+      [
+        ok:
+          {"Gateway Token Response", "application/json",
+           PortalAPI.Schemas.GatewayToken.ShowResponse}
+      ] ++
+        ProblemDetails.responses([
+          :bad_request,
+          :unauthorized,
+          :not_found,
+          :too_many_requests
+        ])
+
+  # coveralls-ignore-stop
+
+  @spec show(Plug.Conn.t(), map()) :: Plug.Conn.t()
+  def show(conn, %{"site_id" => site_id, "id" => token_id}) do
+    with {:ok, token} <- Database.fetch_token(token_id, site_id, conn.assigns.subject) do
+      render(conn, :show_metadata, token: token)
+    else
+      error -> Error.handle(conn, error)
+    end
+  end
 
   # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :create,
@@ -304,6 +393,26 @@ defmodule PortalAPI.GatewayTokenController do
         site ->
           {:ok, site}
       end
+    end
+
+    # Mirrors fetch_token/3: a Site's tokens are the multi-owner ones it holds
+    # directly plus the single-owner ones held by its Gateways.
+    def list_tokens(site, subject, opts \\ []) do
+      from(t in GatewayToken, as: :gateway_tokens)
+      |> join(:left, [gateway_tokens: t], d in Device,
+        on: d.id == t.device_id and d.account_id == t.account_id,
+        as: :device
+      )
+      |> where([gateway_tokens: t, device: d], t.site_id == ^site.id or d.site_id == ^site.id)
+      |> Safe.scoped(subject)
+      |> Safe.list(__MODULE__, opts)
+    end
+
+    def cursor_fields do
+      [
+        {:gateway_tokens, :desc, :inserted_at},
+        {:gateway_tokens, :desc, :id}
+      ]
     end
 
     def fetch_token(id, site_id, subject) do

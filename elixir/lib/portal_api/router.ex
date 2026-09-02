@@ -80,6 +80,8 @@ defmodule PortalAPI.Router do
     resources "/policies", PolicyController, except: [:new, :edit]
 
     resources "/sites", SiteController, except: [:new, :edit] do
+      get "/gateway_tokens", GatewayTokenController, :index
+      get "/gateway_tokens/:id", GatewayTokenController, :show
       post "/gateway_tokens", GatewayTokenController, :create
       delete "/gateway_tokens", GatewayTokenController, :delete_all
       delete "/gateway_tokens/:id", GatewayTokenController, :delete

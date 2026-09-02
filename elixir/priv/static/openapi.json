@@ -959,6 +959,25 @@
         "title": "EntraAuthProvider",
         "type": "object"
       },
+      "GatewayTokenShowResponse": {
+        "description": "Response schema for Gateway Token metadata. Token values cannot be retrieved after creation.",
+        "example": {
+          "data": {
+            "gateway_id": "43a7f82f-831a-4a9d-8f17-c66c2bb6e205",
+            "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
+            "inserted_at": "2025-01-15T12:34:56.789Z",
+            "rotated_at": null,
+            "site_id": null
+          }
+        },
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/GatewayTokenMetadata"
+          }
+        },
+        "title": "GatewayTokenShowResponse",
+        "type": "object"
+      },
       "EntraAuthProviderResponse": {
         "description": "Response schema for single Entra Auth Provider",
         "example": {
@@ -3142,6 +3161,40 @@
         "title": "ActorsResponse",
         "type": "object"
       },
+      "GatewayTokenListResponse": {
+        "description": "Response schema for multiple Gateway Tokens. Token values cannot be retrieved after creation.",
+        "example": {
+          "data": [
+            {
+              "gateway_id": "43a7f82f-831a-4a9d-8f17-c66c2bb6e205",
+              "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
+              "inserted_at": "2025-01-15T12:34:56.789Z",
+              "rotated_at": null,
+              "site_id": null
+            }
+          ],
+          "metadata": {
+            "count": 1,
+            "limit": 10,
+            "next_page": null,
+            "prev_page": null
+          }
+        },
+        "properties": {
+          "data": {
+            "description": "Gateway Token metadata",
+            "items": {
+              "$ref": "#/components/schemas/GatewayTokenMetadata"
+            },
+            "type": "array"
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/PaginationMetadata"
+          }
+        },
+        "title": "GatewayTokenListResponse",
+        "type": "object"
+      },
       "GoogleAuthProviderResponse": {
         "description": "Response schema for single Google Auth Provider",
         "example": {
@@ -4972,6 +5025,55 @@
           "token"
         ],
         "title": "GatewayToken",
+        "type": "object"
+      },
+      "GatewayTokenMetadata": {
+        "description": "Gateway Token metadata. Token values cannot be retrieved after creation.",
+        "example": {
+          "gateway_id": "43a7f82f-831a-4a9d-8f17-c66c2bb6e205",
+          "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
+          "inserted_at": "2025-01-15T12:34:56.789Z",
+          "rotated_at": null,
+          "site_id": null
+        },
+        "properties": {
+          "gateway_id": {
+            "description": "Gateway this token is bound to. Null when any Gateway in the Site may use it.",
+            "format": "uuid",
+            "nullable": true,
+            "type": "string"
+          },
+          "id": {
+            "description": "Gateway Token ID",
+            "format": "uuid",
+            "type": "string"
+          },
+          "inserted_at": {
+            "description": "Creation timestamp",
+            "format": "date-time",
+            "type": "string"
+          },
+          "rotated_at": {
+            "description": "When the token was rotated out. It stays usable for a grace period after this, until its replacement is first used.",
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "site_id": {
+            "description": "Site whose Gateways may all use this token. Null when the token is bound to a single Gateway.",
+            "format": "uuid",
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "site_id",
+          "gateway_id",
+          "rotated_at",
+          "inserted_at"
+        ],
+        "title": "GatewayTokenMetadata",
         "type": "object"
       },
       "SiteID": {
@@ -8649,6 +8751,113 @@
           }
         },
         "summary": "Delete a Gateway Token",
+        "tags": [
+          "Gateway Tokens"
+        ]
+      },
+      "get": {
+        "callbacks": {},
+        "description": "Retrieves metadata about a Gateway Token. Token values cannot be retrieved after creation.",
+        "operationId": "PortalAPI.GatewayTokenController.show",
+        "parameters": [
+          {
+            "description": "Site ID",
+            "example": "00000000-0000-0000-0000-000000000000",
+            "in": "path",
+            "name": "site_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Token ID",
+            "example": "00000000-0000-0000-0000-000000000000",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayTokenShowResponse"
+                }
+              }
+            },
+            "description": "Gateway Token Response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The request could not be processed.",
+                  "status": 400,
+                  "title": "Bad Request",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Authentication credentials were missing or invalid.",
+                  "status": 401,
+                  "title": "Unauthorized",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The requested resource could not be found.",
+                  "status": 404,
+                  "title": "Not Found",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
+                  "status": 429,
+                  "title": "Too Many Requests",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "Show a Gateway Token",
         "tags": [
           "Gateway Tokens"
         ]
@@ -14768,6 +14977,121 @@
           }
         },
         "summary": "Delete all Gateway Tokens for a Site",
+        "tags": [
+          "Gateway Tokens"
+        ]
+      },
+      "get": {
+        "callbacks": {},
+        "description": "Retrieves metadata about a Site's Gateway Tokens, including the ones bound to a single Gateway in it. Token values cannot be retrieved after creation.",
+        "operationId": "PortalAPI.GatewayTokenController.index",
+        "parameters": [
+          {
+            "description": "Site ID",
+            "example": "00000000-0000-0000-0000-000000000000",
+            "in": "path",
+            "name": "site_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Limit Gateway Tokens returned",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Next/Prev page cursor",
+            "in": "query",
+            "name": "page_cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GatewayTokenListResponse"
+                }
+              }
+            },
+            "description": "Gateway Token List Response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The request could not be processed.",
+                  "status": 400,
+                  "title": "Bad Request",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Authentication credentials were missing or invalid.",
+                  "status": 401,
+                  "title": "Unauthorized",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The requested resource could not be found.",
+                  "status": 404,
+                  "title": "Not Found",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
+                  "status": 429,
+                  "title": "Too Many Requests",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "List Gateway Tokens for a Site",
         "tags": [
           "Gateway Tokens"
         ]
