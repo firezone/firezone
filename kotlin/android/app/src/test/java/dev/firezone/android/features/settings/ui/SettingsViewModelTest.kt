@@ -6,8 +6,12 @@ import android.content.Context
 import android.content.SharedPreferences
 import android.os.Bundle
 import android.os.Looper
+import dev.firezone.android.core.data.ManagedConfigurationReader
+import dev.firezone.android.core.data.ManagedConfigurationSource
 import dev.firezone.android.core.data.Repository
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -35,7 +39,14 @@ class SettingsViewModelTest {
                 .getSharedPreferences("settings-view-model-test", Context.MODE_PRIVATE)
         sharedPreferences.edit().clear().commit()
         repository = Repository(RuntimeEnvironment.getApplication(), Dispatchers.Unconfined, sharedPreferences)
-        viewModel = SettingsViewModel(repository)
+        val managedConfigurationSource =
+            ManagedConfigurationSource(
+                RuntimeEnvironment.getApplication(),
+                ManagedConfigurationReader { Bundle() },
+                repository,
+                CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
+            )
+        viewModel = SettingsViewModel(repository, managedConfigurationSource)
     }
 
     @Test
