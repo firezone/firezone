@@ -190,6 +190,9 @@ jobs:
           BREAKING=$(head -c 12000 ../openapi-breaking.txt 2>/dev/null || true)
           # Comment bodies are capped at 64 KiB; keep room for the rest.
           changelog=$(head -c 48000 ../openapi-changelog.md 2>/dev/null || true)
+          # oasdiff writes these placeholders instead of leaving the files empty.
+          [[ "$BREAKING" == "No breaking changes" ]] && BREAKING=""
+          [[ "$changelog" == "No changelog changes" ]] && changelog=""
           if [[ -z "$changelog" ]]; then
             changelog="No API changes."
           elif [[ $(wc -c < ../openapi-changelog.md) -gt 48000 ]]; then
