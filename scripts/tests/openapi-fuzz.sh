@@ -40,6 +40,7 @@ else
   schemathesis=(
     docker run --rm --network firezone_app-internal
     --user "$(id -u):$(id -g)"
+    --workdir /report
     --volume "$PWD/$spec:/openapi.json:ro"
     --volume "$PWD/$report_dir:/report"
     schemathesis/schemathesis:4.25.2
