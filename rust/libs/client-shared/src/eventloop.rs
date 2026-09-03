@@ -315,6 +315,11 @@ impl Eventloop {
                     return Ok(ControlFlow::Continue(()));
                 };
 
+                // Resetting the tunnel yields fresh ICE candidates right away, while the portal
+                // connection is only re-established below. Mark the portal as disconnected first
+                // so those candidates are held back and flushed once we are connected again,
+                // instead of being sent into a socket that is still connecting and dropped.
+                tunnel.state_mut().set_portal_connected(false);
                 tunnel.reset(&reason, now);
                 tunnel_bypass_resolver::reset_sockets();
                 telemetry::reset_ingest();
