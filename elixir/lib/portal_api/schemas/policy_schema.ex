@@ -230,6 +230,16 @@ defmodule PortalAPI.Schemas.Policy do
           Enum.map(conditions, &%{property: &1.property, operator: &1.operator, values: &1.values})
       }
     end
+
+    # Struct fields deliberately withheld from the API.
+    def internal do
+      [
+        :account_id,
+        :group_idp_id,
+        :inserted_at,
+        :updated_at
+      ]
+    end
   end
 
   defmodule CreateRequest do

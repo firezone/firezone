@@ -27,6 +27,49 @@ defmodule PortalAPI.Schemas.PoolMember do
         "last_seen_at" => "2024-01-15T10:30:00Z"
       }
     })
+
+    # Struct fields deliberately withheld from the API.
+    def internal do
+      [
+        :account_id,
+        :actor_id,
+        :attested?,
+        :client_token_id,
+        :device_serial,
+        :device_uuid,
+        :firebase_installation_id,
+        :firezone_id,
+        :firezone_id_merged?,
+        :gateway_token_id,
+        :gateway_token_rotated_at,
+        :hostname,
+        :identifier_for_vendor,
+        :inserted_at,
+        :ipv4,
+        :ipv6,
+        :last_attested_at,
+        :last_attested_cert_fingerprint,
+        :last_attested_cert_issuer,
+        :last_attested_cert_serial,
+        :last_attested_device_serial,
+        :last_attested_device_uuid,
+        :last_attested_mdm_device_id,
+        :last_seen_remote_ip,
+        :last_seen_remote_ip_location_city,
+        :last_seen_remote_ip_location_lat,
+        :last_seen_remote_ip_location_lon,
+        :last_seen_remote_ip_location_region,
+        :last_seen_user_agent,
+        :last_seen_version,
+        :online?,
+        :provisioned_token,
+        :public_key,
+        :site_id,
+        :type,
+        :updated_at,
+        :verified_at
+      ]
+    end
   end
 
   defmodule PatchRequest do

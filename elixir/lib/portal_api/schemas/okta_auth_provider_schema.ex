@@ -72,6 +72,14 @@ defmodule PortalAPI.Schemas.OktaAuthProvider do
         "updated_at" => "2025-01-15T10:30:00Z"
       }
     })
+
+    # Struct fields deliberately withheld from the API.
+    def internal do
+      [
+        :discovery_document_uri,
+        :is_verified
+      ]
+    end
   end
 
   defmodule Response do

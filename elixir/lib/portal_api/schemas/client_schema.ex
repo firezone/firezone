@@ -232,6 +232,22 @@ defmodule PortalAPI.Schemas.Client do
     def map(%Portal.Device{} = device, _map) do
       %{online: device.online?, created_at: device.inserted_at}
     end
+
+    # Struct fields deliberately withheld from the API.
+    def internal do
+      [
+        :account_id,
+        :attested?,
+        :client_token_id,
+        :firezone_id_merged?,
+        :gateway_token_id,
+        :gateway_token_rotated_at,
+        :last_attested_cert_issuer,
+        :provisioned_token,
+        :site_id,
+        :type
+      ]
+    end
   end
 
   defmodule PutSchema do

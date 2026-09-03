@@ -20,6 +20,17 @@ defmodule PortalAPI.Schemas.Site do
         "name" => "vpc-us-east"
       }
     })
+
+    # Struct fields deliberately withheld from the API.
+    def internal do
+      [
+        :account_id,
+        :health_threshold,
+        :inserted_at,
+        :managed_by,
+        :updated_at
+      ]
+    end
   end
 
   defmodule CreateRequest do

@@ -43,6 +43,13 @@ defmodule PortalAPI.Schemas.IntunePostureProvider do
     })
 
     def map(%Portal.Intune.PostureProvider{posture_provider: %{name: name}}, _map), do: %{type: "intune", name: name}
+
+    # Struct fields deliberately withheld from the API.
+    def internal do
+      [
+        :error_email_count
+      ]
+    end
   end
 
   defmodule Response do

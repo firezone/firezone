@@ -82,6 +82,17 @@ defmodule PortalAPI.Schemas.EntraDirectory do
         "updated_at" => "2025-01-15T10:30:00Z"
       }
     })
+
+    # Struct fields deliberately withheld from the API.
+    def internal do
+      [
+        :error_email_count,
+        :groups_subscription_id,
+        :is_verified,
+        :subscriptions_expire_at,
+        :users_subscription_id
+      ]
+    end
   end
 
   defmodule Response do

@@ -43,6 +43,13 @@ defmodule PortalAPI.Schemas.DefenderPostureProvider do
     })
 
     def map(%Portal.Defender.PostureProvider{posture_provider: %{name: name}}, _map), do: %{type: "defender", name: name}
+
+    # Struct fields deliberately withheld from the API.
+    def internal do
+      [
+        :error_email_count
+      ]
+    end
   end
 
   defmodule Response do

@@ -26,6 +26,18 @@ defmodule PortalAPI.Schemas.ClientToken do
         "updated_at" => "2025-01-15T12:34:56.789Z"
       }
     })
+
+    # Struct fields deliberately withheld from the API.
+    def internal do
+      [
+        :account_id,
+        :auth_provider_id,
+        :auth_provider_name,
+        :auth_provider_type,
+        :last_used_device,
+        :online?
+      ]
+    end
   end
 
   defmodule CreateSchema do
@@ -81,6 +93,18 @@ defmodule PortalAPI.Schemas.ClientToken do
     # built from, which is why this is a separate schema from the read one.
     def map(%Portal.ClientToken{} = token, _map) do
       %{token: Portal.Authentication.encode_fragment!(token)}
+    end
+
+    # Struct fields deliberately withheld from the API.
+    def internal do
+      [
+        :account_id,
+        :auth_provider_id,
+        :auth_provider_name,
+        :auth_provider_type,
+        :last_used_device,
+        :online?
+      ]
     end
   end
 

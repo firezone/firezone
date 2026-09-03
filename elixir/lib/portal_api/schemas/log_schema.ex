@@ -76,6 +76,16 @@ defmodule PortalAPI.Schemas.Log do
     })
 
     def map(%Portal.ChangeLog{}, _map), do: %{type: "change"}
+
+    # Struct fields deliberately withheld from the API.
+    def internal do
+      [
+        :account_id,
+        :lsn,
+        :seq,
+        :vsn
+      ]
+    end
   end
 
   defmodule Session do
@@ -152,6 +162,14 @@ defmodule PortalAPI.Schemas.Log do
     })
 
     def map(%Portal.SessionLog{}, _map), do: %{type: "session"}
+
+    # Struct fields deliberately withheld from the API.
+    def internal do
+      [
+        :account_id,
+        :seq
+      ]
+    end
   end
 
   defmodule Flow do
@@ -497,6 +515,15 @@ defmodule PortalAPI.Schemas.Log do
 
     defp outers(%Portal.FlowLog{flow_end: nil}), do: nil
     defp outers(%Portal.FlowLog{outers: outers}), do: Portal.FlowLog.outers_to_maps(outers)
+
+    # Struct fields deliberately withheld from the API.
+    def internal do
+      [
+        :account_id,
+        :seq,
+        :start_seq
+      ]
+    end
   end
 
   defmodule APIRequest do
@@ -584,6 +611,14 @@ defmodule PortalAPI.Schemas.Log do
 
     def map(%Portal.APIRequestLog{} = log, _map) do
       %{type: "api_request", timestamp: log.inserted_at, ip: log.ip && "#{log.ip}"}
+    end
+
+    # Struct fields deliberately withheld from the API.
+    def internal do
+      [
+        :account_id,
+        :seq
+      ]
     end
   end
 

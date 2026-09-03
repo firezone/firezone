@@ -103,6 +103,14 @@ defmodule PortalAPI.Schemas.ExternalIdentity do
 
     defp synced_at(%Portal.ExternalIdentitySyncState{synced_at: synced_at}), do: synced_at
     defp synced_at(nil), do: nil
+
+    # Struct fields deliberately withheld from the API.
+    def internal do
+      [
+        :directory_name,
+        :updated_at
+      ]
+    end
   end
 
   defmodule Request do

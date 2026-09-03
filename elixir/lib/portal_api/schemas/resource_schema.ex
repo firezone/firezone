@@ -66,6 +66,15 @@ defmodule PortalAPI.Schemas.Resource do
     def map(%Portal.Resource{filters: filters}, _map) do
       %{filters: Enum.map(filters, &%{protocol: &1.protocol, ports: &1.ports})}
     end
+
+    # Struct fields deliberately withheld from the API.
+    def internal do
+      [
+        :account_id,
+        :inserted_at,
+        :updated_at
+      ]
+    end
   end
 
   defmodule Filter do

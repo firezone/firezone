@@ -26,6 +26,22 @@ defmodule PortalAPI.Schemas.Membership do
         "type" => "account_user"
       }
     })
+
+    # Struct fields deliberately withheld from the API.
+    def internal do
+      [
+        :account_id,
+        :allow_email_otp_sign_in,
+        :created_by_directory_id,
+        :email,
+        :identity_count,
+        :inserted_at,
+        :is_disabled,
+        :last_seen_at,
+        :preferences,
+        :updated_at
+      ]
+    end
   end
 
   defmodule PatchRequest do

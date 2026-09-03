@@ -24,6 +24,18 @@ defmodule PortalAPI.Schemas.GatewayToken do
     def map(%Portal.GatewayToken{} = token, _map) do
       %{token: Portal.Authentication.encode_fragment!(token)}
     end
+
+    # Struct fields deliberately withheld from the API.
+    def internal do
+      [
+        :account_id,
+        :device_id,
+        :inserted_at,
+        :rotated_at,
+        :rotated_sibling_id,
+        :site_id
+      ]
+    end
   end
 
   defmodule Response do

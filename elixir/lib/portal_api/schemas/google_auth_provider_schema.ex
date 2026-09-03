@@ -66,6 +66,13 @@ defmodule PortalAPI.Schemas.GoogleAuthProvider do
         "updated_at" => "2025-01-15T10:30:00Z"
       }
     })
+
+    # Struct fields deliberately withheld from the API.
+    def internal do
+      [
+        :is_verified
+      ]
+    end
   end
 
   defmodule Response do

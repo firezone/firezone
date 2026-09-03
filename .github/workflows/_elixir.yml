@@ -192,6 +192,8 @@ jobs:
           changelog=$(head -c 48000 ../openapi-changelog.md 2>/dev/null || true)
           if [[ -z "$changelog" ]]; then
             changelog="No API changes."
+          elif [[ $(wc -c < ../openapi-changelog.md) -gt 48000 ]]; then
+            changelog="$changelog"$'\n\n'"_Truncated; the full changelog is in the job log._"
           fi
           if [[ -n "$BREAKING" ]]; then
             heading="## :warning: Breaking OpenAPI changes"

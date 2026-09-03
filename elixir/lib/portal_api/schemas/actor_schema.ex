@@ -80,6 +80,15 @@ defmodule PortalAPI.Schemas.Actor do
         "updated_at" => "2024-01-15T10:30:00Z"
       }
     })
+
+    # Struct fields deliberately withheld from the API.
+    def internal do
+      [
+        :account_id,
+        :identity_count,
+        :preferences
+      ]
+    end
   end
 
   defmodule CreateRequest do

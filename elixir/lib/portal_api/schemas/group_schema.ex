@@ -79,6 +79,14 @@ defmodule PortalAPI.Schemas.Group do
       do: %{synced_at: synced_at}
 
     def map(%Portal.Group{}, _map), do: %{synced_at: nil}
+
+    # Struct fields deliberately withheld from the API.
+    def internal do
+      [
+        :account_id,
+        :type
+      ]
+    end
   end
 
   defmodule CreateRequest do

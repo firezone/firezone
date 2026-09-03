@@ -143,6 +143,36 @@ defmodule PortalAPI.Schemas.Gateway do
       |> map(map)
       |> Map.put(:token, Portal.Authentication.encode_fragment!(token))
     end
+
+    # Struct fields deliberately withheld from the API.
+    def internal do
+      [
+        :account_id,
+        :actor_id,
+        :attested?,
+        :client_token_id,
+        :device_serial,
+        :device_uuid,
+        :firebase_installation_id,
+        :firezone_id,
+        :firezone_id_merged?,
+        :hostname,
+        :identifier_for_vendor,
+        :inserted_at,
+        :last_attested_at,
+        :last_attested_cert_fingerprint,
+        :last_attested_cert_issuer,
+        :last_attested_cert_serial,
+        :last_attested_device_serial,
+        :last_attested_device_uuid,
+        :last_attested_mdm_device_id,
+        :provisioned_token,
+        :site_id,
+        :type,
+        :updated_at,
+        :verified_at
+      ]
+    end
   end
 
   defmodule CreateSchema do
