@@ -163,8 +163,20 @@ jobs:
           # Keep the spec in CI: no upload to oasdiff.com and no PR comment.
           review: "false"
           github-token: ""
+      - name: Build the OpenAPI changelog
+        id: changelog
+        if: github.base_ref != ''
+        uses: oasdiff/oasdiff-action/changelog@45c956ed8138f7f18f0425d34e3d66730b805cb2 # v0.1.9
+        with:
+          base: base-openapi.json
+          revision: elixir/priv/static/openapi.json
+          format: markdown
+          output-to-file: openapi-changelog.md
+          review: "false"
+          github-token: ""
       # One comment per PR, updated on every run, so a breaking change is seen
-      # in the review rather than buried in a job summary.
+      # in the review rather than buried in a job summary. The full changelog
+      # rides along collapsed, so the detail is one click away.
       - name: Comment on breaking OpenAPI changes
         if: github.base_ref != '' && github.event.pull_request.number
         env:
@@ -173,15 +185,25 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           marker="<!-- openapi-breaking-changes -->"
-          if [[ -n "$BREAKING" ]]; then
-            body=$(printf "%s\n## :warning: Breaking OpenAPI changes\n\nThis PR changes the REST API in a way that can break generated clients:\n\n\`\`\`\n%s\n\`\`\`\n" "$marker" "$BREAKING")
-          else
-            body=$(printf "%s\n## Breaking OpenAPI changes\n\nNone on the latest run.\n" "$marker")
+          # Comment bodies are capped at 64 KiB; keep room for the rest.
+          changelog=$(head -c 50000 openapi-changelog.md 2>/dev/null || true)
+          if [[ -z "$changelog" ]]; then
+            changelog="No API changes."
           fi
+          if [[ -n "$BREAKING" ]]; then
+            heading="## :warning: Breaking OpenAPI changes"
+            intro="This PR changes the REST API in a way that can break generated clients:"
+            fence='```'
+            summary="$intro"$'\n\n'"$fence"$'\n'"$BREAKING"$'\n'"$fence"
+          else
+            heading="## Breaking OpenAPI changes"
+            summary="None on the latest run."
+          fi
+          body="$marker"$'\n'"$heading"$'\n\n'"$summary"$'\n\n'"<details><summary>All API changes</summary>"$'\n\n'"$changelog"$'\n\n'"</details>"
           existing=$(gh api "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" --paginate \
             --jq ".[] | select(.body | startswith(\"$marker\")) | .id" | head -n1)
           if [[ -n "$existing" ]]; then
             gh api --method PATCH "repos/${GITHUB_REPOSITORY}/issues/comments/${existing}" -f body="$body" >/dev/null
-          elif [[ -n "$BREAKING" ]]; then
+          elif [[ -n "$BREAKING" ]] || [[ "$changelog" != "No API changes." ]]; then
             gh api --method POST "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" -f body="$body" >/dev/null
           fi
