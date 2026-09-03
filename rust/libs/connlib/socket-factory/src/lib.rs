@@ -122,14 +122,9 @@ pub fn udp(std_addr: SocketAddr) -> io::Result<UdpSocket> {
 
     // Darwin attaches the destination-address control message when it enqueues a datagram,
     // not when we read it, so the option must be on before the socket can receive anything.
-    // Windows refuses `getsockname` on an unbound socket, so create the state after binding there.
-    #[cfg(not(windows))]
     let state = quinn_udp::UdpSocketState::new(UdpSockRef::from(&socket))?;
 
     socket.bind(&addr)?;
-
-    #[cfg(windows)]
-    let state = quinn_udp::UdpSocketState::new(UdpSockRef::from(&socket))?;
 
     let socket = std::net::UdpSocket::from(socket);
     let socket = tokio::net::UdpSocket::try_from(socket)?;
