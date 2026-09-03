@@ -105,7 +105,7 @@ extension XCTestCase {
 
       print("banner: dismissing \"\(banner.label)\" before \(fileName)")
       banner.swipeUp()
-      _ = banner.waitForNonExistence(withTimeout: 5)
+      _ = banner.waitForNonExistence(timeout: 5)
     #endif
   }
 
