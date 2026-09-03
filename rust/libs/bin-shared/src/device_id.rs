@@ -109,7 +109,7 @@ fn get_or_create_at(path: &Path, app_id: &str) -> Result<DeviceId> {
     let content =
         serde_json::to_string(&j).context("Impossible: Failed to serialize firezone-id")?;
 
-    atomicfs::write_new(path, content).context("Failed to write firezone-id file")?;
+    atomicfs::write(path, content).context("Failed to write firezone-id file")?;
 
     tracing::debug!(%id, "Saved device ID to disk");
     set_id_permissions(path).context("Couldn't set permissions on Firezone ID file")?;

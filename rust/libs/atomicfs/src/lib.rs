@@ -16,29 +16,14 @@ use std::path::Path;
 ///
 /// The atomic counterpart to [`std::fs::write`].
 pub fn write(path: impl AsRef<Path>, contents: impl AsRef<[u8]>) -> io::Result<()> {
-    write_with(path.as_ref(), contents.as_ref(), true)
-}
-
-/// Atomically writes `contents` to `path`, failing with [`io::ErrorKind::AlreadyExists`]
-/// if a file is already there.
-///
-/// The atomic counterpart to [`File::create_new`] followed by a write.
-pub fn write_new(path: impl AsRef<Path>, contents: impl AsRef<[u8]>) -> io::Result<()> {
-    write_with(path.as_ref(), contents.as_ref(), false)
-}
-
-fn write_with(path: &Path, contents: &[u8], overwrite: bool) -> io::Result<()> {
+    let path = path.as_ref();
     let dir = path.parent().filter(|dir| !dir.as_os_str().is_empty());
     let dir = dir.unwrap_or(Path::new("."));
 
     let mut file = tempfile::NamedTempFile::new_in(dir)?;
-    file.write_all(contents)?;
+    file.write_all(contents.as_ref())?;
     file.as_file().sync_all()?;
-    if overwrite {
-        file.persist(path)?;
-    } else {
-        file.persist_noclobber(path)?;
-    }
+    file.persist(path)?;
 
     // The rename is only durable once the directory entry is on disk too.
     #[cfg(unix)]
@@ -62,19 +47,6 @@ mod tests {
         write(&path, b"two").unwrap();
         assert_eq!(std::fs::read(&path).unwrap(), b"two");
 
-        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 1);
-    }
-
-    #[test]
-    fn write_new_refuses_to_clobber() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("file");
-
-        write_new(&path, b"one").unwrap();
-        let e = write_new(&path, b"two").unwrap_err();
-
-        assert_eq!(e.kind(), io::ErrorKind::AlreadyExists);
-        assert_eq!(std::fs::read(&path).unwrap(), b"one");
         assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 1);
     }
 
