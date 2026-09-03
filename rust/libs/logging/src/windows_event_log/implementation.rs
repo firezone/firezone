@@ -13,10 +13,10 @@ use windows::Win32::System::EventLog::{
     REPORT_EVENT_TYPE, RegisterEventSourceW, ReportEventW,
 };
 use windows::Win32::System::Registry::{
-    HKEY_LOCAL_MACHINE, KEY_WRITE, REG_DWORD, REG_EXPAND_SZ, REG_OPTION_NON_VOLATILE, RegCloseKey,
+    HKEY_LOCAL_MACHINE, KEY_WRITE, REG_DWORD, REG_EXPAND_SZ, REG_OPTION_NON_VOLATILE,
     RegCreateKeyExW, RegSetValueExW,
 };
-use windows::core::{PCWSTR, w};
+use windows::core::{Owned, PCWSTR, w};
 
 const EVENT_ID_ERROR: u32 = 1;
 const EVENT_ID_WARNING: u32 = 2;
@@ -168,6 +168,7 @@ fn try_register_source(source: &str) -> Result<()> {
     let key_path_wide = to_wide_string(&key_path);
     let mut hkey = windows::Win32::System::Registry::HKEY::default();
 
+    // SAFETY: out-param into the stack local below.
     unsafe {
         RegCreateKeyExW(
             HKEY_LOCAL_MACHINE,
@@ -180,43 +181,48 @@ fn try_register_source(source: &str) -> Result<()> {
             &mut hkey,
             None,
         )
-        .ok()
-        .context("Failed to create registry key")?;
-
-        let result = (|| {
-            RegSetValueExW(
-                hkey,
-                w!("TypesSupported"),
-                Some(0),
-                REG_DWORD,
-                Some(TYPES_SUPPORTED.to_le_bytes().as_slice()),
-            )
-            .ok()
-            .context("Failed to set registry value")?;
-
-            let message_file = "%SystemRoot%\\System32\\EventCreate.exe";
-            let message_file_wide = to_wide_string(message_file);
-            let message_file_bytes: Vec<u8> = message_file_wide
-                .iter()
-                .flat_map(|&word| word.to_le_bytes())
-                .collect();
-
-            RegSetValueExW(
-                hkey,
-                w!("EventMessageFile"),
-                Some(0),
-                REG_EXPAND_SZ,
-                Some(&message_file_bytes),
-            )
-            .ok()
-            .context("Failed to set registry value")?;
-
-            Ok(())
-        })();
-
-        let _ = RegCloseKey(hkey);
-        result
     }
+    .ok()
+    .context("Failed to create registry key")?;
+    // SAFETY: `RegCreateKeyExW` succeeded so `hkey` is a valid key handle;
+    // `Owned<HKEY>` calls `RegCloseKey` on drop so we don't leak on any of
+    // the `?`-propagated failure paths below.
+    let hkey = unsafe { Owned::new(hkey) };
+
+    // SAFETY: `*hkey` is the valid handle wrapped above.
+    unsafe {
+        RegSetValueExW(
+            *hkey,
+            w!("TypesSupported"),
+            Some(0),
+            REG_DWORD,
+            Some(TYPES_SUPPORTED.to_le_bytes().as_slice()),
+        )
+    }
+    .ok()
+    .context("Failed to set registry value")?;
+
+    let message_file = "%SystemRoot%\\System32\\EventCreate.exe";
+    let message_file_wide = to_wide_string(message_file);
+    let message_file_bytes: Vec<u8> = message_file_wide
+        .iter()
+        .flat_map(|&word| word.to_le_bytes())
+        .collect();
+
+    // SAFETY: same as above.
+    unsafe {
+        RegSetValueExW(
+            *hkey,
+            w!("EventMessageFile"),
+            Some(0),
+            REG_EXPAND_SZ,
+            Some(&message_file_bytes),
+        )
+    }
+    .ok()
+    .context("Failed to set registry value")?;
+
+    Ok(())
 }
 
 fn to_wide_string(s: &str) -> Vec<u16> {
