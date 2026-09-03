@@ -11,21 +11,27 @@ use sha2::{Digest as _, Sha256, Sha384, Sha512};
 use windows::{
     Win32::{
         Foundation::{
-            E_ACCESSDENIED, NTE_BAD_KEYSET, NTE_NO_KEY, NTE_NOT_FOUND, NTE_PERM,
+            E_ACCESSDENIED, NTE_BAD_KEYSET, NTE_NO_KEY, NTE_NOT_FOUND, NTE_NOT_SUPPORTED, NTE_PERM,
             NTE_SILENT_CONTEXT, NTE_USER_CANCELLED, SCARD_W_CANCELLED_BY_USER,
         },
-        Security::Cryptography::{
-            BCRYPT_PKCS1_PADDING_INFO, BCRYPT_PSS_PADDING_INFO, BCRYPT_SHA256_ALGORITHM,
-            BCRYPT_SHA384_ALGORITHM, BCRYPT_SHA512_ALGORITHM, CERT_CHAIN_CACHE_ONLY_URL_RETRIEVAL,
-            CERT_CHAIN_DISABLE_AIA, CERT_CHAIN_PARA, CERT_CONTEXT, CERT_KEY_SPEC,
-            CERT_OPEN_STORE_FLAGS, CERT_QUERY_ENCODING_TYPE, CERT_STORE_OPEN_EXISTING_FLAG,
-            CERT_STORE_PROV_SYSTEM_W, CERT_STORE_READONLY_FLAG, CERT_SYSTEM_STORE_LOCAL_MACHINE,
-            CRYPT_ACQUIRE_ONLY_NCRYPT_KEY_FLAG, CRYPT_ACQUIRE_SILENT_FLAG, CertCloseStore,
-            CertDuplicateCertificateContext, CertEnumCertificatesInStore, CertFreeCertificateChain,
-            CertFreeCertificateContext, CertGetCertificateChain, CertOpenStore,
-            CryptAcquireCertificatePrivateKey, HCERTSTORE, HCRYPTPROV_OR_NCRYPT_KEY_HANDLE,
-            NCRYPT_FLAGS, NCRYPT_HANDLE, NCRYPT_KEY_HANDLE, NCRYPT_PAD_PKCS1_FLAG,
-            NCRYPT_PAD_PSS_FLAG, NCryptFreeObject, NCryptSignHash,
+        Security::{
+            Cryptography::{
+                BCRYPT_PKCS1_PADDING_INFO, BCRYPT_PSS_PADDING_INFO, BCRYPT_SHA256_ALGORITHM,
+                BCRYPT_SHA384_ALGORITHM, BCRYPT_SHA512_ALGORITHM,
+                CERT_CHAIN_CACHE_ONLY_URL_RETRIEVAL, CERT_CHAIN_DISABLE_AIA, CERT_CHAIN_PARA,
+                CERT_CONTEXT, CERT_KEY_SPEC, CERT_NCRYPT_KEY_SPEC, CERT_OPEN_STORE_FLAGS,
+                CERT_QUERY_ENCODING_TYPE, CERT_STORE_OPEN_EXISTING_FLAG, CERT_STORE_PROV_SYSTEM_W,
+                CERT_STORE_READONLY_FLAG, CERT_SYSTEM_STORE_LOCAL_MACHINE, CRYPT_ACQUIRE_FLAGS,
+                CRYPT_ACQUIRE_ONLY_NCRYPT_KEY_FLAG, CRYPT_ACQUIRE_PREFER_NCRYPT_KEY_FLAG,
+                CRYPT_ACQUIRE_SILENT_FLAG, CertCloseStore, CertDuplicateCertificateContext,
+                CertEnumCertificatesInStore, CertFreeCertificateChain, CertFreeCertificateContext,
+                CertGetCertificateChain, CertOpenStore, CryptAcquireCertificatePrivateKey,
+                CryptReleaseContext, HCERTSTORE, HCRYPTPROV_OR_NCRYPT_KEY_HANDLE, NCRYPT_FLAGS,
+                NCRYPT_HANDLE, NCRYPT_KEY_HANDLE, NCRYPT_PAD_PKCS1_FLAG, NCRYPT_PAD_PSS_FLAG,
+                NCRYPT_PCP_PSS_SALT_SIZE_PROPERTY, NCRYPT_TPM_PSS_SALT_SIZE_HASHSIZE,
+                NCryptFreeObject, NCryptGetProperty, NCryptSignHash,
+            },
+            OBJECT_SECURITY_INFORMATION,
         },
     },
     core::w,
@@ -63,12 +69,16 @@ pub(crate) fn identity(subject_cn: &str) -> Result<Option<Identity>, Error> {
         .cloned()
         .map(CertificateDer::from)
         .collect();
-    let key = Arc::new(sign::Key::new(
+    let key = sign::Key::new(
         certificate.algorithm,
         CngKey {
             context: Arc::new(CertificateContext(signing_context)),
         },
-    ));
+    );
+    let key = Arc::new(match certificate.signs_rsa_pss {
+        true => key,
+        false => key.without_rsa_pss(),
+    });
 
     tracing::debug!(
         store = STORE.1,
@@ -108,54 +118,55 @@ unsafe fn sign_with_certificate(
     scheme: SignatureScheme,
     message: &[u8],
 ) -> Result<Vec<u8>, SigningError> {
-    let key = unsafe { acquire_key(context) }.map_err(classify_signing_error)?;
+    let key = unsafe { acquire_key(context, CRYPT_ACQUIRE_ONLY_NCRYPT_KEY_FLAG) }
+        .map_err(|error| classify_signing_error(error, scheme))?;
 
-    match scheme {
+    let signature = match scheme {
         SignatureScheme::RSA_PSS_SHA256 => unsafe {
             sign_rsa_pss(
-                key.handle,
+                key.ncrypt(),
                 BCRYPT_SHA256_ALGORITHM,
                 &Sha256::digest(message),
             )
         },
         SignatureScheme::RSA_PSS_SHA384 => unsafe {
             sign_rsa_pss(
-                key.handle,
+                key.ncrypt(),
                 BCRYPT_SHA384_ALGORITHM,
                 &Sha384::digest(message),
             )
         },
         SignatureScheme::RSA_PSS_SHA512 => unsafe {
             sign_rsa_pss(
-                key.handle,
+                key.ncrypt(),
                 BCRYPT_SHA512_ALGORITHM,
                 &Sha512::digest(message),
             )
         },
         SignatureScheme::RSA_PKCS1_SHA256 => unsafe {
             sign_rsa_pkcs1(
-                key.handle,
+                key.ncrypt(),
                 BCRYPT_SHA256_ALGORITHM,
                 &Sha256::digest(message),
             )
         },
         SignatureScheme::RSA_PKCS1_SHA384 => unsafe {
             sign_rsa_pkcs1(
-                key.handle,
+                key.ncrypt(),
                 BCRYPT_SHA384_ALGORITHM,
                 &Sha384::digest(message),
             )
         },
         SignatureScheme::RSA_PKCS1_SHA512 => unsafe {
             sign_rsa_pkcs1(
-                key.handle,
+                key.ncrypt(),
                 BCRYPT_SHA512_ALGORITHM,
                 &Sha512::digest(message),
             )
         },
         SignatureScheme::ECDSA_NISTP256_SHA256 => unsafe {
             sign_hash(
-                key.handle,
+                key.ncrypt(),
                 None,
                 &Sha256::digest(message),
                 NCRYPT_FLAGS::default(),
@@ -163,7 +174,7 @@ unsafe fn sign_with_certificate(
         },
         SignatureScheme::ECDSA_NISTP384_SHA384 => unsafe {
             sign_hash(
-                key.handle,
+                key.ncrypt(),
                 None,
                 &Sha384::digest(message),
                 NCRYPT_FLAGS::default(),
@@ -171,21 +182,26 @@ unsafe fn sign_with_certificate(
         },
         SignatureScheme::ECDSA_NISTP521_SHA512 => unsafe {
             sign_hash(
-                key.handle,
+                key.ncrypt(),
                 None,
                 &Sha512::digest(message),
                 NCRYPT_FLAGS::default(),
             )
         },
-        _ => Err(SigningError::UnsupportedScheme(scheme)),
+        _ => return Err(SigningError::UnsupportedScheme(scheme)),
     }
+    .map_err(|error| classify_signing_error(error, scheme))?;
+
+    Ok(signature)
 }
 
-/// Names the cause behind a failed CNG key operation.
+/// Names the cause behind a failed CNG key operation on `scheme`.
 ///
 /// Windows reports a declined confirmation prompt and a missing key-usage permission as different
 /// codes, but both mean the same to us: the keystore is there and refuses to use the key.
-fn classify_signing_error(error: windows_core::Error) -> SigningError {
+/// `NTE_NOT_SUPPORTED` is how a provider turns down the padding rather than the key, which its own
+/// message ("The requested operation is not supported") leaves for the reader to work out.
+fn classify_signing_error(error: windows_core::Error, scheme: SignatureScheme) -> SigningError {
     let reason = error.to_string();
 
     match error.code() {
@@ -197,6 +213,7 @@ fn classify_signing_error(error: windows_core::Error) -> SigningError {
         NTE_USER_CANCELLED => SigningError::AccessDenied(reason),
         SCARD_W_CANCELLED_BY_USER => SigningError::AccessDenied(reason),
         E_ACCESSDENIED => SigningError::AccessDenied(reason),
+        NTE_NOT_SUPPORTED => SigningError::UnsupportedScheme(scheme),
         _ => SigningError::Keystore(reason),
     }
 }
@@ -205,7 +222,7 @@ unsafe fn sign_rsa_pss(
     key: NCRYPT_KEY_HANDLE,
     hash_algorithm: windows_core::PCWSTR,
     hash: &[u8],
-) -> Result<Vec<u8>, SigningError> {
+) -> windows_core::Result<Vec<u8>> {
     let padding = BCRYPT_PSS_PADDING_INFO {
         pszAlgId: hash_algorithm,
         cbSalt: hash.len() as u32,
@@ -226,7 +243,7 @@ unsafe fn sign_rsa_pkcs1(
     key: NCRYPT_KEY_HANDLE,
     hash_algorithm: windows_core::PCWSTR,
     hash: &[u8],
-) -> Result<Vec<u8>, SigningError> {
+) -> windows_core::Result<Vec<u8>> {
     let padding = BCRYPT_PKCS1_PADDING_INFO {
         pszAlgId: hash_algorithm,
     };
@@ -247,10 +264,9 @@ unsafe fn sign_hash(
     padding: Option<*const c_void>,
     hash: &[u8],
     flags: NCRYPT_FLAGS,
-) -> Result<Vec<u8>, SigningError> {
+) -> windows_core::Result<Vec<u8>> {
     let mut needed = 0;
-    unsafe { NCryptSignHash(key, padding, hash, None, &mut needed, flags) }
-        .map_err(classify_signing_error)?;
+    unsafe { NCryptSignHash(key, padding, hash, None, &mut needed, flags) }?;
 
     let mut signature = vec![0; needed as usize];
     let mut written = 0;
@@ -263,8 +279,7 @@ unsafe fn sign_hash(
             &mut written,
             flags,
         )
-    }
-    .map_err(classify_signing_error)?;
+    }?;
     signature.truncate(written as usize);
 
     Ok(signature)
@@ -276,6 +291,8 @@ struct Certificate {
     chain: Vec<Vec<u8>>,
     metadata: ParsedCertificate,
     algorithm: SigningAlgorithm,
+    /// Whether the provider will produce RSA-PSS signatures; vacuously true for an ECDSA key.
+    signs_rsa_pss: bool,
 }
 
 impl CandidateCertificate for Certificate {
@@ -356,7 +373,7 @@ unsafe fn enumerate_store(
             );
             continue;
         };
-        if let Err(error) = unsafe { acquire_key(context) } {
+        if let Err(error) = unsafe { acquire_key(context, CRYPT_ACQUIRE_ONLY_NCRYPT_KEY_FLAG) } {
             tracing::debug!(
                 store = label,
                 fingerprint = %metadata.fingerprint,
@@ -365,6 +382,15 @@ unsafe fn enumerate_store(
             );
             continue;
         }
+
+        let signs_rsa_pss = match algorithm {
+            SigningAlgorithm::RsaSha256 => unsafe {
+                provider_signs_rsa_pss(context, &metadata.fingerprint)
+            },
+            SigningAlgorithm::EcdsaSha256 => true,
+            SigningAlgorithm::EcdsaSha384 => true,
+            SigningAlgorithm::EcdsaSha512 => true,
+        };
 
         let chain = match unsafe { certificate_chain(context) } {
             Ok(chain) => chain,
@@ -392,6 +418,7 @@ unsafe fn enumerate_store(
             chain,
             metadata,
             algorithm,
+            signs_rsa_pss,
         });
     }
 
@@ -421,6 +448,79 @@ unsafe fn open_store(location: u32) -> Result<HCERTSTORE> {
     }
 
     Ok(store)
+}
+
+/// Whether the provider holding the certificate's key produces the RSA-PSS signatures TLS 1.3
+/// asks for.
+///
+/// TLS 1.3 mandates a salt as long as the digest, which two kinds of provider cannot deliver: a
+/// TPM that salts differently, and a legacy CryptoAPI provider, which has no RSA-PSS at all. Both
+/// answer a signing request with `NTE_NOT_SUPPORTED`, so the answer is worked out here, from what
+/// they say about themselves rather than from a signature nobody asked for.
+///
+/// Anything else keeps RSA-PSS: no property tells us, and a handshake that fails is a better
+/// answer than a guess that quietly gives up TLS 1.3.
+unsafe fn provider_signs_rsa_pss(context: *mut CERT_CONTEXT, fingerprint: &str) -> bool {
+    let key = match unsafe { acquire_key(context, CRYPT_ACQUIRE_PREFER_NCRYPT_KEY_FLAG) } {
+        Ok(key) => key,
+        Err(error) => {
+            tracing::debug!(
+                store = STORE.1,
+                fingerprint,
+                %error,
+                "Assuming RSA-PSS: the provider of this certificate's key did not answer"
+            );
+
+            return true;
+        }
+    };
+
+    if key.key_spec != CERT_NCRYPT_KEY_SPEC {
+        tracing::info!(
+            store = STORE.1,
+            fingerprint,
+            "A legacy CryptoAPI provider holds this certificate's key, which rules out RSA-PSS and with it TLS 1.3"
+        );
+
+        return false;
+    }
+
+    let Some(salt_size) = (unsafe { tpm_pss_salt_size(key.ncrypt()) }) else {
+        return true;
+    };
+    if salt_size == NCRYPT_TPM_PSS_SALT_SIZE_HASHSIZE {
+        return true;
+    }
+
+    tracing::info!(
+        store = STORE.1,
+        fingerprint,
+        salt_size,
+        "The TPM holding this certificate's key salts RSA-PSS differently than TLS 1.3 requires"
+    );
+
+    false
+}
+
+/// The salt size the TPM holding `key` signs RSA-PSS with, if a TPM holds it at all.
+///
+/// Only the Platform Crypto Provider carries this property, so a key without it is one the TPM
+/// never saw rather than one whose provider failed to answer.
+unsafe fn tpm_pss_salt_size(key: NCRYPT_KEY_HANDLE) -> Option<u32> {
+    let mut value = 0u32.to_ne_bytes();
+    let mut written = 0;
+    unsafe {
+        NCryptGetProperty(
+            NCRYPT_HANDLE(key.0),
+            NCRYPT_PCP_PSS_SALT_SIZE_PROPERTY,
+            Some(&mut value),
+            &mut written,
+            OBJECT_SECURITY_INFORMATION::default(),
+        )
+    }
+    .ok()?;
+
+    Some(u32::from_ne_bytes(value))
 }
 
 /// Collects the leaf and every issuer Windows can resolve from its local caches.
@@ -514,32 +614,52 @@ impl Drop for CertificateContext {
 }
 
 struct AcquiredKey {
-    handle: NCRYPT_KEY_HANDLE,
+    handle: HCRYPTPROV_OR_NCRYPT_KEY_HANDLE,
+    /// Which of the two key APIs answered, which also decides how the handle is released.
+    key_spec: CERT_KEY_SPEC,
     must_free: bool,
+}
+
+impl AcquiredKey {
+    /// The handle CNG signs with, which is what [`acquire_key`] answers with unless it fell back
+    /// to CryptoAPI.
+    fn ncrypt(&self) -> NCRYPT_KEY_HANDLE {
+        NCRYPT_KEY_HANDLE(self.handle.0)
+    }
 }
 
 impl Drop for AcquiredKey {
     fn drop(&mut self) {
-        if self.must_free {
-            unsafe {
+        if !self.must_free {
+            return;
+        }
+
+        match self.key_spec {
+            CERT_NCRYPT_KEY_SPEC => unsafe {
                 let _ = NCryptFreeObject(NCRYPT_HANDLE(self.handle.0));
-            }
+            },
+            _ => unsafe {
+                let _ = CryptReleaseContext(self.handle.0, 0);
+            },
         }
     }
 }
 
-/// Opens the certificate's CNG key without ever showing UI.
+/// Opens the certificate's private key through `flags`, without ever showing UI.
 ///
 /// The Tunnel service runs without a desktop, so a key that insists on a confirmation prompt is
 /// reported as [`SigningError::AccessDenied`] rather than hanging the connection.
-unsafe fn acquire_key(context: *mut CERT_CONTEXT) -> windows_core::Result<AcquiredKey> {
+unsafe fn acquire_key(
+    context: *mut CERT_CONTEXT,
+    flags: CRYPT_ACQUIRE_FLAGS,
+) -> windows_core::Result<AcquiredKey> {
     let mut handle = HCRYPTPROV_OR_NCRYPT_KEY_HANDLE::default();
     let mut key_spec = CERT_KEY_SPEC::default();
     let mut must_free = windows_core::BOOL(0);
     unsafe {
         CryptAcquireCertificatePrivateKey(
             context,
-            CRYPT_ACQUIRE_ONLY_NCRYPT_KEY_FLAG | CRYPT_ACQUIRE_SILENT_FLAG,
+            flags | CRYPT_ACQUIRE_SILENT_FLAG,
             None,
             &mut handle,
             Some(&mut key_spec),
@@ -548,7 +668,8 @@ unsafe fn acquire_key(context: *mut CERT_CONTEXT) -> windows_core::Result<Acquir
     }?;
 
     Ok(AcquiredKey {
-        handle: NCRYPT_KEY_HANDLE(handle.0),
+        handle,
+        key_spec,
         must_free: must_free.as_bool(),
     })
 }

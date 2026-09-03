@@ -27,7 +27,7 @@ use crate::DetailField;
 fn signs_with_the_cng_key_of_an_rsa_certificate() {
     let _serialized = serialize_certificate_store_access();
     let subject_cn = unique_subject_cn("rsa");
-    let minted = mint_certificate(&subject_cn, KeyAlgorithm::Rsa);
+    let minted = mint_certificate(&subject_cn, KeyAlgorithm::Rsa, KeyStorage::SoftwareKsp);
 
     let identity = super::identity(&subject_cn)
         .expect("the Windows certificate stores should be readable")
@@ -35,6 +35,43 @@ fn signs_with_the_cng_key_of_an_rsa_certificate() {
 
     assert_eq!(leaf_of(&identity), minted.der);
     assert_eq!(identity.key.algorithm(), SignatureAlgorithm::RSA);
+    assert_eq!(
+        identity.key.supported_schemes(),
+        vec![
+            SignatureScheme::RSA_PSS_SHA512,
+            SignatureScheme::RSA_PSS_SHA384,
+            SignatureScheme::RSA_PSS_SHA256,
+            SignatureScheme::RSA_PKCS1_SHA512,
+            SignatureScheme::RSA_PKCS1_SHA384,
+            SignatureScheme::RSA_PKCS1_SHA256,
+        ]
+    );
+    assert_signs_every_advertised_scheme(&identity, &minted.der);
+}
+
+/// The `Microsoft Enhanced RSA and AES Cryptographic Provider` is a CryptoAPI provider, whose keys
+/// CNG can sign PKCS#1 v1.5 with but never RSA-PSS. That is the refusal a TPM-held key answers a
+/// TLS 1.3 handshake with, on a runner that has no TPM to provision a key in.
+#[test]
+#[ignore = "Writes to the LocalMachine certificate store"]
+fn a_certificate_whose_key_a_legacy_provider_holds_advertises_no_rsa_pss() {
+    let _serialized = serialize_certificate_store_access();
+    let subject_cn = unique_subject_cn("legacy-csp");
+    let minted = mint_certificate(&subject_cn, KeyAlgorithm::Rsa, KeyStorage::LegacyCsp);
+
+    let identity = super::identity(&subject_cn)
+        .expect("the Windows certificate stores should be readable")
+        .expect("the minted certificate should be selected as the client identity");
+
+    assert_eq!(leaf_of(&identity), minted.der);
+    assert_eq!(
+        identity.key.supported_schemes(),
+        vec![
+            SignatureScheme::RSA_PKCS1_SHA512,
+            SignatureScheme::RSA_PKCS1_SHA384,
+            SignatureScheme::RSA_PKCS1_SHA256,
+        ]
+    );
     assert_signs_every_advertised_scheme(&identity, &minted.der);
 }
 
@@ -43,7 +80,11 @@ fn signs_with_the_cng_key_of_an_rsa_certificate() {
 fn signs_with_the_cng_key_of_an_ecdsa_certificate() {
     let _serialized = serialize_certificate_store_access();
     let subject_cn = unique_subject_cn("ecdsa");
-    let minted = mint_certificate(&subject_cn, KeyAlgorithm::EcdsaP256);
+    let minted = mint_certificate(
+        &subject_cn,
+        KeyAlgorithm::EcdsaP256,
+        KeyStorage::SoftwareKsp,
+    );
 
     let identity = super::identity(&subject_cn)
         .expect("the Windows certificate stores should be readable")
@@ -63,7 +104,7 @@ fn signs_with_the_cng_key_of_an_ecdsa_certificate() {
 fn describes_the_minted_certificate_it_loads() {
     let _serialized = serialize_certificate_store_access();
     let subject_cn = unique_subject_cn("describe");
-    let _minted = mint_certificate(&subject_cn, KeyAlgorithm::Rsa);
+    let _minted = mint_certificate(&subject_cn, KeyAlgorithm::Rsa, KeyStorage::SoftwareKsp);
 
     let identity = super::identity(&subject_cn)
         .expect("the Windows certificate stores should be readable")
@@ -94,20 +135,26 @@ fn reports_no_identity_when_no_certificate_matches() {
 
 #[test]
 fn names_the_cause_behind_a_cng_failure() {
+    let scheme = SignatureScheme::RSA_PSS_SHA256;
+
     assert!(matches!(
-        classify_signing_error(NTE_NO_KEY.into()),
+        classify_signing_error(NTE_NO_KEY.into(), scheme),
         SigningError::KeyUnavailable(_)
     ));
     assert!(matches!(
-        classify_signing_error(NTE_SILENT_CONTEXT.into()),
+        classify_signing_error(NTE_SILENT_CONTEXT.into(), scheme),
         SigningError::AccessDenied(_)
     ));
     assert!(matches!(
-        classify_signing_error(SCARD_W_CANCELLED_BY_USER.into()),
+        classify_signing_error(SCARD_W_CANCELLED_BY_USER.into(), scheme),
         SigningError::AccessDenied(_)
     ));
     assert!(matches!(
-        classify_signing_error(windows::Win32::Foundation::E_UNEXPECTED.into()),
+        classify_signing_error(NTE_NOT_SUPPORTED.into(), scheme),
+        SigningError::UnsupportedScheme(SignatureScheme::RSA_PSS_SHA256)
+    ));
+    assert!(matches!(
+        classify_signing_error(windows::Win32::Foundation::E_UNEXPECTED.into(), scheme),
         SigningError::Keystore(_)
     ));
 }
@@ -212,6 +259,12 @@ enum KeyAlgorithm {
     EcdsaP256,
 }
 
+/// Where a minted certificate's private key lives, which decides what it can sign with.
+enum KeyStorage {
+    SoftwareKsp,
+    LegacyCsp,
+}
+
 /// The script that mints a certificate, resolved at compile time so the tests do not depend on the
 /// working directory.
 const MINT_CERTIFICATE_SCRIPT: &str = concat!(
@@ -220,10 +273,21 @@ const MINT_CERTIFICATE_SCRIPT: &str = concat!(
 );
 
 /// Creates a certificate for `subject_cn` that satisfies Firezone's rules for a client identity.
-fn mint_certificate(subject_cn: &str, algorithm: KeyAlgorithm) -> MintedCertificate {
+fn mint_certificate(
+    subject_cn: &str,
+    algorithm: KeyAlgorithm,
+    storage: KeyStorage,
+) -> MintedCertificate {
     let output = powershell(
         MINT_CERTIFICATE_SCRIPT,
-        &["-SubjectCn", subject_cn, "-Algorithm", algorithm.argument()],
+        &[
+            "-SubjectCn",
+            subject_cn,
+            "-Algorithm",
+            algorithm.argument(),
+            "-KeyStorage",
+            storage.argument(),
+        ],
     )
     .unwrap_or_else(|error| panic!("PowerShell should mint a certificate: {error:#}"));
 
@@ -251,6 +315,16 @@ impl KeyAlgorithm {
         match self {
             Self::Rsa => "Rsa",
             Self::EcdsaP256 => "EcdsaP256",
+        }
+    }
+}
+
+impl KeyStorage {
+    /// Returns the value [`MINT_CERTIFICATE_SCRIPT`] expects for its `-KeyStorage` parameter.
+    fn argument(&self) -> &'static str {
+        match self {
+            Self::SoftwareKsp => "SoftwareKsp",
+            Self::LegacyCsp => "LegacyCsp",
         }
     }
 }

@@ -13,7 +13,11 @@ param(
 
     [Parameter(Mandatory)]
     [ValidateSet('Rsa', 'EcdsaP256')]
-    [string]$Algorithm
+    [string]$Algorithm,
+
+    [Parameter(Mandatory)]
+    [ValidateSet('SoftwareKsp', 'LegacyCsp')]
+    [string]$KeyStorage
 )
 
 $ErrorActionPreference = 'Stop'
@@ -23,10 +27,16 @@ $parameters = @{
     Type              = 'Custom'
     Subject           = "CN=$SubjectCn"
     CertStoreLocation = 'Cert:\LocalMachine\My'
-    Provider          = 'Microsoft Software Key Storage Provider'
     KeyExportPolicy   = 'NonExportable'
     KeyUsage          = 'DigitalSignature'
     TextExtension     = @('2.5.29.37={text}1.3.6.1.5.5.7.3.2')
+}
+
+# The legacy CryptoAPI providers implement no RSA-PSS at all, which is what makes a key in one
+# stand in for a key in a TPM: both refuse the padding a TLS 1.3 handshake is signed with.
+switch ($KeyStorage) {
+    'SoftwareKsp' { $parameters.Provider = 'Microsoft Software Key Storage Provider' }
+    'LegacyCsp' { $parameters.Provider = 'Microsoft Enhanced RSA and AES Cryptographic Provider' }
 }
 
 switch ($Algorithm) {

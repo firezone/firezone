@@ -24,18 +24,53 @@ pub(crate) trait Signer: std::fmt::Debug + Send + Sync {
 pub(crate) struct Key<S> {
     /// What the parsed certificate says the key signs with.
     algorithm: SigningAlgorithm,
+    schemes: Vec<SignatureScheme>,
     signer: S,
 }
 
 impl<S> Key<S> {
     pub(crate) fn new(algorithm: SigningAlgorithm, signer: S) -> Self {
-        Self { algorithm, signer }
+        Self {
+            algorithm,
+            schemes: signature_schemes(algorithm).to_vec(),
+            signer,
+        }
+    }
+
+    /// Returns the key with the RSA-PSS schemes taken out of what it advertises.
+    ///
+    /// rustls signs with the first advertised scheme the peer offers, so a keystore that cannot
+    /// produce RSA-PSS signatures has to stop offering them: it would otherwise refuse in the
+    /// middle of the handshake, where the connection has no way left to recover.
+    pub(crate) fn without_rsa_pss(self) -> Self {
+        let Self {
+            algorithm,
+            schemes,
+            signer,
+        } = self;
+        let schemes = schemes
+            .into_iter()
+            .filter(|scheme| {
+                !matches!(
+                    scheme,
+                    SignatureScheme::RSA_PSS_SHA256
+                        | SignatureScheme::RSA_PSS_SHA384
+                        | SignatureScheme::RSA_PSS_SHA512
+                )
+            })
+            .collect();
+
+        Self {
+            algorithm,
+            schemes,
+            signer,
+        }
     }
 }
 
 impl<S: Signer> PrivateKey for Key<S> {
     fn supported_schemes(&self) -> Vec<SignatureScheme> {
-        signature_schemes(self.algorithm).to_vec()
+        self.schemes.clone()
     }
 
     fn algorithm(&self) -> SignatureAlgorithm {
