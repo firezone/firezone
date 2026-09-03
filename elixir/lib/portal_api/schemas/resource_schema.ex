@@ -129,8 +129,8 @@ defmodule PortalAPI.Schemas.Resource do
               # still returned. See
               # PortalAPI.ResourceController.Database.reject_device_pool_type/1
               # for what to change to re-enable it.
-              description: "Resource type.",
-              enum: ["cidr", "ip", "dns"]
+              description: "Resource type. `internet` is accepted only in the Internet Site.",
+              enum: ["cidr", "ip", "dns", "internet"]
             },
             ip_stack: %Schema{
               type: :string,
@@ -201,14 +201,14 @@ defmodule PortalAPI.Schemas.Resource do
             },
             type: %Schema{
               type: :string,
-              # static_device_pool is deliberately absent: pools cannot be
-              # created or converted to through this API for now. It stays
-              # in the response schema below, since existing pools are
-              # still returned. See
+              # A pool may restate its own type but nothing can be converted
+              # into one through this API for now. See
               # PortalAPI.ResourceController.Database.reject_device_pool_type/1
               # for what to change to re-enable it.
-              description: "Resource type.",
-              enum: ["cidr", "ip", "dns"]
+              description:
+                "Resource type. `internet` is accepted only in the Internet Site. " <>
+                  "`static_device_pool` is accepted only on a Resource that already is one.",
+              enum: ["cidr", "ip", "dns", "internet", "static_device_pool"]
             },
             ip_stack: %Schema{
               type: :string,

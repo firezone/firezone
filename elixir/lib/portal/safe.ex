@@ -232,7 +232,7 @@ defmodule Portal.Safe do
         queryable
         |> apply_account_filter(schema, account_id)
         |> repo.list(query_module, opts)
-      end) || {:ok, [], %{}}
+      end) || {:ok, [], Portal.Repo.Paginator.empty_metadata()}
     end
   end
 

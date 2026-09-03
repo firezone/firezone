@@ -1801,7 +1801,11 @@ defmodule Portal.Repo.Seeds do
         monthly_active_users_count: 100,
         service_accounts_count: 10,
         sites_count: 3,
-        account_admin_users_count: 5
+        account_admin_users_count: 5,
+        # The OpenAPI fuzzer (scripts/tests/openapi-fuzz.sh) sends hundreds of
+        # requests per second at this account.
+        api_refill_rate: 10_000,
+        api_capacity: 100_000
       })
       |> Repo.insert!()
 
@@ -2721,6 +2725,36 @@ defmodule Portal.Repo.Seeds do
 
     IO.puts("Created sites:")
     IO.puts("  #{site.name} token: #{gateway_encoded_token}")
+    IO.puts("")
+
+    # Static API token for the OpenAPI fuzz run, see scripts/tests/openapi-fuzz.sh.
+    {:ok, fuzz_actor} =
+      Repo.insert(%Actor{
+        id: "8f1a5d2c-6b3e-4c7a-9d0f-1e2b3c4d5e6f",
+        account_id: account.id,
+        type: :api_client,
+        name: "OpenAPI Fuzzer"
+      })
+
+    fuzz_secret_fragment = "OPENAPIFUZZ0000000000000000000000000000000000000000000000"
+    fuzz_secret_salt = "openapi-fuzz-salt"
+
+    fuzz_api_token =
+      %Portal.APIToken{
+        id: "4c2d9a0e-7f6b-4e1c-8a3d-2b5c6d7e8f90",
+        account_id: account.id,
+        actor_id: fuzz_actor.id,
+        name: "openapi-fuzz",
+        scopes: Portal.Scope.all(),
+        secret_fragment: fuzz_secret_fragment,
+        secret_salt: fuzz_secret_salt,
+        secret_hash: Crypto.hash(:sha3_256, fuzz_secret_fragment <> fuzz_secret_salt),
+        expires_at: ~U[2099-01-01 00:00:00.000000Z]
+      }
+      |> Repo.insert!()
+
+    IO.puts("Created API token for the OpenAPI fuzzer:")
+    IO.puts("  Token: #{Authentication.encode_fragment!(fuzz_api_token)}")
     IO.puts("")
 
     # Pinned so auto-assigned IPs never randomly collide with the pool member's 100.64.0.2.

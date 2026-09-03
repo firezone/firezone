@@ -102,9 +102,9 @@ defmodule PortalAPI.Schemas.ProblemDetails do
     })
   end
 
-  # Every API route runs the auth, rate-limit, and scope plugs before the
-  # controller, so any operation can produce these.
-  @pipeline_codes [:unauthorized, :forbidden, :too_many_requests]
+  # Every API route runs the auth, rate-limit, scope, body parsing, and path
+  # parameter plugs before the controller, so any operation can produce these.
+  @pipeline_codes [:bad_request, :unauthorized, :forbidden, :too_many_requests]
 
   @doc """
   Builds the `responses` entries for the given error status atoms, for use in

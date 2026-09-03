@@ -13,8 +13,7 @@ defmodule PortalAPI.Schemas.Gateway do
         id: %Schema{type: :string, format: :uuid, description: "Gateway ID"},
         name: %Schema{
           type: :string,
-          description: "Gateway Name",
-          pattern: "[a-zA-Z][a-zA-Z0-9_]+"
+          description: "Gateway Name"
         },
         ipv4: %Schema{
           type: :string,

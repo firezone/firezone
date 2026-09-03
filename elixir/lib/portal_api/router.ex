@@ -9,7 +9,7 @@ defmodule PortalAPI.Router do
     plug PortalAPI.Plugs.Auth
     plug PortalAPI.Plugs.RateLimit
 
-    plug Plug.Parsers,
+    plug PortalAPI.Plugs.ParseBody,
       parsers: [:json],
       pass: ["*/*"],
       json_decoder: Phoenix.json_library()
@@ -17,16 +17,24 @@ defmodule PortalAPI.Router do
     plug PortalAPI.Plugs.RequestLog
     plug PortalAPI.Plugs.Scope
     plug PortalAPI.Plugs.ValidateUUIDParams
+    plug OpenApiSpex.Plug.PutApiSpec, module: PortalAPI.ApiSpec
   end
 
   pipeline :public do
     plug :accepts, ["html", "xml", "json"]
+    plug OpenApiSpex.Plug.PutApiSpec, module: PortalAPI.ApiSpec
   end
 
   scope "/openapi" do
     pipe_through :public
 
     get "/", PortalAPI.OpenAPIController, :index
+  end
+
+  scope "/openapi.json" do
+    pipe_through :public
+
+    get "/", OpenApiSpex.Plug.RenderSpec, []
   end
 
   scope "/swaggerui" do

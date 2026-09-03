@@ -13,8 +13,7 @@ defmodule PortalAPI.Schemas.Actor do
         id: %Schema{type: :string, format: :uuid, description: "Actor ID"},
         name: %Schema{
           type: :string,
-          description: "Actor Name",
-          pattern: "[a-zA-Z][a-zA-Z0-9_]+"
+          description: "Actor Name"
         },
         type: %Schema{
           type: :string,
@@ -96,8 +95,7 @@ defmodule PortalAPI.Schemas.Actor do
           properties: %{
             name: %Schema{
               type: :string,
-              description: "Actor Name",
-              pattern: "[a-zA-Z][a-zA-Z0-9_]+"
+              description: "Actor Name"
             },
             type: %Schema{
               type: :string,
@@ -146,8 +144,7 @@ defmodule PortalAPI.Schemas.Actor do
           properties: %{
             name: %Schema{
               type: :string,
-              description: "Actor Name",
-              pattern: "[a-zA-Z][a-zA-Z0-9_]+"
+              description: "Actor Name"
             },
             type: %Schema{
               type: :string,
