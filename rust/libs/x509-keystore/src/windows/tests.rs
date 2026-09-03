@@ -38,12 +38,12 @@ fn signs_with_the_cng_key_of_an_rsa_certificate() {
     assert_eq!(
         identity.key.supported_schemes(),
         vec![
-            SignatureScheme::RSA_PSS_SHA512,
-            SignatureScheme::RSA_PSS_SHA384,
             SignatureScheme::RSA_PSS_SHA256,
-            SignatureScheme::RSA_PKCS1_SHA512,
-            SignatureScheme::RSA_PKCS1_SHA384,
             SignatureScheme::RSA_PKCS1_SHA256,
+            SignatureScheme::RSA_PSS_SHA384,
+            SignatureScheme::RSA_PKCS1_SHA384,
+            SignatureScheme::RSA_PSS_SHA512,
+            SignatureScheme::RSA_PKCS1_SHA512,
         ]
     );
     assert_signs_every_advertised_scheme(&identity, &minted.der);
@@ -67,9 +67,9 @@ fn a_certificate_whose_key_a_legacy_provider_holds_advertises_no_rsa_pss() {
     assert_eq!(
         identity.key.supported_schemes(),
         vec![
-            SignatureScheme::RSA_PKCS1_SHA512,
-            SignatureScheme::RSA_PKCS1_SHA384,
             SignatureScheme::RSA_PKCS1_SHA256,
+            SignatureScheme::RSA_PKCS1_SHA384,
+            SignatureScheme::RSA_PKCS1_SHA512,
         ]
     );
     assert_signs_every_advertised_scheme(&identity, &minted.der);

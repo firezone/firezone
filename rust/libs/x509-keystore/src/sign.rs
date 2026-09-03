@@ -96,15 +96,19 @@ impl<S: Signer> PrivateKey for Key<S> {
 }
 
 /// The schemes a key of `algorithm` signs with, most preferred first.
+///
+/// The RSA schemes are ordered by digest rather than by padding, SHA-256 first, because a TPM
+/// commonly implements SHA-1 and SHA-256 alone: a key held by one refuses a SHA-512 signature
+/// outright, and only the first scheme the peer also offers is ever tried.
 fn signature_schemes(algorithm: SigningAlgorithm) -> &'static [SignatureScheme] {
     match algorithm {
         SigningAlgorithm::RsaSha256 => &[
-            SignatureScheme::RSA_PSS_SHA512,
-            SignatureScheme::RSA_PSS_SHA384,
             SignatureScheme::RSA_PSS_SHA256,
-            SignatureScheme::RSA_PKCS1_SHA512,
-            SignatureScheme::RSA_PKCS1_SHA384,
             SignatureScheme::RSA_PKCS1_SHA256,
+            SignatureScheme::RSA_PSS_SHA384,
+            SignatureScheme::RSA_PKCS1_SHA384,
+            SignatureScheme::RSA_PSS_SHA512,
+            SignatureScheme::RSA_PKCS1_SHA512,
         ],
         SigningAlgorithm::EcdsaSha256 => &[SignatureScheme::ECDSA_NISTP256_SHA256],
         SigningAlgorithm::EcdsaSha384 => &[SignatureScheme::ECDSA_NISTP384_SHA384],
