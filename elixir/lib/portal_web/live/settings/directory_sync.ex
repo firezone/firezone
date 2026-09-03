@@ -281,11 +281,7 @@ defmodule PortalWeb.Settings.DirectorySync do
 
       case Database.update_directory(changeset, socket.assigns.subject) do
         {:ok, _directory} ->
-          if new_disabled_state do
-            unsubscribe_webhooks(directory)
-          else
-            subscribe_webhooks(directory)
-          end
+          update_webhooks(directory, new_disabled_state)
 
           {:noreply,
            socket
@@ -1791,6 +1787,9 @@ defmodule PortalWeb.Settings.DirectorySync do
   end
 
   defp queue_initial_sync(result, _socket), do: result
+
+  defp update_webhooks(directory, true), do: unsubscribe_webhooks(directory)
+  defp update_webhooks(directory, false), do: subscribe_webhooks(directory)
 
   defp unsubscribe_webhooks(%Entra.Directory{} = directory) do
     ids = Enum.reject([directory.users_subscription_id, directory.groups_subscription_id], &is_nil/1)
