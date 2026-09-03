@@ -232,10 +232,10 @@ defmodule Portal.DeviceFixtures do
   end
 
   @doc """
-  Verify a client (sets verified_at timestamp).
+  Verify a device (sets verified_at timestamp).
   """
-  def verify_client(client) do
-    client
+  def verify_device(device) do
+    device
     |> Ecto.Changeset.change(verified_at: DateTime.utc_now())
     |> Portal.Repo.update!()
   end

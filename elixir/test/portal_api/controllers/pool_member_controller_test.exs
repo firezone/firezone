@@ -40,7 +40,7 @@ defmodule PortalAPI.PoolMemberControllerTest do
       client2 = client_fixture(account: account)
       _unrelated = client_fixture(account: account)
 
-      pool = static_device_pool_resource_fixture(account: account, clients: [client1, client2])
+      pool = static_device_pool_resource_fixture(account: account, devices: [client1, client2])
 
       conn =
         conn
@@ -104,7 +104,7 @@ defmodule PortalAPI.PoolMemberControllerTest do
       other_client = client_fixture(account: other_account)
 
       other_pool =
-        static_device_pool_resource_fixture(account: other_account, clients: [other_client])
+        static_device_pool_resource_fixture(account: other_account, devices: [other_client])
 
       _local_pool = static_device_pool_resource_fixture(account: account)
 
@@ -124,7 +124,7 @@ defmodule PortalAPI.PoolMemberControllerTest do
       drop = client_fixture(account: account)
       add = client_fixture(account: account)
 
-      pool = static_device_pool_resource_fixture(account: account, clients: [keep, drop])
+      pool = static_device_pool_resource_fixture(account: account, devices: [keep, drop])
 
       conn =
         conn
@@ -141,7 +141,7 @@ defmodule PortalAPI.PoolMemberControllerTest do
 
     test "an empty list clears the pool", %{conn: conn, account: account, actor: api_actor} do
       client = client_fixture(account: account)
-      pool = static_device_pool_resource_fixture(account: account, clients: [client])
+      pool = static_device_pool_resource_fixture(account: account, devices: [client])
 
       conn =
         conn
@@ -160,7 +160,7 @@ defmodule PortalAPI.PoolMemberControllerTest do
     } do
       keep = client_fixture(account: account)
       add = client_fixture(account: account)
-      pool = static_device_pool_resource_fixture(account: account, clients: [keep])
+      pool = static_device_pool_resource_fixture(account: account, devices: [keep])
 
       original_row_id =
         Repo.one!(
@@ -197,7 +197,7 @@ defmodule PortalAPI.PoolMemberControllerTest do
       actor: api_actor
     } do
       keep = client_fixture(account: account)
-      pool = static_device_pool_resource_fixture(account: account, clients: [keep])
+      pool = static_device_pool_resource_fixture(account: account, devices: [keep])
 
       for {label, body} <- [
             {"entry with no device_id", [%{}]},
@@ -227,7 +227,7 @@ defmodule PortalAPI.PoolMemberControllerTest do
       actor: api_actor
     } do
       client = client_fixture(account: account)
-      pool = static_device_pool_resource_fixture(account: account, clients: [client])
+      pool = static_device_pool_resource_fixture(account: account, devices: [client])
 
       conn =
         conn
@@ -340,7 +340,7 @@ defmodule PortalAPI.PoolMemberControllerTest do
       drop = client_fixture(account: account)
       add = client_fixture(account: account)
 
-      pool = static_device_pool_resource_fixture(account: account, clients: [keep, drop])
+      pool = static_device_pool_resource_fixture(account: account, devices: [keep, drop])
 
       conn =
         conn
@@ -361,7 +361,7 @@ defmodule PortalAPI.PoolMemberControllerTest do
       actor: api_actor
     } do
       client = client_fixture(account: account)
-      pool = static_device_pool_resource_fixture(account: account, clients: [client])
+      pool = static_device_pool_resource_fixture(account: account, devices: [client])
 
       conn =
         conn
@@ -377,7 +377,7 @@ defmodule PortalAPI.PoolMemberControllerTest do
     test "removing a non-member is a no-op", %{conn: conn, account: account, actor: api_actor} do
       member = client_fixture(account: account)
       stranger = client_fixture(account: account)
-      pool = static_device_pool_resource_fixture(account: account, clients: [member])
+      pool = static_device_pool_resource_fixture(account: account, devices: [member])
 
       conn =
         conn
@@ -417,7 +417,7 @@ defmodule PortalAPI.PoolMemberControllerTest do
       actor: api_actor
     } do
       client = client_fixture(account: account)
-      pool = static_device_pool_resource_fixture(account: account, clients: [client])
+      pool = static_device_pool_resource_fixture(account: account, devices: [client])
 
       conn =
         conn
@@ -435,7 +435,7 @@ defmodule PortalAPI.PoolMemberControllerTest do
       actor: api_actor
     } do
       member = client_fixture(account: account)
-      pool = static_device_pool_resource_fixture(account: account, clients: [member])
+      pool = static_device_pool_resource_fixture(account: account, devices: [member])
 
       conn =
         conn
@@ -461,7 +461,7 @@ defmodule PortalAPI.PoolMemberControllerTest do
         actor: api_actor
       } do
         member = client_fixture(account: account)
-        pool = static_device_pool_resource_fixture(account: account, clients: [member])
+        pool = static_device_pool_resource_fixture(account: account, devices: [member])
 
         conn =
           conn

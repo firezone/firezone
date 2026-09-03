@@ -1,5 +1,6 @@
 defmodule PortalAPI.Client.Channel.Shared do
   use PortalAPI, :channel
+  alias Portal.Authentication.Credential
   alias PortalAPI.Client.Views
 
   alias Portal.{
@@ -99,7 +100,7 @@ defmodule PortalAPI.Client.Channel.Shared do
 
     # Initialize relays and subscribe to global relay presence
     {:ok, relays} = select_relays(socket)
-    :ok = Presence.Relays.Global.subscribe()
+    :ok = Presence.Relays.subscribe()
 
     socket =
       socket
@@ -204,7 +205,7 @@ defmodule PortalAPI.Client.Channel.Shared do
   def handle_info(
         %Phoenix.Socket.Broadcast{
           event: "presence_diff",
-          topic: "presences:global_relays" <> _
+          topic: "presences:relays" <> _
         },
         socket
       ) do
@@ -914,7 +915,7 @@ defmodule PortalAPI.Client.Channel.Shared do
              socket.assigns.subject
            ),
          {:ok, gateway} <-
-           Presence.Gateways.fetch_gateway(socket.assigns.subject.account.id, gateway_id),
+           Presence.Devices.fetch_gateway(socket.assigns.subject.account.id, gateway_id),
          true <- resource.site != nil and resource.site.id == Ecto.UUID.dump!(gateway.site_id) do
       policy_authorization_id = Ecto.UUID.generate()
 
@@ -996,7 +997,7 @@ defmodule PortalAPI.Client.Channel.Shared do
              socket.assigns.subject
            ),
          {:ok, gateway} <-
-           Presence.Gateways.fetch_gateway(socket.assigns.subject.account.id, gateway_id),
+           Presence.Devices.fetch_gateway(socket.assigns.subject.account.id, gateway_id),
          true <- resource.site != nil and resource.site.id == Ecto.UUID.dump!(gateway.site_id) do
       policy_authorization_id = Ecto.UUID.generate()
 
@@ -1274,14 +1275,14 @@ defmodule PortalAPI.Client.Channel.Shared do
   end
 
   defp find_online_client_by_address(account_id, {:ipv4, ipv4_tuple}) do
-    case Presence.Clients.Account.find_by_ipv4(account_id, ipv4_tuple) do
+    case Presence.Devices.Account.find_by_ipv4(account_id, ipv4_tuple) do
       {target_client_id, target_meta} -> {:ok, target_client_id, target_meta}
       nil -> :offline
     end
   end
 
   defp find_online_client_by_address(account_id, {:ipv6, ipv6_tuple}) do
-    case Presence.Clients.Account.find_by_ipv6(account_id, ipv6_tuple) do
+    case Presence.Devices.Account.find_by_ipv6(account_id, ipv6_tuple) do
       {target_client_id, target_meta} -> {:ok, target_client_id, target_meta}
       nil -> :offline
     end
@@ -1882,7 +1883,7 @@ defmodule PortalAPI.Client.Channel.Shared do
          %{
            assigns: %{
              subject: %{
-               credential: %{type: :x509, auth_provider_id: auth_provider_id}
+               credential: %Credential.X509{auth_provider_id: auth_provider_id}
              }
            }
          } = socket
@@ -1898,7 +1899,7 @@ defmodule PortalAPI.Client.Channel.Shared do
          %{
            assigns: %{
              subject: %{
-               credential: %{type: :x509, auth_provider_id: auth_provider_id}
+               credential: %Credential.X509{auth_provider_id: auth_provider_id}
              }
            }
          } = socket
@@ -2517,7 +2518,7 @@ defmodule PortalAPI.Client.Channel.Shared do
       "initiator_actor_id" => actor.id,
       "initiator_actor_email" => actor.email,
       "initiator_actor_name" => actor.name,
-      "initiator_auth_provider_id" => credential.auth_provider_id,
+      "initiator_auth_provider_id" => Credential.auth_provider_id(credential),
       # The authorization happens now; both tokens share the same authorized_at
       # so the two sides of the flow agree on the trusted flow_start floor.
       "authorized_at" => DateTime.to_iso8601(DateTime.utc_now()),
@@ -2638,7 +2639,7 @@ defmodule PortalAPI.Client.Channel.Shared do
          assigns: %{
            subject: %{
              actor: %{id: actor_id},
-             credential: %{type: :x509, auth_provider_id: auth_provider_id}
+             credential: %Credential.X509{auth_provider_id: auth_provider_id}
            }
          }
        }) do
@@ -2680,25 +2681,13 @@ defmodule PortalAPI.Client.Channel.Shared do
         socket
 
       sup_pid ->
-        session_meta = %{
-          ipv4: socket.assigns.client.ipv4.address,
-          ipv6: socket.assigns.client.ipv6.address,
-          name: socket.assigns.client.name,
-          public_key: socket.assigns.client.public_key,
-          psk_base: socket.assigns.client.psk_base,
-          remote_ip: socket.assigns.client.last_seen_remote_ip,
-          version: socket.assigns.client.last_seen_version,
-          user_agent: socket.assigns.client.last_seen_user_agent,
-          # Whether THIS session presented a trusted MDM-provisioned
-          # certificate at connect and the device row adopted its identity.
-          attested?: socket.assigns.client.attested?
-        }
-
+        # Everything a device puts in its presence comes off the row itself,
+        # so both kinds carry the same shape. `attested?` is the exception,
+        # because it describes THIS session rather than the row's history.
         :ok =
-          Presence.Clients.connect(
+          Presence.Devices.connect(
             socket.assigns.client,
-            socket.assigns.subject.credential.id,
-            session_meta
+            socket.assigns.subject.credential.id
           )
 
         for {_pid, ref} <- socket.assigns[:presence_monitors] || [] do
@@ -2801,7 +2790,7 @@ defmodule PortalAPI.Client.Channel.Shared do
       resource_site_id = site_id_from_resource(resource)
 
       site_gateways =
-        Portal.Presence.Gateways.all_connected_gateways(account_id)
+        Portal.Presence.Devices.all_connected_gateways(account_id)
         |> Enum.filter(&(&1.site_id == resource_site_id))
 
       compatible_gateways =

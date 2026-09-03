@@ -18,18 +18,28 @@ enum Appearance: String, CaseIterable {
   case dark
 }
 
+/// The macOS release that drew the screen: SwiftUI lays a window out with the
+/// release it runs on rather than the SDK it was built with.
+private let releaseTag: String = {
+  #if os(macOS)
+    "-macos-\(ProcessInfo.processInfo.operatingSystemVersion.majorVersion)"
+  #else
+    ""
+  #endif
+}()
+
 // Photographing is main-actor work in XCTest, and so is reading the image back.
 @MainActor
 extension XCTestCase {
   /// Photographs `element` once it holds still, delivers the image as
-  /// `<name>-<appearance>.png`, and hands back its bytes.
+  /// `<name>[-macos-<release>]-<appearance>.png`, and hands back its bytes.
   @discardableResult
   func deliver(
     _ element: XCUIElement,
     as name: String,
     in appearance: Appearance
   ) -> Data {
-    let fileName = "\(name)-\(appearance.rawValue).png"
+    let fileName = "\(name)\(releaseTag)-\(appearance.rawValue).png"
     let image = settledScreenshot(of: element, as: fileName).pngRepresentation
 
     let attachment = XCTAttachment(data: image, uniformTypeIdentifier: "public.png")

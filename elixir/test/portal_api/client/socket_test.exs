@@ -527,7 +527,7 @@ defmodule PortalAPI.Client.SocketTest do
 
       assert {:ok, socket} = connect(Socket, connect_attrs([]), connect_info: connect_info)
       assert socket.assigns.subject.actor.id == actor.id
-      assert socket.assigns.subject.credential.type == :x509
+      assert %Portal.Authentication.Credential.X509{} = socket.assigns.subject.credential
       assert socket.assigns.subject.credential.auth_provider_id == provider.id
       assert socket.assigns.subject.expires_at.microsecond == {0, 6}
       assert socket.assigns.client.attested?
@@ -550,7 +550,7 @@ defmodule PortalAPI.Client.SocketTest do
       assert {:ok, socket} = connect(Socket, connect_attrs([]), connect_info: connect_info)
       assert socket.assigns.subject.actor.id == actor.id
       assert socket.assigns.subject.actor.type == :service_account
-      assert socket.assigns.subject.credential.type == :x509
+      assert %Portal.Authentication.Credential.X509{} = socket.assigns.subject.credential
       assert socket.assigns.subject.credential.auth_provider_id == provider.id
       assert socket.assigns.client.attested?
       assert is_nil(socket.assigns.client.client_token_id)
@@ -739,7 +739,7 @@ defmodule PortalAPI.Client.SocketTest do
 
       assert {:ok, socket} = connect(Socket, connect_attrs([]), connect_info: connect_info)
       assert socket.assigns.subject.credential.auth_provider_id == provider.id
-      assert socket.assigns.subject.credential.type == :x509
+      assert %Portal.Authentication.Credential.X509{} = socket.assigns.subject.credential
     end
 
     test "requires a client token when the certificate lacks X.509 identity claims", %{pki: pki} do

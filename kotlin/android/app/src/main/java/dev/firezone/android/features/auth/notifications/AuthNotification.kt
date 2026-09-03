@@ -1,5 +1,5 @@
-// Licensed under Apache 2.0 (C) 2024 Firezone, Inc.
-package dev.firezone.android.features.customuri.notifications
+// Licensed under Apache 2.0 (C) 2026 Firezone, Inc.
+package dev.firezone.android.features.auth.notifications
 
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -11,12 +11,11 @@ import androidx.core.app.NotificationCompat
 import dev.firezone.android.R
 import dev.firezone.android.core.presentation.MainActivity
 
-object CustomUriNotification {
+internal object AuthNotification {
     private const val CHANNEL_ID = "firezone-authentication-status"
     private const val CHANNEL_NAME = "firezone-authentication-status"
     private const val CHANNEL_DESCRIPTION = "Firezone authentication status"
     const val ID = 1338
-    private const val TAG: String = "CustomUriNotification"
 
     fun update(
         context: Context,
@@ -24,37 +23,36 @@ object CustomUriNotification {
     ): NotificationCompat.Builder {
         val manager = context.getSystemService(NOTIFICATION_SERVICE) as NotificationManager
 
-        val chan =
+        val channel =
             NotificationChannel(
                 CHANNEL_ID,
                 CHANNEL_NAME,
                 NotificationManager.IMPORTANCE_DEFAULT,
             )
-        chan.description = CHANNEL_DESCRIPTION
-        manager.createNotificationChannel(chan)
+        channel.description = CHANNEL_DESCRIPTION
+        manager.createNotificationChannel(channel)
 
-        val notificationBuilder =
+        val builder =
             NotificationCompat
                 .Builder(context, CHANNEL_ID)
-                .setContentIntent(configIntent(context))
-        return status.applySettings(notificationBuilder)
+                .setContentIntent(mainActivityPendingIntent(context))
+        return status.applySettings(builder)
     }
 
-    private fun configIntent(context: Context): PendingIntent {
-        val intent = Intent(context, MainActivity::class.java)
-        intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-        return PendingIntent.getActivity(
+    private fun mainActivityPendingIntent(context: Context): PendingIntent =
+        PendingIntent.getActivity(
             context,
             0,
-            intent,
+            Intent(context, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+            },
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
-    }
 
     data class Error(
         val message: String,
     ) : StatusType() {
-        override fun applySettings(builder: NotificationCompat.Builder) =
+        override fun applySettings(builder: NotificationCompat.Builder): NotificationCompat.Builder =
             builder.apply {
                 setSmallIcon(R.drawable.ic_firezone_logo)
                 setContentTitle("Authentication Error")

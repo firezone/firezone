@@ -109,7 +109,7 @@ defmodule PortalAPI.Client.ChannelTest do
       remote_ip_location_lon: gateway.last_seen_remote_ip_location_lon
     }
 
-    Presence.Gateways.connect(gateway, token_id, session_meta)
+    Presence.Devices.connect(gateway, token_id, session_meta)
   end
 
   defp put_user_agent(subject, user_agent) do
@@ -123,9 +123,8 @@ defmodule PortalAPI.Client.ChannelTest do
     Process.flag(:trap_exit, true)
     provider = x509_provider_fixture(account: account, is_disabled: false)
 
-    credential = %Portal.Authentication.Credential{
+    credential = %Portal.Authentication.Credential.X509{
       id: Ecto.UUID.generate(),
-      type: :x509,
       auth_provider_id: provider.id
     }
 
@@ -367,7 +366,7 @@ defmodule PortalAPI.Client.ChannelTest do
       join_channel(client, subject)
       assert_push "init", _init_payload
 
-      presence = Presence.Clients.Account.list(account.id)
+      presence = Presence.Devices.Account.list(account.id)
 
       assert %{metas: [%{online_at: online_at, phx_ref: _ref}]} = Map.fetch!(presence, client.id)
       assert is_number(online_at)
@@ -1037,7 +1036,7 @@ defmodule PortalAPI.Client.ChannelTest do
       socket = join_channel(client, subject)
       assert_push "init", _init_payload
 
-      assert Presence.Clients.Account.list(client.account_id) |> Map.has_key?(client.id)
+      assert Presence.Devices.Account.list(client.account_id) |> Map.has_key?(client.id)
 
       # Simulate a Presence shard crash by sending a :DOWN for one of the
       # monitored presence pids. We can't kill real shards in async tests
@@ -1047,7 +1046,7 @@ defmodule PortalAPI.Client.ChannelTest do
       send(socket.channel_pid, {:DOWN, make_ref(), :process, shard_pid, :killed})
       :sys.get_state(socket.channel_pid)
 
-      assert Presence.Clients.Account.list(client.account_id) |> Map.has_key?(client.id)
+      assert Presence.Devices.Account.list(client.account_id) |> Map.has_key?(client.id)
     end
 
     test "retries tracking when Presence supervisor name is temporarily unregistered", %{
@@ -1069,7 +1068,7 @@ defmodule PortalAPI.Client.ChannelTest do
 
       wait_for(fn ->
         :sys.get_state(socket.channel_pid)
-        assert Presence.Clients.Account.list(client.account_id) |> Map.has_key?(client.id)
+        assert Presence.Devices.Account.list(client.account_id) |> Map.has_key?(client.id)
       end)
     end
 
@@ -1084,7 +1083,7 @@ defmodule PortalAPI.Client.ChannelTest do
       send(socket.channel_pid, :track_presence)
       :sys.get_state(socket.channel_pid)
 
-      assert Presence.Clients.Account.list(client.account_id) |> Map.has_key?(client.id)
+      assert Presence.Devices.Account.list(client.account_id) |> Map.has_key?(client.id)
     end
   end
 
@@ -1113,9 +1112,8 @@ defmodule PortalAPI.Client.ChannelTest do
       Process.flag(:trap_exit, true)
       provider = x509_provider_fixture(account: account, is_disabled: false)
 
-      credential = %Portal.Authentication.Credential{
+      credential = %Portal.Authentication.Credential.X509{
         id: Ecto.UUID.generate(),
-        type: :x509,
         auth_provider_id: provider.id
       }
 
@@ -1150,9 +1148,8 @@ defmodule PortalAPI.Client.ChannelTest do
       Process.flag(:trap_exit, true)
       provider = x509_provider_fixture(account: account, is_disabled: false)
 
-      credential = %Portal.Authentication.Credential{
+      credential = %Portal.Authentication.Credential.X509{
         id: Ecto.UUID.generate(),
-        type: :x509,
         auth_provider_id: provider.id
       }
 
@@ -2226,7 +2223,7 @@ defmodule PortalAPI.Client.ChannelTest do
       # Client is not verified, so resource should not be accessible
       refute_push "resource_created_or_updated", _payload
 
-      verified_client = verify_client(client)
+      verified_client = verify_device(client)
 
       send(socket.channel_pid, %Changes.Change{
         lsn: 200,
@@ -2278,7 +2275,7 @@ defmodule PortalAPI.Client.ChannelTest do
       assert state.assigns.client.ipv6 == new_ipv6
 
       assert {client_id, %{ipv4: ipv4}} =
-               Presence.Clients.Account.find_by_ipv4(account.id, new_ipv4.address)
+               Presence.Devices.Account.find_by_ipv4(account.id, new_ipv4.address)
 
       assert client_id == client.id
       assert ipv4 == new_ipv4.address
@@ -5544,7 +5541,7 @@ defmodule PortalAPI.Client.ChannelTest do
         )
 
       pool_resource =
-        static_device_pool_resource_fixture(account: account, clients: [target_client])
+        static_device_pool_resource_fixture(account: account, devices: [target_client])
 
       policy_fixture(account: account, group: group, resource: pool_resource)
 
@@ -5778,7 +5775,7 @@ defmodule PortalAPI.Client.ChannelTest do
            target_client: target_client
          } do
       pool =
-        static_device_pool_resource_fixture(account: account, clients: [target_client])
+        static_device_pool_resource_fixture(account: account, devices: [target_client])
 
       # Create a policy in another group the actor is not a member of — the resource
       # is therefore not in the actor's connectable_resources.
@@ -5858,7 +5855,7 @@ defmodule PortalAPI.Client.ChannelTest do
       }
 
       :ok =
-        Presence.Clients.connect(
+        Presence.Devices.connect(
           target_client,
           target_subject.credential.id,
           session_meta
@@ -6230,7 +6227,7 @@ defmodule PortalAPI.Client.ChannelTest do
       }
 
       :ok =
-        Presence.Clients.connect(
+        Presence.Devices.connect(
           target_client,
           target_subject.credential.id,
           session_meta
@@ -6287,7 +6284,7 @@ defmodule PortalAPI.Client.ChannelTest do
         user_agent: "Mac OS/14 apple-client/1.5.16"
       }
 
-      :ok = Presence.Clients.connect(target_client, target_subject.credential.id, session_meta)
+      :ok = Presence.Devices.connect(target_client, target_subject.credential.id, session_meta)
       # Test pid stands in for the target's channel so we can capture (and
       # withhold) the ack.
       :ok = PG.register(target_client_id)
@@ -6338,7 +6335,7 @@ defmodule PortalAPI.Client.ChannelTest do
         user_agent: "Mac OS/14 apple-client/1.5.16"
       }
 
-      :ok = Presence.Clients.connect(target_client, target_subject.credential.id, session_meta)
+      :ok = Presence.Devices.connect(target_client, target_subject.credential.id, session_meta)
       :ok = PG.register(target_client_id)
 
       initiating_socket = join_channel(client, subject)
@@ -6534,7 +6531,7 @@ defmodule PortalAPI.Client.ChannelTest do
       target_client: target_client
     } do
       static_pool =
-        static_device_pool_resource_fixture(account: account, clients: [target_client])
+        static_device_pool_resource_fixture(account: account, devices: [target_client])
 
       policy_fixture(account: account, group: group, resource: static_pool)
 
@@ -6731,7 +6728,7 @@ defmodule PortalAPI.Client.ChannelTest do
       target_client = client_fixture(account: account, actor: target_actor) |> fetch_device!()
 
       pool_resource =
-        static_device_pool_resource_fixture(account: account, clients: [target_client])
+        static_device_pool_resource_fixture(account: account, devices: [target_client])
 
       policy_fixture(account: account, group: group, resource: pool_resource)
 
@@ -6776,8 +6773,8 @@ defmodule PortalAPI.Client.ChannelTest do
       target_actor = actor_fixture(account: account)
       target_client = client_fixture(account: account, actor: target_actor) |> fetch_device!()
 
-      pool_a = static_device_pool_resource_fixture(account: account, clients: [target_client])
-      pool_b = static_device_pool_resource_fixture(account: account, clients: [target_client])
+      pool_a = static_device_pool_resource_fixture(account: account, devices: [target_client])
+      pool_b = static_device_pool_resource_fixture(account: account, devices: [target_client])
       policy_fixture(account: account, group: group, resource: pool_a)
       policy_fixture(account: account, group: group, resource: pool_b)
 
@@ -6822,7 +6819,7 @@ defmodule PortalAPI.Client.ChannelTest do
       target_client = client_fixture(account: account, actor: target_actor) |> fetch_device!()
 
       pool_resource =
-        static_device_pool_resource_fixture(account: account, clients: [target_client])
+        static_device_pool_resource_fixture(account: account, devices: [target_client])
 
       policy_fixture(account: account, group: group, resource: pool_resource)
 
@@ -7173,7 +7170,7 @@ defmodule PortalAPI.Client.ChannelTest do
       pool_resource =
         Portal.ResourceFixtures.static_device_pool_resource_fixture(
           account: account,
-          clients: [target_client]
+          devices: [target_client]
         )
 
       policy_fixture(account: account, group: group, resource: pool_resource)

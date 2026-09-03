@@ -1,6 +1,7 @@
 // Licensed under Apache 2.0 (C) 2026 Firezone, Inc.
 package dev.firezone.android.tunnel
 
+import android.app.Activity
 import android.app.ActivityManager
 import android.content.Context
 import android.content.Intent
@@ -71,6 +72,35 @@ fun finishAllActivities() {
 
         Thread.sleep(50)
     }
+}
+
+// An activity the app hands off to is still in flight in `system_server` when `startActivity`
+// returns, and Espresso's `intended` only drains the main looper before checking, so a test has to
+// wait for the screen itself before asserting anything about how it got there.
+fun awaitResumed(activity: Class<out Activity>) {
+    val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(20)
+
+    while (!isResumed(activity)) {
+        if (System.nanoTime() > deadline) {
+            throw AssertionError("Timed out waiting for ${activity.simpleName} to be on screen, showing ${resumedActivity()}")
+        }
+
+        Thread.sleep(50)
+    }
+}
+
+private fun isResumed(activity: Class<out Activity>): Boolean {
+    var resumed = false
+
+    InstrumentationRegistry.getInstrumentation().runOnMainSync {
+        resumed =
+            ActivityLifecycleMonitorRegistry
+                .getInstance()
+                .getActivitiesInStage(Stage.RESUMED)
+                .any { activity.isInstance(it) }
+    }
+
+    return resumed
 }
 
 // Names what the user would be looking at, which is what tells a screen that has not arrived yet

@@ -63,7 +63,9 @@
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="firezone-fd0020211111" />
+                <data
+                    android:host="handle_client_sign_in_callback"
+                    android:scheme="firezone-fd0020211111" />
             </intent-filter>
         </activity>
 

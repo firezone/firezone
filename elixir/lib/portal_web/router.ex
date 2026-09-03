@@ -234,10 +234,10 @@ defmodule PortalWeb.Router do
       live "/groups/:id/edit", Groups, :edit
       live "/groups/:id", Groups, :show
 
-      # Clients
-      live "/clients", Clients
-      live "/clients/:id/edit", Clients, :edit
-      live "/clients/:id", Clients, :show
+      # Devices
+      live "/devices", Devices
+      live "/devices/:id/edit", Devices, :edit
+      live "/devices/:id", Devices, :show
 
       # Sites
       live "/sites", Sites

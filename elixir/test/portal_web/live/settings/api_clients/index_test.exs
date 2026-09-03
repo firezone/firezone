@@ -191,7 +191,11 @@ defmodule PortalWeb.Settings.ApiClients.IndexTest do
       html =
         lv
         |> form("#api-token-new-form",
-          api_token: %{name: "Deploy Token", expires_at: expires_at}
+          api_token: %{
+            name: "Deploy Token",
+            expires_at: expires_at,
+            scopes: ["policies:read"]
+          }
         )
         |> render_submit()
 
@@ -202,6 +206,160 @@ defmodule PortalWeb.Settings.ApiClients.IndexTest do
       render_click(lv, "close_reveal")
       assert_patch(lv, ~p"/#{account}/settings/api_clients")
       assert render(lv) =~ "Deploy Token"
+    end
+
+    test "stores the scopes that were ticked", %{conn: conn, account: account, actor: actor} do
+      expires_at = Date.utc_today() |> Date.add(30) |> Date.to_iso8601()
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/api_clients/new")
+
+      lv
+      |> form("#api-token-new-form",
+        api_token: %{
+          name: "Limited",
+          expires_at: expires_at,
+          scopes: ["policies:read", "resources:write"]
+        }
+      )
+      |> render_submit()
+
+      token = Portal.Repo.get_by!(Portal.APIToken, account_id: account.id)
+
+      # resources:write brings its read along, since the locked box never submits.
+      assert Enum.sort(token.scopes) == ["policies:read", "resources:read", "resources:write"]
+    end
+
+    test "refuses to create a token with nothing ticked", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      expires_at = Date.utc_today() |> Date.add(30) |> Date.to_iso8601()
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/api_clients/new")
+
+      html =
+        lv
+        |> form("#api-token-new-form", api_token: %{name: "Empty", expires_at: expires_at})
+        |> render_submit()
+
+      assert html =~ "Select at least one permission"
+      assert html =~ "border-error"
+      assert Portal.Repo.get_by(Portal.APIToken, account_id: account.id) == nil
+    end
+
+    test "the preset buttons tick the right boxes", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/api_clients/new")
+
+      html = render_click(lv, "select_scopes", %{"preset" => "all"})
+      assert html =~ ~s(value="policies:write" checked)
+
+      # read-only leaves every write box clear
+      html = render_click(lv, "select_scopes", %{"preset" => "read"})
+      assert html =~ ~s(value="policies:read" checked)
+      refute html =~ ~s(value="policies:write" checked)
+
+      html = render_click(lv, "select_scopes", %{"preset" => "none"})
+      refute html =~ ~s(value="policies:read" checked)
+
+      # anything unrecognised selects nothing rather than widening the grant
+      html = render_click(lv, "select_scopes", %{"preset" => "everything"})
+      refute html =~ "checked"
+    end
+
+    test "changes the scopes of an existing token", %{conn: conn, account: account, actor: actor} do
+      other = actor_fixture(type: :api_client, account: account)
+
+      token =
+        api_token_fixture(actor: other, account: account, scopes: ["policies:read"])
+
+      {:ok, lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/api_clients/#{other}/edit")
+
+      assert html =~ ~s(value="policies:read" checked)
+
+      lv
+      |> form("#api-token-edit-form",
+        actor: %{name: other.name},
+        api_token: %{scopes: ["sites:write"]}
+      )
+      |> render_submit()
+
+      reloaded = Portal.Repo.get_by!(Portal.APIToken, account_id: account.id, id: token.id)
+      assert Enum.sort(reloaded.scopes) == ["sites:read", "sites:write"]
+    end
+
+    test "changes the scopes of every token belonging to the actor", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      api_client = actor_fixture(type: :api_client, account: account)
+      first = api_token_fixture(actor: api_client, account: account, scopes: ["policies:read"])
+      second = api_token_fixture(actor: api_client, account: account, scopes: ["resources:read"])
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/api_clients/#{api_client}/edit")
+
+      lv
+      |> form("#api-token-edit-form",
+        actor: %{name: api_client.name},
+        api_token: %{scopes: ["sites:write"]}
+      )
+      |> render_submit()
+
+      for token <- [first, second] do
+        reloaded = Portal.Repo.get_by!(Portal.APIToken, account_id: account.id, id: token.id)
+        assert Enum.sort(reloaded.scopes) == ["sites:read", "sites:write"]
+      end
+    end
+
+    test "does not change token scopes when the actor update is invalid", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      api_client = actor_fixture(type: :api_client, account: account, name: "Original")
+      token = api_token_fixture(actor: api_client, account: account, scopes: ["policies:read"])
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/api_clients/#{api_client}/edit")
+
+      html =
+        lv
+        |> form("#api-token-edit-form",
+          actor: %{name: ""},
+          api_token: %{scopes: ["sites:write"]}
+        )
+      |> render_submit()
+
+      assert html =~ "can&#39;t be blank"
+
+      assert Portal.Repo.get_by!(Portal.APIToken, account_id: account.id, id: token.id).scopes == [
+               "policies:read"
+             ]
+
+      assert Portal.Repo.get_by!(Portal.Actor, account_id: account.id, id: api_client.id).name ==
+               "Original"
     end
 
     test "shows billing limit error when account cannot create more api clients", %{conn: conn} do

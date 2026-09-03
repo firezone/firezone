@@ -123,6 +123,19 @@ defmodule Portal.EndpointTest do
       assert conn.remote_ip == {203, 0, 113, 5}
     end
 
+    test "reports an IPv4 peer on a dual-stack listener as IPv4" do
+      trust_proxy({127, 0, 0, 1})
+
+      conn =
+        :get
+        |> conn("http://unknown.firezone.test/")
+        |> Map.put(:remote_ip, {0, 0, 0, 0, 0, 0xFFFF, 0x7F00, 0x0001})
+        |> put_req_header("x-forwarded-for", "::ffff:107.197.104.68:53859")
+        |> Endpoint.call([])
+
+      assert conn.remote_ip == {107, 197, 104, 68}
+    end
+
     test "ignores forwarded headers on a request that skipped the proxy" do
       trust_proxy({10, 0, 0, 1})
 

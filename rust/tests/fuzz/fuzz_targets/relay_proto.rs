@@ -20,16 +20,18 @@ use arbitrary::Arbitrary;
 use bytecodec::{DecodeExt as _, EncodeExt as _};
 use libfuzzer_sys::fuzz_target;
 use rand::{SeedableRng as _, rngs::StdRng};
-use relay_proto::{Attribute, ClientSocket, Command, Server, auth::generate_password};
-use secrecy::SecretString;
+use relay_proto::{
+    Attribute, ClientSocket, Command, Server,
+    auth::{AccountId, generate_password, hash_account_id},
+};
 use std::net::{Ipv4Addr, SocketAddr};
 use std::time::Instant;
 use stun_codec::rfc5389::attributes::{MessageIntegrity, Nonce, Realm, Username};
 use stun_codec::{Message, MessageDecoder, MessageEncoder};
+use uuid::Uuid;
 
 const RELAY_IP: Ipv4Addr = Ipv4Addr::new(10, 0, 0, 1);
 const CLIENT: SocketAddr = SocketAddr::new(std::net::IpAddr::V4(Ipv4Addr::new(10, 0, 0, 2)), 51820);
-
 #[derive(Arbitrary, Debug)]
 struct Input<'a> {
     /// Decode the datagram as a STUN message and re-encode it before handing it over.
@@ -41,6 +43,7 @@ struct Input<'a> {
 
 fuzz_target!(|input: Input<'_>| {
     let mut server = Server::new(RELAY_IP, StdRng::seed_from_u64(0), 3478, 49152..=65535);
+    server.set_accounts([AccountId::from(Uuid::nil())]);
     let client = ClientSocket::new(CLIENT);
     let now = Instant::now();
 
@@ -72,23 +75,27 @@ fn repair(datagram: &[u8], nonce: Option<&Nonce>, server: &Server<StdRng>) -> Op
         return MessageEncoder::new().encode_into_bytes(message).ok();
     };
 
-    let username = message.get_attribute::<Username>().cloned()?;
+    let username = account_bound_username(&message.get_attribute::<Username>().cloned()?)?;
 
-    // A wrong password still reaches the expiry check, which runs first, so a
-    // username the relay could never have issued must not stop us here.
-    let password = password_for(&username, server.auth_secret()).unwrap_or_default();
+    let password = generate_password(server.auth_secret(), username.name());
 
     let realm = Realm::new("firezone".to_owned()).ok()?;
     let mut authenticated =
         Message::<Attribute>::new(message.class(), message.method(), message.transaction_id());
     for attribute in message
         .attributes()
-        .filter(|a| !matches!(a, Attribute::Nonce(_) | Attribute::MessageIntegrity(_)))
+        .filter(|a| {
+            !matches!(
+                a,
+                Attribute::Nonce(_) | Attribute::MessageIntegrity(_) | Attribute::Username(_)
+            )
+        })
         .cloned()
         .collect::<Vec<_>>()
     {
         authenticated.add_attribute(attribute);
     }
+    authenticated.add_attribute(username.clone());
     authenticated.add_attribute(nonce.clone());
 
     let integrity =
@@ -99,14 +106,24 @@ fn repair(datagram: &[u8], nonce: Option<&Nonce>, server: &Server<StdRng>) -> Op
     MessageEncoder::new().encode_into_bytes(authenticated).ok()
 }
 
-/// Derives the password for a username in the relay's `{expiry}:{salt}` form.
-///
-/// Returns [`None`] for any other shape, which the relay rejects before it ever
-/// looks at the password.
-fn password_for(username: &Username, secret: &SecretString) -> Option<String> {
-    let (expiry, salt) = username.name().split_once(':')?;
+/// Replaces the account tag with a known, enabled account hash. Like the nonce
+/// and HMAC, this lets the fuzzer reach authenticated paths while keeping the
+/// expiry and client-specific salt under its control.
+fn account_bound_username(username: &Username) -> Option<Username> {
+    let parts = username.name().split(':').collect::<Vec<_>>();
+    let [expiry, _account_hash, salt] = parts.as_slice() else {
+        return None;
+    };
 
-    Some(generate_password(secret, expiry.parse().ok()?, salt))
+    if expiry.is_empty() || salt.is_empty() {
+        return None;
+    }
+
+    Username::new(format!(
+        "{expiry}:{}:{salt}",
+        hash_account_id(&AccountId::from(Uuid::nil()))
+    ))
+    .ok()
 }
 
 /// Obtains a nonce the way a client does, by provoking a `401` and reading it back.

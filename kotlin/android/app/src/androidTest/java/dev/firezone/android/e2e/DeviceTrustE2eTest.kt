@@ -12,6 +12,7 @@ import androidx.test.runner.lifecycle.Stage
 import dagger.hilt.android.testing.HiltAndroidRule
 import dagger.hilt.android.testing.HiltAndroidTest
 import dev.firezone.android.core.data.Repository
+import dev.firezone.android.core.data.TokenStore
 import dev.firezone.android.core.data.X509_CERTIFICATE_ALIAS_RESTRICTION
 import dev.firezone.android.core.x509.FakeKeyChain
 import dev.firezone.android.core.x509.TestIdentity
@@ -27,7 +28,6 @@ import dev.firezone.android.tunnel.launchApp
 import dev.firezone.android.tunnel.resumedActivity
 import dev.firezone.android.tunnel.startTunnelService
 import dev.firezone.android.tunnel.stopTunnelService
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertArrayEquals
@@ -53,6 +53,9 @@ class DeviceTrustE2eTest {
 
     @Inject
     lateinit var repo: Repository
+
+    @Inject
+    internal lateinit var tokenStore: TokenStore
 
     @Inject
     lateinit var preferences: SharedPreferences
@@ -87,7 +90,7 @@ class DeviceTrustE2eTest {
     fun aDeviceCertificateAccompaniesThePortalToken() {
         val certificate = testIdentity(SERIAL_CLAIM)
         givenCertificate(certificate)
-        runBlocking { repo.saveToken(TOKEN).first() }
+        tokenStore.save(TOKEN)
 
         startTunnelService()
         val session = awaitSession()
@@ -109,7 +112,7 @@ class DeviceTrustE2eTest {
 
     @Test
     fun aTokenAloneConnectsWithoutACertificate() {
-        runBlocking { repo.saveToken(TOKEN).first() }
+        tokenStore.save(TOKEN)
 
         startTunnelService()
         val session = awaitSession()

@@ -80,7 +80,7 @@ defmodule PortalAPI.GatewayController do
   @spec show(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def show(conn, %{"site_id" => site_id, "id" => id}) do
     with {:ok, gateway} <- Database.fetch_gateway(site_id, id, conn.assigns.subject) do
-      gateway = Presence.Gateways.preload_gateways_presence([gateway]) |> List.first()
+      gateway = Presence.Devices.preload_presence([gateway]) |> List.first()
       render(conn, :show, gateway: gateway)
     else
       error -> Error.handle(conn, error)
@@ -135,7 +135,7 @@ defmodule PortalAPI.GatewayController do
 
     with {:ok, site} <- Database.fetch_site(site_id, subject),
          {:ok, gateway, token, encoded_token} <- Database.provision_gateway(site, name, subject) do
-      gateway = Presence.Gateways.preload_gateways_presence([gateway]) |> List.first()
+      gateway = Presence.Devices.preload_presence([gateway]) |> List.first()
 
       conn
       |> put_status(:created)
@@ -189,7 +189,7 @@ defmodule PortalAPI.GatewayController do
 
     with {:ok, gateway} <- Database.fetch_gateway(site_id, id, subject),
          {:ok, gateway} <- Database.rename_gateway(gateway, name, subject) do
-      gateway = Presence.Gateways.preload_gateways_presence([gateway]) |> List.first()
+      gateway = Presence.Devices.preload_presence([gateway]) |> List.first()
       render(conn, :show, gateway: gateway)
     else
       error -> Error.handle(conn, error)
@@ -290,7 +290,7 @@ defmodule PortalAPI.GatewayController do
 
     def preloads do
       [
-        online?: &Presence.Gateways.preload_gateways_presence/1
+        online?: &Presence.Devices.preload_presence/1
       ]
     end
 
@@ -376,7 +376,7 @@ defmodule PortalAPI.GatewayController do
     def delete_gateway(gateway, subject) do
       case Safe.scoped(gateway, subject) |> Safe.delete() do
         {:ok, deleted_gateway} ->
-          {:ok, Presence.Gateways.preload_gateways_presence([deleted_gateway]) |> List.first()}
+          {:ok, Presence.Devices.preload_presence([deleted_gateway]) |> List.first()}
 
         {:error, reason} ->
           {:error, reason}

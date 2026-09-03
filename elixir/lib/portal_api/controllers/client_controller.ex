@@ -5,7 +5,7 @@ defmodule PortalAPI.ClientController do
   alias PortalAPI.Error
   alias PortalAPI.Filters
   alias PortalAPI.Schemas.ProblemDetails
-  alias Portal.Presence.Clients
+  alias Portal.Presence.Devices
   alias __MODULE__.Database
   import Ecto.Changeset
   import Portal.Changeset
@@ -76,7 +76,7 @@ defmodule PortalAPI.ClientController do
   @spec show(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def show(conn, %{"id" => id}) do
     with {:ok, client} <- Database.fetch_client(id, conn.assigns.subject) do
-      client = Clients.preload_clients_presence([client]) |> List.first()
+      client = Devices.preload_presence([client]) |> List.first()
       render(conn, :show, client: client)
     else
       error -> Error.handle(conn, error)
@@ -231,12 +231,12 @@ defmodule PortalAPI.ClientController do
 
   defmodule Database do
     import Ecto.Query
-    alias Portal.{Presence.Clients, Safe}
+    alias Portal.{Presence.Devices, Safe}
     alias Portal.Device
 
     def list_clients(subject, opts \\ []) do
-      from(d in Device, as: :clients)
-      |> where([clients: d], d.type == :client)
+      from(d in Device, as: :devices)
+      |> where([devices: d], d.type == :client)
       |> Safe.scoped(subject)
       |> Safe.list(__MODULE__, opts)
     end
@@ -259,7 +259,7 @@ defmodule PortalAPI.ClientController do
     end
 
     defp filter_by_name(queryable, name) do
-      dynamic = dynamic([clients: d], d.name == ^name)
+      dynamic = dynamic([devices: d], d.name == ^name)
       {queryable, dynamic}
     end
 
@@ -267,27 +267,27 @@ defmodule PortalAPI.ClientController do
     # per account, so this can still match more than one row - callers
     # must handle that rather than assuming a single result.
     defp filter_by_firezone_id(queryable, firezone_id) do
-      dynamic = dynamic([clients: d], d.firezone_id == ^firezone_id)
+      dynamic = dynamic([devices: d], d.firezone_id == ^firezone_id)
       {queryable, dynamic}
     end
 
     def cursor_fields do
       [
-        {:clients, :asc, :inserted_at},
-        {:clients, :asc, :id}
+        {:devices, :asc, :inserted_at},
+        {:devices, :asc, :id}
       ]
     end
 
     def preloads do
       [
-        online?: &Clients.preload_clients_presence/1
+        online?: &Devices.preload_presence/1
       ]
     end
 
     def fetch_client(id, subject) do
       result =
-        from(d in Device, as: :clients)
-        |> where([clients: d], d.id == ^id and d.type == :client)
+        from(d in Device, as: :devices)
+        |> where([devices: d], d.id == ^id and d.type == :client)
         |> Safe.scoped(subject)
         |> Safe.one()
 
@@ -303,7 +303,7 @@ defmodule PortalAPI.ClientController do
     def update_client(changeset, subject) do
       case Safe.scoped(changeset, subject) |> Safe.update() do
         {:ok, updated_client} ->
-          {:ok, Clients.preload_clients_presence([updated_client]) |> List.first()}
+          {:ok, Devices.preload_presence([updated_client]) |> List.first()}
 
         {:error, reason} ->
           {:error, reason}
@@ -313,7 +313,7 @@ defmodule PortalAPI.ClientController do
     def verify_client(changeset, subject) do
       case Safe.scoped(changeset, subject) |> Safe.update() do
         {:ok, updated_client} ->
-          {:ok, Clients.preload_clients_presence([updated_client]) |> List.first()}
+          {:ok, Devices.preload_presence([updated_client]) |> List.first()}
 
         # coveralls-ignore-start - defensive: Safe.update on a server-built changeset cannot fail
         {:error, reason} ->
@@ -325,7 +325,7 @@ defmodule PortalAPI.ClientController do
     def remove_client_verification(changeset, subject) do
       case Safe.scoped(changeset, subject) |> Safe.update() do
         {:ok, updated_client} ->
-          {:ok, Clients.preload_clients_presence([updated_client]) |> List.first()}
+          {:ok, Devices.preload_presence([updated_client]) |> List.first()}
 
         # coveralls-ignore-start - defensive: Safe.update on a server-built changeset cannot fail
         {:error, reason} ->
@@ -337,7 +337,7 @@ defmodule PortalAPI.ClientController do
     def delete_client(client, subject) do
       case Safe.scoped(client, subject) |> Safe.delete() do
         {:ok, deleted_client} ->
-          {:ok, Clients.preload_clients_presence([deleted_client]) |> List.first()}
+          {:ok, Devices.preload_presence([deleted_client]) |> List.first()}
 
         # coveralls-ignore-start - defensive: Safe.delete on an existing client cannot fail
         {:error, reason} ->

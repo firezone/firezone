@@ -466,6 +466,37 @@ defmodule PortalWeb.ActorsTest do
       assert html =~ token.id
     end
 
+    test "marks a client token online when its device joins the account presence", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      other_actor = actor_fixture(account: account)
+      token = client_token_fixture(account: account, actor: other_actor)
+      client = client_fixture(account: account, actor: other_actor)
+
+      {:ok, lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/actors/#{other_actor}?tab=client_sessions")
+
+      assert html =~ "Offline"
+      refute html =~ "Online"
+
+      :ok = Portal.Presence.Devices.connect(client, token.id)
+
+      send(lv.pid, %Phoenix.Socket.Broadcast{
+        topic: "presences:account_devices:#{account.id}",
+        event: "presence_diff",
+        payload: %{
+          joins: %{client.id => %{metas: [%{actor_id: other_actor.id, token_id: token.id}]}},
+          leaves: %{}
+        }
+      })
+
+      assert render(lv) =~ "Online"
+    end
+
     test "shows portal session details in the portal sessions tab", %{
       conn: conn,
       account: account,

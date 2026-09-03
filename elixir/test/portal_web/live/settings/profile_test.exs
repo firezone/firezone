@@ -87,7 +87,7 @@ defmodule PortalWeb.Settings.ProfileTest do
             resources: ~p"/#{account}/resources",
             groups: ~p"/#{account}/groups",
             policies: ~p"/#{account}/policies",
-            clients: ~p"/#{account}/clients",
+            devices: ~p"/#{account}/devices",
             actors: ~p"/#{account}/actors",
             sites: ~p"/#{account}/sites"
           ] do

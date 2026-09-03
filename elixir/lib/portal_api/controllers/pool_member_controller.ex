@@ -45,7 +45,7 @@ defmodule PortalAPI.PoolMemberController do
          :ok <- validate_device_pool(resource),
          {:ok, list_opts} <- Pagination.params_to_list_opts(params),
          list_opts = Keyword.put(list_opts, :filter, resource_id: resource_id),
-         {:ok, clients, metadata} <- Database.list_clients(subject, list_opts) do
+         {:ok, clients, metadata} <- Database.list_devices(subject, list_opts) do
       render(conn, :index, clients: clients, metadata: metadata)
     else
       error -> Error.handle(conn, error)
@@ -244,9 +244,9 @@ defmodule PortalAPI.PoolMemberController do
       end
     end
 
-    def list_clients(subject, opts \\ []) do
-      from(d in Device, as: :clients)
-      |> where([clients: d], d.type == :client)
+    def list_devices(subject, opts \\ []) do
+      from(d in Device, as: :devices)
+      |> where([devices: d], d.type == :client)
       |> Safe.scoped(subject)
       |> Safe.list(__MODULE__, opts)
     end
@@ -264,7 +264,7 @@ defmodule PortalAPI.PoolMemberController do
 
     defp filter_by_resource_id(queryable, resource_id) do
       queryable =
-        join(queryable, :inner, [clients: d], m in StaticDevicePoolMember,
+        join(queryable, :inner, [devices: d], m in StaticDevicePoolMember,
           on: m.device_id == d.id and m.account_id == d.account_id,
           as: :members
         )
@@ -274,8 +274,8 @@ defmodule PortalAPI.PoolMemberController do
 
     def cursor_fields do
       [
-        {:clients, :asc, :inserted_at},
-        {:clients, :asc, :id}
+        {:devices, :asc, :inserted_at},
+        {:devices, :asc, :id}
       ]
     end
 
