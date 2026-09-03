@@ -150,6 +150,66 @@ defmodule PortalAPI.JSONTest do
     end
   end
 
+  describe "every JSON view declares its exposure" do
+    # verify!/4 runs at compile time and leaves no trace on the compiled module,
+    # so this reads the source. Without it a new view could simply omit the call
+    # and silently lose the allowlist -- the one thing `use` used to guarantee.
+    @views Path.wildcard("lib/portal_api/controllers/*_json.ex")
+
+    test "the view directory is where we think it is" do
+      assert length(@views) > 25, "expected to find the JSON views, found #{length(@views)}"
+    end
+
+    test "a view that renders a struct also verifies it" do
+      offenders =
+        for path <- @views,
+            source = File.read!(path),
+            rendered = structs_rendered(source),
+            rendered != [],
+            verified = structs_verified(source),
+            missing = rendered -- verified,
+            missing != [],
+            do: {Path.basename(path), missing}
+
+      assert offenders == [],
+             """
+             These views render a struct without a matching
+             PortalAPI.JSON.verify!/4 call, so nothing checks that what they
+             emit matches the schema:
+
+             #{Enum.map_join(offenders, "\n", fn {file, structs} -> "  #{file}: #{inspect(structs)}" end)}
+             """
+    end
+
+    test "a view that renders at all calls verify!" do
+      offenders =
+        for path <- @views,
+            source = File.read!(path),
+            String.contains?(source, "PortalAPI.JSON.render("),
+            not String.contains?(source, "PortalAPI.JSON.verify!("),
+            do: Path.basename(path)
+
+      assert offenders == [],
+             "These views call render/3 without verify!/4: #{inspect(offenders)}"
+    end
+
+    # `defp data(%Entra.Directory{} = ...)` -> "Directory"; the last segment is
+    # enough to pair a pattern against the fully qualified name in verify!.
+    defp structs_rendered(source) do
+      ~r/defp data\(%([\w.]+)\{/
+      |> Regex.scan(source)
+      |> Enum.map(fn [_, mod] -> mod |> String.split(".") |> List.last() end)
+      |> Enum.uniq()
+    end
+
+    defp structs_verified(source) do
+      ~r/JSON\.verify!\(__MODULE__,\s*([\w.]+)/
+      |> Regex.scan(source)
+      |> Enum.map(fn [_, mod] -> mod |> String.split(".") |> List.last() end)
+      |> Enum.uniq()
+    end
+  end
+
   describe "Subject schemas track Authentication.Subject" do
     # PortalAPI.Schemas.Subject documents what Authentication.Subject.to_map/1
     # emits. Nothing links them, so a field added to to_map/1 would silently go
