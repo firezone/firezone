@@ -718,13 +718,13 @@ class TunnelService : VpnService() {
                                 }
 
                                 is Event.Disconnected -> {
-                                    Log.i(TAG, "Disconnected by connlib: ${event.error.message()}")
+                                    Log.i(TAG, "Disconnected by connlib: ${event.error.logMessage()}")
 
                                     if (event.error.requiresSignIn()) {
                                         tokenStore.clear()
                                     }
 
-                                    stopReason = StopReason.Disconnected(event.error.message())
+                                    stopReason = StopReason.Disconnected(event.error.userMessage())
                                 }
 
                                 is Event.GatewayVersionMismatch -> {

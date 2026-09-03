@@ -672,10 +672,11 @@ impl<I: GuiIntegration> Controller<I> {
                 }
             }
             service::ServerMsg::OnDisconnect {
-                error_msg,
+                user_msg,
+                log_msg,
                 requires_sign_in,
             } => {
-                tracing::error!("Connlib disconnected: {error_msg}");
+                tracing::error!("Connlib disconnected: {log_msg}");
 
                 if requires_sign_in {
                     self.sign_out().await?;
@@ -683,7 +684,7 @@ impl<I: GuiIntegration> Controller<I> {
                     self.disconnect().await?;
                 }
 
-                dialog::error(&error_msg)?;
+                dialog::error(&user_msg)?;
             }
             service::ServerMsg::ConnectedToPortal(connected) => {
                 if connected.actor_name.is_empty() {

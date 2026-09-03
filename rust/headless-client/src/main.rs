@@ -529,7 +529,7 @@ fn try_main() -> Result<()> {
             };
 
             match event {
-                client_shared::Event::Disconnected(error) => break Err(anyhow!(error).context("Firezone disconnected")),
+                client_shared::Event::Disconnected(error) => break Err(anyhow!(error.log_message()).context("Firezone disconnected")),
                 client_shared::Event::ResourcesUpdated(_) => {
                     // On every Resources update, flush DNS to mitigate <https://github.com/firezone/firezone/issues/5052>
                     dns_controller.flush()?;
