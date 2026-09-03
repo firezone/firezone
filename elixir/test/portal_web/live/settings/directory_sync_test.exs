@@ -763,6 +763,77 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
       assert html =~ "current-tenant"
     end
 
+    test "queues the first sync after creating a verified entra directory", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/directory_sync/entra/new")
+
+      lv |> element("button[phx-click='start_verification']") |> render_click()
+      verification_ref = verification_ref_from_open_url(lv)
+      ack_ref = make_ref()
+
+      send(
+        lv.pid,
+        {:entra_directory_sync_complete, "tenant-1", verification_ref, {self(), ack_ref}}
+      )
+
+      assert_receive {:verification_ack, ^ack_ref}
+
+      lv
+      |> form("#directory-form", directory: %{name: "Entra HQ"})
+      |> render_change()
+
+      render_hook(lv, "submit_directory", %{})
+
+      directory = Portal.Repo.get_by!(Portal.Entra.Directory, account_id: account.id, name: "Entra HQ")
+      assert directory.is_verified
+
+      assert_enqueued(
+        worker: Portal.Entra.Sync,
+        args: %{account_id: account.id, directory_id: directory.id}
+      )
+    end
+
+    test "cleans up webhook subscriptions when an entra directory is disabled or deleted", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      directory =
+        entra_directory_fixture(%{
+          account: account,
+          name: "Entra Ops",
+          tenant_id: "tenant-ops",
+          users_subscription_id: "sub-users",
+          groups_subscription_id: "sub-groups"
+        })
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/directory_sync")
+
+      html = render_click(lv, "toggle_directory", %{"id" => directory.id})
+      assert html =~ "Directory disabled successfully."
+
+      assert_enqueued(
+        worker: Portal.Entra.Subscriptions,
+        args: %{
+          action: "delete",
+          tenant_id: "tenant-ops",
+          subscription_ids: ["sub-users", "sub-groups"]
+        }
+      )
+
+      html = render_click(lv, "delete_directory", %{"id" => directory.id})
+      assert html =~ "Directory deleted successfully."
+    end
+
     test "ignores entra directory completion after navigating to another form", %{
       conn: conn,
       account: account,

@@ -364,6 +364,63 @@ defmodule Portal.Microsoft.Graph.APIClient do
     end
   end
 
+  @doc """
+  Fetches one user with the fields that map to our identity schema.
+  """
+  def get_user(access_token, user_id) do
+    query = URI.encode_query(%{"$select" => @entra_user_select_fields})
+    get("/v1.0/users/#{user_id}", query, access_token)
+  end
+
+  @doc """
+  Fetches one group.
+  """
+  def get_group(access_token, group_id) do
+    query = URI.encode_query(%{"$select" => "id,displayName"})
+    get("/v1.0/groups/#{group_id}", query, access_token)
+  end
+
+  @doc """
+  Streams every group that transitively contains the given group.
+  """
+  def stream_group_transitive_member_of_groups(access_token, group_id) do
+    query = URI.encode_query(%{"$top" => @page_size, "$select" => "id,displayName"})
+    path = "/v1.0/groups/#{group_id}/transitiveMemberOf/microsoft.graph.group"
+
+    stream_pages(path, query, access_token, @advanced_query_headers)
+  end
+
+  @doc """
+  Creates a change notification subscription.
+  """
+  def create_subscription(access_token, attrs) when is_map(attrs) do
+    request("/v1.0/subscriptions", access_token, method: :post, json: attrs)
+  end
+
+  @doc """
+  Extends a change notification subscription. Renewing also reauthorizes it.
+  """
+  def renew_subscription(access_token, subscription_id, %DateTime{} = expires_at) do
+    request("/v1.0/subscriptions/#{subscription_id}", access_token,
+      method: :patch,
+      json: %{"expirationDateTime" => DateTime.to_iso8601(expires_at)}
+    )
+  end
+
+  @doc """
+  Deletes a change notification subscription.
+  """
+  def delete_subscription(access_token, subscription_id) do
+    request("/v1.0/subscriptions/#{subscription_id}", access_token, method: :delete)
+  end
+
+  defp request(path, access_token, opts) do
+    Req.request(
+      [url: "#{endpoint()}#{path}", headers: [{"Authorization", "Bearer #{access_token}"}]] ++
+        opts ++ req_opts()
+    )
+  end
+
   defp get(path, query, access_token, headers \\ []) do
     suffix = if query in [nil, ""], do: "", else: "?#{query}"
     url = "#{endpoint()}#{path}#{suffix}"

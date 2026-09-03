@@ -248,6 +248,8 @@ defmodule PortalWeb.Settings.DirectorySync do
 
     case Database.delete_directory(directory, socket.assigns.subject) do
       {:ok, _directory} ->
+        unsubscribe_webhooks(directory)
+
         {:noreply,
          socket
          |> init()
@@ -279,6 +281,10 @@ defmodule PortalWeb.Settings.DirectorySync do
 
       case Database.update_directory(changeset, socket.assigns.subject) do
         {:ok, _directory} ->
+          if new_disabled_state do
+            unsubscribe_webhooks(directory)
+          end
+
           {:noreply,
            socket
            |> init()
@@ -1727,6 +1733,7 @@ defmodule PortalWeb.Settings.DirectorySync do
 
     changeset
     |> Database.insert_directory(socket.assigns.subject)
+    |> queue_initial_sync(socket)
     |> handle_submit(socket)
   end
 
@@ -1760,6 +1767,51 @@ defmodule PortalWeb.Settings.DirectorySync do
     |> Database.update_directory(socket.assigns.subject)
     |> handle_submit(socket)
   end
+
+  defp queue_initial_sync(
+         {:ok, %Entra.Directory{is_verified: true, is_disabled: false} = directory} = result,
+         %{assigns: %{account: %{features: %{idp_sync: true}}}}
+       ) do
+    args = %{"account_id" => directory.account_id, "directory_id" => directory.id}
+
+    case Oban.insert(Entra.Sync.new(args)) do
+      {:ok, _job} ->
+        result
+
+      {:error, reason} ->
+        Logger.info("Failed to enqueue initial directory sync job",
+          id: directory.id,
+          reason: inspect(reason)
+        )
+
+        result
+    end
+  end
+
+  defp queue_initial_sync(result, _socket), do: result
+
+  defp unsubscribe_webhooks(%Entra.Directory{} = directory) do
+    ids = Enum.reject([directory.users_subscription_id, directory.groups_subscription_id], &is_nil/1)
+
+    if ids != [] do
+      args = %{"action" => "delete", "tenant_id" => directory.tenant_id, "subscription_ids" => ids}
+
+      case Oban.insert(Entra.Subscriptions.new(args)) do
+        {:ok, _job} ->
+          :ok
+
+        {:error, reason} ->
+          Logger.info("Failed to enqueue Entra webhook cleanup job",
+            id: directory.id,
+            reason: inspect(reason)
+          )
+      end
+    end
+
+    :ok
+  end
+
+  defp unsubscribe_webhooks(_directory), do: :ok
 
   defp handle_submit({:ok, _directory}, socket) do
     {:noreply,

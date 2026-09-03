@@ -256,8 +256,9 @@ if config_env() == :prod do
     # Refresh cached OCSP statuses hourly, for CAs that publish no list
     {"45 3 * * *", Portal.Ocsp.Scheduler},
 
-    # Schedule Entra directory sync every 2 hours
-    {"0 */2 * * *", Portal.Entra.Scheduler},
+    # Schedule Entra directory sync daily; Graph change notifications cover
+    # the hours in between
+    {"0 3 * * *", Portal.Entra.Scheduler},
 
     # Schedule Intune device inventory sync every 2 hours
     {"10 */2 * * *", Portal.Intune.Scheduler},
@@ -400,6 +401,8 @@ if config_env() == :prod do
       ocsp_sync: 5,
       entra_scheduler: 1,
       entra_sync: 5,
+    entra_subscriptions: 1,
+    entra_webhook: 5,
       intune_scheduler: 1,
       intune_sync: 5,
       iru_scheduler: 1,

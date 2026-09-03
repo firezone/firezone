@@ -135,6 +135,11 @@ defmodule Portal.Entra.SyncTest do
       identities = Repo.all(ExternalIdentity)
       assert length(identities) == 3
 
+      assert_enqueued(
+        worker: Portal.Entra.Subscriptions,
+        args: %{account_id: directory.account_id, directory_id: directory.id, action: "ensure"}
+      )
+
       identity_emails = Enum.map(identities, & &1.email) |> Enum.sort()
 
       assert identity_emails == [
