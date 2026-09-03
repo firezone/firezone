@@ -481,7 +481,7 @@ fn arb_icmp_packet(
     src: IpAddr,
     dst: DstSpec,
 ) -> Transition {
-    let (seq, identifier) = g.fresh_icmp_flow();
+    let (seq, identifier) = g.fresh_icmp_packet();
     let resolved_ip = g.u32();
     let probe_id = g.fresh_probe_id();
     let dst = into_destination(dst, resolved_ip);
@@ -502,7 +502,7 @@ fn arb_udp_packet(
     dst: DstSpec,
     dport: u16,
 ) -> Transition {
-    let (sport, dport) = g.fresh_udp_flow(dport);
+    let (sport, dport) = g.fresh_udp_packet(dport);
     let resolved_ip = g.u32();
     let probe_id = g.fresh_probe_id();
     let dst = into_destination(dst, resolved_ip);

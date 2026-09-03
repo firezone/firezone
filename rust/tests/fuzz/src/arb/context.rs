@@ -70,9 +70,9 @@ pub struct Generator<'a> {
 
     next_key: u32,
     next_probe: u64,
-    icmp_identifiers: SmallVec<[Identifier; 20]>,
-    udp_source_ports: SmallVec<[SPort; 20]>,
-    tcp_source_ports: SmallVec<[SPort; 20]>,
+    icmp_packets: SmallVec<[(Seq, Identifier); 20]>,
+    udp_packets: SmallVec<[(SPort, DPort); 20]>,
+    tcp_connections: SmallVec<[(SPort, DPort); 20]>,
 }
 
 impl<'a> Generator<'a> {
@@ -105,9 +105,9 @@ impl<'a> Generator<'a> {
             next_resource: 0,
             next_key: 0,
             next_probe: 0,
-            icmp_identifiers: SmallVec::new(),
-            udp_source_ports: SmallVec::new(),
-            tcp_source_ports: SmallVec::new(),
+            icmp_packets: SmallVec::new(),
+            udp_packets: SmallVec::new(),
+            tcp_connections: SmallVec::new(),
         }
     }
 
@@ -254,39 +254,45 @@ impl<'a> Generator<'a> {
         ProbeId::new(((n & 0xFF_FFFF) << 40) | (entropy & 0xFF_FFFF_FFFF))
     }
 
-    pub(super) fn fresh_icmp_flow(&mut self) -> (Seq, Identifier) {
+    pub(super) fn fresh_icmp_packet(&mut self) -> (Seq, Identifier) {
         let candidate = (self.u16(), self.u16());
-        let identifier = (0..=u16::MAX)
-            .map(|offset| Identifier(candidate.1.wrapping_add(offset)))
-            .find(|identifier| !self.icmp_identifiers.contains(identifier))
+        let packet = (0..=u16::MAX)
+            .map(|offset| {
+                (
+                    Seq(candidate.0.wrapping_add(offset)),
+                    Identifier(candidate.1),
+                )
+            })
+            .find(|packet| !self.icmp_packets.contains(packet))
             .expect("a scenario cannot exhaust all ICMP packet identifiers");
-        self.icmp_identifiers.push(identifier);
+        self.icmp_packets.push(packet);
 
-        (Seq(candidate.0), identifier)
+        packet
     }
 
-    pub(super) fn fresh_udp_flow(&mut self, dport: u16) -> (SPort, DPort) {
-        let candidate = self.u16_in(1..=u16::MAX);
-        let sport = (0..u32::from(u16::MAX))
-            .map(|offset| ((u32::from(candidate) - 1 + offset) % u32::from(u16::MAX) + 1) as u16)
-            .map(SPort)
-            .find(|sport| !self.udp_source_ports.contains(sport))
-            .expect("a scenario cannot exhaust all UDP source ports");
-        self.udp_source_ports.push(sport);
+    pub(super) fn fresh_udp_packet(&mut self, dport: u16) -> (SPort, DPort) {
+        let candidate = self.u16();
+        let packet = (0..=u16::MAX)
+            .map(|offset| (SPort(candidate.wrapping_add(offset)), DPort(dport)))
+            .find(|packet| !self.udp_packets.contains(packet))
+            .expect("a scenario cannot exhaust all UDP packet identifiers");
+        self.udp_packets.push(packet);
 
-        (sport, DPort(dport))
+        packet
     }
 
     pub(super) fn fresh_tcp_connection(&mut self, dport: u16) -> (SPort, DPort) {
         let candidate = self.u16_in(1..=u16::MAX);
-        let sport = (0..u32::from(u16::MAX))
-            .map(|offset| ((u32::from(candidate) - 1 + offset) % u32::from(u16::MAX) + 1) as u16)
-            .map(SPort)
-            .find(|sport| !self.tcp_source_ports.contains(sport))
-            .expect("a scenario cannot exhaust all TCP source ports");
-        self.tcp_source_ports.push(sport);
+        let connection = (0..u32::from(u16::MAX))
+            .map(|offset| {
+                let sport = ((u32::from(candidate) - 1 + offset) % u32::from(u16::MAX) + 1) as u16;
+                (SPort(sport), DPort(dport))
+            })
+            .find(|connection| !self.tcp_connections.contains(connection))
+            .expect("a scenario cannot exhaust all TCP connection identifiers");
+        self.tcp_connections.push(connection);
 
-        (sport, DPort(dport))
+        connection
     }
 
     pub(super) fn latency(&mut self, max: u64) -> Duration {
