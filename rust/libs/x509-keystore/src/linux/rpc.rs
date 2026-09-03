@@ -453,11 +453,7 @@ impl Drop for Session {
 #[derive(Debug)]
 pub(crate) enum Mechanism {
     Sha256RsaPkcs,
-    Sha384RsaPkcs,
-    Sha512RsaPkcs,
     Sha256RsaPkcsPss,
-    Sha384RsaPkcsPss,
-    Sha512RsaPkcsPss,
     Ecdsa,
 }
 
@@ -471,31 +467,15 @@ impl Mechanism {
     /// version it negotiated names.
     fn encode(&self, buffer: &mut Vec<u8>, protocol_version: u8) {
         const CKM_SHA256_RSA_PKCS: u32 = 0x0000_0040;
-        const CKM_SHA384_RSA_PKCS: u32 = 0x0000_0041;
-        const CKM_SHA512_RSA_PKCS: u32 = 0x0000_0042;
         const CKM_SHA256_RSA_PKCS_PSS: u32 = 0x0000_0043;
-        const CKM_SHA384_RSA_PKCS_PSS: u32 = 0x0000_0044;
-        const CKM_SHA512_RSA_PKCS_PSS: u32 = 0x0000_0045;
         const CKM_ECDSA: u32 = 0x0000_1041;
         const CKM_SHA256: u64 = 0x0000_0250;
-        const CKM_SHA384: u64 = 0x0000_0260;
-        const CKM_SHA512: u64 = 0x0000_0270;
         const MGF1_SHA256: u64 = 0x0000_0002;
-        const MGF1_SHA384: u64 = 0x0000_0003;
-        const MGF1_SHA512: u64 = 0x0000_0004;
 
         let (mechanism, pss) = match self {
             Self::Sha256RsaPkcs => (CKM_SHA256_RSA_PKCS, None),
-            Self::Sha384RsaPkcs => (CKM_SHA384_RSA_PKCS, None),
-            Self::Sha512RsaPkcs => (CKM_SHA512_RSA_PKCS, None),
             Self::Sha256RsaPkcsPss => {
                 (CKM_SHA256_RSA_PKCS_PSS, Some((CKM_SHA256, MGF1_SHA256, 32)))
-            }
-            Self::Sha384RsaPkcsPss => {
-                (CKM_SHA384_RSA_PKCS_PSS, Some((CKM_SHA384, MGF1_SHA384, 48)))
-            }
-            Self::Sha512RsaPkcsPss => {
-                (CKM_SHA512_RSA_PKCS_PSS, Some((CKM_SHA512, MGF1_SHA512, 64)))
             }
             Self::Ecdsa => (CKM_ECDSA, None),
         };
