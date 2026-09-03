@@ -120,11 +120,20 @@ pub fn udp(std_addr: SocketAddr) -> io::Result<UdpSocket> {
         socket.set_reuse_port(true)?;
     }
 
+    // Darwin attaches the destination-address control message when it enqueues a datagram,
+    // not when we read it, so the option must be on before the socket can receive anything.
+    // Windows refuses `getsockname` on an unbound socket, so create the state after binding there.
+    #[cfg(not(windows))]
+    let state = quinn_udp::UdpSocketState::new(UdpSockRef::from(&socket))?;
+
     socket.bind(&addr)?;
+
+    #[cfg(windows)]
+    let state = quinn_udp::UdpSocketState::new(UdpSockRef::from(&socket))?;
 
     let socket = std::net::UdpSocket::from(socket);
     let socket = tokio::net::UdpSocket::try_from(socket)?;
-    let socket = UdpSocket::new(socket)?;
+    let socket = UdpSocket::new(socket, state)?;
 
     Ok(socket)
 }
@@ -261,6 +270,7 @@ impl std::os::fd::AsFd for TcpSocket {
 
 pub struct UdpSocket {
     inner: tokio::net::UdpSocket,
+    state: quinn_udp::UdpSocketState,
     source_ip_resolver:
         Option<Box<dyn Fn(IpAddr) -> std::io::Result<IpAddr> + Send + Sync + 'static>>,
     port: u16,
@@ -282,13 +292,14 @@ pub struct PerfUdpSocket {
 }
 
 impl UdpSocket {
-    fn new(inner: tokio::net::UdpSocket) -> io::Result<Self> {
+    fn new(inner: tokio::net::UdpSocket, state: quinn_udp::UdpSocketState) -> io::Result<Self> {
         let socket_addr = inner.local_addr()?;
         let port = socket_addr.port();
 
         Ok(UdpSocket {
             port,
             inner,
+            state,
             source_ip_resolver: None,
         })
     }
@@ -296,9 +307,7 @@ impl UdpSocket {
     /// Upgrade this [`UdpSocket`] to a [`PerfUdpSocket`] for optimized IO.
     pub fn into_perf(self) -> io::Result<PerfUdpSocket> {
         let socket_addr = self.inner.local_addr()?;
-
-        let quinn_ref = quinn_udp::UdpSockRef::from(&self.inner);
-        let quinn_state = quinn_udp::UdpSocketState::new(quinn_ref)?;
+        let quinn_state = self.state;
 
         #[cfg(apple)]
         // SAFETY: All versions of MacOS / iOS that we tested support these APIs.
@@ -744,7 +753,7 @@ impl UdpSocket {
 
         // A plain `send_to` cannot carry a source IP; sending via [`quinn_udp`] pins the
         // resolved source through a control message, like all other sends on our sockets.
-        let state = quinn_udp::UdpSocketState::new(UdpSockRef::from(&self.inner))?;
+        let state = &self.state;
         let transmit = Transmit {
             destination: dst,
             ecn: None,
