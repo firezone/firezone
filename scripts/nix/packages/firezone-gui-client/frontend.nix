@@ -39,13 +39,13 @@ stdenvNoCC.mkDerivation (finalAttrs: {
     pnpmConfigHook
   ];
 
-  # vite.config.ts falls back to `git rev-parse` when unset, which is
-  # unavailable in the sandbox.
   env = {
     # pnpm must know that Nix builds are non-interactive before it refreshes
     # node_modules from the fixed-output store.
     CI = "true";
-    GITHUB_SHA = finalAttrs.version;
+    # Printed on the About page. vite.config.ts otherwise shells out to
+    # `git rev-parse`, which the sandbox cannot do.
+    GITHUB_SHA = if fzLib.rev == null then "unknown" else fzLib.rev;
   };
 
   buildPhase = ''

@@ -49,7 +49,11 @@
     {
       overlays.default = lib.composeManyExtensions [
         rust-overlay.overlays.default
-        (import ./scripts/nix/overlay.nix { inherit crane; })
+        (import ./scripts/nix/overlay.nix {
+          inherit crane;
+          # Unset for non-git sources and, before Nix 2.20, for a dirty tree.
+          rev = self.rev or self.dirtyRev or null;
+        })
       ];
 
       packages = forAllSystems (pkgs: {

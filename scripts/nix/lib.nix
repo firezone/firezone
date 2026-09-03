@@ -3,6 +3,7 @@
   crane,
   lib,
   pkgs,
+  rev,
 }:
 rec {
   # Pin the Rust toolchain to the same channel the rest of the repo uses.
@@ -23,6 +24,9 @@ rec {
   # Flake sources contain only git-tracked files, so build artifacts like
   # gui-client/dist and target/ are already excluded.
   src = ../../rust;
+
+  # The commit the flake was evaluated from, or null when unknown.
+  inherit rev;
 
   # `cargo update --workspace` runs on every release, so any fixed-output
   # vendor hash would need bumping each time. crane resolves the git
