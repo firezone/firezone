@@ -1,5 +1,11 @@
 defmodule PortalAPI.Schemas.Account do
   alias OpenApiSpex.Schema
+  require Protocol
+
+  # `limits`, the account's usage against its limits, is added by the controller.
+  Protocol.derive(PortalAPI.JSON.Encoder, Portal.Account,
+    only: [:id, :slug, :key, :name, :legal_name]
+  )
 
   defmodule LimitSchema do
     require OpenApiSpex

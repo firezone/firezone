@@ -1,5 +1,13 @@
 defmodule PortalAPI.Schemas.DefenderPostureProvider do
   alias OpenApiSpex.Schema
+  require Protocol
+
+  Protocol.derive(PortalAPI.JSON.Encoder, Portal.Defender.PostureProvider,
+    except: [:error_email_count],
+    mapper: &PortalAPI.Schemas.DefenderPostureProvider.map/2
+  )
+
+  def map(%Portal.Defender.PostureProvider{posture_provider: %{name: name}}, _map), do: %{type: "defender", name: name}
 
   defmodule Schema do
     require OpenApiSpex

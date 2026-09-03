@@ -3,6 +3,7 @@ defmodule PortalAPI.DefenderPostureProviderController do
   use OpenApiSpex.ControllerSpecs
 
   alias PortalAPI.{Error, Pagination, Schemas.ProblemDetails}
+  alias PortalAPI.JSON
   alias __MODULE__.Database
 
   tags ["Defender Posture Providers"]
@@ -58,7 +59,7 @@ defmodule PortalAPI.DefenderPostureProviderController do
   def index(conn, params) do
     with {:ok, opts} <- Pagination.params_to_list_opts(params),
          {:ok, providers, metadata} <- Database.list_providers(conn.assigns.subject, opts) do
-      render(conn, :index, providers: providers, metadata: metadata)
+      json(conn, %{data: JSON.encode(providers), metadata: Pagination.metadata(metadata)})
     else
       error -> Error.handle(conn, error)
     end
@@ -66,7 +67,7 @@ defmodule PortalAPI.DefenderPostureProviderController do
 
   def show(conn, %{"id" => id}) do
     with {:ok, provider} <- Database.fetch_provider(id, conn.assigns.subject) do
-      render(conn, :show, provider: provider)
+      json(conn, %{data: JSON.encode(provider)})
     else
       error -> Error.handle(conn, error)
     end

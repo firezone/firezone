@@ -1,5 +1,21 @@
 defmodule PortalAPI.Schemas.Resource do
   alias OpenApiSpex.Schema
+  require Protocol
+
+  # ip_stack and site_id are omitted rather than null when unset.
+  Protocol.derive(PortalAPI.JSON.Encoder, Portal.Resource,
+    except: [:account_id, :inserted_at, :updated_at, :ip_stack, :site_id],
+    mapper: &PortalAPI.Schemas.Resource.map/2
+  )
+
+  def map(%Portal.Resource{} = resource, _map) do
+    %{filters: Enum.map(resource.filters, &%{protocol: &1.protocol, ports: &1.ports})}
+    |> put_present(:ip_stack, resource.ip_stack)
+    |> put_present(:site_id, resource.site_id)
+  end
+
+  defp put_present(map, _key, nil), do: map
+  defp put_present(map, key, value), do: Map.put(map, key, value)
 
   defmodule Schema do
     require OpenApiSpex

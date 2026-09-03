@@ -2,6 +2,7 @@ defmodule PortalAPI.LogController do
   use PortalAPI, :controller
   use OpenApiSpex.ControllerSpecs
   alias PortalAPI.Pagination
+  alias PortalAPI.JSON
   alias PortalAPI.Error
   alias PortalAPI.Filters
   alias PortalAPI.Schemas.ProblemDetails
@@ -147,7 +148,7 @@ defmodule PortalAPI.LogController do
              conn.assigns.subject,
              Keyword.put(pagination_opts, :filter, filters)
            ) do
-      render(conn, :index, logs: logs, metadata: metadata)
+      json(conn, %{data: JSON.encode(logs), metadata: Pagination.metadata(metadata)})
     else
       error -> Error.handle(conn, error)
     end
@@ -182,7 +183,7 @@ defmodule PortalAPI.LogController do
     with {:ok, log_id} <- parse_log_id(log_id),
          {:ok, type} <- type_from_log_id(log_id),
          {:ok, log} <- Database.fetch_log(type, log_id, conn.assigns.subject) do
-      render(conn, :show, log: log)
+      json(conn, %{data: JSON.encode(log)})
     else
       error -> Error.handle(conn, error)
     end

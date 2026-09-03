@@ -1,5 +1,8 @@
 defmodule PortalAPI.Schemas.IruDevice do
   alias OpenApiSpex.Schema
+  require Protocol
+
+  Protocol.derive(PortalAPI.JSON.Encoder, Portal.Iru.Device)
 
   defmodule Schema do
     require OpenApiSpex

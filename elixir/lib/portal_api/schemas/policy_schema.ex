@@ -1,5 +1,18 @@
 defmodule PortalAPI.Schemas.Policy do
   alias OpenApiSpex.Schema
+  require Protocol
+
+  Protocol.derive(PortalAPI.JSON.Encoder, Portal.Policy,
+    except: [:account_id, :group_idp_id, :inserted_at, :updated_at],
+    mapper: &PortalAPI.Schemas.Policy.map/2
+  )
+
+  def map(%Portal.Policy{conditions: conditions}, _map) do
+    %{
+      conditions:
+        Enum.map(conditions, &%{property: &1.property, operator: &1.operator, values: &1.values})
+    }
+  end
 
   defmodule Condition do
     require OpenApiSpex

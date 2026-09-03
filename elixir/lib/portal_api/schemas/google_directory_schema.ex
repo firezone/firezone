@@ -1,5 +1,8 @@
 defmodule PortalAPI.Schemas.GoogleDirectory do
   alias OpenApiSpex.Schema
+  require Protocol
+
+  Protocol.derive(PortalAPI.JSON.Encoder, Portal.Google.Directory, except: [:error_email_count, :is_verified, :sync_all_domains])
 
   defmodule Schema do
     require OpenApiSpex

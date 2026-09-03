@@ -1,5 +1,22 @@
 defmodule PortalAPI.Schemas.ExternalIdentity do
   alias OpenApiSpex.Schema
+  require Protocol
+
+  Protocol.derive(PortalAPI.JSON.Encoder, Portal.ExternalIdentity,
+    except: [:directory_name, :updated_at],
+    mapper: &PortalAPI.Schemas.ExternalIdentity.map/2
+  )
+
+  def map(%Portal.ExternalIdentity{} = identity, _map) do
+    %{
+      email: identity.email || identity.idp_id,
+      idp_id: identity.idp_id |> String.split(":", parts: 2) |> List.last(),
+      synced_at: synced_at(identity.sync_state)
+    }
+  end
+
+  defp synced_at(%Portal.ExternalIdentitySyncState{synced_at: synced_at}), do: synced_at
+  defp synced_at(nil), do: nil
 
   defmodule Schema do
     require OpenApiSpex

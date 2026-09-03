@@ -1,5 +1,8 @@
 defmodule PortalAPI.Schemas.DefenderDevice do
   alias OpenApiSpex.Schema
+  require Protocol
+
+  Protocol.derive(PortalAPI.JSON.Encoder, Portal.Defender.Device)
 
   defmodule Schema do
     require OpenApiSpex

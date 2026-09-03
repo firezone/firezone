@@ -1,5 +1,13 @@
 defmodule PortalAPI.Schemas.Actor do
   alias OpenApiSpex.Schema
+  require Protocol
+
+  Protocol.derive(PortalAPI.JSON.Encoder, Portal.Actor,
+    shapes: [
+      actor: [except: [:account_id, :identity_count, :preferences]],
+      membership: [only: [:id, :name, :type]]
+    ]
+  )
 
   defmodule Schema do
     require OpenApiSpex

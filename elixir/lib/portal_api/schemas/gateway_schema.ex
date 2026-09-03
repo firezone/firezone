@@ -1,6 +1,11 @@
 defmodule PortalAPI.Schemas.Gateway do
   alias OpenApiSpex.Schema
 
+  # The Portal.Device encoder is derived in PortalAPI.Schemas.Client.
+  def map(%Portal.Device{} = device, _map) do
+    %{online: device.online?, rotated_at: device.gateway_token_rotated_at}
+  end
+
   defmodule Schema do
     require OpenApiSpex
     alias OpenApiSpex.Schema

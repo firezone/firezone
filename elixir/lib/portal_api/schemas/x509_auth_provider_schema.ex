@@ -1,5 +1,8 @@
 defmodule PortalAPI.Schemas.X509AuthProvider do
   alias OpenApiSpex.Schema
+  require Protocol
+
+  Protocol.derive(PortalAPI.JSON.Encoder, Portal.X509.AuthProvider)
 
   defmodule Schema do
     require OpenApiSpex

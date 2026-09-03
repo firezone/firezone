@@ -1,5 +1,8 @@
 defmodule PortalAPI.Schemas.EmailOTPAuthProvider do
   alias OpenApiSpex.Schema
+  require Protocol
+
+  Protocol.derive(PortalAPI.JSON.Encoder, Portal.EmailOTP.AuthProvider)
 
   defmodule Schema do
     require OpenApiSpex

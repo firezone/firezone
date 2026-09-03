@@ -2,6 +2,7 @@ defmodule PortalAPI.GatewayController do
   use PortalAPI, :controller
   use OpenApiSpex.ControllerSpecs
   alias PortalAPI.Pagination
+  alias PortalAPI.JSON
   alias PortalAPI.Error
   alias PortalAPI.Filters
   alias PortalAPI.Schemas.ProblemDetails
@@ -41,7 +42,7 @@ defmodule PortalAPI.GatewayController do
            |> Keyword.put(:preload, [:online?])
            |> Keyword.put(:filter, coerce_filters(params)),
          {:ok, gateways, metadata} <- Database.list_gateways(conn.assigns.subject, list_opts) do
-      render(conn, :index, gateways: gateways, metadata: metadata)
+      json(conn, %{data: JSON.encode(gateways, as: :gateway), metadata: Pagination.metadata(metadata)})
     else
       error -> Error.handle(conn, error)
     end
@@ -81,7 +82,7 @@ defmodule PortalAPI.GatewayController do
   def show(conn, %{"site_id" => site_id, "id" => id}) do
     with {:ok, gateway} <- Database.fetch_gateway(site_id, id, conn.assigns.subject) do
       gateway = Presence.Devices.preload_presence([gateway]) |> List.first()
-      render(conn, :show, gateway: gateway)
+      json(conn, %{data: JSON.encode(gateway, as: :gateway)})
     else
       error -> Error.handle(conn, error)
     end
@@ -134,13 +135,13 @@ defmodule PortalAPI.GatewayController do
     name = get_in(params, ["gateway", "name"])
 
     with {:ok, site} <- Database.fetch_site(site_id, subject),
-         {:ok, gateway, token, encoded_token} <- Database.provision_gateway(site, name, subject) do
+         {:ok, gateway, _token, encoded_token} <- Database.provision_gateway(site, name, subject) do
       gateway = Presence.Devices.preload_presence([gateway]) |> List.first()
 
       conn
       |> put_status(:created)
       |> put_resp_header("location", ~p"/sites/#{site_id}/gateways/#{gateway}")
-      |> render(:provisioned, gateway: gateway, token: token, encoded_token: encoded_token)
+      |> json(%{data: gateway |> JSON.encode(as: :gateway) |> Map.put(:token, encoded_token)})
     else
       error -> Error.handle(conn, error)
     end
@@ -190,7 +191,7 @@ defmodule PortalAPI.GatewayController do
     with {:ok, gateway} <- Database.fetch_gateway(site_id, id, subject),
          {:ok, gateway} <- Database.rename_gateway(gateway, name, subject) do
       gateway = Presence.Devices.preload_presence([gateway]) |> List.first()
-      render(conn, :show, gateway: gateway)
+      json(conn, %{data: JSON.encode(gateway, as: :gateway)})
     else
       error -> Error.handle(conn, error)
     end
@@ -229,7 +230,7 @@ defmodule PortalAPI.GatewayController do
 
     with {:ok, gateway} <- Database.fetch_gateway(site_id, id, subject),
          {:ok, gateway} <- Database.delete_gateway(gateway, subject) do
-      render(conn, :show, gateway: gateway)
+      json(conn, %{data: JSON.encode(gateway, as: :gateway)})
     else
       error -> Error.handle(conn, error)
     end

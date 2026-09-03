@@ -1,5 +1,13 @@
 defmodule PortalAPI.Schemas.SantaPostureProvider do
   alias OpenApiSpex.Schema
+  require Protocol
+
+  Protocol.derive(PortalAPI.JSON.Encoder, Portal.Santa.PostureProvider,
+    except: [:error_email_count],
+    mapper: &PortalAPI.Schemas.SantaPostureProvider.map/2
+  )
+
+  def map(%Portal.Santa.PostureProvider{posture_provider: %{name: name}}, _map), do: %{type: "santa", name: name}
 
   defmodule Schema do
     require OpenApiSpex

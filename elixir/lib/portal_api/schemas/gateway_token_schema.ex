@@ -1,5 +1,9 @@
 defmodule PortalAPI.Schemas.GatewayToken do
   alias OpenApiSpex.Schema
+  require Protocol
+
+  # The encoded secret is added by the controller.
+  Protocol.derive(PortalAPI.JSON.Encoder, Portal.GatewayToken, only: [:id])
 
   defmodule Schema do
     require OpenApiSpex

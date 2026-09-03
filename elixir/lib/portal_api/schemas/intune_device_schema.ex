@@ -1,5 +1,8 @@
 defmodule PortalAPI.Schemas.IntuneDevice do
   alias OpenApiSpex.Schema
+  require Protocol
+
+  Protocol.derive(PortalAPI.JSON.Encoder, Portal.Intune.Device)
 
   defmodule Schema do
     require OpenApiSpex

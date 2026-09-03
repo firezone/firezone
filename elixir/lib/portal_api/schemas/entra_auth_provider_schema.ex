@@ -1,5 +1,8 @@
 defmodule PortalAPI.Schemas.EntraAuthProvider do
   alias OpenApiSpex.Schema
+  require Protocol
+
+  Protocol.derive(PortalAPI.JSON.Encoder, Portal.Entra.AuthProvider, except: [:is_verified])
 
   defmodule Schema do
     require OpenApiSpex

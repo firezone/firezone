@@ -1,5 +1,10 @@
 defmodule PortalAPI.Schemas.Site do
   alias OpenApiSpex.Schema
+  require Protocol
+
+  Protocol.derive(PortalAPI.JSON.Encoder, Portal.Site,
+    except: [:account_id, :health_threshold, :managed_by, :inserted_at, :updated_at]
+  )
 
   defmodule Schema do
     require OpenApiSpex

@@ -1,5 +1,16 @@
 defmodule PortalAPI.Schemas.Group do
   alias OpenApiSpex.Schema
+  require Protocol
+
+  Protocol.derive(PortalAPI.JSON.Encoder, Portal.Group,
+    except: [:account_id, :type],
+    mapper: &PortalAPI.Schemas.Group.map/2
+  )
+
+  def map(%Portal.Group{sync_state: %Portal.GroupSyncState{synced_at: synced_at}}, _map),
+    do: %{synced_at: synced_at}
+
+  def map(%Portal.Group{}, _map), do: %{synced_at: nil}
 
   defmodule Schema do
     require OpenApiSpex
