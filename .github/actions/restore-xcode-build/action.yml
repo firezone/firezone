@@ -59,16 +59,15 @@ runs:
     # date its predecessor had been built under, was not recompiled, and the run
     # photographed the predecessor.
     - name: Date the sources by their content
-      shell: bash
+      shell: python3 {0}
       run: |
-        python3 - swift/apple <<'PY'
-        import hashlib, os, sys
+        import hashlib, os
 
         # Ten years of seconds from 1990: safely in the past, and far more values
         # than the few hundred files that have to stay apart.
         EPOCH, WINDOW = 631152000, 315360000
 
-        for directory, _, names in os.walk(sys.argv[1]):
+        for directory, _, names in os.walk("swift/apple"):
             for name in names:
                 path = os.path.join(directory, name)
                 if os.path.islink(path):
@@ -77,4 +76,3 @@ runs:
                     digest = hashlib.sha256(handle.read()).digest()
                 date = (EPOCH + int.from_bytes(digest, "big") % WINDOW) * 10**9
                 os.utime(path, ns=(date, date))
-        PY
