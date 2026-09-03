@@ -10,6 +10,7 @@ jobs:
         working-directory: ./elixir
     permissions:
       checks: write # dorny/test-reporter
+      pull-requests: write # breaking OpenAPI changes comment
     env:
       MIX_ENV: test
       POSTGRES_HOST: localhost
@@ -162,13 +163,25 @@ jobs:
           # Keep the spec in CI: no upload to oasdiff.com and no PR comment.
           review: "false"
           github-token: ""
-      - name: Summarize breaking OpenAPI changes
-        if: github.base_ref != '' && steps.oasdiff.outputs.breaking != ''
+      # One comment per PR, updated on every run, so a breaking change is seen
+      # in the review rather than buried in a job summary.
+      - name: Comment on breaking OpenAPI changes
+        if: github.base_ref != '' && github.event.pull_request.number
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BREAKING: ${{ steps.oasdiff.outputs.breaking }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
-          {
-            echo "## Breaking OpenAPI changes"
-            echo
-            echo '```'
-            echo "${{ steps.oasdiff.outputs.breaking }}"
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
+          marker="<!-- openapi-breaking-changes -->"
+          if [[ -n "$BREAKING" ]]; then
+            body=$(printf '%s\n## :warning: Breaking OpenAPI changes\n\nThis PR changes the REST API in a way that can break generated clients:\n\n```\n%s\n```\n' "$marker" "$BREAKING")
+          else
+            body=$(printf '%s\n## Breaking OpenAPI changes\n\nNone on the latest run.\n' "$marker")
+          fi
+          existing=$(gh api "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" --paginate \
+            --jq ".[] | select(.body | startswith(\"$marker\")) | .id" | head -n1)
+          if [[ -n "$existing" ]]; then
+            gh api --method PATCH "repos/${GITHUB_REPOSITORY}/issues/comments/${existing}" -f body="$body" >/dev/null
+          elif [[ -n "$BREAKING" ]]; then
+            gh api --method POST "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" -f body="$body" >/dev/null
+          fi

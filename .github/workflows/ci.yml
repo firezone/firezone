@@ -350,6 +350,7 @@ jobs:
     secrets: inherit
     permissions:
       checks: write # dorny/test-reporter
+      pull-requests: write # breaking OpenAPI changes comment
 
   monitor-elixir:
     needs: [elixir]
