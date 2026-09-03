@@ -71,7 +71,11 @@ defmodule Portal.Entra.Subscriptions do
   Returns the URL Graph posts change and lifecycle notifications to.
   """
   def notification_url(directory_id) do
-    base = Portal.Config.fetch_env!(:portal, :api_external_url) |> String.trim_trailing("/")
+    base =
+      (Portal.Config.get_env(:portal, :rest_api_url) ||
+         Portal.Config.fetch_env!(:portal, :api_external_url))
+      |> String.trim_trailing("/")
+
     "#{base}/integrations/entra/webhooks?directory_id=#{directory_id}"
   end
 

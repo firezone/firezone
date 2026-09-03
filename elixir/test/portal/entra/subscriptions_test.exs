@@ -16,6 +16,7 @@ defmodule Portal.Entra.SubscriptionsTest do
 
   describe "perform/1 ensure" do
     test "creates both subscriptions and stores their ids", %{account: account} do
+      Portal.Config.put_env_override(:portal, :rest_api_url, "https://api.example.com/")
       directory = entra_directory_fixture(account: account)
       stub_graph()
 
@@ -27,8 +28,10 @@ defmodule Portal.Entra.SubscriptionsTest do
       assert directory.groups_subscription_id == "sub-/groups"
       assert_in_delta DateTime.diff(directory.subscriptions_expire_at, DateTime.utc_now(), :day), 28, 1
 
-      expected_url = Subscriptions.notification_url(directory.id)
-      assert expected_url =~ "/integrations/entra/webhooks?directory_id=#{directory.id}"
+      expected_url =
+        "https://api.example.com/integrations/entra/webhooks?directory_id=#{directory.id}"
+
+      assert Subscriptions.notification_url(directory.id) == expected_url
 
       assert_received {:graph, "POST", "/v1.0/subscriptions", body}
       assert body["resource"] in ["/users", "/groups"]
@@ -142,6 +145,11 @@ defmodule Portal.Entra.SubscriptionsTest do
 
       refute_received {:graph, _method, _path, _body}
     end
+  end
+
+  test "notification_url falls back to the API URL without a REST API URL" do
+    assert Subscriptions.notification_url("dir") ==
+             "http://localhost:13001/integrations/entra/webhooks?directory_id=dir"
   end
 
   describe "perform/1 delete" do
