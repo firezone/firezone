@@ -17,7 +17,6 @@ defmodule PortalWeb.Resources.Components do
     ]
 
   alias __MODULE__.Database
-  alias Portal.Presence
 
   @resource_types %{
     internet: %{index: 1, label: nil},
@@ -980,8 +979,8 @@ defmodule PortalWeb.Resources.Components do
   attr :pool_member_ids, :list, default: []
   attr :pool_devices, :list, default: []
   attr :devices_expanded_id, :string, default: nil
-  attr :online_device_ids, :any, default: %MapSet{}
-  attr :presence_tick, :integer, default: 0
+  attr :online_ids, :any, default: %MapSet{}
+  attr :online_site_ids, :any, default: %MapSet{}
   attr :groups, :list, default: []
   attr :policy_authorizations, :list, default: []
   attr :policy_authorizations_page, :integer, default: 1
@@ -1007,9 +1006,9 @@ defmodule PortalWeb.Resources.Components do
               </h2>
               <.resource_status_badge
                 resource={@resource}
-                presence_tick={@presence_tick}
+                online_site_ids={@online_site_ids}
                 pool_member_ids={@pool_member_ids}
-                online_device_ids={@online_device_ids}
+                online_ids={@online_ids}
               />
             </div>
             <p
@@ -1046,8 +1045,8 @@ defmodule PortalWeb.Resources.Components do
             :if={@tab == :devices}
             account={@account}
             devices={@pool_devices}
-            online_device_ids={@online_device_ids}
-            presence_tick={@presence_tick}
+            online_ids={@online_ids}
+            online_site_ids={@online_site_ids}
             expanded_id={@devices_expanded_id}
           />
           <.resource_access_list
@@ -1075,7 +1074,7 @@ defmodule PortalWeb.Resources.Components do
         <.resource_sidebar
           account={@account}
           resource={@resource}
-          presence_tick={@presence_tick}
+          online_site_ids={@online_site_ids}
           ui_state={@ui_state}
         />
       </div>
@@ -1170,8 +1169,8 @@ defmodule PortalWeb.Resources.Components do
 
   attr :account, :any, required: true
   attr :devices, :list, default: []
-  attr :online_device_ids, :any, default: %MapSet{}
-  attr :presence_tick, :integer, default: 0
+  attr :online_ids, :any, default: %MapSet{}
+  attr :online_site_ids, :any, default: %MapSet{}
   attr :expanded_id, :string, default: nil
 
   def resource_devices_tab(assigns) do
@@ -1229,7 +1228,7 @@ defmodule PortalWeb.Resources.Components do
                 <td class="px-4 py-2">
                   <.device_status_badge
                     device={device}
-                    online?={MapSet.member?(@online_device_ids, device.id)}
+                    online?={MapSet.member?(@online_ids, device.id)}
                   />
                 </td>
                 <td class="px-4 py-2 text-subtle">
@@ -1845,7 +1844,7 @@ defmodule PortalWeb.Resources.Components do
 
   attr :account, :any, required: true
   attr :resource, :any, required: true
-  attr :presence_tick, :integer, default: 0
+  attr :online_site_ids, :any, default: %MapSet{}
   attr :ui_state, :map, required: true
 
   def resource_sidebar(assigns) do
@@ -1944,7 +1943,7 @@ defmodule PortalWeb.Resources.Components do
                   {@resource.site.name}
                 </.link>
                 <span
-                  :if={resource_online?(@resource, @presence_tick)}
+                  :if={resource_online?(@resource, @online_site_ids)}
                   class="relative flex items-center justify-center w-1.5 h-1.5"
                 >
                   <span class="absolute inline-flex rounded-full opacity-60 animate-ping w-1.5 h-1.5 bg-success">
@@ -2012,26 +2011,18 @@ defmodule PortalWeb.Resources.Components do
     |> to_form(as: :policy)
   end
 
-  @spec resource_online?(map(), integer()) :: boolean()
-  def resource_online?(resource, _presence_tick \\ 0)
-  def resource_online?(%{site_id: nil}, _presence_tick), do: false
-
-  def resource_online?(%{site_id: site_id}, _presence_tick) do
-    Presence.Gateways.Site.list(site_id) |> map_size() > 0
-  end
-
-  @spec resource_status(map(), integer()) :: :online | :offline
-  def resource_status(resource, presence_tick \\ 0) do
-    if resource_online?(resource, presence_tick), do: :online, else: :offline
+  @spec resource_online?(map(), MapSet.t()) :: boolean()
+  def resource_online?(%{site_id: site_id}, online_site_ids) do
+    MapSet.member?(online_site_ids, site_id)
   end
 
   attr :resource, :any, required: true
-  attr :presence_tick, :integer, default: 0
+  attr :online_site_ids, :any, default: %MapSet{}
   attr :pool_member_ids, :list, default: []
-  attr :online_device_ids, :any, default: %MapSet{}
+  attr :online_ids, :any, default: %MapSet{}
 
   def resource_status_badge(%{resource: %{type: :static_device_pool}} = assigns) do
-    online = Enum.count(assigns.pool_member_ids, &MapSet.member?(assigns.online_device_ids, &1))
+    online = Enum.count(assigns.pool_member_ids, &MapSet.member?(assigns.online_ids, &1))
     assigns = assign(assigns, online: online, total: length(assigns.pool_member_ids))
 
     ~H"""
@@ -2045,7 +2036,7 @@ defmodule PortalWeb.Resources.Components do
   end
 
   def resource_status_badge(assigns) do
-    assigns = assign(assigns, :online?, resource_online?(assigns.resource, assigns.presence_tick))
+    assigns = assign(assigns, :online?, resource_online?(assigns.resource, assigns.online_site_ids))
 
     ~H"""
     <.status_badge style={if @online?, do: :success, else: :neutral}>
@@ -2135,7 +2126,7 @@ defmodule PortalWeb.Resources.Components do
 
     def search_devices(search_term, subject, selected_devices) do
       selected_ids = Enum.map(selected_devices, & &1.id)
-      online_ids = Portal.Presence.Clients.online_client_ids(subject.account.id)
+      online_ids = Portal.Presence.Devices.online_ids(subject.account.id)
       pattern = "%#{search_term}%"
 
       query =

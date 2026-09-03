@@ -132,7 +132,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
 
     # Return all connected relays and subscribe to global relay presence
     {:ok, relays} = select_relays(socket)
-    :ok = Presence.Relays.Global.subscribe()
+    :ok = Presence.Relays.subscribe()
 
     account = Database.get_account_by_id!(socket.assigns.gateway.account_id)
 
@@ -183,7 +183,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
   def handle_info(
         %Phoenix.Socket.Broadcast{
           event: "presence_diff",
-          topic: "presences:global_relays" <> _
+          topic: "presences:relays" <> _
         },
         socket
       ) do
@@ -1149,17 +1149,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
       sup_pid ->
         gateway = socket.assigns.gateway
 
-        session_meta = %{
-          site_id: gateway.site_id,
-          public_key: gateway.public_key,
-          psk_base: gateway.psk_base,
-          version: gateway.last_seen_version,
-          remote_ip: gateway.last_seen_remote_ip,
-          remote_ip_location_lat: gateway.last_seen_remote_ip_location_lat,
-          remote_ip_location_lon: gateway.last_seen_remote_ip_location_lon
-        }
-
-        :ok = Presence.Gateways.connect(gateway, socket.assigns.token_id, session_meta)
+        :ok = Presence.Devices.connect(gateway, socket.assigns.token_id)
 
         for {_pid, ref} <- socket.assigns[:presence_monitors] || [] do
           Process.demonitor(ref, [:flush])

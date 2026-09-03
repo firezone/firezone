@@ -33,13 +33,12 @@ defmodule PortalWeb.Resources do
 
     if connected?(socket) do
       :ok = PubSub.Changes.subscribe(socket.assigns.account.id, :resources)
-      :ok = Presence.Gateways.Account.subscribe(socket.assigns.account.id)
+      :ok = Presence.Devices.Account.subscribe(socket.assigns.account.id)
     end
 
     socket =
       socket
       |> assign(stale: false)
-      |> assign(presence_tick: 0)
       |> assign(page_title: "Resources")
       |> assign_async(:resources_count, fn -> {:ok, %{resources_count: Database.count_resources(subject)}} end)
       |> assign(
@@ -47,7 +46,8 @@ defmodule PortalWeb.Resources do
         selected_resource_pool_member_ids: [],
         selected_resource_pool_devices: [],
         devices_expanded_id: nil,
-        online_device_ids: MapSet.new(),
+        online_ids: MapSet.new(),
+        online_site_ids: MapSet.new(),
         selected_groups: [],
         policy_authorizations: [],
         policy_authorizations_page: 1,
@@ -359,7 +359,8 @@ defmodule PortalWeb.Resources do
          internet_resource: internet_resource,
          resource_policy_counts: resource_policy_counts,
          device_pool_members: device_pool_members,
-         online_device_ids: online_device_ids(socket.assigns.account.id),
+         online_ids: online_ids(socket.assigns.account.id),
+         online_site_ids: Presence.Devices.online_site_ids(socket.assigns.account.id),
          resources_metadata: metadata
        )}
     end
@@ -465,7 +466,7 @@ defmodule PortalWeb.Resources do
               </td>
               <td class="px-4 py-3 text-body text-xs">Internet</td>
               <td class="px-4 py-3">
-                <.resource_status_badge resource={@internet_resource} presence_tick={@presence_tick} />
+                <.resource_status_badge resource={@internet_resource} online_site_ids={@online_site_ids} />
               </td>
             </tr>
           </:prepend_rows>
@@ -551,9 +552,9 @@ defmodule PortalWeb.Resources do
           <:col :let={resource} label="Status" class="w-32">
             <.resource_status_badge
               resource={resource}
-              presence_tick={@presence_tick}
+              online_site_ids={@online_site_ids}
               pool_member_ids={Map.get(@device_pool_members, resource.id, [])}
-              online_device_ids={@online_device_ids}
+              online_ids={@online_ids}
             />
           </:col>
           <:empty>
@@ -596,8 +597,8 @@ defmodule PortalWeb.Resources do
             pool_member_ids={@selected_resource_pool_member_ids}
             pool_devices={@selected_resource_pool_devices}
             devices_expanded_id={@devices_expanded_id}
-            online_device_ids={@online_device_ids}
-            presence_tick={@presence_tick}
+            online_ids={@online_ids}
+            online_site_ids={@online_site_ids}
             groups={@selected_groups}
             policy_authorizations={@policy_authorizations}
             policy_authorizations_page={@policy_authorizations_page}
@@ -1264,18 +1265,19 @@ defmodule PortalWeb.Resources do
   def handle_info(%Phoenix.Socket.Broadcast{event: event}, socket)
       when event in ["presence_diff", "presence_state"] do
     {:noreply,
-     socket
-     |> update(:presence_tick, &(&1 + 1))
-     |> assign(online_device_ids: online_device_ids(socket.assigns.account.id))}
+     assign(socket,
+       online_ids: online_ids(socket.assigns.account.id),
+       online_site_ids: Presence.Devices.online_site_ids(socket.assigns.account.id)
+     )}
   end
 
   def handle_info(_, socket) do
     {:noreply, socket}
   end
 
-  defp online_device_ids(account_id) do
+  defp online_ids(account_id) do
     account_id
-    |> Presence.Clients.online_client_ids()
+    |> Presence.Devices.online_ids()
     |> MapSet.new()
   end
 
@@ -1524,7 +1526,7 @@ defmodule PortalWeb.Resources do
           []
 
         devices ->
-          Portal.Presence.Clients.preload_clients_presence(devices)
+          Portal.Presence.Devices.preload_presence(devices)
       end
     end
 

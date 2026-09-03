@@ -406,7 +406,7 @@ config :portal, docker_registry: "ghcr.io/firezone"
 
 config :portal, outbound_email_adapter_configured?: false
 
-config :portal, relay_presence_topic: "presences:global_relays"
+config :portal, relay_presence_topic: "presences:relays"
 
 config :portal, region: ""
 

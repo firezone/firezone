@@ -496,7 +496,7 @@ defmodule PortalWeb.ResourcesTest do
       end
 
       online_device = client_fixture(account: account, actor: actor, name: "Bulk Online")
-      :ok = Portal.Presence.Clients.Account.track(account.id, online_device.id)
+      :ok = Portal.Presence.Devices.Account.track(online_device)
 
       results = PortalWeb.Resources.Components.Database.search_devices("Bulk", subject, [])
 
@@ -1387,7 +1387,7 @@ defmodule PortalWeb.ResourcesTest do
       resource =
         static_device_pool_resource_fixture(account: account, devices: [device])
 
-      :ok = Portal.Presence.Clients.Account.track(account.id, device.id)
+      :ok = Portal.Presence.Devices.Account.track(device)
 
       {:ok, _lv, html} =
         conn

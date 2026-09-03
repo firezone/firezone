@@ -41,13 +41,10 @@ defmodule Portal.Workers.OutdatedGateways do
   end
 
   defp all_online_gateways_for_account(account) do
-    gateways_by_id =
-      Database.all_gateways_for_account!(account)
-      |> Enum.group_by(& &1.id)
+    online_ids = Portal.Presence.Devices.online_ids(account.id, :gateway)
 
-    Database.all_sites_for_account!(account)
-    |> Enum.flat_map(&Database.all_online_gateway_ids_by_site_id!(&1.id))
-    |> Enum.flat_map(&Map.get(gateways_by_id, &1))
+    Database.all_gateways_for_account!(account)
+    |> Enum.filter(&(&1.id in online_ids))
   end
 
   defp send_notifications([], _account, _incompatible_client_count) do
@@ -197,17 +194,5 @@ defmodule Portal.Workers.OutdatedGateways do
       |> Safe.all()
     end
 
-    def all_sites_for_account!(account) do
-      from(g in Portal.Site,
-        where: g.account_id == ^account.id
-      )
-      |> Safe.unscoped()
-      |> Safe.all()
-    end
-
-    def all_online_gateway_ids_by_site_id!(site_id) do
-      Portal.Presence.Gateways.Site.list(site_id)
-      |> Map.keys()
-    end
   end
 end
