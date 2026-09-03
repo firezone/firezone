@@ -1,8 +1,5 @@
 defmodule PortalAPI.Schemas.SantaDevice do
   alias OpenApiSpex.Schema
-  require Protocol
-
-  Protocol.derive(PortalAPI.JSON.Encoder, Portal.Santa.Device)
 
   defmodule Schema do
     require OpenApiSpex
@@ -87,6 +84,7 @@ defmodule PortalAPI.Schemas.SantaDevice do
                   {field, schema}
                 end)
 
+    @derive {PortalAPI.JSON.Encoder, for: Portal.Santa.Device}
     OpenApiSpex.schema(%{
       title: "SantaDevice",
       description: "Santa host synced from North Pole Security Workshop",

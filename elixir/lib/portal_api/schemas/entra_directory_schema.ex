@@ -1,13 +1,11 @@
 defmodule PortalAPI.Schemas.EntraDirectory do
   alias OpenApiSpex.Schema
-  require Protocol
-
-  Protocol.derive(PortalAPI.JSON.Encoder, Portal.Entra.Directory, except: [:error_email_count, :groups_subscription_id, :is_verified, :subscriptions_expire_at, :users_subscription_id])
 
   defmodule Schema do
     require OpenApiSpex
     alias OpenApiSpex.Schema
 
+    @derive {PortalAPI.JSON.Encoder, for: Portal.Entra.Directory}
     OpenApiSpex.schema(%{
       title: "EntraDirectory",
       description: "Entra Directory",

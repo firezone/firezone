@@ -1,8 +1,5 @@
 defmodule PortalAPI.Schemas.IruDevice do
   alias OpenApiSpex.Schema
-  require Protocol
-
-  Protocol.derive(PortalAPI.JSON.Encoder, Portal.Iru.Device)
 
   defmodule Schema do
     require OpenApiSpex
@@ -131,6 +128,7 @@ defmodule PortalAPI.Schemas.IruDevice do
                   {field, schema}
                 end)
 
+    @derive {PortalAPI.JSON.Encoder, for: Portal.Iru.Device}
     OpenApiSpex.schema(%{
       title: "IruDevice",
       description: "Device synced from Iru (formerly Kandji)",

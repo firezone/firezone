@@ -1,51 +1,10 @@
 defmodule PortalAPI.Schemas.Log do
-  require Protocol
-
-  Protocol.derive(PortalAPI.JSON.Encoder, Portal.ChangeLog,
-    except: [:account_id, :lsn, :seq, :vsn],
-    mapper: &PortalAPI.Schemas.Log.map/2
-  )
-
-  Protocol.derive(PortalAPI.JSON.Encoder, Portal.SessionLog,
-    except: [:account_id, :seq],
-    mapper: &PortalAPI.Schemas.Log.map/2
-  )
-
-  Protocol.derive(PortalAPI.JSON.Encoder, Portal.FlowLog,
-    except: [:account_id, :seq, :start_seq, :inserted_at, :domain, :inner_src_ip, :inner_dst_ip, :outers],
-    mapper: &PortalAPI.Schemas.Log.map/2
-  )
-
-  Protocol.derive(PortalAPI.JSON.Encoder, Portal.APIRequestLog,
-    except: [:account_id, :seq, :inserted_at, :ip],
-    mapper: &PortalAPI.Schemas.Log.map/2
-  )
-
-  def map(%Portal.ChangeLog{}, _map), do: %{type: "change"}
-  def map(%Portal.SessionLog{}, _map), do: %{type: "session"}
-
-  def map(%Portal.FlowLog{} = log, _map) do
-    %{
-      type: "flow",
-      timestamp: log.inserted_at,
-      inner_domain: log.domain,
-      inner_src_ip: log.inner_src_ip && "#{log.inner_src_ip}",
-      inner_dst_ip: log.inner_dst_ip && "#{log.inner_dst_ip}",
-      outers: outers(log)
-    }
-  end
-
-  def map(%Portal.APIRequestLog{} = log, _map) do
-    %{type: "api_request", timestamp: log.inserted_at, ip: log.ip && "#{log.ip}"}
-  end
-
-  defp outers(%Portal.FlowLog{flow_end: nil}), do: nil
-  defp outers(%Portal.FlowLog{outers: outers}), do: Portal.FlowLog.outers_to_maps(outers)
   defmodule Change do
     require OpenApiSpex
     alias OpenApiSpex.Schema
     alias PortalAPI.Schemas
 
+    @derive {PortalAPI.JSON.Encoder, for: Portal.ChangeLog}
     OpenApiSpex.schema(%{
       title: "ChangeLog",
       description: """
@@ -115,6 +74,8 @@ defmodule PortalAPI.Schemas.Log do
         "subject" => nil
       }
     })
+
+    def map(%Portal.ChangeLog{}, _map), do: %{type: "change"}
   end
 
   defmodule Session do
@@ -123,6 +84,7 @@ defmodule PortalAPI.Schemas.Log do
     alias PortalAPI.Schemas
     alias PortalAPI.Schemas.SessionSubject
 
+    @derive {PortalAPI.JSON.Encoder, for: Portal.SessionLog}
     OpenApiSpex.schema(%{
       title: "SessionLog",
       description: """
@@ -188,12 +150,15 @@ defmodule PortalAPI.Schemas.Log do
         }
       }
     })
+
+    def map(%Portal.SessionLog{}, _map), do: %{type: "session"}
   end
 
   defmodule Flow do
     require OpenApiSpex
     alias OpenApiSpex.Schema
 
+    @derive {PortalAPI.JSON.Encoder, for: Portal.FlowLog}
     OpenApiSpex.schema(%{
       title: "FlowLog",
       description: """
@@ -518,12 +483,27 @@ defmodule PortalAPI.Schemas.Log do
         "tx_bytes" => 20_480
       }
     })
+
+    def map(%Portal.FlowLog{} = log, _map) do
+      %{
+        type: "flow",
+        timestamp: log.inserted_at,
+        inner_domain: log.domain,
+        inner_src_ip: log.inner_src_ip && "#{log.inner_src_ip}",
+        inner_dst_ip: log.inner_dst_ip && "#{log.inner_dst_ip}",
+        outers: outers(log)
+      }
+    end
+
+    defp outers(%Portal.FlowLog{flow_end: nil}), do: nil
+    defp outers(%Portal.FlowLog{outers: outers}), do: Portal.FlowLog.outers_to_maps(outers)
   end
 
   defmodule APIRequest do
     require OpenApiSpex
     alias OpenApiSpex.Schema
 
+    @derive {PortalAPI.JSON.Encoder, for: Portal.APIRequestLog}
     OpenApiSpex.schema(%{
       title: "APIRequestLog",
       description: """
@@ -601,6 +581,10 @@ defmodule PortalAPI.Schemas.Log do
         "ip_lon" => -99.1332
       }
     })
+
+    def map(%Portal.APIRequestLog{} = log, _map) do
+      %{type: "api_request", timestamp: log.inserted_at, ip: log.ip && "#{log.ip}"}
+    end
   end
 
   defmodule Item do

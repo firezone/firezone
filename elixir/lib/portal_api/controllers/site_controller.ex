@@ -34,7 +34,7 @@ defmodule PortalAPI.SiteController do
     with {:ok, list_opts} <- Pagination.params_to_list_opts(params),
          list_opts = Keyword.put(list_opts, :filter, coerce_filters(params)),
          {:ok, sites, metadata} <- Database.list_sites(conn.assigns.subject, list_opts) do
-      json(conn, %{data: JSON.encode(sites), metadata: Pagination.metadata(metadata)})
+      json(conn, JSON.encode(sites, metadata))
     else
       error -> Error.handle(conn, error)
     end
@@ -65,7 +65,7 @@ defmodule PortalAPI.SiteController do
   @spec show(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def show(conn, %{"id" => id}) do
     with {:ok, site} <- Database.fetch_site(id, conn.assigns.subject) do
-      json(conn, %{data: JSON.encode(site)})
+      json(conn, JSON.encode(site))
     else
       error -> Error.handle(conn, error)
     end
@@ -97,7 +97,7 @@ defmodule PortalAPI.SiteController do
       conn
       |> put_status(:created)
       |> put_resp_header("location", ~p"/sites/#{site}")
-      |> json(%{data: JSON.encode(site)})
+      |> json(JSON.encode(site))
     else
       error -> Error.handle(conn, error)
     end
@@ -150,7 +150,7 @@ defmodule PortalAPI.SiteController do
     with {:ok, site} <- Database.fetch_site(id, subject),
          :ok <- validate_not_system_managed(site),
          {:ok, site} <- Database.update_site(site, params, subject) do
-      json(conn, %{data: JSON.encode(site)})
+      json(conn, JSON.encode(site))
     else
       error -> Error.handle(conn, error)
     end
@@ -190,7 +190,7 @@ defmodule PortalAPI.SiteController do
     with {:ok, site} <- Database.fetch_site(id, subject),
          :ok <- validate_not_system_managed(site),
          {:ok, site} <- Database.delete_site(site, subject) do
-      json(conn, %{data: JSON.encode(site)})
+      json(conn, JSON.encode(site))
     else
       error -> Error.handle(conn, error)
     end

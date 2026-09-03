@@ -1,18 +1,11 @@
 defmodule PortalAPI.Schemas.SantaPostureProvider do
   alias OpenApiSpex.Schema
-  require Protocol
-
-  Protocol.derive(PortalAPI.JSON.Encoder, Portal.Santa.PostureProvider,
-    except: [:error_email_count],
-    mapper: &PortalAPI.Schemas.SantaPostureProvider.map/2
-  )
-
-  def map(%Portal.Santa.PostureProvider{posture_provider: %{name: name}}, _map), do: %{type: "santa", name: name}
 
   defmodule Schema do
     require OpenApiSpex
     alias OpenApiSpex.Schema
 
+    @derive {PortalAPI.JSON.Encoder, for: Portal.Santa.PostureProvider}
     OpenApiSpex.schema(%{
       title: "SantaPostureProvider",
       description: "Santa posture provider backed by North Pole Security Workshop",
@@ -48,6 +41,8 @@ defmodule PortalAPI.Schemas.SantaPostureProvider do
         :updated_at
       ]
     })
+
+    def map(%Portal.Santa.PostureProvider{posture_provider: %{name: name}}, _map), do: %{type: "santa", name: name}
   end
 
   defmodule Response do

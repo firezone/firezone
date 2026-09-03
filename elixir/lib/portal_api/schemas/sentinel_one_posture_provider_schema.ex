@@ -1,18 +1,11 @@
 defmodule PortalAPI.Schemas.SentinelOnePostureProvider do
   alias OpenApiSpex.Schema
-  require Protocol
-
-  Protocol.derive(PortalAPI.JSON.Encoder, Portal.SentinelOne.PostureProvider,
-    except: [:error_email_count],
-    mapper: &PortalAPI.Schemas.SentinelOnePostureProvider.map/2
-  )
-
-  def map(%Portal.SentinelOne.PostureProvider{posture_provider: %{name: name}}, _map), do: %{type: "sentinelone", name: name}
 
   defmodule Schema do
     require OpenApiSpex
     alias OpenApiSpex.Schema
 
+    @derive {PortalAPI.JSON.Encoder, for: Portal.SentinelOne.PostureProvider}
     OpenApiSpex.schema(%{
       title: "SentinelOnePostureProvider",
       description: "SentinelOne posture provider",
@@ -48,6 +41,8 @@ defmodule PortalAPI.Schemas.SentinelOnePostureProvider do
         :updated_at
       ]
     })
+
+    def map(%Portal.SentinelOne.PostureProvider{posture_provider: %{name: name}}, _map), do: %{type: "sentinelone", name: name}
   end
 
   defmodule Response do

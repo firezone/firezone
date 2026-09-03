@@ -1,13 +1,11 @@
 defmodule PortalAPI.Schemas.EmailOTPAuthProvider do
   alias OpenApiSpex.Schema
-  require Protocol
-
-  Protocol.derive(PortalAPI.JSON.Encoder, Portal.EmailOTP.AuthProvider)
 
   defmodule Schema do
     require OpenApiSpex
     alias OpenApiSpex.Schema
 
+    @derive {PortalAPI.JSON.Encoder, for: Portal.EmailOTP.AuthProvider}
     OpenApiSpex.schema(%{
       title: "EmailOTPAuthProvider",
       description: "Email OTP Auth Provider",

@@ -45,7 +45,7 @@ defmodule PortalAPI.IntuneDeviceController do
   def index(conn, params) do
     with {:ok, opts} <- Pagination.params_to_list_opts(params),
          {:ok, devices, metadata} <- Database.list_devices(conn.assigns.subject, opts) do
-      json(conn, %{data: JSON.encode(devices), metadata: Pagination.metadata(metadata)})
+      json(conn, JSON.encode(devices, metadata))
     else
       error -> Error.handle(conn, error)
     end
@@ -53,7 +53,7 @@ defmodule PortalAPI.IntuneDeviceController do
 
   def show(conn, %{"id" => id}) do
     with {:ok, device} <- Database.fetch_device(id, conn.assigns.subject) do
-      json(conn, %{data: JSON.encode(device)})
+      json(conn, JSON.encode(device))
     else
       error -> Error.handle(conn, error)
     end

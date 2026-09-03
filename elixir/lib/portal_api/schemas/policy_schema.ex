@@ -1,18 +1,5 @@
 defmodule PortalAPI.Schemas.Policy do
   alias OpenApiSpex.Schema
-  require Protocol
-
-  Protocol.derive(PortalAPI.JSON.Encoder, Portal.Policy,
-    except: [:account_id, :group_idp_id, :inserted_at, :updated_at],
-    mapper: &PortalAPI.Schemas.Policy.map/2
-  )
-
-  def map(%Portal.Policy{conditions: conditions}, _map) do
-    %{
-      conditions:
-        Enum.map(conditions, &%{property: &1.property, operator: &1.operator, values: &1.values})
-    }
-  end
 
   defmodule Condition do
     require OpenApiSpex
@@ -173,11 +160,12 @@ defmodule PortalAPI.Schemas.Policy do
     })
   end
 
-  defmodule ResponseSchema do
+  defmodule Schema do
     require OpenApiSpex
     alias OpenApiSpex.Schema
     alias PortalAPI.Schemas.Policy
 
+    @derive {PortalAPI.JSON.Encoder, for: Portal.Policy}
     OpenApiSpex.schema(%{
       title: "Policy",
       description: "Policy",
@@ -235,6 +223,13 @@ defmodule PortalAPI.Schemas.Policy do
         ]
       }
     })
+
+    def map(%Portal.Policy{conditions: conditions}, _map) do
+      %{
+        conditions:
+          Enum.map(conditions, &%{property: &1.property, operator: &1.operator, values: &1.values})
+      }
+    end
   end
 
   defmodule CreateRequest do
@@ -305,7 +300,7 @@ defmodule PortalAPI.Schemas.Policy do
       description: "Response schema for single Policy",
       type: :object,
       properties: %{
-        data: Policy.ResponseSchema
+        data: Policy.Schema
       },
       example: %{
         "data" => %{
@@ -338,7 +333,7 @@ defmodule PortalAPI.Schemas.Policy do
       description: "Response schema for multiple Policies",
       type: :object,
       properties: %{
-        data: %Schema{description: "Policy details", type: :array, items: Policy.ResponseSchema},
+        data: %Schema{description: "Policy details", type: :array, items: Policy.Schema},
         metadata: PaginationMetadata
       }
     })

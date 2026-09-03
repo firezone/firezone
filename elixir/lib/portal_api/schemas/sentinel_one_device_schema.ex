@@ -1,8 +1,5 @@
 defmodule PortalAPI.Schemas.SentinelOneDevice do
   alias OpenApiSpex.Schema
-  require Protocol
-
-  Protocol.derive(PortalAPI.JSON.Encoder, Portal.SentinelOne.Device)
 
   defmodule Schema do
     require OpenApiSpex
@@ -160,6 +157,7 @@ defmodule PortalAPI.Schemas.SentinelOneDevice do
                   {field, schema}
                 end)
 
+    @derive {PortalAPI.JSON.Encoder, for: Portal.SentinelOne.Device}
     OpenApiSpex.schema(%{
       title: "SentinelOneDevice",
       description: "Endpoint agent synced from SentinelOne",

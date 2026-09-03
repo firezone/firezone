@@ -11,35 +11,28 @@ defmodule PortalAPI.Schemas.ContractTest do
 
   alias OpenApiSpex.Schema
 
-  # `extras` are properties the controller adds after encoding. `optional` ones
-  # are omitted when nil, so a bare struct does not carry them. `aliases` map a
+  # `extras` are properties the controller adds after encoding. `aliases` map a
   # property to the struct field it is read from. `attrs` give a bare struct
   # whatever its mapper needs.
   @contracts [
     %{schema: PortalAPI.Schemas.Account.Schema, struct: Portal.Account, extras: [:limits]},
-    %{schema: PortalAPI.Schemas.Actor.Schema, struct: Portal.Actor, as: :actor},
-    %{schema: PortalAPI.Schemas.Membership.Schema, struct: Portal.Actor, as: :membership},
+    %{schema: PortalAPI.Schemas.Actor.Schema, struct: Portal.Actor},
+    %{schema: PortalAPI.Schemas.Membership.Schema, struct: Portal.Actor},
     %{schema: PortalAPI.Schemas.Site.Schema, struct: Portal.Site},
     %{schema: PortalAPI.Schemas.Group.Schema, struct: Portal.Group, attrs: %{sync_state: nil}},
-    %{schema: PortalAPI.Schemas.Policy.ResponseSchema, struct: Portal.Policy},
-    %{
-      schema: PortalAPI.Schemas.Resource.Schema,
-      struct: Portal.Resource,
-      optional: [:ip_stack, :site_id]
-    },
+    %{schema: PortalAPI.Schemas.Policy.Schema, struct: Portal.Policy},
+    %{schema: PortalAPI.Schemas.Resource.Schema, struct: Portal.Resource},
     %{
       schema: PortalAPI.Schemas.Client.GetSchema,
       struct: Portal.Device,
-      as: :client,
       aliases: [online: :online?, created_at: :inserted_at]
     },
     %{
       schema: PortalAPI.Schemas.Gateway.Schema,
       struct: Portal.Device,
-      as: :gateway,
       aliases: [online: :online?, rotated_at: :gateway_token_rotated_at]
     },
-    %{schema: PortalAPI.Schemas.PoolMember.Schema, struct: Portal.Device, as: :pool_member},
+    %{schema: PortalAPI.Schemas.PoolMember.Schema, struct: Portal.Device},
     %{schema: PortalAPI.Schemas.ClientToken.Schema, struct: Portal.ClientToken},
     %{
       schema: PortalAPI.Schemas.ClientToken.ResponseSchema,
@@ -106,20 +99,29 @@ defmodule PortalAPI.Schemas.ContractTest do
   ]
 
   for contract <- @contracts do
-    @contract Map.merge(%{extras: [], aliases: [], attrs: %{}, optional: []}, contract)
+    @contract Map.merge(%{extras: [], aliases: [], attrs: %{}}, contract)
 
     describe "#{inspect(contract.schema)} against #{inspect(contract.struct)}" do
       test "encodes exactly the documented properties" do
-        encoded = @contract.struct |> struct(@contract.attrs) |> PortalAPI.JSON.encode(opts(@contract))
-        documented = Map.keys(@contract.schema.schema().properties)
-        emitted = Enum.uniq(Map.keys(encoded) ++ @contract.extras ++ @contract.optional)
+        schema = @contract.schema.schema()
 
-        assert Enum.sort(emitted) == Enum.sort(documented),
-               """
-               #{inspect(@contract.schema)} and the encoder for #{inspect(@contract.struct)} disagree.
-                 encoded but not documented: #{inspect(Enum.sort(emitted -- documented))}
-                 documented but not encoded: #{inspect(Enum.sort(documented -- emitted))}
-               """
+        encoded =
+          PortalAPI.JSON.Encoder.encode(
+            struct(@contract.schema),
+            struct(@contract.struct, @contract.attrs)
+          )
+
+        documented = Map.keys(schema.properties)
+        emitted = Enum.uniq(Map.keys(encoded) ++ @contract.extras)
+        # A bare struct has nil for every optional property, which is omitted.
+        expected = documented -- (documented -- List.wrap(schema.required))
+
+        assert emitted -- documented == [],
+               "#{inspect(@contract.schema)} does not document: #{inspect(emitted -- documented)}"
+
+        assert expected -- emitted == [],
+               "#{inspect(@contract.schema)} documents what the encoder for " <>
+                 "#{inspect(@contract.struct)} does not emit: #{inspect(expected -- emitted)}"
       end
 
       test "never documents a redacted field" do
@@ -148,19 +150,17 @@ defmodule PortalAPI.Schemas.ContractTest do
                  Enum.map_join(mismatches, "\n", fn {p, m} -> "  #{p}: #{m}" end)
       end
 
-      test "marks every property required unless listed as optional" do
+      test "marks every property required unless the payload may omit it" do
         schema = @contract.schema.schema()
         not_required = Map.keys(schema.properties) -- List.wrap(schema.required)
+        omittable = Map.get(%{PortalAPI.Schemas.Resource.Schema => [:ip_stack, :site_id]}, @contract.schema, [])
 
-        assert Enum.sort(not_required) == Enum.sort(@contract.optional),
+        assert Enum.sort(not_required) == Enum.sort(omittable),
                "#{inspect(@contract.schema)} must list every property the payload always " <>
                  "carries as required. Not required: #{inspect(Enum.sort(not_required))}"
       end
     end
   end
-
-  defp opts(%{as: as}), do: [as: as]
-  defp opts(_contract), do: []
 
   defp source(property, contract), do: Keyword.get(contract.aliases, property, property)
 

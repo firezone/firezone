@@ -22,7 +22,7 @@ defmodule PortalAPI.AccountController do
     subject = conn.assigns.subject
 
     with {:ok, account} <- Database.fetch_account(subject.account.id, subject) do
-      json(conn, %{data: account |> JSON.encode() |> Map.put(:limits, build_limits(account))})
+      json(conn, JSON.encode(account, limits: build_limits(account)))
     else
       error -> Error.handle(conn, error)
     end

@@ -5,6 +5,7 @@ defmodule PortalAPI.Schemas.PoolMember do
     require OpenApiSpex
     alias OpenApiSpex.Schema
 
+    @derive {PortalAPI.JSON.Encoder, for: Portal.Device}
     OpenApiSpex.schema(%{
       title: "PoolMember",
       description: "A Client belonging to a static device pool Resource",

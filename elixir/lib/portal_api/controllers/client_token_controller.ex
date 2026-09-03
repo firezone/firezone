@@ -44,7 +44,7 @@ defmodule PortalAPI.ClientTokenController do
 
     with {:ok, list_opts} <- Pagination.params_to_list_opts(params),
          {:ok, tokens, metadata} <- Database.list_tokens(actor_id, subject, list_opts) do
-      json(conn, %{data: JSON.encode(tokens), metadata: Pagination.metadata(metadata)})
+      json(conn, JSON.encode(tokens, metadata))
     else
       error -> Error.handle(conn, error)
     end
@@ -85,7 +85,7 @@ defmodule PortalAPI.ClientTokenController do
   @spec show(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def show(conn, %{"actor_id" => actor_id, "id" => token_id}) do
     with {:ok, token} <- Database.fetch_token_by_id(actor_id, token_id, conn.assigns.subject) do
-      json(conn, %{data: JSON.encode(token)})
+      json(conn, JSON.encode(token))
     else
       error -> Error.handle(conn, error)
     end
@@ -128,7 +128,12 @@ defmodule PortalAPI.ClientTokenController do
          {:ok, token} <- Authentication.create_non_interactive_client_token(actor, attrs, subject) do
       conn
       |> put_status(:created)
-      |> json(%{data: token |> JSON.encode() |> Map.put(:token, Authentication.encode_fragment!(token))})
+      |> json(
+        JSON.encode(token,
+          schema: PortalAPI.Schemas.ClientToken.ResponseSchema,
+          token: Authentication.encode_fragment!(token)
+        )
+      )
     else
       error -> Error.handle(conn, error)
     end

@@ -37,7 +37,7 @@ defmodule PortalAPI.ExternalIdentityController do
     with {:ok, list_opts} <- Pagination.params_to_list_opts(params),
          {:ok, external_identities, metadata} <-
            Database.list_external_identities(actor_id, conn.assigns.subject, list_opts) do
-      json(conn, %{data: JSON.encode(external_identities), metadata: Pagination.metadata(metadata)})
+      json(conn, JSON.encode(external_identities, metadata))
     else
       error -> Error.handle(conn, error)
     end
@@ -79,7 +79,7 @@ defmodule PortalAPI.ExternalIdentityController do
   def show(conn, %{"actor_id" => actor_id, "id" => id}) do
     with {:ok, external_identity} <-
            Database.fetch_external_identity(actor_id, id, conn.assigns.subject) do
-      json(conn, %{data: JSON.encode(external_identity)})
+      json(conn, JSON.encode(external_identity))
     else
       error -> Error.handle(conn, error)
     end
@@ -123,7 +123,7 @@ defmodule PortalAPI.ExternalIdentityController do
            Database.fetch_external_identity(actor_id, id, conn.assigns.subject),
          {:ok, deleted_external_identity} <-
            Database.delete_external_identity(external_identity, conn.assigns.subject) do
-      json(conn, %{data: JSON.encode(deleted_external_identity)})
+      json(conn, JSON.encode(deleted_external_identity))
     else
       error -> Error.handle(conn, error)
     end

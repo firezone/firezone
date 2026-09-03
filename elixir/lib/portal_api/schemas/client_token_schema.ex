@@ -1,16 +1,11 @@
 defmodule PortalAPI.Schemas.ClientToken do
   alias OpenApiSpex.Schema
-  require Protocol
-
-  # The encoded secret shown once on creation is added by the controller.
-  Protocol.derive(PortalAPI.JSON.Encoder, Portal.ClientToken,
-    only: [:id, :actor_id, :expires_at, :inserted_at, :updated_at]
-  )
 
   defmodule Schema do
     require OpenApiSpex
     alias OpenApiSpex.Schema
 
+    @derive {PortalAPI.JSON.Encoder, for: Portal.ClientToken}
     OpenApiSpex.schema(%{
       title: "ClientToken",
       description: "Client Token metadata",
@@ -56,6 +51,7 @@ defmodule PortalAPI.Schemas.ClientToken do
     alias OpenApiSpex.Schema
     alias PortalAPI.Schemas.ClientToken
 
+    @derive {PortalAPI.JSON.Encoder, for: Portal.ClientToken}
     OpenApiSpex.schema(%{
       title: "ClientTokenWithSecret",
       description:

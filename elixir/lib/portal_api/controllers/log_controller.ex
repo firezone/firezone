@@ -148,7 +148,7 @@ defmodule PortalAPI.LogController do
              conn.assigns.subject,
              Keyword.put(pagination_opts, :filter, filters)
            ) do
-      json(conn, %{data: JSON.encode(logs), metadata: Pagination.metadata(metadata)})
+      json(conn, JSON.encode(logs, metadata, schema: &log_schema/1))
     else
       error -> Error.handle(conn, error)
     end
@@ -183,7 +183,7 @@ defmodule PortalAPI.LogController do
     with {:ok, log_id} <- parse_log_id(log_id),
          {:ok, type} <- type_from_log_id(log_id),
          {:ok, log} <- Database.fetch_log(type, log_id, conn.assigns.subject) do
-      json(conn, %{data: JSON.encode(log)})
+      json(conn, JSON.encode(log, schema: &log_schema/1))
     else
       error -> Error.handle(conn, error)
     end
@@ -293,6 +293,11 @@ defmodule PortalAPI.LogController do
       {:error, :bad_request, reason: "`begin` must be less than or equal to `end`"}
     end
   end
+
+  defp log_schema(%Portal.ChangeLog{}), do: PortalAPI.Schemas.Log.Change
+  defp log_schema(%Portal.SessionLog{}), do: PortalAPI.Schemas.Log.Session
+  defp log_schema(%Portal.FlowLog{}), do: PortalAPI.Schemas.Log.Flow
+  defp log_schema(%Portal.APIRequestLog{}), do: PortalAPI.Schemas.Log.APIRequest
 
   defmodule Database do
     import Ecto.Query

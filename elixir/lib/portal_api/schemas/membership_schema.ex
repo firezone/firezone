@@ -5,6 +5,7 @@ defmodule PortalAPI.Schemas.Membership do
     require OpenApiSpex
     alias OpenApiSpex.Schema
 
+    @derive {PortalAPI.JSON.Encoder, for: Portal.Actor}
     OpenApiSpex.schema(%{
       title: "Membership",
       description: "Membership",

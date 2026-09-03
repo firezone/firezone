@@ -42,7 +42,7 @@ defmodule PortalAPI.OktaDirectoryController do
          list_opts = Keyword.put(list_opts, :filter, coerce_filters(params)),
          {:ok, directories, metadata} <-
            Database.list_directories(conn.assigns.subject, list_opts) do
-      json(conn, %{data: JSON.encode(directories), metadata: Pagination.metadata(metadata)})
+      json(conn, JSON.encode(directories, metadata))
     else
       error -> Error.handle(conn, error)
     end
@@ -80,7 +80,7 @@ defmodule PortalAPI.OktaDirectoryController do
   @spec show(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def show(conn, %{"id" => id}) do
     with {:ok, directory} <- Database.fetch_directory(id, conn.assigns.subject) do
-      json(conn, %{data: JSON.encode(directory)})
+      json(conn, JSON.encode(directory))
     else
       error -> Error.handle(conn, error)
     end

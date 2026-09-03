@@ -44,7 +44,7 @@ defmodule PortalAPI.GroupController do
     with {:ok, list_opts} <- Pagination.params_to_list_opts(params),
          list_opts = Keyword.put(list_opts, :filter, coerce_filters(params)),
          {:ok, groups, metadata} <- Database.list_groups(conn.assigns.subject, list_opts) do
-      json(conn, %{data: JSON.encode(groups), metadata: Pagination.metadata(metadata)})
+      json(conn, JSON.encode(groups, metadata))
     else
       error -> Error.handle(conn, error)
     end
@@ -77,7 +77,7 @@ defmodule PortalAPI.GroupController do
   @spec show(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def show(conn, %{"id" => id}) do
     with {:ok, group} <- Database.fetch_group(id, conn.assigns.subject) do
-      json(conn, %{data: JSON.encode(group)})
+      json(conn, JSON.encode(group))
     else
       error -> Error.handle(conn, error)
     end
@@ -108,7 +108,7 @@ defmodule PortalAPI.GroupController do
       conn
       |> put_status(:created)
       |> put_resp_header("location", ~p"/groups/#{group}")
-      |> json(%{data: JSON.encode(group)})
+      |> json(JSON.encode(group))
     else
       error -> Error.handle(conn, error)
     end
@@ -159,7 +159,7 @@ defmodule PortalAPI.GroupController do
          :ok <- validate_group_updatable(group),
          changeset = do_update_group_changeset(group, params),
          {:ok, group} <- Database.update_group(changeset, subject) do
-      json(conn, %{data: JSON.encode(group)})
+      json(conn, JSON.encode(group))
     else
       error -> Error.handle(conn, error)
     end
@@ -217,7 +217,7 @@ defmodule PortalAPI.GroupController do
 
     with {:ok, group} <- Database.fetch_group(id, subject),
          {:ok, group} <- Database.delete_group(group, subject) do
-      json(conn, %{data: JSON.encode(group)})
+      json(conn, JSON.encode(group))
     else
       error -> Error.handle(conn, error)
     end

@@ -40,7 +40,7 @@ defmodule PortalAPI.ActorController do
     with {:ok, list_opts} <- Pagination.params_to_list_opts(params),
          list_opts = Keyword.put(list_opts, :filter, coerce_filters(params)),
          {:ok, actors, metadata} <- Database.list_actors(conn.assigns.subject, list_opts) do
-      json(conn, %{data: JSON.encode(actors, as: :actor), metadata: Pagination.metadata(metadata)})
+      json(conn, JSON.encode(actors, metadata))
     else
       error -> Error.handle(conn, error)
     end
@@ -73,7 +73,7 @@ defmodule PortalAPI.ActorController do
   @spec show(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def show(conn, %{"id" => id}) do
     with {:ok, actor} <- Database.fetch_actor(id, conn.assigns.subject) do
-      json(conn, %{data: JSON.encode(actor, as: :actor)})
+      json(conn, JSON.encode(actor))
     else
       error -> Error.handle(conn, error)
     end
@@ -109,7 +109,7 @@ defmodule PortalAPI.ActorController do
       conn
       |> put_status(:created)
       |> put_resp_header("location", ~p"/actors/#{actor}")
-      |> json(%{data: JSON.encode(actor, as: :actor)})
+      |> json(JSON.encode(actor))
     else
       error -> Error.handle(conn, error)
     end
@@ -224,7 +224,7 @@ defmodule PortalAPI.ActorController do
          :ok <- ensure_not_self_disable(actor, changeset, subject),
          :ok <- check_role_promotion_limits(account, actor, changeset),
          {:ok, actor} <- Database.update_actor(changeset, subject) do
-      json(conn, %{data: JSON.encode(actor, as: :actor)})
+      json(conn, JSON.encode(actor))
     else
       error -> Error.handle(conn, error)
     end
@@ -256,7 +256,7 @@ defmodule PortalAPI.ActorController do
     subject = conn.assigns.subject
 
     with {:ok, actor} <- Database.delete_actor_by_id(id, subject) do
-      json(conn, %{data: JSON.encode(actor, as: :actor)})
+      json(conn, JSON.encode(actor))
     else
       error -> Error.handle(conn, error)
     end

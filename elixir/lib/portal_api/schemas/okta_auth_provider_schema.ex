@@ -1,13 +1,11 @@
 defmodule PortalAPI.Schemas.OktaAuthProvider do
   alias OpenApiSpex.Schema
-  require Protocol
-
-  Protocol.derive(PortalAPI.JSON.Encoder, Portal.Okta.AuthProvider, except: [:discovery_document_uri, :is_verified])
 
   defmodule Schema do
     require OpenApiSpex
     alias OpenApiSpex.Schema
 
+    @derive {PortalAPI.JSON.Encoder, for: Portal.Okta.AuthProvider}
     OpenApiSpex.schema(%{
       title: "OktaAuthProvider",
       description: "Okta Auth Provider",

@@ -37,7 +37,7 @@ defmodule PortalAPI.MembershipController do
     with {:ok, list_opts} <- Pagination.params_to_list_opts(params),
          list_opts = Keyword.put(list_opts, :filter, group_id: group_id),
          {:ok, actors, metadata} <- Database.list_actors(conn.assigns.subject, list_opts) do
-      json(conn, %{data: JSON.encode(actors, as: :membership), metadata: Pagination.metadata(metadata)})
+      json(conn, JSON.encode(actors, metadata, schema: PortalAPI.Schemas.Membership.Schema))
     else
       error -> Error.handle(conn, error)
     end

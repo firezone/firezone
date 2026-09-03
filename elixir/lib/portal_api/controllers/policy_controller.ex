@@ -34,7 +34,7 @@ defmodule PortalAPI.PolicyController do
     with {:ok, list_opts} <- Pagination.params_to_list_opts(params),
          list_opts = Keyword.put(list_opts, :filter, coerce_filters(params)),
          {:ok, policies, metadata} <- Database.list_policies(conn.assigns.subject, list_opts) do
-      json(conn, %{data: JSON.encode(policies), metadata: Pagination.metadata(metadata)})
+      json(conn, JSON.encode(policies, metadata))
     else
       error -> Error.handle(conn, error)
     end
@@ -66,7 +66,7 @@ defmodule PortalAPI.PolicyController do
   @spec show(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def show(conn, %{"id" => id}) do
     with {:ok, policy} <- Database.fetch_policy(id, conn.assigns.subject) do
-      json(conn, %{data: JSON.encode(policy)})
+      json(conn, JSON.encode(policy))
     else
       error -> Error.handle(conn, error)
     end
@@ -101,7 +101,7 @@ defmodule PortalAPI.PolicyController do
       conn
       |> put_status(:created)
       |> put_resp_header("location", ~p"/policies/#{policy}")
-      |> json(%{data: JSON.encode(policy)})
+      |> json(JSON.encode(policy))
     else
       error -> Error.handle(conn, error)
     end
@@ -151,7 +151,7 @@ defmodule PortalAPI.PolicyController do
     with {:ok, policy} <- Database.fetch_policy(id, subject),
          :ok <- Database.validate_internet_resource_policy(params, subject),
          {:ok, policy} <- Database.update_policy(policy, params, subject) do
-      json(conn, %{data: JSON.encode(policy)})
+      json(conn, JSON.encode(policy))
     else
       error -> Error.handle(conn, error)
     end
@@ -184,7 +184,7 @@ defmodule PortalAPI.PolicyController do
 
     with {:ok, policy} <- Database.fetch_policy(id, subject),
          {:ok, policy} <- Database.delete_policy(policy, subject) do
-      json(conn, %{data: JSON.encode(policy)})
+      json(conn, JSON.encode(policy))
     else
       error -> Error.handle(conn, error)
     end

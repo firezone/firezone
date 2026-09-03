@@ -42,7 +42,7 @@ defmodule PortalAPI.OktaAuthProviderController do
     with {:ok, list_opts} <- Pagination.params_to_list_opts(params),
          list_opts = Keyword.put(list_opts, :filter, coerce_filters(params)),
          {:ok, providers, metadata} <- Database.list_providers(conn.assigns.subject, list_opts) do
-      json(conn, %{data: JSON.encode(providers), metadata: Pagination.metadata(metadata)})
+      json(conn, JSON.encode(providers, metadata))
     else
       error -> Error.handle(conn, error)
     end
@@ -81,7 +81,7 @@ defmodule PortalAPI.OktaAuthProviderController do
   @spec show(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def show(conn, %{"id" => id}) do
     with {:ok, provider} <- Database.fetch_provider(id, conn.assigns.subject) do
-      json(conn, %{data: JSON.encode(provider)})
+      json(conn, JSON.encode(provider))
     else
       error -> Error.handle(conn, error)
     end

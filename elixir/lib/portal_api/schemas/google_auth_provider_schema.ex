@@ -1,13 +1,11 @@
 defmodule PortalAPI.Schemas.GoogleAuthProvider do
   alias OpenApiSpex.Schema
-  require Protocol
-
-  Protocol.derive(PortalAPI.JSON.Encoder, Portal.Google.AuthProvider, except: [:is_verified])
 
   defmodule Schema do
     require OpenApiSpex
     alias OpenApiSpex.Schema
 
+    @derive {PortalAPI.JSON.Encoder, for: Portal.Google.AuthProvider}
     OpenApiSpex.schema(%{
       title: "GoogleAuthProvider",
       description: "Google Auth Provider",

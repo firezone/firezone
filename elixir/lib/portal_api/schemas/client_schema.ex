@@ -1,58 +1,11 @@
 defmodule PortalAPI.Schemas.Client do
   alias OpenApiSpex.Schema
-  require Protocol
-
-  # Portal.Device is a Client, a Gateway, or a member of a device pool
-  # depending on the endpoint, so every shape is declared here.
-  Protocol.derive(PortalAPI.JSON.Encoder, Portal.Device,
-    shapes: [
-      client: [
-        except: [
-          :account_id,
-          :attested?,
-          :client_token_id,
-          :firezone_id_merged?,
-          :gateway_token_id,
-          :gateway_token_rotated_at,
-          :inserted_at,
-          :last_attested_cert_issuer,
-          :online?,
-          :site_id,
-          :type
-        ],
-        mapper: &PortalAPI.Schemas.Client.map/2
-      ],
-      gateway: [
-        only: [
-          :id,
-          :name,
-          :ipv4,
-          :ipv6,
-          :public_key,
-          :gateway_token_id,
-          :last_seen_at,
-          :last_seen_version,
-          :last_seen_user_agent,
-          :last_seen_remote_ip,
-          :last_seen_remote_ip_location_region,
-          :last_seen_remote_ip_location_city,
-          :last_seen_remote_ip_location_lat,
-          :last_seen_remote_ip_location_lon
-        ],
-        mapper: &PortalAPI.Schemas.Gateway.map/2
-      ],
-      pool_member: [only: [:id, :name, :last_seen_at]]
-    ]
-  )
-
-  def map(%Portal.Device{} = device, _map) do
-    %{online: device.online?, created_at: device.inserted_at}
-  end
 
   defmodule GetSchema do
     require OpenApiSpex
     alias OpenApiSpex.Schema
 
+    @derive {PortalAPI.JSON.Encoder, for: Portal.Device}
     OpenApiSpex.schema(%{
       title: "Client",
       description: "Client",
@@ -275,6 +228,10 @@ defmodule PortalAPI.Schemas.Client do
         "updated_at" => "2025-01-01T00:00:00Z"
       }
     })
+
+    def map(%Portal.Device{} = device, _map) do
+      %{online: device.online?, created_at: device.inserted_at}
+    end
   end
 
   defmodule PutSchema do

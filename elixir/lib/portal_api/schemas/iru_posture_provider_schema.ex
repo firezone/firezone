@@ -1,18 +1,11 @@
 defmodule PortalAPI.Schemas.IruPostureProvider do
   alias OpenApiSpex.Schema
-  require Protocol
-
-  Protocol.derive(PortalAPI.JSON.Encoder, Portal.Iru.PostureProvider,
-    except: [:error_email_count],
-    mapper: &PortalAPI.Schemas.IruPostureProvider.map/2
-  )
-
-  def map(%Portal.Iru.PostureProvider{posture_provider: %{name: name}}, _map), do: %{type: "iru", name: name}
 
   defmodule Schema do
     require OpenApiSpex
     alias OpenApiSpex.Schema
 
+    @derive {PortalAPI.JSON.Encoder, for: Portal.Iru.PostureProvider}
     OpenApiSpex.schema(%{
       title: "IruPostureProvider",
       description: "Iru (formerly Kandji) posture provider",
@@ -50,6 +43,8 @@ defmodule PortalAPI.Schemas.IruPostureProvider do
         :updated_at
       ]
     })
+
+    def map(%Portal.Iru.PostureProvider{posture_provider: %{name: name}}, _map), do: %{type: "iru", name: name}
   end
 
   defmodule Response do

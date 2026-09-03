@@ -1,13 +1,11 @@
 defmodule PortalAPI.Schemas.OktaDirectory do
   alias OpenApiSpex.Schema
-  require Protocol
-
-  Protocol.derive(PortalAPI.JSON.Encoder, Portal.Okta.Directory, except: [:error_email_count, :is_verified])
 
   defmodule Schema do
     require OpenApiSpex
     alias OpenApiSpex.Schema
 
+    @derive {PortalAPI.JSON.Encoder, for: Portal.Okta.Directory}
     OpenApiSpex.schema(%{
       title: "OktaDirectory",
       description: "Okta Directory",

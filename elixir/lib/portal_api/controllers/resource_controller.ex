@@ -56,7 +56,7 @@ defmodule PortalAPI.ResourceController do
          list_opts = Keyword.put(list_opts, :filter, coerce_filters(params)),
          {:ok, resources, metadata} <-
            Database.list_resources(conn.assigns.subject, list_opts) do
-      json(conn, %{data: JSON.encode(resources), metadata: Pagination.metadata(metadata)})
+      json(conn, JSON.encode(resources, metadata))
     else
       error -> Error.handle(conn, error)
     end
@@ -91,7 +91,7 @@ defmodule PortalAPI.ResourceController do
   @spec show(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def show(conn, %{"id" => id}) do
     with {:ok, resource} <- Database.fetch_resource(id, conn.assigns.subject) do
-      json(conn, %{data: JSON.encode(resource)})
+      json(conn, JSON.encode(resource))
     else
       error -> Error.handle(conn, error)
     end
@@ -124,7 +124,7 @@ defmodule PortalAPI.ResourceController do
       conn
       |> put_status(:created)
       |> put_resp_header("location", ~p"/resources/#{resource}")
-      |> json(%{data: JSON.encode(resource)})
+      |> json(JSON.encode(resource))
     else
       error -> Error.handle(conn, error)
     end
@@ -168,7 +168,7 @@ defmodule PortalAPI.ResourceController do
     with {:ok, resource} <- Database.fetch_resource(id, subject),
          :ok <- validate_not_internet_resource(resource),
          {:ok, resource} <- Database.update_resource(resource, params, subject) do
-      json(conn, %{data: JSON.encode(resource)})
+      json(conn, JSON.encode(resource))
     else
       error -> Error.handle(conn, error)
     end
@@ -208,7 +208,7 @@ defmodule PortalAPI.ResourceController do
     with {:ok, resource} <- Database.fetch_resource(id, subject),
          :ok <- validate_not_internet_resource(resource),
          {:ok, resource} <- Database.delete_resource(resource, subject) do
-      json(conn, %{data: JSON.encode(resource)})
+      json(conn, JSON.encode(resource))
     else
       error -> Error.handle(conn, error)
     end

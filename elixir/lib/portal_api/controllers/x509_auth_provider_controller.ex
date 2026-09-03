@@ -23,7 +23,7 @@ defmodule PortalAPI.X509AuthProviderController do
   def show(conn, _params) do
     if Portal.Features.enabled?(:trust_anchors) do
       with {:ok, provider} <- Database.fetch_provider(conn.assigns.subject) do
-        json(conn, %{data: JSON.encode(provider)})
+        json(conn, JSON.encode(provider))
       else
         error -> Error.handle(conn, error)
       end

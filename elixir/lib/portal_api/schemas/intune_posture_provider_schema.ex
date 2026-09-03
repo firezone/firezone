@@ -1,18 +1,11 @@
 defmodule PortalAPI.Schemas.IntunePostureProvider do
   alias OpenApiSpex.Schema
-  require Protocol
-
-  Protocol.derive(PortalAPI.JSON.Encoder, Portal.Intune.PostureProvider,
-    except: [:error_email_count],
-    mapper: &PortalAPI.Schemas.IntunePostureProvider.map/2
-  )
-
-  def map(%Portal.Intune.PostureProvider{posture_provider: %{name: name}}, _map), do: %{type: "intune", name: name}
 
   defmodule Schema do
     require OpenApiSpex
     alias OpenApiSpex.Schema
 
+    @derive {PortalAPI.JSON.Encoder, for: Portal.Intune.PostureProvider}
     OpenApiSpex.schema(%{
       title: "IntunePostureProvider",
       description: "Microsoft Intune posture provider",
@@ -48,6 +41,8 @@ defmodule PortalAPI.Schemas.IntunePostureProvider do
         :updated_at
       ]
     })
+
+    def map(%Portal.Intune.PostureProvider{posture_provider: %{name: name}}, _map), do: %{type: "intune", name: name}
   end
 
   defmodule Response do

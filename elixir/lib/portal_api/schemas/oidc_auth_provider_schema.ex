@@ -1,13 +1,11 @@
 defmodule PortalAPI.Schemas.OIDCAuthProvider do
   alias OpenApiSpex.Schema
-  require Protocol
-
-  Protocol.derive(PortalAPI.JSON.Encoder, Portal.OIDC.AuthProvider, except: [:is_legacy, :is_verified])
 
   defmodule Schema do
     require OpenApiSpex
     alias OpenApiSpex.Schema
 
+    @derive {PortalAPI.JSON.Encoder, for: Portal.OIDC.AuthProvider}
     OpenApiSpex.schema(%{
       title: "OIDCAuthProvider",
       description: "OIDC Auth Provider",

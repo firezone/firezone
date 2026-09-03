@@ -47,7 +47,7 @@ defmodule PortalAPI.PoolMemberController do
          {:ok, list_opts} <- Pagination.params_to_list_opts(params),
          list_opts = Keyword.put(list_opts, :filter, resource_id: resource_id),
          {:ok, clients, metadata} <- Database.list_devices(subject, list_opts) do
-      json(conn, %{data: JSON.encode(clients, as: :pool_member), metadata: Pagination.metadata(metadata)})
+      json(conn, JSON.encode(clients, metadata, schema: PortalAPI.Schemas.PoolMember.Schema))
     else
       error -> Error.handle(conn, error)
     end
