@@ -1124,35 +1124,14 @@ async fn try_migrate_advanced_settings(
 
     let content =
         std::fs::read_to_string(path).context("Failed to read legacy advanced settings")?;
-    let legacy = serde_json::from_str::<LegacyAdvancedSettings>(&content)
+    let legacy = serde_json::from_str::<AdvancedSettings>(&content)
         .context("Failed to parse legacy advanced settings")?;
     ipc_client
-        .send(&service::ClientMsg::ApplyAdvancedSettings(legacy.into()))
+        .send(&service::ClientMsg::ApplyAdvancedSettings(legacy))
         .await
         .context("Failed to send legacy advanced_settings migration")?;
 
     Ok(())
-}
-
-/// The on-disk format of the user-writable `advanced_settings.json`.
-///
-/// Installs from before the "General" settings split still carry `auth_base_url`.
-#[derive(serde::Deserialize)]
-struct LegacyAdvancedSettings {
-    #[serde(alias = "auth_base_url")]
-    auth_url: Url,
-    api_url: Url,
-    log_filter: String,
-}
-
-impl From<LegacyAdvancedSettings> for AdvancedSettings {
-    fn from(legacy: LegacyAdvancedSettings) -> Self {
-        Self {
-            auth_url: legacy.auth_url,
-            api_url: legacy.api_url,
-            log_filter: legacy.log_filter,
-        }
-    }
 }
 
 #[cfg(test)]

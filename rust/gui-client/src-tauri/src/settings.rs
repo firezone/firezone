@@ -47,6 +47,8 @@ pub struct MdmSettings {
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize, specta::Type)]
 pub struct AdvancedSettings {
+    /// Installs from before the "General" settings split wrote `auth_base_url` to disk.
+    #[serde(alias = "auth_base_url")]
     pub auth_url: Url,
     pub api_url: Url,
     pub log_filter: String,
