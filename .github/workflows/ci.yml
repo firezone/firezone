@@ -241,12 +241,13 @@ jobs:
         with:
           name: ios-ipad-screenshots
           path: swift/apple/screenshots/ios/ipad
-      - name: Keep the images whose differences are invisible
+      - name: Prepare the store images and keep invisible differences
         run: |
           set -euo pipefail
 
           # `mise exec` puts `uv` on PATH: the shims the mise action sets up are
           # regenerated before it installs, not after.
+          mise exec -- uv run scripts/prepare-store-screenshots.py
           mise exec -- uv run scripts/settle-screenshots.py \
             rust/gui-client/screenshots kotlin/android/screenshots swift/apple/screenshots
       - name: Set up GnuPG for the screenshot commit

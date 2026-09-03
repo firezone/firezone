@@ -180,9 +180,9 @@ jobs:
       matrix:
         include:
           - device: iphone
-            simulator: iPhone 17
+            simulator: iPhone 17 Pro Max
           - device: ipad
-            simulator: iPad Pro 11-inch (M5)
+            simulator: iPad Pro 13-inch (M5)
     env:
       XCODE_VERSION: "26.2"
       SIMULATOR_NAME: ${{ matrix.simulator }}
