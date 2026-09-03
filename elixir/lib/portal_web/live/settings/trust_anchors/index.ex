@@ -1040,6 +1040,17 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
 
         {:noreply, socket}
 
+      # Another session deleted this trust anchor after it was loaded into the
+      # panel. The end state already matches the user's intent, so just
+      # refresh and close.
+      {:error, :not_found} ->
+        socket =
+          socket
+          |> assign(trust_anchors: Database.list_trust_anchors(socket.assigns.subject))
+          |> push_patch(to: ~p"/#{socket.assigns.account}/settings/trust_anchors")
+
+        {:noreply, socket}
+
       {:error, _reason} ->
         socket =
           socket
@@ -1048,17 +1059,6 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
 
         {:noreply, socket}
     end
-  rescue
-    # Another session deleted this trust anchor after it was loaded into the
-    # panel, so `Repo.delete` affected zero rows. The end state already
-    # matches the user's intent, so just refresh and close.
-    Ecto.StaleEntryError ->
-      socket =
-        socket
-        |> assign(trust_anchors: Database.list_trust_anchors(socket.assigns.subject))
-        |> push_patch(to: ~p"/#{socket.assigns.account}/settings/trust_anchors")
-
-      {:noreply, socket}
   end
 
   defp build_creation_changeset(attrs, subject) do
