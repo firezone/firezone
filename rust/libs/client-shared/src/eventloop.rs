@@ -315,6 +315,7 @@ impl Eventloop {
                     return Ok(ControlFlow::Continue(()));
                 };
 
+                tunnel.state_mut().set_portal_connected(false);
                 tunnel.reset(&reason, now);
                 tunnel_bypass_resolver::reset_sockets();
                 telemetry::reset_ingest();
