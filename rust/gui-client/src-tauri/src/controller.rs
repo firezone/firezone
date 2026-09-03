@@ -1124,14 +1124,35 @@ async fn try_migrate_advanced_settings(
 
     let content =
         std::fs::read_to_string(path).context("Failed to read legacy advanced settings")?;
-    let legacy = serde_json::from_str::<AdvancedSettings>(&content)
+    let legacy = serde_json::from_str::<LegacyAdvancedSettings>(&content)
         .context("Failed to parse legacy advanced settings")?;
     ipc_client
-        .send(&service::ClientMsg::ApplyAdvancedSettings(legacy))
+        .send(&service::ClientMsg::ApplyAdvancedSettings(legacy.into()))
         .await
         .context("Failed to send legacy advanced_settings migration")?;
 
     Ok(())
+}
+
+/// The on-disk format of the user-writable `advanced_settings.json`.
+///
+/// Installs from before the "General" settings split still carry `auth_base_url`.
+#[derive(serde::Deserialize)]
+struct LegacyAdvancedSettings {
+    #[serde(alias = "auth_base_url")]
+    auth_url: Url,
+    api_url: Url,
+    log_filter: String,
+}
+
+impl From<LegacyAdvancedSettings> for AdvancedSettings {
+    fn from(legacy: LegacyAdvancedSettings) -> Self {
+        Self {
+            auth_url: legacy.auth_url,
+            api_url: legacy.api_url,
+            log_filter: legacy.log_filter,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -1456,6 +1477,26 @@ mod tests {
 
         let migrated = mock_tunnel.rx_apply_advanced_settings().await;
         assert_eq!(migrated, canned);
+    }
+
+    #[tokio::test]
+    async fn legacy_auth_base_url_sends_apply() {
+        let _guard = logging::test("debug");
+        let mut test_controller = Controller::start_for_test();
+        let mut mock_tunnel = test_controller.tunnel_service_ipc_accept().await;
+
+        std::fs::write(
+            &test_controller.legacy_advanced_settings_path,
+            r#"{"auth_base_url":"https://example.com/","api_url":"wss://example.com/","favorite_resources":[],"internet_resource_enabled":null,"log_filter":"info"}"#,
+        )
+        .unwrap();
+
+        mock_tunnel.send_hello().await;
+
+        let migrated = mock_tunnel.rx_apply_advanced_settings().await;
+        assert_eq!(migrated.auth_url.as_str(), "https://example.com/");
+        assert_eq!(migrated.api_url.as_str(), "wss://example.com/");
+        assert_eq!(migrated.log_filter, "info");
     }
 
     #[tokio::test]
