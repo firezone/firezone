@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-#MISE description="Photograph the iOS screens on the booted simulator into swift/apple/screenshots/ios"
+#MISE description="Photograph the iOS screens on the booted simulator into swift/apple/screenshots/ios/<device>"
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -13,6 +13,14 @@ if [ -z "${UDID}" ]; then
   echo "No booted simulator; run the boot-simulator task first" >&2
   exit 1
 fi
+
+# The gallery keeps a directory per device family.
+case "$(xcrun simctl list devices -j | jq -r --arg udid "${UDID}" \
+  '.devices[][] | select(.udid == $udid) | .deviceTypeIdentifier')" in
+*iPad*) DEVICE=ipad ;;
+*) DEVICE=iphone ;;
+esac
+OUTPUT_DIR="${APPLE_DIR}/screenshots/ios/${DEVICE}"
 
 # The products of build-screenshots-ios, which the test run finds through the
 # xctestrun beside them.
@@ -40,5 +48,5 @@ for appearance in light dark; do
       -destination "id=${UDID}" \
       -resultBundlePath "${RESULT_BUNDLE}"
 
-  "${SCRIPT_DIR}/export-screenshots.sh" "${RESULT_BUNDLE}" "${APPLE_DIR}/screenshots/ios"
+  "${SCRIPT_DIR}/export-screenshots.sh" "${RESULT_BUNDLE}" "${OUTPUT_DIR}"
 done

@@ -106,12 +106,10 @@ jobs:
           DERIVED_DATA_PATH: ${{ runner.temp }}/DerivedData
           RESULT_BUNDLE_DIR: ${{ runner.temp }}
         run: mise run //swift/apple:screenshots-macos
-      # Only this release's images: the directory also holds the other release's
-      # as committed, which would overwrite its fresh captures in commit-screenshots.
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: macos-${{ matrix.release }}-screenshots
-          path: swift/apple/screenshots/macos/*-macos-${{ matrix.release }}-*.png
+          path: swift/apple/screenshots/macos/${{ matrix.release }}
       # Only `main` writes, so a pull request cannot evict what every run reads.
       # `success()` is spelled out because naming a condition replaces the
       # implicit one.
@@ -214,11 +212,10 @@ jobs:
           DERIVED_DATA_PATH: ${{ runner.temp }}/DerivedData
           RESULT_BUNDLE_DIR: ${{ runner.temp }}
         run: mise run //swift/apple:screenshots-ios
-      # Only this device's images, for the same reason as on macOS.
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ios-${{ matrix.device }}-screenshots
-          path: swift/apple/screenshots/ios/*-${{ matrix.device }}-*.png
+          path: swift/apple/screenshots/ios/${{ matrix.device }}
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: failure()
         with:
