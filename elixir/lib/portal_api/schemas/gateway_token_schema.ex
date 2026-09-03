@@ -7,7 +7,14 @@ defmodule PortalAPI.Schemas.GatewayToken do
 
     @derive {PortalAPI.JSON.Encoder,
              for: Portal.GatewayToken,
-             internal: [:account_id, :device_id, :inserted_at, :rotated_at, :rotated_sibling_id, :site_id]}
+             internal: [
+               :account_id,
+               :device_id,
+               :inserted_at,
+               :rotated_at,
+               :rotated_sibling_id,
+               :site_id
+             ]}
     OpenApiSpex.schema(%{
       title: "GatewayToken",
       description: "Gateway Token",

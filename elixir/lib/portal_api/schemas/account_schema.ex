@@ -42,7 +42,24 @@ defmodule PortalAPI.Schemas.Account do
 
     @derive {PortalAPI.JSON.Encoder,
              for: Portal.Account,
-             internal: [:admins_limit_exceeded, :config, :disabled_reason, :features, :inserted_at, :is_disabled, :limit_usage, :lock_enabled_at, :metadata, :scheduled_deletion_at, :seats_limit_exceeded, :service_accounts_limit_exceeded, :sites_limit_exceeded, :updated_at, :users_limit_exceeded, :warning_last_sent_at]}
+             internal: [
+               :admins_limit_exceeded,
+               :config,
+               :disabled_reason,
+               :features,
+               :inserted_at,
+               :is_disabled,
+               :limit_usage,
+               :lock_enabled_at,
+               :metadata,
+               :scheduled_deletion_at,
+               :seats_limit_exceeded,
+               :service_accounts_limit_exceeded,
+               :sites_limit_exceeded,
+               :updated_at,
+               :users_limit_exceeded,
+               :warning_last_sent_at
+             ]}
     OpenApiSpex.schema(%{
       title: "Account",
       description: "Account schema",

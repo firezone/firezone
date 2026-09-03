@@ -7,7 +7,13 @@ defmodule PortalAPI.Schemas.EntraDirectory do
 
     @derive {PortalAPI.JSON.Encoder,
              for: Portal.Entra.Directory,
-             internal: [:error_email_count, :groups_subscription_id, :is_verified, :subscriptions_expire_at, :users_subscription_id]}
+             internal: [
+               :error_email_count,
+               :groups_subscription_id,
+               :is_verified,
+               :subscriptions_expire_at,
+               :users_subscription_id
+             ]}
     OpenApiSpex.schema(%{
       title: "EntraDirectory",
       description: "Entra Directory",

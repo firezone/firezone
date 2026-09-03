@@ -7,7 +7,34 @@ defmodule PortalAPI.Schemas.Gateway do
 
     @derive {PortalAPI.JSON.Encoder,
              for: Portal.Device,
-             internal: [:account_id, :actor_id, :attested?, :client_token_id, :device_serial, :device_uuid, :firebase_installation_id, :firezone_id, :firezone_id_merged?, :gateway_token_rotated_at, :hostname, :identifier_for_vendor, :inserted_at, :last_attested_at, :last_attested_cert_fingerprint, :last_attested_cert_issuer, :last_attested_cert_serial, :last_attested_device_serial, :last_attested_device_uuid, :last_attested_mdm_device_id, :online?, :provisioned_token, :site_id, :type, :updated_at, :verified_at]}
+             internal: [
+               :account_id,
+               :actor_id,
+               :attested?,
+               :client_token_id,
+               :device_serial,
+               :device_uuid,
+               :firebase_installation_id,
+               :firezone_id,
+               :firezone_id_merged?,
+               :gateway_token_rotated_at,
+               :hostname,
+               :identifier_for_vendor,
+               :inserted_at,
+               :last_attested_at,
+               :last_attested_cert_fingerprint,
+               :last_attested_cert_issuer,
+               :last_attested_cert_serial,
+               :last_attested_device_serial,
+               :last_attested_device_uuid,
+               :last_attested_mdm_device_id,
+               :online?,
+               :provisioned_token,
+               :site_id,
+               :type,
+               :updated_at,
+               :verified_at
+             ]}
     OpenApiSpex.schema(%{
       title: "Gateway",
       description: "Gateway",

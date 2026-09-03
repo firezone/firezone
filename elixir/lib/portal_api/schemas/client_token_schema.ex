@@ -7,7 +7,14 @@ defmodule PortalAPI.Schemas.ClientToken do
 
     @derive {PortalAPI.JSON.Encoder,
              for: Portal.ClientToken,
-             internal: [:account_id, :auth_provider_id, :auth_provider_name, :auth_provider_type, :last_used_device, :online?]}
+             internal: [
+               :account_id,
+               :auth_provider_id,
+               :auth_provider_name,
+               :auth_provider_type,
+               :last_used_device,
+               :online?
+             ]}
     OpenApiSpex.schema(%{
       title: "ClientToken",
       description: "Client Token metadata",
@@ -56,7 +63,14 @@ defmodule PortalAPI.Schemas.ClientToken do
 
     @derive {PortalAPI.JSON.Encoder,
              for: Portal.ClientToken,
-             internal: [:account_id, :auth_provider_id, :auth_provider_name, :auth_provider_type, :last_used_device, :online?]}
+             internal: [
+               :account_id,
+               :auth_provider_id,
+               :auth_provider_name,
+               :auth_provider_type,
+               :last_used_device,
+               :online?
+             ]}
     OpenApiSpex.schema(%{
       title: "ClientTokenWithSecret",
       description:

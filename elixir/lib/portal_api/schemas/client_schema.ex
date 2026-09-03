@@ -7,7 +7,20 @@ defmodule PortalAPI.Schemas.Client do
 
     @derive {PortalAPI.JSON.Encoder,
              for: Portal.Device,
-             internal: [:account_id, :attested?, :client_token_id, :firezone_id_merged?, :gateway_token_id, :gateway_token_rotated_at, :inserted_at, :last_attested_cert_issuer, :online?, :provisioned_token, :site_id, :type]}
+             internal: [
+               :account_id,
+               :attested?,
+               :client_token_id,
+               :firezone_id_merged?,
+               :gateway_token_id,
+               :gateway_token_rotated_at,
+               :inserted_at,
+               :last_attested_cert_issuer,
+               :online?,
+               :provisioned_token,
+               :site_id,
+               :type
+             ]}
     OpenApiSpex.schema(%{
       title: "Client",
       description: "Client",
