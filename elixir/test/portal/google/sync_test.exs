@@ -250,6 +250,11 @@ defmodule Portal.Google.SyncTest do
       assert identity.idp_id == "user1"
       assert identity.email == "user1@example.com"
 
+      assert_enqueued(
+        worker: Portal.Google.Subscriptions,
+        args: %{account_id: directory.account_id, directory_id: directory.id, action: "ensure"}
+      )
+
       # Verify Firezone groups were created (one group, one org unit)
       groups = Repo.all(Portal.Group)
       assert length(groups) == 2

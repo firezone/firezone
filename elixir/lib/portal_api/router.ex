@@ -158,6 +158,10 @@ defmodule PortalAPI.Router do
       post "/webhooks", WebhookController, :handle_webhook
     end
 
+    scope "/google", Google do
+      post "/webhooks", WebhookController, :handle_webhook
+    end
+
     scope "/stripe", Stripe do
       post "/webhooks", WebhookController, :handle_webhook
     end
