@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
-#MISE description="Photograph the iOS screens into swift/apple/screenshots/ios"
+#MISE description="Photograph the iOS screens on the booted simulator into swift/apple/screenshots/ios"
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 APPLE_DIR="${SCRIPT_DIR}/.."
 RESULT_DIR="${RESULT_BUNDLE_DIR:-${TMPDIR:-/tmp}}"
+DERIVED_DATA_PATH="${DERIVED_DATA_PATH:-${TMPDIR:-/tmp}/FirezoneUITests-ios}"
 
 UDID="${SIMULATOR_UDID:-$(xcrun simctl list devices booted -j \
   | jq -r '[.devices[][]] | first | .udid // empty')}"
@@ -13,26 +14,15 @@ if [ -z "${UDID}" ]; then
   exit 1
 fi
 
-extra_args=()
-if [ -n "${DERIVED_DATA_PATH:-}" ]; then
-  extra_args+=(-derivedDataPath "${DERIVED_DATA_PATH}")
+# The products of build-screenshots-ios, which the test run finds through the
+# xctestrun beside them.
+XCTESTRUN="$(find "${DERIVED_DATA_PATH}/Build/Products" -maxdepth 1 -name '*.xctestrun' 2>/dev/null | head -n 1)"
+if [ -z "${XCTESTRUN}" ]; then
+  echo "No test products in ${DERIVED_DATA_PATH}; run the build-screenshots-ios task first" >&2
+  exit 1
 fi
 
 cd "${APPLE_DIR}"
-
-# The simulator asks for no signing, and the entitlements need a profile.
-xcodebuild build-for-testing \
-    -project Firezone.xcodeproj \
-    -scheme FirezoneUITests \
-    -configuration Debug \
-    -destination "id=${UDID}" \
-    "${extra_args[@]+"${extra_args[@]}"}" \
-    CODE_SIGNING_ALLOWED=NO \
-    CODE_SIGNING_REQUIRED=NO \
-    CODE_SIGN_ENTITLEMENTS= \
-    DEVELOPMENT_TEAM= \
-    PROVISIONING_PROFILE_SPECIFIER= \
-    ONLY_ACTIVE_ARCH=YES
 
 # An appearance belongs to the device rather than to a launch, so the suite runs
 # once per appearance with `simctl ui` in between.
@@ -46,11 +36,8 @@ for appearance in light dark; do
   # xcodebuild forwards TEST_RUNNER_-prefixed variables with the prefix stripped.
   TEST_RUNNER_SCREENSHOT_APPEARANCE="${appearance}" \
     xcodebuild test-without-building \
-      -project Firezone.xcodeproj \
-      -scheme FirezoneUITests \
-      -configuration Debug \
+      -xctestrun "${XCTESTRUN}" \
       -destination "id=${UDID}" \
-      "${extra_args[@]+"${extra_args[@]}"}" \
       -resultBundlePath "${RESULT_BUNDLE}"
 
   "${SCRIPT_DIR}/export-screenshots.sh" "${RESULT_BUNDLE}" "${APPLE_DIR}/screenshots/ios"
