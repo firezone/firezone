@@ -127,5 +127,3 @@ foreach ($certificate in $certificates) {
 Write-Output ''
 Write-Output 'A connected Tunnel service holds the certificate until it restarts, so restart it'
 Write-Output 'to see the change.'
-Write-Output ''
-Write-Output "'firezone-client-tunnel.exe x509' prints what the Client makes of the store."
