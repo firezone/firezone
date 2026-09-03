@@ -478,14 +478,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1505bd5d3d116872e7271a6d4e16d81d0c8570876c8de68093a09ac269d8aac0"
 
 [[package]]
-name = "atomicwrites"
-version = "0.4.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3ef1bb8d1b645fe38d51dfc331d720fb5fc2c94b440c76cc79c80ff265ca33e3"
+name = "atomicfs"
+version = "0.1.0"
 dependencies = [
- "rustix 0.38.44",
  "tempfile",
- "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -748,7 +744,7 @@ name = "bin-shared"
 version = "0.1.0"
 dependencies = [
  "anyhow-ext",
- "atomicwrites",
+ "atomicfs",
  "axum",
  "bufferpool",
  "clap",
@@ -2761,7 +2757,7 @@ name = "flow-log-writer"
 version = "0.1.0"
 dependencies = [
  "anyhow-ext",
- "atomicwrites",
+ "atomicfs",
  "base64 0.23.1",
  "chrono",
  "flow-log-spool",

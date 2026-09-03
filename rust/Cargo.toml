@@ -7,6 +7,7 @@ members = [
     "gui-client/src-tauri",
     "headless-client",
     "libs/anyhow-ext",
+    "libs/atomicfs",
     "libs/backoff",
     "libs/bin-shared",
     "libs/client-shared",
@@ -72,7 +73,7 @@ admx-macro = { path = "gui-client/src-admx-macro" }
 anyhow = { package = "anyhow-ext", path = "libs/anyhow-ext" }
 arbitrary = "1.4.2"
 arboard = { version = "3.6.1", default-features = false }
-atomicwrites = "0.4.4"
+atomicfs = { path = "libs/atomicfs" }
 axum = { version = "0.8.8", default-features = false }
 aya = { git = "https://github.com/aya-rs/aya" }
 aya-build = { git = "https://github.com/aya-rs/aya" }

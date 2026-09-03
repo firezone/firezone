@@ -549,15 +549,26 @@ impl Eventloop {
                         || self.local_flow_logs,
                 );
 
-                if let Some(spool_root) = &self.flow_logs_dir
-                    && let Err(e) = flow_log_upload::configure_uploads(
+                if let Some(spool_root) = &self.flow_logs_dir {
+                    match flow_log_upload::configure_uploads(
                         spool_root,
                         &flow_logs.api_url,
                         flow_logs.upload_interval_secs,
                         flow_logs.upload_batch_size,
                     )
-                {
-                    tracing::warn!("Failed to persist flow-log upload config: {e:#}");
+                    .context("Failed to persist flow-log upload config")
+                    {
+                        Ok(()) => {}
+                        Err(e)
+                            if e.any_downcast_ref::<std::io::Error>()
+                                .is_some_and(|io| io.kind() == std::io::ErrorKind::StorageFull) =>
+                        {
+                            tracing::debug!("{e:#}");
+                        }
+                        Err(e) => {
+                            tracing::warn!("{e:#}");
+                        }
+                    }
                 }
 
                 let state = tunnel.state_mut();
@@ -874,8 +885,19 @@ fn persist_ingest_token(spool_root: Option<&std::path::Path>, token: &IngestToke
         return;
     }
 
-    if let Err(e) = flow_log_writer::write_token(spool_root, token.as_str()) {
-        tracing::warn!("Failed to persist flow-log ingest token: {e:#}");
+    match flow_log_writer::write_token(spool_root, token.as_str())
+        .context("Failed to persist flow-log ingest token")
+    {
+        Ok(()) => {}
+        Err(e)
+            if e.any_downcast_ref::<std::io::Error>()
+                .is_some_and(|io| io.kind() == std::io::ErrorKind::StorageFull) =>
+        {
+            tracing::debug!("{e:#}");
+        }
+        Err(e) => {
+            tracing::warn!("{e:#}");
+        }
     }
 }
 

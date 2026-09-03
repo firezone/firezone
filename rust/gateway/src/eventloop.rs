@@ -339,11 +339,21 @@ impl Eventloop {
             IngressMessages::CreateAuthorization(msg) => {
                 let token = &msg.flow_logs_ingest_token;
 
-                if token.claims().uploads_enabled
-                    && let Err(e) =
-                        flow_log_writer::write_token(&self.flow_logs_dir, token.as_str())
-                {
-                    tracing::warn!("Failed to persist flow-log ingest token: {e:#}");
+                if token.claims().uploads_enabled {
+                    match flow_log_writer::write_token(&self.flow_logs_dir, token.as_str())
+                        .context("Failed to persist flow-log ingest token")
+                    {
+                        Ok(()) => {}
+                        Err(e)
+                            if e.any_downcast_ref::<std::io::Error>()
+                                .is_some_and(|io| io.kind() == std::io::ErrorKind::StorageFull) =>
+                        {
+                            tracing::debug!("{e:#}");
+                        }
+                        Err(e) => {
+                            tracing::warn!("{e:#}");
+                        }
+                    }
                 }
 
                 if let Err(snownet::NoTurnServers {}) = tunnel.state_mut().create_authorization(
@@ -426,13 +436,24 @@ impl Eventloop {
                     .state_mut()
                     .set_flow_logs_enabled(flow_logs.upload_enabled() || self.local_flow_logs);
 
-                if let Err(e) = flow_log_upload::configure_uploads(
+                match flow_log_upload::configure_uploads(
                     &self.flow_logs_dir,
                     &flow_logs.api_url,
                     flow_logs.upload_interval_secs,
                     flow_logs.upload_batch_size,
-                ) {
-                    tracing::warn!("Failed to persist flow-log upload config: {e:#}");
+                )
+                .context("Failed to persist flow-log upload config")
+                {
+                    Ok(()) => {}
+                    Err(e)
+                        if e.any_downcast_ref::<std::io::Error>()
+                            .is_some_and(|io| io.kind() == std::io::ErrorKind::StorageFull) =>
+                    {
+                        tracing::debug!("{e:#}");
+                    }
+                    Err(e) => {
+                        tracing::warn!("{e:#}");
+                    }
                 }
 
                 tunnel
