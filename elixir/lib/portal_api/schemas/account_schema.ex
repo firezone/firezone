@@ -60,6 +60,8 @@ defmodule PortalAPI.Schemas.Account do
       },
       required: [:id, :key, :legal_name, :limits, :name, :slug]
     })
+
+    def map(%Portal.Account{limit_usage: usage}, _map), do: %{limits: usage}
   end
 
   defmodule Response do

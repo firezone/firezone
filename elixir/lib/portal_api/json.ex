@@ -5,13 +5,10 @@ defmodule PortalAPI.JSON do
 
       json(conn, JSON.encode(site))
       json(conn, JSON.encode(sites, metadata))
-      json(conn, JSON.encode(account, extra: %{limits: limits}))
-
   The schema is found by convention from the struct: `Portal.Entra.Directory`
   is documented by `PortalAPI.Schemas.EntraDirectory.Schema`. A struct with
   more than one API shape, or a page of mixed structs, names it with `schema:`,
-  a module or a function of the struct. `extra:` adds values the request
-  produced and the struct does not carry.
+  a module or a function of the struct.
   """
 
   alias PortalAPI.Pagination
@@ -21,9 +18,7 @@ defmodule PortalAPI.JSON do
   def encode(struct, opts \\ [])
 
   def encode(struct, opts) when is_struct(struct) and is_list(opts) do
-    schema = Keyword.get(opts, :schema)
-    extra = Keyword.get(opts, :extra, %{})
-    %{data: struct |> encode_with(schema) |> Map.merge(extra)}
+    %{data: encode_with(struct, Keyword.get(opts, :schema))}
   end
 
   def encode(structs, metadata) when is_list(structs), do: encode(structs, metadata, [])

@@ -11,11 +11,10 @@ defmodule PortalAPI.Schemas.ContractTest do
 
   alias OpenApiSpex.Schema
 
-  # `extras` are properties the controller adds after encoding. `aliases` map a
-  # property to the struct field it is read from. `attrs` give a bare struct
-  # whatever its mapper needs.
+  # `aliases` map a property to the struct field it is read from. `attrs` give
+  # a bare struct whatever its mapper needs.
   @contracts [
-    %{schema: PortalAPI.Schemas.Account.Schema, struct: Portal.Account, extras: [:limits]},
+    %{schema: PortalAPI.Schemas.Account.Schema, struct: Portal.Account},
     %{schema: PortalAPI.Schemas.Actor.Schema, struct: Portal.Actor},
     %{schema: PortalAPI.Schemas.Membership.Schema, struct: Portal.Actor},
     %{schema: PortalAPI.Schemas.Site.Schema, struct: Portal.Site},
@@ -95,7 +94,7 @@ defmodule PortalAPI.Schemas.ContractTest do
   ]
 
   for contract <- @contracts do
-    @contract Map.merge(%{extras: [], aliases: [], attrs: %{}}, contract)
+    @contract Map.merge(%{aliases: [], attrs: %{}}, contract)
 
     describe "#{inspect(contract.schema)} against #{inspect(contract.struct)}" do
       test "encodes exactly the documented properties" do
@@ -108,7 +107,7 @@ defmodule PortalAPI.Schemas.ContractTest do
           )
 
         documented = Map.keys(schema.properties)
-        emitted = Enum.uniq(Map.keys(encoded) ++ @contract.extras)
+        emitted = Map.keys(encoded)
         # A bare struct has nil for every optional property, which is omitted.
         expected = documented -- (documented -- List.wrap(schema.required))
 

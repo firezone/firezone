@@ -135,13 +135,13 @@ defmodule PortalAPI.GatewayController do
     name = get_in(params, ["gateway", "name"])
 
     with {:ok, site} <- Database.fetch_site(site_id, subject),
-         {:ok, gateway, _token, encoded_token} <- Database.provision_gateway(site, name, subject) do
+         {:ok, gateway, token, _encoded_token} <- Database.provision_gateway(site, name, subject) do
       gateway = Presence.Devices.preload_presence([gateway]) |> List.first()
 
       conn
       |> put_status(:created)
       |> put_resp_header("location", ~p"/sites/#{site_id}/gateways/#{gateway}")
-      |> json(JSON.encode(gateway, schema: PortalAPI.Schemas.Gateway.Schema, extra: %{token: encoded_token}))
+      |> json(JSON.encode(%{gateway | provisioned_token: token}, schema: PortalAPI.Schemas.Gateway.Schema))
     else
       error -> Error.handle(conn, error)
     end

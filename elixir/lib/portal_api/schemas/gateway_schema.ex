@@ -133,8 +133,15 @@ defmodule PortalAPI.Schemas.Gateway do
       }
     })
 
-    def map(%Portal.Device{} = device, _map) do
+    def map(%Portal.Device{provisioned_token: nil} = device, _map) do
       %{online: device.online?, rotated_at: device.gateway_token_rotated_at}
+    end
+
+    def map(%Portal.Device{provisioned_token: token} = device, map) do
+      device
+      |> Map.put(:provisioned_token, nil)
+      |> map(map)
+      |> Map.put(:token, Portal.Authentication.encode_fragment!(token))
     end
   end
 

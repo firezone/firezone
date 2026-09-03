@@ -140,6 +140,8 @@ defmodule Portal.Device do
     field :gateway_token_id, :binary_id
 
     # Virtual fields
+    # The token minted with a Gateway, carried only on the provisioning response.
+    field :provisioned_token, :any, virtual: true
     field :online?, :boolean, virtual: true, default: false
 
     # Whether THIS connection proved possession of an MDM-issued certificate.
