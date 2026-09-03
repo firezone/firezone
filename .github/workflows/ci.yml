@@ -513,6 +513,7 @@ jobs:
       pull-requests: write # post test result comments
     with:
       id: integration
+      api_fuzz: true
       gateway_image: ${{ needs.data-plane.outputs.gateway_image }}
       client_image: ${{ needs.data-plane.outputs.client_image }}
       relay_image: ${{ needs.data-plane.outputs.relay_image }}

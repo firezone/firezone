@@ -55,6 +55,11 @@ on:
         required: false
         type: string
         default: ${{ github.sha }}
+      api_fuzz:
+        description: "Also fuzz the REST API from its OpenAPI spec. Only depends on the portal, so one invocation is enough."
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   collect-images:
@@ -79,6 +84,7 @@ jobs:
   # Fuzzes the REST API from its OpenAPI spec against a seeded portal. Only
   # postgres and the portal run, so it does not join the matrix above.
   api-fuzz:
+    if: inputs.api_fuzz
     runs-on: ubuntu-24.04
     needs: collect-images
     permissions:
@@ -101,8 +107,16 @@ jobs:
         run: docker compose run --pull never elixir /bin/sh -c 'mix ecto.migrate && mix ecto.seed'
       - name: Start the portal
         run: |
-          retry docker compose up -d portal --no-build --pull never
-          retry curl --fail --silent --output /dev/null http://localhost:8081/openapi.json
+          retry docker compose up -d --wait portal --no-build --pull never
+          for attempt in $(seq 1 30); do
+            status=$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' http://localhost:8081/openapi.json || true)
+            echo "attempt $attempt: HTTP $status"
+            [[ "$status" == "200" ]] && exit 0
+            sleep 2
+          done
+          docker compose ps
+          docker compose exec portal curl --silent --show-error --output /dev/null --write-out 'in-container: HTTP %{http_code}\n' http://localhost:8081/openapi.json
+          exit 1
       - run: ./scripts/tests/openapi-fuzz.sh
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: "!cancelled()"
