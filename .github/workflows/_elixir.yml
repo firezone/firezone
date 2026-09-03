@@ -172,12 +172,11 @@ jobs:
           BREAKING: ${{ steps.oasdiff.outputs.breaking }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
-          # shellcheck disable=SC2016 # the backticks are literal Markdown fences
           marker="<!-- openapi-breaking-changes -->"
           if [[ -n "$BREAKING" ]]; then
-            body=$(printf '%s\n## :warning: Breaking OpenAPI changes\n\nThis PR changes the REST API in a way that can break generated clients:\n\n```\n%s\n```\n' "$marker" "$BREAKING")
+            body=$(printf "%s\n## :warning: Breaking OpenAPI changes\n\nThis PR changes the REST API in a way that can break generated clients:\n\n\`\`\`\n%s\n\`\`\`\n" "$marker" "$BREAKING")
           else
-            body=$(printf '%s\n## Breaking OpenAPI changes\n\nNone on the latest run.\n' "$marker")
+            body=$(printf "%s\n## Breaking OpenAPI changes\n\nNone on the latest run.\n" "$marker")
           fi
           existing=$(gh api "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" --paginate \
             --jq ".[] | select(.body | startswith(\"$marker\")) | .id" | head -n1)
