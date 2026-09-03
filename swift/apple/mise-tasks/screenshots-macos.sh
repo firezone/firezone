@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-#MISE description="Photograph the macOS screens into swift/apple/screenshots/macos"
+#MISE description="Photograph the macOS screens into swift/apple/screenshots/macos/<release>"
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -37,4 +37,7 @@ xcodebuild test \
     ENABLE_HARDENED_RUNTIME=NO \
     ONLY_ACTIVE_ARCH=YES
 
-"${SCRIPT_DIR}/export-screenshots.sh" "${RESULT_BUNDLE}" "${APPLE_DIR}/screenshots/macos"
+# SwiftUI lays a window out with the release it runs on, so the gallery keeps a
+# directory per release.
+"${SCRIPT_DIR}/export-screenshots.sh" "${RESULT_BUNDLE}" \
+  "${APPLE_DIR}/screenshots/macos/$(sw_vers -productVersion | cut -d . -f 1)"

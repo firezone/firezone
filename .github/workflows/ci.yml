@@ -225,22 +225,22 @@ jobs:
         continue-on-error: true
         with:
           name: macos-26-screenshots
-          path: swift/apple/screenshots/macos
+          path: swift/apple/screenshots/macos/26
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         continue-on-error: true
         with:
           name: macos-15-screenshots
-          path: swift/apple/screenshots/macos
+          path: swift/apple/screenshots/macos/15
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         continue-on-error: true
         with:
           name: ios-iphone-screenshots
-          path: swift/apple/screenshots/ios
+          path: swift/apple/screenshots/ios/iphone
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         continue-on-error: true
         with:
           name: ios-ipad-screenshots
-          path: swift/apple/screenshots/ios
+          path: swift/apple/screenshots/ios/ipad
       - name: Keep the images whose differences are invisible
         run: |
           set -euo pipefail

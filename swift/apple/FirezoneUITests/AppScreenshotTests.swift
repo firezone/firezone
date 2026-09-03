@@ -6,7 +6,7 @@
 
 // Photographs the real macOS app against the mocked backend, one scenario,
 // appearance and window per launch. Nothing is compared against a reference: the
-// images are the output, and CI commits them to `swift/apple/screenshots/macos`.
+// images are the output, and CI commits them to `swift/apple/screenshots/macos/<release>`.
 
 #if os(macOS)
   import AppKit
