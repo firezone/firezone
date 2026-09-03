@@ -2,6 +2,7 @@
 
 use connlib_model::{ResourceId, ResourceView};
 use serde::{Deserialize, Serialize};
+use std::borrow::Cow;
 use url::Url;
 
 pub const INTERNET_RESOURCE_DESCRIPTION: &str = "All network traffic";
@@ -92,20 +93,34 @@ pub enum Window {
     Settings,
 }
 
-fn resource_header(res: &ResourceView) -> Item {
-    let Some(address_description) = res.address_description() else {
-        return copyable(&res.pastable());
-    };
+/// The single detail line shown for a Resource: its description if present,
+/// otherwise its address. Returns `None` when that value is empty or identical
+/// to the `name` already shown by the parent menu item, so nothing is repeated.
+///
+/// A description that parses as a URL becomes a clickable link and is always
+/// shown — even when it is equal to the name — because the parent menu item is
+/// not clickable, making this link the only way to open it. Anything else is
+/// shown greyed-out, since the address is copied via the explicit "Copy
+/// address" action instead.
+pub(crate) fn resource_detail(res: &ResourceView) -> Option<Item> {
+    let description = res.address_description().filter(|d| !d.is_empty());
 
-    if address_description.is_empty() {
-        return copyable(&res.pastable());
+    if let Some(description) = description
+        && let Ok(url) = Url::parse(description)
+    {
+        return Some(item(Event::Url(url), format!("<{description}>")));
     }
 
-    let Ok(url) = Url::parse(address_description) else {
-        return copyable(address_description);
+    let detail = match description {
+        Some(description) => Cow::from(description),
+        None => res.pastable(),
     };
 
-    item(Event::Url(url), format!("<{address_description}>"))
+    if detail.is_empty() || &*detail == res.name() {
+        return None;
+    }
+
+    Some(item(None, detail.into_owned()))
 }
 
 impl Menu {
@@ -131,16 +146,15 @@ impl Menu {
         self
     }
 
-    /// Appends a menu item that copies its title when clicked and shows `icon`
-    /// to the left of the text.
-    pub(crate) fn copyable_with_icon(mut self, s: &str, icon: Icon) -> Self {
-        self.add_item(copyable(s).icon(icon));
-        self
-    }
-
     /// Appends a disabled item with no accelerator or event
     pub(crate) fn disabled<S: Into<String>>(mut self, title: S) -> Self {
         self.add_item(item(None, title).disabled());
+        self
+    }
+
+    /// Appends a disabled item that shows `icon` to the left of the text.
+    pub(crate) fn disabled_with_icon<S: Into<String>>(mut self, title: S, icon: Icon) -> Self {
+        self.add_item(item(None, title).disabled().icon(icon));
         self
     }
 
@@ -154,26 +168,6 @@ impl Menu {
     pub(crate) fn separator(mut self) -> Self {
         self.add_separator();
         self
-    }
-
-    fn internet_resource(self) -> Self {
-        self.disabled(INTERNET_RESOURCE_DESCRIPTION)
-    }
-
-    fn resource_body(self, resource: &ResourceView) -> Self {
-        self.separator()
-            .disabled("Resource")
-            .copyable(resource.name())
-            .copyable(resource.pastable().as_ref())
-    }
-
-    pub(crate) fn resource_description(mut self, resource: &ResourceView) -> Self {
-        if resource.is_internet_resource() {
-            self.internet_resource()
-        } else {
-            self.add_item(resource_header(resource));
-            self.resource_body(resource)
-        }
     }
 }
 
