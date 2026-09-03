@@ -339,14 +339,15 @@ impl Eventloop {
             IngressMessages::CreateAuthorization(msg) => {
                 let token = &msg.flow_logs_ingest_token;
 
-                if token.claims().uploads_enabled
-                    && let Err(e) =
-                        flow_log_writer::write_token(&self.flow_logs_dir, token.as_str())
-                {
-                    if flow_log_writer::is_disk_full(&e) {
-                        tracing::debug!("Failed to persist flow-log ingest token: {e:#}");
-                    } else {
-                        tracing::warn!("Failed to persist flow-log ingest token: {e:#}");
+                if token.claims().uploads_enabled {
+                    match flow_log_writer::write_token(&self.flow_logs_dir, token.as_str()) {
+                        Ok(()) => {}
+                        Err(e) if is_disk_full(&e) => {
+                            tracing::debug!("Failed to persist flow-log ingest token: {e:#}");
+                        }
+                        Err(e) => {
+                            tracing::warn!("Failed to persist flow-log ingest token: {e:#}");
+                        }
                     }
                 }
 
@@ -430,13 +431,19 @@ impl Eventloop {
                     .state_mut()
                     .set_flow_logs_enabled(flow_logs.upload_enabled() || self.local_flow_logs);
 
-                if let Err(e) = flow_log_upload::configure_uploads(
+                match flow_log_upload::configure_uploads(
                     &self.flow_logs_dir,
                     &flow_logs.api_url,
                     flow_logs.upload_interval_secs,
                     flow_logs.upload_batch_size,
                 ) {
-                    tracing::warn!("Failed to persist flow-log upload config: {e:#}");
+                    Ok(()) => {}
+                    Err(e) if e.kind() == std::io::ErrorKind::StorageFull => {
+                        tracing::debug!("Failed to persist flow-log upload config: {e:#}");
+                    }
+                    Err(e) => {
+                        tracing::warn!("Failed to persist flow-log upload config: {e:#}");
+                    }
                 }
 
                 tunnel
@@ -544,6 +551,11 @@ impl Eventloop {
 
 /// Performs a single recursive DNS lookup against the upstream resolver, recording
 /// its duration with `dns.question.type` and `dns.response.code` attributes.
+fn is_disk_full(e: &anyhow::Error) -> bool {
+    e.any_downcast_ref::<std::io::Error>()
+        .is_some_and(|io| io.kind() == std::io::ErrorKind::StorageFull)
+}
+
 async fn resolve_record(
     resolver: &TokioResolver,
     dns_lookup_duration: &opentelemetry::metrics::Histogram<f64>,

@@ -153,8 +153,8 @@ pub fn write_token(spool_root: &Path, token: &str) -> anyhow::Result<()> {
         .context("Token has a missing or invalid policy_authorization_id")?;
 
     let dir = spool_root.join(&role).join(&authz_id);
-    create_dir_secure(&dir)?;
-    write_file_secure(&dir.join("token"), token.as_bytes())?;
+    create_dir_secure(&dir).context("Failed to create authorization directory")?;
+    atomicfs::write(dir.join("token"), token).context("Failed to write token file")?;
 
     Ok(())
 }
@@ -398,35 +398,42 @@ fn writer_loop(root: &Path, rx: &mpsc::Receiver<Command>) {
             Command::Shutdown => break,
         };
 
-        if let Err(e) = write_report(root, &report) {
-            if is_disk_full(&e) {
-                tracing::debug!("Failed to write flow-log report: {e:#}");
-            } else {
-                tracing::warn!("Failed to write flow-log report: {e:#}");
-            }
-        }
+        write_report(root, &report);
     }
 }
 
-fn write_report(root: &Path, report: &Report) -> anyhow::Result<()> {
+fn write_report(root: &Path, report: &Report) {
     let dir = root.join(&report.role).join(&report.authz_id);
 
     if !dir.join("token").exists() {
         tracing::debug!(authz_id = %report.authz_id, "No ingest token on disk for authorization; not spooling report");
 
-        return Ok(());
+        return;
     }
 
-    let contents = serialize(&serde_json::Value::Object(report.payload.clone()))?;
+    let contents = match serialize(&serde_json::Value::Object(report.payload.clone())) {
+        Ok(contents) => contents,
+        Err(e) => {
+            tracing::warn!("Failed to serialize flow-log report: {e:#}");
+
+            return;
+        }
+    };
 
     let suffix = if report.completed { "end" } else { "start" };
     let path = dir.join(format!(
         "{:010}-{}.{suffix}.json",
         report.flow_start, report.identity
     ));
-    write_file_secure(&path, &contents)?;
-
-    Ok(())
+    match atomicfs::write(&path, &contents) {
+        Ok(()) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::StorageFull => {
+            tracing::debug!(path = %path.display(), "Failed to write flow-log report: {e}");
+        }
+        Err(e) => {
+            tracing::warn!(path = %path.display(), "Failed to write flow-log report: {e}");
+        }
+    }
 }
 
 /// A stable hash of the fields identifying a flow within an authorization.
@@ -449,23 +456,6 @@ fn flow_identity(fields: &serde_json::Map<String, serde_json::Value>) -> String 
     }
 
     format!("{:016x}", hasher.finish())
-}
-
-fn write_file_secure(path: &Path, bytes: &[u8]) -> anyhow::Result<()> {
-    atomicfs::write(path, bytes)
-        .with_context(|| format!("Failed to atomically write {}", path.display()))
-}
-
-/// Whether a spool write failed because the disk is full.
-///
-/// A full disk is an operator problem the spool cannot fix, so callers log it on
-/// `DEBUG` instead of `WARN` and carry on.
-pub fn is_disk_full(e: &anyhow::Error) -> bool {
-    e.chain().any(|cause| {
-        cause
-            .downcast_ref::<std::io::Error>()
-            .is_some_and(|io| io.kind() == std::io::ErrorKind::StorageFull)
-    })
 }
 
 /// A policy-authorization id must be a hyphenated UUID; reject anything else so it
@@ -611,27 +601,6 @@ mod tests {
 
         assert!(write_token(dir.path(), &format!("h.{payload}.s")).is_err());
         assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 0);
-    }
-
-    #[test]
-    fn atomic_write_error_keeps_io_error_kind() {
-        let dir = tempfile::tempdir().unwrap();
-        let e = write_file_secure(&dir.path().join("missing").join("file"), b"x").unwrap_err();
-
-        assert!(
-            e.chain()
-                .any(|c| c.downcast_ref::<std::io::Error>().is_some()),
-            "{e:#}"
-        );
-        assert!(!is_disk_full(&e));
-    }
-
-    #[test]
-    fn detects_disk_full_through_context() {
-        let e = anyhow::Error::from(std::io::Error::from(std::io::ErrorKind::StorageFull))
-            .context("Failed to atomically write");
-
-        assert!(is_disk_full(&e));
     }
 
     #[test]

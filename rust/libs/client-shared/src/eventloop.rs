@@ -549,15 +549,21 @@ impl Eventloop {
                         || self.local_flow_logs,
                 );
 
-                if let Some(spool_root) = &self.flow_logs_dir
-                    && let Err(e) = flow_log_upload::configure_uploads(
+                if let Some(spool_root) = &self.flow_logs_dir {
+                    match flow_log_upload::configure_uploads(
                         spool_root,
                         &flow_logs.api_url,
                         flow_logs.upload_interval_secs,
                         flow_logs.upload_batch_size,
-                    )
-                {
-                    tracing::warn!("Failed to persist flow-log upload config: {e:#}");
+                    ) {
+                        Ok(()) => {}
+                        Err(e) if e.kind() == std::io::ErrorKind::StorageFull => {
+                            tracing::debug!("Failed to persist flow-log upload config: {e:#}");
+                        }
+                        Err(e) => {
+                            tracing::warn!("Failed to persist flow-log upload config: {e:#}");
+                        }
+                    }
                 }
 
                 let state = tunnel.state_mut();
@@ -874,13 +880,20 @@ fn persist_ingest_token(spool_root: Option<&std::path::Path>, token: &IngestToke
         return;
     }
 
-    if let Err(e) = flow_log_writer::write_token(spool_root, token.as_str()) {
-        if flow_log_writer::is_disk_full(&e) {
+    match flow_log_writer::write_token(spool_root, token.as_str()) {
+        Ok(()) => {}
+        Err(e) if is_disk_full(&e) => {
             tracing::debug!("Failed to persist flow-log ingest token: {e:#}");
-        } else {
+        }
+        Err(e) => {
             tracing::warn!("Failed to persist flow-log ingest token: {e:#}");
         }
     }
+}
+
+fn is_disk_full(e: &anyhow::Error) -> bool {
+    e.any_downcast_ref::<std::io::Error>()
+        .is_some_and(|io| io.kind() == std::io::ErrorKind::StorageFull)
 }
 
 async fn phoenix_channel_event_loop(
