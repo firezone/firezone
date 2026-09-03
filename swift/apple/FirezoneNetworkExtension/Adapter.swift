@@ -558,10 +558,10 @@ actor Adapter {
       }
 
     case .disconnected(let error):
-      let errorMessage = error.message()
+      let userMessage = error.userMessage()
       let requiresSignIn = error.requiresSignIn()
       Log.info(
-        "Received Disconnected event (requiresSignIn=\(requiresSignIn)): " + errorMessage)
+        "Received Disconnected event (requiresSignIn=\(requiresSignIn)): " + error.logMessage())
 
       // iOS shows the notification from the tunnel process because the UI
       // process isn't guaranteed to be alive; macOS handles it from the UI.
@@ -569,13 +569,13 @@ actor Adapter {
         // Only a session ended by an unusable token can be restored by signing in again.
         // Offering it for anything else sends the user somewhere that cannot help them.
         if requiresSignIn {
-          SessionNotification.showDisconnectedNotificationiOS(errorMessage)
+          SessionNotification.showDisconnectedNotificationiOS(userMessage)
         } else {
-          SessionNotification.showDisconnectedNotificationWithoutSignIniOS(errorMessage)
+          SessionNotification.showDisconnectedNotificationWithoutSignIniOS(userMessage)
         }
       #endif
 
-      let sendableError = SendableError(errorMessage, requiresSignIn: requiresSignIn)
+      let sendableError = SendableError(userMessage, requiresSignIn: requiresSignIn)
       providerCommandSender.send(.cancelWithError(sendableError))
 
     case .allGatewaysOffline(let resourceId):

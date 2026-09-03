@@ -216,31 +216,36 @@ const CERTIFICATE_REJECTION_CODES: &[&str] = &[
 /// Every variant's `Display` output is shown to the user verbatim: as a notification on mobile
 /// and as a dialog on desktop.
 ///
-/// These are product copy, not log lines. Word them for someone who has never seen this code,
-/// and keep whatever diagnostic detail we have at the end so it never leads the sentence.
+/// These are product copy, not log lines. Word them for someone who has never seen this code.
+/// Diagnostics we cannot word for a user go into the variant's source, which only the logs render.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("Your Firezone sign-in has expired. Sign in again to reconnect.")]
     InvalidToken,
     /// The portal refused to authenticate us for a reason we cannot act on specifically.
+    ///
+    /// The reason it names is its own wording for the user.
     #[error("The Firezone Portal rejected this device's sign-in: {0}")]
     AuthenticationFailed(String),
-    #[error("This device could not sign in with its certificate: {0}")]
-    ClientCertificateSigningFailed(String),
+    #[error("This device could not sign in with its certificate.")]
+    ClientCertificateSigningFailed(#[source] BoxError),
     /// The portal refused the X.509 client certificate we presented.
     ///
     /// It words its rejections for the user, so anything we wrap around one only repeats it.
     #[error("{0}")]
     CertificateRejected(String),
-    #[error(
-        "The connection to the Firezone Portal was lost and could not be restored: {final_error}"
-    )]
-    MaxRetriesReached { final_error: String },
-    #[error("The Firezone Portal refused to start a session for this device: {0}")]
-    LoginFailed(String),
-    #[error("Firezone ran into an unrecoverable error: {0}")]
-    FatalIo(io::Error),
+    #[error("The connection to the Firezone Portal was lost and could not be restored.")]
+    MaxRetriesReached {
+        #[source]
+        final_error: BoxError,
+    },
+    #[error("The Firezone Portal refused to start a session for this device.")]
+    LoginFailed(#[source] BoxError),
+    #[error("Firezone ran into an unrecoverable error.")]
+    FatalIo(#[source] io::Error),
 }
+
+type BoxError = Box<dyn std::error::Error + Send + Sync>;
 
 impl Error {
     /// Returns whether the stored token must be discarded and the user sent through sign-in again.
@@ -704,7 +709,9 @@ where
                         if let Some(message) = e.client_certificate_signing_error() =>
                     {
                         self.state = State::Closed;
-                        return Poll::Ready(Err(Error::ClientCertificateSigningFailed(message)));
+                        return Poll::Ready(Err(Error::ClientCertificateSigningFailed(
+                            message.into(),
+                        )));
                     }
                     Poll::Ready(Err(e)) => {
                         let backoff = match e.parse_retry_after_header() {
@@ -717,11 +724,13 @@ where
                                         &self.make_initial_backoff
                                     });
 
-                                backoff
-                                    .next_backoff()
-                                    .ok_or_else(|| Error::MaxRetriesReached {
-                                        final_error: e.to_string(),
-                                    })?
+                                let Some(duration) = backoff.next_backoff() else {
+                                    return Poll::Ready(Err(Error::MaxRetriesReached {
+                                        final_error: Box::new(e),
+                                    }));
+                                };
+
+                                duration
                             }
                         };
                         self.state = State::Closed;
@@ -886,7 +895,9 @@ where
                             if message.topic == self.login
                                 && pending_join_requests.contains_key(&req_id)
                             {
-                                return Poll::Ready(Err(Error::LoginFailed(reason.to_string())));
+                                return Poll::Ready(Err(Error::LoginFailed(
+                                    reason.to_string().into(),
+                                )));
                             }
 
                             match reason {
