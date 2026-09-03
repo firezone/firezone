@@ -6,13 +6,18 @@ import android.app.Application
 import android.content.Context
 import android.net.Uri
 import android.os.Bundle
+import dev.firezone.android.core.data.ManagedConfigurationReader
+import dev.firezone.android.core.data.ManagedConfigurationSource
 import dev.firezone.android.core.data.Repository
 import dev.firezone.android.core.data.X509_CERTIFICATE_ALIAS_RESTRICTION
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -27,15 +32,31 @@ import java.security.cert.X509Certificate
 class CertificateAccessTest {
     private val keyChain = WithholdingKeyChain()
     private val restrictions = Bundle()
-    private val repository =
-        Repository(
-            RuntimeEnvironment.getApplication(),
-            Dispatchers.Unconfined,
-            RuntimeEnvironment
-                .getApplication()
-                .getSharedPreferences("certificate-access-test", Context.MODE_PRIVATE),
-        )
-    private val certificateAccess = CertificateAccess(repository, restrictions, keyChain)
+    private lateinit var repository: Repository
+    private lateinit var certificateAccess: CertificateAccess
+
+    @Before
+    fun setUp() {
+        val application: Application = RuntimeEnvironment.getApplication()
+        val preferences = application.getSharedPreferences("certificate-access-test", Context.MODE_PRIVATE)
+        preferences.edit().clear().commit()
+        restrictions.clear()
+        repository = Repository(application, Dispatchers.Unconfined, preferences)
+        val managedConfigurationSource =
+            ManagedConfigurationSource(
+                application,
+                ManagedConfigurationReader { Bundle(restrictions) },
+                repository,
+                CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
+            )
+        certificateAccess =
+            CertificateAccess(
+                repository = repository,
+                managedConfigurationSource = managedConfigurationSource,
+                keyChain = keyChain,
+                coroutineDispatcher = Dispatchers.Unconfined,
+            )
+    }
 
     @Test
     fun `no configured alias needs no selection`() {

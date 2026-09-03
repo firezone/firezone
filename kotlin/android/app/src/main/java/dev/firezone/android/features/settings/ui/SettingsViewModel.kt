@@ -8,14 +8,17 @@ import androidx.core.content.FileProvider
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dev.firezone.android.core.data.ManagedConfigurationSource
 import dev.firezone.android.core.data.Repository
 import dev.firezone.android.core.data.model.Config
 import dev.firezone.android.core.data.model.ManagedConfigStatus
+import dev.firezone.android.core.data.model.ManagedConfiguration
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.launch
@@ -32,6 +35,7 @@ internal class SettingsViewModel
     @Inject
     constructor(
         private val repo: Repository,
+        private val managedConfigurationSource: ManagedConfigurationSource,
     ) : ViewModel() {
         private val _uiState = MutableStateFlow(UiState())
         val uiState: StateFlow<UiState> = _uiState
@@ -39,35 +43,40 @@ internal class SettingsViewModel
         private val actionMutableStateFlow = MutableStateFlow<ViewAction?>(null)
         val actionStateFlow: StateFlow<ViewAction?> = actionMutableStateFlow
 
-        // Working config that gets modified during editing using immutable copy
-        private var config =
-            Config(
-                authUrl = "",
-                apiUrl = "",
-                logFilter = "",
-                accountSlug = "",
-                startOnLogin = false,
-                connectOnStart = false,
-            )
+        private var userConfig = repo.getUserConfigSync()
+        private var managedConfiguration: ManagedConfiguration? = managedConfigurationSource.configuration.value
+        private var config = getEffectiveConfig()
 
         // StateFlow that emits config only on load/reset, not during editing
         private val _configStateFlow = MutableStateFlow(config)
         val configStateFlow: StateFlow<Config> = _configStateFlow
 
-        private val _managedStatusStateFlow = MutableStateFlow<ManagedConfigStatus?>(null)
+        private val _managedStatusStateFlow =
+            MutableStateFlow<ManagedConfigStatus?>(
+                managedConfiguration?.managedStatus() ?: repo.getManagedStatus(),
+            )
         val managedStatusStateFlow: StateFlow<ManagedConfigStatus?> = _managedStatusStateFlow
 
         private var shouldResetFavoritesOnSave = false
 
-        fun populateFieldsFromConfig() {
+        init {
             viewModelScope.launch {
-                repo.getConfig().collect {
-                    config = it
-                    _configStateFlow.value = it
-                    _managedStatusStateFlow.value = repo.getManagedStatus()
-                    onFieldUpdated()
+                managedConfigurationSource.configuration.filterNotNull().collect { configuration ->
+                    managedConfiguration = configuration
+                    _managedStatusStateFlow.value = configuration.managedStatus()
+                    publishEffectiveConfig()
                 }
             }
+        }
+
+        fun populateFieldsFromConfig() {
+            viewModelScope.launch { managedConfigurationSource.refresh() }
+        }
+
+        suspend fun hasConfiguredCertificateAlias(): Boolean {
+            val configuration = managedConfigurationSource.refresh()
+
+            return configuration.resolveX509CertificateAlias(repo.getUserX509CertificateAliasSync()) != null
         }
 
         fun onViewResume(context: Context) {
@@ -89,7 +98,7 @@ internal class SettingsViewModel
 
         fun onSaveSettingsCompleted() {
             viewModelScope.launch {
-                repo.saveSettings(config).collect {
+                repo.saveUserConfig(userConfig).collect {
                     if (shouldResetFavoritesOnSave) {
                         repo.resetFavorites()
                         shouldResetFavoritesOnSave = false
@@ -104,33 +113,45 @@ internal class SettingsViewModel
         }
 
         fun onValidateAuthUrl(authUrl: String) {
-            config = config.copy(authUrl = authUrl)
-            onFieldUpdated()
+            updateUserConfig(
+                isManaged = { it.isAuthUrlManaged },
+                update = { copy(authUrl = authUrl) },
+            )
         }
 
         fun onValidateApiUrl(apiUrl: String) {
-            config = config.copy(apiUrl = apiUrl)
-            onFieldUpdated()
+            updateUserConfig(
+                isManaged = { it.isApiUrlManaged },
+                update = { copy(apiUrl = apiUrl) },
+            )
         }
 
         fun onValidateLogFilter(logFilter: String) {
-            config = config.copy(logFilter = logFilter)
-            onFieldUpdated()
+            updateUserConfig(
+                isManaged = { it.isLogFilterManaged },
+                update = { copy(logFilter = logFilter) },
+            )
         }
 
         fun onValidateAccountSlug(accountSlug: String) {
-            config = config.copy(accountSlug = accountSlug)
-            onFieldUpdated()
+            updateUserConfig(
+                isManaged = { it.isAccountSlugManaged },
+                update = { copy(accountSlug = accountSlug) },
+            )
         }
 
         fun onStartOnLoginChanged(isChecked: Boolean) {
-            config = config.copy(startOnLogin = isChecked)
-            onFieldUpdated()
+            updateUserConfig(
+                isManaged = { it.isStartOnLoginManaged },
+                update = { copy(startOnLogin = isChecked) },
+            )
         }
 
         fun onConnectOnStartChanged(isChecked: Boolean) {
-            config = config.copy(connectOnStart = isChecked)
-            onFieldUpdated()
+            updateUserConfig(
+                isManaged = { it.isConnectOnStartManaged },
+                update = { copy(connectOnStart = isChecked) },
+            )
         }
 
         fun deleteLogDirectory(context: Context) {
@@ -185,11 +206,10 @@ internal class SettingsViewModel
         }
 
         fun resetSettingsToDefaults() {
-            config = repo.getDefaultConfigSync()
+            userConfig = repo.getDefaultUserConfigSync()
             shouldResetFavoritesOnSave = true
-            _configStateFlow.value = config
-            _managedStatusStateFlow.value = repo.getManagedStatus()
-            onFieldUpdated()
+            _managedStatusStateFlow.value = managedConfiguration?.managedStatus() ?: repo.getManagedStatus()
+            publishEffectiveConfig()
         }
 
         fun clearAction() {
@@ -235,6 +255,30 @@ internal class SettingsViewModel
                     isSaveButtonEnabled = areFieldsValid(),
                 )
         }
+
+        private fun updateUserConfig(
+            isManaged: (ManagedConfigStatus) -> Boolean,
+            update: Config.() -> Config,
+        ) {
+            val managedStatus =
+                _managedStatusStateFlow.value
+                    ?: managedConfiguration?.managedStatus()
+                    ?: repo.getManagedStatus()
+            if (!isManaged(managedStatus)) {
+                userConfig = userConfig.update()
+            }
+            publishEffectiveConfig()
+        }
+
+        private fun publishEffectiveConfig() {
+            config = getEffectiveConfig()
+            _configStateFlow.value = config
+            onFieldUpdated()
+        }
+
+        private fun getEffectiveConfig(): Config =
+            managedConfiguration?.let { repo.getEffectiveConfig(userConfig, it) }
+                ?: repo.getEffectiveConfigFromPersistedManaged(userConfig)
 
         private fun areFieldsValid(): Boolean =
             URLUtil.isValidUrl(config.authUrl) &&

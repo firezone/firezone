@@ -2,18 +2,22 @@
 package dev.firezone.android.features.settings.ui
 
 import android.net.Uri
-import android.os.Bundle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.firezone.android.core.Log
+import dev.firezone.android.core.data.ManagedConfigurationSource
 import dev.firezone.android.core.data.Repository
+import dev.firezone.android.core.data.model.ManagedConfiguration
+import dev.firezone.android.core.di.IoDispatcher
 import dev.firezone.android.core.x509.KeyChain
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import uniffi.x509claims.DetailField
@@ -25,16 +29,61 @@ internal class DeviceTrustSettingsViewModel
     @Inject
     constructor(
         private val repository: Repository,
-        private val applicationRestrictions: Bundle,
+        private val managedConfigurationSource: ManagedConfigurationSource,
         private val keyChain: KeyChain,
+        @IoDispatcher private val coroutineDispatcher: CoroutineDispatcher,
     ) : ViewModel() {
         private val uiMutableStateFlow = MutableStateFlow(UiState())
         val uiStateFlow: StateFlow<UiState> = uiMutableStateFlow
+        private var refreshJob: Job? = null
         private var loadJob: Job? = null
 
-        fun loadDetails() {
-            val alias = repository.getX509CertificateAliasSync(applicationRestrictions)
-            val isManaged = repository.isX509CertificateAliasManaged(applicationRestrictions)
+        init {
+            viewModelScope.launch {
+                managedConfigurationSource.configuration.filterNotNull().collect(::showDetails)
+            }
+        }
+
+        fun loadDetails() = refreshAndApply()
+
+        /** Records the alias the user picked, unless the administrator dictates one. */
+        fun onAliasSelected(alias: String) =
+            refreshAndApply { managedConfiguration ->
+                if (managedConfiguration.isX509CertificateAliasManaged()) {
+                    // The administrator chooses the alias; what the prompt achieves is the KeyChain
+                    // grant that lets us read the key behind it.
+                    Log.d(TAG, "Keeping the managed alias after the user answered the KeyChain prompt")
+                } else {
+                    repository.saveX509CertificateAliasSync(alias)
+                }
+            }
+
+        fun forgetSelection() =
+            refreshAndApply { managedConfiguration ->
+                if (!managedConfiguration.isX509CertificateAliasManaged()) {
+                    repository.saveX509CertificateAliasSync(null)
+                }
+            }
+
+        private fun refreshAndApply(action: ((ManagedConfiguration) -> Unit)? = null) {
+            refreshJob?.cancel()
+            refreshJob =
+                viewModelScope.launch {
+                    val previousConfiguration = managedConfigurationSource.configuration.value
+                    val managedConfiguration = managedConfigurationSource.refresh()
+                    action?.invoke(managedConfiguration)
+                    if (action != null || managedConfiguration == previousConfiguration) {
+                        showDetails(managedConfiguration)
+                    }
+                }
+        }
+
+        private fun showDetails(managedConfiguration: ManagedConfiguration) {
+            val alias =
+                managedConfiguration.resolveX509CertificateAlias(
+                    repository.getUserX509CertificateAliasSync(),
+                )
+            val isManaged = managedConfiguration.isX509CertificateAliasManaged()
 
             uiMutableStateFlow.value =
                 UiState(alias = alias, isManaged = isManaged, isLoading = alias != null)
@@ -49,7 +98,7 @@ internal class DeviceTrustSettingsViewModel
                 viewModelScope.launch {
                     val chain =
                         try {
-                            withContext(Dispatchers.IO) {
+                            withContext(coroutineDispatcher) {
                                 try {
                                     keyChain.certificateChain(alias)
                                 } catch (exception: InterruptedException) {
@@ -97,28 +146,6 @@ internal class DeviceTrustSettingsViewModel
                             details = certificate?.detailFields.orEmpty(),
                         )
                 }
-        }
-
-        /** Records the alias the user picked, unless the administrator dictates one. */
-        fun onAliasSelected(alias: String) {
-            if (repository.isX509CertificateAliasManaged(applicationRestrictions)) {
-                // The administrator chooses the alias; what the prompt achieves is the KeyChain
-                // grant that lets us read the key behind it.
-                Log.d(TAG, "Keeping the managed alias after the user answered the KeyChain prompt")
-            } else {
-                repository.saveX509CertificateAliasSync(alias)
-            }
-
-            loadDetails()
-        }
-
-        fun forgetSelection() {
-            if (repository.isX509CertificateAliasManaged(applicationRestrictions)) {
-                return
-            }
-
-            repository.saveX509CertificateAliasSync(null)
-            loadDetails()
         }
 
         /** The portal the certificate is meant for, shown by Android in the chooser dialog. */

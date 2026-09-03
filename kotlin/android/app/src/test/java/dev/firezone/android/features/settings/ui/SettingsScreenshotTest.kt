@@ -30,11 +30,15 @@ import com.github.takahirom.roborazzi.RobolectricDeviceQualifiers
 import com.github.takahirom.roborazzi.captureRoboImage
 import com.github.takahirom.roborazzi.roborazziSystemPropertyOutputDirectory
 import dev.firezone.android.R
+import dev.firezone.android.core.data.ManagedConfigurationReader
+import dev.firezone.android.core.data.ManagedConfigurationSource
 import dev.firezone.android.core.data.Repository
 import dev.firezone.android.databinding.ActivitySettingsBinding
 import dev.firezone.android.features.session.ui.compose.FirezoneTheme
 import dev.firezone.android.features.settings.ui.compose.DeviceTrustSettingsScreen
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -277,7 +281,14 @@ internal class SettingsScreenshotActivity : AppCompatActivity() {
                         getSharedPreferences("settings-screenshot", MODE_PRIVATE),
                     )
                 runBlocking { repository.saveSettings(sampleConfig).first() }
-                SettingsViewModel(repository)
+                val managedConfigurationSource =
+                    ManagedConfigurationSource(
+                        applicationContext,
+                        ManagedConfigurationReader { Bundle() },
+                        repository,
+                        CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
+                    )
+                SettingsViewModel(repository, managedConfigurationSource)
             }
         }
 

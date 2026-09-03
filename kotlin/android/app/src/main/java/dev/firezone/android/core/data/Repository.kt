@@ -10,6 +10,7 @@ import com.google.gson.reflect.TypeToken
 import dev.firezone.android.BuildConfig
 import dev.firezone.android.core.data.model.Config
 import dev.firezone.android.core.data.model.ManagedConfigStatus
+import dev.firezone.android.core.data.model.ManagedConfiguration
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -73,12 +74,64 @@ class Repository
 
         fun getConfigSync(): Config = getUserConfigSync().withManagedOverrides()
 
+        fun getUserConfigSync(): Config {
+            val defaults = getDefaultUserConfigSync()
+
+            return Config(
+                authUrl = sharedPreferences.getString(AUTH_URL_KEY, null) ?: defaults.authUrl,
+                apiUrl = sharedPreferences.getString(API_URL_KEY, null) ?: defaults.apiUrl,
+                logFilter = sharedPreferences.getString(LOG_FILTER_KEY, null) ?: defaults.logFilter,
+                accountSlug = sharedPreferences.getString(ACCOUNT_SLUG_KEY, null) ?: defaults.accountSlug,
+                startOnLogin = sharedPreferences.getBoolean(START_ON_LOGIN_KEY, defaults.startOnLogin),
+                connectOnStart = sharedPreferences.getBoolean(CONNECT_ON_START_KEY, defaults.connectOnStart),
+            )
+        }
+
+        internal fun getEffectiveConfig(
+            userConfig: Config,
+            managedConfiguration: ManagedConfiguration,
+        ): Config = managedConfiguration.applyTo(userConfig)
+
+        internal fun getEffectiveConfigFromPersistedManaged(userConfig: Config): Config = userConfig.withManagedOverrides()
+
+        private fun mergeUnmanagedConfig(
+            userConfig: Config,
+            editedConfig: Config,
+            managedStatus: ManagedConfigStatus,
+        ): Config =
+            userConfig.copy(
+                authUrl = editedConfig.authUrl.takeUnless { managedStatus.isAuthUrlManaged } ?: userConfig.authUrl,
+                apiUrl = editedConfig.apiUrl.takeUnless { managedStatus.isApiUrlManaged } ?: userConfig.apiUrl,
+                logFilter =
+                    editedConfig.logFilter.takeUnless { managedStatus.isLogFilterManaged }
+                        ?: userConfig.logFilter,
+                accountSlug =
+                    editedConfig.accountSlug.takeUnless { managedStatus.isAccountSlugManaged }
+                        ?: userConfig.accountSlug,
+                startOnLogin =
+                    editedConfig.startOnLogin.takeUnless { managedStatus.isStartOnLoginManaged }
+                        ?: userConfig.startOnLogin,
+                connectOnStart =
+                    editedConfig.connectOnStart.takeUnless { managedStatus.isConnectOnStartManaged }
+                        ?: userConfig.connectOnStart,
+            )
+
         fun getConfig(): Flow<Config> =
             flow {
                 emit(getConfigSync())
             }.flowOn(coroutineDispatcher)
 
-        fun getDefaultConfigSync(): Config = getBuildDefaultConfig().withManagedOverrides()
+        fun getDefaultConfigSync(): Config = getDefaultUserConfigSync().withManagedOverrides()
+
+        fun getDefaultUserConfigSync(): Config =
+            Config(
+                authUrl = BuildConfig.AUTH_URL,
+                apiUrl = BuildConfig.API_URL,
+                logFilter = BuildConfig.LOG_FILTER,
+                accountSlug = "",
+                startOnLogin = false,
+                connectOnStart = false,
+            )
 
         fun getDefaultConfig(): Flow<Config> =
             flow {
@@ -87,29 +140,13 @@ class Repository
 
         fun saveSettings(value: Config): Flow<Unit> =
             flow {
-                val managedStatus = getManagedStatus()
-                val editor = sharedPreferences.edit()
+                val userConfig = mergeUnmanagedConfig(getUserConfigSync(), value, getManagedStatus())
+                emit(saveUserConfigSync(userConfig))
+            }.flowOn(coroutineDispatcher)
 
-                if (!managedStatus.isAuthUrlManaged) {
-                    editor.putString(AUTH_URL_KEY, value.authUrl)
-                }
-                if (!managedStatus.isApiUrlManaged) {
-                    editor.putString(API_URL_KEY, value.apiUrl)
-                }
-                if (!managedStatus.isLogFilterManaged) {
-                    editor.putString(LOG_FILTER_KEY, value.logFilter)
-                }
-                if (!managedStatus.isAccountSlugManaged) {
-                    editor.putString(ACCOUNT_SLUG_KEY, value.accountSlug)
-                }
-                if (!managedStatus.isStartOnLoginManaged) {
-                    editor.putBoolean(START_ON_LOGIN_KEY, value.startOnLogin)
-                }
-                if (!managedStatus.isConnectOnStartManaged) {
-                    editor.putBoolean(CONNECT_ON_START_KEY, value.connectOnStart)
-                }
-
-                emit(editor.apply())
+        fun saveUserConfig(value: Config): Flow<Unit> =
+            flow {
+                emit(saveUserConfigSync(value))
             }.flowOn(coroutineDispatcher)
 
         // TODO: Consider adding support for the legacy managed configuration keys like token,
@@ -152,25 +189,11 @@ class Repository
                 emit(editor.apply())
             }.flowOn(coroutineDispatcher)
 
-        /**
-         * The KeyChain alias of the client certificate to present to the portal.
-         *
-         * A managed configuration overrides whatever the user picked, and one that sets the alias to
-         * an empty value turns certificate-based device attestation off entirely.
-         */
-        fun getX509CertificateAliasSync(applicationRestrictions: Bundle): String? =
-            if (isX509CertificateAliasManaged(applicationRestrictions)) {
-                applicationRestrictions
-                    .getString(X509_CERTIFICATE_ALIAS_RESTRICTION)
-                    ?.takeUnless(String::isBlank)
-            } else {
-                sharedPreferences
-                    .getString(X509_CERTIFICATE_ALIAS_KEY, null)
-                    ?.takeUnless(String::isBlank)
-            }
-
-        fun isX509CertificateAliasManaged(applicationRestrictions: Bundle): Boolean =
-            applicationRestrictions.containsKey(X509_CERTIFICATE_ALIAS_RESTRICTION)
+        /** The user-selected KeyChain alias, before a managed configuration is applied. */
+        fun getUserX509CertificateAliasSync(): String? =
+            sharedPreferences
+                .getString(X509_CERTIFICATE_ALIAS_KEY, null)
+                ?.takeUnless(String::isBlank)
 
         fun saveX509CertificateAliasSync(alias: String?) {
             sharedPreferences.edit().apply {
@@ -266,28 +289,16 @@ class Repository
             sharedPreferences.edit().putBoolean(NOTIFICATION_PERMISSION_REQUESTED_KEY, true).apply()
         }
 
-        private fun getUserConfigSync(): Config {
-            val defaults = getBuildDefaultConfig()
-
-            return Config(
-                authUrl = sharedPreferences.getString(AUTH_URL_KEY, null) ?: defaults.authUrl,
-                apiUrl = sharedPreferences.getString(API_URL_KEY, null) ?: defaults.apiUrl,
-                logFilter = sharedPreferences.getString(LOG_FILTER_KEY, null) ?: defaults.logFilter,
-                accountSlug = sharedPreferences.getString(ACCOUNT_SLUG_KEY, null) ?: defaults.accountSlug,
-                startOnLogin = sharedPreferences.getBoolean(START_ON_LOGIN_KEY, defaults.startOnLogin),
-                connectOnStart = sharedPreferences.getBoolean(CONNECT_ON_START_KEY, defaults.connectOnStart),
-            )
-        }
-
-        private fun getBuildDefaultConfig(): Config =
-            Config(
-                authUrl = BuildConfig.AUTH_URL,
-                apiUrl = BuildConfig.API_URL,
-                logFilter = BuildConfig.LOG_FILTER,
-                accountSlug = "",
-                startOnLogin = false,
-                connectOnStart = false,
-            )
+        private fun saveUserConfigSync(value: Config) =
+            sharedPreferences
+                .edit()
+                .putString(AUTH_URL_KEY, value.authUrl)
+                .putString(API_URL_KEY, value.apiUrl)
+                .putString(LOG_FILTER_KEY, value.logFilter)
+                .putString(ACCOUNT_SLUG_KEY, value.accountSlug)
+                .putBoolean(START_ON_LOGIN_KEY, value.startOnLogin)
+                .putBoolean(CONNECT_ON_START_KEY, value.connectOnStart)
+                .apply()
 
         private fun Config.withManagedOverrides(): Config =
             copy(

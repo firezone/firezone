@@ -13,6 +13,7 @@ import androidx.compose.ui.test.performClick
 import androidx.test.core.app.ApplicationProvider
 import dagger.hilt.android.testing.HiltAndroidRule
 import dagger.hilt.android.testing.HiltAndroidTest
+import dev.firezone.android.core.data.ManagedConfigurationSource
 import dev.firezone.android.core.data.Repository
 import dev.firezone.android.core.data.TokenStore
 import dev.firezone.android.tunnel.ACCOUNT_SLUG
@@ -66,6 +67,9 @@ class TunnelE2eTest {
     @Inject
     lateinit var preferences: SharedPreferences
 
+    @Inject
+    internal lateinit var managedConfigurationSource: ManagedConfigurationSource
+
     @Before
     fun setUp() {
         hiltRule.inject()
@@ -79,6 +83,7 @@ class TunnelE2eTest {
         notificationManager().cancelAll()
         preferences.edit().clear().commit()
         TestRestrictions.bundle.clear()
+        refreshManagedConfiguration()
     }
 
     @Test
@@ -222,12 +227,54 @@ class TunnelE2eTest {
         signIn()
         TestRestrictions.bundle.putString("token", "managed-token")
         TestRestrictions.bundle.putString("deviceName", "Managed Pixel")
+        refreshManagedConfiguration()
 
         startTunnelService()
         val session = awaitSession()
 
         assertEquals("managed-token", session.config.token)
         assertEquals("Managed Pixel", session.config.deviceName)
+    }
+
+    @Test
+    fun managedTokenUpdatesReconnectAndRevocationRestoresTheSavedToken() {
+        signIn()
+        TestRestrictions.bundle.putString("token", "first-managed-token")
+        refreshManagedConfiguration()
+        startTunnelService()
+
+        val firstSession = awaitSession()
+        assertEquals("first-managed-token", firstSession.config.token)
+
+        TestRestrictions.bundle.putString("token", "second-managed-token")
+        refreshManagedConfiguration()
+        runBlocking { withTimeout(TIMEOUT_MS) { firstSession.awaitCommand("disconnect") } }
+
+        val secondSession = awaitSession()
+        assertEquals("second-managed-token", secondSession.config.token)
+
+        TestRestrictions.bundle.remove("token")
+        refreshManagedConfiguration()
+        runBlocking { withTimeout(TIMEOUT_MS) { secondSession.awaitCommand("disconnect") } }
+
+        val restoredSession = awaitSession()
+        assertEquals(TOKEN, restoredSession.config.token)
+        assertEquals(TOKEN, tokenStore.get())
+    }
+
+    @Test
+    fun managedAuthenticationFailurePreservesTheSavedUserToken() {
+        signIn()
+        TestRestrictions.bundle.putString("token", "managed-token")
+        refreshManagedConfiguration()
+        startTunnelService()
+
+        val session = awaitSession()
+        assertEquals("managed-token", session.config.token)
+        session.emit(Event.Disconnected(FakeDisconnectError(signInRequired = true, text = "managed session expired")))
+
+        assertEquals("managed session expired", awaitDisconnectedNotification())
+        assertEquals(TOKEN, tokenStore.get())
     }
 
     private fun signInAndConnect(): FakeSession {
@@ -238,6 +285,8 @@ class TunnelE2eTest {
     }
 
     private fun signIn() = tokenStore.save(TOKEN)
+
+    private fun refreshManagedConfiguration() = runBlocking { managedConfigurationSource.refresh() }
 
     private fun awaitSession(): FakeSession = runBlocking { withTimeout(TIMEOUT_MS) { FakeSessionFactory.awaitSession() } }
 

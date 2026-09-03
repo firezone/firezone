@@ -5,7 +5,6 @@ import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
-import android.os.Bundle
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
@@ -13,6 +12,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.firezone.android.core.ApplicationMode
+import dev.firezone.android.core.data.ManagedConfigurationSource
 import dev.firezone.android.core.data.Repository
 import dev.firezone.android.core.data.TokenStore
 import dev.firezone.android.core.x509.CertificateAccess
@@ -31,7 +31,7 @@ internal class SplashViewModel
     constructor(
         private val repo: Repository,
         private val tokenStore: TokenStore,
-        private val applicationRestrictions: Bundle,
+        private val managedConfigurationSource: ManagedConfigurationSource,
         private val applicationMode: ApplicationMode,
         private val certificateAccess: CertificateAccess,
     ) : ViewModel() {
@@ -58,18 +58,20 @@ internal class SplashViewModel
                     return@launch
                 }
 
+                val managedConfiguration = managedConfigurationSource.refresh()
+
                 // An administrator can configure a certificate that only the user can release, which
                 // is what a work profile on a personally-owned device looks like. Ask once per
                 // launch: pressing on without it only fails later, at the tunnel.
-                if (!certificateSelectionOffered && certificateAccess.needsSelection()) {
+                if (!certificateSelectionOffered && certificateAccess.needsSelection(managedConfiguration)) {
                     certificateSelectionOffered = true
                     actionMutableStateFlow.value = ViewAction.NavigateToCertificatePermission
                     return@launch
                 }
 
-                val token = applicationRestrictions.getString("token") ?: tokenStore.get()
+                val credential = managedConfiguration.resolveSessionCredential(tokenStore.get())
 
-                if (token.isNullOrBlank()) {
+                if (credential == null) {
                     actionMutableStateFlow.value = ViewAction.NavigateToSignIn
                     return@launch
                 }
@@ -82,7 +84,10 @@ internal class SplashViewModel
                     return@launch
                 }
 
-                val connectOnStart = repo.getConfigSync().connectOnStart
+                val connectOnStart =
+                    repo
+                        .getEffectiveConfig(repo.getUserConfigSync(), managedConfiguration)
+                        .connectOnStart
 
                 // If this is the initial launch and connectOnStart is true, try to connect
                 if (isInitialLaunch && connectOnStart) {

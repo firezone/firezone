@@ -11,6 +11,7 @@ import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
 import androidx.test.runner.lifecycle.Stage
 import dagger.hilt.android.testing.HiltAndroidRule
 import dagger.hilt.android.testing.HiltAndroidTest
+import dev.firezone.android.core.data.ManagedConfigurationSource
 import dev.firezone.android.core.data.Repository
 import dev.firezone.android.core.data.TokenStore
 import dev.firezone.android.core.data.X509_CERTIFICATE_ALIAS_RESTRICTION
@@ -60,6 +61,9 @@ class DeviceTrustE2eTest {
     @Inject
     lateinit var preferences: SharedPreferences
 
+    @Inject
+    internal lateinit var managedConfigurationSource: ManagedConfigurationSource
+
     @Before
     fun setUp() {
         hiltRule.inject()
@@ -71,6 +75,7 @@ class DeviceTrustE2eTest {
         stopTunnelService()
         preferences.edit().clear().commit()
         TestRestrictions.bundle.clear()
+        refreshManagedConfiguration()
     }
 
     @Test
@@ -131,13 +136,105 @@ class DeviceTrustE2eTest {
         awaitText("Select your client certificate")
     }
 
+    @Test
+    fun anAvailableManagedCertificateWithoutATokenDoesNotConnectOnStart() {
+        val identity = testIdentity(SERIAL_CLAIM)
+        FakeKeyChain.install(ALIAS, identity, granted = true)
+        TestRestrictions.bundle.putString(X509_CERTIFICATE_ALIAS_RESTRICTION, ALIAS)
+        TestRestrictions.bundle.putBoolean("connectOnStart", true)
+        refreshManagedConfiguration()
+
+        launchApp()
+
+        awaitText("Sign In")
+        assertEquals("a session was opened without a token", 0, FakeSessionFactory.opened)
+    }
+
+    @Test
+    fun managedTokenAndCertificateConnectOnStart() {
+        val identity = testIdentity(SERIAL_CLAIM)
+        FakeKeyChain.install(ALIAS, identity, granted = true)
+        TestRestrictions.bundle.putString(X509_CERTIFICATE_ALIAS_RESTRICTION, ALIAS)
+        TestRestrictions.bundle.putString("token", TOKEN)
+        TestRestrictions.bundle.putBoolean("connectOnStart", true)
+        refreshManagedConfiguration()
+
+        launchApp()
+
+        val session = awaitSession()
+        assertArrayEquals(identity.chain.first().encoded, session.tlsIdentity?.certificateChain()?.first())
+        assertEquals(TOKEN, session.config.token)
+        awaitText("Resources")
+    }
+
+    @Test
+    fun managedCertificateChangesReconnectAndRestoreTheUserSelection() {
+        val userIdentity = testIdentity(SERIAL_CLAIM)
+        val firstManagedIdentity = testIdentity(SERIAL_CLAIM)
+        val secondManagedIdentity = testIdentity(SERIAL_CLAIM)
+        givenTheUserPicked(userIdentity)
+        tokenStore.save(TOKEN)
+        FakeKeyChain.install(FIRST_MANAGED_ALIAS, firstManagedIdentity, granted = true)
+        FakeKeyChain.install(SECOND_MANAGED_ALIAS, secondManagedIdentity, granted = true)
+
+        TestRestrictions.bundle.putString(X509_CERTIFICATE_ALIAS_RESTRICTION, FIRST_MANAGED_ALIAS)
+        refreshManagedConfiguration()
+        startTunnelService()
+
+        val firstSession = awaitSession()
+        assertArrayEquals(
+            firstManagedIdentity.chain.first().encoded,
+            firstSession.tlsIdentity?.certificateChain()?.first(),
+        )
+        assertEquals(TOKEN, firstSession.config.token)
+
+        TestRestrictions.bundle.putString(X509_CERTIFICATE_ALIAS_RESTRICTION, SECOND_MANAGED_ALIAS)
+        refreshManagedConfiguration()
+        runBlocking { withTimeout(TIMEOUT_MS) { firstSession.awaitCommand("disconnect") } }
+
+        val secondSession = awaitSession()
+        assertArrayEquals(
+            secondManagedIdentity.chain.first().encoded,
+            secondSession.tlsIdentity?.certificateChain()?.first(),
+        )
+        assertEquals(TOKEN, secondSession.config.token)
+
+        TestRestrictions.bundle.putString(X509_CERTIFICATE_ALIAS_RESTRICTION, "")
+        refreshManagedConfiguration()
+        runBlocking { withTimeout(TIMEOUT_MS) { secondSession.awaitCommand("disconnect") } }
+
+        val tokenOnlySession = awaitSession()
+        assertNull(tokenOnlySession.tlsIdentity)
+        assertEquals(TOKEN, tokenOnlySession.config.token)
+
+        TestRestrictions.bundle.remove(X509_CERTIFICATE_ALIAS_RESTRICTION)
+        refreshManagedConfiguration()
+        runBlocking { withTimeout(TIMEOUT_MS) { tokenOnlySession.awaitCommand("disconnect") } }
+
+        val restoredSession = awaitSession()
+        assertArrayEquals(
+            userIdentity.chain.first().encoded,
+            restoredSession.tlsIdentity?.certificateChain()?.first(),
+        )
+        assertEquals(TOKEN, restoredSession.config.token)
+        assertEquals(ALIAS, repo.getUserX509CertificateAliasSync())
+    }
+
     /** Installs [certificate] as granted and records its alias the way settings would. */
     private fun givenCertificate(certificate: TestIdentity) {
         FakeKeyChain.install(ALIAS, certificate, granted = true)
         repo.saveX509CertificateAliasSync(ALIAS)
     }
 
+    /** Installs [identity] as granted and records its alias the way the settings screen would. */
+    private fun givenTheUserPicked(identity: TestIdentity) {
+        FakeKeyChain.install(ALIAS, identity, granted = true)
+        repo.saveX509CertificateAliasSync(ALIAS)
+    }
+
     private fun awaitSession(): FakeSession = runBlocking { withTimeout(TIMEOUT_MS) { FakeSessionFactory.awaitSession() } }
+
+    private fun refreshManagedConfiguration() = runBlocking { managedConfigurationSource.refresh() }
 
     private fun authActivityExists(): Boolean {
         var exists = false
@@ -180,6 +277,8 @@ class DeviceTrustE2eTest {
 
     private companion object {
         const val ALIAS = "firezone-e2e"
+        const val FIRST_MANAGED_ALIAS = "firezone-managed-first"
+        const val SECOND_MANAGED_ALIAS = "firezone-managed-second"
         const val TOKEN = "browser-token"
         const val TIMEOUT_MS = 20_000L
 

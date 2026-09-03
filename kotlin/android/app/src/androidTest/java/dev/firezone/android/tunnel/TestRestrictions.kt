@@ -7,4 +7,6 @@ import android.os.Bundle
 // reason as the session factory: the service reading it may predate the test writing it.
 object TestRestrictions {
     val bundle = Bundle()
+
+    fun snapshot(): Bundle = Bundle(bundle)
 }
