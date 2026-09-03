@@ -9,6 +9,7 @@ use super::sim_relay::SimRelay;
 use super::transition::{Destination, DnsQuery};
 use crate::assertions::*;
 use crate::flux_capacitor::FluxCapacitor;
+use crate::probe::{ProbeId, UdpFlowId};
 use crate::resource as client;
 use crate::transition::Transition;
 use bufferpool::BufferPool;
@@ -50,6 +51,16 @@ pub struct TunnelTest {
     /// the portal after a roam.
     client_portal_offline_until: Option<(ClientId, Instant)>,
     network: RoutingTable,
+    udp_flows: BTreeMap<UdpFlowId, ResolvedUdpFlow>,
+}
+
+#[derive(Clone, Copy)]
+struct ResolvedUdpFlow {
+    client_id: ClientId,
+    src: IpAddr,
+    dst: IpAddr,
+    sport: crate::transition::SPort,
+    dport: crate::transition::DPort,
 }
 
 impl TunnelTest {
@@ -144,6 +155,7 @@ impl TunnelTest {
             gateways,
             relays,
             buffer_pool: BufferPool::new(1024, "test"),
+            udp_flows: Default::default(),
         };
 
         let mut buffered_transmits = BufferedTransmits::default();
@@ -157,6 +169,10 @@ impl TunnelTest {
         let mut buffered_transmits = BufferedTransmits::default();
         let now = state.flux_capacitor.now();
         let utc_now = state.flux_capacitor.now();
+
+        if transition.retires_udp_flows() {
+            state.udp_flows.clear();
+        }
 
         // Act: Apply the transition
         match transition {
@@ -336,6 +352,7 @@ impl TunnelTest {
                 buffered_transmits.push_from(transmit, client, now);
             }
             Transition::SendUdpPacket {
+                flow_id,
                 client_id,
                 src,
                 dst,
@@ -344,20 +361,25 @@ impl TunnelTest {
                 probe_id,
             } => {
                 let dst = address_from_destination(&dst, &state, &src, client_id);
-
-                let packet = ip_packet::make::udp_packet(
+                let flow = ResolvedUdpFlow {
+                    client_id,
                     src,
                     dst,
-                    sport.0,
-                    dport.0,
-                    &probe_id.to_be_bytes(),
-                )
-                .unwrap();
+                    sport,
+                    dport,
+                };
+                let previous = state.udp_flows.insert(flow_id, flow);
+                assert!(previous.is_none(), "UDP flow IDs must be unique");
 
-                let client = state.clients.get_mut(&client_id).unwrap();
-                let transmit = client.exec_mut(|sim| sim.encapsulate_probe(probe_id, packet, now));
+                state.send_udp_probe(flow, probe_id, now, &mut buffered_transmits);
+            }
+            Transition::SendUdpPacketOnFlow { flow_id, probe_id } => {
+                let flow = *state
+                    .udp_flows
+                    .get(&flow_id)
+                    .expect("reused UDP flow must exist");
 
-                buffered_transmits.push_from(transmit, client, now);
+                state.send_udp_probe(flow, probe_id, now, &mut buffered_transmits);
             }
             Transition::ConnectTcp {
                 client_id,
@@ -723,6 +745,28 @@ impl TunnelTest {
         for gateway in state.gateways.values_mut() {
             gateway.exec_mut(|g| g.clear_probe_observations());
         }
+    }
+
+    fn send_udp_probe(
+        &mut self,
+        flow: ResolvedUdpFlow,
+        probe_id: ProbeId,
+        now: Instant,
+        buffered_transmits: &mut BufferedTransmits,
+    ) {
+        let packet = ip_packet::make::udp_packet(
+            flow.src,
+            flow.dst,
+            flow.sport.0,
+            flow.dport.0,
+            &probe_id.to_be_bytes(),
+        )
+        .unwrap();
+
+        let client = self.clients.get_mut(&flow.client_id).unwrap();
+        let transmit = client.exec_mut(|sim| sim.encapsulate_probe(probe_id, packet, now));
+
+        buffered_transmits.push_from(transmit, client, now);
     }
 }
 

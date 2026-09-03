@@ -505,8 +505,10 @@ fn arb_udp_packet(
     let (sport, dport) = g.fresh_udp_packet(dport);
     let resolved_ip = g.u32();
     let probe_id = g.fresh_probe_id();
+    let flow_id = g.fresh_udp_flow_id();
     let dst = into_destination(dst, resolved_ip);
     Transition::SendUdpPacket {
+        flow_id,
         client_id,
         src,
         dst,

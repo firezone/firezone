@@ -24,10 +24,29 @@ impl ProbeId {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub(crate) struct UdpFlowId(u64);
+
+impl UdpFlowId {
+    pub(crate) fn new(value: u64) -> Self {
+        Self(value)
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) enum ProbeProtocol {
     Icmp { seq: Seq, identifier: Identifier },
     Udp { sport: SPort, dport: DPort },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) struct UdpFlow {
+    pub(crate) id: UdpFlowId,
+    pub(crate) client_id: ClientId,
+    pub(crate) src: IpAddr,
+    pub(crate) dst: Destination,
+    pub(crate) sport: SPort,
+    pub(crate) dport: DPort,
 }
 
 #[derive(Debug, Clone)]

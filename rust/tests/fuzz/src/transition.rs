@@ -7,7 +7,7 @@ use tunnel_proto::{
 };
 
 use super::{
-    probe::ProbeId,
+    probe::{ProbeId, UdpFlowId},
     reference::PrivateKey,
     resource::{CidrResource, Resource},
     sim_net::Host,
@@ -56,11 +56,16 @@ pub enum Transition {
         probe_id: ProbeId,
     },
     SendUdpPacket {
+        flow_id: UdpFlowId,
         client_id: ClientId,
         src: IpAddr,
         dst: Destination,
         sport: SPort,
         dport: DPort,
+        probe_id: ProbeId,
+    },
+    SendUdpPacketOnFlow {
+        flow_id: UdpFlowId,
         probe_id: ProbeId,
     },
     ConnectTcp {
@@ -129,6 +134,7 @@ impl Transition {
             Transition::SetInternetResourceState { .. } => true,
             Transition::SendIcmpPacket { .. } => false,
             Transition::SendUdpPacket { .. } => false,
+            Transition::SendUdpPacketOnFlow { .. } => false,
             Transition::ConnectTcp { .. } => false,
             Transition::SendDnsQuery { .. } => false,
             Transition::SendDnsResourcePtrQuery { .. } => false,
@@ -143,6 +149,39 @@ impl Transition {
             Transition::PartitionRelaysFromPortal => false,
             Transition::Idle => false,
             Transition::RebootRelaysWhilePartitioned(_) => false,
+            Transition::DeauthorizeWhileGatewayIsPartitioned(_) => true,
+            Transition::UpdateDnsRecords { .. } => false,
+        }
+    }
+
+    /// Returns whether established UDP flows become ambiguous across this transition.
+    pub fn retires_udp_flows(&self) -> bool {
+        match self {
+            Transition::AddResource(_) => true,
+            Transition::RemoveResource(_) => true,
+            Transition::ChangeCidrResourceAddress { .. } => true,
+            Transition::MoveResourceToNewSite { .. } => true,
+            Transition::ChangeFiltersOfResource { .. } => true,
+            Transition::ChangeResourceType { .. } => true,
+            Transition::UpdateStaticDevicePool { .. } => true,
+            Transition::SetInternetResourceState { .. } => true,
+            Transition::SendIcmpPacket { .. } => false,
+            Transition::SendUdpPacket { .. } => false,
+            Transition::SendUdpPacketOnFlow { .. } => false,
+            Transition::ConnectTcp { .. } => false,
+            Transition::SendDnsQuery { .. } => false,
+            Transition::SendDnsResourcePtrQuery { .. } => false,
+            Transition::UpdateSystemDnsServers { .. } => false,
+            Transition::UpdateUpstreamDo53Servers(_) => false,
+            Transition::UpdateUpstreamDoHServers(_) => false,
+            Transition::UpdateUpstreamSearchDomain(_) => false,
+            Transition::RoamClient { .. } => true,
+            Transition::ReconnectPortal { .. } => true,
+            Transition::RestartClient { .. } => true,
+            Transition::DeployNewRelays(_) => true,
+            Transition::PartitionRelaysFromPortal => true,
+            Transition::Idle => true,
+            Transition::RebootRelaysWhilePartitioned(_) => true,
             Transition::DeauthorizeWhileGatewayIsPartitioned(_) => true,
             Transition::UpdateDnsRecords { .. } => false,
         }
