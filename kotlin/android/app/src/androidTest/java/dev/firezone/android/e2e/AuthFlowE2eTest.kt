@@ -25,9 +25,11 @@ import dev.firezone.android.core.presentation.MainActivity
 import dev.firezone.android.features.auth.AUTH_CALLBACK_SCHEME
 import dev.firezone.android.features.auth.PendingAuthSession
 import dev.firezone.android.features.auth.ui.AuthActivity
+import dev.firezone.android.features.session.ui.SessionActivity
 import dev.firezone.android.tunnel.FakeSession
 import dev.firezone.android.tunnel.FakeSessionFactory
 import dev.firezone.android.tunnel.TestRestrictions
+import dev.firezone.android.tunnel.awaitResumed
 import dev.firezone.android.tunnel.finishAllActivities
 import dev.firezone.android.tunnel.grantNotificationPermission
 import dev.firezone.android.tunnel.grantVpnConsent
@@ -89,6 +91,7 @@ class AuthFlowE2eTest {
             assertFalse(pendingAuthSession.hasPendingRequest())
             intended(authTabIntent())
             intended(mainActivityHandoffIntent())
+            awaitSessionScreen()
         }
 
     @Test
@@ -98,6 +101,7 @@ class AuthFlowE2eTest {
 
             launchAuthActivity()
 
+            awaitResumed(MainActivity::class.java)
             intended(mainActivityReturnIntent())
             val captured = checkNotNull(attempt.get())
             assertTrue(pendingAuthSession.hasPendingRequest())
@@ -114,6 +118,7 @@ class AuthFlowE2eTest {
             assertFalse(pendingAuthSession.hasPendingRequest())
             intended(authTabIntent())
             intended(mainActivityHandoffIntent())
+            awaitSessionScreen()
         }
 
     private fun stubAuthTab(resultCode: Int): AtomicReference<AuthAttempt> {
@@ -159,6 +164,10 @@ class AuthFlowE2eTest {
             .build()
 
     private suspend fun awaitSession(): FakeSession = withTimeout(TIMEOUT_MS) { FakeSessionFactory.awaitSession() }
+
+    // Where the handoff lands. A test that returns before it does leaves the launch in flight, and
+    // it then arrives after the Hilt component is torn down and takes the whole process with it.
+    private fun awaitSessionScreen() = awaitResumed(SessionActivity::class.java)
 
     private fun authTabIntent(): Matcher<Intent> =
         allOf(
