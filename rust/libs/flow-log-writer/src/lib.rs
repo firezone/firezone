@@ -62,7 +62,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use anyhow::Context as _;
+use anyhow::{Context as _, ErrorExt as _};
 use base64::Engine as _;
 use chrono::DateTime;
 use flow_log_spool::serialize;
@@ -425,13 +425,16 @@ fn write_report(root: &Path, report: &Report) {
         "{:010}-{}.{suffix}.json",
         report.flow_start, report.identity
     ));
-    match atomicfs::write(&path, &contents) {
+    match atomicfs::write(&path, &contents).context("Failed to write flow-log report") {
         Ok(()) => {}
-        Err(e) if e.kind() == std::io::ErrorKind::StorageFull => {
-            tracing::debug!(path = %path.display(), "Failed to write flow-log report: {e}");
+        Err(e)
+            if e.any_downcast_ref::<std::io::Error>()
+                .is_some_and(|io| io.kind() == std::io::ErrorKind::StorageFull) =>
+        {
+            tracing::debug!(path = %path.display(), "{e:#}");
         }
         Err(e) => {
-            tracing::warn!(path = %path.display(), "Failed to write flow-log report: {e}");
+            tracing::warn!(path = %path.display(), "{e:#}");
         }
     }
 }
