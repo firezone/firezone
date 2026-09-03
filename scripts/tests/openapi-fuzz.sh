@@ -60,6 +60,7 @@ fi
   --max-failures 25 \
   --workers 2 \
   --request-timeout 30 \
+  --request-retries 3 \
   --report junit \
   --report-dir "$report_dir" \
   --no-color

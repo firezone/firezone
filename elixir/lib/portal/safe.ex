@@ -577,6 +577,8 @@ defmodule Portal.Safe do
         |> Repo.delete()
       end)
     end
+  rescue
+    Ecto.StaleEntryError -> {:error, :not_found}
   end
 
   def delete(%Scoped{
@@ -593,6 +595,9 @@ defmodule Portal.Safe do
         Repo.delete(struct)
       end)
     end
+  rescue
+    # The row went away between the caller's fetch and this delete.
+    Ecto.StaleEntryError -> {:error, :not_found}
   end
 
   @spec delete(Unscoped.t()) :: {:ok, Ecto.Schema.t()} | {:error, Ecto.Changeset.t()}
