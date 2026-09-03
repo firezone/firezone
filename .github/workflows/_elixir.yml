@@ -160,6 +160,8 @@ jobs:
         with:
           base: base-openapi.json
           revision: elixir/priv/static/openapi.json
+          # The action's output carries only the first line; the file has it all.
+          output-to-file: openapi-breaking.txt
           # Keep the spec in CI: no upload to oasdiff.com and no PR comment.
           review: "false"
           github-token: ""
@@ -181,12 +183,13 @@ jobs:
         if: github.base_ref != '' && github.event.pull_request.number
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          BREAKING: ${{ steps.oasdiff.outputs.breaking }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+        # The action steps write to the workspace root, one level up from here.
         run: |
           marker="<!-- openapi-breaking-changes -->"
+          BREAKING=$(head -c 12000 ../openapi-breaking.txt 2>/dev/null || true)
           # Comment bodies are capped at 64 KiB; keep room for the rest.
-          changelog=$(head -c 50000 openapi-changelog.md 2>/dev/null || true)
+          changelog=$(head -c 48000 ../openapi-changelog.md 2>/dev/null || true)
           if [[ -z "$changelog" ]]; then
             changelog="No API changes."
           fi
