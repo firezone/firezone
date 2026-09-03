@@ -4,11 +4,13 @@ package dev.firezone.android.features.session.ui.compose
 import android.app.Application
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.test.hasScrollToIndexAction
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToIndex
+import androidx.compose.ui.test.performScrollToNode
 import com.github.takahirom.roborazzi.ExperimentalRoborazziApi
 import com.github.takahirom.roborazzi.captureRoboImage
 import com.github.takahirom.roborazzi.captureScreenRoboImage
@@ -114,6 +116,9 @@ class ScreenshotTest {
         rowText: String,
     ) {
         composeRule.setContent { FirezoneTheme { SessionScreenSample() } }
+        composeRule
+            .onNode(hasScrollToIndexAction())
+            .performScrollToNode(hasText(rowText, substring = true))
         composeRule.onNodeWithText(rowText, substring = true).performClick()
         composeRule.waitForIdle()
         captureScreenRoboImage("${roborazziSystemPropertyOutputDirectory()}/$name.png")
