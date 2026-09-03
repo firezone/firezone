@@ -13,18 +13,23 @@
 
 import XCTest
 
+#if os(iOS)
+  import UIKit
+#endif
+
 enum Appearance: String, CaseIterable {
   case light
   case dark
 }
 
-/// The macOS release that drew the screen: SwiftUI lays a window out with the
-/// release it runs on rather than the SDK it was built with.
-private let releaseTag: String = {
+/// What drew the screen. On macOS the release: SwiftUI lays a window out with
+/// the release it runs on rather than the SDK it was built with. On iOS the
+/// device family, since the same suite photographs an iPhone and an iPad.
+private let deviceTag: String = {
   #if os(macOS)
     "-macos-\(ProcessInfo.processInfo.operatingSystemVersion.majorVersion)"
   #else
-    ""
+    UIDevice.current.userInterfaceIdiom == .pad ? "-ipad" : "-iphone"
   #endif
 }()
 
@@ -32,14 +37,14 @@ private let releaseTag: String = {
 @MainActor
 extension XCTestCase {
   /// Photographs `element` once it holds still, delivers the image as
-  /// `<name>[-macos-<release>]-<appearance>.png`, and hands back its bytes.
+  /// `<name>-<device>-<appearance>.png`, and hands back its bytes.
   @discardableResult
   func deliver(
     _ element: XCUIElement,
     as name: String,
     in appearance: Appearance
   ) -> Data {
-    let fileName = "\(name)\(releaseTag)-\(appearance.rawValue).png"
+    let fileName = "\(name)\(deviceTag)-\(appearance.rawValue).png"
     let image = settledScreenshot(of: element, as: fileName).pngRepresentation
 
     let attachment = XCTAttachment(data: image, uniformTypeIdentifier: "public.png")

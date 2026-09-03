@@ -55,29 +55,15 @@ jobs:
 
   # Photographs the real app against the mocked backend (see MockTunnel.swift) and
   # hands the captures to commit-screenshots. Nothing is compared against a reference.
-  screenshots:
-    name: ${{ matrix.name }}-screenshots
-    runs-on: ${{ matrix.runner }}
+  # SwiftUI lays a window out with the macOS release it runs on rather than the
+  # SDK it was built with, so the macOS screens are drawn on every release CI can run.
+  screenshots-macos:
+    name: macos-${{ matrix.release }}-screenshots
+    runs-on: macos-${{ matrix.release }}
     strategy:
       fail-fast: false
       matrix:
-        include:
-          # The app target embeds the tunnel extension, which compiles connlib.
-          # SwiftUI lays a window out with the macOS release it runs on rather
-          # than the SDK it was built with, so the macOS screens are drawn on
-          # every release CI can run.
-          - name: macos-26
-            platform: macos
-            runner: macos-26
-            rust-target: aarch64-apple-darwin
-          - name: macos-15
-            platform: macos
-            runner: macos-15
-            rust-target: aarch64-apple-darwin
-          - name: ios
-            platform: ios
-            runner: macos-26
-            rust-target: aarch64-apple-ios-sim
+        release: [26, 15]
     env:
       XCODE_VERSION: "26.2"
       # GIT_SHA stays unset: the settings screens print it as their build
@@ -90,7 +76,7 @@ jobs:
           install: false
       - uses: ./.github/actions/setup-rust-stable
         with:
-          targets: ${{ matrix.rust-target }}
+          targets: aarch64-apple-darwin
       - uses: ./.github/actions/setup-rust-sccache
         with:
           azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
@@ -103,31 +89,27 @@ jobs:
           system_profiler SPDisplaysDataType | grep -E "Chipset|Model|Metal" || true
       # The wallpaper shows through the window corners, and macOS shifts it over the day.
       - name: Pin what is behind the windows
-        if: matrix.platform == 'macos'
         run: |
           defaults -currentHost write com.apple.screensaver idleTime -int 0
 
           osascript -e "tell application \"System Events\" to tell every desktop \
             to set picture to \"${GITHUB_WORKSPACE}/swift/apple/FirezoneUITests/Resources/screenshot-backdrop.png\"" \
             || echo "::warning::Could not set the desktop picture; the window corners stay at the mercy of the wallpaper"
-      - name: Boot the simulator
-        if: matrix.platform == 'ios'
-        run: mise run //swift/apple:boot-simulator
       - uses: ./.github/actions/restore-xcode-build
         id: xcode-build
         with:
           path: ${{ runner.temp }}/DerivedData
-          key: ${{ matrix.name }}
-      - name: Photograph the ${{ matrix.platform }} screens
+          key: macos-${{ matrix.release }}
+      - name: Photograph the macOS screens
         # The runner context only exists at step level.
         env:
           DERIVED_DATA_PATH: ${{ runner.temp }}/DerivedData
           RESULT_BUNDLE_DIR: ${{ runner.temp }}
-        run: mise run //swift/apple:screenshots-${{ matrix.platform }}
+        run: mise run //swift/apple:screenshots-macos
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: ${{ matrix.name }}-screenshots
-          path: swift/apple/screenshots/${{ matrix.platform }}
+          name: macos-${{ matrix.release }}-screenshots
+          path: swift/apple/screenshots/macos
       # Only `main` writes, so a pull request cannot evict what every run reads.
       # `success()` is spelled out because naming a condition replaces the
       # implicit one.
@@ -140,7 +122,104 @@ jobs:
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: failure()
         with:
-          name: ${{ matrix.name }}-screenshots-xcresult
+          name: macos-${{ matrix.release }}-screenshots-xcresult
+          path: ${{ runner.temp }}/FirezoneUITests-*.xcresult
+
+  # The app target embeds the tunnel extension, which compiles connlib, and the
+  # same simulator build runs on every device. So the iOS suite is built once here
+  # and photographed on each simulator in parallel below.
+  build-ios-screenshots:
+    name: ios-screenshots-build
+    runs-on: macos-26
+    env:
+      XCODE_VERSION: "26.2"
+      # GIT_SHA stays unset: the settings screens print it as their build
+      # string, and the commit would move two images on every push.
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: sudo xcode-select --switch "$(find /Applications -maxdepth 1 -name "Xcode*${XCODE_VERSION}*.app" | sort -V | tail -n 1)"
+      - uses: ./.github/actions/setup-mise
+        with:
+          install: false
+      - uses: ./.github/actions/setup-rust-stable
+        with:
+          targets: aarch64-apple-ios-sim
+      - uses: ./.github/actions/setup-rust-sccache
+        with:
+          azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
+      - uses: ./.github/actions/restore-xcode-build
+        id: xcode-build
+        with:
+          path: ${{ runner.temp }}/DerivedData
+          key: ios
+      - name: Build the iOS screenshot suite
+        env:
+          DERIVED_DATA_PATH: ${{ runner.temp }}/DerivedData
+        run: mise run //swift/apple:build-screenshots-ios
+      # Packed because the artifact store drops the executable bits the app and
+      # the test runner need.
+      - name: Pack the test products
+        run: tar -C "${RUNNER_TEMP}/DerivedData/Build" -cf "${RUNNER_TEMP}/ios-screenshots-build.tar" Products
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ios-screenshots-build
+          path: ${{ runner.temp }}/ios-screenshots-build.tar
+          retention-days: 1
+      - uses: ./.github/actions/save-xcode-build
+        if: success() && github.ref_name == 'main' && steps.xcode-build.outputs.cache-hit != 'true'
+        with:
+          path: ${{ runner.temp }}/DerivedData
+          key: ${{ steps.xcode-build.outputs.key }}
+
+  screenshots-ios:
+    name: ios-${{ matrix.device }}-screenshots
+    needs: build-ios-screenshots
+    runs-on: macos-26
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - device: iphone
+            simulator: iPhone 17
+          - device: ipad
+            simulator: iPad Pro 11-inch (M5)
+    env:
+      XCODE_VERSION: "26.2"
+      SIMULATOR_NAME: ${{ matrix.simulator }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: sudo xcode-select --switch "$(find /Applications -maxdepth 1 -name "Xcode*${XCODE_VERSION}*.app" | sort -V | tail -n 1)"
+      - uses: ./.github/actions/setup-mise
+        with:
+          install: false
+      - name: Name the hardware under the VM
+        run: |
+          sw_vers -productVersion
+          sysctl -n hw.model machdep.cpu.brand_string
+          system_profiler SPDisplaysDataType | grep -E "Chipset|Model|Metal" || true
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ios-screenshots-build
+          path: ${{ runner.temp }}
+      - name: Unpack the test products
+        run: |
+          mkdir -p "${RUNNER_TEMP}/DerivedData/Build"
+          tar -C "${RUNNER_TEMP}/DerivedData/Build" -xf "${RUNNER_TEMP}/ios-screenshots-build.tar"
+      - name: Boot the simulator
+        run: mise run //swift/apple:boot-simulator
+      - name: Photograph the ${{ matrix.device }} screens
+        env:
+          DERIVED_DATA_PATH: ${{ runner.temp }}/DerivedData
+          RESULT_BUNDLE_DIR: ${{ runner.temp }}
+        run: mise run //swift/apple:screenshots-ios
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ios-${{ matrix.device }}-screenshots
+          path: swift/apple/screenshots/ios
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: failure()
+        with:
+          name: ios-${{ matrix.device }}-screenshots-xcresult
           path: ${{ runner.temp }}/FirezoneUITests-*.xcresult
 
   static-analysis:
