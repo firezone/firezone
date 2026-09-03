@@ -141,7 +141,7 @@ defmodule Portal.Entra.Subscriptions do
   defp ensure_secret(directory), do: directory
 
   defp ensure_subscription(directory, access_token, resource, expires_at) do
-    case Map.fetch!(directory, :"#{resource}_subscription_id") do
+    case subscription_id(directory, resource) do
       nil ->
         create_subscription(directory, access_token, resource, expires_at)
 
@@ -158,6 +158,9 @@ defmodule Portal.Entra.Subscriptions do
         end
     end
   end
+
+  defp subscription_id(directory, :users), do: directory.users_subscription_id
+  defp subscription_id(directory, :groups), do: directory.groups_subscription_id
 
   defp delete_subscription(access_token, subscription_id) do
     case APIClient.delete_subscription(access_token, subscription_id) do
