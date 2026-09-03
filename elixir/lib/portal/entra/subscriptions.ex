@@ -10,14 +10,6 @@ defmodule Portal.Entra.Subscriptions do
 
   use Oban.Worker, queue: :entra_subscriptions, max_attempts: 3
 
-  # Queued duplicates collapse into one job, but a notification that arrives
-  # while a job is executing must still enqueue a fresh one, so :executing is
-  # deliberately left out of the unique states.
-  @unique [period: :infinity, states: [:available, :scheduled, :retryable], keys: [:directory_id, :action]]
-
-  @impl Oban.Worker
-  def new(args, opts), do: super(args, Keyword.put_new(opts, :unique, @unique))
-
   alias Portal.Entra
   alias Portal.Microsoft.Graph.APIClient
   alias __MODULE__.Database
@@ -27,6 +19,18 @@ defmodule Portal.Entra.Subscriptions do
   @lifetime_days 28
   @renew_within_days 7
   @resources [users: "/users", groups: "/groups"]
+
+  # Queued duplicates collapse into one job, but a notification that arrives
+  # while a job is executing must still enqueue a fresh one, so :executing is
+  # deliberately left out of the unique states.
+  @unique [
+    period: :infinity,
+    states: [:available, :scheduled, :retryable],
+    keys: [:directory_id, :action]
+  ]
+
+  @impl Oban.Worker
+  def new(args, opts), do: super(args, Keyword.put_new(opts, :unique, @unique))
 
   @impl Oban.Worker
   def perform(%Oban.Job{

@@ -16,6 +16,11 @@ defmodule Portal.Entra.WebhookSync do
 
   use Oban.Worker, queue: :entra_webhook, max_attempts: 3
 
+  alias Portal.Entra
+  alias Portal.Microsoft.Graph.APIClient
+  alias __MODULE__.Database
+  require Logger
+
   # Queued duplicates collapse into one job, but a notification that arrives
   # while a job is executing must still enqueue a fresh one, so :executing is
   # deliberately left out of the unique states.
@@ -27,11 +32,6 @@ defmodule Portal.Entra.WebhookSync do
 
   @impl Oban.Worker
   def new(args, opts), do: super(args, Keyword.put_new(opts, :unique, @unique))
-
-  alias Portal.Entra
-  alias Portal.Microsoft.Graph.APIClient
-  alias __MODULE__.Database
-  require Logger
 
   @impl Oban.Worker
   def perform(%Oban.Job{
