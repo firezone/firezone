@@ -8,7 +8,6 @@
 
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
-use std::fs::File;
 use std::io::{self, Write as _};
 use std::path::Path;
 
@@ -27,7 +26,7 @@ pub fn write(path: impl AsRef<Path>, contents: impl AsRef<[u8]>) -> io::Result<(
 
     // The rename is only durable once the directory entry is on disk too.
     #[cfg(unix)]
-    File::open(dir)?.sync_all()?;
+    std::fs::File::open(dir)?.sync_all()?;
 
     Ok(())
 }
