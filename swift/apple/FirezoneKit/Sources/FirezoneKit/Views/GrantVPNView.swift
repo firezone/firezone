@@ -20,6 +20,7 @@ struct GrantVPNView: View {
     #if os(iOS)
       VStack(
         alignment: .center,
+        spacing: 32,
         content: {
           Spacer()
           Image("LogoText")
@@ -27,7 +28,6 @@ struct GrantVPNView: View {
             .scaledToFit()
             .frame(maxWidth: 320)
             .padding(.horizontal, 10)
-          Spacer()
           Text(
             """
             Firezone requires your permission to create VPN configurations.
@@ -37,19 +37,19 @@ struct GrantVPNView: View {
           .font(.body)
           .multilineTextAlignment(.center)
           .padding(EdgeInsets(top: 0, leading: 5, bottom: 0, trailing: 5))
-          Spacer()
           Image(systemName: "network.badge.shield.half.filled")
             .imageScale(.large)
-          Spacer()
-          Button("Grant VPN Permission") {
-            installVPNConfiguration()
+          VStack {
+            Button("Grant VPN Permission") {
+              installVPNConfiguration()
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+            Text(
+              "After \(actionVerbage()) on the above button,\nclick on 'Allow' when prompted."
+            ).font(.caption)
+              .multilineTextAlignment(.center)
           }
-          .buttonStyle(.borderedProminent)
-          .controlSize(.large)
-          Text(
-            "After \(actionVerbage()) on the above button,\nclick on 'Allow' when prompted."
-          ).font(.caption)
-            .multilineTextAlignment(.center)
           Spacer()
         }
       )
