@@ -155,6 +155,7 @@ defmodule Portal.OAuth do
   """
   def refresh(params, expected_resource) do
     with {:ok, encoded} <- fetch_param(params, "refresh_token"),
+         {:ok, client_id} <- fetch_param(params, "client_id"),
          {:ok, {nonce, account_id, id, fragment}} <- decode(encoded, "mcp_refresh"),
          {:ok, token} <- Database.fetch_refreshable_token(account_id, id),
          :ok <-
@@ -164,6 +165,7 @@ defmodule Portal.OAuth do
              nonce,
              fragment
            ),
+         :ok <- validate_token_client(token, client_id),
          :ok <- validate_audience(token, expected_resource) do
       rotate(token)
     else
@@ -194,8 +196,18 @@ defmodule Portal.OAuth do
   @doc "Every client this actor has connected, newest first."
   def list_grants(%Subject{} = subject), do: Database.list_grants(subject)
 
-  @doc "Disconnects a client, deleting the tokens it was issued."
-  def delete_grant(id, %Subject{} = subject), do: Database.delete_grant(id, subject)
+  @doc """
+  Disconnects a client, deleting the tokens it was issued.
+
+  An id that is not a UUID deletes nothing rather than reaching the query,
+  which would raise on the cast.
+  """
+  def delete_grant(id, %Subject{} = subject) do
+    case Ecto.UUID.cast(id) do
+      {:ok, id} -> Database.delete_grant(id, subject)
+      :error -> {0, nil}
+    end
+  end
 
   defp fetch_client(client_id), do: ClientMetadata.fetch(client_id)
 
@@ -353,6 +365,16 @@ defmodule Portal.OAuth do
        do: Authentication.verify_fragment(hash, salt, nonce, fragment)
 
   defp verify_revoked_secret(_token, _type, _nonce, _fragment), do: :error
+
+  # RFC 6749 section 6: a public client names itself on a refresh, and the token
+  # it names itself with has to be one that was issued to it.
+  defp validate_token_client(%OAuthToken{} = token, client_id) do
+    if token.oauth_grant.oauth_client.client_id == client_id do
+      :ok
+    else
+      {:error, :client_mismatch}
+    end
+  end
 
   defp validate_audience(%OAuthToken{} = token, expected_resource) do
     if token.resource == expected_resource do
@@ -533,7 +555,7 @@ defmodule Portal.OAuth do
         where: tokens.account_id == ^account_id,
         where: tokens.id == ^id,
         where: tokens.refresh_expires_at > ^now,
-        preload: [:oauth_grant]
+        preload: [oauth_grant: :oauth_client]
       )
       |> Safe.unscoped()
       |> Safe.one()

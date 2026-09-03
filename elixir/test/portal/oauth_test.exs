@@ -247,45 +247,62 @@ defmodule Portal.OAuthTest do
   end
 
   describe "refresh/2" do
-    test "rotates both secrets and invalidates the old refresh token", %{
-      account: account,
-      actor: actor
-    } do
-      {_token, _access, refresh} =
-        oauth_token_fixture(account: account, actor: actor, resource: @resource)
+    test "rotates both secrets and invalidates the old refresh token", context do
+      refresh = refreshable_token(context)
 
-      assert {:ok, response} =
-               OAuth.refresh(%{"refresh_token" => refresh}, @resource)
+      assert {:ok, response} = OAuth.refresh(refresh_params(context, refresh), @resource)
 
       assert is_binary(response.access_token)
       assert response.refresh_token != refresh
 
       assert {:error, "invalid_grant", _description} =
-               OAuth.refresh(%{"refresh_token" => refresh}, @resource)
+               OAuth.refresh(refresh_params(context, refresh), @resource)
     end
 
-    test "refuses a refresh token for another audience", %{account: account, actor: actor} do
-      {_token, _access, refresh} =
-        oauth_token_fixture(account: account, actor: actor, resource: @resource)
+    test "refuses a refresh token for another audience", context do
+      refresh = refreshable_token(context)
 
       assert {:error, "invalid_grant", _description} =
-               OAuth.refresh(%{"refresh_token" => refresh}, "https://other.example/mcp")
+               OAuth.refresh(refresh_params(context, refresh), "https://other.example/mcp")
     end
 
     test "refuses an access token presented as a refresh token", %{
       account: account,
-      actor: actor
-    } do
+      actor: actor,
+      client: client
+    } = context do
       {_token, access, _refresh} =
-        oauth_token_fixture(account: account, actor: actor, resource: @resource)
+        oauth_token_fixture(account: account, actor: actor, client: client, resource: @resource)
 
       assert {:error, "invalid_grant", _description} =
-               OAuth.refresh(%{"refresh_token" => access}, @resource)
+               OAuth.refresh(refresh_params(context, access), @resource)
     end
 
-    test "narrows the token to what the grant now allows", %{account: account, actor: actor} do
+    test "refuses a refresh token that was issued to another client", context do
+      refresh = refreshable_token(context)
+      other = oauth_client_fixture()
+
+      params = %{refresh_params(context, refresh) | "client_id" => other.client_id}
+
+      assert {:error, "invalid_grant", _description} = OAuth.refresh(params, @resource)
+    end
+
+    test "requires the client to name itself", context do
+      refresh = refreshable_token(context)
+
+      assert {:error, "invalid_request", _description} =
+               OAuth.refresh(%{"refresh_token" => refresh}, @resource)
+    end
+
+    test "narrows the token to what the grant now allows", %{
+      account: account,
+      actor: actor,
+      client: client
+    } = context do
       scopes = ["policies:read", "policies:write"]
-      grant = oauth_grant_fixture(account: account, actor: actor, scopes: scopes)
+
+      grant =
+        oauth_grant_fixture(account: account, actor: actor, client: client, scopes: scopes)
 
       {_token, _access, refresh} =
         oauth_token_fixture(
@@ -300,7 +317,7 @@ defmodule Portal.OAuthTest do
       |> Ecto.Changeset.change(scopes: ["policies:read"])
       |> Portal.Repo.update!()
 
-      assert {:ok, response} = OAuth.refresh(%{"refresh_token" => refresh}, @resource)
+      assert {:ok, response} = OAuth.refresh(refresh_params(context, refresh), @resource)
       assert response.scope == "policies:read"
     end
   end
@@ -320,14 +337,13 @@ defmodule Portal.OAuthTest do
       assert :ok = OAuth.revoke("")
     end
 
-    test "ignores a refresh secret that was already rotated out", %{
-      account: account,
-      actor: actor
-    } do
-      {token, _access, refresh} =
-        oauth_token_fixture(account: account, actor: actor, resource: @resource)
+    test "ignores a refresh secret that was already rotated out", context do
+      %{account: account, actor: actor, client: client} = context
 
-      assert {:ok, _response} = OAuth.refresh(%{"refresh_token" => refresh}, @resource)
+      {token, _access, refresh} =
+        oauth_token_fixture(account: account, actor: actor, client: client, resource: @resource)
+
+      assert {:ok, _response} = OAuth.refresh(refresh_params(context, refresh), @resource)
 
       assert :ok = OAuth.revoke(refresh)
       assert Portal.Repo.get_by(Portal.OAuthToken, id: token.id, account_id: account.id)
@@ -335,6 +351,10 @@ defmodule Portal.OAuthTest do
   end
 
   describe "delete_grant/2" do
+    test "an id that is not a UUID deletes nothing", context do
+      assert {0, nil} = OAuth.delete_grant("not-a-uuid", context.subject)
+    end
+
     test "disconnecting a client takes its tokens with it", context do
       code = consent(context)
       assert {:ok, _response} = OAuth.exchange(exchange_params(context, code), @resource)
@@ -354,6 +374,17 @@ defmodule Portal.OAuthTest do
 
     {:ok, code} = OAuth.consent(request, context.subject)
     code
+  end
+
+  defp refreshable_token(%{account: account, actor: actor, client: client}) do
+    {_token, _access, refresh} =
+      oauth_token_fixture(account: account, actor: actor, client: client, resource: @resource)
+
+    refresh
+  end
+
+  defp refresh_params(context, refresh) do
+    %{"refresh_token" => refresh, "client_id" => context.client.client_id}
   end
 
   defp exchange_params(context, code) do

@@ -708,6 +708,15 @@ defmodule PortalWeb.OAuthControllerTest do
       assert subject.credential.resource == OAuth.resource_uri()
     end
 
+    test "a token minted for another audience is refused", %{account: account, actor: actor} do
+      {_token, access, _refresh} =
+        oauth_token_fixture(account: account, actor: actor, resource: "https://other.example/mcp")
+
+      context = Portal.Authentication.Context.build({127, 0, 0, 1}, "testing", [], :mcp)
+
+      assert {:error, :invalid_token} = Portal.Authentication.authenticate(access, context)
+    end
+
     test "rejects an unsupported grant type", %{conn: conn} do
       conn = post(conn, ~p"/oauth/token", %{"grant_type" => "password"})
 

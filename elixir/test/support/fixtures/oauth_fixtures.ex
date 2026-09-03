@@ -64,7 +64,10 @@ defmodule Portal.OAuthFixtures do
 
     grant =
       Map.get_lazy(attrs, :grant, fn ->
-        oauth_grant_fixture(account: account, actor: actor, scopes: scopes)
+        attrs
+        |> Map.take([:client])
+        |> Map.merge(%{account: account, actor: actor, scopes: scopes})
+        |> oauth_grant_fixture()
       end)
 
     {fragment, salt, hash} = Authentication.generate_token_secrets()

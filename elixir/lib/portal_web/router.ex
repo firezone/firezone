@@ -223,8 +223,9 @@ defmodule PortalWeb.Router do
     post "/sign_out", SignOutController, :sign_out
   end
 
-  # Granting an app access is not an admin action: the token can only ever do
-  # what the person approving it can already do, so any signed-in actor may.
+  # Approving an app runs on a session of its own, but it is still a portal
+  # session, so the same actors reach it: account admins. The token it leads to
+  # can only ever do what the person approving it can already do.
   scope "/:account_id_or_slug", PortalWeb do
     pipe_through [
       :public,

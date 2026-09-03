@@ -730,6 +730,10 @@ defmodule Portal.Authentication do
       |> where([tokens: tokens], tokens.expires_at > ^now)
       |> where([tokens: tokens], tokens.id == ^token_id)
       |> where([tokens: tokens], tokens.account_id == ^account_id)
+      # The audience the token was minted for, checked on every use rather than
+      # only when it is renewed, so a token issued for anything else is refused
+      # here instead of being handed to whoever asked.
+      |> where([tokens: tokens], tokens.resource == ^Portal.OAuth.resource_uri())
       |> where([account: account], account.is_disabled == false)
       |> where([actor: actor], actor.is_disabled == false)
       |> update([tokens: tokens],
