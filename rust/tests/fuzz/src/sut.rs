@@ -1229,6 +1229,21 @@ impl TunnelTest {
                         error,
                     })?;
 
+                // The gateway's candidates and the portal's `flow_created` reply travel
+                // independently, so the client may receive them before it knows about
+                // the connection.
+                while let Some(event) = gateway.exec_mut(|g| g.sut.poll_event()) {
+                    on_gateway_event(
+                        gateway_id,
+                        event,
+                        &mut self.clients,
+                        gateway,
+                        &self.relays,
+                        &ref_state.global_dns_records,
+                        now,
+                    );
+                }
+
                 let client = self.clients.get_mut(&src).unwrap();
                 client
                     .exec_mut(|c| {
