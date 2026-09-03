@@ -5,7 +5,9 @@ defmodule PortalAPI.Schemas.ClientToken do
     require OpenApiSpex
     alias OpenApiSpex.Schema
 
-    @derive {PortalAPI.JSON.Encoder, for: Portal.ClientToken}
+    @derive {PortalAPI.JSON.Encoder,
+             for: Portal.ClientToken,
+             internal: [:account_id, :auth_provider_id, :auth_provider_name, :auth_provider_type, :last_used_device, :online?]}
     OpenApiSpex.schema(%{
       title: "ClientToken",
       description: "Client Token metadata",
@@ -27,17 +29,6 @@ defmodule PortalAPI.Schemas.ClientToken do
       }
     })
 
-    # Struct fields deliberately withheld from the API.
-    def internal do
-      [
-        :account_id,
-        :auth_provider_id,
-        :auth_provider_name,
-        :auth_provider_type,
-        :last_used_device,
-        :online?
-      ]
-    end
   end
 
   defmodule CreateSchema do
@@ -63,7 +54,9 @@ defmodule PortalAPI.Schemas.ClientToken do
     alias OpenApiSpex.Schema
     alias PortalAPI.Schemas.ClientToken
 
-    @derive {PortalAPI.JSON.Encoder, for: Portal.ClientToken}
+    @derive {PortalAPI.JSON.Encoder,
+             for: Portal.ClientToken,
+             internal: [:account_id, :auth_provider_id, :auth_provider_name, :auth_provider_type, :last_used_device, :online?]}
     OpenApiSpex.schema(%{
       title: "ClientTokenWithSecret",
       description:
@@ -95,17 +88,6 @@ defmodule PortalAPI.Schemas.ClientToken do
       %{token: Portal.Authentication.encode_fragment!(token)}
     end
 
-    # Struct fields deliberately withheld from the API.
-    def internal do
-      [
-        :account_id,
-        :auth_provider_id,
-        :auth_provider_name,
-        :auth_provider_type,
-        :last_used_device,
-        :online?
-      ]
-    end
   end
 
   defmodule Request do

@@ -5,7 +5,9 @@ defmodule PortalAPI.Schemas.GoogleDirectory do
     require OpenApiSpex
     alias OpenApiSpex.Schema
 
-    @derive {PortalAPI.JSON.Encoder, for: Portal.Google.Directory}
+    @derive {PortalAPI.JSON.Encoder,
+             for: Portal.Google.Directory,
+             internal: [:error_email_count, :is_verified, :sync_all_domains]}
     OpenApiSpex.schema(%{
       title: "GoogleDirectory",
       description: "Google Directory",
@@ -89,14 +91,6 @@ defmodule PortalAPI.Schemas.GoogleDirectory do
       }
     })
 
-    # Struct fields deliberately withheld from the API.
-    def internal do
-      [
-        :error_email_count,
-        :is_verified,
-        :sync_all_domains
-      ]
-    end
   end
 
   defmodule Response do

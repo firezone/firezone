@@ -5,7 +5,9 @@ defmodule PortalAPI.Schemas.DefenderPostureProvider do
     require OpenApiSpex
     alias OpenApiSpex.Schema
 
-    @derive {PortalAPI.JSON.Encoder, for: Portal.Defender.PostureProvider}
+    @derive {PortalAPI.JSON.Encoder,
+             for: Portal.Defender.PostureProvider,
+             internal: [:error_email_count]}
     OpenApiSpex.schema(%{
       title: "DefenderPostureProvider",
       description: "Microsoft Defender for Endpoint posture provider",
@@ -44,12 +46,6 @@ defmodule PortalAPI.Schemas.DefenderPostureProvider do
 
     def map(%Portal.Defender.PostureProvider{posture_provider: %{name: name}}, _map), do: %{type: "defender", name: name}
 
-    # Struct fields deliberately withheld from the API.
-    def internal do
-      [
-        :error_email_count
-      ]
-    end
   end
 
   defmodule Response do

@@ -2,11 +2,10 @@ defmodule PortalAPI.Schemas.ContractTest do
   @moduledoc """
   Keeps each response schema aligned with the Ecto struct it documents.
 
-  Every struct field must be a documented property, or listed by the schema
-  module as internal, or marked `redact: true`, so a new column reaches the
-  API only once someone decides it should. Encoding a bare struct must produce
-  exactly the documented properties, and property types must match the Ecto
-  types.
+  Which struct fields are exposed is checked when the schema module compiles,
+  by `PortalAPI.JSON.Encoder`. This covers what needs a running system:
+  encoding a bare struct must produce exactly the documented properties, and
+  property types must match the Ecto types.
   """
   use ExUnit.Case, async: true
 
@@ -120,26 +119,6 @@ defmodule PortalAPI.Schemas.ContractTest do
                  "#{inspect(@contract.struct)} does not emit: #{inspect(expected -- emitted)}"
       end
 
-      test "classifies every struct field as documented, internal, or redacted" do
-        struct = @contract.struct
-        internal = internal(@contract.schema)
-        redacted = struct.__schema__(:redact_fields)
-        documented = @contract.schema.schema().properties |> Map.keys() |> Enum.map(&source(&1, @contract))
-        unclassified = (fields(struct) -- documented) -- (internal ++ redacted)
-
-        assert unclassified == [],
-               "#{inspect(struct)} has fields that #{inspect(@contract.schema)} neither " <>
-                 "documents nor lists as internal: #{inspect(unclassified)}"
-
-        assert internal -- fields(struct) == [],
-               "#{inspect(@contract.schema)} lists internal fields #{inspect(struct)} does not " <>
-                 "have: #{inspect(internal -- fields(struct))}"
-
-        assert documented -- (documented -- redacted) == [],
-               "#{inspect(@contract.schema)} documents fields marked redact: true on " <>
-                 "#{inspect(struct)}: #{inspect(documented -- (documented -- redacted))}"
-      end
-
       test "property types match the struct's Ecto types" do
         struct = @contract.struct
 
@@ -171,9 +150,6 @@ defmodule PortalAPI.Schemas.ContractTest do
 
   defp source(property, contract), do: Keyword.get(contract.aliases, property, property)
 
-  defp internal(schema) do
-    if function_exported?(schema, :internal, 0), do: schema.internal(), else: []
-  end
 
   defp fields(struct), do: struct.__schema__(:fields) ++ struct.__schema__(:virtual_fields)
 

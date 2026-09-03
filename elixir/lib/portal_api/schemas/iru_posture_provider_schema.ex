@@ -5,7 +5,9 @@ defmodule PortalAPI.Schemas.IruPostureProvider do
     require OpenApiSpex
     alias OpenApiSpex.Schema
 
-    @derive {PortalAPI.JSON.Encoder, for: Portal.Iru.PostureProvider}
+    @derive {PortalAPI.JSON.Encoder,
+             for: Portal.Iru.PostureProvider,
+             internal: [:error_email_count]}
     OpenApiSpex.schema(%{
       title: "IruPostureProvider",
       description: "Iru (formerly Kandji) posture provider",
@@ -46,12 +48,6 @@ defmodule PortalAPI.Schemas.IruPostureProvider do
 
     def map(%Portal.Iru.PostureProvider{posture_provider: %{name: name}}, _map), do: %{type: "iru", name: name}
 
-    # Struct fields deliberately withheld from the API.
-    def internal do
-      [
-        :error_email_count
-      ]
-    end
   end
 
   defmodule Response do

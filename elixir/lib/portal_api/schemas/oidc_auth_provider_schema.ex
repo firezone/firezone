@@ -5,7 +5,9 @@ defmodule PortalAPI.Schemas.OIDCAuthProvider do
     require OpenApiSpex
     alias OpenApiSpex.Schema
 
-    @derive {PortalAPI.JSON.Encoder, for: Portal.OIDC.AuthProvider}
+    @derive {PortalAPI.JSON.Encoder,
+             for: Portal.OIDC.AuthProvider,
+             internal: [:is_legacy, :is_verified]}
     OpenApiSpex.schema(%{
       title: "OIDCAuthProvider",
       description: "OIDC Auth Provider",
@@ -80,13 +82,6 @@ defmodule PortalAPI.Schemas.OIDCAuthProvider do
       }
     })
 
-    # Struct fields deliberately withheld from the API.
-    def internal do
-      [
-        :is_legacy,
-        :is_verified
-      ]
-    end
   end
 
   defmodule Response do

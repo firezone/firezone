@@ -5,7 +5,9 @@ defmodule PortalAPI.Schemas.EntraDirectory do
     require OpenApiSpex
     alias OpenApiSpex.Schema
 
-    @derive {PortalAPI.JSON.Encoder, for: Portal.Entra.Directory}
+    @derive {PortalAPI.JSON.Encoder,
+             for: Portal.Entra.Directory,
+             internal: [:error_email_count, :groups_subscription_id, :is_verified, :subscriptions_expire_at, :users_subscription_id]}
     OpenApiSpex.schema(%{
       title: "EntraDirectory",
       description: "Entra Directory",
@@ -83,16 +85,6 @@ defmodule PortalAPI.Schemas.EntraDirectory do
       }
     })
 
-    # Struct fields deliberately withheld from the API.
-    def internal do
-      [
-        :error_email_count,
-        :groups_subscription_id,
-        :is_verified,
-        :subscriptions_expire_at,
-        :users_subscription_id
-      ]
-    end
   end
 
   defmodule Response do

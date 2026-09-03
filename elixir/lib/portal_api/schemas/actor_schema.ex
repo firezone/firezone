@@ -5,7 +5,9 @@ defmodule PortalAPI.Schemas.Actor do
     require OpenApiSpex
     alias OpenApiSpex.Schema
 
-    @derive {PortalAPI.JSON.Encoder, for: Portal.Actor}
+    @derive {PortalAPI.JSON.Encoder,
+             for: Portal.Actor,
+             internal: [:account_id, :identity_count, :preferences]}
     OpenApiSpex.schema(%{
       title: "Actor",
       description: "Actor",
@@ -81,14 +83,6 @@ defmodule PortalAPI.Schemas.Actor do
       }
     })
 
-    # Struct fields deliberately withheld from the API.
-    def internal do
-      [
-        :account_id,
-        :identity_count,
-        :preferences
-      ]
-    end
   end
 
   defmodule CreateRequest do

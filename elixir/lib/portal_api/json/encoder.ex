@@ -3,13 +3,17 @@ defprotocol PortalAPI.JSON.Encoder do
   Builds the map the REST API sends for a struct, as documented by an OpenAPI
   schema.
 
-  Derived in the schema module, naming the Ecto struct it documents. The
-  schema's properties are the fields the API exposes: a struct field that is
-  not a property never leaves the portal, and neither does a field marked
-  `redact: true`. A property that is not required is omitted when nil.
+  Derived in the schema module, naming the Ecto struct it documents and the
+  struct fields the API deliberately withholds. The schema's properties are
+  the fields the API exposes, and the build fails if a struct field is neither
+  a property, nor listed as internal, nor marked `redact: true`, so a new
+  column is exposed only once someone decides it should be. A property that
+  is not required is omitted when nil.
 
       defmodule Schema do
-        @derive {PortalAPI.JSON.Encoder, for: Portal.Site}
+        @derive {PortalAPI.JSON.Encoder,
+                 for: Portal.Site,
+                 internal: [:account_id, :health_threshold, :managed_by, :inserted_at, :updated_at]}
         OpenApiSpex.schema(%{title: "Site", properties: %{...}})
       end
 
@@ -26,6 +30,10 @@ defprotocol PortalAPI.JSON.Encoder do
 
   defmacro __deriving__(module, opts) do
     struct_module = Keyword.fetch!(opts, :for)
+    internal = Keyword.get(opts, :internal, [])
+
+    properties = module |> Macro.struct_info!(__CALLER__) |> Enum.map(& &1.field)
+    PortalAPI.JSON.Encoder.Derived.check!(module, struct_module, properties, internal)
 
     quote do
       defimpl PortalAPI.JSON.Encoder, for: unquote(module) do
@@ -39,6 +47,31 @@ end
 
 defmodule PortalAPI.JSON.Encoder.Derived do
   @moduledoc false
+
+  @doc false
+  def check!(schema, struct_module, properties, internal) do
+    fields = struct_module.__schema__(:fields) ++ struct_module.__schema__(:virtual_fields)
+    redacted = struct_module.__schema__(:redact_fields)
+
+    problems =
+      [
+        {"has fields that #{inspect(schema)} neither documents nor lists as internal",
+         (fields -- properties) -- (internal ++ redacted)},
+        {"does not have the fields #{inspect(schema)} lists as internal", internal -- fields},
+        {"has fields marked redact: true that #{inspect(schema)} documents",
+         properties -- (properties -- redacted)}
+      ]
+      |> Enum.reject(fn {_message, offenders} -> offenders == [] end)
+
+    if problems != [] do
+      raise ArgumentError,
+            Enum.map_join(problems, "\n", fn {message, offenders} ->
+              "#{inspect(struct_module)} #{message}: #{inspect(Enum.sort(offenders))}"
+            end)
+    end
+
+    :ok
+  end
 
   @doc false
   def encode(schema, struct_module, struct) do

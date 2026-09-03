@@ -5,7 +5,9 @@ defmodule PortalAPI.Schemas.OktaDirectory do
     require OpenApiSpex
     alias OpenApiSpex.Schema
 
-    @derive {PortalAPI.JSON.Encoder, for: Portal.Okta.Directory}
+    @derive {PortalAPI.JSON.Encoder,
+             for: Portal.Okta.Directory,
+             internal: [:error_email_count, :is_verified]}
     OpenApiSpex.schema(%{
       title: "OktaDirectory",
       description: "Okta Directory",
@@ -79,13 +81,6 @@ defmodule PortalAPI.Schemas.OktaDirectory do
       }
     })
 
-    # Struct fields deliberately withheld from the API.
-    def internal do
-      [
-        :error_email_count,
-        :is_verified
-      ]
-    end
   end
 
   defmodule Response do

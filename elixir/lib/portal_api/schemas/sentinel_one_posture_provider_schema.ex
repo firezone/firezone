@@ -5,7 +5,9 @@ defmodule PortalAPI.Schemas.SentinelOnePostureProvider do
     require OpenApiSpex
     alias OpenApiSpex.Schema
 
-    @derive {PortalAPI.JSON.Encoder, for: Portal.SentinelOne.PostureProvider}
+    @derive {PortalAPI.JSON.Encoder,
+             for: Portal.SentinelOne.PostureProvider,
+             internal: [:error_email_count]}
     OpenApiSpex.schema(%{
       title: "SentinelOnePostureProvider",
       description: "SentinelOne posture provider",
@@ -44,12 +46,6 @@ defmodule PortalAPI.Schemas.SentinelOnePostureProvider do
 
     def map(%Portal.SentinelOne.PostureProvider{posture_provider: %{name: name}}, _map), do: %{type: "sentinelone", name: name}
 
-    # Struct fields deliberately withheld from the API.
-    def internal do
-      [
-        :error_email_count
-      ]
-    end
   end
 
   defmodule Response do

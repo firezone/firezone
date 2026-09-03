@@ -5,7 +5,9 @@ defmodule PortalAPI.Schemas.PoolMember do
     require OpenApiSpex
     alias OpenApiSpex.Schema
 
-    @derive {PortalAPI.JSON.Encoder, for: Portal.Device}
+    @derive {PortalAPI.JSON.Encoder,
+             for: Portal.Device,
+             internal: [:account_id, :actor_id, :attested?, :client_token_id, :device_serial, :device_uuid, :firebase_installation_id, :firezone_id, :firezone_id_merged?, :gateway_token_id, :gateway_token_rotated_at, :hostname, :identifier_for_vendor, :inserted_at, :ipv4, :ipv6, :last_attested_at, :last_attested_cert_fingerprint, :last_attested_cert_issuer, :last_attested_cert_serial, :last_attested_device_serial, :last_attested_device_uuid, :last_attested_mdm_device_id, :last_seen_remote_ip, :last_seen_remote_ip_location_city, :last_seen_remote_ip_location_lat, :last_seen_remote_ip_location_lon, :last_seen_remote_ip_location_region, :last_seen_user_agent, :last_seen_version, :online?, :provisioned_token, :public_key, :site_id, :type, :updated_at, :verified_at]}
     OpenApiSpex.schema(%{
       title: "PoolMember",
       description: "A Client belonging to a static device pool Resource",
@@ -28,48 +30,6 @@ defmodule PortalAPI.Schemas.PoolMember do
       }
     })
 
-    # Struct fields deliberately withheld from the API.
-    def internal do
-      [
-        :account_id,
-        :actor_id,
-        :attested?,
-        :client_token_id,
-        :device_serial,
-        :device_uuid,
-        :firebase_installation_id,
-        :firezone_id,
-        :firezone_id_merged?,
-        :gateway_token_id,
-        :gateway_token_rotated_at,
-        :hostname,
-        :identifier_for_vendor,
-        :inserted_at,
-        :ipv4,
-        :ipv6,
-        :last_attested_at,
-        :last_attested_cert_fingerprint,
-        :last_attested_cert_issuer,
-        :last_attested_cert_serial,
-        :last_attested_device_serial,
-        :last_attested_device_uuid,
-        :last_attested_mdm_device_id,
-        :last_seen_remote_ip,
-        :last_seen_remote_ip_location_city,
-        :last_seen_remote_ip_location_lat,
-        :last_seen_remote_ip_location_lon,
-        :last_seen_remote_ip_location_region,
-        :last_seen_user_agent,
-        :last_seen_version,
-        :online?,
-        :provisioned_token,
-        :public_key,
-        :site_id,
-        :type,
-        :updated_at,
-        :verified_at
-      ]
-    end
   end
 
   defmodule PatchRequest do

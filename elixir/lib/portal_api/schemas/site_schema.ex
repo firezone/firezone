@@ -5,7 +5,9 @@ defmodule PortalAPI.Schemas.Site do
     require OpenApiSpex
     alias OpenApiSpex.Schema
 
-    @derive {PortalAPI.JSON.Encoder, for: Portal.Site}
+    @derive {PortalAPI.JSON.Encoder,
+             for: Portal.Site,
+             internal: [:account_id, :health_threshold, :inserted_at, :managed_by, :updated_at]}
     OpenApiSpex.schema(%{
       title: "Site",
       description: "Site",
@@ -21,16 +23,6 @@ defmodule PortalAPI.Schemas.Site do
       }
     })
 
-    # Struct fields deliberately withheld from the API.
-    def internal do
-      [
-        :account_id,
-        :health_threshold,
-        :inserted_at,
-        :managed_by,
-        :updated_at
-      ]
-    end
   end
 
   defmodule CreateRequest do

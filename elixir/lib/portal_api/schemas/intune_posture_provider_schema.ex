@@ -5,7 +5,9 @@ defmodule PortalAPI.Schemas.IntunePostureProvider do
     require OpenApiSpex
     alias OpenApiSpex.Schema
 
-    @derive {PortalAPI.JSON.Encoder, for: Portal.Intune.PostureProvider}
+    @derive {PortalAPI.JSON.Encoder,
+             for: Portal.Intune.PostureProvider,
+             internal: [:error_email_count]}
     OpenApiSpex.schema(%{
       title: "IntunePostureProvider",
       description: "Microsoft Intune posture provider",
@@ -44,12 +46,6 @@ defmodule PortalAPI.Schemas.IntunePostureProvider do
 
     def map(%Portal.Intune.PostureProvider{posture_provider: %{name: name}}, _map), do: %{type: "intune", name: name}
 
-    # Struct fields deliberately withheld from the API.
-    def internal do
-      [
-        :error_email_count
-      ]
-    end
   end
 
   defmodule Response do

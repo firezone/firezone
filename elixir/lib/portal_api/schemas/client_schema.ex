@@ -5,7 +5,9 @@ defmodule PortalAPI.Schemas.Client do
     require OpenApiSpex
     alias OpenApiSpex.Schema
 
-    @derive {PortalAPI.JSON.Encoder, for: Portal.Device}
+    @derive {PortalAPI.JSON.Encoder,
+             for: Portal.Device,
+             internal: [:account_id, :attested?, :client_token_id, :firezone_id_merged?, :gateway_token_id, :gateway_token_rotated_at, :inserted_at, :last_attested_cert_issuer, :online?, :provisioned_token, :site_id, :type]}
     OpenApiSpex.schema(%{
       title: "Client",
       description: "Client",
@@ -233,21 +235,6 @@ defmodule PortalAPI.Schemas.Client do
       %{online: device.online?, created_at: device.inserted_at}
     end
 
-    # Struct fields deliberately withheld from the API.
-    def internal do
-      [
-        :account_id,
-        :attested?,
-        :client_token_id,
-        :firezone_id_merged?,
-        :gateway_token_id,
-        :gateway_token_rotated_at,
-        :last_attested_cert_issuer,
-        :provisioned_token,
-        :site_id,
-        :type
-      ]
-    end
   end
 
   defmodule PutSchema do

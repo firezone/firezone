@@ -5,7 +5,9 @@ defmodule PortalAPI.Schemas.OktaAuthProvider do
     require OpenApiSpex
     alias OpenApiSpex.Schema
 
-    @derive {PortalAPI.JSON.Encoder, for: Portal.Okta.AuthProvider}
+    @derive {PortalAPI.JSON.Encoder,
+             for: Portal.Okta.AuthProvider,
+             internal: [:discovery_document_uri, :is_verified]}
     OpenApiSpex.schema(%{
       title: "OktaAuthProvider",
       description: "Okta Auth Provider",
@@ -73,13 +75,6 @@ defmodule PortalAPI.Schemas.OktaAuthProvider do
       }
     })
 
-    # Struct fields deliberately withheld from the API.
-    def internal do
-      [
-        :discovery_document_uri,
-        :is_verified
-      ]
-    end
   end
 
   defmodule Response do

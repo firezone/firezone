@@ -4,7 +4,9 @@ defmodule PortalAPI.Schemas.Log do
     alias OpenApiSpex.Schema
     alias PortalAPI.Schemas
 
-    @derive {PortalAPI.JSON.Encoder, for: Portal.ChangeLog}
+    @derive {PortalAPI.JSON.Encoder,
+             for: Portal.ChangeLog,
+             internal: [:account_id, :lsn, :seq, :vsn]}
     OpenApiSpex.schema(%{
       title: "ChangeLog",
       description: """
@@ -77,15 +79,6 @@ defmodule PortalAPI.Schemas.Log do
 
     def map(%Portal.ChangeLog{}, _map), do: %{type: "change"}
 
-    # Struct fields deliberately withheld from the API.
-    def internal do
-      [
-        :account_id,
-        :lsn,
-        :seq,
-        :vsn
-      ]
-    end
   end
 
   defmodule Session do
@@ -94,7 +87,9 @@ defmodule PortalAPI.Schemas.Log do
     alias PortalAPI.Schemas
     alias PortalAPI.Schemas.SessionSubject
 
-    @derive {PortalAPI.JSON.Encoder, for: Portal.SessionLog}
+    @derive {PortalAPI.JSON.Encoder,
+             for: Portal.SessionLog,
+             internal: [:account_id, :seq]}
     OpenApiSpex.schema(%{
       title: "SessionLog",
       description: """
@@ -163,20 +158,15 @@ defmodule PortalAPI.Schemas.Log do
 
     def map(%Portal.SessionLog{}, _map), do: %{type: "session"}
 
-    # Struct fields deliberately withheld from the API.
-    def internal do
-      [
-        :account_id,
-        :seq
-      ]
-    end
   end
 
   defmodule Flow do
     require OpenApiSpex
     alias OpenApiSpex.Schema
 
-    @derive {PortalAPI.JSON.Encoder, for: Portal.FlowLog}
+    @derive {PortalAPI.JSON.Encoder,
+             for: Portal.FlowLog,
+             internal: [:account_id, :domain, :inserted_at, :seq, :start_seq]}
     OpenApiSpex.schema(%{
       title: "FlowLog",
       description: """
@@ -516,21 +506,15 @@ defmodule PortalAPI.Schemas.Log do
     defp outers(%Portal.FlowLog{flow_end: nil}), do: nil
     defp outers(%Portal.FlowLog{outers: outers}), do: Portal.FlowLog.outers_to_maps(outers)
 
-    # Struct fields deliberately withheld from the API.
-    def internal do
-      [
-        :account_id,
-        :seq,
-        :start_seq
-      ]
-    end
   end
 
   defmodule APIRequest do
     require OpenApiSpex
     alias OpenApiSpex.Schema
 
-    @derive {PortalAPI.JSON.Encoder, for: Portal.APIRequestLog}
+    @derive {PortalAPI.JSON.Encoder,
+             for: Portal.APIRequestLog,
+             internal: [:account_id, :inserted_at, :seq]}
     OpenApiSpex.schema(%{
       title: "APIRequestLog",
       description: """
@@ -613,13 +597,6 @@ defmodule PortalAPI.Schemas.Log do
       %{type: "api_request", timestamp: log.inserted_at, ip: log.ip && "#{log.ip}"}
     end
 
-    # Struct fields deliberately withheld from the API.
-    def internal do
-      [
-        :account_id,
-        :seq
-      ]
-    end
   end
 
   defmodule Item do

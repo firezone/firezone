@@ -165,7 +165,9 @@ defmodule PortalAPI.Schemas.Policy do
     alias OpenApiSpex.Schema
     alias PortalAPI.Schemas.Policy
 
-    @derive {PortalAPI.JSON.Encoder, for: Portal.Policy}
+    @derive {PortalAPI.JSON.Encoder,
+             for: Portal.Policy,
+             internal: [:account_id, :group_idp_id, :inserted_at, :updated_at]}
     OpenApiSpex.schema(%{
       title: "Policy",
       description: "Policy",
@@ -231,15 +233,6 @@ defmodule PortalAPI.Schemas.Policy do
       }
     end
 
-    # Struct fields deliberately withheld from the API.
-    def internal do
-      [
-        :account_id,
-        :group_idp_id,
-        :inserted_at,
-        :updated_at
-      ]
-    end
   end
 
   defmodule CreateRequest do

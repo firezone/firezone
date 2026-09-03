@@ -5,7 +5,9 @@ defmodule PortalAPI.Schemas.Group do
     require OpenApiSpex
     alias OpenApiSpex.Schema
 
-    @derive {PortalAPI.JSON.Encoder, for: Portal.Group}
+    @derive {PortalAPI.JSON.Encoder,
+             for: Portal.Group,
+             internal: [:account_id, :type]}
     OpenApiSpex.schema(%{
       title: "Group",
       description: "Group",
@@ -80,13 +82,6 @@ defmodule PortalAPI.Schemas.Group do
 
     def map(%Portal.Group{}, _map), do: %{synced_at: nil}
 
-    # Struct fields deliberately withheld from the API.
-    def internal do
-      [
-        :account_id,
-        :type
-      ]
-    end
   end
 
   defmodule CreateRequest do
