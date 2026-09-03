@@ -259,7 +259,7 @@ class TunnelE2eTest {
 
         val restoredSession = awaitSession()
         assertEquals(TOKEN, restoredSession.config.token)
-        assertEquals(TOKEN, repo.getTokenSync())
+        assertEquals(TOKEN, tokenStore.get())
     }
 
     @Test
@@ -274,7 +274,7 @@ class TunnelE2eTest {
         session.emit(Event.Disconnected(FakeDisconnectError(signInRequired = true, text = "managed session expired")))
 
         assertEquals("managed session expired", awaitDisconnectedNotification())
-        assertEquals(TOKEN, repo.getTokenSync())
+        assertEquals(TOKEN, tokenStore.get())
     }
 
     private fun signInAndConnect(): FakeSession {

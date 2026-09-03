@@ -10,6 +10,7 @@ import dev.firezone.android.core.ApplicationMode
 import dev.firezone.android.core.data.ManagedConfigurationReader
 import dev.firezone.android.core.data.ManagedConfigurationSource
 import dev.firezone.android.core.data.Repository
+import dev.firezone.android.core.data.TokenStore
 import dev.firezone.android.core.x509.CertificateAccess
 import dev.firezone.android.core.x509.SystemKeyChain
 import dev.firezone.android.tunnel.TunnelService
@@ -59,7 +60,14 @@ class SplashViewModelManagedConfigurationTest {
                 keyChain = SystemKeyChain(context),
                 coroutineDispatcher = Dispatchers.Unconfined,
             )
-        viewModel = SplashViewModel(repository, source, ApplicationMode.TESTING, certificateAccess)
+        viewModel =
+            SplashViewModel(
+                repository,
+                TokenStore(sharedPreferences),
+                source,
+                ApplicationMode.TESTING,
+                certificateAccess,
+            )
     }
 
     @Test

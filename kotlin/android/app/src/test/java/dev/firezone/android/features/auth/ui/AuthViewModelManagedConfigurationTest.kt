@@ -3,15 +3,20 @@ package dev.firezone.android.features.auth.ui
 
 import android.app.Application
 import android.content.Context
+import android.net.Uri
 import android.os.Bundle
 import android.os.Looper
 import dev.firezone.android.core.data.ManagedConfigurationReader
 import dev.firezone.android.core.data.ManagedConfigurationSource
 import dev.firezone.android.core.data.Repository
+import dev.firezone.android.core.data.TokenStore
+import dev.firezone.android.features.auth.AuthCallbackHandler
+import dev.firezone.android.features.auth.PendingAuthSession
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -45,19 +50,28 @@ class AuthViewModelManagedConfigurationTest {
                 repository,
                 CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
             )
-        viewModel = AuthViewModel(repository, source)
+        val pendingAuthSession = PendingAuthSession()
+        viewModel =
+            AuthViewModel(
+                repository,
+                pendingAuthSession,
+                AuthCallbackHandler(pendingAuthSession, TokenStore(sharedPreferences)),
+                source,
+            )
     }
 
     @Test
     fun `authentication uses the latest managed URL and account`() {
-        viewModel.onActivityResume()
+        viewModel.startAuthFlow()
         shadowOf(Looper.getMainLooper()).idle()
 
         val action = viewModel.actionStateFlow.value as AuthViewModel.ViewAction.LaunchAuthFlow
-        assertEquals(
-            "https://managed.example.com/managed-account" +
-                "?state=${repository.getStateSync()}&nonce=${repository.getNonceSync()}&as=gui-client",
-            action.url,
-        )
+        val uri = Uri.parse(action.url)
+        assertEquals("https", uri.scheme)
+        assertEquals("managed.example.com", uri.host)
+        assertEquals("/managed-account", uri.path)
+        assertFalse(uri.getQueryParameter("state").isNullOrBlank())
+        assertFalse(uri.getQueryParameter("nonce").isNullOrBlank())
+        assertEquals("gui-client", uri.getQueryParameter("as"))
     }
 }
