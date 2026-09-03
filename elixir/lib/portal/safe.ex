@@ -560,7 +560,7 @@ defmodule Portal.Safe do
   end
 
   @spec delete(Scoped.t()) ::
-          {:ok, Ecto.Schema.t()} | {:error, Ecto.Changeset.t() | :unauthorized}
+          {:ok, Ecto.Schema.t()} | {:error, Ecto.Changeset.t() | :unauthorized | :not_found}
   def delete(%Scoped{
         subject: %Subject{account: %{id: account_id}} = subject,
         queryable: %Ecto.Changeset{data: %{account_id: account_id}} = changeset

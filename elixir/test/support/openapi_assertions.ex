@@ -55,9 +55,12 @@ defmodule PortalAPI.OpenAPIAssertions do
         _ -> nil
       end
 
-    assert schema,
-           "#{inspect(controller)}.#{action} declares no #{conn.status} #{content_type} response " <>
-             "in its OpenAPI operation, but the test received one"
+    if is_nil(schema) do
+      flunk(
+        "#{inspect(controller)}.#{action} declares no #{conn.status} #{content_type} response " <>
+          "in its OpenAPI operation, but the test received one"
+      )
+    end
 
     castable(schema)
   end
