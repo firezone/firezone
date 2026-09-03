@@ -61,6 +61,10 @@ extension XCTestCase {
     for _ in 1...attempts {
       Thread.sleep(forTimeInterval: 1.0)
 
+      // A dismissed banner leaves the next capture differing from the last,
+      // which starts the count over.
+      dismissBanner(before: fileName)
+
       let current = element.screenshot()
       let currentPNG = current.pngRepresentation
       sizes.append(currentPNG.count)
@@ -85,6 +89,24 @@ extension XCTestCase {
     XCTFail("\(fileName) never held still, across \(attempts) captures")
 
     return previous
+  }
+
+  /// Swipes away a banner SpringBoard has laid over the app, and says so.
+  ///
+  /// The simulator posts its own: a "Ready for Apple Intelligence" notice once
+  /// made it into a capture. A banner holds still for longer than the captures
+  /// take to agree, so it has to be looked for rather than waited out.
+  private func dismissBanner(before fileName: String) {
+    #if os(iOS)
+      let banner = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        .otherElements["Notification"]
+
+      guard banner.exists else { return }
+
+      print("banner: dismissing \"\(banner.label)\" before \(fileName)")
+      banner.swipeUp()
+      _ = banner.waitForNonExistence(timeout: 5)
+    #endif
   }
 
   /// Says in the run's log how a capture came to rest: a screen that agreed at
