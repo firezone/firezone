@@ -4,6 +4,9 @@ defmodule PortalAPI.Integrations.Entra.WebhookController do
   alias Portal.Entra
   require Logger
 
+  @max_body_bytes 1_000_000
+  @max_notifications 1_000
+
   def handle_webhook(conn, _params) do
     conn = fetch_query_params(conn)
 
@@ -21,18 +24,17 @@ defmodule PortalAPI.Integrations.Entra.WebhookController do
   end
 
   defp handle_notifications(conn, directory_id) do
-    with {:ok, body, conn} <- read_body(conn),
-         {:ok, %{"value" => notifications}} when is_list(notifications) <- JSON.decode(body) do
+    with {:ok, body, conn} <- read_body(conn, length: @max_body_bytes),
+         {:ok, %{"value" => notifications}} when is_list(notifications) <- JSON.decode(body),
+         true <- length(notifications) <= @max_notifications do
       :ok = Entra.Webhooks.handle_notifications(directory_id, notifications)
       send_resp(conn, 202, "")
     else
-      # coveralls-ignore-start
-      # Defensive: only triggered by a payload exceeding read_body/2's default
-      # 8MB length, which Graph never sends.
       {:more, _, _} ->
         send_resp(conn, 413, "Request Entity Too Large")
 
-      # coveralls-ignore-stop
+      false ->
+        send_resp(conn, 413, "Request Entity Too Large: too many notifications")
 
       {:ok, _other} ->
         send_resp(conn, 400, "Bad Request: missing notifications")

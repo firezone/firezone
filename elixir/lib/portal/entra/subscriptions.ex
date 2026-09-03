@@ -34,14 +34,23 @@ defmodule Portal.Entra.Subscriptions do
 
   @impl Oban.Worker
   def perform(%Oban.Job{
-        args: %{"action" => "delete", "tenant_id" => tenant_id, "subscription_ids" => ids}
+        args:
+          %{
+            "action" => "delete",
+            "account_id" => account_id,
+            "directory_id" => directory_id,
+            "tenant_id" => tenant_id,
+            "subscription_ids" => ids
+          } = args
       }) do
-    case APIClient.get_access_token(:entra, tenant_id) do
-      {:ok, %{body: %{"access_token" => access_token}}} ->
-        Enum.each(ids, &delete_subscription(access_token, &1))
-
-      other ->
-        {:error, {:get_access_token, other}}
+    with {:ok, %{body: %{"access_token" => access_token}}} <-
+           APIClient.get_access_token(:entra, tenant_id),
+         :ok <- delete_subscriptions(access_token, ids) do
+      Database.clear_subscriptions(account_id, directory_id, ids)
+      :ok
+    else
+      {:error, _reason} = error -> error
+      other -> {:error, {:get_access_token, other, args}}
     end
   end
 
@@ -66,6 +75,12 @@ defmodule Portal.Entra.Subscriptions do
   end
 
   def perform(_), do: :ok
+
+  @doc """
+  Fetches a directory that is enabled, verified, and on an account with the
+  `idp_sync` feature. Nil otherwise.
+  """
+  def get_directory(account_id, directory_id), do: Database.get_directory(account_id, directory_id)
 
   @doc """
   Returns the URL Graph posts change and lifecycle notifications to.
@@ -102,16 +117,12 @@ defmodule Portal.Entra.Subscriptions do
       directory = ensure_secret(directory)
       expires_at = DateTime.utc_now() |> DateTime.add(@lifetime_days, :day)
 
-      with {:ok, users_id} <-
-             ensure_subscription(directory, access_token, :users, expires_at),
-           {:ok, groups_id} <-
-             ensure_subscription(directory, access_token, :groups, expires_at),
+      # Each id is stored as soon as Graph returns it, so a failure on the
+      # second subscription cannot leak the first one on retry.
+      with {:ok, directory} <- ensure_subscription(directory, access_token, :users, expires_at),
+           {:ok, directory} <- ensure_subscription(directory, access_token, :groups, expires_at),
            {:ok, _directory} <-
-             Database.update_directory(directory, %{
-               users_subscription_id: users_id,
-               groups_subscription_id: groups_id,
-               subscriptions_expire_at: expires_at
-             }) do
+             Database.update_directory(directory, %{subscriptions_expire_at: expires_at}) do
         Logger.info("Entra webhook subscriptions active",
           entra_directory_id: directory.id,
           expires_at: expires_at
@@ -148,7 +159,7 @@ defmodule Portal.Entra.Subscriptions do
       subscription_id ->
         case APIClient.renew_subscription(access_token, subscription_id, expires_at) do
           {:ok, %Req.Response{status: 200}} ->
-            {:ok, subscription_id}
+            {:ok, directory}
 
           {:ok, %Req.Response{status: 404}} ->
             create_subscription(directory, access_token, resource, expires_at)
@@ -162,16 +173,17 @@ defmodule Portal.Entra.Subscriptions do
   defp subscription_id(directory, :users), do: directory.users_subscription_id
   defp subscription_id(directory, :groups), do: directory.groups_subscription_id
 
-  defp delete_subscription(access_token, subscription_id) do
-    case APIClient.delete_subscription(access_token, subscription_id) do
-      {:ok, %Req.Response{status: status}} when status in [204, 404] ->
-        :ok
+  defp delete_subscriptions(access_token, ids) do
+    failed =
+      Enum.reject(ids, fn id ->
+        match?({:ok, %Req.Response{status: status}} when status in [204, 404],
+               APIClient.delete_subscription(access_token, id))
+      end)
 
-      other ->
-        Logger.warning("Failed to delete Entra subscription",
-          subscription_id: subscription_id,
-          reason: inspect(other)
-        )
+    if failed == [] do
+      :ok
+    else
+      {:error, {:delete_subscriptions, failed}}
     end
   end
 
@@ -189,12 +201,15 @@ defmodule Portal.Entra.Subscriptions do
 
     case APIClient.create_subscription(access_token, attrs) do
       {:ok, %Req.Response{status: 201, body: %{"id" => id}}} when is_binary(id) ->
-        {:ok, id}
+        Database.update_directory(directory, %{subscription_field(resource) => id})
 
       other ->
         {:error, {:create_subscription, resource, other}}
     end
   end
+
+  defp subscription_field(:users), do: :users_subscription_id
+  defp subscription_field(:groups), do: :groups_subscription_id
 
   defmodule Database do
     import Ecto.Query
@@ -213,6 +228,24 @@ defmodule Portal.Entra.Subscriptions do
       )
       |> Safe.unscoped()
       |> Safe.one()
+    end
+
+    def clear_subscriptions(account_id, directory_id, subscription_ids) do
+      from(d in Portal.Entra.Directory,
+        where: d.account_id == ^account_id,
+        where: d.id == ^directory_id,
+        where:
+          d.users_subscription_id in ^subscription_ids or
+            d.groups_subscription_id in ^subscription_ids
+      )
+      |> Safe.unscoped()
+      |> Safe.update_all(
+        set: [
+          users_subscription_id: nil,
+          groups_subscription_id: nil,
+          subscriptions_expire_at: nil
+        ]
+      )
     end
 
     def update_directory(directory, attrs) do

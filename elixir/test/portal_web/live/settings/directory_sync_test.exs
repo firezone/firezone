@@ -825,9 +825,19 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
         worker: Portal.Entra.Subscriptions,
         args: %{
           action: "delete",
+          account_id: account.id,
+          directory_id: directory.id,
           tenant_id: "tenant-ops",
           subscription_ids: ["sub-users", "sub-groups"]
         }
+      )
+
+      html = render_click(lv, "toggle_directory", %{"id" => directory.id})
+      assert html =~ "Directory enabled successfully."
+
+      assert_enqueued(
+        worker: Portal.Entra.Subscriptions,
+        args: %{account_id: account.id, directory_id: directory.id, action: "ensure"}
       )
 
       html = render_click(lv, "delete_directory", %{"id" => directory.id})

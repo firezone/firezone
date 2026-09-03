@@ -2,6 +2,7 @@ defmodule Portal.Entra.WebhookSyncTest do
   use Portal.DataCase, async: true
   use Oban.Testing, repo: Portal.Repo
 
+  import Ecto.Query
   import Portal.AccountFixtures
   import Portal.ActorFixtures
   import Portal.EntraDirectoryFixtures
@@ -240,6 +241,29 @@ defmodule Portal.Entra.WebhookSyncTest do
 
       refute Repo.get_by(Group, id: group.id)
     end
+  end
+
+  test "snoozes while a full sync for the directory is running", %{directory: directory} = ctx do
+    identity = directory_identity(ctx, "user-1")
+
+    {:ok, job} =
+      Oban.insert(Sync.new(%{account_id: directory.account_id, directory_id: directory.id}))
+
+    Repo.update_all(from(j in Oban.Job, where: j.id == ^job.id), set: [state: "executing"])
+
+    assert {:snooze, 30} = perform_job(WebhookSync, user_args(directory, "user-1", "deleted"))
+
+    assert Repo.get_by(ExternalIdentity, id: identity.id)
+  end
+
+  test "skips accounts without directory sync" do
+    account = account_fixture(features: %{idp_sync: false})
+    directory = entra_directory_fixture(account: account)
+    identity = directory_identity(%{account: account, directory: directory}, "user-1")
+
+    assert :ok = perform_job(WebhookSync, user_args(directory, "user-1", "deleted"))
+
+    assert Repo.get_by(ExternalIdentity, id: identity.id)
   end
 
   test "skips disabled directories", %{account: account} = ctx do

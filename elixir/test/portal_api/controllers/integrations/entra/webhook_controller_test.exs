@@ -186,6 +186,25 @@ defmodule PortalAPI.Integrations.Entra.WebhookControllerTest do
       assert all_enqueued() == []
     end
 
+    test "drops notifications when the account lacks directory sync", %{conn: conn} do
+      account = account_fixture(features: %{idp_sync: false})
+      directory = entra_directory_fixture(account: account, webhook_secret: @secret)
+
+      conn = post_notifications(conn, directory, [lifecycle("missed", "sub-users")])
+
+      assert response(conn, 202) == ""
+      assert all_enqueued() == []
+    end
+
+    test "rejects oversized batches", %{conn: conn, directory: directory} do
+      notifications = for i <- 1..1001, do: change("Users", "user-#{i}", "updated")
+
+      conn = post_notifications(conn, directory, notifications)
+
+      assert response(conn, 413) =~ "too many notifications"
+      assert all_enqueued() == []
+    end
+
     test "ignores unsupported resources", %{conn: conn, directory: directory} do
       notification =
         change("Users", "user-1", "updated")

@@ -14,7 +14,7 @@ defmodule Portal.Entra.Webhooks do
   def handle_notifications(directory_id, notifications) when is_list(notifications) do
     with {:ok, id} <- Ecto.UUID.cast(directory_id || ""),
          %Entra.Directory{} = directory <- Database.get_directory(id) do
-      notifications = Enum.filter(notifications, &authentic?(directory, &1))
+      notifications = authentic(directory, notifications)
       {lifecycle, changes} = Enum.split_with(notifications, &Map.has_key?(&1, "lifecycleEvent"))
 
       changes =
@@ -44,27 +44,24 @@ defmodule Portal.Entra.Webhooks do
 
   def handle_notifications(_directory_id, _notifications), do: :ok
 
-  defp authentic?(directory, %{"clientState" => client_state} = notification)
-       when is_binary(client_state) do
-    if Plug.Crypto.secure_compare(client_state, directory.webhook_secret) do
-      true
-    else
-      Logger.warning("Dropping Entra notification with invalid clientState",
+  defp authentic(directory, notifications) do
+    {authentic, rejected} = Enum.split_with(notifications, &authentic?(directory, &1))
+
+    if rejected != [] do
+      Logger.warning("Dropping Entra notifications with a missing or invalid clientState",
         entra_directory_id: directory.id,
-        subscription_id: notification["subscriptionId"]
+        count: length(rejected)
       )
-
-      false
     end
+
+    authentic
   end
 
-  defp authentic?(directory, _notification) do
-    Logger.warning("Dropping Entra notification without clientState",
-      entra_directory_id: directory.id
-    )
-
-    false
+  defp authentic?(directory, %{"clientState" => client_state}) when is_binary(client_state) do
+    Plug.Crypto.secure_compare(client_state, directory.webhook_secret)
   end
+
+  defp authentic?(_directory, _notification), do: false
 
   defp lifecycle_job(directory, %{"lifecycleEvent" => event} = notification) do
     args = %{account_id: directory.account_id, directory_id: directory.id}
@@ -165,9 +162,13 @@ defmodule Portal.Entra.Webhooks do
 
     def get_directory(id) do
       from(d in Portal.Entra.Directory,
+        join: a in Portal.Account,
+        on: a.id == d.account_id,
         where: d.id == ^id,
         where: d.is_disabled == false,
-        where: not is_nil(d.webhook_secret)
+        where: not is_nil(d.webhook_secret),
+        where: a.is_disabled == false,
+        where: fragment("(?)->>'idp_sync' = 'true'", a.features)
       )
       |> Safe.unscoped()
       |> Safe.one()

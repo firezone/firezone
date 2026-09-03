@@ -283,6 +283,8 @@ defmodule PortalWeb.Settings.DirectorySync do
         {:ok, _directory} ->
           if new_disabled_state do
             unsubscribe_webhooks(directory)
+          else
+            subscribe_webhooks(directory)
           end
 
           {:noreply,
@@ -1794,7 +1796,13 @@ defmodule PortalWeb.Settings.DirectorySync do
     ids = Enum.reject([directory.users_subscription_id, directory.groups_subscription_id], &is_nil/1)
 
     if ids != [] do
-      args = %{"action" => "delete", "tenant_id" => directory.tenant_id, "subscription_ids" => ids}
+      args = %{
+        "action" => "delete",
+        "account_id" => directory.account_id,
+        "directory_id" => directory.id,
+        "tenant_id" => directory.tenant_id,
+        "subscription_ids" => ids
+      }
 
       case Oban.insert(Entra.Subscriptions.new(args)) do
         {:ok, _job} ->
@@ -1812,6 +1820,29 @@ defmodule PortalWeb.Settings.DirectorySync do
   end
 
   defp unsubscribe_webhooks(_directory), do: :ok
+
+  defp subscribe_webhooks(%Entra.Directory{} = directory) do
+    args = %{
+      "account_id" => directory.account_id,
+      "directory_id" => directory.id,
+      "action" => "ensure"
+    }
+
+    case Oban.insert(Entra.Subscriptions.new(args)) do
+      {:ok, _job} ->
+        :ok
+
+      {:error, reason} ->
+        Logger.info("Failed to enqueue Entra webhook subscription job",
+          id: directory.id,
+          reason: inspect(reason)
+        )
+    end
+
+    :ok
+  end
+
+  defp subscribe_webhooks(_directory), do: :ok
 
   defp handle_submit({:ok, _directory}, socket) do
     {:noreply,

@@ -30,6 +30,11 @@ defmodule Portal.Entra.WebhookSync do
     keys: [:directory_id, :resource, :resource_id]
   ]
 
+  # A full sync reads Graph long before it writes. If a webhook deleted a row
+  # in between, the sync would insert the stale copy back without a sync-state
+  # guard to stop it. Waiting for the sync to finish avoids that.
+  @snooze_seconds 30
+
   @impl Oban.Worker
   def new(args, opts), do: super(args, Keyword.put_new(opts, :unique, @unique))
 
@@ -43,15 +48,20 @@ defmodule Portal.Entra.WebhookSync do
           "change_type" => change_type
         }
       }) do
-    case Entra.Sync.get_directory(account_id, directory_id) do
-      nil ->
-        Logger.info("Entra directory not found or disabled, skipping notification",
+    directory = Entra.Subscriptions.get_directory(account_id, directory_id)
+
+    cond do
+      is_nil(directory) ->
+        Logger.info("Entra directory not eligible for webhooks, skipping notification",
           entra_directory_id: directory_id
         )
 
         :ok
 
-      directory ->
+      Database.full_sync_running?(directory_id) ->
+        {:snooze, @snooze_seconds}
+
+      true ->
         Logger.info("Applying Entra change notification",
           entra_directory_id: directory.id,
           resource: resource,
@@ -240,6 +250,14 @@ defmodule Portal.Entra.WebhookSync do
   defmodule Database do
     import Ecto.Query
     alias Portal.Safe
+
+    def full_sync_running?(directory_id) do
+      [worker: Portal.Entra.Sync, state: :executing]
+      |> Oban.Job.query()
+      |> where([j], fragment("?->>'directory_id'", j.args) == ^directory_id)
+      |> Safe.unscoped()
+      |> Safe.exists?()
+    end
 
     def get_identity(account_id, issuer, idp_id) do
       from(i in Portal.ExternalIdentity,

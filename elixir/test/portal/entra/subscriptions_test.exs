@@ -131,6 +131,30 @@ defmodule Portal.Entra.SubscriptionsTest do
       assert is_nil(directory.users_subscription_id)
     end
 
+    test "keeps a created subscription when the next one fails", %{account: account} do
+      directory = entra_directory_fixture(account: account)
+      stub_graph(refuse: ["/groups"])
+
+      assert {:error, {:create_subscription, :groups, _response}} =
+               perform_job(Subscriptions, ensure_args(directory))
+
+      directory = reload(directory)
+      assert directory.users_subscription_id == "sub-/users"
+      assert is_nil(directory.groups_subscription_id)
+      assert is_nil(directory.subscriptions_expire_at)
+
+      assert_received {:graph, "POST", "/v1.0/subscriptions", %{"resource" => "/users"}}
+      assert_received {:graph, "POST", "/v1.0/subscriptions", %{"resource" => "/groups"}}
+
+      stub_graph()
+      assert :ok = perform_job(Subscriptions, ensure_args(directory))
+
+      assert_received {:graph, "PATCH", "/v1.0/subscriptions/sub-/users", _body}
+      assert_received {:graph, "POST", "/v1.0/subscriptions", %{"resource" => "/groups"}}
+      refute_received {:graph, "POST", "/v1.0/subscriptions", %{"resource" => "/users"}}
+      assert reload(directory).groups_subscription_id == "sub-/groups"
+    end
+
     test "skips disabled, unverified, and feature-less directories", %{account: account} do
       stub_graph()
 
@@ -153,19 +177,52 @@ defmodule Portal.Entra.SubscriptionsTest do
   end
 
   describe "perform/1 delete" do
-    test "deletes the given subscriptions", %{account: _account} do
+    test "deletes the given subscriptions and clears them from the directory", %{
+      account: account
+    } do
+      directory = fresh_directory(account, 20)
       stub_graph()
 
-      assert :ok =
-               perform_job(Subscriptions, %{
-                 action: "delete",
-                 tenant_id: "tenant",
-                 subscription_ids: ["a", "b"]
-               })
+      assert :ok = perform_job(Subscriptions, delete_args(directory))
 
-      assert_received {:graph, "DELETE", "/v1.0/subscriptions/a", _body}
-      assert_received {:graph, "DELETE", "/v1.0/subscriptions/b", _body}
+      assert_received {:graph, "DELETE", "/v1.0/subscriptions/existing-users", _body}
+      assert_received {:graph, "DELETE", "/v1.0/subscriptions/existing-groups", _body}
+
+      directory = reload(directory)
+      assert is_nil(directory.users_subscription_id)
+      assert is_nil(directory.groups_subscription_id)
+      assert is_nil(directory.subscriptions_expire_at)
     end
+
+    test "leaves newer subscriptions alone", %{account: account} do
+      directory = fresh_directory(account, 20)
+      stub_graph()
+
+      args = %{delete_args(directory) | subscription_ids: ["old-users", "old-groups"]}
+      assert :ok = perform_job(Subscriptions, args)
+
+      assert reload(directory).users_subscription_id == "existing-users"
+    end
+
+    test "returns an error when a deletion fails so Oban retries", %{account: account} do
+      directory = fresh_directory(account, 20)
+      stub_graph(refuse_delete: ["existing-groups"])
+
+      assert {:error, {:delete_subscriptions, ["existing-groups"]}} =
+               perform_job(Subscriptions, delete_args(directory))
+
+      assert reload(directory).users_subscription_id == "existing-users"
+    end
+  end
+
+  defp delete_args(directory) do
+    %{
+      action: "delete",
+      account_id: directory.account_id,
+      directory_id: directory.id,
+      tenant_id: directory.tenant_id,
+      subscription_ids: [directory.users_subscription_id, directory.groups_subscription_id]
+    }
   end
 
   defp ensure_args(directory) do
@@ -188,6 +245,8 @@ defmodule Portal.Entra.SubscriptionsTest do
 
   defp stub_graph(opts \\ []) do
     missing = Keyword.get(opts, :missing, [])
+    refuse = Keyword.get(opts, :refuse, [])
+    refuse_delete = Keyword.get(opts, :refuse_delete, [])
     test_pid = self()
 
     Req.Test.stub(APIClient, fn conn ->
@@ -202,9 +261,13 @@ defmodule Portal.Entra.SubscriptionsTest do
           body = JSON.decode!(body)
           send(test_pid, {:graph, "POST", path, body})
 
-          conn
-          |> Plug.Conn.put_status(201)
-          |> Req.Test.json(Map.put(body, "id", "sub-#{body["resource"]}"))
+          if body["resource"] in refuse do
+            conn |> Plug.Conn.put_status(403) |> Req.Test.json(%{"error" => "forbidden"})
+          else
+            conn
+            |> Plug.Conn.put_status(201)
+            |> Req.Test.json(Map.put(body, "id", "sub-#{body["resource"]}"))
+          end
 
         conn.method == "PATCH" and String.starts_with?(path, "/v1.0/subscriptions/") ->
           {:ok, body, conn} = Plug.Conn.read_body(conn)
@@ -219,7 +282,12 @@ defmodule Portal.Entra.SubscriptionsTest do
 
         conn.method == "DELETE" and String.starts_with?(path, "/v1.0/subscriptions/") ->
           send(test_pid, {:graph, "DELETE", path, nil})
-          Plug.Conn.send_resp(conn, 204, "")
+
+          if Path.basename(path) in refuse_delete do
+            conn |> Plug.Conn.put_status(429) |> Req.Test.json(%{"error" => "throttled"})
+          else
+            Plug.Conn.send_resp(conn, 204, "")
+          end
 
         true ->
           send(test_pid, {:graph, conn.method, path, nil})
