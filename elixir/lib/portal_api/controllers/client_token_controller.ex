@@ -129,10 +129,7 @@ defmodule PortalAPI.ClientTokenController do
       conn
       |> put_status(:created)
       |> json(
-        JSON.encode(token,
-          schema: PortalAPI.Schemas.ClientToken.ResponseSchema,
-          token: Authentication.encode_fragment!(token)
-        )
+        JSON.encode(token, schema: PortalAPI.Schemas.ClientToken.ResponseSchema)
       )
     else
       error -> Error.handle(conn, error)

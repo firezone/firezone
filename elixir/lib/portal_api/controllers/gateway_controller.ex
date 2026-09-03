@@ -141,7 +141,7 @@ defmodule PortalAPI.GatewayController do
       conn
       |> put_status(:created)
       |> put_resp_header("location", ~p"/sites/#{site_id}/gateways/#{gateway}")
-      |> json(JSON.encode(gateway, schema: PortalAPI.Schemas.Gateway.Schema, token: encoded_token))
+      |> json(JSON.encode(gateway, schema: PortalAPI.Schemas.Gateway.Schema, extra: %{token: encoded_token}))
     else
       error -> Error.handle(conn, error)
     end

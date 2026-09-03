@@ -51,7 +51,7 @@ defmodule PortalAPI.GatewayTokenController do
          {:ok, token} <- Authentication.create_gateway_token(site, subject) do
       conn
       |> put_status(:created)
-      |> json(JSON.encode(token, token: Authentication.encode_fragment!(token)))
+      |> json(JSON.encode(token))
     else
       error -> Error.handle(conn, error)
     end
@@ -114,7 +114,7 @@ defmodule PortalAPI.GatewayTokenController do
          {:ok, token} <- Authentication.create_gateway_token(gateway, subject) do
       conn
       |> put_status(:created)
-      |> json(JSON.encode(token, token: Authentication.encode_fragment!(token)))
+      |> json(JSON.encode(token))
     else
       {:error, %Ecto.Changeset{errors: errors} = changeset} ->
         if unique_violation?(errors) do
@@ -177,7 +177,7 @@ defmodule PortalAPI.GatewayTokenController do
          {:ok, token} <- Authentication.rotate_gateway_token(gateway, subject) do
       conn
       |> put_status(:created)
-      |> json(JSON.encode(token, token: Authentication.encode_fragment!(token)))
+      |> json(JSON.encode(token))
     else
       error -> Error.handle(conn, error)
     end

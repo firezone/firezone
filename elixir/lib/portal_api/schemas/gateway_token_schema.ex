@@ -20,6 +20,10 @@ defmodule PortalAPI.Schemas.GatewayToken do
         "token" => "secret-token-here"
       }
     })
+
+    def map(%Portal.GatewayToken{} = token, _map) do
+      %{token: Portal.Authentication.encode_fragment!(token)}
+    end
   end
 
   defmodule Response do

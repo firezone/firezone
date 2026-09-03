@@ -76,6 +76,12 @@ defmodule PortalAPI.Schemas.ClientToken do
         "token" => "secret-token-here"
       }
     })
+
+    # Only a token just created carries the secret fragment the encoded token is
+    # built from, which is why this is a separate schema from the read one.
+    def map(%Portal.ClientToken{} = token, _map) do
+      %{token: Portal.Authentication.encode_fragment!(token)}
+    end
   end
 
   defmodule Request do
