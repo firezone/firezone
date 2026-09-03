@@ -343,7 +343,11 @@ impl Eventloop {
                     && let Err(e) =
                         flow_log_writer::write_token(&self.flow_logs_dir, token.as_str())
                 {
-                    tracing::warn!("Failed to persist flow-log ingest token: {e:#}");
+                    if flow_log_writer::is_disk_full(&e) {
+                        tracing::debug!("Failed to persist flow-log ingest token: {e:#}");
+                    } else {
+                        tracing::warn!("Failed to persist flow-log ingest token: {e:#}");
+                    }
                 }
 
                 if let Err(snownet::NoTurnServers {}) = tunnel.state_mut().create_authorization(

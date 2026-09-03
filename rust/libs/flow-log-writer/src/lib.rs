@@ -401,7 +401,11 @@ fn writer_loop(root: &Path, rx: &mpsc::Receiver<Command>) {
         };
 
         if let Err(e) = write_report(root, &report) {
-            tracing::warn!("Failed to write flow-log report: {e:#}");
+            if is_disk_full(&e) {
+                tracing::debug!("Failed to write flow-log report: {e:#}");
+            } else {
+                tracing::warn!("Failed to write flow-log report: {e:#}");
+            }
         }
     }
 }
@@ -457,7 +461,20 @@ fn write_file_secure(path: &Path, bytes: &[u8]) -> anyhow::Result<()> {
             set_owner_only(f)?;
             f.write_all(bytes)
         })
+        .map_err(std::io::Error::from)
         .with_context(|| format!("Failed to atomically write {}", path.display()))
+}
+
+/// Whether a spool write failed because the disk is full.
+///
+/// A full disk is an operator problem the spool cannot fix, so callers log it on
+/// `DEBUG` instead of `WARN` and carry on.
+pub fn is_disk_full(e: &anyhow::Error) -> bool {
+    e.chain().any(|cause| {
+        cause
+            .downcast_ref::<std::io::Error>()
+            .is_some_and(|io| io.kind() == std::io::ErrorKind::StorageFull)
+    })
 }
 
 /// A policy-authorization id must be a hyphenated UUID; reject anything else so it
@@ -621,6 +638,27 @@ mod tests {
 
         assert!(write_token(dir.path(), &format!("h.{payload}.s")).is_err());
         assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 0);
+    }
+
+    #[test]
+    fn atomic_write_error_keeps_io_error_kind() {
+        let dir = tempfile::tempdir().unwrap();
+        let e = write_file_secure(&dir.path().join("missing").join("file"), b"x").unwrap_err();
+
+        assert!(
+            e.chain()
+                .any(|c| c.downcast_ref::<std::io::Error>().is_some()),
+            "{e:#}"
+        );
+        assert!(!is_disk_full(&e));
+    }
+
+    #[test]
+    fn detects_disk_full_through_context() {
+        let e = anyhow::Error::from(std::io::Error::from(std::io::ErrorKind::StorageFull))
+            .context("Failed to atomically write");
+
+        assert!(is_disk_full(&e));
     }
 
     #[test]

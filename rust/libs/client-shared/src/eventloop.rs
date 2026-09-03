@@ -875,7 +875,11 @@ fn persist_ingest_token(spool_root: Option<&std::path::Path>, token: &IngestToke
     }
 
     if let Err(e) = flow_log_writer::write_token(spool_root, token.as_str()) {
-        tracing::warn!("Failed to persist flow-log ingest token: {e:#}");
+        if flow_log_writer::is_disk_full(&e) {
+            tracing::debug!("Failed to persist flow-log ingest token: {e:#}");
+        } else {
+            tracing::warn!("Failed to persist flow-log ingest token: {e:#}");
+        }
     }
 }
 
