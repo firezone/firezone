@@ -25,7 +25,7 @@ enum Appearance: String, CaseIterable {
 /// What drew the screen. On macOS the release: SwiftUI lays a window out with
 /// the release it runs on rather than the SDK it was built with. On iOS the
 /// device family, since the same suite photographs an iPhone and an iPad.
-private let deviceTag: String = {
+@MainActor private let deviceTag: String = {
   #if os(macOS)
     "-macos-\(ProcessInfo.processInfo.operatingSystemVersion.majorVersion)"
   #else
