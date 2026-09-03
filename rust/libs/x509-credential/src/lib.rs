@@ -18,7 +18,10 @@ use rustls::{
 /// Constructing a `phoenix_channel::LoginUrl` with a certificate dials the portal's mTLS endpoint instead of the regular one.
 /// This carries the client identity alone: how the portal's own certificate is verified belongs to `phoenix-channel`, so presenting a certificate cannot change it.
 #[derive(Debug, Clone)]
-pub struct ClientCertificate(Arc<CertifiedKey>);
+pub struct ClientCertificate {
+    certified_key: Arc<CertifiedKey>,
+    key: Arc<dyn PrivateKey>,
+}
 
 impl ClientCertificate {
     /// Builds a client identity from a DER-encoded certificate chain and a platform-held key.
@@ -34,16 +37,41 @@ impl ClientCertificate {
             return Err(EmptyCertificateChain);
         }
 
-        let certified_key = CertifiedKey::new(chain, Arc::new(PlatformSigningKey(key)));
+        let certified_key = CertifiedKey::new(chain, Arc::new(PlatformSigningKey(key.clone())));
 
-        Ok(Self(Arc::new(certified_key)))
+        Ok(Self {
+            certified_key: Arc::new(certified_key),
+            key,
+        })
     }
 
     /// Offers this certificate whenever the portal asks for a client identity.
     pub fn resolver(&self) -> Arc<dyn ResolvesClientCert> {
-        Arc::new(SingleCertAndKey::from(self.0.clone()))
+        Arc::new(SingleCertAndKey::from(self.certified_key.clone()))
+    }
+
+    /// Whether this identity can authenticate over TLS 1.3.
+    ///
+    /// A key that signs with none of the schemes TLS 1.3 admits can only present itself over TLS 1.2, so a connection offering it has to negotiate that version.
+    pub fn supports_tls13(&self) -> bool {
+        self.key
+            .supported_schemes()
+            .iter()
+            .any(|scheme| !REFUSED_BY_TLS13.contains(scheme))
     }
 }
+
+/// The signature schemes a TLS 1.3 handshake cannot carry.
+///
+/// RFC 8446, section 4.2.3 leaves the PKCS#1 v1.5 schemes to certificate signatures and outlaws SHA-1 in handshake signatures altogether.
+/// It states the rule as a denylist, so a scheme it does not name is admissible.
+const REFUSED_BY_TLS13: &[SignatureScheme] = &[
+    SignatureScheme::RSA_PKCS1_SHA1,
+    SignatureScheme::RSA_PKCS1_SHA256,
+    SignatureScheme::RSA_PKCS1_SHA384,
+    SignatureScheme::RSA_PKCS1_SHA512,
+    SignatureScheme::ECDSA_SHA1_Legacy,
+];
 
 /// A private key that is held by a platform keystore.
 ///
@@ -151,7 +179,7 @@ mod tests {
         .expect("mock key should produce a client certificate");
 
         let signer = certificate
-            .0
+            .certified_key
             .key
             .choose_scheme(&[
                 SignatureScheme::ECDSA_NISTP256_SHA256,
@@ -209,7 +237,7 @@ mod tests {
         )
         .expect("failing key should produce a client certificate");
         let signer = certificate
-            .0
+            .certified_key
             .key
             .choose_scheme(&[SignatureScheme::ECDSA_NISTP256_SHA256])
             .expect("ECDSA NIST P-256 should be mutually supported");
@@ -229,6 +257,45 @@ mod tests {
             matches!(signing_error, SigningError::AccessDenied(_)),
             "got {signing_error:?}"
         );
+    }
+
+    #[test]
+    fn a_key_without_the_pss_schemes_rules_out_tls13() {
+        let certificate = ClientCertificate::new(
+            vec![CertificateDer::from(vec![1, 2, 3])],
+            Arc::new(MockKey {
+                schemes: vec![
+                    SignatureScheme::RSA_PKCS1_SHA512,
+                    SignatureScheme::RSA_PKCS1_SHA384,
+                    SignatureScheme::RSA_PKCS1_SHA256,
+                ],
+            }),
+        )
+        .expect("mock key should produce a client certificate");
+
+        assert!(!certificate.supports_tls13());
+    }
+
+    #[test]
+    fn an_rsa_pss_or_ecdsa_key_authenticates_over_tls13() {
+        let rsa_pss = ClientCertificate::new(
+            vec![CertificateDer::from(vec![1, 2, 3])],
+            Arc::new(MockKey {
+                schemes: vec![
+                    SignatureScheme::RSA_PSS_SHA256,
+                    SignatureScheme::RSA_PKCS1_SHA256,
+                ],
+            }),
+        )
+        .expect("mock key should produce a client certificate");
+        let ecdsa = ClientCertificate::new(
+            vec![CertificateDer::from(vec![1, 2, 3])],
+            Arc::new(FailingKey),
+        )
+        .expect("failing key should produce a client certificate");
+
+        assert!(rsa_pss.supports_tls13());
+        assert!(ecdsa.supports_tls13());
     }
 
     #[derive(Debug)]
