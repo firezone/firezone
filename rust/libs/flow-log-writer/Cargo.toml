@@ -6,7 +6,7 @@ license = { workspace = true }
 
 [dependencies]
 anyhow = { workspace = true }
-atomicwrites = { workspace = true }
+atomicfs = { workspace = true }
 base64 = { workspace = true, features = ["std"] }
 chrono = { workspace = true }
 flow-log-spool = { workspace = true }

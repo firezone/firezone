@@ -53,7 +53,6 @@
 
 use std::{
     hash::{Hash as _, Hasher as _},
-    io::Write as _,
     path::{Path, PathBuf},
     sync::{
         atomic::{AtomicU64, Ordering},
@@ -64,7 +63,6 @@ use std::{
 };
 
 use anyhow::Context as _;
-use atomicwrites::{AtomicFile, OverwriteBehavior};
 use base64::Engine as _;
 use chrono::DateTime;
 use flow_log_spool::serialize;
@@ -454,14 +452,7 @@ fn flow_identity(fields: &serde_json::Map<String, serde_json::Value>) -> String 
 }
 
 fn write_file_secure(path: &Path, bytes: &[u8]) -> anyhow::Result<()> {
-    // `AtomicFile` writes to a temp file, fsyncs it, then renames into place, so a
-    // reader never observes a partial file and a written file is durable.
-    AtomicFile::new(path, OverwriteBehavior::AllowOverwrite)
-        .write(|f| {
-            set_owner_only(f)?;
-            f.write_all(bytes)
-        })
-        .map_err(std::io::Error::from)
+    atomicfs::write(path, bytes)
         .with_context(|| format!("Failed to atomically write {}", path.display()))
 }
 
@@ -508,7 +499,7 @@ fn create_dir_secure(path: &Path) -> std::io::Result<()> {
     // The spool holds Bearer tokens, so lock each authorization directory down to
     // `LocalSystem` and `BUILTIN\Administrators` (the accounts the Gateway / Tunnel
     // service runs as), the equivalent of `0700` on Unix. `OICI` makes the token and
-    // report files inside inherit the same access, so `set_owner_only` is a no-op.
+    // report files inside inherit the same access.
     windows_security::SecurityDescriptor::from_sddl("D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)")
         .and_then(|descriptor| descriptor.apply_to_path(path))
         .map_err(|e| std::io::Error::other(format!("{e:#}")))
@@ -517,24 +508,6 @@ fn create_dir_secure(path: &Path) -> std::io::Result<()> {
 #[cfg(not(any(unix, windows)))]
 fn create_dir_secure(path: &Path) -> std::io::Result<()> {
     std::fs::create_dir_all(path)
-}
-
-#[cfg(unix)]
-fn set_owner_only(f: &std::fs::File) -> std::io::Result<()> {
-    use std::os::unix::fs::PermissionsExt as _;
-
-    f.set_permissions(std::fs::Permissions::from_mode(0o600))
-}
-
-// On Windows the files inherit their directory's DACL (see `create_dir_secure`), so
-// there is nothing to do here.
-#[cfg(not(unix))]
-#[expect(
-    clippy::unnecessary_wraps,
-    reason = "signature must match the unix version"
-)]
-fn set_owner_only(_f: &std::fs::File) -> std::io::Result<()> {
-    Ok(())
 }
 
 #[cfg(test)]
