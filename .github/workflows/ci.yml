@@ -176,6 +176,7 @@ jobs:
         data-plane,
         integration-tests,
         compatibility-tests,
+        windows-integration-tests,
         nix,
         commit-screenshots,
       ]
@@ -522,6 +523,19 @@ jobs:
       api_fuzz: true
       gateway_image: ${{ needs.data-plane.outputs.gateway_image }}
       client_image: ${{ needs.data-plane.outputs.client_image }}
+      relay_image: ${{ needs.data-plane.outputs.relay_image }}
+      http_test_server_image: ${{ needs.data-plane.outputs.http_test_server_image }}
+
+  windows-integration-tests:
+    uses: ./.github/workflows/_windows_integration_tests.yml
+    needs: [control-plane, data-plane]
+    secrets: inherit
+    permissions:
+      contents: read
+    with:
+      id: windows-integration-tests
+      profile: ${{ inputs.profile || 'debug' }}
+      gateway_image: ${{ needs.data-plane.outputs.gateway_image }}
       relay_image: ${{ needs.data-plane.outputs.relay_image }}
       http_test_server_image: ${{ needs.data-plane.outputs.http_test_server_image }}
 
