@@ -34,9 +34,16 @@ $parameters = @{
 
 # The legacy CryptoAPI providers implement no RSA-PSS at all, which is what makes a key in one
 # stand in for a key in a TPM: both refuse the padding a TLS 1.3 handshake is signed with.
+#
+# A CryptoAPI provider is addressed by its name and a provider type, and naming a key
+# specification is what makes the cmdlet resolve the type: without one it asks for the provider
+# type CryptoAPI has no definition for, and fails with NTE_PROV_TYPE_NOT_DEF.
 switch ($KeyStorage) {
     'SoftwareKsp' { $parameters.Provider = 'Microsoft Software Key Storage Provider' }
-    'LegacyCsp' { $parameters.Provider = 'Microsoft Enhanced RSA and AES Cryptographic Provider' }
+    'LegacyCsp' {
+        $parameters.Provider = 'Microsoft Enhanced RSA and AES Cryptographic Provider'
+        $parameters.KeySpec = 'KeyExchange'
+    }
 }
 
 switch ($Algorithm) {
