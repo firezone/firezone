@@ -16,7 +16,6 @@ defmodule PortalAPI.EntraDirectoryJSON do
       account_id: directory.account_id,
       name: directory.name,
       tenant_id: directory.tenant_id,
-      error_email_count: directory.error_email_count,
       is_disabled: directory.is_disabled,
       disabled_reason: directory.disabled_reason,
       synced_at: directory.synced_at,

@@ -252,7 +252,7 @@ defmodule PortalAPI.GatewayTokenController do
           {"Deleted Tokens Response", "application/json",
            PortalAPI.Schemas.GatewayToken.DeletedAllResponse}
       ] ++
-        ProblemDetails.responses([:unauthorized, :too_many_requests])
+        ProblemDetails.responses([:unauthorized, :not_found, :too_many_requests])
 
   # coveralls-ignore-stop
 

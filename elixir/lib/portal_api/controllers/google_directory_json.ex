@@ -17,7 +17,6 @@ defmodule PortalAPI.GoogleDirectoryJSON do
       name: directory.name,
       domain: directory.domain,
       impersonation_email: directory.impersonation_email,
-      error_email_count: directory.error_email_count,
       is_disabled: directory.is_disabled,
       disabled_reason: directory.disabled_reason,
       synced_at: directory.synced_at,

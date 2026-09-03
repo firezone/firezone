@@ -61,7 +61,7 @@ defmodule PortalAPI.Schemas.Log do
         },
         subject: Schemas.Subject
       },
-      required: [:type, :log_id, :timestamp, :object, :operation],
+      required: [:after, :before, :log_id, :object, :operation, :subject, :timestamp, :type],
       example: %{
         "type" => "change",
         "log_id" => "c00060db0c2c8eb400000000",
@@ -79,6 +79,7 @@ defmodule PortalAPI.Schemas.Log do
     require OpenApiSpex
     alias OpenApiSpex.Schema
     alias PortalAPI.Schemas
+    alias PortalAPI.Schemas.SessionSubject
 
     OpenApiSpex.schema(%{
       title: "SessionLog",
@@ -108,9 +109,21 @@ defmodule PortalAPI.Schemas.Log do
           enum: ["client", "gateway", "portal"],
           description: "The kind of session that was created."
         },
-        subject: Schemas.Subject
+        subject: %Schema{
+          description: """
+          Who established the session and from where. The shape depends on
+          `context`:
+
+          - `client`: a `ClientSessionSubject`, the actor plus the Client and
+            token the session was established with.
+          - `gateway`: a `GatewaySessionSubject`, the Gateway and its token. A
+            Gateway authenticates as itself, so no actor fields are recorded.
+          - `portal`: a plain `Subject`.
+          """,
+          oneOf: [SessionSubject.Client, SessionSubject.Gateway, Schemas.Subject]
+        }
       },
-      required: [:type, :log_id, :timestamp, :context, :subject],
+      required: [:context, :log_id, :subject, :timestamp, :type],
       example: %{
         "type" => "session",
         "log_id" => "500060db0c2c8eb400000000",
@@ -118,7 +131,10 @@ defmodule PortalAPI.Schemas.Log do
         "context" => "client",
         "subject" => %{
           "actor_id" => "84e7f82f-831a-4a9d-8f17-c66c2bb6e205",
+          "actor_name" => "Admin User",
           "actor_email" => "admin@example.com",
+          "actor_type" => "account_admin_user",
+          "auth_provider_id" => "98776234-1234-5678-9012-345678901234",
           "device_id" => "11e7f82f-831a-4a9d-8f17-c66c2bb6e205",
           "token_id" => "22e7f82f-831a-4a9d-8f17-c66c2bb6e205",
           "ip" => "189.172.73.1",
@@ -169,10 +185,12 @@ defmodule PortalAPI.Schemas.Log do
         },
         initiator_device_id: %Schema{
           type: :string,
+          format: :uuid,
           description: "ID of the Client that opened the flow. Always a Client."
         },
         responder_device_id: %Schema{
           type: :string,
+          format: :uuid,
           description: """
           ID of the device the flow was opened to: the Gateway serving the
           Resource, or the receiving Client for device-to-device flows.
@@ -190,10 +208,12 @@ defmodule PortalAPI.Schemas.Log do
         },
         policy_authorization_id: %Schema{
           type: :string,
+          format: :uuid,
           description: "ID of the Policy Authorization that permitted the flow."
         },
         policy_id: %Schema{
           type: :string,
+          format: :uuid,
           description: "ID of the Policy that permitted the flow."
         },
         protocol: %Schema{
@@ -234,6 +254,7 @@ defmodule PortalAPI.Schemas.Log do
         },
         initiator_auth_provider_id: %Schema{
           type: :string,
+          format: :uuid,
           nullable: true,
           description: """
           ID of the Auth Provider the initiating Client authenticated with.
@@ -241,6 +262,7 @@ defmodule PortalAPI.Schemas.Log do
         },
         initiator_actor_id: %Schema{
           type: :string,
+          format: :uuid,
           nullable: true,
           description: """
           ID of the Actor who opened the flow. This is always the initiating
@@ -285,7 +307,7 @@ defmodule PortalAPI.Schemas.Log do
           nullable: true,
           description: "Firebase installation ID reported by the initiating Client."
         },
-        resource_id: %Schema{type: :string, description: "ID of the Resource accessed."},
+        resource_id: %Schema{type: :string, format: :uuid, description: "ID of the Resource accessed."},
         resource_name: %Schema{type: :string},
         resource_address: %Schema{
           type: :string,
@@ -367,32 +389,44 @@ defmodule PortalAPI.Schemas.Log do
         }
       },
       required: [
-        :type,
-        :log_id,
-        :timestamp,
+        :authorization_expires_at,
+        :authorized_at,
+        :flow_end,
+        :flow_start,
+        :initiator_actor_email,
+        :initiator_actor_id,
+        :initiator_actor_name,
+        :initiator_auth_provider_id,
+        :initiator_client_version,
+        :initiator_device_firebase_installation_id,
         :initiator_device_id,
-        :responder_device_id,
-        :role,
+        :initiator_device_identifier_for_vendor,
+        :initiator_device_os_name,
+        :initiator_device_os_version,
+        :initiator_device_serial,
+        :initiator_device_uuid,
+        :inner_domain,
+        :inner_dst_ip,
+        :inner_dst_port,
+        :inner_src_ip,
+        :inner_src_port,
+        :last_packet,
+        :log_id,
+        :outers,
         :policy_authorization_id,
         :policy_id,
         :protocol,
-        :flow_start,
-        :flow_end,
-        :last_packet,
-        :authorized_at,
-        :authorization_expires_at,
+        :resource_address,
         :resource_id,
         :resource_name,
-        :resource_address,
-        :inner_src_ip,
-        :inner_dst_ip,
-        :inner_src_port,
-        :inner_dst_port,
-        :outers,
-        :rx_packets,
-        :tx_packets,
+        :responder_device_id,
+        :role,
         :rx_bytes,
-        :tx_bytes
+        :rx_packets,
+        :timestamp,
+        :tx_bytes,
+        :tx_packets,
+        :type
       ],
       example: %{
         "type" => "flow",
@@ -409,10 +443,17 @@ defmodule PortalAPI.Schemas.Log do
         "last_packet" => "2026-05-26T12:33:58.000Z",
         "authorized_at" => "2026-05-26T12:29:00.000Z",
         "authorization_expires_at" => "2026-05-26T20:29:00.000Z",
+        "initiator_auth_provider_id" => "7b2c1e40-9f3a-4d21-8c5e-1a2b3c4d5e6f",
+        "initiator_actor_id" => "84e7f82f-831a-4a9d-8f17-c66c2bb6e205",
+        "initiator_actor_name" => "John Doe",
         "initiator_actor_email" => "user@example.com",
         "initiator_client_version" => "1.5.1",
         "initiator_device_os_name" => "macOS",
         "initiator_device_os_version" => "15.5",
+        "initiator_device_serial" => "C02ABC123",
+        "initiator_device_uuid" => "0C4A8D24-FA9F-4E56-9B57-40D0D46A245E",
+        "initiator_device_identifier_for_vendor" => nil,
+        "initiator_device_firebase_installation_id" => nil,
         "resource_id" => "44e7f82f-831a-4a9d-8f17-c66c2bb6e205",
         "resource_name" => "GitLab",
         "resource_address" => "gitlab.company.com",
@@ -420,6 +461,7 @@ defmodule PortalAPI.Schemas.Log do
         "inner_dst_ip" => "10.0.0.5",
         "inner_src_port" => 54_321,
         "inner_dst_port" => 443,
+        "inner_domain" => "gitlab.company.com",
         "outers" => [
           %{
             "src_ip" => "203.0.113.10",
@@ -462,8 +504,8 @@ defmodule PortalAPI.Schemas.Log do
           format: :"date-time",
           description: "RFC 3339 timestamp identifying when the request was received."
         },
-        actor_id: %Schema{type: :string, description: "ID of the API Client actor."},
-        api_token_id: %Schema{type: :string, description: "ID of the API token used."},
+        actor_id: %Schema{type: :string, format: :uuid, description: "ID of the API Client actor."},
+        api_token_id: %Schema{type: :string, format: :uuid, description: "ID of the API token used."},
         method: %Schema{type: :string, description: "HTTP request method.", example: "GET"},
         path: %Schema{type: :string, description: "HTTP request path.", example: "/clients"},
         content_length: %Schema{
@@ -483,15 +525,21 @@ defmodule PortalAPI.Schemas.Log do
         ip_lon: %Schema{type: :number, nullable: true}
       },
       required: [
-        :type,
-        :log_id,
-        :timestamp,
         :actor_id,
         :api_token_id,
+        :content_length,
+        :ip,
+        :ip_city,
+        :ip_lat,
+        :ip_lon,
+        :ip_region,
+        :log_id,
         :method,
         :path,
         :request_id,
-        :ip
+        :timestamp,
+        :type,
+        :user_agent
       ],
       example: %{
         "type" => "api_request",

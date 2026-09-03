@@ -24,7 +24,21 @@ defmodule PortalAPI.Schemas.DefenderPostureProvider do
         inserted_at: %Schema{type: :string, format: :"date-time"},
         updated_at: %Schema{type: :string, format: :"date-time"}
       },
-      required: [:id, :account_id, :type, :name, :tenant_id, :is_verified, :is_disabled]
+      required: [
+        :account_id,
+        :disabled_reason,
+        :error_message,
+        :errored_at,
+        :id,
+        :inserted_at,
+        :is_disabled,
+        :is_verified,
+        :name,
+        :synced_at,
+        :tenant_id,
+        :type,
+        :updated_at
+      ]
     })
   end
 

@@ -25,13 +25,19 @@ defmodule PortalAPI.Schemas.SentinelOnePostureProvider do
         updated_at: %Schema{type: :string, format: :"date-time"}
       },
       required: [
-        :id,
         :account_id,
-        :type,
-        :name,
-        :management_url,
+        :disabled_reason,
+        :error_message,
+        :errored_at,
+        :id,
+        :inserted_at,
+        :is_disabled,
         :is_verified,
-        :is_disabled
+        :management_url,
+        :name,
+        :synced_at,
+        :type,
+        :updated_at
       ]
     })
   end

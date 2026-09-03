@@ -16,7 +16,7 @@ defmodule PortalAPI.Schemas.ClientToken do
         inserted_at: %Schema{type: :string, format: :"date-time", description: "Creation timestamp"},
         updated_at: %Schema{type: :string, format: :"date-time", description: "Update timestamp"}
       },
-      required: [:id, :actor_id, :expires_at, :inserted_at, :updated_at],
+      required: [:actor_id, :expires_at, :id, :inserted_at, :updated_at],
       example: %{
         "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
         "actor_id" => "43a7f82f-831a-4a9d-8f17-c66c2bb6e205",
@@ -51,8 +51,10 @@ defmodule PortalAPI.Schemas.ClientToken do
     alias PortalAPI.Schemas.ClientToken
 
     OpenApiSpex.schema(%{
-      title: "ClientTokenResponse",
-      description: "Client Token response",
+      title: "ClientTokenWithSecret",
+      description:
+        "Client Token as returned when it is created, including the encoded secret. " <>
+          "The secret is shown once and cannot be retrieved later.",
       type: :object,
       properties: %{
         id: %Schema{type: :string, format: :uuid, description: "Client Token ID"},
@@ -62,7 +64,7 @@ defmodule PortalAPI.Schemas.ClientToken do
         updated_at: %Schema{type: :string, format: :"date-time", description: "Update timestamp"},
         token: %Schema{type: :string, description: "Encoded token secret"}
       },
-      required: [:id, :actor_id, :expires_at, :inserted_at, :updated_at, :token],
+      required: [:actor_id, :expires_at, :id, :inserted_at, :token, :updated_at],
       example: %{
         "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
         "actor_id" => "43a7f82f-831a-4a9d-8f17-c66c2bb6e205",
@@ -123,7 +125,7 @@ defmodule PortalAPI.Schemas.ClientToken do
     alias PortalAPI.Schemas.ClientToken
 
     OpenApiSpex.schema(%{
-      title: "ClientTokenResponse",
+      title: "ClientTokenShowResponse",
       description: "Response schema for Client Token metadata",
       type: :object,
       properties: %{

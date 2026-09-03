@@ -198,13 +198,13 @@ defmodule PortalAPI.Schemas.Policy do
         }
       },
       required: [
-        :id,
-        :group_id,
-        :resource_id,
+        :conditions,
         :description,
         :flow_log_uploads_enabled,
+        :group_id,
+        :id,
         :is_disabled,
-        :conditions
+        :resource_id
       ],
       example: %{
         "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
@@ -327,40 +327,6 @@ defmodule PortalAPI.Schemas.Policy do
       properties: %{
         data: %Schema{description: "Policy details", type: :array, items: Policy.ResponseSchema},
         metadata: PaginationMetadata
-      },
-      example: %{
-        "data" => [
-          %{
-            "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-            "resource_id" => "a9f60587-793c-46ae-8525-597f43ab2fb1",
-            "group_id" => "88eae9ce-9179-48c6-8430-770e38dd4775",
-            "description" => "Policy to allow something",
-            "flow_log_uploads_enabled" => true,
-            "is_disabled" => false,
-            "conditions" => [
-              %{
-                "property" => "remote_ip_location_region",
-                "operator" => "is_in",
-                "values" => ["US", "CA"]
-              }
-            ]
-          },
-          %{
-            "id" => "6301d7d2-4938-4123-87de-282c01cca656",
-            "resource_id" => "9876bd25-0f6c-48fb-a9fd-196ba9be86e5",
-            "group_id" => "343385a2-5437-4c66-8744-1332421ff736",
-            "description" => "Policy to allow something else",
-            "flow_log_uploads_enabled" => false,
-            "is_disabled" => true,
-            "conditions" => []
-          }
-        ],
-        "metadata" => %{
-          "limit" => 10,
-          "total" => 100,
-          "prev_page" => "123123425",
-          "next_page" => "98776234123"
-        }
       }
     })
   end

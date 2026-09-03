@@ -57,7 +57,7 @@ defmodule PortalAPI.Schemas.Account do
         legal_name: %Schema{type: :string, description: "Account legal name"},
         limits: PortalAPI.Schemas.Account.LimitsSchema
       },
-      required: [:id, :slug, :key, :name]
+      required: [:id, :key, :legal_name, :limits, :name, :slug]
     })
   end
 

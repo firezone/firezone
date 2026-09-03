@@ -4,12 +4,6 @@
     "schemas": {
       "EntraDirectoryResponse": {
         "description": "Response schema for single Entra Directory",
-        "example": {
-          "data": {
-            "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-            "name": "Entra"
-          }
-        },
         "properties": {
           "data": {
             "$ref": "#/components/schemas/EntraDirectory"
@@ -59,14 +53,6 @@
       },
       "GoogleAuthProviderListResponse": {
         "description": "Response schema for multiple Google Auth Providers",
-        "example": {
-          "data": [
-            {
-              "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-              "name": "Google"
-            }
-          ]
-        },
         "properties": {
           "data": {
             "description": "Google Auth Provider details",
@@ -107,12 +93,6 @@
       },
       "GoogleDirectoryResponse": {
         "description": "Response schema for single Google Directory",
-        "example": {
-          "data": {
-            "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-            "name": "Google"
-          }
-        },
         "properties": {
           "data": {
             "$ref": "#/components/schemas/GoogleDirectory"
@@ -126,10 +106,10 @@
         "example": {
           "memberships": [
             {
-              "actor_id": "1234-1234"
+              "actor_id": "4ddfa557-7dfc-484f-894c-2024ec3fe9f7"
             },
             {
-              "actor_id": "2345-2345"
+              "actor_id": "89d22f71-939d-442d-b148-897b730adfb4"
             }
           ]
         },
@@ -218,14 +198,20 @@
           }
         },
         "required": [
-          "id",
           "account_id",
-          "type",
-          "name",
-          "subdomain",
-          "region",
+          "disabled_reason",
+          "error_message",
+          "errored_at",
+          "id",
+          "inserted_at",
+          "is_disabled",
           "is_verified",
-          "is_disabled"
+          "name",
+          "region",
+          "subdomain",
+          "synced_at",
+          "type",
+          "updated_at"
         ],
         "title": "IruPostureProvider",
         "type": "object"
@@ -462,9 +448,36 @@
         "required": [
           "account_id",
           "id",
-          "posture_provider_id",
           "santa_id",
-          "synced_at"
+          "posture_provider_id",
+          "serial_number",
+          "machine_model",
+          "hostname",
+          "os_version",
+          "os_build",
+          "os_type",
+          "sip_status",
+          "primary_user",
+          "primary_user_locked",
+          "primary_user_groups",
+          "santa_version",
+          "santanetd_version",
+          "last_seen_client_mode",
+          "last_sync_at",
+          "rule_sync_at",
+          "last_preflight_at",
+          "last_preflight_ip",
+          "tags",
+          "tags_locked",
+          "tags_truncated",
+          "configured_client_mode",
+          "temporary_monitor_mode_ends_at",
+          "first_seen_at",
+          "temporary_admin_mode_ends_at",
+          "temporary_admin_mode_user",
+          "synced_at",
+          "inserted_at",
+          "updated_at"
         ],
         "title": "SantaDevice",
         "type": "object"
@@ -542,13 +555,19 @@
           }
         },
         "required": [
-          "id",
           "account_id",
-          "type",
-          "name",
           "api_url",
+          "disabled_reason",
+          "error_message",
+          "errored_at",
+          "id",
+          "inserted_at",
+          "is_disabled",
           "is_verified",
-          "is_disabled"
+          "name",
+          "synced_at",
+          "type",
+          "updated_at"
         ],
         "title": "SantaPostureProvider",
         "type": "object"
@@ -556,9 +575,19 @@
       "OktaAuthProvider": {
         "description": "Okta Auth Provider",
         "example": {
+          "account_id": "5e6f7d8c-9b0a-1c2d-3e4f-5a6b7c8d9e0f",
+          "client_id": "0oa1b2c3d4e5EXAMPLE",
+          "client_session_lifetime_secs": 604800,
+          "context": "clients_and_portal",
           "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
+          "inserted_at": "2025-01-01T00:00:00Z",
+          "is_default": false,
+          "is_disabled": false,
+          "issuer": "https://example.okta.com",
           "name": "Okta",
-          "okta_domain": "example.okta.com"
+          "okta_domain": "example.okta.com",
+          "portal_session_lifetime_secs": 28800,
+          "updated_at": "2025-01-15T10:30:00Z"
         },
         "properties": {
           "account_id": {
@@ -571,7 +600,8 @@
             "type": "string"
           },
           "client_session_lifetime_secs": {
-            "description": "Client session lifetime in seconds",
+            "description": "Client session lifetime in seconds. Null when the account default applies.",
+            "nullable": true,
             "type": "integer"
           },
           "context": {
@@ -614,7 +644,8 @@
             "type": "string"
           },
           "portal_session_lifetime_secs": {
-            "description": "Portal session lifetime in seconds",
+            "description": "Portal session lifetime in seconds. Null when the account default applies.",
+            "nullable": true,
             "type": "integer"
           },
           "updated_at": {
@@ -624,23 +655,25 @@
           }
         },
         "required": [
+          "account_id",
+          "client_id",
+          "client_session_lifetime_secs",
+          "context",
           "id",
-          "name"
+          "inserted_at",
+          "is_default",
+          "is_disabled",
+          "issuer",
+          "name",
+          "okta_domain",
+          "portal_session_lifetime_secs",
+          "updated_at"
         ],
         "title": "OktaAuthProvider",
         "type": "object"
       },
       "GatewayResponse": {
         "description": "Response schema for single Gateway",
-        "example": {
-          "data": {
-            "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-            "ipv4": "1.2.3.4",
-            "ipv6": "",
-            "name": "vpc-us-east",
-            "online": true
-          }
-        },
         "properties": {
           "data": {
             "$ref": "#/components/schemas/Gateway"
@@ -746,7 +779,7 @@
         },
         "properties": {
           "data": {
-            "$ref": "#/components/schemas/ClientTokenResponse"
+            "$ref": "#/components/schemas/ClientTokenWithSecret"
           }
         },
         "title": "ClientTokenCreateResponse",
@@ -809,13 +842,19 @@
           }
         },
         "required": [
-          "id",
           "account_id",
-          "type",
-          "name",
-          "tenant_id",
+          "disabled_reason",
+          "error_message",
+          "errored_at",
+          "id",
+          "inserted_at",
+          "is_disabled",
           "is_verified",
-          "is_disabled"
+          "name",
+          "synced_at",
+          "tenant_id",
+          "type",
+          "updated_at"
         ],
         "title": "DefenderPostureProvider",
         "type": "object"
@@ -872,9 +911,9 @@
           }
         },
         "required": [
-          "id",
           "actor_id",
           "expires_at",
+          "id",
           "inserted_at",
           "updated_at"
         ],
@@ -884,9 +923,18 @@
       "EntraAuthProvider": {
         "description": "Entra Auth Provider",
         "example": {
+          "account_id": "5e6f7d8c-9b0a-1c2d-3e4f-5a6b7c8d9e0f",
+          "client_session_lifetime_secs": 604800,
+          "context": "clients_and_portal",
+          "email_claim": "upn",
           "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
+          "inserted_at": "2025-01-01T00:00:00Z",
+          "is_default": false,
+          "is_disabled": false,
           "issuer": "https://login.microsoftonline.com/tenant-id/v2.0",
-          "name": "Entra"
+          "name": "Entra",
+          "portal_session_lifetime_secs": 28800,
+          "updated_at": "2025-01-15T10:30:00Z"
         },
         "properties": {
           "account_id": {
@@ -895,7 +943,8 @@
             "type": "string"
           },
           "client_session_lifetime_secs": {
-            "description": "Client session lifetime in seconds",
+            "description": "Client session lifetime in seconds. Null when the account default applies.",
+            "nullable": true,
             "type": "integer"
           },
           "context": {
@@ -943,7 +992,8 @@
             "type": "string"
           },
           "portal_session_lifetime_secs": {
-            "description": "Portal session lifetime in seconds",
+            "description": "Portal session lifetime in seconds. Null when the account default applies.",
+            "nullable": true,
             "type": "integer"
           },
           "updated_at": {
@@ -953,20 +1003,24 @@
           }
         },
         "required": [
+          "account_id",
+          "client_session_lifetime_secs",
+          "context",
+          "email_claim",
           "id",
-          "name"
+          "inserted_at",
+          "is_default",
+          "is_disabled",
+          "issuer",
+          "name",
+          "portal_session_lifetime_secs",
+          "updated_at"
         ],
         "title": "EntraAuthProvider",
         "type": "object"
       },
       "EntraAuthProviderResponse": {
         "description": "Response schema for single Entra Auth Provider",
-        "example": {
-          "data": {
-            "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-            "name": "Entra"
-          }
-        },
         "properties": {
           "data": {
             "$ref": "#/components/schemas/EntraAuthProvider"
@@ -999,15 +1053,21 @@
           "account_id": "5e6f7d8c-9b0a-1c2d-3e4f-5a6b7c8d9e0f",
           "actor_id": "cdfa97e6-cca1-41db-8fc7-864daedb46df",
           "directory_id": "9f8e7d6c-5b4a-3c2b-1a0e-9f8e7d6c5b4a",
+          "email": "john.doe@example.com",
           "family_name": "Doe",
+          "firezone_avatar_url": "https://avatars.firezone.dev/u/2551705710219359.png",
           "given_name": "John",
           "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
           "idp_id": "2551705710219359",
-          "inserted_at": "2025-01-15T12:34:56.789Z",
+          "inserted_at": "2025-01-01T00:00:00Z",
           "issuer": "https://accounts.google.com",
+          "middle_name": null,
           "name": "John Doe",
+          "nickname": null,
           "picture": "https://example.com/avatar.jpg",
-          "synced_at": "2025-01-15T12:34:56.789Z"
+          "preferred_username": "jdoe",
+          "profile": null,
+          "synced_at": "2025-01-15T10:30:00Z"
         },
         "properties": {
           "account_id": {
@@ -1023,18 +1083,26 @@
           "directory_id": {
             "description": "Directory UUID reference",
             "format": "uuid",
+            "nullable": true,
+            "type": "string"
+          },
+          "email": {
+            "description": "Email address, falling back to the IdP identifier when unset",
             "type": "string"
           },
           "family_name": {
             "description": "Family name",
+            "nullable": true,
             "type": "string"
           },
           "firezone_avatar_url": {
             "description": "Firezone-hosted avatar URL",
+            "nullable": true,
             "type": "string"
           },
           "given_name": {
             "description": "Given name",
+            "nullable": true,
             "type": "string"
           },
           "id": {
@@ -1057,39 +1125,60 @@
           },
           "middle_name": {
             "description": "Middle name",
+            "nullable": true,
             "type": "string"
           },
           "name": {
             "description": "Full name",
+            "nullable": true,
             "type": "string"
           },
           "nickname": {
             "description": "Nickname",
+            "nullable": true,
             "type": "string"
           },
           "picture": {
             "description": "Profile picture URL",
+            "nullable": true,
             "type": "string"
           },
           "preferred_username": {
             "description": "Preferred username",
+            "nullable": true,
             "type": "string"
           },
           "profile": {
             "description": "Profile URL",
+            "nullable": true,
             "type": "string"
           },
           "synced_at": {
             "description": "Last sync timestamp",
             "format": "date-time",
+            "nullable": true,
             "type": "string"
           }
         },
         "required": [
-          "id",
+          "account_id",
           "actor_id",
+          "directory_id",
+          "email",
+          "family_name",
+          "firezone_avatar_url",
+          "given_name",
+          "id",
+          "idp_id",
+          "inserted_at",
           "issuer",
-          "idp_id"
+          "middle_name",
+          "name",
+          "nickname",
+          "picture",
+          "preferred_username",
+          "profile",
+          "synced_at"
         ],
         "title": "ExternalIdentity",
         "type": "object"
@@ -1459,9 +1548,90 @@
         },
         "required": [
           "account_id",
-          "posture_provider_id",
           "iru_id",
-          "synced_at"
+          "posture_provider_id",
+          "device_name",
+          "model",
+          "serial_number",
+          "platform",
+          "os_version",
+          "supplemental_build_version",
+          "supplemental_os_version_extra",
+          "last_check_in_at",
+          "user_id",
+          "user_name",
+          "user_email",
+          "user_is_archived",
+          "asset_tag",
+          "blueprint_id",
+          "blueprint_name",
+          "mdm_enabled",
+          "agent_installed",
+          "agent_version",
+          "is_missing",
+          "is_removed",
+          "first_enrolled_at",
+          "last_enrolled_at",
+          "lost_mode_status",
+          "tags",
+          "device_family",
+          "device_capacity_gb",
+          "host_name",
+          "local_hostname",
+          "apple_silicon",
+          "model_name",
+          "model_identifier",
+          "shared_ipad",
+          "cellular_technology",
+          "data_roaming",
+          "hotspot",
+          "os_build",
+          "os_name",
+          "display_os_version",
+          "inventory_collected_at",
+          "filevault_enabled",
+          "filevault_key_type",
+          "filevault_key_escrowed",
+          "filevault_regeneration_needed",
+          "filevault_key_rotation_scheduled_at",
+          "filevault_collected_at",
+          "firewall_enabled",
+          "firewall_block_all_incoming",
+          "firewall_logging",
+          "firewall_logging_option",
+          "firewall_stealth_mode",
+          "firewall_version",
+          "firewall_allow_signed_applications",
+          "firewall_unloading",
+          "firewall_collected_at",
+          "gatekeeper_enabled",
+          "gatekeeper_trusted_developers",
+          "gatekeeper_version",
+          "gatekeeper_opaque_version",
+          "xprotect_version",
+          "malware_removal_tool_version",
+          "gatekeeper_collected_at",
+          "sip_enabled",
+          "ssv_enabled",
+          "bootstrap_token_auth",
+          "bootstrap_token_escrowed",
+          "kext_requires_bootstrap_token",
+          "software_update_requires_bootstrap_token",
+          "external_boot_level",
+          "secure_boot_level",
+          "any_signed_os",
+          "mdm_manages_kext",
+          "user_manages_kext",
+          "startup_settings_collected_at",
+          "activation_lock_supported",
+          "activation_lock_allowed_while_supervised",
+          "device_activation_lock_enabled",
+          "user_activation_lock_enabled",
+          "activation_lock_bypass_code_failed",
+          "activation_lock_collected_at",
+          "synced_at",
+          "inserted_at",
+          "updated_at"
         ],
         "title": "IruDevice",
         "type": "object"
@@ -1495,18 +1665,71 @@
       },
       "OktaDirectoryResponse": {
         "description": "Response schema for single Okta Directory",
-        "example": {
-          "data": {
-            "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-            "name": "Okta"
-          }
-        },
         "properties": {
           "data": {
             "$ref": "#/components/schemas/OktaDirectory"
           }
         },
         "title": "OktaDirectoryResponse",
+        "type": "object"
+      },
+      "GatewaySessionSubject": {
+        "description": "Subject of a session created by a Gateway (`context: \"gateway\"`).\n\nA Gateway authenticates with a token rather than as an actor, so no actor\nfields are recorded.\n",
+        "properties": {
+          "gateway_id": {
+            "description": "Identifier of the Gateway the session was established from.",
+            "format": "uuid",
+            "nullable": true,
+            "type": "string"
+          },
+          "ip": {
+            "description": "IP address the session came from.",
+            "nullable": true,
+            "type": "string"
+          },
+          "ip_city": {
+            "description": "Geo-located city for `ip`, if known.",
+            "nullable": true,
+            "type": "string"
+          },
+          "ip_lat": {
+            "description": "Geo-located latitude for `ip`, if known.",
+            "nullable": true,
+            "type": "number"
+          },
+          "ip_lon": {
+            "description": "Geo-located longitude for `ip`, if known.",
+            "nullable": true,
+            "type": "number"
+          },
+          "ip_region": {
+            "description": "Geo-located region for `ip`, if known.",
+            "nullable": true,
+            "type": "string"
+          },
+          "token_id": {
+            "description": "Identifier of the Gateway token the session was established with.",
+            "format": "uuid",
+            "nullable": true,
+            "type": "string"
+          },
+          "user_agent": {
+            "description": "User agent reported by the Gateway.",
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "gateway_id",
+          "token_id",
+          "ip",
+          "ip_region",
+          "ip_city",
+          "ip_lat",
+          "ip_lon",
+          "user_agent"
+        ],
+        "title": "GatewaySessionSubject",
         "type": "object"
       },
       "GatewayTokenResponse": {
@@ -1613,6 +1836,100 @@
         "title": "DeletedClientTokenResponse",
         "type": "object"
       },
+      "ClientSessionSubject": {
+        "description": "Subject of a session created by a Client (`context: \"client\"`).\n\nA `Subject` plus the Client and token the session was established with.\n",
+        "properties": {
+          "actor_email": {
+            "description": "Email address of the actor, if any.",
+            "nullable": true,
+            "type": "string"
+          },
+          "actor_id": {
+            "description": "Identifier of the actor that signed in.",
+            "format": "uuid",
+            "type": "string"
+          },
+          "actor_name": {
+            "description": "Display name of the actor.",
+            "type": "string"
+          },
+          "actor_type": {
+            "description": "Type of the actor.",
+            "enum": [
+              "account_user",
+              "account_admin_user",
+              "service_account",
+              "api_client"
+            ],
+            "type": "string"
+          },
+          "auth_provider_id": {
+            "description": "Identifier of the authentication provider that authenticated the actor.",
+            "format": "uuid",
+            "nullable": true,
+            "type": "string"
+          },
+          "device_id": {
+            "description": "Identifier of the Client the session was established from.",
+            "format": "uuid",
+            "nullable": true,
+            "type": "string"
+          },
+          "ip": {
+            "description": "IP address the session came from.",
+            "nullable": true,
+            "type": "string"
+          },
+          "ip_city": {
+            "description": "Geo-located city for `ip`, if known.",
+            "nullable": true,
+            "type": "string"
+          },
+          "ip_lat": {
+            "description": "Geo-located latitude for `ip`, if known.",
+            "nullable": true,
+            "type": "number"
+          },
+          "ip_lon": {
+            "description": "Geo-located longitude for `ip`, if known.",
+            "nullable": true,
+            "type": "number"
+          },
+          "ip_region": {
+            "description": "Geo-located region for `ip`, if known.",
+            "nullable": true,
+            "type": "string"
+          },
+          "token_id": {
+            "description": "Identifier of the Client token the session was established with.",
+            "format": "uuid",
+            "nullable": true,
+            "type": "string"
+          },
+          "user_agent": {
+            "description": "User agent reported by the Client.",
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "actor_id",
+          "actor_name",
+          "actor_email",
+          "actor_type",
+          "auth_provider_id",
+          "device_id",
+          "token_id",
+          "ip",
+          "ip_region",
+          "ip_city",
+          "ip_lat",
+          "ip_lon",
+          "user_agent"
+        ],
+        "title": "ClientSessionSubject",
+        "type": "object"
+      },
       "SessionLog": {
         "description": "A single Session Log entry, recording one Client, Gateway, or Portal\nsession that was created, along with the auth context it was created\nwith.\n",
         "example": {
@@ -1621,6 +1938,9 @@
           "subject": {
             "actor_email": "admin@example.com",
             "actor_id": "84e7f82f-831a-4a9d-8f17-c66c2bb6e205",
+            "actor_name": "Admin User",
+            "actor_type": "account_admin_user",
+            "auth_provider_id": "98776234-1234-5678-9012-345678901234",
             "device_id": "11e7f82f-831a-4a9d-8f17-c66c2bb6e205",
             "ip": "189.172.73.1",
             "ip_city": "Mexico City",
@@ -1649,7 +1969,18 @@
             "type": "string"
           },
           "subject": {
-            "$ref": "#/components/schemas/Subject"
+            "description": "Who established the session and from where. The shape depends on\n`context`:\n\n- `client`: a `ClientSessionSubject`, the actor plus the Client and\n  token the session was established with.\n- `gateway`: a `GatewaySessionSubject`, the Gateway and its token. A\n  Gateway authenticates as itself, so no actor fields are recorded.\n- `portal`: a plain `Subject`.\n",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ClientSessionSubject"
+              },
+              {
+                "$ref": "#/components/schemas/GatewaySessionSubject"
+              },
+              {
+                "$ref": "#/components/schemas/Subject"
+              }
+            ]
           },
           "timestamp": {
             "description": "RFC 3339 timestamp identifying when the session was created.",
@@ -1664,11 +1995,11 @@
           }
         },
         "required": [
-          "type",
-          "log_id",
-          "timestamp",
           "context",
-          "subject"
+          "log_id",
+          "subject",
+          "timestamp",
+          "type"
         ],
         "title": "SessionLog",
         "type": "object"
@@ -1737,11 +2068,14 @@
           }
         },
         "required": [
-          "type",
+          "after",
+          "before",
           "log_id",
-          "timestamp",
           "object",
-          "operation"
+          "operation",
+          "subject",
+          "timestamp",
+          "type"
         ],
         "title": "ChangeLog",
         "type": "object"
@@ -2029,9 +2363,20 @@
       "GoogleDirectory": {
         "description": "Google Directory",
         "example": {
+          "account_id": "5e6f7d8c-9b0a-1c2d-3e4f-5a6b7c8d9e0f",
+          "disabled_reason": null,
           "domain": "example.com",
+          "error_message": null,
+          "errored_at": null,
+          "group_sync_mode": "all",
           "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-          "name": "Google"
+          "impersonation_email": "admin@example.com",
+          "inserted_at": "2025-01-01T00:00:00Z",
+          "is_disabled": false,
+          "name": "Google",
+          "orgunit_sync_enabled": true,
+          "synced_at": "2025-01-15T10:30:00Z",
+          "updated_at": "2025-01-15T10:30:00Z"
         },
         "properties": {
           "account_id": {
@@ -2041,23 +2386,22 @@
           },
           "disabled_reason": {
             "description": "Reason for disabling",
+            "nullable": true,
             "type": "string"
           },
           "domain": {
             "description": "Google Workspace domain",
             "type": "string"
           },
-          "error": {
+          "error_message": {
             "description": "Last error message",
+            "nullable": true,
             "type": "string"
           },
-          "error_count": {
-            "description": "Error count",
-            "type": "integer"
-          },
-          "error_emailed_at": {
-            "description": "Error email timestamp",
+          "errored_at": {
+            "description": "Last error timestamp",
             "format": "date-time",
+            "nullable": true,
             "type": "string"
           },
           "group_sync_mode": {
@@ -2098,6 +2442,7 @@
           "synced_at": {
             "description": "Last sync timestamp",
             "format": "date-time",
+            "nullable": true,
             "type": "string"
           },
           "updated_at": {
@@ -2107,8 +2452,20 @@
           }
         },
         "required": [
+          "account_id",
+          "disabled_reason",
+          "domain",
+          "error_message",
+          "errored_at",
+          "group_sync_mode",
           "id",
-          "name"
+          "impersonation_email",
+          "inserted_at",
+          "is_disabled",
+          "name",
+          "orgunit_sync_enabled",
+          "synced_at",
+          "updated_at"
         ],
         "title": "GoogleDirectory",
         "type": "object"
@@ -2169,38 +2526,6 @@
       },
       "GroupListResponse": {
         "description": "Response schema for multiple Groups",
-        "example": {
-          "data": [
-            {
-              "directory_id": null,
-              "email": null,
-              "entity_type": "group",
-              "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-              "idp_id": null,
-              "inserted_at": "2024-01-15T10:30:00Z",
-              "name": "Engineering",
-              "synced_at": null,
-              "updated_at": "2024-01-15T10:30:00Z"
-            },
-            {
-              "directory_id": "6b4e3a2c-1234-5678-9abc-def012345678",
-              "email": "firezone-sync-admins@example.com",
-              "entity_type": "group",
-              "id": "4ae929a7-1973-43f2-a1a8-9221b91a4c0e",
-              "idp_id": "google-workspace-group-123",
-              "inserted_at": "2024-01-10T08:15:00Z",
-              "name": "firezone-sync-admins",
-              "synced_at": "2024-01-14T16:00:00Z",
-              "updated_at": "2024-01-14T16:45:00Z"
-            }
-          ],
-          "metadata": {
-            "limit": 10,
-            "next_page": "98776234123",
-            "prev_page": "123123425",
-            "total": 100
-          }
-        },
         "properties": {
           "data": {
             "description": "Group details",
@@ -2227,14 +2552,6 @@
       },
       "OktaAuthProviderListResponse": {
         "description": "Response schema for multiple Okta Auth Providers",
-        "example": {
-          "data": [
-            {
-              "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-              "name": "Okta"
-            }
-          ]
-        },
         "properties": {
           "data": {
             "description": "Okta Auth Provider details",
@@ -2277,14 +2594,6 @@
       },
       "EntraAuthProviderListResponse": {
         "description": "Response schema for multiple Entra Auth Providers",
-        "example": {
-          "data": [
-            {
-              "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-              "name": "Entra"
-            }
-          ]
-        },
         "properties": {
           "data": {
             "description": "Entra Auth Provider details",
@@ -2319,19 +2628,40 @@
           },
           "type": {
             "description": "Actor Type",
+            "enum": [
+              "account_admin_user",
+              "account_user",
+              "api_client",
+              "service_account"
+            ],
             "type": "string"
           }
         },
+        "required": [
+          "id",
+          "name",
+          "type"
+        ],
         "title": "Membership",
         "type": "object"
       },
       "OIDCAuthProvider": {
         "description": "OIDC Auth Provider",
         "example": {
+          "account_id": "5e6f7d8c-9b0a-1c2d-3e4f-5a6b7c8d9e0f",
           "client_id": "my-client-id",
+          "client_session_lifetime_secs": 604800,
+          "context": "clients_and_portal",
+          "discovery_document_uri": "https://idp.example.com/.well-known/openid-configuration",
           "email_verification_method": "claim",
           "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-          "name": "OIDC Provider"
+          "inserted_at": "2025-01-01T00:00:00Z",
+          "is_default": false,
+          "is_disabled": false,
+          "issuer": "https://idp.example.com",
+          "name": "OIDC Provider",
+          "portal_session_lifetime_secs": 28800,
+          "updated_at": "2025-01-15T10:30:00Z"
         },
         "properties": {
           "account_id": {
@@ -2344,7 +2674,8 @@
             "type": "string"
           },
           "client_session_lifetime_secs": {
-            "description": "Client session lifetime in seconds",
+            "description": "Client session lifetime in seconds. Null when the account default applies.",
+            "nullable": true,
             "type": "integer"
           },
           "context": {
@@ -2396,7 +2727,8 @@
             "type": "string"
           },
           "portal_session_lifetime_secs": {
-            "description": "Portal session lifetime in seconds",
+            "description": "Portal session lifetime in seconds. Null when the account default applies.",
+            "nullable": true,
             "type": "integer"
           },
           "updated_at": {
@@ -2406,8 +2738,20 @@
           }
         },
         "required": [
+          "account_id",
+          "client_id",
+          "client_session_lifetime_secs",
+          "context",
+          "discovery_document_uri",
+          "email_verification_method",
           "id",
-          "name"
+          "inserted_at",
+          "is_default",
+          "is_disabled",
+          "issuer",
+          "name",
+          "portal_session_lifetime_secs",
+          "updated_at"
         ],
         "title": "OIDCAuthProvider",
         "type": "object"
@@ -2429,44 +2773,6 @@
       },
       "ExternalIdentityListResponse": {
         "description": "Response schema for multiple External Identities",
-        "example": {
-          "data": [
-            {
-              "account_id": "5e6f7d8c-9b0a-1c2d-3e4f-5a6b7c8d9e0f",
-              "actor_id": "8f44a02b-b8eb-406f-8202-4274bf60ebd0",
-              "directory_id": "9f8e7d6c-5b4a-3c2b-1a0e-9f8e7d6c5b4a",
-              "family_name": "Doe",
-              "given_name": "John",
-              "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-              "idp_id": "2551705710219359",
-              "inserted_at": "2025-01-15T12:34:56.789Z",
-              "issuer": "https://accounts.google.com",
-              "name": "John Doe",
-              "picture": "https://example.com/avatar1.jpg",
-              "synced_at": "2025-01-15T12:34:56.789Z"
-            },
-            {
-              "account_id": "5e6f7d8c-9b0a-1c2d-3e4f-5a6b7c8d9e0f",
-              "actor_id": "38c92cda-1ddb-45b3-9d1a-7efc375e00c1",
-              "directory_id": "1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d",
-              "family_name": "Smith",
-              "given_name": "Jane",
-              "id": "8a70eb96-e74b-4cdc-91b8-48c05ef74d4c",
-              "idp_id": "2638957392736483",
-              "inserted_at": "2025-01-15T11:22:33.456Z",
-              "issuer": "https://company.okta.com",
-              "name": "Jane Smith",
-              "picture": "https://example.com/avatar2.jpg",
-              "synced_at": "2025-01-15T11:22:33.456Z"
-            }
-          ],
-          "metadata": {
-            "limit": 10,
-            "next_page": "98776234123",
-            "prev_page": "123123425",
-            "total": 100
-          }
-        },
         "properties": {
           "data": {
             "description": "External Identity details",
@@ -2501,61 +2807,6 @@
       },
       "ClientsResponse": {
         "description": "Response schema for multiple Clients",
-        "example": {
-          "data": [
-            {
-              "actor_id": "6ecc106b-75c1-48a5-846c-14782180c1ff",
-              "created_at": "2025-01-01T00:00:00Z",
-              "device_serial": "GCCFX0DBQ6L5",
-              "device_uuid": "7A461FF9-0BE2-64A9-A418-539D9A21827B",
-              "firebase_installation_id": null,
-              "firezone_id": "b5bb9d8014a0f9b1d61e21e796d78dccdf1352f23cd32812f4850b878ae4944c",
-              "hostname": "johns-macbook.example.com",
-              "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-              "identifier_for_vendor": null,
-              "ipv4": "100.64.0.1",
-              "ipv6": "fd00:2021:1111::1",
-              "last_attested_cert_fingerprint": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
-              "last_attested_cert_serial": "4A:2F:00:8C:11:03:9E:5B",
-              "last_attested_device_serial": "GCCFX0DBQ6L5",
-              "last_attested_device_uuid": "7A461FF9-0BE2-64A9-A418-539D9A21827B",
-              "last_attested_mdm_device_id": "5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3",
-              "name": "John's Macbook Air",
-              "online": true,
-              "updated_at": "2025-01-01T00:00:00Z",
-              "verified_at": "2025-01-01T00:00:00Z"
-            },
-            {
-              "actor_id": "2ecc106b-75c1-48a5-846c-14782180c1ff",
-              "created_at": "2025-01-01T00:00:00Z",
-              "device_serial": null,
-              "device_uuid": null,
-              "firebase_installation_id": null,
-              "firezone_id": "6c37c0042f40bbb16e007d0d6c8e77c0ac2cab3cc3b923c42d1157a934e436ac",
-              "hostname": null,
-              "id": "9a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-              "identifier_for_vendor": "7A461FF9-0BE2-64A9-A418-539D9A21827B",
-              "ipv4": "100.64.0.2",
-              "ipv6": "fd00:2021:1111::2",
-              "last_attested_at": null,
-              "last_attested_cert_fingerprint": null,
-              "last_attested_cert_serial": null,
-              "last_attested_device_serial": null,
-              "last_attested_device_uuid": null,
-              "last_attested_mdm_device_id": null,
-              "name": "iPad",
-              "online": false,
-              "updated_at": "2025-01-01T00:00:00Z",
-              "verified_at": null
-            }
-          ],
-          "metadata": {
-            "limit": 2,
-            "next_page": "98776234123",
-            "prev_page": "123123425",
-            "total": 100
-          }
-        },
         "properties": {
           "data": {
             "description": "Clients details",
@@ -2573,14 +2824,6 @@
       },
       "GoogleDirectoryListResponse": {
         "description": "Response schema for multiple Google Directories",
-        "example": {
-          "data": [
-            {
-              "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-              "name": "Google"
-            }
-          ]
-        },
         "properties": {
           "data": {
             "description": "Google Directory details",
@@ -2598,30 +2841,6 @@
       },
       "GatewaysResponse": {
         "description": "Response schema for multiple Gateways",
-        "example": {
-          "data": [
-            {
-              "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-              "ipv4": "1.2.3.4",
-              "ipv6": "",
-              "name": "vpc-us-east",
-              "online": true
-            },
-            {
-              "id": "6ecc106b-75c1-48a5-846c-14782180c1ff",
-              "ipv4": "5.6.7.8",
-              "ipv6": "",
-              "name": "vpc-us-west",
-              "online": true
-            }
-          ],
-          "metadata": {
-            "limit": 10,
-            "next_page": "98776234123",
-            "prev_page": "123123425",
-            "total": 100
-          }
-        },
         "properties": {
           "data": {
             "description": "Gateways details",
@@ -2669,16 +2888,6 @@
       },
       "ResourceResponse": {
         "description": "Response schema for single Resource",
-        "example": {
-          "data": {
-            "address": "10.0.0.10",
-            "address_description": "Production Database",
-            "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-            "name": "Prod DB",
-            "site_id": "0642e09d-b3a2-47e4-9cd1-c2195faeeb67",
-            "type": "ip"
-          }
-        },
         "properties": {
           "data": {
             "$ref": "#/components/schemas/Resource"
@@ -2689,22 +2898,6 @@
       },
       "ExternalIdentityResponse": {
         "description": "Response schema for single External Identity",
-        "example": {
-          "data": {
-            "account_id": "5e6f7d8c-9b0a-1c2d-3e4f-5a6b7c8d9e0f",
-            "actor_id": "cdfa97e6-cca1-41db-8fc7-864daedb46df",
-            "directory_id": "9f8e7d6c-5b4a-3c2b-1a0e-9f8e7d6c5b4a",
-            "family_name": "Doe",
-            "given_name": "John",
-            "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-            "idp_id": "2551705710219359",
-            "inserted_at": "2025-01-15T12:34:56.789Z",
-            "issuer": "https://accounts.google.com",
-            "name": "John Doe",
-            "picture": "https://example.com/avatar.jpg",
-            "synced_at": "2025-01-15T12:34:56.789Z"
-          }
-        },
         "properties": {
           "data": {
             "$ref": "#/components/schemas/ExternalIdentity"
@@ -2725,9 +2918,19 @@
       "OktaDirectory": {
         "description": "Okta Directory",
         "example": {
+          "account_id": "5e6f7d8c-9b0a-1c2d-3e4f-5a6b7c8d9e0f",
+          "client_id": "0oa1b2c3d4e5EXAMPLE",
+          "disabled_reason": null,
+          "error_message": null,
+          "errored_at": null,
           "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
+          "inserted_at": "2025-01-01T00:00:00Z",
+          "is_disabled": false,
+          "kid": "kid-2f8a1c9e",
           "name": "Okta",
-          "okta_domain": "example.okta.com"
+          "okta_domain": "example.okta.com",
+          "synced_at": "2025-01-15T10:30:00Z",
+          "updated_at": "2025-01-15T10:30:00Z"
         },
         "properties": {
           "account_id": {
@@ -2741,19 +2944,18 @@
           },
           "disabled_reason": {
             "description": "Reason for disabling",
+            "nullable": true,
             "type": "string"
           },
-          "error": {
+          "error_message": {
             "description": "Last error message",
+            "nullable": true,
             "type": "string"
           },
-          "error_count": {
-            "description": "Error count",
-            "type": "integer"
-          },
-          "error_emailed_at": {
-            "description": "Error email timestamp",
+          "errored_at": {
+            "description": "Last error timestamp",
             "format": "date-time",
+            "nullable": true,
             "type": "string"
           },
           "id": {
@@ -2785,6 +2987,7 @@
           "synced_at": {
             "description": "Last sync timestamp",
             "format": "date-time",
+            "nullable": true,
             "type": "string"
           },
           "updated_at": {
@@ -2794,8 +2997,19 @@
           }
         },
         "required": [
+          "account_id",
+          "client_id",
+          "disabled_reason",
+          "error_message",
+          "errored_at",
           "id",
-          "name"
+          "inserted_at",
+          "is_disabled",
+          "kid",
+          "name",
+          "okta_domain",
+          "synced_at",
+          "updated_at"
         ],
         "title": "OktaDirectory",
         "type": "object"
@@ -2816,14 +3030,6 @@
       },
       "OktaDirectoryListResponse": {
         "description": "Response schema for multiple Okta Directories",
-        "example": {
-          "data": [
-            {
-              "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-              "name": "Okta"
-            }
-          ]
-        },
         "properties": {
           "data": {
             "description": "Okta Directory details",
@@ -2896,12 +3102,6 @@
       },
       "OktaAuthProviderResponse": {
         "description": "Response schema for single Okta Auth Provider",
-        "example": {
-          "data": {
-            "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-            "name": "Okta"
-          }
-        },
         "properties": {
           "data": {
             "$ref": "#/components/schemas/OktaAuthProvider"
@@ -3002,16 +3202,6 @@
       },
       "GatewayProvisionResponse": {
         "description": "Response schema for a newly provisioned Gateway. Includes the one-time token secret - it is not shown again.\n",
-        "example": {
-          "data": {
-            "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-            "ipv4": null,
-            "ipv6": null,
-            "name": "vpc-us-east",
-            "online": false,
-            "token": "eyJhbGc..."
-          }
-        },
         "properties": {
           "data": {
             "allOf": [
@@ -3039,10 +3229,13 @@
       "X509AuthProvider": {
         "description": "X.509 Auth Provider",
         "example": {
+          "account_id": "5e6f7d8c-9b0a-1c2d-3e4f-5a6b7c8d9e0f",
           "context": "clients_only",
           "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
+          "inserted_at": "2025-01-01T00:00:00Z",
           "is_disabled": true,
-          "name": "X.509"
+          "name": "X.509",
+          "updated_at": "2025-01-15T10:30:00Z"
         },
         "properties": {
           "account_id": {
@@ -3082,51 +3275,19 @@
           }
         },
         "required": [
-          "id",
           "account_id",
-          "name",
           "context",
-          "is_disabled"
+          "id",
+          "inserted_at",
+          "is_disabled",
+          "name",
+          "updated_at"
         ],
         "title": "X509AuthProvider",
         "type": "object"
       },
       "ActorsResponse": {
         "description": "Response schema for multiple Actors",
-        "example": {
-          "data": [
-            {
-              "allow_email_otp_sign_in": false,
-              "created_by_directory_id": null,
-              "email": "john.doe@example.com",
-              "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-              "inserted_at": "2024-01-01T00:00:00Z",
-              "is_disabled": false,
-              "last_seen_at": "2024-01-15T10:30:00Z",
-              "name": "John Doe",
-              "type": "account_admin_user",
-              "updated_at": "2024-01-15T10:30:00Z"
-            },
-            {
-              "allow_email_otp_sign_in": true,
-              "created_by_directory_id": "98776234-1234-5678-9012-345678901234",
-              "email": "jane.smith@example.com",
-              "id": "84e7f82f-831a-4a9d-8f17-c66c2bb6e205",
-              "inserted_at": "2024-01-02T00:00:00Z",
-              "is_disabled": false,
-              "last_seen_at": "2024-01-14T15:45:00Z",
-              "name": "Jane Smith",
-              "type": "account_user",
-              "updated_at": "2024-01-14T15:45:00Z"
-            }
-          ],
-          "metadata": {
-            "limit": 10,
-            "next_page": "98776234123",
-            "prev_page": "123123425",
-            "total": 100
-          }
-        },
         "properties": {
           "data": {
             "description": "Actors details",
@@ -3144,12 +3305,6 @@
       },
       "GoogleAuthProviderResponse": {
         "description": "Response schema for single Google Auth Provider",
-        "example": {
-          "data": {
-            "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-            "name": "Google"
-          }
-        },
         "properties": {
           "data": {
             "$ref": "#/components/schemas/GoogleAuthProvider"
@@ -3243,26 +3398,6 @@
       },
       "MembershipListResponse": {
         "description": "Response schema for Memberships",
-        "example": {
-          "data": [
-            {
-              "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-              "name": "John Doe",
-              "type": "account_user"
-            },
-            {
-              "id": "cc9f561a-444d-4083-ab38-0abc6cf2314c",
-              "name": "Jane Smith",
-              "type": "account_admin_user"
-            }
-          ],
-          "metadata": {
-            "limit": 10,
-            "next_page": "98776234123",
-            "prev_page": "123123425",
-            "total": 100
-          }
-        },
         "properties": {
           "data": {
             "description": "Membership details",
@@ -3337,6 +3472,12 @@
           },
           "type": {
             "description": "Actor Type",
+            "enum": [
+              "account_admin_user",
+              "account_user",
+              "api_client",
+              "service_account"
+            ],
             "type": "string"
           },
           "updated_at": {
@@ -3346,9 +3487,16 @@
           }
         },
         "required": [
-          "name",
+          "allow_email_otp_sign_in",
+          "created_by_directory_id",
           "email",
-          "type"
+          "id",
+          "inserted_at",
+          "is_disabled",
+          "last_seen_at",
+          "name",
+          "type",
+          "updated_at"
         ],
         "title": "Actor",
         "type": "object"
@@ -3426,6 +3574,25 @@
           }
         },
         "title": "PolicyUpdateParams",
+        "type": "object"
+      },
+      "ClientTokenShowResponse": {
+        "description": "Response schema for Client Token metadata",
+        "example": {
+          "data": {
+            "actor_id": "43a7f82f-831a-4a9d-8f17-c66c2bb6e205",
+            "expires_at": "2025-01-15T12:34:56.789Z",
+            "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
+            "inserted_at": "2025-01-15T12:34:56.789Z",
+            "updated_at": "2025-01-15T12:34:56.789Z"
+          }
+        },
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ClientToken"
+          }
+        },
+        "title": "ClientTokenShowResponse",
         "type": "object"
       },
       "DefenderDevice": {
@@ -3599,11 +3766,97 @@
         },
         "required": [
           "account_id",
-          "posture_provider_id",
           "defender_id",
-          "synced_at"
+          "posture_provider_id",
+          "computer_dns_name",
+          "entra_device_id",
+          "entra_joined",
+          "machine_tags",
+          "os_platform",
+          "version",
+          "os_build",
+          "os_processor",
+          "os_architecture",
+          "last_ip_address",
+          "last_external_ip_address",
+          "agent_version",
+          "health_status",
+          "onboarding_status",
+          "managed_by",
+          "managed_by_status",
+          "risk_score",
+          "exposure_level",
+          "device_value",
+          "rbac_group_id",
+          "rbac_group_name",
+          "is_potential_duplication",
+          "merged_into_machine_id",
+          "is_excluded",
+          "exclusion_reason",
+          "vm_id",
+          "vm_cloud_provider",
+          "vm_resource_id",
+          "vm_subscription_id",
+          "ip_addresses",
+          "first_seen_at",
+          "last_seen_at",
+          "synced_at",
+          "inserted_at",
+          "updated_at"
         ],
         "title": "DefenderDevice",
+        "type": "object"
+      },
+      "ClientTokenWithSecret": {
+        "description": "Client Token as returned when it is created, including the encoded secret. The secret is shown once and cannot be retrieved later.",
+        "example": {
+          "actor_id": "43a7f82f-831a-4a9d-8f17-c66c2bb6e205",
+          "expires_at": "2025-01-15T12:34:56.789Z",
+          "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
+          "inserted_at": "2025-01-15T12:34:56.789Z",
+          "token": "secret-token-here",
+          "updated_at": "2025-01-15T12:34:56.789Z"
+        },
+        "properties": {
+          "actor_id": {
+            "description": "Actor ID",
+            "format": "uuid",
+            "type": "string"
+          },
+          "expires_at": {
+            "description": "Expiration",
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "description": "Client Token ID",
+            "format": "uuid",
+            "type": "string"
+          },
+          "inserted_at": {
+            "description": "Creation timestamp",
+            "format": "date-time",
+            "type": "string"
+          },
+          "token": {
+            "description": "Encoded token secret",
+            "type": "string"
+          },
+          "updated_at": {
+            "description": "Update timestamp",
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "actor_id",
+          "expires_at",
+          "id",
+          "inserted_at",
+          "token",
+          "updated_at"
+        ],
+        "title": "ClientTokenWithSecret",
         "type": "object"
       },
       "SentinelOneDevice": {
@@ -4073,9 +4326,109 @@
         },
         "required": [
           "account_id",
-          "posture_provider_id",
           "uuid",
-          "synced_at"
+          "posture_provider_id",
+          "source_created_at",
+          "source_updated_at",
+          "group_updated_at",
+          "policy_updated_at",
+          "sentinelone_account_id",
+          "account_name",
+          "site_id",
+          "site_name",
+          "group_id",
+          "group_name",
+          "sentinelone_id",
+          "agent_version",
+          "network_interfaces",
+          "domain",
+          "computer_name",
+          "os_name",
+          "os_revision",
+          "os_arch",
+          "os_username",
+          "os_start_time",
+          "os_type",
+          "total_memory",
+          "model_name",
+          "machine_type",
+          "cpu_id",
+          "cpu_count",
+          "core_count",
+          "external_ip",
+          "group_ip",
+          "active_threats",
+          "infected",
+          "threat_reboot_required",
+          "last_active_at",
+          "is_active",
+          "is_up_to_date",
+          "network_status",
+          "registered_at",
+          "is_pending_uninstall",
+          "is_uninstalled",
+          "is_decommissioned",
+          "encrypted_applications",
+          "last_logged_in_user_name",
+          "ad_last_user_distinguished_name",
+          "ad_last_user_member_of",
+          "ad_computer_distinguished_name",
+          "ad_computer_member_of",
+          "ad_user_principal_name",
+          "ad_mail",
+          "scan_status",
+          "scan_started_at",
+          "scan_finished_at",
+          "scan_aborted_at",
+          "full_disk_scan_updated_at",
+          "mitigation_mode",
+          "mitigation_mode_suspicious",
+          "user_actions_needed",
+          "missing_permissions",
+          "console_migration_status",
+          "apps_vulnerability_status",
+          "in_remote_shell_session",
+          "allow_remote_shell",
+          "locations",
+          "location_type",
+          "external_id",
+          "serial_number",
+          "machine_sid",
+          "installer_type",
+          "ranger_version",
+          "ranger_status",
+          "last_ip_to_management",
+          "operational_state",
+          "operational_state_expires_at",
+          "remote_profiling_state",
+          "remote_profiling_state_expires_at",
+          "network_quarantine_enabled",
+          "firewall_enabled",
+          "location_enabled",
+          "cloud_providers",
+          "storage_type",
+          "storage_name",
+          "detection_state",
+          "first_full_mode_at",
+          "tags",
+          "show_alert_icon",
+          "last_successful_scan_at",
+          "proxy_console",
+          "proxy_deep_visibility",
+          "proxy_pac_file_usage",
+          "proxy_method",
+          "proxy_console_address",
+          "proxy_deep_visibility_address",
+          "protected_pods_count",
+          "protected_containers_count",
+          "protected_tasks_count",
+          "has_containerized_workload",
+          "is_ad_connector",
+          "is_hyper_automate",
+          "active_protection",
+          "synced_at",
+          "inserted_at",
+          "updated_at"
         ],
         "title": "SentinelOneDevice",
         "type": "object"
@@ -4100,11 +4453,13 @@
         },
         "properties": {
           "address": {
-            "description": "Resource address",
+            "description": "Resource address. Null for `static_device_pool` Resources.",
+            "nullable": true,
             "type": "string"
           },
           "address_description": {
             "description": "Resource address description",
+            "nullable": true,
             "type": "string"
           },
           "filters": {
@@ -4139,17 +4494,23 @@
             "type": "string"
           },
           "type": {
-            "description": "Resource type. For `static_device_pool`, `address` is not applicable.",
+            "description": "Resource type. For `static_device_pool` and `dynamic_device_pool`, `address` is not applicable. Only `cidr`, `ip`, and `dns` Resources can be created through the API.",
             "enum": [
               "cidr",
               "ip",
               "dns",
-              "static_device_pool"
+              "internet",
+              "static_device_pool",
+              "dynamic_device_pool"
             ],
             "type": "string"
           }
         },
         "required": [
+          "address",
+          "address_description",
+          "filters",
+          "id",
           "name",
           "type"
         ],
@@ -4202,9 +4563,19 @@
       "EntraDirectory": {
         "description": "Entra Directory",
         "example": {
+          "account_id": "5e6f7d8c-9b0a-1c2d-3e4f-5a6b7c8d9e0f",
+          "disabled_reason": null,
+          "email_field": "userPrincipalName",
+          "error_message": null,
+          "errored_at": null,
           "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
+          "inserted_at": "2025-01-01T00:00:00Z",
+          "is_disabled": false,
           "name": "Entra",
-          "tenant_id": "12345678-1234-1234-1234-123456789012"
+          "sync_all_groups": false,
+          "synced_at": "2025-01-15T10:30:00Z",
+          "tenant_id": "12345678-1234-1234-1234-123456789012",
+          "updated_at": "2025-01-15T10:30:00Z"
         },
         "properties": {
           "account_id": {
@@ -4214,6 +4585,7 @@
           },
           "disabled_reason": {
             "description": "Reason for disabling",
+            "nullable": true,
             "type": "string"
           },
           "email_field": {
@@ -4224,17 +4596,15 @@
             ],
             "type": "string"
           },
-          "error": {
+          "error_message": {
             "description": "Last error message",
+            "nullable": true,
             "type": "string"
           },
-          "error_count": {
-            "description": "Error count",
-            "type": "integer"
-          },
-          "error_emailed_at": {
-            "description": "Error email timestamp",
+          "errored_at": {
+            "description": "Last error timestamp",
             "format": "date-time",
+            "nullable": true,
             "type": "string"
           },
           "id": {
@@ -4262,11 +4632,11 @@
           "synced_at": {
             "description": "Last sync timestamp",
             "format": "date-time",
+            "nullable": true,
             "type": "string"
           },
           "tenant_id": {
             "description": "Microsoft Entra tenant ID",
-            "format": "uuid",
             "type": "string"
           },
           "updated_at": {
@@ -4276,8 +4646,19 @@
           }
         },
         "required": [
+          "account_id",
+          "disabled_reason",
+          "email_field",
+          "error_message",
+          "errored_at",
           "id",
-          "name"
+          "inserted_at",
+          "is_disabled",
+          "name",
+          "sync_all_groups",
+          "synced_at",
+          "tenant_id",
+          "updated_at"
         ],
         "title": "EntraDirectory",
         "type": "object"
@@ -4411,19 +4792,22 @@
           },
           "created_at": {
             "description": "Client creation timestamp",
+            "format": "date-time",
             "type": "string"
           },
           "device_serial": {
             "description": "Device manufacturer serial number (unavailable for mobile devices)",
+            "nullable": true,
             "type": "string"
           },
           "device_uuid": {
             "description": "Device manufacturer UUID (unavailable for mobile devices)",
-            "format": "uuid",
+            "nullable": true,
             "type": "string"
           },
           "firebase_installation_id": {
             "description": "Firebase installation ID (Android only)",
+            "nullable": true,
             "type": "string"
           },
           "firezone_id": {
@@ -4443,6 +4827,7 @@
           },
           "identifier_for_vendor": {
             "description": "App installation ID (iOS only)",
+            "nullable": true,
             "type": "string"
           },
           "ipv4": {
@@ -4455,6 +4840,7 @@
           },
           "last_attested_at": {
             "description": "When the device last proved possession of an MDM-provisioned client certificate",
+            "format": "date-time",
             "nullable": true,
             "readOnly": true,
             "type": "string"
@@ -4491,6 +4877,7 @@
           },
           "last_seen_at": {
             "description": "Timestamp of the latest connection",
+            "format": "date-time",
             "nullable": true,
             "type": "string"
           },
@@ -4544,23 +4931,47 @@
           },
           "updated_at": {
             "description": "Client update timestamp",
+            "format": "date-time",
             "type": "string"
           },
           "verified_at": {
             "description": "Client verification timestamp",
+            "format": "date-time",
+            "nullable": true,
             "type": "string"
           }
         },
         "required": [
-          "id",
           "actor_id",
+          "created_at",
+          "device_serial",
+          "device_uuid",
+          "firebase_installation_id",
           "firezone_id",
-          "name",
+          "hostname",
+          "id",
+          "identifier_for_vendor",
           "ipv4",
           "ipv6",
+          "last_attested_at",
+          "last_attested_cert_fingerprint",
+          "last_attested_cert_serial",
+          "last_attested_device_serial",
+          "last_attested_device_uuid",
+          "last_attested_mdm_device_id",
+          "last_seen_at",
+          "last_seen_remote_ip",
+          "last_seen_remote_ip_location_city",
+          "last_seen_remote_ip_location_lat",
+          "last_seen_remote_ip_location_lon",
+          "last_seen_remote_ip_location_region",
+          "last_seen_user_agent",
+          "last_seen_version",
+          "name",
           "online",
-          "created_at",
-          "updated_at"
+          "public_key",
+          "updated_at",
+          "verified_at"
         ],
         "title": "Client",
         "type": "object"
@@ -4589,66 +5000,8 @@
         "title": "DefenderDeviceResponse",
         "type": "object"
       },
-      "ClientTokenResponse": {
-        "description": "Client Token response",
-        "example": {
-          "actor_id": "43a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-          "expires_at": "2025-01-15T12:34:56.789Z",
-          "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-          "inserted_at": "2025-01-15T12:34:56.789Z",
-          "token": "secret-token-here",
-          "updated_at": "2025-01-15T12:34:56.789Z"
-        },
-        "properties": {
-          "actor_id": {
-            "description": "Actor ID",
-            "format": "uuid",
-            "type": "string"
-          },
-          "expires_at": {
-            "description": "Expiration",
-            "format": "date-time",
-            "type": "string"
-          },
-          "id": {
-            "description": "Client Token ID",
-            "format": "uuid",
-            "type": "string"
-          },
-          "inserted_at": {
-            "description": "Creation timestamp",
-            "format": "date-time",
-            "type": "string"
-          },
-          "token": {
-            "description": "Encoded token secret",
-            "type": "string"
-          },
-          "updated_at": {
-            "description": "Update timestamp",
-            "format": "date-time",
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "actor_id",
-          "expires_at",
-          "inserted_at",
-          "updated_at",
-          "token"
-        ],
-        "title": "ClientTokenResponse",
-        "type": "object"
-      },
       "EmailOTPAuthProviderResponse": {
         "description": "Response schema for single Email OTP Auth Provider",
-        "example": {
-          "data": {
-            "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-            "name": "Email OTP"
-          }
-        },
         "properties": {
           "data": {
             "$ref": "#/components/schemas/EmailOTPAuthProvider"
@@ -4659,14 +5012,6 @@
       },
       "EntraDirectoryListResponse": {
         "description": "Response schema for multiple Entra Directories",
-        "example": {
-          "data": [
-            {
-              "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-              "name": "Entra"
-            }
-          ]
-        },
         "properties": {
           "data": {
             "description": "Entra Directory details",
@@ -4739,13 +5084,19 @@
           }
         },
         "required": [
-          "id",
           "account_id",
-          "type",
-          "name",
-          "tenant_id",
+          "disabled_reason",
+          "error_message",
+          "errored_at",
+          "id",
+          "inserted_at",
+          "is_disabled",
           "is_verified",
-          "is_disabled"
+          "name",
+          "synced_at",
+          "tenant_id",
+          "type",
+          "updated_at"
         ],
         "title": "IntunePostureProvider",
         "type": "object"
@@ -4777,17 +5128,37 @@
         "title": "PolicyUpdateRequest",
         "type": "object"
       },
-      "OIDCAuthProviderListResponse": {
-        "description": "Response schema for multiple OIDC Auth Providers",
-        "example": {
-          "data": [
+      "ValidationErrors": {
+        "additionalProperties": {
+          "anyOf": [
             {
-              "email_verification_method": "claim",
-              "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-              "name": "OIDC Provider"
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "items": {
+                "$ref": "#/components/schemas/ValidationErrors"
+              },
+              "type": "array"
+            },
+            {
+              "$ref": "#/components/schemas/ValidationErrors"
             }
           ]
         },
+        "description": "Map of field name to its errors: a list of messages, or the errors of a nested object or list of objects under the same shape.",
+        "example": {
+          "name": [
+            "can't be blank"
+          ]
+        },
+        "title": "ValidationErrors",
+        "type": "object"
+      },
+      "OIDCAuthProviderListResponse": {
+        "description": "Response schema for multiple OIDC Auth Providers",
         "properties": {
           "data": {
             "description": "OIDC Auth Provider details",
@@ -4845,6 +5216,7 @@
           },
           "last_seen_at": {
             "description": "Timestamp of the latest connection",
+            "format": "date-time",
             "nullable": true,
             "type": "string"
           },
@@ -4905,11 +5277,22 @@
           }
         },
         "required": [
+          "gateway_token_id",
           "id",
-          "name",
           "ipv4",
           "ipv6",
-          "online"
+          "last_seen_at",
+          "last_seen_remote_ip",
+          "last_seen_remote_ip_location_city",
+          "last_seen_remote_ip_location_lat",
+          "last_seen_remote_ip_location_lon",
+          "last_seen_remote_ip_location_region",
+          "last_seen_user_agent",
+          "last_seen_version",
+          "name",
+          "online",
+          "public_key",
+          "rotated_at"
         ],
         "title": "Gateway",
         "type": "object"
@@ -5046,10 +5429,14 @@
           }
         },
         "required": [
-          "id",
-          "name",
+          "directory_id",
+          "email",
           "entity_type",
+          "id",
+          "idp_id",
           "inserted_at",
+          "name",
+          "synced_at",
           "updated_at"
         ],
         "title": "Group",
@@ -5294,10 +5681,10 @@
         "example": {
           "memberships": {
             "add": [
-              "1234-1234"
+              "4ddfa557-7dfc-484f-894c-2024ec3fe9f7"
             ],
             "remove": [
-              "2345-2345"
+              "89d22f71-939d-442d-b148-897b730adfb4"
             ]
           }
         },
@@ -5353,31 +5740,6 @@
       },
       "ClientResponse": {
         "description": "Response schema for single Client",
-        "example": {
-          "data": {
-            "actor_id": "6ecc106b-75c1-48a5-846c-14782180c1ff",
-            "created_at": "2025-01-01T00:00:00Z",
-            "device_serial": "GCCFX0DBQ6L5",
-            "device_uuid": "7A461FF9-0BE2-64A9-A418-539D9A21827B",
-            "firebase_installation_id": null,
-            "firezone_id": "b5bb9d8014a0f9b1d61e21e796d78dccdf1352f23cd32812f4850b878ae4944c",
-            "hostname": "johns-macbook.example.com",
-            "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-            "identifier_for_vendor": null,
-            "ipv4": "100.64.0.1",
-            "ipv6": "fd00:2021:1111::1",
-            "last_attested_at": "2025-01-01T00:00:00Z",
-            "last_attested_cert_fingerprint": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
-            "last_attested_cert_serial": "4A:2F:00:8C:11:03:9E:5B",
-            "last_attested_device_serial": "GCCFX0DBQ6L5",
-            "last_attested_device_uuid": "7A461FF9-0BE2-64A9-A418-539D9A21827B",
-            "last_attested_mdm_device_id": "5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3",
-            "name": "John's Macbook Air",
-            "online": true,
-            "updated_at": "2025-01-01T00:00:00Z",
-            "verified_at": "2025-01-01T00:00:00Z"
-          }
-        },
         "properties": {
           "data": {
             "$ref": "#/components/schemas/Client"
@@ -5410,6 +5772,11 @@
             "type": "string"
           }
         },
+        "required": [
+          "id",
+          "last_seen_at",
+          "name"
+        ],
         "title": "PoolMember",
         "type": "object"
       },
@@ -5472,13 +5839,13 @@
           }
         },
         "required": [
-          "id",
-          "group_id",
-          "resource_id",
+          "conditions",
           "description",
           "flow_log_uploads_enabled",
+          "group_id",
+          "id",
           "is_disabled",
-          "conditions"
+          "resource_id"
         ],
         "title": "Policy",
         "type": "object"
@@ -5499,9 +5866,16 @@
       "EmailOTPAuthProvider": {
         "description": "Email OTP Auth Provider",
         "example": {
+          "account_id": "5e6f7d8c-9b0a-1c2d-3e4f-5a6b7c8d9e0f",
+          "client_session_lifetime_secs": 604800,
+          "context": "clients_and_portal",
           "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
+          "inserted_at": "2025-01-01T00:00:00Z",
+          "is_disabled": false,
           "issuer": "firezone",
-          "name": "Email OTP"
+          "name": "Email OTP",
+          "portal_session_lifetime_secs": 28800,
+          "updated_at": "2025-01-15T10:30:00Z"
         },
         "properties": {
           "account_id": {
@@ -5510,7 +5884,8 @@
             "type": "string"
           },
           "client_session_lifetime_secs": {
-            "description": "Client session lifetime in seconds",
+            "description": "Client session lifetime in seconds. Null when the account default applies.",
+            "nullable": true,
             "type": "integer"
           },
           "context": {
@@ -5545,7 +5920,8 @@
             "type": "string"
           },
           "portal_session_lifetime_secs": {
-            "description": "Portal session lifetime in seconds",
+            "description": "Portal session lifetime in seconds. Null when the account default applies.",
+            "nullable": true,
             "type": "integer"
           },
           "updated_at": {
@@ -5555,8 +5931,16 @@
           }
         },
         "required": [
+          "account_id",
+          "client_session_lifetime_secs",
+          "context",
           "id",
-          "name"
+          "inserted_at",
+          "is_disabled",
+          "issuer",
+          "name",
+          "portal_session_lifetime_secs",
+          "updated_at"
         ],
         "title": "EmailOTPAuthProvider",
         "type": "object"
@@ -5612,7 +5996,7 @@
         "type": "object"
       },
       "ValidationProblemDetails": {
-        "description": "RFC 9457 error response for request validation failures. The `validation_errors` member maps each invalid field to a list of human-readable messages.",
+        "description": "RFC 9457 error response for request validation failures. The `validation_errors` member maps each invalid field to a list of human-readable messages. Errors on nested objects and on the items of a list are reported under the same shape, keyed by field name or list index. It is omitted when the failure is not attributable to individual fields.",
         "example": {
           "detail": "The request body failed validation.",
           "status": 422,
@@ -5642,21 +6026,13 @@
             "type": "string"
           },
           "validation_errors": {
-            "additionalProperties": {
-              "items": {
-                "type": "string"
-              },
-              "type": "array"
-            },
-            "description": "Map of field name to a list of validation error messages.",
-            "type": "object"
+            "$ref": "#/components/schemas/ValidationErrors"
           }
         },
         "required": [
           "type",
           "title",
-          "status",
-          "validation_errors"
+          "status"
         ],
         "title": "ValidationProblemDetails",
         "type": "object"
@@ -5693,9 +6069,11 @@
         },
         "required": [
           "id",
-          "slug",
           "key",
-          "name"
+          "legal_name",
+          "limits",
+          "name",
+          "slug"
         ],
         "title": "Account",
         "type": "object"
@@ -5740,9 +6118,17 @@
       "GoogleAuthProvider": {
         "description": "Google Auth Provider",
         "example": {
+          "account_id": "5e6f7d8c-9b0a-1c2d-3e4f-5a6b7c8d9e0f",
+          "client_session_lifetime_secs": 604800,
+          "context": "clients_and_portal",
           "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
+          "inserted_at": "2025-01-01T00:00:00Z",
+          "is_default": true,
+          "is_disabled": false,
           "issuer": "https://accounts.google.com",
-          "name": "Google"
+          "name": "Google",
+          "portal_session_lifetime_secs": 28800,
+          "updated_at": "2025-01-15T10:30:00Z"
         },
         "properties": {
           "account_id": {
@@ -5751,7 +6137,8 @@
             "type": "string"
           },
           "client_session_lifetime_secs": {
-            "description": "Client session lifetime in seconds",
+            "description": "Client session lifetime in seconds. Null when the account default applies.",
+            "nullable": true,
             "type": "integer"
           },
           "context": {
@@ -5790,7 +6177,8 @@
             "type": "string"
           },
           "portal_session_lifetime_secs": {
-            "description": "Portal session lifetime in seconds",
+            "description": "Portal session lifetime in seconds. Null when the account default applies.",
+            "nullable": true,
             "type": "integer"
           },
           "updated_at": {
@@ -5800,8 +6188,17 @@
           }
         },
         "required": [
+          "account_id",
+          "client_session_lifetime_secs",
+          "context",
           "id",
-          "name"
+          "inserted_at",
+          "is_default",
+          "is_disabled",
+          "issuer",
+          "name",
+          "portal_session_lifetime_secs",
+          "updated_at"
         ],
         "title": "GoogleAuthProvider",
         "type": "object"
@@ -5852,10 +6249,12 @@
         "properties": {
           "actor_id": {
             "description": "ID of the API Client actor.",
+            "format": "uuid",
             "type": "string"
           },
           "api_token_id": {
             "description": "ID of the API token used.",
+            "format": "uuid",
             "type": "string"
           },
           "content_length": {
@@ -5918,41 +6317,27 @@
           }
         },
         "required": [
-          "type",
-          "log_id",
-          "timestamp",
           "actor_id",
           "api_token_id",
+          "content_length",
+          "ip",
+          "ip_city",
+          "ip_lat",
+          "ip_lon",
+          "ip_region",
+          "log_id",
           "method",
           "path",
           "request_id",
-          "ip"
+          "timestamp",
+          "type",
+          "user_agent"
         ],
         "title": "APIRequestLog",
         "type": "object"
       },
       "PoolMemberListResponse": {
         "description": "Response schema for Pool Members",
-        "example": {
-          "data": [
-            {
-              "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-              "last_seen_at": "2024-01-15T10:30:00Z",
-              "name": "jane-laptop"
-            },
-            {
-              "id": "cc9f561a-444d-4083-ab38-0abc6cf2314c",
-              "last_seen_at": null,
-              "name": "field-tablet-02"
-            }
-          ],
-          "metadata": {
-            "limit": 10,
-            "next_page": "98776234123",
-            "prev_page": "123123425",
-            "total": 100
-          }
-        },
         "properties": {
           "data": {
             "description": "Pool member details",
@@ -6050,13 +6435,19 @@
           }
         },
         "required": [
-          "id",
           "account_id",
-          "type",
-          "name",
-          "management_url",
+          "disabled_reason",
+          "error_message",
+          "errored_at",
+          "id",
+          "inserted_at",
+          "is_disabled",
           "is_verified",
-          "is_disabled"
+          "management_url",
+          "name",
+          "synced_at",
+          "type",
+          "updated_at"
         ],
         "title": "SentinelOnePostureProvider",
         "type": "object"
@@ -6107,21 +6498,30 @@
       "FlowLog": {
         "description": "A single Flow Log entry, recording one network flow as accounted by one\nof its two endpoints.\n\nBoth endpoints of a flow report it independently, so a flow yields up to\ntwo entries that differ only in `role` and in the counters each side\nobserved. Every other field is oriented from the initiator regardless of\nwhich side reported the entry: `inner_src_*` is always the initiator,\n`inner_dst_*` always the responder, and `tx_*` always counts\ninitiator-to-responder traffic. `outers` records each outer network path\nin the order it was observed. Comparing the two entries of a flow is how\nreported traffic is cross-checked.\n",
         "example": {
-          "authorization_expires_at": "2026-05-26T20:29:00.000Z",
-          "authorized_at": "2026-05-26T12:29:00.000Z",
-          "flow_end": "2026-05-26T12:34:00.000Z",
-          "flow_start": "2026-05-26T12:30:00.000Z",
-          "initiator_actor_email": "user@example.com",
-          "initiator_client_version": "1.5.1",
-          "initiator_device_id": "11e7f82f-831a-4a9d-8f17-c66c2bb6e205",
-          "initiator_device_os_name": "macOS",
-          "initiator_device_os_version": "15.5",
-          "inner_dst_ip": "10.0.0.5",
-          "inner_dst_port": 443,
-          "inner_src_ip": "100.64.0.1",
-          "inner_src_port": 54321,
-          "last_packet": "2026-05-26T12:33:58.000Z",
           "log_id": "f00060db0c2c8eb400000000",
+          "initiator_device_id": "11e7f82f-831a-4a9d-8f17-c66c2bb6e205",
+          "last_packet": "2026-05-26T12:33:58.000Z",
+          "inner_dst_ip": "10.0.0.5",
+          "initiator_auth_provider_id": "7b2c1e40-9f3a-4d21-8c5e-1a2b3c4d5e6f",
+          "initiator_device_uuid": "0C4A8D24-FA9F-4E56-9B57-40D0D46A245E",
+          "flow_end": "2026-05-26T12:34:00.000Z",
+          "initiator_device_identifier_for_vendor": null,
+          "policy_authorization_id": "6fa1d58f-0289-42e6-a3ba-7edfa46ee2d5",
+          "tx_bytes": 20480,
+          "initiator_client_version": "1.5.1",
+          "type": "flow",
+          "rx_packets": 100,
+          "initiator_device_os_name": "macOS",
+          "timestamp": "2026-05-26T12:34:56.789Z",
+          "role": "responder",
+          "tx_packets": 80,
+          "inner_dst_port": 443,
+          "initiator_device_firebase_installation_id": null,
+          "inner_src_ip": "100.64.0.1",
+          "responder_device_id": "9d3a1c40-5f2b-4c8e-9a71-0b6d4e2f8c13",
+          "initiator_actor_email": "user@example.com",
+          "protocol": "tcp",
+          "authorization_expires_at": "2026-05-26T20:29:00.000Z",
           "outers": [
             {
               "dst_ip": "198.51.100.5",
@@ -6130,20 +6530,19 @@
               "src_port": 51820
             }
           ],
-          "policy_authorization_id": "6fa1d58f-0289-42e6-a3ba-7edfa46ee2d5",
-          "policy_id": "46f997d1-77c8-4936-8655-8f050dffbfa4",
-          "protocol": "tcp",
-          "resource_address": "gitlab.company.com",
           "resource_id": "44e7f82f-831a-4a9d-8f17-c66c2bb6e205",
-          "resource_name": "GitLab",
-          "responder_device_id": "9d3a1c40-5f2b-4c8e-9a71-0b6d4e2f8c13",
-          "role": "responder",
+          "inner_src_port": 54321,
           "rx_bytes": 102400,
-          "rx_packets": 100,
-          "timestamp": "2026-05-26T12:34:56.789Z",
-          "tx_bytes": 20480,
-          "tx_packets": 80,
-          "type": "flow"
+          "authorized_at": "2026-05-26T12:29:00.000Z",
+          "flow_start": "2026-05-26T12:30:00.000Z",
+          "initiator_device_os_version": "15.5",
+          "inner_domain": "gitlab.company.com",
+          "initiator_actor_id": "84e7f82f-831a-4a9d-8f17-c66c2bb6e205",
+          "initiator_actor_name": "John Doe",
+          "resource_address": "gitlab.company.com",
+          "initiator_device_serial": "C02ABC123",
+          "resource_name": "GitLab",
+          "policy_id": "46f997d1-77c8-4936-8655-8f050dffbfa4"
         },
         "properties": {
           "log_id": {
@@ -6153,6 +6552,7 @@
           },
           "initiator_device_id": {
             "description": "ID of the Client that opened the flow. Always a Client.",
+            "format": "uuid",
             "type": "string"
           },
           "last_packet": {
@@ -6167,6 +6567,7 @@
           },
           "initiator_auth_provider_id": {
             "description": "ID of the Auth Provider the initiating Client authenticated with.\n",
+            "format": "uuid",
             "nullable": true,
             "type": "string"
           },
@@ -6188,6 +6589,7 @@
           },
           "policy_authorization_id": {
             "description": "ID of the Policy Authorization that permitted the flow.",
+            "format": "uuid",
             "type": "string"
           },
           "tx_bytes": {
@@ -6248,6 +6650,7 @@
           },
           "responder_device_id": {
             "description": "ID of the device the flow was opened to: the Gateway serving the\nResource, or the receiving Client for device-to-device flows.\n",
+            "format": "uuid",
             "type": "string"
           },
           "initiator_actor_email": {
@@ -6304,6 +6707,7 @@
           },
           "resource_id": {
             "description": "ID of the Resource accessed.",
+            "format": "uuid",
             "type": "string"
           },
           "inner_src_port": {
@@ -6336,6 +6740,7 @@
           },
           "initiator_actor_id": {
             "description": "ID of the Actor who opened the flow. This is always the initiating\nClient's Actor. A Gateway has no Actor, and for device-to-device\nflows the receiving Client's own Actor is not recorded here.\n",
+            "format": "uuid",
             "nullable": true,
             "type": "string"
           },
@@ -6358,60 +6763,55 @@
           },
           "policy_id": {
             "description": "ID of the Policy that permitted the flow.",
+            "format": "uuid",
             "type": "string"
           }
         },
         "required": [
-          "type",
-          "log_id",
-          "timestamp",
+          "authorization_expires_at",
+          "authorized_at",
+          "flow_end",
+          "flow_start",
+          "initiator_actor_email",
+          "initiator_actor_id",
+          "initiator_actor_name",
+          "initiator_auth_provider_id",
+          "initiator_client_version",
+          "initiator_device_firebase_installation_id",
           "initiator_device_id",
-          "responder_device_id",
-          "role",
+          "initiator_device_identifier_for_vendor",
+          "initiator_device_os_name",
+          "initiator_device_os_version",
+          "initiator_device_serial",
+          "initiator_device_uuid",
+          "inner_domain",
+          "inner_dst_ip",
+          "inner_dst_port",
+          "inner_src_ip",
+          "inner_src_port",
+          "last_packet",
+          "log_id",
+          "outers",
           "policy_authorization_id",
           "policy_id",
           "protocol",
-          "flow_start",
-          "flow_end",
-          "last_packet",
-          "authorized_at",
-          "authorization_expires_at",
+          "resource_address",
           "resource_id",
           "resource_name",
-          "resource_address",
-          "inner_src_ip",
-          "inner_dst_ip",
-          "inner_src_port",
-          "inner_dst_port",
-          "outers",
-          "rx_packets",
-          "tx_packets",
+          "responder_device_id",
+          "role",
           "rx_bytes",
-          "tx_bytes"
+          "rx_packets",
+          "timestamp",
+          "tx_bytes",
+          "tx_packets",
+          "type"
         ],
         "title": "FlowLog",
         "type": "object"
       },
       "SiteListResponse": {
         "description": "Response schema for multiple Sites",
-        "example": {
-          "data": [
-            {
-              "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-              "name": "vpc-us-east"
-            },
-            {
-              "id": "6301d7d2-4938-4123-87de-282c01cca656",
-              "name": "vpc-us-west"
-            }
-          ],
-          "metadata": {
-            "limit": 10,
-            "next_page": "98776234123",
-            "prev_page": "123123425",
-            "total": 100
-          }
-        },
         "properties": {
           "data": {
             "description": "Site details",
@@ -6429,43 +6829,6 @@
       },
       "PolicyListResponse": {
         "description": "Response schema for multiple Policies",
-        "example": {
-          "data": [
-            {
-              "conditions": [
-                {
-                  "operator": "is_in",
-                  "property": "remote_ip_location_region",
-                  "values": [
-                    "US",
-                    "CA"
-                  ]
-                }
-              ],
-              "description": "Policy to allow something",
-              "flow_log_uploads_enabled": true,
-              "group_id": "88eae9ce-9179-48c6-8430-770e38dd4775",
-              "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-              "is_disabled": false,
-              "resource_id": "a9f60587-793c-46ae-8525-597f43ab2fb1"
-            },
-            {
-              "conditions": [],
-              "description": "Policy to allow something else",
-              "flow_log_uploads_enabled": false,
-              "group_id": "343385a2-5437-4c66-8744-1332421ff736",
-              "id": "6301d7d2-4938-4123-87de-282c01cca656",
-              "is_disabled": true,
-              "resource_id": "9876bd25-0f6c-48fb-a9fd-196ba9be86e5"
-            }
-          ],
-          "metadata": {
-            "limit": 10,
-            "next_page": "98776234123",
-            "prev_page": "123123425",
-            "total": 100
-          }
-        },
         "properties": {
           "data": {
             "description": "Policy details",
@@ -6483,14 +6846,6 @@
       },
       "EmailOTPAuthProviderListResponse": {
         "description": "Response schema for multiple Email OTP Auth Providers",
-        "example": {
-          "data": [
-            {
-              "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-              "name": "Email OTP"
-            }
-          ]
-        },
         "properties": {
           "data": {
             "description": "Email OTP Auth Provider details",
@@ -6535,32 +6890,6 @@
       },
       "ResourceListResponse": {
         "description": "Response schema for multiple Resources",
-        "example": {
-          "data": [
-            {
-              "address": "10.0.0.10",
-              "address_description": "Production Database",
-              "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-              "name": "Prod DB",
-              "site_id": "0642e09d-b3a2-47e4-9cd1-c2195faeeb67",
-              "type": "ip"
-            },
-            {
-              "address": "10.0.0.20",
-              "address_description": "Production Admin Dashboard",
-              "id": "3b9451c9-5616-48f8-827f-009ace22d015",
-              "name": "Admin Dashboard",
-              "site_id": "0642e09d-b3a2-47e4-9cd1-c2195faeeb67",
-              "type": "ip"
-            }
-          ],
-          "metadata": {
-            "limit": 10,
-            "next_page": "98776234123",
-            "prev_page": "123123425",
-            "total": 100
-          }
-        },
         "properties": {
           "data": {
             "description": "Resource details",
@@ -6973,9 +7302,99 @@
         },
         "required": [
           "account_id",
-          "posture_provider_id",
           "intune_id",
-          "synced_at"
+          "posture_provider_id",
+          "device_name",
+          "managed_device_name",
+          "serial_number",
+          "entra_device_id",
+          "enrollment_profile_name",
+          "device_category_display_name",
+          "user_id",
+          "user_principal_name",
+          "user_display_name",
+          "email_address",
+          "operating_system",
+          "os_version",
+          "model",
+          "manufacturer",
+          "imei",
+          "meid",
+          "iccid",
+          "udid",
+          "phone_number",
+          "subscriber_carrier",
+          "wifi_mac_address",
+          "ethernet_mac_address",
+          "android_security_patch_level",
+          "total_storage_space_bytes",
+          "free_storage_space_bytes",
+          "physical_memory_bytes",
+          "compliance_state",
+          "management_state",
+          "management_agent",
+          "managed_device_owner_type",
+          "device_enrollment_type",
+          "device_registration_state",
+          "partner_reported_threat_state",
+          "jail_broken",
+          "is_encrypted",
+          "is_supervised",
+          "entra_registered",
+          "require_user_enrollment_approval",
+          "notes",
+          "eas_activated",
+          "eas_device_id",
+          "eas_activated_at",
+          "exchange_access_state",
+          "exchange_access_state_reason",
+          "exchange_last_successful_sync_at",
+          "config_manager_inventory",
+          "config_manager_modern_apps",
+          "config_manager_resource_access",
+          "config_manager_device_configuration",
+          "config_manager_compliance_policy",
+          "config_manager_windows_update_for_business",
+          "attestation_last_update_date_time",
+          "attestation_content_namespace_url",
+          "attestation_status",
+          "attestation_content_version",
+          "attestation_issued_at",
+          "attestation_identity_key",
+          "attestation_reset_count",
+          "attestation_restart_count",
+          "attestation_data_execution_policy",
+          "attestation_bit_locker_status",
+          "attestation_boot_manager_version",
+          "attestation_code_integrity_check_version",
+          "attestation_secure_boot",
+          "attestation_boot_debugging",
+          "attestation_operating_system_kernel_debugging",
+          "attestation_code_integrity",
+          "attestation_test_signing",
+          "attestation_safe_mode",
+          "attestation_windows_pe",
+          "attestation_early_launch_anti_malware_driver_protection",
+          "attestation_virtual_secure_mode",
+          "attestation_pcr_hash_algorithm",
+          "attestation_boot_app_security_version",
+          "attestation_boot_manager_security_version",
+          "attestation_tpm_version",
+          "attestation_pcr0",
+          "attestation_secure_boot_config_policy_fingerprint",
+          "attestation_code_integrity_policy",
+          "attestation_boot_revision_list_info",
+          "attestation_operating_system_rev_list_info",
+          "attestation_health_status_mismatch_info",
+          "attestation_supported_status",
+          "device_action_results",
+          "enrolled_at",
+          "last_sync_at",
+          "compliance_grace_period_expiration_at",
+          "management_certificate_expires_at",
+          "synced_at",
+          "inserted_at",
+          "updated_at"
         ],
         "title": "IntuneDevice",
         "type": "object"
@@ -7033,13 +7452,6 @@
       },
       "OIDCAuthProviderResponse": {
         "description": "Response schema for single OIDC Auth Provider",
-        "example": {
-          "data": {
-            "email_verification_method": "claim",
-            "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-            "name": "OIDC Provider"
-          }
-        },
         "properties": {
           "data": {
             "$ref": "#/components/schemas/OIDCAuthProvider"
@@ -7159,6 +7571,22 @@
             },
             "description": "Unauthorized"
           },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
           "429": {
             "content": {
               "application/problem+json": {
@@ -7238,6 +7666,22 @@
               }
             },
             "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
           },
           "422": {
             "content": {
@@ -7359,6 +7803,22 @@
             },
             "description": "Unauthorized"
           },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
           "404": {
             "content": {
               "application/problem+json": {
@@ -7457,6 +7917,22 @@
             },
             "description": "Unauthorized"
           },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
           "404": {
             "content": {
               "application/problem+json": {
@@ -7552,6 +8028,22 @@
               }
             },
             "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
           },
           "404": {
             "content": {
@@ -7659,6 +8151,22 @@
               }
             },
             "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
           },
           "404": {
             "content": {
@@ -7787,6 +8295,22 @@
               }
             },
             "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
           },
           "404": {
             "content": {
@@ -7917,6 +8441,22 @@
             },
             "description": "Unauthorized"
           },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
           "404": {
             "content": {
               "application/problem+json": {
@@ -8022,6 +8562,22 @@
               }
             },
             "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
           },
           "404": {
             "content": {
@@ -8140,6 +8696,22 @@
               }
             },
             "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
           },
           "404": {
             "content": {
@@ -8279,6 +8851,22 @@
               }
             },
             "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
           },
           "404": {
             "content": {
@@ -8523,6 +9111,22 @@
             },
             "description": "Unauthorized"
           },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
           "429": {
             "content": {
               "application/problem+json": {
@@ -8614,6 +9218,22 @@
               }
             },
             "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
           },
           "404": {
             "content": {
@@ -8819,6 +9439,22 @@
             },
             "description": "Unauthorized"
           },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
           "404": {
             "content": {
               "application/problem+json": {
@@ -8914,6 +9550,22 @@
               }
             },
             "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
           },
           "404": {
             "content": {
@@ -9303,6 +9955,22 @@
             },
             "description": "Unauthorized"
           },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
           "404": {
             "content": {
               "application/problem+json": {
@@ -9400,6 +10068,22 @@
               }
             },
             "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
           },
           "404": {
             "content": {
@@ -9515,6 +10199,22 @@
             },
             "description": "Unauthorized"
           },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
           "404": {
             "content": {
               "application/problem+json": {
@@ -9621,6 +10321,22 @@
               }
             },
             "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
           },
           "404": {
             "content": {
@@ -9751,6 +10467,22 @@
             },
             "description": "Unauthorized"
           },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
           "404": {
             "content": {
               "application/problem+json": {
@@ -9819,7 +10551,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ClientTokenResponse"
+                  "$ref": "#/components/schemas/ClientTokenShowResponse"
                 }
               }
             },
@@ -9856,6 +10588,22 @@
               }
             },
             "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
           },
           "404": {
             "content": {
@@ -9973,6 +10721,22 @@
             },
             "description": "Unauthorized"
           },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
           "429": {
             "content": {
               "application/problem+json": {
@@ -10072,6 +10836,22 @@
               }
             },
             "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
           },
           "429": {
             "content": {
@@ -10285,6 +11065,22 @@
               }
             },
             "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
           },
           "429": {
             "content": {
@@ -10596,6 +11392,22 @@
               }
             },
             "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
           },
           "404": {
             "content": {
@@ -11001,6 +11813,22 @@
             },
             "description": "Unauthorized"
           },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
           "429": {
             "content": {
               "application/problem+json": {
@@ -11082,6 +11910,22 @@
               }
             },
             "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
           },
           "404": {
             "content": {
@@ -11178,6 +12022,22 @@
               }
             },
             "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
           },
           "404": {
             "content": {
@@ -11669,6 +12529,22 @@
             },
             "description": "Unauthorized"
           },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
           "404": {
             "content": {
               "application/problem+json": {
@@ -11823,6 +12699,22 @@
             },
             "description": "Unauthorized"
           },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
           "429": {
             "content": {
               "application/problem+json": {
@@ -11902,6 +12794,22 @@
               }
             },
             "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
           },
           "422": {
             "content": {
@@ -12016,6 +12924,22 @@
             },
             "description": "Unauthorized"
           },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
           "404": {
             "content": {
               "application/problem+json": {
@@ -12121,6 +13045,22 @@
               }
             },
             "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
           },
           "404": {
             "content": {
@@ -12343,6 +13283,22 @@
               }
             },
             "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
           },
           "429": {
             "content": {
@@ -12890,6 +13846,22 @@
             },
             "description": "Unauthorized"
           },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
           "404": {
             "content": {
               "application/problem+json": {
@@ -13296,6 +14268,22 @@
             },
             "description": "Unauthorized"
           },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
           "429": {
             "content": {
               "application/problem+json": {
@@ -13604,6 +14592,22 @@
             },
             "description": "Unauthorized"
           },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
           "404": {
             "content": {
               "application/problem+json": {
@@ -13807,6 +14811,22 @@
               }
             },
             "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
           },
           "404": {
             "content": {
@@ -14017,6 +15037,22 @@
               }
             },
             "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
           },
           "404": {
             "content": {
@@ -14422,6 +15458,22 @@
             },
             "description": "Unauthorized"
           },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
           "429": {
             "content": {
               "application/problem+json": {
@@ -14503,6 +15555,22 @@
               }
             },
             "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
           },
           "404": {
             "content": {
@@ -14629,6 +15697,22 @@
             },
             "description": "Unauthorized"
           },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
           "429": {
             "content": {
               "application/problem+json": {
@@ -14683,6 +15767,22 @@
               }
             },
             "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
           },
           "429": {
             "content": {
@@ -14749,6 +15849,38 @@
               }
             },
             "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The requested resource could not be found.",
+                  "status": 404,
+                  "title": "Not Found",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
           },
           "429": {
             "content": {
@@ -14831,6 +15963,22 @@
               }
             },
             "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
           },
           "404": {
             "content": {
@@ -15169,6 +16317,22 @@
             },
             "description": "Unauthorized"
           },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
           "404": {
             "content": {
               "application/problem+json": {
@@ -15276,6 +16440,22 @@
               }
             },
             "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
           },
           "404": {
             "content": {
@@ -15406,6 +16586,22 @@
             },
             "description": "Unauthorized"
           },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
           "404": {
             "content": {
               "application/problem+json": {
@@ -15524,6 +16720,22 @@
               }
             },
             "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
           },
           "404": {
             "content": {
@@ -15736,6 +16948,22 @@
             },
             "description": "Unauthorized"
           },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
           "404": {
             "content": {
               "application/problem+json": {
@@ -15833,6 +17061,22 @@
               }
             },
             "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
           },
           "404": {
             "content": {
@@ -16038,6 +17282,22 @@
             },
             "description": "Unauthorized"
           },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
           "404": {
             "content": {
               "application/problem+json": {
@@ -16133,6 +17393,22 @@
               }
             },
             "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
           },
           "404": {
             "content": {
@@ -16521,6 +17797,22 @@
             },
             "description": "Unauthorized"
           },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
           "404": {
             "content": {
               "application/problem+json": {
@@ -16618,6 +17910,22 @@
               }
             },
             "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
           },
           "404": {
             "content": {
@@ -16763,6 +18071,22 @@
             },
             "description": "Unauthorized"
           },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
           "404": {
             "content": {
               "application/problem+json": {
@@ -16870,6 +18194,22 @@
               }
             },
             "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
           },
           "404": {
             "content": {
@@ -17123,6 +18463,22 @@
             },
             "description": "Unauthorized"
           },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
           "429": {
             "content": {
               "application/problem+json": {
@@ -17218,6 +18574,22 @@
               }
             },
             "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The requested resource could not be found.",
+                  "status": 404,
+                  "title": "Not Found",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
           },
           "422": {
             "content": {
@@ -17382,6 +18754,22 @@
             },
             "description": "Unauthorized"
           },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
           "429": {
             "content": {
               "application/problem+json": {
@@ -17500,6 +18888,22 @@
               }
             },
             "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
           },
           "429": {
             "content": {
@@ -17717,6 +19121,22 @@
               }
             },
             "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
           },
           "429": {
             "content": {
@@ -18019,6 +19439,22 @@
             },
             "description": "Unauthorized"
           },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
           "404": {
             "content": {
               "application/problem+json": {
@@ -18128,6 +19564,22 @@
             },
             "description": "Unauthorized"
           },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
           "404": {
             "content": {
               "application/problem+json": {
@@ -18236,6 +19688,22 @@
               }
             },
             "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
           },
           "404": {
             "content": {
@@ -18456,6 +19924,22 @@
               }
             },
             "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
           },
           "404": {
             "content": {

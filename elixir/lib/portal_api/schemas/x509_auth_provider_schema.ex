@@ -18,12 +18,15 @@ defmodule PortalAPI.Schemas.X509AuthProvider do
         inserted_at: %Schema{type: :string, format: :"date-time", description: "Creation timestamp"},
         updated_at: %Schema{type: :string, format: :"date-time", description: "Update timestamp"}
       },
-      required: [:id, :account_id, :name, :context, :is_disabled],
+      required: [:account_id, :context, :id, :inserted_at, :is_disabled, :name, :updated_at],
       example: %{
         "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
+        "account_id" => "5e6f7d8c-9b0a-1c2d-3e4f-5a6b7c8d9e0f",
         "name" => "X.509",
         "context" => "clients_only",
-        "is_disabled" => true
+        "is_disabled" => true,
+        "inserted_at" => "2025-01-01T00:00:00Z",
+        "updated_at" => "2025-01-15T10:30:00Z"
       }
     })
   end
