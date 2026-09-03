@@ -13,49 +13,83 @@ defmodule PortalAPI.Schemas.GoogleDirectory do
       description: "Google Directory",
       type: :object,
       properties: %{
-        id: %Schema{type: :string, format: :uuid, description: "Directory ID"},
-        account_id: %Schema{type: :string, format: :uuid, description: "Account ID"},
-        name: %Schema{type: :string, description: "Directory name"},
-        domain: %Schema{type: :string, description: "Google Workspace domain"},
-        impersonation_email: %Schema{type: :string, description: "Impersonation email"},
-        is_disabled: %Schema{type: :boolean, description: "Whether directory is disabled"},
+        id: %Schema{
+          example: "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
+          type: :string,
+          format: :uuid,
+          description: "Directory ID"
+        },
+        account_id: %Schema{
+          example: "5e6f7d8c-9b0a-1c2d-3e4f-5a6b7c8d9e0f",
+          type: :string,
+          format: :uuid,
+          description: "Account ID"
+        },
+        name: %Schema{example: "Google", type: :string, description: "Directory name"},
+        domain: %Schema{
+          example: "example.com",
+          type: :string,
+          description: "Google Workspace domain"
+        },
+        impersonation_email: %Schema{
+          example: "admin@example.com",
+          type: :string,
+          description: "Impersonation email"
+        },
+        is_disabled: %Schema{
+          example: false,
+          type: :boolean,
+          description: "Whether directory is disabled"
+        },
         disabled_reason: %Schema{
+          example: nil,
           type: :string,
           nullable: true,
           description: "Reason for disabling"
         },
         synced_at: %Schema{
+          example: "2025-01-15T10:30:00Z",
           type: :string,
           format: :"date-time",
           nullable: true,
           description: "Last sync timestamp"
         },
         error_message: %Schema{
+          example: nil,
           type: :string,
           nullable: true,
           description: "Last error message"
         },
         errored_at: %Schema{
+          example: nil,
           type: :string,
           format: :"date-time",
           nullable: true,
           description: "Last error timestamp"
         },
         group_sync_mode: %Schema{
+          example: "all",
           type: :string,
           enum: ["all", "filtered", "disabled"],
           description: "Group sync mode"
         },
         orgunit_sync_enabled: %Schema{
+          example: true,
           type: :boolean,
           description: "Whether org unit sync is enabled"
         },
         inserted_at: %Schema{
+          example: "2025-01-01T00:00:00Z",
           type: :string,
           format: :"date-time",
           description: "Creation timestamp"
         },
-        updated_at: %Schema{type: :string, format: :"date-time", description: "Update timestamp"}
+        updated_at: %Schema{
+          example: "2025-01-15T10:30:00Z",
+          type: :string,
+          format: :"date-time",
+          description: "Update timestamp"
+        }
       },
       required: [
         :account_id,
@@ -72,25 +106,8 @@ defmodule PortalAPI.Schemas.GoogleDirectory do
         :orgunit_sync_enabled,
         :synced_at,
         :updated_at
-      ],
-      example: %{
-        "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-        "account_id" => "5e6f7d8c-9b0a-1c2d-3e4f-5a6b7c8d9e0f",
-        "name" => "Google",
-        "domain" => "example.com",
-        "impersonation_email" => "admin@example.com",
-        "group_sync_mode" => "all",
-        "orgunit_sync_enabled" => true,
-        "is_disabled" => false,
-        "disabled_reason" => nil,
-        "synced_at" => "2025-01-15T10:30:00Z",
-        "error_message" => nil,
-        "errored_at" => nil,
-        "inserted_at" => "2025-01-01T00:00:00Z",
-        "updated_at" => "2025-01-15T10:30:00Z"
-      }
+      ]
     })
-
   end
 
   defmodule Response do

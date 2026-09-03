@@ -5,8 +5,7 @@ defmodule PortalAPI.Schemas.Log do
     alias PortalAPI.Schemas
 
     @derive {PortalAPI.JSON.Encoder,
-             for: Portal.ChangeLog,
-             internal: [:account_id, :lsn, :seq, :vsn]}
+             for: Portal.ChangeLog, internal: [:account_id, :lsn, :seq, :vsn]}
     OpenApiSpex.schema(%{
       title: "ChangeLog",
       description: """
@@ -17,7 +16,7 @@ defmodule PortalAPI.Schemas.Log do
       """,
       type: :object,
       properties: %{
-        type: %Schema{type: :string, enum: ["change"]},
+        type: %Schema{example: "change", type: :string, enum: ["change"]},
         log_id: %Schema{
           type: :string,
           description: """
@@ -28,6 +27,7 @@ defmodule PortalAPI.Schemas.Log do
           example: "c00060db0c2c8eb400000000"
         },
         timestamp: %Schema{
+          example: "2026-05-26T12:34:56.789Z",
           type: :string,
           format: :"date-time",
           description: "RFC 3339 timestamp identifying when the change was committed."
@@ -38,11 +38,13 @@ defmodule PortalAPI.Schemas.Log do
           example: "actors"
         },
         operation: %Schema{
+          example: "update",
           type: :string,
           enum: ["insert", "update", "delete"],
           description: "The kind of change that was applied."
         },
         before: %Schema{
+          example: %{"name" => "Jane Doe"},
           type: :object,
           nullable: true,
           description: """
@@ -53,6 +55,7 @@ defmodule PortalAPI.Schemas.Log do
           additionalProperties: true
         },
         after: %Schema{
+          example: %{"name" => "Jane Smith"},
           type: :object,
           nullable: true,
           description: """
@@ -64,21 +67,10 @@ defmodule PortalAPI.Schemas.Log do
         },
         subject: Schemas.Subject
       },
-      required: [:after, :before, :log_id, :object, :operation, :subject, :timestamp, :type],
-      example: %{
-        "type" => "change",
-        "log_id" => "c00060db0c2c8eb400000000",
-        "timestamp" => "2026-05-26T12:34:56.789Z",
-        "object" => "actors",
-        "operation" => "update",
-        "before" => %{"name" => "Jane Doe"},
-        "after" => %{"name" => "Jane Smith"},
-        "subject" => nil
-      }
+      required: [:after, :before, :log_id, :object, :operation, :subject, :timestamp, :type]
     })
 
     def map(%Portal.ChangeLog{}, _map), do: %{type: "change"}
-
   end
 
   defmodule Session do
@@ -87,9 +79,7 @@ defmodule PortalAPI.Schemas.Log do
     alias PortalAPI.Schemas
     alias PortalAPI.Schemas.SessionSubject
 
-    @derive {PortalAPI.JSON.Encoder,
-             for: Portal.SessionLog,
-             internal: [:account_id, :seq]}
+    @derive {PortalAPI.JSON.Encoder, for: Portal.SessionLog, internal: [:account_id, :seq]}
     OpenApiSpex.schema(%{
       title: "SessionLog",
       description: """
@@ -99,7 +89,7 @@ defmodule PortalAPI.Schemas.Log do
       """,
       type: :object,
       properties: %{
-        type: %Schema{type: :string, enum: ["session"]},
+        type: %Schema{example: "session", type: :string, enum: ["session"]},
         log_id: %Schema{
           type: :string,
           description: """
@@ -109,16 +99,33 @@ defmodule PortalAPI.Schemas.Log do
           example: "500060db0c2c8eb400000000"
         },
         timestamp: %Schema{
+          example: "2026-05-26T12:34:56.789Z",
           type: :string,
           format: :"date-time",
           description: "RFC 3339 timestamp identifying when the session was created."
         },
         context: %Schema{
+          example: "client",
           type: :string,
           enum: ["client", "gateway", "portal"],
           description: "The kind of session that was created."
         },
         subject: %Schema{
+          example: %{
+            "actor_id" => "84e7f82f-831a-4a9d-8f17-c66c2bb6e205",
+            "actor_name" => "Admin User",
+            "actor_email" => "admin@example.com",
+            "actor_type" => "account_admin_user",
+            "auth_provider_id" => "98776234-1234-5678-9012-345678901234",
+            "device_id" => "11e7f82f-831a-4a9d-8f17-c66c2bb6e205",
+            "token_id" => "22e7f82f-831a-4a9d-8f17-c66c2bb6e205",
+            "ip" => "189.172.73.1",
+            "ip_region" => "MX",
+            "ip_city" => "Mexico City",
+            "ip_lat" => 19.4326,
+            "ip_lon" => -99.1332,
+            "user_agent" => "Linux/6.5.0 connlib/1.5.1"
+          },
           description: """
           Who established the session and from where. The shape depends on
           `context`:
@@ -132,32 +139,10 @@ defmodule PortalAPI.Schemas.Log do
           oneOf: [SessionSubject.Client, SessionSubject.Gateway, Schemas.Subject]
         }
       },
-      required: [:context, :log_id, :subject, :timestamp, :type],
-      example: %{
-        "type" => "session",
-        "log_id" => "500060db0c2c8eb400000000",
-        "timestamp" => "2026-05-26T12:34:56.789Z",
-        "context" => "client",
-        "subject" => %{
-          "actor_id" => "84e7f82f-831a-4a9d-8f17-c66c2bb6e205",
-          "actor_name" => "Admin User",
-          "actor_email" => "admin@example.com",
-          "actor_type" => "account_admin_user",
-          "auth_provider_id" => "98776234-1234-5678-9012-345678901234",
-          "device_id" => "11e7f82f-831a-4a9d-8f17-c66c2bb6e205",
-          "token_id" => "22e7f82f-831a-4a9d-8f17-c66c2bb6e205",
-          "ip" => "189.172.73.1",
-          "ip_region" => "MX",
-          "ip_city" => "Mexico City",
-          "ip_lat" => 19.4326,
-          "ip_lon" => -99.1332,
-          "user_agent" => "Linux/6.5.0 connlib/1.5.1"
-        }
-      }
+      required: [:context, :log_id, :subject, :timestamp, :type]
     })
 
     def map(%Portal.SessionLog{}, _map), do: %{type: "session"}
-
   end
 
   defmodule Flow do
@@ -165,8 +150,7 @@ defmodule PortalAPI.Schemas.Log do
     alias OpenApiSpex.Schema
 
     @derive {PortalAPI.JSON.Encoder,
-             for: Portal.FlowLog,
-             internal: [:account_id, :domain, :inserted_at, :seq, :start_seq]}
+             for: Portal.FlowLog, internal: [:account_id, :domain, :inserted_at, :seq, :start_seq]}
     OpenApiSpex.schema(%{
       title: "FlowLog",
       description: """
@@ -184,7 +168,7 @@ defmodule PortalAPI.Schemas.Log do
       """,
       type: :object,
       properties: %{
-        type: %Schema{type: :string, enum: ["flow"]},
+        type: %Schema{example: "flow", type: :string, enum: ["flow"]},
         log_id: %Schema{
           type: :string,
           description: """
@@ -194,16 +178,19 @@ defmodule PortalAPI.Schemas.Log do
           example: "f00060db0c2c8eb400000000"
         },
         timestamp: %Schema{
+          example: "2026-05-26T12:34:56.789Z",
           type: :string,
           format: :"date-time",
           description: "RFC 3339 timestamp identifying when the flow was ingested."
         },
         initiator_device_id: %Schema{
+          example: "11e7f82f-831a-4a9d-8f17-c66c2bb6e205",
           type: :string,
           format: :uuid,
           description: "ID of the Client that opened the flow. Always a Client."
         },
         responder_device_id: %Schema{
+          example: "9d3a1c40-5f2b-4c8e-9a71-0b6d4e2f8c13",
           type: :string,
           format: :uuid,
           description: """
@@ -212,6 +199,7 @@ defmodule PortalAPI.Schemas.Log do
           """
         },
         role: %Schema{
+          example: "responder",
           type: :string,
           enum: ["initiator", "responder"],
           description: """
@@ -222,21 +210,25 @@ defmodule PortalAPI.Schemas.Log do
           """
         },
         policy_authorization_id: %Schema{
+          example: "6fa1d58f-0289-42e6-a3ba-7edfa46ee2d5",
           type: :string,
           format: :uuid,
           description: "ID of the Policy Authorization that permitted the flow."
         },
         policy_id: %Schema{
+          example: "46f997d1-77c8-4936-8655-8f050dffbfa4",
           type: :string,
           format: :uuid,
           description: "ID of the Policy that permitted the flow."
         },
         protocol: %Schema{
+          example: "tcp",
           type: :string,
           enum: ["tcp", "udp"],
           description: "Transport protocol of the flow."
         },
         flow_start: %Schema{
+          example: "2026-05-26T12:30:00.000Z",
           type: :string,
           format: :"date-time",
           description: """
@@ -246,28 +238,33 @@ defmodule PortalAPI.Schemas.Log do
           """
         },
         flow_end: %Schema{
+          example: "2026-05-26T12:34:00.000Z",
           type: :string,
           format: :"date-time",
           nullable: true,
           description: "RFC 3339 timestamp of when the flow ended. Null while the flow is open."
         },
         last_packet: %Schema{
+          example: "2026-05-26T12:33:58.000Z",
           type: :string,
           format: :"date-time",
           nullable: true,
           description: "When the last packet was seen. Null while the flow is open."
         },
         authorized_at: %Schema{
+          example: "2026-05-26T12:29:00.000Z",
           type: :string,
           format: :"date-time",
           description: "When access to the Resource was authorized."
         },
         authorization_expires_at: %Schema{
+          example: "2026-05-26T20:29:00.000Z",
           type: :string,
           format: :"date-time",
           description: "When the Policy Authorization expires."
         },
         initiator_auth_provider_id: %Schema{
+          example: "7b2c1e40-9f3a-4d21-8c5e-1a2b3c4d5e6f",
           type: :string,
           format: :uuid,
           nullable: true,
@@ -276,6 +273,7 @@ defmodule PortalAPI.Schemas.Log do
           """
         },
         initiator_actor_id: %Schema{
+          example: "84e7f82f-831a-4a9d-8f17-c66c2bb6e205",
           type: :string,
           format: :uuid,
           nullable: true,
@@ -285,66 +283,90 @@ defmodule PortalAPI.Schemas.Log do
           flows the receiving Client's own Actor is not recorded here.
           """
         },
-        initiator_actor_name: %Schema{type: :string, nullable: true},
-        initiator_actor_email: %Schema{type: :string, nullable: true},
+        initiator_actor_name: %Schema{example: "John Doe", type: :string, nullable: true},
+        initiator_actor_email: %Schema{example: "user@example.com", type: :string, nullable: true},
         initiator_client_version: %Schema{
+          example: "1.5.1",
           type: :string,
           nullable: true,
           description: "Firezone Client version reported by the initiating Client."
         },
         initiator_device_os_name: %Schema{
+          example: "macOS",
           type: :string,
           nullable: true,
           description: "Operating system reported by the initiating Client."
         },
         initiator_device_os_version: %Schema{
+          example: "15.5",
           type: :string,
           nullable: true,
           description: "Operating system version reported by the initiating Client."
         },
         initiator_device_serial: %Schema{
+          example: "C02ABC123",
           type: :string,
           nullable: true,
           description: "Device serial number reported by the initiating Client."
         },
         initiator_device_uuid: %Schema{
+          example: "0C4A8D24-FA9F-4E56-9B57-40D0D46A245E",
           type: :string,
           nullable: true,
           description: "Device UUID reported by the initiating Client."
         },
         initiator_device_identifier_for_vendor: %Schema{
+          example: nil,
           type: :string,
           nullable: true,
           description: "Vendor identifier reported by the initiating Client."
         },
         initiator_device_firebase_installation_id: %Schema{
+          example: nil,
           type: :string,
           nullable: true,
           description: "Firebase installation ID reported by the initiating Client."
         },
-        resource_id: %Schema{type: :string, format: :uuid, description: "ID of the Resource accessed."},
-        resource_name: %Schema{type: :string},
+        resource_id: %Schema{
+          example: "44e7f82f-831a-4a9d-8f17-c66c2bb6e205",
+          type: :string,
+          format: :uuid,
+          description: "ID of the Resource accessed."
+        },
+        resource_name: %Schema{example: "GitLab", type: :string},
         resource_address: %Schema{
+          example: "gitlab.company.com",
           type: :string,
           nullable: true,
           description: "Resource address, when the Resource type has one."
         },
         inner_src_ip: %Schema{
+          example: "100.64.0.1",
           type: :string,
           description: "Tunnel IP of the initiator, on both entries of the flow."
         },
         inner_dst_ip: %Schema{
+          example: "10.0.0.5",
           type: :string,
           description: "Tunnel IP of the responder, on both entries of the flow."
         },
-        inner_src_port: %Schema{type: :integer},
-        inner_dst_port: %Schema{type: :integer},
+        inner_src_port: %Schema{example: 54_321, type: :integer},
+        inner_dst_port: %Schema{example: 443, type: :integer},
         inner_domain: %Schema{
+          example: "gitlab.company.com",
           type: :string,
           nullable: true,
           description: "Domain name for flows to DNS Resources."
         },
         outers: %Schema{
+          example: [
+            %{
+              "src_ip" => "203.0.113.10",
+              "src_port" => 51_820,
+              "dst_ip" => "198.51.100.5",
+              "dst_port" => 51_820
+            }
+          ],
           type: :array,
           minItems: 1,
           nullable: true,
@@ -379,24 +401,28 @@ defmodule PortalAPI.Schemas.Log do
           }
         },
         rx_packets: %Schema{
+          example: 100,
           type: :integer,
           nullable: true,
           description:
             "Packets sent responder-to-initiator, as counted by the reporting side. Null while the flow is open."
         },
         tx_packets: %Schema{
+          example: 80,
           type: :integer,
           nullable: true,
           description:
             "Packets sent initiator-to-responder, as counted by the reporting side. Null while the flow is open."
         },
         rx_bytes: %Schema{
+          example: 102_400,
           type: :integer,
           nullable: true,
           description:
             "Bytes sent responder-to-initiator, as counted by the reporting side. Null while the flow is open."
         },
         tx_bytes: %Schema{
+          example: 20_480,
           type: :integer,
           nullable: true,
           description:
@@ -442,54 +468,7 @@ defmodule PortalAPI.Schemas.Log do
         :tx_bytes,
         :tx_packets,
         :type
-      ],
-      example: %{
-        "type" => "flow",
-        "log_id" => "f00060db0c2c8eb400000000",
-        "timestamp" => "2026-05-26T12:34:56.789Z",
-        "initiator_device_id" => "11e7f82f-831a-4a9d-8f17-c66c2bb6e205",
-        "responder_device_id" => "9d3a1c40-5f2b-4c8e-9a71-0b6d4e2f8c13",
-        "role" => "responder",
-        "policy_authorization_id" => "6fa1d58f-0289-42e6-a3ba-7edfa46ee2d5",
-        "policy_id" => "46f997d1-77c8-4936-8655-8f050dffbfa4",
-        "protocol" => "tcp",
-        "flow_start" => "2026-05-26T12:30:00.000Z",
-        "flow_end" => "2026-05-26T12:34:00.000Z",
-        "last_packet" => "2026-05-26T12:33:58.000Z",
-        "authorized_at" => "2026-05-26T12:29:00.000Z",
-        "authorization_expires_at" => "2026-05-26T20:29:00.000Z",
-        "initiator_auth_provider_id" => "7b2c1e40-9f3a-4d21-8c5e-1a2b3c4d5e6f",
-        "initiator_actor_id" => "84e7f82f-831a-4a9d-8f17-c66c2bb6e205",
-        "initiator_actor_name" => "John Doe",
-        "initiator_actor_email" => "user@example.com",
-        "initiator_client_version" => "1.5.1",
-        "initiator_device_os_name" => "macOS",
-        "initiator_device_os_version" => "15.5",
-        "initiator_device_serial" => "C02ABC123",
-        "initiator_device_uuid" => "0C4A8D24-FA9F-4E56-9B57-40D0D46A245E",
-        "initiator_device_identifier_for_vendor" => nil,
-        "initiator_device_firebase_installation_id" => nil,
-        "resource_id" => "44e7f82f-831a-4a9d-8f17-c66c2bb6e205",
-        "resource_name" => "GitLab",
-        "resource_address" => "gitlab.company.com",
-        "inner_src_ip" => "100.64.0.1",
-        "inner_dst_ip" => "10.0.0.5",
-        "inner_src_port" => 54_321,
-        "inner_dst_port" => 443,
-        "inner_domain" => "gitlab.company.com",
-        "outers" => [
-          %{
-            "src_ip" => "203.0.113.10",
-            "src_port" => 51_820,
-            "dst_ip" => "198.51.100.5",
-            "dst_port" => 51_820
-          }
-        ],
-        "rx_packets" => 100,
-        "tx_packets" => 80,
-        "rx_bytes" => 102_400,
-        "tx_bytes" => 20_480
-      }
+      ]
     })
 
     def map(%Portal.FlowLog{} = log, _map) do
@@ -505,7 +484,6 @@ defmodule PortalAPI.Schemas.Log do
 
     defp outers(%Portal.FlowLog{flow_end: nil}), do: nil
     defp outers(%Portal.FlowLog{outers: outers}), do: Portal.FlowLog.outers_to_maps(outers)
-
   end
 
   defmodule APIRequest do
@@ -513,8 +491,7 @@ defmodule PortalAPI.Schemas.Log do
     alias OpenApiSpex.Schema
 
     @derive {PortalAPI.JSON.Encoder,
-             for: Portal.APIRequestLog,
-             internal: [:account_id, :inserted_at, :seq]}
+             for: Portal.APIRequestLog, internal: [:account_id, :inserted_at, :seq]}
     OpenApiSpex.schema(%{
       title: "APIRequestLog",
       description: """
@@ -523,7 +500,7 @@ defmodule PortalAPI.Schemas.Log do
       """,
       type: :object,
       properties: %{
-        type: %Schema{type: :string, enum: ["api_request"]},
+        type: %Schema{example: "api_request", type: :string, enum: ["api_request"]},
         log_id: %Schema{
           type: :string,
           description: """
@@ -533,29 +510,42 @@ defmodule PortalAPI.Schemas.Log do
           example: "a00060db0c2c8eb400000000"
         },
         timestamp: %Schema{
+          example: "2026-05-26T12:34:56.789Z",
           type: :string,
           format: :"date-time",
           description: "RFC 3339 timestamp identifying when the request was received."
         },
-        actor_id: %Schema{type: :string, format: :uuid, description: "ID of the API Client actor."},
-        api_token_id: %Schema{type: :string, format: :uuid, description: "ID of the API token used."},
+        actor_id: %Schema{
+          example: "84e7f82f-831a-4a9d-8f17-c66c2bb6e205",
+          type: :string,
+          format: :uuid,
+          description: "ID of the API Client actor."
+        },
+        api_token_id: %Schema{
+          example: "44e7f82f-831a-4a9d-8f17-c66c2bb6e205",
+          type: :string,
+          format: :uuid,
+          description: "ID of the API token used."
+        },
         method: %Schema{type: :string, description: "HTTP request method.", example: "GET"},
         path: %Schema{type: :string, description: "HTTP request path.", example: "/clients"},
         content_length: %Schema{
+          example: nil,
           type: :integer,
           nullable: true,
           description: "Value of the Content-Length request header, when present."
         },
         request_id: %Schema{
+          example: "GBKkV1jUWuW2sJoAACkB",
           type: :string,
           description: "Request ID assigned by the server, for correlating with server logs."
         },
-        user_agent: %Schema{type: :string, nullable: true},
-        ip: %Schema{type: :string},
-        ip_region: %Schema{type: :string, nullable: true},
-        ip_city: %Schema{type: :string, nullable: true},
-        ip_lat: %Schema{type: :number, nullable: true},
-        ip_lon: %Schema{type: :number, nullable: true}
+        user_agent: %Schema{example: "curl/8.7.1", type: :string, nullable: true},
+        ip: %Schema{example: "189.172.73.1", type: :string},
+        ip_region: %Schema{example: "MX", type: :string, nullable: true},
+        ip_city: %Schema{example: "Mexico City", type: :string, nullable: true},
+        ip_lat: %Schema{example: 19.4326, type: :number, nullable: true},
+        ip_lon: %Schema{example: -99.1332, type: :number, nullable: true}
       },
       required: [
         :actor_id,
@@ -573,30 +563,12 @@ defmodule PortalAPI.Schemas.Log do
         :timestamp,
         :type,
         :user_agent
-      ],
-      example: %{
-        "type" => "api_request",
-        "log_id" => "a00060db0c2c8eb400000000",
-        "timestamp" => "2026-05-26T12:34:56.789Z",
-        "actor_id" => "84e7f82f-831a-4a9d-8f17-c66c2bb6e205",
-        "api_token_id" => "44e7f82f-831a-4a9d-8f17-c66c2bb6e205",
-        "method" => "GET",
-        "path" => "/clients",
-        "content_length" => nil,
-        "request_id" => "GBKkV1jUWuW2sJoAACkB",
-        "user_agent" => "curl/8.7.1",
-        "ip" => "189.172.73.1",
-        "ip_region" => "MX",
-        "ip_city" => "Mexico City",
-        "ip_lat" => 19.4326,
-        "ip_lon" => -99.1332
-      }
+      ]
     })
 
     def map(%Portal.APIRequestLog{} = log, _map) do
       %{type: "api_request", timestamp: log.inserted_at, ip: log.ip && "#{log.ip}"}
     end
-
   end
 
   defmodule Item do
@@ -645,30 +617,31 @@ defmodule PortalAPI.Schemas.Log do
       type: :object,
       properties: %{
         data: %Schema{
+          example: [
+            %{
+              "type" => "change",
+              "log_id" => "c00060db0c2c8eb400000000",
+              "timestamp" => "2026-05-26T12:34:56.789Z",
+              "object" => "actors",
+              "operation" => "update",
+              "before" => %{"name" => "Jane Doe"},
+              "after" => %{"name" => "Jane Smith"},
+              "subject" => nil
+            }
+          ],
           description: "Log entries for the requested window.",
           type: :array,
           items: Log.Item
         },
-        metadata: %Schema{description: "Pagination metadata", type: :object}
-      },
-      example: %{
-        "data" => [
-          %{
-            "type" => "change",
-            "log_id" => "c00060db0c2c8eb400000000",
-            "timestamp" => "2026-05-26T12:34:56.789Z",
-            "object" => "actors",
-            "operation" => "update",
-            "before" => %{"name" => "Jane Doe"},
-            "after" => %{"name" => "Jane Smith"},
-            "subject" => nil
-          }
-        ],
-        "metadata" => %{
-          "count" => 1,
-          "limit" => 50,
-          "next_page" => nil,
-          "prev_page" => nil
+        metadata: %Schema{
+          example: %{
+            "count" => 1,
+            "limit" => 50,
+            "next_page" => nil,
+            "prev_page" => nil
+          },
+          description: "Pagination metadata",
+          type: :object
         }
       }
     })

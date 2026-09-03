@@ -24,22 +24,22 @@ defmodule PortalAPI.Schemas.Membership do
       description: "Membership",
       type: :object,
       properties: %{
-        id: %Schema{type: :string, format: :uuid, description: "Actor ID"},
-        name: %Schema{type: :string, description: "Actor Name"},
+        id: %Schema{
+          example: "7cb89288-1fb3-433e-a522-2d087e45988d",
+          type: :string,
+          format: :uuid,
+          description: "Actor ID"
+        },
+        name: %Schema{example: "John Doe", type: :string, description: "Actor Name"},
         type: %Schema{
+          example: "account_user",
           type: :string,
           description: "Actor Type",
           enum: ["account_admin_user", "account_user", "api_client", "service_account"]
         }
       },
-      required: [:id, :name, :type],
-      example: %{
-        "id" => "7cb89288-1fb3-433e-a522-2d087e45988d",
-        "name" => "John Doe",
-        "type" => "account_user"
-      }
+      required: [:id, :name, :type]
     })
-
   end
 
   defmodule PatchRequest do
@@ -55,11 +55,13 @@ defmodule PortalAPI.Schemas.Membership do
           type: :object,
           properties: %{
             add: %Schema{
+              example: ["4ddfa557-7dfc-484f-894c-2024ec3fe9f7"],
               type: :array,
               description: "Array of Actor IDs",
               items: %Schema{type: :string, format: :uuid, description: "Actor ID"}
             },
             remove: %Schema{
+              example: ["89d22f71-939d-442d-b148-897b730adfb4"],
               type: :array,
               description: "Array of Actor IDs",
               items: %Schema{type: :string, format: :uuid, description: "Actor ID"}
@@ -67,13 +69,7 @@ defmodule PortalAPI.Schemas.Membership do
           }
         }
       },
-      required: [:memberships],
-      example: %{
-        "memberships" => %{
-          "add" => ["4ddfa557-7dfc-484f-894c-2024ec3fe9f7"],
-          "remove" => ["89d22f71-939d-442d-b148-897b730adfb4"]
-        }
-      }
+      required: [:memberships]
     })
   end
 
@@ -87,6 +83,10 @@ defmodule PortalAPI.Schemas.Membership do
       type: :object,
       properties: %{
         memberships: %Schema{
+          example: [
+            %{"actor_id" => "4ddfa557-7dfc-484f-894c-2024ec3fe9f7"},
+            %{"actor_id" => "89d22f71-939d-442d-b148-897b730adfb4"}
+          ],
           type: :array,
           items: %Schema{
             type: :object,
@@ -96,13 +96,7 @@ defmodule PortalAPI.Schemas.Membership do
           }
         }
       },
-      required: [:memberships],
-      example: %{
-        "memberships" => [
-          %{"actor_id" => "4ddfa557-7dfc-484f-894c-2024ec3fe9f7"},
-          %{"actor_id" => "89d22f71-939d-442d-b148-897b730adfb4"}
-        ]
-      }
+      required: [:memberships]
     })
   end
 
@@ -141,19 +135,15 @@ defmodule PortalAPI.Schemas.Membership do
           description: "Memberships",
           properties: %{
             actor_ids: %Schema{
+              example: [
+                "4ddfa557-7dfc-484f-894c-2024ec3fe9f7",
+                "89d22f71-939d-442d-b148-897b730adfb4"
+              ],
               description: "Actor IDs",
               type: :array,
               items: %Schema{type: :string, format: :uuid, description: "Actor ID"}
             }
           }
-        }
-      },
-      example: %{
-        "data" => %{
-          "actor_ids" => [
-            "4ddfa557-7dfc-484f-894c-2024ec3fe9f7",
-            "89d22f71-939d-442d-b148-897b730adfb4"
-          ]
         }
       }
     })

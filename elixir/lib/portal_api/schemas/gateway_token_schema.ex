@@ -20,20 +20,20 @@ defmodule PortalAPI.Schemas.GatewayToken do
       description: "Gateway Token",
       type: :object,
       properties: %{
-        id: %Schema{type: :string, format: :uuid, description: "Gateway Token ID"},
-        token: %Schema{type: :string, description: "Gateway Token"}
+        id: %Schema{
+          example: "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
+          type: :string,
+          format: :uuid,
+          description: "Gateway Token ID"
+        },
+        token: %Schema{example: "secret-token-here", type: :string, description: "Gateway Token"}
       },
-      required: [:id, :token],
-      example: %{
-        "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-        "token" => "secret-token-here"
-      }
+      required: [:id, :token]
     })
 
     def map(%Portal.GatewayToken{} = token, _map) do
       %{token: Portal.Authentication.encode_fragment!(token)}
     end
-
   end
 
   defmodule Response do
@@ -46,12 +46,6 @@ defmodule PortalAPI.Schemas.GatewayToken do
       type: :object,
       properties: %{
         data: GatewayToken.Schema
-      },
-      example: %{
-        "data" => %{
-          "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-          "token" => "secret-token-here"
-        }
       }
     })
   end
@@ -68,14 +62,14 @@ defmodule PortalAPI.Schemas.GatewayToken do
         data: %Schema{
           type: :object,
           properties: %{
-            id: %Schema{type: :string, format: :uuid, description: "Gateway Token ID"}
+            id: %Schema{
+              example: "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
+              type: :string,
+              format: :uuid,
+              description: "Gateway Token ID"
+            }
           },
           required: [:id]
-        }
-      },
-      example: %{
-        "data" => %{
-          "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205"
         }
       }
     })
@@ -94,16 +88,12 @@ defmodule PortalAPI.Schemas.GatewayToken do
           type: :object,
           properties: %{
             deleted_count: %Schema{
+              example: 5,
               type: :integer,
               description: "Number of tokens that were deleted"
             }
           },
           required: [:deleted_count]
-        }
-      },
-      example: %{
-        "data" => %{
-          "deleted_count" => 5
         }
       }
     })

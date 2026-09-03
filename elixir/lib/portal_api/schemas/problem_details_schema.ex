@@ -27,7 +27,8 @@ defmodule PortalAPI.Schemas.ProblemDetails do
       },
       title: %Schema{
         type: :string,
-        description: "Short, human-readable summary of the problem type (the HTTP status phrase).",
+        description:
+          "Short, human-readable summary of the problem type (the HTTP status phrase).",
         example: "Not Found"
       },
       status: %Schema{
@@ -41,13 +42,7 @@ defmodule PortalAPI.Schemas.ProblemDetails do
         example: "The requested resource could not be found."
       }
     },
-    required: [:type, :title, :status],
-    example: %{
-      "type" => "about:blank",
-      "title" => "Not Found",
-      "status" => 404,
-      "detail" => "The requested resource could not be found."
-    }
+    required: [:type, :title, :status]
   })
 
   defmodule ValidationErrors do
@@ -91,14 +86,7 @@ defmodule PortalAPI.Schemas.ProblemDetails do
         detail: %Schema{type: :string, example: "The request body failed validation."},
         validation_errors: PortalAPI.Schemas.ProblemDetails.ValidationErrors
       },
-      required: [:type, :title, :status],
-      example: %{
-        "type" => "about:blank",
-        "title" => "Unprocessable Content",
-        "status" => 422,
-        "detail" => "The request body failed validation.",
-        "validation_errors" => %{"name" => ["can't be blank"]}
-      }
+      required: [:type, :title, :status]
     })
   end
 

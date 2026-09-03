@@ -13,16 +13,16 @@ defmodule PortalAPI.Schemas.Site do
       description: "Site",
       type: :object,
       properties: %{
-        id: %Schema{type: :string, format: :uuid, description: "Site ID"},
-        name: %Schema{type: :string, description: "Site Name"}
+        id: %Schema{
+          example: "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
+          type: :string,
+          format: :uuid,
+          description: "Site ID"
+        },
+        name: %Schema{example: "vpc-us-east", type: :string, description: "Site Name"}
       },
-      required: [:id, :name],
-      example: %{
-        "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-        "name" => "vpc-us-east"
-      }
+      required: [:id, :name]
     })
-
   end
 
   defmodule CreateRequest do
@@ -37,17 +37,12 @@ defmodule PortalAPI.Schemas.Site do
         site: %Schema{
           type: :object,
           properties: %{
-            name: %Schema{type: :string, description: "Site Name"}
+            name: %Schema{example: "vpc-us-east", type: :string, description: "Site Name"}
           },
           required: [:name]
         }
       },
-      required: [:site],
-      example: %{
-        "site" => %{
-          "name" => "vpc-us-east"
-        }
-      }
+      required: [:site]
     })
   end
 
@@ -65,16 +60,11 @@ defmodule PortalAPI.Schemas.Site do
         site: %Schema{
           type: :object,
           properties: %{
-            name: %Schema{type: :string, description: "Site Name"}
+            name: %Schema{example: "vpc-us-east", type: :string, description: "Site Name"}
           }
         }
       },
-      required: [:site],
-      example: %{
-        "site" => %{
-          "name" => "vpc-us-east"
-        }
-      }
+      required: [:site]
     })
   end
 
@@ -89,12 +79,6 @@ defmodule PortalAPI.Schemas.Site do
       type: :object,
       properties: %{
         data: Site.Schema
-      },
-      example: %{
-        "data" => %{
-          "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-          "name" => "vpc-us-east"
-        }
       }
     })
   end

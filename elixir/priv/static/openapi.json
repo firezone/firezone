@@ -29,20 +29,6 @@
       },
       "ActorResponse": {
         "description": "Response schema for single Actor",
-        "example": {
-          "data": {
-            "allow_email_otp_sign_in": false,
-            "created_by_directory_id": null,
-            "email": "john.doe@example.com",
-            "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-            "inserted_at": "2024-01-01T00:00:00Z",
-            "is_disabled": false,
-            "last_seen_at": "2024-01-15T10:30:00Z",
-            "name": "John Doe",
-            "type": "account_admin_user",
-            "updated_at": "2024-01-15T10:30:00Z"
-          }
-        },
         "properties": {
           "data": {
             "$ref": "#/components/schemas/Actor"
@@ -70,19 +56,6 @@
       },
       "GroupResponse": {
         "description": "Response schema for single Group",
-        "example": {
-          "data": {
-            "directory_id": null,
-            "email": null,
-            "entity_type": "group",
-            "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-            "idp_id": null,
-            "inserted_at": "2024-01-15T10:30:00Z",
-            "name": "Engineering",
-            "synced_at": null,
-            "updated_at": "2024-01-15T10:30:00Z"
-          }
-        },
         "properties": {
           "data": {
             "$ref": "#/components/schemas/Group"
@@ -103,18 +76,16 @@
       },
       "MembershipPutRequest": {
         "description": "PUT body for updating Memberships",
-        "example": {
-          "memberships": [
-            {
-              "actor_id": "4ddfa557-7dfc-484f-894c-2024ec3fe9f7"
-            },
-            {
-              "actor_id": "89d22f71-939d-442d-b148-897b730adfb4"
-            }
-          ]
-        },
         "properties": {
           "memberships": {
+            "example": [
+              {
+                "actor_id": "4ddfa557-7dfc-484f-894c-2024ec3fe9f7"
+              },
+              {
+                "actor_id": "89d22f71-939d-442d-b148-897b730adfb4"
+              }
+            ],
             "items": {
               "properties": {
                 "actor_id": {
@@ -242,25 +213,19 @@
       },
       "PolicyCreateParams": {
         "description": "Policy attributes accepted when creating a Policy",
-        "example": {
-          "conditions": [
-            {
-              "operator": "is_in",
-              "property": "remote_ip_location_region",
-              "values": [
-                "US",
-                "CA"
-              ]
-            }
-          ],
-          "description": "Policy to allow something",
-          "flow_log_uploads_enabled": true,
-          "group_id": "88eae9ce-9179-48c6-8430-770e38dd4775",
-          "resource_id": "a9f60587-793c-46ae-8525-597f43ab2fb1"
-        },
         "properties": {
           "conditions": {
             "description": "Conditions that must be satisfied for the Policy to grant access",
+            "example": [
+              {
+                "operator": "is_in",
+                "property": "remote_ip_location_region",
+                "values": [
+                  "US",
+                  "CA"
+                ]
+              }
+            ],
             "items": {
               "$ref": "#/components/schemas/PolicyCondition"
             },
@@ -268,21 +233,25 @@
           },
           "description": {
             "description": "Policy Description",
+            "example": "Policy to allow something",
             "nullable": true,
             "type": "string"
           },
           "flow_log_uploads_enabled": {
             "default": true,
             "description": "Whether flow logs are reported for connections authorized by this Policy. Defaults to true. Always false for Internet Resource policies.",
+            "example": true,
             "type": "boolean"
           },
           "group_id": {
             "description": "Group ID",
+            "example": "88eae9ce-9179-48c6-8430-770e38dd4775",
             "format": "uuid",
             "type": "string"
           },
           "resource_id": {
             "description": "Resource ID",
+            "example": "a9f60587-793c-46ae-8525-597f43ab2fb1",
             "format": "uuid",
             "type": "string"
           }
@@ -574,33 +543,21 @@
       },
       "OktaAuthProvider": {
         "description": "Okta Auth Provider",
-        "example": {
-          "account_id": "5e6f7d8c-9b0a-1c2d-3e4f-5a6b7c8d9e0f",
-          "client_id": "0oa1b2c3d4e5EXAMPLE",
-          "client_session_lifetime_secs": 604800,
-          "context": "clients_and_portal",
-          "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-          "inserted_at": "2025-01-01T00:00:00Z",
-          "is_default": false,
-          "is_disabled": false,
-          "issuer": "https://example.okta.com",
-          "name": "Okta",
-          "okta_domain": "example.okta.com",
-          "portal_session_lifetime_secs": 28800,
-          "updated_at": "2025-01-15T10:30:00Z"
-        },
         "properties": {
           "account_id": {
             "description": "Account ID",
+            "example": "5e6f7d8c-9b0a-1c2d-3e4f-5a6b7c8d9e0f",
             "format": "uuid",
             "type": "string"
           },
           "client_id": {
             "description": "Client ID",
+            "example": "0oa1b2c3d4e5EXAMPLE",
             "type": "string"
           },
           "client_session_lifetime_secs": {
             "description": "Client session lifetime in seconds. Null when the account default applies.",
+            "example": 604800,
             "nullable": true,
             "type": "integer"
           },
@@ -611,45 +568,55 @@
               "clients_only",
               "portal_only"
             ],
+            "example": "clients_and_portal",
             "type": "string"
           },
           "id": {
             "description": "Provider ID",
+            "example": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
             "format": "uuid",
             "type": "string"
           },
           "inserted_at": {
             "description": "Creation timestamp",
+            "example": "2025-01-01T00:00:00Z",
             "format": "date-time",
             "type": "string"
           },
           "is_default": {
             "description": "Whether provider is default",
+            "example": false,
             "type": "boolean"
           },
           "is_disabled": {
             "description": "Whether provider is disabled",
+            "example": false,
             "type": "boolean"
           },
           "issuer": {
             "description": "Issuer",
+            "example": "https://example.okta.com",
             "type": "string"
           },
           "name": {
             "description": "Provider name",
+            "example": "Okta",
             "type": "string"
           },
           "okta_domain": {
             "description": "Okta domain",
+            "example": "example.okta.com",
             "type": "string"
           },
           "portal_session_lifetime_secs": {
             "description": "Portal session lifetime in seconds. Null when the account default applies.",
+            "example": 28800,
             "nullable": true,
             "type": "integer"
           },
           "updated_at": {
             "description": "Update timestamp",
+            "example": "2025-01-15T10:30:00Z",
             "format": "date-time",
             "type": "string"
           }
@@ -684,38 +651,31 @@
       },
       "ResourceCreateRequest": {
         "description": "POST body for creating a Resource. `site_id` is required.\n\nDevice pools (`static_device_pool`) cannot currently be created through this API - create them in the admin portal. Existing pools can be read, updated, deleted, and have their members managed here as normal.",
-        "example": {
-          "resource": {
-            "address": "10.0.0.10",
-            "address_description": "Production Database",
-            "filters": [
-              {
-                "ports": [
-                  "5432"
-                ],
-                "protocol": "tcp"
-              }
-            ],
-            "name": "Prod DB",
-            "site_id": "0642e09d-b3a2-47e4-9cd1-c2195faeeb67",
-            "type": "ip"
-          }
-        },
         "properties": {
           "resource": {
             "properties": {
               "address": {
                 "description": "Resource address.",
+                "example": "10.0.0.10",
                 "nullable": true,
                 "type": "string"
               },
               "address_description": {
                 "description": "Resource address description",
+                "example": "Production Database",
                 "nullable": true,
                 "type": "string"
               },
               "filters": {
                 "description": "Traffic filters restricting the protocols and ports the Resource exposes",
+                "example": [
+                  {
+                    "ports": [
+                      "5432"
+                    ],
+                    "protocol": "tcp"
+                  }
+                ],
                 "items": {
                   "$ref": "#/components/schemas/ResourceFilter"
                 },
@@ -733,10 +693,12 @@
               },
               "name": {
                 "description": "Resource name",
+                "example": "Prod DB",
                 "type": "string"
               },
               "site_id": {
                 "description": "Site to connect the Resource to. Required. The Internet Site is reserved for the Internet Resource and cannot be used.",
+                "example": "0642e09d-b3a2-47e4-9cd1-c2195faeeb67",
                 "format": "uuid",
                 "nullable": true,
                 "title": "SiteID",
@@ -750,6 +712,7 @@
                   "dns",
                   "internet"
                 ],
+                "example": "ip",
                 "type": "string"
               }
             },
@@ -768,16 +731,6 @@
       },
       "ClientTokenCreateResponse": {
         "description": "Response schema for a new Client Token",
-        "example": {
-          "data": {
-            "actor_id": "43a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-            "expires_at": "2025-01-15T12:34:56.789Z",
-            "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-            "inserted_at": "2025-01-15T12:34:56.789Z",
-            "token": "secret-token-here",
-            "updated_at": "2025-01-15T12:34:56.789Z"
-          }
-        },
         "properties": {
           "data": {
             "$ref": "#/components/schemas/ClientTokenWithSecret"
@@ -862,11 +815,6 @@
       },
       "GatewayCreateRequest": {
         "description": "Request body for provisioning a Gateway",
-        "example": {
-          "gateway": {
-            "name": "vpc-us-east"
-          }
-        },
         "properties": {
           "gateway": {
             "$ref": "#/components/schemas/GatewayCreate"
@@ -877,36 +825,34 @@
       },
       "ClientToken": {
         "description": "Client Token metadata",
-        "example": {
-          "actor_id": "43a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-          "expires_at": "2025-01-15T12:34:56.789Z",
-          "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-          "inserted_at": "2025-01-15T12:34:56.789Z",
-          "updated_at": "2025-01-15T12:34:56.789Z"
-        },
         "properties": {
           "actor_id": {
             "description": "Actor ID",
+            "example": "43a7f82f-831a-4a9d-8f17-c66c2bb6e205",
             "format": "uuid",
             "type": "string"
           },
           "expires_at": {
             "description": "Expiration",
+            "example": "2025-01-15T12:34:56.789Z",
             "format": "date-time",
             "type": "string"
           },
           "id": {
             "description": "Client Token ID",
+            "example": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
             "format": "uuid",
             "type": "string"
           },
           "inserted_at": {
             "description": "Creation timestamp",
+            "example": "2025-01-15T12:34:56.789Z",
             "format": "date-time",
             "type": "string"
           },
           "updated_at": {
             "description": "Update timestamp",
+            "example": "2025-01-15T12:34:56.789Z",
             "format": "date-time",
             "type": "string"
           }
@@ -923,28 +869,16 @@
       },
       "EntraAuthProvider": {
         "description": "Entra Auth Provider",
-        "example": {
-          "account_id": "5e6f7d8c-9b0a-1c2d-3e4f-5a6b7c8d9e0f",
-          "client_session_lifetime_secs": 604800,
-          "context": "clients_and_portal",
-          "email_claim": "upn",
-          "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-          "inserted_at": "2025-01-01T00:00:00Z",
-          "is_default": false,
-          "is_disabled": false,
-          "issuer": "https://login.microsoftonline.com/tenant-id/v2.0",
-          "name": "Entra",
-          "portal_session_lifetime_secs": 28800,
-          "updated_at": "2025-01-15T10:30:00Z"
-        },
         "properties": {
           "account_id": {
             "description": "Account ID",
+            "example": "5e6f7d8c-9b0a-1c2d-3e4f-5a6b7c8d9e0f",
             "format": "uuid",
             "type": "string"
           },
           "client_session_lifetime_secs": {
             "description": "Client session lifetime in seconds. Null when the account default applies.",
+            "example": 604800,
             "nullable": true,
             "type": "integer"
           },
@@ -955,6 +889,7 @@
               "clients_only",
               "portal_only"
             ],
+            "example": "clients_and_portal",
             "type": "string"
           },
           "email_claim": {
@@ -964,41 +899,50 @@
               "upn",
               "preferred_username"
             ],
+            "example": "upn",
             "type": "string"
           },
           "id": {
             "description": "Provider ID",
+            "example": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
             "format": "uuid",
             "type": "string"
           },
           "inserted_at": {
             "description": "Creation timestamp",
+            "example": "2025-01-01T00:00:00Z",
             "format": "date-time",
             "type": "string"
           },
           "is_default": {
             "description": "Whether provider is default",
+            "example": false,
             "type": "boolean"
           },
           "is_disabled": {
             "description": "Whether provider is disabled",
+            "example": false,
             "type": "boolean"
           },
           "issuer": {
             "description": "Issuer",
+            "example": "https://login.microsoftonline.com/tenant-id/v2.0",
             "type": "string"
           },
           "name": {
             "description": "Provider name",
+            "example": "Entra",
             "type": "string"
           },
           "portal_session_lifetime_secs": {
             "description": "Portal session lifetime in seconds. Null when the account default applies.",
+            "example": 28800,
             "nullable": true,
             "type": "integer"
           },
           "updated_at": {
             "description": "Update timestamp",
+            "example": "2025-01-15T10:30:00Z",
             "format": "date-time",
             "type": "string"
           }
@@ -1032,11 +976,6 @@
       },
       "ClientTokenRequest": {
         "description": "POST body for creating a Client Token",
-        "example": {
-          "client_token": {
-            "expires_at": "2025-01-15T12:34:56.789Z"
-          }
-        },
         "properties": {
           "client_token": {
             "$ref": "#/components/schemas/ClientTokenCreate"
@@ -1050,78 +989,69 @@
       },
       "ExternalIdentity": {
         "description": "External Identity",
-        "example": {
-          "account_id": "5e6f7d8c-9b0a-1c2d-3e4f-5a6b7c8d9e0f",
-          "actor_id": "cdfa97e6-cca1-41db-8fc7-864daedb46df",
-          "directory_id": "9f8e7d6c-5b4a-3c2b-1a0e-9f8e7d6c5b4a",
-          "email": "john.doe@example.com",
-          "family_name": "Doe",
-          "firezone_avatar_url": "https://avatars.firezone.dev/u/2551705710219359.png",
-          "given_name": "John",
-          "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-          "idp_id": "2551705710219359",
-          "inserted_at": "2025-01-01T00:00:00Z",
-          "issuer": "https://accounts.google.com",
-          "middle_name": null,
-          "name": "John Doe",
-          "nickname": null,
-          "picture": "https://example.com/avatar.jpg",
-          "preferred_username": "jdoe",
-          "profile": null,
-          "synced_at": "2025-01-15T10:30:00Z"
-        },
         "properties": {
           "account_id": {
             "description": "Account ID",
+            "example": "5e6f7d8c-9b0a-1c2d-3e4f-5a6b7c8d9e0f",
             "format": "uuid",
             "type": "string"
           },
           "actor_id": {
             "description": "Actor ID",
+            "example": "cdfa97e6-cca1-41db-8fc7-864daedb46df",
             "format": "uuid",
             "type": "string"
           },
           "directory_id": {
             "description": "Directory UUID reference",
+            "example": "9f8e7d6c-5b4a-3c2b-1a0e-9f8e7d6c5b4a",
             "format": "uuid",
             "nullable": true,
             "type": "string"
           },
           "email": {
             "description": "Email address, falling back to the IdP identifier when unset",
+            "example": "john.doe@example.com",
             "type": "string"
           },
           "family_name": {
             "description": "Family name",
+            "example": "Doe",
             "nullable": true,
             "type": "string"
           },
           "firezone_avatar_url": {
             "description": "Firezone-hosted avatar URL",
+            "example": "https://avatars.firezone.dev/u/2551705710219359.png",
             "nullable": true,
             "type": "string"
           },
           "given_name": {
             "description": "Given name",
+            "example": "John",
             "nullable": true,
             "type": "string"
           },
           "id": {
             "description": "External Identity ID",
+            "example": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
             "format": "uuid",
             "type": "string"
           },
           "idp_id": {
             "description": "IDP-specific identifier for this identity",
+            "example": "2551705710219359",
             "type": "string"
           },
           "inserted_at": {
             "description": "Creation timestamp",
+            "example": "2025-01-01T00:00:00Z",
             "format": "date-time",
             "type": "string"
           },
           "issuer": {
             "description": "Identity issuer URL (e.g., 'https://accounts.google.com', 'https://company.okta.com')",
+            "example": "https://accounts.google.com",
             "type": "string"
           },
           "middle_name": {
@@ -1131,6 +1061,7 @@
           },
           "name": {
             "description": "Full name",
+            "example": "John Doe",
             "nullable": true,
             "type": "string"
           },
@@ -1141,11 +1072,13 @@
           },
           "picture": {
             "description": "Profile picture URL",
+            "example": "https://example.com/avatar.jpg",
             "nullable": true,
             "type": "string"
           },
           "preferred_username": {
             "description": "Preferred username",
+            "example": "jdoe",
             "nullable": true,
             "type": "string"
           },
@@ -1156,6 +1089,7 @@
           },
           "synced_at": {
             "description": "Last sync timestamp",
+            "example": "2025-01-15T10:30:00Z",
             "format": "date-time",
             "nullable": true,
             "type": "string"
@@ -1648,11 +1582,6 @@
       },
       "ClientPutRequest": {
         "description": "PUT body for updating a Client",
-        "example": {
-          "client": {
-            "name": "John's Macbook Air"
-          }
-        },
         "properties": {
           "client": {
             "$ref": "#/components/schemas/ClientPut"
@@ -1735,12 +1664,6 @@
       },
       "GatewayTokenResponse": {
         "description": "Response schema for a new Gateway Token",
-        "example": {
-          "data": {
-            "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-            "token": "secret-token-here"
-          }
-        },
         "properties": {
           "data": {
             "$ref": "#/components/schemas/GatewayToken"
@@ -1751,11 +1674,6 @@
       },
       "GatewayUpdateRequest": {
         "description": "Request body for updating a Gateway",
-        "example": {
-          "gateway": {
-            "name": "vpc-us-east"
-          }
-        },
         "properties": {
           "gateway": {
             "$ref": "#/components/schemas/GatewayUpdate"
@@ -1769,16 +1687,12 @@
       },
       "GroupCreateRequest": {
         "description": "POST body for creating a Group",
-        "example": {
-          "group": {
-            "name": "Engineering"
-          }
-        },
         "properties": {
           "group": {
             "properties": {
               "name": {
                 "description": "Group Name",
+                "example": "Engineering",
                 "type": "string"
               }
             },
@@ -1814,16 +1728,12 @@
       },
       "DeletedClientTokenResponse": {
         "description": "Response schema for a deleted Client Token",
-        "example": {
-          "data": {
-            "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205"
-          }
-        },
         "properties": {
           "data": {
             "properties": {
               "id": {
                 "description": "Client Token ID",
+                "example": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
                 "format": "uuid",
                 "type": "string"
               }
@@ -1933,27 +1843,6 @@
       },
       "SessionLog": {
         "description": "A single Session Log entry, recording one Client, Gateway, or Portal\nsession that was created, along with the auth context it was created\nwith.\n",
-        "example": {
-          "context": "client",
-          "log_id": "500060db0c2c8eb400000000",
-          "subject": {
-            "actor_email": "admin@example.com",
-            "actor_id": "84e7f82f-831a-4a9d-8f17-c66c2bb6e205",
-            "actor_name": "Admin User",
-            "actor_type": "account_admin_user",
-            "auth_provider_id": "98776234-1234-5678-9012-345678901234",
-            "device_id": "11e7f82f-831a-4a9d-8f17-c66c2bb6e205",
-            "ip": "189.172.73.1",
-            "ip_city": "Mexico City",
-            "ip_lat": 19.4326,
-            "ip_lon": -99.1332,
-            "ip_region": "MX",
-            "token_id": "22e7f82f-831a-4a9d-8f17-c66c2bb6e205",
-            "user_agent": "Linux/6.5.0 connlib/1.5.1"
-          },
-          "timestamp": "2026-05-26T12:34:56.789Z",
-          "type": "session"
-        },
         "properties": {
           "context": {
             "description": "The kind of session that was created.",
@@ -1962,6 +1851,7 @@
               "gateway",
               "portal"
             ],
+            "example": "client",
             "type": "string"
           },
           "log_id": {
@@ -1971,6 +1861,21 @@
           },
           "subject": {
             "description": "Who established the session and from where. The shape depends on\n`context`:\n\n- `client`: a `ClientSessionSubject`, the actor plus the Client and\n  token the session was established with.\n- `gateway`: a `GatewaySessionSubject`, the Gateway and its token. A\n  Gateway authenticates as itself, so no actor fields are recorded.\n- `portal`: a plain `Subject`.\n",
+            "example": {
+              "actor_email": "admin@example.com",
+              "actor_id": "84e7f82f-831a-4a9d-8f17-c66c2bb6e205",
+              "actor_name": "Admin User",
+              "actor_type": "account_admin_user",
+              "auth_provider_id": "98776234-1234-5678-9012-345678901234",
+              "device_id": "11e7f82f-831a-4a9d-8f17-c66c2bb6e205",
+              "ip": "189.172.73.1",
+              "ip_city": "Mexico City",
+              "ip_lat": 19.4326,
+              "ip_lon": -99.1332,
+              "ip_region": "MX",
+              "token_id": "22e7f82f-831a-4a9d-8f17-c66c2bb6e205",
+              "user_agent": "Linux/6.5.0 connlib/1.5.1"
+            },
             "oneOf": [
               {
                 "$ref": "#/components/schemas/ClientSessionSubject"
@@ -1985,6 +1890,7 @@
           },
           "timestamp": {
             "description": "RFC 3339 timestamp identifying when the session was created.",
+            "example": "2026-05-26T12:34:56.789Z",
             "format": "date-time",
             "type": "string"
           },
@@ -1992,6 +1898,7 @@
             "enum": [
               "session"
             ],
+            "example": "session",
             "type": "string"
           }
         },
@@ -2007,30 +1914,22 @@
       },
       "ChangeLog": {
         "description": "A single entry from the account audit log.\n\nEach entry records one create, update, or delete event against an\naccount-scoped object.\n",
-        "example": {
-          "after": {
-            "name": "Jane Smith"
-          },
-          "before": {
-            "name": "Jane Doe"
-          },
-          "log_id": "c00060db0c2c8eb400000000",
-          "object": "actors",
-          "operation": "update",
-          "subject": null,
-          "timestamp": "2026-05-26T12:34:56.789Z",
-          "type": "change"
-        },
         "properties": {
           "after": {
             "additionalProperties": true,
             "description": "The state of the object after the change. `null` for `delete`\nevents. Sensitive fields such as tokens, secrets, and password\nhashes are replaced with the literal string `\"[redacted]\"`.\n",
+            "example": {
+              "name": "Jane Smith"
+            },
             "nullable": true,
             "type": "object"
           },
           "before": {
             "additionalProperties": true,
             "description": "The state of the object before the change. `null` for `insert`\nevents. Sensitive fields such as tokens, secrets, and password\nhashes are replaced with the literal string `\"[redacted]\"`.\n",
+            "example": {
+              "name": "Jane Doe"
+            },
             "nullable": true,
             "type": "object"
           },
@@ -2051,6 +1950,7 @@
               "update",
               "delete"
             ],
+            "example": "update",
             "type": "string"
           },
           "subject": {
@@ -2058,6 +1958,7 @@
           },
           "timestamp": {
             "description": "RFC 3339 timestamp identifying when the change was committed.",
+            "example": "2026-05-26T12:34:56.789Z",
             "format": "date-time",
             "type": "string"
           },
@@ -2065,6 +1966,7 @@
             "enum": [
               "change"
             ],
+            "example": "change",
             "type": "string"
           }
         },
@@ -2274,18 +2176,16 @@
       },
       "Site": {
         "description": "Site",
-        "example": {
-          "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-          "name": "vpc-us-east"
-        },
         "properties": {
           "id": {
             "description": "Site ID",
+            "example": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
             "format": "uuid",
             "type": "string"
           },
           "name": {
             "description": "Site Name",
+            "example": "vpc-us-east",
             "type": "string"
           }
         },
@@ -2298,12 +2198,6 @@
       },
       "SiteResponse": {
         "description": "Response schema for single Site",
-        "example": {
-          "data": {
-            "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-            "name": "vpc-us-east"
-          }
-        },
         "properties": {
           "data": {
             "$ref": "#/components/schemas/Site"
@@ -2314,26 +2208,18 @@
       },
       "ClientTokenListResponse": {
         "description": "Response schema for multiple Client Tokens",
-        "example": {
-          "data": [
-            {
-              "actor_id": "43a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-              "expires_at": "2025-01-15T12:34:56.789Z",
-              "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-              "inserted_at": "2025-01-15T12:34:56.789Z",
-              "updated_at": "2025-01-15T12:34:56.789Z"
-            }
-          ],
-          "metadata": {
-            "count": 1,
-            "limit": 10,
-            "next_page": null,
-            "prev_page": null
-          }
-        },
         "properties": {
           "data": {
             "description": "Client Token metadata",
+            "example": [
+              {
+                "actor_id": "43a7f82f-831a-4a9d-8f17-c66c2bb6e205",
+                "expires_at": "2025-01-15T12:34:56.789Z",
+                "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
+                "inserted_at": "2025-01-15T12:34:56.789Z",
+                "updated_at": "2025-01-15T12:34:56.789Z"
+              }
+            ],
             "items": {
               "$ref": "#/components/schemas/ClientToken"
             },
@@ -2363,25 +2249,10 @@
       },
       "GoogleDirectory": {
         "description": "Google Directory",
-        "example": {
-          "account_id": "5e6f7d8c-9b0a-1c2d-3e4f-5a6b7c8d9e0f",
-          "disabled_reason": null,
-          "domain": "example.com",
-          "error_message": null,
-          "errored_at": null,
-          "group_sync_mode": "all",
-          "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-          "impersonation_email": "admin@example.com",
-          "inserted_at": "2025-01-01T00:00:00Z",
-          "is_disabled": false,
-          "name": "Google",
-          "orgunit_sync_enabled": true,
-          "synced_at": "2025-01-15T10:30:00Z",
-          "updated_at": "2025-01-15T10:30:00Z"
-        },
         "properties": {
           "account_id": {
             "description": "Account ID",
+            "example": "5e6f7d8c-9b0a-1c2d-3e4f-5a6b7c8d9e0f",
             "format": "uuid",
             "type": "string"
           },
@@ -2392,6 +2263,7 @@
           },
           "domain": {
             "description": "Google Workspace domain",
+            "example": "example.com",
             "type": "string"
           },
           "error_message": {
@@ -2412,42 +2284,51 @@
               "filtered",
               "disabled"
             ],
+            "example": "all",
             "type": "string"
           },
           "id": {
             "description": "Directory ID",
+            "example": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
             "format": "uuid",
             "type": "string"
           },
           "impersonation_email": {
             "description": "Impersonation email",
+            "example": "admin@example.com",
             "type": "string"
           },
           "inserted_at": {
             "description": "Creation timestamp",
+            "example": "2025-01-01T00:00:00Z",
             "format": "date-time",
             "type": "string"
           },
           "is_disabled": {
             "description": "Whether directory is disabled",
+            "example": false,
             "type": "boolean"
           },
           "name": {
             "description": "Directory name",
+            "example": "Google",
             "type": "string"
           },
           "orgunit_sync_enabled": {
             "description": "Whether org unit sync is enabled",
+            "example": true,
             "type": "boolean"
           },
           "synced_at": {
             "description": "Last sync timestamp",
+            "example": "2025-01-15T10:30:00Z",
             "format": "date-time",
             "nullable": true,
             "type": "string"
           },
           "updated_at": {
             "description": "Update timestamp",
+            "example": "2025-01-15T10:30:00Z",
             "format": "date-time",
             "type": "string"
           }
@@ -2473,26 +2354,6 @@
       },
       "PolicyResponse": {
         "description": "Response schema for single Policy",
-        "example": {
-          "data": {
-            "conditions": [
-              {
-                "operator": "is_in",
-                "property": "remote_ip_location_region",
-                "values": [
-                  "US",
-                  "CA"
-                ]
-              }
-            ],
-            "description": "Policy to allow something",
-            "flow_log_uploads_enabled": true,
-            "group_id": "88eae9ce-9179-48c6-8430-770e38dd4775",
-            "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-            "is_disabled": false,
-            "resource_id": "a9f60587-793c-46ae-8525-597f43ab2fb1"
-          }
-        },
         "properties": {
           "data": {
             "$ref": "#/components/schemas/Policy"
@@ -2503,16 +2364,12 @@
       },
       "DeletedClientTokensResponse": {
         "description": "Response schema for deleted Client Tokens",
-        "example": {
-          "data": {
-            "deleted_count": 3
-          }
-        },
         "properties": {
           "data": {
             "properties": {
               "deleted_count": {
                 "description": "Number of tokens that were deleted",
+                "example": 3,
                 "type": "integer"
               }
             },
@@ -2570,16 +2427,12 @@
       },
       "DeletedGatewayTokenResponse": {
         "description": "Response schema for a deleted Gateway Token",
-        "example": {
-          "data": {
-            "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205"
-          }
-        },
         "properties": {
           "data": {
             "properties": {
               "id": {
                 "description": "Gateway Token ID",
+                "example": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
                 "format": "uuid",
                 "type": "string"
               }
@@ -2612,19 +2465,16 @@
       },
       "Membership": {
         "description": "Membership",
-        "example": {
-          "id": "7cb89288-1fb3-433e-a522-2d087e45988d",
-          "name": "John Doe",
-          "type": "account_user"
-        },
         "properties": {
           "id": {
             "description": "Actor ID",
+            "example": "7cb89288-1fb3-433e-a522-2d087e45988d",
             "format": "uuid",
             "type": "string"
           },
           "name": {
             "description": "Actor Name",
+            "example": "John Doe",
             "type": "string"
           },
           "type": {
@@ -2635,6 +2485,7 @@
               "api_client",
               "service_account"
             ],
+            "example": "account_user",
             "type": "string"
           }
         },
@@ -2648,34 +2499,21 @@
       },
       "OIDCAuthProvider": {
         "description": "OIDC Auth Provider",
-        "example": {
-          "account_id": "5e6f7d8c-9b0a-1c2d-3e4f-5a6b7c8d9e0f",
-          "client_id": "my-client-id",
-          "client_session_lifetime_secs": 604800,
-          "context": "clients_and_portal",
-          "discovery_document_uri": "https://idp.example.com/.well-known/openid-configuration",
-          "email_verification_method": "claim",
-          "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-          "inserted_at": "2025-01-01T00:00:00Z",
-          "is_default": false,
-          "is_disabled": false,
-          "issuer": "https://idp.example.com",
-          "name": "OIDC Provider",
-          "portal_session_lifetime_secs": 28800,
-          "updated_at": "2025-01-15T10:30:00Z"
-        },
         "properties": {
           "account_id": {
             "description": "Account ID",
+            "example": "5e6f7d8c-9b0a-1c2d-3e4f-5a6b7c8d9e0f",
             "format": "uuid",
             "type": "string"
           },
           "client_id": {
             "description": "Client ID",
+            "example": "my-client-id",
             "type": "string"
           },
           "client_session_lifetime_secs": {
             "description": "Client session lifetime in seconds. Null when the account default applies.",
+            "example": 604800,
             "nullable": true,
             "type": "integer"
           },
@@ -2686,10 +2524,12 @@
               "clients_only",
               "portal_only"
             ],
+            "example": "clients_and_portal",
             "type": "string"
           },
           "discovery_document_uri": {
             "description": "Discovery document URI",
+            "example": "https://idp.example.com/.well-known/openid-configuration",
             "type": "string"
           },
           "email_verification_method": {
@@ -2699,41 +2539,50 @@
               "claim",
               "proof"
             ],
+            "example": "claim",
             "type": "string"
           },
           "id": {
             "description": "Provider ID",
+            "example": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
             "format": "uuid",
             "type": "string"
           },
           "inserted_at": {
             "description": "Creation timestamp",
+            "example": "2025-01-01T00:00:00Z",
             "format": "date-time",
             "type": "string"
           },
           "is_default": {
             "description": "Whether provider is default",
+            "example": false,
             "type": "boolean"
           },
           "is_disabled": {
             "description": "Whether provider is disabled",
+            "example": false,
             "type": "boolean"
           },
           "issuer": {
             "description": "Issuer",
+            "example": "https://idp.example.com",
             "type": "string"
           },
           "name": {
             "description": "Provider name",
+            "example": "OIDC Provider",
             "type": "string"
           },
           "portal_session_lifetime_secs": {
             "description": "Portal session lifetime in seconds. Null when the account default applies.",
+            "example": 28800,
             "nullable": true,
             "type": "integer"
           },
           "updated_at": {
             "description": "Update timestamp",
+            "example": "2025-01-15T10:30:00Z",
             "format": "date-time",
             "type": "string"
           }
@@ -2791,12 +2640,10 @@
       },
       "ClientPut": {
         "description": "Put schema for updating a single Client",
-        "example": {
-          "name": "John's Macbook Air"
-        },
         "properties": {
           "name": {
             "description": "Client Name",
+            "example": "John's Macbook Air",
             "type": "string"
           }
         },
@@ -2859,23 +2706,6 @@
       },
       "PolicyCreateRequest": {
         "description": "POST body for creating a Policy",
-        "example": {
-          "policy": {
-            "conditions": [
-              {
-                "operator": "is_in",
-                "property": "remote_ip_location_region",
-                "values": [
-                  "US",
-                  "CA"
-                ]
-              }
-            ],
-            "description": "Policy to allow something",
-            "group_id": "88eae9ce-9179-48c6-8430-770e38dd4775",
-            "resource_id": "a9f60587-793c-46ae-8525-597f43ab2fb1"
-          }
-        },
         "properties": {
           "policy": {
             "$ref": "#/components/schemas/PolicyCreateParams"
@@ -2918,29 +2748,16 @@
       },
       "OktaDirectory": {
         "description": "Okta Directory",
-        "example": {
-          "account_id": "5e6f7d8c-9b0a-1c2d-3e4f-5a6b7c8d9e0f",
-          "client_id": "0oa1b2c3d4e5EXAMPLE",
-          "disabled_reason": null,
-          "error_message": null,
-          "errored_at": null,
-          "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-          "inserted_at": "2025-01-01T00:00:00Z",
-          "is_disabled": false,
-          "kid": "kid-2f8a1c9e",
-          "name": "Okta",
-          "okta_domain": "example.okta.com",
-          "synced_at": "2025-01-15T10:30:00Z",
-          "updated_at": "2025-01-15T10:30:00Z"
-        },
         "properties": {
           "account_id": {
             "description": "Account ID",
+            "example": "5e6f7d8c-9b0a-1c2d-3e4f-5a6b7c8d9e0f",
             "format": "uuid",
             "type": "string"
           },
           "client_id": {
             "description": "Client ID",
+            "example": "0oa1b2c3d4e5EXAMPLE",
             "type": "string"
           },
           "disabled_reason": {
@@ -2961,38 +2778,46 @@
           },
           "id": {
             "description": "Directory ID",
+            "example": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
             "format": "uuid",
             "type": "string"
           },
           "inserted_at": {
             "description": "Creation timestamp",
+            "example": "2025-01-01T00:00:00Z",
             "format": "date-time",
             "type": "string"
           },
           "is_disabled": {
             "description": "Whether directory is disabled",
+            "example": false,
             "type": "boolean"
           },
           "kid": {
             "description": "Key ID",
+            "example": "kid-2f8a1c9e",
             "type": "string"
           },
           "name": {
             "description": "Directory name",
+            "example": "Okta",
             "type": "string"
           },
           "okta_domain": {
             "description": "Okta domain",
+            "example": "example.okta.com",
             "type": "string"
           },
           "synced_at": {
             "description": "Last sync timestamp",
+            "example": "2025-01-15T10:30:00Z",
             "format": "date-time",
             "nullable": true,
             "type": "string"
           },
           "updated_at": {
             "description": "Update timestamp",
+            "example": "2025-01-15T10:30:00Z",
             "format": "date-time",
             "type": "string"
           }
@@ -3017,12 +2842,10 @@
       },
       "GatewayCreate": {
         "description": "Create schema for a single Gateway",
-        "example": {
-          "name": "vpc-us-east"
-        },
         "properties": {
           "name": {
             "description": "Gateway Name. Randomly generated when omitted.",
+            "example": "vpc-us-east",
             "type": "string"
           }
         },
@@ -3066,19 +2889,15 @@
       },
       "PaginationMetadata": {
         "description": "Pagination metadata for paginated responses.",
-        "example": {
-          "count": 1,
-          "limit": 10,
-          "next_page": null,
-          "prev_page": null
-        },
         "properties": {
           "count": {
             "description": "Total number of matching records",
+            "example": 1,
             "type": "integer"
           },
           "limit": {
             "description": "Page size",
+            "example": 10,
             "type": "integer"
           },
           "next_page": {
@@ -3113,33 +2932,23 @@
       },
       "Subject": {
         "description": "Identifies the actor and request context that initiated an action.\n\nUsed to describe the principal behind an audit log entry, an authorized\nflow, or any other event surfaced through the API. May be `null` when\nthe action originated outside the context of a Firezone session.\n",
-        "example": {
-          "actor_email": "admin@example.com",
-          "actor_id": "84e7f82f-831a-4a9d-8f17-c66c2bb6e205",
-          "actor_name": "Admin User",
-          "actor_type": "account_admin_user",
-          "auth_provider_id": "98776234-1234-5678-9012-345678901234",
-          "ip": "1.2.3.4",
-          "ip_city": "San Francisco",
-          "ip_lat": 37.7749,
-          "ip_lon": -122.4194,
-          "ip_region": "California",
-          "user_agent": "Mozilla/5.0"
-        },
         "nullable": true,
         "properties": {
           "actor_email": {
             "description": "Email address of the actor, if any.",
+            "example": "admin@example.com",
             "nullable": true,
             "type": "string"
           },
           "actor_id": {
             "description": "Identifier of the actor that initiated the action.",
+            "example": "84e7f82f-831a-4a9d-8f17-c66c2bb6e205",
             "format": "uuid",
             "type": "string"
           },
           "actor_name": {
             "description": "Display name of the actor.",
+            "example": "Admin User",
             "type": "string"
           },
           "actor_type": {
@@ -3150,41 +2959,49 @@
               "service_account",
               "api_client"
             ],
+            "example": "account_admin_user",
             "type": "string"
           },
           "auth_provider_id": {
             "description": "Identifier of the authentication provider that authenticated the actor.",
+            "example": "98776234-1234-5678-9012-345678901234",
             "format": "uuid",
             "nullable": true,
             "type": "string"
           },
           "ip": {
             "description": "IP address the action originated from.",
+            "example": "1.2.3.4",
             "nullable": true,
             "type": "string"
           },
           "ip_city": {
             "description": "Geo-located city for `ip`, if known.",
+            "example": "San Francisco",
             "nullable": true,
             "type": "string"
           },
           "ip_lat": {
             "description": "Geo-located latitude for `ip`, if known.",
+            "example": 37.7749,
             "nullable": true,
             "type": "number"
           },
           "ip_lon": {
             "description": "Geo-located longitude for `ip`, if known.",
+            "example": -122.4194,
             "nullable": true,
             "type": "number"
           },
           "ip_region": {
             "description": "Geo-located region for `ip`, if known.",
+            "example": "California",
             "nullable": true,
             "type": "string"
           },
           "user_agent": {
             "description": "User agent of the client that initiated the action.",
+            "example": "Mozilla/5.0",
             "nullable": true,
             "type": "string"
           }
@@ -3229,18 +3046,10 @@
       },
       "X509AuthProvider": {
         "description": "X.509 Auth Provider",
-        "example": {
-          "account_id": "5e6f7d8c-9b0a-1c2d-3e4f-5a6b7c8d9e0f",
-          "context": "clients_only",
-          "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-          "inserted_at": "2025-01-01T00:00:00Z",
-          "is_disabled": true,
-          "name": "X.509",
-          "updated_at": "2025-01-15T10:30:00Z"
-        },
         "properties": {
           "account_id": {
             "description": "Account ID",
+            "example": "5e6f7d8c-9b0a-1c2d-3e4f-5a6b7c8d9e0f",
             "format": "uuid",
             "type": "string"
           },
@@ -3249,28 +3058,34 @@
             "enum": [
               "clients_only"
             ],
+            "example": "clients_only",
             "type": "string"
           },
           "id": {
             "description": "Provider ID",
+            "example": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
             "format": "uuid",
             "type": "string"
           },
           "inserted_at": {
             "description": "Creation timestamp",
+            "example": "2025-01-01T00:00:00Z",
             "format": "date-time",
             "type": "string"
           },
           "is_disabled": {
             "description": "Whether provider is disabled",
+            "example": true,
             "type": "boolean"
           },
           "name": {
             "description": "Provider name",
+            "example": "X.509",
             "type": "string"
           },
           "updated_at": {
             "description": "Update timestamp",
+            "example": "2025-01-15T10:30:00Z",
             "format": "date-time",
             "type": "string"
           }
@@ -3316,35 +3131,30 @@
       },
       "ActorUpdateRequest": {
         "description": "PATCH/PUT body for updating an Actor. All fields are optional; omitted fields keep their current value.",
-        "example": {
-          "actor": {
-            "allow_email_otp_sign_in": false,
-            "email": "joe.user@example.com",
-            "is_disabled": false,
-            "name": "Joe User",
-            "type": "account_admin_user"
-          }
-        },
         "properties": {
           "actor": {
             "properties": {
               "allow_email_otp_sign_in": {
                 "default": false,
                 "description": "Allow Email OTP Sign In",
+                "example": false,
                 "type": "boolean"
               },
               "email": {
                 "description": "Actor Email. Optional for service accounts.",
+                "example": "joe.user@example.com",
                 "nullable": true,
                 "type": "string"
               },
               "is_disabled": {
                 "default": false,
                 "description": "Whether the Actor is disabled. Setting this to `true` immediately revokes the Actor's active Client tokens and portal sessions. An Actor cannot disable itself.",
+                "example": false,
                 "type": "boolean"
               },
               "name": {
                 "description": "Actor Name",
+                "example": "Joe User",
                 "type": "string"
               },
               "type": {
@@ -3354,6 +3164,7 @@
                   "account_admin_user",
                   "service_account"
                 ],
+                "example": "account_admin_user",
                 "type": "string"
               }
             },
@@ -3368,20 +3179,16 @@
       },
       "MembershipResponse": {
         "description": "Response schema for Membership Updates",
-        "example": {
-          "data": {
-            "actor_ids": [
-              "4ddfa557-7dfc-484f-894c-2024ec3fe9f7",
-              "89d22f71-939d-442d-b148-897b730adfb4"
-            ]
-          }
-        },
         "properties": {
           "data": {
             "description": "Memberships",
             "properties": {
               "actor_ids": {
                 "description": "Actor IDs",
+                "example": [
+                  "4ddfa557-7dfc-484f-894c-2024ec3fe9f7",
+                  "89d22f71-939d-442d-b148-897b730adfb4"
+                ],
                 "items": {
                   "description": "Actor ID",
                   "format": "uuid",
@@ -3415,22 +3222,11 @@
       },
       "Actor": {
         "description": "Actor",
-        "example": {
-          "allow_email_otp_sign_in": false,
-          "created_by_directory_id": null,
-          "email": "john.doe@example.com",
-          "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-          "inserted_at": "2024-01-01T00:00:00Z",
-          "is_disabled": false,
-          "last_seen_at": "2024-01-15T10:30:00Z",
-          "name": "John Doe",
-          "type": "account_admin_user",
-          "updated_at": "2024-01-15T10:30:00Z"
-        },
         "properties": {
           "allow_email_otp_sign_in": {
             "default": false,
             "description": "Allow Email OTP Sign In",
+            "example": false,
             "type": "boolean"
           },
           "created_by_directory_id": {
@@ -3441,32 +3237,38 @@
           },
           "email": {
             "description": "Actor Email",
+            "example": "john.doe@example.com",
             "nullable": true,
             "type": "string"
           },
           "id": {
             "description": "Actor ID",
+            "example": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
             "format": "uuid",
             "type": "string"
           },
           "inserted_at": {
             "description": "When the actor was created",
+            "example": "2024-01-01T00:00:00Z",
             "format": "date-time",
             "type": "string"
           },
           "is_disabled": {
             "default": false,
             "description": "Whether the actor is disabled",
+            "example": false,
             "type": "boolean"
           },
           "last_seen_at": {
             "description": "Last time the actor was seen",
+            "example": "2024-01-15T10:30:00Z",
             "format": "date-time",
             "nullable": true,
             "type": "string"
           },
           "name": {
             "description": "Actor Name",
+            "example": "John Doe",
             "type": "string"
           },
           "type": {
@@ -3477,10 +3279,12 @@
               "api_client",
               "service_account"
             ],
+            "example": "account_admin_user",
             "type": "string"
           },
           "updated_at": {
             "description": "When the actor was last updated",
+            "example": "2024-01-15T10:30:00Z",
             "format": "date-time",
             "type": "string"
           }
@@ -3502,16 +3306,12 @@
       },
       "DeletedGatewayTokensResponse": {
         "description": "Response schema for deleted Gateway Tokens",
-        "example": {
-          "data": {
-            "deleted_count": 5
-          }
-        },
         "properties": {
           "data": {
             "properties": {
               "deleted_count": {
                 "description": "Number of tokens that were deleted",
+                "example": 5,
                 "type": "integer"
               }
             },
@@ -3526,22 +3326,18 @@
       },
       "PolicyUpdateParams": {
         "description": "Policy attributes accepted when updating a Policy. All fields are optional; omitted fields keep their current value.",
-        "example": {
-          "conditions": [
-            {
-              "operator": "is_in_cidr",
-              "property": "remote_ip",
-              "values": [
-                "10.0.0.0/8"
-              ]
-            }
-          ],
-          "description": "Updated description",
-          "is_disabled": false
-        },
         "properties": {
           "conditions": {
             "description": "Conditions that must be satisfied for the Policy to grant access",
+            "example": [
+              {
+                "operator": "is_in_cidr",
+                "property": "remote_ip",
+                "values": [
+                  "10.0.0.0/8"
+                ]
+              }
+            ],
             "items": {
               "$ref": "#/components/schemas/PolicyCondition"
             },
@@ -3549,6 +3345,7 @@
           },
           "description": {
             "description": "Policy Description",
+            "example": "Updated description",
             "nullable": true,
             "type": "string"
           },
@@ -3564,6 +3361,7 @@
           "is_disabled": {
             "default": false,
             "description": "Whether the Policy is disabled. A disabled Policy grants no access but is otherwise retained.",
+            "example": false,
             "type": "boolean"
           },
           "resource_id": {
@@ -3577,15 +3375,6 @@
       },
       "ClientTokenShowResponse": {
         "description": "Response schema for Client Token metadata",
-        "example": {
-          "data": {
-            "actor_id": "43a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-            "expires_at": "2025-01-15T12:34:56.789Z",
-            "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-            "inserted_at": "2025-01-15T12:34:56.789Z",
-            "updated_at": "2025-01-15T12:34:56.789Z"
-          }
-        },
         "properties": {
           "data": {
             "$ref": "#/components/schemas/ClientToken"
@@ -3808,41 +3597,39 @@
       },
       "ClientTokenWithSecret": {
         "description": "Client Token as returned when it is created, including the encoded secret. The secret is shown once and cannot be retrieved later.",
-        "example": {
-          "actor_id": "43a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-          "expires_at": "2025-01-15T12:34:56.789Z",
-          "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-          "inserted_at": "2025-01-15T12:34:56.789Z",
-          "token": "secret-token-here",
-          "updated_at": "2025-01-15T12:34:56.789Z"
-        },
         "properties": {
           "actor_id": {
             "description": "Actor ID",
+            "example": "43a7f82f-831a-4a9d-8f17-c66c2bb6e205",
             "format": "uuid",
             "type": "string"
           },
           "expires_at": {
             "description": "Expiration",
+            "example": "2025-01-15T12:34:56.789Z",
             "format": "date-time",
             "type": "string"
           },
           "id": {
             "description": "Client Token ID",
+            "example": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
             "format": "uuid",
             "type": "string"
           },
           "inserted_at": {
             "description": "Creation timestamp",
+            "example": "2025-01-15T12:34:56.789Z",
             "format": "date-time",
             "type": "string"
           },
           "token": {
             "description": "Encoded token secret",
+            "example": "secret-token-here",
             "type": "string"
           },
           "updated_at": {
             "description": "Update timestamp",
+            "example": "2025-01-15T12:34:56.789Z",
             "format": "date-time",
             "type": "string"
           }
@@ -4434,35 +4221,29 @@
       },
       "Resource": {
         "description": "Resource",
-        "example": {
-          "address": "10.0.0.10",
-          "address_description": "Production Database",
-          "filters": [
-            {
-              "ports": [
-                "5432"
-              ],
-              "protocol": "tcp"
-            }
-          ],
-          "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-          "name": "Prod DB",
-          "site_id": "0642e09d-b3a2-47e4-9cd1-c2195faeeb67",
-          "type": "ip"
-        },
         "properties": {
           "address": {
             "description": "Resource address. Null for `static_device_pool` Resources.",
+            "example": "10.0.0.10",
             "nullable": true,
             "type": "string"
           },
           "address_description": {
             "description": "Resource address description",
+            "example": "Production Database",
             "nullable": true,
             "type": "string"
           },
           "filters": {
             "description": "Traffic filters restricting the protocols and ports the Resource exposes",
+            "example": [
+              {
+                "ports": [
+                  "5432"
+                ],
+                "protocol": "tcp"
+              }
+            ],
             "items": {
               "$ref": "#/components/schemas/ResourceFilter"
             },
@@ -4470,6 +4251,7 @@
           },
           "id": {
             "description": "Resource ID",
+            "example": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
             "format": "uuid",
             "type": "string"
           },
@@ -4484,10 +4266,12 @@
           },
           "name": {
             "description": "Resource name",
+            "example": "Prod DB",
             "type": "string"
           },
           "site_id": {
             "description": "Site to connect the Resource to. Required for all types except `static_device_pool`.",
+            "example": "0642e09d-b3a2-47e4-9cd1-c2195faeeb67",
             "format": "uuid",
             "title": "SiteID",
             "type": "string"
@@ -4502,6 +4286,7 @@
               "static_device_pool",
               "dynamic_device_pool"
             ],
+            "example": "ip",
             "type": "string"
           }
         },
@@ -4528,12 +4313,10 @@
       },
       "ClientTokenCreate": {
         "description": "Client Token attributes",
-        "example": {
-          "expires_at": "2025-01-15T12:34:56.789Z"
-        },
         "properties": {
           "expires_at": {
             "description": "Expiration",
+            "example": "2025-01-15T12:34:56.789Z",
             "format": "date-time",
             "type": "string"
           }
@@ -4561,24 +4344,10 @@
       },
       "EntraDirectory": {
         "description": "Entra Directory",
-        "example": {
-          "account_id": "5e6f7d8c-9b0a-1c2d-3e4f-5a6b7c8d9e0f",
-          "disabled_reason": null,
-          "email_field": "userPrincipalName",
-          "error_message": null,
-          "errored_at": null,
-          "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-          "inserted_at": "2025-01-01T00:00:00Z",
-          "is_disabled": false,
-          "name": "Entra",
-          "sync_all_groups": false,
-          "synced_at": "2025-01-15T10:30:00Z",
-          "tenant_id": "12345678-1234-1234-1234-123456789012",
-          "updated_at": "2025-01-15T10:30:00Z"
-        },
         "properties": {
           "account_id": {
             "description": "Account ID",
+            "example": "5e6f7d8c-9b0a-1c2d-3e4f-5a6b7c8d9e0f",
             "format": "uuid",
             "type": "string"
           },
@@ -4593,6 +4362,7 @@
               "mail",
               "userPrincipalName"
             ],
+            "example": "userPrincipalName",
             "type": "string"
           },
           "error_message": {
@@ -4608,38 +4378,46 @@
           },
           "id": {
             "description": "Directory ID",
+            "example": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
             "format": "uuid",
             "type": "string"
           },
           "inserted_at": {
             "description": "Creation timestamp",
+            "example": "2025-01-01T00:00:00Z",
             "format": "date-time",
             "type": "string"
           },
           "is_disabled": {
             "description": "Whether directory is disabled",
+            "example": false,
             "type": "boolean"
           },
           "name": {
             "description": "Directory name",
+            "example": "Entra",
             "type": "string"
           },
           "sync_all_groups": {
             "description": "Sync all groups",
+            "example": false,
             "type": "boolean"
           },
           "synced_at": {
             "description": "Last sync timestamp",
+            "example": "2025-01-15T10:30:00Z",
             "format": "date-time",
             "nullable": true,
             "type": "string"
           },
           "tenant_id": {
             "description": "Microsoft Entra tenant ID",
+            "example": "12345678-1234-1234-1234-123456789012",
             "type": "string"
           },
           "updated_at": {
             "description": "Update timestamp",
+            "example": "2025-01-15T10:30:00Z",
             "format": "date-time",
             "type": "string"
           }
@@ -4664,33 +4442,25 @@
       },
       "LogsResponse": {
         "description": "Response schema for a page of Log entries.\n\nEntries are returned most recent first. Each page contains at most 100\nentries (50 by default); use the `metadata.next_page` cursor to fetch\nthe following page.\n",
-        "example": {
-          "data": [
-            {
-              "after": {
-                "name": "Jane Smith"
-              },
-              "before": {
-                "name": "Jane Doe"
-              },
-              "log_id": "c00060db0c2c8eb400000000",
-              "object": "actors",
-              "operation": "update",
-              "subject": null,
-              "timestamp": "2026-05-26T12:34:56.789Z",
-              "type": "change"
-            }
-          ],
-          "metadata": {
-            "count": 1,
-            "limit": 50,
-            "next_page": null,
-            "prev_page": null
-          }
-        },
         "properties": {
           "data": {
             "description": "Log entries for the requested window.",
+            "example": [
+              {
+                "after": {
+                  "name": "Jane Smith"
+                },
+                "before": {
+                  "name": "Jane Doe"
+                },
+                "log_id": "c00060db0c2c8eb400000000",
+                "object": "actors",
+                "operation": "update",
+                "subject": null,
+                "timestamp": "2026-05-26T12:34:56.789Z",
+                "type": "change"
+              }
+            ],
             "items": {
               "$ref": "#/components/schemas/Log"
             },
@@ -4698,6 +4468,12 @@
           },
           "metadata": {
             "description": "Pagination metadata",
+            "example": {
+              "count": 1,
+              "limit": 50,
+              "next_page": null,
+              "prev_page": null
+            },
             "type": "object"
           }
         },
@@ -4721,20 +4497,16 @@
       },
       "PoolMemberResponse": {
         "description": "Response schema for Pool Member updates",
-        "example": {
-          "data": {
-            "device_ids": [
-              "4ddfa557-7dfc-484f-894c-2024ec3fe9f7",
-              "89d22f71-939d-442d-b148-897b730adfb4"
-            ]
-          }
-        },
         "properties": {
           "data": {
             "description": "Pool members",
             "properties": {
               "device_ids": {
                 "description": "Client IDs currently in the pool",
+                "example": [
+                  "4ddfa557-7dfc-484f-894c-2024ec3fe9f7",
+                  "89d22f71-939d-442d-b148-897b730adfb4"
+                ],
                 "items": {
                   "description": "Client ID",
                   "format": "uuid",
@@ -4751,56 +4523,28 @@
       },
       "Client": {
         "description": "Client",
-        "example": {
-          "actor_id": "6ecc106b-75c1-48a5-846c-14782180c1ff",
-          "created_at": "2025-01-01T00:00:00Z",
-          "device_serial": "GCCFX0DBQ6L5",
-          "device_uuid": "7A461FF9-0BE2-64A9-A418-539D9A21827B",
-          "firebase_installation_id": null,
-          "firezone_id": "b5bb9d8014a0f9b1d61e21e796d78dccdf1352f23cd32812f4850b878ae4944c",
-          "hostname": "johns-macbook.example.com",
-          "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-          "identifier_for_vendor": null,
-          "ipv4": "100.64.0.1",
-          "ipv6": "fd00:2021:1111::1",
-          "last_attested_at": "2025-01-01T00:00:00Z",
-          "last_attested_cert_fingerprint": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
-          "last_attested_cert_serial": "4A:2F:00:8C:11:03:9E:5B",
-          "last_attested_device_serial": "GCCFX0DBQ6L5",
-          "last_attested_device_uuid": "7A461FF9-0BE2-64A9-A418-539D9A21827B",
-          "last_attested_mdm_device_id": "5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3",
-          "last_seen_at": "2025-01-01T00:00:00Z",
-          "last_seen_remote_ip": "203.0.113.10",
-          "last_seen_remote_ip_location_city": "New York",
-          "last_seen_remote_ip_location_lat": 40.7128,
-          "last_seen_remote_ip_location_lon": -74.006,
-          "last_seen_remote_ip_location_region": "US",
-          "last_seen_user_agent": "macOS/14.0 apple-client/1.5.0",
-          "last_seen_version": "1.5.0",
-          "name": "John's Macbook Air",
-          "online": true,
-          "public_key": "WdKAyoA45xJllRUYnFhI5+Y4EjSTs50MzYYHfrIhVAc=",
-          "updated_at": "2025-01-01T00:00:00Z",
-          "verified_at": "2025-01-01T00:00:00Z"
-        },
         "properties": {
           "actor_id": {
             "description": "Actor ID",
+            "example": "6ecc106b-75c1-48a5-846c-14782180c1ff",
             "format": "uuid",
             "type": "string"
           },
           "created_at": {
             "description": "Client creation timestamp",
+            "example": "2025-01-01T00:00:00Z",
             "format": "date-time",
             "type": "string"
           },
           "device_serial": {
             "description": "Device manufacturer serial number (unavailable for mobile devices)",
+            "example": "GCCFX0DBQ6L5",
             "nullable": true,
             "type": "string"
           },
           "device_uuid": {
             "description": "Device manufacturer UUID (unavailable for mobile devices)",
+            "example": "7A461FF9-0BE2-64A9-A418-539D9A21827B",
             "nullable": true,
             "type": "string"
           },
@@ -4811,16 +4555,19 @@
           },
           "firezone_id": {
             "description": "Identifier the Client reports for itself. Null for a Client whose identity comes from an MDM-issued certificate, since a self-reported value could otherwise be used to claim another Client's record.",
+            "example": "b5bb9d8014a0f9b1d61e21e796d78dccdf1352f23cd32812f4850b878ae4944c",
             "nullable": true,
             "type": "string"
           },
           "hostname": {
             "description": "Client hostname (FQDN used for dynamic device pool DNS resolution)",
+            "example": "johns-macbook.example.com",
             "nullable": true,
             "type": "string"
           },
           "id": {
             "description": "Client ID",
+            "example": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
             "format": "uuid",
             "type": "string"
           },
@@ -4831,14 +4578,17 @@
           },
           "ipv4": {
             "description": "Tunnel IPv4 Address of Client",
+            "example": "100.64.0.1",
             "type": "string"
           },
           "ipv6": {
             "description": "Tunnel IPv6 Address of Client",
+            "example": "fd00:2021:1111::1",
             "type": "string"
           },
           "last_attested_at": {
             "description": "When the device last proved possession of an MDM-provisioned client certificate",
+            "example": "2025-01-01T00:00:00Z",
             "format": "date-time",
             "nullable": true,
             "readOnly": true,
@@ -4846,95 +4596,113 @@
           },
           "last_attested_cert_fingerprint": {
             "description": "SHA-256 fingerprint of the client certificate used for device verification",
+            "example": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
             "nullable": true,
             "readOnly": true,
             "type": "string"
           },
           "last_attested_cert_serial": {
             "description": "Serial number of the client certificate used for device verification",
+            "example": "4A:2F:00:8C:11:03:9E:5B",
             "nullable": true,
             "readOnly": true,
             "type": "string"
           },
           "last_attested_device_serial": {
             "description": "Device serial number attested by an MDM-provisioned client certificate",
+            "example": "GCCFX0DBQ6L5",
             "nullable": true,
             "readOnly": true,
             "type": "string"
           },
           "last_attested_device_uuid": {
             "description": "Device UUID attested by an MDM-provisioned client certificate",
+            "example": "7A461FF9-0BE2-64A9-A418-539D9A21827B",
             "nullable": true,
             "readOnly": true,
             "type": "string"
           },
           "last_attested_mdm_device_id": {
             "description": "MDM device ID attested by an MDM-provisioned client certificate",
+            "example": "5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3",
             "nullable": true,
             "readOnly": true,
             "type": "string"
           },
           "last_seen_at": {
             "description": "Timestamp of the latest connection",
+            "example": "2025-01-01T00:00:00Z",
             "format": "date-time",
             "nullable": true,
             "type": "string"
           },
           "last_seen_remote_ip": {
             "description": "Remote IP from the latest session",
+            "example": "203.0.113.10",
             "nullable": true,
             "type": "string"
           },
           "last_seen_remote_ip_location_city": {
             "description": "Remote IP city from the latest session",
+            "example": "New York",
             "nullable": true,
             "type": "string"
           },
           "last_seen_remote_ip_location_lat": {
             "description": "Remote IP latitude from the latest session",
+            "example": 40.7128,
             "nullable": true,
             "type": "number"
           },
           "last_seen_remote_ip_location_lon": {
             "description": "Remote IP longitude from the latest session",
+            "example": -74.006,
             "nullable": true,
             "type": "number"
           },
           "last_seen_remote_ip_location_region": {
             "description": "Remote IP region from the latest session",
+            "example": "US",
             "nullable": true,
             "type": "string"
           },
           "last_seen_user_agent": {
             "description": "User agent from the latest session",
+            "example": "macOS/14.0 apple-client/1.5.0",
             "nullable": true,
             "type": "string"
           },
           "last_seen_version": {
             "description": "Client version from the latest session",
+            "example": "1.5.0",
             "nullable": true,
             "type": "string"
           },
           "name": {
             "description": "Client Name",
+            "example": "John's Macbook Air",
             "type": "string"
           },
           "online": {
             "description": "Online status of Client",
+            "example": true,
             "type": "boolean"
           },
           "public_key": {
             "description": "WireGuard public key from the latest session",
+            "example": "WdKAyoA45xJllRUYnFhI5+Y4EjSTs50MzYYHfrIhVAc=",
             "nullable": true,
             "type": "string"
           },
           "updated_at": {
             "description": "Client update timestamp",
+            "example": "2025-01-01T00:00:00Z",
             "format": "date-time",
             "type": "string"
           },
           "verified_at": {
             "description": "Client verification timestamp",
+            "example": "2025-01-01T00:00:00Z",
             "format": "date-time",
             "nullable": true,
             "type": "string"
@@ -5102,20 +4870,6 @@
       },
       "PolicyUpdateRequest": {
         "description": "PUT/PATCH body for updating a Policy",
-        "example": {
-          "policy": {
-            "conditions": [
-              {
-                "operator": "is_in_cidr",
-                "property": "remote_ip",
-                "values": [
-                  "10.0.0.0/8"
-                ]
-              }
-            ],
-            "description": "Updated description"
-          }
-        },
         "properties": {
           "policy": {
             "$ref": "#/components/schemas/PolicyUpdateParams"
@@ -5175,95 +4929,92 @@
       },
       "Gateway": {
         "description": "Gateway",
-        "example": {
-          "gateway_token_id": "0642e09d-b3a2-47e4-9cd1-c2195faeeb67",
-          "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-          "ipv4": "100.64.0.1",
-          "ipv6": "fd00:2021:1111::1",
-          "last_seen_at": "2025-01-01T00:00:00Z",
-          "last_seen_remote_ip": "198.51.100.10",
-          "last_seen_remote_ip_location_city": "San Francisco",
-          "last_seen_remote_ip_location_lat": 37.7749,
-          "last_seen_remote_ip_location_lon": -122.4194,
-          "last_seen_remote_ip_location_region": "US-CA",
-          "last_seen_user_agent": "Linux/6.1.0 connlib/1.5.0",
-          "last_seen_version": "1.5.0",
-          "name": "vpc-us-east",
-          "online": true,
-          "public_key": "WdKAyoA45xJllRUYnFhI5+Y4EjSTs50MzYYHfrIhVAc=",
-          "rotated_at": null
-        },
         "properties": {
           "gateway_token_id": {
             "description": "ID of the token this Gateway last connected with. Null until the Gateway connects for the first time.",
+            "example": "0642e09d-b3a2-47e4-9cd1-c2195faeeb67",
             "format": "uuid",
             "nullable": true,
             "type": "string"
           },
           "id": {
             "description": "Gateway ID",
+            "example": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
             "format": "uuid",
             "type": "string"
           },
           "ipv4": {
             "description": "Tunnel IPv4 address (see last_seen_remote_ip for the public IP)",
+            "example": "100.64.0.1",
             "type": "string"
           },
           "ipv6": {
             "description": "Tunnel IPv6 address (see last_seen_remote_ip for the public IP)",
+            "example": "fd00:2021:1111::1",
             "type": "string"
           },
           "last_seen_at": {
             "description": "Timestamp of the latest connection",
+            "example": "2025-01-01T00:00:00Z",
             "format": "date-time",
             "nullable": true,
             "type": "string"
           },
           "last_seen_remote_ip": {
             "description": "Remote IP from the latest session",
+            "example": "198.51.100.10",
             "nullable": true,
             "type": "string"
           },
           "last_seen_remote_ip_location_city": {
             "description": "Remote IP city from the latest session",
+            "example": "San Francisco",
             "nullable": true,
             "type": "string"
           },
           "last_seen_remote_ip_location_lat": {
             "description": "Remote IP latitude from the latest session",
+            "example": 37.7749,
             "nullable": true,
             "type": "number"
           },
           "last_seen_remote_ip_location_lon": {
             "description": "Remote IP longitude from the latest session",
+            "example": -122.4194,
             "nullable": true,
             "type": "number"
           },
           "last_seen_remote_ip_location_region": {
             "description": "Remote IP region from the latest session",
+            "example": "US-CA",
             "nullable": true,
             "type": "string"
           },
           "last_seen_user_agent": {
             "description": "User agent from the latest session",
+            "example": "Linux/6.1.0 connlib/1.5.0",
             "nullable": true,
             "type": "string"
           },
           "last_seen_version": {
             "description": "Gateway version from the latest session",
+            "example": "1.5.0",
             "nullable": true,
             "type": "string"
           },
           "name": {
             "description": "Gateway Name",
+            "example": "vpc-us-east",
             "type": "string"
           },
           "online": {
             "description": "Online status of Gateway",
+            "example": true,
             "type": "boolean"
           },
           "public_key": {
             "description": "WireGuard public key from the latest session",
+            "example": "WdKAyoA45xJllRUYnFhI5+Y4EjSTs50MzYYHfrIhVAc=",
             "nullable": true,
             "type": "string"
           },
@@ -5297,18 +5048,16 @@
       },
       "PoolMemberPutRequest": {
         "description": "PUT body replacing the pool's entire membership. Any Client not named\nhere is removed from the pool.\n",
-        "example": {
-          "pool_members": [
-            {
-              "device_id": "7cb89288-1fb3-433e-a522-2d087e45988d"
-            },
-            {
-              "device_id": "cc9f561a-444d-4083-ab38-0abc6cf2314c"
-            }
-          ]
-        },
         "properties": {
           "pool_members": {
+            "example": [
+              {
+                "device_id": "7cb89288-1fb3-433e-a522-2d087e45988d"
+              },
+              {
+                "device_id": "cc9f561a-444d-4083-ab38-0abc6cf2314c"
+              }
+            ],
             "items": {
               "properties": {
                 "device_id": {
@@ -5333,18 +5082,16 @@
       },
       "GatewayToken": {
         "description": "Gateway Token",
-        "example": {
-          "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-          "token": "secret-token-here"
-        },
         "properties": {
           "id": {
             "description": "Gateway Token ID",
+            "example": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
             "format": "uuid",
             "type": "string"
           },
           "token": {
             "description": "Gateway Token",
+            "example": "secret-token-here",
             "type": "string"
           }
         },
@@ -5357,6 +5104,7 @@
       },
       "SiteID": {
         "description": "Site to connect the Resource to. Required. The Internet Site is reserved for the Internet Resource and cannot be used.",
+        "example": "0642e09d-b3a2-47e4-9cd1-c2195faeeb67",
         "format": "uuid",
         "nullable": true,
         "title": "SiteID",
@@ -5364,17 +5112,6 @@
       },
       "Group": {
         "description": "Group",
-        "example": {
-          "directory_id": null,
-          "email": null,
-          "entity_type": "group",
-          "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-          "idp_id": null,
-          "inserted_at": "2024-01-15T10:30:00Z",
-          "name": "Engineering",
-          "synced_at": null,
-          "updated_at": "2024-01-15T10:30:00Z"
-        },
         "properties": {
           "directory_id": {
             "description": "Directory ID this group belongs to",
@@ -5393,10 +5130,12 @@
               "group",
               "org_unit"
             ],
+            "example": "group",
             "type": "string"
           },
           "id": {
             "description": "Group ID",
+            "example": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
             "format": "uuid",
             "type": "string"
           },
@@ -5407,11 +5146,13 @@
           },
           "inserted_at": {
             "description": "Creation timestamp",
+            "example": "2024-01-15T10:30:00Z",
             "format": "date-time",
             "type": "string"
           },
           "name": {
             "description": "Group Name",
+            "example": "Engineering",
             "type": "string"
           },
           "synced_at": {
@@ -5422,6 +5163,7 @@
           },
           "updated_at": {
             "description": "Last update timestamp",
+            "example": "2024-01-15T10:30:00Z",
             "format": "date-time",
             "type": "string"
           }
@@ -5442,12 +5184,6 @@
       },
       "ProblemDetails": {
         "description": "RFC 9457 (Problem Details for HTTP APIs) error response.",
-        "example": {
-          "detail": "The requested resource could not be found.",
-          "status": 404,
-          "title": "Not Found",
-          "type": "about:blank"
-        },
         "properties": {
           "detail": {
             "description": "Human-readable explanation specific to this occurrence of the problem.",
@@ -5495,38 +5231,31 @@
       },
       "ResourceUpdateRequest": {
         "description": "PATCH/PUT body for updating a Resource. All fields are optional; omitted fields keep their current value.",
-        "example": {
-          "resource": {
-            "address": "10.0.0.10",
-            "address_description": "Production Database",
-            "filters": [
-              {
-                "ports": [
-                  "5432"
-                ],
-                "protocol": "tcp"
-              }
-            ],
-            "name": "Prod DB",
-            "site_id": "0642e09d-b3a2-47e4-9cd1-c2195faeeb67",
-            "type": "ip"
-          }
-        },
         "properties": {
           "resource": {
             "properties": {
               "address": {
                 "description": "Resource address.",
+                "example": "10.0.0.10",
                 "nullable": true,
                 "type": "string"
               },
               "address_description": {
                 "description": "Resource address description",
+                "example": "Production Database",
                 "nullable": true,
                 "type": "string"
               },
               "filters": {
                 "description": "Traffic filters restricting the protocols and ports the Resource exposes",
+                "example": [
+                  {
+                    "ports": [
+                      "5432"
+                    ],
+                    "protocol": "tcp"
+                  }
+                ],
                 "items": {
                   "$ref": "#/components/schemas/ResourceFilter"
                 },
@@ -5544,10 +5273,12 @@
               },
               "name": {
                 "description": "Resource name",
+                "example": "Prod DB",
                 "type": "string"
               },
               "site_id": {
                 "description": "Site to connect the Resource to. Required. The Internet Site is reserved for the Internet Resource and cannot be used.",
+                "example": "0642e09d-b3a2-47e4-9cd1-c2195faeeb67",
                 "format": "uuid",
                 "nullable": true,
                 "title": "SiteID",
@@ -5562,6 +5293,7 @@
                   "internet",
                   "static_device_pool"
                 ],
+                "example": "ip",
                 "type": "string"
               }
             },
@@ -5576,17 +5308,14 @@
       },
       "ResourceFilter": {
         "description": "Traffic filter restricting the protocols and ports the Resource exposes",
-        "example": {
-          "ports": [
-            "80",
-            "443",
-            "8000 - 9000"
-          ],
-          "protocol": "tcp"
-        },
         "properties": {
           "ports": {
             "description": "Port numbers or ranges (e.g. `80` or `8000 - 9000`) the filter allows. Not applicable to `icmp`.",
+            "example": [
+              "80",
+              "443",
+              "8000 - 9000"
+            ],
             "items": {
               "type": "string"
             },
@@ -5599,6 +5328,7 @@
               "udp",
               "icmp"
             ],
+            "example": "tcp",
             "type": "string"
           }
         },
@@ -5610,29 +5340,24 @@
       },
       "ActorCreateRequest": {
         "description": "POST body for creating an Actor",
-        "example": {
-          "actor": {
-            "allow_email_otp_sign_in": false,
-            "email": "joe.user@example.com",
-            "name": "Joe User",
-            "type": "account_admin_user"
-          }
-        },
         "properties": {
           "actor": {
             "properties": {
               "allow_email_otp_sign_in": {
                 "default": false,
                 "description": "Allow Email OTP Sign In",
+                "example": false,
                 "type": "boolean"
               },
               "email": {
                 "description": "Actor Email. Optional for service accounts.",
+                "example": "joe.user@example.com",
                 "nullable": true,
                 "type": "string"
               },
               "name": {
                 "description": "Actor Name",
+                "example": "Joe User",
                 "type": "string"
               },
               "type": {
@@ -5642,6 +5367,7 @@
                   "account_admin_user",
                   "service_account"
                 ],
+                "example": "account_admin_user",
                 "type": "string"
               }
             },
@@ -5660,12 +5386,10 @@
       },
       "GatewayUpdate": {
         "description": "Update schema for a single Gateway",
-        "example": {
-          "name": "vpc-us-east"
-        },
         "properties": {
           "name": {
             "description": "Gateway Name",
+            "example": "vpc-us-east",
             "type": "string"
           }
         },
@@ -5677,21 +5401,14 @@
       },
       "MembershipPatchRequest": {
         "description": "PATCH body for updating Memberships",
-        "example": {
-          "memberships": {
-            "add": [
-              "4ddfa557-7dfc-484f-894c-2024ec3fe9f7"
-            ],
-            "remove": [
-              "89d22f71-939d-442d-b148-897b730adfb4"
-            ]
-          }
-        },
         "properties": {
           "memberships": {
             "properties": {
               "add": {
                 "description": "Array of Actor IDs",
+                "example": [
+                  "4ddfa557-7dfc-484f-894c-2024ec3fe9f7"
+                ],
                 "items": {
                   "description": "Actor ID",
                   "format": "uuid",
@@ -5701,6 +5418,9 @@
               },
               "remove": {
                 "description": "Array of Actor IDs",
+                "example": [
+                  "89d22f71-939d-442d-b148-897b730adfb4"
+                ],
                 "items": {
                   "description": "Actor ID",
                   "format": "uuid",
@@ -5749,25 +5469,23 @@
       },
       "PoolMember": {
         "description": "A Client belonging to a static device pool Resource",
-        "example": {
-          "id": "7cb89288-1fb3-433e-a522-2d087e45988d",
-          "last_seen_at": "2024-01-15T10:30:00Z",
-          "name": "jane-laptop"
-        },
         "properties": {
           "id": {
             "description": "Client ID",
+            "example": "7cb89288-1fb3-433e-a522-2d087e45988d",
             "format": "uuid",
             "type": "string"
           },
           "last_seen_at": {
             "description": "Last time the Client was seen",
+            "example": "2024-01-15T10:30:00Z",
             "format": "date-time",
             "nullable": true,
             "type": "string"
           },
           "name": {
             "description": "Client Name",
+            "example": "jane-laptop",
             "type": "string"
           }
         },
@@ -5781,27 +5499,19 @@
       },
       "Policy": {
         "description": "Policy",
-        "example": {
-          "conditions": [
-            {
-              "operator": "is_in",
-              "property": "remote_ip_location_region",
-              "values": [
-                "US",
-                "CA"
-              ]
-            }
-          ],
-          "description": "Policy to allow something",
-          "flow_log_uploads_enabled": true,
-          "group_id": "88eae9ce-9179-48c6-8430-770e38dd4775",
-          "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-          "is_disabled": false,
-          "resource_id": "a9f60587-793c-46ae-8525-597f43ab2fb1"
-        },
         "properties": {
           "conditions": {
             "description": "Conditions that must be satisfied for the Policy to grant access",
+            "example": [
+              {
+                "operator": "is_in",
+                "property": "remote_ip_location_region",
+                "values": [
+                  "US",
+                  "CA"
+                ]
+              }
+            ],
             "items": {
               "$ref": "#/components/schemas/PolicyCondition"
             },
@@ -5809,30 +5519,36 @@
           },
           "description": {
             "description": "Policy Description",
+            "example": "Policy to allow something",
             "nullable": true,
             "type": "string"
           },
           "flow_log_uploads_enabled": {
             "description": "Whether flow logs are reported for connections authorized by this Policy",
+            "example": true,
             "type": "boolean"
           },
           "group_id": {
             "description": "Group ID. Null if the Group was deleted during directory sync; it is relinked automatically if the Group reappears on a subsequent sync.",
+            "example": "88eae9ce-9179-48c6-8430-770e38dd4775",
             "format": "uuid",
             "nullable": true,
             "type": "string"
           },
           "id": {
             "description": "Policy ID",
+            "example": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
             "format": "uuid",
             "type": "string"
           },
           "is_disabled": {
             "description": "Whether the Policy is disabled. A disabled Policy grants no access but is otherwise retained.",
+            "example": false,
             "type": "boolean"
           },
           "resource_id": {
             "description": "Resource ID",
+            "example": "a9f60587-793c-46ae-8525-597f43ab2fb1",
             "format": "uuid",
             "type": "string"
           }
@@ -5864,26 +5580,16 @@
       },
       "EmailOTPAuthProvider": {
         "description": "Email OTP Auth Provider",
-        "example": {
-          "account_id": "5e6f7d8c-9b0a-1c2d-3e4f-5a6b7c8d9e0f",
-          "client_session_lifetime_secs": 604800,
-          "context": "clients_and_portal",
-          "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-          "inserted_at": "2025-01-01T00:00:00Z",
-          "is_disabled": false,
-          "issuer": "firezone",
-          "name": "Email OTP",
-          "portal_session_lifetime_secs": 28800,
-          "updated_at": "2025-01-15T10:30:00Z"
-        },
         "properties": {
           "account_id": {
             "description": "Account ID",
+            "example": "5e6f7d8c-9b0a-1c2d-3e4f-5a6b7c8d9e0f",
             "format": "uuid",
             "type": "string"
           },
           "client_session_lifetime_secs": {
             "description": "Client session lifetime in seconds. Null when the account default applies.",
+            "example": 604800,
             "nullable": true,
             "type": "integer"
           },
@@ -5894,37 +5600,45 @@
               "clients_only",
               "portal_only"
             ],
+            "example": "clients_and_portal",
             "type": "string"
           },
           "id": {
             "description": "Provider ID",
+            "example": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
             "format": "uuid",
             "type": "string"
           },
           "inserted_at": {
             "description": "Creation timestamp",
+            "example": "2025-01-01T00:00:00Z",
             "format": "date-time",
             "type": "string"
           },
           "is_disabled": {
             "description": "Whether provider is disabled",
+            "example": false,
             "type": "boolean"
           },
           "issuer": {
             "description": "Issuer",
+            "example": "firezone",
             "type": "string"
           },
           "name": {
             "description": "Provider name",
+            "example": "Email OTP",
             "type": "string"
           },
           "portal_session_lifetime_secs": {
             "description": "Portal session lifetime in seconds. Null when the account default applies.",
+            "example": 28800,
             "nullable": true,
             "type": "integer"
           },
           "updated_at": {
             "description": "Update timestamp",
+            "example": "2025-01-15T10:30:00Z",
             "format": "date-time",
             "type": "string"
           }
@@ -5946,14 +5660,6 @@
       },
       "PolicyCondition": {
         "description": "A condition that must be satisfied for the Policy to grant access.\n\nAll conditions on a Policy must evaluate to true for access to be\ngranted. A condition is made up of a `property`, an `operator`, and a\nlist of `values`. The valid operators and the meaning of `values`\ndepend on the `property`:\n\n* `remote_ip_location_region` with `is_in` / `is_not_in`: `values` are\n  ISO 3166-1 alpha-2 country codes, e.g. `[\"US\", \"CA\"]`.\n* `remote_ip` with `is_in_cidr` / `is_not_in_cidr`: `values` are CIDR\n  ranges (IPv4 or IPv6), e.g. `[\"10.0.0.0/8\", \"2607:f8b0::/32\"]`.\n* `auth_provider_id` with `is_in` / `is_not_in`: `values` are\n  authentication provider IDs (UUIDs).\n* `current_utc_datetime` with `is_in_day_of_week_time_ranges`: each\n  value is a `DAY/TIME_RANGES/TIMEZONE` string where `DAY` is one of\n  `M T W R F S U` (Monday through Sunday), `TIME_RANGES` is a\n  comma-separated list of `HH:MM-HH:MM` ranges, and `TIMEZONE` is an\n  IANA timezone name, e.g. `\"M/09:00-17:00/America/New_York\"`.\n* `client_verified` with `is`: `values` is a single-element list\n  containing `\"true\"` or `\"false\"`.\n",
-        "example": {
-          "operator": "is_in",
-          "property": "remote_ip_location_region",
-          "values": [
-            "US",
-            "CA"
-          ]
-        },
         "properties": {
           "operator": {
             "description": "How the values are compared against the property",
@@ -5965,6 +5671,7 @@
               "is_in_day_of_week_time_ranges",
               "is"
             ],
+            "example": "is_in",
             "type": "string"
           },
           "property": {
@@ -5976,10 +5683,15 @@
               "current_utc_datetime",
               "client_verified"
             ],
+            "example": "remote_ip_location_region",
             "type": "string"
           },
           "values": {
             "description": "The values to compare against, interpreted per the property",
+            "example": [
+              "US",
+              "CA"
+            ],
             "items": {
               "type": "string"
             },
@@ -5996,17 +5708,6 @@
       },
       "ValidationProblemDetails": {
         "description": "RFC 9457 error response for request validation failures. The `validation_errors` member maps each invalid field to a list of human-readable messages. Errors on nested objects and on the items of a list are reported under the same shape, keyed by field name or list index. It is omitted when the failure is not attributable to individual fields.",
-        "example": {
-          "detail": "The request body failed validation.",
-          "status": 422,
-          "title": "Unprocessable Content",
-          "type": "about:blank",
-          "validation_errors": {
-            "name": [
-              "can't be blank"
-            ]
-          }
-        },
         "properties": {
           "detail": {
             "example": "The request body failed validation.",
@@ -6116,27 +5817,16 @@
       },
       "GoogleAuthProvider": {
         "description": "Google Auth Provider",
-        "example": {
-          "account_id": "5e6f7d8c-9b0a-1c2d-3e4f-5a6b7c8d9e0f",
-          "client_session_lifetime_secs": 604800,
-          "context": "clients_and_portal",
-          "id": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-          "inserted_at": "2025-01-01T00:00:00Z",
-          "is_default": true,
-          "is_disabled": false,
-          "issuer": "https://accounts.google.com",
-          "name": "Google",
-          "portal_session_lifetime_secs": 28800,
-          "updated_at": "2025-01-15T10:30:00Z"
-        },
         "properties": {
           "account_id": {
             "description": "Account ID",
+            "example": "5e6f7d8c-9b0a-1c2d-3e4f-5a6b7c8d9e0f",
             "format": "uuid",
             "type": "string"
           },
           "client_session_lifetime_secs": {
             "description": "Client session lifetime in seconds. Null when the account default applies.",
+            "example": 604800,
             "nullable": true,
             "type": "integer"
           },
@@ -6147,41 +5837,50 @@
               "clients_only",
               "portal_only"
             ],
+            "example": "clients_and_portal",
             "type": "string"
           },
           "id": {
             "description": "Provider ID",
+            "example": "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
             "format": "uuid",
             "type": "string"
           },
           "inserted_at": {
             "description": "Creation timestamp",
+            "example": "2025-01-01T00:00:00Z",
             "format": "date-time",
             "type": "string"
           },
           "is_default": {
             "description": "Whether provider is default",
+            "example": true,
             "type": "boolean"
           },
           "is_disabled": {
             "description": "Whether provider is disabled",
+            "example": false,
             "type": "boolean"
           },
           "issuer": {
             "description": "Issuer",
+            "example": "https://accounts.google.com",
             "type": "string"
           },
           "name": {
             "description": "Provider name",
+            "example": "Google",
             "type": "string"
           },
           "portal_session_lifetime_secs": {
             "description": "Portal session lifetime in seconds. Null when the account default applies.",
+            "example": 28800,
             "nullable": true,
             "type": "integer"
           },
           "updated_at": {
             "description": "Update timestamp",
+            "example": "2025-01-15T10:30:00Z",
             "format": "date-time",
             "type": "string"
           }
@@ -6204,16 +5903,12 @@
       },
       "GroupUpdateRequest": {
         "description": "PATCH/PUT body for updating a Group. All fields are optional; omitted fields keep their current value.",
-        "example": {
-          "group": {
-            "name": "Engineering"
-          }
-        },
         "properties": {
           "group": {
             "properties": {
               "name": {
                 "description": "Group Name",
+                "example": "Engineering",
                 "type": "string"
               }
             },
@@ -6228,31 +5923,16 @@
       },
       "APIRequestLog": {
         "description": "A single API Request Log entry, recording one authenticated REST API\nrequest.\n",
-        "example": {
-          "actor_id": "84e7f82f-831a-4a9d-8f17-c66c2bb6e205",
-          "api_token_id": "44e7f82f-831a-4a9d-8f17-c66c2bb6e205",
-          "content_length": null,
-          "ip": "189.172.73.1",
-          "ip_city": "Mexico City",
-          "ip_lat": 19.4326,
-          "ip_lon": -99.1332,
-          "ip_region": "MX",
-          "log_id": "a00060db0c2c8eb400000000",
-          "method": "GET",
-          "path": "/clients",
-          "request_id": "GBKkV1jUWuW2sJoAACkB",
-          "timestamp": "2026-05-26T12:34:56.789Z",
-          "type": "api_request",
-          "user_agent": "curl/8.7.1"
-        },
         "properties": {
           "actor_id": {
             "description": "ID of the API Client actor.",
+            "example": "84e7f82f-831a-4a9d-8f17-c66c2bb6e205",
             "format": "uuid",
             "type": "string"
           },
           "api_token_id": {
             "description": "ID of the API token used.",
+            "example": "44e7f82f-831a-4a9d-8f17-c66c2bb6e205",
             "format": "uuid",
             "type": "string"
           },
@@ -6262,21 +5942,26 @@
             "type": "integer"
           },
           "ip": {
+            "example": "189.172.73.1",
             "type": "string"
           },
           "ip_city": {
+            "example": "Mexico City",
             "nullable": true,
             "type": "string"
           },
           "ip_lat": {
+            "example": 19.4326,
             "nullable": true,
             "type": "number"
           },
           "ip_lon": {
+            "example": -99.1332,
             "nullable": true,
             "type": "number"
           },
           "ip_region": {
+            "example": "MX",
             "nullable": true,
             "type": "string"
           },
@@ -6297,10 +5982,12 @@
           },
           "request_id": {
             "description": "Request ID assigned by the server, for correlating with server logs.",
+            "example": "GBKkV1jUWuW2sJoAACkB",
             "type": "string"
           },
           "timestamp": {
             "description": "RFC 3339 timestamp identifying when the request was received.",
+            "example": "2026-05-26T12:34:56.789Z",
             "format": "date-time",
             "type": "string"
           },
@@ -6308,9 +5995,11 @@
             "enum": [
               "api_request"
             ],
+            "example": "api_request",
             "type": "string"
           },
           "user_agent": {
+            "example": "curl/8.7.1",
             "nullable": true,
             "type": "string"
           }
@@ -6354,16 +6043,12 @@
       },
       "SiteUpdateRequest": {
         "description": "PATCH/PUT body for updating a Site. All fields are optional; omitted fields keep their current value.",
-        "example": {
-          "site": {
-            "name": "vpc-us-east"
-          }
-        },
         "properties": {
           "site": {
             "properties": {
               "name": {
                 "description": "Site Name",
+                "example": "vpc-us-east",
                 "type": "string"
               }
             },
@@ -6453,21 +6138,14 @@
       },
       "PoolMemberPatchRequest": {
         "description": "PATCH body for adding and removing individual pool members. Both\noperations are idempotent, and `remove` is applied before `add`, so a\nClient named in both ends up in the pool.\n",
-        "example": {
-          "pool_members": {
-            "add": [
-              "7cb89288-1fb3-433e-a522-2d087e45988d"
-            ],
-            "remove": [
-              "cc9f561a-444d-4083-ab38-0abc6cf2314c"
-            ]
-          }
-        },
         "properties": {
           "pool_members": {
             "properties": {
               "add": {
                 "description": "Client IDs to add to the pool",
+                "example": [
+                  "7cb89288-1fb3-433e-a522-2d087e45988d"
+                ],
                 "items": {
                   "description": "Client ID",
                   "format": "uuid",
@@ -6477,6 +6155,9 @@
               },
               "remove": {
                 "description": "Client IDs to remove from the pool",
+                "example": [
+                  "cc9f561a-444d-4083-ab38-0abc6cf2314c"
+                ],
                 "items": {
                   "description": "Client ID",
                   "format": "uuid",
@@ -6496,53 +6177,6 @@
       },
       "FlowLog": {
         "description": "A single Flow Log entry, recording one network flow as accounted by one\nof its two endpoints.\n\nBoth endpoints of a flow report it independently, so a flow yields up to\ntwo entries that differ only in `role` and in the counters each side\nobserved. Every other field is oriented from the initiator regardless of\nwhich side reported the entry: `inner_src_*` is always the initiator,\n`inner_dst_*` always the responder, and `tx_*` always counts\ninitiator-to-responder traffic. `outers` records each outer network path\nin the order it was observed. Comparing the two entries of a flow is how\nreported traffic is cross-checked.\n",
-        "example": {
-          "log_id": "f00060db0c2c8eb400000000",
-          "initiator_device_id": "11e7f82f-831a-4a9d-8f17-c66c2bb6e205",
-          "last_packet": "2026-05-26T12:33:58.000Z",
-          "inner_dst_ip": "10.0.0.5",
-          "initiator_auth_provider_id": "7b2c1e40-9f3a-4d21-8c5e-1a2b3c4d5e6f",
-          "initiator_device_uuid": "0C4A8D24-FA9F-4E56-9B57-40D0D46A245E",
-          "flow_end": "2026-05-26T12:34:00.000Z",
-          "initiator_device_identifier_for_vendor": null,
-          "policy_authorization_id": "6fa1d58f-0289-42e6-a3ba-7edfa46ee2d5",
-          "tx_bytes": 20480,
-          "initiator_client_version": "1.5.1",
-          "type": "flow",
-          "rx_packets": 100,
-          "initiator_device_os_name": "macOS",
-          "timestamp": "2026-05-26T12:34:56.789Z",
-          "role": "responder",
-          "tx_packets": 80,
-          "inner_dst_port": 443,
-          "initiator_device_firebase_installation_id": null,
-          "inner_src_ip": "100.64.0.1",
-          "responder_device_id": "9d3a1c40-5f2b-4c8e-9a71-0b6d4e2f8c13",
-          "initiator_actor_email": "user@example.com",
-          "protocol": "tcp",
-          "authorization_expires_at": "2026-05-26T20:29:00.000Z",
-          "outers": [
-            {
-              "dst_ip": "198.51.100.5",
-              "dst_port": 51820,
-              "src_ip": "203.0.113.10",
-              "src_port": 51820
-            }
-          ],
-          "resource_id": "44e7f82f-831a-4a9d-8f17-c66c2bb6e205",
-          "inner_src_port": 54321,
-          "rx_bytes": 102400,
-          "authorized_at": "2026-05-26T12:29:00.000Z",
-          "flow_start": "2026-05-26T12:30:00.000Z",
-          "initiator_device_os_version": "15.5",
-          "inner_domain": "gitlab.company.com",
-          "initiator_actor_id": "84e7f82f-831a-4a9d-8f17-c66c2bb6e205",
-          "initiator_actor_name": "John Doe",
-          "resource_address": "gitlab.company.com",
-          "initiator_device_serial": "C02ABC123",
-          "resource_name": "GitLab",
-          "policy_id": "46f997d1-77c8-4936-8655-8f050dffbfa4"
-        },
         "properties": {
           "log_id": {
             "description": "Opaque identifier for the Flow Log entry. A 24-character lowercase\nhexadecimal string starting with `f`.\n",
@@ -6551,32 +6185,38 @@
           },
           "initiator_device_id": {
             "description": "ID of the Client that opened the flow. Always a Client.",
+            "example": "11e7f82f-831a-4a9d-8f17-c66c2bb6e205",
             "format": "uuid",
             "type": "string"
           },
           "last_packet": {
             "description": "When the last packet was seen. Null while the flow is open.",
+            "example": "2026-05-26T12:33:58.000Z",
             "format": "date-time",
             "nullable": true,
             "type": "string"
           },
           "inner_dst_ip": {
             "description": "Tunnel IP of the responder, on both entries of the flow.",
+            "example": "10.0.0.5",
             "type": "string"
           },
           "initiator_auth_provider_id": {
             "description": "ID of the Auth Provider the initiating Client authenticated with.\n",
+            "example": "7b2c1e40-9f3a-4d21-8c5e-1a2b3c4d5e6f",
             "format": "uuid",
             "nullable": true,
             "type": "string"
           },
           "initiator_device_uuid": {
             "description": "Device UUID reported by the initiating Client.",
+            "example": "0C4A8D24-FA9F-4E56-9B57-40D0D46A245E",
             "nullable": true,
             "type": "string"
           },
           "flow_end": {
             "description": "RFC 3339 timestamp of when the flow ended. Null while the flow is open.",
+            "example": "2026-05-26T12:34:00.000Z",
             "format": "date-time",
             "nullable": true,
             "type": "string"
@@ -6588,16 +6228,19 @@
           },
           "policy_authorization_id": {
             "description": "ID of the Policy Authorization that permitted the flow.",
+            "example": "6fa1d58f-0289-42e6-a3ba-7edfa46ee2d5",
             "format": "uuid",
             "type": "string"
           },
           "tx_bytes": {
             "description": "Bytes sent initiator-to-responder, as counted by the reporting side. Null while the flow is open.",
+            "example": 20480,
             "nullable": true,
             "type": "integer"
           },
           "initiator_client_version": {
             "description": "Firezone Client version reported by the initiating Client.",
+            "example": "1.5.1",
             "nullable": true,
             "type": "string"
           },
@@ -6605,20 +6248,24 @@
             "enum": [
               "flow"
             ],
+            "example": "flow",
             "type": "string"
           },
           "rx_packets": {
             "description": "Packets sent responder-to-initiator, as counted by the reporting side. Null while the flow is open.",
+            "example": 100,
             "nullable": true,
             "type": "integer"
           },
           "initiator_device_os_name": {
             "description": "Operating system reported by the initiating Client.",
+            "example": "macOS",
             "nullable": true,
             "type": "string"
           },
           "timestamp": {
             "description": "RFC 3339 timestamp identifying when the flow was ingested.",
+            "example": "2026-05-26T12:34:56.789Z",
             "format": "date-time",
             "type": "string"
           },
@@ -6628,14 +6275,17 @@
               "initiator",
               "responder"
             ],
+            "example": "responder",
             "type": "string"
           },
           "tx_packets": {
             "description": "Packets sent initiator-to-responder, as counted by the reporting side. Null while the flow is open.",
+            "example": 80,
             "nullable": true,
             "type": "integer"
           },
           "inner_dst_port": {
+            "example": 443,
             "type": "integer"
           },
           "initiator_device_firebase_installation_id": {
@@ -6645,14 +6295,17 @@
           },
           "inner_src_ip": {
             "description": "Tunnel IP of the initiator, on both entries of the flow.",
+            "example": "100.64.0.1",
             "type": "string"
           },
           "responder_device_id": {
             "description": "ID of the device the flow was opened to: the Gateway serving the\nResource, or the receiving Client for device-to-device flows.\n",
+            "example": "9d3a1c40-5f2b-4c8e-9a71-0b6d4e2f8c13",
             "format": "uuid",
             "type": "string"
           },
           "initiator_actor_email": {
+            "example": "user@example.com",
             "nullable": true,
             "type": "string"
           },
@@ -6662,15 +6315,25 @@
               "tcp",
               "udp"
             ],
+            "example": "tcp",
             "type": "string"
           },
           "authorization_expires_at": {
             "description": "When the Policy Authorization expires.",
+            "example": "2026-05-26T20:29:00.000Z",
             "format": "date-time",
             "type": "string"
           },
           "outers": {
             "description": "Outer network paths in observation order. Null while the flow is open;\nthe close report replaces it with the complete array. Source IP and\nport must either both be populated or both be absent/null. The two\nentries of a flow can disagree whenever NAT or a relay sits between\nthe peers.\n",
+            "example": [
+              {
+                "dst_ip": "198.51.100.5",
+                "dst_port": 51820,
+                "src_ip": "203.0.113.10",
+                "src_port": 51820
+              }
+            ],
             "items": {
               "properties": {
                 "dst_ip": {
@@ -6706,62 +6369,75 @@
           },
           "resource_id": {
             "description": "ID of the Resource accessed.",
+            "example": "44e7f82f-831a-4a9d-8f17-c66c2bb6e205",
             "format": "uuid",
             "type": "string"
           },
           "inner_src_port": {
+            "example": 54321,
             "type": "integer"
           },
           "rx_bytes": {
             "description": "Bytes sent responder-to-initiator, as counted by the reporting side. Null while the flow is open.",
+            "example": 102400,
             "nullable": true,
             "type": "integer"
           },
           "authorized_at": {
             "description": "When access to the Resource was authorized.",
+            "example": "2026-05-26T12:29:00.000Z",
             "format": "date-time",
             "type": "string"
           },
           "flow_start": {
             "description": "RFC 3339 timestamp of when the flow began. The `begin`/`end`\nwindow matches flows whose [`flow_start`, `flow_end`) range\noverlaps it.\n",
+            "example": "2026-05-26T12:30:00.000Z",
             "format": "date-time",
             "type": "string"
           },
           "initiator_device_os_version": {
             "description": "Operating system version reported by the initiating Client.",
+            "example": "15.5",
             "nullable": true,
             "type": "string"
           },
           "inner_domain": {
             "description": "Domain name for flows to DNS Resources.",
+            "example": "gitlab.company.com",
             "nullable": true,
             "type": "string"
           },
           "initiator_actor_id": {
             "description": "ID of the Actor who opened the flow. This is always the initiating\nClient's Actor. A Gateway has no Actor, and for device-to-device\nflows the receiving Client's own Actor is not recorded here.\n",
+            "example": "84e7f82f-831a-4a9d-8f17-c66c2bb6e205",
             "format": "uuid",
             "nullable": true,
             "type": "string"
           },
           "initiator_actor_name": {
+            "example": "John Doe",
             "nullable": true,
             "type": "string"
           },
           "resource_address": {
             "description": "Resource address, when the Resource type has one.",
+            "example": "gitlab.company.com",
             "nullable": true,
             "type": "string"
           },
           "initiator_device_serial": {
             "description": "Device serial number reported by the initiating Client.",
+            "example": "C02ABC123",
             "nullable": true,
             "type": "string"
           },
           "resource_name": {
+            "example": "GitLab",
             "type": "string"
           },
           "policy_id": {
             "description": "ID of the Policy that permitted the flow.",
+            "example": "46f997d1-77c8-4936-8655-8f050dffbfa4",
             "format": "uuid",
             "type": "string"
           }
@@ -6862,16 +6538,12 @@
       },
       "SiteCreateRequest": {
         "description": "POST body for creating a Site",
-        "example": {
-          "site": {
-            "name": "vpc-us-east"
-          }
-        },
         "properties": {
           "site": {
             "properties": {
               "name": {
                 "description": "Site Name",
+                "example": "vpc-us-east",
                 "type": "string"
               }
             },
