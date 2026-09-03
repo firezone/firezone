@@ -61,6 +61,7 @@ fi
   --workers 2 \
   --request-timeout 30 \
   --request-retries 3 \
+  --generation-database none \
   --report junit \
   --report-dir "$report_dir" \
   --no-color
