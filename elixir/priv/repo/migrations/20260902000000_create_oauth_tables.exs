@@ -32,6 +32,7 @@ defmodule Portal.Repo.Migrations.CreateOauthTables do
     end
 
     create(unique_index(:oauth_clients, [:client_id]))
+    create(index(:oauth_clients, [:metadata_expires_at]))
 
     # One standing consent: this actor allows this client these scopes. Kept
     # apart from the tokens so that it is what the portal shows and revokes,
@@ -180,6 +181,10 @@ defmodule Portal.Repo.Migrations.CreateOauthTables do
     end
 
     create(index(:oauth_tokens, [:account_id, :oauth_grant_id]))
-    create(index(:oauth_tokens, [:expires_at]))
+
+    # The sweeper keys on the refresh window; access expiry only matters when
+    # there is no refresh secret.
+    create(index(:oauth_tokens, [:refresh_expires_at]))
+    create(index(:oauth_tokens, [:expires_at], where: "refresh_expires_at IS NULL"))
   end
 end

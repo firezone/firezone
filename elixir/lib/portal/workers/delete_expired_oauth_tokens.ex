@@ -32,8 +32,11 @@ defmodule Portal.Workers.DeleteExpiredOAuthTokens do
       now = DateTime.utc_now()
 
       from(t in OAuthToken, as: :tokens)
-      |> where([tokens: t], t.expires_at <= ^now)
-      |> where([tokens: t], is_nil(t.refresh_expires_at) or t.refresh_expires_at <= ^now)
+      |> where(
+        [tokens: t],
+        t.refresh_expires_at <= ^now or
+          (is_nil(t.refresh_expires_at) and t.expires_at <= ^now)
+      )
       |> Safe.unscoped()
       |> Safe.delete_all()
     end

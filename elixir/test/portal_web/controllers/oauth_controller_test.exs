@@ -150,6 +150,120 @@ defmodule PortalWeb.OAuthControllerTest do
       assert %Postgrex.INET{address: {127, 0, 0, 1}} in client.resolved_ips
     end
 
+    test "refreshes where the document was served from when it is fetched again", %{
+      conn: conn,
+      account: account
+    } do
+      client_id = "https://localhost/metadata.json"
+
+      oauth_client_fixture(
+        client_id: client_id,
+        resolved_ips: [%Postgrex.INET{address: {203, 0, 113, 9}}],
+        resolved_ip_location_city: "Nowhere",
+        metadata_expires_at: DateTime.add(DateTime.utc_now(), -1, :second)
+      )
+
+      Req.Test.stub(Portal.OAuth.ClientMetadata, fn conn ->
+        Req.Test.json(conn, %{
+          "client_id" => client_id,
+          "client_name" => "Local App",
+          "redirect_uris" => [redirect_uri()]
+        })
+      end)
+
+      params =
+        %{client_id: client_id}
+        |> authorize_params()
+        |> Map.put("account_id_or_slug", account.slug)
+
+      get(conn, ~p"/oauth/authorize?#{params}")
+
+      client = Portal.Repo.get_by!(Portal.OAuthClient, client_id: client_id)
+      assert %Postgrex.INET{address: {127, 0, 0, 1}} in client.resolved_ips
+      refute %Postgrex.INET{address: {203, 0, 113, 9}} in client.resolved_ips
+      assert client.resolved_ip_location_city != "Nowhere"
+    end
+
+    test "a document with a logo_uri that is not a string is refused, not a crash", %{
+      conn: conn,
+      account: account
+    } do
+      client_id = "https://localhost/metadata.json"
+
+      Req.Test.stub(Portal.OAuth.ClientMetadata, fn conn ->
+        Req.Test.json(conn, %{
+          "client_id" => client_id,
+          "client_name" => "Local App",
+          "client_uri" => 42,
+          "logo_uri" => ["https://localhost/logo.png"],
+          "redirect_uris" => [redirect_uri()]
+        })
+      end)
+
+      params =
+        %{client_id: client_id}
+        |> authorize_params()
+        |> Map.put("account_id_or_slug", account.slug)
+
+      conn = get(conn, ~p"/oauth/authorize?#{params}")
+
+      assert html_response(conn, 400) =~ "could not be retrieved"
+      refute Portal.Repo.get_by(Portal.OAuthClient, client_id: client_id)
+    end
+
+    test "stores a small icon and gives up on one that is too large", %{
+      conn: conn,
+      account: account
+    } do
+      client_id = "https://localhost/metadata.json"
+      png = "\x89PNG" <> :crypto.strong_rand_bytes(32)
+
+      Req.Test.stub(Portal.OAuth.ClientMetadata, fn
+        %{request_path: "/small.png"} = conn ->
+          conn
+          |> Plug.Conn.put_resp_content_type("image/png")
+          |> Plug.Conn.send_resp(200, png)
+
+        %{request_path: "/huge.png"} = conn ->
+          conn
+          |> Plug.Conn.put_resp_content_type("image/png")
+          |> Plug.Conn.send_resp(200, :binary.copy("x", 64 * 1024 + 1))
+
+        %{request_path: "/small.json"} = conn ->
+          Req.Test.json(conn, %{
+            "client_id" => "https://localhost/small.json",
+            "client_name" => "Small",
+            "logo_uri" => "https://localhost/small.png",
+            "redirect_uris" => [redirect_uri()]
+          })
+
+        conn ->
+          Req.Test.json(conn, %{
+            "client_id" => client_id,
+            "client_name" => "Huge",
+            "logo_uri" => "https://localhost/huge.png",
+            "redirect_uris" => [redirect_uri()]
+          })
+      end)
+
+      for id <- ["https://localhost/small.json", client_id] do
+        params =
+          %{client_id: id}
+          |> authorize_params()
+          |> Map.put("account_id_or_slug", account.slug)
+
+        get(conn, ~p"/oauth/authorize?#{params}")
+      end
+
+      small = Portal.Repo.get_by!(Portal.OAuthClient, client_id: "https://localhost/small.json")
+      assert small.logo_data == png
+      assert small.logo_content_type == "image/png"
+
+      huge = Portal.Repo.get_by!(Portal.OAuthClient, client_id: client_id)
+      assert is_nil(huge.logo_data)
+      assert is_nil(huge.logo_content_type)
+    end
+
     test "a client that does not check out is refused before anyone signs in", %{
       conn: conn,
       account: account
@@ -610,6 +724,23 @@ defmodule PortalWeb.OAuthControllerTest do
       assert query["state"] == "opaque-state"
       assert query["iss"] == PortalWeb.Endpoint.url()
       refute Map.has_key?(query, "error")
+    end
+
+    test "approving after the session has gone sends the person back to sign in", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      client: client
+    } do
+      {:ok, lv, _html} = consent_screen(conn, account, actor, client)
+
+      Portal.Repo.delete_all(Portal.PortalSession)
+
+      assert {:error, {:redirect, %{to: location}}} =
+               render_submit(lv, "allow", %{"scope" => ["policies:read"]})
+
+      assert location == ~p"/#{account}/sign_in?as=oauth"
+      assert Portal.Repo.all(Portal.OAuthGrant) == []
     end
 
     test "declining returns access_denied and no code", %{

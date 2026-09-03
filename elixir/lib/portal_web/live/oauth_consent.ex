@@ -14,6 +14,7 @@ defmodule PortalWeb.OAuthConsent do
 
   use PortalWeb, {:live_view, layout: {PortalWeb.Layouts, :standalone}}
 
+  alias Portal.Authentication
   alias Portal.OAuth
   alias Portal.Scope
 
@@ -123,10 +124,18 @@ defmodule PortalWeb.OAuthConsent do
     end
   end
 
+  # Nothing disconnects this socket when its session expires, so it is checked
+  # again here rather than only on mount.
   defp grant(socket, request) do
-    case OAuth.consent(request, socket.assigns.subject) do
-      {:ok, code} ->
-        {:noreply, redirect_to_client(socket, request.redirect_uri, request.state, %{"code" => code})}
+    subject = socket.assigns.subject
+
+    with {:ok, _session} <-
+           Authentication.fetch_portal_session(subject.account.id, subject.credential.id),
+         {:ok, code} <- OAuth.consent(request, subject) do
+      {:noreply, redirect_to_client(socket, request.redirect_uri, request.state, %{"code" => code})}
+    else
+      {:error, :not_found} ->
+        {:noreply, redirect(socket, to: ~p"/#{socket.assigns.account}/sign_in?as=oauth")}
 
       {:error, _changeset} ->
         {:noreply,

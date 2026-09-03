@@ -68,15 +68,15 @@ defmodule Portal.OAuth.ClientMetadata do
   # one does not.
   defp loopback_match?(%OAuthClient{redirect_uris: registered}, redirect_uri) do
     case URI.parse(redirect_uri) do
-      %URI{scheme: "http", host: host, path: path} when host in @loopback_hosts ->
-        Enum.any?(registered, fn candidate ->
-          match?(%URI{scheme: "http", host: ^host, path: ^path}, URI.parse(candidate))
-        end)
+      %URI{scheme: "http", host: host, fragment: nil} = uri when host in @loopback_hosts ->
+        Enum.any?(registered, &(without_port(URI.parse(&1)) == without_port(uri)))
 
       _other ->
         false
     end
   end
+
+  defp without_port(%URI{} = uri), do: %{uri | port: nil, authority: nil}
 
   defp validate_client_id(client_id) when is_binary(client_id) do
     case URI.parse(client_id) do
@@ -115,7 +115,7 @@ defmodule Portal.OAuth.ClientMetadata do
         receive_timeout: @receive_timeout,
         max_retries: 0,
         redirect: false,
-        into: &collect/2
+        into: &collect(&1, &2, @max_body_bytes)
       ] ++ req_opts()
     )
     |> case do
@@ -127,10 +127,10 @@ defmodule Portal.OAuth.ClientMetadata do
 
   # Halting mid-body keeps an oversized or endless document from being read into
   # memory, which a plain byte check after the fact would not.
-  defp collect({:data, data}, {request, response}) do
+  defp collect({:data, data}, {request, response}, max_bytes) do
     body = (response.body || "") <> data
 
-    if byte_size(body) > @max_body_bytes do
+    if byte_size(body) > max_bytes do
       {:halt, {request, %{response | body: :too_large}}}
     else
       {:cont, {request, %{response | body: body}}}
@@ -157,7 +157,8 @@ defmodule Portal.OAuth.ClientMetadata do
   defp validate_document(document, client_id) do
     with %{"client_id" => ^client_id, "client_name" => name, "redirect_uris" => uris}
          when is_binary(name) and is_list(uris) <- document,
-         true <- uris != [] and Enum.all?(uris, &usable_redirect_uri?/1) do
+         true <- uris != [] and Enum.all?(uris, &usable_redirect_uri?/1),
+         true <- Enum.all?(~w[client_uri logo_uri], &optional_string?(document[&1])) do
       :ok
     else
       _other -> {:error, :invalid_document}
@@ -179,6 +180,8 @@ defmodule Portal.OAuth.ClientMetadata do
   end
 
   defp usable_redirect_uri?(_uri), do: false
+
+  defp optional_string?(value), do: is_nil(value) or is_binary(value)
 
   # Best effort and never fatal: a client without a usable icon still connects,
   # it just shows its initial instead. Tried in the order a client would expect
@@ -203,14 +206,18 @@ defmodule Portal.OAuth.ClientMetadata do
 
   defp get_icon(uri) do
     with %URI{scheme: "https"} <- URI.parse(uri),
-         {:ok, %Req.Response{status: 200} = response} <-
+         {:ok, %Req.Response{status: 200, body: body} = response} when is_binary(body) <-
            Req.get(
              uri,
-             [receive_timeout: @receive_timeout, max_retries: 0, redirect: true] ++ req_opts()
+             [
+               receive_timeout: @receive_timeout,
+               max_retries: 0,
+               redirect: true,
+               into: &collect(&1, &2, @max_icon_bytes)
+             ] ++ req_opts()
            ),
          type when is_binary(type) <- content_type(response),
          true <- type in @icon_types,
-         body when is_binary(body) <- response.body,
          true <- byte_size(body) in 1..@max_icon_bytes do
       {body, type}
     else
@@ -339,6 +346,7 @@ defmodule Portal.OAuth.ClientMetadata do
         on_conflict:
           {:replace,
            ~w[client_name client_uri logo_uri logo_data logo_content_type redirect_uris
+              resolved_ips resolved_ip_location_region resolved_ip_location_city
               metadata_expires_at updated_at]a},
         conflict_target: [:client_id],
         returning: true

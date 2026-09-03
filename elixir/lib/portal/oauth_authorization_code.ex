@@ -45,7 +45,8 @@ defmodule Portal.OAuthAuthorizationCode do
       ~w[secret_hash secret_salt code_challenge code_challenge_method redirect_uri resource scopes expires_at]a
     )
     |> validate_inclusion(:code_challenge_method, ["S256"])
-    |> validate_length(:code_challenge, min: 43, max: 128)
+    |> validate_length(:code_challenge, is: 43)
+    |> validate_format(:code_challenge, ~r/^[A-Za-z0-9_-]+$/)
     |> Portal.Scope.validate(:scopes)
     |> assoc_constraint(:account)
     |> assoc_constraint(:actor)

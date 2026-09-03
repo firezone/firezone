@@ -26,6 +26,8 @@ defmodule Portal.OAuth do
   alias __MODULE__.Database
 
   @code_ttl_seconds 60
+  # RFC 7636 section 4.2: an unpadded base64url SHA-256 is exactly 43 characters.
+  @s256_challenge ~r/^[A-Za-z0-9_-]{43}$/
   @access_ttl_seconds 60 * 60
   @refresh_ttl_seconds 30 * 24 * 60 * 60
 
@@ -115,10 +117,12 @@ defmodule Portal.OAuth do
   disagree about what was allowed.
   """
   def consent(%Request{} = request, %Subject{} = subject) do
-    with {:ok, grant} <- upsert_grant(request, subject),
-         {:ok, code} <- insert_code(request, grant, subject) do
-      {:ok, Authentication.encode_fragment!(code)}
-    end
+    Database.transaction(fn ->
+      with {:ok, grant} <- upsert_grant(request, subject),
+           {:ok, code} <- insert_code(request, grant, subject) do
+        {:ok, Authentication.encode_fragment!(code)}
+      end
+    end)
   end
 
   @doc """
@@ -218,14 +222,21 @@ defmodule Portal.OAuth do
 
   defp validate_pkce(params) do
     case {params["code_challenge"], params["code_challenge_method"]} do
-      {challenge, "S256"} when is_binary(challenge) and byte_size(challenge) >= 43 ->
-        {:ok, challenge}
-
       {nil, _method} ->
         {:error, "invalid_request", "code_challenge is required."}
 
-      _other ->
+      {_challenge, method} when method != "S256" ->
         {:error, "invalid_request", "code_challenge_method must be S256."}
+
+      {challenge, "S256"} when is_binary(challenge) ->
+        if Regex.match?(@s256_challenge, challenge) do
+          {:ok, challenge}
+        else
+          {:error, "invalid_request", "code_challenge is not a valid S256 challenge."}
+        end
+
+      _other ->
+        {:error, "invalid_request", "code_challenge is not a valid S256 challenge."}
     end
   end
 
@@ -417,13 +428,14 @@ defmodule Portal.OAuth do
     end
   end
 
+  # Compare-and-swap on the verified hash, so two refreshes racing on one secret
+  # cannot both succeed.
   defp rotate(%OAuthToken{} = token) do
     {access_fragment, access_salt, access_hash} = Authentication.generate_token_secrets()
     {refresh_fragment, refresh_salt, refresh_hash} = Authentication.generate_token_secrets()
     now = DateTime.utc_now()
 
-    token
-    |> change(%{
+    updates = [
       secret_salt: access_salt,
       secret_hash: access_hash,
       refresh_secret_salt: refresh_salt,
@@ -433,12 +445,13 @@ defmodule Portal.OAuth do
       # holding instead of waiting out its refresh window.
       scopes: token.oauth_grant.scopes,
       expires_at: DateTime.add(now, @access_ttl_seconds, :second),
-      refresh_expires_at: DateTime.add(now, @refresh_ttl_seconds, :second)
-    })
-    |> Database.update_token()
-    |> case do
+      refresh_expires_at: DateTime.add(now, @refresh_ttl_seconds, :second),
+      updated_at: now
+    ]
+
+    case Database.rotate_token(token, updates) do
       {:ok, updated} -> {:ok, token_response(updated, access_fragment, refresh_fragment)}
-      {:error, _changeset} -> {:error, "server_error", "The token could not be refreshed."}
+      :error -> invalid_grant(:secret_mismatch)
     end
   end
 
@@ -482,6 +495,11 @@ defmodule Portal.OAuth do
     alias Portal.OAuthGrant
     alias Portal.OAuthToken
     alias Portal.Safe
+
+    def transaction(fun) when is_function(fun, 0) do
+      Safe.unscoped()
+      |> Safe.transaction(fun)
+    end
 
     def fetch_cached_client(client_id) do
       from(clients in Portal.OAuthClient, where: clients.client_id == ^client_id)
@@ -542,10 +560,19 @@ defmodule Portal.OAuth do
       |> Safe.insert()
     end
 
-    def update_token(changeset) do
-      changeset
+    def rotate_token(%OAuthToken{} = token, updates) do
+      from(tokens in OAuthToken,
+        where: tokens.account_id == ^token.account_id,
+        where: tokens.id == ^token.id,
+        where: tokens.refresh_secret_hash == ^token.refresh_secret_hash,
+        select: tokens
+      )
       |> Safe.unscoped()
-      |> Safe.update()
+      |> Safe.update_all(set: updates)
+      |> case do
+        {1, [updated]} -> {:ok, updated}
+        _other -> :error
+      end
     end
 
     def fetch_refreshable_token(account_id, id) do

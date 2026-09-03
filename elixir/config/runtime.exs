@@ -366,6 +366,9 @@ if config_env() == :prod do
     # Delete OAuth tokens past their refresh window every 5 minutes
     {"*/5 * * * *", Portal.Workers.DeleteExpiredOAuthTokens},
 
+    # Evict stale OAuth client metadata nothing points at, hourly
+    {"0 * * * *", Portal.Workers.DeleteExpiredOAuthClients},
+
     # Delete rotated gateway tokens past their grace period every 5 minutes
     {"*/5 * * * *", Portal.Workers.DeleteRotatedGatewayTokens},
 

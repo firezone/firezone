@@ -79,6 +79,26 @@ defmodule Portal.OAuthTest do
       assert {:error, "invalid_request", _} = OAuth.validate_client(params)
     end
 
+    test "still matches the query exactly" do
+      client = oauth_client_fixture(redirect_uris: ["http://127.0.0.1/callback?channel=a"])
+
+      params = %{
+        "client_id" => client.client_id,
+        "redirect_uri" => "http://127.0.0.1:3118/callback?channel=a"
+      }
+
+      assert {:ok, _client, _uri} = OAuth.validate_client(params)
+
+      for uri <- [
+            "http://127.0.0.1:3118/callback",
+            "http://127.0.0.1:3118/callback?channel=b",
+            "http://127.0.0.1:3118/callback?channel=a#fragment"
+          ] do
+        params = %{"client_id" => client.client_id, "redirect_uri" => uri}
+        assert {:error, "invalid_request", _} = OAuth.validate_client(params)
+      end
+    end
+
     test "does not extend to a non-loopback host", %{client: client} do
       params = %{
         "client_id" => client.client_id,
@@ -112,6 +132,21 @@ defmodule Portal.OAuthTest do
                OAuth.validate_request(params, client, redirect_uri(), @resource)
 
       assert description =~ "S256"
+    end
+
+    test "rejects a challenge that is not an unpadded base64url SHA-256", %{client: client} do
+      for challenge <- [
+            String.duplicate("a", 42),
+            String.duplicate("a", 44),
+            String.duplicate("a", 128),
+            String.duplicate("a", 42) <> "=",
+            String.duplicate("a", 42) <> "+"
+          ] do
+        params = Map.put(params(client), "code_challenge", challenge)
+
+        assert {:error, "invalid_request", "code_challenge is not a valid S256 challenge."} =
+                 OAuth.validate_request(params, client, redirect_uri(), @resource)
+      end
     end
 
     test "requires the resource to name this server", %{client: client} do
