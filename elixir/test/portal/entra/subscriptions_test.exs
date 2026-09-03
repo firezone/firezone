@@ -204,6 +204,19 @@ defmodule Portal.Entra.SubscriptionsTest do
       assert reload(directory).users_subscription_id == "existing-users"
     end
 
+    test "clears only the fields this job matched", %{account: account} do
+      directory = fresh_directory(account, 20)
+      stub_graph()
+
+      args = %{delete_args(directory) | subscription_ids: ["existing-users", "old-groups"]}
+      assert :ok = perform_job(Subscriptions, args)
+
+      directory = reload(directory)
+      assert is_nil(directory.users_subscription_id)
+      assert directory.groups_subscription_id == "existing-groups"
+      assert directory.subscriptions_expire_at
+    end
+
     test "returns an error when a deletion fails so Oban retries", %{account: account} do
       directory = fresh_directory(account, 20)
       stub_graph(refuse_delete: ["existing-groups"])

@@ -844,6 +844,57 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
       assert html =~ "Directory deleted successfully."
     end
 
+    test "drops webhook subscriptions when an entra directory moves to another tenant", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      directory =
+        entra_directory_fixture(%{
+          account: account,
+          name: "Entra Move",
+          tenant_id: "tenant-old",
+          webhook_secret: "secret",
+          users_subscription_id: "sub-users",
+          groups_subscription_id: "sub-groups",
+          subscriptions_expire_at: DateTime.add(DateTime.utc_now(), 20, :day)
+        })
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/directory_sync/entra/#{directory.id}/edit")
+
+      render_click(lv, "reset_verification")
+      lv |> element("button[phx-click='start_verification']") |> render_click()
+      verification_ref = verification_ref_from_open_url(lv)
+      ack_ref = make_ref()
+
+      send(
+        lv.pid,
+        {:entra_directory_sync_complete, "tenant-new", verification_ref, {self(), ack_ref}}
+      )
+
+      assert_receive {:verification_ack, ^ack_ref}
+      render_hook(lv, "submit_directory", %{})
+
+      directory = Portal.Repo.get_by!(Portal.Entra.Directory, id: directory.id)
+      assert directory.tenant_id == "tenant-new"
+      assert is_nil(directory.users_subscription_id)
+      assert is_nil(directory.groups_subscription_id)
+      assert is_nil(directory.subscriptions_expire_at)
+
+      assert_enqueued(
+        worker: Portal.Entra.Subscriptions,
+        args: %{
+          action: "delete",
+          directory_id: directory.id,
+          tenant_id: "tenant-old",
+          subscription_ids: ["sub-users", "sub-groups"]
+        }
+      )
+    end
+
     test "ignores entra directory completion after navigating to another form", %{
       conn: conn,
       account: account,

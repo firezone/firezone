@@ -25,6 +25,18 @@ defmodule Portal.Entra.SyncTest do
       :ok
     end
 
+    test "snoozes while another sync for the same directory is executing" do
+      account = account_fixture(features: %{idp_sync: true})
+      directory = entra_directory_fixture(account: account)
+      args = %{account_id: directory.account_id, directory_id: directory.id}
+
+      {:ok, job} = Oban.insert(Sync.new(args))
+      Repo.update_all(from(j in Oban.Job, where: j.id == ^job.id), set: [state: "executing"])
+
+      assert {:snooze, 60} = perform_job(Sync, args)
+      assert Repo.all(ExternalIdentity) == []
+    end
+
     test "performs successful sync with assigned groups mode (sync_all_groups: false)" do
       account = account_fixture(features: %{idp_sync: true})
       directory = entra_directory_fixture(account: account, sync_all_groups: false)

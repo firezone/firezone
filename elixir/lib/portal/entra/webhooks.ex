@@ -76,7 +76,7 @@ defmodule Portal.Entra.Webhooks do
         |> Entra.Subscriptions.new()
 
       "missed" ->
-        Entra.Sync.new(args)
+        Entra.Sync.new(args, unique: [states: [:available, :scheduled, :retryable]])
 
       other ->
         Logger.info("Ignoring unknown Entra lifecycle event",

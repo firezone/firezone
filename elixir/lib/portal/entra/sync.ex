@@ -16,27 +16,37 @@ defmodule Portal.Entra.Sync do
   alias __MODULE__.Database
   require Logger
 
+  # A recovery sync queued for a "missed" notification must run after, not
+  # alongside, a sync that is already executing for the same directory.
+  @snooze_seconds 60
+
   @impl Oban.Worker
-  def perform(%Oban.Job{args: %{"account_id" => account_id, "directory_id" => directory_id}}) do
-    Logger.info("Starting Entra directory sync",
-      account_id: account_id,
-      entra_directory_id: directory_id,
-      timestamp: DateTime.utc_now()
-    )
+  def perform(%Oban.Job{
+        id: job_id,
+        args: %{"account_id" => account_id, "directory_id" => directory_id}
+      }) do
+    if Database.other_sync_running?(job_id, directory_id) do
+      {:snooze, @snooze_seconds}
+    else
+      Logger.info("Starting Entra directory sync",
+        account_id: account_id,
+        entra_directory_id: directory_id,
+        timestamp: DateTime.utc_now()
+      )
 
-    case Database.get_directory(account_id, directory_id) do
-      nil ->
-        Logger.info("Entra directory not found, disabled, or account disabled, skipping",
-          account_id: account_id,
-          entra_directory_id: directory_id
-        )
+      case Database.get_directory(account_id, directory_id) do
+        nil ->
+          Logger.info("Entra directory not found, disabled, or account disabled, skipping",
+            account_id: account_id,
+            entra_directory_id: directory_id
+          )
 
-      directory ->
-        # Perform the sync
-        sync(directory)
+        directory ->
+          sync(directory)
+      end
+
+      :ok
     end
-
-    :ok
   end
 
   def perform(_), do: :ok
@@ -743,6 +753,15 @@ defmodule Portal.Entra.Sync do
   defmodule Database do
     import Ecto.Query
     alias Portal.Safe
+
+    def other_sync_running?(job_id, directory_id) do
+      [worker: Entra.Sync, state: :executing]
+      |> Oban.Job.query()
+      |> where([j], j.id != ^job_id)
+      |> where([j], fragment("?->>'directory_id'", j.args) == ^directory_id)
+      |> Safe.unscoped()
+      |> Safe.exists?()
+    end
 
     def get_directory(account_id, id) do
       from(d in Entra.Directory,

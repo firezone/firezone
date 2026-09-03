@@ -1761,10 +1761,31 @@ defmodule PortalWeb.Settings.DirectorySync do
         changeset
       end
 
+    changeset = forget_subscriptions_on_tenant_change(changeset, directory)
+
     changeset
     |> Database.update_directory(socket.assigns.subject)
     |> handle_submit(socket)
   end
+
+  # Subscriptions belong to the tenant they were created in. Verifying against
+  # another tenant deletes them there and lets the next sync recreate them.
+  defp forget_subscriptions_on_tenant_change(changeset, %Entra.Directory{} = directory) do
+    case get_change(changeset, :tenant_id) do
+      nil ->
+        changeset
+
+      _new_tenant_id ->
+        unsubscribe_webhooks(directory)
+
+        changeset
+        |> put_change(:users_subscription_id, nil)
+        |> put_change(:groups_subscription_id, nil)
+        |> put_change(:subscriptions_expire_at, nil)
+    end
+  end
+
+  defp forget_subscriptions_on_tenant_change(changeset, _directory), do: changeset
 
   defp queue_initial_sync(
          {:ok, %Entra.Directory{is_verified: true, is_disabled: false} = directory} = result,

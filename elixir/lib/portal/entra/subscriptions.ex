@@ -231,21 +231,28 @@ defmodule Portal.Entra.Subscriptions do
     end
 
     def clear_subscriptions(account_id, directory_id, subscription_ids) do
-      from(d in Portal.Entra.Directory,
-        where: d.account_id == ^account_id,
-        where: d.id == ^directory_id,
-        where:
-          d.users_subscription_id in ^subscription_ids or
-            d.groups_subscription_id in ^subscription_ids
-      )
+      directory =
+        from(d in Portal.Entra.Directory,
+          where: d.account_id == ^account_id,
+          where: d.id == ^directory_id
+        )
+
+      directory
+      |> where([d], d.users_subscription_id in ^subscription_ids)
       |> Safe.unscoped()
-      |> Safe.update_all(
-        set: [
-          users_subscription_id: nil,
-          groups_subscription_id: nil,
-          subscriptions_expire_at: nil
-        ]
-      )
+      |> Safe.update_all(set: [users_subscription_id: nil])
+
+      directory
+      |> where([d], d.groups_subscription_id in ^subscription_ids)
+      |> Safe.unscoped()
+      |> Safe.update_all(set: [groups_subscription_id: nil])
+
+      directory
+      |> where([d], is_nil(d.users_subscription_id) and is_nil(d.groups_subscription_id))
+      |> Safe.unscoped()
+      |> Safe.update_all(set: [subscriptions_expire_at: nil])
+
+      :ok
     end
 
     def update_directory(directory, attrs) do

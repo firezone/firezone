@@ -2,6 +2,7 @@ defmodule PortalAPI.Integrations.Entra.WebhookControllerTest do
   use PortalAPI.ConnCase, async: true
   use Oban.Testing, repo: Portal.Repo
 
+  import Ecto.Query
   import Portal.AccountFixtures
   import Portal.EntraDirectoryFixtures
   import Portal.GroupFixtures
@@ -131,6 +132,33 @@ defmodule PortalAPI.Integrations.Entra.WebhookControllerTest do
         worker: Entra.Sync,
         args: %{account_id: directory.account_id, directory_id: directory.id}
       )
+    end
+
+    test "queues a recovery sync for missed events even while a sync is running", %{
+      conn: conn,
+      directory: directory
+    } do
+      args = %{account_id: directory.account_id, directory_id: directory.id}
+      {:ok, job} = Oban.insert(Entra.Sync.new(args))
+
+      Portal.Repo.update_all(
+        from(j in Oban.Job, where: j.id == ^job.id),
+        set: [state: "executing"]
+      )
+
+      conn = post_notifications(conn, directory, [lifecycle("missed", "sub-users")])
+      assert response(conn, 202) == ""
+
+      jobs =
+        Portal.Repo.all(
+          from(j in Oban.Job,
+            where: j.worker == "Portal.Entra.Sync",
+            where: fragment("?->>'directory_id'", j.args) == ^directory.id
+          )
+        )
+
+      assert length(jobs) == 2
+      assert Enum.map(jobs, & &1.state) |> Enum.sort() == ["available", "executing"]
     end
 
     test "drops notifications with the wrong clientState", %{conn: conn, directory: directory} do
