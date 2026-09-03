@@ -2,9 +2,10 @@ defmodule PortalAPI.Schemas.Site do
   alias OpenApiSpex.Schema
 
   defmodule Schema do
-    use PortalAPI.Schemas.Object
+    require OpenApiSpex
+    alias OpenApiSpex.Schema
 
-    object(%{
+    OpenApiSpex.schema(PortalAPI.Schemas.Object.with_required(%{
       title: "Site",
       description: "Site",
       type: :object,
@@ -16,7 +17,7 @@ defmodule PortalAPI.Schemas.Site do
         "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
         "name" => "vpc-us-east"
       }
-    })
+    }))
   end
 
   defmodule CreateRequest do
@@ -73,25 +74,26 @@ defmodule PortalAPI.Schemas.Site do
   end
 
   defmodule Response do
-    use PortalAPI.Schemas.Object
+    require OpenApiSpex
     alias PortalAPI.Schemas.Site
 
-    object(%{
+    OpenApiSpex.schema(PortalAPI.Schemas.Object.with_required(%{
       title: "SiteResponse",
       description: "Response schema for single Site",
       type: :object,
       properties: %{
         data: Site.Schema
       }
-    })
+    }))
   end
 
   defmodule ListResponse do
-    use PortalAPI.Schemas.Object
+    require OpenApiSpex
+    alias OpenApiSpex.Schema
     alias PortalAPI.Schemas.Site
     alias PortalAPI.Schemas.PaginationMetadata
 
-    object(%{
+    OpenApiSpex.schema(PortalAPI.Schemas.Object.with_required(%{
       title: "SiteListResponse",
       description: "Response schema for multiple Sites",
       type: :object,
@@ -103,6 +105,6 @@ defmodule PortalAPI.Schemas.Site do
         },
         metadata: PaginationMetadata
       }
-    })
+    }))
   end
 end

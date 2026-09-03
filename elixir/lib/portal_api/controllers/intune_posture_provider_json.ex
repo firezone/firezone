@@ -1,10 +1,9 @@
 defmodule PortalAPI.IntunePostureProviderJSON do
-  use PortalAPI.JSON,
-    struct: Portal.Intune.PostureProvider,
-    schema: PortalAPI.Schemas.IntunePostureProvider.Schema,
+  PortalAPI.JSON.verify!(__MODULE__, Portal.Intune.PostureProvider, PortalAPI.Schemas.IntunePostureProvider.Schema,
     computed: [:type, :name],
     # error_email_count is notification bookkeeping, not part of the public shape.
     internal: [:error_email_count]
+  )
 
   alias Portal.Intune
   alias PortalAPI.Pagination
@@ -16,6 +15,6 @@ defmodule PortalAPI.IntunePostureProviderJSON do
   def show(%{provider: provider}), do: %{data: data(provider)}
 
   defp data(%Intune.PostureProvider{} = provider) do
-    render_fields(provider, %{type: "intune", name: provider.posture_provider.name})
+    PortalAPI.JSON.render(provider, PortalAPI.Schemas.IntunePostureProvider.Schema, %{type: "intune", name: provider.posture_provider.name})
   end
 end

@@ -1,7 +1,5 @@
 defmodule PortalAPI.MembershipJSON do
-  use PortalAPI.JSON,
-    struct: Portal.Actor,
-    schema: PortalAPI.Schemas.Membership.Schema,
+  PortalAPI.JSON.verify!(__MODULE__, Portal.Actor, PortalAPI.Schemas.Membership.Schema,
     internal: [
       :account_id,
       :allow_email_otp_sign_in,
@@ -15,6 +13,7 @@ defmodule PortalAPI.MembershipJSON do
       :preferences,
       :updated_at
     ]
+  )
 
   alias PortalAPI.Pagination
   alias Portal.Actor
@@ -36,5 +35,5 @@ defmodule PortalAPI.MembershipJSON do
     %{data: %{actor_ids: actor_ids}}
   end
 
-  defp data(%Actor{} = actor), do: render_fields(actor)
+  defp data(%Actor{} = actor), do: PortalAPI.JSON.render(actor, PortalAPI.Schemas.Membership.Schema)
 end

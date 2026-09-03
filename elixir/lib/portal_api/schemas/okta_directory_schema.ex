@@ -2,9 +2,10 @@ defmodule PortalAPI.Schemas.OktaDirectory do
   alias OpenApiSpex.Schema
 
   defmodule Schema do
-    use PortalAPI.Schemas.Object
+    require OpenApiSpex
+    alias OpenApiSpex.Schema
 
-    object(%{
+    OpenApiSpex.schema(PortalAPI.Schemas.Object.with_required(%{
       title: "OktaDirectory",
       description: "Okta Directory",
       type: :object,
@@ -45,29 +46,30 @@ defmodule PortalAPI.Schemas.OktaDirectory do
         },
         updated_at: %Schema{type: :string, format: :"date-time", description: "Update timestamp"}
       }
-    })
+    }))
   end
 
   defmodule Response do
-    use PortalAPI.Schemas.Object
+    require OpenApiSpex
     alias PortalAPI.Schemas.OktaDirectory
 
-    object(%{
+    OpenApiSpex.schema(PortalAPI.Schemas.Object.with_required(%{
       title: "OktaDirectoryResponse",
       description: "Response schema for single Okta Directory",
       type: :object,
       properties: %{
         data: OktaDirectory.Schema
       }
-    })
+    }))
   end
 
   defmodule ListResponse do
-    use PortalAPI.Schemas.Object
+    require OpenApiSpex
+    alias OpenApiSpex.Schema
     alias PortalAPI.Schemas.OktaDirectory
     alias PortalAPI.Schemas.PaginationMetadata
 
-    object(%{
+    OpenApiSpex.schema(PortalAPI.Schemas.Object.with_required(%{
       title: "OktaDirectoryListResponse",
       description: "Response schema for multiple Okta Directories",
       type: :object,
@@ -79,6 +81,6 @@ defmodule PortalAPI.Schemas.OktaDirectory do
         },
         metadata: PaginationMetadata
       }
-    })
+    }))
   end
 end

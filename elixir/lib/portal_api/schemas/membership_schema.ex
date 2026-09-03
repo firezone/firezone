@@ -2,9 +2,10 @@ defmodule PortalAPI.Schemas.Membership do
   alias OpenApiSpex.Schema
 
   defmodule Schema do
-    use PortalAPI.Schemas.Object
+    require OpenApiSpex
+    alias OpenApiSpex.Schema
 
-    object(%{
+    OpenApiSpex.schema(PortalAPI.Schemas.Object.with_required(%{
       title: "Membership",
       description: "Membership",
       type: :object,
@@ -18,7 +19,7 @@ defmodule PortalAPI.Schemas.Membership do
         "name" => "John Doe",
         "type" => "account_user"
       }
-    })
+    }))
   end
 
   defmodule PatchRequest do
@@ -86,11 +87,12 @@ defmodule PortalAPI.Schemas.Membership do
   end
 
   defmodule ListResponse do
-    use PortalAPI.Schemas.Object
+    require OpenApiSpex
+    alias OpenApiSpex.Schema
     alias PortalAPI.Schemas.Membership
     alias PortalAPI.Schemas.PaginationMetadata
 
-    object(%{
+    OpenApiSpex.schema(PortalAPI.Schemas.Object.with_required(%{
       title: "MembershipListResponse",
       description: "Response schema for Memberships",
       type: :object,
@@ -102,13 +104,14 @@ defmodule PortalAPI.Schemas.Membership do
         },
         metadata: PaginationMetadata
       }
-    })
+    }))
   end
 
   defmodule MembershipResponse do
-    use PortalAPI.Schemas.Object
+    require OpenApiSpex
+    alias OpenApiSpex.Schema
 
-    object(%{
+    OpenApiSpex.schema(PortalAPI.Schemas.Object.with_required(%{
       title: "MembershipResponse",
       description: "Response schema for Membership Updates",
       type: :object,
@@ -125,6 +128,6 @@ defmodule PortalAPI.Schemas.Membership do
           }
         }
       }
-    })
+    }))
   end
 end

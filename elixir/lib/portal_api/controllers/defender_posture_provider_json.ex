@@ -1,10 +1,9 @@
 defmodule PortalAPI.DefenderPostureProviderJSON do
-  use PortalAPI.JSON,
-    struct: Portal.Defender.PostureProvider,
-    schema: PortalAPI.Schemas.DefenderPostureProvider.Schema,
+  PortalAPI.JSON.verify!(__MODULE__, Portal.Defender.PostureProvider, PortalAPI.Schemas.DefenderPostureProvider.Schema,
     computed: [:type, :name],
     # error_email_count is notification bookkeeping, not part of the public shape.
     internal: [:error_email_count]
+  )
 
   alias Portal.Defender
   alias PortalAPI.Pagination
@@ -16,6 +15,6 @@ defmodule PortalAPI.DefenderPostureProviderJSON do
   def show(%{provider: provider}), do: %{data: data(provider)}
 
   defp data(%Defender.PostureProvider{} = provider) do
-    render_fields(provider, %{type: "defender", name: provider.posture_provider.name})
+    PortalAPI.JSON.render(provider, PortalAPI.Schemas.DefenderPostureProvider.Schema, %{type: "defender", name: provider.posture_provider.name})
   end
 end

@@ -1,8 +1,7 @@
 defmodule PortalAPI.ActorJSON do
-  use PortalAPI.JSON,
-    struct: Portal.Actor,
-    schema: PortalAPI.Schemas.Actor.Schema,
+  PortalAPI.JSON.verify!(__MODULE__, Portal.Actor, PortalAPI.Schemas.Actor.Schema,
     internal: [:account_id, :identity_count, :password_hash, :preferences]
+  )
 
   alias PortalAPI.Pagination
   alias Portal.Actor
@@ -24,5 +23,5 @@ defmodule PortalAPI.ActorJSON do
     %{data: data(actor)}
   end
 
-  defp data(%Actor{} = actor), do: render_fields(actor)
+  defp data(%Actor{} = actor), do: PortalAPI.JSON.render(actor, PortalAPI.Schemas.Actor.Schema)
 end

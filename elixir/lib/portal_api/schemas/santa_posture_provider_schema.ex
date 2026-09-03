@@ -2,9 +2,10 @@ defmodule PortalAPI.Schemas.SantaPostureProvider do
   alias OpenApiSpex.Schema
 
   defmodule Schema do
-    use PortalAPI.Schemas.Object
+    require OpenApiSpex
+    alias OpenApiSpex.Schema
 
-    object(%{
+    OpenApiSpex.schema(PortalAPI.Schemas.Object.with_required(%{
       title: "SantaPostureProvider",
       description: "Santa posture provider backed by North Pole Security Workshop",
       type: :object,
@@ -32,30 +33,31 @@ defmodule PortalAPI.Schemas.SantaPostureProvider do
         :is_verified,
         :is_disabled
       ]
-    })
+    }))
   end
 
   defmodule Response do
-    use PortalAPI.Schemas.Object
+    require OpenApiSpex
 
-    object(%{
+    OpenApiSpex.schema(PortalAPI.Schemas.Object.with_required(%{
       title: "SantaPostureProviderResponse",
       type: :object,
       properties: %{data: PortalAPI.Schemas.SantaPostureProvider.Schema}
-    })
+    }))
   end
 
   defmodule ListResponse do
-    use PortalAPI.Schemas.Object
+    require OpenApiSpex
+    alias OpenApiSpex.Schema
     alias PortalAPI.Schemas.PaginationMetadata
 
-    object(%{
+    OpenApiSpex.schema(PortalAPI.Schemas.Object.with_required(%{
       title: "SantaPostureProviderListResponse",
       type: :object,
       properties: %{
         data: %Schema{type: :array, items: PortalAPI.Schemas.SantaPostureProvider.Schema},
         metadata: PaginationMetadata
       }
-    })
+    }))
   end
 end

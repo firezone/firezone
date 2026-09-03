@@ -2,9 +2,10 @@ defmodule PortalAPI.Schemas.ExternalIdentity do
   alias OpenApiSpex.Schema
 
   defmodule Schema do
-    use PortalAPI.Schemas.Object
+    require OpenApiSpex
+    alias OpenApiSpex.Schema
 
-    object(%{
+    OpenApiSpex.schema(PortalAPI.Schemas.Object.with_required(%{
       title: "ExternalIdentity",
       description: "External Identity",
       type: :object,
@@ -44,7 +45,7 @@ defmodule PortalAPI.Schemas.ExternalIdentity do
           description: "Creation timestamp"
         }
       }
-    })
+    }))
   end
 
   defmodule Request do
@@ -69,25 +70,26 @@ defmodule PortalAPI.Schemas.ExternalIdentity do
   end
 
   defmodule Response do
-    use PortalAPI.Schemas.Object
+    require OpenApiSpex
     alias PortalAPI.Schemas.ExternalIdentity
 
-    object(%{
+    OpenApiSpex.schema(PortalAPI.Schemas.Object.with_required(%{
       title: "ExternalIdentityResponse",
       description: "Response schema for single External Identity",
       type: :object,
       properties: %{
         data: ExternalIdentity.Schema
       }
-    })
+    }))
   end
 
   defmodule ListResponse do
-    use PortalAPI.Schemas.Object
+    require OpenApiSpex
+    alias OpenApiSpex.Schema
     alias PortalAPI.Schemas.ExternalIdentity
     alias PortalAPI.Schemas.PaginationMetadata
 
-    object(%{
+    OpenApiSpex.schema(PortalAPI.Schemas.Object.with_required(%{
       title: "ExternalIdentityListResponse",
       description: "Response schema for multiple External Identities",
       type: :object,
@@ -99,6 +101,6 @@ defmodule PortalAPI.Schemas.ExternalIdentity do
         },
         metadata: PaginationMetadata
       }
-    })
+    }))
   end
 end

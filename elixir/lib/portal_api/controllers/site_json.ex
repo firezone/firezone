@@ -1,8 +1,7 @@
 defmodule PortalAPI.SiteJSON do
-  use PortalAPI.JSON,
-    struct: Portal.Site,
-    schema: PortalAPI.Schemas.Site.Schema,
+  PortalAPI.JSON.verify!(__MODULE__, Portal.Site, PortalAPI.Schemas.Site.Schema,
     internal: [:account_id, :health_threshold, :inserted_at, :managed_by, :updated_at]
+  )
 
   alias PortalAPI.Pagination
 
@@ -23,5 +22,5 @@ defmodule PortalAPI.SiteJSON do
     %{data: data(site)}
   end
 
-  defp data(%Portal.Site{} = site), do: render_fields(site)
+  defp data(%Portal.Site{} = site), do: PortalAPI.JSON.render(site, PortalAPI.Schemas.Site.Schema)
 end

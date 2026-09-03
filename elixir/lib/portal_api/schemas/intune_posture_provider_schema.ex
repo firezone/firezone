@@ -2,9 +2,10 @@ defmodule PortalAPI.Schemas.IntunePostureProvider do
   alias OpenApiSpex.Schema
 
   defmodule Schema do
-    use PortalAPI.Schemas.Object
+    require OpenApiSpex
+    alias OpenApiSpex.Schema
 
-    object(%{
+    OpenApiSpex.schema(PortalAPI.Schemas.Object.with_required(%{
       title: "IntunePostureProvider",
       description: "Microsoft Intune posture provider",
       type: :object,
@@ -24,24 +25,25 @@ defmodule PortalAPI.Schemas.IntunePostureProvider do
         updated_at: %Schema{type: :string, format: :"date-time"}
       },
       required: [:id, :account_id, :type, :name, :tenant_id, :is_verified, :is_disabled]
-    })
+    }))
   end
 
   defmodule Response do
-    use PortalAPI.Schemas.Object
+    require OpenApiSpex
 
-    object(%{
+    OpenApiSpex.schema(PortalAPI.Schemas.Object.with_required(%{
       title: "IntunePostureProviderResponse",
       type: :object,
       properties: %{data: PortalAPI.Schemas.IntunePostureProvider.Schema}
-    })
+    }))
   end
 
   defmodule ListResponse do
-    use PortalAPI.Schemas.Object
+    require OpenApiSpex
+    alias OpenApiSpex.Schema
     alias PortalAPI.Schemas.PaginationMetadata
 
-    object(%{
+    OpenApiSpex.schema(PortalAPI.Schemas.Object.with_required(%{
       title: "IntunePostureProviderListResponse",
       type: :object,
       properties: %{
@@ -51,6 +53,6 @@ defmodule PortalAPI.Schemas.IntunePostureProvider do
         },
         metadata: PaginationMetadata
       }
-    })
+    }))
   end
 end

@@ -1,9 +1,8 @@
 defmodule PortalAPI.SentinelOneDeviceJSON do
-  use PortalAPI.JSON,
-    struct: Portal.SentinelOne.Device,
-    schema: PortalAPI.Schemas.SentinelOneDevice.Schema,
+  PortalAPI.JSON.verify!(__MODULE__, Portal.SentinelOne.Device, PortalAPI.Schemas.SentinelOneDevice.Schema,
     # The endpoint license key is credential-like and never published.
     internal: [:license_key]
+  )
 
   alias Portal.SentinelOne
   alias PortalAPI.Pagination
@@ -14,5 +13,5 @@ defmodule PortalAPI.SentinelOneDeviceJSON do
 
   def show(%{device: device}), do: %{data: data(device)}
 
-  defp data(%SentinelOne.Device{} = device), do: render_fields(device)
+  defp data(%SentinelOne.Device{} = device), do: PortalAPI.JSON.render(device, PortalAPI.Schemas.SentinelOneDevice.Schema)
 end

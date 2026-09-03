@@ -1,12 +1,8 @@
 defmodule PortalAPI.ExternalIdentityJSON do
-  use PortalAPI.JSON,
-    struct: Portal.ExternalIdentity,
-    schema: PortalAPI.Schemas.ExternalIdentity.Schema,
+  PortalAPI.JSON.verify!(__MODULE__, Portal.ExternalIdentity, PortalAPI.Schemas.ExternalIdentity.Schema,
     computed: [:email, :idp_id, :synced_at],
-    internal: [
-      :directory_name,
-      :updated_at
-    ]
+    internal: [:directory_name, :updated_at]
+  )
 
   alias PortalAPI.Pagination
   alias Portal.ExternalIdentity
@@ -29,7 +25,7 @@ defmodule PortalAPI.ExternalIdentityJSON do
   end
 
   defp data(%ExternalIdentity{} = external_identity) do
-    render_fields(external_identity, %{
+    PortalAPI.JSON.render(external_identity, PortalAPI.Schemas.ExternalIdentity.Schema, %{
       email: external_identity.email || external_identity.idp_id,
       idp_id: extract_idp_id(external_identity.idp_id),
       synced_at: synced_at_from_state(external_identity.sync_state)

@@ -1,8 +1,7 @@
 defmodule PortalAPI.OIDCAuthProviderJSON do
-  use PortalAPI.JSON,
-    struct: Portal.OIDC.AuthProvider,
-    schema: PortalAPI.Schemas.OIDCAuthProvider.Schema,
+  PortalAPI.JSON.verify!(__MODULE__, Portal.OIDC.AuthProvider, PortalAPI.Schemas.OIDCAuthProvider.Schema,
     internal: [:client_secret, :is_legacy, :is_verified]
+  )
 
   alias Portal.OIDC
   alias PortalAPI.Pagination
@@ -15,5 +14,5 @@ defmodule PortalAPI.OIDCAuthProviderJSON do
     %{data: data(provider)}
   end
 
-  defp data(%OIDC.AuthProvider{} = provider), do: render_fields(provider)
+  defp data(%OIDC.AuthProvider{} = provider), do: PortalAPI.JSON.render(provider, PortalAPI.Schemas.OIDCAuthProvider.Schema)
 end

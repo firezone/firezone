@@ -1,8 +1,7 @@
 defmodule PortalAPI.OktaDirectoryJSON do
-  use PortalAPI.JSON,
-    struct: Portal.Okta.Directory,
-    schema: PortalAPI.Schemas.OktaDirectory.Schema,
+  PortalAPI.JSON.verify!(__MODULE__, Portal.Okta.Directory, PortalAPI.Schemas.OktaDirectory.Schema,
     internal: [:error_email_count, :is_verified, :private_key_jwk]
+  )
 
   alias Portal.Okta
   alias PortalAPI.Pagination
@@ -15,5 +14,5 @@ defmodule PortalAPI.OktaDirectoryJSON do
     %{data: data(directory)}
   end
 
-  defp data(%Okta.Directory{} = directory), do: render_fields(directory)
+  defp data(%Okta.Directory{} = directory), do: PortalAPI.JSON.render(directory, PortalAPI.Schemas.OktaDirectory.Schema)
 end

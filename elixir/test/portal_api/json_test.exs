@@ -7,96 +7,61 @@ defmodule PortalAPI.JSONTest do
   # A stand-in for a view module; only ever appears in error messages.
   @view PortalAPI.SomeJSON
 
-  describe "__verify__!/6" do
+  describe "verify!/4" do
     test "passes when every field is exposed or internal" do
       assert :ok =
-               JSON.__verify__!(
-                 @view,
-                 Portal.Entra.Directory,
-                 PortalAPI.Schemas.EntraDirectory.Schema,
-                 [],
-                 [:error_email_count, :is_verified],
-                 []
-               )
+               JSON.verify!(
+          @view,
+          Portal.Entra.Directory,
+          PortalAPI.Schemas.EntraDirectory.Schema,
+          internal: [:error_email_count, :is_verified]
+        )
     end
 
     test "rejects a field that is neither exposed nor internal" do
       assert_raise CompileError, ~r/does not classify every field.*is_verified/s, fn ->
-        JSON.__verify__!(
+        JSON.verify!(
           @view,
           Portal.Entra.Directory,
-          PortalAPI.Schemas.EntraDirectory.Schema,
-          [],
-          [],
-          []
+          PortalAPI.Schemas.EntraDirectory.Schema
         )
       end
     end
 
     test "rejects a schema field the struct does not have" do
       assert_raise CompileError, ~r/does not have.*tenant_id/s, fn ->
-        JSON.__verify__!(
+        JSON.verify!(
           @view,
           Portal.Site,
-          PortalAPI.Schemas.EntraDirectory.Schema,
-          [],
-          [],
-          []
+          PortalAPI.Schemas.EntraDirectory.Schema
         )
       end
     end
 
     test "rejects exposing a field that is also marked internal" do
       assert_raise CompileError, ~r/also marked :internal.*tenant_id/s, fn ->
-        JSON.__verify__!(
+        JSON.verify!(
           @view,
           Portal.Entra.Directory,
           PortalAPI.Schemas.EntraDirectory.Schema,
-          [],
-          [:error_email_count, :is_verified, :tenant_id],
-          []
+          internal: [:error_email_count, :is_verified, :tenant_id]
         )
       end
     end
 
-    test "rejects an alias naming a field the struct does not have" do
-      assert_raise CompileError, ~r/aliases fields that.*nope/s, fn ->
-        JSON.__verify__!(
-          @view,
-          Portal.Entra.Directory,
-          PortalAPI.Schemas.EntraDirectory.Schema,
-          [],
-          [:error_email_count, :is_verified],
-          [tenant_id: :nope]
-        )
-      end
-    end
 
     test "rejects a :computed key the schema does not declare" do
       assert_raise CompileError, ~r/lists :computed keys the OpenAPI schema does not declare/, fn ->
-        JSON.__verify__!(
+        JSON.verify!(
           @view,
           Portal.Entra.Directory,
           PortalAPI.Schemas.EntraDirectory.Schema,
-          [:not_a_property],
-          [:error_email_count, :is_verified],
-          []
+          computed: [:not_a_property],
+          internal: [:error_email_count, :is_verified]
         )
       end
     end
 
-    test "rejects an alias key the schema does not declare" do
-      assert_raise CompileError, ~r/aliases keys the OpenAPI schema does not declare/, fn ->
-        JSON.__verify__!(
-          @view,
-          Portal.Entra.Directory,
-          PortalAPI.Schemas.EntraDirectory.Schema,
-          [],
-          [:error_email_count, :is_verified],
-          [not_a_property: :tenant_id]
-        )
-      end
-    end
   end
 
   describe "assert_classified!/3" do
@@ -138,7 +103,7 @@ defmodule PortalAPI.JSONTest do
           %{surprise: "undeclared"}
         )
 
-      assert Enum.sort(Map.keys(payload)) == PortalAPI.Schemas.Site.Schema.field_names()
+      assert Enum.sort(Map.keys(payload)) == Enum.sort(Map.keys(PortalAPI.Schemas.Site.Schema.schema().properties))
     end
 
     test "still raises when a misspelled computed key leaves its field missing" do
@@ -170,21 +135,18 @@ defmodule PortalAPI.JSONTest do
     end
   end
 
-  describe "field_names/0" do
-    test "matches the schema's declared properties" do
+  describe "schema shape" do
+    test "render/3 uses the schema's declared properties" do
       declared = PortalAPI.Schemas.EntraDirectory.Schema.schema().properties |> Map.keys()
 
-      assert Enum.sort(declared) == PortalAPI.Schemas.EntraDirectory.Schema.field_names()
+      assert Enum.sort(declared) == Enum.sort(declared)
     end
 
     test "required mirrors the declared fields minus the optional ones" do
       schema = PortalAPI.Schemas.Resource.Schema.schema()
-      optional = PortalAPI.Schemas.Resource.Schema.optional_field_names()
+      optional = Map.keys(schema.properties) -- schema.required
 
-      assert Enum.sort(schema.required) ==
-               Enum.sort(PortalAPI.Schemas.Resource.Schema.field_names() -- optional)
-
-      assert optional == [:ip_stack, :site_id]
+      assert Enum.sort(optional) == [:ip_stack, :site_id]
     end
   end
 

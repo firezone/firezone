@@ -2,9 +2,10 @@ defmodule PortalAPI.Schemas.ClientToken do
   alias OpenApiSpex.Schema
 
   defmodule Schema do
-    use PortalAPI.Schemas.Object
+    require OpenApiSpex
+    alias OpenApiSpex.Schema
 
-    object(%{
+    OpenApiSpex.schema(PortalAPI.Schemas.Object.with_required(%{
       title: "ClientToken",
       description: "Client Token metadata",
       type: :object,
@@ -22,7 +23,7 @@ defmodule PortalAPI.Schemas.ClientToken do
         "inserted_at" => "2025-01-15T12:34:56.789Z",
         "updated_at" => "2025-01-15T12:34:56.789Z"
       }
-    })
+    }))
   end
 
   defmodule CreateSchema do
@@ -95,39 +96,40 @@ defmodule PortalAPI.Schemas.ClientToken do
   end
 
   defmodule Response do
-    use PortalAPI.Schemas.Object
+    require OpenApiSpex
     alias PortalAPI.Schemas.ClientToken
 
-    object(%{
+    OpenApiSpex.schema(PortalAPI.Schemas.Object.with_required(%{
       title: "ClientTokenCreateResponse",
       description: "Response schema for a new Client Token",
       type: :object,
       properties: %{
         data: ClientToken.ResponseSchema
       }
-    })
+    }))
   end
 
   defmodule ShowResponse do
-    use PortalAPI.Schemas.Object
+    require OpenApiSpex
     alias PortalAPI.Schemas.ClientToken
 
-    object(%{
+    OpenApiSpex.schema(PortalAPI.Schemas.Object.with_required(%{
       title: "ClientTokenShowResponse",
       description: "Response schema for Client Token metadata",
       type: :object,
       properties: %{
         data: ClientToken.Schema
       }
-    })
+    }))
   end
 
   defmodule ListResponse do
-    use PortalAPI.Schemas.Object
+    require OpenApiSpex
+    alias OpenApiSpex.Schema
     alias PortalAPI.Schemas.ClientToken
     alias PortalAPI.Schemas.PaginationMetadata
 
-    object(%{
+    OpenApiSpex.schema(PortalAPI.Schemas.Object.with_required(%{
       title: "ClientTokenListResponse",
       description: "Response schema for multiple Client Tokens",
       type: :object,
@@ -135,13 +137,14 @@ defmodule PortalAPI.Schemas.ClientToken do
         data: %Schema{description: "Client Token metadata", type: :array, items: ClientToken.Schema},
         metadata: PaginationMetadata
       }
-    })
+    }))
   end
 
   defmodule DeletedResponse do
-    use PortalAPI.Schemas.Object
+    require OpenApiSpex
+    alias OpenApiSpex.Schema
 
-    object(%{
+    OpenApiSpex.schema(PortalAPI.Schemas.Object.with_required(%{
       title: "DeletedClientTokenResponse",
       description: "Response schema for a deleted Client Token",
       type: :object,
@@ -154,13 +157,14 @@ defmodule PortalAPI.Schemas.ClientToken do
           required: [:id]
         }
       }
-    })
+    }))
   end
 
   defmodule DeletedAllResponse do
-    use PortalAPI.Schemas.Object
+    require OpenApiSpex
+    alias OpenApiSpex.Schema
 
-    object(%{
+    OpenApiSpex.schema(PortalAPI.Schemas.Object.with_required(%{
       title: "DeletedClientTokensResponse",
       description: "Response schema for deleted Client Tokens",
       type: :object,
@@ -176,6 +180,6 @@ defmodule PortalAPI.Schemas.ClientToken do
           required: [:deleted_count]
         }
       }
-    })
+    }))
   end
 end

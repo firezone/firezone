@@ -2,9 +2,10 @@ defmodule PortalAPI.Schemas.GoogleAuthProvider do
   alias OpenApiSpex.Schema
 
   defmodule Schema do
-    use PortalAPI.Schemas.Object
+    require OpenApiSpex
+    alias OpenApiSpex.Schema
 
-    object(%{
+    OpenApiSpex.schema(PortalAPI.Schemas.Object.with_required(%{
       title: "GoogleAuthProvider",
       description: "Google Auth Provider",
       type: :object,
@@ -35,29 +36,30 @@ defmodule PortalAPI.Schemas.GoogleAuthProvider do
         },
         updated_at: %Schema{type: :string, format: :"date-time", description: "Update timestamp"}
       }
-    })
+    }))
   end
 
   defmodule Response do
-    use PortalAPI.Schemas.Object
+    require OpenApiSpex
     alias PortalAPI.Schemas.GoogleAuthProvider
 
-    object(%{
+    OpenApiSpex.schema(PortalAPI.Schemas.Object.with_required(%{
       title: "GoogleAuthProviderResponse",
       description: "Response schema for single Google Auth Provider",
       type: :object,
       properties: %{
         data: GoogleAuthProvider.Schema
       }
-    })
+    }))
   end
 
   defmodule ListResponse do
-    use PortalAPI.Schemas.Object
+    require OpenApiSpex
+    alias OpenApiSpex.Schema
     alias PortalAPI.Schemas.GoogleAuthProvider
     alias PortalAPI.Schemas.PaginationMetadata
 
-    object(%{
+    OpenApiSpex.schema(PortalAPI.Schemas.Object.with_required(%{
       title: "GoogleAuthProviderListResponse",
       description: "Response schema for multiple Google Auth Providers",
       type: :object,
@@ -69,6 +71,6 @@ defmodule PortalAPI.Schemas.GoogleAuthProvider do
         },
         metadata: PaginationMetadata
       }
-    })
+    }))
   end
 end

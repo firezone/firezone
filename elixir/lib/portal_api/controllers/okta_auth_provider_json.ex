@@ -1,8 +1,7 @@
 defmodule PortalAPI.OktaAuthProviderJSON do
-  use PortalAPI.JSON,
-    struct: Portal.Okta.AuthProvider,
-    schema: PortalAPI.Schemas.OktaAuthProvider.Schema,
+  PortalAPI.JSON.verify!(__MODULE__, Portal.Okta.AuthProvider, PortalAPI.Schemas.OktaAuthProvider.Schema,
     internal: [:client_secret, :discovery_document_uri, :is_verified]
+  )
 
   alias Portal.Okta
   alias PortalAPI.Pagination
@@ -15,5 +14,5 @@ defmodule PortalAPI.OktaAuthProviderJSON do
     %{data: data(provider)}
   end
 
-  defp data(%Okta.AuthProvider{} = provider), do: render_fields(provider)
+  defp data(%Okta.AuthProvider{} = provider), do: PortalAPI.JSON.render(provider, PortalAPI.Schemas.OktaAuthProvider.Schema)
 end

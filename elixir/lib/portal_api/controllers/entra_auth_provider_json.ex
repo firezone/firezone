@@ -1,8 +1,7 @@
 defmodule PortalAPI.EntraAuthProviderJSON do
-  use PortalAPI.JSON,
-    struct: Portal.Entra.AuthProvider,
-    schema: PortalAPI.Schemas.EntraAuthProvider.Schema,
+  PortalAPI.JSON.verify!(__MODULE__, Portal.Entra.AuthProvider, PortalAPI.Schemas.EntraAuthProvider.Schema,
     internal: [:is_verified]
+  )
 
   alias Portal.Entra
   alias PortalAPI.Pagination
@@ -15,5 +14,5 @@ defmodule PortalAPI.EntraAuthProviderJSON do
     %{data: data(provider)}
   end
 
-  defp data(%Entra.AuthProvider{} = provider), do: render_fields(provider)
+  defp data(%Entra.AuthProvider{} = provider), do: PortalAPI.JSON.render(provider, PortalAPI.Schemas.EntraAuthProvider.Schema)
 end

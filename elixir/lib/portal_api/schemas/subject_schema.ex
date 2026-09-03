@@ -1,7 +1,8 @@
 defmodule PortalAPI.Schemas.Subject do
-  use PortalAPI.Schemas.Object
+  require OpenApiSpex
+  alias OpenApiSpex.Schema
 
-  object(%{
+  OpenApiSpex.schema(PortalAPI.Schemas.Object.with_required(%{
     title: "Subject",
     description: """
     Identifies the actor and request context that initiated an action.
@@ -82,5 +83,5 @@ defmodule PortalAPI.Schemas.Subject do
       "ip_lon" => -122.4194,
       "user_agent" => "Mozilla/5.0"
     }
-  })
+  }))
 end

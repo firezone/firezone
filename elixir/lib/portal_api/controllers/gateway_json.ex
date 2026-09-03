@@ -1,10 +1,10 @@
 defmodule PortalAPI.GatewayJSON do
-  use PortalAPI.JSON,
-    struct: Portal.Device,
-    schema: PortalAPI.Schemas.Gateway.Schema,
-    aliases: [online: :online?, rotated_at: :gateway_token_rotated_at],
+  PortalAPI.JSON.verify!(__MODULE__, Portal.Device, PortalAPI.Schemas.Gateway.Schema,
+    computed: [:online, :rotated_at],
     # psk_base is key material and must never leave the portal.
     internal: [
+      :gateway_token_rotated_at,
+      :online?,
       :account_id,
       :actor_id,
       :attested?,
@@ -30,6 +30,7 @@ defmodule PortalAPI.GatewayJSON do
       :updated_at,
       :verified_at
     ]
+  )
 
   alias PortalAPI.Pagination
   alias Portal.Device
@@ -58,5 +59,10 @@ defmodule PortalAPI.GatewayJSON do
     %{data: Map.put(data(gateway), :token, encoded_token)}
   end
 
-  defp data(%Device{} = device), do: render_fields(device)
+  defp data(%Device{} = device) do
+    PortalAPI.JSON.render(device, PortalAPI.Schemas.Gateway.Schema, %{
+      online: device.online?,
+      rotated_at: device.gateway_token_rotated_at
+    })
+  end
 end

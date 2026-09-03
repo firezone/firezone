@@ -2,9 +2,10 @@ defmodule PortalAPI.Schemas.EmailOTPAuthProvider do
   alias OpenApiSpex.Schema
 
   defmodule Schema do
-    use PortalAPI.Schemas.Object
+    require OpenApiSpex
+    alias OpenApiSpex.Schema
 
-    object(%{
+    OpenApiSpex.schema(PortalAPI.Schemas.Object.with_required(%{
       title: "EmailOTPAuthProvider",
       description: "Email OTP Auth Provider",
       type: :object,
@@ -34,29 +35,30 @@ defmodule PortalAPI.Schemas.EmailOTPAuthProvider do
         },
         updated_at: %Schema{type: :string, format: :"date-time", description: "Update timestamp"}
       }
-    })
+    }))
   end
 
   defmodule Response do
-    use PortalAPI.Schemas.Object
+    require OpenApiSpex
     alias PortalAPI.Schemas.EmailOTPAuthProvider
 
-    object(%{
+    OpenApiSpex.schema(PortalAPI.Schemas.Object.with_required(%{
       title: "EmailOTPAuthProviderResponse",
       description: "Response schema for single Email OTP Auth Provider",
       type: :object,
       properties: %{
         data: EmailOTPAuthProvider.Schema
       }
-    })
+    }))
   end
 
   defmodule ListResponse do
-    use PortalAPI.Schemas.Object
+    require OpenApiSpex
+    alias OpenApiSpex.Schema
     alias PortalAPI.Schemas.EmailOTPAuthProvider
     alias PortalAPI.Schemas.PaginationMetadata
 
-    object(%{
+    OpenApiSpex.schema(PortalAPI.Schemas.Object.with_required(%{
       title: "EmailOTPAuthProviderListResponse",
       description: "Response schema for multiple Email OTP Auth Providers",
       type: :object,
@@ -68,6 +70,6 @@ defmodule PortalAPI.Schemas.EmailOTPAuthProvider do
         },
         metadata: PaginationMetadata
       }
-    })
+    }))
   end
 end

@@ -2,9 +2,10 @@ defmodule PortalAPI.Schemas.Group do
   alias OpenApiSpex.Schema
 
   defmodule Schema do
-    use PortalAPI.Schemas.Object
+    require OpenApiSpex
+    alias OpenApiSpex.Schema
 
-    object(%{
+    OpenApiSpex.schema(PortalAPI.Schemas.Object.with_required(%{
       title: "Group",
       description: "Group",
       type: :object,
@@ -60,7 +61,7 @@ defmodule PortalAPI.Schemas.Group do
         "inserted_at" => "2024-01-15T10:30:00Z",
         "updated_at" => "2024-01-15T10:30:00Z"
       }
-    })
+    }))
   end
 
   defmodule CreateRequest do
@@ -117,25 +118,26 @@ defmodule PortalAPI.Schemas.Group do
   end
 
   defmodule Response do
-    use PortalAPI.Schemas.Object
+    require OpenApiSpex
     alias PortalAPI.Schemas.Group
 
-    object(%{
+    OpenApiSpex.schema(PortalAPI.Schemas.Object.with_required(%{
       title: "GroupResponse",
       description: "Response schema for single Group",
       type: :object,
       properties: %{
         data: Group.Schema
       }
-    })
+    }))
   end
 
   defmodule ListResponse do
-    use PortalAPI.Schemas.Object
+    require OpenApiSpex
+    alias OpenApiSpex.Schema
     alias PortalAPI.Schemas.Group
     alias PortalAPI.Schemas.PaginationMetadata
 
-    object(%{
+    OpenApiSpex.schema(PortalAPI.Schemas.Object.with_required(%{
       title: "GroupListResponse",
       description: "Response schema for multiple Groups",
       type: :object,
@@ -143,6 +145,6 @@ defmodule PortalAPI.Schemas.Group do
         data: %Schema{description: "Group details", type: :array, items: Group.Schema},
         metadata: PaginationMetadata
       }
-    })
+    }))
   end
 end

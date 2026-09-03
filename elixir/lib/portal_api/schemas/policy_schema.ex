@@ -161,11 +161,12 @@ defmodule PortalAPI.Schemas.Policy do
   end
 
   defmodule ResponseSchema do
-    use PortalAPI.Schemas.Object
+    require OpenApiSpex
+    alias OpenApiSpex.Schema
 
     alias PortalAPI.Schemas.Policy
 
-    object(%{
+    OpenApiSpex.schema(PortalAPI.Schemas.Object.with_required(%{
       title: "Policy",
       description: "Policy",
       type: :object,
@@ -212,7 +213,7 @@ defmodule PortalAPI.Schemas.Policy do
           }
         ]
       }
-    })
+    }))
   end
 
   defmodule CreateRequest do
@@ -274,25 +275,26 @@ defmodule PortalAPI.Schemas.Policy do
   end
 
   defmodule Response do
-    use PortalAPI.Schemas.Object
+    require OpenApiSpex
     alias PortalAPI.Schemas.Policy
 
-    object(%{
+    OpenApiSpex.schema(PortalAPI.Schemas.Object.with_required(%{
       title: "PolicyResponse",
       description: "Response schema for single Policy",
       type: :object,
       properties: %{
         data: Policy.ResponseSchema
       }
-    })
+    }))
   end
 
   defmodule ListResponse do
-    use PortalAPI.Schemas.Object
+    require OpenApiSpex
+    alias OpenApiSpex.Schema
     alias PortalAPI.Schemas.Policy
     alias PortalAPI.Schemas.PaginationMetadata
 
-    object(%{
+    OpenApiSpex.schema(PortalAPI.Schemas.Object.with_required(%{
       title: "PolicyListResponse",
       description: "Response schema for multiple Policies",
       type: :object,
@@ -300,6 +302,6 @@ defmodule PortalAPI.Schemas.Policy do
         data: %Schema{description: "Policy details", type: :array, items: Policy.ResponseSchema},
         metadata: PaginationMetadata
       }
-    })
+    }))
   end
 end

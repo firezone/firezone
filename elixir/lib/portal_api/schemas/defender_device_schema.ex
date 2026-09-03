@@ -2,7 +2,8 @@ defmodule PortalAPI.Schemas.DefenderDevice do
   alias OpenApiSpex.Schema
 
   defmodule Schema do
-    use PortalAPI.Schemas.Object
+    require OpenApiSpex
+    alias OpenApiSpex.Schema
 
     # Exposure is an explicit allowlist: a newly synced column must be added to
     # @exposed or @internal before it compiles. Property types stay derived.
@@ -93,35 +94,36 @@ defmodule PortalAPI.Schemas.DefenderDevice do
                   {field, schema}
                 end)
 
-    object(%{
+    OpenApiSpex.schema(PortalAPI.Schemas.Object.with_required(%{
       title: "DefenderDevice",
       description: "Device synced from Microsoft Defender for Endpoint",
       type: :object,
       properties: @properties
-    })
+    }))
   end
 
   defmodule Response do
-    use PortalAPI.Schemas.Object
+    require OpenApiSpex
 
-    object(%{
+    OpenApiSpex.schema(PortalAPI.Schemas.Object.with_required(%{
       title: "DefenderDeviceResponse",
       type: :object,
       properties: %{data: PortalAPI.Schemas.DefenderDevice.Schema}
-    })
+    }))
   end
 
   defmodule ListResponse do
-    use PortalAPI.Schemas.Object
+    require OpenApiSpex
+    alias OpenApiSpex.Schema
     alias PortalAPI.Schemas.PaginationMetadata
 
-    object(%{
+    OpenApiSpex.schema(PortalAPI.Schemas.Object.with_required(%{
       title: "DefenderDeviceListResponse",
       type: :object,
       properties: %{
         data: %Schema{type: :array, items: PortalAPI.Schemas.DefenderDevice.Schema},
         metadata: PaginationMetadata
       }
-    })
+    }))
   end
 end

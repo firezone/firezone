@@ -1,7 +1,6 @@
 defmodule PortalAPI.IntuneDeviceJSON do
-  use PortalAPI.JSON,
-    struct: Portal.Intune.Device,
-    schema: PortalAPI.Schemas.IntuneDevice.Schema
+  PortalAPI.JSON.verify!(__MODULE__, Portal.Intune.Device, PortalAPI.Schemas.IntuneDevice.Schema
+  )
 
   alias Portal.Intune
   alias PortalAPI.Pagination
@@ -12,5 +11,5 @@ defmodule PortalAPI.IntuneDeviceJSON do
 
   def show(%{device: device}), do: %{data: data(device)}
 
-  defp data(%Intune.Device{} = device), do: render_fields(device)
+  defp data(%Intune.Device{} = device), do: PortalAPI.JSON.render(device, PortalAPI.Schemas.IntuneDevice.Schema)
 end

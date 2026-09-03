@@ -2,9 +2,10 @@ defmodule PortalAPI.Schemas.Client do
   alias OpenApiSpex.Schema
 
   defmodule GetSchema do
-    use PortalAPI.Schemas.Object
+    require OpenApiSpex
+    alias OpenApiSpex.Schema
 
-    object(%{
+    OpenApiSpex.schema(PortalAPI.Schemas.Object.with_required(%{
       title: "Client",
       description: "Client",
       type: :object,
@@ -184,7 +185,7 @@ defmodule PortalAPI.Schemas.Client do
         "created_at" => "2025-01-01T00:00:00Z",
         "updated_at" => "2025-01-01T00:00:00Z"
       }
-    })
+    }))
   end
 
   defmodule PutSchema do
@@ -230,25 +231,26 @@ defmodule PortalAPI.Schemas.Client do
   end
 
   defmodule Response do
-    use PortalAPI.Schemas.Object
+    require OpenApiSpex
     alias PortalAPI.Schemas.Client
 
-    object(%{
+    OpenApiSpex.schema(PortalAPI.Schemas.Object.with_required(%{
       title: "ClientResponse",
       description: "Response schema for single Client",
       type: :object,
       properties: %{
         data: Client.GetSchema
       }
-    })
+    }))
   end
 
   defmodule ListResponse do
-    use PortalAPI.Schemas.Object
+    require OpenApiSpex
+    alias OpenApiSpex.Schema
     alias PortalAPI.Schemas.Client
     alias PortalAPI.Schemas.PaginationMetadata
 
-    object(%{
+    OpenApiSpex.schema(PortalAPI.Schemas.Object.with_required(%{
       title: "ClientsResponse",
       description: "Response schema for multiple Clients",
       type: :object,
@@ -256,6 +258,6 @@ defmodule PortalAPI.Schemas.Client do
         data: %Schema{description: "Clients details", type: :array, items: Client.GetSchema},
         metadata: PaginationMetadata
       }
-    })
+    }))
   end
 end

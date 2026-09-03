@@ -1,12 +1,8 @@
 defmodule PortalAPI.GroupJSON do
-  use PortalAPI.JSON,
-    struct: Portal.Group,
-    schema: PortalAPI.Schemas.Group.Schema,
+  PortalAPI.JSON.verify!(__MODULE__, Portal.Group, PortalAPI.Schemas.Group.Schema,
     computed: [:synced_at],
-    internal: [
-      :account_id,
-      :type
-    ]
+    internal: [:account_id, :type]
+  )
 
   alias PortalAPI.Pagination
   alias Portal.Group
@@ -29,7 +25,7 @@ defmodule PortalAPI.GroupJSON do
   end
 
   defp data(%Group{} = group) do
-    render_fields(group, %{synced_at: synced_at_from_state(group.sync_state)})
+    PortalAPI.JSON.render(group, PortalAPI.Schemas.Group.Schema, %{synced_at: synced_at_from_state(group.sync_state)})
   end
 
   defp synced_at_from_state(%Portal.GroupSyncState{synced_at: t}), do: t

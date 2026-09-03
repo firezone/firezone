@@ -2,9 +2,10 @@ defmodule PortalAPI.Schemas.PoolMember do
   alias OpenApiSpex.Schema
 
   defmodule Schema do
-    use PortalAPI.Schemas.Object
+    require OpenApiSpex
+    alias OpenApiSpex.Schema
 
-    object(%{
+    OpenApiSpex.schema(PortalAPI.Schemas.Object.with_required(%{
       title: "PoolMember",
       description: "A Client belonging to a static device pool Resource",
       type: :object,
@@ -23,7 +24,7 @@ defmodule PortalAPI.Schemas.PoolMember do
         "name" => "jane-laptop",
         "last_seen_at" => "2024-01-15T10:30:00Z"
       }
-    })
+    }))
   end
 
   defmodule PatchRequest do
@@ -99,11 +100,12 @@ defmodule PortalAPI.Schemas.PoolMember do
   end
 
   defmodule ListResponse do
-    use PortalAPI.Schemas.Object
+    require OpenApiSpex
+    alias OpenApiSpex.Schema
     alias PortalAPI.Schemas.PaginationMetadata
     alias PortalAPI.Schemas.PoolMember
 
-    object(%{
+    OpenApiSpex.schema(PortalAPI.Schemas.Object.with_required(%{
       title: "PoolMemberListResponse",
       description: "Response schema for Pool Members",
       type: :object,
@@ -115,13 +117,14 @@ defmodule PortalAPI.Schemas.PoolMember do
         },
         metadata: PaginationMetadata
       }
-    })
+    }))
   end
 
   defmodule PoolMemberResponse do
-    use PortalAPI.Schemas.Object
+    require OpenApiSpex
+    alias OpenApiSpex.Schema
 
-    object(%{
+    OpenApiSpex.schema(PortalAPI.Schemas.Object.with_required(%{
       title: "PoolMemberResponse",
       description: "Response schema for Pool Member updates",
       type: :object,
@@ -138,6 +141,6 @@ defmodule PortalAPI.Schemas.PoolMember do
           }
         }
       }
-    })
+    }))
   end
 end

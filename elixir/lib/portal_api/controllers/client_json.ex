@@ -1,10 +1,10 @@
 defmodule PortalAPI.ClientJSON do
-  use PortalAPI.JSON,
-    struct: Portal.Device,
-    schema: PortalAPI.Schemas.Client.GetSchema,
-    aliases: [online: :online?, created_at: :inserted_at],
+  PortalAPI.JSON.verify!(__MODULE__, Portal.Device, PortalAPI.Schemas.Client.GetSchema,
+    computed: [:online, :created_at],
     # psk_base is key material and must never leave the portal.
     internal: [
+      :inserted_at,
+      :online?,
       :account_id,
       :attested?,
       :client_token_id,
@@ -16,6 +16,7 @@ defmodule PortalAPI.ClientJSON do
       :site_id,
       :type
     ]
+  )
 
   alias PortalAPI.Pagination
   alias Portal.Device
@@ -37,5 +38,10 @@ defmodule PortalAPI.ClientJSON do
     %{data: data(client)}
   end
 
-  defp data(%Device{} = device), do: render_fields(device)
+  defp data(%Device{} = device) do
+    PortalAPI.JSON.render(device, PortalAPI.Schemas.Client.GetSchema, %{
+      online: device.online?,
+      created_at: device.inserted_at
+    })
+  end
 end

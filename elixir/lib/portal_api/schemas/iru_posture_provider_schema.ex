@@ -2,9 +2,10 @@ defmodule PortalAPI.Schemas.IruPostureProvider do
   alias OpenApiSpex.Schema
 
   defmodule Schema do
-    use PortalAPI.Schemas.Object
+    require OpenApiSpex
+    alias OpenApiSpex.Schema
 
-    object(%{
+    OpenApiSpex.schema(PortalAPI.Schemas.Object.with_required(%{
       title: "IruPostureProvider",
       description: "Iru (formerly Kandji) posture provider",
       type: :object,
@@ -34,30 +35,31 @@ defmodule PortalAPI.Schemas.IruPostureProvider do
         :is_verified,
         :is_disabled
       ]
-    })
+    }))
   end
 
   defmodule Response do
-    use PortalAPI.Schemas.Object
+    require OpenApiSpex
 
-    object(%{
+    OpenApiSpex.schema(PortalAPI.Schemas.Object.with_required(%{
       title: "IruPostureProviderResponse",
       type: :object,
       properties: %{data: PortalAPI.Schemas.IruPostureProvider.Schema}
-    })
+    }))
   end
 
   defmodule ListResponse do
-    use PortalAPI.Schemas.Object
+    require OpenApiSpex
+    alias OpenApiSpex.Schema
     alias PortalAPI.Schemas.PaginationMetadata
 
-    object(%{
+    OpenApiSpex.schema(PortalAPI.Schemas.Object.with_required(%{
       title: "IruPostureProviderListResponse",
       type: :object,
       properties: %{
         data: %Schema{type: :array, items: PortalAPI.Schemas.IruPostureProvider.Schema},
         metadata: PaginationMetadata
       }
-    })
+    }))
   end
 end

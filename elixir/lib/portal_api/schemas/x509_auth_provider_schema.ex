@@ -2,9 +2,10 @@ defmodule PortalAPI.Schemas.X509AuthProvider do
   alias OpenApiSpex.Schema
 
   defmodule Schema do
-    use PortalAPI.Schemas.Object
+    require OpenApiSpex
+    alias OpenApiSpex.Schema
 
-    object(%{
+    OpenApiSpex.schema(PortalAPI.Schemas.Object.with_required(%{
       title: "X509AuthProvider",
       description: "X.509 Auth Provider",
       type: :object,
@@ -17,18 +18,18 @@ defmodule PortalAPI.Schemas.X509AuthProvider do
         inserted_at: %Schema{type: :string, format: :"date-time", description: "Creation timestamp"},
         updated_at: %Schema{type: :string, format: :"date-time", description: "Update timestamp"}
       }
-    })
+    }))
   end
 
   defmodule Response do
-    use PortalAPI.Schemas.Object
+    require OpenApiSpex
     alias PortalAPI.Schemas.X509AuthProvider
 
-    object(%{
+    OpenApiSpex.schema(PortalAPI.Schemas.Object.with_required(%{
       title: "X509AuthProviderResponse",
       description: "Response schema for a single X.509 Auth Provider",
       type: :object,
       properties: %{data: X509AuthProvider.Schema}
-    })
+    }))
   end
 end

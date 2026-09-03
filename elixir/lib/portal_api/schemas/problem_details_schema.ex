@@ -1,5 +1,6 @@
 defmodule PortalAPI.Schemas.ProblemDetails do
-  use PortalAPI.Schemas.Object
+  require OpenApiSpex
+  alias OpenApiSpex.Schema
 
   @content_type "application/problem+json"
 
@@ -14,7 +15,7 @@ defmodule PortalAPI.Schemas.ProblemDetails do
       "Rate limit exceeded. Retry after the time indicated in the Retry-After header."
   }
 
-  object(%{
+  OpenApiSpex.schema(PortalAPI.Schemas.Object.with_required(%{
     title: "ProblemDetails",
     description: "RFC 9457 (Problem Details for HTTP APIs) error response.",
     type: :object,
@@ -47,12 +48,13 @@ defmodule PortalAPI.Schemas.ProblemDetails do
       "status" => 404,
       "detail" => "The requested resource could not be found."
     }
-  })
+  }))
 
   defmodule ValidationError do
-    use PortalAPI.Schemas.Object
+    require OpenApiSpex
+    alias OpenApiSpex.Schema
 
-    object(%{
+    OpenApiSpex.schema(PortalAPI.Schemas.Object.with_required(%{
       title: "ValidationProblemDetails",
       description:
         "RFC 9457 error response for request validation failures. The `validation_errors` " <>
@@ -79,7 +81,7 @@ defmodule PortalAPI.Schemas.ProblemDetails do
         "detail" => "The request body failed validation.",
         "validation_errors" => %{"name" => ["can't be blank"]}
       }
-    })
+    }))
   end
 
   @doc """

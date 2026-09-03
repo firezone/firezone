@@ -1,7 +1,5 @@
 defmodule PortalAPI.AccountJSON do
-  use PortalAPI.JSON,
-    struct: Portal.Account,
-    schema: PortalAPI.Schemas.Account.Schema,
+  PortalAPI.JSON.verify!(__MODULE__, Portal.Account, PortalAPI.Schemas.Account.Schema,
     computed: [:limits],
     # ingest_signing_key is credential material and must never leave the portal.
     internal: [
@@ -22,6 +20,7 @@ defmodule PortalAPI.AccountJSON do
       :users_limit_exceeded,
       :warning_last_sent_at
     ]
+  )
 
   alias __MODULE__.Database
 
@@ -33,7 +32,7 @@ defmodule PortalAPI.AccountJSON do
   end
 
   defp data(%Portal.Account{} = account) do
-    render_fields(account, %{limits: build_limits(account)})
+    PortalAPI.JSON.render(account, PortalAPI.Schemas.Account.Schema, %{limits: build_limits(account)})
   end
 
   defp build_limits(account) do

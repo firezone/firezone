@@ -1,14 +1,8 @@
 defmodule PortalAPI.PolicyJSON do
-  use PortalAPI.JSON,
-    struct: Portal.Policy,
-    schema: PortalAPI.Schemas.Policy.ResponseSchema,
+  PortalAPI.JSON.verify!(__MODULE__, Portal.Policy, PortalAPI.Schemas.Policy.ResponseSchema,
     computed: [:conditions],
-    internal: [
-      :account_id,
-      :group_idp_id,
-      :inserted_at,
-      :updated_at
-    ]
+    internal: [:account_id, :group_idp_id, :inserted_at, :updated_at]
+  )
 
   alias PortalAPI.Pagination
 
@@ -30,7 +24,7 @@ defmodule PortalAPI.PolicyJSON do
   end
 
   defp data(%Portal.Policy{} = policy) do
-    render_fields(policy, %{conditions: Enum.map(policy.conditions, &condition/1)})
+    PortalAPI.JSON.render(policy, PortalAPI.Schemas.Policy.ResponseSchema, %{conditions: Enum.map(policy.conditions, &condition/1)})
   end
 
   defp condition(%Portal.Policies.Condition{} = condition) do

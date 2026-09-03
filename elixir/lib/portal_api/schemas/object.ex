@@ -1,22 +1,39 @@
 defmodule PortalAPI.Schemas.Object do
   @moduledoc """
-  Wraps `OpenApiSpex.schema/1` for response objects whose JSON view emits every
-  declared key on every call.
+  Helpers for response schemas whose payload is emitted in full.
 
-  Two things drift by hand and are derived here instead:
-
-    * `required` — computed from the declared properties, so it can never fall
-      behind as fields are added. Nullability stays an explicit per-property
-      concern (`nullable: true`); presence and null-ness are separate axes.
-
-    * `field_names/0` — the property list, exposed so the JSON view can build
-      its payload from the same source rather than a parallel map literal.
-
-  Properties the view may omit are declared with `optional:`, which drops them
-  from `required` while keeping them under the same exposure checks:
-
-      object(%{...}, optional: [:ip_stack, :site_id])
+  These are ordinary functions called from a schema's module body, so the
+  schemas stay plain `OpenApiSpex.schema/1` declarations that tooling can
+  follow.
   """
+
+  @doc """
+  Fills in `required` from the schema's declared properties.
+
+      OpenApiSpex.schema(Object.with_required(%{
+        title: "Site",
+        type: :object,
+        properties: %{...}
+      }))
+
+  A JSON view emits every property it declares, so `required` is a function of
+  `properties` rather than a second list to keep in step. Properties the view
+  may omit are named with `optional:` and left out of `required`:
+
+      Object.with_required(%{...}, optional: [:ip_stack, :site_id])
+  """
+  @spec with_required(map(), keyword()) :: map()
+  def with_required(schema, opts \\ []) when is_map(schema) do
+    properties = Map.fetch!(schema, :properties)
+    optional = Keyword.get(opts, :optional, [])
+
+    case optional -- Map.keys(properties) do
+      [] -> :ok
+      stale -> raise ArgumentError, "optional names unknown properties: #{inspect(stale)}"
+    end
+
+    Map.put(schema, :required, Enum.sort(Map.keys(properties) -- optional))
+  end
 
   @doc """
   Asserts that every field of `struct_module` is either exposed or internal.
@@ -42,41 +59,6 @@ defmodule PortalAPI.Schemas.Object do
           Add each to @exposed (published by the API) or @internal (withheld). New
           columns are not exposed by default.\
           """
-    end
-  end
-
-  defmacro __using__(_opts) do
-    quote do
-      require OpenApiSpex
-      import PortalAPI.Schemas.Object, only: [object: 1, object: 2]
-      alias OpenApiSpex.Schema
-    end
-  end
-
-  defmacro object(body, opts \\ []) do
-    quote do
-      schema_body = unquote(body)
-      opts = unquote(opts)
-      field_names = schema_body.properties |> Map.keys() |> Enum.sort()
-      optional = opts |> Keyword.get(:optional, []) |> Enum.sort()
-
-      case optional -- field_names do
-        [] -> :ok
-        stale -> raise CompileError, description: "#{inspect(__MODULE__)} marks unknown properties optional: #{inspect(stale)}"
-      end
-
-      @field_names field_names
-      @optional_field_names optional
-
-      OpenApiSpex.schema(Map.put(schema_body, :required, field_names -- optional))
-
-      @doc "Property names declared by this schema, in sorted order."
-      @spec field_names() :: [atom()]
-      def field_names, do: @field_names
-
-      @doc "Properties that may be absent from the payload."
-      @spec optional_field_names() :: [atom()]
-      def optional_field_names, do: @optional_field_names
     end
   end
 end

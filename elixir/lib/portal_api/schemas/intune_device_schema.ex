@@ -2,7 +2,8 @@ defmodule PortalAPI.Schemas.IntuneDevice do
   alias OpenApiSpex.Schema
 
   defmodule Schema do
-    use PortalAPI.Schemas.Object
+    require OpenApiSpex
+    alias OpenApiSpex.Schema
 
     # Exposure is an explicit allowlist: a newly synced column must be added to
     # @exposed or @internal before it compiles. Property types stay derived.
@@ -128,35 +129,36 @@ defmodule PortalAPI.Schemas.IntuneDevice do
                   {field, schema}
                 end)
 
-    object(%{
+    OpenApiSpex.schema(PortalAPI.Schemas.Object.with_required(%{
       title: "IntuneDevice",
       description: "Device synced from Microsoft Intune",
       type: :object,
       properties: @properties
-    })
+    }))
   end
 
   defmodule Response do
-    use PortalAPI.Schemas.Object
+    require OpenApiSpex
 
-    object(%{
+    OpenApiSpex.schema(PortalAPI.Schemas.Object.with_required(%{
       title: "IntuneDeviceResponse",
       type: :object,
       properties: %{data: PortalAPI.Schemas.IntuneDevice.Schema}
-    })
+    }))
   end
 
   defmodule ListResponse do
-    use PortalAPI.Schemas.Object
+    require OpenApiSpex
+    alias OpenApiSpex.Schema
     alias PortalAPI.Schemas.PaginationMetadata
 
-    object(%{
+    OpenApiSpex.schema(PortalAPI.Schemas.Object.with_required(%{
       title: "IntuneDeviceListResponse",
       type: :object,
       properties: %{
         data: %Schema{type: :array, items: PortalAPI.Schemas.IntuneDevice.Schema},
         metadata: PaginationMetadata
       }
-    })
+    }))
   end
 end

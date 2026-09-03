@@ -2,9 +2,10 @@ defmodule PortalAPI.Schemas.GoogleDirectory do
   alias OpenApiSpex.Schema
 
   defmodule Schema do
-    use PortalAPI.Schemas.Object
+    require OpenApiSpex
+    alias OpenApiSpex.Schema
 
-    object(%{
+    OpenApiSpex.schema(PortalAPI.Schemas.Object.with_required(%{
       title: "GoogleDirectory",
       description: "Google Directory",
       type: :object,
@@ -53,29 +54,30 @@ defmodule PortalAPI.Schemas.GoogleDirectory do
         },
         updated_at: %Schema{type: :string, format: :"date-time", description: "Update timestamp"}
       }
-    })
+    }))
   end
 
   defmodule Response do
-    use PortalAPI.Schemas.Object
+    require OpenApiSpex
     alias PortalAPI.Schemas.GoogleDirectory
 
-    object(%{
+    OpenApiSpex.schema(PortalAPI.Schemas.Object.with_required(%{
       title: "GoogleDirectoryResponse",
       description: "Response schema for single Google Directory",
       type: :object,
       properties: %{
         data: GoogleDirectory.Schema
       }
-    })
+    }))
   end
 
   defmodule ListResponse do
-    use PortalAPI.Schemas.Object
+    require OpenApiSpex
+    alias OpenApiSpex.Schema
     alias PortalAPI.Schemas.GoogleDirectory
     alias PortalAPI.Schemas.PaginationMetadata
 
-    object(%{
+    OpenApiSpex.schema(PortalAPI.Schemas.Object.with_required(%{
       title: "GoogleDirectoryListResponse",
       description: "Response schema for multiple Google Directories",
       type: :object,
@@ -87,6 +89,6 @@ defmodule PortalAPI.Schemas.GoogleDirectory do
         },
         metadata: PaginationMetadata
       }
-    })
+    }))
   end
 end

@@ -2,9 +2,10 @@ defmodule PortalAPI.Schemas.Resource do
   alias OpenApiSpex.Schema
 
   defmodule Schema do
-    use PortalAPI.Schemas.Object
+    require OpenApiSpex
+    alias OpenApiSpex.Schema
 
-    object(%{
+    OpenApiSpex.schema(PortalAPI.Schemas.Object.with_required(%{
       title: "Resource",
       description: "Resource",
       type: :object,
@@ -37,13 +38,14 @@ defmodule PortalAPI.Schemas.Resource do
         }
       }
     },
-      optional: [:ip_stack, :site_id])
+      optional: [:ip_stack, :site_id]))
   end
 
   defmodule Filter do
-    use PortalAPI.Schemas.Object
+    require OpenApiSpex
+    alias OpenApiSpex.Schema
 
-    object(%{
+    OpenApiSpex.schema(PortalAPI.Schemas.Object.with_required(%{
       title: "ResourceFilter",
       description: "Traffic filter restricting the protocols and ports the Resource exposes",
       type: :object,
@@ -65,7 +67,7 @@ defmodule PortalAPI.Schemas.Resource do
         "protocol" => "tcp",
         "ports" => ["80", "443", "8000 - 9000"]
       }
-    })
+    }))
   end
 
   defmodule CreateRequest do
@@ -226,25 +228,26 @@ defmodule PortalAPI.Schemas.Resource do
   end
 
   defmodule Response do
-    use PortalAPI.Schemas.Object
+    require OpenApiSpex
     alias PortalAPI.Schemas.Resource
 
-    object(%{
+    OpenApiSpex.schema(PortalAPI.Schemas.Object.with_required(%{
       title: "ResourceResponse",
       description: "Response schema for single Resource",
       type: :object,
       properties: %{
         data: Resource.Schema
       }
-    })
+    }))
   end
 
   defmodule ListResponse do
-    use PortalAPI.Schemas.Object
+    require OpenApiSpex
+    alias OpenApiSpex.Schema
     alias PortalAPI.Schemas.Resource
     alias PortalAPI.Schemas.PaginationMetadata
 
-    object(%{
+    OpenApiSpex.schema(PortalAPI.Schemas.Object.with_required(%{
       title: "ResourceListResponse",
       description: "Response schema for multiple Resources",
       type: :object,
@@ -252,6 +255,6 @@ defmodule PortalAPI.Schemas.Resource do
         data: %Schema{description: "Resource details", type: :array, items: Resource.Schema},
         metadata: PaginationMetadata
       }
-    })
+    }))
   end
 end

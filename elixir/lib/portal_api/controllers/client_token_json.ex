@@ -1,7 +1,5 @@
 defmodule PortalAPI.ClientTokenJSON do
-  use PortalAPI.JSON,
-    struct: Portal.ClientToken,
-    schema: PortalAPI.Schemas.ClientToken.Schema,
+  PortalAPI.JSON.verify!(__MODULE__, Portal.ClientToken, PortalAPI.Schemas.ClientToken.Schema,
     # secret_* fields are credential material and must never leave the portal.
     internal: [
       :account_id,
@@ -15,6 +13,7 @@ defmodule PortalAPI.ClientTokenJSON do
       :secret_nonce,
       :secret_salt
     ]
+  )
 
   alias PortalAPI.Pagination
 
@@ -55,5 +54,5 @@ defmodule PortalAPI.ClientTokenJSON do
     }
   end
 
-  defp data(%Portal.ClientToken{} = token), do: render_fields(token)
+  defp data(%Portal.ClientToken{} = token), do: PortalAPI.JSON.render(token, PortalAPI.Schemas.ClientToken.Schema)
 end

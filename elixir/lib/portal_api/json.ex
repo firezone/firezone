@@ -29,104 +29,56 @@ defmodule PortalAPI.JSON do
   exposure.
   """
 
-  @doc false
-  defmacro __using__(opts) do
-    if Keyword.has_key?(opts, :variants) do
-      PortalAPI.JSON.__variants__(opts)
-    else
-      PortalAPI.JSON.__single__(opts)
-    end
-  end
+  @doc """
+  Asserts that a view's declared exposure matches the struct it renders.
 
-  @doc false
-  def __variants__(opts) do
-    clauses =
-      for variant <- Keyword.fetch!(opts, :variants) do
-        struct_module = Keyword.fetch!(variant, :struct)
-        schema_module = Keyword.fetch!(variant, :schema)
+  Called from the view's module body, so a mismatch fails the build:
 
-        quote do
-          PortalAPI.JSON.__verify__!(
-            __MODULE__,
-            unquote(struct_module),
-            unquote(schema_module),
-            unquote(Keyword.get(variant, :computed, [])),
-            unquote(Keyword.get(variant, :internal, [])),
-            unquote(Keyword.get(variant, :aliases, []))
-          )
+      PortalAPI.JSON.verify!(__MODULE__, Portal.Site, PortalAPI.Schemas.Site.Schema,
+        internal: [:account_id, :inserted_at, :updated_at])
 
-          defp render_fields(%unquote(struct_module){} = source, computed) do
-            aliased =
-              Map.new(unquote(Keyword.get(variant, :aliases, [])), fn {key, field} ->
-                {key, Map.fetch!(source, field)}
-              end)
+  Options:
 
-            PortalAPI.JSON.render(source, unquote(schema_module), Map.merge(aliased, computed))
-          end
-        end
-      end
+    * `:internal` - fields deliberately withheld from the API.
+    * `:computed` - declared properties the view supplies itself rather than
+      reading from the struct.
 
-    quote do
-      defp render_fields(source, computed \\ %{})
-      unquote_splicing(clauses)
-    end
-  end
+  Three properties are enforced:
 
-  @doc false
-  def __single__(opts) do
-    quote bind_quoted: [opts: opts] do
-      @json_struct Keyword.fetch!(opts, :struct)
-      @json_schema Keyword.fetch!(opts, :schema)
-      @json_computed Keyword.get(opts, :computed, [])
-      @json_internal Keyword.get(opts, :internal, [])
-      @json_aliases Keyword.get(opts, :aliases, [])
+    * every property the schema declares exists on the struct, so a rename
+      cannot leave the spec describing a field that is no longer emitted;
 
-      PortalAPI.JSON.__verify__!(
-        __MODULE__,
-        @json_struct,
-        @json_schema,
-        @json_computed,
-        @json_internal,
-        @json_aliases
-      )
+    * every struct field is classified as exposed or `:internal`, so a newly
+      added column fails the build until someone decides which it is;
 
-      @doc false
-      def render_fields(source, computed \\ %{}) do
-        aliased = Map.new(@json_aliases, fn {key, field} -> {key, Map.fetch!(source, field)} end)
-        PortalAPI.JSON.render(source, @json_schema, Map.merge(aliased, computed))
-      end
-    end
-  end
+    * `:computed` and `:internal` name only fields that are real, so stale
+      entries cannot quietly accumulate.
 
-  @doc false
-  def __verify__!(view, struct_module, schema_module, computed, internal, aliases \\ []) do
+  Exposure is therefore an allowlist: a field reaches the API only by being
+  declared in the schema, and the build fails rather than defaulting to
+  exposure.
+  """
+  @spec verify!(module(), module(), module(), keyword()) :: :ok
+  def verify!(view, struct_module, schema_module, opts \\ []) do
     Code.ensure_compiled!(struct_module)
     Code.ensure_compiled!(schema_module)
 
+    computed = MapSet.new(Keyword.get(opts, :computed, []))
+    internal = MapSet.new(Keyword.get(opts, :internal, []))
+
     known =
       MapSet.new(struct_module.__schema__(:fields) ++ struct_module.__schema__(:virtual_fields))
-    declared = MapSet.new(schema_module.field_names())
-    alias_keys = MapSet.new(Keyword.keys(aliases))
-    alias_sources = MapSet.new(Keyword.values(aliases))
-    computed = MapSet.new(computed)
-    internal = MapSet.new(internal)
-    exposed = declared |> MapSet.difference(computed) |> MapSet.difference(alias_keys)
 
-    bail!(view, "aliases fields that #{inspect(struct_module)} does not have",
-      MapSet.difference(alias_sources, known),
-      "Fix the right-hand side of :aliases — it names the struct field to read.")
-
-    bail!(view, "aliases keys the OpenAPI schema does not declare",
-      MapSet.difference(alias_keys, declared),
-      "The left-hand side of :aliases is the payload key, which must be a declared property.")
-
-    bail!(view, "lists :computed keys the OpenAPI schema does not declare",
-      MapSet.difference(computed, declared),
-      "A computed value still has to be a declared property of #{inspect(schema_module)}.")
+    declared = MapSet.new(declared_fields(schema_module))
+    exposed = MapSet.difference(declared, computed)
 
     bail!(view, "declares fields that #{inspect(struct_module)} does not have",
       MapSet.difference(exposed, known),
       "Remove them from #{inspect(schema_module)}, or list them as :computed if the view supplies them.")
+
+    bail!(view, "lists :computed keys the OpenAPI schema does not declare",
+      MapSet.difference(computed, declared),
+      "A computed value still has to be a declared property of #{inspect(schema_module)}.")
 
     bail!(view, "lists :internal fields that #{inspect(struct_module)} does not have",
       MapSet.difference(internal, known),
@@ -137,11 +89,11 @@ defmodule PortalAPI.JSON do
       "A field is either in the OpenAPI schema or :internal, not both.")
 
     bail!(view, "does not classify every field of #{inspect(struct_module)}",
-      known |> MapSet.difference(declared) |> MapSet.difference(internal) |> MapSet.difference(alias_sources),
+      known |> MapSet.difference(declared) |> MapSet.difference(internal),
       """
       Each field must be either declared in #{inspect(schema_module)} (exposed to
       the API) or listed as :internal (deliberately withheld). New fields are not
-      exposed by default — this is the allowlist working.\
+      exposed by default - this is the allowlist working.\
       """)
 
     :ok
@@ -160,6 +112,8 @@ defmodule PortalAPI.JSON do
     :ok
   end
 
+  defp declared_fields(schema_module), do: schema_module.schema().properties |> Map.keys()
+
   @doc """
   Builds a payload containing exactly the OpenAPI schema's declared fields.
 
@@ -173,14 +127,11 @@ defmodule PortalAPI.JSON do
   """
   @spec render(struct(), module(), map()) :: map()
   def render(source, schema_module, computed \\ %{}) do
-    fields = schema_module.field_names()
-    payload = source |> Map.take(fields) |> Map.merge(Map.take(computed, fields))
+    schema = schema_module.schema()
+    fields = Map.keys(schema.properties)
+    optional = fields -- List.wrap(schema.required)
 
-    optional =
-      if Code.ensure_loaded?(schema_module) and
-           function_exported?(schema_module, :optional_field_names, 0),
-         do: schema_module.optional_field_names(),
-         else: []
+    payload = source |> Map.take(fields) |> Map.merge(Map.take(computed, fields))
 
     case (fields -- Map.keys(payload)) -- optional do
       [] ->

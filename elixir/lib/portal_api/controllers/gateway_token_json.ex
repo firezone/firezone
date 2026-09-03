@@ -1,7 +1,5 @@
 defmodule PortalAPI.GatewayTokenJSON do
-  use PortalAPI.JSON,
-    struct: Portal.GatewayToken,
-    schema: PortalAPI.Schemas.GatewayToken.Schema,
+  PortalAPI.JSON.verify!(__MODULE__, Portal.GatewayToken, PortalAPI.Schemas.GatewayToken.Schema,
     computed: [:token],
     # secret_hash and secret_salt are credential material and must never leave
     # the portal.
@@ -16,11 +14,12 @@ defmodule PortalAPI.GatewayTokenJSON do
       :secret_salt,
       :site_id
     ]
+  )
 
   # `deleted/1` and `deleted_all/1` acknowledge a deletion rather than render a
   # token, so they build their own payloads instead of using the schema.
   def show(%{token: token, encoded_token: encoded_token}) do
-    %{data: render_fields(token, %{token: encoded_token})}
+    %{data: PortalAPI.JSON.render(token, PortalAPI.Schemas.GatewayToken.Schema, %{token: encoded_token})}
   end
 
   def deleted(%{token: token}) do

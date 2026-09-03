@@ -37,9 +37,10 @@ defmodule PortalAPI.Schemas.Account do
   end
 
   defmodule Schema do
-    use PortalAPI.Schemas.Object
+    require OpenApiSpex
+    alias OpenApiSpex.Schema
 
-    object(%{
+    OpenApiSpex.schema(PortalAPI.Schemas.Object.with_required(%{
       title: "Account",
       description: "Account schema",
       type: :object,
@@ -56,7 +57,7 @@ defmodule PortalAPI.Schemas.Account do
         legal_name: %Schema{type: :string, description: "Account legal name"},
         limits: PortalAPI.Schemas.Account.LimitsSchema
       },
-    })
+    }))
   end
 
   defmodule Response do

@@ -2,7 +2,8 @@ defmodule PortalAPI.Schemas.IruDevice do
   alias OpenApiSpex.Schema
 
   defmodule Schema do
-    use PortalAPI.Schemas.Object
+    require OpenApiSpex
+    alias OpenApiSpex.Schema
 
     # Exposure is an explicit allowlist: a newly synced column must be added to
     # @exposed or @internal before it compiles. Property types stay derived.
@@ -133,35 +134,36 @@ defmodule PortalAPI.Schemas.IruDevice do
                   {field, schema}
                 end)
 
-    object(%{
+    OpenApiSpex.schema(PortalAPI.Schemas.Object.with_required(%{
       title: "IruDevice",
       description: "Device synced from Iru (formerly Kandji)",
       type: :object,
       properties: @properties
-    })
+    }))
   end
 
   defmodule Response do
-    use PortalAPI.Schemas.Object
+    require OpenApiSpex
 
-    object(%{
+    OpenApiSpex.schema(PortalAPI.Schemas.Object.with_required(%{
       title: "IruDeviceResponse",
       type: :object,
       properties: %{data: PortalAPI.Schemas.IruDevice.Schema}
-    })
+    }))
   end
 
   defmodule ListResponse do
-    use PortalAPI.Schemas.Object
+    require OpenApiSpex
+    alias OpenApiSpex.Schema
     alias PortalAPI.Schemas.PaginationMetadata
 
-    object(%{
+    OpenApiSpex.schema(PortalAPI.Schemas.Object.with_required(%{
       title: "IruDeviceListResponse",
       type: :object,
       properties: %{
         data: %Schema{type: :array, items: PortalAPI.Schemas.IruDevice.Schema},
         metadata: PaginationMetadata
       }
-    })
+    }))
   end
 end

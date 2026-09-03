@@ -1,9 +1,8 @@
 defmodule PortalAPI.ResourceJSON do
-  use PortalAPI.JSON,
-    struct: Portal.Resource,
-    schema: PortalAPI.Schemas.Resource.Schema,
+  PortalAPI.JSON.verify!(__MODULE__, Portal.Resource, PortalAPI.Schemas.Resource.Schema,
     computed: [:filters],
     internal: [:account_id, :inserted_at, :updated_at]
+  )
 
   alias PortalAPI.Pagination
   alias Portal.Resource
@@ -27,7 +26,9 @@ defmodule PortalAPI.ResourceJSON do
 
   defp data(%Resource{} = resource) do
     resource
-    |> render_fields(%{filters: Enum.map(resource.filters, &filter/1)})
+    |> PortalAPI.JSON.render(PortalAPI.Schemas.Resource.Schema, %{
+      filters: Enum.map(resource.filters, &filter/1)
+    })
     |> PortalAPI.JSON.omit_nils([:ip_stack, :site_id])
   end
 

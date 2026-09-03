@@ -2,7 +2,8 @@ defmodule PortalAPI.Schemas.SentinelOneDevice do
   alias OpenApiSpex.Schema
 
   defmodule Schema do
-    use PortalAPI.Schemas.Object
+    require OpenApiSpex
+    alias OpenApiSpex.Schema
 
     @required [:account_id, :posture_provider_id, :uuid, :synced_at]
     @exposed [
@@ -157,35 +158,36 @@ defmodule PortalAPI.Schemas.SentinelOneDevice do
                   {field, schema}
                 end)
 
-    object(%{
+    OpenApiSpex.schema(PortalAPI.Schemas.Object.with_required(%{
       title: "SentinelOneDevice",
       description: "Endpoint agent synced from SentinelOne",
       type: :object,
       properties: @properties
-    })
+    }))
   end
 
   defmodule Response do
-    use PortalAPI.Schemas.Object
+    require OpenApiSpex
 
-    object(%{
+    OpenApiSpex.schema(PortalAPI.Schemas.Object.with_required(%{
       title: "SentinelOneDeviceResponse",
       type: :object,
       properties: %{data: PortalAPI.Schemas.SentinelOneDevice.Schema}
-    })
+    }))
   end
 
   defmodule ListResponse do
-    use PortalAPI.Schemas.Object
+    require OpenApiSpex
+    alias OpenApiSpex.Schema
     alias PortalAPI.Schemas.PaginationMetadata
 
-    object(%{
+    OpenApiSpex.schema(PortalAPI.Schemas.Object.with_required(%{
       title: "SentinelOneDeviceListResponse",
       type: :object,
       properties: %{
         data: %Schema{type: :array, items: PortalAPI.Schemas.SentinelOneDevice.Schema},
         metadata: PaginationMetadata
       }
-    })
+    }))
   end
 end

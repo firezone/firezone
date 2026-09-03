@@ -2,9 +2,10 @@ defmodule PortalAPI.Schemas.Gateway do
   alias OpenApiSpex.Schema
 
   defmodule Schema do
-    use PortalAPI.Schemas.Object
+    require OpenApiSpex
+    alias OpenApiSpex.Schema
 
-    object(%{
+    OpenApiSpex.schema(PortalAPI.Schemas.Object.with_required(%{
       title: "Gateway",
       description: "Gateway",
       type: :object,
@@ -111,7 +112,7 @@ defmodule PortalAPI.Schemas.Gateway do
         "last_seen_remote_ip_location_lat" => 37.7749,
         "last_seen_remote_ip_location_lon" => -122.4194
       }
-    })
+    }))
   end
 
   defmodule CreateSchema do
@@ -155,10 +156,11 @@ defmodule PortalAPI.Schemas.Gateway do
   end
 
   defmodule ProvisionResponse do
-    use PortalAPI.Schemas.Object
+    require OpenApiSpex
+    alias OpenApiSpex.Schema
     alias PortalAPI.Schemas.Gateway
 
-    object(%{
+    OpenApiSpex.schema(PortalAPI.Schemas.Object.with_required(%{
       title: "GatewayProvisionResponse",
       description: """
       Response schema for a newly provisioned Gateway. Includes the \
@@ -179,7 +181,7 @@ defmodule PortalAPI.Schemas.Gateway do
           ]
         }
       }
-    })
+    }))
   end
 
   defmodule UpdateSchema do
@@ -225,25 +227,26 @@ defmodule PortalAPI.Schemas.Gateway do
   end
 
   defmodule Response do
-    use PortalAPI.Schemas.Object
+    require OpenApiSpex
     alias PortalAPI.Schemas.Gateway
 
-    object(%{
+    OpenApiSpex.schema(PortalAPI.Schemas.Object.with_required(%{
       title: "GatewayResponse",
       description: "Response schema for single Gateway",
       type: :object,
       properties: %{
         data: Gateway.Schema
       }
-    })
+    }))
   end
 
   defmodule ListResponse do
-    use PortalAPI.Schemas.Object
+    require OpenApiSpex
+    alias OpenApiSpex.Schema
     alias PortalAPI.Schemas.Gateway
     alias PortalAPI.Schemas.PaginationMetadata
 
-    object(%{
+    OpenApiSpex.schema(PortalAPI.Schemas.Object.with_required(%{
       title: "GatewaysResponse",
       description: "Response schema for multiple Gateways",
       type: :object,
@@ -251,6 +254,6 @@ defmodule PortalAPI.Schemas.Gateway do
         data: %Schema{description: "Gateways details", type: :array, items: Gateway.Schema},
         metadata: PaginationMetadata
       }
-    })
+    }))
   end
 end

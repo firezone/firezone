@@ -1,7 +1,6 @@
 defmodule PortalAPI.SantaDeviceJSON do
-  use PortalAPI.JSON,
-    struct: Portal.Santa.Device,
-    schema: PortalAPI.Schemas.SantaDevice.Schema
+  PortalAPI.JSON.verify!(__MODULE__, Portal.Santa.Device, PortalAPI.Schemas.SantaDevice.Schema
+  )
 
   alias Portal.Santa
   alias PortalAPI.Pagination
@@ -12,5 +11,5 @@ defmodule PortalAPI.SantaDeviceJSON do
 
   def show(%{device: device}), do: %{data: data(device)}
 
-  defp data(%Santa.Device{} = device), do: render_fields(device)
+  defp data(%Santa.Device{} = device), do: PortalAPI.JSON.render(device, PortalAPI.Schemas.SantaDevice.Schema)
 end

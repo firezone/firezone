@@ -1,13 +1,12 @@
 defmodule PortalAPI.GoogleDirectoryJSON do
-  use PortalAPI.JSON,
-    struct: Portal.Google.Directory,
-    schema: PortalAPI.Schemas.GoogleDirectory.Schema,
+  PortalAPI.JSON.verify!(__MODULE__, Portal.Google.Directory, PortalAPI.Schemas.GoogleDirectory.Schema,
     internal: [
       :error_email_count,
       :is_verified,
       :legacy_service_account_key,
       :sync_all_domains
     ]
+  )
 
   alias Portal.Google
   alias PortalAPI.Pagination
@@ -20,5 +19,5 @@ defmodule PortalAPI.GoogleDirectoryJSON do
     %{data: data(directory)}
   end
 
-  defp data(%Google.Directory{} = directory), do: render_fields(directory)
+  defp data(%Google.Directory{} = directory), do: PortalAPI.JSON.render(directory, PortalAPI.Schemas.GoogleDirectory.Schema)
 end

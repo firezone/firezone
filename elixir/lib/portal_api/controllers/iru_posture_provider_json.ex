@@ -1,11 +1,10 @@
 defmodule PortalAPI.IruPostureProviderJSON do
-  use PortalAPI.JSON,
-    struct: Portal.Iru.PostureProvider,
-    schema: PortalAPI.Schemas.IruPostureProvider.Schema,
+  PortalAPI.JSON.verify!(__MODULE__, Portal.Iru.PostureProvider, PortalAPI.Schemas.IruPostureProvider.Schema,
     computed: [:type, :name],
     # The API token authenticates against the tenant, so it never leaves the
     # portal. error_email_count is notification bookkeeping.
     internal: [:api_token, :error_email_count]
+  )
 
   alias Portal.Iru
   alias PortalAPI.Pagination
@@ -17,6 +16,6 @@ defmodule PortalAPI.IruPostureProviderJSON do
   def show(%{provider: provider}), do: %{data: data(provider)}
 
   defp data(%Iru.PostureProvider{} = provider) do
-    render_fields(provider, %{type: "iru", name: provider.posture_provider.name})
+    PortalAPI.JSON.render(provider, PortalAPI.Schemas.IruPostureProvider.Schema, %{type: "iru", name: provider.posture_provider.name})
   end
 end

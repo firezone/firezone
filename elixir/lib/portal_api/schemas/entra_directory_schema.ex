@@ -2,9 +2,10 @@ defmodule PortalAPI.Schemas.EntraDirectory do
   alias OpenApiSpex.Schema
 
   defmodule Schema do
-    use PortalAPI.Schemas.Object
+    require OpenApiSpex
+    alias OpenApiSpex.Schema
 
-    object(%{
+    OpenApiSpex.schema(PortalAPI.Schemas.Object.with_required(%{
       title: "EntraDirectory",
       description: "Entra Directory",
       type: :object,
@@ -49,29 +50,30 @@ defmodule PortalAPI.Schemas.EntraDirectory do
         },
         updated_at: %Schema{type: :string, format: :"date-time", description: "Update timestamp"}
       }
-    })
+    }))
   end
 
   defmodule Response do
-    use PortalAPI.Schemas.Object
+    require OpenApiSpex
     alias PortalAPI.Schemas.EntraDirectory
 
-    object(%{
+    OpenApiSpex.schema(PortalAPI.Schemas.Object.with_required(%{
       title: "EntraDirectoryResponse",
       description: "Response schema for single Entra Directory",
       type: :object,
       properties: %{
         data: EntraDirectory.Schema
       }
-    })
+    }))
   end
 
   defmodule ListResponse do
-    use PortalAPI.Schemas.Object
+    require OpenApiSpex
+    alias OpenApiSpex.Schema
     alias PortalAPI.Schemas.EntraDirectory
     alias PortalAPI.Schemas.PaginationMetadata
 
-    object(%{
+    OpenApiSpex.schema(PortalAPI.Schemas.Object.with_required(%{
       title: "EntraDirectoryListResponse",
       description: "Response schema for multiple Entra Directories",
       type: :object,
@@ -83,6 +85,6 @@ defmodule PortalAPI.Schemas.EntraDirectory do
         },
         metadata: PaginationMetadata
       }
-    })
+    }))
   end
 end

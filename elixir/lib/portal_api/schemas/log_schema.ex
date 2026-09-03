@@ -1,10 +1,11 @@
 defmodule PortalAPI.Schemas.Log do
   defmodule Change do
-    use PortalAPI.Schemas.Object
+    require OpenApiSpex
+    alias OpenApiSpex.Schema
 
     alias PortalAPI.Schemas
 
-    object(%{
+    OpenApiSpex.schema(PortalAPI.Schemas.Object.with_required(%{
       title: "ChangeLog",
       description: """
       A single entry from the account audit log.
@@ -71,16 +72,17 @@ defmodule PortalAPI.Schemas.Log do
         "after" => %{"name" => "Jane Smith"},
         "subject" => nil
       }
-    })
+    }))
   end
 
   defmodule Session do
-    use PortalAPI.Schemas.Object
+    require OpenApiSpex
+    alias OpenApiSpex.Schema
 
     alias PortalAPI.Schemas
     alias PortalAPI.Schemas.SessionSubject
 
-    object(%{
+    OpenApiSpex.schema(PortalAPI.Schemas.Object.with_required(%{
       title: "SessionLog",
       description: """
       A single Session Log entry, recording one Client, Gateway, or Portal
@@ -144,13 +146,14 @@ defmodule PortalAPI.Schemas.Log do
           "user_agent" => "Linux/6.5.0 connlib/1.5.1"
         }
       }
-    })
+    }))
   end
 
   defmodule Flow do
-    use PortalAPI.Schemas.Object
+    require OpenApiSpex
+    alias OpenApiSpex.Schema
 
-    object(%{
+    OpenApiSpex.schema(PortalAPI.Schemas.Object.with_required(%{
       title: "FlowLog",
       description: """
       A single Flow Log entry, recording one network flow as accounted by one
@@ -380,13 +383,14 @@ defmodule PortalAPI.Schemas.Log do
             "Bytes sent initiator-to-responder, as counted by the reporting side. Null while the flow is open."
         }
       }
-    })
+    }))
   end
 
   defmodule APIRequest do
-    use PortalAPI.Schemas.Object
+    require OpenApiSpex
+    alias OpenApiSpex.Schema
 
-    object(%{
+    OpenApiSpex.schema(PortalAPI.Schemas.Object.with_required(%{
       title: "APIRequestLog",
       description: """
       A single API Request Log entry, recording one authenticated REST API
@@ -445,7 +449,7 @@ defmodule PortalAPI.Schemas.Log do
         "ip_lat" => 19.4326,
         "ip_lon" => -99.1332
       }
-    })
+    }))
   end
 
   defmodule Item do
@@ -464,24 +468,25 @@ defmodule PortalAPI.Schemas.Log do
   end
 
   defmodule Response do
-    use PortalAPI.Schemas.Object
+    require OpenApiSpex
     alias PortalAPI.Schemas.Log
 
-    object(%{
+    OpenApiSpex.schema(PortalAPI.Schemas.Object.with_required(%{
       title: "LogResponse",
       description: "Response schema for a single Log entry.",
       type: :object,
       properties: %{
         data: Log.Item
       }
-    })
+    }))
   end
 
   defmodule ListResponse do
-    use PortalAPI.Schemas.Object
+    require OpenApiSpex
+    alias OpenApiSpex.Schema
     alias PortalAPI.Schemas.Log
 
-    object(%{
+    OpenApiSpex.schema(PortalAPI.Schemas.Object.with_required(%{
       title: "LogsResponse",
       description: """
       Response schema for a page of Log entries.
@@ -499,6 +504,6 @@ defmodule PortalAPI.Schemas.Log do
         },
         metadata: %Schema{description: "Pagination metadata", type: :object}
       }
-    })
+    }))
   end
 end

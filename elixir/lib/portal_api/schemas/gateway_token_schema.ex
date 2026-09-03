@@ -2,9 +2,10 @@ defmodule PortalAPI.Schemas.GatewayToken do
   alias OpenApiSpex.Schema
 
   defmodule Schema do
-    use PortalAPI.Schemas.Object
+    require OpenApiSpex
+    alias OpenApiSpex.Schema
 
-    object(%{
+    OpenApiSpex.schema(PortalAPI.Schemas.Object.with_required(%{
       title: "GatewayToken",
       description: "Gateway Token",
       type: :object,
@@ -16,27 +17,28 @@ defmodule PortalAPI.Schemas.GatewayToken do
         "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
         "token" => "secret-token-here"
       }
-    })
+    }))
   end
 
   defmodule Response do
-    use PortalAPI.Schemas.Object
+    require OpenApiSpex
     alias PortalAPI.Schemas.GatewayToken
 
-    object(%{
+    OpenApiSpex.schema(PortalAPI.Schemas.Object.with_required(%{
       title: "GatewayTokenResponse",
       description: "Response schema for a new Gateway Token",
       type: :object,
       properties: %{
         data: GatewayToken.Schema
       }
-    })
+    }))
   end
 
   defmodule DeletedResponse do
-    use PortalAPI.Schemas.Object
+    require OpenApiSpex
+    alias OpenApiSpex.Schema
 
-    object(%{
+    OpenApiSpex.schema(PortalAPI.Schemas.Object.with_required(%{
       title: "DeletedGatewayTokenResponse",
       description: "Response schema for a deleted Gateway Token",
       type: :object,
@@ -49,13 +51,14 @@ defmodule PortalAPI.Schemas.GatewayToken do
           required: [:id]
         }
       }
-    })
+    }))
   end
 
   defmodule DeletedAllResponse do
-    use PortalAPI.Schemas.Object
+    require OpenApiSpex
+    alias OpenApiSpex.Schema
 
-    object(%{
+    OpenApiSpex.schema(PortalAPI.Schemas.Object.with_required(%{
       title: "DeletedGatewayTokensResponse",
       description: "Response schema for deleted Gateway Tokens",
       type: :object,
@@ -71,6 +74,6 @@ defmodule PortalAPI.Schemas.GatewayToken do
           required: [:deleted_count]
         }
       }
-    })
+    }))
   end
 end

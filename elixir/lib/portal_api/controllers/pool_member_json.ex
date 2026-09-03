@@ -1,7 +1,5 @@
 defmodule PortalAPI.PoolMemberJSON do
-  use PortalAPI.JSON,
-    struct: Portal.Device,
-    schema: PortalAPI.Schemas.PoolMember.Schema,
+  PortalAPI.JSON.verify!(__MODULE__, Portal.Device, PortalAPI.Schemas.PoolMember.Schema,
     internal: [
       :account_id,
       :actor_id,
@@ -41,6 +39,7 @@ defmodule PortalAPI.PoolMemberJSON do
       :updated_at,
       :verified_at
     ]
+  )
 
   alias PortalAPI.Pagination
   alias Portal.Device
@@ -62,5 +61,5 @@ defmodule PortalAPI.PoolMemberJSON do
     %{data: %{device_ids: device_ids}}
   end
 
-  defp data(%Device{} = device), do: render_fields(device)
+  defp data(%Device{} = device), do: PortalAPI.JSON.render(device, PortalAPI.Schemas.PoolMember.Schema)
 end

@@ -1,8 +1,7 @@
 defmodule PortalAPI.GoogleAuthProviderJSON do
-  use PortalAPI.JSON,
-    struct: Portal.Google.AuthProvider,
-    schema: PortalAPI.Schemas.GoogleAuthProvider.Schema,
+  PortalAPI.JSON.verify!(__MODULE__, Portal.Google.AuthProvider, PortalAPI.Schemas.GoogleAuthProvider.Schema,
     internal: [:is_verified]
+  )
 
   alias Portal.Google
   alias PortalAPI.Pagination
@@ -15,5 +14,5 @@ defmodule PortalAPI.GoogleAuthProviderJSON do
     %{data: data(provider)}
   end
 
-  defp data(%Google.AuthProvider{} = provider), do: render_fields(provider)
+  defp data(%Google.AuthProvider{} = provider), do: PortalAPI.JSON.render(provider, PortalAPI.Schemas.GoogleAuthProvider.Schema)
 end

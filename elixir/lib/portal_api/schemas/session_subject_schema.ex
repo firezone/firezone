@@ -8,9 +8,10 @@ defmodule PortalAPI.Schemas.SessionSubject do
   """
 
   defmodule Client do
-    use PortalAPI.Schemas.Object
+    require OpenApiSpex
+    alias OpenApiSpex.Schema
 
-    object(%{
+    OpenApiSpex.schema(PortalAPI.Schemas.Object.with_required(%{
       title: "ClientSessionSubject",
       description: """
       Subject of a session created by a Client (`context: "client"`).
@@ -80,13 +81,14 @@ defmodule PortalAPI.Schemas.SessionSubject do
           description: "User agent reported by the Client."
         }
       }
-    })
+    }))
   end
 
   defmodule Gateway do
-    use PortalAPI.Schemas.Object
+    require OpenApiSpex
+    alias OpenApiSpex.Schema
 
-    object(%{
+    OpenApiSpex.schema(PortalAPI.Schemas.Object.with_required(%{
       title: "GatewaySessionSubject",
       description: """
       Subject of a session created by a Gateway (`context: "gateway"`).
@@ -135,6 +137,6 @@ defmodule PortalAPI.Schemas.SessionSubject do
           description: "User agent reported by the Gateway."
         }
       }
-    })
+    }))
   end
 end

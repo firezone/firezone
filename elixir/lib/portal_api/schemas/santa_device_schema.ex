@@ -2,7 +2,8 @@ defmodule PortalAPI.Schemas.SantaDevice do
   alias OpenApiSpex.Schema
 
   defmodule Schema do
-    use PortalAPI.Schemas.Object
+    require OpenApiSpex
+    alias OpenApiSpex.Schema
 
     @required [:account_id, :id, :posture_provider_id, :santa_id, :synced_at]
 
@@ -84,35 +85,36 @@ defmodule PortalAPI.Schemas.SantaDevice do
                   {field, schema}
                 end)
 
-    object(%{
+    OpenApiSpex.schema(PortalAPI.Schemas.Object.with_required(%{
       title: "SantaDevice",
       description: "Santa host synced from North Pole Security Workshop",
       type: :object,
       properties: @properties
-    })
+    }))
   end
 
   defmodule Response do
-    use PortalAPI.Schemas.Object
+    require OpenApiSpex
 
-    object(%{
+    OpenApiSpex.schema(PortalAPI.Schemas.Object.with_required(%{
       title: "SantaDeviceResponse",
       type: :object,
       properties: %{data: PortalAPI.Schemas.SantaDevice.Schema}
-    })
+    }))
   end
 
   defmodule ListResponse do
-    use PortalAPI.Schemas.Object
+    require OpenApiSpex
+    alias OpenApiSpex.Schema
     alias PortalAPI.Schemas.PaginationMetadata
 
-    object(%{
+    OpenApiSpex.schema(PortalAPI.Schemas.Object.with_required(%{
       title: "SantaDeviceListResponse",
       type: :object,
       properties: %{
         data: %Schema{type: :array, items: PortalAPI.Schemas.SantaDevice.Schema},
         metadata: PaginationMetadata
       }
-    })
+    }))
   end
 end
