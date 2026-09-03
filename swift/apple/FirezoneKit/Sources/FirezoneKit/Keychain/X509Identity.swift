@@ -124,10 +124,9 @@ public final class X509ClientIdentity: @unchecked Sendable {
 
 /// Loads the identity referenced by `NEVPNProtocol.identityReference`.
 public enum X509Identity {
+  /// SHA-256 is the one digest every TPM profile mandates and every TLS server has to accept.
   /// PSS first: TLS 1.3 accepts only PSS, and TLS 1.2 accepts either padding.
-  private static let rsaSchemes: [X509SignatureScheme] = [
-    .rsaPssSha512, .rsaPssSha384, .rsaPssSha256, .rsaPkcs1Sha512, .rsaPkcs1Sha384, .rsaPkcs1Sha256,
-  ]
+  private static let rsaSchemes: [X509SignatureScheme] = [.rsaPssSha256, .rsaPkcs1Sha256]
 
   // Bridged here rather than in the `case` patterns below, where `as String` would parse
   // as a cast of the value being matched instead of a bridge of the constant.

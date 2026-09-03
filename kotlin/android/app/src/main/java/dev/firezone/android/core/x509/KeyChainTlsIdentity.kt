@@ -77,18 +77,15 @@ internal class KeyChainTlsIdentity(
             }
 
         /**
-         * The RSA schemes a [modulusBits]-bit key has room for, strongest first.
+         * The SHA-256 RSA schemes a [modulusBits]-bit key has room for, PSS first.
          *
+         * SHA-256 is the one digest every TPM profile mandates and every TLS server has to accept.
          * PSS needs the digest, a salt of the same length and two more bytes; PKCS#1 v1.5 needs the
          * digest, its 19-byte DigestInfo header and at least 11 bytes of padding.
          */
         private fun rsaSchemes(modulusBits: Int): List<TlsSignatureScheme> =
             listOfNotNull(
-                TlsSignatureScheme.RSA_PSS_SHA512.takeIf { modulusBits >= 8 * (64 + 64 + 2) },
-                TlsSignatureScheme.RSA_PSS_SHA384.takeIf { modulusBits >= 8 * (48 + 48 + 2) },
                 TlsSignatureScheme.RSA_PSS_SHA256.takeIf { modulusBits >= 8 * (32 + 32 + 2) },
-                TlsSignatureScheme.RSA_PKCS1_SHA512.takeIf { modulusBits >= 8 * (64 + 19 + 11) },
-                TlsSignatureScheme.RSA_PKCS1_SHA384.takeIf { modulusBits >= 8 * (48 + 19 + 11) },
                 TlsSignatureScheme.RSA_PKCS1_SHA256.takeIf { modulusBits >= 8 * (32 + 19 + 11) },
             ).ifEmpty {
                 throw X509IdentityException(

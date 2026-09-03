@@ -16,16 +16,15 @@ use windows::{
         },
         Security::Cryptography::{
             BCRYPT_PKCS1_PADDING_INFO, BCRYPT_PSS_PADDING_INFO, BCRYPT_SHA256_ALGORITHM,
-            BCRYPT_SHA384_ALGORITHM, BCRYPT_SHA512_ALGORITHM, CERT_CHAIN_CACHE_ONLY_URL_RETRIEVAL,
-            CERT_CHAIN_DISABLE_AIA, CERT_CHAIN_PARA, CERT_CONTEXT, CERT_KEY_SPEC,
-            CERT_OPEN_STORE_FLAGS, CERT_QUERY_ENCODING_TYPE, CERT_STORE_OPEN_EXISTING_FLAG,
-            CERT_STORE_PROV_SYSTEM_W, CERT_STORE_READONLY_FLAG, CERT_SYSTEM_STORE_LOCAL_MACHINE,
-            CRYPT_ACQUIRE_ONLY_NCRYPT_KEY_FLAG, CRYPT_ACQUIRE_SILENT_FLAG, CertCloseStore,
-            CertDuplicateCertificateContext, CertEnumCertificatesInStore, CertFreeCertificateChain,
-            CertFreeCertificateContext, CertGetCertificateChain, CertOpenStore,
-            CryptAcquireCertificatePrivateKey, HCERTSTORE, HCRYPTPROV_OR_NCRYPT_KEY_HANDLE,
-            NCRYPT_FLAGS, NCRYPT_HANDLE, NCRYPT_KEY_HANDLE, NCRYPT_PAD_PKCS1_FLAG,
-            NCRYPT_PAD_PSS_FLAG, NCryptFreeObject, NCryptSignHash,
+            CERT_CHAIN_CACHE_ONLY_URL_RETRIEVAL, CERT_CHAIN_DISABLE_AIA, CERT_CHAIN_PARA,
+            CERT_CONTEXT, CERT_KEY_SPEC, CERT_OPEN_STORE_FLAGS, CERT_QUERY_ENCODING_TYPE,
+            CERT_STORE_OPEN_EXISTING_FLAG, CERT_STORE_PROV_SYSTEM_W, CERT_STORE_READONLY_FLAG,
+            CERT_SYSTEM_STORE_LOCAL_MACHINE, CRYPT_ACQUIRE_ONLY_NCRYPT_KEY_FLAG,
+            CRYPT_ACQUIRE_SILENT_FLAG, CertCloseStore, CertDuplicateCertificateContext,
+            CertEnumCertificatesInStore, CertFreeCertificateChain, CertFreeCertificateContext,
+            CertGetCertificateChain, CertOpenStore, CryptAcquireCertificatePrivateKey, HCERTSTORE,
+            HCRYPTPROV_OR_NCRYPT_KEY_HANDLE, NCRYPT_FLAGS, NCRYPT_HANDLE, NCRYPT_KEY_HANDLE,
+            NCRYPT_PAD_PKCS1_FLAG, NCRYPT_PAD_PSS_FLAG, NCryptFreeObject, NCryptSignHash,
         },
     },
     core::w,
@@ -118,39 +117,11 @@ unsafe fn sign_with_certificate(
                 &Sha256::digest(message),
             )
         },
-        SignatureScheme::RSA_PSS_SHA384 => unsafe {
-            sign_rsa_pss(
-                key.handle,
-                BCRYPT_SHA384_ALGORITHM,
-                &Sha384::digest(message),
-            )
-        },
-        SignatureScheme::RSA_PSS_SHA512 => unsafe {
-            sign_rsa_pss(
-                key.handle,
-                BCRYPT_SHA512_ALGORITHM,
-                &Sha512::digest(message),
-            )
-        },
         SignatureScheme::RSA_PKCS1_SHA256 => unsafe {
             sign_rsa_pkcs1(
                 key.handle,
                 BCRYPT_SHA256_ALGORITHM,
                 &Sha256::digest(message),
-            )
-        },
-        SignatureScheme::RSA_PKCS1_SHA384 => unsafe {
-            sign_rsa_pkcs1(
-                key.handle,
-                BCRYPT_SHA384_ALGORITHM,
-                &Sha384::digest(message),
-            )
-        },
-        SignatureScheme::RSA_PKCS1_SHA512 => unsafe {
-            sign_rsa_pkcs1(
-                key.handle,
-                BCRYPT_SHA512_ALGORITHM,
-                &Sha512::digest(message),
             )
         },
         SignatureScheme::ECDSA_NISTP256_SHA256 => unsafe {

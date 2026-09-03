@@ -158,11 +158,7 @@ fn sign_with_key(
 ) -> Result<Vec<u8>, SigningError> {
     let signature = match scheme {
         SignatureScheme::RSA_PSS_SHA256 => session.sign(&Mechanism::Sha256RsaPkcsPss, key, message),
-        SignatureScheme::RSA_PSS_SHA384 => session.sign(&Mechanism::Sha384RsaPkcsPss, key, message),
-        SignatureScheme::RSA_PSS_SHA512 => session.sign(&Mechanism::Sha512RsaPkcsPss, key, message),
         SignatureScheme::RSA_PKCS1_SHA256 => session.sign(&Mechanism::Sha256RsaPkcs, key, message),
-        SignatureScheme::RSA_PKCS1_SHA384 => session.sign(&Mechanism::Sha384RsaPkcs, key, message),
-        SignatureScheme::RSA_PKCS1_SHA512 => session.sign(&Mechanism::Sha512RsaPkcs, key, message),
         SignatureScheme::ECDSA_NISTP256_SHA256 => {
             session.sign(&Mechanism::Ecdsa, key, &Sha256::digest(message))
         }

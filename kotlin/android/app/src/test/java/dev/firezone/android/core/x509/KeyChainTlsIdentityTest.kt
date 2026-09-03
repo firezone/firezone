@@ -12,16 +12,12 @@ import java.security.spec.ECGenParameterSpec
 
 class KeyChainTlsIdentityTest {
     @Test
-    fun `offers every RSA scheme a 2048-bit key has room for`() {
+    fun `offers PSS ahead of PKCS#1 for a 2048-bit RSA key`() {
         val keyPair = rsaKeyPair(2048)
 
         assertEquals(
             listOf(
-                TlsSignatureScheme.RSA_PSS_SHA512,
-                TlsSignatureScheme.RSA_PSS_SHA384,
                 TlsSignatureScheme.RSA_PSS_SHA256,
-                TlsSignatureScheme.RSA_PKCS1_SHA512,
-                TlsSignatureScheme.RSA_PKCS1_SHA384,
                 TlsSignatureScheme.RSA_PKCS1_SHA256,
             ),
             KeyChainTlsIdentity.signatureSchemes(keyPair.public),
@@ -29,17 +25,11 @@ class KeyChainTlsIdentityTest {
     }
 
     @Test
-    fun `drops the RSA schemes a 1024-bit key has no room for`() {
-        val keyPair = rsaKeyPair(1024)
+    fun `drops the PSS scheme a 512-bit key has no room for`() {
+        val keyPair = rsaKeyPair(512)
 
         assertEquals(
-            listOf(
-                TlsSignatureScheme.RSA_PSS_SHA384,
-                TlsSignatureScheme.RSA_PSS_SHA256,
-                TlsSignatureScheme.RSA_PKCS1_SHA512,
-                TlsSignatureScheme.RSA_PKCS1_SHA384,
-                TlsSignatureScheme.RSA_PKCS1_SHA256,
-            ),
+            listOf(TlsSignatureScheme.RSA_PKCS1_SHA256),
             KeyChainTlsIdentity.signatureSchemes(keyPair.public),
         )
     }
