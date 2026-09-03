@@ -16,27 +16,37 @@ defmodule Portal.Entra.Sync do
   alias __MODULE__.Database
   require Logger
 
+  # A recovery sync queued for a "missed" notification must run after, not
+  # alongside, a sync that is already executing for the same directory.
+  @snooze_seconds 60
+
   @impl Oban.Worker
-  def perform(%Oban.Job{args: %{"account_id" => account_id, "directory_id" => directory_id}}) do
-    Logger.info("Starting Entra directory sync",
-      account_id: account_id,
-      entra_directory_id: directory_id,
-      timestamp: DateTime.utc_now()
-    )
+  def perform(%Oban.Job{
+        id: job_id,
+        args: %{"account_id" => account_id, "directory_id" => directory_id}
+      }) do
+    if Database.other_sync_running?(job_id, directory_id) do
+      {:snooze, @snooze_seconds}
+    else
+      Logger.info("Starting Entra directory sync",
+        account_id: account_id,
+        entra_directory_id: directory_id,
+        timestamp: DateTime.utc_now()
+      )
 
-    case Database.get_directory(account_id, directory_id) do
-      nil ->
-        Logger.info("Entra directory not found, disabled, or account disabled, skipping",
-          account_id: account_id,
-          entra_directory_id: directory_id
-        )
+      case Database.get_directory(account_id, directory_id) do
+        nil ->
+          Logger.info("Entra directory not found, disabled, or account disabled, skipping",
+            account_id: account_id,
+            entra_directory_id: directory_id
+          )
 
-      directory ->
-        # Perform the sync
-        sync(directory)
+        directory ->
+          sync(directory)
+      end
+
+      :ok
     end
-
-    :ok
   end
 
   def perform(_), do: :ok
@@ -88,9 +98,47 @@ defmodule Portal.Entra.Sync do
     Logger.info("Finished Entra directory sync in #{duration} seconds",
       entra_directory_id: directory.id
     )
+
+    {:ok, _job} =
+      %{account_id: directory.account_id, directory_id: directory.id, action: "ensure"}
+      |> Entra.Subscriptions.new()
+      |> Oban.insert()
   end
 
-  defp get_access_token!(directory) do
+  @doc """
+  Streams the transitive members of one group and upserts their identities and
+  memberships. Shared by the full sync and the webhook worker.
+  """
+  def sync_group_members(directory, access_token, synced_at, group_id, group_name) do
+    Logger.debug("Streaming transitive members for group",
+      entra_directory_id: directory.id,
+      group_id: group_id,
+      group_name: group_name
+    )
+
+    APIClient.stream_group_transitive_members(access_token, group_id)
+    |> Stream.each(fn
+      {:error, error} ->
+        raise Entra.SyncError,
+          error: error,
+          directory_id: directory.id,
+          step: :stream_group_transitive_members
+
+      members when is_list(members) ->
+        process_group_members_page(directory, synced_at, group_id, group_name, members)
+    end)
+    |> Stream.run()
+  end
+
+  def issuer(directory), do: "https://login.microsoftonline.com/#{directory.tenant_id}/v2.0"
+
+  def get_directory(account_id, directory_id), do: Database.get_directory(account_id, directory_id)
+
+  def delete_actors_without_identities(directory) do
+    Database.delete_actors_without_identities(directory.account_id, directory.id)
+  end
+
+  def get_access_token!(directory) do
     Logger.debug("Getting access token", entra_directory_id: directory.id)
 
     case APIClient.get_access_token(:entra, directory.tenant_id) do
@@ -405,69 +453,13 @@ defmodule Portal.Entra.Sync do
   end
 
   defp sync_assigned_group_members(directory, access_token, synced_at, assignment) do
-    group_id = assignment["principalId"]
-    group_name = assignment["principalDisplayName"]
-
-    Logger.debug("Streaming transitive members for group",
-      entra_directory_id: directory.id,
-      group_id: group_id,
-      group_name: group_name
+    sync_group_members(
+      directory,
+      access_token,
+      synced_at,
+      assignment["principalId"],
+      assignment["principalDisplayName"]
     )
-
-    APIClient.stream_group_transitive_members(access_token, group_id)
-    |> Stream.each(fn
-      {:error, error} ->
-        raise Entra.SyncError,
-          error: error,
-          directory_id: directory.id,
-          step: :stream_group_transitive_members
-
-      members when is_list(members) ->
-        process_assigned_group_members_page(directory, synced_at, group_id, group_name, members)
-    end)
-    |> Stream.run()
-  end
-
-  defp process_assigned_group_members_page(directory, synced_at, group_id, group_name, members) do
-    Logger.debug("Received transitive members page",
-      entra_directory_id: directory.id,
-      group_id: group_id,
-      count: length(members)
-    )
-
-    # The API client already uses the microsoft.graph.user cast with
-    # accountEnabled=true filtering; keep a local guard as a safety net.
-    user_members =
-      Enum.filter(members, fn member ->
-        graph_user_member?(member) and syncable_user?(member, directory.id)
-      end)
-
-    # Validate required fields for user members before processing
-    Enum.each(user_members, fn member ->
-      unless member["id"] do
-        raise Entra.SyncError,
-          error: {:validation, "user missing 'id' field in group #{group_name}"},
-          directory_id: directory.id,
-          step: :process_group_member
-      end
-    end)
-
-    # Build identities for these members
-    identities =
-      Enum.map(user_members, fn member ->
-        map_user_to_identity(member, directory.id, directory.email_field)
-      end)
-
-    # Build memberships (group_idp_id, user_idp_id)
-    memberships = Enum.map(user_members, fn member -> {group_id, member["id"]} end)
-
-    unless Enum.empty?(identities) do
-      batch_upsert_identities(directory, synced_at, identities)
-    end
-
-    unless Enum.empty?(memberships) do
-      batch_upsert_memberships(directory, synced_at, memberships)
-    end
   end
 
   defp sync_all_groups(directory, access_token, synced_at) do
@@ -541,30 +533,10 @@ defmodule Portal.Entra.Sync do
   end
 
   defp sync_all_group_members(directory, access_token, synced_at, group) do
-    group_id = group["id"]
-    group_name = group["displayName"]
-
-    Logger.debug("Streaming transitive members for group",
-      entra_directory_id: directory.id,
-      group_id: group_id,
-      group_name: group_name
-    )
-
-    APIClient.stream_group_transitive_members(access_token, group_id)
-    |> Stream.each(fn
-      {:error, error} ->
-        raise Entra.SyncError,
-          error: error,
-          directory_id: directory.id,
-          step: :stream_group_transitive_members
-
-      members when is_list(members) ->
-        process_all_group_members_page(directory, synced_at, group_id, group_name, members)
-    end)
-    |> Stream.run()
+    sync_group_members(directory, access_token, synced_at, group["id"], group["displayName"])
   end
 
-  defp process_all_group_members_page(directory, synced_at, group_id, group_name, members) do
+  defp process_group_members_page(directory, synced_at, group_id, group_name, members) do
     Logger.debug("Received transitive members page",
       entra_directory_id: directory.id,
       group_id: group_id,
@@ -606,7 +578,7 @@ defmodule Portal.Entra.Sync do
     end
   end
 
-  defp batch_upsert_identities(directory, synced_at, identities) do
+  def batch_upsert_identities(directory, synced_at, identities) do
     account_id = directory.account_id
     issuer = issuer(directory)
     directory_id = directory.id
@@ -636,7 +608,7 @@ defmodule Portal.Entra.Sync do
     end
   end
 
-  defp batch_upsert_groups(directory, synced_at, groups) do
+  def batch_upsert_groups(directory, synced_at, groups) do
     account_id = directory.account_id
     directory_id = directory.id
 
@@ -718,7 +690,7 @@ defmodule Portal.Entra.Sync do
     )
   end
 
-  defp syncable_user?(user, directory_id) do
+  def syncable_user?(user, directory_id) do
     case Map.fetch(user, "accountEnabled") do
       {:ok, enabled} ->
         enabled != false
@@ -742,7 +714,7 @@ defmodule Portal.Entra.Sync do
     end
   end
 
-  defp map_user_to_identity(user, directory_id, email_field) do
+  def map_user_to_identity(user, directory_id, email_field) do
     unless user["id"] do
       raise Entra.SyncError,
         error: {:validation, "user missing 'id' field"},
@@ -781,6 +753,15 @@ defmodule Portal.Entra.Sync do
   defmodule Database do
     import Ecto.Query
     alias Portal.Safe
+
+    def other_sync_running?(job_id, directory_id) do
+      [worker: Entra.Sync, state: :executing]
+      |> Oban.Job.query()
+      |> where([j], j.id != ^job_id)
+      |> where([j], fragment("?->>'directory_id'", j.args) == ^directory_id)
+      |> Safe.unscoped()
+      |> Safe.exists?()
+    end
 
     def get_directory(account_id, id) do
       from(d in Entra.Directory,
@@ -1296,5 +1277,4 @@ defmodule Portal.Entra.Sync do
     end
   end
 
-  defp issuer(directory), do: "https://login.microsoftonline.com/#{directory.tenant_id}/v2.0"
 end

@@ -248,6 +248,8 @@ defmodule PortalWeb.Settings.DirectorySync do
 
     case Database.delete_directory(directory, socket.assigns.subject) do
       {:ok, _directory} ->
+        unsubscribe_webhooks(directory)
+
         {:noreply,
          socket
          |> init()
@@ -279,6 +281,8 @@ defmodule PortalWeb.Settings.DirectorySync do
 
       case Database.update_directory(changeset, socket.assigns.subject) do
         {:ok, _directory} ->
+          update_webhooks(directory, new_disabled_state)
+
           {:noreply,
            socket
            |> init()
@@ -1727,6 +1731,7 @@ defmodule PortalWeb.Settings.DirectorySync do
 
     changeset
     |> Database.insert_directory(socket.assigns.subject)
+    |> queue_initial_sync(socket)
     |> handle_submit(socket)
   end
 
@@ -1756,10 +1761,108 @@ defmodule PortalWeb.Settings.DirectorySync do
         changeset
       end
 
+    changeset = forget_subscriptions_on_tenant_change(changeset, directory)
+
     changeset
     |> Database.update_directory(socket.assigns.subject)
     |> handle_submit(socket)
   end
+
+  # Subscriptions belong to the tenant they were created in. Verifying against
+  # another tenant deletes them there and lets the next sync recreate them.
+  defp forget_subscriptions_on_tenant_change(changeset, %Entra.Directory{} = directory) do
+    case get_change(changeset, :tenant_id) do
+      nil ->
+        changeset
+
+      _new_tenant_id ->
+        unsubscribe_webhooks(directory)
+
+        changeset
+        |> put_change(:users_subscription_id, nil)
+        |> put_change(:groups_subscription_id, nil)
+        |> put_change(:subscriptions_expire_at, nil)
+    end
+  end
+
+  defp forget_subscriptions_on_tenant_change(changeset, _directory), do: changeset
+
+  defp queue_initial_sync(
+         {:ok, %Entra.Directory{is_verified: true, is_disabled: false} = directory} = result,
+         %{assigns: %{account: %{features: %{idp_sync: true}}}}
+       ) do
+    args = %{"account_id" => directory.account_id, "directory_id" => directory.id}
+
+    case Oban.insert(Entra.Sync.new(args)) do
+      {:ok, _job} ->
+        result
+
+      {:error, reason} ->
+        Logger.info("Failed to enqueue initial directory sync job",
+          id: directory.id,
+          reason: inspect(reason)
+        )
+
+        result
+    end
+  end
+
+  defp queue_initial_sync(result, _socket), do: result
+
+  defp update_webhooks(directory, true), do: unsubscribe_webhooks(directory)
+  defp update_webhooks(directory, false), do: subscribe_webhooks(directory)
+
+  defp unsubscribe_webhooks(%Entra.Directory{} = directory) do
+    ids = Enum.reject([directory.users_subscription_id, directory.groups_subscription_id], &is_nil/1)
+
+    if ids != [] do
+      args = %{
+        "action" => "delete",
+        "account_id" => directory.account_id,
+        "directory_id" => directory.id,
+        "tenant_id" => directory.tenant_id,
+        "subscription_ids" => ids
+      }
+
+      case Oban.insert(Entra.Subscriptions.new(args)) do
+        {:ok, _job} ->
+          :ok
+
+        {:error, reason} ->
+          Logger.info("Failed to enqueue Entra webhook cleanup job",
+            id: directory.id,
+            reason: inspect(reason)
+          )
+      end
+    end
+
+    :ok
+  end
+
+  defp unsubscribe_webhooks(_directory), do: :ok
+
+  defp subscribe_webhooks(%Entra.Directory{} = directory) do
+    args = %{
+      "account_id" => directory.account_id,
+      "directory_id" => directory.id,
+      "action" => "ensure"
+    }
+
+    case Oban.insert(Entra.Subscriptions.new(args)) do
+      {:ok, _job} ->
+        :ok
+
+      {:error, reason} ->
+        Logger.info("Failed to enqueue Entra webhook subscription job",
+          id: directory.id,
+          reason: inspect(reason)
+        )
+    end
+
+    :ok
+  end
+
+  defp subscribe_webhooks(_directory), do: :ok
 
   defp handle_submit({:ok, _directory}, socket) do
     {:noreply,
