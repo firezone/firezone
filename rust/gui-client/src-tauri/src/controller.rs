@@ -1460,6 +1460,26 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn legacy_auth_base_url_sends_apply() {
+        let _guard = logging::test("debug");
+        let mut test_controller = Controller::start_for_test();
+        let mut mock_tunnel = test_controller.tunnel_service_ipc_accept().await;
+
+        std::fs::write(
+            &test_controller.legacy_advanced_settings_path,
+            r#"{"auth_base_url":"https://example.com/","api_url":"wss://example.com/","favorite_resources":[],"internet_resource_enabled":null,"log_filter":"info"}"#,
+        )
+        .unwrap();
+
+        mock_tunnel.send_hello().await;
+
+        let migrated = mock_tunnel.rx_apply_advanced_settings().await;
+        assert_eq!(migrated.auth_url.as_str(), "https://example.com/");
+        assert_eq!(migrated.api_url.as_str(), "wss://example.com/");
+        assert_eq!(migrated.log_filter, "info");
+    }
+
+    #[tokio::test]
     async fn apply_ok_deletes_legacy() {
         let _guard = logging::test("debug");
         let mut test_controller = Controller::start_for_test();
