@@ -200,7 +200,7 @@ defmodule Portal.MixProject do
       "assets.deploy": ["tailwind portal --minify", "esbuild portal --minify", "phx.digest"],
       "phx.server": ["ecto.create --quiet", "ecto.migrate", "phx.server"],
       "openapi.generate": [
-        "openapi.spec.json --spec PortalAPI.ApiSpec --pretty=true --vendor-extensions=false --filename priv/static/openapi.json"
+        "openapi.spec.json --spec PortalAPI.ApiSpec --pretty=true --vendor-extensions=false --filename priv/static/openapi.json --no-start-app"
       ],
       test: ["ecto.create --quiet", "ecto.migrate", "openapi.generate", "test"],
       start: ["compile --no-validate-compile-env", "phx.server", "run --no-halt"]

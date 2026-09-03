@@ -5,13 +5,53 @@ defmodule PortalAPI.Schemas.DefenderDevice do
     require OpenApiSpex
     alias OpenApiSpex.Schema
 
-    # The device table mirrors the Defender for Endpoint machine resource field
-    # for field, so the documented properties are derived from the Ecto schema.
-    # A newly synced field cannot end up in the database but missing here.
-    @required [:account_id, :posture_provider_id, :defender_id, :synced_at]
+    @not_null [:account_id, :posture_provider_id, :defender_id, :synced_at]
 
-    @properties Map.new(Portal.Defender.Device.__schema__(:fields), fn field ->
-                  nullable = field not in @required
+    # Property types come from the Ecto schema; the field list is explicit so a
+    # newly synced column is published only once it is added here.
+    @fields [
+      :account_id,
+      :defender_id,
+      :posture_provider_id,
+      :computer_dns_name,
+      :entra_device_id,
+      :entra_joined,
+      :machine_tags,
+      :os_platform,
+      :version,
+      :os_build,
+      :os_processor,
+      :os_architecture,
+      :last_ip_address,
+      :last_external_ip_address,
+      :agent_version,
+      :health_status,
+      :onboarding_status,
+      :managed_by,
+      :managed_by_status,
+      :risk_score,
+      :exposure_level,
+      :device_value,
+      :rbac_group_id,
+      :rbac_group_name,
+      :is_potential_duplication,
+      :merged_into_machine_id,
+      :is_excluded,
+      :exclusion_reason,
+      :vm_id,
+      :vm_cloud_provider,
+      :vm_resource_id,
+      :vm_subscription_id,
+      :ip_addresses,
+      :first_seen_at,
+      :last_seen_at,
+      :synced_at,
+      :inserted_at,
+      :updated_at
+    ]
+
+    @properties Map.new(@fields, fn field ->
+                  nullable = field not in @not_null
 
                   schema =
                     case Portal.Defender.Device.__schema__(:type, field) do
@@ -48,12 +88,13 @@ defmodule PortalAPI.Schemas.DefenderDevice do
                   {field, schema}
                 end)
 
+    @derive {PortalAPI.JSON.Encoder, for: Portal.Defender.Device}
     OpenApiSpex.schema(%{
       title: "DefenderDevice",
       description: "Device synced from Microsoft Defender for Endpoint",
       type: :object,
       properties: @properties,
-      required: @required
+      required: @fields
     })
   end
 

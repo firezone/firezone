@@ -2,6 +2,7 @@ defmodule PortalAPI.MembershipController do
   use PortalAPI, :controller
   use OpenApiSpex.ControllerSpecs
   alias PortalAPI.Pagination
+  alias PortalAPI.JSON
   alias PortalAPI.Error
   alias PortalAPI.Schemas.ProblemDetails
   alias __MODULE__.Database
@@ -36,7 +37,7 @@ defmodule PortalAPI.MembershipController do
     with {:ok, list_opts} <- Pagination.params_to_list_opts(params),
          list_opts = Keyword.put(list_opts, :filter, group_id: group_id),
          {:ok, actors, metadata} <- Database.list_actors(conn.assigns.subject, list_opts) do
-      render(conn, :index, actors: actors, metadata: metadata)
+      json(conn, JSON.encode(actors, metadata, schema: PortalAPI.Schemas.Membership.Schema))
     else
       error -> Error.handle(conn, error)
     end
@@ -95,7 +96,7 @@ defmodule PortalAPI.MembershipController do
          {:ok, actor_ids} <- extract_actor_ids(members),
          :ok <- Database.validate_actors(actor_ids, subject),
          {:ok, actor_ids} <- Database.replace_members(group, actor_ids, subject) do
-      render(conn, :memberships, actor_ids: actor_ids)
+      json(conn, %{data: %{actor_ids: actor_ids}})
     else
       error -> Error.handle(conn, error)
     end
@@ -158,7 +159,7 @@ defmodule PortalAPI.MembershipController do
          {:ok, remove} <- extract_id_list(params, "remove"),
          :ok <- Database.validate_actors(add, subject),
          {:ok, actor_ids} <- Database.patch_members(group, add, remove, subject) do
-      render(conn, :memberships, actor_ids: actor_ids)
+      json(conn, %{data: %{actor_ids: actor_ids}})
     else
       error -> Error.handle(conn, error)
     end

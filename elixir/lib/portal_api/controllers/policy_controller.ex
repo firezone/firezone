@@ -2,6 +2,7 @@ defmodule PortalAPI.PolicyController do
   use PortalAPI, :controller
   use OpenApiSpex.ControllerSpecs
   alias PortalAPI.Pagination
+  alias PortalAPI.JSON
   alias PortalAPI.Error
   alias PortalAPI.Filters
   alias PortalAPI.Schemas.ProblemDetails
@@ -33,7 +34,7 @@ defmodule PortalAPI.PolicyController do
     with {:ok, list_opts} <- Pagination.params_to_list_opts(params),
          list_opts = Keyword.put(list_opts, :filter, coerce_filters(params)),
          {:ok, policies, metadata} <- Database.list_policies(conn.assigns.subject, list_opts) do
-      render(conn, :index, policies: policies, metadata: metadata)
+      json(conn, JSON.encode(policies, metadata))
     else
       error -> Error.handle(conn, error)
     end
@@ -65,7 +66,7 @@ defmodule PortalAPI.PolicyController do
   @spec show(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def show(conn, %{"id" => id}) do
     with {:ok, policy} <- Database.fetch_policy(id, conn.assigns.subject) do
-      render(conn, :show, policy: policy)
+      json(conn, JSON.encode(policy))
     else
       error -> Error.handle(conn, error)
     end
@@ -84,6 +85,7 @@ defmodule PortalAPI.PolicyController do
           :bad_request,
           :unauthorized,
           :forbidden,
+          :not_found,
           :unprocessable_entity,
           :too_many_requests
         ])
@@ -99,7 +101,7 @@ defmodule PortalAPI.PolicyController do
       conn
       |> put_status(:created)
       |> put_resp_header("location", ~p"/policies/#{policy}")
-      |> render(:show, policy: policy)
+      |> json(JSON.encode(policy))
     else
       error -> Error.handle(conn, error)
     end
@@ -149,7 +151,7 @@ defmodule PortalAPI.PolicyController do
     with {:ok, policy} <- Database.fetch_policy(id, subject),
          :ok <- Database.validate_internet_resource_policy(params, subject),
          {:ok, policy} <- Database.update_policy(policy, params, subject) do
-      render(conn, :show, policy: policy)
+      json(conn, JSON.encode(policy))
     else
       error -> Error.handle(conn, error)
     end
@@ -182,7 +184,7 @@ defmodule PortalAPI.PolicyController do
 
     with {:ok, policy} <- Database.fetch_policy(id, subject),
          {:ok, policy} <- Database.delete_policy(policy, subject) do
-      render(conn, :show, policy: policy)
+      json(conn, JSON.encode(policy))
     else
       error -> Error.handle(conn, error)
     end

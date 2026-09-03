@@ -232,7 +232,7 @@ defmodule Portal.Safe do
         queryable
         |> apply_account_filter(schema, account_id)
         |> repo.list(query_module, opts)
-      end) || {:ok, [], %{}}
+      end) || {:ok, [], Portal.Repo.Paginator.empty_metadata()}
     end
   end
 
@@ -560,7 +560,7 @@ defmodule Portal.Safe do
   end
 
   @spec delete(Scoped.t()) ::
-          {:ok, Ecto.Schema.t()} | {:error, Ecto.Changeset.t() | :unauthorized}
+          {:ok, Ecto.Schema.t()} | {:error, Ecto.Changeset.t() | :unauthorized | :not_found}
   def delete(%Scoped{
         subject: %Subject{account: %{id: account_id}} = subject,
         queryable: %Ecto.Changeset{data: %{account_id: account_id}} = changeset
@@ -577,6 +577,8 @@ defmodule Portal.Safe do
         |> Repo.delete()
       end)
     end
+  rescue
+    Ecto.StaleEntryError -> {:error, :not_found}
   end
 
   def delete(%Scoped{
@@ -593,6 +595,9 @@ defmodule Portal.Safe do
         Repo.delete(struct)
       end)
     end
+  rescue
+    # The row went away between the caller's fetch and this delete.
+    Ecto.StaleEntryError -> {:error, :not_found}
   end
 
   @spec delete(Unscoped.t()) :: {:ok, Ecto.Schema.t()} | {:error, Ecto.Changeset.t()}

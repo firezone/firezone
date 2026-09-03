@@ -5,19 +5,40 @@ defmodule PortalAPI.Schemas.Resource do
     require OpenApiSpex
     alias OpenApiSpex.Schema
 
+    @derive {PortalAPI.JSON.Encoder,
+             for: Portal.Resource, internal: [:account_id, :inserted_at, :updated_at]}
     OpenApiSpex.schema(%{
       title: "Resource",
       description: "Resource",
       type: :object,
       properties: %{
-        id: %Schema{type: :string, format: :uuid, description: "Resource ID"},
-        name: %Schema{type: :string, description: "Resource name"},
-        address: %Schema{type: :string, description: "Resource address"},
-        address_description: %Schema{type: :string, description: "Resource address description"},
-        type: %Schema{
+        id: %Schema{
+          example: "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
           type: :string,
-          description: "Resource type. For `static_device_pool`, `address` is not applicable.",
-          enum: ["cidr", "ip", "dns", "static_device_pool"]
+          format: :uuid,
+          description: "Resource ID"
+        },
+        name: %Schema{example: "Prod DB", type: :string, description: "Resource name"},
+        address: %Schema{
+          example: "10.0.0.10",
+          type: :string,
+          nullable: true,
+          description: "Resource address. Null for `static_device_pool` Resources."
+        },
+        address_description: %Schema{
+          example: "Production Database",
+          type: :string,
+          nullable: true,
+          description: "Resource address description"
+        },
+        type: %Schema{
+          example: "ip",
+          type: :string,
+          description:
+            "Resource type. For `static_device_pool` and `dynamic_device_pool`, `address` " <>
+              "is not applicable. Only `cidr`, `ip`, and `dns` Resources can be created " <>
+              "through the API.",
+          enum: ["cidr", "ip", "dns", "internet", "static_device_pool", "dynamic_device_pool"]
         },
         ip_stack: %Schema{
           type: :string,
@@ -25,6 +46,7 @@ defmodule PortalAPI.Schemas.Resource do
           enum: ["ipv4_only", "ipv6_only", "dual"]
         },
         site_id: %Schema{
+          example: "0642e09d-b3a2-47e4-9cd1-c2195faeeb67",
           title: "SiteID",
           description:
             "Site to connect the Resource to. Required for all types except `static_device_pool`.",
@@ -32,24 +54,20 @@ defmodule PortalAPI.Schemas.Resource do
           format: :uuid
         },
         filters: %Schema{
+          example: [
+            %{"protocol" => "tcp", "ports" => ["5432"]}
+          ],
           type: :array,
           description: "Traffic filters restricting the protocols and ports the Resource exposes",
           items: PortalAPI.Schemas.Resource.Filter
         }
       },
-      required: [:name, :type],
-      example: %{
-        "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-        "name" => "Prod DB",
-        "address" => "10.0.0.10",
-        "address_description" => "Production Database",
-        "type" => "ip",
-        "filters" => [
-          %{"protocol" => "tcp", "ports" => ["5432"]}
-        ],
-        "site_id" => "0642e09d-b3a2-47e4-9cd1-c2195faeeb67"
-      }
+      required: [:address, :address_description, :filters, :id, :name, :type]
     })
+
+    def map(%Portal.Resource{filters: filters}, _map) do
+      %{filters: Enum.map(filters, &%{protocol: &1.protocol, ports: &1.ports})}
+    end
   end
 
   defmodule Filter do
@@ -62,11 +80,13 @@ defmodule PortalAPI.Schemas.Resource do
       type: :object,
       properties: %{
         protocol: %Schema{
+          example: "tcp",
           type: :string,
           description: "Transport protocol the filter applies to",
           enum: ["tcp", "udp", "icmp"]
         },
         ports: %Schema{
+          example: ["80", "443", "8000 - 9000"],
           type: :array,
           description:
             "Port numbers or ranges (e.g. `80` or `8000 - 9000`) the filter allows. " <>
@@ -74,11 +94,7 @@ defmodule PortalAPI.Schemas.Resource do
           items: %Schema{type: :string}
         }
       },
-      required: [:protocol],
-      example: %{
-        "protocol" => "tcp",
-        "ports" => ["80", "443", "8000 - 9000"]
-      }
+      required: [:protocol]
     })
   end
 
@@ -99,27 +115,34 @@ defmodule PortalAPI.Schemas.Resource do
         resource: %Schema{
           type: :object,
           properties: %{
-            name: %Schema{type: :string, description: "Resource name"},
-            address: %Schema{
-              type: :string,
-              description: "Resource address.",
-              nullable: true
-            },
-            address_description: %Schema{
-              type: :string,
-              description: "Resource address description",
-              nullable: true
-            },
-            type: %Schema{
-              type: :string,
+            name: %Schema{
               # static_device_pool is deliberately absent: pools cannot be
               # created or converted to through this API for now. It stays
               # in the response schema below, since existing pools are
               # still returned. See
               # PortalAPI.ResourceController.Database.reject_device_pool_type/1
               # for what to change to re-enable it.
-              description: "Resource type.",
-              enum: ["cidr", "ip", "dns"]
+              example: "Prod DB",
+              type: :string,
+              description: "Resource name"
+            },
+            address: %Schema{
+              example: "10.0.0.10",
+              type: :string,
+              description: "Resource address.",
+              nullable: true
+            },
+            address_description: %Schema{
+              example: "Production Database",
+              type: :string,
+              description: "Resource address description",
+              nullable: true
+            },
+            type: %Schema{
+              example: "ip",
+              type: :string,
+              description: "Resource type. `internet` is accepted only in the Internet Site.",
+              enum: ["cidr", "ip", "dns", "internet"]
             },
             ip_stack: %Schema{
               type: :string,
@@ -128,6 +151,7 @@ defmodule PortalAPI.Schemas.Resource do
               nullable: true
             },
             site_id: %Schema{
+              example: "0642e09d-b3a2-47e4-9cd1-c2195faeeb67",
               title: "SiteID",
               description:
                 "Site to connect the Resource to. Required. " <>
@@ -137,6 +161,9 @@ defmodule PortalAPI.Schemas.Resource do
               nullable: true
             },
             filters: %Schema{
+              example: [
+                %{"protocol" => "tcp", "ports" => ["5432"]}
+              ],
               type: :array,
               description:
                 "Traffic filters restricting the protocols and ports the Resource exposes",
@@ -146,19 +173,7 @@ defmodule PortalAPI.Schemas.Resource do
           required: [:name, :type]
         }
       },
-      required: [:resource],
-      example: %{
-        "resource" => %{
-          "name" => "Prod DB",
-          "address" => "10.0.0.10",
-          "address_description" => "Production Database",
-          "type" => "ip",
-          "site_id" => "0642e09d-b3a2-47e4-9cd1-c2195faeeb67",
-          "filters" => [
-            %{"protocol" => "tcp", "ports" => ["5432"]}
-          ]
-        }
-      }
+      required: [:resource]
     })
   end
 
@@ -177,27 +192,34 @@ defmodule PortalAPI.Schemas.Resource do
         resource: %Schema{
           type: :object,
           properties: %{
-            name: %Schema{type: :string, description: "Resource name"},
+            name: %Schema{
+              # A pool may restate its own type but nothing can be converted
+              # into one through this API for now. See
+              # PortalAPI.ResourceController.Database.reject_device_pool_type/1
+              # for what to change to re-enable it.
+              example: "Prod DB",
+              type: :string,
+              description: "Resource name"
+            },
             address: %Schema{
+              example: "10.0.0.10",
               type: :string,
               description: "Resource address.",
               nullable: true
             },
             address_description: %Schema{
+              example: "Production Database",
               type: :string,
               description: "Resource address description",
               nullable: true
             },
             type: %Schema{
+              example: "ip",
               type: :string,
-              # static_device_pool is deliberately absent: pools cannot be
-              # created or converted to through this API for now. It stays
-              # in the response schema below, since existing pools are
-              # still returned. See
-              # PortalAPI.ResourceController.Database.reject_device_pool_type/1
-              # for what to change to re-enable it.
-              description: "Resource type.",
-              enum: ["cidr", "ip", "dns"]
+              description:
+                "Resource type. `internet` is accepted only in the Internet Site. " <>
+                  "`static_device_pool` is accepted only on a Resource that already is one.",
+              enum: ["cidr", "ip", "dns", "internet", "static_device_pool"]
             },
             ip_stack: %Schema{
               type: :string,
@@ -206,6 +228,7 @@ defmodule PortalAPI.Schemas.Resource do
               nullable: true
             },
             site_id: %Schema{
+              example: "0642e09d-b3a2-47e4-9cd1-c2195faeeb67",
               title: "SiteID",
               description:
                 "Site to connect the Resource to. Required. " <>
@@ -215,6 +238,9 @@ defmodule PortalAPI.Schemas.Resource do
               nullable: true
             },
             filters: %Schema{
+              example: [
+                %{"protocol" => "tcp", "ports" => ["5432"]}
+              ],
               type: :array,
               description:
                 "Traffic filters restricting the protocols and ports the Resource exposes",
@@ -223,19 +249,7 @@ defmodule PortalAPI.Schemas.Resource do
           }
         }
       },
-      required: [:resource],
-      example: %{
-        "resource" => %{
-          "name" => "Prod DB",
-          "address" => "10.0.0.10",
-          "address_description" => "Production Database",
-          "type" => "ip",
-          "site_id" => "0642e09d-b3a2-47e4-9cd1-c2195faeeb67",
-          "filters" => [
-            %{"protocol" => "tcp", "ports" => ["5432"]}
-          ]
-        }
-      }
+      required: [:resource]
     })
   end
 
@@ -250,16 +264,6 @@ defmodule PortalAPI.Schemas.Resource do
       type: :object,
       properties: %{
         data: Resource.Schema
-      },
-      example: %{
-        "data" => %{
-          "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-          "name" => "Prod DB",
-          "address" => "10.0.0.10",
-          "address_description" => "Production Database",
-          "type" => "ip",
-          "site_id" => "0642e09d-b3a2-47e4-9cd1-c2195faeeb67"
-        }
       }
     })
   end
@@ -277,32 +281,6 @@ defmodule PortalAPI.Schemas.Resource do
       properties: %{
         data: %Schema{description: "Resource details", type: :array, items: Resource.Schema},
         metadata: PaginationMetadata
-      },
-      example: %{
-        "data" => [
-          %{
-            "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-            "name" => "Prod DB",
-            "address" => "10.0.0.10",
-            "address_description" => "Production Database",
-            "type" => "ip",
-            "site_id" => "0642e09d-b3a2-47e4-9cd1-c2195faeeb67"
-          },
-          %{
-            "id" => "3b9451c9-5616-48f8-827f-009ace22d015",
-            "name" => "Admin Dashboard",
-            "address" => "10.0.0.20",
-            "address_description" => "Production Admin Dashboard",
-            "type" => "ip",
-            "site_id" => "0642e09d-b3a2-47e4-9cd1-c2195faeeb67"
-          }
-        ],
-        "metadata" => %{
-          "limit" => 10,
-          "total" => 100,
-          "prev_page" => "123123425",
-          "next_page" => "98776234123"
-        }
       }
     })
   end

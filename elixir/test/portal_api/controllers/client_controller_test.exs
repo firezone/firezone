@@ -179,8 +179,8 @@ defmodule PortalAPI.ClientControllerTest do
     # coerce_filters/1 only reads the parameters it knows about, so an
     # unrecognized one is ignored rather than erroring - matching every
     # other filtered index in this API.
-    test "ignores an unrecognized query parameter", %{conn: conn, actor: actor, account: account} do
-      client = client_fixture(account: account, name: "jane-laptop")
+    test "rejects an unrecognized query parameter", %{conn: conn, actor: actor, account: account} do
+      client_fixture(account: account, name: "jane-laptop")
 
       conn =
         conn
@@ -188,8 +188,8 @@ defmodule PortalAPI.ClientControllerTest do
         |> put_req_header("content-type", "application/json")
         |> get(~p"/clients", name: "jane-laptop", nope: "value")
 
-      assert %{"data" => [data]} = json_response(conn, 200)
-      assert data["id"] == client.id
+      assert %{"status" => 400, "detail" => detail} = json_response(conn, 400)
+      assert detail =~ "`nope` is not a known parameter"
     end
 
     test "lists clients with limit", %{

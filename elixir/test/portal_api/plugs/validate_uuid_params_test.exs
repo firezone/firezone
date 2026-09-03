@@ -42,6 +42,13 @@ defmodule PortalAPI.Plugs.ValidateUUIDParamsTest do
       refute result.halted
     end
 
+    test "halts when id param is a raw 16-byte binary rather than a textual UUID" do
+      conn = build_conn(%{"id" => :crypto.strong_rand_bytes(16)})
+      result = ValidateUUIDParams.call(conn, @opts)
+      assert result.halted
+      assert result.status == 400
+    end
+
     test "halts when id param is 24 chars but not hex" do
       conn = build_conn(%{"id" => "zzzzzzzzzzzzzzzzzzzzzzzz"})
       result = ValidateUUIDParams.call(conn, @opts)

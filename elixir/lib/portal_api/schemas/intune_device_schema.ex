@@ -5,13 +5,109 @@ defmodule PortalAPI.Schemas.IntuneDevice do
     require OpenApiSpex
     alias OpenApiSpex.Schema
 
-    # The device table mirrors the Microsoft Graph managedDevice resource field
-    # for field, so the documented properties are derived from the Ecto schema.
-    # A newly synced field cannot end up in the database but missing here.
-    @required [:account_id, :posture_provider_id, :intune_id, :synced_at]
+    @not_null [:account_id, :posture_provider_id, :intune_id, :synced_at]
 
-    @properties Map.new(Portal.Intune.Device.__schema__(:fields), fn field ->
-                  nullable = field not in @required
+    # Property types come from the Ecto schema; the field list is explicit so a
+    # newly synced column is published only once it is added here.
+    @fields [
+      :account_id,
+      :intune_id,
+      :posture_provider_id,
+      :device_name,
+      :managed_device_name,
+      :serial_number,
+      :entra_device_id,
+      :enrollment_profile_name,
+      :device_category_display_name,
+      :user_id,
+      :user_principal_name,
+      :user_display_name,
+      :email_address,
+      :operating_system,
+      :os_version,
+      :model,
+      :manufacturer,
+      :imei,
+      :meid,
+      :iccid,
+      :udid,
+      :phone_number,
+      :subscriber_carrier,
+      :wifi_mac_address,
+      :ethernet_mac_address,
+      :android_security_patch_level,
+      :total_storage_space_bytes,
+      :free_storage_space_bytes,
+      :physical_memory_bytes,
+      :compliance_state,
+      :management_state,
+      :management_agent,
+      :managed_device_owner_type,
+      :device_enrollment_type,
+      :device_registration_state,
+      :partner_reported_threat_state,
+      :jail_broken,
+      :is_encrypted,
+      :is_supervised,
+      :entra_registered,
+      :require_user_enrollment_approval,
+      :notes,
+      :eas_activated,
+      :eas_device_id,
+      :eas_activated_at,
+      :exchange_access_state,
+      :exchange_access_state_reason,
+      :exchange_last_successful_sync_at,
+      :config_manager_inventory,
+      :config_manager_modern_apps,
+      :config_manager_resource_access,
+      :config_manager_device_configuration,
+      :config_manager_compliance_policy,
+      :config_manager_windows_update_for_business,
+      :attestation_last_update_date_time,
+      :attestation_content_namespace_url,
+      :attestation_status,
+      :attestation_content_version,
+      :attestation_issued_at,
+      :attestation_identity_key,
+      :attestation_reset_count,
+      :attestation_restart_count,
+      :attestation_data_execution_policy,
+      :attestation_bit_locker_status,
+      :attestation_boot_manager_version,
+      :attestation_code_integrity_check_version,
+      :attestation_secure_boot,
+      :attestation_boot_debugging,
+      :attestation_operating_system_kernel_debugging,
+      :attestation_code_integrity,
+      :attestation_test_signing,
+      :attestation_safe_mode,
+      :attestation_windows_pe,
+      :attestation_early_launch_anti_malware_driver_protection,
+      :attestation_virtual_secure_mode,
+      :attestation_pcr_hash_algorithm,
+      :attestation_boot_app_security_version,
+      :attestation_boot_manager_security_version,
+      :attestation_tpm_version,
+      :attestation_pcr0,
+      :attestation_secure_boot_config_policy_fingerprint,
+      :attestation_code_integrity_policy,
+      :attestation_boot_revision_list_info,
+      :attestation_operating_system_rev_list_info,
+      :attestation_health_status_mismatch_info,
+      :attestation_supported_status,
+      :device_action_results,
+      :enrolled_at,
+      :last_sync_at,
+      :compliance_grace_period_expiration_at,
+      :management_certificate_expires_at,
+      :synced_at,
+      :inserted_at,
+      :updated_at
+    ]
+
+    @properties Map.new(@fields, fn field ->
+                  nullable = field not in @not_null
 
                   schema =
                     case Portal.Intune.Device.__schema__(:type, field) do
@@ -27,12 +123,13 @@ defmodule PortalAPI.Schemas.IntuneDevice do
                   {field, schema}
                 end)
 
+    @derive {PortalAPI.JSON.Encoder, for: Portal.Intune.Device}
     OpenApiSpex.schema(%{
       title: "IntuneDevice",
       description: "Device synced from Microsoft Intune",
       type: :object,
       properties: @properties,
-      required: @required
+      required: @fields
     })
   end
 

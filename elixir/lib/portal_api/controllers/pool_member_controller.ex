@@ -2,6 +2,7 @@ defmodule PortalAPI.PoolMemberController do
   use PortalAPI, :controller
   use OpenApiSpex.ControllerSpecs
   alias PortalAPI.Pagination
+  alias PortalAPI.JSON
   alias PortalAPI.Error
   alias PortalAPI.Schemas.ProblemDetails
   alias Portal.Resource
@@ -46,7 +47,7 @@ defmodule PortalAPI.PoolMemberController do
          {:ok, list_opts} <- Pagination.params_to_list_opts(params),
          list_opts = Keyword.put(list_opts, :filter, resource_id: resource_id),
          {:ok, clients, metadata} <- Database.list_devices(subject, list_opts) do
-      render(conn, :index, clients: clients, metadata: metadata)
+      json(conn, JSON.encode(clients, metadata, schema: PortalAPI.Schemas.PoolMember.Schema))
     else
       error -> Error.handle(conn, error)
     end
@@ -97,7 +98,7 @@ defmodule PortalAPI.PoolMemberController do
          {:ok, device_ids} <- extract_device_ids(members),
          :ok <- Database.validate_client_devices(device_ids, subject),
          {:ok, device_ids} <- Database.replace_members(resource, device_ids, subject) do
-      render(conn, :members, device_ids: device_ids)
+      json(conn, %{data: %{device_ids: device_ids}})
     else
       error -> Error.handle(conn, error)
     end
@@ -155,7 +156,7 @@ defmodule PortalAPI.PoolMemberController do
          {:ok, remove} <- extract_id_list(params, "remove"),
          :ok <- Database.validate_client_devices(add, subject),
          {:ok, device_ids} <- Database.patch_members(resource, add, remove, subject) do
-      render(conn, :members, device_ids: device_ids)
+      json(conn, %{data: %{device_ids: device_ids}})
     else
       error -> Error.handle(conn, error)
     end

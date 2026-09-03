@@ -2,6 +2,7 @@ defmodule PortalAPI.ClientController do
   use PortalAPI, :controller
   use OpenApiSpex.ControllerSpecs
   alias PortalAPI.Pagination
+  alias PortalAPI.JSON
   alias PortalAPI.Error
   alias PortalAPI.Filters
   alias PortalAPI.Schemas.ProblemDetails
@@ -43,7 +44,7 @@ defmodule PortalAPI.ClientController do
          list_opts = Keyword.put(list_opts, :preload, [:online?]),
          list_opts = Keyword.put(list_opts, :filter, coerce_filters(params)),
          {:ok, clients, metadata} <- Database.list_clients(conn.assigns.subject, list_opts) do
-      render(conn, :index, clients: clients, metadata: metadata)
+      json(conn, JSON.encode(clients, metadata, schema: PortalAPI.Schemas.Client.GetSchema))
     else
       error -> Error.handle(conn, error)
     end
@@ -77,7 +78,7 @@ defmodule PortalAPI.ClientController do
   def show(conn, %{"id" => id}) do
     with {:ok, client} <- Database.fetch_client(id, conn.assigns.subject) do
       client = Devices.preload_presence([client]) |> List.first()
-      render(conn, :show, client: client)
+      json(conn, JSON.encode(client, schema: PortalAPI.Schemas.Client.GetSchema))
     else
       error -> Error.handle(conn, error)
     end
@@ -116,7 +117,7 @@ defmodule PortalAPI.ClientController do
     with {:ok, client} <- Database.fetch_client(id, subject),
          changeset = update_changeset(client, params),
          {:ok, client} <- Database.update_client(changeset, subject) do
-      render(conn, :show, client: client)
+      json(conn, JSON.encode(client, schema: PortalAPI.Schemas.Client.GetSchema))
     else
       error -> Error.handle(conn, error)
     end
@@ -162,7 +163,7 @@ defmodule PortalAPI.ClientController do
     with {:ok, client} <- Database.fetch_client(id, subject),
          changeset = client |> change() |> put_default_value(:verified_at, DateTime.utc_now()),
          {:ok, client} <- Database.verify_client(changeset, subject) do
-      render(conn, :show, client: client)
+      json(conn, JSON.encode(client, schema: PortalAPI.Schemas.Client.GetSchema))
     else
       error -> Error.handle(conn, error)
     end
@@ -193,7 +194,7 @@ defmodule PortalAPI.ClientController do
     with {:ok, client} <- Database.fetch_client(id, subject),
          changeset = client |> change() |> put_change(:verified_at, nil),
          {:ok, client} <- Database.remove_client_verification(changeset, subject) do
-      render(conn, :show, client: client)
+      json(conn, JSON.encode(client, schema: PortalAPI.Schemas.Client.GetSchema))
     else
       error -> Error.handle(conn, error)
     end
@@ -223,7 +224,7 @@ defmodule PortalAPI.ClientController do
 
     with {:ok, client} <- Database.fetch_client(id, subject),
          {:ok, client} <- Database.delete_client(client, subject) do
-      render(conn, :show, client: client)
+      json(conn, JSON.encode(client, schema: PortalAPI.Schemas.Client.GetSchema))
     else
       error -> Error.handle(conn, error)
     end

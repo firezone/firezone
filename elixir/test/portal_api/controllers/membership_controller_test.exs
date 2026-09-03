@@ -230,8 +230,7 @@ defmodule PortalAPI.MembershipControllerTest do
 
       resp = json_response(conn, 422)
       assert %{"type" => "about:blank", "status" => 422} = resp
-      assert %{"validation_errors" => %{"memberships" => memberships}} = resp
-      assert memberships == ["<no value> is not a valid Actor ID"]
+      assert %{"validation_errors" => %{"add" => %{"0" => ["is invalid"]}}} = resp
     end
 
     test "removes actor from group", %{conn: conn, account: account, actor: api_actor} do
@@ -342,8 +341,7 @@ defmodule PortalAPI.MembershipControllerTest do
 
       resp = json_response(conn, 422)
       assert %{"type" => "about:blank", "status" => 422} = resp
-      assert %{"validation_errors" => %{"memberships" => memberships}} = resp
-      assert memberships == ["<no value> is not a valid Actor ID"]
+      assert %{"validation_errors" => %{"0" => %{"actor_id" => ["is invalid"]}}} = resp
     end
 
     test "removes actor from group", %{conn: conn, account: account, actor: api_actor} do
@@ -645,8 +643,7 @@ defmodule PortalAPI.MembershipControllerTest do
         |> patch("/groups/#{group.id}/memberships", memberships: %{"remove" => ["not-a-uuid"]})
 
       resp = json_response(conn, 422)
-      assert %{"validation_errors" => %{"memberships" => memberships}} = resp
-      assert memberships == ["not-a-uuid is not a valid Actor ID"]
+      assert %{"validation_errors" => %{"remove" => %{"0" => ["is invalid"]}}} = resp
     end
 
     test "PUT rejects an entry with no actor_id", %{

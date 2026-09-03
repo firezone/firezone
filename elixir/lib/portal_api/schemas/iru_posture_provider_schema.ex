@@ -5,6 +5,9 @@ defmodule PortalAPI.Schemas.IruPostureProvider do
     require OpenApiSpex
     alias OpenApiSpex.Schema
 
+    @derive {PortalAPI.JSON.Encoder,
+             for: Portal.Iru.PostureProvider,
+             internal: [:error_email_count]}
     OpenApiSpex.schema(%{
       title: "IruPostureProvider",
       description: "Iru (formerly Kandji) posture provider",
@@ -26,16 +29,25 @@ defmodule PortalAPI.Schemas.IruPostureProvider do
         updated_at: %Schema{type: :string, format: :"date-time"}
       },
       required: [
-        :id,
         :account_id,
-        :type,
-        :name,
-        :subdomain,
-        :region,
+        :disabled_reason,
+        :error_message,
+        :errored_at,
+        :id,
+        :inserted_at,
+        :is_disabled,
         :is_verified,
-        :is_disabled
+        :name,
+        :region,
+        :subdomain,
+        :synced_at,
+        :type,
+        :updated_at
       ]
     })
+
+    def map(%Portal.Iru.PostureProvider{posture_provider: %{name: name}}, _map), do: %{type: "iru", name: name}
+
   end
 
   defmodule Response do

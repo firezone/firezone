@@ -2,6 +2,7 @@ defmodule PortalAPI.ResourceController do
   use PortalAPI, :controller
   use OpenApiSpex.ControllerSpecs
   alias PortalAPI.Pagination
+  alias PortalAPI.JSON
   alias PortalAPI.Error
   alias PortalAPI.Filters
   alias PortalAPI.Schemas.ProblemDetails
@@ -55,7 +56,7 @@ defmodule PortalAPI.ResourceController do
          list_opts = Keyword.put(list_opts, :filter, coerce_filters(params)),
          {:ok, resources, metadata} <-
            Database.list_resources(conn.assigns.subject, list_opts) do
-      render(conn, :index, resources: resources, metadata: metadata)
+      json(conn, JSON.encode(resources, metadata))
     else
       error -> Error.handle(conn, error)
     end
@@ -90,7 +91,7 @@ defmodule PortalAPI.ResourceController do
   @spec show(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def show(conn, %{"id" => id}) do
     with {:ok, resource} <- Database.fetch_resource(id, conn.assigns.subject) do
-      render(conn, :show, resource: resource)
+      json(conn, JSON.encode(resource))
     else
       error -> Error.handle(conn, error)
     end
@@ -123,7 +124,7 @@ defmodule PortalAPI.ResourceController do
       conn
       |> put_status(:created)
       |> put_resp_header("location", ~p"/resources/#{resource}")
-      |> render(:show, resource: resource)
+      |> json(JSON.encode(resource))
     else
       error -> Error.handle(conn, error)
     end
@@ -167,7 +168,7 @@ defmodule PortalAPI.ResourceController do
     with {:ok, resource} <- Database.fetch_resource(id, subject),
          :ok <- validate_not_internet_resource(resource),
          {:ok, resource} <- Database.update_resource(resource, params, subject) do
-      render(conn, :show, resource: resource)
+      json(conn, JSON.encode(resource))
     else
       error -> Error.handle(conn, error)
     end
@@ -207,7 +208,7 @@ defmodule PortalAPI.ResourceController do
     with {:ok, resource} <- Database.fetch_resource(id, subject),
          :ok <- validate_not_internet_resource(resource),
          {:ok, resource} <- Database.delete_resource(resource, subject) do
-      render(conn, :show, resource: resource)
+      json(conn, JSON.encode(resource))
     else
       error -> Error.handle(conn, error)
     end
@@ -229,10 +230,10 @@ defmodule PortalAPI.ResourceController do
       |> Portal.Resource.changeset()
 
     required =
-      if Ecto.Changeset.get_field(changeset, :type) == :static_device_pool do
-        ~w[name type]a
-      else
-        ~w[name type site_id]a
+      case Ecto.Changeset.get_field(changeset, :type) do
+        :static_device_pool -> ~w[name type]a
+        :internet -> ~w[name type site_id]a
+        _ -> ~w[name type site_id address]a
       end
 
     changeset
@@ -425,10 +426,10 @@ defmodule PortalAPI.ResourceController do
         |> Portal.Resource.changeset()
 
       required_fields =
-        if Ecto.Changeset.get_field(changeset, :type) == :static_device_pool do
-          ~w[name type]a
-        else
-          ~w[name type site_id]a
+        case Ecto.Changeset.get_field(changeset, :type) do
+          :static_device_pool -> ~w[name type]a
+          :internet -> ~w[name type site_id]a
+          _ -> ~w[name type site_id address]a
         end
 
       changeset

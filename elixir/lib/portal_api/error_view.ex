@@ -1,12 +1,16 @@
 defmodule PortalAPI.ErrorView do
-  def render("500.json", _assigns) do
-    %{error: %{reason: "internal_error"}}
-  end
+  @moduledoc """
+  Renders the errors Phoenix raises outside a controller, such as an unknown
+  route, in the same RFC 9457 shape the controllers use.
+  """
 
-  # By default, Phoenix returns the status message from
-  # the template name. For example, "404.json" becomes
-  # "Not Found".
   def render(template, _assigns) do
-    %{error: %{reason: Phoenix.Controller.status_message_from_template(template)}}
+    status = template |> String.split(".") |> hd() |> String.to_integer()
+
+    %{
+      type: "about:blank",
+      title: Plug.Conn.Status.reason_phrase(status),
+      status: status
+    }
   end
 end
