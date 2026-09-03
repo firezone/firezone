@@ -1034,11 +1034,11 @@ mod tests {
 
         assert_eq!(
             error.user_message(),
-            "This device could not sign in with its certificate."
+            "This device could not sign in with its certificate"
         );
         assert_eq!(
             error.log_message(),
-            "Connection to portal failed: This device could not sign in with its certificate.: the keystore failed to sign: The requested operation is not supported. (0x80090029)"
+            "Connection to portal failed: This device could not sign in with its certificate: the keystore failed to sign: The requested operation is not supported. (0x80090029)"
         );
     }
 
@@ -1050,11 +1050,11 @@ mod tests {
 
         assert_eq!(
             error.user_message(),
-            "The connection to the Firezone Portal was lost and could not be restored."
+            "The connection to the Firezone Portal was lost and could not be restored"
         );
         assert_eq!(
             error.log_message(),
-            "Connection to portal failed: The connection to the Firezone Portal was lost and could not be restored.: websocket connection failed"
+            "Connection to portal failed: The connection to the Firezone Portal was lost and could not be restored: websocket connection failed"
         );
     }
 

@@ -218,6 +218,7 @@ const CERTIFICATE_REJECTION_CODES: &[&str] = &[
 ///
 /// These are product copy, not log lines. Word them for someone who has never seen this code.
 /// Diagnostics we cannot word for a user go into the variant's source, which only the logs render.
+/// A message with a source ends without a full stop, so that the chain reads as one sentence.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("Your Firezone sign-in has expired. Sign in again to reconnect.")]
@@ -227,21 +228,21 @@ pub enum Error {
     /// The reason it names is its own wording for the user.
     #[error("The Firezone Portal rejected this device's sign-in: {0}")]
     AuthenticationFailed(String),
-    #[error("This device could not sign in with its certificate.")]
+    #[error("This device could not sign in with its certificate")]
     ClientCertificateSigningFailed(#[source] BoxError),
     /// The portal refused the X.509 client certificate we presented.
     ///
     /// It words its rejections for the user, so anything we wrap around one only repeats it.
     #[error("{0}")]
     CertificateRejected(String),
-    #[error("The connection to the Firezone Portal was lost and could not be restored.")]
+    #[error("The connection to the Firezone Portal was lost and could not be restored")]
     MaxRetriesReached {
         #[source]
         final_error: BoxError,
     },
-    #[error("The Firezone Portal refused to start a session for this device.")]
+    #[error("The Firezone Portal refused to start a session for this device")]
     LoginFailed(#[source] BoxError),
-    #[error("Firezone ran into an unrecoverable error.")]
+    #[error("Firezone ran into an unrecoverable error")]
     FatalIo(#[source] io::Error),
 }
 
