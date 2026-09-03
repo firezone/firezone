@@ -256,7 +256,13 @@ defmodule PortalAPI.Schemas.ContractTest do
     %{
       schema: PortalAPI.Schemas.EntraDirectory.Schema,
       struct: Portal.Entra.Directory,
-      internal: [:error_email_count, :is_verified]
+      internal: [
+        :error_email_count,
+        :groups_subscription_id,
+        :is_verified,
+        :subscriptions_expire_at,
+        :users_subscription_id
+      ]
     },
     %{
       schema: PortalAPI.Schemas.GoogleDirectory.Schema,
@@ -364,7 +370,7 @@ defmodule PortalAPI.Schemas.ContractTest do
       test "marks every property required unless listed as optional" do
         %{optional: optional} = normalize(@contract)
         schema = @contract.schema.schema()
-        not_required = Map.keys(schema.properties) -- (schema.required || [])
+        not_required = Map.keys(schema.properties) -- List.wrap(schema.required)
 
         assert Enum.sort(not_required) == Enum.sort(optional),
                "#{inspect(@contract.schema)} must list every property the view always " <>
