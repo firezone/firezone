@@ -19,6 +19,7 @@ defmodule Portal.Google.Subscriptions do
   @lifetime_seconds 6 * 60 * 60
   @renew_within_seconds 30 * 60
   @min_schedule_seconds 60
+  @retry_seconds 10 * 60
 
   # A scheduled "renew" must not swallow an immediate "ensure", so the two keep
   # separate actions. :executing is left out so a job that arrives while one is
@@ -87,10 +88,21 @@ defmodule Portal.Google.Subscriptions do
     "#{base}/integrations/google/webhooks?directory_id=#{directory_id}"
   end
 
+  # A channel lives six hours, so a failed replacement is retried until the
+  # directory stops being eligible rather than discarded after a few attempts.
   defp ensure(directory) do
     if needs_attention?(directory) do
-      with {:ok, directory} <- replace_channel(directory) do
-        schedule_renewal(directory)
+      case replace_channel(directory) do
+        {:ok, directory} ->
+          schedule_renewal(directory)
+
+        {:error, reason} ->
+          Logger.warning("Failed to open Google users watch channel, retrying",
+            google_directory_id: directory.id,
+            reason: inspect(reason)
+          )
+
+          {:snooze, @retry_seconds}
       end
     else
       schedule_renewal(directory)
@@ -205,12 +217,19 @@ defmodule Portal.Google.Subscriptions do
     end
   end
 
-  # The directory row is gone once it is deleted, so the impersonation email
-  # travels in the job args as a fallback.
+  # The channel was opened as the admin the job names, who may differ from the
+  # one now on the row, and the row itself is gone once the directory is
+  # deleted. Only a legacy key still comes from the row.
   defp stop_access_token(account_id, directory_id, args) do
-    case Database.get_any_directory(account_id, directory_id) do
-      nil -> APIClient.get_access_token(args["impersonation_email"])
-      directory -> Google.Sync.get_access_token(directory)
+    directory = Database.get_any_directory(account_id, directory_id)
+    email = args["impersonation_email"] || (directory && directory.impersonation_email)
+
+    case directory do
+      %{legacy_service_account_key: key} when is_map(key) and map_size(key) > 0 ->
+        APIClient.get_access_token(email, key)
+
+      _ ->
+        APIClient.get_access_token(email)
     end
   end
 

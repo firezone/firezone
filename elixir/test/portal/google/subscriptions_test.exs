@@ -103,12 +103,11 @@ defmodule Portal.Google.SubscriptionsTest do
       assert directory.users_resource_id == "resource-#{directory.users_channel_id}"
     end
 
-    test "returns an error when Google refuses the watch", %{account: account} do
+    test "snoozes when Google refuses the watch", %{account: account} do
       directory = google_directory_fixture(account: account)
       stub_google(refuse_watch: true)
 
-      assert {:error, {:watch_users, _response}} =
-               perform_job(Subscriptions, ensure_args(directory))
+      assert {:snooze, 600} = perform_job(Subscriptions, ensure_args(directory))
 
       directory = reload(directory)
       assert directory.webhook_secret
@@ -166,6 +165,21 @@ defmodule Portal.Google.SubscriptionsTest do
       assert reload(directory).users_channel_id == "existing-channel"
     end
 
+    test "stops the channel as the admin it was opened with", %{account: account} do
+      directory = fresh_directory(account, 300)
+      stub_google()
+      args = %{stop_args(directory) | impersonation_email: "old-admin@example.com"}
+
+      directory
+      |> Ecto.Changeset.change(impersonation_email: "new-admin@example.com")
+      |> Repo.update!()
+
+      assert :ok = perform_job(Subscriptions, args)
+
+      assert_received {:google, "POST", "/token", %{"sub" => "old-admin@example.com"}}
+      assert is_nil(reload(directory).users_channel_id)
+    end
+
     test "works after the directory row is gone", %{account: account} do
       directory = fresh_directory(account, 300)
       stub_google()
@@ -216,6 +230,12 @@ defmodule Portal.Google.SubscriptionsTest do
     Repo.get_by!(Directory, id: directory.id)
   end
 
+  defp jwt_claims(body) do
+    %{"assertion" => jwt} = URI.decode_query(body)
+    [_header, payload, _signature] = String.split(jwt, ".")
+    payload |> Base.url_decode64!(padding: false) |> JSON.decode!()
+  end
+
   defp stub_google(opts \\ []) do
     refuse_watch = Keyword.get(opts, :refuse_watch, false)
     refuse_stop = Keyword.get(opts, :refuse_stop, [])
@@ -226,6 +246,8 @@ defmodule Portal.Google.SubscriptionsTest do
 
       cond do
         path == "/token" ->
+          {:ok, body, conn} = Plug.Conn.read_body(conn)
+          send(test_pid, {:google, "POST", path, jwt_claims(body)})
           Req.Test.json(conn, %{"access_token" => "token", "expires_in" => 3600})
 
         conn.method == "POST" and path == "/admin/directory/v1/users/watch" ->

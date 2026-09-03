@@ -97,9 +97,29 @@ defmodule Portal.Google.WebhookSync do
       :ok
     else
       case upsert_identity(directory, synced_at, user) do
-        :ok -> sync_org_unit_memberships(directory, synced_at, user["id"], org_unit_ids)
-        :skipped -> :ok
+        :ok ->
+          sync_org_unit_memberships(directory, synced_at, user["id"], org_unit_ids)
+          remove_identity_without_memberships(directory, user["id"])
+
+        :skipped ->
+          :ok
       end
+    end
+  end
+
+  # Identities only exist through a synced group or org unit, so a user who
+  # left their last one is gone as far as this directory is concerned.
+  defp remove_identity_without_memberships(directory, user_id) do
+    case Database.get_identity(directory, user_id) do
+      nil ->
+        :ok
+
+      identity ->
+        if Database.directory_membership_exists?(directory, identity.actor_id) do
+          :ok
+        else
+          remove_identity(directory, identity)
+        end
     end
   end
 
@@ -216,6 +236,18 @@ defmodule Portal.Google.WebhookSync do
       )
       |> Safe.unscoped()
       |> Safe.one()
+    end
+
+    def directory_membership_exists?(directory, actor_id) do
+      from(m in Portal.Membership,
+        join: g in Portal.Group,
+        on: m.group_id == g.id and m.account_id == g.account_id,
+        where: m.account_id == ^directory.account_id,
+        where: m.actor_id == ^actor_id,
+        where: g.directory_id == ^directory.id
+      )
+      |> Safe.unscoped()
+      |> Safe.exists?()
     end
 
     def delete_identity(identity) do

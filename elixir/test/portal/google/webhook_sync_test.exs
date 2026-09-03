@@ -102,6 +102,18 @@ defmodule Portal.Google.WebhookSyncTest do
       assert Repo.get_by(Actor, id: actor.id)
     end
 
+    test "removes a user who left every synced group and org unit",
+         %{directory: directory} = ctx do
+      identity = directory_identity(ctx, "user-1", member: false)
+      actor = mark_created_by_directory(identity.actor_id, directory)
+      stub_google(users: %{"user-1" => google_user("user-1", "Alice", "alice@example.com")})
+
+      assert :ok = perform_job(WebhookSync, args(directory, "user-1"))
+
+      refute Repo.get_by(ExternalIdentity, id: identity.id)
+      refute Repo.get_by(Actor, id: actor.id)
+    end
+
     test "ignores unknown users when org unit sync is off", %{directory: directory} do
       stub_google(users: %{"user-1" => google_user("user-1", "New", "new@example.com")})
 
@@ -218,6 +230,22 @@ defmodule Portal.Google.WebhookSyncTest do
       assert Repo.get_by(Membership, actor_id: actor.id, group_id: group.id)
     end
 
+    test "removes a user who moved out of every tracked org unit",
+         %{directory: directory, eng: eng, org_units: org_units} = ctx do
+      identity = directory_identity(ctx, "user-1", member: false)
+      actor = mark_created_by_directory(identity.actor_id, directory)
+      membership_fixture(actor: actor, group: eng)
+
+      user = google_user("user-1", "Alice", "alice@example.com", org_unit: "/Marketing")
+      stub_google(users: %{"user-1" => user}, org_units: org_units)
+
+      assert :ok = perform_job(WebhookSync, args(directory, "user-1"))
+
+      refute Repo.get_by(Membership, actor_id: actor.id)
+      refute Repo.get_by(ExternalIdentity, id: identity.id)
+      refute Repo.get_by(Actor, id: actor.id)
+    end
+
     test "ignores a new user outside every tracked org unit",
          %{directory: directory, org_units: org_units} do
       user = google_user("user-1", "Alice", "alice@example.com", org_unit: "/Marketing")
@@ -268,16 +296,30 @@ defmodule Portal.Google.WebhookSyncTest do
     %{account_id: directory.account_id, directory_id: directory.id, user_id: user_id}
   end
 
+  # Identities only exist through a synced group or org unit, so give each one
+  # a group membership unless a test wants a user without any.
   defp directory_identity(ctx, idp_id, attrs \\ []) do
-    attrs
-    |> Enum.into(%{})
-    |> Map.merge(%{
-      account: ctx.account,
-      directory: Repo.get_by!(Portal.Directory, id: ctx.directory.id),
-      issuer: Sync.issuer(),
-      idp_id: idp_id
-    })
-    |> identity_fixture()
+    {member, attrs} = Keyword.pop(attrs, :member, true)
+    base_directory = Repo.get_by!(Portal.Directory, id: ctx.directory.id)
+
+    identity =
+      attrs
+      |> Enum.into(%{})
+      |> Map.merge(%{
+        account: ctx.account,
+        directory: base_directory,
+        issuer: Sync.issuer(),
+        idp_id: idp_id
+      })
+      |> identity_fixture()
+
+    if member do
+      actor = Actor |> Repo.get_by!(id: identity.actor_id) |> Repo.preload(:account)
+      group = group_fixture(account: ctx.account, directory: base_directory)
+      membership_fixture(actor: actor, group: group)
+    end
+
+    identity
   end
 
   defp mark_created_by_directory(actor_id, directory) do
