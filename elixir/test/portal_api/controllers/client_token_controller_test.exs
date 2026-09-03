@@ -340,6 +340,7 @@ defmodule PortalAPI.ClientTokenControllerTest do
       conn =
         conn
         |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
         |> post("/actors/#{user_actor.id}/client_tokens", client_token: %{expires_at: expires_at})
 
       assert %{"type" => "about:blank", "status" => 400, "detail" => "Actor must be a service account"} =

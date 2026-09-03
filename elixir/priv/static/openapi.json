@@ -743,11 +743,12 @@
                 "type": "string"
               },
               "type": {
-                "description": "Resource type.",
+                "description": "Resource type. `internet` is accepted only in the Internet Site.",
                 "enum": [
                   "cidr",
                   "ip",
-                  "dns"
+                  "dns",
+                  "internet"
                 ],
                 "type": "string"
               }
@@ -3344,7 +3345,6 @@
               },
               "name": {
                 "description": "Actor Name",
-                "pattern": "[a-zA-Z][a-zA-Z0-9_]+",
                 "type": "string"
               },
               "type": {
@@ -3467,7 +3467,6 @@
           },
           "name": {
             "description": "Actor Name",
-            "pattern": "[a-zA-Z][a-zA-Z0-9_]+",
             "type": "string"
           },
           "type": {
@@ -5257,7 +5256,6 @@
           },
           "name": {
             "description": "Gateway Name",
-            "pattern": "[a-zA-Z][a-zA-Z0-9_]+",
             "type": "string"
           },
           "online": {
@@ -5556,11 +5554,13 @@
                 "type": "string"
               },
               "type": {
-                "description": "Resource type.",
+                "description": "Resource type. `internet` is accepted only in the Internet Site. `static_device_pool` is accepted only on a Resource that already is one.",
                 "enum": [
                   "cidr",
                   "ip",
-                  "dns"
+                  "dns",
+                  "internet",
+                  "static_device_pool"
                 ],
                 "type": "string"
               }
@@ -5633,7 +5633,6 @@
               },
               "name": {
                 "description": "Actor Name",
-                "pattern": "[a-zA-Z][a-zA-Z0-9_]+",
                 "type": "string"
               },
               "type": {
@@ -15752,6 +15751,22 @@
             },
             "description": "AccountResponse"
           },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The request could not be processed.",
+                  "status": 400,
+                  "title": "Bad Request",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
           "401": {
             "content": {
               "application/problem+json": {
@@ -15833,6 +15848,22 @@
               }
             },
             "description": "Deleted Tokens Response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The request could not be processed.",
+                  "status": 400,
+                  "title": "Bad Request",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
           },
           "401": {
             "content": {

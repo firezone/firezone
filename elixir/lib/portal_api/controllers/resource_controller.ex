@@ -229,10 +229,10 @@ defmodule PortalAPI.ResourceController do
       |> Portal.Resource.changeset()
 
     required =
-      if Ecto.Changeset.get_field(changeset, :type) == :static_device_pool do
-        ~w[name type]a
-      else
-        ~w[name type site_id]a
+      case Ecto.Changeset.get_field(changeset, :type) do
+        :static_device_pool -> ~w[name type]a
+        :internet -> ~w[name type site_id]a
+        _ -> ~w[name type site_id address]a
       end
 
     changeset
@@ -425,10 +425,10 @@ defmodule PortalAPI.ResourceController do
         |> Portal.Resource.changeset()
 
       required_fields =
-        if Ecto.Changeset.get_field(changeset, :type) == :static_device_pool do
-          ~w[name type]a
-        else
-          ~w[name type site_id]a
+        case Ecto.Changeset.get_field(changeset, :type) do
+          :static_device_pool -> ~w[name type]a
+          :internet -> ~w[name type site_id]a
+          _ -> ~w[name type site_id address]a
         end
 
       changeset

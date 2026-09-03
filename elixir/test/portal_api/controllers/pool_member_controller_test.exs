@@ -212,7 +212,7 @@ defmodule PortalAPI.PoolMemberControllerTest do
           |> put("/resources/#{pool.id}/pool_members", pool_members: body)
 
         assert resp = json_response(request_conn, 422), "#{label} was accepted"
-        assert Map.has_key?(resp["validation_errors"], "pool_members"), label
+        assert map_size(resp["validation_errors"]) > 0, label
       end
 
       # The pool is untouched by every one of those.

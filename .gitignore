@@ -38,3 +38,7 @@ buildServer.json
 __pycache__/
 
 erl_crash.dump
+
+# Schemathesis run state from scripts/tests/openapi-fuzz.sh
+.schemathesis/
+schemathesis-report/
