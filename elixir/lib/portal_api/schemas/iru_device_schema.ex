@@ -5,13 +5,100 @@ defmodule PortalAPI.Schemas.IruDevice do
     require OpenApiSpex
     alias OpenApiSpex.Schema
 
-    # The device table mirrors what Iru reports for a device, so the documented
-    # properties are derived from the Ecto schema. A newly synced field cannot
-    # end up in the database but missing here.
-    @required [:account_id, :posture_provider_id, :iru_id, :synced_at]
+    @not_null [:account_id, :posture_provider_id, :iru_id, :synced_at]
 
-    @properties Map.new(Portal.Iru.Device.__schema__(:fields), fn field ->
-                  nullable = field not in @required
+    # Property types come from the Ecto schema; the field list is explicit so a
+    # newly synced column is published only once it is added here.
+    @fields [
+      :account_id,
+      :iru_id,
+      :posture_provider_id,
+      :device_name,
+      :model,
+      :serial_number,
+      :platform,
+      :os_version,
+      :supplemental_build_version,
+      :supplemental_os_version_extra,
+      :last_check_in_at,
+      :user_id,
+      :user_name,
+      :user_email,
+      :user_is_archived,
+      :asset_tag,
+      :blueprint_id,
+      :blueprint_name,
+      :mdm_enabled,
+      :agent_installed,
+      :agent_version,
+      :is_missing,
+      :is_removed,
+      :first_enrolled_at,
+      :last_enrolled_at,
+      :lost_mode_status,
+      :tags,
+      :device_family,
+      :device_capacity_gb,
+      :host_name,
+      :local_hostname,
+      :apple_silicon,
+      :model_name,
+      :model_identifier,
+      :shared_ipad,
+      :cellular_technology,
+      :data_roaming,
+      :hotspot,
+      :os_build,
+      :os_name,
+      :display_os_version,
+      :inventory_collected_at,
+      :filevault_enabled,
+      :filevault_key_type,
+      :filevault_key_escrowed,
+      :filevault_regeneration_needed,
+      :filevault_key_rotation_scheduled_at,
+      :filevault_collected_at,
+      :firewall_enabled,
+      :firewall_block_all_incoming,
+      :firewall_logging,
+      :firewall_logging_option,
+      :firewall_stealth_mode,
+      :firewall_version,
+      :firewall_allow_signed_applications,
+      :firewall_unloading,
+      :firewall_collected_at,
+      :gatekeeper_enabled,
+      :gatekeeper_trusted_developers,
+      :gatekeeper_version,
+      :gatekeeper_opaque_version,
+      :xprotect_version,
+      :malware_removal_tool_version,
+      :gatekeeper_collected_at,
+      :sip_enabled,
+      :ssv_enabled,
+      :bootstrap_token_auth,
+      :bootstrap_token_escrowed,
+      :kext_requires_bootstrap_token,
+      :software_update_requires_bootstrap_token,
+      :external_boot_level,
+      :secure_boot_level,
+      :any_signed_os,
+      :mdm_manages_kext,
+      :user_manages_kext,
+      :startup_settings_collected_at,
+      :activation_lock_supported,
+      :activation_lock_allowed_while_supervised,
+      :device_activation_lock_enabled,
+      :user_activation_lock_enabled,
+      :activation_lock_bypass_code_failed,
+      :activation_lock_collected_at,
+      :synced_at,
+      :inserted_at,
+      :updated_at
+    ]
+
+    @properties Map.new(@fields, fn field ->
+                  nullable = field not in @not_null
 
                   schema =
                     case Portal.Iru.Device.__schema__(:type, field) do
@@ -46,7 +133,7 @@ defmodule PortalAPI.Schemas.IruDevice do
       description: "Device synced from Iru (formerly Kandji)",
       type: :object,
       properties: @properties,
-      required: @required
+      required: @fields
     })
   end
 

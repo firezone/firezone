@@ -145,3 +145,30 @@ jobs:
             http://localhost:8080/validator/debug)
           echo "$result"
           echo "$result" | jq -e '.schemaValidationMessages | length == 0'
+
+      # Reports breaking changes to the published API in the job summary. It
+      # does not fail the job: there is no API versioning strategy yet, so a
+      # breaking change is a review decision rather than a build error.
+      - name: Fetch base OpenAPI spec
+        if: github.base_ref != ''
+        run: git show "origin/${{ github.base_ref }}:elixir/priv/static/openapi.json" > ../base-openapi.json
+      - name: Check for breaking OpenAPI changes
+        id: oasdiff
+        if: github.base_ref != ''
+        uses: oasdiff/oasdiff-action/breaking@108bca0df7095bee6480199e16c6e53066868a0e # v0.0.9
+        with:
+          base: base-openapi.json
+          revision: elixir/priv/static/openapi.json
+          # Keep the spec in CI: no upload to oasdiff.com and no PR comment.
+          review: "false"
+          github-token: ""
+      - name: Summarize breaking OpenAPI changes
+        if: github.base_ref != '' && steps.oasdiff.outputs.breaking != ''
+        run: |
+          {
+            echo "## Breaking OpenAPI changes"
+            echo
+            echo '```'
+            echo "${{ steps.oasdiff.outputs.breaking }}"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

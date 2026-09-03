@@ -12,8 +12,13 @@ defmodule PortalAPI.Schemas.Membership do
       properties: %{
         id: %Schema{type: :string, format: :uuid, description: "Actor ID"},
         name: %Schema{type: :string, description: "Actor Name"},
-        type: %Schema{type: :string, description: "Actor Type"}
+        type: %Schema{
+          type: :string,
+          description: "Actor Type",
+          enum: ["account_admin_user", "account_user", "api_client", "service_account"]
+        }
       },
+      required: [:id, :name, :type],
       example: %{
         "id" => "7cb89288-1fb3-433e-a522-2d087e45988d",
         "name" => "John Doe",
@@ -50,8 +55,8 @@ defmodule PortalAPI.Schemas.Membership do
       required: [:memberships],
       example: %{
         "memberships" => %{
-          "add" => ["1234-1234"],
-          "remove" => ["2345-2345"]
+          "add" => ["4ddfa557-7dfc-484f-894c-2024ec3fe9f7"],
+          "remove" => ["89d22f71-939d-442d-b148-897b730adfb4"]
         }
       }
     })
@@ -79,8 +84,8 @@ defmodule PortalAPI.Schemas.Membership do
       required: [:memberships],
       example: %{
         "memberships" => [
-          %{"actor_id" => "1234-1234"},
-          %{"actor_id" => "2345-2345"}
+          %{"actor_id" => "4ddfa557-7dfc-484f-894c-2024ec3fe9f7"},
+          %{"actor_id" => "89d22f71-939d-442d-b148-897b730adfb4"}
         ]
       }
     })
@@ -103,26 +108,6 @@ defmodule PortalAPI.Schemas.Membership do
           items: Membership.Schema
         },
         metadata: PaginationMetadata
-      },
-      example: %{
-        "data" => [
-          %{
-            "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-            "name" => "John Doe",
-            "type" => "account_user"
-          },
-          %{
-            "id" => "cc9f561a-444d-4083-ab38-0abc6cf2314c",
-            "name" => "Jane Smith",
-            "type" => "account_admin_user"
-          }
-        ],
-        "metadata" => %{
-          "limit" => 10,
-          "total" => 100,
-          "prev_page" => "123123425",
-          "next_page" => "98776234123"
-        }
       }
     })
   end

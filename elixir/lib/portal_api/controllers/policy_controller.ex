@@ -84,6 +84,7 @@ defmodule PortalAPI.PolicyController do
           :bad_request,
           :unauthorized,
           :forbidden,
+          :not_found,
           :unprocessable_entity,
           :too_many_requests
         ])

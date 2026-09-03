@@ -12,7 +12,7 @@ defmodule PortalAPI.ConnCase do
 
       # Import conveniences for testing with connections
       import Plug.Conn
-      import Phoenix.ConnTest
+      import Phoenix.ConnTest, except: [json_response: 2]
       import PortalAPI.ConnCase
 
       alias Portal.Repo
@@ -55,5 +55,14 @@ defmodule PortalAPI.ConnCase do
 
   def equal_ids?(list1, list2) do
     MapSet.equal?(MapSet.new(list1), MapSet.new(list2))
+  end
+
+  @doc """
+  `Phoenix.ConnTest.json_response/2`, plus a check that the body matches the
+  response schema the operation declares in the OpenAPI spec.
+  """
+  def json_response(conn, status) do
+    body = Phoenix.ConnTest.json_response(conn, status)
+    PortalAPI.OpenAPIAssertions.assert_response_conforms(conn, body)
   end
 end

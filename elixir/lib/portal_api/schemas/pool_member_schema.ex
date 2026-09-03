@@ -19,6 +19,7 @@ defmodule PortalAPI.Schemas.PoolMember do
           nullable: true
         }
       },
+      required: [:id, :last_seen_at, :name],
       example: %{
         "id" => "7cb89288-1fb3-433e-a522-2d087e45988d",
         "name" => "jane-laptop",
@@ -116,26 +117,6 @@ defmodule PortalAPI.Schemas.PoolMember do
           items: PoolMember.Schema
         },
         metadata: PaginationMetadata
-      },
-      example: %{
-        "data" => [
-          %{
-            "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-            "name" => "jane-laptop",
-            "last_seen_at" => "2024-01-15T10:30:00Z"
-          },
-          %{
-            "id" => "cc9f561a-444d-4083-ab38-0abc6cf2314c",
-            "name" => "field-tablet-02",
-            "last_seen_at" => nil
-          }
-        ],
-        "metadata" => %{
-          "limit" => 10,
-          "total" => 100,
-          "prev_page" => "123123425",
-          "next_page" => "98776234123"
-        }
       }
     })
   end

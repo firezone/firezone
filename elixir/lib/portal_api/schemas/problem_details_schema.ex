@@ -50,6 +50,27 @@ defmodule PortalAPI.Schemas.ProblemDetails do
     }
   })
 
+  defmodule ValidationErrors do
+    require OpenApiSpex
+    alias OpenApiSpex.Schema
+
+    OpenApiSpex.schema(%{
+      title: "ValidationErrors",
+      description:
+        "Map of field name to its errors: a list of messages, or the errors of a nested " <>
+          "object or list of objects under the same shape.",
+      type: :object,
+      additionalProperties: %Schema{
+        anyOf: [
+          %Schema{type: :array, items: %Schema{type: :string}},
+          %Schema{type: :array, items: PortalAPI.Schemas.ProblemDetails.ValidationErrors},
+          PortalAPI.Schemas.ProblemDetails.ValidationErrors
+        ]
+      },
+      example: %{"name" => ["can't be blank"]}
+    })
+  end
+
   defmodule ValidationError do
     require OpenApiSpex
     alias OpenApiSpex.Schema
@@ -58,20 +79,19 @@ defmodule PortalAPI.Schemas.ProblemDetails do
       title: "ValidationProblemDetails",
       description:
         "RFC 9457 error response for request validation failures. The `validation_errors` " <>
-          "member maps each invalid field to a list of human-readable messages.",
+          "member maps each invalid field to a list of human-readable messages. Errors on " <>
+          "nested objects and on the items of a list are reported under the same shape, " <>
+          "keyed by field name or list index. It is omitted when the failure is not " <>
+          "attributable to individual fields.",
       type: :object,
       properties: %{
         type: %Schema{type: :string, example: "about:blank"},
         title: %Schema{type: :string, example: "Unprocessable Content"},
         status: %Schema{type: :integer, example: 422},
         detail: %Schema{type: :string, example: "The request body failed validation."},
-        validation_errors: %Schema{
-          type: :object,
-          description: "Map of field name to a list of validation error messages.",
-          additionalProperties: %Schema{type: :array, items: %Schema{type: :string}}
-        }
+        validation_errors: PortalAPI.Schemas.ProblemDetails.ValidationErrors
       },
-      required: [:type, :title, :status, :validation_errors],
+      required: [:type, :title, :status],
       example: %{
         "type" => "about:blank",
         "title" => "Unprocessable Content",
@@ -82,14 +102,21 @@ defmodule PortalAPI.Schemas.ProblemDetails do
     })
   end
 
+  # Every API route runs the auth, rate-limit, and scope plugs before the
+  # controller, so any operation can produce these.
+  @pipeline_codes [:unauthorized, :forbidden, :too_many_requests]
+
   @doc """
   Builds the `responses` entries for the given error status atoms, for use in
   OpenApiSpex `operation` specs, e.g.
 
-      responses: [ok: {...}] ++ ProblemDetails.responses([:unauthorized, :not_found])
+      responses: [ok: {...}] ++ ProblemDetails.responses([:not_found])
+
+  The responses every route in the API pipeline can produce are always
+  included, so callers only list the ones specific to their operation.
   """
   def responses(codes) when is_list(codes) do
-    Enum.map(codes, fn code -> {code, response_for(code)} end)
+    Enum.map(Enum.uniq(@pipeline_codes ++ codes), fn code -> {code, response_for(code)} end)
   end
 
   defp response_for(code) do
