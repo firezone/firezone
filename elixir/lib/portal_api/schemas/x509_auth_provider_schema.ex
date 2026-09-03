@@ -2,6 +2,8 @@ defmodule PortalAPI.Schemas.X509AuthProvider do
   alias OpenApiSpex.Schema
 
   defmodule Schema do
+    @behaviour PortalAPI.Schema
+
     require OpenApiSpex
     alias OpenApiSpex.Schema
 
@@ -29,6 +31,9 @@ defmodule PortalAPI.Schemas.X509AuthProvider do
         "updated_at" => "2025-01-15T10:30:00Z"
       }
     })
+
+    @impl true
+    def struct_module, do: Portal.X509.AuthProvider
   end
 
   defmodule Response do

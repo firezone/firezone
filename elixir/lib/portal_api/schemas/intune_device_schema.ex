@@ -2,6 +2,8 @@ defmodule PortalAPI.Schemas.IntuneDevice do
   alias OpenApiSpex.Schema
 
   defmodule Schema do
+    @behaviour PortalAPI.Schema
+
     require OpenApiSpex
     alias OpenApiSpex.Schema
 
@@ -130,6 +132,9 @@ defmodule PortalAPI.Schemas.IntuneDevice do
       properties: @properties,
       required: @fields
     })
+
+    @impl true
+    def struct_module, do: Portal.Intune.Device
   end
 
   defmodule Response do

@@ -2,6 +2,7 @@ defmodule PortalAPI.SiteController do
   use PortalAPI, :controller
   use OpenApiSpex.ControllerSpecs
   alias PortalAPI.Pagination
+  alias PortalAPI.Render
   alias PortalAPI.Error
   alias PortalAPI.Filters
   alias PortalAPI.Schemas.ProblemDetails
@@ -33,7 +34,7 @@ defmodule PortalAPI.SiteController do
     with {:ok, list_opts} <- Pagination.params_to_list_opts(params),
          list_opts = Keyword.put(list_opts, :filter, coerce_filters(params)),
          {:ok, sites, metadata} <- Database.list_sites(conn.assigns.subject, list_opts) do
-      render(conn, :index, sites: sites, metadata: metadata)
+      Render.list(conn, sites, metadata)
     else
       error -> Error.handle(conn, error)
     end
@@ -64,7 +65,7 @@ defmodule PortalAPI.SiteController do
   @spec show(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def show(conn, %{"id" => id}) do
     with {:ok, site} <- Database.fetch_site(id, conn.assigns.subject) do
-      render(conn, :show, site: site)
+      Render.one(conn, site)
     else
       error -> Error.handle(conn, error)
     end
@@ -96,7 +97,7 @@ defmodule PortalAPI.SiteController do
       conn
       |> put_status(:created)
       |> put_resp_header("location", ~p"/sites/#{site}")
-      |> render(:show, site: site)
+      |> Render.one(site)
     else
       error -> Error.handle(conn, error)
     end
@@ -149,7 +150,7 @@ defmodule PortalAPI.SiteController do
     with {:ok, site} <- Database.fetch_site(id, subject),
          :ok <- validate_not_system_managed(site),
          {:ok, site} <- Database.update_site(site, params, subject) do
-      render(conn, :show, site: site)
+      Render.one(conn, site)
     else
       error -> Error.handle(conn, error)
     end
@@ -189,7 +190,7 @@ defmodule PortalAPI.SiteController do
     with {:ok, site} <- Database.fetch_site(id, subject),
          :ok <- validate_not_system_managed(site),
          {:ok, site} <- Database.delete_site(site, subject) do
-      render(conn, :show, site: site)
+      Render.one(conn, site)
     else
       error -> Error.handle(conn, error)
     end

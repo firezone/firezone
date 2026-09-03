@@ -2,6 +2,8 @@ defmodule PortalAPI.Schemas.EmailOTPAuthProvider do
   alias OpenApiSpex.Schema
 
   defmodule Schema do
+    @behaviour PortalAPI.Schema
+
     require OpenApiSpex
     alias OpenApiSpex.Schema
 
@@ -62,6 +64,9 @@ defmodule PortalAPI.Schemas.EmailOTPAuthProvider do
         "updated_at" => "2025-01-15T10:30:00Z"
       }
     })
+
+    @impl true
+    def struct_module, do: Portal.EmailOTP.AuthProvider
   end
 
   defmodule Response do

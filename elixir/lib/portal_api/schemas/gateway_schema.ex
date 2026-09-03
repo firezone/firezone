@@ -2,6 +2,8 @@ defmodule PortalAPI.Schemas.Gateway do
   alias OpenApiSpex.Schema
 
   defmodule Schema do
+    @behaviour PortalAPI.Schema
+
     require OpenApiSpex
     alias OpenApiSpex.Schema
 
@@ -131,6 +133,41 @@ defmodule PortalAPI.Schemas.Gateway do
         "last_seen_remote_ip_location_lon" => -122.4194
       }
     })
+
+    @impl true
+    def struct_module, do: Portal.Device
+
+    @impl true
+    def internal do
+      [
+        :account_id,
+        :actor_id,
+        :attested?,
+        :client_token_id,
+        :device_serial,
+        :device_uuid,
+        :firebase_installation_id,
+        :firezone_id,
+        :firezone_id_merged?,
+        :hostname,
+        :identifier_for_vendor,
+        :inserted_at,
+        :last_attested_at,
+        :last_attested_cert_fingerprint,
+        :last_attested_cert_issuer,
+        :last_attested_cert_serial,
+        :last_attested_device_serial,
+        :last_attested_device_uuid,
+        :last_attested_mdm_device_id,
+        :site_id,
+        :type,
+        :updated_at,
+        :verified_at
+      ]
+    end
+
+    @impl true
+    def aliases, do: [online: :online?, rotated_at: :gateway_token_rotated_at]
   end
 
   defmodule CreateSchema do

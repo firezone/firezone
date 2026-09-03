@@ -2,6 +2,8 @@ defmodule PortalAPI.Schemas.GatewayToken do
   alias OpenApiSpex.Schema
 
   defmodule Schema do
+    @behaviour PortalAPI.Schema
+
     require OpenApiSpex
     alias OpenApiSpex.Schema
 
@@ -19,6 +21,16 @@ defmodule PortalAPI.Schemas.GatewayToken do
         "token" => "secret-token-here"
       }
     })
+
+    @impl true
+    def struct_module, do: Portal.GatewayToken
+
+    @impl true
+    def internal, do: [:account_id, :device_id, :inserted_at, :rotated_at, :rotated_sibling_id, :site_id]
+
+    # The encoded secret is passed in by the controller.
+    @impl true
+    def computed, do: [:token]
   end
 
   defmodule Response do

@@ -2,6 +2,8 @@ defmodule PortalAPI.Schemas.Actor do
   alias OpenApiSpex.Schema
 
   defmodule Schema do
+    @behaviour PortalAPI.Schema
+
     require OpenApiSpex
     alias OpenApiSpex.Schema
 
@@ -79,6 +81,12 @@ defmodule PortalAPI.Schemas.Actor do
         "updated_at" => "2024-01-15T10:30:00Z"
       }
     })
+
+    @impl true
+    def struct_module, do: Portal.Actor
+
+    @impl true
+    def internal, do: [:account_id, :identity_count, :preferences]
   end
 
   defmodule CreateRequest do

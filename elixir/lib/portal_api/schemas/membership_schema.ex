@@ -2,6 +2,8 @@ defmodule PortalAPI.Schemas.Membership do
   alias OpenApiSpex.Schema
 
   defmodule Schema do
+    @behaviour PortalAPI.Schema
+
     require OpenApiSpex
     alias OpenApiSpex.Schema
 
@@ -25,6 +27,25 @@ defmodule PortalAPI.Schemas.Membership do
         "type" => "account_user"
       }
     })
+
+    @impl true
+    def struct_module, do: Portal.Actor
+
+    @impl true
+    def internal do
+      [
+        :account_id,
+        :allow_email_otp_sign_in,
+        :created_by_directory_id,
+        :email,
+        :identity_count,
+        :inserted_at,
+        :is_disabled,
+        :last_seen_at,
+        :preferences,
+        :updated_at
+      ]
+    end
   end
 
   defmodule PatchRequest do

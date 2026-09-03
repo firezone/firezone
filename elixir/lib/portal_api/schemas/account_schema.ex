@@ -37,6 +37,8 @@ defmodule PortalAPI.Schemas.Account do
   end
 
   defmodule Schema do
+    @behaviour PortalAPI.Schema
+
     require OpenApiSpex
     alias OpenApiSpex.Schema
 
@@ -59,6 +61,35 @@ defmodule PortalAPI.Schemas.Account do
       },
       required: [:id, :key, :legal_name, :limits, :name, :slug]
     })
+
+    @impl true
+    def struct_module, do: Portal.Account
+
+    @impl true
+    def internal do
+      [
+        :admins_limit_exceeded,
+        :config,
+        :disabled_reason,
+        :features,
+        :inserted_at,
+        :is_disabled,
+        :lock_enabled_at,
+        :metadata,
+        :scheduled_deletion_at,
+        :seats_limit_exceeded,
+        :service_accounts_limit_exceeded,
+        :sites_limit_exceeded,
+        :updated_at,
+        :users_limit_exceeded,
+        :warning_last_sent_at
+      ]
+    end
+
+    # `limits` is the account's usage against its limits, which the controller
+    # counts and passes in.
+    @impl true
+    def computed, do: [:limits]
   end
 
   defmodule Response do

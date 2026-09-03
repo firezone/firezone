@@ -4,6 +4,7 @@ defmodule PortalAPI.ClientTokenController do
   alias Portal.Authentication
   alias PortalAPI.Error
   alias PortalAPI.Pagination
+  alias PortalAPI.Render
   alias PortalAPI.Schemas.ProblemDetails
   alias __MODULE__.Database
 
@@ -43,7 +44,7 @@ defmodule PortalAPI.ClientTokenController do
 
     with {:ok, list_opts} <- Pagination.params_to_list_opts(params),
          {:ok, tokens, metadata} <- Database.list_tokens(actor_id, subject, list_opts) do
-      render(conn, :index, tokens: tokens, metadata: metadata)
+      Render.list(conn, tokens, metadata)
     else
       error -> Error.handle(conn, error)
     end
@@ -84,7 +85,7 @@ defmodule PortalAPI.ClientTokenController do
   @spec show(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def show(conn, %{"actor_id" => actor_id, "id" => token_id}) do
     with {:ok, token} <- Database.fetch_token_by_id(actor_id, token_id, conn.assigns.subject) do
-      render(conn, :show_metadata, token: token)
+      Render.one(conn, token)
     else
       error -> Error.handle(conn, error)
     end
@@ -127,7 +128,10 @@ defmodule PortalAPI.ClientTokenController do
          {:ok, token} <- Authentication.create_non_interactive_client_token(actor, attrs, subject) do
       conn
       |> put_status(:created)
-      |> render(:show_secret, token: token, encoded_token: Authentication.encode_fragment!(token))
+      |> Render.one(token,
+        schema: PortalAPI.Schemas.ClientToken.ResponseSchema,
+        token: Authentication.encode_fragment!(token)
+      )
     else
       error -> Error.handle(conn, error)
     end
@@ -174,7 +178,7 @@ defmodule PortalAPI.ClientTokenController do
     subject = conn.assigns.subject
 
     with {:ok, token} <- Database.delete_token_by_id(token_id, actor_id, subject) do
-      render(conn, :deleted, token: token)
+      json(conn, %{data: %{id: token.id}})
     else
       error -> Error.handle(conn, error)
     end
@@ -218,7 +222,7 @@ defmodule PortalAPI.ClientTokenController do
         Error.handle(conn, {:error, reason})
 
       {deleted_count, _} ->
-        render(conn, :deleted_all, count: deleted_count)
+        json(conn, %{data: %{deleted_count: deleted_count}})
     end
   end
 

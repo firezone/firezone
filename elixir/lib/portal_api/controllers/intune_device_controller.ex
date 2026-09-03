@@ -3,6 +3,7 @@ defmodule PortalAPI.IntuneDeviceController do
   use OpenApiSpex.ControllerSpecs
 
   alias PortalAPI.{Error, Pagination, Schemas.ProblemDetails}
+  alias PortalAPI.Render
   alias __MODULE__.Database
 
   tags ["Intune Devices"]
@@ -44,7 +45,7 @@ defmodule PortalAPI.IntuneDeviceController do
   def index(conn, params) do
     with {:ok, opts} <- Pagination.params_to_list_opts(params),
          {:ok, devices, metadata} <- Database.list_devices(conn.assigns.subject, opts) do
-      render(conn, :index, devices: devices, metadata: metadata)
+      Render.list(conn, devices, metadata)
     else
       error -> Error.handle(conn, error)
     end
@@ -52,7 +53,7 @@ defmodule PortalAPI.IntuneDeviceController do
 
   def show(conn, %{"id" => id}) do
     with {:ok, device} <- Database.fetch_device(id, conn.assigns.subject) do
-      render(conn, :show, device: device)
+      Render.one(conn, device)
     else
       error -> Error.handle(conn, error)
     end

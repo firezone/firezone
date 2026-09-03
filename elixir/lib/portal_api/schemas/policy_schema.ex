@@ -160,7 +160,9 @@ defmodule PortalAPI.Schemas.Policy do
     })
   end
 
-  defmodule ResponseSchema do
+  defmodule Schema do
+    @behaviour PortalAPI.Schema
+
     require OpenApiSpex
     alias OpenApiSpex.Schema
     alias PortalAPI.Schemas.Policy
@@ -222,6 +224,19 @@ defmodule PortalAPI.Schemas.Policy do
         ]
       }
     })
+
+    @impl true
+    def struct_module, do: Portal.Policy
+
+    @impl true
+    def internal, do: [:account_id, :group_idp_id, :inserted_at, :updated_at]
+
+    @impl true
+    def value(:conditions, %Portal.Policy{conditions: conditions}) do
+      Enum.map(conditions, &%{property: &1.property, operator: &1.operator, values: &1.values})
+    end
+
+    def value(field, policy), do: Map.fetch!(policy, field)
   end
 
   defmodule CreateRequest do
@@ -292,7 +307,7 @@ defmodule PortalAPI.Schemas.Policy do
       description: "Response schema for single Policy",
       type: :object,
       properties: %{
-        data: Policy.ResponseSchema
+        data: Policy.Schema
       },
       example: %{
         "data" => %{
@@ -325,7 +340,7 @@ defmodule PortalAPI.Schemas.Policy do
       description: "Response schema for multiple Policies",
       type: :object,
       properties: %{
-        data: %Schema{description: "Policy details", type: :array, items: Policy.ResponseSchema},
+        data: %Schema{description: "Policy details", type: :array, items: Policy.Schema},
         metadata: PaginationMetadata
       }
     })

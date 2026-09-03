@@ -2,6 +2,7 @@ defmodule PortalAPI.OktaDirectoryController do
   use PortalAPI, :controller
   use OpenApiSpex.ControllerSpecs
   alias PortalAPI.Error
+  alias PortalAPI.Render
   alias PortalAPI.Filters
   alias PortalAPI.Pagination
   alias PortalAPI.Schemas.ProblemDetails
@@ -41,7 +42,7 @@ defmodule PortalAPI.OktaDirectoryController do
          list_opts = Keyword.put(list_opts, :filter, coerce_filters(params)),
          {:ok, directories, metadata} <-
            Database.list_directories(conn.assigns.subject, list_opts) do
-      render(conn, :index, directories: directories, metadata: metadata)
+      Render.list(conn, directories, metadata)
     else
       error -> Error.handle(conn, error)
     end
@@ -79,7 +80,7 @@ defmodule PortalAPI.OktaDirectoryController do
   @spec show(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def show(conn, %{"id" => id}) do
     with {:ok, directory} <- Database.fetch_directory(id, conn.assigns.subject) do
-      render(conn, :show, directory: directory)
+      Render.one(conn, directory)
     else
       error -> Error.handle(conn, error)
     end

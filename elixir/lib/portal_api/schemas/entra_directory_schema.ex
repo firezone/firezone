@@ -2,6 +2,8 @@ defmodule PortalAPI.Schemas.EntraDirectory do
   alias OpenApiSpex.Schema
 
   defmodule Schema do
+    @behaviour PortalAPI.Schema
+
     require OpenApiSpex
     alias OpenApiSpex.Schema
 
@@ -81,6 +83,20 @@ defmodule PortalAPI.Schemas.EntraDirectory do
         "updated_at" => "2025-01-15T10:30:00Z"
       }
     })
+
+    @impl true
+    def struct_module, do: Portal.Entra.Directory
+
+    @impl true
+    def internal do
+      [
+        :error_email_count,
+        :groups_subscription_id,
+        :is_verified,
+        :subscriptions_expire_at,
+        :users_subscription_id
+      ]
+    end
   end
 
   defmodule Response do

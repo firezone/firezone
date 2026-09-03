@@ -2,6 +2,8 @@ defmodule PortalAPI.Schemas.ExternalIdentity do
   alias OpenApiSpex.Schema
 
   defmodule Schema do
+    @behaviour PortalAPI.Schema
+
     require OpenApiSpex
     alias OpenApiSpex.Schema
 
@@ -91,6 +93,27 @@ defmodule PortalAPI.Schemas.ExternalIdentity do
         "inserted_at" => "2025-01-01T00:00:00Z"
       }
     })
+
+    @impl true
+    def struct_module, do: Portal.ExternalIdentity
+
+    @impl true
+    def internal, do: [:directory_name, :updated_at]
+
+    @impl true
+    def computed, do: [:synced_at]
+
+    @impl true
+    def value(:email, %Portal.ExternalIdentity{} = identity), do: identity.email || identity.idp_id
+
+    def value(:idp_id, %Portal.ExternalIdentity{idp_id: idp_id}),
+      do: idp_id |> String.split(":", parts: 2) |> List.last()
+
+    def value(:synced_at, %Portal.ExternalIdentity{sync_state: %Portal.ExternalIdentitySyncState{synced_at: t}}),
+      do: t
+
+    def value(:synced_at, %Portal.ExternalIdentity{}), do: nil
+    def value(field, identity), do: Map.fetch!(identity, field)
   end
 
   defmodule Request do

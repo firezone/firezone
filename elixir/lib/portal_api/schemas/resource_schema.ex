@@ -2,6 +2,8 @@ defmodule PortalAPI.Schemas.Resource do
   alias OpenApiSpex.Schema
 
   defmodule Schema do
+    @behaviour PortalAPI.Schema
+
     require OpenApiSpex
     alias OpenApiSpex.Schema
 
@@ -61,6 +63,22 @@ defmodule PortalAPI.Schemas.Resource do
         "site_id" => "0642e09d-b3a2-47e4-9cd1-c2195faeeb67"
       }
     })
+
+    @impl true
+    def struct_module, do: Portal.Resource
+
+    @impl true
+    def internal, do: [:account_id, :inserted_at, :updated_at]
+
+    @impl true
+    def optional, do: [:ip_stack, :site_id]
+
+    @impl true
+    def value(:filters, %Portal.Resource{filters: filters}) do
+      Enum.map(filters, &%{protocol: &1.protocol, ports: &1.ports})
+    end
+
+    def value(field, resource), do: Map.fetch!(resource, field)
   end
 
   defmodule Filter do

@@ -2,6 +2,8 @@ defmodule PortalAPI.Schemas.GoogleDirectory do
   alias OpenApiSpex.Schema
 
   defmodule Schema do
+    @behaviour PortalAPI.Schema
+
     require OpenApiSpex
     alias OpenApiSpex.Schema
 
@@ -87,6 +89,12 @@ defmodule PortalAPI.Schemas.GoogleDirectory do
         "updated_at" => "2025-01-15T10:30:00Z"
       }
     })
+
+    @impl true
+    def struct_module, do: Portal.Google.Directory
+
+    @impl true
+    def internal, do: [:error_email_count, :is_verified, :sync_all_domains]
   end
 
   defmodule Response do

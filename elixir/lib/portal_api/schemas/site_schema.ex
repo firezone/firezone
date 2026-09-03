@@ -2,6 +2,8 @@ defmodule PortalAPI.Schemas.Site do
   alias OpenApiSpex.Schema
 
   defmodule Schema do
+    @behaviour PortalAPI.Schema
+
     require OpenApiSpex
     alias OpenApiSpex.Schema
 
@@ -19,6 +21,12 @@ defmodule PortalAPI.Schemas.Site do
         "name" => "vpc-us-east"
       }
     })
+
+    @impl true
+    def struct_module, do: Portal.Site
+
+    @impl true
+    def internal, do: [:account_id, :health_threshold, :inserted_at, :managed_by, :updated_at]
   end
 
   defmodule CreateRequest do

@@ -2,6 +2,8 @@ defmodule PortalAPI.Schemas.DefenderPostureProvider do
   alias OpenApiSpex.Schema
 
   defmodule Schema do
+    @behaviour PortalAPI.Schema
+
     require OpenApiSpex
     alias OpenApiSpex.Schema
 
@@ -40,6 +42,20 @@ defmodule PortalAPI.Schemas.DefenderPostureProvider do
         :updated_at
       ]
     })
+
+    @impl true
+    def struct_module, do: Portal.Defender.PostureProvider
+
+    @impl true
+    def internal, do: [:error_email_count]
+
+    @impl true
+    def computed, do: [:type, :name]
+
+    @impl true
+    def value(:type, %Portal.Defender.PostureProvider{}), do: "defender"
+    def value(:name, %Portal.Defender.PostureProvider{posture_provider: %{name: name}}), do: name
+    def value(field, provider), do: Map.fetch!(provider, field)
   end
 
   defmodule Response do

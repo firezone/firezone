@@ -2,6 +2,8 @@ defmodule PortalAPI.Schemas.IruDevice do
   alias OpenApiSpex.Schema
 
   defmodule Schema do
+    @behaviour PortalAPI.Schema
+
     require OpenApiSpex
     alias OpenApiSpex.Schema
 
@@ -135,6 +137,9 @@ defmodule PortalAPI.Schemas.IruDevice do
       properties: @properties,
       required: @fields
     })
+
+    @impl true
+    def struct_module, do: Portal.Iru.Device
   end
 
   defmodule Response do

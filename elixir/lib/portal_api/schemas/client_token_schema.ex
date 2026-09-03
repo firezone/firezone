@@ -2,6 +2,8 @@ defmodule PortalAPI.Schemas.ClientToken do
   alias OpenApiSpex.Schema
 
   defmodule Schema do
+    @behaviour PortalAPI.Schema
+
     require OpenApiSpex
     alias OpenApiSpex.Schema
 
@@ -25,6 +27,21 @@ defmodule PortalAPI.Schemas.ClientToken do
         "updated_at" => "2025-01-15T12:34:56.789Z"
       }
     })
+
+    @impl true
+    def struct_module, do: Portal.ClientToken
+
+    @impl true
+    def internal do
+      [
+        :account_id,
+        :auth_provider_id,
+        :auth_provider_name,
+        :auth_provider_type,
+        :last_used_device,
+        :online?
+      ]
+    end
   end
 
   defmodule CreateSchema do
@@ -46,6 +63,8 @@ defmodule PortalAPI.Schemas.ClientToken do
   end
 
   defmodule ResponseSchema do
+    @behaviour PortalAPI.Schema
+
     require OpenApiSpex
     alias OpenApiSpex.Schema
     alias PortalAPI.Schemas.ClientToken
@@ -74,6 +93,25 @@ defmodule PortalAPI.Schemas.ClientToken do
         "token" => "secret-token-here"
       }
     })
+
+    @impl true
+    def struct_module, do: Portal.ClientToken
+
+    @impl true
+    def internal do
+      [
+        :account_id,
+        :auth_provider_id,
+        :auth_provider_name,
+        :auth_provider_type,
+        :last_used_device,
+        :online?
+      ]
+    end
+
+    # The encoded secret exists only at creation and is passed in by the controller.
+    @impl true
+    def computed, do: [:token]
   end
 
   defmodule Request do

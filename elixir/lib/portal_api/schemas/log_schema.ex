@@ -1,5 +1,7 @@
 defmodule PortalAPI.Schemas.Log do
   defmodule Change do
+    @behaviour PortalAPI.Schema
+
     require OpenApiSpex
     alias OpenApiSpex.Schema
     alias PortalAPI.Schemas
@@ -73,9 +75,24 @@ defmodule PortalAPI.Schemas.Log do
         "subject" => nil
       }
     })
+
+    @impl true
+    def struct_module, do: Portal.ChangeLog
+
+    @impl true
+    def internal, do: [:account_id, :lsn, :seq, :vsn]
+
+    @impl true
+    def computed, do: [:type]
+
+    @impl true
+    def value(:type, %Portal.ChangeLog{}), do: "change"
+    def value(field, log), do: Map.fetch!(log, field)
   end
 
   defmodule Session do
+    @behaviour PortalAPI.Schema
+
     require OpenApiSpex
     alias OpenApiSpex.Schema
     alias PortalAPI.Schemas
@@ -146,9 +163,24 @@ defmodule PortalAPI.Schemas.Log do
         }
       }
     })
+
+    @impl true
+    def struct_module, do: Portal.SessionLog
+
+    @impl true
+    def internal, do: [:account_id, :seq]
+
+    @impl true
+    def computed, do: [:type]
+
+    @impl true
+    def value(:type, %Portal.SessionLog{}), do: "session"
+    def value(field, log), do: Map.fetch!(log, field)
   end
 
   defmodule Flow do
+    @behaviour PortalAPI.Schema
+
     require OpenApiSpex
     alias OpenApiSpex.Schema
 
@@ -476,9 +508,31 @@ defmodule PortalAPI.Schemas.Log do
         "tx_bytes" => 20_480
       }
     })
+
+    @impl true
+    def struct_module, do: Portal.FlowLog
+
+    @impl true
+    def internal, do: [:account_id, :seq, :start_seq]
+
+    @impl true
+    def computed, do: [:type]
+
+    @impl true
+    def aliases, do: [timestamp: :inserted_at, inner_domain: :domain]
+
+    @impl true
+    def value(:type, %Portal.FlowLog{}), do: "flow"
+    def value(:inner_src_ip, %Portal.FlowLog{inner_src_ip: ip}), do: ip && "#{ip}"
+    def value(:inner_dst_ip, %Portal.FlowLog{inner_dst_ip: ip}), do: ip && "#{ip}"
+    def value(:outers, %Portal.FlowLog{flow_end: nil}), do: nil
+    def value(:outers, %Portal.FlowLog{outers: outers}), do: Portal.FlowLog.outers_to_maps(outers)
+    def value(field, log), do: Map.fetch!(log, field)
   end
 
   defmodule APIRequest do
+    @behaviour PortalAPI.Schema
+
     require OpenApiSpex
     alias OpenApiSpex.Schema
 
@@ -559,6 +613,23 @@ defmodule PortalAPI.Schemas.Log do
         "ip_lon" => -99.1332
       }
     })
+
+    @impl true
+    def struct_module, do: Portal.APIRequestLog
+
+    @impl true
+    def internal, do: [:account_id, :seq]
+
+    @impl true
+    def computed, do: [:type]
+
+    @impl true
+    def aliases, do: [timestamp: :inserted_at]
+
+    @impl true
+    def value(:type, %Portal.APIRequestLog{}), do: "api_request"
+    def value(:ip, %Portal.APIRequestLog{ip: ip}), do: ip && "#{ip}"
+    def value(field, log), do: Map.fetch!(log, field)
   end
 
   defmodule Item do

@@ -2,6 +2,8 @@ defmodule PortalAPI.Schemas.Group do
   alias OpenApiSpex.Schema
 
   defmodule Schema do
+    @behaviour PortalAPI.Schema
+
     require OpenApiSpex
     alias OpenApiSpex.Schema
 
@@ -73,6 +75,20 @@ defmodule PortalAPI.Schemas.Group do
         "updated_at" => "2024-01-15T10:30:00Z"
       }
     })
+
+    @impl true
+    def struct_module, do: Portal.Group
+
+    @impl true
+    def internal, do: [:account_id, :type]
+
+    @impl true
+    def computed, do: [:synced_at]
+
+    @impl true
+    def value(:synced_at, %Portal.Group{sync_state: %Portal.GroupSyncState{synced_at: t}}), do: t
+    def value(:synced_at, %Portal.Group{}), do: nil
+    def value(field, group), do: Map.fetch!(group, field)
   end
 
   defmodule CreateRequest do

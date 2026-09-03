@@ -2,6 +2,8 @@ defmodule PortalAPI.Schemas.Client do
   alias OpenApiSpex.Schema
 
   defmodule GetSchema do
+    @behaviour PortalAPI.Schema
+
     require OpenApiSpex
     alias OpenApiSpex.Schema
 
@@ -227,6 +229,27 @@ defmodule PortalAPI.Schemas.Client do
         "updated_at" => "2025-01-01T00:00:00Z"
       }
     })
+
+    @impl true
+    def struct_module, do: Portal.Device
+
+    @impl true
+    def internal do
+      [
+        :account_id,
+        :attested?,
+        :client_token_id,
+        :firezone_id_merged?,
+        :gateway_token_id,
+        :gateway_token_rotated_at,
+        :last_attested_cert_issuer,
+        :site_id,
+        :type
+      ]
+    end
+
+    @impl true
+    def aliases, do: [online: :online?, created_at: :inserted_at]
   end
 
   defmodule PutSchema do

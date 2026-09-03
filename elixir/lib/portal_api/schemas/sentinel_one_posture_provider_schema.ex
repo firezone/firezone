@@ -2,6 +2,8 @@ defmodule PortalAPI.Schemas.SentinelOnePostureProvider do
   alias OpenApiSpex.Schema
 
   defmodule Schema do
+    @behaviour PortalAPI.Schema
+
     require OpenApiSpex
     alias OpenApiSpex.Schema
 
@@ -40,6 +42,20 @@ defmodule PortalAPI.Schemas.SentinelOnePostureProvider do
         :updated_at
       ]
     })
+
+    @impl true
+    def struct_module, do: Portal.SentinelOne.PostureProvider
+
+    @impl true
+    def internal, do: [:error_email_count]
+
+    @impl true
+    def computed, do: [:type, :name]
+
+    @impl true
+    def value(:type, %Portal.SentinelOne.PostureProvider{}), do: "sentinelone"
+    def value(:name, %Portal.SentinelOne.PostureProvider{posture_provider: %{name: name}}), do: name
+    def value(field, provider), do: Map.fetch!(provider, field)
   end
 
   defmodule Response do

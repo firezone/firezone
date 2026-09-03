@@ -2,6 +2,8 @@ defmodule PortalAPI.Schemas.SantaDevice do
   alias OpenApiSpex.Schema
 
   defmodule Schema do
+    @behaviour PortalAPI.Schema
+
     require OpenApiSpex
     alias OpenApiSpex.Schema
 
@@ -91,6 +93,9 @@ defmodule PortalAPI.Schemas.SantaDevice do
       properties: @properties,
       required: @fields
     })
+
+    @impl true
+    def struct_module, do: Portal.Santa.Device
   end
 
   defmodule Response do

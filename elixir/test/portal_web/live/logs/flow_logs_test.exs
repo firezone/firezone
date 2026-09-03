@@ -521,7 +521,7 @@ defmodule PortalWeb.Logs.FlowLogsTest do
 
       expected_api_json =
         initiator
-        |> PortalAPI.LogJSON.flow_log()
+        |> PortalAPI.Render.data(schema: PortalAPI.Schemas.Log.Flow)
         |> JSON.encode!()
         |> JSON.decode!()
 

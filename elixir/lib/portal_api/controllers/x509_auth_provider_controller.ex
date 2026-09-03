@@ -2,6 +2,7 @@ defmodule PortalAPI.X509AuthProviderController do
   use PortalAPI, :controller
   use OpenApiSpex.ControllerSpecs
   alias PortalAPI.Error
+  alias PortalAPI.Render
   alias PortalAPI.Schemas.ProblemDetails
   alias __MODULE__.Database
 
@@ -22,7 +23,7 @@ defmodule PortalAPI.X509AuthProviderController do
   def show(conn, _params) do
     if Portal.Features.enabled?(:trust_anchors) do
       with {:ok, provider} <- Database.fetch_provider(conn.assigns.subject) do
-        render(conn, :show, provider: provider)
+        Render.one(conn, provider)
       else
         error -> Error.handle(conn, error)
       end

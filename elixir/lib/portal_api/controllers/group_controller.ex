@@ -2,6 +2,7 @@ defmodule PortalAPI.GroupController do
   use PortalAPI, :controller
   use OpenApiSpex.ControllerSpecs
   alias PortalAPI.Pagination
+  alias PortalAPI.Render
   alias PortalAPI.Error
   alias PortalAPI.Filters
   alias PortalAPI.Schemas.ProblemDetails
@@ -43,7 +44,7 @@ defmodule PortalAPI.GroupController do
     with {:ok, list_opts} <- Pagination.params_to_list_opts(params),
          list_opts = Keyword.put(list_opts, :filter, coerce_filters(params)),
          {:ok, groups, metadata} <- Database.list_groups(conn.assigns.subject, list_opts) do
-      render(conn, :index, groups: groups, metadata: metadata)
+      Render.list(conn, groups, metadata)
     else
       error -> Error.handle(conn, error)
     end
@@ -76,7 +77,7 @@ defmodule PortalAPI.GroupController do
   @spec show(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def show(conn, %{"id" => id}) do
     with {:ok, group} <- Database.fetch_group(id, conn.assigns.subject) do
-      render(conn, :show, group: group)
+      Render.one(conn, group)
     else
       error -> Error.handle(conn, error)
     end
@@ -107,7 +108,7 @@ defmodule PortalAPI.GroupController do
       conn
       |> put_status(:created)
       |> put_resp_header("location", ~p"/groups/#{group}")
-      |> render(:show, group: group)
+      |> Render.one(group)
     else
       error -> Error.handle(conn, error)
     end
@@ -158,7 +159,7 @@ defmodule PortalAPI.GroupController do
          :ok <- validate_group_updatable(group),
          changeset = do_update_group_changeset(group, params),
          {:ok, group} <- Database.update_group(changeset, subject) do
-      render(conn, :show, group: group)
+      Render.one(conn, group)
     else
       error -> Error.handle(conn, error)
     end
@@ -216,7 +217,7 @@ defmodule PortalAPI.GroupController do
 
     with {:ok, group} <- Database.fetch_group(id, subject),
          {:ok, group} <- Database.delete_group(group, subject) do
-      render(conn, :show, group: group)
+      Render.one(conn, group)
     else
       error -> Error.handle(conn, error)
     end

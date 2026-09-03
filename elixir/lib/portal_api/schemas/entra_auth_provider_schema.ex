@@ -2,6 +2,8 @@ defmodule PortalAPI.Schemas.EntraAuthProvider do
   alias OpenApiSpex.Schema
 
   defmodule Schema do
+    @behaviour PortalAPI.Schema
+
     require OpenApiSpex
     alias OpenApiSpex.Schema
 
@@ -72,6 +74,12 @@ defmodule PortalAPI.Schemas.EntraAuthProvider do
         "updated_at" => "2025-01-15T10:30:00Z"
       }
     })
+
+    @impl true
+    def struct_module, do: Portal.Entra.AuthProvider
+
+    @impl true
+    def internal, do: [:is_verified]
   end
 
   defmodule Response do

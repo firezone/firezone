@@ -2,6 +2,8 @@ defmodule PortalAPI.Schemas.OIDCAuthProvider do
   alias OpenApiSpex.Schema
 
   defmodule Schema do
+    @behaviour PortalAPI.Schema
+
     require OpenApiSpex
     alias OpenApiSpex.Schema
 
@@ -78,6 +80,12 @@ defmodule PortalAPI.Schemas.OIDCAuthProvider do
         "updated_at" => "2025-01-15T10:30:00Z"
       }
     })
+
+    @impl true
+    def struct_module, do: Portal.OIDC.AuthProvider
+
+    @impl true
+    def internal, do: [:is_legacy, :is_verified]
   end
 
   defmodule Response do

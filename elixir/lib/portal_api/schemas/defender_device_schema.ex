@@ -2,6 +2,8 @@ defmodule PortalAPI.Schemas.DefenderDevice do
   alias OpenApiSpex.Schema
 
   defmodule Schema do
+    @behaviour PortalAPI.Schema
+
     require OpenApiSpex
     alias OpenApiSpex.Schema
 
@@ -95,6 +97,9 @@ defmodule PortalAPI.Schemas.DefenderDevice do
       properties: @properties,
       required: @fields
     })
+
+    @impl true
+    def struct_module, do: Portal.Defender.Device
   end
 
   defmodule Response do

@@ -2,6 +2,7 @@ defmodule PortalAPI.LogController do
   use PortalAPI, :controller
   use OpenApiSpex.ControllerSpecs
   alias PortalAPI.Pagination
+  alias PortalAPI.Render
   alias PortalAPI.Error
   alias PortalAPI.Filters
   alias PortalAPI.Schemas.ProblemDetails
@@ -147,7 +148,7 @@ defmodule PortalAPI.LogController do
              conn.assigns.subject,
              Keyword.put(pagination_opts, :filter, filters)
            ) do
-      render(conn, :index, logs: logs, metadata: metadata)
+      Render.list(conn, logs, metadata, schema: &log_schema/1)
     else
       error -> Error.handle(conn, error)
     end
@@ -182,7 +183,7 @@ defmodule PortalAPI.LogController do
     with {:ok, log_id} <- parse_log_id(log_id),
          {:ok, type} <- type_from_log_id(log_id),
          {:ok, log} <- Database.fetch_log(type, log_id, conn.assigns.subject) do
-      render(conn, :show, log: log)
+      Render.one(conn, log, schema: &log_schema/1)
     else
       error -> Error.handle(conn, error)
     end
@@ -292,6 +293,11 @@ defmodule PortalAPI.LogController do
       {:error, :bad_request, reason: "`begin` must be less than or equal to `end`"}
     end
   end
+
+  defp log_schema(%Portal.ChangeLog{}), do: PortalAPI.Schemas.Log.Change
+  defp log_schema(%Portal.SessionLog{}), do: PortalAPI.Schemas.Log.Session
+  defp log_schema(%Portal.FlowLog{}), do: PortalAPI.Schemas.Log.Flow
+  defp log_schema(%Portal.APIRequestLog{}), do: PortalAPI.Schemas.Log.APIRequest
 
   defmodule Database do
     import Ecto.Query
