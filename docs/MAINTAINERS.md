@@ -23,32 +23,15 @@ Table of Contents:
 1. To submit for review:
    - For Apple, do this through AppStore connect. Details are [below](#apple-client).
    - For Android, run the [Submit Android release](../.github/workflows/submit-android-release.yml)
-     workflow on `main`. Its `prepare` job verifies the exact GitHub draft, source
-     commit, screenshots, and completed internal release, then writes a summary
-     with the Play version code and links. Review that summary and the
-     [Play Console](https://play.google.com/console/), then approve the
-     `google-play` environment as an intentional reminder and
-     checkpoint. After approval, the workflow revalidates the draft, replaces
-     the screenshots, promotes the exact internal version to production, and
-     submits both in one Google Play edit. If the draft changed while approval
-     was pending, start a new workflow run. Managed Publishing holds approved
-     changes until they are published manually.
+     workflow on `main`. Review its `prepare` summary and the
+     [Play Console](https://play.google.com/console/), then approve the protected
+     `google-play` environment. Start a new run if the draft changed while
+     approval was pending.
 
-The `prepare` job uses the existing testing-only
-`play-store-publisher@firezone-55040.iam.gserviceaccount.com` service account to
-inspect the internal track through a temporary edit, which it always discards.
-After approval, the workflow uses GitHub OIDC to impersonate
-`play-store-production-publisher@firezone-55040.iam.gserviceaccount.com`. Limit
-that service account to the Firezone app in Play Console and grant only the
-permissions needed to read releases, release to production, and manage the store
-listing. Before the first workflow dispatch, explicitly create the `google-play`
-GitHub environment. GitHub otherwise creates a referenced environment without
-protection. Add required reviewers, restrict deployments to `main`, and set its
-`GOOGLE_PLAY_ENVIRONMENT_CONFIGURED` variable to `true`. Restrict the Workload
-Identity Federation subject to
-`repo:firezone/firezone:environment:google-play`. Keep
-[Managed Publishing](https://support.google.com/googleplay/android-developer/answer/9859654)
-enabled.
+Before the first dispatch, explicitly create the `google-play` environment with
+required reviewers, restrict deployments to `main`, and set its
+`GOOGLE_PLAY_ENVIRONMENT_CONFIGURED` variable to `true`. GitHub otherwise creates
+a referenced environment without protection.
 
 ### GitHub-released components (Linux, Windows, and Gateway)
 
