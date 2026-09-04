@@ -12,6 +12,7 @@ defmodule Portal.Policy do
           id: Ecto.UUID.t(),
           description: String.t() | nil,
           conditions: [Portal.Policies.Condition.t()],
+          postures: Portal.Policies.Postures.t() | nil,
           group_id: Ecto.UUID.t() | nil,
           group_idp_id: String.t() | nil,
           resource_id: Ecto.UUID.t(),
@@ -29,6 +30,7 @@ defmodule Portal.Policy do
     field :description, :string
 
     embeds_many :conditions, Portal.Policies.Condition, on_replace: :delete
+    field :postures, Portal.Policies.Postures
 
     belongs_to :group, Portal.Group, foreign_key: :group_id
     field :group_idp_id, :string

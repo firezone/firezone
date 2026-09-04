@@ -176,7 +176,7 @@ defmodule PortalAPI.Schemas.Policy do
     alias PortalAPI.Schemas.Policy
 
     @derive {PortalAPI.JSON.Encoder,
-             for: Portal.Policy, internal: [:account_id, :group_idp_id, :inserted_at, :updated_at]}
+             for: Portal.Policy, internal: [:account_id, :group_idp_id, :postures, :inserted_at, :updated_at]}
     OpenApiSpex.schema(%{
       title: "Policy",
       description: "Policy",

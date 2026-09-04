@@ -150,6 +150,10 @@ defmodule Portal.Device do
     # the session being evaluated and never the device's past.
     field :attested?, :boolean, virtual: true, default: false
 
+    # Posture provider rows matched to this device, by provider type. Live
+    # connection state loaded at connect, read by policy postures.
+    field :posture, :map, virtual: true, default: %{}
+
     # rotated_at of the gateway_token this device last connected with,
     # populated by queries that select_merge it (see
     # PortalAPI.GatewayController). Non-nil means a replacement token has
