@@ -50,34 +50,23 @@ from landing in the release while you execute this process.
 #### App Store release
 
 1. Run the [`Swift`](../.github/workflows/_swift.yml) workflow from `main`. It
-   uploads matching iOS and macOS builds to App Store Connect and replaces the
-   assets on the GitHub draft.
+   uploads the iOS and macOS builds and updates the GitHub draft.
 1. After QA passes, run the
    [`Submit Apple release`](../.github/workflows/submit-apple-release.yml)
    workflow from `main`.
-1. Wait for its `prepare` job to create or update both App Store versions,
-   replace their screenshots, and set the localized What's New link.
-1. Use the link on the pending `app-store` deployment to inspect both
-   versions in App Store Connect. Cancel the workflow if the candidate needs
-   another build.
-1. Approve the deployment. The workflow attaches the exact builds from the
-   GitHub draft, selects manual release, validates both versions, and submits
-   them for review. It does not publish an approved version.
+1. When `prepare` finishes, inspect both versions through the pending
+   `app-store` deployment link. Cancel the workflow if another build is needed,
+   or approve it to submit both versions with manual release.
 
-The preparation job authenticates with an individual Marketing key restricted
-to the Firezone app. Configure these repository secrets:
+Required repository secrets:
 
 - `APPLE_APP_STORE_CONNECT_MARKETING_API_KEY_ID`
-- `APPLE_APP_STORE_CONNECT_MARKETING_API_KEY`, containing the base64-encoded
-  `.p8` private key
+- `APPLE_APP_STORE_CONNECT_MARKETING_API_KEY`
 
-Configure the `app-store` GitHub Environment with required reviewers and
-these environment secrets for an individual App Manager key restricted to the
-Firezone app:
+Required secrets in the reviewer-protected `app-store` GitHub Environment:
 
 - `APPLE_APP_STORE_CONNECT_APP_MANAGER_API_KEY_ID`
-- `APPLE_APP_STORE_CONNECT_APP_MANAGER_API_KEY`, containing the base64-encoded
-  `.p8` private key
+- `APPLE_APP_STORE_CONNECT_APP_MANAGER_API_KEY`
 
 #### TestFlight groups
 
