@@ -502,12 +502,15 @@ jobs:
             if [[ "$count" == 0 ]]; then
               source=$(asc versions list --app "$ASC_APP_ID" --platform "$platform" --latest --output json \
                 | jq -er 'if (.items | length) == 1 then .items[0].attributes.versionString else error("expected one source version") end')
-              asc versions create \
+              if ! asc versions create \
                 --app "$ASC_APP_ID" \
                 --version "$VERSION" \
                 --platform "$platform" \
                 --release-type MANUAL \
-                --copy-metadata-from "$source"
+                --copy-metadata-from "$source"; then
+                echo "::error::The App Store Connect API key needs the App Manager role"
+                exit 1
+              fi
               target=$(asc versions list --app "$ASC_APP_ID" --version "$VERSION" --platform "$platform" --output json)
             fi
             version_id=$(jq -er 'if (.data | length) == 1 then .data[0].id else error("expected one version") end' <<< "$target")
