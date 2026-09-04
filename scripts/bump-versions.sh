@@ -137,21 +137,24 @@ function apple() {
 # As such, the process for releasing Android is similar to Apple.
 #
 # Instructions:
-# 1. Run the `Kotlin` workflow from `main`. This pushes the AAB to Firebase,
+# 1. In the Play Console Publishing overview, make sure there are no unsent
+#    changes. An API edit commit sends all Console changes that are ready for
+#    review. Prepare listing and production changes only after the workflow.
+# 2. Run the `Kotlin` workflow from `main`. This pushes the AAB to Firebase,
 #    uploads the APK to the drafted release, and creates or updates the Google
 #    Play internal-track draft. The fixed store screenshots are checked but not
 #    uploaded.
-# 2. Use the Firebase AAB for any final QA testing.
-# 3. Sign in to the Play Console and review the internal draft. Prepare or
+# 3. Use the Firebase AAB for any final QA testing.
+# 4. Sign in to the Play Console and review the internal draft. Prepare or
 #    promote the same version to production manually, then submit it for review.
 #    Optionally, allow the Play Console to automatically publish the release.
-# 4. Once the Play Store release is approved, publish the APK in the drafted
+# 5. Once the Play Store release is approved, publish the APK in the drafted
 #    release on GitHub.
-# 5. Bump current_android_client_version / next_android_client_version at the
+# 6. Bump current_android_client_version / next_android_client_version at the
 #    top of this script (the release pipeline does this automatically via
 #    `update_version_variables`).
-# 6. Run `scripts/bump-versions.sh android` to update the versions in the codebase.
-# 7. Commit the changes and open a PR.
+# 7. Run `scripts/bump-versions.sh android` to update the versions in the codebase.
+# 8. Commit the changes and open a PR.
 function android() {
     update_version_marker "mark:current-android-version" "$current_android_client_version"
     update_version_marker "mark:next-android-version" "$next_android_client_version"
