@@ -463,10 +463,12 @@ jobs:
           cp swift/apple/screenshots/macos/26/grant-vpn-light.png "$macos_dir/09-grant-vpn-light.png"
           cp swift/apple/screenshots/macos/26/grant-vpn-dark.png "$macos_dir/10-grant-vpn-dark.png"
 
-          echo "METADATA_DIR=${RUNNER_TEMP}/app-store-metadata" >> "$GITHUB_ENV"
-          echo "IPHONE_SCREENSHOTS=${RUNNER_TEMP}/app-store-screenshots/ios/iphone" >> "$GITHUB_ENV"
-          echo "IPAD_SCREENSHOTS=${RUNNER_TEMP}/app-store-screenshots/ios/ipad" >> "$GITHUB_ENV"
-          echo "MACOS_SCREENSHOTS=${RUNNER_TEMP}/app-store-screenshots/macos" >> "$GITHUB_ENV"
+          {
+            echo "METADATA_DIR=${RUNNER_TEMP}/app-store-metadata"
+            echo "IPHONE_SCREENSHOTS=${RUNNER_TEMP}/app-store-screenshots/ios/iphone"
+            echo "IPAD_SCREENSHOTS=${RUNNER_TEMP}/app-store-screenshots/ios/ipad"
+            echo "MACOS_SCREENSHOTS=${RUNNER_TEMP}/app-store-screenshots/macos"
+          } >> "$GITHUB_ENV"
       - name: Wait for the iOS build
         working-directory: swift/apple
         run: |
