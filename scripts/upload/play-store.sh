@@ -38,10 +38,10 @@ fi
 export GPLAY_NO_UPDATE=1
 edit_id=""
 committed=false
-persist_draft=true
+persist_draft=false
 
-if [[ "${GITHUB_ACTIONS:-false}" == true && "${GITHUB_REF_NAME:-}" != main ]]; then
-    persist_draft=false
+if [[ "${GITHUB_ACTIONS:-false}" == true && "${GITHUB_REF_NAME:-}" == main ]]; then
+    persist_draft=true
 fi
 
 cleanup() {
@@ -110,6 +110,26 @@ update_draft() {
 }
 
 update_draft "$INTERNAL_TRACK"
+
+if [[ "$persist_draft" != true ]]; then
+    echo "Replacing en-US phone screenshots for validation..."
+    gplay images delete-all \
+        --package "$PACKAGE_NAME" \
+        --edit "$edit_id" \
+        --locale en-US \
+        --type phoneScreenshots \
+        --confirm
+
+    for screenshot in "${SCREENSHOTS[@]}"; do
+        echo "Uploading ${screenshot#"$REPO_ROOT/"}..."
+        gplay images upload \
+            --package "$PACKAGE_NAME" \
+            --edit "$edit_id" \
+            --locale en-US \
+            --type phoneScreenshots \
+            --file "$screenshot"
+    done
+fi
 
 echo "Validating edit $edit_id..."
 gplay edits validate --package "$PACKAGE_NAME" --edit "$edit_id"
