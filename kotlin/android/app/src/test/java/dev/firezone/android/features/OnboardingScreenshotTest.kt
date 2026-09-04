@@ -2,7 +2,9 @@
 package dev.firezone.android.features
 
 import android.app.Application
+import android.os.Bundle
 import android.os.Looper
+import androidx.activity.compose.setContent
 import androidx.appcompat.app.AppCompatActivity
 import com.github.takahirom.roborazzi.ExperimentalRoborazziApi
 import com.github.takahirom.roborazzi.captureRoboImage
@@ -25,8 +27,8 @@ import org.robolectric.annotation.GraphicsMode
 // Renders the screens shown before a session starts to PNGs; `./gradlew recordRoborazziDebug` writes them.
 //
 // `NotificationPermissionActivity` only works on top of a Hilt graph, which a screenshot does not
-// need, so its shared permission screen is rendered directly. `VpnPermissionActivity` needs no
-// graph, so it is rendered as it ships.
+// need, so the activity below hosts its shared permission screen instead. `VpnPermissionActivity`
+// needs no graph, so it is rendered as it ships.
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 @Config(
@@ -62,20 +64,8 @@ class OnboardingScreenshotTest {
     @Test
     fun vpnPermission() = capture("vpn-permission", VpnPermissionActivity::class.java)
 
-    @OptIn(ExperimentalRoborazziApi::class)
     @Test
-    fun notificationPermission() =
-        captureRoboImage("${roborazziSystemPropertyOutputDirectory()}/notification-permission.png") {
-            FirezoneTheme {
-                PermissionScreen(
-                    title = R.string.enable_notification_permission,
-                    description = R.string.notification_permission_description,
-                    actionLabel = R.string.request_permission,
-                    onAction = {},
-                    onSkip = {},
-                )
-            }
-        }
+    fun notificationPermission() = capture("notification-permission", NotificationPermissionScreenshotActivity::class.java)
 
     @OptIn(ExperimentalRoborazziApi::class)
     private fun <A : AppCompatActivity> capture(
@@ -86,5 +76,23 @@ class OnboardingScreenshotTest {
         shadowOf(Looper.getMainLooper()).idle()
 
         activity.window.decorView.captureRoboImage("${roborazziSystemPropertyOutputDirectory()}/$name.png")
+    }
+}
+
+internal class NotificationPermissionScreenshotActivity : AppCompatActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+
+        setContent {
+            FirezoneTheme {
+                PermissionScreen(
+                    title = R.string.enable_notification_permission,
+                    description = R.string.notification_permission_description,
+                    actionLabel = R.string.request_permission,
+                    onAction = {},
+                    onSkip = {},
+                )
+            }
+        }
     }
 }
