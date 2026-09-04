@@ -1,0 +1,385 @@
+name: Submit Apple release
+
+on:
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+  security-events: write
+
+concurrency:
+  group: apple-release-main
+  cancel-in-progress: false
+
+env:
+  ASC_APP_ID: "6443661826"
+  ASC_KEY_TYPE: individual
+  ASC_STRICT_AUTH: "1"
+  ASC_TELEMETRY_DISABLED: "1"
+  # mark:next-apple-version
+  RELEASE_NAME: apple-client-1.5.20
+
+jobs:
+  prepare:
+    if: ${{ github.ref_name == 'main' }}
+    runs-on: ubuntu-24.04
+    outputs:
+      build_number: ${{ steps.build.outputs.build_number }}
+      source_sha: ${{ steps.release.outputs.source_sha }}
+    steps:
+      - name: Resolve the GitHub draft release
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          release=$(gh release view "$RELEASE_NAME" \
+            --repo "$GITHUB_REPOSITORY" \
+            --json isDraft,targetCommitish)
+
+          if [[ $(jq -r '.isDraft' <<< "$release") != true ]]; then
+            echo "$RELEASE_NAME is not a draft release" >&2
+            exit 1
+          fi
+
+          source_sha=$(jq -r '.targetCommitish' <<< "$release")
+          if [[ ! "$source_sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "$RELEASE_NAME does not target a full Git commit SHA" >&2
+            exit 1
+          fi
+
+          version="${RELEASE_NAME#apple-client-}"
+          gh release download "$RELEASE_NAME" \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern "firezone-ios-client-${version}.ipa" \
+            --dir "$RUNNER_TEMP"
+
+          echo "ipa_path=$RUNNER_TEMP/firezone-ios-client-${version}.ipa" >> "$GITHUB_OUTPUT"
+          echo "source_sha=$source_sha" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ steps.release.outputs.source_sha }}
+
+      - uses: ./.github/actions/setup-mise
+        with:
+          install_args: --cd swift/apple github:rorkai/App-Store-Connect-CLI
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify the release build provenance
+        id: build
+        working-directory: swift/apple
+        env:
+          GH_TOKEN: ${{ github.token }}
+          IPA_PATH: ${{ steps.release.outputs.ipa_path }}
+          SOURCE_SHA: ${{ steps.release.outputs.source_sha }}
+        run: |
+          version="${RELEASE_NAME#apple-client-}"
+          inspection=$(asc distribute inspect --ipa "$IPA_PATH" --output json)
+          jq -e \
+            --arg version "$version" \
+            '.platform == "IOS"
+            and .app.bundleId == "dev.firezone.firezone"
+            and .app.version == $version
+            and .signing.profileClass == "app-store"' \
+            <<< "$inspection" >/dev/null
+          build_number=$(jq -er '.app.buildNumber' <<< "$inspection")
+
+          run=$(gh run view "$build_number" \
+            --repo "$GITHUB_REPOSITORY" \
+            --json conclusion,event,headBranch,headSha,workflowName)
+          jq -e \
+            --arg source_sha "$SOURCE_SHA" \
+            '.conclusion == "success"
+            and .event == "workflow_dispatch"
+            and .headBranch == "main"
+            and .headSha == $source_sha
+            and .workflowName == "Build macOS/iOS app"' \
+            <<< "$run" >/dev/null
+
+          echo "build_number=$build_number" >> "$GITHUB_OUTPUT"
+
+      - name: Stage App Store inputs
+        run: |
+          metadata_dir="$RUNNER_TEMP/app-store-metadata"
+          iphone_dir="$RUNNER_TEMP/app-store-screenshots/ios/iphone/en-US"
+          ipad_dir="$RUNNER_TEMP/app-store-screenshots/ios/ipad/en-US"
+          macos_dir="$RUNNER_TEMP/app-store-screenshots/macos/en-US"
+          mkdir -p "$metadata_dir" "$iphone_dir" "$ipad_dir" "$macos_dir"
+
+          cp swift/apple/app-store/metadata/en-US.json "$metadata_dir/en-US.json"
+
+          cp swift/apple/screenshots/ios/iphone/welcome-light.png "$iphone_dir/01-welcome.png"
+          cp swift/apple/screenshots/ios/iphone/session-light.png "$iphone_dir/02-session.png"
+          cp swift/apple/screenshots/ios/iphone/session-scrolled-light.png "$iphone_dir/03-session-scrolled.png"
+          cp swift/apple/screenshots/ios/iphone/session-menu-light.png "$iphone_dir/04-session-menu.png"
+          cp swift/apple/screenshots/ios/iphone/resource-details-light.png "$iphone_dir/05-resource-details.png"
+          cp swift/apple/screenshots/ios/iphone/resource-details-internet-light.png "$iphone_dir/06-internet-resource.png"
+          cp swift/apple/screenshots/ios/iphone/device-details-light.png "$iphone_dir/07-device-details.png"
+          cp swift/apple/screenshots/ios/iphone/settings-general-light.png "$iphone_dir/08-settings-general.png"
+          cp swift/apple/screenshots/ios/iphone/settings-advanced-light.png "$iphone_dir/09-settings-advanced.png"
+          cp swift/apple/screenshots/ios/iphone/x509-filled-light.png "$iphone_dir/10-x509.png"
+
+          cp swift/apple/screenshots/ios/ipad/welcome-light.png "$ipad_dir/01-welcome.png"
+          cp swift/apple/screenshots/ios/ipad/session-light.png "$ipad_dir/02-session.png"
+          cp swift/apple/screenshots/ios/ipad/session-scrolled-light.png "$ipad_dir/03-session-scrolled.png"
+          cp swift/apple/screenshots/ios/ipad/session-menu-light.png "$ipad_dir/04-session-menu.png"
+          cp swift/apple/screenshots/ios/ipad/resource-details-light.png "$ipad_dir/05-resource-details.png"
+          cp swift/apple/screenshots/ios/ipad/resource-details-internet-light.png "$ipad_dir/06-internet-resource.png"
+          cp swift/apple/screenshots/ios/ipad/device-details-light.png "$ipad_dir/07-device-details.png"
+          cp swift/apple/screenshots/ios/ipad/settings-general-light.png "$ipad_dir/08-settings-general.png"
+          cp swift/apple/screenshots/ios/ipad/settings-advanced-light.png "$ipad_dir/09-settings-advanced.png"
+          cp swift/apple/screenshots/ios/ipad/x509-filled-light.png "$ipad_dir/10-x509.png"
+
+          cp swift/apple/screenshots/macos/26/first-time-light.png "$macos_dir/01-first-time-light.png"
+          cp swift/apple/screenshots/macos/26/first-time-dark.png "$macos_dir/02-first-time-dark.png"
+          cp swift/apple/screenshots/macos/26/settings-general-light.png "$macos_dir/03-settings-general-light.png"
+          cp swift/apple/screenshots/macos/26/settings-general-dark.png "$macos_dir/04-settings-general-dark.png"
+          cp swift/apple/screenshots/macos/26/settings-advanced-light.png "$macos_dir/05-settings-advanced-light.png"
+          cp swift/apple/screenshots/macos/26/settings-advanced-dark.png "$macos_dir/06-settings-advanced-dark.png"
+          cp swift/apple/screenshots/macos/26/x509-filled-light.png "$macos_dir/07-x509-light.png"
+          cp swift/apple/screenshots/macos/26/x509-filled-dark.png "$macos_dir/08-x509-dark.png"
+          cp swift/apple/screenshots/macos/26/grant-vpn-light.png "$macos_dir/09-grant-vpn-light.png"
+          cp swift/apple/screenshots/macos/26/grant-vpn-dark.png "$macos_dir/10-grant-vpn-dark.png"
+
+          {
+            echo "METADATA_DIR=$metadata_dir"
+            echo "IPHONE_SCREENSHOTS=${RUNNER_TEMP}/app-store-screenshots/ios/iphone"
+            echo "IPAD_SCREENSHOTS=${RUNNER_TEMP}/app-store-screenshots/ios/ipad"
+            echo "MACOS_SCREENSHOTS=${RUNNER_TEMP}/app-store-screenshots/macos"
+          } >> "$GITHUB_ENV"
+
+      - name: Create or reuse the App Store versions
+        working-directory: swift/apple
+        env:
+          ASC_KEY_ID: ${{ secrets.APPLE_APP_STORE_CONNECT_MARKETING_API_KEY_ID }}
+          ASC_PRIVATE_KEY_B64: ${{ secrets.APPLE_APP_STORE_CONNECT_MARKETING_API_KEY }}
+        run: |
+          version="${RELEASE_NAME#apple-client-}"
+          for platform in IOS MAC_OS; do
+            target=$(asc versions list --app "$ASC_APP_ID" --version "$version" --platform "$platform" --output json)
+            count=$(jq -er '.data | length' <<< "$target")
+            if [[ "$count" == 0 ]]; then
+              source=$(asc versions list --app "$ASC_APP_ID" --platform "$platform" --latest --output json \
+                | jq -er 'if (.items | length) == 1 then .items[0].attributes.versionString else error("expected one source version") end')
+              asc versions create \
+                --app "$ASC_APP_ID" \
+                --version "$version" \
+                --platform "$platform" \
+                --copy-metadata-from "$source"
+              target=$(asc versions list --app "$ASC_APP_ID" --version "$version" --platform "$platform" --output json)
+            fi
+            state=$(jq -er \
+              'if (.data | length) == 1
+               then (.data[0].attributes.appVersionState // .data[0].attributes.appStoreState // error("version state is missing"))
+               else error("expected one App Store version")
+               end' \
+              <<< "$target")
+            if [[ "$state" != PREPARE_FOR_SUBMISSION ]]; then
+              echo "${platform} version ${version} is not editable: ${state}" >&2
+              exit 1
+            fi
+          done
+
+      - name: Replace App Store screenshots and metadata
+        working-directory: swift/apple
+        env:
+          ASC_KEY_ID: ${{ secrets.APPLE_APP_STORE_CONNECT_MARKETING_API_KEY_ID }}
+          ASC_PRIVATE_KEY_B64: ${{ secrets.APPLE_APP_STORE_CONNECT_MARKETING_API_KEY }}
+        run: |
+          version="${RELEASE_NAME#apple-client-}"
+          asc screenshots upload \
+            --app "$ASC_APP_ID" \
+            --version "$version" \
+            --platform IOS \
+            --path "$IPHONE_SCREENSHOTS" \
+            --device-type APP_IPHONE_67 \
+            --replace \
+            --confirm
+          asc screenshots upload \
+            --app "$ASC_APP_ID" \
+            --version "$version" \
+            --platform IOS \
+            --path "$IPAD_SCREENSHOTS" \
+            --device-type APP_IPAD_PRO_3GEN_129 \
+            --replace \
+            --confirm
+          asc screenshots upload \
+            --app "$ASC_APP_ID" \
+            --version "$version" \
+            --platform MAC_OS \
+            --path "$MACOS_SCREENSHOTS" \
+            --device-type APP_DESKTOP \
+            --replace \
+            --confirm
+
+          for platform in IOS MAC_OS; do
+            asc apps info edit \
+              --app "$ASC_APP_ID" \
+              --version "$version" \
+              --platform "$platform" \
+              --from-dir "$METADATA_DIR"
+          done
+
+      - name: Summarize the candidate
+        env:
+          BUILD_NUMBER: ${{ steps.build.outputs.build_number }}
+          SOURCE_SHA: ${{ steps.release.outputs.source_sha }}
+        run: |
+          version="${RELEASE_NAME#apple-client-}"
+          short_sha=${SOURCE_SHA:0:12}
+          {
+            echo "## Apple ${version} is ready to inspect"
+            echo
+            echo "- Source: [\`${short_sha}\`](https://github.com/${GITHUB_REPOSITORY}/commit/${SOURCE_SHA})"
+            echo "- Build: [\`${BUILD_NUMBER}\`](https://github.com/${GITHUB_REPOSITORY}/actions/runs/${BUILD_NUMBER})"
+            echo "- [Open Firezone in App Store Connect](https://appstoreconnect.apple.com/apps/${ASC_APP_ID}/distribution)"
+            echo
+            echo "Review both platform versions, then approve the \`app-store\` deployment."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  submit:
+    needs: prepare
+    environment:
+      name: app-store
+      url: https://appstoreconnect.apple.com/apps/6443661826/distribution
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Revalidate the GitHub draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_SHA: ${{ needs.prepare.outputs.source_sha }}
+        run: |
+          release=$(gh release view "$RELEASE_NAME" \
+            --repo "$GITHUB_REPOSITORY" \
+            --json isDraft,targetCommitish)
+          jq -e \
+            --arg source_sha "$SOURCE_SHA" \
+            '.isDraft == true and .targetCommitish == $source_sha' \
+            <<< "$release" >/dev/null
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.prepare.outputs.source_sha }}
+
+      - uses: ./.github/actions/setup-mise
+        with:
+          install_args: --cd swift/apple github:rorkai/App-Store-Connect-CLI
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Attach the builds and submit both versions
+        working-directory: swift/apple
+        env:
+          ASC_KEY_ID: ${{ secrets.APPLE_APP_STORE_CONNECT_APP_MANAGER_API_KEY_ID }}
+          ASC_PRIVATE_KEY_B64: ${{ secrets.APPLE_APP_STORE_CONNECT_APP_MANAGER_API_KEY }}
+          BUILD_NUMBER: ${{ needs.prepare.outputs.build_number }}
+        run: |
+          version="${RELEASE_NAME#apple-client-}"
+          metadata_dir="$RUNNER_TEMP/app-store-metadata/version/$version"
+          mkdir -p "$metadata_dir"
+          cp app-store/metadata/en-US.json "$metadata_dir/en-US.json"
+
+          for platform in IOS MAC_OS; do
+            build=$(asc builds wait \
+              --app "$ASC_APP_ID" \
+              --version "$version" \
+              --build-number "$BUILD_NUMBER" \
+              --platform "$platform" \
+              --fail-on-invalid \
+              --output json)
+            build_id=$(jq -er '.buildId' <<< "$build")
+
+            target=$(asc versions list \
+              --app "$ASC_APP_ID" \
+              --version "$version" \
+              --platform "$platform" \
+              --output json)
+            version_id=$(jq -er \
+              'if (.data | length) == 1 then .data[0].id else error("expected one App Store version") end' \
+              <<< "$target")
+            release_type=$(jq -r '.data[0].attributes.releaseType // empty' <<< "$target")
+            details=$(asc versions view \
+              --version-id "$version_id" \
+              --include-build \
+              --include-submission \
+              --output json)
+            state=$(jq -er '.state' <<< "$details")
+            current_build_id=$(jq -r '.buildId // empty' <<< "$details")
+            submission_id=$(jq -r '.submissionId // empty' <<< "$details")
+
+            case "$state" in
+              PREPARE_FOR_SUBMISSION)
+                if [[ "$release_type" != MANUAL ]]; then
+                  asc versions update \
+                    --version-id "$version_id" \
+                    --release-type MANUAL \
+                    --output json
+                fi
+                target=$(asc versions list \
+                  --app "$ASC_APP_ID" \
+                  --version "$version" \
+                  --platform "$platform" \
+                  --output json)
+                release_type=$(jq -er \
+                  'if (.data | length) == 1 then .data[0].attributes.releaseType else error("expected one App Store version") end' \
+                  <<< "$target")
+                if [[ "$release_type" != MANUAL ]]; then
+                  echo "${platform} version ${version} is not configured for manual release" >&2
+                  exit 1
+                fi
+
+                asc release stage \
+                  --app "$ASC_APP_ID" \
+                  --version "$version" \
+                  --platform "$platform" \
+                  --build-id "$build_id" \
+                  --metadata-dir "$RUNNER_TEMP/app-store-metadata" \
+                  --confirm \
+                  --output json
+                ;;
+              READY_FOR_REVIEW)
+                if [[ "$current_build_id" != "$build_id" || "$release_type" != MANUAL ]]; then
+                  echo "${platform} version ${version} has an unexpected draft review submission" >&2
+                  exit 1
+                fi
+
+                asc validate \
+                  --app "$ASC_APP_ID" \
+                  --version-id "$version_id" \
+                  --platform "$platform" \
+                  --output json
+                ;;
+              WAITING_FOR_EXPORT_COMPLIANCE | WAITING_FOR_REVIEW | IN_REVIEW | ACCEPTED | PENDING_APPLE_RELEASE | PENDING_DEVELOPER_RELEASE | PROCESSING_FOR_APP_STORE | PROCESSING_FOR_DISTRIBUTION | READY_FOR_SALE | READY_FOR_DISTRIBUTION)
+                if [[ -z "$submission_id" || "$current_build_id" != "$build_id" || "$release_type" != MANUAL ]]; then
+                  echo "${platform} version ${version} was submitted with unexpected settings" >&2
+                  exit 1
+                fi
+
+                result=$(asc review submit \
+                  --app "$ASC_APP_ID" \
+                  --version-id "$version_id" \
+                  --build-id "$build_id" \
+                  --platform "$platform" \
+                  --confirm \
+                  --output json)
+                jq -e '.alreadySubmitted == true' <<< "$result" >/dev/null
+                echo "${platform} version ${version} is already submitted."
+                continue
+                ;;
+              *)
+                echo "${platform} version ${version} cannot be submitted from state ${state}" >&2
+                exit 1
+                ;;
+            esac
+
+            result=$(asc review submit \
+              --app "$ASC_APP_ID" \
+              --version-id "$version_id" \
+              --build-id "$build_id" \
+              --platform "$platform" \
+              --confirm \
+              --output json)
+            jq -e '.submissionId != null and .submissionId != ""' <<< "$result" >/dev/null
+          done
