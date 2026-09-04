@@ -271,7 +271,7 @@ defmodule Portal.Policies.Postures.EvaluatorTest do
       assert pass?("os_version", "gte", "1.9", os_version: "1.10")
     end
 
-    test "an unparseable field value fails" do
+    test "an unparsable field value fails" do
       refute pass?("os_version", "gte", "1.0", os_version: "unknown")
       refute pass?("os_version", "is_not", "1.0", os_version: "unknown")
     end
