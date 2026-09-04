@@ -7,14 +7,14 @@ use super::{
     sim_net::{ExecMutScope, Host},
     sim_relay::{SimRelay, map_explode},
 };
-use connlib_model::{GatewayId, RelayId};
+use connlib_model::{ClientId, GatewayId, RelayId, ResourceId};
 use dns_types::DomainName;
 use ip_packet::{IcmpEchoHeader, Icmpv4Type, Icmpv6Type, IpPacket};
 use snownet::Transmit;
 use std::{
     collections::{BTreeMap, BTreeSet},
-    iter,
-    net::SocketAddr,
+    iter, mem,
+    net::{IpAddr, SocketAddr},
     time::Instant,
 };
 use tunnel_proto::GatewayState;
@@ -26,8 +26,13 @@ pub(crate) struct SimGateway {
 
     pub(crate) probe_observations: Vec<ProbeObservation>,
 
-    /// The times we resolved DNS records for a domain.
-    pub(crate) dns_query_timestamps: BTreeMap<DomainName, Vec<Instant>>,
+    dns_resolutions: BTreeMap<(ClientId, DomainName), Vec<DnsResolution>>,
+    dns_nat_generations: BTreeMap<ClientId, u64>,
+    dns_proxy_owners: BTreeMap<(ClientId, IpAddr), DomainName>,
+    next_observation_order: u64,
+
+    authorized_resources: BTreeMap<ClientId, BTreeSet<ResourceId>>,
+    clients_by_ip: BTreeMap<IpAddr, ClientId>,
 
     site_specific_dns_records: DnsRecords,
     udp_dns_server_resources: BTreeMap<SocketAddr, UdpDnsServerResource>,
@@ -37,6 +42,15 @@ pub(crate) struct SimGateway {
 
     /// Collects datagrams encapsulated via [`GatewayState::handle_tun_input`].
     transmit_buffer: snownet::TransmitBuffer,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct DnsResolution {
+    pub(crate) at: Instant,
+    pub(crate) order: u64,
+    pub(crate) dns_nat_generation: u64,
+    proxy_ips: Vec<IpAddr>,
+    pub(crate) addresses: Vec<IpAddr>,
 }
 
 impl SimGateway {
@@ -56,7 +70,12 @@ impl SimGateway {
             probe_observations: Default::default(),
             udp_dns_server_resources: Default::default(),
             tcp_dns_server_resources: Default::default(),
-            dns_query_timestamps: Default::default(),
+            dns_resolutions: Default::default(),
+            dns_nat_generations: Default::default(),
+            dns_proxy_owners: Default::default(),
+            next_observation_order: 0,
+            authorized_resources: Default::default(),
+            clients_by_ip: Default::default(),
             tcp_resources: tcp_resources
                 .into_iter()
                 .map(|address| {
@@ -107,9 +126,9 @@ impl SimGateway {
                 .iter_mut()
                 .flat_map(|(socket, server)| {
                     if ip_config.is_ip(socket.ip()) {
-                        server.handle_timeout(&self.site_specific_dns_records, now);
+                        server.handle_timeout(&self.site_specific_dns_records);
                     } else {
-                        server.handle_timeout(global_dns_records, now);
+                        server.handle_timeout(global_dns_records);
                     }
 
                     std::iter::from_fn(|| server.poll_outbound())
@@ -315,19 +334,186 @@ impl SimGateway {
         self.tcp_resources.clear();
     }
 
+    pub(crate) fn clear_probe_observations(&mut self) {
+        self.probe_observations.clear();
+    }
+
+    pub(crate) fn record_dns_resolution(
+        &mut self,
+        client: ClientId,
+        domain: DomainName,
+        proxy_ips: Vec<IpAddr>,
+        addresses: Vec<IpAddr>,
+        at: Instant,
+    ) {
+        let proxies_were_reassigned = proxy_ips.iter().any(|proxy_ip| {
+            self.dns_proxy_owners
+                .get(&(client, *proxy_ip))
+                .is_some_and(|owner| owner != &domain)
+        });
+        if proxies_were_reassigned {
+            self.start_new_dns_nat_generation(client);
+        }
+
+        for proxy_ip in &proxy_ips {
+            self.dns_proxy_owners
+                .insert((client, *proxy_ip), domain.clone());
+        }
+
+        let dns_nat_generation = self.dns_nat_generation(client);
+        let resolution = DnsResolution {
+            at,
+            order: self.next_observation_order(),
+            dns_nat_generation,
+            proxy_ips,
+            addresses,
+        };
+
+        self.dns_resolutions
+            .entry((client, domain))
+            .or_default()
+            .push(resolution);
+    }
+
+    pub(crate) fn dns_resolution_before(
+        &self,
+        client: ClientId,
+        domain: &DomainName,
+        at: Instant,
+        order: u64,
+        dns_nat_generation: u64,
+        proxy_ip: IpAddr,
+    ) -> Option<&DnsResolution> {
+        self.dns_resolutions
+            .get(&(client, domain.clone()))?
+            .iter()
+            .filter(|resolution| (resolution.at, resolution.order) < (at, order))
+            .filter(|resolution| resolution.dns_nat_generation == dns_nat_generation)
+            .filter(|resolution| resolution.proxy_ips.contains(&proxy_ip))
+            .max_by_key(|resolution| (resolution.at, resolution.order))
+    }
+
+    pub(crate) fn record_authorization(
+        &mut self,
+        client: ClientId,
+        resource: ResourceId,
+        client_ips: [IpAddr; 2],
+    ) {
+        self.authorized_resources
+            .entry(client)
+            .or_default()
+            .insert(resource);
+        self.clients_by_ip.extend(client_ips.map(|ip| (ip, client)));
+    }
+
+    pub(crate) fn remove_access(&mut self, client: &ClientId, resource: &ResourceId, now: Instant) {
+        self.sut.remove_access(client, resource, now);
+        self.record_resource_disabled(*client, *resource);
+    }
+
+    pub(crate) fn record_resource_disabled(&mut self, client: ClientId, resource: ResourceId) {
+        let Some(resources) = self.authorized_resources.get_mut(&client) else {
+            return;
+        };
+        resources.remove(&resource);
+
+        if !resources.is_empty() {
+            return;
+        }
+
+        self.authorized_resources.remove(&client);
+        self.record_peer_removed(client);
+    }
+
+    pub(crate) fn record_client_restart(&mut self, client: ClientId) {
+        if self.authorized_resources.remove(&client).is_none() {
+            return;
+        }
+
+        self.record_peer_removed(client);
+    }
+
+    pub(crate) fn retain_authorizations(
+        &mut self,
+        authorizations: BTreeMap<ClientId, BTreeSet<ResourceId>>,
+    ) {
+        let previous = mem::take(&mut self.authorized_resources);
+        self.authorized_resources = previous
+            .iter()
+            .filter_map(|(client, resources)| {
+                let retained = authorizations.get(client);
+                let resources = BTreeSet::from_iter(
+                    resources
+                        .iter()
+                        .filter(|resource| retained.is_some_and(|set| set.contains(resource)))
+                        .copied(),
+                );
+
+                (!resources.is_empty()).then_some((*client, resources))
+            })
+            .collect();
+        let removed_clients = previous
+            .keys()
+            .filter(|client| !self.authorized_resources.contains_key(client))
+            .copied()
+            .collect::<Vec<_>>();
+
+        for client in removed_clients {
+            self.record_peer_removed(client);
+        }
+
+        self.sut.retain_authorizations(authorizations);
+    }
+
     fn record_received_request(&mut self, payload: &[u8], packet: IpPacket, at: Instant) {
         let Some(id) = ProbeId::from_payload(payload) else {
             tracing::error!("Probe payload does not contain a probe ID");
             return;
         };
+        let gateway_order = Some(self.next_observation_order());
+        let dns_nat_generation = self
+            .clients_by_ip
+            .get(&packet.source())
+            .map(|client| self.dns_nat_generation(*client));
 
         self.probe_observations
             .push(ProbeObservation::RequestReceived(ReceivedRequest {
                 id,
                 at,
                 remote: Remote::Gateway(self.id),
+                gateway_order,
+                dns_nat_generation,
                 packet,
             }));
+    }
+
+    fn dns_nat_generation(&self, client: ClientId) -> u64 {
+        self.dns_nat_generations
+            .get(&client)
+            .copied()
+            .unwrap_or_default()
+    }
+
+    fn start_new_dns_nat_generation(&mut self, client: ClientId) {
+        let generation = self.dns_nat_generation(client) + 1;
+        self.dns_nat_generations.insert(client, generation);
+        self.dns_proxy_owners
+            .extract_if(.., |(owner, _), _| *owner == client)
+            .for_each(drop);
+    }
+
+    fn record_peer_removed(&mut self, client: ClientId) {
+        self.clients_by_ip
+            .extract_if(.., |_, owner| *owner == client)
+            .for_each(drop);
+        self.start_new_dns_nat_generation(client);
+    }
+
+    fn next_observation_order(&mut self) -> u64 {
+        let order = self.next_observation_order;
+        self.next_observation_order += 1;
+
+        order
     }
 
     fn handle_icmp_request(

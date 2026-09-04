@@ -24,10 +24,57 @@ impl ProbeId {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub(crate) struct UdpFlowId(u64);
+
+impl UdpFlowId {
+    pub(crate) fn new(value: u64) -> Self {
+        Self(value)
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) enum ProbeProtocol {
     Icmp { seq: Seq, identifier: Identifier },
     Udp { sport: SPort, dport: DPort },
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct UdpFlow {
+    pub(crate) client_id: ClientId,
+    pub(crate) src: IpAddr,
+    pub(crate) dst: Destination,
+    pub(crate) sport: SPort,
+    pub(crate) dport: DPort,
+    pub(crate) route: UdpRoute,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum UdpRoute {
+    Resource {
+        resource: ResourceId,
+        gateway: GatewayId,
+    },
+    Gateway(GatewayId),
+    Peer(ClientId),
+}
+
+impl UdpRoute {
+    pub(crate) fn packet_route(self) -> PacketRoute {
+        match self {
+            UdpRoute::Resource { resource, gateway } => PacketRoute::Resource { resource, gateway },
+            UdpRoute::Gateway(gateway) => PacketRoute::Gateway(gateway),
+            UdpRoute::Peer(client) => PacketRoute::Peer(client),
+        }
+    }
+
+    pub(crate) fn is_peer(self) -> bool {
+        match self {
+            UdpRoute::Resource { .. } => false,
+            UdpRoute::Gateway(_) => false,
+            UdpRoute::Peer(_) => true,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -172,6 +219,8 @@ pub(crate) struct ReceivedRequest {
     pub(crate) id: ProbeId,
     pub(crate) at: Instant,
     pub(crate) remote: Remote,
+    pub(crate) gateway_order: Option<u64>,
+    pub(crate) dns_nat_generation: Option<u64>,
     pub(crate) packet: IpPacket,
 }
 
@@ -188,6 +237,14 @@ pub(crate) enum ProbeObservation {
     RequestSubmitted(SubmittedRequest),
     RequestReceived(ReceivedRequest),
     ResponseReceived(ReceivedResponse),
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct DnsNatObservation {
+    pub(crate) domain: dns_types::DomainName,
+    pub(crate) udp_flow: Option<UdpFlowId>,
+    pub(crate) submitted: SubmittedRequest,
+    pub(crate) received: ReceivedRequest,
 }
 
 impl ProbeObservation {

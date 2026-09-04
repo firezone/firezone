@@ -9,6 +9,7 @@ use super::sim_relay::SimRelay;
 use super::transition::{Destination, DnsQuery};
 use crate::assertions::*;
 use crate::flux_capacitor::FluxCapacitor;
+use crate::probe::{DnsNatObservation, ProbeId, ProbeObservation, Remote, UdpFlowId};
 use crate::resource as client;
 use crate::transition::Transition;
 use bufferpool::BufferPool;
@@ -16,6 +17,7 @@ use connlib_model::{ClientId, ClientOrGatewayId, GatewayId, PublicKey, RelayId};
 use dns_types::ResponseCode;
 use dns_types::prelude::*;
 use ip_packet::Ecn;
+use itertools::Itertools;
 use rand::SeedableRng;
 use rand::distr::SampleString;
 use sha2::Digest;
@@ -50,6 +52,17 @@ pub struct TunnelTest {
     /// the portal after a roam.
     client_portal_offline_until: Option<(ClientId, Instant)>,
     network: RoutingTable,
+    udp_flows: BTreeMap<UdpFlowId, ResolvedUdpFlow>,
+    dns_nat_observations: Vec<DnsNatObservation>,
+}
+
+#[derive(Clone, Copy)]
+struct ResolvedUdpFlow {
+    client_id: ClientId,
+    src: IpAddr,
+    dst: IpAddr,
+    sport: crate::transition::SPort,
+    dport: crate::transition::DPort,
 }
 
 impl TunnelTest {
@@ -144,6 +157,8 @@ impl TunnelTest {
             gateways,
             relays,
             buffer_pool: BufferPool::new(1024, "test"),
+            udp_flows: Default::default(),
+            dns_nat_observations: Default::default(),
         };
 
         let mut buffered_transmits = BufferedTransmits::default();
@@ -157,6 +172,12 @@ impl TunnelTest {
         let mut buffered_transmits = BufferedTransmits::default();
         let now = state.flux_capacitor.now();
         let utc_now = state.flux_capacitor.now();
+        let mut application_probe = None;
+
+        state
+            .udp_flows
+            .extract_if(.., |flow_id, _| !ref_state.udp_flows.contains_key(flow_id))
+            .for_each(drop);
 
         // Act: Apply the transition
         match transition {
@@ -199,8 +220,7 @@ impl TunnelTest {
                         .gateway_for_resource(new_resource.id())
                         .and_then(|gid| state.gateways.get_mut(gid))
                     {
-                        gateway
-                            .exec_mut(|g| g.sut.remove_access(client_id, &new_resource.id(), now))
+                        gateway.exec_mut(|g| g.remove_access(client_id, &new_resource.id(), now));
                     }
                     client.exec_mut(|c| {
                         c.sut
@@ -209,9 +229,15 @@ impl TunnelTest {
                 }
             }
             Transition::MoveResourceToNewSite { resource, new_site } => {
+                let resource_id = resource.id();
                 let new_resource = resource.with_new_site(new_site);
 
-                for client in state.clients.values_mut() {
+                for (client_id, client) in &mut state.clients {
+                    for gateway in state.gateways.values_mut() {
+                        gateway.exec_mut(|gateway| {
+                            gateway.record_resource_disabled(*client_id, resource_id)
+                        });
+                    }
                     client.exec_mut(|c| {
                         c.sut
                             .add_resource(new_resource.clone().into_description(), now)
@@ -222,9 +248,15 @@ impl TunnelTest {
                 resource,
                 new_filters,
             } => {
+                let resource_id = resource.id();
                 let new_resource = resource.with_new_filters(new_filters);
 
-                for client in state.clients.values_mut() {
+                for (client_id, client) in &mut state.clients {
+                    for gateway in state.gateways.values_mut() {
+                        gateway.exec_mut(|gateway| {
+                            gateway.record_resource_disabled(*client_id, resource_id)
+                        });
+                    }
                     client.exec_mut(|c| {
                         c.sut
                             .add_resource(new_resource.clone().into_description(), now)
@@ -240,9 +272,7 @@ impl TunnelTest {
                 for (client_id, client) in &mut state.clients {
                     for gateway in state.gateways.values_mut() {
                         gateway.exec_mut(|gateway| {
-                            gateway
-                                .sut
-                                .remove_access(client_id, &old_resource.id(), now)
+                            gateway.remove_access(client_id, &old_resource.id(), now)
                         });
                     }
 
@@ -300,11 +330,26 @@ impl TunnelTest {
                         .gateway_for_resource(rid)
                         .and_then(|gid| state.gateways.get_mut(gid))
                     {
-                        gateway.exec_mut(|g| g.sut.remove_access(client_id, &rid, now));
+                        gateway.exec_mut(|g| g.remove_access(client_id, &rid, now));
                     }
                 }
             }
             Transition::SetInternetResourceState { client_id, active } => {
+                if !active
+                    && let Some(resource) = ref_state
+                        .clients
+                        .get(&client_id)
+                        .unwrap()
+                        .inner()
+                        .internet_resource()
+                {
+                    for gateway in state.gateways.values_mut() {
+                        gateway.exec_mut(|gateway| {
+                            gateway.record_resource_disabled(client_id, resource)
+                        });
+                    }
+                }
+
                 state
                     .clients
                     .get_mut(&client_id)
@@ -332,10 +377,12 @@ impl TunnelTest {
 
                 let client = state.clients.get_mut(&client_id).unwrap();
                 let transmit = client.exec_mut(|sim| sim.encapsulate_probe(probe_id, packet, now));
+                application_probe = Some((probe_id, None));
 
                 buffered_transmits.push_from(transmit, client, now);
             }
             Transition::SendUdpPacket {
+                flow_id,
                 client_id,
                 src,
                 dst,
@@ -344,20 +391,27 @@ impl TunnelTest {
                 probe_id,
             } => {
                 let dst = address_from_destination(&dst, &state, &src, client_id);
-
-                let packet = ip_packet::make::udp_packet(
+                let flow = ResolvedUdpFlow {
+                    client_id,
                     src,
                     dst,
-                    sport.0,
-                    dport.0,
-                    &probe_id.to_be_bytes(),
-                )
-                .unwrap();
+                    sport,
+                    dport,
+                };
+                let previous = state.udp_flows.insert(flow_id, flow);
+                assert!(previous.is_none(), "UDP flow IDs must be unique");
+                application_probe = Some((probe_id, Some(flow_id)));
 
-                let client = state.clients.get_mut(&client_id).unwrap();
-                let transmit = client.exec_mut(|sim| sim.encapsulate_probe(probe_id, packet, now));
+                state.send_udp_probe(flow, probe_id, now, &mut buffered_transmits);
+            }
+            Transition::SendUdpPacketOnFlow { flow_id, probe_id } => {
+                let flow = *state
+                    .udp_flows
+                    .get(&flow_id)
+                    .expect("reused UDP flow must exist");
+                application_probe = Some((probe_id, Some(flow_id)));
 
-                buffered_transmits.push_from(transmit, client, now);
+                state.send_udp_probe(flow, probe_id, now, &mut buffered_transmits);
             }
             Transition::ConnectTcp {
                 client_id,
@@ -619,7 +673,7 @@ impl TunnelTest {
                 if let Some(gid) = ref_state.portal.gateway_for_resource(rid)
                     && let Some(gateway) = state.gateways.get_mut(gid)
                 {
-                    gateway.exec_mut(|gateway| gateway.sut.retain_authorizations(authorizations));
+                    gateway.exec_mut(|gateway| gateway.retain_authorizations(authorizations));
                 } else {
                     tracing::error!(%rid, "No gateway for resource");
                 }
@@ -630,6 +684,9 @@ impl TunnelTest {
                 client.exec_mut(|c| c.sut.shut_down(now));
                 // Drain transmits so they don't get lost as part of the restart.
                 state.drain_transmits(&mut buffered_transmits, now);
+                for gateway in state.gateways.values_mut() {
+                    gateway.exec_mut(|gateway| gateway.record_client_restart(client_id));
+                }
 
                 let client = state.clients.get_mut(&client_id).unwrap();
                 let ref_client = ref_state.clients.get(&client_id).unwrap();
@@ -657,11 +714,16 @@ impl TunnelTest {
                     c.sut.set_resources(all_resources, now);
 
                     c.update_relays(iter::empty(), state.relays.iter(), now);
-                })
+                });
             }
             Transition::UpdateDnsRecords { .. } => {}
         };
+
         state.advance(ref_state, &mut buffered_transmits);
+
+        if let Some((probe_id, udp_flow)) = application_probe {
+            state.record_dns_nat_observation(ref_state, probe_id, udp_flow);
+        }
 
         state
     }
@@ -689,9 +751,9 @@ impl TunnelTest {
             &all_ref_clients,
             &all_sim_clients,
             &sim_gateways,
-            &ref_state.global_dns_records,
             &ref_state.icmp_error_hosts,
         );
+        assert_dns_nat(&state.dns_nat_observations, &sim_gateways);
 
         // Per-client assertions for client-specific state
         for (client_id, ref_client_host) in &ref_state.clients {
@@ -715,6 +777,90 @@ impl TunnelTest {
         for gateway in state.gateways.values_mut() {
             gateway.exec_mut(|g| g.clear_packets());
         }
+    }
+
+    pub fn clear_probe_observations(state: &mut TunnelTest) {
+        for client in state.clients.values_mut() {
+            client.exec_mut(|c| c.clear_probe_observations());
+        }
+        for gateway in state.gateways.values_mut() {
+            gateway.exec_mut(|g| g.clear_probe_observations());
+        }
+    }
+
+    fn send_udp_probe(
+        &mut self,
+        flow: ResolvedUdpFlow,
+        probe_id: ProbeId,
+        now: Instant,
+        buffered_transmits: &mut BufferedTransmits,
+    ) {
+        let packet = ip_packet::make::udp_packet(
+            flow.src,
+            flow.dst,
+            flow.sport.0,
+            flow.dport.0,
+            &probe_id.to_be_bytes(),
+        )
+        .unwrap();
+
+        let client = self.clients.get_mut(&flow.client_id).unwrap();
+        let transmit = client.exec_mut(|sim| sim.encapsulate_probe(probe_id, packet, now));
+
+        buffered_transmits.push_from(transmit, client, now);
+    }
+
+    fn record_dns_nat_observation(
+        &mut self,
+        ref_state: &ReferenceState,
+        probe_id: ProbeId,
+        udp_flow: Option<UdpFlowId>,
+    ) {
+        let Some(expected) = ref_state.expected_probes.get(&probe_id) else {
+            return;
+        };
+        let Destination::DomainName { name, .. } = expected.request.destination() else {
+            return;
+        };
+        let observations = iter::empty()
+            .chain(
+                self.clients
+                    .values()
+                    .flat_map(|client| client.inner().probe_observations.iter()),
+            )
+            .chain(
+                self.gateways
+                    .values()
+                    .flat_map(|gateway| gateway.inner().probe_observations.iter()),
+            )
+            .filter(|observation| observation.id() == probe_id)
+            .cloned()
+            .collect_vec();
+        let submitted = observations
+            .iter()
+            .filter_map(ProbeObservation::as_submitted_request)
+            .cloned()
+            .collect_vec();
+        let received = observations
+            .iter()
+            .filter_map(ProbeObservation::as_received_request)
+            .cloned()
+            .collect_vec();
+        let ([submitted], [received]) = (submitted.as_slice(), received.as_slice()) else {
+            return;
+        };
+
+        match received.remote {
+            Remote::Gateway(_) => {}
+            Remote::Client(_) => return,
+        }
+
+        self.dns_nat_observations.push(DnsNatObservation {
+            domain: name.clone(),
+            udp_flow,
+            submitted: submitted.clone(),
+            received: received.clone(),
+        });
     }
 }
 
@@ -819,8 +965,7 @@ impl TunnelTest {
                     .then_some(query_message.clone().with_id(0))
                     .unwrap_or(query_message.clone());
 
-                let response =
-                    self.on_recursive_dns_query(&message, &ref_state.global_dns_records, now);
+                let response = self.on_recursive_dns_query(&message, &ref_state.global_dns_records);
                 let client = self.clients.get_mut(&client_id).unwrap();
                 client.exec_mut(|c| {
                     c.sut.handle_dns_response(
@@ -1200,6 +1345,7 @@ impl TunnelTest {
 
                 let client = self.clients.get_mut(&src).unwrap();
                 let client_key = client.inner().sut.public_key();
+                let client_tun = client.inner().sut.tunnel_ip_config().unwrap();
                 let gateway_key = gateway.inner().sut.public_key();
                 let (preshared_key, client_ice, gateway_ice) =
                     make_preshared_key_and_ice(client_key, gateway_key);
@@ -1212,8 +1358,8 @@ impl TunnelTest {
                                 id: src,
                                 public_key: client_key.into(),
                                 preshared_key: preshared_key.clone(),
-                                ipv4: client.inner().sut.tunnel_ip_config().unwrap().v4,
-                                ipv6: client.inner().sut.tunnel_ip_config().unwrap().v6,
+                                ipv4: client_tun.v4,
+                                ipv6: client_tun.v6,
                             },
                             client_ice.clone(),
                             gateway_ice.clone(),
@@ -1222,7 +1368,14 @@ impl TunnelTest {
                             use_iceless,
                             now,
                             test_ingest_token(),
-                        )
+                        )?;
+                        g.record_authorization(
+                            src,
+                            resource_id,
+                            [client_tun.v4.into(), client_tun.v6.into()],
+                        );
+
+                        Ok(())
                     })
                     .map_err(|error| ClientEventError::Gateway {
                         id: gateway_id,
@@ -1433,7 +1586,6 @@ impl TunnelTest {
         &self,
         query: &dns_types::Query,
         global_dns_records: &DnsRecords,
-        now: Instant,
     ) -> dns_types::Response {
         // Long enough that a query repeated within one `advance` window is served
         // from connlib's DNS cache, short enough that an `Idle` (minutes) expires
@@ -1449,7 +1601,7 @@ impl TunnelTest {
         let response = dns_types::ResponseBuilder::for_query(query, ResponseCode::NOERROR)
             .with_records(
                 global_dns_records
-                    .domain_records_iter(&domain, now)
+                    .domain_records_iter(&domain)
                     .filter(|record| qtype == record.rtype())
                     .map(|rdata| (domain.clone(), TTL, rdata)),
             )
@@ -1635,18 +1787,18 @@ fn on_gateway_event(
             })
         }
         GatewayEvent::ResolveDns(r) => {
+            let client = r.client();
+            let domain = r.domain().clone();
+            let proxy_ips = r.proxy_ips().to_vec();
             let resolved_ips = global_dns_records
-                .domain_ips_iter(r.domain(), now)
-                .collect();
+                .domain_ips_iter(&domain)
+                .collect::<Vec<_>>();
 
             gateway.exec_mut(|g| {
-                g.dns_query_timestamps
-                    .entry(r.domain().clone())
-                    .or_default()
-                    .push(now);
                 g.sut
-                    .handle_domain_resolved(r, Ok(resolved_ips), now)
-                    .unwrap()
+                    .handle_domain_resolved(r, Ok(resolved_ips.clone()), now)
+                    .unwrap();
+                g.record_dns_resolution(client, domain, proxy_ips, resolved_ips, now);
             })
         }
         GatewayEvent::NoRelays => {

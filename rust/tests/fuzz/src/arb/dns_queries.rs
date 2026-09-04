@@ -1,7 +1,4 @@
-use std::{
-    net::{IpAddr, Ipv4Addr, Ipv6Addr},
-    time::Instant,
-};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
 use connlib_model::ClientId;
 use dns_types::{DomainName, RecordType};
@@ -43,12 +40,12 @@ enum DnsNameSpec {
     },
 }
 
-pub(super) fn targets(state: &ReferenceState, now: Instant) -> Vec<DnsQueryTarget> {
+pub(super) fn targets(state: &ReferenceState) -> Vec<DnsQueryTarget> {
     let servers = state.reachable_dns_servers();
     let labels = state.portal.device_labels();
 
     state
-        .all_domains(now)
+        .all_domains()
         .into_iter()
         .flat_map(|(client_id, domain, rtypes)| {
             servers

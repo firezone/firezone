@@ -7,7 +7,7 @@ use tunnel_proto::{
 };
 
 use super::{
-    probe::ProbeId,
+    probe::{ProbeId, UdpFlow, UdpFlowId, UdpRoute},
     reference::PrivateKey,
     resource::{CidrResource, Resource},
     sim_net::Host,
@@ -56,11 +56,16 @@ pub enum Transition {
         probe_id: ProbeId,
     },
     SendUdpPacket {
+        flow_id: UdpFlowId,
         client_id: ClientId,
         src: IpAddr,
         dst: Destination,
         sport: SPort,
         dport: DPort,
+        probe_id: ProbeId,
+    },
+    SendUdpPacketOnFlow {
+        flow_id: UdpFlowId,
         probe_id: ProbeId,
     },
     ConnectTcp {
@@ -129,6 +134,7 @@ impl Transition {
             Transition::SetInternetResourceState { .. } => true,
             Transition::SendIcmpPacket { .. } => false,
             Transition::SendUdpPacket { .. } => false,
+            Transition::SendUdpPacketOnFlow { .. } => false,
             Transition::ConnectTcp { .. } => false,
             Transition::SendDnsQuery { .. } => false,
             Transition::SendDnsResourcePtrQuery { .. } => false,
@@ -146,6 +152,89 @@ impl Transition {
             Transition::DeauthorizeWhileGatewayIsPartitioned(_) => true,
             Transition::UpdateDnsRecords { .. } => false,
         }
+    }
+
+    /// Returns whether a UDP flow remains predictable across this transition.
+    pub(crate) fn retains_udp_flow(&self, flow: &UdpFlow, iceless: bool) -> bool {
+        match self {
+            Transition::AddResource(_) => match flow.route {
+                UdpRoute::Resource { .. } => false,
+                UdpRoute::Gateway(_) | UdpRoute::Peer(_) => true,
+            },
+            Transition::RemoveResource(resource) => match flow.route {
+                UdpRoute::Resource { resource: used, .. } => used != *resource,
+                UdpRoute::Gateway(_) => false,
+                UdpRoute::Peer(_) => false,
+            },
+            Transition::ChangeCidrResourceAddress { .. } => match flow.route {
+                UdpRoute::Resource { .. } => false,
+                UdpRoute::Gateway(_) => false,
+                UdpRoute::Peer(_) => true,
+            },
+            Transition::MoveResourceToNewSite { resource, .. } => match flow.route {
+                UdpRoute::Resource { resource: used, .. } => used != resource.id(),
+                UdpRoute::Gateway(_) => false,
+                UdpRoute::Peer(_) => true,
+            },
+            Transition::ChangeFiltersOfResource { resource, .. } => match flow.route {
+                UdpRoute::Resource { .. } => false,
+                UdpRoute::Gateway(_) => false,
+                UdpRoute::Peer(_) => !is_device_pool(resource),
+            },
+            Transition::ChangeResourceType {
+                old_resource,
+                new_resource,
+            } => match flow.route {
+                UdpRoute::Resource { .. } => false,
+                UdpRoute::Gateway(_) => false,
+                UdpRoute::Peer(_) => !is_device_pool(old_resource) && !is_device_pool(new_resource),
+            },
+            Transition::UpdateStaticDevicePool { .. } => !flow.route.is_peer(),
+            Transition::SetInternetResourceState { client_id, .. } => flow.client_id != *client_id,
+            Transition::SendIcmpPacket { .. } => true,
+            Transition::SendUdpPacket { .. } => true,
+            Transition::SendUdpPacketOnFlow { .. } => true,
+            Transition::ConnectTcp { .. } => true,
+            Transition::SendDnsQuery { .. } => true,
+            Transition::SendDnsResourcePtrQuery { .. } => true,
+            Transition::UpdateSystemDnsServers { .. } => true,
+            Transition::UpdateUpstreamDo53Servers(_) => true,
+            Transition::UpdateUpstreamDoHServers(_) => true,
+            Transition::UpdateUpstreamSearchDomain(_) => true,
+            Transition::RoamClient { client_id, .. } => match flow.route {
+                UdpRoute::Resource { .. } | UdpRoute::Gateway(_) => {
+                    iceless || flow.client_id != *client_id
+                }
+                UdpRoute::Peer(peer) => {
+                    iceless || (flow.client_id != *client_id && peer != *client_id)
+                }
+            },
+            Transition::ReconnectPortal { .. } => true,
+            Transition::RestartClient { client_id, .. } => match flow.route {
+                UdpRoute::Resource { .. } | UdpRoute::Gateway(_) => flow.client_id != *client_id,
+                UdpRoute::Peer(peer) => flow.client_id != *client_id && peer != *client_id,
+            },
+            Transition::DeployNewRelays(_) => iceless,
+            Transition::PartitionRelaysFromPortal => false,
+            Transition::Idle => true,
+            Transition::RebootRelaysWhilePartitioned(_) => false,
+            Transition::DeauthorizeWhileGatewayIsPartitioned(resource) => match flow.route {
+                UdpRoute::Resource { resource: used, .. } => used != *resource,
+                UdpRoute::Gateway(_) => false,
+                UdpRoute::Peer(_) => false,
+            },
+            Transition::UpdateDnsRecords { .. } => true,
+        }
+    }
+}
+
+fn is_device_pool(resource: &Resource) -> bool {
+    match resource {
+        Resource::Dns(_) => false,
+        Resource::Cidr(_) => false,
+        Resource::Internet(_) => false,
+        Resource::StaticDevicePool(_) => true,
+        Resource::DynamicDevicePool(_) => true,
     }
 }
 

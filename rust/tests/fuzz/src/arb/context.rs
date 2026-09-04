@@ -12,7 +12,7 @@ use ip_network::{
 };
 use smallvec::SmallVec;
 
-use crate::probe::ProbeId;
+use crate::probe::{ProbeId, UdpFlowId};
 use crate::reference::PrivateKey;
 use crate::transition::{DPort, Identifier, SPort, Seq};
 
@@ -70,6 +70,7 @@ pub struct Generator<'a> {
 
     next_key: u32,
     next_probe: u64,
+    next_udp_flow: u64,
     icmp_packets: SmallVec<[(Seq, Identifier); 20]>,
     udp_packets: SmallVec<[(SPort, DPort); 20]>,
     tcp_connections: SmallVec<[(SPort, DPort); 20]>,
@@ -105,6 +106,7 @@ impl<'a> Generator<'a> {
             next_resource: 0,
             next_key: 0,
             next_probe: 0,
+            next_udp_flow: 0,
             icmp_packets: SmallVec::new(),
             udp_packets: SmallVec::new(),
             tcp_connections: SmallVec::new(),
@@ -252,6 +254,13 @@ impl<'a> Generator<'a> {
         let entropy = self.u64();
 
         ProbeId::new(((n & 0xFF_FFFF) << 40) | (entropy & 0xFF_FFFF_FFFF))
+    }
+
+    pub(super) fn fresh_udp_flow_id(&mut self) -> UdpFlowId {
+        let n = self.next_udp_flow;
+        self.next_udp_flow += 1;
+
+        UdpFlowId::new(n)
     }
 
     pub(super) fn fresh_icmp_packet(&mut self) -> (Seq, Identifier) {
