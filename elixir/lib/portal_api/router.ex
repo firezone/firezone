@@ -43,6 +43,46 @@ defmodule PortalAPI.Router do
     get "/", OpenApiSpex.Plug.SwaggerUI, path: "/openapi.json"
   end
 
+  # The rollout gate and IP bucket precede all attacker-controlled work. Once a
+  # token is authenticated, every request is charged to its account and logged
+  # before controller dispatch. Synthetic REST requests carry private skip
+  # markers so this outer metering is never duplicated.
+  pipeline :mcp do
+    plug PortalAPI.Plugs.MCPFeatureGate
+    plug PortalAPI.Plugs.MCPRateLimit
+    plug :accepts, ["json"]
+    plug PortalAPI.Plugs.MCPAuth
+    plug PortalAPI.Plugs.RateLimit
+    # Insert the load-bearing audit row before parsing. Tool attempts and
+    # dispatch outcomes are separate metadata on the original /mcp request.
+    plug PortalAPI.Plugs.RequestLog, mcp: true
+
+    plug PortalAPI.Plugs.MCPParseBody,
+      parsers: [:json],
+      pass: ["*/*"],
+      json_decoder: Phoenix.json_library(),
+      length: 1_000_000
+
+  end
+
+  # Read before the client holds any credential, so it cannot be authenticated.
+  # Both paths are served: a client tries the one scoped to the MCP endpoint's
+  # path first and falls back to the root.
+  scope "/.well-known", PortalAPI do
+    pipe_through :public
+
+    get "/oauth-protected-resource/mcp", OAuthMetadataController, :show
+    get "/oauth-protected-resource", OAuthMetadataController, :show
+  end
+
+  scope "/mcp", PortalAPI do
+    pipe_through :mcp
+
+    post "/", MCPController, :handle
+    get "/", MCPController, :method_not_allowed
+    delete "/", MCPController, :method_not_allowed
+  end
+
   pipeline :ingestion do
     plug :accepts, ["json"]
     # Rate limiting is keyed on the source IP and runs before token

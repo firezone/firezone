@@ -62,6 +62,9 @@ defmodule Portal.Application do
     ]
 
     endpoint_children = [
+      # Builds the MCP tool table from the API spec; must be ready before the
+      # API endpoint starts serving /mcp.
+      PortalAPI.MCP.Tools,
       # Give Phoenix socket drain enough time to gracefully close channel topics
       # before transports are force-terminated.
       {PortalWeb.Endpoint, shutdown: 40_000},

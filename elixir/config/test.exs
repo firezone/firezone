@@ -257,6 +257,15 @@ config :portal, Portal.OAuth.ClientMetadata,
   req_opts: [
     retry: false,
     plug: {Req.Test, Portal.OAuth.ClientMetadata}
+  ],
+  # Req.Test never connects, but the mandatory protection still resolves before
+  # handing a request to its adapter. Use a known-public answer so metadata
+  # tests can keep descriptive fake hostnames (and localhost origin fixtures).
+  ssrf_protection_opts: [
+    resolver: fn
+      _host, :inet -> {:ok, [{8, 8, 8, 8}]}
+      _host, :inet6 -> {:error, :nxdomain}
+    end
   ]
 
 config :portal, Portal.Ocsp.Sync,
@@ -321,6 +330,13 @@ config :portal, PortalWeb.Endpoint,
 # cross-test interference from shared localhost IPs. Dedicated rate-limit tests
 # override this config with strict values.
 config :portal, PortalWeb.RateLimit,
+  refill_rate: 100_000,
+  capacity: 1_000_000
+
+# MCP controller tests share the loopback source IP, so dedicated limiter tests
+# pass strict values directly while the general suite uses a practically
+# unbounded bucket.
+config :portal, PortalAPI.Plugs.MCPRateLimit,
   refill_rate: 100_000,
   capacity: 1_000_000
 

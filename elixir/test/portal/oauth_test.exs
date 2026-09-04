@@ -7,6 +7,8 @@ defmodule Portal.OAuthTest do
   import Portal.SubjectFixtures
 
   alias Portal.OAuth
+  alias Portal.OAuth.ClientMetadata
+  alias Portal.Req.SSRFProtection.UnsafeURLError
   alias Portal.Scope
 
   @verifier "a-code-verifier-long-enough-to-satisfy-the-pkce-rules"
@@ -35,6 +37,68 @@ defmodule Portal.OAuthTest do
                  "client_id" => "http://client.example.com/meta.json",
                  "redirect_uri" => redirect_uri()
                })
+    end
+
+    test "rejects client ids with userinfo, fragments, or dot path segments" do
+      for client_id <- [
+            "https://user:password@client.example.com/meta.json",
+            "https://client.example.com/meta.json#fragment",
+            "https://client.example.com/a/../meta.json",
+            "https://client.example.com/a/%2E%2e/meta.json"
+          ] do
+        assert {:error, "invalid_client", _description} =
+                 OAuth.validate_client(%{
+                   "client_id" => client_id,
+                   "redirect_uri" => redirect_uri()
+                 })
+      end
+    end
+
+    test "rejects metadata that requests client authentication or contains a secret" do
+      for {suffix, extra} <- [
+            {"private-key", %{"token_endpoint_auth_method" => "private_key_jwt"}},
+            {"secret", %{"client_secret" => "must-not-be-here"}}
+          ] do
+        client_id = "https://localhost/#{suffix}.json"
+
+        Req.Test.stub(Portal.OAuth.ClientMetadata, fn conn ->
+          Req.Test.json(
+            conn,
+            Map.merge(
+              %{
+                "client_id" => client_id,
+                "client_name" => "Unsafe client",
+                "redirect_uris" => [redirect_uri()]
+              },
+              extra
+            )
+          )
+        end)
+
+        assert {:error, "invalid_client", _description} =
+                 OAuth.validate_client(%{
+                   "client_id" => client_id,
+                   "redirect_uri" => redirect_uri()
+                 })
+      end
+    end
+
+    test "client metadata keeps SSRF protection when global Req plugins are disabled" do
+      test_pid = self()
+
+      adapter = fn request ->
+        send(test_pid, :unsafe_adapter_called)
+        {request, Req.Response.new(status: 200, body: %{})}
+      end
+
+      Portal.Config.put_env_override(:portal, ClientMetadata,
+        req_opts: [plugins: [], adapter: adapter, retry: false]
+      )
+
+      assert {:error, %UnsafeURLError{reason: :non_public_address}} =
+               ClientMetadata.fetch("https://127.0.0.1/client.json")
+
+      refute_receive :unsafe_adapter_called
     end
 
     test "rejects a redirect uri the metadata does not list", %{client: client} do
@@ -305,7 +369,7 @@ defmodule Portal.OAuthTest do
       resource = OAuth.resource_uri()
       code = consent(context, "policies:read policies:write", resource)
 
-      assert {:ok, issued} = OAuth.exchange(exchange_params(context, code), resource)
+      assert {:ok, issued} = OAuth.exchange(exchange_params(context, code, resource), resource)
 
       mcp_context = Portal.Authentication.Context.build({127, 0, 0, 1}, "testing", [], :mcp)
 
@@ -320,10 +384,10 @@ defmodule Portal.OAuthTest do
                Portal.Authentication.authenticate(issued.access_token, mcp_context)
 
       assert {:error, "invalid_grant", _description} =
-               OAuth.refresh(refresh_params(context, issued.refresh_token), resource)
+               OAuth.refresh(refresh_params(context, issued.refresh_token, resource), resource)
 
       assert {:ok, narrowed} =
-               OAuth.exchange(exchange_params(context, narrowed_code), resource)
+               OAuth.exchange(exchange_params(context, narrowed_code, resource), resource)
 
       assert narrowed.scope == "policies:read"
     end
@@ -396,9 +460,29 @@ defmodule Portal.OAuthTest do
 
     test "rejects a code minted for another resource", context do
       code = consent(context)
+      other_resource = "https://other.example/mcp"
+      params = %{exchange_params(context, code) | "resource" => other_resource}
 
       assert {:error, "invalid_grant", _description} =
-               OAuth.exchange(exchange_params(context, code), "https://other.example/mcp")
+               OAuth.exchange(params, other_resource)
+    end
+
+    test "requires the client to repeat the resource without consuming the code", context do
+      code = consent(context)
+      params = Map.delete(exchange_params(context, code), "resource")
+
+      assert {:error, "invalid_request", description} = OAuth.exchange(params, @resource)
+      assert description =~ "resource"
+
+      assert {:ok, _response} = OAuth.exchange(exchange_params(context, code), @resource)
+    end
+
+    test "rejects the wrong resource without consuming the code", context do
+      code = consent(context)
+      params = %{exchange_params(context, code) | "resource" => "https://other.example/mcp"}
+
+      assert {:error, "invalid_target", _description} = OAuth.exchange(params, @resource)
+      assert {:ok, _response} = OAuth.exchange(exchange_params(context, code), @resource)
     end
 
     test "rejects a made up code", context do
@@ -427,9 +511,11 @@ defmodule Portal.OAuthTest do
 
     test "refuses a refresh token for another audience", context do
       refresh = refreshable_token(context)
+      other_resource = "https://other.example/mcp"
+      params = %{refresh_params(context, refresh) | "resource" => other_resource}
 
       assert {:error, "invalid_grant", _description} =
-               OAuth.refresh(refresh_params(context, refresh), "https://other.example/mcp")
+               OAuth.refresh(params, other_resource)
     end
 
     test "refuses an access token presented as a refresh token", %{
@@ -457,7 +543,19 @@ defmodule Portal.OAuthTest do
       refresh = refreshable_token(context)
 
       assert {:error, "invalid_request", _description} =
-               OAuth.refresh(%{"refresh_token" => refresh}, @resource)
+               OAuth.refresh(%{"refresh_token" => refresh, "resource" => @resource}, @resource)
+    end
+
+    test "requires the resource and rejects a different one", context do
+      refresh = refreshable_token(context)
+
+      assert {:error, "invalid_request", description} =
+               OAuth.refresh(Map.delete(refresh_params(context, refresh), "resource"), @resource)
+
+      assert description =~ "resource"
+
+      params = %{refresh_params(context, refresh) | "resource" => "https://other.example/mcp"}
+      assert {:error, "invalid_target", _description} = OAuth.refresh(params, @resource)
     end
 
     test "narrows the token to what the grant now allows", %{
@@ -550,16 +648,21 @@ defmodule Portal.OAuthTest do
     refresh
   end
 
-  defp refresh_params(context, refresh) do
-    %{"refresh_token" => refresh, "client_id" => context.client.client_id}
+  defp refresh_params(context, refresh, resource \\ @resource) do
+    %{
+      "refresh_token" => refresh,
+      "client_id" => context.client.client_id,
+      "resource" => resource
+    }
   end
 
-  defp exchange_params(context, code) do
+  defp exchange_params(context, code, resource \\ @resource) do
     %{
       "code" => code,
       "code_verifier" => @verifier,
       "client_id" => context.client.client_id,
-      "redirect_uri" => redirect_uri()
+      "redirect_uri" => redirect_uri(),
+      "resource" => resource
     }
   end
 

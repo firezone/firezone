@@ -519,16 +519,31 @@ defmodule PortalAPI.Schemas.Log do
           example: "84e7f82f-831a-4a9d-8f17-c66c2bb6e205",
           type: :string,
           format: :uuid,
-          description: "ID of the API Client actor."
+          description: "ID of the actor making the API or MCP request."
         },
         api_token_id: %Schema{
           example: "44e7f82f-831a-4a9d-8f17-c66c2bb6e205",
           type: :string,
           format: :uuid,
-          description: "ID of the API token used."
+          description: "ID of the API token or MCP OAuth access token used."
         },
         method: %Schema{type: :string, description: "HTTP request method.", example: "GET"},
         path: %Schema{type: :string, description: "HTTP request path.", example: "/clients"},
+        mcp: %Schema{
+          type: :object,
+          nullable: true,
+          additionalProperties: true,
+          description: """
+          MCP execution metadata, null for REST requests. tool_name is the
+          requested tool, not proof of execution. outcome is received, rejected,
+          ignored, protocol_response, dispatched, succeeded, or failed. A
+          dispatched outcome without completion has an unknown result. method
+          and path identify the dispatched REST operation; rest_status is its
+          status and http_status is the outer response status. No arguments or
+          response bodies are logged. A succeeded result means the REST handler
+          returned 2xx, not necessarily that it changed data.
+          """
+        },
         content_length: %Schema{
           example: nil,
           type: :integer,
@@ -558,6 +573,7 @@ defmodule PortalAPI.Schemas.Log do
         :ip_region,
         :log_id,
         :method,
+        :mcp,
         :path,
         :request_id,
         :timestamp,

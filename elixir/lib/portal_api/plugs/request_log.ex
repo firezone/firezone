@@ -11,17 +11,42 @@ defmodule PortalAPI.Plugs.RequestLog do
   # Bandit caps the request line well below this; the slice is a guard against
   # the column growing unbounded if that ever changes.
   @max_path_length 2048
+  @skip_key :portal_api_skip_request_log
+
+  @doc "Private key used by an already-audited internal dispatch."
+  def skip_key, do: @skip_key
 
   def init(opts), do: opts
 
-  def call(conn, _opts) do
-    {:ok, _api_request_log} =
+  def call(%Plug.Conn{private: %{@skip_key => true}} = conn, _opts), do: conn
+
+  def call(conn, opts) do
+    mcp? = Keyword.get(opts, :mcp, false)
+
+    {:ok, api_request_log} =
       conn
       |> attrs()
+      |> Map.put(:mcp, if(mcp?, do: %{"outcome" => "received"}))
       |> Database.insert_api_request_log()
 
-    conn
+    conn = Plug.Conn.assign(conn, :api_request_log, api_request_log)
+
+    if mcp? do
+      Plug.Conn.register_before_send(conn, &PortalAPI.Plugs.MCPRequestLog.finalize/1)
+    else
+      conn
+    end
   end
+
+  @doc "Persists a bounded MCP audit checkpoint before returning the updated connection."
+  def update_mcp(%Plug.Conn{assigns: %{api_request_log: log}} = conn, metadata) do
+    {:ok, log} =
+      Database.update_mcp(log, Map.merge(log.mcp || %{}, metadata))
+
+    Plug.Conn.assign(conn, :api_request_log, log)
+  end
+
+  def update_mcp(conn, _metadata), do: conn
 
   defp attrs(conn) do
     subject = conn.assigns.subject
@@ -86,6 +111,7 @@ defmodule PortalAPI.Plugs.RequestLog do
       ip_city
       ip_lat
       ip_lon
+      mcp
     ]a
 
     def insert_api_request_log(attrs) do
@@ -94,6 +120,13 @@ defmodule PortalAPI.Plugs.RequestLog do
       |> APIRequestLog.changeset()
       |> Safe.unscoped()
       |> Safe.insert()
+    end
+
+    def update_mcp(api_request_log, metadata) do
+      api_request_log
+      |> Ecto.Changeset.change(mcp: metadata)
+      |> Safe.unscoped()
+      |> Safe.update()
     end
   end
 end
