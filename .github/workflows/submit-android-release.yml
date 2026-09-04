@@ -53,25 +53,6 @@ jobs:
         with:
           ref: ${{ steps.release.outputs.source_sha }}
 
-      - name: Check the store screenshots
-        run: |
-          screenshots=(
-            kotlin/android/screenshots/sign-in.png
-            kotlin/android/screenshots/session-screen.png
-            kotlin/android/screenshots/session-screen-favorites.png
-            kotlin/android/screenshots/resource-details.png
-            kotlin/android/screenshots/resource-details-internet.png
-            kotlin/android/screenshots/device-details.png
-            kotlin/android/screenshots/settings-general.png
-            kotlin/android/screenshots/settings-advanced.png
-          )
-          for screenshot in "${screenshots[@]}"; do
-            if [[ ! -s "$screenshot" ]]; then
-              echo "Missing store screenshot: $screenshot" >&2
-              exit 1
-            fi
-          done
-
       - uses: ./.github/actions/setup-mise
         with:
           install_args: --cd kotlin/android github:tamtom/play-console-cli
@@ -100,17 +81,6 @@ jobs:
           VERSION_CODE: ${{ steps.play.outputs.version_code }}
           VERSION_NAME: ${{ steps.release.outputs.version_name }}
         run: |
-          screenshots=(
-            kotlin/android/screenshots/sign-in.png
-            kotlin/android/screenshots/session-screen.png
-            kotlin/android/screenshots/session-screen-favorites.png
-            kotlin/android/screenshots/resource-details.png
-            kotlin/android/screenshots/resource-details-internet.png
-            kotlin/android/screenshots/device-details.png
-            kotlin/android/screenshots/settings-general.png
-            kotlin/android/screenshots/settings-advanced.png
-          )
-
           {
             echo "## Android production submission"
             echo
@@ -124,10 +94,14 @@ jobs:
             echo
             echo "### Store screenshots"
             echo
-            for screenshot in "${screenshots[@]}"; do
+            while IFS= read -r screenshot; do
+              if [[ ! -s "$screenshot" ]]; then
+                echo "Missing store screenshot: $screenshot" >&2
+                exit 1
+              fi
               printf -- '- [`%s`](https://github.com/%s/blob/%s/%s)\n' \
                 "$screenshot" "$GITHUB_REPOSITORY" "$SOURCE_SHA" "$screenshot"
-            done
+            done < kotlin/android/screenshots/play-store.txt
             echo
             echo "Review this summary and the [Play Console](https://play.google.com/console/) before approving the \`google-play\` environment. Approval is the reminder and checkpoint that authorizes revalidation, screenshot replacement, production promotion, and review submission. Managed Publishing still requires a manual \`Publish changes\` action after Google approves the changes."
           } >> "$GITHUB_STEP_SUMMARY"

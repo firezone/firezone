@@ -15,16 +15,8 @@ readonly PUBLISHER_API="https://androidpublisher.googleapis.com/androidpublisher
 readonly RELEASE_NAME="$VERSION_NAME@$SOURCE_SHA"
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 readonly REPO_ROOT
-readonly -a SCREENSHOTS=(
-    "$REPO_ROOT/kotlin/android/screenshots/sign-in.png"
-    "$REPO_ROOT/kotlin/android/screenshots/session-screen.png"
-    "$REPO_ROOT/kotlin/android/screenshots/session-screen-favorites.png"
-    "$REPO_ROOT/kotlin/android/screenshots/resource-details.png"
-    "$REPO_ROOT/kotlin/android/screenshots/resource-details-internet.png"
-    "$REPO_ROOT/kotlin/android/screenshots/device-details.png"
-    "$REPO_ROOT/kotlin/android/screenshots/settings-general.png"
-    "$REPO_ROOT/kotlin/android/screenshots/settings-advanced.png"
-)
+mapfile -t SCREENSHOTS < "$REPO_ROOT/kotlin/android/screenshots/play-store.txt"
+readonly -a SCREENSHOTS
 
 case "$COMMAND" in
     inspect | internal | production) ;;
@@ -163,7 +155,7 @@ inspect_internal() {
 }
 
 submit_production() {
-    local production screenshot
+    local production screenshot screenshot_path
 
     if [[ "${GITHUB_ACTIONS:-false}" != true || "${GITHUB_REF_NAME:-}" != main ]]; then
         echo "Production submission is only allowed from main in GitHub Actions" >&2
@@ -171,8 +163,9 @@ submit_production() {
     fi
 
     for screenshot in "${SCREENSHOTS[@]}"; do
-        if [[ ! -s "$screenshot" ]]; then
-            echo "Missing store screenshot: ${screenshot#"$REPO_ROOT/"}" >&2
+        screenshot_path="$REPO_ROOT/$screenshot"
+        if [[ ! -s "$screenshot_path" ]]; then
+            echo "Missing store screenshot: $screenshot" >&2
             exit 1
         fi
     done
@@ -218,13 +211,14 @@ submit_production() {
         --confirm
 
     for screenshot in "${SCREENSHOTS[@]}"; do
-        echo "Uploading ${screenshot#"$REPO_ROOT/"}..."
+        screenshot_path="$REPO_ROOT/$screenshot"
+        echo "Uploading $screenshot..."
         gplay images upload \
             --package "$PACKAGE_NAME" \
             --edit "$edit_id" \
             --locale en-US \
             --type phoneScreenshots \
-            --file "$screenshot"
+            --file "$screenshot_path"
     done
 
     update_track "$PRODUCTION_TRACK" "$internal_version_code"
