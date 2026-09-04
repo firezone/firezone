@@ -1,18 +1,36 @@
 name: Build macOS/iOS app
 on:
   workflow_call:
+    inputs:
+      prepare_store:
+        description: Prepare the App Store drafts from this branch
+        type: boolean
+        default: false
   workflow_dispatch:
+    inputs:
+      prepare_store:
+        description: Prepare the App Store drafts from this branch
+        type: boolean
+        default: false
 
 jobs:
   update-release-draft:
     name: update-release-draft
     runs-on: ubuntu-24.04
+    outputs:
+      build_number: ${{ steps.release-metadata.outputs.build_number }}
+      version: ${{ steps.release-metadata.outputs.version }}
     permissions:
       contents: write # release-drafter needs to create/update releases
     env:
       # mark:next-apple-version
       RELEASE_NAME: apple-client-1.5.20
     steps:
+      - name: Set release metadata
+        id: release-metadata
+        run: |
+          echo "build_number=$(date +%s)" >> "$GITHUB_OUTPUT"
+          echo "version=${RELEASE_NAME#apple-client-}" >> "$GITHUB_OUTPUT"
       - uses: release-drafter/release-drafter@34d80673e067bdc0c24568d3af899c216adcfaa9 # v7.7.0
         if: "${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}"
         id: update-release-draft
@@ -317,6 +335,7 @@ jobs:
           PKG_ARTIFACT_PATH: "${{ runner.temp }}/${{ matrix.pkg-artifact-file }}"
           NOTARIZE: "${{ github.event_name == 'workflow_dispatch' }}"
           FIREZONE_NO_TELEMETRY: "${{ github.event_name != 'workflow_dispatch' }}"
+          BUILD_NUMBER: "${{ needs.update-release-draft.outputs.build_number }}"
           ISSUER_ID: "${{ secrets.APPLE_APP_STORE_CONNECT_ISSUER_ID }}"
           API_KEY_ID: "${{ secrets.APPLE_APP_STORE_CONNECT_API_KEY_ID }}"
           API_KEY: "${{ secrets.APPLE_APP_STORE_CONNECT_API_KEY }}"
@@ -377,3 +396,211 @@ jobs:
 
           sentry-cli debug-files upload --log-level info --project apple-client --include-sources ${{ runner.temp }}
           sentry-cli debug-files upload --log-level info --project apple-client --include-sources ./rust/target
+
+  prepare-app-store:
+    name: prepare-app-store
+    if: "${{ github.event_name == 'workflow_dispatch' && (github.ref_name == 'main' || inputs.prepare_store) }}"
+    needs: [update-release-draft, build]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      security-events: write # trivy SARIF upload from setup-mise
+    env:
+      ASC_APP_ID: "6443661826"
+      ASC_ISSUER_ID: ${{ secrets.APPLE_APP_STORE_CONNECT_ISSUER_ID }}
+      ASC_KEY_ID: ${{ secrets.APPLE_APP_STORE_CONNECT_API_KEY_ID }}
+      ASC_PRIVATE_KEY_B64: ${{ secrets.APPLE_APP_STORE_CONNECT_API_KEY }}
+      BUILD_NUMBER: ${{ needs.update-release-draft.outputs.build_number }}
+      VERSION: ${{ needs.update-release-draft.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-mise
+        with:
+          install_args: --cd swift/apple github:rorkai/App-Store-Connect-CLI
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Stage App Store inputs
+        run: |
+          metadata_dir="${RUNNER_TEMP}/app-store-metadata/versions/${VERSION}"
+          iphone_dir="${RUNNER_TEMP}/app-store-screenshots/ios/iphone/en-US"
+          ipad_dir="${RUNNER_TEMP}/app-store-screenshots/ios/ipad/en-US"
+          macos_dir="${RUNNER_TEMP}/app-store-screenshots/macos/en-US"
+          mkdir -p "$metadata_dir" "$iphone_dir" "$ipad_dir" "$macos_dir"
+
+          cp swift/apple/app-store/metadata/en-US.json "$metadata_dir/en-US.json"
+
+          cp swift/apple/screenshots/ios/iphone/welcome-light.png "$iphone_dir/01-welcome.png"
+          cp swift/apple/screenshots/ios/iphone/session-light.png "$iphone_dir/02-session.png"
+          cp swift/apple/screenshots/ios/iphone/session-scrolled-light.png "$iphone_dir/03-session-scrolled.png"
+          cp swift/apple/screenshots/ios/iphone/session-menu-light.png "$iphone_dir/04-session-menu.png"
+          cp swift/apple/screenshots/ios/iphone/resource-details-light.png "$iphone_dir/05-resource-details.png"
+          cp swift/apple/screenshots/ios/iphone/resource-details-internet-light.png "$iphone_dir/06-internet-resource.png"
+          cp swift/apple/screenshots/ios/iphone/device-details-light.png "$iphone_dir/07-device-details.png"
+          cp swift/apple/screenshots/ios/iphone/settings-general-light.png "$iphone_dir/08-settings-general.png"
+          cp swift/apple/screenshots/ios/iphone/settings-advanced-light.png "$iphone_dir/09-settings-advanced.png"
+          cp swift/apple/screenshots/ios/iphone/x509-filled-light.png "$iphone_dir/10-x509.png"
+
+          cp swift/apple/screenshots/ios/ipad/welcome-light.png "$ipad_dir/01-welcome.png"
+          cp swift/apple/screenshots/ios/ipad/session-light.png "$ipad_dir/02-session.png"
+          cp swift/apple/screenshots/ios/ipad/session-scrolled-light.png "$ipad_dir/03-session-scrolled.png"
+          cp swift/apple/screenshots/ios/ipad/session-menu-light.png "$ipad_dir/04-session-menu.png"
+          cp swift/apple/screenshots/ios/ipad/resource-details-light.png "$ipad_dir/05-resource-details.png"
+          cp swift/apple/screenshots/ios/ipad/resource-details-internet-light.png "$ipad_dir/06-internet-resource.png"
+          cp swift/apple/screenshots/ios/ipad/device-details-light.png "$ipad_dir/07-device-details.png"
+          cp swift/apple/screenshots/ios/ipad/settings-general-light.png "$ipad_dir/08-settings-general.png"
+          cp swift/apple/screenshots/ios/ipad/settings-advanced-light.png "$ipad_dir/09-settings-advanced.png"
+          cp swift/apple/screenshots/ios/ipad/x509-filled-light.png "$ipad_dir/10-x509.png"
+
+          cp swift/apple/screenshots/macos/26/first-time-light.png "$macos_dir/01-first-time-light.png"
+          cp swift/apple/screenshots/macos/26/first-time-dark.png "$macos_dir/02-first-time-dark.png"
+          cp swift/apple/screenshots/macos/26/settings-general-light.png "$macos_dir/03-settings-general-light.png"
+          cp swift/apple/screenshots/macos/26/settings-general-dark.png "$macos_dir/04-settings-general-dark.png"
+          cp swift/apple/screenshots/macos/26/settings-advanced-light.png "$macos_dir/05-settings-advanced-light.png"
+          cp swift/apple/screenshots/macos/26/settings-advanced-dark.png "$macos_dir/06-settings-advanced-dark.png"
+          cp swift/apple/screenshots/macos/26/x509-filled-light.png "$macos_dir/07-x509-light.png"
+          cp swift/apple/screenshots/macos/26/x509-filled-dark.png "$macos_dir/08-x509-dark.png"
+          cp swift/apple/screenshots/macos/26/grant-vpn-light.png "$macos_dir/09-grant-vpn-light.png"
+          cp swift/apple/screenshots/macos/26/grant-vpn-dark.png "$macos_dir/10-grant-vpn-dark.png"
+
+          echo "METADATA_DIR=${RUNNER_TEMP}/app-store-metadata" >> "$GITHUB_ENV"
+          echo "IPHONE_SCREENSHOTS=${RUNNER_TEMP}/app-store-screenshots/ios/iphone" >> "$GITHUB_ENV"
+          echo "IPAD_SCREENSHOTS=${RUNNER_TEMP}/app-store-screenshots/ios/ipad" >> "$GITHUB_ENV"
+          echo "MACOS_SCREENSHOTS=${RUNNER_TEMP}/app-store-screenshots/macos" >> "$GITHUB_ENV"
+      - name: Wait for the iOS build
+        run: |
+          result=$(asc builds wait \
+            --app "$ASC_APP_ID" \
+            --version "$VERSION" \
+            --build-number "$BUILD_NUMBER" \
+            --platform IOS \
+            --fail-on-invalid \
+            --output json)
+          echo "$result"
+          echo "IOS_BUILD_ID=$(jq -er '.buildId' <<< "$result")" >> "$GITHUB_ENV"
+      - name: Wait for the macOS build
+        run: |
+          result=$(asc builds wait \
+            --app "$ASC_APP_ID" \
+            --version "$VERSION" \
+            --build-number "$BUILD_NUMBER" \
+            --platform MAC_OS \
+            --fail-on-invalid \
+            --output json)
+          echo "$result"
+          echo "MACOS_BUILD_ID=$(jq -er '.buildId' <<< "$result")" >> "$GITHUB_ENV"
+      - name: Find iOS App Store version
+        id: ios-version
+        env:
+          PLATFORM: IOS
+        run: |
+          target=$(asc versions list --app "$ASC_APP_ID" --version "$VERSION" --platform "$PLATFORM" --output json)
+          count=$(jq -er '.data | length' <<< "$target")
+          if [[ "$count" == 1 ]]; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [[ "$count" != 0 ]]; then
+            echo "Expected at most one iOS App Store version ${VERSION}, found ${count}" >&2
+            exit 1
+          fi
+          source=$(asc versions list --app "$ASC_APP_ID" --platform "$PLATFORM" --limit 200 --output json \
+            | jq -er --arg version "$VERSION" '[.data[] | select(.attributes.versionString != $version)] | sort_by(.attributes.createdDate) | last | .attributes.versionString')
+          echo "exists=false" >> "$GITHUB_OUTPUT"
+          echo "source=$source" >> "$GITHUB_OUTPUT"
+      - name: Find macOS App Store version
+        id: macos-version
+        env:
+          PLATFORM: MAC_OS
+        run: |
+          target=$(asc versions list --app "$ASC_APP_ID" --version "$VERSION" --platform "$PLATFORM" --output json)
+          count=$(jq -er '.data | length' <<< "$target")
+          if [[ "$count" == 1 ]]; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [[ "$count" != 0 ]]; then
+            echo "Expected at most one macOS App Store version ${VERSION}, found ${count}" >&2
+            exit 1
+          fi
+          source=$(asc versions list --app "$ASC_APP_ID" --platform "$PLATFORM" --limit 200 --output json \
+            | jq -er --arg version "$VERSION" '[.data[] | select(.attributes.versionString != $version)] | sort_by(.attributes.createdDate) | last | .attributes.versionString')
+          echo "exists=false" >> "$GITHUB_OUTPUT"
+          echo "source=$source" >> "$GITHUB_OUTPUT"
+      - name: Create the iOS App Store version
+        if: steps.ios-version.outputs.exists == 'false'
+        run: >-
+          asc versions create
+          --app "$ASC_APP_ID"
+          --version "$VERSION"
+          --platform IOS
+          --release-type MANUAL
+          --copy-metadata-from "${{ steps.ios-version.outputs.source }}"
+      - name: Create the macOS App Store version
+        if: steps.macos-version.outputs.exists == 'false'
+        run: >-
+          asc versions create
+          --app "$ASC_APP_ID"
+          --version "$VERSION"
+          --platform MAC_OS
+          --release-type MANUAL
+          --copy-metadata-from "${{ steps.macos-version.outputs.source }}"
+      - name: Keep the App Store releases manual
+        run: |
+          for platform in IOS MAC_OS; do
+            version_id=$(asc versions list \
+              --app "$ASC_APP_ID" \
+              --version "$VERSION" \
+              --platform "$platform" \
+              --output json \
+              | jq -er 'if (.data | length) == 1 then .data[0].id else error("expected one version") end')
+            asc versions update --version-id "$version_id" --release-type MANUAL
+          done
+      - name: Set What's New on iOS
+        run: asc metadata push --app "$ASC_APP_ID" --version "$VERSION" --platform IOS --dir "$METADATA_DIR"
+      - name: Set What's New on macOS
+        run: asc metadata push --app "$ASC_APP_ID" --version "$VERSION" --platform MAC_OS --dir "$METADATA_DIR"
+      - name: Replace iPhone screenshots
+        run: >-
+          asc screenshots upload
+          --app "$ASC_APP_ID"
+          --version "$VERSION"
+          --platform IOS
+          --path "$IPHONE_SCREENSHOTS"
+          --device-type APP_IPHONE_67
+          --replace
+      - name: Replace iPad screenshots
+        run: >-
+          asc screenshots upload
+          --app "$ASC_APP_ID"
+          --version "$VERSION"
+          --platform IOS
+          --path "$IPAD_SCREENSHOTS"
+          --device-type APP_IPAD_PRO_3GEN_129
+          --replace
+      - name: Replace macOS screenshots
+        run: >-
+          asc screenshots upload
+          --app "$ASC_APP_ID"
+          --version "$VERSION"
+          --platform MAC_OS
+          --path "$MACOS_SCREENSHOTS"
+          --device-type APP_DESKTOP
+          --replace
+      - name: Stage the iOS App Store release
+        run: >-
+          asc release stage
+          --app "$ASC_APP_ID"
+          --version "$VERSION"
+          --build "$IOS_BUILD_ID"
+          --platform IOS
+          --metadata-dir "$METADATA_DIR"
+          --confirm
+      - name: Stage the macOS App Store release
+        run: >-
+          asc release stage
+          --app "$ASC_APP_ID"
+          --version "$VERSION"
+          --build "$MACOS_BUILD_ID"
+          --platform MAC_OS
+          --metadata-dir "$METADATA_DIR"
+          --confirm
