@@ -7,12 +7,20 @@ jobs:
   update-release-draft:
     name: update-release-draft
     runs-on: ubuntu-24.04
+    outputs:
+      build_number: ${{ steps.release-metadata.outputs.build_number }}
+      version: ${{ steps.release-metadata.outputs.version }}
     permissions:
       contents: write # release-drafter needs to create/update releases
     env:
       # mark:next-apple-version
       RELEASE_NAME: apple-client-1.5.20
     steps:
+      - name: Set release metadata
+        id: release-metadata
+        run: |
+          echo "build_number=$(date +%s)" >> "$GITHUB_OUTPUT"
+          echo "version=${RELEASE_NAME#apple-client-}" >> "$GITHUB_OUTPUT"
       - uses: release-drafter/release-drafter@34d80673e067bdc0c24568d3af899c216adcfaa9 # v7.7.0
         if: "${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}"
         id: update-release-draft
@@ -258,24 +266,19 @@ jobs:
           - job_name: build-ios
             rust-targets: aarch64-apple-ios
             build-script: scripts/build/ios-appstore.sh
-            upload-script: scripts/upload/app-store-connect.sh
             # mark:next-apple-version
             artifact-file: "firezone-ios-client-1.5.20.ipa"
-            platform: iOS
             # mark:next-apple-version
             release-name: apple-client-1.5.20
 
           - job_name: build-macos-appstore
             rust-targets: aarch64-apple-darwin x86_64-apple-darwin
             build-script: scripts/build/macos-appstore.sh
-            upload-script: scripts/upload/app-store-connect.sh
             artifact-file: "Firezone.pkg"
-            platform: macOS
 
           - job_name: build-macos-standalone
             rust-targets: aarch64-apple-darwin x86_64-apple-darwin
             build-script: scripts/build/macos-standalone.sh
-            upload-script: scripts/upload/github-release.sh
             # mark:next-apple-version
             artifact-file: "firezone-macos-client-1.5.20.dmg"
             # mark:next-apple-version
@@ -317,10 +320,18 @@ jobs:
           PKG_ARTIFACT_PATH: "${{ runner.temp }}/${{ matrix.pkg-artifact-file }}"
           NOTARIZE: "${{ github.event_name == 'workflow_dispatch' }}"
           FIREZONE_NO_TELEMETRY: "${{ github.event_name != 'workflow_dispatch' }}"
+          BUILD_NUMBER: "${{ needs.update-release-draft.outputs.build_number }}"
           ISSUER_ID: "${{ secrets.APPLE_APP_STORE_CONNECT_ISSUER_ID }}"
           API_KEY_ID: "${{ secrets.APPLE_APP_STORE_CONNECT_API_KEY_ID }}"
           API_KEY: "${{ secrets.APPLE_APP_STORE_CONNECT_API_KEY }}"
           TEMP_DIR: "${{ runner.temp }}"
+      - name: Upload App Store build artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: "${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' && matrix.job_name != 'build-macos-standalone' }}"
+        with:
+          name: apple-store-${{ matrix.job_name }}
+          path: "${{ runner.temp }}/${{ matrix.artifact-file }}"
+          retention-days: 1
       - name: Upload .dmg artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: "${{ github.event_name == 'workflow_dispatch' && matrix.job_name == 'build-macos-standalone' }}"
@@ -333,27 +344,21 @@ jobs:
         with:
           name: macos-client-standalone-pkg
           path: "${{ runner.temp }}/${{ matrix.pkg-artifact-file }}"
-      - run: ${{ matrix.upload-script }}
-        if: "${{ github.event_name == 'workflow_dispatch' && (github.ref_name == 'main' || matrix.job_name != 'build-macos-standalone') }}"
+      - name: Upload .dmg to the GitHub release
+        run: scripts/upload/github-release.sh
+        if: "${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' && matrix.job_name == 'build-macos-standalone' }}"
         env:
           ARTIFACT_PATH: "${{ runner.temp }}/${{ matrix.artifact-file }}"
-          ISSUER_ID: "${{ secrets.APPLE_APP_STORE_CONNECT_ISSUER_ID }}"
-          API_KEY_ID: "${{ secrets.APPLE_APP_STORE_CONNECT_API_KEY_ID }}"
-          API_KEY: "${{ secrets.APPLE_APP_STORE_CONNECT_API_KEY }}"
           GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
           RELEASE_NAME: "${{ matrix.release-name }}"
-          PLATFORM: "${{ matrix.platform }}"
       # We also publish a pkg file for MDMs that don't like our DMG (Intune error 0x87D30139)
-      - run: ${{ matrix.upload-script }}
+      - name: Upload .pkg to the GitHub release
+        run: scripts/upload/github-release.sh
         if: "${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' && matrix.job_name == 'build-macos-standalone' }}"
         env:
           ARTIFACT_PATH: "${{ runner.temp }}/${{ matrix.pkg-artifact-file }}"
-          ISSUER_ID: "${{ secrets.APPLE_APP_STORE_CONNECT_ISSUER_ID }}"
-          API_KEY_ID: "${{ secrets.APPLE_APP_STORE_CONNECT_API_KEY_ID }}"
-          API_KEY: "${{ secrets.APPLE_APP_STORE_CONNECT_API_KEY }}"
           GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
           RELEASE_NAME: "${{ matrix.release-name }}"
-          PLATFORM: "${{ matrix.platform }}"
       # The App Store IPA is also attached to the release so admins can verify the exact binary we shipped.
       - name: Upload .ipa to the GitHub release
         run: scripts/upload/github-release.sh
@@ -377,3 +382,101 @@ jobs:
 
           sentry-cli debug-files upload --log-level info --project apple-client --include-sources ${{ runner.temp }}
           sentry-cli debug-files upload --log-level info --project apple-client --include-sources ./rust/target
+
+  prepare-app-store:
+    name: prepare-app-store
+    if: "${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}"
+    needs: [update-release-draft, build]
+    runs-on: ubuntu-24.04
+    env:
+      ISSUER_ID: ${{ secrets.APPLE_APP_STORE_CONNECT_ISSUER_ID }}
+      API_KEY_ID: ${{ secrets.APPLE_APP_STORE_CONNECT_API_KEY_ID }}
+      API_KEY: ${{ secrets.APPLE_APP_STORE_CONNECT_API_KEY }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-rust-stable
+      - uses: ./.github/actions/setup-rust-sccache
+        with:
+          azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: apple-store-build-ios
+          path: ${{ runner.temp }}/apple-store/ios
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: apple-store-build-macos-appstore
+          path: ${{ runner.temp }}/apple-store/macos
+      - name: Upload iOS build
+        uses: ./.github/actions/run-workspace-tool
+        with:
+          tool: store-release
+          args: >-
+            apple upload-build
+            --bundle-id dev.firezone.firezone
+            --version ${{ needs.update-release-draft.outputs.version }}
+            --build-number ${{ needs.update-release-draft.outputs.build_number }}
+            --platform ios
+            --artifact ${{ runner.temp }}/apple-store/ios/firezone-ios-client-${{ needs.update-release-draft.outputs.version }}.ipa
+      - name: Upload macOS build
+        uses: ./.github/actions/run-workspace-tool
+        with:
+          tool: store-release
+          args: >-
+            apple upload-build
+            --bundle-id dev.firezone.firezone
+            --version ${{ needs.update-release-draft.outputs.version }}
+            --build-number ${{ needs.update-release-draft.outputs.build_number }}
+            --platform mac-os
+            --artifact ${{ runner.temp }}/apple-store/macos/Firezone.pkg
+      - name: Prepare iOS App Store version
+        uses: ./.github/actions/run-workspace-tool
+        with:
+          tool: store-release
+          args: >-
+            apple prepare-version
+            --bundle-id dev.firezone.firezone
+            --version ${{ needs.update-release-draft.outputs.version }}
+            --build-number ${{ needs.update-release-draft.outputs.build_number }}
+            --platform ios
+            --whats-new https://www.firezone.dev/changelog
+            --screenshot APP_IPHONE_67=swift/apple/screenshots/ios/iphone/welcome-light.png
+            --screenshot APP_IPHONE_67=swift/apple/screenshots/ios/iphone/session-light.png
+            --screenshot APP_IPHONE_67=swift/apple/screenshots/ios/iphone/session-scrolled-light.png
+            --screenshot APP_IPHONE_67=swift/apple/screenshots/ios/iphone/session-menu-light.png
+            --screenshot APP_IPHONE_67=swift/apple/screenshots/ios/iphone/resource-details-light.png
+            --screenshot APP_IPHONE_67=swift/apple/screenshots/ios/iphone/resource-details-internet-light.png
+            --screenshot APP_IPHONE_67=swift/apple/screenshots/ios/iphone/device-details-light.png
+            --screenshot APP_IPHONE_67=swift/apple/screenshots/ios/iphone/settings-general-light.png
+            --screenshot APP_IPHONE_67=swift/apple/screenshots/ios/iphone/settings-advanced-light.png
+            --screenshot APP_IPHONE_67=swift/apple/screenshots/ios/iphone/x509-filled-light.png
+            --screenshot APP_IPAD_PRO_3GEN_129=swift/apple/screenshots/ios/ipad/welcome-light.png
+            --screenshot APP_IPAD_PRO_3GEN_129=swift/apple/screenshots/ios/ipad/session-light.png
+            --screenshot APP_IPAD_PRO_3GEN_129=swift/apple/screenshots/ios/ipad/session-scrolled-light.png
+            --screenshot APP_IPAD_PRO_3GEN_129=swift/apple/screenshots/ios/ipad/session-menu-light.png
+            --screenshot APP_IPAD_PRO_3GEN_129=swift/apple/screenshots/ios/ipad/resource-details-light.png
+            --screenshot APP_IPAD_PRO_3GEN_129=swift/apple/screenshots/ios/ipad/resource-details-internet-light.png
+            --screenshot APP_IPAD_PRO_3GEN_129=swift/apple/screenshots/ios/ipad/device-details-light.png
+            --screenshot APP_IPAD_PRO_3GEN_129=swift/apple/screenshots/ios/ipad/settings-general-light.png
+            --screenshot APP_IPAD_PRO_3GEN_129=swift/apple/screenshots/ios/ipad/settings-advanced-light.png
+            --screenshot APP_IPAD_PRO_3GEN_129=swift/apple/screenshots/ios/ipad/x509-filled-light.png
+      - name: Prepare macOS App Store version
+        uses: ./.github/actions/run-workspace-tool
+        with:
+          tool: store-release
+          args: >-
+            apple prepare-version
+            --bundle-id dev.firezone.firezone
+            --version ${{ needs.update-release-draft.outputs.version }}
+            --build-number ${{ needs.update-release-draft.outputs.build_number }}
+            --platform mac-os
+            --whats-new https://www.firezone.dev/changelog
+            --screenshot APP_DESKTOP=swift/apple/screenshots/macos/26/first-time-light.png
+            --screenshot APP_DESKTOP=swift/apple/screenshots/macos/26/first-time-dark.png
+            --screenshot APP_DESKTOP=swift/apple/screenshots/macos/26/settings-general-light.png
+            --screenshot APP_DESKTOP=swift/apple/screenshots/macos/26/settings-general-dark.png
+            --screenshot APP_DESKTOP=swift/apple/screenshots/macos/26/settings-advanced-light.png
+            --screenshot APP_DESKTOP=swift/apple/screenshots/macos/26/settings-advanced-dark.png
+            --screenshot APP_DESKTOP=swift/apple/screenshots/macos/26/x509-filled-light.png
+            --screenshot APP_DESKTOP=swift/apple/screenshots/macos/26/x509-filled-dark.png
+            --screenshot APP_DESKTOP=swift/apple/screenshots/macos/26/grant-vpn-light.png
+            --screenshot APP_DESKTOP=swift/apple/screenshots/macos/26/grant-vpn-dark.png

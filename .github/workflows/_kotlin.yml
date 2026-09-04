@@ -209,12 +209,17 @@ jobs:
   update-release-draft:
     name: update-release-draft
     runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.release-metadata.outputs.version }}
     permissions:
       contents: write # for updating the release draft
     env:
       # mark:next-android-version
       RELEASE_NAME: android-client-1.5.14
     steps:
+      - name: Set release metadata
+        id: release-metadata
+        run: echo "version=${RELEASE_NAME#android-client-}" >> "$GITHUB_OUTPUT"
       - uses: release-drafter/release-drafter@34d80673e067bdc0c24568d3af899c216adcfaa9 # v7.7.0
         if: "${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}"
         id: update-release-draft
@@ -340,15 +345,28 @@ jobs:
       # permission would let it (or anyone who compromises CI) publish a release
       # straight to end users. Promotion from internal -> production is a manual
       # step in the Play Console.
-      - name: Upload AAB to Google Play Console (internal track)
+      - name: Prepare Google Play draft (internal track)
         if: ${{ matrix.package-type == 'aab' && github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}
+        uses: ./.github/actions/run-workspace-tool
         env:
           ACCESS_TOKEN: ${{ steps.gcp-auth.outputs.access_token }}
-          PACKAGE_NAME: dev.firezone.android
-          AAB_PATH: ${{ matrix.output-path }}
-          TRACK: internal
-          RELEASE_STATUS: draft
-        run: ../../scripts/upload/play-store.sh
+        with:
+          tool: store-release
+          args: >-
+            android prepare
+            --package-name dev.firezone.android
+            --bundle kotlin/android/${{ matrix.output-path }}
+            --version ${{ needs.update-release-draft.outputs.version }}
+            --track internal
+            --whats-new https://www.firezone.dev/changelog
+            --screenshot kotlin/android/screenshots/sign-in.png
+            --screenshot kotlin/android/screenshots/session-screen.png
+            --screenshot kotlin/android/screenshots/session-screen-favorites.png
+            --screenshot kotlin/android/screenshots/resource-details.png
+            --screenshot kotlin/android/screenshots/resource-details-internet.png
+            --screenshot kotlin/android/screenshots/device-details.png
+            --screenshot kotlin/android/screenshots/settings-general.png
+            --screenshot kotlin/android/screenshots/settings-advanced.png
 
   build_debug:
     # Android SDK tools hardware accel is available only on Linux runners

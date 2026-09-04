@@ -1,0 +1,21 @@
+---
+name: "Run workspace tool"
+description: "Runs a Rust workspace binary in debug mode"
+inputs:
+  tool:
+    description: "Cargo binary to run"
+    required: true
+  args:
+    description: "Arguments passed to the binary"
+    required: true
+runs:
+  using: "composite"
+  steps:
+    - shell: bash
+      working-directory: ${{ github.workspace }}
+      env:
+        TOOL: ${{ inputs.tool }}
+        TOOL_ARGS: ${{ inputs.args }}
+      run: |
+        read -r -a args <<< "$TOOL_ARGS"
+        cargo run --locked --manifest-path rust/Cargo.toml --bin "$TOOL" -- "${args[@]}"
