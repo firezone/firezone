@@ -61,6 +61,9 @@ defmodule PortalAPI.Schemas.DefenderDevice do
                       :string ->
                         %Schema{type: :string, nullable: nullable}
 
+                      Portal.Types.IP ->
+                        %Schema{type: :string, nullable: nullable}
+
                       :boolean ->
                         %Schema{type: :boolean, nullable: nullable}
 

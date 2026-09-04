@@ -55,6 +55,9 @@ defmodule PortalAPI.Schemas.SantaDevice do
                       :string ->
                         %Schema{type: :string, nullable: nullable}
 
+                      Portal.Types.IP ->
+                        %Schema{type: :string, nullable: nullable}
+
                       :boolean ->
                         %Schema{type: :boolean, nullable: nullable}
 
@@ -70,15 +73,6 @@ defmodule PortalAPI.Schemas.SantaDevice do
                           items: %Schema{type: :string},
                           nullable: nullable
                         }
-                    end
-
-                  schema =
-                    if field == :last_preflight_ip do
-                      # workshop.v1.Host declares this field as bytes, which
-                      # ProtoJSON represents as a base64-encoded string.
-                      %{schema | format: :byte}
-                    else
-                      schema
                     end
 
                   {field, schema}

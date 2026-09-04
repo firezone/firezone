@@ -72,8 +72,8 @@ defmodule PortalAPI.Schemas.IntuneDevice do
       :attestation_identity_key,
       :attestation_reset_count,
       :attestation_restart_count,
-      :attestation_data_execution_policy,
-      :attestation_bit_locker_status,
+      :attestation_data_execution_policy_enabled,
+      :attestation_bit_locker_enabled,
       :attestation_boot_manager_version,
       :attestation_code_integrity_check_version,
       :attestation_secure_boot,
@@ -95,7 +95,7 @@ defmodule PortalAPI.Schemas.IntuneDevice do
       :attestation_boot_revision_list_info,
       :attestation_operating_system_rev_list_info,
       :attestation_health_status_mismatch_info,
-      :attestation_supported_status,
+      :attestation_supported,
       :device_action_results,
       :enrolled_at,
       :last_sync_at,
@@ -115,6 +115,7 @@ defmodule PortalAPI.Schemas.IntuneDevice do
                       :string -> %Schema{type: :string, nullable: nullable}
                       :boolean -> %Schema{type: :boolean, nullable: nullable}
                       :integer -> %Schema{type: :integer, nullable: nullable}
+                      :date -> %Schema{type: :string, format: :date, nullable: nullable}
                       :utc_datetime_usec -> %Schema{type: :string, format: :"date-time", nullable: nullable}
                       :map -> %Schema{type: :object, additionalProperties: true, nullable: nullable}
                       {:array, :map} -> %Schema{type: :array, items: %Schema{type: :object}, nullable: nullable}

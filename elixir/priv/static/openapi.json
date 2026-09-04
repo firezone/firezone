@@ -300,7 +300,6 @@
             "type": "string"
           },
           "last_preflight_ip": {
-            "format": "byte",
             "nullable": true,
             "type": "string"
           },
@@ -3520,7 +3519,7 @@
           },
           "rbac_group_id": {
             "nullable": true,
-            "type": "string"
+            "type": "integer"
           },
           "version": {
             "nullable": true,
@@ -6655,7 +6654,11 @@
           },
           "attestation_operating_system_kernel_debugging": {
             "nullable": true,
-            "type": "string"
+            "type": "boolean"
+          },
+          "attestation_data_execution_policy_enabled": {
+            "nullable": true,
+            "type": "boolean"
           },
           "ethernet_mac_address": {
             "nullable": true,
@@ -6710,7 +6713,7 @@
           },
           "attestation_safe_mode": {
             "nullable": true,
-            "type": "string"
+            "type": "boolean"
           },
           "managed_device_owner_type": {
             "nullable": true,
@@ -6722,7 +6725,7 @@
           },
           "attestation_secure_boot": {
             "nullable": true,
-            "type": "string"
+            "type": "boolean"
           },
           "device_category_display_name": {
             "nullable": true,
@@ -6734,14 +6737,10 @@
           },
           "attestation_virtual_secure_mode": {
             "nullable": true,
-            "type": "string"
+            "type": "boolean"
           },
           "last_sync_at": {
             "format": "date-time",
-            "nullable": true,
-            "type": "string"
-          },
-          "attestation_bit_locker_status": {
             "nullable": true,
             "type": "string"
           },
@@ -6769,7 +6768,7 @@
           },
           "attestation_early_launch_anti_malware_driver_protection": {
             "nullable": true,
-            "type": "string"
+            "type": "boolean"
           },
           "attestation_last_update_date_time": {
             "nullable": true,
@@ -6793,7 +6792,7 @@
           },
           "attestation_code_integrity": {
             "nullable": true,
-            "type": "string"
+            "type": "boolean"
           },
           "user_principal_name": {
             "nullable": true,
@@ -6804,10 +6803,7 @@
             "type": "string"
           },
           "android_security_patch_level": {
-            "nullable": true,
-            "type": "string"
-          },
-          "attestation_supported_status": {
+            "format": "date",
             "nullable": true,
             "type": "string"
           },
@@ -6849,7 +6845,7 @@
           },
           "jail_broken": {
             "nullable": true,
-            "type": "string"
+            "type": "boolean"
           },
           "eas_device_id": {
             "nullable": true,
@@ -6859,6 +6855,10 @@
             "format": "date-time",
             "nullable": true,
             "type": "string"
+          },
+          "attestation_bit_locker_enabled": {
+            "nullable": true,
+            "type": "boolean"
           },
           "attestation_content_version": {
             "nullable": true,
@@ -6899,7 +6899,7 @@
           },
           "attestation_windows_pe": {
             "nullable": true,
-            "type": "string"
+            "type": "boolean"
           },
           "attestation_status": {
             "nullable": true,
@@ -6913,17 +6913,17 @@
             "nullable": true,
             "type": "string"
           },
+          "attestation_supported": {
+            "nullable": true,
+            "type": "boolean"
+          },
           "attestation_test_signing": {
             "nullable": true,
-            "type": "string"
+            "type": "boolean"
           },
           "attestation_boot_debugging": {
             "nullable": true,
-            "type": "string"
-          },
-          "attestation_data_execution_policy": {
-            "nullable": true,
-            "type": "string"
+            "type": "boolean"
           },
           "phone_number": {
             "nullable": true,
@@ -7034,8 +7034,8 @@
           "attestation_identity_key",
           "attestation_reset_count",
           "attestation_restart_count",
-          "attestation_data_execution_policy",
-          "attestation_bit_locker_status",
+          "attestation_data_execution_policy_enabled",
+          "attestation_bit_locker_enabled",
           "attestation_boot_manager_version",
           "attestation_code_integrity_check_version",
           "attestation_secure_boot",
@@ -7057,7 +7057,7 @@
           "attestation_boot_revision_list_info",
           "attestation_operating_system_rev_list_info",
           "attestation_health_status_mismatch_info",
-          "attestation_supported_status",
+          "attestation_supported",
           "device_action_results",
           "enrolled_at",
           "last_sync_at",
