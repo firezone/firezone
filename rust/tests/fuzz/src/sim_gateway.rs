@@ -13,8 +13,7 @@ use ip_packet::{IcmpEchoHeader, Icmpv4Type, Icmpv6Type, IpPacket};
 use snownet::Transmit;
 use std::{
     collections::{BTreeMap, BTreeSet},
-    iter,
-    mem,
+    iter, mem,
     net::{IpAddr, SocketAddr},
     time::Instant,
 };
@@ -404,25 +403,15 @@ impl SimGateway {
             .entry(client)
             .or_default()
             .insert(resource);
-        self.clients_by_ip
-            .extend(client_ips.map(|ip| (ip, client)));
+        self.clients_by_ip.extend(client_ips.map(|ip| (ip, client)));
     }
 
-    pub(crate) fn remove_access(
-        &mut self,
-        client: &ClientId,
-        resource: &ResourceId,
-        now: Instant,
-    ) {
+    pub(crate) fn remove_access(&mut self, client: &ClientId, resource: &ResourceId, now: Instant) {
         self.sut.remove_access(client, resource, now);
         self.record_resource_disabled(*client, *resource);
     }
 
-    pub(crate) fn record_resource_disabled(
-        &mut self,
-        client: ClientId,
-        resource: ResourceId,
-    ) {
+    pub(crate) fn record_resource_disabled(&mut self, client: ClientId, resource: ResourceId) {
         let Some(resources) = self.authorized_resources.get_mut(&client) else {
             return;
         };

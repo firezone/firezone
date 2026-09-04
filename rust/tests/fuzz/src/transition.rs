@@ -187,14 +187,10 @@ impl Transition {
             } => match flow.route {
                 UdpRoute::Resource { .. } => false,
                 UdpRoute::Gateway(_) => false,
-                UdpRoute::Peer(_) => {
-                    !is_device_pool(old_resource) && !is_device_pool(new_resource)
-                }
+                UdpRoute::Peer(_) => !is_device_pool(old_resource) && !is_device_pool(new_resource),
             },
             Transition::UpdateStaticDevicePool { .. } => !flow.route.is_peer(),
-            Transition::SetInternetResourceState { client_id, .. } => {
-                flow.client_id != *client_id
-            }
+            Transition::SetInternetResourceState { client_id, .. } => flow.client_id != *client_id,
             Transition::SendIcmpPacket { .. } => true,
             Transition::SendUdpPacket { .. } => true,
             Transition::SendUdpPacketOnFlow { .. } => true,
