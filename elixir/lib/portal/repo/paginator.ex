@@ -305,6 +305,7 @@ defmodule Portal.Repo.Paginator do
 
   @doc false
   def max_encoded_cursor_bytes, do: @max_encoded_cursor_bytes
+  def max_limit, do: @max_limit
 
   @doc false
   def encode_cursor(direction, cursor_fields, schema) do

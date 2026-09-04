@@ -16,7 +16,7 @@ defmodule PortalAPI.GroupController do
   operation :index,
     summary: "List Groups",
     parameters: [
-      limit: [in: :query, description: "Limit Groups returned", type: :integer, example: 10],
+      limit: [in: :query, description: "Limit Groups returned", schema: PortalAPI.Pagination.limit_schema(), example: 10],
       page_cursor: [in: :query, description: "Next/Prev page cursor", type: :string],
       name: [in: :query, description: "Filter to Groups with this exact name", type: :string],
       directory_id: [

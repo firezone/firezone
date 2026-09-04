@@ -14,7 +14,7 @@ defmodule PortalAPI.PolicyController do
   operation :index,
     summary: "List Policies",
     parameters: [
-      limit: [in: :query, description: "Limit Policies returned", type: :integer, example: 10],
+      limit: [in: :query, description: "Limit Policies returned", schema: PortalAPI.Pagination.limit_schema(), example: 10],
       page_cursor: [in: :query, description: "Next/Prev page cursor", type: :string],
       group_id: [in: :query, description: "Filter to Policies granting this Group", type: :string],
       resource_id: [

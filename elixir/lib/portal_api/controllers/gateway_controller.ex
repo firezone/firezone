@@ -21,7 +21,7 @@ defmodule PortalAPI.GatewayController do
         type: :string,
         example: "00000000-0000-0000-0000-000000000000"
       ],
-      limit: [in: :query, description: "Limit Gateways returned", type: :integer, example: 10],
+      limit: [in: :query, description: "Limit Gateways returned", schema: PortalAPI.Pagination.limit_schema(), example: 10],
       page_cursor: [in: :query, description: "Next/Prev page cursor", type: :string],
       name: [in: :query, description: "Filter to the Gateway with this exact name", type: :string],
       ipv4: [in: :query, description: "Filter to the Gateway with this exact tunnel IPv4 address", type: :string],
