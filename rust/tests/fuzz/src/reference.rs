@@ -94,7 +94,9 @@ impl ReferenceState {
         let iceless = state.portal.iceless();
         state
             .udp_flows
-            .extract_if(|_, flow| !transition.retains_udp_flow(flow, iceless))
+            .extract_if(.., |_, flow| {
+                !transition.retains_udp_flow(flow, iceless)
+            })
             .for_each(drop);
 
         match transition {

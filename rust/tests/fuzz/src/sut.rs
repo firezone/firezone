@@ -176,7 +176,9 @@ impl TunnelTest {
 
         state
             .udp_flows
-            .extract_if(|flow_id, _| !ref_state.udp_flows.contains_key(flow_id))
+            .extract_if(.., |flow_id, _| {
+                !ref_state.udp_flows.contains_key(flow_id)
+            })
             .for_each(drop);
 
         // Act: Apply the transition
