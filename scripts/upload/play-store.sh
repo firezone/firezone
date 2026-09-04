@@ -37,6 +37,13 @@ fi
 export GPLAY_NO_UPDATE=1
 edit_id=""
 committed=false
+persist_draft=true
+prepare_production_draft="${PREPARE_PRODUCTION_DRAFT:-false}"
+
+if [[ "${GITHUB_ACTIONS:-false}" == true && "${GITHUB_REF_NAME:-}" != main ]]; then
+    persist_draft=false
+    prepare_production_draft=false
+fi
 
 cleanup() {
     if [[ -n "$edit_id" && "$committed" != true ]]; then
@@ -104,12 +111,17 @@ update_draft() {
 }
 
 update_draft "$INTERNAL_TRACK"
-if [[ "${PREPARE_PRODUCTION_DRAFT:-false}" == true ]]; then
+if [[ "$prepare_production_draft" == true ]]; then
     update_draft "$PRODUCTION_TRACK"
 fi
 
 echo "Validating edit $edit_id..."
 gplay edits validate --package "$PACKAGE_NAME" --edit "$edit_id"
+
+if [[ "$persist_draft" != true ]]; then
+    echo "Validated $PACKAGE_NAME $VERSION_NAME ($version_code) without committing."
+    exit 0
+fi
 
 echo "Committing draft release changes..."
 gplay edits commit --package "$PACKAGE_NAME" --edit "$edit_id"

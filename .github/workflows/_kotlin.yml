@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       prepare_store:
-        description: Prepare the Google Play draft from this branch
+        description: Validate the Google Play draft from this branch without committing
         type: boolean
         default: false
 
@@ -355,7 +355,7 @@ jobs:
           GPLAY_SERVICE_ACCOUNT_JSON: ${{ steps.gcp-auth.outputs.credentials_file_path }}
           AAB_PATH: ${{ matrix.output-path }}
           VERSION_NAME: ${{ needs.update-release-draft.outputs.version }}
-          PREPARE_PRODUCTION_DRAFT: ${{ vars.PREPARE_ANDROID_PRODUCTION_DRAFT }}
+          PREPARE_PRODUCTION_DRAFT: ${{ github.ref_name == 'main' && vars.PREPARE_ANDROID_PRODUCTION_DRAFT == 'true' }}
         run: ../../scripts/upload/play-store.sh
 
   build_debug:
