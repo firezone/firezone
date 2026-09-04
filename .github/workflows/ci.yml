@@ -30,6 +30,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       jobs_to_run: ${{ steps.plan.outputs.jobs_to_run }}
+      elixir_changed: ${{ steps.plan.outputs.elixir_changed }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Plan jobs to run
@@ -42,6 +43,7 @@ jobs:
           # For workflow_dispatch or workflow_call, run all jobs
           if [ "${{ github.event_name }}" = "workflow_dispatch" ] || [ "${{ github.event_name }}" = "workflow_call" ]; then
             echo "jobs_to_run=$jobs" >> "$GITHUB_OUTPUT"
+            echo "elixir_changed=true" >> "$GITHUB_OUTPUT"
 
             exit 0;
           fi
@@ -49,6 +51,7 @@ jobs:
           # For main branch runs, run all jobs
           if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref_name }}" = "main" ]; then
             echo "jobs_to_run=$jobs" >> "$GITHUB_OUTPUT"
+            echo "elixir_changed=true" >> "$GITHUB_OUTPUT"
 
             exit 0;
           fi
@@ -72,6 +75,12 @@ jobs:
 
             echo "Changed files:"
             cat changed_files.txt
+          fi
+
+          if grep -q '^elixir/' changed_files.txt; then
+            echo "elixir_changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "elixir_changed=false" >> "$GITHUB_OUTPUT"
           fi
 
           # Run all jobs if CI configuration changes
@@ -348,6 +357,8 @@ jobs:
     needs: planner
     if: contains(needs.planner.outputs.jobs_to_run, 'elixir')
     uses: ./.github/workflows/_elixir.yml
+    with:
+      check_openapi_breaking_changes: ${{ needs.planner.outputs.elixir_changed == 'true' }}
     secrets: inherit
     permissions:
       checks: write # dorny/test-reporter
