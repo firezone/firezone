@@ -10,25 +10,6 @@ readonly PACKAGE_NAME="dev.firezone.android"
 readonly INTERNAL_TRACK="internal"
 readonly CHANGELOG_URL="https://www.firezone.dev/changelog#tab-android"
 readonly PUBLISHER_API="https://androidpublisher.googleapis.com/androidpublisher/v3/applications/$PACKAGE_NAME"
-REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-readonly REPO_ROOT
-readonly -a SCREENSHOTS=(
-    "$REPO_ROOT/kotlin/android/screenshots/sign-in.png"
-    "$REPO_ROOT/kotlin/android/screenshots/session-screen.png"
-    "$REPO_ROOT/kotlin/android/screenshots/session-screen-favorites.png"
-    "$REPO_ROOT/kotlin/android/screenshots/resource-details.png"
-    "$REPO_ROOT/kotlin/android/screenshots/resource-details-internet.png"
-    "$REPO_ROOT/kotlin/android/screenshots/device-details.png"
-    "$REPO_ROOT/kotlin/android/screenshots/settings-general.png"
-    "$REPO_ROOT/kotlin/android/screenshots/settings-advanced.png"
-)
-
-for screenshot in "${SCREENSHOTS[@]}"; do
-    if [[ ! -s "$screenshot" ]]; then
-        echo "Missing store screenshot: ${screenshot#"$REPO_ROOT/"}" >&2
-        exit 1
-    fi
-done
 
 if [[ ! -s "$AAB_PATH" ]]; then
     echo "Missing Android App Bundle: $AAB_PATH" >&2
@@ -38,10 +19,10 @@ fi
 export GPLAY_NO_UPDATE=1
 edit_id=""
 committed=false
-persist_draft=false
+publish_internal=false
 
 if [[ "${GITHUB_ACTIONS:-false}" == true && "${GITHUB_REF_NAME:-}" == main ]]; then
-    persist_draft=true
+    publish_internal=true
 fi
 
 cleanup() {
@@ -83,25 +64,21 @@ case $(jq 'length' <<< "$matching_bundles") in
         ;;
 esac
 
-update_draft() {
+update_internal_release() {
     local track=$1
-    local current releases
+    local releases
 
-    echo "Creating or replacing the $track draft..."
-    current=$(gplay tracks get \
-        --package "$PACKAGE_NAME" \
-        --edit "$edit_id" \
-        --track "$track")
-    releases=$(jq -c \
+    echo "Creating or replacing the $track release..."
+    releases=$(jq --compact-output --null-input \
         --arg name "$VERSION_NAME" \
         --arg version_code "$version_code" \
         --arg changelog "$CHANGELOG_URL" \
-        '(.releases // [] | map(select(.status != "draft"))) + [{
+        '[{
             name: $name,
             versionCodes: [$version_code],
-            status: "draft",
+            status: "completed",
             releaseNotes: [{language: "en-US", text: $changelog}]
-        }]' <<< "$current")
+        }]')
     gplay tracks update \
         --package "$PACKAGE_NAME" \
         --edit "$edit_id" \
@@ -109,37 +86,17 @@ update_draft() {
         --releases "$releases"
 }
 
-update_draft "$INTERNAL_TRACK"
-
-if [[ "$persist_draft" != true ]]; then
-    echo "Replacing en-US phone screenshots for validation..."
-    gplay images delete-all \
-        --package "$PACKAGE_NAME" \
-        --edit "$edit_id" \
-        --locale en-US \
-        --type phoneScreenshots \
-        --confirm
-
-    for screenshot in "${SCREENSHOTS[@]}"; do
-        echo "Uploading ${screenshot#"$REPO_ROOT/"}..."
-        gplay images upload \
-            --package "$PACKAGE_NAME" \
-            --edit "$edit_id" \
-            --locale en-US \
-            --type phoneScreenshots \
-            --file "$screenshot"
-    done
-fi
+update_internal_release "$INTERNAL_TRACK"
 
 echo "Validating edit $edit_id..."
 gplay edits validate --package "$PACKAGE_NAME" --edit "$edit_id"
 
-if [[ "$persist_draft" != true ]]; then
+if [[ "$publish_internal" != true ]]; then
     echo "Validated $PACKAGE_NAME $VERSION_NAME ($version_code) without committing."
     exit 0
 fi
 
-echo "Committing draft release changes..."
+echo "Publishing release to internal testers..."
 : "${ACCESS_TOKEN:?ACCESS_TOKEN is required to commit the Google Play edit}"
 
 # `gplay` 0.9.2 cannot set `changesInReviewBehavior`.
@@ -151,4 +108,4 @@ curl --fail-with-body --silent --show-error \
     >/dev/null
 committed=true
 
-echo "Prepared $PACKAGE_NAME $VERSION_NAME ($version_code) as a Google Play draft."
+echo "Published $PACKAGE_NAME $VERSION_NAME ($version_code) to Google Play internal testing."
