@@ -62,9 +62,7 @@ pub(crate) enum UdpRoute {
 impl UdpRoute {
     pub(crate) fn packet_route(self) -> PacketRoute {
         match self {
-            UdpRoute::Resource { resource, gateway } => {
-                PacketRoute::Resource { resource, gateway }
-            }
+            UdpRoute::Resource { resource, gateway } => PacketRoute::Resource { resource, gateway },
             UdpRoute::Gateway(gateway) => PacketRoute::Gateway(gateway),
             UdpRoute::Peer(client) => PacketRoute::Peer(client),
         }

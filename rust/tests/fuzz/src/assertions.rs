@@ -1,8 +1,8 @@
 use super::{
     icmp_error_hosts::IcmpErrorHosts,
     probe::{
-        DnsNatObservation, ExpectedOutcome, ExpectedProbe, ProbeId, ProbeObservation, ProbeProtocol,
-        ProbeRequest, ReceivedRequest, ReceivedResponse, RejectionResponse, Remote,
+        DnsNatObservation, ExpectedOutcome, ExpectedProbe, ProbeId, ProbeObservation,
+        ProbeProtocol, ProbeRequest, ReceivedRequest, ReceivedResponse, RejectionResponse, Remote,
         SubmittedRequest, TraceRequirement,
     },
     ref_client::RefClient,
@@ -122,12 +122,7 @@ pub(crate) fn assert_probes(
                     tracing::error!(target: "assertions", id = ?expected.id, expected = ?expected.origin, actual = ?received_response.client, "Probe response was received by the wrong client");
                 }
 
-                assert_received_request(
-                    expected,
-                    submitted_request,
-                    received_request,
-                    ref_clients,
-                );
+                assert_received_request(expected, submitted_request, received_request, ref_clients);
                 assert_received_response(
                     expected,
                     submitted_request,
@@ -169,11 +164,7 @@ pub(crate) fn assert_dns_nat(
 
     let observations_by_udp_flow = observations
         .iter()
-        .filter_map(|observation| {
-            observation
-                .udp_flow
-                .map(|flow_id| (flow_id, observation))
-        })
+        .filter_map(|observation| observation.udp_flow.map(|flow_id| (flow_id, observation)))
         .into_group_map();
 
     for (flow_id, flow_observations) in observations_by_udp_flow {
@@ -415,14 +406,12 @@ fn assert_received_request(
         Destination::IpAddr(destination) => {
             assert_destination_is_ip(&received_request.packet, destination);
         }
-        Destination::DomainName { .. } => {
-            match received_request.remote {
-                Remote::Gateway(_) => {}
-                Remote::Client(_) => {
-                    tracing::error!(target: "assertions", id = ?expected.id, "DNS probe request was not received through a gateway");
-                }
+        Destination::DomainName { .. } => match received_request.remote {
+            Remote::Gateway(_) => {}
+            Remote::Client(_) => {
+                tracing::error!(target: "assertions", id = ?expected.id, "DNS probe request was not received through a gateway");
             }
-        }
+        },
     }
 }
 

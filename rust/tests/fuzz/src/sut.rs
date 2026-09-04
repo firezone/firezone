@@ -176,9 +176,7 @@ impl TunnelTest {
 
         state
             .udp_flows
-            .extract_if(.., |flow_id, _| {
-                !ref_state.udp_flows.contains_key(flow_id)
-            })
+            .extract_if(.., |flow_id, _| !ref_state.udp_flows.contains_key(flow_id))
             .for_each(drop);
 
         // Act: Apply the transition
@@ -222,9 +220,7 @@ impl TunnelTest {
                         .gateway_for_resource(new_resource.id())
                         .and_then(|gid| state.gateways.get_mut(gid))
                     {
-                        gateway.exec_mut(|g| {
-                            g.remove_access(client_id, &new_resource.id(), now)
-                        });
+                        gateway.exec_mut(|g| g.remove_access(client_id, &new_resource.id(), now));
                     }
                     client.exec_mut(|c| {
                         c.sut
@@ -866,7 +862,6 @@ impl TunnelTest {
             received: received.clone(),
         });
     }
-
 }
 
 impl TunnelTest {
