@@ -163,9 +163,9 @@ jobs:
     steps:
       - name: Verify the protected environment
         env:
-          GOOGLE_PLAY_ENVIRONMENT_CONFIGURED: ${{ vars.GOOGLE_PLAY_ENVIRONMENT_CONFIGURED }}
+          GOOGLE_PLAY_CONFIGURED: ${{ vars.GOOGLE_PLAY_CONFIGURED }}
         run: |
-          if [[ "$GOOGLE_PLAY_ENVIRONMENT_CONFIGURED" != true ]]; then
+          if [[ "$GOOGLE_PLAY_CONFIGURED" != true ]]; then
             echo "The google-play environment is not configured" >&2
             exit 1
           fi
