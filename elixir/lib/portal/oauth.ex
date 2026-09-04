@@ -130,7 +130,9 @@ defmodule Portal.OAuth do
 
   The grant is upserted rather than inserted so that re-approving a client with
   different scopes replaces what it had, instead of leaving two rows that
-  disagree about what was allowed.
+  disagree about what was allowed. Removing a previously granted scope also
+  revokes the client's outstanding codes and token pairs, so they cannot keep
+  using the wider grant.
   """
   def consent(%Request{} = request, %Subject{} = subject) do
     with :ok <- validate_granted_scopes(request) do
@@ -308,10 +310,12 @@ defmodule Portal.OAuth do
   defp upsert_grant(%Request{} = request, %Subject{} = subject) do
     case Database.fetch_grant(request.client.id, subject) do
       {:ok, grant} ->
-        grant
-        |> change()
-        |> put_change(:scopes, request.scopes)
-        |> Database.update_grant(subject)
+        with :ok <- revoke_credentials_if_scopes_removed(grant, request.scopes) do
+          grant
+          |> change()
+          |> put_change(:scopes, request.scopes)
+          |> Database.update_grant(subject)
+        end
 
       :error ->
         %OAuthGrant{}
@@ -324,6 +328,14 @@ defmodule Portal.OAuth do
           ~w[actor_id oauth_client_id scopes]a
         )
         |> Database.insert_grant(subject)
+    end
+  end
+
+  defp revoke_credentials_if_scopes_removed(%OAuthGrant{} = grant, scopes) do
+    if MapSet.subset?(MapSet.new(grant.scopes), MapSet.new(scopes)) do
+      :ok
+    else
+      Database.delete_credentials(grant)
     end
   end
 
@@ -496,9 +508,8 @@ defmodule Portal.OAuth do
       secret_hash: access_hash,
       refresh_secret_salt: refresh_salt,
       refresh_secret_hash: refresh_hash,
-      # Taken from the grant rather than carried over, so approving the same
-      # client again with fewer permissions reaches the token it is already
-      # holding instead of waiting out its refresh window.
+      # Taken from the current grant rather than carried over, so rotation
+      # cannot retain permissions that are no longer present on the grant.
       scopes: token.oauth_grant.scopes,
       expires_at: DateTime.add(now, @access_ttl_seconds, :second),
       refresh_expires_at: DateTime.add(now, @refresh_ttl_seconds, :second),
@@ -572,7 +583,8 @@ defmodule Portal.OAuth do
     def fetch_grant(oauth_client_id, subject) do
       from(grants in OAuthGrant,
         where: grants.actor_id == ^subject.actor.id,
-        where: grants.oauth_client_id == ^oauth_client_id
+        where: grants.oauth_client_id == ^oauth_client_id,
+        lock: "FOR UPDATE"
       )
       |> Safe.scoped(subject)
       |> Safe.one()
@@ -592,6 +604,24 @@ defmodule Portal.OAuth do
       changeset
       |> Safe.scoped(subject)
       |> Safe.update()
+    end
+
+    def delete_credentials(%OAuthGrant{} = grant) do
+      from(codes in OAuthAuthorizationCode,
+        where: codes.account_id == ^grant.account_id,
+        where: codes.oauth_grant_id == ^grant.id
+      )
+      |> Safe.unscoped()
+      |> Safe.delete_all()
+
+      from(tokens in OAuthToken,
+        where: tokens.account_id == ^grant.account_id,
+        where: tokens.oauth_grant_id == ^grant.id
+      )
+      |> Safe.unscoped()
+      |> Safe.delete_all()
+
+      :ok
     end
 
     def insert_code(changeset, subject) do

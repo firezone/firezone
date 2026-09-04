@@ -301,6 +301,46 @@ defmodule Portal.OAuthTest do
       assert grant.scopes == ["policies:read", "policies:write"]
     end
 
+    test "re-consenting with fewer scopes revokes the existing token pair", context do
+      resource = OAuth.resource_uri()
+      code = consent(context, "policies:read policies:write", resource)
+
+      assert {:ok, issued} = OAuth.exchange(exchange_params(context, code), resource)
+
+      mcp_context = Portal.Authentication.Context.build({127, 0, 0, 1}, "testing", [], :mcp)
+
+      assert {:ok, subject} =
+               Portal.Authentication.authenticate(issued.access_token, mcp_context)
+
+      assert subject.credential.scopes == ["policies:read", "policies:write"]
+
+      narrowed_code = consent(context, "policies:read", resource)
+
+      assert {:error, :invalid_token} =
+               Portal.Authentication.authenticate(issued.access_token, mcp_context)
+
+      assert {:error, "invalid_grant", _description} =
+               OAuth.refresh(refresh_params(context, issued.refresh_token), resource)
+
+      assert {:ok, narrowed} =
+               OAuth.exchange(exchange_params(context, narrowed_code), resource)
+
+      assert narrowed.scope == "policies:read"
+    end
+
+    test "re-consenting with fewer scopes revokes outstanding authorization codes", context do
+      broad_code = consent(context, "policies:read policies:write")
+      narrowed_code = consent(context, "policies:read")
+
+      assert {:error, "invalid_grant", _description} =
+               OAuth.exchange(exchange_params(context, broad_code), @resource)
+
+      assert {:ok, narrowed} =
+               OAuth.exchange(exchange_params(context, narrowed_code), @resource)
+
+      assert narrowed.scope == "policies:read"
+    end
+
     test "refuses to record scopes outside the validated request", context do
       {:ok, request} =
         OAuth.validate_request(
@@ -492,11 +532,11 @@ defmodule Portal.OAuthTest do
     end
   end
 
-  defp consent(context, scope \\ "policies:read") do
-    params = %{params(context.client) | "scope" => scope}
+  defp consent(context, scope \\ "policies:read", resource \\ @resource) do
+    params = %{params(context.client) | "scope" => scope, "resource" => resource}
 
     {:ok, request} =
-      OAuth.validate_request(params, context.client, redirect_uri(), @resource)
+      OAuth.validate_request(params, context.client, redirect_uri(), resource)
 
     request = %{request | scopes: request.requested_scopes}
     {:ok, code} = OAuth.consent(request, context.subject)
