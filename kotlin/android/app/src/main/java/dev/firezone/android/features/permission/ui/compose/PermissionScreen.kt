@@ -33,8 +33,8 @@ internal fun PermissionScreen(
     @StringRes description: Int,
     @StringRes actionLabel: Int,
     onAction: () -> Unit,
-    onSkip: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
+    onSkip: (() -> Unit)? = null,
 ) {
     Scaffold(
         modifier = modifier,
