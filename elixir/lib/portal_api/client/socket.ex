@@ -346,12 +346,20 @@ defmodule PortalAPI.Client.Socket do
   defp assign_connect(socket, subject, client, version, attested?, proof) do
     socket
     |> assign(:subject, subject)
-    |> assign(:client, %{client | attested?: attested?})
+    |> assign(:client, %{client | attested?: attested?, posture: posture_rows(client, subject)})
     |> assign(:attestation, attestation(attested?, proof))
     |> assign(:session_ref, make_ref())
     |> assign(:client_version, version)
     |> assign(:opentelemetry_span_ctx, OpenTelemetry.Tracer.current_span_ctx())
     |> assign(:opentelemetry_ctx, OpenTelemetry.Ctx.get_current())
+  end
+
+  defp posture_rows(client, subject) do
+    if Portal.Account.device_posture_enabled?(subject.account) do
+      Portal.Devices.Posture.rows_by_type(client)
+    else
+      %{}
+    end
   end
 
   # The certificate this session is riding on, so a revocation learned later can
