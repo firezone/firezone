@@ -7,7 +7,14 @@ defmodule PortalAPI.Schemas.GoogleDirectory do
 
     @derive {PortalAPI.JSON.Encoder,
              for: Portal.Google.Directory,
-             internal: [:error_email_count, :is_verified, :sync_all_domains]}
+             internal: [
+               :channel_expires_at,
+               :error_email_count,
+               :is_verified,
+               :sync_all_domains,
+               :users_channel_id,
+               :users_resource_id
+             ]}
     OpenApiSpex.schema(%{
       title: "GoogleDirectory",
       description: "Google Directory",

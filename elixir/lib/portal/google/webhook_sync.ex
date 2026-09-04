@@ -17,6 +17,7 @@ defmodule Portal.Google.WebhookSync do
 
   alias Portal.Google
   alias Portal.Google.APIClient
+  alias Portal.DirectorySync.Lock
   alias __MODULE__.Database
   require Logger
 
@@ -55,12 +56,17 @@ defmodule Portal.Google.WebhookSync do
         {:snooze, @snooze_seconds}
 
       true ->
-        Logger.info("Applying Google user notification",
-          google_directory_id: directory.id,
-          google_user_id: user_id
-        )
+        case Lock.try_run(:google, directory_id, fn ->
+               Logger.info("Applying Google user notification",
+                 google_directory_id: directory.id,
+                 google_user_id: user_id
+               )
 
-        apply_change(directory, user_id)
+               apply_change(directory, user_id)
+             end) do
+          {:ok, result} -> result
+          :busy -> {:snooze, @snooze_seconds}
+        end
     end
   end
 

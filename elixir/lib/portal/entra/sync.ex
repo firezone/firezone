@@ -12,6 +12,7 @@ defmodule Portal.Entra.Sync do
     ]
 
   alias Portal.Entra
+  alias Portal.DirectorySync.Lock
   alias Portal.Microsoft.Graph.APIClient
   alias __MODULE__.Database
   require Logger
@@ -25,29 +26,34 @@ defmodule Portal.Entra.Sync do
         id: job_id,
         args: %{"account_id" => account_id, "directory_id" => directory_id}
       }) do
-    if Database.other_sync_running?(job_id, directory_id) do
-      {:snooze, @snooze_seconds}
-    else
-      Logger.info("Starting Entra directory sync",
-        account_id: account_id,
-        entra_directory_id: directory_id,
-        timestamp: DateTime.utc_now()
-      )
+    cond do
+      Database.other_sync_running?(job_id, directory_id) ->
+        {:snooze, @snooze_seconds}
 
-      case Database.get_directory(account_id, directory_id) do
-        nil ->
-          Logger.info("Entra directory not found, disabled, or account disabled, skipping",
-            account_id: account_id,
-            entra_directory_id: directory_id
-          )
+      true ->
+        case Lock.try_run(:entra, directory_id, fn ->
+               Logger.info("Starting Entra directory sync",
+                 account_id: account_id,
+                 entra_directory_id: directory_id,
+                 timestamp: DateTime.utc_now()
+               )
 
-        directory ->
-          sync(directory)
+               case Database.get_directory(account_id, directory_id) do
+                 nil ->
+                   Logger.info("Entra directory not found, disabled, or account disabled, skipping",
+                     account_id: account_id,
+                     entra_directory_id: directory_id
+                   )
+
+                 directory ->
+                   sync(directory)
+               end
+             end) do
+          {:ok, _result} -> :ok
+          :busy -> {:snooze, @snooze_seconds}
+        end
       end
-
-      :ok
     end
-  end
 
   def perform(_), do: :ok
 

@@ -17,6 +17,7 @@ defmodule Portal.Entra.WebhookSync do
   use Oban.Worker, queue: :entra_webhook, max_attempts: 3
 
   alias Portal.Entra
+  alias Portal.DirectorySync.Lock
   alias Portal.Microsoft.Graph.APIClient
   alias __MODULE__.Database
   require Logger
@@ -62,14 +63,19 @@ defmodule Portal.Entra.WebhookSync do
         {:snooze, @snooze_seconds}
 
       true ->
-        Logger.info("Applying Entra change notification",
-          entra_directory_id: directory.id,
-          resource: resource,
-          resource_id: resource_id,
-          change_type: change_type
-        )
+        case Lock.try_run(:entra, directory_id, fn ->
+               Logger.info("Applying Entra change notification",
+                 entra_directory_id: directory.id,
+                 resource: resource,
+                 resource_id: resource_id,
+                 change_type: change_type
+               )
 
-        apply_change(directory, resource, resource_id, change_type)
+               apply_change(directory, resource, resource_id, change_type)
+             end) do
+          {:ok, result} -> result
+          :busy -> {:snooze, @snooze_seconds}
+        end
     end
   end
 

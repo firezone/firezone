@@ -26,31 +26,35 @@ defmodule Portal.Google.Sync do
     ]
 
   alias Portal.Google
+  alias Portal.DirectorySync.Lock
   alias __MODULE__.Database
   require Logger
   @db_batch_size 500
+  @snooze_seconds 30
 
   @impl Oban.Worker
   def perform(%Oban.Job{args: %{"account_id" => account_id, "directory_id" => directory_id}}) do
-    Logger.info("Starting Google directory sync",
-      account_id: account_id,
-      google_directory_id: directory_id,
-      timestamp: DateTime.utc_now()
-    )
+    case Lock.try_run(:google, directory_id, fn ->
+           Logger.info("Starting Google directory sync",
+             account_id: account_id,
+             google_directory_id: directory_id,
+             timestamp: DateTime.utc_now()
+           )
 
-    case Database.get_directory(account_id, directory_id) do
-      nil ->
-        Logger.info("Google directory not found, disabled, or account disabled, skipping",
-          account_id: account_id,
-          google_directory_id: directory_id
-        )
+           case Database.get_directory(account_id, directory_id) do
+             nil ->
+               Logger.info("Google directory not found, disabled, or account disabled, skipping",
+                 account_id: account_id,
+                 google_directory_id: directory_id
+               )
 
-      directory ->
-        # Perform the sync
-        sync(directory)
+             directory ->
+               sync(directory)
+           end
+         end) do
+      {:ok, _result} -> :ok
+      :busy -> {:snooze, @snooze_seconds}
     end
-
-    :ok
   end
 
   def perform(_), do: :ok
