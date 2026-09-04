@@ -63,23 +63,31 @@ defmodule Portal.Entra.WebhookSync do
         {:snooze, @snooze_seconds}
 
       true ->
-        case Lock.try_run(:entra, directory_id, fn ->
-               Logger.info("Applying Entra change notification",
-                 entra_directory_id: directory.id,
-                 resource: resource,
-                 resource_id: resource_id,
-                 change_type: change_type
-               )
-
-               apply_change(directory, resource, resource_id, change_type)
-             end) do
-          {:ok, result} -> result
-          :busy -> {:snooze, @snooze_seconds}
-        end
+        apply_with_lock(directory, resource, resource_id, change_type)
     end
   end
 
   def perform(_), do: :ok
+
+  defp apply_with_lock(directory, resource, resource_id, change_type) do
+    fun = fn -> apply_notification(directory, resource, resource_id, change_type) end
+
+    case Lock.try_run(:entra, directory.id, fun) do
+      {:ok, result} -> result
+      :busy -> {:snooze, @snooze_seconds}
+    end
+  end
+
+  defp apply_notification(directory, resource, resource_id, change_type) do
+    Logger.info("Applying Entra change notification",
+      entra_directory_id: directory.id,
+      resource: resource,
+      resource_id: resource_id,
+      change_type: change_type
+    )
+
+    apply_change(directory, resource, resource_id, change_type)
+  end
 
   defp apply_change(directory, "user", user_id, change_type) do
     case Database.get_identity(directory.account_id, Entra.Sync.issuer(directory), user_id) do

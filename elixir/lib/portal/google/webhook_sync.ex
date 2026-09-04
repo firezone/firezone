@@ -56,21 +56,27 @@ defmodule Portal.Google.WebhookSync do
         {:snooze, @snooze_seconds}
 
       true ->
-        case Lock.try_run(:google, directory_id, fn ->
-               Logger.info("Applying Google user notification",
-                 google_directory_id: directory.id,
-                 google_user_id: user_id
-               )
-
-               apply_change(directory, user_id)
-             end) do
-          {:ok, result} -> result
-          :busy -> {:snooze, @snooze_seconds}
-        end
+        apply_with_lock(directory, user_id)
     end
   end
 
   def perform(_), do: :ok
+
+  defp apply_with_lock(directory, user_id) do
+    case Lock.try_run(:google, directory.id, fn -> apply_notification(directory, user_id) end) do
+      {:ok, result} -> result
+      :busy -> {:snooze, @snooze_seconds}
+    end
+  end
+
+  defp apply_notification(directory, user_id) do
+    Logger.info("Applying Google user notification",
+      google_directory_id: directory.id,
+      google_user_id: user_id
+    )
+
+    apply_change(directory, user_id)
+  end
 
   defp apply_change(directory, user_id) do
     identity = Database.get_identity(directory, user_id)

@@ -26,36 +26,40 @@ defmodule Portal.Entra.Sync do
         id: job_id,
         args: %{"account_id" => account_id, "directory_id" => directory_id}
       }) do
-    cond do
-      Database.other_sync_running?(job_id, directory_id) ->
-        {:snooze, @snooze_seconds}
-
-      true ->
-        case Lock.try_run(:entra, directory_id, fn ->
-               Logger.info("Starting Entra directory sync",
-                 account_id: account_id,
-                 entra_directory_id: directory_id,
-                 timestamp: DateTime.utc_now()
-               )
-
-               case Database.get_directory(account_id, directory_id) do
-                 nil ->
-                   Logger.info("Entra directory not found, disabled, or account disabled, skipping",
-                     account_id: account_id,
-                     entra_directory_id: directory_id
-                   )
-
-                 directory ->
-                   sync(directory)
-               end
-             end) do
-          {:ok, _result} -> :ok
-          :busy -> {:snooze, @snooze_seconds}
-        end
-      end
+    if Database.other_sync_running?(job_id, directory_id) do
+      {:snooze, @snooze_seconds}
+    else
+      run_with_lock(account_id, directory_id)
     end
+  end
 
   def perform(_), do: :ok
+
+  defp run_with_lock(account_id, directory_id) do
+    case Lock.try_run(:entra, directory_id, fn -> run_sync(account_id, directory_id) end) do
+      {:ok, _result} -> :ok
+      :busy -> {:snooze, @snooze_seconds}
+    end
+  end
+
+  defp run_sync(account_id, directory_id) do
+    Logger.info("Starting Entra directory sync",
+      account_id: account_id,
+      entra_directory_id: directory_id,
+      timestamp: DateTime.utc_now()
+    )
+
+    case Database.get_directory(account_id, directory_id) do
+      nil ->
+        Logger.info("Entra directory not found, disabled, or account disabled, skipping",
+          account_id: account_id,
+          entra_directory_id: directory_id
+        )
+
+      directory ->
+        sync(directory)
+    end
+  end
 
   defp update(directory, attrs) do
     changeset =
