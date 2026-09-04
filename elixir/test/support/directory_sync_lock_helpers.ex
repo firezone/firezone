@@ -27,7 +27,7 @@ defmodule Portal.DirectorySyncLockHelpers do
             end
           end)
 
-        Sandbox.checkin(Repo)
+        Sandbox.checkin(Repo) # codespell:ignore checkin
       end)
 
     receive do
