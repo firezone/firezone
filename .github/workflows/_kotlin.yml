@@ -2,6 +2,11 @@ name: Build Android app
 on:
   workflow_call:
   workflow_dispatch:
+    inputs:
+      prepare_store:
+        description: Prepare the Google Play draft from this branch
+        type: boolean
+        default: false
 
 defaults:
   run:
@@ -209,12 +214,18 @@ jobs:
   update-release-draft:
     name: update-release-draft
     runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.release-metadata.outputs.version }}
     permissions:
       contents: write # for updating the release draft
     env:
       # mark:next-android-version
       RELEASE_NAME: android-client-1.5.14
     steps:
+      - name: Set release metadata
+        id: release-metadata
+        working-directory: .
+        run: echo "version=${RELEASE_NAME#android-client-}" >> "$GITHUB_OUTPUT"
       - uses: release-drafter/release-drafter@34d80673e067bdc0c24568d3af899c216adcfaa9 # v7.7.0
         if: "${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}"
         id: update-release-draft
@@ -313,7 +324,7 @@ jobs:
           firebase_args=(
             appdistribution:distribute "${{ matrix.output-path }}"
             --app "1:215658742954:android:51cc714762dbfbb59e7cd3"
-            --release-notes "https://www.firezone.dev/changelog"
+            --release-notes "https://www.firezone.dev/changelog#tab-android"
             --groups "firezone-engineering"
           )
 
@@ -326,28 +337,25 @@ jobs:
         if: ${{ matrix.package-type == 'aab' && github.event_name == 'workflow_dispatch' }}
         run: ./gradlew --no-daemon uploadCrashlyticsSymbolFileRelease
       - name: Authenticate to Google Cloud (Play Store upload)
-        if: ${{ matrix.package-type == 'aab' && github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}
+        if: ${{ matrix.package-type == 'aab' && github.event_name == 'workflow_dispatch' && (github.ref_name == 'main' || inputs.prepare_store) }}
         id: gcp-auth
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
         with:
           workload_identity_provider: projects/215658742954/locations/global/workloadIdentityPools/github-actions/providers/github
           service_account: play-store-publisher@firezone-55040.iam.gserviceaccount.com
-          token_format: access_token
-          access_token_scopes: https://www.googleapis.com/auth/androidpublisher
-          access_token_lifetime: 600s
       # The play-store-publisher service account is intentionally granted only
       # internal-track upload permission in the Play Console. Production-track
       # permission would let it (or anyone who compromises CI) publish a release
-      # straight to end users. Promotion from internal -> production is a manual
-      # step in the Play Console.
-      - name: Upload AAB to Google Play Console (internal track)
-        if: ${{ matrix.package-type == 'aab' && github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}
+      # straight to end users. PREPARE_ANDROID_PRODUCTION_DRAFT only takes effect
+      # after that permission is deliberately granted; the script still creates
+      # a draft rather than starting a rollout.
+      - name: Prepare Google Play draft release
+        if: ${{ matrix.package-type == 'aab' && github.event_name == 'workflow_dispatch' && (github.ref_name == 'main' || inputs.prepare_store) }}
         env:
-          ACCESS_TOKEN: ${{ steps.gcp-auth.outputs.access_token }}
-          PACKAGE_NAME: dev.firezone.android
+          GPLAY_SERVICE_ACCOUNT_JSON: ${{ steps.gcp-auth.outputs.credentials_file_path }}
           AAB_PATH: ${{ matrix.output-path }}
-          TRACK: internal
-          RELEASE_STATUS: draft
+          VERSION_NAME: ${{ needs.update-release-draft.outputs.version }}
+          PREPARE_PRODUCTION_DRAFT: ${{ vars.PREPARE_ANDROID_PRODUCTION_DRAFT }}
         run: ../../scripts/upload/play-store.sh
 
   build_debug:

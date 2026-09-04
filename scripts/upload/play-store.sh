@@ -1,67 +1,118 @@
 #!/usr/bin/env bash
 
-# Uploads an AAB to the Google Play Console as a draft release on the given track.
-#
-# Required env vars:
-#   ACCESS_TOKEN   - Short-lived Google OAuth access token, scope `androidpublisher`.
-#                    In CI: produced by google-github-actions/auth via Workload Identity Federation.
-#                    Locally: ACCESS_TOKEN=$(gcloud auth print-access-token \
-#                                            --scopes=https://www.googleapis.com/auth/androidpublisher)
-#   PACKAGE_NAME   - Application package name, e.g. dev.firezone.android
-#   AAB_PATH       - Path to the .aab file to upload
-#
-# Optional env vars:
-#   TRACK          - Release track. Default: production
-#   RELEASE_STATUS - Release status. Default: draft
-
 set -euo pipefail
 
-: "${ACCESS_TOKEN:?ACCESS_TOKEN is required}"
-: "${PACKAGE_NAME:?PACKAGE_NAME is required}"
 : "${AAB_PATH:?AAB_PATH is required}"
-TRACK="${TRACK:-production}"
-RELEASE_STATUS="${RELEASE_STATUS:-draft}"
+: "${VERSION_NAME:?VERSION_NAME is required}"
+: "${GPLAY_SERVICE_ACCOUNT_JSON:?GPLAY_SERVICE_ACCOUNT_JSON is required}"
 
-if [[ ! -f "$AAB_PATH" ]]; then
-    echo "AAB not found at $AAB_PATH" >&2
+readonly PACKAGE_NAME="dev.firezone.android"
+readonly INTERNAL_TRACK="internal"
+readonly PRODUCTION_TRACK="production"
+readonly CHANGELOG_URL="https://www.firezone.dev/changelog#tab-android"
+readonly REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+readonly -a SCREENSHOTS=(
+    "$REPO_ROOT/kotlin/android/screenshots/sign-in.png"
+    "$REPO_ROOT/kotlin/android/screenshots/session-screen.png"
+    "$REPO_ROOT/kotlin/android/screenshots/session-screen-favorites.png"
+    "$REPO_ROOT/kotlin/android/screenshots/resource-details.png"
+    "$REPO_ROOT/kotlin/android/screenshots/resource-details-internet.png"
+    "$REPO_ROOT/kotlin/android/screenshots/device-details.png"
+    "$REPO_ROOT/kotlin/android/screenshots/settings-general.png"
+    "$REPO_ROOT/kotlin/android/screenshots/settings-advanced.png"
+)
+
+for screenshot in "${SCREENSHOTS[@]}"; do
+    if [[ ! -s "$screenshot" ]]; then
+        echo "Missing store screenshot: ${screenshot#"$REPO_ROOT/"}" >&2
+        exit 1
+    fi
+done
+
+if [[ ! -s "$AAB_PATH" ]]; then
+    echo "Missing Android App Bundle: $AAB_PATH" >&2
     exit 1
 fi
 
-API="https://androidpublisher.googleapis.com/androidpublisher/v3/applications/$PACKAGE_NAME"
-UPLOAD_API="https://androidpublisher.googleapis.com/upload/androidpublisher/v3/applications/$PACKAGE_NAME"
-AUTH_HEADER="Authorization: Bearer $ACCESS_TOKEN"
+export GPLAY_NO_UPDATE=1
+edit_id=""
+committed=false
 
-echo "Creating edit for $PACKAGE_NAME..."
-EDIT_ID=$(curl --fail-with-body --silent --show-error --request POST \
-    --header "$AUTH_HEADER" \
-    --header "Content-Length: 0" \
-    "$API/edits" | jq -r '.id')
-echo "  Edit ID: $EDIT_ID"
+cleanup() {
+    if [[ -n "$edit_id" && "$committed" != true ]]; then
+        echo "Discarding Google Play edit $edit_id..."
+        gplay edits delete --package "$PACKAGE_NAME" --edit "$edit_id" --confirm || true
+    fi
+}
+trap cleanup EXIT
 
-echo "Uploading $AAB_PATH..."
-VERSION_CODE=$(curl --fail-with-body --silent --show-error --request POST \
-    --header "$AUTH_HEADER" \
-    --header "Content-Type: application/octet-stream" \
-    --data-binary "@$AAB_PATH" \
-    "$UPLOAD_API/edits/$EDIT_ID/bundles?uploadType=media" | jq -r '.versionCode')
-echo "  Uploaded versionCode: $VERSION_CODE"
+echo "Creating Google Play edit..."
+edit=$(gplay edits create --package "$PACKAGE_NAME")
+edit_id=$(jq -er '.id' <<< "$edit")
+echo "Created edit $edit_id."
 
-echo "Assigning versionCode $VERSION_CODE to '$TRACK' track ($RELEASE_STATUS)..."
-TRACK_BODY=$(jq -nc \
-    --arg track "$TRACK" \
-    --arg vc "$VERSION_CODE" \
-    --arg status "$RELEASE_STATUS" \
-    '{track: $track, releases: [{versionCodes: [$vc], status: $status}]}')
-curl --fail-with-body --silent --show-error --request PUT \
-    --header "$AUTH_HEADER" \
-    --header "Content-Type: application/json" \
-    --data "$TRACK_BODY" \
-    "$API/edits/$EDIT_ID/tracks/$TRACK" >/dev/null
+echo "Finding an existing upload of $AAB_PATH..."
+read -r bundle_hash _ < <(sha256sum "$AAB_PATH")
+bundles=$(gplay bundles list --package "$PACKAGE_NAME" --edit "$edit_id")
+matching_bundles=$(jq -c --arg hash "$bundle_hash" \
+    '[.bundles[]? | select(((.sha256 // "") | ascii_downcase) == $hash)]' \
+    <<< "$bundles")
 
-echo "Committing edit $EDIT_ID..."
-curl --fail-with-body --silent --show-error --request POST \
-    --header "$AUTH_HEADER" \
-    --header "Content-Length: 0" \
-    "$API/edits/$EDIT_ID:commit" >/dev/null
+case $(jq 'length' <<< "$matching_bundles") in
+    0)
+        echo "Uploading $AAB_PATH..."
+        upload=$(gplay bundles upload \
+            --package "$PACKAGE_NAME" \
+            --edit "$edit_id" \
+            --file "$AAB_PATH")
+        version_code=$(jq -er '.versionCode' <<< "$upload")
+        ;;
+    1)
+        version_code=$(jq -er '.[0].versionCode' <<< "$matching_bundles")
+        echo "Reusing uploaded versionCode $version_code."
+        ;;
+    *)
+        echo "Multiple bundles have SHA-256 $bundle_hash" >&2
+        exit 1
+        ;;
+esac
 
-echo "Done. $PACKAGE_NAME versionCode $VERSION_CODE uploaded as $RELEASE_STATUS on '$TRACK' track."
+update_draft() {
+    local track=$1
+    local current releases
+
+    echo "Creating or replacing the $track draft..."
+    current=$(gplay tracks get \
+        --package "$PACKAGE_NAME" \
+        --edit "$edit_id" \
+        --track "$track")
+    releases=$(jq -c \
+        --arg name "$VERSION_NAME" \
+        --argjson version_code "$version_code" \
+        --arg changelog "$CHANGELOG_URL" \
+        '(.releases // [] | map(select(.status != "draft"))) + [{
+            name: $name,
+            versionCodes: [$version_code],
+            status: "draft",
+            releaseNotes: [{language: "en-US", text: $changelog}]
+        }]' <<< "$current")
+    gplay tracks update \
+        --package "$PACKAGE_NAME" \
+        --edit "$edit_id" \
+        --track "$track" \
+        --releases "$releases"
+}
+
+update_draft "$INTERNAL_TRACK"
+if [[ "${PREPARE_PRODUCTION_DRAFT:-false}" == true ]]; then
+    update_draft "$PRODUCTION_TRACK"
+fi
+
+echo "Validating edit $edit_id..."
+gplay edits validate --package "$PACKAGE_NAME" --edit "$edit_id"
+
+echo "Committing draft release changes..."
+gplay edits commit --package "$PACKAGE_NAME" --edit "$edit_id"
+committed=true
+
+echo "Prepared $PACKAGE_NAME $VERSION_NAME ($version_code) as a Google Play draft."
