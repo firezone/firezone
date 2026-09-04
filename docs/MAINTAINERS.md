@@ -23,8 +23,20 @@ Table of Contents:
 1. Test the resulting Firebase App Distribution or TestFlight build.
 1. Submit the release for review:
    - For Apple, follow the [Apple client](#apple-client) instructions below.
-   - For Android, download the AAB from Firebase App Distribution, create a new
-     release in Google Play Console, and upload the AAB.
+   - For Android, run the [Submit Android release](../.github/workflows/submit-android-release.yml)
+     workflow on `main` and approve its `google-play-production` environment.
+     It promotes the build from the exact GitHub draft, replaces the screenshots,
+     and submits both in one Google Play edit. Managed Publishing holds the approved
+     changes until they are published manually.
+
+The Android submission workflow uses GitHub OIDC to impersonate
+`play-store-production-publisher@firezone-55040.iam.gserviceaccount.com`. Limit
+that service account to the Firezone app in Play Console and grant only the
+permissions needed to read releases, release to production, and manage the store
+listing. Configure the `google-play-production` GitHub environment with required
+reviewers and restrict both the environment and Workload Identity Federation
+subject to `main`. Keep [Managed Publishing](https://support.google.com/googleplay/android-developer/answer/9859654)
+enabled.
 
 ### GitHub-released components (Linux, Windows, and Gateway)
 

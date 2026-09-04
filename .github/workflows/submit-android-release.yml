@@ -1,0 +1,70 @@
+name: Submit Android release
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: android-release-main
+  cancel-in-progress: false
+
+jobs:
+  submit:
+    if: ${{ github.ref_name == 'main' }}
+    environment: google-play-production
+    runs-on: ubuntu-24.04
+    env:
+      # mark:next-android-version
+      RELEASE_NAME: android-client-1.5.14
+    steps:
+      - name: Resolve the GitHub draft release
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          release=$(gh release view "$RELEASE_NAME" \
+            --repo "$GITHUB_REPOSITORY" \
+            --json isDraft,targetCommitish)
+
+          if [[ $(jq -r '.isDraft' <<< "$release") != true ]]; then
+            echo "$RELEASE_NAME is not a draft release" >&2
+            exit 1
+          fi
+
+          source_sha=$(jq -r '.targetCommitish' <<< "$release")
+          if [[ ! "$source_sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "$RELEASE_NAME does not target a full Git commit SHA" >&2
+            exit 1
+          fi
+
+          echo "source-sha=$source_sha" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ steps.release.outputs.source-sha }}
+
+      - uses: ./.github/actions/setup-mise
+        with:
+          install_args: --cd kotlin/android github:tamtom/play-console-cli
+
+      - name: Authenticate to Google Cloud
+        id: gcp-auth
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          workload_identity_provider: projects/215658742954/locations/global/workloadIdentityPools/github-actions/providers/github
+          service_account: play-store-production-publisher@firezone-55040.iam.gserviceaccount.com
+          token_format: access_token
+          access_token_scopes: https://www.googleapis.com/auth/androidpublisher
+          access_token_lifetime: 600s
+
+      - name: Submit the release and screenshots for review
+        env:
+          ACCESS_TOKEN: ${{ steps.gcp-auth.outputs.access_token }}
+          GPLAY_SERVICE_ACCOUNT_JSON: ${{ steps.gcp-auth.outputs.credentials_file_path }}
+          SOURCE_SHA: ${{ steps.release.outputs.source-sha }}
+        run: |
+          export VERSION_NAME="${RELEASE_NAME#android-client-}"
+          scripts/upload/play-store.sh production
