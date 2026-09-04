@@ -30,8 +30,8 @@ Table of Contents:
 
 Before the first dispatch, explicitly create the `google-play` environment with
 required reviewers, restrict deployments to `main`, and set its
-`GOOGLE_PLAY_ENVIRONMENT_CONFIGURED` variable to `true`. GitHub otherwise creates
-a referenced environment without protection.
+`GOOGLE_PLAY_CONFIGURED` variable to `true`. GitHub otherwise creates a referenced
+environment without protection.
 
 ### GitHub-released components (Linux, Windows, and Gateway)
 
