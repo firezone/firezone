@@ -26,10 +26,10 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import androidx.viewpager2.adapter.FragmentStateAdapter
 import com.github.takahirom.roborazzi.ExperimentalRoborazziApi
-import com.github.takahirom.roborazzi.RobolectricDeviceQualifiers
 import com.github.takahirom.roborazzi.captureRoboImage
 import com.github.takahirom.roborazzi.roborazziSystemPropertyOutputDirectory
 import dev.firezone.android.R
+import dev.firezone.android.STORE_SCREENSHOT_QUALIFIERS
 import dev.firezone.android.core.data.Repository
 import dev.firezone.android.databinding.ActivitySettingsBinding
 import dev.firezone.android.features.session.ui.compose.FirezoneTheme
@@ -61,7 +61,7 @@ import dev.firezone.android.core.data.model.Config as FirezoneConfig
 @Config(
     sdk = [34],
     application = Application::class,
-    qualifiers = RobolectricDeviceQualifiers.Pixel5,
+    qualifiers = STORE_SCREENSHOT_QUALIFIERS,
 )
 class SettingsScreenshotTest {
     // Reaches into the Compose content the fragments host, which the scrolled Device Trust
