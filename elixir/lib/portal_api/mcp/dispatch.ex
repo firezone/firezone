@@ -49,6 +49,10 @@ defmodule PortalAPI.MCP.Dispatch do
     missing = Enum.reject(tool.path_params, &Map.has_key?(arguments, &1))
     unknown = provided |> MapSet.difference(known) |> MapSet.to_list() |> Enum.sort()
 
+    non_scalar =
+      (tool.path_params ++ tool.query_params)
+      |> Enum.filter(&(not scalar?(Map.get(arguments, &1))))
+
     cond do
       missing != [] ->
         {:error, "missing required argument(s): #{Enum.join(missing, ", ")}"}
@@ -58,9 +62,17 @@ defmodule PortalAPI.MCP.Dispatch do
          "unknown argument(s): #{Enum.join(unknown, ", ")}. " <>
            "Accepted arguments are: #{known |> MapSet.to_list() |> Enum.sort() |> Enum.join(", ")}"}
 
+      non_scalar != [] ->
+        {:error,
+         "argument(s) must be a string, number, or boolean: #{Enum.join(non_scalar, ", ")}"}
+
       true ->
         :ok
     end
+  end
+
+  defp scalar?(value) do
+    is_nil(value) or is_binary(value) or is_number(value) or is_boolean(value)
   end
 
   defp build_conn(%Tool{} = tool, arguments, body, encoded_body, %Plug.Conn{} = conn) do

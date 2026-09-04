@@ -408,6 +408,21 @@ defmodule PortalAPI.MCPControllerTest do
       assert text =~ "unknown argument"
     end
 
+    test "returns a tool error for a path parameter that is not a scalar", %{
+      conn: conn,
+      actor: actor
+    } do
+      conn =
+        conn
+        |> authorize_mcp_conn(actor)
+        |> call_tool("get_resource", %{"id" => %{"$ne" => nil}})
+
+      assert %{"result" => %{"isError" => true, "content" => [%{"text" => text}]}} =
+               json_response(conn, 200)
+
+      assert text =~ "must be a string, number, or boolean: id"
+    end
+
     test "returns a tool error for a missing path parameter", %{conn: conn, actor: actor} do
       conn = conn |> authorize_mcp_conn(actor) |> call_tool("get_resource", %{})
 
