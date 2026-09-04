@@ -77,11 +77,9 @@ defmodule PortalAPI.LogController do
       limit: [
         in: :query,
         description: """
-        Maximum number of Logs to return per page. Defaults to 50.
-        Values greater than 100 are capped to 100, and values less than 1
-        are raised to 1.
+        Maximum number of Logs to return per page, from 1 to 100. Defaults to 50.
         """,
-        type: :integer,
+        schema: PortalAPI.Pagination.limit_schema(),
         example: 50
       ],
       page_cursor: [

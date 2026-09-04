@@ -24,7 +24,7 @@ defmodule PortalAPI.PoolMemberController do
         description: "Resource ID",
         example: "00000000-0000-0000-0000-000000000000"
       ],
-      limit: [in: :query, description: "Limit Pool Members returned", type: :integer, example: 10],
+      limit: [in: :query, description: "Limit Pool Members returned", schema: PortalAPI.Pagination.limit_schema(), example: 10],
       page_cursor: [in: :query, description: "Next/Prev page cursor", type: :string]
     ],
     responses:

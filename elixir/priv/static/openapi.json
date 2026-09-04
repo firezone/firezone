@@ -7165,6 +7165,8 @@
             "name": "limit",
             "required": false,
             "schema": {
+              "maximum": 100,
+              "minimum": 1,
               "type": "integer"
             }
           },
@@ -7425,6 +7427,8 @@
             "name": "limit",
             "required": false,
             "schema": {
+              "maximum": 100,
+              "minimum": 1,
               "type": "integer"
             }
           },
@@ -8617,6 +8621,8 @@
             "name": "limit",
             "required": false,
             "schema": {
+              "maximum": 100,
+              "minimum": 1,
               "type": "integer"
             }
           },
@@ -8724,6 +8730,8 @@
             "name": "limit",
             "required": false,
             "schema": {
+              "maximum": 100,
+              "minimum": 1,
               "type": "integer"
             }
           },
@@ -8963,6 +8971,8 @@
             "name": "limit",
             "required": false,
             "schema": {
+              "maximum": 100,
+              "minimum": 1,
               "type": "integer"
             }
           },
@@ -9821,6 +9831,8 @@
             "name": "limit",
             "required": false,
             "schema": {
+              "maximum": 100,
+              "minimum": 1,
               "type": "integer"
             }
           },
@@ -10334,6 +10346,8 @@
             "name": "limit",
             "required": false,
             "schema": {
+              "maximum": 100,
+              "minimum": 1,
               "type": "integer"
             }
           },
@@ -10450,6 +10464,8 @@
             "name": "limit",
             "required": false,
             "schema": {
+              "maximum": 100,
+              "minimum": 1,
               "type": "integer"
             }
           },
@@ -10679,6 +10695,8 @@
             "name": "limit",
             "required": false,
             "schema": {
+              "maximum": 100,
+              "minimum": 1,
               "type": "integer"
             }
           },
@@ -11426,6 +11444,8 @@
             "name": "limit",
             "required": false,
             "schema": {
+              "maximum": 100,
+              "minimum": 1,
               "type": "integer"
             }
           },
@@ -12274,6 +12294,8 @@
             "name": "limit",
             "required": false,
             "schema": {
+              "maximum": 100,
+              "minimum": 1,
               "type": "integer"
             }
           },
@@ -12790,6 +12812,8 @@
             "name": "limit",
             "required": false,
             "schema": {
+              "maximum": 100,
+              "minimum": 1,
               "type": "integer"
             }
           },
@@ -12897,6 +12921,8 @@
             "name": "limit",
             "required": false,
             "schema": {
+              "maximum": 100,
+              "minimum": 1,
               "type": "integer"
             }
           },
@@ -13351,6 +13377,8 @@
             "name": "limit",
             "required": false,
             "schema": {
+              "maximum": 100,
+              "minimum": 1,
               "type": "integer"
             }
           },
@@ -13468,6 +13496,8 @@
             "name": "limit",
             "required": false,
             "schema": {
+              "maximum": 100,
+              "minimum": 1,
               "type": "integer"
             }
           },
@@ -13881,6 +13911,8 @@
             "name": "limit",
             "required": false,
             "schema": {
+              "maximum": 100,
+              "minimum": 1,
               "type": "integer"
             }
           },
@@ -14336,6 +14368,8 @@
             "name": "limit",
             "required": false,
             "schema": {
+              "maximum": 100,
+              "minimum": 1,
               "type": "integer"
             }
           },
@@ -15071,6 +15105,8 @@
             "name": "limit",
             "required": false,
             "schema": {
+              "maximum": 100,
+              "minimum": 1,
               "type": "integer"
             }
           },
@@ -15301,6 +15337,8 @@
             "name": "limit",
             "required": false,
             "schema": {
+              "maximum": 100,
+              "minimum": 1,
               "type": "integer"
             }
           },
@@ -15853,6 +15891,8 @@
             "name": "limit",
             "required": false,
             "schema": {
+              "maximum": 100,
+              "minimum": 1,
               "type": "integer"
             }
           },
@@ -15971,6 +16011,8 @@
             "name": "limit",
             "required": false,
             "schema": {
+              "maximum": 100,
+              "minimum": 1,
               "type": "integer"
             }
           },
@@ -16838,6 +16880,8 @@
             "name": "limit",
             "required": false,
             "schema": {
+              "maximum": 100,
+              "minimum": 1,
               "type": "integer"
             }
           },
@@ -17698,6 +17742,8 @@
             "name": "limit",
             "required": false,
             "schema": {
+              "maximum": 100,
+              "minimum": 1,
               "type": "integer"
             }
           },
@@ -17992,6 +18038,8 @@
             "name": "limit",
             "required": false,
             "schema": {
+              "maximum": 100,
+              "minimum": 1,
               "type": "integer"
             }
           },
@@ -18099,6 +18147,8 @@
             "name": "limit",
             "required": false,
             "schema": {
+              "maximum": 100,
+              "minimum": 1,
               "type": "integer"
             }
           },
@@ -18362,12 +18412,14 @@
             }
           },
           {
-            "description": "Maximum number of Logs to return per page. Defaults to 50.\nValues greater than 100 are capped to 100, and values less than 1\nare raised to 1.\n",
+            "description": "Maximum number of Logs to return per page, from 1 to 100. Defaults to 50.\n",
             "example": 50,
             "in": "query",
             "name": "limit",
             "required": false,
             "schema": {
+              "maximum": 100,
+              "minimum": 1,
               "type": "integer"
             }
           },
@@ -18515,6 +18567,8 @@
             "name": "limit",
             "required": false,
             "schema": {
+              "maximum": 100,
+              "minimum": 1,
               "type": "integer"
             }
           },
@@ -18767,6 +18821,8 @@
             "name": "limit",
             "required": false,
             "schema": {
+              "maximum": 100,
+              "minimum": 1,
               "type": "integer"
             }
           },
@@ -18995,6 +19051,8 @@
             "name": "limit",
             "required": false,
             "schema": {
+              "maximum": 100,
+              "minimum": 1,
               "type": "integer"
             }
           },
@@ -19481,6 +19539,8 @@
             "name": "limit",
             "required": false,
             "schema": {
+              "maximum": 100,
+              "minimum": 1,
               "type": "integer"
             }
           },
