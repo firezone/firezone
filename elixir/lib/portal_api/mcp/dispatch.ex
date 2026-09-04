@@ -5,9 +5,8 @@ defmodule PortalAPI.MCP.Dispatch do
   The call is re-entered through `PortalAPI.Router` on a synthetic connection
   carrying the original request's headers and a `PortalAPI.MCP.CaptureAdapter`,
   so the response is captured instead of sent. Everything the REST pipeline
-  does still happens: the bearer token is re-authenticated, the account's rate
-  limit is charged, an `api_request_logs` row is written, and the same
-  controller and view render the result.
+  does still happens, with authentication, metering, and logging shared with
+  the outer request. The same controller and view render the result.
 
   Dispatching this way rather than calling controller actions directly is what
   keeps MCP from becoming a second, subtly different API surface.
@@ -21,24 +20,28 @@ defmodule PortalAPI.MCP.Dispatch do
 
   alias PortalAPI.MCP.CaptureAdapter
   alias PortalAPI.MCP.Tool
+  alias PortalAPI.Plugs.MCPRequestLog
 
   @doc """
   Runs `tool` with `arguments` on behalf of the authenticated `conn`.
 
-  Returns the inner response's status and decoded JSON body, or
+  Returns the inner response's status, decoded JSON body and audited outer conn, or
   `{:error, reason}` when the arguments cannot be turned into a request.
   """
   def call(%Tool{} = tool, arguments, %Plug.Conn{} = conn) when is_map(arguments) do
-    with :ok <- validate_arguments(tool, arguments) do
+    with :ok <- PortalAPI.MCP.Safety.permit(tool),
+         :ok <- validate_arguments(tool, arguments) do
       body = build_body(tool, arguments)
       encoded_body = encode_body(body)
 
-      response =
-        tool
-        |> build_conn(arguments, body, encoded_body, conn)
-        |> PortalAPI.Router.call([])
+      inner = build_conn(tool, arguments, body, encoded_body, conn)
 
-      {:ok, response.status, decode_body(response.resp_body)}
+      with :ok <- validate_route(tool, inner) do
+        conn = MCPRequestLog.dispatched(conn, inner)
+        response = PortalAPI.Router.call(inner, [])
+        conn = MCPRequestLog.completed(conn, response.status)
+        {:ok, response.status, decode_body(response.resp_body), conn}
+      end
     end
   end
 
@@ -53,6 +56,8 @@ defmodule PortalAPI.MCP.Dispatch do
       Enum.filter(tool.path_params, &(not scalar?(Map.get(arguments, &1)))) ++
         Enum.filter(tool.query_params, &(not optional_scalar?(Map.get(arguments, &1))))
 
+    invalid_ids = Enum.reject(tool.path_params, &valid_identifier?(&1, Map.get(arguments, &1)))
+
     cond do
       missing != [] ->
         {:error, "missing required argument(s): #{Enum.join(missing, ", ")}"}
@@ -66,6 +71,9 @@ defmodule PortalAPI.MCP.Dispatch do
         {:error,
          "argument(s) must be a string, number, or boolean: #{Enum.join(non_scalar, ", ")}"}
 
+      invalid_ids != [] ->
+        {:error, "path argument(s) must be valid identifiers: #{Enum.join(invalid_ids, ", ")}"}
+
       true ->
         :ok
     end
@@ -76,6 +84,28 @@ defmodule PortalAPI.MCP.Dispatch do
   end
 
   defp optional_scalar?(value), do: is_nil(value) or scalar?(value)
+
+  # All current path parameters are UUIDs or opaque log IDs. Validate before
+  # routing: an empty segment otherwise selects a different (possibly bulk)
+  # route before the REST UUID plug gets a chance to examine it.
+  defp valid_identifier?("log_id", value), do: Portal.Types.LogId.valid?(value)
+
+  defp valid_identifier?(_name, value) when is_binary(value) do
+    byte_size(value) == 36 and match?({:ok, _}, Ecto.UUID.cast(value))
+  end
+
+  defp valid_identifier?(_name, _value), do: false
+
+  defp validate_route(tool, conn) do
+    case Phoenix.Router.route_info(PortalAPI.Router, conn.method, conn.request_path, conn.host) do
+      %{plug: controller, plug_opts: action, route: route}
+      when controller == tool.controller and action == tool.action and route == tool.route ->
+        :ok
+
+      _other ->
+        {:error, "Tool arguments do not resolve to the intended REST operation."}
+    end
+  end
 
   defp build_conn(%Tool{} = tool, arguments, body, encoded_body, %Plug.Conn{} = conn) do
     path = build_path(tool, arguments)

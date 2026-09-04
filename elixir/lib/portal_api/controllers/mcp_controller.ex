@@ -3,9 +3,9 @@ defmodule PortalAPI.MCPController do
   The MCP endpoint: one stateless POST that speaks JSON-RPC 2.0.
 
   Rate limiting and request logging are charged exactly once per request by the
-  MCP router pipeline. A `tools/call` is logged under the REST operation that
-  it names, while the inner REST dispatch carries private markers that prevent
-  duplicate metering.
+  MCP router pipeline. Tool attempts and REST execution outcomes are recorded
+  separately on that row. The inner dispatch carries private markers that
+  prevent duplicate metering.
   """
 
   use PortalAPI, :controller
@@ -58,7 +58,10 @@ defmodule PortalAPI.MCPController do
   end
 
   defp handle_request(conn, id, method, params) do
-    with :ok <- validate_protocol_version(conn, params),
+    conn = PortalAPI.Plugs.MCPRequestLog.identify(conn, method, params)
+
+    with :ok <- validate_params(params),
+         :ok <- validate_protocol_version(conn, params),
          :ok <- validate_header(conn, "mcp-method", method, "Mcp-Method"),
          :ok <- validate_name_header(conn, method, params),
          :ok <- validate_client_capabilities(params) do
@@ -115,7 +118,7 @@ defmodule PortalAPI.MCPController do
 
     with {:ok, tool} <- fetch_tool(conn, name),
          {:ok, arguments} <- fetch_arguments(params),
-         {:ok, status, body} <- Dispatch.call(tool, arguments, conn) do
+         {:ok, status, body, conn} <- Dispatch.call(tool, arguments, conn) do
       send_tool_result(conn, id, status, body)
     else
       {:error, :unknown_tool, message} ->
@@ -217,10 +220,13 @@ defmodule PortalAPI.MCPController do
   defp classify(_body), do: :invalid
 
   defp params(body) do
-    case Map.get(body, "params") do
-      params when is_map(params) -> params
-      _other -> %{}
-    end
+    Map.get(body, "params", %{})
+  end
+
+  defp validate_params(%{"_meta" => meta}) when is_map(meta), do: :ok
+
+  defp validate_params(_params) do
+    {:error, 400, MCP.invalid_params(), "`params` and `params._meta` must be JSON objects.", nil}
   end
 
   defp validate_header(conn, header, expected, label) do

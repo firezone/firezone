@@ -5924,13 +5924,13 @@
         "description": "A single API Request Log entry, recording one authenticated REST API\nrequest.\n",
         "properties": {
           "actor_id": {
-            "description": "ID of the API Client actor.",
+            "description": "ID of the actor making the API or MCP request.",
             "example": "84e7f82f-831a-4a9d-8f17-c66c2bb6e205",
             "format": "uuid",
             "type": "string"
           },
           "api_token_id": {
-            "description": "ID of the API token used.",
+            "description": "ID of the API token or MCP OAuth access token used.",
             "example": "44e7f82f-831a-4a9d-8f17-c66c2bb6e205",
             "format": "uuid",
             "type": "string"
@@ -5968,6 +5968,12 @@
             "description": "Opaque identifier for the API Request Log entry. A 24-character\nlowercase hexadecimal string starting with `a`.\n",
             "example": "a00060db0c2c8eb400000000",
             "type": "string"
+          },
+          "mcp": {
+            "additionalProperties": true,
+            "description": "MCP execution metadata, null for REST requests. tool_name is the\nrequested tool, not proof of execution. outcome is received, rejected,\nignored, protocol_response, dispatched, succeeded, or failed. A\ndispatched outcome without completion has an unknown result. method\nand path identify the dispatched REST operation; rest_status is its\nstatus and http_status is the outer response status. No arguments or\nresponse bodies are logged. A succeeded result means the REST handler\nreturned 2xx, not necessarily that it changed data.\n",
+            "nullable": true,
+            "type": "object"
           },
           "method": {
             "description": "HTTP request method.",
@@ -6014,6 +6020,7 @@
           "ip_region",
           "log_id",
           "method",
+          "mcp",
           "path",
           "request_id",
           "timestamp",

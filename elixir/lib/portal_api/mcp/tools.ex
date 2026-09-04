@@ -95,7 +95,9 @@ defmodule PortalAPI.MCP.Tools do
 
   @doc "Tools the given scopes permit, ordered by name."
   def list(scopes) do
-    Enum.filter(all(), &PortalAPI.MCP.Scopes.permits?(scopes, &1))
+    Enum.filter(all(), fn tool ->
+      PortalAPI.MCP.Scopes.permits?(scopes, tool) and PortalAPI.MCP.Safety.enabled?(tool)
+    end)
   end
 
   @doc "Looks a tool up by name."
@@ -184,6 +186,7 @@ defmodule PortalAPI.MCP.Tools do
   end
 
   defp build_tool(method, path, operation, name_style, schemas) do
+    route = route_info(method, path)
     parameters = operation.parameters || []
     body_schema = request_body_schema(operation)
 
@@ -201,6 +204,9 @@ defmodule PortalAPI.MCP.Tools do
       path_template: path,
       input_schema: JSONSchema.build_input_schema(parameters, body_schema, schemas),
       annotations: annotations(method, path),
+      controller: route.plug,
+      action: route.plug_opts,
+      route: route.route,
       path_params: parameter_names(parameters, :path),
       query_params: parameter_names(parameters, :query),
       body_params: body_properties,
@@ -210,21 +216,22 @@ defmodule PortalAPI.MCP.Tools do
   end
 
   # Resolved here rather than per request: the router match is the same every
-  # time, and a tool whose route cannot be resolved is left without an entity so
-  # that it is refused rather than silently reachable.
+  # time. Missing routes fail startup; unmapped controllers leave the tool
+  # without an entity, so scope checks refuse it.
   defp entity_for(method, path) do
+    case PortalAPI.Scopes.entity_for(route_info(method, path).plug) do
+      {:ok, entity} -> entity
+      :error -> nil
+    end
+  end
+
+  defp route_info(method, path) do
     concrete = String.replace(path, ~r/\{[a-z_]+\}/, "00000000-0000-0000-0000-000000000000")
     verb = method |> Atom.to_string() |> String.upcase()
 
     case Phoenix.Router.route_info(PortalAPI.Router, verb, concrete, "localhost") do
-      %{plug: controller} ->
-        case PortalAPI.Scopes.entity_for(controller) do
-          {:ok, entity} -> entity
-          :error -> nil
-        end
-
-      :error ->
-        nil
+      %{plug: _, plug_opts: _, route: _} = route -> route
+      :error -> raise "MCP operation has no REST route: #{verb} #{path}"
     end
   end
 
@@ -250,6 +257,7 @@ defmodule PortalAPI.MCP.Tools do
     [
       operation.description || operation.summary,
       body_description,
+      PortalAPI.MCP.Safety.warning(method, path),
       "Calls `#{method |> to_string() |> String.upcase()} #{path}` on the Firezone REST API."
     ]
     |> Enum.reject(&is_nil/1)

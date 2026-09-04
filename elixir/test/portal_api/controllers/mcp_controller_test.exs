@@ -650,7 +650,7 @@ defmodule PortalAPI.MCPControllerTest do
       assert %{"result" => %{"isError" => true}} = json_response(conn, 200)
     end
 
-    test "writes one api_request_logs row naming the REST operation", %{
+    test "writes one request log with separate REST execution metadata", %{
       conn: conn,
       account: account,
       actor: actor
@@ -660,8 +660,16 @@ defmodule PortalAPI.MCPControllerTest do
       logs = Portal.Repo.all(Portal.APIRequestLog)
 
       assert [log] = Enum.filter(logs, &(&1.account_id == account.id))
-      assert log.method == "GET"
-      assert log.path == "/resources"
+      assert log.method == "POST"
+      assert log.path == "/mcp"
+      assert log.mcp == %{
+               "tool_name" => "list_resources",
+               "method" => "GET",
+               "path" => "/resources",
+               "outcome" => "succeeded",
+               "rest_status" => 200,
+               "http_status" => 200
+             }
     end
   end
 

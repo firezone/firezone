@@ -53,10 +53,9 @@ defmodule PortalAPI.Router do
     plug :accepts, ["json"]
     plug PortalAPI.Plugs.MCPAuth
     plug PortalAPI.Plugs.RateLimit
-    # Insert the load-bearing audit row before parsing so malformed and
-    # oversized authenticated bodies cannot evade it. Valid tool calls relabel
-    # this same row with their REST operation after parsing.
-    plug PortalAPI.Plugs.RequestLog
+    # Insert the load-bearing audit row before parsing. Tool attempts and
+    # dispatch outcomes are separate metadata on the original /mcp request.
+    plug PortalAPI.Plugs.RequestLog, mcp: true
 
     plug PortalAPI.Plugs.MCPParseBody,
       parsers: [:json],
@@ -64,7 +63,6 @@ defmodule PortalAPI.Router do
       json_decoder: Phoenix.json_library(),
       length: 1_000_000
 
-    plug PortalAPI.Plugs.MCPRequestLog
   end
 
   # Read before the client holds any credential, so it cannot be authenticated.

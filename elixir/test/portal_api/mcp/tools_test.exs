@@ -138,6 +138,14 @@ defmodule PortalAPI.MCP.ToolsTest do
     refute schema |> Jason.encode!() |> String.contains?("$ref")
   end
 
+  test "advertises the identifier restrictions enforced before routing", %{tools: tools} do
+    assert %{"type" => "string", "format" => "uuid", "minLength" => 36} =
+             fetch(tools, "delete_actor_client_token").input_schema["properties"]["id"]
+
+    assert %{"type" => "string", "pattern" => "^[0-9a-fA-F]{24}$"} =
+             fetch(tools, "get_log").input_schema["properties"]["log_id"]
+  end
+
   test "represents a nullable OpenAPI field as a JSON Schema union", %{tools: tools} do
     address =
       get_in(fetch(tools, "create_resource").input_schema, [

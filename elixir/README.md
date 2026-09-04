@@ -76,6 +76,30 @@ When updating the billing plan in stripe, use the Stripe Testing Docs for how to
 
 ### MCP server for local development
 
+MCP is disabled unless the global `features` row for `mcp` is enabled. Local
+seeds enable that flag. Two additional operator opt-ins default to false,
+including in local seeds:
+
+- `mcp_identity_management`: exposes `create_actor`, `update_actor`, and
+  `verify_client`. These tools can provision administrators, change sign-in
+  settings, or establish device trust. The entire actor create/update tool is
+  gated, including ordinary name changes.
+- `mcp_credential_issuance`: exposes client-token creation and single-owner
+  gateway-token creation/rotation. These return live secrets to the MCP client.
+  Revoking OAuth access does not revoke the credentials they issued.
+
+Enable these flags deliberately through the features table. Both listing and
+execution check the flags on each request, in addition to the caller's OAuth
+scopes. Other writes, including access-policy changes and bulk revocation,
+remain controlled by their entity scopes. Tool annotations are descriptive
+hints, not authorization or confirmation controls.
+
+MCP request logs retain `/mcp` as the request path. The `mcp` metadata records
+the requested tool, dispatched REST method/path, and outcome/status without
+arguments or returned secrets. `dispatched` without a terminal outcome means
+execution may have occurred but its result is unknown; do not automatically
+retry a destructive operation based on that record.
+
 - Start the portal as described above.
 
 - Add the server:

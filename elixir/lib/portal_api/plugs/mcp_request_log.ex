@@ -1,52 +1,56 @@
 defmodule PortalAPI.Plugs.MCPRequestLog do
   @moduledoc """
-  Enriches an MCP request's existing audit row with its REST operation.
+  Records tool attempts separately from REST dispatch and its outcome.
 
-  The row is inserted before body parsing, ensuring malformed and oversized
-  requests are still audited. Once parsing succeeds, a request naming a known
-  tool is relabeled with that tool's REST method and path. Other protocol
-  requests remain recorded as `/mcp`.
+  The request retains POST /mcp as its method/path. Dispatch is recorded before
+  execution; if execution raises or the process dies, its outcome remains
+  unknown rather than successful. Arguments, bodies and secrets are not stored.
   """
 
-  alias PortalAPI.MCP.Tool
-  alias PortalAPI.MCP.Tools
   alias PortalAPI.Plugs.RequestLog
 
-  def init(opts), do: opts
-
-  def call(conn, _opts) do
-    relabel(conn)
+  def identify(conn, "tools/call", %{"name" => name}) when is_binary(name) do
+    RequestLog.update_mcp(conn, %{"tool_name" => String.slice(name, 0, 128)})
   end
 
-  defp relabel(
-         %{body_params: %{"method" => "tools/call", "params" => %{"name" => name} = params}} =
-           conn
-       )
-       when is_binary(name) do
-    case Tools.fetch(name) do
-      {:ok, tool} -> as_rest_request(conn, tool, params["arguments"])
-      :error -> conn
-    end
+  def identify(conn, _method, _params), do: conn
+
+  def dispatched(conn, inner) do
+    RequestLog.update_mcp(conn, %{
+      "outcome" => "dispatched",
+      "method" => inner.method,
+      "path" => inner.request_path
+    })
   end
 
-  defp relabel(conn), do: conn
-
-  defp as_rest_request(conn, %Tool{} = tool, arguments) do
-    method = tool.method |> to_string() |> String.upcase()
-    RequestLog.update_method_and_path(conn, method, interpolate_path(tool, arguments))
+  def completed(conn, status) do
+    RequestLog.update_mcp(conn, %{
+      "outcome" => if(status in 200..299, do: "succeeded", else: "failed"),
+      "rest_status" => status
+    })
   end
 
-  defp interpolate_path(%Tool{} = tool, arguments) when is_map(arguments) do
-    Enum.reduce(tool.path_params, tool.path_template, fn name, path ->
-      case Map.fetch(arguments, name) do
-        {:ok, value} when is_binary(value) or is_number(value) or is_boolean(value) ->
-          String.replace(path, "{#{name}}", value |> to_string() |> URI.encode_www_form())
+  # Exception rendering can carry an older conn than the last persisted
+  # checkpoint. Never overwrite a dispatched operation with that stale state.
+  def finalize(%{status: status} = conn) when status >= 500, do: conn
 
-        _other ->
-          path
+  def finalize(conn) do
+    log = conn.assigns.api_request_log
+
+    outcome =
+      case log.mcp["outcome"] do
+        "received" ->
+          cond do
+            conn.status == 202 -> "ignored"
+            is_binary(log.mcp["tool_name"]) -> "rejected"
+            conn.status in 200..299 -> "protocol_response"
+            true -> "rejected"
+          end
+
+        outcome ->
+          outcome
       end
-    end)
-  end
 
-  defp interpolate_path(%Tool{} = tool, _arguments), do: tool.path_template
+    RequestLog.update_mcp(conn, %{"outcome" => outcome, "http_status" => conn.status})
+  end
 end

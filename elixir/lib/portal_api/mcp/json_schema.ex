@@ -59,6 +59,7 @@ defmodule PortalAPI.MCP.JSONSchema do
     Enum.reduce(parameters, {%{}, []}, fn parameter, {properties, required} ->
       name = to_string(parameter.name)
       converted = convert(parameter.schema, schemas, 0)
+      converted = path_identifier_schema(converted, parameter.in, name)
 
       converted =
         case parameter.description do
@@ -74,6 +75,18 @@ defmodule PortalAPI.MCP.JSONSchema do
        end}
     end)
   end
+
+  # Match Dispatch's pre-routing identifier checks, including operations whose
+  # OpenAPI parameter omitted an explicit type. These are not optional hints.
+  defp path_identifier_schema(schema, :path, "log_id") do
+    Map.merge(schema, %{"type" => "string", "pattern" => "^[0-9a-fA-F]{24}$", "minLength" => 24, "maxLength" => 24})
+  end
+
+  defp path_identifier_schema(schema, :path, _name) do
+    Map.merge(schema, %{"type" => "string", "format" => "uuid", "minLength" => 36, "maxLength" => 36})
+  end
+
+  defp path_identifier_schema(schema, _location, _name), do: schema
 
   defp convert_body(nil, _schemas), do: {%{}, []}
 
