@@ -142,9 +142,11 @@ function apple() {
 # 2. Run the `Kotlin` workflow from `main`. This uploads the APK to the drafted
 #    release and publishes the AAB to the Play internal-testing track.
 # 3. Use the internal-testing release for final QA.
-# 4. Sign in to the Play Console, promote the same version to production, update
-#    the store listing, and submit it for review. Managed publishing holds the
-#    approved release until it is explicitly published.
+# 4. Run the `Submit Android release` workflow from `main`. Review its preparation
+#    summary, then approve the protected `google-play-production` environment.
+#    The workflow revalidates the draft, promotes the exact internal release,
+#    replaces the store screenshots, and submits both for review. Managed
+#    Publishing holds approved changes until they are explicitly published.
 # 5. Once the Play Store release is approved, publish the APK in the drafted
 #    release on GitHub.
 # 6. Bump current_android_client_version / next_android_client_version at the

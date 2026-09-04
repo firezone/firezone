@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-readonly COMMAND="${1:?Usage: play-store.sh <internal|production>}"
+readonly COMMAND="${1:?Usage: play-store.sh <inspect|internal|production>}"
 : "${VERSION_NAME:?VERSION_NAME is required}"
 : "${SOURCE_SHA:?SOURCE_SHA is required}"
 : "${GPLAY_SERVICE_ACCOUNT_JSON:?GPLAY_SERVICE_ACCOUNT_JSON is required}"
@@ -27,7 +27,7 @@ readonly -a SCREENSHOTS=(
 )
 
 case "$COMMAND" in
-    internal | production) ;;
+    inspect | internal | production) ;;
     *)
         echo "Unknown command: $COMMAND" >&2
         exit 1
@@ -42,6 +42,7 @@ fi
 export GPLAY_NO_UPDATE=1
 edit_id=""
 committed=false
+internal_version_code=""
 
 cleanup() {
     if [[ -n "$edit_id" && "$committed" != true ]]; then
@@ -58,6 +59,30 @@ create_edit() {
     edit=$(gplay edits create --package "$PACKAGE_NAME")
     edit_id=$(jq -er '.id' <<< "$edit")
     echo "Created edit $edit_id."
+}
+
+find_internal_release() {
+    local internal
+
+    echo "Finding the exact completed internal release $RELEASE_NAME..."
+    internal=$(gplay tracks get \
+        --package "$PACKAGE_NAME" \
+        --edit "$edit_id" \
+        --track "$INTERNAL_TRACK")
+
+    if ! jq -e --arg name "$RELEASE_NAME" '
+        (.releases // []) as $releases
+        | (($releases | length) == 1)
+        and ($releases[0].name == $name)
+        and ($releases[0].status == "completed")
+        and (($releases[0].versionCodes | length) == 1)' \
+        <<< "$internal" >/dev/null; then
+        echo "Expected exactly one completed internal release named $RELEASE_NAME" >&2
+        exit 1
+    fi
+
+    internal_version_code=$(jq -er '.releases[0].versionCodes[0]' <<< "$internal")
+    echo "Found $RELEASE_NAME with versionCode $internal_version_code."
 }
 
 update_track() {
@@ -148,8 +173,19 @@ publish_internal() {
     echo "Published $PACKAGE_NAME $RELEASE_NAME ($version_code) to Google Play internal testing."
 }
 
+inspect_internal() {
+    create_edit
+    find_internal_release
+
+    if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
+        echo "version_code=$internal_version_code" >> "$GITHUB_OUTPUT"
+    fi
+
+    echo "Verified $PACKAGE_NAME $RELEASE_NAME ($internal_version_code) on Google Play internal testing."
+}
+
 submit_production() {
-    local checkout_sha internal matching_releases production version_code screenshot
+    local checkout_sha production screenshot
 
     if [[ "${GITHUB_ACTIONS:-false}" != true || "${GITHUB_REF_NAME:-}" != main ]]; then
         echo "Production submission is only allowed from main in GitHub Actions" >&2
@@ -170,30 +206,7 @@ submit_production() {
     done
 
     create_edit
-
-    echo "Finding the exact internal release $RELEASE_NAME..."
-    internal=$(gplay tracks get \
-        --package "$PACKAGE_NAME" \
-        --edit "$edit_id" \
-        --track "$INTERNAL_TRACK")
-    matching_releases=$(jq -c --arg name "$RELEASE_NAME" \
-        '[.releases[]? | select(
-            .name == $name
-            and .status == "completed"
-            and (.versionCodes | length) == 1
-        )]' <<< "$internal")
-
-    case $(jq 'length' <<< "$matching_releases") in
-        1) version_code=$(jq -er '.[0].versionCodes[0]' <<< "$matching_releases") ;;
-        0)
-            echo "No completed internal release matches $RELEASE_NAME" >&2
-            exit 1
-            ;;
-        *)
-            echo "Multiple completed internal releases match $RELEASE_NAME" >&2
-            exit 1
-            ;;
-    esac
+    find_internal_release
 
     production=$(gplay tracks get \
         --package "$PACKAGE_NAME" \
@@ -201,15 +214,27 @@ submit_production() {
         --track "$PRODUCTION_TRACK")
     if jq -e \
         --arg name "$RELEASE_NAME" \
-        --arg version_code "$version_code" \
+        --arg version_code "$internal_version_code" \
         '(.releases // []) as $releases
         | ($releases | length) == 1
         and $releases[0].name == $name
         and $releases[0].status == "completed"
         and $releases[0].versionCodes == [$version_code]' \
         <<< "$production" >/dev/null; then
-        echo "Production already contains $RELEASE_NAME ($version_code)."
+        echo "Production already contains $RELEASE_NAME ($internal_version_code)."
         return
+    elif jq -e --arg version_code "$internal_version_code" \
+        'any(.releases[]?.versionCodes[]?; . == $version_code)' \
+        <<< "$production" >/dev/null; then
+        echo "Production contains versionCode $internal_version_code in an unexpected release" >&2
+        exit 1
+    elif ! jq -e '
+        (.releases // []) as $releases
+        | (($releases | length) <= 1)
+        and ((($releases | length) == 0) or $releases[0].status == "completed")' \
+        <<< "$production" >/dev/null; then
+        echo "Production has multiple releases or a release that is not completed" >&2
+        exit 1
     fi
 
     echo "Replacing en-US phone screenshots..."
@@ -230,16 +255,17 @@ submit_production() {
             --file "$screenshot"
     done
 
-    update_track "$PRODUCTION_TRACK" "$version_code"
+    update_track "$PRODUCTION_TRACK" "$internal_version_code"
 
     echo "Validating edit $edit_id..."
     gplay edits validate --package "$PACKAGE_NAME" --edit "$edit_id"
     commit_edit
 
-    echo "Submitted $PACKAGE_NAME $RELEASE_NAME ($version_code) and its screenshots for review."
+    echo "Submitted $PACKAGE_NAME $RELEASE_NAME ($internal_version_code) and its screenshots for review."
 }
 
 case "$COMMAND" in
+    inspect) inspect_internal ;;
     internal) publish_internal ;;
     production) submit_production ;;
 esac

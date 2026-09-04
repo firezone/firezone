@@ -5,20 +5,26 @@ on:
 
 permissions:
   contents: read
-  id-token: write
 
 concurrency:
   group: android-release-main
   cancel-in-progress: false
 
+env:
+  # mark:next-android-version
+  RELEASE_NAME: android-client-1.5.14
+
 jobs:
-  submit:
+  prepare:
     if: ${{ github.ref_name == 'main' }}
-    environment: google-play-production
     runs-on: ubuntu-24.04
-    env:
-      # mark:next-android-version
-      RELEASE_NAME: android-client-1.5.14
+    permissions:
+      contents: read
+      id-token: write
+      security-events: write
+    outputs:
+      source_sha: ${{ steps.release.outputs.source_sha }}
+      version_name: ${{ steps.release.outputs.version_name }}
     steps:
       - name: Resolve the GitHub draft release
         id: release
@@ -27,12 +33,21 @@ jobs:
         run: |
           release=$(gh release view "$RELEASE_NAME" \
             --repo "$GITHUB_REPOSITORY" \
-            --json isDraft,targetCommitish)
+            --json isDraft,tagName,targetCommitish,url)
 
           if [[ $(jq -r '.isDraft' <<< "$release") != true ]]; then
             echo "$RELEASE_NAME is not a draft release" >&2
             exit 1
           fi
+          if [[ $(jq -r '.tagName' <<< "$release") != "$RELEASE_NAME" ]]; then
+            echo "The resolved release tag does not match $RELEASE_NAME" >&2
+            exit 1
+          fi
+          if [[ ! "$RELEASE_NAME" =~ ^android-client-([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+            echo "$RELEASE_NAME is not a valid Android release name" >&2
+            exit 1
+          fi
+          version_name="${RELEASE_NAME#android-client-}"
 
           source_sha=$(jq -r '.targetCommitish' <<< "$release")
           if [[ ! "$source_sha" =~ ^[0-9a-f]{40}$ ]]; then
@@ -40,15 +55,157 @@ jobs:
             exit 1
           fi
 
-          echo "source-sha=$source_sha" >> "$GITHUB_OUTPUT"
+          {
+            echo "release_url=$(jq -r '.url' <<< "$release")"
+            echo "source_sha=$source_sha"
+            echo "version_name=$version_name"
+          } >> "$GITHUB_OUTPUT"
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ steps.release.outputs.source-sha }}
+          ref: ${{ steps.release.outputs.source_sha }}
+
+      - name: Verify the release inputs
+        run: |
+          if [[ $(git rev-parse HEAD) != "${{ steps.release.outputs.source_sha }}" ]]; then
+            echo "The checkout does not match the draft release target" >&2
+            exit 1
+          fi
+
+          screenshots=(
+            kotlin/android/screenshots/sign-in.png
+            kotlin/android/screenshots/session-screen.png
+            kotlin/android/screenshots/session-screen-favorites.png
+            kotlin/android/screenshots/resource-details.png
+            kotlin/android/screenshots/resource-details-internet.png
+            kotlin/android/screenshots/device-details.png
+            kotlin/android/screenshots/settings-general.png
+            kotlin/android/screenshots/settings-advanced.png
+          )
+          for screenshot in "${screenshots[@]}"; do
+            if [[ ! -s "$screenshot" ]]; then
+              echo "Missing store screenshot: $screenshot" >&2
+              exit 1
+            fi
+          done
 
       - uses: ./.github/actions/setup-mise
         with:
           install_args: --cd kotlin/android github:tamtom/play-console-cli
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
+      - name: Authenticate to Google Cloud
+        id: gcp-auth
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          workload_identity_provider: projects/215658742954/locations/global/workloadIdentityPools/github-actions/providers/github
+          service_account: play-store-publisher@firezone-55040.iam.gserviceaccount.com
+
+      - name: Verify the internal release
+        id: play
+        env:
+          GPLAY_SERVICE_ACCOUNT_JSON: ${{ steps.gcp-auth.outputs.credentials_file_path }}
+          SOURCE_SHA: ${{ steps.release.outputs.source_sha }}
+          VERSION_NAME: ${{ steps.release.outputs.version_name }}
+        run: scripts/upload/play-store.sh inspect
+
+      - name: Summarize the approval checkpoint
+        env:
+          RELEASE_URL: ${{ steps.release.outputs.release_url }}
+          SOURCE_SHA: ${{ steps.release.outputs.source_sha }}
+          VERSION_CODE: ${{ steps.play.outputs.version_code }}
+          VERSION_NAME: ${{ steps.release.outputs.version_name }}
+        run: |
+          screenshots=(
+            kotlin/android/screenshots/sign-in.png
+            kotlin/android/screenshots/session-screen.png
+            kotlin/android/screenshots/session-screen-favorites.png
+            kotlin/android/screenshots/resource-details.png
+            kotlin/android/screenshots/resource-details-internet.png
+            kotlin/android/screenshots/device-details.png
+            kotlin/android/screenshots/settings-general.png
+            kotlin/android/screenshots/settings-advanced.png
+          )
+
+          {
+            echo "## Android production submission"
+            echo
+            echo "| Item | Value |"
+            echo "| --- | --- |"
+            printf '| Draft | [`%s`](%s) |\n' "$RELEASE_NAME" "$RELEASE_URL"
+            printf '| Source | [`%s`](https://github.com/%s/commit/%s) |\n' "$SOURCE_SHA" "$GITHUB_REPOSITORY" "$SOURCE_SHA"
+            printf '| Play release | `%s@%s` |\n' "$VERSION_NAME" "$SOURCE_SHA"
+            printf '| Version code | `%s` |\n' "$VERSION_CODE"
+            echo "| What's New | [Android changelog](https://www.firezone.dev/changelog#tab-android) |"
+            echo
+            echo "### Store screenshots"
+            echo
+            for screenshot in "${screenshots[@]}"; do
+              printf -- '- [`%s`](https://github.com/%s/blob/%s/%s)\n' \
+                "$screenshot" "$GITHUB_REPOSITORY" "$SOURCE_SHA" "$screenshot"
+            done
+            echo
+            echo "Review this summary and the [Play Console](https://play.google.com/console/) before approving the \`google-play-production\` environment. Approval is the reminder and checkpoint that authorizes revalidation, screenshot replacement, production promotion, and review submission. Managed Publishing still requires a manual \`Publish changes\` action after Google approves the changes."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  submit:
+    if: ${{ github.ref_name == 'main' }}
+    needs: prepare
+    environment:
+      name: google-play-production
+      url: https://play.google.com/console/
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write
+      security-events: write
+    steps:
+      - name: Verify the protected environment
+        env:
+          GOOGLE_PLAY_PRODUCTION_CONFIGURED: ${{ vars.GOOGLE_PLAY_PRODUCTION_CONFIGURED }}
+        run: |
+          if [[ "$GOOGLE_PLAY_PRODUCTION_CONFIGURED" != true ]]; then
+            echo "The google-play-production environment is not configured" >&2
+            exit 1
+          fi
+
+      - name: Revalidate the GitHub draft release
+        env:
+          EXPECTED_SOURCE_SHA: ${{ needs.prepare.outputs.source_sha }}
+          EXPECTED_VERSION_NAME: ${{ needs.prepare.outputs.version_name }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          release=$(gh release view "$RELEASE_NAME" \
+            --repo "$GITHUB_REPOSITORY" \
+            --json isDraft,tagName,targetCommitish)
+
+          if [[ $(jq -r '.isDraft' <<< "$release") != true ]]; then
+            echo "$RELEASE_NAME is no longer a draft release" >&2
+            exit 1
+          fi
+          if [[ $(jq -r '.tagName' <<< "$release") != "$RELEASE_NAME" ]]; then
+            echo "The resolved release tag no longer matches $RELEASE_NAME" >&2
+            exit 1
+          fi
+          if [[ $(jq -r '.targetCommitish' <<< "$release") != "$EXPECTED_SOURCE_SHA" ]]; then
+            echo "$RELEASE_NAME changed while awaiting approval; start a new workflow run" >&2
+            exit 1
+          fi
+          if [[ "${RELEASE_NAME#android-client-}" != "$EXPECTED_VERSION_NAME" ]]; then
+            echo "$RELEASE_NAME no longer matches the prepared version" >&2
+            exit 1
+          fi
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.prepare.outputs.source_sha }}
+
+      - uses: ./.github/actions/setup-mise
+        with:
+          install_args: --cd kotlin/android github:tamtom/play-console-cli
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
 
       - name: Authenticate to Google Cloud
         id: gcp-auth
@@ -64,7 +221,6 @@ jobs:
         env:
           ACCESS_TOKEN: ${{ steps.gcp-auth.outputs.access_token }}
           GPLAY_SERVICE_ACCOUNT_JSON: ${{ steps.gcp-auth.outputs.credentials_file_path }}
-          SOURCE_SHA: ${{ steps.release.outputs.source-sha }}
-        run: |
-          export VERSION_NAME="${RELEASE_NAME#android-client-}"
-          scripts/upload/play-store.sh production
+          SOURCE_SHA: ${{ needs.prepare.outputs.source_sha }}
+          VERSION_NAME: ${{ needs.prepare.outputs.version_name }}
+        run: scripts/upload/play-store.sh production
