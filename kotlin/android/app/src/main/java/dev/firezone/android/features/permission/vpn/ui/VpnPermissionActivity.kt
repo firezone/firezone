@@ -2,13 +2,14 @@
 package dev.firezone.android.features.permission.vpn.ui
 
 import android.os.Bundle
+import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
-import dev.firezone.android.databinding.ActivityVpnPermissionBinding
+import dev.firezone.android.R
+import dev.firezone.android.features.permission.ui.compose.PermissionScreen
+import dev.firezone.android.features.session.ui.compose.FirezoneTheme
 
 class VpnPermissionActivity : AppCompatActivity() {
-    private lateinit var binding: ActivityVpnPermissionBinding
-
     private val result =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
             if (android.net.VpnService.prepare(this) == null) {
@@ -18,11 +19,16 @@ class VpnPermissionActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        binding = ActivityVpnPermissionBinding.inflate(layoutInflater)
-        setContentView(binding.root)
 
-        binding.btnRequest.setOnClickListener {
-            requestPermissions()
+        setContent {
+            FirezoneTheme {
+                PermissionScreen(
+                    title = R.string.enable_vpn_permission,
+                    description = R.string.vpn_permission_description,
+                    actionLabel = R.string.request_permission,
+                    onAction = ::requestPermissions,
+                )
+            }
         }
     }
 
