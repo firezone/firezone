@@ -143,7 +143,7 @@ function apple() {
 #    release and publishes the AAB to the Play internal-testing track.
 # 3. Use the internal-testing release for final QA.
 # 4. Run the `Submit Android release` workflow from `main`. Review its preparation
-#    summary, then approve the protected `google-play-production` environment.
+#    summary, then approve the protected `google-play` environment.
 #    The workflow revalidates the draft, promotes the exact internal release,
 #    replaces the store screenshots, and submits both for review. Managed
 #    Publishing holds approved changes until they are explicitly published.
