@@ -879,7 +879,8 @@ defmodule PortalWeb.OAuthControllerTest do
           "code" => code,
           "code_verifier" => @verifier,
           "client_id" => client.client_id,
-          "redirect_uri" => redirect_uri()
+          "redirect_uri" => redirect_uri(),
+          "resource" => OAuth.resource_uri()
         })
 
       assert body = json_response(conn, 200)
@@ -906,7 +907,8 @@ defmodule PortalWeb.OAuthControllerTest do
           "code" => code,
           "code_verifier" => @verifier,
           "client_id" => client.client_id,
-          "redirect_uri" => redirect_uri()
+          "redirect_uri" => redirect_uri(),
+          "resource" => OAuth.resource_uri()
         })
         |> json_response(200)
 
@@ -952,7 +954,8 @@ defmodule PortalWeb.OAuthControllerTest do
           "code" => code,
           "code_verifier" => "wrong",
           "client_id" => client.client_id,
-          "redirect_uri" => redirect_uri()
+          "redirect_uri" => redirect_uri(),
+          "resource" => OAuth.resource_uri()
         })
 
       assert %{"error" => "invalid_grant"} = json_response(conn, 400)

@@ -54,6 +54,28 @@ Prerequisites:
 
 Steps:
 
+- Reset and seed the database (seeds use static IDs that correspond to staging setup on Stripe):
+
+  ```
+  mix do ecto.reset, ecto.seed
+  ```
+
+- Start Stripe CLI webhook proxy:
+
+  ```
+  stripe listen --forward-to localhost:13001/integrations/stripe/webhooks
+  ```
+
+- Start the Phoenix server with enabled billing from the elixir/ folder using a test mode token:
+  ```
+  cd elixir/
+  BILLING_ENABLED=true STRIPE_SECRET_KEY="...copy from stripe dashboard..." STRIPE_WEBHOOK_SIGNING_SECRET="...copy from stripe cli tool.." mix phx.server
+  ```
+
+When updating the billing plan in stripe, use the Stripe Testing Docs for how to add test payment info
+
+### MCP server for local development
+
 - Start the portal as described above.
 
 - Add the server:
@@ -99,10 +121,11 @@ Steps:
 - The consent screen lists the permissions Claude asked for. Approving mints an
   access token, and Claude's tool list is then whatever those scopes allow.
 
-The server advertises no scopes, so a client asks for none and the consent
-screen is where the choice is made: tick the permissions to grant, and nothing
-is granted until at least one is ticked. A client can still ask for a specific
-set, which arrives pre-ticked. In Claude Code:
+The server advertises no scopes, so a client with none configured asks for none
+and the consent screen offers every supported scope, with the read-only preset
+initially selected. The person can narrow or broaden that selection. A client
+can instead ask for a specific set, which becomes a hard ceiling on what the
+screen may grant. In Claude Code:
 
 ```
 claude mcp add-json firezone \
@@ -144,17 +167,18 @@ itself:
 
 Redirect URIs are matched exactly, with no prefix or wildcard matching.
 
-That document is fetched with SSRF protection, which refuses private and
-reserved addresses, so the document cannot be served from `localhost`. Note
-that `HTTP_CLIENT_SSRF_PROTECTION_ENABLED` does not help here: it is only read
-inside the production branch of `config/runtime.exs`, while the plugin is
-attached for every environment in `config/config.exs`.
+That document is fetched with mandatory SSRF protection, which refuses private
+and reserved addresses, so the document cannot be served from `localhost`.
+This protection is attached specifically to OAuth client metadata and remains
+active even when `HTTP_CLIENT_SSRF_PROTECTION_ENABLED=false` disables the
+deployment-wide HTTP-client protection for other integrations.
 
 Two request parameters are easy to miss:
 
-- `scope` is required. Scopes name individual entities, so there is no sensible
-  default and a request without one is refused. Draw values from
-  `scopes_supported` in either metadata document.
+- `scope` may be omitted. The consent screen then lets the person choose from
+  every supported scope and initially selects the read-only preset. When it is
+  present, it is a hard ceiling on what the consent screen may grant. Draw
+  values from `scopes_supported` in the authorization-server metadata.
 - `resource` must be `https://localhost:13001/mcp`. Tokens are minted for that
   exact audience and refused anywhere else.
 

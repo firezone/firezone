@@ -1,5 +1,17 @@
 Ecto.Adapters.SQL.Sandbox.mode(Portal.Repo, :manual)
 
+# MCP defaults off in every deployed database. Tests exercise its routes by
+# default, so enable it once outside per-test sandbox transactions; individual
+# feature-gate tests can still override the row transactionally and roll back.
+Ecto.Adapters.SQL.Sandbox.unboxed_run(Portal.Repo, fn ->
+  Ecto.Adapters.SQL.query!(
+    Portal.Repo,
+    "UPDATE features SET enabled = true WHERE feature = 'mcp'",
+    [],
+    log: false
+  )
+end)
+
 # Print connection count to help debug "too many clients" errors
 :ok = Ecto.Adapters.SQL.Sandbox.checkout(Portal.Repo)
 

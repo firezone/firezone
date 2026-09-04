@@ -50,8 +50,8 @@ defmodule PortalAPI.MCP.Dispatch do
     unknown = provided |> MapSet.difference(known) |> MapSet.to_list() |> Enum.sort()
 
     non_scalar =
-      (tool.path_params ++ tool.query_params)
-      |> Enum.filter(&(not scalar?(Map.get(arguments, &1))))
+      Enum.filter(tool.path_params, &(not scalar?(Map.get(arguments, &1)))) ++
+        Enum.filter(tool.query_params, &(not optional_scalar?(Map.get(arguments, &1))))
 
     cond do
       missing != [] ->
@@ -72,8 +72,10 @@ defmodule PortalAPI.MCP.Dispatch do
   end
 
   defp scalar?(value) do
-    is_nil(value) or is_binary(value) or is_number(value) or is_boolean(value)
+    is_binary(value) or is_number(value) or is_boolean(value)
   end
+
+  defp optional_scalar?(value), do: is_nil(value) or scalar?(value)
 
   defp build_conn(%Tool{} = tool, arguments, body, encoded_body, %Plug.Conn{} = conn) do
     path = build_path(tool, arguments)
@@ -110,6 +112,8 @@ defmodule PortalAPI.MCP.Dispatch do
   defp inner_private(%Plug.Conn{} = conn) do
     conn.private
     |> Map.put(PortalAPI.Plugs.Auth.subject_key(), conn.assigns.subject)
+    |> Map.put(PortalAPI.Plugs.RateLimit.skip_key(), true)
+    |> Map.put(PortalAPI.Plugs.RequestLog.skip_key(), true)
     |> Map.drop([
       :before_send,
       :phoenix_action,

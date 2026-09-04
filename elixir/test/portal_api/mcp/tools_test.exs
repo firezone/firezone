@@ -15,6 +15,7 @@ defmodule PortalAPI.MCP.ToolsTest do
         for method <- [:get, :post, :put, :patch, :delete],
             operation = Map.get(path_item, method),
             not is_nil(operation),
+            operation.deprecated != true,
             do: {method, path, operation.operationId}
       end)
 
@@ -85,12 +86,35 @@ defmodule PortalAPI.MCP.ToolsTest do
     refute Enum.any?(tools, &(&1.method == :patch and &1.path_template == "/clients/{id}"))
   end
 
-  test "marks every non-GET tool as a write", %{tools: tools} do
+  test "marks every GET as read-only and non-destructive", %{tools: tools} do
     for tool <- tools do
       assert tool.write? == (tool.method != :get)
       assert tool.annotations.readOnlyHint == (tool.method == :get)
-      assert tool.annotations.destructiveHint == (tool.method == :delete)
+
+      if tool.method == :get do
+        refute tool.annotations.destructiveHint
+        assert tool.annotations.idempotentHint
+      end
+
+      assert is_boolean(tool.annotations.destructiveHint)
+      assert is_boolean(tool.annotations.idempotentHint)
     end
+  end
+
+  test "classifies destructive and idempotent writes by their actual behavior", %{tools: tools} do
+    assert_annotations(tools, "create_resource", false, false)
+    assert_annotations(tools, "verify_client", false, true)
+    assert_annotations(tools, "update_resource", true, true)
+    assert_annotations(tools, "update_actor", true, true)
+    assert_annotations(tools, "replace_group_memberships", true, true)
+    assert_annotations(tools, "update_group_memberships", true, true)
+    assert_annotations(tools, "replace_resource_pool_members", true, true)
+    assert_annotations(tools, "update_resource_pool_members", true, true)
+    assert_annotations(tools, "rotate_single_owner_gateway_token", true, false)
+  end
+
+  test "does not expose deprecated API operations", %{tools: tools} do
+    refute Enum.any?(tools, &(&1.path_template == "/sites/{site_id}/gateway_tokens" and &1.method == :post))
   end
 
   test "input schemas are closed objects listing path parameters as required", %{tools: tools} do
@@ -140,5 +164,11 @@ defmodule PortalAPI.MCP.ToolsTest do
       nil -> flunk("no tool named #{name}")
       tool -> tool
     end
+  end
+
+  defp assert_annotations(tools, name, destructive?, idempotent?) do
+    annotations = fetch(tools, name).annotations
+    assert annotations.destructiveHint == destructive?
+    assert annotations.idempotentHint == idempotent?
   end
 end

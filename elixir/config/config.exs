@@ -33,7 +33,9 @@ config :portal, generators: [binary_id: true]
 config :req,
   default_options: [plugins: [Portal.Req.SSRFProtection]]
 
-config :portal, Portal.OAuth.ClientMetadata, req_opts: []
+config :portal, Portal.OAuth.ClientMetadata,
+  req_opts: [],
+  ssrf_protection_opts: []
 
 config :portal, sql_sandbox: false
 
@@ -543,6 +545,13 @@ config :portal,
 config :portal, relays_presence_debounce_timeout_ms: 1_000
 
 config :portal, PortalAPI.RateLimit,
+  refill_rate: 10,
+  capacity: 200
+
+# MCP has an additional pre-authentication IP bucket. Its cost is one token,
+# versus ten for the authenticated per-account API bucket, allowing a modest
+# connection burst without permitting unbounded token verification or parsing.
+config :portal, PortalAPI.Plugs.MCPRateLimit,
   refill_rate: 10,
   capacity: 200
 

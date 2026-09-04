@@ -33,6 +33,49 @@ defmodule PortalAPI.MCP.Tools do
       "rotate_single_owner_gateway_token"
   }
 
+  # Every write operation is classified explicitly. This is intentionally a
+  # complete inventory rather than an HTTP-verb heuristic: PUT can replace or
+  # revoke data, PATCH can remove memberships, and POST can rotate a secret.
+  # `build/0` refuses to start if an API write is added or removed without this
+  # table being reviewed at the same time. Each value is
+  # `{destructiveHint, idempotentHint}`.
+  @write_annotations %{
+    {:put, "/clients/{id}"} => {true, true},
+    {:delete, "/clients/{id}"} => {true, true},
+    {:put, "/clients/{id}/verify"} => {false, true},
+    {:put, "/clients/{id}/unverify"} => {true, true},
+    {:post, "/resources"} => {false, false},
+    {:put, "/resources/{id}"} => {true, true},
+    {:delete, "/resources/{id}"} => {true, true},
+    {:put, "/resources/{resource_id}/pool_members"} => {true, true},
+    {:patch, "/resources/{resource_id}/pool_members"} => {true, true},
+    {:post, "/policies"} => {false, false},
+    {:put, "/policies/{id}"} => {true, true},
+    {:delete, "/policies/{id}"} => {true, true},
+    {:post, "/sites"} => {false, false},
+    {:put, "/sites/{id}"} => {true, true},
+    {:delete, "/sites/{id}"} => {true, true},
+    {:delete, "/sites/{site_id}/gateway_tokens"} => {true, true},
+    {:delete, "/sites/{site_id}/gateway_tokens/{id}"} => {true, true},
+    {:post, "/sites/{site_id}/gateways"} => {false, false},
+    {:put, "/sites/{site_id}/gateways/{id}"} => {true, true},
+    {:delete, "/sites/{site_id}/gateways/{id}"} => {true, true},
+    {:post, "/sites/{site_id}/gateways/{gateway_id}/token"} => {false, false},
+    {:post, "/sites/{site_id}/gateways/{gateway_id}/token/rotate"} => {true, false},
+    {:post, "/actors"} => {false, false},
+    {:put, "/actors/{id}"} => {true, true},
+    {:delete, "/actors/{id}"} => {true, true},
+    {:delete, "/actors/{actor_id}/external_identities/{id}"} => {true, true},
+    {:post, "/actors/{actor_id}/client_tokens"} => {false, false},
+    {:delete, "/actors/{actor_id}/client_tokens"} => {true, true},
+    {:delete, "/actors/{actor_id}/client_tokens/{id}"} => {true, true},
+    {:post, "/groups"} => {false, false},
+    {:put, "/groups/{id}"} => {true, true},
+    {:delete, "/groups/{id}"} => {true, true},
+    {:put, "/groups/{group_id}/memberships"} => {true, true},
+    {:patch, "/groups/{group_id}/memberships"} => {true, true}
+  }
+
   def start_link(opts \\ []) do
     GenServer.start_link(__MODULE__, opts, name: __MODULE__)
   end
@@ -85,6 +128,7 @@ defmodule PortalAPI.MCP.Tools do
 
     assert_unique_names!(tools)
     assert_overrides_used!(tools)
+    assert_write_annotations_complete!(tools)
 
     tools
   end
@@ -105,6 +149,7 @@ defmodule PortalAPI.MCP.Tools do
       Enum.flat_map(@methods, fn method ->
         case Map.get(path_item, method) do
           nil -> []
+          %{deprecated: true} -> []
           operation -> [{method, operation}]
         end
       end)
@@ -155,7 +200,7 @@ defmodule PortalAPI.MCP.Tools do
       method: method,
       path_template: path,
       input_schema: JSONSchema.build_input_schema(parameters, body_schema, schemas),
-      annotations: annotations(method),
+      annotations: annotations(method, path),
       path_params: parameter_names(parameters, :path),
       query_params: parameter_names(parameters, :query),
       body_params: body_properties,
@@ -211,11 +256,25 @@ defmodule PortalAPI.MCP.Tools do
     |> Enum.join("\n\n")
   end
 
-  defp annotations(method) do
+  defp annotations(:get, _path) do
     %{
-      readOnlyHint: method == :get,
-      destructiveHint: method == :delete,
-      idempotentHint: method in [:get, :put, :delete],
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: true
+    }
+  end
+
+  defp annotations(method, path) do
+    # Conservative only long enough to produce the complete table and a useful
+    # error below; startup then fails if this operation was not reviewed.
+    {destructive?, idempotent?} =
+      Map.get(@write_annotations, {method, path}, {true, false})
+
+    %{
+      readOnlyHint: false,
+      destructiveHint: destructive?,
+      idempotentHint: idempotent?,
       openWorldHint: true
     }
   end
@@ -314,5 +373,24 @@ defmodule PortalAPI.MCP.Tools do
         raise "@name_overrides in #{inspect(__MODULE__)} names tools that no longer exist: " <>
                 Enum.join(stale, ", ")
     end
+  end
+
+  defp assert_write_annotations_complete!(tools) do
+    actual =
+      tools
+      |> Enum.reject(&(&1.method == :get))
+      |> MapSet.new(&{&1.method, &1.path_template})
+
+    declared = @write_annotations |> Map.keys() |> MapSet.new()
+    missing = MapSet.difference(actual, declared) |> Enum.sort()
+    stale = MapSet.difference(declared, actual) |> Enum.sort()
+
+    if missing != [] or stale != [] do
+      raise "MCP write annotations are incomplete. " <>
+              "Unreviewed operations: #{inspect(missing)}. " <>
+              "Stale declarations: #{inspect(stale)}."
+    end
+
+    tools
   end
 end

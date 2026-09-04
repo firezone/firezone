@@ -11,17 +11,33 @@ defmodule PortalAPI.Plugs.RequestLog do
   # Bandit caps the request line well below this; the slice is a guard against
   # the column growing unbounded if that ever changes.
   @max_path_length 2048
+  @skip_key :portal_api_skip_request_log
+
+  @doc "Private key used by an already-audited internal dispatch."
+  def skip_key, do: @skip_key
 
   def init(opts), do: opts
 
+  def call(%Plug.Conn{private: %{@skip_key => true}} = conn, _opts), do: conn
+
   def call(conn, _opts) do
-    {:ok, _api_request_log} =
+    {:ok, api_request_log} =
       conn
       |> attrs()
       |> Database.insert_api_request_log()
 
-    conn
+    Plug.Conn.assign(conn, :api_request_log, api_request_log)
   end
+
+  @doc "Re-labels the current request's audit row as the REST operation an MCP call names."
+  def update_method_and_path(%Plug.Conn{assigns: %{api_request_log: log}} = conn, method, path) do
+    {:ok, log} =
+      Database.update_api_request_log(log, method, String.slice(path, 0, @max_path_length))
+
+    Plug.Conn.assign(conn, :api_request_log, log)
+  end
+
+  def update_method_and_path(conn, _method, _path), do: conn
 
   defp attrs(conn) do
     subject = conn.assigns.subject
@@ -94,6 +110,13 @@ defmodule PortalAPI.Plugs.RequestLog do
       |> APIRequestLog.changeset()
       |> Safe.unscoped()
       |> Safe.insert()
+    end
+
+    def update_api_request_log(api_request_log, method, path) do
+      api_request_log
+      |> Ecto.Changeset.change(method: method, path: path)
+      |> Safe.unscoped()
+      |> Safe.update()
     end
   end
 end

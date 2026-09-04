@@ -2,12 +2,10 @@ defmodule PortalAPI.MCPController do
   @moduledoc """
   The MCP endpoint: one stateless POST that speaks JSON-RPC 2.0.
 
-  Rate limiting and request logging are charged exactly once per call. A
-  `tools/call` is metered and logged by the inner REST request that
-  `PortalAPI.MCP.Dispatch` runs, so the audit trail names the operation that
-  actually ran (`POST /resources`) rather than `POST /mcp`. The methods that
-  never reach a controller - `server/discover` and `tools/list` - are metered
-  and logged here instead.
+  Rate limiting and request logging are charged exactly once per request by the
+  MCP router pipeline. A `tools/call` is logged under the REST operation that
+  it names, while the inner REST dispatch carries private markers that prevent
+  duplicate metering.
   """
 
   use PortalAPI, :controller
@@ -72,36 +70,32 @@ defmodule PortalAPI.MCPController do
   end
 
   defp dispatch(conn, id, "server/discover", _params) do
-    with %Plug.Conn{halted: false} = conn <- meter(conn) do
-      send_rpc(
-        conn,
-        200,
-        MCP.result(id, %{
-          supportedVersions: MCP.supported_versions(),
-          capabilities: %{tools: %{}},
-          instructions: MCP.instructions(),
-          ttlMs: @discover_ttl_ms,
-          cacheScope: "public"
-        })
-      )
-    end
+    send_rpc(
+      conn,
+      200,
+      MCP.result(id, %{
+        supportedVersions: MCP.supported_versions(),
+        capabilities: %{tools: %{}},
+        instructions: MCP.instructions(),
+        ttlMs: @discover_ttl_ms,
+        cacheScope: "public"
+      })
+    )
   end
 
   defp dispatch(conn, id, "tools/list", params) do
     case Map.get(params, "cursor") do
       nil ->
-        with %Plug.Conn{halted: false} = conn <- meter(conn) do
-          tools =
-            conn.assigns.subject.credential.scopes
-            |> Tools.list()
-            |> Enum.map(&Tool.to_definition/1)
+        tools =
+          conn.assigns.subject.credential.scopes
+          |> Tools.list()
+          |> Enum.map(&Tool.to_definition/1)
 
-          send_rpc(
-            conn,
-            200,
-            MCP.result(id, %{tools: tools, ttlMs: @tools_ttl_ms, cacheScope: "private"})
-          )
-        end
+        send_rpc(
+          conn,
+          200,
+          MCP.result(id, %{tools: tools, ttlMs: @tools_ttl_ms, cacheScope: "private"})
+        )
 
       _cursor ->
         send_rpc(
@@ -118,9 +112,9 @@ defmodule PortalAPI.MCPController do
 
   defp dispatch(conn, id, "tools/call", params) do
     name = Map.get(params, "name")
-    arguments = Map.get(params, "arguments") || %{}
 
     with {:ok, tool} <- fetch_tool(conn, name),
+         {:ok, arguments} <- fetch_arguments(params),
          {:ok, status, body} <- Dispatch.call(tool, arguments, conn) do
       send_tool_result(conn, id, status, body)
     else
@@ -142,6 +136,14 @@ defmodule PortalAPI.MCPController do
 
   defp dispatch(conn, id, method, _params) do
     send_rpc(conn, 404, MCP.error(id, MCP.method_not_found(), "Unknown method: #{method}"))
+  end
+
+  defp fetch_arguments(params) do
+    case Map.fetch(params, "arguments") do
+      :error -> {:ok, %{}}
+      {:ok, arguments} when is_map(arguments) -> {:ok, arguments}
+      {:ok, _arguments} -> {:error, "tools/call `arguments` must be a JSON object."}
+    end
   end
 
   # A tool that carries no entity cannot be scoped, and is reported the same way
@@ -208,8 +210,8 @@ defmodule PortalAPI.MCPController do
     {:request, id, method, params(body)}
   end
 
-  defp classify(%{"jsonrpc" => "2.0", "method" => method}) when is_binary(method) do
-    {:notification, method}
+  defp classify(%{"jsonrpc" => "2.0", "method" => method} = body) when is_binary(method) do
+    if Map.has_key?(body, "id"), do: :invalid, else: {:notification, method}
   end
 
   defp classify(_body), do: :invalid
@@ -223,7 +225,7 @@ defmodule PortalAPI.MCPController do
 
   defp validate_header(conn, header, expected, label) do
     case get_req_header(conn, header) do
-      [value | _rest] ->
+      [value] ->
         if decode_header_value(value) == expected do
           :ok
         else
@@ -232,6 +234,9 @@ defmodule PortalAPI.MCPController do
 
       [] ->
         header_mismatch("#{label} header is required.")
+
+      _multiple ->
+        header_mismatch("#{label} header must occur exactly once.")
     end
   end
 
@@ -239,32 +244,40 @@ defmodule PortalAPI.MCPController do
     validate_header(conn, "mcp-name", Map.get(params, "name"), "Mcp-Name")
   end
 
-  defp validate_name_header(_conn, _method, _params), do: :ok
+  defp validate_name_header(conn, _method, _params) do
+    case get_req_header(conn, "mcp-name") do
+      [] -> :ok
+      _present -> header_mismatch("Mcp-Name header is valid only for tools/call.")
+    end
+  end
 
   # The version is carried twice - in the header for intermediaries, in `_meta`
   # for the server - and the two must agree, so that a gateway routing on the
   # header can never disagree with the server acting on the body.
   defp validate_protocol_version(conn, params) do
-    header = conn |> get_req_header("mcp-protocol-version") |> List.first()
     body = get_in(params, ["_meta", MCP.protocol_version_key()])
 
-    cond do
-      is_nil(header) ->
+    case get_req_header(conn, "mcp-protocol-version") do
+      [] ->
         header_mismatch("MCP-Protocol-Version header is required.")
 
-      is_nil(body) ->
+      [_first, _second | _rest] ->
+        header_mismatch("MCP-Protocol-Version header must occur exactly once.")
+
+      [_header] when is_nil(body) ->
         {:error, 400, MCP.invalid_params(),
          "`_meta.#{MCP.protocol_version_key()}` is required on every request.", nil}
 
-      header != body ->
+      [header] when header != body ->
         header_mismatch("MCP-Protocol-Version header does not match the request body.")
 
-      not MCP.supported_version?(body) ->
-        {:error, 400, MCP.unsupported_protocol_version(),
-         "Unsupported protocol version: #{body}", %{supported: MCP.supported_versions()}}
-
-      true ->
-        :ok
+      [_header] ->
+        if MCP.supported_version?(body) do
+          :ok
+        else
+          {:error, 400, MCP.unsupported_protocol_version(),
+           "Unsupported protocol version: #{body}", %{supported: MCP.supported_versions()}}
+        end
     end
   end
 
@@ -303,7 +316,7 @@ defmodule PortalAPI.MCPController do
       [] ->
         conn
 
-      [origin | _rest] ->
+      [origin] ->
         if allowed_origin?(conn, origin) do
           conn
         else
@@ -314,6 +327,14 @@ defmodule PortalAPI.MCPController do
           )
           |> halt()
         end
+
+      _multiple ->
+        conn
+        |> send_rpc(
+          400,
+          MCP.error(nil, MCP.header_mismatch(), "Origin header must occur at most once.")
+        )
+        |> halt()
     end
   end
 
@@ -321,19 +342,26 @@ defmodule PortalAPI.MCPController do
   # able to drive this endpoint with the user's ambient credentials.
   defp allowed_origin?(conn, origin) do
     case URI.parse(origin) do
-      %URI{host: host} when is_binary(host) -> host == conn.host
+      %URI{
+        scheme: scheme,
+        host: host,
+        port: port,
+        path: path,
+        query: nil,
+        fragment: nil,
+        userinfo: nil
+      }
+      when is_binary(scheme) and is_binary(host) and path in [nil, ""] ->
+        String.downcase(scheme) == (conn.scheme |> Atom.to_string() |> String.downcase()) and
+          String.downcase(host) == String.downcase(conn.host) and
+          effective_port(scheme, port) == conn.port
+
       _other -> false
     end
   end
 
-  defp meter(conn) do
-    conn
-    |> PortalAPI.Plugs.RateLimit.call(PortalAPI.Plugs.RateLimit.init([]))
-    |> case do
-      %Plug.Conn{halted: true} = conn -> conn
-      conn -> PortalAPI.Plugs.RequestLog.call(conn, PortalAPI.Plugs.RequestLog.init([]))
-    end
-  end
+  defp effective_port(scheme, nil), do: URI.default_port(String.downcase(scheme))
+  defp effective_port(_scheme, port), do: port
 
   defp send_rpc(conn, status, payload) do
     conn

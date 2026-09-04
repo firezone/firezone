@@ -121,9 +121,10 @@ defmodule PortalAPI.MCP do
     granted by writing a Policy, never by editing an Actor or a Resource \
     directly. Actors are people or API clients, and Groups collect Actors.
 
-    List operations are paginated: pass the `page_cursor` returned in a \
-    response to fetch the next page. Prefer filtering with the documented \
-    query parameters over listing everything and filtering afterwards.
+    List operations are paginated: read the cursor from \
+    `metadata.next_page` in the response and pass it as `page_cursor` to fetch \
+    the next page. Prefer filtering with the documented query parameters over \
+    listing everything and filtering afterwards.
     """
   end
 

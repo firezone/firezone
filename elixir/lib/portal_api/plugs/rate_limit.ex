@@ -4,8 +4,14 @@ defmodule PortalAPI.Plugs.RateLimit do
   @refill_rate_default Portal.Config.fetch_env!(:portal, PortalAPI.RateLimit)[:refill_rate]
   @capacity_default Portal.Config.fetch_env!(:portal, PortalAPI.RateLimit)[:capacity]
   @cost_default PortalAPI.RateLimit.default_cost()
+  @skip_key :portal_api_skip_rate_limit
+
+  @doc "Private key used by an already-metered internal dispatch."
+  def skip_key, do: @skip_key
 
   def init(opts), do: Keyword.get(opts, :context_type, :api_client)
+
+  def call(%Plug.Conn{private: %{@skip_key => true}} = conn, _context_type), do: conn
 
   def call(conn, _context_type) do
     rate_limit_api(conn, [])
