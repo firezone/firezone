@@ -275,8 +275,9 @@ if config_env() == :prod do
     # Schedule SentinelOne device inventory sync every 2 hours
     {"35 */2 * * *", Portal.SentinelOne.Scheduler},
 
-    # Schedule Google directory sync every 2 hours
-    {"20 */2 * * *", Portal.Google.Scheduler},
+    # Group membership changes do not produce user push notifications, so run
+    # a full Google directory sync every four hours.
+    {"20 */4 * * *", Portal.Google.Scheduler},
 
     # Schedule Okta directory sync every 2 hours
     {"40 */2 * * *", Portal.Okta.Scheduler},
@@ -424,6 +425,8 @@ if config_env() == :prod do
       sentinelone_sync: 5,
       google_scheduler: 1,
       google_sync: 5,
+      google_subscriptions: 1,
+      google_webhook: 5,
       okta_scheduler: 1,
       okta_sync: 5,
       splunk_scheduler: 1,

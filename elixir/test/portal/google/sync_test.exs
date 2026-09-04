@@ -4,6 +4,7 @@ defmodule Portal.Google.SyncTest do
 
   import Ecto.Query
   import Portal.AccountFixtures
+  import Portal.DirectorySyncLockHelpers
   import Portal.GoogleDirectoryFixtures
   import Portal.IdentityFixtures
   import Portal.ResourceFixtures
@@ -175,6 +176,15 @@ defmodule Portal.Google.SyncTest do
       assert log =~ directory.id
     end
 
+    test "snoozes while the directory lock is held" do
+      account = account_fixture(features: %{idp_sync: true})
+      directory = google_directory_fixture(account: account)
+      args = %{"account_id" => directory.account_id, "directory_id" => directory.id}
+      hold_directory_lock(:google, directory.id)
+
+      assert {:snooze, 30} = perform_job(Sync, args)
+    end
+
     test "performs successful sync with groups, org units, and user identity sync" do
       account = account_fixture()
       directory = google_directory_fixture(account: account, domain: "example.com")
@@ -249,6 +259,11 @@ defmodule Portal.Google.SyncTest do
       identity = hd(identities)
       assert identity.idp_id == "user1"
       assert identity.email == "user1@example.com"
+
+      assert_enqueued(
+        worker: Portal.Google.Subscriptions,
+        args: %{account_id: directory.account_id, directory_id: directory.id, action: "ensure"}
+      )
 
       # Verify Firezone groups were created (one group, one org unit)
       groups = Repo.all(Portal.Group)

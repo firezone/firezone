@@ -365,6 +365,31 @@ defmodule Portal.Google.APIClient do
   end
 
   @doc """
+  Fetches one user by Google user id or primary email.
+  """
+  def get_user(access_token, user_key) do
+    get("/admin/directory/v1/users/#{URI.encode(user_key)}", access_token)
+  end
+
+  @doc """
+  Opens a push notification channel for every user event in the customer account.
+  """
+  def watch_users(access_token, channel) when is_map(channel) do
+    query = URI.encode_query(%{"customer" => "my_customer"})
+    post("/admin/directory/v1/users/watch?#{query}", access_token, channel)
+  end
+
+  @doc """
+  Closes a push notification channel.
+  """
+  def stop_channel(access_token, channel_id, resource_id) do
+    post("/admin/directory_v1/channels/stop", access_token, %{
+      "id" => channel_id,
+      "resourceId" => resource_id
+    })
+  end
+
+  @doc """
   Fetches a single group by group key (Google group ID or email).
 
   Returns `{:ok, group_map}` on success, or `{:error, reason}` on failure.
@@ -805,6 +830,15 @@ defmodule Portal.Google.APIClient do
 
     (config[:endpoint] <> path)
     |> Req.get([headers: [Authorization: "Bearer #{access_token}"]] ++ request_opts(config))
+  end
+
+  defp post(path, access_token, json) do
+    config = Portal.Config.fetch_env!(:portal, __MODULE__)
+
+    (config[:endpoint] <> path)
+    |> Req.post(
+      [headers: [Authorization: "Bearer #{access_token}"], json: json] ++ request_opts(config)
+    )
   end
 
   # Throttling is a 403 with domain "usageLimits", not a 429, so Req's built-in
