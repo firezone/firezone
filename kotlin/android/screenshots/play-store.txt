@@ -1,0 +1,8 @@
+kotlin/android/screenshots/sign-in.png
+kotlin/android/screenshots/session-screen.png
+kotlin/android/screenshots/session-screen-favorites.png
+kotlin/android/screenshots/resource-details.png
+kotlin/android/screenshots/resource-details-internet.png
+kotlin/android/screenshots/device-details.png
+kotlin/android/screenshots/settings-general.png
+kotlin/android/screenshots/settings-advanced.png
