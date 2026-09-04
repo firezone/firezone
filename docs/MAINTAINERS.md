@@ -54,19 +54,26 @@ from landing in the release while you execute this process.
 1. After QA passes, run the
    [`Submit Apple release`](../.github/workflows/submit-apple-release.yml)
    workflow from `main`.
-1. When `prepare` finishes, inspect both versions through the pending
-   `app-store` deployment link. Cancel the workflow if another build is needed,
-   or approve it to submit both versions with manual release.
+1. When `stage` finishes, inspect both versions through the pending
+   `app-store-review` deployment link. Cancel the workflow if another build is
+   needed, or approve it to submit both versions with manual release.
 
 Required repository secrets:
 
 - `APPLE_APP_STORE_CONNECT_MARKETING_API_KEY_ID`
 - `APPLE_APP_STORE_CONNECT_MARKETING_API_KEY`
 
-Required secrets in the reviewer-protected `app-store` GitHub Environment:
+Required secrets in the `main`-only `app-store` GitHub Environment:
 
 - `APPLE_APP_STORE_CONNECT_APP_MANAGER_API_KEY_ID`
 - `APPLE_APP_STORE_CONNECT_APP_MANAGER_API_KEY`
+
+Do not configure required reviewers on `app-store`; `app-store-review` is the
+approval gate.
+
+The `app-store-review` GitHub Environment requires reviewers, a `main`
+deployment restriction, and `APP_STORE_REVIEW_CONFIGURED=true`. It has no
+secrets.
 
 #### TestFlight groups
 

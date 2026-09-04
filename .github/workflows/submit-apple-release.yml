@@ -180,10 +180,71 @@ jobs:
               --from-dir "$METADATA_DIR"
           done
 
+  stage:
+    needs: prepare
+    environment:
+      name: app-store
+      url: https://appstoreconnect.apple.com/apps/6443661826/distribution
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.prepare.outputs.source_sha }}
+
+      - uses: ./.github/actions/setup-mise
+        with:
+          install_args: --cd swift/apple github:rorkai/App-Store-Connect-CLI
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Attach the builds
+        working-directory: swift/apple
+        env:
+          ASC_KEY_ID: ${{ secrets.APPLE_APP_STORE_CONNECT_APP_MANAGER_API_KEY_ID }}
+          ASC_PRIVATE_KEY_B64: ${{ secrets.APPLE_APP_STORE_CONNECT_APP_MANAGER_API_KEY }}
+          BUILD_NUMBER: ${{ needs.prepare.outputs.build_number }}
+        run: |
+          version="${RELEASE_NAME#apple-client-}"
+
+          for platform in IOS MAC_OS; do
+            build=$(asc builds info \
+              --app "$ASC_APP_ID" \
+              --version "$version" \
+              --build-number "$BUILD_NUMBER" \
+              --platform "$platform" \
+              --output json)
+            build_id=$(jq -er '.data.id' <<< "$build")
+            target=$(asc versions list \
+              --app "$ASC_APP_ID" \
+              --version "$version" \
+              --platform "$platform" \
+              --output json)
+            version_id=$(jq -er \
+              'if (.data | length) == 1 then .data[0].id else error("expected one App Store version") end' \
+              <<< "$target")
+            details=$(asc versions view \
+              --version-id "$version_id" \
+              --output json)
+            state=$(jq -er '.state' <<< "$details")
+            if [[ "$state" == PREPARE_FOR_SUBMISSION ]]; then
+              asc versions update \
+                --version-id "$version_id" \
+                --release-type MANUAL \
+                --output json
+              asc release stage \
+                --app "$ASC_APP_ID" \
+                --version "$version" \
+                --platform "$platform" \
+                --build-id "$build_id" \
+                --confirm \
+                --output json
+            fi
+          done
+
       - name: Summarize the candidate
         env:
-          BUILD_NUMBER: ${{ steps.release.outputs.build_number }}
-          SOURCE_SHA: ${{ steps.release.outputs.source_sha }}
+          BUILD_NUMBER: ${{ needs.prepare.outputs.build_number }}
+          SOURCE_SHA: ${{ needs.prepare.outputs.source_sha }}
         run: |
           version="${RELEASE_NAME#apple-client-}"
           short_sha=${SOURCE_SHA:0:12}
@@ -194,11 +255,28 @@ jobs:
             echo "- Build: [\`${BUILD_NUMBER}\`](https://github.com/${GITHUB_REPOSITORY}/actions/runs/${BUILD_NUMBER})"
             echo "- [Open Firezone in App Store Connect](https://appstoreconnect.apple.com/apps/${ASC_APP_ID}/distribution)"
             echo
-            echo "Review both platform versions, then approve the \`app-store\` deployment."
+            echo "Both builds are attached. Review both platform versions, then approve the \`app-store-review\` deployment."
           } >> "$GITHUB_STEP_SUMMARY"
 
+  review:
+    needs: stage
+    environment:
+      name: app-store-review
+      url: https://appstoreconnect.apple.com/apps/6443661826/distribution
+    runs-on: ubuntu-24.04
+    permissions: {}
+    steps:
+      - name: Verify the approval environment
+        env:
+          APP_STORE_REVIEW_CONFIGURED: ${{ vars.APP_STORE_REVIEW_CONFIGURED }}
+        run: |
+          if [[ "$APP_STORE_REVIEW_CONFIGURED" != true ]]; then
+            echo "The app-store-review environment is not configured" >&2
+            exit 1
+          fi
+
   submit:
-    needs: prepare
+    needs: [prepare, review]
     environment:
       name: app-store
       url: https://appstoreconnect.apple.com/apps/6443661826/distribution
@@ -227,7 +305,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Attach the builds and submit both versions
+      - name: Submit both versions
         working-directory: swift/apple
         env:
           ASC_KEY_ID: ${{ secrets.APPLE_APP_STORE_CONNECT_APP_MANAGER_API_KEY_ID }}
@@ -236,7 +314,6 @@ jobs:
         run: |
           version="${RELEASE_NAME#apple-client-}"
 
-          declare -A build_ids version_ids
           for platform in IOS MAC_OS; do
             build=$(asc builds info \
               --app "$ASC_APP_ID" \
@@ -244,11 +321,7 @@ jobs:
               --build-number "$BUILD_NUMBER" \
               --platform "$platform" \
               --output json)
-            build_ids[$platform]=$(jq -er '.data.id' <<< "$build")
-          done
-
-          for platform in IOS MAC_OS; do
-            build_id=${build_ids[$platform]}
+            build_id=$(jq -er '.data.id' <<< "$build")
             target=$(asc versions list \
               --app "$ASC_APP_ID" \
               --version "$version" \
@@ -257,31 +330,10 @@ jobs:
             version_id=$(jq -er \
               'if (.data | length) == 1 then .data[0].id else error("expected one App Store version") end' \
               <<< "$target")
-            version_ids[$platform]=$version_id
-            details=$(asc versions view \
-              --version-id "$version_id" \
-              --output json)
-            state=$(jq -er '.state' <<< "$details")
-            if [[ "$state" == PREPARE_FOR_SUBMISSION ]]; then
-              asc versions update \
-                --version-id "$version_id" \
-                --release-type MANUAL \
-                --output json
-              asc release stage \
-                --app "$ASC_APP_ID" \
-                --version "$version" \
-                --platform "$platform" \
-                --build-id "$build_id" \
-                --confirm \
-                --output json
-            fi
-          done
-
-          for platform in IOS MAC_OS; do
             asc review submit \
               --app "$ASC_APP_ID" \
-              --version-id "${version_ids[$platform]}" \
-              --build-id "${build_ids[$platform]}" \
+              --version-id "$version_id" \
+              --build-id "$build_id" \
               --platform "$platform" \
               --confirm \
               --output json
