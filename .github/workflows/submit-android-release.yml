@@ -146,14 +146,14 @@ jobs:
                 "$screenshot" "$GITHUB_REPOSITORY" "$SOURCE_SHA" "$screenshot"
             done
             echo
-            echo "Review this summary and the [Play Console](https://play.google.com/console/) before approving the \`google-play-production\` environment. Approval is the reminder and checkpoint that authorizes revalidation, screenshot replacement, production promotion, and review submission. Managed Publishing still requires a manual \`Publish changes\` action after Google approves the changes."
+            echo "Review this summary and the [Play Console](https://play.google.com/console/) before approving the \`google-play\` environment. Approval is the reminder and checkpoint that authorizes revalidation, screenshot replacement, production promotion, and review submission. Managed Publishing still requires a manual \`Publish changes\` action after Google approves the changes."
           } >> "$GITHUB_STEP_SUMMARY"
 
   submit:
     if: ${{ github.ref_name == 'main' }}
     needs: prepare
     environment:
-      name: google-play-production
+      name: google-play
       url: https://play.google.com/console/
     runs-on: ubuntu-24.04
     permissions:
@@ -163,10 +163,10 @@ jobs:
     steps:
       - name: Verify the protected environment
         env:
-          GOOGLE_PLAY_PRODUCTION_CONFIGURED: ${{ vars.GOOGLE_PLAY_PRODUCTION_CONFIGURED }}
+          GOOGLE_PLAY_ENVIRONMENT_CONFIGURED: ${{ vars.GOOGLE_PLAY_ENVIRONMENT_CONFIGURED }}
         run: |
-          if [[ "$GOOGLE_PLAY_PRODUCTION_CONFIGURED" != true ]]; then
-            echo "The google-play-production environment is not configured" >&2
+          if [[ "$GOOGLE_PLAY_ENVIRONMENT_CONFIGURED" != true ]]; then
+            echo "The google-play environment is not configured" >&2
             exit 1
           fi
 

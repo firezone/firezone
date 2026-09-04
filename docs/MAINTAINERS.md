@@ -27,7 +27,7 @@ Table of Contents:
      commit, screenshots, and completed internal release, then writes a summary
      with the Play version code and links. Review that summary and the
      [Play Console](https://play.google.com/console/), then approve the
-     `google-play-production` environment as an intentional reminder and
+     `google-play` environment as an intentional reminder and
      checkpoint. After approval, the workflow revalidates the draft, replaces
      the screenshots, promotes the exact internal version to production, and
      submits both in one Google Play edit. If the draft changed while approval
@@ -41,11 +41,12 @@ After approval, the workflow uses GitHub OIDC to impersonate
 `play-store-production-publisher@firezone-55040.iam.gserviceaccount.com`. Limit
 that service account to the Firezone app in Play Console and grant only the
 permissions needed to read releases, release to production, and manage the store
-listing. Before the first workflow dispatch, explicitly create the
-`google-play-production` GitHub environment. GitHub otherwise creates a referenced
-environment without protection. Add required reviewers, restrict deployments to
-`main`, and set its `GOOGLE_PLAY_PRODUCTION_CONFIGURED` variable to `true`. Also
-restrict the Workload Identity Federation subject to `main`. Keep
+listing. Before the first workflow dispatch, explicitly create the `google-play`
+GitHub environment. GitHub otherwise creates a referenced environment without
+protection. Add required reviewers, restrict deployments to `main`, and set its
+`GOOGLE_PLAY_ENVIRONMENT_CONFIGURED` variable to `true`. Restrict the Workload
+Identity Federation subject to
+`repo:firezone/firezone:environment:google-play`. Keep
 [Managed Publishing](https://support.google.com/googleplay/android-developer/answer/9859654)
 enabled.
 
