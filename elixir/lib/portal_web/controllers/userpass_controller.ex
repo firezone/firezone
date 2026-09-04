@@ -94,12 +94,18 @@ defmodule PortalWeb.UserpassController do
 
         :portal ->
           provider.portal_session_lifetime_secs || schema.default_portal_session_lifetime_secs()
+
+        :oauth ->
+          PortalWeb.Cookie.OAuthSession.lifetime_secs()
       end
 
     expires_at = DateTime.add(DateTime.utc_now(), session_lifetime_secs, :second)
 
     case type do
-      :portal ->
+      # Approving an app connection gets a session of its own, kept in its own
+      # cookie and expiring quickly, so it neither grants portal access nor is
+      # satisfied by portal access.
+      t when t in [:portal, :oauth] ->
         Portal.Authentication.create_portal_session(
           actor,
           provider.id,
@@ -141,6 +147,18 @@ defmodule PortalWeb.UserpassController do
     conn
     |> PortalWeb.Cookie.Session.put(account.id, %PortalWeb.Cookie.Session{session_id: session.id})
     |> Redirector.portal_signed_in(account, params, actor)
+  end
+
+  # Context: :oauth
+  # Store the approval-flow cookie only, and go back to the pending request.
+  defp signed_in(conn, :oauth, account, actor, session, params) do
+    conn
+    |> PortalWeb.Cookie.OAuthSession.put(account.id, %PortalWeb.Cookie.OAuthSession{
+      session_id: session.id
+    })
+    |> Phoenix.Controller.redirect(
+      to: Redirector.sanitize_redirect_to(account, params["redirect_to"], actor)
+    )
   end
 
   # Context: :gui_client
@@ -223,6 +241,7 @@ defmodule PortalWeb.UserpassController do
     |> halt()
   end
 
+  defp context_type(%{"as" => "oauth"}), do: :oauth
   defp context_type(%{"as" => "client"}), do: :gui_client
   defp context_type(%{"as" => "gui-client"}), do: :gui_client
   defp context_type(%{"as" => "headless-client"}), do: :headless_client

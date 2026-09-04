@@ -97,6 +97,38 @@ defmodule PortalWeb.UserpassControllerTest do
       assert redirected_to(conn) == redirect_to
     end
 
+    test "approving an app connection does not sign you into the portal", %{
+      conn: conn,
+      account: account,
+      provider: provider,
+      password_hash: password_hash
+    } do
+      actor =
+        create_actor_with_password(
+          %{type: :account_admin_user, account: account},
+          password_hash
+        )
+
+      conn =
+        post(conn, ~p"/#{account.id}/sign_in/userpass/#{provider.id}", %{
+          "userpass" => %{"idp_id" => actor.email, "secret" => @password},
+          "as" => "oauth",
+          "redirect_to" => ~p"/#{account}/oauth/authorize"
+        })
+
+      # The approval cookie is set and the portal one is not, so getting through
+      # this flow leaves no portal session behind. The portal key can still be
+      # present as a deletion, which carries no value.
+      assert approval = conn.resp_cookies["oauth_sess_#{account.id}"]
+      assert approval.value != ""
+
+      portal_cookie = Map.get(conn.resp_cookies, "sess_#{account.id}", %{})
+      refute Map.has_key?(portal_cookie, :value)
+
+      assert approval.max_age == PortalWeb.Cookie.OAuthSession.lifetime_secs()
+      assert approval.max_age == 15 * 60
+    end
+
     test "falls back when portal redirect_to is scoped to another account", %{
       conn: conn,
       account: account,

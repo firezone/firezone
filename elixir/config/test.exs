@@ -253,6 +253,12 @@ config :portal, Portal.Crl.Sync,
     plug: {Req.Test, Portal.Crl.Sync}
   ]
 
+config :portal, Portal.OAuth.ClientMetadata,
+  req_opts: [
+    retry: false,
+    plug: {Req.Test, Portal.OAuth.ClientMetadata}
+  ]
+
 config :portal, Portal.Ocsp.Sync,
   req_opts: [
     retry: false,

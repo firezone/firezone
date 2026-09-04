@@ -11,18 +11,23 @@ defmodule Portal.Authentication.Credential do
   - `ClientToken` - Client tokens. `auth_provider_id` is set when the token was
     minted from an interactive sign-in flow (OIDC, Email/OTP, userpass) and nil
     when the token was issued directly by an admin (no sign-in flow).
+  - `OAuthToken` - Access tokens issued through the OAuth flow. Carries scopes
+    and the audience the token was minted for, and never an auth provider,
+    since the token is bound to the actor rather than to the sign-in that
+    produced it.
   - `PortalSession` - Portal sessions for web users.
   - `X509` - Ephemeral credentials authenticated by a client certificate. These
     have an `auth_provider_id`, but no persisted client token.
 
-  Each kind carries only the fields it has: an API token has scopes and no auth
-  provider, and the rest have an auth provider and no scopes. Ask across kinds
-  through `scopes/1` and `auth_provider_id/1` rather than reaching for a field,
-  so no kind has to hold a nil that reads as a value.
+  Each kind carries only the fields it has: the token kinds that participate in
+  scopes have scopes and no auth provider, and the rest have an auth provider
+  and no scopes. Ask across kinds through `scopes/1` and `auth_provider_id/1`
+  rather than reaching for a field, so no kind has to hold a nil that reads as
+  a value.
   """
 
   defmodule APIToken do
-    @moduledoc "An API token, the only credential that carries scopes."
+    @moduledoc "An API token, minted by an admin and carrying scopes."
     @enforce_keys [:id, :scopes]
     defstruct [:id, :scopes]
 
@@ -40,6 +45,18 @@ defmodule Portal.Authentication.Credential do
     @type t :: %__MODULE__{
             id: Ecto.UUID.t(),
             auth_provider_id: Ecto.UUID.t() | nil
+          }
+  end
+
+  defmodule OAuthToken do
+    @moduledoc "An OAuth access token, carrying scopes and the audience it was minted for."
+    @enforce_keys [:id, :scopes, :resource]
+    defstruct [:id, :scopes, :resource]
+
+    @type t :: %__MODULE__{
+            id: Ecto.UUID.t(),
+            scopes: [String.t()],
+            resource: String.t()
           }
   end
 
@@ -65,7 +82,8 @@ defmodule Portal.Authentication.Credential do
           }
   end
 
-  @type t :: APIToken.t() | ClientToken.t() | PortalSession.t() | X509.t()
+  @type t ::
+          APIToken.t() | ClientToken.t() | OAuthToken.t() | PortalSession.t() | X509.t()
 
   @doc """
   The scopes a credential narrows the public API to, or `nil` for a kind that
@@ -76,6 +94,7 @@ defmodule Portal.Authentication.Credential do
   """
   @spec scopes(t()) :: [String.t()] | nil
   def scopes(%APIToken{scopes: scopes}), do: scopes
+  def scopes(%OAuthToken{scopes: scopes}), do: scopes
   def scopes(%ClientToken{}), do: nil
   def scopes(%PortalSession{}), do: nil
   def scopes(%X509{}), do: nil
@@ -89,6 +108,7 @@ defmodule Portal.Authentication.Credential do
   """
   @spec auth_provider_id(t()) :: Ecto.UUID.t() | nil
   def auth_provider_id(%APIToken{}), do: nil
+  def auth_provider_id(%OAuthToken{}), do: nil
   def auth_provider_id(%ClientToken{auth_provider_id: id}), do: id
   def auth_provider_id(%PortalSession{auth_provider_id: id}), do: id
   def auth_provider_id(%X509{auth_provider_id: id}), do: id

@@ -863,6 +863,12 @@ defmodule Portal.Safe do
   def permit(_action, Portal.ClientToken, :account_admin_user), do: :ok
   def permit(_action, Portal.ClientToken, :api_client), do: :ok
   def permit(_action, Portal.APIToken, :account_admin_user), do: :ok
+
+  # OAuth grants and codes are created by a person going through the browser
+  # consent screen, which runs on a portal session, and only an admin gets one.
+  def permit(_action, Portal.OAuthGrant, :account_admin_user), do: :ok
+  def permit(_action, Portal.OAuthAuthorizationCode, :account_admin_user), do: :ok
+  def permit(:read, Portal.OAuthToken, :account_admin_user), do: :ok
   def permit(_action, Portal.Directory, :account_admin_user), do: :ok
   def permit(:read, Portal.Directory, :api_client), do: :ok
   def permit(_action, Portal.AuthProvider, :account_admin_user), do: :ok

@@ -33,6 +33,8 @@ config :portal, generators: [binary_id: true]
 config :req,
   default_options: [plugins: [Portal.Req.SSRFProtection]]
 
+config :portal, Portal.OAuth.ClientMetadata, req_opts: []
+
 config :portal, sql_sandbox: false
 
 config :portal, flow_logs_upload_batch_size: 1000
