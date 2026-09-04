@@ -8,7 +8,6 @@ set -euo pipefail
 
 readonly PACKAGE_NAME="dev.firezone.android"
 readonly INTERNAL_TRACK="internal"
-readonly PRODUCTION_TRACK="production"
 readonly CHANGELOG_URL="https://www.firezone.dev/changelog#tab-android"
 readonly PUBLISHER_API="https://androidpublisher.googleapis.com/androidpublisher/v3/applications/$PACKAGE_NAME"
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -40,11 +39,9 @@ export GPLAY_NO_UPDATE=1
 edit_id=""
 committed=false
 persist_draft=true
-prepare_production_draft="${PREPARE_PRODUCTION_DRAFT:-false}"
 
 if [[ "${GITHUB_ACTIONS:-false}" == true && "${GITHUB_REF_NAME:-}" != main ]]; then
     persist_draft=false
-    prepare_production_draft=false
 fi
 
 cleanup() {
@@ -113,9 +110,6 @@ update_draft() {
 }
 
 update_draft "$INTERNAL_TRACK"
-if [[ "$prepare_production_draft" == true ]]; then
-    update_draft "$PRODUCTION_TRACK"
-fi
 
 echo "Validating edit $edit_id..."
 gplay edits validate --package "$PACKAGE_NAME" --edit "$edit_id"

@@ -142,12 +142,9 @@ function apple() {
 #    Play internal-track draft. The fixed store screenshots are checked but not
 #    uploaded.
 # 2. Use the Firebase AAB for any final QA testing.
-# 3. Sign in to the Play Console and review the internal draft. By default,
-#    prepare or promote the same version to production manually, then submit it
-#    for review. If `PREPARE_ANDROID_PRODUCTION_DRAFT` is enabled, CI also
-#    creates or updates a production draft with the same `versionCode`; review
-#    and submit that draft instead. Optionally, allow the Play Console to
-#    automatically publish the release.
+# 3. Sign in to the Play Console and review the internal draft. Prepare or
+#    promote the same version to production manually, then submit it for review.
+#    Optionally, allow the Play Console to automatically publish the release.
 # 4. Once the Play Store release is approved, publish the APK in the drafted
 #    release on GitHub.
 # 5. Bump current_android_client_version / next_android_client_version at the
