@@ -18,11 +18,24 @@ Table of Contents:
 ### App Store clients (Apple/Android)
 
 1. Go to Actions tab in GH and run the `Kotlin` or `Swift` workflow appropriately
-1. This will push new release builds to Firebase or App Store Connect and pushed out Firebase App Distribution or TestFlight respectively.
+1. This pushes new release builds to Google Play internal testing or TestFlight.
 1. Test this build manually a bit since we have no automated client tests yet
 1. To submit for review:
    - For Apple, do this through AppStore connect. Details are [below](#apple-client).
-   - Android, download the AAB from Firebase App Distribution, create a new release in Google Play Console, and upload the AAB.
+   - For Android, run the [Submit Android release](../.github/workflows/submit-android-release.yml)
+     workflow on `main` and approve its `google-play-production` environment.
+     It promotes the build from the exact GitHub draft, replaces the screenshots,
+     and submits both in one Google Play edit. Managed Publishing holds the approved
+     changes until they are published manually.
+
+The Android submission workflow uses GitHub OIDC to impersonate
+`play-store-production-publisher@firezone-55040.iam.gserviceaccount.com`. Limit
+that service account to the Firezone app in Play Console and grant only the
+permissions needed to read releases, release to production, and manage the store
+listing. Configure the `google-play-production` GitHub environment with required
+reviewers and restrict both the environment and Workload Identity Federation
+subject to `main`. Keep [Managed Publishing](https://support.google.com/googleplay/android-developer/answer/9859654)
+enabled.
 
 ### GitHub-released components (Linux, Windows, and Gateway)
 

@@ -332,8 +332,9 @@ jobs:
           GPLAY_SERVICE_ACCOUNT_JSON: ${{ steps.gcp-auth.outputs.credentials_file_path }}
           ACCESS_TOKEN: ${{ steps.gcp-auth.outputs.access_token }}
           AAB_PATH: ${{ matrix.output-path }}
+          SOURCE_SHA: ${{ github.sha }}
           VERSION_NAME: ${{ needs.update-release-draft.outputs.version }}
-        run: ../../scripts/upload/play-store.sh
+        run: ../../scripts/upload/play-store.sh internal
 
   build_debug:
     # Android SDK tools hardware accel is available only on Linux runners
