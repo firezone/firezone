@@ -137,13 +137,17 @@ function apple() {
 # As such, the process for releasing Android is similar to Apple.
 #
 # Instructions:
-# 1. Run the `Kotlin` workflow from `main`. This will push an AAB to Firebase
-#    and upload a new APK to the drafted release.
-# 2. Sign in to Firebase and download the build AAB, optionally distributing it
-#    for release testing to perform any final QA tests.
-# 3. Sign in to the Play Console and create a new release and submit it for
-#    review. Optionally, allow the Play Console to automatically publish the
-#    release.
+# 1. Run the `Kotlin` workflow from `main`. This pushes the AAB to Firebase,
+#    uploads the APK to the drafted release, and creates or updates the Google
+#    Play internal-track draft. The fixed store screenshots are checked but not
+#    uploaded.
+# 2. Use the Firebase AAB for any final QA testing.
+# 3. Sign in to the Play Console and review the internal draft. By default,
+#    prepare or promote the same version to production manually, then submit it
+#    for review. If `PREPARE_ANDROID_PRODUCTION_DRAFT` is enabled, CI also
+#    creates or updates a production draft with the same `versionCode`; review
+#    and submit that draft instead. Optionally, allow the Play Console to
+#    automatically publish the release.
 # 4. Once the Play Store release is approved, publish the APK in the drafted
 #    release on GitHub.
 # 5. Bump current_android_client_version / next_android_client_version at the
