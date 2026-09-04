@@ -2,8 +2,8 @@ defmodule Portal.Google.WebhookSyncTest do
   use Portal.DataCase, async: true
   use Oban.Testing, repo: Portal.Repo
 
-  import Ecto.Query
   import Portal.AccountFixtures
+  import Portal.DirectorySyncLockHelpers
   import Portal.GoogleDirectoryFixtures
   import Portal.GoogleAPIClientHelpers
   import Portal.GroupFixtures
@@ -257,14 +257,10 @@ defmodule Portal.Google.WebhookSyncTest do
     end
   end
 
-  test "snoozes while a full sync for the directory is running", %{directory: directory} = ctx do
+  test "snoozes while the directory lock is held", %{directory: directory} = ctx do
     identity = directory_identity(ctx, "user-1")
     stub_google(users: %{})
-
-    {:ok, job} =
-      Oban.insert(Sync.new(%{account_id: directory.account_id, directory_id: directory.id}))
-
-    Repo.update_all(from(j in Oban.Job, where: j.id == ^job.id), set: [state: "executing"])
+    hold_directory_lock(:google, directory.id)
 
     assert {:snooze, 30} = perform_job(WebhookSync, args(directory, "user-1"))
 

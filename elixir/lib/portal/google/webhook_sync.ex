@@ -30,9 +30,8 @@ defmodule Portal.Google.WebhookSync do
     keys: [:directory_id, :user_id]
   ]
 
-  # A full sync reads Google long before it writes. If a webhook deleted a row
-  # in between, the sync would insert the stale copy back without a sync-state
-  # guard to stop it. Waiting for the sync to finish avoids that.
+  # A full sync reads Google long before it writes, so a notification waits
+  # for the directory lock instead of interleaving with one.
   @snooze_seconds 30
 
   @impl Oban.Worker
@@ -42,20 +41,15 @@ defmodule Portal.Google.WebhookSync do
   def perform(%Oban.Job{
         args: %{"account_id" => account_id, "directory_id" => directory_id, "user_id" => user_id}
       }) do
-    directory = Google.Subscriptions.get_directory(account_id, directory_id)
-
-    cond do
-      is_nil(directory) ->
+    case Google.Subscriptions.get_directory(account_id, directory_id) do
+      nil ->
         Logger.info("Google directory not eligible for webhooks, skipping notification",
           google_directory_id: directory_id
         )
 
         :ok
 
-      Database.full_sync_running?(directory_id) ->
-        {:snooze, @snooze_seconds}
-
-      true ->
+      directory ->
         apply_with_lock(directory, user_id)
     end
   end
@@ -228,14 +222,6 @@ defmodule Portal.Google.WebhookSync do
   defmodule Database do
     import Ecto.Query
     alias Portal.Safe
-
-    def full_sync_running?(directory_id) do
-      [worker: Portal.Google.Sync, state: :executing]
-      |> Oban.Job.query()
-      |> where([j], fragment("?->>'directory_id'", j.args) == ^directory_id)
-      |> Safe.unscoped()
-      |> Safe.exists?()
-    end
 
     def get_identity(directory, idp_id) do
       issuer = Portal.Google.Sync.issuer()

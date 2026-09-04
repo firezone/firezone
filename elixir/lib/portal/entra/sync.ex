@@ -18,29 +18,18 @@ defmodule Portal.Entra.Sync do
   require Logger
 
   # A recovery sync queued for a "missed" notification must run after, not
-  # alongside, a sync that is already executing for the same directory.
+  # alongside, a sync that already holds the directory lock.
   @snooze_seconds 60
 
   @impl Oban.Worker
-  def perform(%Oban.Job{
-        id: job_id,
-        args: %{"account_id" => account_id, "directory_id" => directory_id}
-      }) do
-    if Database.other_sync_running?(job_id, directory_id) do
-      {:snooze, @snooze_seconds}
-    else
-      run_with_lock(account_id, directory_id)
-    end
-  end
-
-  def perform(_), do: :ok
-
-  defp run_with_lock(account_id, directory_id) do
+  def perform(%Oban.Job{args: %{"account_id" => account_id, "directory_id" => directory_id}}) do
     case Lock.try_run(:entra, directory_id, fn -> run_sync(account_id, directory_id) end) do
       {:ok, _result} -> :ok
       :busy -> {:snooze, @snooze_seconds}
     end
   end
+
+  def perform(_), do: :ok
 
   defp run_sync(account_id, directory_id) do
     Logger.info("Starting Entra directory sync",
@@ -763,15 +752,6 @@ defmodule Portal.Entra.Sync do
   defmodule Database do
     import Ecto.Query
     alias Portal.Safe
-
-    def other_sync_running?(job_id, directory_id) do
-      [worker: Entra.Sync, state: :executing]
-      |> Oban.Job.query()
-      |> where([j], j.id != ^job_id)
-      |> where([j], fragment("?->>'directory_id'", j.args) == ^directory_id)
-      |> Safe.unscoped()
-      |> Safe.exists?()
-    end
 
     def get_directory(account_id, id) do
       from(d in Entra.Directory,

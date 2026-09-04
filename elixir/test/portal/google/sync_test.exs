@@ -4,6 +4,7 @@ defmodule Portal.Google.SyncTest do
 
   import Ecto.Query
   import Portal.AccountFixtures
+  import Portal.DirectorySyncLockHelpers
   import Portal.GoogleDirectoryFixtures
   import Portal.IdentityFixtures
   import Portal.ResourceFixtures
@@ -173,6 +174,15 @@ defmodule Portal.Google.SyncTest do
 
       assert log =~ "Google directory not found, disabled, or account disabled, skipping"
       assert log =~ directory.id
+    end
+
+    test "snoozes while the directory lock is held" do
+      account = account_fixture(features: %{idp_sync: true})
+      directory = google_directory_fixture(account: account)
+      args = %{"account_id" => directory.account_id, "directory_id" => directory.id}
+      hold_directory_lock(:google, directory.id)
+
+      assert {:snooze, 30} = perform_job(Sync, args)
     end
 
     test "performs successful sync with groups, org units, and user identity sync" do
