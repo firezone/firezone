@@ -17,12 +17,14 @@ Table of Contents:
 
 ### App Store clients (Apple/Android)
 
-1. Go to Actions tab in GH and run the `Kotlin` or `Swift` workflow appropriately
-1. This will push new release builds to Firebase or App Store Connect and pushed out Firebase App Distribution or TestFlight respectively.
-1. Test this build manually a bit since we have no automated client tests yet
-1. To submit for review:
-   - For Apple, do this through AppStore connect. Details are [below](#apple-client).
-   - Android, download the AAB from Firebase App Distribution, create a new release in Google Play Console, and upload the AAB.
+1. Run the [`Kotlin`](../.github/workflows/_kotlin.yml) or
+   [`Swift`](../.github/workflows/_swift.yml) workflow from `main` as
+   appropriate.
+1. Test the resulting Firebase App Distribution or TestFlight build.
+1. Submit the release for review:
+   - For Apple, follow the [Apple client](#apple-client) instructions below.
+   - For Android, download the AAB from Firebase App Distribution, create a new
+     release in Google Play Console, and upload the AAB.
 
 ### GitHub-released components (Linux, Windows, and Gateway)
 
@@ -44,6 +46,36 @@ This is okay because we can undo the GitHub release, and it prevents any queued 
 from landing in the release while you execute this process.
 
 ### Apple Client
+
+#### App Store release
+
+1. Run the [`Swift`](../.github/workflows/_swift.yml) workflow from `main`. It
+   uploads the iOS and macOS builds and updates the GitHub draft.
+1. After QA passes, run the
+   [`Submit Apple release`](../.github/workflows/submit-apple-release.yml)
+   workflow from `main`.
+1. When `stage` finishes, inspect both versions through the pending
+   `app-store-review` deployment link. Cancel the workflow if another build is
+   needed, or approve it to submit both versions with manual release.
+
+Required repository secrets:
+
+- `APPLE_APP_STORE_CONNECT_MARKETING_API_KEY_ID`
+- `APPLE_APP_STORE_CONNECT_MARKETING_API_KEY`
+
+Required secrets in the `main`-only `app-store` GitHub Environment:
+
+- `APPLE_APP_STORE_CONNECT_APP_MANAGER_API_KEY_ID`
+- `APPLE_APP_STORE_CONNECT_APP_MANAGER_API_KEY`
+
+Do not configure required reviewers on `app-store`; `app-store-review` is the
+approval gate.
+
+The `app-store-review` GitHub Environment requires reviewers, a `main`
+deployment restriction, and `APP_STORE_REVIEW_CONFIGURED=true`. It has no
+secrets.
+
+#### TestFlight groups
 
 - Log in to the following URL: https://appstoreconnect.apple.com/
 - Go to Apps

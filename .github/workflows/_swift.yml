@@ -3,16 +3,26 @@ on:
   workflow_call:
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' && 'apple-release-main' || github.run_id }}
+  cancel-in-progress: false
+
 jobs:
   update-release-draft:
     name: update-release-draft
     runs-on: ubuntu-24.04
+    outputs:
+      build_number: ${{ steps.release-metadata.outputs.build_number }}
     permissions:
       contents: write # release-drafter needs to create/update releases
     env:
       # mark:next-apple-version
       RELEASE_NAME: apple-client-1.5.20
     steps:
+      - name: Set release metadata
+        id: release-metadata
+        run: |
+          echo "build_number=$GITHUB_RUN_ID" >> "$GITHUB_OUTPUT"
       - uses: release-drafter/release-drafter@34d80673e067bdc0c24568d3af899c216adcfaa9 # v7.7.0
         if: "${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}"
         id: update-release-draft
@@ -317,6 +327,7 @@ jobs:
           PKG_ARTIFACT_PATH: "${{ runner.temp }}/${{ matrix.pkg-artifact-file }}"
           NOTARIZE: "${{ github.event_name == 'workflow_dispatch' }}"
           FIREZONE_NO_TELEMETRY: "${{ github.event_name != 'workflow_dispatch' }}"
+          BUILD_NUMBER: "${{ needs.update-release-draft.outputs.build_number }}"
           ISSUER_ID: "${{ secrets.APPLE_APP_STORE_CONNECT_ISSUER_ID }}"
           API_KEY_ID: "${{ secrets.APPLE_APP_STORE_CONNECT_API_KEY_ID }}"
           API_KEY: "${{ secrets.APPLE_APP_STORE_CONNECT_API_KEY }}"
