@@ -17,12 +17,14 @@ Table of Contents:
 
 ### App Store clients (Apple/Android)
 
-1. Go to Actions tab in GH and run the `Kotlin` or `Swift` workflow appropriately
-1. This will push new release builds to Firebase or App Store Connect and pushed out Firebase App Distribution or TestFlight respectively.
-1. Test this build manually a bit since we have no automated client tests yet
-1. To submit for review:
-   - For Apple, do this through AppStore connect. Details are [below](#apple-client).
-   - Android, download the AAB from Firebase App Distribution, create a new release in Google Play Console, and upload the AAB.
+1. Run the [`Kotlin`](../.github/workflows/_kotlin.yml) or
+   [`Swift`](../.github/workflows/_swift.yml) workflow from `main` as
+   appropriate.
+1. Test the resulting Firebase App Distribution or TestFlight build.
+1. Submit the release for review:
+   - For Apple, follow the [Apple client](#apple-client) instructions below.
+   - For Android, download the AAB from Firebase App Distribution, create a new
+     release in Google Play Console, and upload the AAB.
 
 ### GitHub-released components (Linux, Windows, and Gateway)
 
@@ -44,6 +46,40 @@ This is okay because we can undo the GitHub release, and it prevents any queued 
 from landing in the release while you execute this process.
 
 ### Apple Client
+
+#### App Store release
+
+1. Run the [`Swift`](../.github/workflows/_swift.yml) workflow from `main`. It
+   uploads matching iOS and macOS builds to App Store Connect and replaces the
+   assets on the GitHub draft.
+1. After QA passes, run the
+   [`Submit Apple release`](../.github/workflows/submit-apple-release.yml)
+   workflow from `main`.
+1. Wait for its `prepare` job to create or update both App Store versions,
+   replace their screenshots, and set the localized What's New link.
+1. Use the link on the pending `app-store` deployment to inspect both
+   versions in App Store Connect. Cancel the workflow if the candidate needs
+   another build.
+1. Approve the deployment. The workflow attaches the exact builds from the
+   GitHub draft, selects manual release, validates both versions, and submits
+   them for review. It does not publish an approved version.
+
+The preparation job authenticates with an individual Marketing key restricted
+to the Firezone app. Configure these repository secrets:
+
+- `APPLE_APP_STORE_CONNECT_MARKETING_API_KEY_ID`
+- `APPLE_APP_STORE_CONNECT_MARKETING_API_KEY`, containing the base64-encoded
+  `.p8` private key
+
+Configure the `app-store` GitHub Environment with required reviewers and
+these environment secrets for an individual App Manager key restricted to the
+Firezone app:
+
+- `APPLE_APP_STORE_CONNECT_APP_MANAGER_API_KEY_ID`
+- `APPLE_APP_STORE_CONNECT_APP_MANAGER_API_KEY`, containing the base64-encoded
+  `.p8` private key
+
+#### TestFlight groups
 
 - Log in to the following URL: https://appstoreconnect.apple.com/
 - Go to Apps
