@@ -603,6 +603,8 @@ impl SimClient {
                 id,
                 at,
                 remote: Remote::Client(self.id),
+                gateway_order: None,
+                dns_nat_generation: None,
                 packet,
             }));
     }

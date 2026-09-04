@@ -2,7 +2,7 @@ use super::dns_records::DnsRecords;
 use super::icmp_error_hosts::IcmpErrorHosts;
 use super::probe::{
     ExpectedOutcome, ExpectedProbe, KnownLoss, PacketRoute, ProbeId, ProbeRequest, RejectionRemote,
-    Remote, TraceRequirement, UdpFlow, UdpFlowId,
+    Remote, TraceRequirement, UdpFlow, UdpFlowId, UdpRoute,
 };
 use super::{ref_client::*, ref_gateway::*, sim_net::*, stub_portal::StubPortal, transition::*};
 use connlib_model::{ClientId, GatewayId, RelayId, ResourceId, Site, StaticSecret};
@@ -91,9 +91,11 @@ impl ReferenceState {
     ///
     /// Here is where we implement the "expected" logic.
     pub fn apply(mut state: Self, transition: &Transition, now: Instant) -> Self {
-        if transition.retires_udp_flows() {
-            state.udp_flows.clear();
-        }
+        let iceless = state.portal.iceless();
+        state
+            .udp_flows
+            .extract_if(|_, flow| !transition.retains_udp_flow(flow, iceless))
+            .for_each(drop);
 
         match transition {
             Transition::AddResource(resource) => {
@@ -294,39 +296,42 @@ impl ReferenceState {
                 dport,
                 probe_id,
             } => {
-                let flow = UdpFlow {
-                    id: *flow_id,
-                    client_id: *client_id,
-                    src: *src,
-                    dst: dst.clone(),
-                    sport: *sport,
-                    dport: *dport,
-                };
-                let (outcome, trace_requirement) =
-                    state.record_udp_probe(*probe_id, &flow, now);
+                let outcome = state.record_probe(
+                    *probe_id,
+                    *client_id,
+                    ProbeRequest::Udp {
+                        src: *src,
+                        dst: dst.clone(),
+                        sport: *sport,
+                        dport: *dport,
+                    },
+                    now,
+                );
 
-                match (outcome, trace_requirement) {
-                    (ExpectedOutcome::Dropped, TraceRequirement::Exact) => {}
-                    (
-                        ExpectedOutcome::Dropped,
-                        TraceRequirement::ExactOrSubmissionOnly(_),
-                    ) => {}
-                    (
-                        ExpectedOutcome::RoundTripCompleted { .. },
-                        TraceRequirement::Exact,
-                    ) => {
+                match outcome {
+                    ExpectedOutcome::RoundTripCompleted { remote, resource } => {
+                        let route = match (remote, resource) {
+                            (Remote::Gateway(gateway), Some(resource)) => {
+                                UdpRoute::Resource { resource, gateway }
+                            }
+                            (Remote::Gateway(gateway), None) => UdpRoute::Gateway(gateway),
+                            (Remote::Client(client), None) => UdpRoute::Peer(client),
+                            (Remote::Client(client), Some(resource)) => {
+                                panic!("client {client} cannot serve resource {resource}")
+                            }
+                        };
+                        let flow = UdpFlow {
+                            client_id: *client_id,
+                            src: *src,
+                            dst: dst.clone(),
+                            sport: *sport,
+                            dport: *dport,
+                            route,
+                        };
                         let previous = state.udp_flows.insert(*flow_id, flow);
                         assert!(previous.is_none(), "UDP flow IDs must be unique");
                     }
-                    (
-                        ExpectedOutcome::RoundTripCompleted { .. },
-                        TraceRequirement::ExactOrSubmissionOnly(_),
-                    ) => {}
-                    (ExpectedOutcome::Rejected { .. }, TraceRequirement::Exact) => {}
-                    (
-                        ExpectedOutcome::Rejected { .. },
-                        TraceRequirement::ExactOrSubmissionOnly(_),
-                    ) => {}
+                    ExpectedOutcome::Dropped | ExpectedOutcome::Rejected { .. } => {}
                 }
             }
             Transition::SendUdpPacketOnFlow { flow_id, probe_id } => {
@@ -336,7 +341,12 @@ impl ReferenceState {
                     .expect("reused UDP flow must exist")
                     .clone();
 
-                state.record_udp_probe(*probe_id, &flow, now);
+                match state.record_udp_probe(*probe_id, &flow, now) {
+                    ExpectedOutcome::RoundTripCompleted { .. } => {}
+                    ExpectedOutcome::Dropped | ExpectedOutcome::Rejected { .. } => {
+                        panic!("reused UDP route must complete a round trip")
+                    }
+                }
             }
             Transition::ConnectTcp {
                 client_id,
@@ -496,8 +506,16 @@ impl ReferenceState {
         id: ProbeId,
         flow: &UdpFlow,
         sent_at: Instant,
-    ) -> (ExpectedOutcome, TraceRequirement) {
-        self.record_probe(
+    ) -> ExpectedOutcome {
+        let outcome = self
+            .clients
+            .get_mut(&flow.client_id)
+            .unwrap()
+            .exec_mut(|client| {
+                client.on_packet(flow.dst.clone(), flow.route.packet_route(), sent_at)
+            });
+
+        self.record_expected_probe(
             id,
             flow.client_id,
             ProbeRequest::Udp {
@@ -507,6 +525,7 @@ impl ReferenceState {
                 dport: flow.dport,
             },
             sent_at,
+            outcome,
         )
     }
 
@@ -516,7 +535,7 @@ impl ReferenceState {
         origin: ClientId,
         request: ProbeRequest,
         sent_at: Instant,
-    ) -> (ExpectedOutcome, TraceRequirement) {
+    ) -> ExpectedOutcome {
         let route = self.route_for_application_packet(
             origin,
             request.source(),
@@ -528,6 +547,18 @@ impl ReferenceState {
             .get_mut(&origin)
             .unwrap()
             .exec_mut(|client| client.on_packet(request.destination().clone(), route, sent_at));
+
+        self.record_expected_probe(id, origin, request, sent_at, outcome)
+    }
+
+    fn record_expected_probe(
+        &mut self,
+        id: ProbeId,
+        origin: ClientId,
+        request: ProbeRequest,
+        sent_at: Instant,
+        outcome: ExpectedOutcome,
+    ) -> ExpectedOutcome {
         let trace_requirement = self.trace_requirement(origin, outcome, sent_at);
         let previous = self.expected_probes.insert(
             id,
@@ -543,7 +574,7 @@ impl ReferenceState {
 
         assert!(previous.is_none(), "probe IDs must be unique");
 
-        (outcome, trace_requirement)
+        outcome
     }
 
     fn route_for_application_packet(

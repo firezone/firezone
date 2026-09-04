@@ -694,4 +694,8 @@ impl ResolveDnsRequest {
     pub fn client(&self) -> ClientId {
         self.client
     }
+
+    pub fn proxy_ips(&self) -> &[IpAddr] {
+        &self.proxy_ips
+    }
 }
