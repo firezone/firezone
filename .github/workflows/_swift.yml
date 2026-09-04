@@ -2,6 +2,11 @@ name: Build macOS/iOS app
 on:
   workflow_call:
   workflow_dispatch:
+    inputs:
+      prepare_store:
+        description: Prepare the App Store drafts from this branch
+        type: boolean
+        default: false
 
 jobs:
   update-release-draft:
@@ -327,7 +332,7 @@ jobs:
           TEMP_DIR: "${{ runner.temp }}"
       - name: Upload App Store build artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        if: "${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' && matrix.job_name != 'build-macos-standalone' }}"
+        if: "${{ github.event_name == 'workflow_dispatch' && (github.ref_name == 'main' || inputs.prepare_store) && matrix.job_name != 'build-macos-standalone' }}"
         with:
           name: apple-store-${{ matrix.job_name }}
           path: "${{ runner.temp }}/${{ matrix.artifact-file }}"
@@ -385,7 +390,7 @@ jobs:
 
   prepare-app-store:
     name: prepare-app-store
-    if: "${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}"
+    if: "${{ github.event_name == 'workflow_dispatch' && (github.ref_name == 'main' || inputs.prepare_store) }}"
     needs: [update-release-draft, build]
     runs-on: ubuntu-24.04
     env:

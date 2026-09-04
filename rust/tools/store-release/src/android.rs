@@ -75,7 +75,7 @@ impl Api {
     }
 
     async fn upload_bundle(&self, package: &str, edit: &str, bytes: Vec<u8>) -> Result<i32> {
-        let hash = format!("{:x}", Sha256::digest(&bytes));
+        let hash = hex::encode(Sha256::digest(&bytes));
         let response: Bundles = http::json(
             self.request(
                 Method::GET,
@@ -215,7 +215,9 @@ fn with_draft_release(
         .or_insert_with(|| json!([]))
         .as_array_mut()
         .context("Google Play returned track releases that are not an array")?;
-    releases.retain(|release| release.get("status") != Some(&json!("draft")));
+    releases
+        .extract_if(.., |release| release.get("status") == Some(&json!("draft")))
+        .for_each(drop);
     releases.push(json!({
         "name": version,
         "versionCodes": [version_code.to_string()],

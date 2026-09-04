@@ -1,5 +1,5 @@
 use std::{
-    path::{Path, PathBuf},
+    path::Path,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
@@ -11,7 +11,7 @@ use ring::{
     signature::{ECDSA_P256_SHA256_FIXED_SIGNING, EcdsaKeyPair},
 };
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::json;
 use sha2::{Digest as _, Sha256};
 use tokio::time::sleep;
 
@@ -283,7 +283,7 @@ impl Api {
     }
 
     async fn commit_build_upload_file(&self, upload_file: &str, artifact: &File) -> Result<()> {
-        let hash = format!("{:x}", Sha256::digest(&artifact.bytes));
+        let hash = hex::encode(Sha256::digest(&artifact.bytes));
         let _: Single<UploadFile> = http::json(
             self.request(Method::PATCH, &format!("/buildUploadFiles/{upload_file}"))?
                 .json(&json!({
@@ -445,7 +445,7 @@ impl Api {
             return Ok(());
         }
 
-        let _: Linkage = http::json(
+        http::empty(
             self.request(
                 Method::PATCH,
                 &format!("/appStoreVersions/{version}/relationships/build"),
@@ -563,7 +563,11 @@ impl Api {
             .collect::<Vec<_>>();
         if actual.len() == expected.len()
             && actual.iter().zip(&expected).all(|(actual, expected)| {
-                actual.0 == expected.0 && actual.1 == Some(expected.1) && actual.2 == "COMPLETE"
+                actual.0 == expected.0
+                    && actual
+                        .1
+                        .is_some_and(|checksum| checksum.eq_ignore_ascii_case(expected.1))
+                    && actual.2 == "COMPLETE"
             })
         {
             return Ok(());

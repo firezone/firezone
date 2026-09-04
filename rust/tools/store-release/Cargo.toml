@@ -9,8 +9,9 @@ publish = false
 anyhow = { workspace = true }
 base64 = { workspace = true, features = ["std"] }
 clap = { workspace = true, features = ["derive", "env"] }
+hex = { workspace = true }
 md5 = { workspace = true }
-reqwest = { workspace = true, features = ["json", "rustls-no-provider"] }
+reqwest = { workspace = true, features = ["json", "query", "rustls-no-provider"] }
 ring = { workspace = true }
 rustls = { workspace = true }
 serde = { workspace = true, features = ["derive"] }

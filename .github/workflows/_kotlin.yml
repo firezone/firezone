@@ -2,6 +2,11 @@ name: Build Android app
 on:
   workflow_call:
   workflow_dispatch:
+    inputs:
+      prepare_store:
+        description: Prepare the internal Play draft from this branch
+        type: boolean
+        default: false
 
 defaults:
   run:
@@ -219,6 +224,7 @@ jobs:
     steps:
       - name: Set release metadata
         id: release-metadata
+        working-directory: .
         run: echo "version=${RELEASE_NAME#android-client-}" >> "$GITHUB_OUTPUT"
       - uses: release-drafter/release-drafter@34d80673e067bdc0c24568d3af899c216adcfaa9 # v7.7.0
         if: "${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}"
@@ -330,8 +336,23 @@ jobs:
       - name: Upload Crashlytics symbols
         if: ${{ matrix.package-type == 'aab' && github.event_name == 'workflow_dispatch' }}
         run: ./gradlew --no-daemon uploadCrashlyticsSymbolFileRelease
+
+  prepare-play-store:
+    name: prepare-play-store
+    if: ${{ github.event_name == 'workflow_dispatch' && (github.ref_name == 'main' || inputs.prepare_store) }}
+    needs: [update-release-draft, build_release]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-rust-stable
+      - uses: ./.github/actions/setup-rust-sccache
+        with:
+          azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: Android aab
+          path: ${{ runner.temp }}/play-store
       - name: Authenticate to Google Cloud (Play Store upload)
-        if: ${{ matrix.package-type == 'aab' && github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}
         id: gcp-auth
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
         with:
@@ -346,7 +367,6 @@ jobs:
       # straight to end users. Promotion from internal -> production is a manual
       # step in the Play Console.
       - name: Prepare Google Play draft (internal track)
-        if: ${{ matrix.package-type == 'aab' && github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}
         uses: ./.github/actions/run-workspace-tool
         env:
           ACCESS_TOKEN: ${{ steps.gcp-auth.outputs.access_token }}
@@ -355,7 +375,7 @@ jobs:
           args: >-
             android prepare
             --package-name dev.firezone.android
-            --bundle kotlin/android/${{ matrix.output-path }}
+            --bundle ${{ runner.temp }}/play-store/app-release.aab
             --version ${{ needs.update-release-draft.outputs.version }}
             --track internal
             --whats-new https://www.firezone.dev/changelog
