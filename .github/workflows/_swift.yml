@@ -410,6 +410,7 @@ jobs:
       ASC_ISSUER_ID: ${{ secrets.APPLE_APP_STORE_CONNECT_ISSUER_ID }}
       ASC_KEY_ID: ${{ secrets.APPLE_APP_STORE_CONNECT_API_KEY_ID }}
       ASC_PRIVATE_KEY_B64: ${{ secrets.APPLE_APP_STORE_CONNECT_API_KEY }}
+      ASC_TELEMETRY_DISABLED: "1"
       BUILD_NUMBER: ${{ needs.update-release-draft.outputs.build_number }}
       VERSION: ${{ needs.update-release-draft.outputs.version }}
     steps:
@@ -421,7 +422,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Stage App Store inputs
         run: |
-          metadata_dir="${RUNNER_TEMP}/app-store-metadata/versions/${VERSION}"
+          metadata_dir="${RUNNER_TEMP}/app-store-metadata/version/${VERSION}"
           iphone_dir="${RUNNER_TEMP}/app-store-screenshots/ios/iphone/en-US"
           ipad_dir="${RUNNER_TEMP}/app-store-screenshots/ios/ipad/en-US"
           macos_dir="${RUNNER_TEMP}/app-store-screenshots/macos/en-US"
@@ -488,77 +489,25 @@ jobs:
             --output json)
           echo "$result"
           echo "MACOS_BUILD_ID=$(jq -er '.buildId' <<< "$result")" >> "$GITHUB_ENV"
-      - name: Find iOS App Store version
-        id: ios-version
-        env:
-          PLATFORM: IOS
-        run: |
-          target=$(asc versions list --app "$ASC_APP_ID" --version "$VERSION" --platform "$PLATFORM" --output json)
-          count=$(jq -er '.data | length' <<< "$target")
-          if [[ "$count" == 1 ]]; then
-            echo "exists=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          if [[ "$count" != 0 ]]; then
-            echo "Expected at most one iOS App Store version ${VERSION}, found ${count}" >&2
-            exit 1
-          fi
-          source=$(asc versions list --app "$ASC_APP_ID" --platform "$PLATFORM" --limit 200 --output json \
-            | jq -er --arg version "$VERSION" '[.data[] | select(.attributes.versionString != $version)] | sort_by(.attributes.createdDate) | last | .attributes.versionString')
-          echo "exists=false" >> "$GITHUB_OUTPUT"
-          echo "source=$source" >> "$GITHUB_OUTPUT"
-      - name: Find macOS App Store version
-        id: macos-version
-        env:
-          PLATFORM: MAC_OS
-        run: |
-          target=$(asc versions list --app "$ASC_APP_ID" --version "$VERSION" --platform "$PLATFORM" --output json)
-          count=$(jq -er '.data | length' <<< "$target")
-          if [[ "$count" == 1 ]]; then
-            echo "exists=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          if [[ "$count" != 0 ]]; then
-            echo "Expected at most one macOS App Store version ${VERSION}, found ${count}" >&2
-            exit 1
-          fi
-          source=$(asc versions list --app "$ASC_APP_ID" --platform "$PLATFORM" --limit 200 --output json \
-            | jq -er --arg version "$VERSION" '[.data[] | select(.attributes.versionString != $version)] | sort_by(.attributes.createdDate) | last | .attributes.versionString')
-          echo "exists=false" >> "$GITHUB_OUTPUT"
-          echo "source=$source" >> "$GITHUB_OUTPUT"
-      - name: Create the iOS App Store version
-        if: steps.ios-version.outputs.exists == 'false'
-        run: >-
-          asc versions create
-          --app "$ASC_APP_ID"
-          --version "$VERSION"
-          --platform IOS
-          --release-type MANUAL
-          --copy-metadata-from "${{ steps.ios-version.outputs.source }}"
-      - name: Create the macOS App Store version
-        if: steps.macos-version.outputs.exists == 'false'
-        run: >-
-          asc versions create
-          --app "$ASC_APP_ID"
-          --version "$VERSION"
-          --platform MAC_OS
-          --release-type MANUAL
-          --copy-metadata-from "${{ steps.macos-version.outputs.source }}"
-      - name: Keep the App Store releases manual
+      - name: Create or reuse the App Store versions
         run: |
           for platform in IOS MAC_OS; do
-            version_id=$(asc versions list \
-              --app "$ASC_APP_ID" \
-              --version "$VERSION" \
-              --platform "$platform" \
-              --output json \
-              | jq -er 'if (.data | length) == 1 then .data[0].id else error("expected one version") end')
+            target=$(asc versions list --app "$ASC_APP_ID" --version "$VERSION" --platform "$platform" --output json)
+            count=$(jq -er '.data | length' <<< "$target")
+            if [[ "$count" == 0 ]]; then
+              source=$(asc versions list --app "$ASC_APP_ID" --platform "$platform" --latest --output json \
+                | jq -er 'if (.items | length) == 1 then .items[0].attributes.versionString else error("expected one source version") end')
+              asc versions create \
+                --app "$ASC_APP_ID" \
+                --version "$VERSION" \
+                --platform "$platform" \
+                --release-type MANUAL \
+                --copy-metadata-from "$source"
+              target=$(asc versions list --app "$ASC_APP_ID" --version "$VERSION" --platform "$platform" --output json)
+            fi
+            version_id=$(jq -er 'if (.data | length) == 1 and .data[0].attributes.appStoreState == "PREPARE_FOR_SUBMISSION" then .data[0].id else error("expected one editable version") end' <<< "$target")
             asc versions update --version-id "$version_id" --release-type MANUAL
           done
-      - name: Set What's New on iOS
-        run: asc metadata push --app "$ASC_APP_ID" --version "$VERSION" --platform IOS --dir "$METADATA_DIR"
-      - name: Set What's New on macOS
-        run: asc metadata push --app "$ASC_APP_ID" --version "$VERSION" --platform MAC_OS --dir "$METADATA_DIR"
       - name: Replace iPhone screenshots
         run: >-
           asc screenshots upload
@@ -568,6 +517,7 @@ jobs:
           --path "$IPHONE_SCREENSHOTS"
           --device-type APP_IPHONE_67
           --replace
+          --confirm
       - name: Replace iPad screenshots
         run: >-
           asc screenshots upload
@@ -577,6 +527,7 @@ jobs:
           --path "$IPAD_SCREENSHOTS"
           --device-type APP_IPAD_PRO_3GEN_129
           --replace
+          --confirm
       - name: Replace macOS screenshots
         run: >-
           asc screenshots upload
@@ -586,12 +537,13 @@ jobs:
           --path "$MACOS_SCREENSHOTS"
           --device-type APP_DESKTOP
           --replace
+          --confirm
       - name: Stage the iOS App Store release
         run: >-
           asc release stage
           --app "$ASC_APP_ID"
           --version "$VERSION"
-          --build "$IOS_BUILD_ID"
+          --build-id "$IOS_BUILD_ID"
           --platform IOS
           --metadata-dir "$METADATA_DIR"
           --confirm
@@ -600,7 +552,7 @@ jobs:
           asc release stage
           --app "$ASC_APP_ID"
           --version "$VERSION"
-          --build "$MACOS_BUILD_ID"
+          --build-id "$MACOS_BUILD_ID"
           --platform MAC_OS
           --metadata-dir "$METADATA_DIR"
           --confirm
