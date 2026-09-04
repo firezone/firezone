@@ -238,14 +238,13 @@ jobs:
 
           declare -A build_ids version_ids
           for platform in IOS MAC_OS; do
-            build=$(asc builds wait \
+            build=$(asc builds info \
               --app "$ASC_APP_ID" \
               --version "$version" \
               --build-number "$BUILD_NUMBER" \
               --platform "$platform" \
-              --fail-on-invalid \
               --output json)
-            build_ids[$platform]=$(jq -er '.buildId' <<< "$build")
+            build_ids[$platform]=$(jq -er '.data.id' <<< "$build")
           done
 
           for platform in IOS MAC_OS; do
