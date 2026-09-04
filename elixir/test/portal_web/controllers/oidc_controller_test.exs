@@ -60,6 +60,17 @@ defmodule PortalWeb.OIDCControllerTest do
       assert_oidc_nonce_bound(conn)
     end
 
+    test "requires a fresh IdP login for an OAuth approval", %{conn: conn} do
+      account = account_fixture()
+      %{provider: provider} = setup_oidc_provider(account)
+
+      conn = get(conn, "/#{account.id}/sign_in/oidc/#{provider.id}?as=oauth")
+
+      params = conn |> redirected_to() |> URI.parse() |> Map.fetch!(:query) |> URI.decode_query()
+      assert params["prompt"] == "login"
+      assert oidc_cookie_from_response(conn).params["as"] == "oauth"
+    end
+
     test "accepts account slug instead of id", %{conn: conn} do
       account = account_fixture()
       %{provider: provider} = setup_oidc_provider(account)

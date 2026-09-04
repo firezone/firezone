@@ -272,7 +272,7 @@ defmodule PortalWeb.OIDCController do
   end
 
   defp provider_redirect(conn, account, provider, params) do
-    opts = authorization_opts(provider)
+    opts = authorization_opts(provider, params)
 
     case PortalWeb.OIDC.authorization_uri(provider, opts) do
       {:ok, uri, state, verifier} ->
@@ -323,7 +323,13 @@ defmodule PortalWeb.OIDCController do
 
   defp authorization_error_message(reason), do: discovery_error_message(reason)
 
-  defp authorization_opts(provider) do
+  # An OAuth grant is a step-up operation. Starting a new OIDC round trip is
+  # not enough by itself because an IdP session can otherwise complete it
+  # silently; prompt=login requires a fresh authentication ceremony.
+  defp authorization_opts(_provider, %{"as" => "oauth"}),
+    do: [additional_params: %{prompt: "login"}]
+
+  defp authorization_opts(provider, _params) do
     if provider.__struct__ in [
          Portal.Google.AuthProvider,
          Portal.Entra.AuthProvider,

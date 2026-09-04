@@ -7,6 +7,7 @@ defmodule Portal.OAuthTest do
   import Portal.SubjectFixtures
 
   alias Portal.OAuth
+  alias Portal.Scope
 
   @verifier "a-code-verifier-long-enough-to-satisfy-the-pkce-rules"
   @other_verifier "a-different-verifier-that-is-also-long-enough-to-pass"
@@ -46,6 +47,58 @@ defmodule Portal.OAuthTest do
     test "requires both parameters", %{client: client} do
       assert {:error, "invalid_request", _} =
                OAuth.validate_client(%{"client_id" => client.client_id})
+    end
+
+    test "rejects a metadata document with a blank client name" do
+      client_id = "https://localhost/blank-name.json"
+
+      Req.Test.stub(Portal.OAuth.ClientMetadata, fn conn ->
+        Req.Test.json(conn, %{
+          "client_id" => client_id,
+          "client_name" => "   ",
+          "redirect_uris" => [redirect_uri()]
+        })
+      end)
+
+      assert {:error, "invalid_client", _description} =
+               OAuth.validate_client(%{
+                 "client_id" => client_id,
+                 "redirect_uri" => redirect_uri()
+               })
+    end
+
+    test "rejects script and fragment redirect URIs regardless of scheme casing" do
+      for {suffix, unsafe_redirect_uri} <- [
+            {"script", "JaVaScRiPt:alert(document.domain)"},
+            {"fragment", "https://client.example.com/callback#fragment"}
+          ] do
+        client_id = "https://localhost/#{suffix}.json"
+
+        Req.Test.stub(Portal.OAuth.ClientMetadata, fn conn ->
+          Req.Test.json(conn, %{
+            "client_id" => client_id,
+            "client_name" => "Unsafe redirect",
+            "redirect_uris" => [unsafe_redirect_uri]
+          })
+        end)
+
+        assert {:error, "invalid_client", _description} =
+                 OAuth.validate_client(%{
+                   "client_id" => client_id,
+                   "redirect_uri" => unsafe_redirect_uri
+                 })
+      end
+    end
+
+    test "rechecks redirect safety for an already cached client" do
+      redirect_uri = "JaVaScRiPt:alert(document.domain)"
+      client = oauth_client_fixture(redirect_uris: [redirect_uri])
+
+      assert {:error, "invalid_request", _description} =
+               OAuth.validate_client(%{
+                 "client_id" => client.client_id,
+                 "redirect_uri" => redirect_uri
+               })
     end
   end
 
@@ -114,6 +167,7 @@ defmodule Portal.OAuthTest do
       assert {:ok, request} =
                OAuth.validate_request(params(client), client, redirect_uri(), @resource)
 
+      assert request.requested_scopes == ["policies:read"]
       assert request.scopes == ["policies:read"]
       assert request.resource == @resource
     end
@@ -170,7 +224,7 @@ defmodule Portal.OAuthTest do
       assert description =~ "admin:everything"
     end
 
-    test "accepts a request that asks for no scope, leaving the choice to the person", %{
+    test "defaults an omitted scope ceiling to every supported scope", %{
       client: client
     } do
       params = Map.delete(params(client), "scope")
@@ -178,7 +232,8 @@ defmodule Portal.OAuthTest do
       assert {:ok, request} =
                OAuth.validate_request(params, client, redirect_uri(), @resource)
 
-      assert request.scopes == []
+      assert request.requested_scopes == Scope.all()
+      assert request.scopes == Scope.preset("read")
     end
 
     test "takes the scope from a list, which is how the consent form posts it", %{client: client} do
@@ -187,7 +242,13 @@ defmodule Portal.OAuthTest do
       assert {:ok, request} =
                OAuth.validate_request(params, client, redirect_uri(), @resource)
 
-      assert Enum.sort(request.scopes) == ["policies:read", "resources:read", "resources:write"]
+      assert Enum.sort(request.requested_scopes) == [
+               "policies:read",
+               "resources:read",
+               "resources:write"
+             ]
+
+      assert Enum.sort(request.scopes) == ["policies:read", "resources:read"]
     end
 
     test "treats write as implying read", %{client: client} do
@@ -196,7 +257,18 @@ defmodule Portal.OAuthTest do
       assert {:ok, request} =
                OAuth.validate_request(params, client, redirect_uri(), @resource)
 
-      assert request.scopes == ["policies:read", "policies:write"]
+      assert request.requested_scopes == ["policies:read", "policies:write"]
+      assert request.scopes == ["policies:read"]
+    end
+
+    test "defaults a write-only request to no selected scope", %{client: client} do
+      params = %{params(client) | "scope" => "gateway_tokens:write"}
+
+      assert {:ok, request} =
+               OAuth.validate_request(params, client, redirect_uri(), @resource)
+
+      assert request.requested_scopes == ["gateway_tokens:write"]
+      assert request.scopes == []
     end
   end
 
@@ -227,6 +299,21 @@ defmodule Portal.OAuthTest do
 
       assert [grant] = OAuth.list_grants(context.subject)
       assert grant.scopes == ["policies:read", "policies:write"]
+    end
+
+    test "refuses to record scopes outside the validated request", context do
+      {:ok, request} =
+        OAuth.validate_request(
+          params(context.client),
+          context.client,
+          redirect_uri(),
+          @resource
+        )
+
+      request = %{request | scopes: ["resources:read"]}
+
+      assert {:error, :invalid_scope} = OAuth.consent(request, context.subject)
+      assert OAuth.list_grants(context.subject) == []
     end
 
     test "a code cannot be redeemed twice", context do
@@ -282,7 +369,8 @@ defmodule Portal.OAuthTest do
   end
 
   describe "refresh/2" do
-    test "rotates both secrets and invalidates the old refresh token", context do
+    test "rotates both secrets and revokes the family when the old refresh token is replayed",
+         context do
       refresh = refreshable_token(context)
 
       assert {:ok, response} = OAuth.refresh(refresh_params(context, refresh), @resource)
@@ -292,6 +380,9 @@ defmodule Portal.OAuthTest do
 
       assert {:error, "invalid_grant", _description} =
                OAuth.refresh(refresh_params(context, refresh), @resource)
+
+      assert {:error, "invalid_grant", _description} =
+               OAuth.refresh(refresh_params(context, response.refresh_token), @resource)
     end
 
     test "refuses a refresh token for another audience", context do
@@ -407,6 +498,7 @@ defmodule Portal.OAuthTest do
     {:ok, request} =
       OAuth.validate_request(params, context.client, redirect_uri(), @resource)
 
+    request = %{request | scopes: request.requested_scopes}
     {:ok, code} = OAuth.consent(request, context.subject)
     code
   end

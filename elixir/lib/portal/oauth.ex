@@ -36,8 +36,23 @@ defmodule Portal.OAuth do
     A validated authorization request, ready to be shown to the resource owner.
     """
 
-    @enforce_keys [:client, :redirect_uri, :resource, :scopes, :code_challenge]
-    defstruct [:client, :redirect_uri, :resource, :scopes, :code_challenge, :state]
+    @enforce_keys [
+      :client,
+      :redirect_uri,
+      :resource,
+      :requested_scopes,
+      :scopes,
+      :code_challenge
+    ]
+    defstruct [
+      :client,
+      :redirect_uri,
+      :resource,
+      :requested_scopes,
+      :scopes,
+      :code_challenge,
+      :state
+    ]
 
     @type t :: %__MODULE__{}
   end
@@ -96,13 +111,14 @@ defmodule Portal.OAuth do
     with :ok <- validate_response_type(params),
          {:ok, challenge} <- validate_pkce(params),
          :ok <- validate_resource(params, expected_resource),
-         {:ok, scopes} <- validate_scope(params) do
+         {:ok, requested_scopes} <- validate_scope(params) do
       {:ok,
        %Request{
          client: client,
          redirect_uri: redirect_uri,
          resource: expected_resource,
-         scopes: scopes,
+         requested_scopes: requested_scopes,
+         scopes: default_scopes(requested_scopes),
          code_challenge: challenge,
          state: params["state"]
        }}
@@ -117,12 +133,16 @@ defmodule Portal.OAuth do
   disagree about what was allowed.
   """
   def consent(%Request{} = request, %Subject{} = subject) do
-    Database.transaction(fn ->
-      with {:ok, grant} <- upsert_grant(request, subject),
-           {:ok, code} <- insert_code(request, grant, subject) do
-        {:ok, Authentication.encode_fragment!(code)}
-      end
-    end)
+    with :ok <- validate_granted_scopes(request) do
+      Database.transaction(fn -> record_consent(request, subject) end)
+    end
+  end
+
+  defp record_consent(request, subject) do
+    with {:ok, grant} <- upsert_grant(request, subject),
+         {:ok, code} <- insert_code(request, grant, subject) do
+      {:ok, Authentication.encode_fragment!(code)}
+    end
   end
 
   @doc """
@@ -162,20 +182,13 @@ defmodule Portal.OAuth do
          {:ok, client_id} <- fetch_param(params, "client_id"),
          {:ok, {nonce, account_id, id, fragment}} <- decode(encoded, "mcp_refresh"),
          {:ok, token} <- Database.fetch_refreshable_token(account_id, id),
-         :ok <-
-           Authentication.verify_fragment(
-             token.refresh_secret_hash,
-             token.refresh_secret_salt,
-             nonce,
-             fragment
-           ),
+         :ok <- verify_refresh_secret(token, nonce, fragment),
          :ok <- validate_token_client(token, client_id),
          :ok <- validate_audience(token, expected_resource) do
       rotate(token)
     else
       {:error, :missing_param, param} -> invalid_request("#{param} is required.")
       {:error, reason} -> invalid_grant(reason)
-      :error -> invalid_grant(:secret_mismatch)
     end
   end
 
@@ -255,19 +268,34 @@ defmodule Portal.OAuth do
     end
   end
 
-  # A client may ask for nothing and leave the choice entirely to the person on
-  # the consent screen, so an absent scope is a request for none rather than an
-  # error. What is granted is whatever they tick there.
+  # MCP clients need to let the person choose broader access than the initial
+  # read-only preset. An omitted scope therefore uses every supported scope as
+  # the request ceiling; explicit scopes remain a hard ceiling.
   defp validate_scope(params) do
     case params |> scope_param() |> Scope.parse() do
       {:ok, scopes} ->
         {:ok, scopes}
 
       {:error, :missing} ->
-        {:ok, []}
+        {:ok, Scope.all()}
 
       {:error, {:unknown, unknown}} ->
         {:error, "invalid_scope", "Unknown scopes: #{Enum.join(unknown, ", ")}"}
+    end
+  end
+
+  defp default_scopes(requested_scopes) do
+    Enum.filter(Scope.preset("read"), &(&1 in requested_scopes))
+  end
+
+  defp validate_granted_scopes(%Request{} = request) do
+    granted = MapSet.new(request.scopes)
+    requested = MapSet.new(request.requested_scopes)
+
+    if granted != MapSet.new() and MapSet.subset?(granted, requested) do
+      :ok
+    else
+      {:error, :invalid_scope}
     end
   end
 
@@ -377,6 +405,34 @@ defmodule Portal.OAuth do
 
   defp verify_revoked_secret(_token, _type, _nonce, _fragment), do: :error
 
+  # A refresh token is server-signed, so a valid token whose secret no longer
+  # matches is a replay of an older rotation rather than attacker-chosen junk.
+  # Revoke the family to prevent the party that won the earlier refresh race
+  # from retaining control with the replacement token.
+  defp verify_refresh_secret(
+         %OAuthToken{refresh_secret_hash: hash, refresh_secret_salt: salt} = token,
+         nonce,
+         fragment
+       )
+       when is_binary(hash) and is_binary(salt) do
+    case Authentication.verify_fragment(
+           hash,
+           salt,
+           nonce,
+           fragment
+         ) do
+      :ok ->
+        :ok
+
+      :error ->
+        Database.delete_token(token.account_id, token.id)
+        {:error, :refresh_token_reuse}
+    end
+  end
+
+  defp verify_refresh_secret(%OAuthToken{}, _nonce, _fragment),
+    do: {:error, :invalid_token}
+
   # RFC 6749 section 6: a public client names itself on a refresh, and the token
   # it names itself with has to be one that was issued to it.
   defp validate_token_client(%OAuthToken{} = token, client_id) do
@@ -451,7 +507,13 @@ defmodule Portal.OAuth do
 
     case Database.rotate_token(token, updates) do
       {:ok, updated} -> {:ok, token_response(updated, access_fragment, refresh_fragment)}
-      :error -> invalid_grant(:secret_mismatch)
+
+      :error ->
+        # A compare-and-swap failure means another use of this refresh token
+        # won the race. Revoke what it rotated to rather than leaving that
+        # caller holding the only valid replacement.
+        Database.delete_token(token.account_id, token.id)
+        invalid_grant(:refresh_token_reuse)
     end
   end
 

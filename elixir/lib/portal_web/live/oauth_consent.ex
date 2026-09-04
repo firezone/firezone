@@ -2,9 +2,9 @@ defmodule PortalWeb.OAuthConsent do
   @moduledoc """
   The screen where a person grants an app access to their account.
 
-  The request is checked once on mount and then kept in the socket. What is
-  granted is what the server validated, so nothing about the request is read
-  back from the browser and there is nothing to re-check on the way in.
+  The request is checked once on mount and then kept in the socket. The browser
+  posts the person's selection, which is checked again against the validated
+  request before a grant is recorded.
 
   Errors are delivered two different ways on purpose. Until the client and its
   redirect URI have been checked, nothing may be sent to that URI, because doing
@@ -52,7 +52,12 @@ defmodule PortalWeb.OAuthConsent do
     </p>
 
     <.form for={%{}} phx-submit="allow">
-      <.scope_picker scopes={@scopes} field_name="scope[]" error={@error} />
+      <.scope_picker
+        scopes={@scopes}
+        allowed_scopes={@request.requested_scopes}
+        field_name="scope[]"
+        error={@error}
+      />
 
       <p class="text-xs text-subtle leading-relaxed my-6">
         You can disconnect this app at any time from Your settings, which immediately
@@ -83,7 +88,8 @@ defmodule PortalWeb.OAuthConsent do
   end
 
   def handle_event("select_scopes", %{"preset" => preset}, socket) do
-    {:noreply, assign(socket, scopes: Scope.preset(preset), error: nil)}
+    scopes = within_request(Scope.preset(preset), socket.assigns.request)
+    {:noreply, assign(socket, scopes: scopes, error: nil)}
   end
 
   def handle_event("deny", _params, socket) do
@@ -95,7 +101,15 @@ defmodule PortalWeb.OAuthConsent do
 
     case params |> Map.get("scope", []) |> Scope.encode() |> Scope.parse() do
       {:ok, scopes} ->
-        grant(socket, %{request | scopes: scopes})
+        if within_request?(scopes, request) do
+          grant(socket, %{request | scopes: scopes})
+        else
+          {:noreply,
+           assign(socket,
+             scopes: within_request(scopes, request),
+             error: "Select only permissions requested by this app."
+           )}
+        end
 
       {:error, :missing} ->
         {:noreply,
@@ -124,6 +138,16 @@ defmodule PortalWeb.OAuthConsent do
     end
   end
 
+  defp within_request(scopes, request) do
+    Enum.filter(Scope.expand(scopes), &(&1 in request.requested_scopes))
+  end
+
+  defp within_request?(scopes, request) do
+    scopes
+    |> MapSet.new()
+    |> MapSet.subset?(MapSet.new(request.requested_scopes))
+  end
+
   # Nothing disconnects this socket when its session expires, so it is checked
   # again here rather than only on mount.
   defp grant(socket, request) do
@@ -131,6 +155,12 @@ defmodule PortalWeb.OAuthConsent do
 
     with {:ok, _session} <-
            Authentication.fetch_portal_session(subject.account.id, subject.credential.id),
+         :ok <-
+           Authentication.consume_portal_session(
+             subject.account.id,
+             subject.actor.id,
+             subject.credential.id
+           ),
          {:ok, code} <- OAuth.consent(request, subject) do
       {:noreply, redirect_to_client(socket, request.redirect_uri, request.state, %{"code" => code})}
     else
@@ -148,6 +178,15 @@ defmodule PortalWeb.OAuthConsent do
 
   defp decline(socket) do
     request = socket.assigns.request
+    subject = socket.assigns.subject
+
+    # Cancel means the step-up proof is abandoned, not left behind for another
+    # authorization request in this browser to reuse.
+    Authentication.consume_portal_session(
+      subject.account.id,
+      subject.actor.id,
+      subject.credential.id
+    )
 
     redirect_to_client(socket, request.redirect_uri, request.state, %{
       "error" => "access_denied",

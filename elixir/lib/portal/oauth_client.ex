@@ -39,9 +39,9 @@ defmodule Portal.OAuthClient do
 
   def changeset(%Ecto.Changeset{} = changeset) do
     changeset
-    |> validate_required(~w[client_id client_name redirect_uris metadata_expires_at]a)
     |> trim_change(:client_name)
-    |> validate_length(:client_name, max: 255)
+    |> validate_required(~w[client_id client_name redirect_uris metadata_expires_at]a)
+    |> validate_length(:client_name, min: 1, max: 255)
     |> validate_length(:client_id, max: 2048)
     |> unique_constraint(:client_id)
   end

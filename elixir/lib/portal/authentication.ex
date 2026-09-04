@@ -276,6 +276,17 @@ defmodule Portal.Authentication do
     Database.delete_portal_session(session)
   end
 
+  @doc """
+  Atomically consumes a portal session as a one-shot authentication proof.
+
+  The actor binding matters for step-up flows: a session may only authorize an
+  action for the same actor it authenticated, and concurrent attempts may not
+  both spend the same proof.
+  """
+  def consume_portal_session(account_id, actor_id, session_id) do
+    Database.consume_portal_session(account_id, actor_id, session_id)
+  end
+
   # Token encoding/decoding
 
   @doc """
@@ -920,6 +931,23 @@ defmodule Portal.Authentication do
       |> Safe.delete_all()
 
       :ok
+    end
+
+    def consume_portal_session(account_id, actor_id, session_id) do
+      now = DateTime.utc_now()
+
+      from(ps in PortalSession,
+        where: ps.account_id == ^account_id,
+        where: ps.actor_id == ^actor_id,
+        where: ps.id == ^session_id,
+        where: ps.expires_at > ^now
+      )
+      |> Safe.unscoped()
+      |> Safe.delete_all()
+      |> case do
+        {1, _} -> :ok
+        {0, _} -> {:error, :not_found}
+      end
     end
   end
 end

@@ -502,12 +502,11 @@ defmodule PortalWeb.OAuthControllerTest do
 
       assert response =~ client.client_name
 
-      # Every scope is offered as a checkbox; the ones the client asked for
-      # start ticked and the rest are for the person to choose.
+      # An explicit scope is the ceiling, so unrelated permissions are not
+      # offered by the consent screen.
       assert response =~ ~s(name="scope[]")
       assert response =~ ~s(value="policies:read" checked)
-      assert response =~ ~s(value="resources:write")
-      refute response =~ ~s(value="resources:write" checked)
+      refute response =~ ~s(value="resources:write")
     end
 
     test "shows the client's icon when one was cached, inlined rather than hotlinked", %{
@@ -604,7 +603,7 @@ defmodule PortalWeb.OAuthControllerTest do
       assert response =~ "Only this address is checked"
     end
 
-    test "names the write permission separately when it is asked for", %{
+    test "offers requested write access but defaults the selection to read-only", %{
       conn: conn,
       account: account,
       actor: actor,
@@ -619,7 +618,9 @@ defmodule PortalWeb.OAuthControllerTest do
 
       response = html_response(conn, 200)
 
-      assert response =~ ~s(value="policies:write" checked)
+      assert response =~ ~s(value="policies:read" checked)
+      assert response =~ ~s(value="policies:write")
+      refute response =~ ~s(value="policies:write" checked)
     end
 
     test "renders an error rather than redirecting when the client is unknown", %{
@@ -663,6 +664,21 @@ defmodule PortalWeb.OAuthControllerTest do
   end
 
   describe "deciding on the consent screen" do
+    test "omitted scope offers every permission but selects only read access", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      client: client
+    } do
+      {:ok, _lv, html} = consent_screen(conn, account, actor, client, drop: "scope")
+
+      assert html =~ ~s(value="policies:read" checked)
+      assert html =~ ~s(value="policies:write")
+      refute html =~ ~s(value="policies:write" checked)
+      assert html =~ ~s(value="gateway_tokens:write")
+      refute html =~ ~s(value="gateway_tokens:write" checked)
+    end
+
     test "a preset ticks boxes without granting anything", %{
       conn: conn,
       account: account,
@@ -686,13 +702,43 @@ defmodule PortalWeb.OAuthControllerTest do
     } do
       {:ok, lv, _html} = consent_screen(conn, account, actor, client, drop: "scope")
 
-      html = lv |> form("form") |> render_submit()
+      html = render_submit(lv, "allow", %{"scope" => []})
 
       assert html =~ "Select at least one permission to continue."
       assert Portal.Repo.all(Portal.OAuthGrant) == []
     end
 
-    test "the person can grant a scope the client did not ask for", %{
+    test "accepting the default grants only read access", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      client: client
+    } do
+      {:ok, lv, _html} = consent_screen(conn, account, actor, client, drop: "scope")
+
+      assert {:error, {:redirect, %{to: _location}}} =
+               lv |> form("form") |> render_submit()
+
+      assert [grant] = Portal.Repo.all(Portal.OAuthGrant)
+      assert Enum.sort(grant.scopes) == Enum.sort(Portal.Scope.preset("read"))
+    end
+
+    test "omitted scope lets the person opt into write access", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      client: client
+    } do
+      {:ok, lv, _html} = consent_screen(conn, account, actor, client, drop: "scope")
+
+      assert {:error, {:redirect, %{to: _location}}} =
+               render_submit(lv, "allow", %{"scope" => ["resources:write"]})
+
+      assert [grant] = Portal.Repo.all(Portal.OAuthGrant)
+      assert grant.scopes == ["resources:read", "resources:write"]
+    end
+
+    test "the person cannot grant a scope the client did not ask for", %{
       conn: conn,
       account: account,
       actor: actor,
@@ -700,11 +746,30 @@ defmodule PortalWeb.OAuthControllerTest do
     } do
       {:ok, lv, _html} = consent_screen(conn, account, actor, client)
 
+      html = render_submit(lv, "allow", %{"scope" => ["resources:read"]})
+
+      assert html =~ "Select only permissions requested by this app."
+      assert Portal.Repo.all(Portal.OAuthGrant) == []
+    end
+
+    test "the person can grant requested write access", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      client: client
+    } do
+      params = %{authorize_params(client) | "scope" => "policies:write"}
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_oauth_conn(actor)
+        |> live(~p"/#{account}/oauth/authorize?#{params}")
+
       assert {:error, {:redirect, %{to: _location}}} =
-               render_submit(lv, "allow", %{"scope" => ["resources:read"]})
+               render_submit(lv, "allow", %{"scope" => ["policies:write"]})
 
       assert [grant] = Portal.Repo.all(Portal.OAuthGrant)
-      assert grant.scopes == ["resources:read"]
+      assert grant.scopes == ["policies:read", "policies:write"]
     end
 
     test "approving returns a code to the client", %{
@@ -724,6 +789,25 @@ defmodule PortalWeb.OAuthControllerTest do
       assert query["state"] == "opaque-state"
       assert query["iss"] == PortalWeb.Endpoint.url()
       refute Map.has_key?(query, "error")
+    end
+
+    test "an approval session is a one-shot proof", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      client: client
+    } do
+      conn = authorize_oauth_conn(conn, actor)
+
+      {:ok, lv, _html} = live(conn, ~p"/#{account}/oauth/authorize?#{authorize_params(client)}")
+
+      assert {:error, {:redirect, %{to: _location}}} =
+               render_submit(lv, "allow", %{"scope" => ["policies:read"]})
+
+      assert conn
+             |> recycle()
+             |> get(~p"/#{account}/oauth/authorize?#{authorize_params(client)}")
+             |> redirected_to(302) =~ "/sign_in"
     end
 
     test "approving after the session has gone sends the person back to sign in", %{

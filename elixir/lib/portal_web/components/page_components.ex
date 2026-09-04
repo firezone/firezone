@@ -12,11 +12,12 @@ defmodule PortalWeb.PageComponents do
   ticked. They post to different fields, which is what `field_name` is for.
   """
   attr :scopes, :list, required: true, doc: "The scopes currently selected"
+  attr :allowed_scopes, :list, default: nil, doc: "The scopes that may be selected"
   attr :field_name, :string, required: true, doc: "Name for each checkbox"
   attr :error, :string, default: nil
 
   def scope_picker(assigns) do
-    assigns = assign(assigns, :entities, sorted_scope_entities())
+    assigns = assign(assigns, :entities, sorted_scope_entities(assigns.allowed_scopes))
 
     ~H"""
     <fieldset>
@@ -91,8 +92,22 @@ defmodule PortalWeb.PageComponents do
     """
   end
 
-  defp sorted_scope_entities do
-    Enum.sort_by(Portal.Scope.levels_by_entity(), fn {entity, _levels} ->
+  defp sorted_scope_entities(allowed_scopes) do
+    allowed_scopes = allowed_scopes && Portal.Scope.expand(allowed_scopes)
+
+    Portal.Scope.levels_by_entity()
+    |> Enum.map(fn {entity, levels} ->
+      levels =
+        if allowed_scopes do
+          Enum.filter(levels, &(Portal.Scope.to_string(entity, &1) in allowed_scopes))
+        else
+          levels
+        end
+
+      {entity, levels}
+    end)
+    |> Enum.reject(fn {_entity, levels} -> levels == [] end)
+    |> Enum.sort_by(fn {entity, _levels} ->
       Portal.Scope.label(entity)
     end)
   end

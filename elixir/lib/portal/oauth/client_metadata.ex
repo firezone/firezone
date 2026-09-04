@@ -54,7 +54,8 @@ defmodule Portal.OAuth.ClientMetadata do
   here is what turns an open redirect into a stolen authorization code.
   """
   def validate_redirect_uri(%OAuthClient{} = client, redirect_uri) do
-    if redirect_uri in client.redirect_uris or loopback_match?(client, redirect_uri) do
+    if usable_redirect_uri?(redirect_uri) and
+         (redirect_uri in client.redirect_uris or loopback_match?(client, redirect_uri)) do
       :ok
     else
       {:error, :invalid_redirect_uri}
@@ -172,9 +173,13 @@ defmodule Portal.OAuth.ClientMetadata do
   # never a scheme that runs script in the page doing the navigating.
   defp usable_redirect_uri?(uri) when is_binary(uri) do
     case URI.parse(uri) do
-      %URI{scheme: "https", host: host} when is_binary(host) -> true
-      %URI{scheme: "http", host: host} when host in @loopback_hosts -> true
-      %URI{scheme: scheme} when is_binary(scheme) -> scheme not in @script_schemes
+      %URI{scheme: scheme, host: host, fragment: nil} when is_binary(scheme) ->
+        case String.downcase(scheme) do
+          "https" -> is_binary(host)
+          "http" -> host in @loopback_hosts
+          private_use_scheme -> private_use_scheme not in @script_schemes
+        end
+
       _other -> false
     end
   end
