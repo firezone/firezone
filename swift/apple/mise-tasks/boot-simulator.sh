@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-#MISE description="Boot the gallery's pinned iOS simulator with a fixed status bar"
+#MISE description="Boot the gallery's pinned iOS simulator with a settled appearance"
 set -euo pipefail
 
 # Pinned rather than resolved as "latest": a newer runtime redraws the gallery.
@@ -17,21 +17,6 @@ if [ -z "${udid}" ]; then
 fi
 
 xcrun simctl bootstatus "${udid}" -b
-
-# The captures include the status bar, whose clock and battery move on every run.
-# An iPad shows the date beside the clock, and simctl pins it only when given a
-# full ISO 8601 timestamp, read in the host's zone like the simulator's clock.
-pinned_time="$(date -j -f '%Y-%m-%d %H:%M' '2007-01-09 09:41' '+%Y-%m-%dT%H:%M:%S%z' |
-  sed -E 's/([0-9]{2})$/:\1/')"
-xcrun simctl status_bar "${udid}" override \
-  --time "${pinned_time}" \
-  --dataNetwork wifi \
-  --wifiMode active \
-  --wifiBars 3 \
-  --cellularMode active \
-  --cellularBars 4 \
-  --batteryState charged \
-  --batteryLevel 100
 
 # Sheet toolbars draw over a material that does not rasterise identically twice.
 xcrun simctl spawn "${udid}" defaults write \
