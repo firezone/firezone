@@ -16,6 +16,10 @@ permissions:
   contents: "read"
   id-token: "write" # OIDC auth
 
+concurrency:
+  group: ${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' && 'android-release-main' || github.run_id }}
+  cancel-in-progress: false
+
 # Stamped into every build below, so neither the emulator running the instrumented
 # tests nor a debug artifact someone installs later reports to Sentry. The release
 # build overrides it.
