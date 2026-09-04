@@ -2,11 +2,6 @@ name: Build Android app
 on:
   workflow_call:
   workflow_dispatch:
-    inputs:
-      prepare_store:
-        description: Validate the Google Play internal release from this branch without committing
-        type: boolean
-        default: false
 
 defaults:
   run:
@@ -316,7 +311,7 @@ jobs:
         if: ${{ matrix.package-type == 'aab' && github.event_name == 'workflow_dispatch' }}
         run: ./gradlew --no-daemon uploadCrashlyticsSymbolFileRelease
       - name: Authenticate to Google Cloud (Play Store upload)
-        if: ${{ matrix.package-type == 'aab' && github.event_name == 'workflow_dispatch' && (github.ref_name == 'main' || inputs.prepare_store) }}
+        if: ${{ matrix.package-type == 'aab' && github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}
         id: gcp-auth
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
         with:
@@ -327,7 +322,7 @@ jobs:
           access_token_lifetime: 600s
       # Keep this service account limited to testing tracks in the Play Console.
       - name: Publish Google Play internal release
-        if: ${{ matrix.package-type == 'aab' && github.event_name == 'workflow_dispatch' && (github.ref_name == 'main' || inputs.prepare_store) }}
+        if: ${{ matrix.package-type == 'aab' && github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}
         env:
           GPLAY_SERVICE_ACCOUNT_JSON: ${{ steps.gcp-auth.outputs.credentials_file_path }}
           ACCESS_TOKEN: ${{ steps.gcp-auth.outputs.access_token }}

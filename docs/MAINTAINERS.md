@@ -23,18 +23,30 @@ Table of Contents:
 1. To submit for review:
    - For Apple, do this through AppStore connect. Details are [below](#apple-client).
    - For Android, run the [Submit Android release](../.github/workflows/submit-android-release.yml)
-     workflow on `main` and approve its `google-play-production` environment.
-     It promotes the build from the exact GitHub draft, replaces the screenshots,
-     and submits both in one Google Play edit. Managed Publishing holds the approved
+     workflow on `main`. Its `prepare` job verifies the exact GitHub draft, source
+     commit, screenshots, and completed internal release, then writes a summary
+     with the Play version code and links. Review that summary and the
+     [Play Console](https://play.google.com/console/), then approve the
+     `google-play-production` environment as an intentional reminder and
+     checkpoint. After approval, the workflow revalidates the draft, replaces
+     the screenshots, promotes the exact internal version to production, and
+     submits both in one Google Play edit. If the draft changed while approval
+     was pending, start a new workflow run. Managed Publishing holds approved
      changes until they are published manually.
 
-The Android submission workflow uses GitHub OIDC to impersonate
+The `prepare` job uses the existing testing-only
+`play-store-publisher@firezone-55040.iam.gserviceaccount.com` service account to
+inspect the internal track through a temporary edit, which it always discards.
+After approval, the workflow uses GitHub OIDC to impersonate
 `play-store-production-publisher@firezone-55040.iam.gserviceaccount.com`. Limit
 that service account to the Firezone app in Play Console and grant only the
 permissions needed to read releases, release to production, and manage the store
-listing. Configure the `google-play-production` GitHub environment with required
-reviewers and restrict both the environment and Workload Identity Federation
-subject to `main`. Keep [Managed Publishing](https://support.google.com/googleplay/android-developer/answer/9859654)
+listing. Before the first workflow dispatch, explicitly create the
+`google-play-production` GitHub environment. GitHub otherwise creates a referenced
+environment without protection. Add required reviewers, restrict deployments to
+`main`, and set its `GOOGLE_PLAY_PRODUCTION_CONFIGURED` variable to `true`. Also
+restrict the Workload Identity Federation subject to `main`. Keep
+[Managed Publishing](https://support.google.com/googleplay/android-developer/answer/9859654)
 enabled.
 
 ### GitHub-released components (Linux, Windows, and Gateway)
