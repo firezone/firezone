@@ -1084,8 +1084,6 @@ impl UploadFile {
 struct UploadAttributes {
     #[serde(default)]
     upload_operations: Vec<UploadOperation>,
-    #[serde(default)]
-    asset_delivery_state: State,
 }
 
 impl UploadAttributes {
@@ -1095,14 +1093,6 @@ impl UploadAttributes {
         }
 
         Ok(&self.upload_operations)
-    }
-
-    fn state(&self) -> &str {
-        &self.asset_delivery_state.state
-    }
-
-    fn state_details(&self) -> String {
-        self.asset_delivery_state.details()
     }
 }
 
