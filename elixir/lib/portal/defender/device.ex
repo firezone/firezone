@@ -38,8 +38,8 @@ defmodule Portal.Defender.Device do
     field :os_processor, :string
     field :os_architecture, :string
 
-    field :last_ip_address, :string
-    field :last_external_ip_address, :string
+    field :last_ip_address, Portal.Types.IP
+    field :last_external_ip_address, Portal.Types.IP
 
     field :agent_version, :string
     field :health_status, :string
@@ -51,7 +51,7 @@ defmodule Portal.Defender.Device do
     field :exposure_level, :string
     field :device_value, :string
 
-    field :rbac_group_id, :string
+    field :rbac_group_id, :integer
     field :rbac_group_name, :string
 
     field :is_potential_duplication, :boolean

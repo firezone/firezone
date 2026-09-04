@@ -151,8 +151,6 @@ defmodule Portal.Defender.Sync do
     {:version, "version"},
     {:os_processor, "osProcessor"},
     {:os_architecture, "osArchitecture"},
-    {:last_ip_address, "lastIpAddress"},
-    {:last_external_ip_address, "lastExternalIpAddress"},
     {:agent_version, "agentVersion"},
     {:health_status, "healthStatus"},
     {:onboarding_status, "onboardingStatus"},
@@ -162,10 +160,14 @@ defmodule Portal.Defender.Sync do
     {:exposure_level, "exposureLevel"},
     {:device_value, "deviceValue"},
     {:rbac_group_name, "rbacGroupName"},
-    {:rbac_group_id, "rbacGroupId"},
     {:entra_device_id, "aadDeviceId"},
     {:merged_into_machine_id, "mergedIntoMachineId"},
     {:exclusion_reason, "exclusionReason"}
+  ]
+
+  @ip_fields [
+    {:last_ip_address, "lastIpAddress"},
+    {:last_external_ip_address, "lastExternalIpAddress"}
   ]
 
   @boolean_fields [
@@ -196,12 +198,14 @@ defmodule Portal.Defender.Sync do
       account_id: provider.account_id,
       posture_provider_id: provider.id,
       os_build: integer_or_nil(machine["osBuild"]),
+      rbac_group_id: integer_or_nil(machine["rbacGroupId"]),
       machine_tags: string_list_or_nil(machine["machineTags"]),
       ip_addresses: map_list_or_nil(machine["ipAddresses"]),
       synced_at: synced_at
     }
     |> take(machine, @text_fields, &text_or_nil/1)
     |> take(machine, @boolean_fields, &boolean_or_nil/1)
+    |> take(machine, @ip_fields, &ip_or_nil/1)
     |> take(machine, @datetime_fields, &parse_datetime/1)
     |> take(vm_metadata, @vm_metadata_fields, &text_or_nil/1)
   end
@@ -217,6 +221,15 @@ defmodule Portal.Defender.Sync do
 
   defp integer_or_nil(value) when is_integer(value), do: value
   defp integer_or_nil(_), do: nil
+
+  defp ip_or_nil(value) when is_binary(value) do
+    case Portal.Types.IP.cast(value) do
+      {:ok, ip} -> ip
+      _ -> nil
+    end
+  end
+
+  defp ip_or_nil(_), do: nil
 
   defp string_list_or_nil(value) when is_list(value) do
     Enum.filter(value, &is_binary/1)
@@ -250,10 +263,6 @@ defmodule Portal.Defender.Sync do
   defp text_or_nil(value) when value in [nil, ""], do: nil
   defp text_or_nil(value) when is_binary(value), do: value
 
-  # The machine entity types the device group id as Int32 while the reference
-  # table calls it a String, so both shapes have to land in the same column.
-  defp text_or_nil(value) when is_integer(value), do: Integer.to_string(value)
-  defp text_or_nil(value) when is_float(value), do: Float.to_string(value)
   defp text_or_nil(_value), do: nil
 
   defp raise_sync_error(provider, step, error) do
