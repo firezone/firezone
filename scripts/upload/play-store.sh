@@ -94,7 +94,7 @@ update_draft() {
         --track "$track")
     releases=$(jq -c \
         --arg name "$VERSION_NAME" \
-        --argjson version_code "$version_code" \
+        --arg version_code "$version_code" \
         --arg changelog "$CHANGELOG_URL" \
         '(.releases // [] | map(select(.status != "draft"))) + [{
             name: $name,
