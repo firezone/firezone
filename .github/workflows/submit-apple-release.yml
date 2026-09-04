@@ -281,6 +281,7 @@ jobs:
           mkdir -p "$metadata_dir"
           cp app-store/metadata/en-US.json "$metadata_dir/en-US.json"
 
+          declare -A build_ids version_ids submitted
           for platform in IOS MAC_OS; do
             build=$(asc builds wait \
               --app "$ASC_APP_ID" \
@@ -289,8 +290,11 @@ jobs:
               --platform "$platform" \
               --fail-on-invalid \
               --output json)
-            build_id=$(jq -er '.buildId' <<< "$build")
+            build_ids[$platform]=$(jq -er '.buildId' <<< "$build")
+          done
 
+          for platform in IOS MAC_OS; do
+            build_id=${build_ids[$platform]}
             target=$(asc versions list \
               --app "$ASC_APP_ID" \
               --version "$version" \
@@ -299,6 +303,7 @@ jobs:
             version_id=$(jq -er \
               'if (.data | length) == 1 then .data[0].id else error("expected one App Store version") end' \
               <<< "$target")
+            version_ids[$platform]=$version_id
             release_type=$(jq -r '.data[0].attributes.releaseType // empty' <<< "$target")
             details=$(asc versions view \
               --version-id "$version_id" \
@@ -356,30 +361,27 @@ jobs:
                   echo "${platform} version ${version} was submitted with unexpected settings" >&2
                   exit 1
                 fi
-
-                result=$(asc review submit \
-                  --app "$ASC_APP_ID" \
-                  --version-id "$version_id" \
-                  --build-id "$build_id" \
-                  --platform "$platform" \
-                  --confirm \
-                  --output json)
-                jq -e '.alreadySubmitted == true' <<< "$result" >/dev/null
-                echo "${platform} version ${version} is already submitted."
-                continue
+                submitted[$platform]=true
                 ;;
               *)
                 echo "${platform} version ${version} cannot be submitted from state ${state}" >&2
                 exit 1
                 ;;
             esac
+          done
 
+          for platform in IOS MAC_OS; do
             result=$(asc review submit \
               --app "$ASC_APP_ID" \
-              --version-id "$version_id" \
-              --build-id "$build_id" \
+              --version-id "${version_ids[$platform]}" \
+              --build-id "${build_ids[$platform]}" \
               --platform "$platform" \
               --confirm \
               --output json)
-            jq -e '.submissionId != null and .submissionId != ""' <<< "$result" >/dev/null
+            if [[ ${submitted[$platform]:-false} == true ]]; then
+              jq -e '.alreadySubmitted == true' <<< "$result" >/dev/null
+              echo "${platform} version ${version} is already submitted."
+            else
+              jq -e '.submissionId != null and .submissionId != ""' <<< "$result" >/dev/null
+            fi
           done
