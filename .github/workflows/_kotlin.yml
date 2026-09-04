@@ -349,9 +349,7 @@ jobs:
       # The play-store-publisher service account is intentionally granted only
       # internal-track upload permission in the Play Console. Production-track
       # permission would let it (or anyone who compromises CI) publish a release
-      # straight to end users. PREPARE_ANDROID_PRODUCTION_DRAFT only takes effect
-      # after that permission is deliberately granted; the script still creates
-      # a draft rather than starting a rollout.
+      # straight to end users. Preparing production remains a manual step.
       - name: Prepare Google Play draft release
         if: ${{ matrix.package-type == 'aab' && github.event_name == 'workflow_dispatch' && (github.ref_name == 'main' || inputs.prepare_store) }}
         env:
@@ -359,7 +357,6 @@ jobs:
           ACCESS_TOKEN: ${{ steps.gcp-auth.outputs.access_token }}
           AAB_PATH: ${{ matrix.output-path }}
           VERSION_NAME: ${{ needs.update-release-draft.outputs.version }}
-          PREPARE_PRODUCTION_DRAFT: ${{ github.ref_name == 'main' && vars.PREPARE_ANDROID_PRODUCTION_DRAFT == 'true' }}
         run: ../../scripts/upload/play-store.sh
 
   build_debug:
