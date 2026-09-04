@@ -130,14 +130,14 @@ internal class SplashViewModel
             return true
         }
 
-        private companion object {
+        internal companion object {
             /**
              * Survives the ViewModel so the screen appears once per launch rather than every time
              * the splash re-checks, and returns on the next start while the certificate is still
-             * out of reach.
+             * out of reach. Tests reset it, since they share one process across many launches.
              */
             @Volatile
-            private var certificateSelectionOffered = false
+            internal var certificateSelectionOffered = false
         }
 
         internal sealed class ViewAction {

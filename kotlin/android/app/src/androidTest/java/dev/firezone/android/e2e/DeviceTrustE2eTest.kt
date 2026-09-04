@@ -18,6 +18,7 @@ import dev.firezone.android.core.x509.FakeKeyChain
 import dev.firezone.android.core.x509.TestIdentity
 import dev.firezone.android.core.x509.testIdentity
 import dev.firezone.android.features.auth.ui.AuthActivity
+import dev.firezone.android.features.splash.ui.SplashViewModel
 import dev.firezone.android.tunnel.FakeSession
 import dev.firezone.android.tunnel.FakeSessionFactory
 import dev.firezone.android.tunnel.TestRestrictions
@@ -67,6 +68,7 @@ class DeviceTrustE2eTest {
         grantNotificationPermission()
         FakeSessionFactory.reset()
         FakeKeyChain.reset()
+        SplashViewModel.certificateSelectionOffered = false
         finishAllActivities()
         stopTunnelService()
         preferences.edit().clear().commit()

@@ -156,7 +156,7 @@ class ManagedKeyChainTest {
         assertNotNull(systemKeyChain.certificateChain(MISNAMED_ALIAS))
     }
 
-    /** Confirms the system chooser with [alias] selected, whether or not it arrived pre-selected. */
+    /** Confirms the system chooser with [alias] selected, whether or not it arrived preselected. */
     private fun approveKeyChainChooser(alias: String) {
         val device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
 
