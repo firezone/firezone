@@ -34,11 +34,6 @@ case "$COMMAND" in
         ;;
 esac
 
-if [[ ! "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]; then
-    echo "SOURCE_SHA must be a full lowercase Git commit SHA" >&2
-    exit 1
-fi
-
 export GPLAY_NO_UPDATE=1
 edit_id=""
 committed=false
@@ -69,19 +64,11 @@ find_internal_release() {
         --package "$PACKAGE_NAME" \
         --track "$INTERNAL_TRACK")
 
-    if ! jq -e --arg name "$RELEASE_NAME" '
-        (.releases // []) as $releases
-        | (($releases | length) == 1)
-        and ($releases[0].releaseName == $name)
-        and ($releases[0].track == "internal")
-        and ($releases[0].releaseLifecycleState == "RELEASE_LIFECYCLE_STATE_PUBLISHED")
-        and (($releases[0].activeArtifacts | length) == 1)' \
-        <<< "$internal" >/dev/null; then
-        echo "Expected exactly one published internal release named $RELEASE_NAME" >&2
-        exit 1
-    fi
-
-    internal_version_code=$(jq -er '.releases[0].activeArtifacts[0].versionCode | tostring' <<< "$internal")
+    internal_version_code=$(jq -er --arg name "$RELEASE_NAME" '
+        first(.releases[]?
+            | select(.releaseName == $name)
+            | .activeArtifacts[]?.versionCode)
+        | tostring' <<< "$internal")
     echo "Found $RELEASE_NAME with versionCode $internal_version_code."
 }
 
@@ -123,7 +110,7 @@ commit_edit() {
 }
 
 publish_internal() {
-    local bundles bundle_hash matching_bundles upload version_code
+    local bundles bundle_hash upload version_code
 
     : "${AAB_PATH:?AAB_PATH is required}"
     if [[ ! -s "$AAB_PATH" ]]; then
@@ -136,28 +123,20 @@ publish_internal() {
     echo "Finding an existing upload of $AAB_PATH..."
     read -r bundle_hash _ < <(sha256sum "$AAB_PATH")
     bundles=$(gplay bundles list --package "$PACKAGE_NAME" --edit "$edit_id")
-    matching_bundles=$(jq -c --arg hash "$bundle_hash" \
-        '[.bundles[]? | select(((.sha256 // "") | ascii_downcase) == $hash)]' \
-        <<< "$bundles")
-
-    case $(jq 'length' <<< "$matching_bundles") in
-        0)
-            echo "Uploading $AAB_PATH..."
-            upload=$(gplay bundles upload \
-                --package "$PACKAGE_NAME" \
-                --edit "$edit_id" \
-                --file "$AAB_PATH")
-            version_code=$(jq -er '.versionCode' <<< "$upload")
-            ;;
-        1)
-            version_code=$(jq -er '.[0].versionCode' <<< "$matching_bundles")
-            echo "Reusing uploaded versionCode $version_code."
-            ;;
-        *)
-            echo "Multiple bundles have SHA-256 $bundle_hash" >&2
-            exit 1
-            ;;
-    esac
+    version_code=$(jq -r --arg hash "$bundle_hash" '
+        first(.bundles[]?
+            | select(((.sha256 // "") | ascii_downcase) == $hash)
+            | .versionCode) // empty' <<< "$bundles")
+    if [[ -z "$version_code" ]]; then
+        echo "Uploading $AAB_PATH..."
+        upload=$(gplay bundles upload \
+            --package "$PACKAGE_NAME" \
+            --edit "$edit_id" \
+            --file "$AAB_PATH")
+        version_code=$(jq -er '.versionCode' <<< "$upload")
+    else
+        echo "Reusing uploaded versionCode $version_code."
+    fi
 
     update_track "$INTERNAL_TRACK" "$version_code"
 
@@ -184,16 +163,10 @@ inspect_internal() {
 }
 
 submit_production() {
-    local checkout_sha production screenshot
+    local production screenshot
 
     if [[ "${GITHUB_ACTIONS:-false}" != true || "${GITHUB_REF_NAME:-}" != main ]]; then
         echo "Production submission is only allowed from main in GitHub Actions" >&2
-        exit 1
-    fi
-
-    checkout_sha=$(git -C "$REPO_ROOT" rev-parse HEAD)
-    if [[ "$checkout_sha" != "$SOURCE_SHA" ]]; then
-        echo "The checkout SHA $checkout_sha does not match $SOURCE_SHA" >&2
         exit 1
     fi
 

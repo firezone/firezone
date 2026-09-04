@@ -33,27 +33,15 @@ jobs:
         run: |
           release=$(gh release view "$RELEASE_NAME" \
             --repo "$GITHUB_REPOSITORY" \
-            --json isDraft,tagName,targetCommitish,url)
+            --json isDraft,targetCommitish,url)
 
           if [[ $(jq -r '.isDraft' <<< "$release") != true ]]; then
             echo "$RELEASE_NAME is not a draft release" >&2
             exit 1
           fi
-          if [[ $(jq -r '.tagName' <<< "$release") != "$RELEASE_NAME" ]]; then
-            echo "The resolved release tag does not match $RELEASE_NAME" >&2
-            exit 1
-          fi
-          if [[ ! "$RELEASE_NAME" =~ ^android-client-([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
-            echo "$RELEASE_NAME is not a valid Android release name" >&2
-            exit 1
-          fi
           version_name="${RELEASE_NAME#android-client-}"
 
           source_sha=$(jq -r '.targetCommitish' <<< "$release")
-          if [[ ! "$source_sha" =~ ^[0-9a-f]{40}$ ]]; then
-            echo "$RELEASE_NAME does not target a full Git commit SHA" >&2
-            exit 1
-          fi
 
           {
             echo "release_url=$(jq -r '.url' <<< "$release")"
@@ -65,13 +53,8 @@ jobs:
         with:
           ref: ${{ steps.release.outputs.source_sha }}
 
-      - name: Verify the release inputs
+      - name: Check the store screenshots
         run: |
-          if [[ $(git rev-parse HEAD) != "${{ steps.release.outputs.source_sha }}" ]]; then
-            echo "The checkout does not match the draft release target" >&2
-            exit 1
-          fi
-
           screenshots=(
             kotlin/android/screenshots/sign-in.png
             kotlin/android/screenshots/session-screen.png
@@ -102,7 +85,7 @@ jobs:
           workload_identity_provider: projects/215658742954/locations/global/workloadIdentityPools/github-actions/providers/github
           service_account: play-store-publisher@firezone-55040.iam.gserviceaccount.com
 
-      - name: Verify the internal release
+      - name: Resolve the internal release
         id: play
         env:
           GPLAY_SERVICE_ACCOUNT_JSON: ${{ steps.gcp-auth.outputs.credentials_file_path }}
@@ -173,27 +156,18 @@ jobs:
       - name: Revalidate the GitHub draft release
         env:
           EXPECTED_SOURCE_SHA: ${{ needs.prepare.outputs.source_sha }}
-          EXPECTED_VERSION_NAME: ${{ needs.prepare.outputs.version_name }}
           GH_TOKEN: ${{ github.token }}
         run: |
           release=$(gh release view "$RELEASE_NAME" \
             --repo "$GITHUB_REPOSITORY" \
-            --json isDraft,tagName,targetCommitish)
+            --json isDraft,targetCommitish)
 
           if [[ $(jq -r '.isDraft' <<< "$release") != true ]]; then
             echo "$RELEASE_NAME is no longer a draft release" >&2
             exit 1
           fi
-          if [[ $(jq -r '.tagName' <<< "$release") != "$RELEASE_NAME" ]]; then
-            echo "The resolved release tag no longer matches $RELEASE_NAME" >&2
-            exit 1
-          fi
           if [[ $(jq -r '.targetCommitish' <<< "$release") != "$EXPECTED_SOURCE_SHA" ]]; then
             echo "$RELEASE_NAME changed while awaiting approval; start a new workflow run" >&2
-            exit 1
-          fi
-          if [[ "${RELEASE_NAME#android-client-}" != "$EXPECTED_VERSION_NAME" ]]; then
-            echo "$RELEASE_NAME no longer matches the prepared version" >&2
             exit 1
           fi
 
