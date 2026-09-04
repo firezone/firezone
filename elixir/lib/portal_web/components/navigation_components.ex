@@ -133,7 +133,7 @@ defmodule PortalWeb.NavigationComponents do
           navigate={~p"/#{@subject.account}/settings/profile"}
           class="block py-2 px-4 text-sm hover:bg-raised hover:text-heading"
         >
-          Profile
+          Your settings
         </.link>
       </li>
     </ul>

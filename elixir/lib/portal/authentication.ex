@@ -160,7 +160,11 @@ defmodule Portal.Authentication do
     Database.rotate_gateway_token(gateway, new_token, subject)
   end
 
-  defp generate_token_secrets(nonce \\ "") do
+  @doc """
+  Mints a fresh secret triple. Public because `Portal.OAuth` issues its own
+  tokens and must derive them exactly the same way.
+  """
+  def generate_token_secrets(nonce \\ "") do
     secret_fragment = Portal.Crypto.random_token(32, encoder: :hex32)
     secret_salt = Portal.Crypto.random_token(16)
     secret_hash = Portal.Crypto.hash(:sha3_256, nonce <> secret_fragment <> secret_salt)
@@ -272,6 +276,17 @@ defmodule Portal.Authentication do
     Database.delete_portal_session(session)
   end
 
+  @doc """
+  Atomically consumes a portal session as a one-shot authentication proof.
+
+  The actor binding matters for step-up flows: a session may only authorize an
+  action for the same actor it authenticated, and concurrent attempts may not
+  both spend the same proof.
+  """
+  def consume_portal_session(account_id, actor_id, session_id) do
+    Database.consume_portal_session(account_id, actor_id, session_id)
+  end
+
   # Token encoding/decoding
 
   @doc """
@@ -291,6 +306,52 @@ defmodule Portal.Authentication do
 
   def encode_fragment!(%Portal.APIToken{} = token),
     do: encode_token(token.account_id, token.id, token.secret_fragment, "api_client")
+
+  def encode_fragment!(%Portal.OAuthToken{} = token),
+    do: encode_token(token.account_id, token.id, token.secret_fragment, "mcp")
+
+  def encode_fragment!(%Portal.OAuthAuthorizationCode{} = code),
+    do: encode_token(code.account_id, code.id, code.secret_fragment, "mcp_code")
+
+  @doc """
+  Encodes the refresh half of an OAuth token.
+
+  Refresh secrets are signed under their own type, so a refresh token presented
+  as an access token fails to decode rather than being looked up and rejected
+  later.
+  """
+  def encode_refresh_fragment!(%Portal.OAuthToken{} = token),
+    do: encode_token(token.account_id, token.id, token.refresh_secret_fragment, "mcp_refresh")
+
+  @doc """
+  Decodes a signed fragment of the given type.
+
+  Used for credentials that are not presented as an authentication context of
+  their own, such as authorization codes and refresh tokens.
+  """
+  def decode_fragment(encoded_token, type) when is_binary(encoded_token) and is_binary(type) do
+    config = fetch_config!()
+    key_base = Keyword.fetch!(config, :key_base)
+    salt = Keyword.fetch!(config, :salt)
+
+    # try_decode/3 returns whatever its `with` fell through on, which for a
+    # string with no "." separator is a plain list rather than an error tuple.
+    case try_decode(encoded_token, key_base, salt <> type) do
+      {:ok, decoded} -> {:ok, decoded}
+      _other -> {:error, :invalid_token}
+    end
+  end
+
+  @doc "Constant time check of a presented fragment against a stored hash."
+  def verify_fragment(secret_hash, secret_salt, nonce, fragment) do
+    expected_hash = Portal.Crypto.hash(:sha3_256, nonce <> fragment <> secret_salt)
+
+    if Plug.Crypto.secure_compare(expected_hash, secret_hash) do
+      :ok
+    else
+      :error
+    end
+  end
 
   defp encode_token(account_id, id, fragment, type) do
     body = {account_id, id, fragment}
@@ -436,6 +497,16 @@ defmodule Portal.Authentication do
 
   def build_subject(%Portal.APIToken{} = token, %Context{} = context) do
     credential = %Credential.APIToken{id: token.id, scopes: token.scopes}
+    do_build_subject(token, context, credential)
+  end
+
+  def build_subject(%Portal.OAuthToken{} = token, %Context{} = context) do
+    credential = %Credential.OAuthToken{
+      id: token.id,
+      scopes: token.scopes,
+      resource: token.resource
+    }
+
     do_build_subject(token, context, credential)
   end
 
@@ -653,6 +724,49 @@ defmodule Portal.Authentication do
       end
     end
 
+    def fetch_token_for_use(
+          account_id,
+          token_id,
+          %Portal.Authentication.Context{type: :mcp} = context
+        ) do
+      now = DateTime.utc_now()
+      remote_ip = %Postgrex.INET{address: context.remote_ip}
+
+      from(tokens in Portal.OAuthToken, as: :tokens)
+      |> join(:inner, [tokens: tokens], account in assoc(tokens, :account), as: :account)
+      |> join(:inner, [tokens: tokens], actor in assoc(tokens, :actor),
+        on: actor.account_id == tokens.account_id,
+        as: :actor
+      )
+      |> where([tokens: tokens], tokens.expires_at > ^now)
+      |> where([tokens: tokens], tokens.id == ^token_id)
+      |> where([tokens: tokens], tokens.account_id == ^account_id)
+      # The audience the token was minted for, checked on every use rather than
+      # only when it is renewed, so a token issued for anything else is refused
+      # here instead of being handed to whoever asked.
+      |> where([tokens: tokens], tokens.resource == ^Portal.OAuth.resource_uri())
+      |> where([account: account], account.is_disabled == false)
+      |> where([actor: actor], actor.is_disabled == false)
+      |> update([tokens: tokens],
+        set: [
+          last_seen_at: ^now,
+          last_seen_user_agent: ^context.user_agent,
+          last_seen_remote_ip: ^remote_ip,
+          last_seen_remote_ip_location_region: ^context.remote_ip_location_region,
+          last_seen_remote_ip_location_city: ^context.remote_ip_location_city,
+          last_seen_remote_ip_location_lat: ^context.remote_ip_location_lat,
+          last_seen_remote_ip_location_lon: ^context.remote_ip_location_lon
+        ]
+      )
+      |> select([tokens: tokens], tokens)
+      |> Safe.unscoped()
+      |> Safe.update_all([])
+      |> case do
+        {1, [token]} -> {:ok, token}
+        {0, []} -> {:error, :not_found}
+      end
+    end
+
     def fetch_token_for_use(account_id, token_id, %Portal.Authentication.Context{} = context) do
       now = DateTime.utc_now()
       remote_ip = %Postgrex.INET{address: context.remote_ip}
@@ -817,6 +931,23 @@ defmodule Portal.Authentication do
       |> Safe.delete_all()
 
       :ok
+    end
+
+    def consume_portal_session(account_id, actor_id, session_id) do
+      now = DateTime.utc_now()
+
+      from(ps in PortalSession,
+        where: ps.account_id == ^account_id,
+        where: ps.actor_id == ^actor_id,
+        where: ps.id == ^session_id,
+        where: ps.expires_at > ^now
+      )
+      |> Safe.unscoped()
+      |> Safe.delete_all()
+      |> case do
+        {1, _} -> :ok
+        {0, _} -> {:error, :not_found}
+      end
     end
   end
 end
