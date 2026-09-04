@@ -10,7 +10,9 @@ readonly PACKAGE_NAME="dev.firezone.android"
 readonly INTERNAL_TRACK="internal"
 readonly PRODUCTION_TRACK="production"
 readonly CHANGELOG_URL="https://www.firezone.dev/changelog#tab-android"
-readonly REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+readonly PUBLISHER_API="https://androidpublisher.googleapis.com/androidpublisher/v3/applications/$PACKAGE_NAME"
+REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+readonly REPO_ROOT
 readonly -a SCREENSHOTS=(
     "$REPO_ROOT/kotlin/android/screenshots/sign-in.png"
     "$REPO_ROOT/kotlin/android/screenshots/session-screen.png"
@@ -124,7 +126,15 @@ if [[ "$persist_draft" != true ]]; then
 fi
 
 echo "Committing draft release changes..."
-gplay edits commit --package "$PACKAGE_NAME" --edit "$edit_id"
+: "${ACCESS_TOKEN:?ACCESS_TOKEN is required to commit the Google Play edit}"
+
+# `gplay` 0.9.2 cannot set `changesInReviewBehavior`.
+curl --fail-with-body --silent --show-error \
+    --request POST \
+    --header "Authorization: Bearer $ACCESS_TOKEN" \
+    --header "Content-Length: 0" \
+    "$PUBLISHER_API/edits/$edit_id:commit?changesInReviewBehavior=ERROR_IF_IN_REVIEW" \
+    >/dev/null
 committed=true
 
 echo "Prepared $PACKAGE_NAME $VERSION_NAME ($version_code) as a Google Play draft."
