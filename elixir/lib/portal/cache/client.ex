@@ -870,8 +870,8 @@ defmodule Portal.Cache.Client do
          auth_provider_id
        ) do
     Enum.filter(policies, fn policy ->
-      policy.conditions
-      |> Portal.Policies.Evaluator.ensure_conforms(client, auth_provider_id)
+      policy
+      |> Portal.Policies.Evaluator.ensure_policy_conforms(client, auth_provider_id)
       |> case do
         {:ok, _expires_at} -> true
         {:error, _violated_properties} -> false
@@ -926,11 +926,7 @@ defmodule Portal.Cache.Client do
          client,
          auth_provider_id
        ) do
-    case Portal.Policies.Evaluator.ensure_conforms(
-           policy.conditions,
-           client,
-           auth_provider_id
-         ) do
+    case Portal.Policies.Evaluator.ensure_policy_conforms(policy, client, auth_provider_id) do
       {:ok, expires_at} ->
         {:ok, expires_at}
 

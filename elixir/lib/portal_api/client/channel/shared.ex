@@ -2072,19 +2072,21 @@ defmodule PortalAPI.Client.Channel.Shared do
            old_struct: %Portal.Policy{
              resource_id: old_resource_id,
              group_id: old_group_id,
-             conditions: old_conditions
+             conditions: old_conditions,
+             postures: old_postures
            },
            struct: %Portal.Policy{
              resource_id: resource_id,
              group_id: group_id,
              conditions: conditions,
+             postures: postures,
              is_disabled: is_disabled
            }
          } = change,
          socket
        )
        when old_resource_id != resource_id or old_group_id != group_id or
-              old_conditions != conditions do
+              old_conditions != conditions or old_postures != postures do
     # TODO: Optimization
     # Breaking update - process this as a delete and then create to make our lives easier.
     # We could be smarter here and process the individual side effects more cleverly to avoid
