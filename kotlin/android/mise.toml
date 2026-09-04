@@ -46,4 +46,4 @@ description = "Render the app's screens to PNGs in `kotlin/android/screenshots`"
 run = "./gradlew recordRoborazziDebug"
 
 [tools]
-"aqua:firebase/firebase-tools" = "15.18.0"
+"github:tamtom/play-console-cli" = { version = "0.9.2", bin = "gplay", matching_regex = "^gplay-" }

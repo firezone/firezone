@@ -11,6 +11,10 @@ permissions:
   contents: "read"
   id-token: "write" # OIDC auth
 
+concurrency:
+  group: ${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' && 'android-release-main' || github.run_id }}
+  cancel-in-progress: false
+
 # Stamped into every build below, so neither the emulator running the instrumented
 # tests nor a debug artifact someone installs later reports to Sentry. The release
 # build overrides it.
@@ -209,12 +213,18 @@ jobs:
   update-release-draft:
     name: update-release-draft
     runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.release-metadata.outputs.version }}
     permissions:
       contents: write # for updating the release draft
     env:
       # mark:next-android-version
       RELEASE_NAME: android-client-1.5.14
     steps:
+      - name: Set release metadata
+        id: release-metadata
+        working-directory: .
+        run: echo "version=${RELEASE_NAME#android-client-}" >> "$GITHUB_OUTPUT"
       - uses: release-drafter/release-drafter@34d80673e067bdc0c24568d3af899c216adcfaa9 # v7.7.0
         if: "${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}"
         id: update-release-draft
@@ -297,31 +307,6 @@ jobs:
           export ARTIFACT_PATH="$RUNNER_TEMP/firezone-${RELEASE_NAME}.${{ matrix.package-type }}"
           cp "${{ matrix.output-path }}" "$ARTIFACT_PATH"
           ../../scripts/upload/github-release.sh
-      - name: Authenticate to Google Cloud (Firebase)
-        if: ${{ matrix.package-type == 'aab' && github.event_name == 'workflow_dispatch' }}
-        id: firebase-auth
-        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
-        with:
-          workload_identity_provider: projects/215658742954/locations/global/workloadIdentityPools/github-actions/providers/github
-          service_account: firebase-app-distributor@firezone-55040.iam.gserviceaccount.com
-      - name: Distribute release to Firebase App Distribution
-        if: ${{ matrix.package-type == 'aab' && github.event_name == 'workflow_dispatch' }}
-        env:
-          NO_UPDATE_NOTIFIER: "1"
-          FIREBASE_APP_TESTERS: ${{ vars.FIREBASE_APP_TESTERS }}
-        run: |
-          firebase_args=(
-            appdistribution:distribute "${{ matrix.output-path }}"
-            --app "1:215658742954:android:51cc714762dbfbb59e7cd3"
-            --release-notes "https://www.firezone.dev/changelog"
-            --groups "firezone-engineering"
-          )
-
-          if [[ -n "${FIREBASE_APP_TESTERS:-}" ]]; then
-            firebase_args+=(--testers "$FIREBASE_APP_TESTERS")
-          fi
-
-          firebase --non-interactive "${firebase_args[@]}"
       - name: Upload Crashlytics symbols
         if: ${{ matrix.package-type == 'aab' && github.event_name == 'workflow_dispatch' }}
         run: ./gradlew --no-daemon uploadCrashlyticsSymbolFileRelease
@@ -335,20 +320,16 @@ jobs:
           token_format: access_token
           access_token_scopes: https://www.googleapis.com/auth/androidpublisher
           access_token_lifetime: 600s
-      # The play-store-publisher service account is intentionally granted only
-      # internal-track upload permission in the Play Console. Production-track
-      # permission would let it (or anyone who compromises CI) publish a release
-      # straight to end users. Promotion from internal -> production is a manual
-      # step in the Play Console.
-      - name: Upload AAB to Google Play Console (internal track)
+      # Keep this service account limited to testing tracks in the Play Console.
+      - name: Publish Google Play internal release
         if: ${{ matrix.package-type == 'aab' && github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}
         env:
+          GPLAY_SERVICE_ACCOUNT_JSON: ${{ steps.gcp-auth.outputs.credentials_file_path }}
           ACCESS_TOKEN: ${{ steps.gcp-auth.outputs.access_token }}
-          PACKAGE_NAME: dev.firezone.android
           AAB_PATH: ${{ matrix.output-path }}
-          TRACK: internal
-          RELEASE_STATUS: draft
-        run: ../../scripts/upload/play-store.sh
+          SOURCE_SHA: ${{ github.sha }}
+          VERSION_NAME: ${{ needs.update-release-draft.outputs.version }}
+        run: ../../scripts/upload/play-store.sh internal
 
   build_debug:
     # Android SDK tools hardware accel is available only on Linux runners
