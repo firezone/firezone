@@ -107,9 +107,10 @@ function update_version_variables() {
 #
 # Instructions:
 # 1. Run the `Swift` workflow from `main`. This will prepare or update both App
-#    Store drafts and upload the iOS IPA along with the macOS standalone DMG and
-#    PKG to the drafted `apple-client` release.
-# 2. Review both drafts in App Store Connect and submit them for review.
+#    Store versions, place them in draft review submissions with automatic
+#    release disabled, and upload the iOS IPA along with the macOS standalone
+#    DMG and PKG to the drafted `apple-client` release.
+# 2. Verify both drafts in App Store Connect and click `Submit for Review`.
 # 3. Once *both* are approved, publish them in the app stores.
 # 4. Publish the drafted `apple-client` release on GitHub.
 # 5. Bump current_apple_client_version / next_apple_client_version at the top

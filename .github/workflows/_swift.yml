@@ -468,6 +468,7 @@ jobs:
           echo "IPAD_SCREENSHOTS=${RUNNER_TEMP}/app-store-screenshots/ios/ipad" >> "$GITHUB_ENV"
           echo "MACOS_SCREENSHOTS=${RUNNER_TEMP}/app-store-screenshots/macos" >> "$GITHUB_ENV"
       - name: Wait for the iOS build
+        working-directory: swift/apple
         run: |
           result=$(asc builds wait \
             --app "$ASC_APP_ID" \
@@ -479,6 +480,7 @@ jobs:
           echo "$result"
           echo "IOS_BUILD_ID=$(jq -er '.buildId' <<< "$result")" >> "$GITHUB_ENV"
       - name: Wait for the macOS build
+        working-directory: swift/apple
         run: |
           result=$(asc builds wait \
             --app "$ASC_APP_ID" \
@@ -490,6 +492,7 @@ jobs:
           echo "$result"
           echo "MACOS_BUILD_ID=$(jq -er '.buildId' <<< "$result")" >> "$GITHUB_ENV"
       - name: Create or reuse the App Store versions
+        working-directory: swift/apple
         run: |
           for platform in IOS MAC_OS; do
             target=$(asc versions list --app "$ASC_APP_ID" --version "$VERSION" --platform "$platform" --output json)
@@ -505,10 +508,54 @@ jobs:
                 --copy-metadata-from "$source"
               target=$(asc versions list --app "$ASC_APP_ID" --version "$VERSION" --platform "$platform" --output json)
             fi
-            version_id=$(jq -er 'if (.data | length) == 1 and .data[0].attributes.appStoreState == "PREPARE_FOR_SUBMISSION" then .data[0].id else error("expected one editable version") end' <<< "$target")
+            version_id=$(jq -er 'if (.data | length) == 1 then .data[0].id else error("expected one version") end' <<< "$target")
+            state=$(jq -er '.data[0].attributes.appStoreState' <<< "$target")
+            draft_id=
+
+            if [[ "$state" == "READY_FOR_REVIEW" ]]; then
+              matches=()
+              drafts=$(asc review submissions-list \
+                --app "$ASC_APP_ID" \
+                --platform "$platform" \
+                --state READY_FOR_REVIEW \
+                --paginate \
+                --output json)
+              mapfile -t draft_ids < <(jq -r '.data[].id' <<< "$drafts")
+              for candidate_draft_id in "${draft_ids[@]}"; do
+                items=$(asc review items-list \
+                  --submission "$candidate_draft_id" \
+                  --fields appStoreVersion \
+                  --paginate \
+                  --output json)
+                mapfile -t item_ids < <(jq -r --arg version_id "$version_id" \
+                  '.data[] | select(.relationships.appStoreVersion.data.id == $version_id) | .id' <<< "$items")
+                for item_id in "${item_ids[@]}"; do
+                  matches+=("${candidate_draft_id}:${item_id}")
+                done
+              done
+
+              if [[ "${#matches[@]}" != 1 ]]; then
+                echo "::error::Expected one review item for ${platform} version ${VERSION}, found ${#matches[@]}"
+                exit 1
+              fi
+              draft_id=${matches[0]%%:*}
+              item_id=${matches[0]#*:}
+              asc review items-remove --id "$item_id" --confirm
+
+              target=$(asc versions list --app "$ASC_APP_ID" --version "$VERSION" --platform "$platform" --output json)
+              state=$(jq -er '.data[0].attributes.appStoreState' <<< "$target")
+            fi
+
+            if [[ "$state" != "PREPARE_FOR_SUBMISSION" ]]; then
+              echo "::error::${platform} version ${VERSION} is not editable: ${state}"
+              exit 1
+            fi
             asc versions update --version-id "$version_id" --release-type MANUAL
+            echo "${platform}_VERSION_ID=${version_id}" >> "$GITHUB_ENV"
+            echo "${platform}_DRAFT_ID=${draft_id}" >> "$GITHUB_ENV"
           done
       - name: Replace iPhone screenshots
+        working-directory: swift/apple
         run: >-
           asc screenshots upload
           --app "$ASC_APP_ID"
@@ -519,6 +566,7 @@ jobs:
           --replace
           --confirm
       - name: Replace iPad screenshots
+        working-directory: swift/apple
         run: >-
           asc screenshots upload
           --app "$ASC_APP_ID"
@@ -529,6 +577,7 @@ jobs:
           --replace
           --confirm
       - name: Replace macOS screenshots
+        working-directory: swift/apple
         run: >-
           asc screenshots upload
           --app "$ASC_APP_ID"
@@ -539,6 +588,7 @@ jobs:
           --replace
           --confirm
       - name: Stage the iOS App Store release
+        working-directory: swift/apple
         run: >-
           asc release stage
           --app "$ASC_APP_ID"
@@ -548,6 +598,7 @@ jobs:
           --metadata-dir "$METADATA_DIR"
           --confirm
       - name: Stage the macOS App Store release
+        working-directory: swift/apple
         run: >-
           asc release stage
           --app "$ASC_APP_ID"
@@ -556,3 +607,85 @@ jobs:
           --platform MAC_OS
           --metadata-dir "$METADATA_DIR"
           --confirm
+      - name: Add the releases to draft review submissions
+        working-directory: swift/apple
+        run: |
+          for platform in IOS MAC_OS; do
+            version_var="${platform}_VERSION_ID"
+            prior_draft_var="${platform}_DRAFT_ID"
+            version_id=${!version_var}
+            prior_draft_id=${!prior_draft_var}
+            draft_id=
+
+            drafts=$(asc review submissions-list \
+              --app "$ASC_APP_ID" \
+              --platform "$platform" \
+              --state READY_FOR_REVIEW \
+              --paginate \
+              --output json)
+            mapfile -t draft_ids < <(jq -r '.data[].id' <<< "$drafts")
+            matching_drafts=()
+            empty_drafts=()
+            prior_draft_exists=false
+            for candidate_draft_id in "${draft_ids[@]}"; do
+              if [[ "$candidate_draft_id" == "$prior_draft_id" ]]; then
+                prior_draft_exists=true
+              fi
+              items=$(asc review items-list \
+                --submission "$candidate_draft_id" \
+                --fields appStoreVersion \
+                --paginate \
+                --output json)
+              item_count=$(jq -er '.data | length' <<< "$items")
+              match_count=$(jq -er --arg version_id "$version_id" \
+                '[.data[] | select(.relationships.appStoreVersion.data.id == $version_id)] | length' <<< "$items")
+              if [[ "$match_count" == 1 ]]; then
+                matching_drafts+=("$candidate_draft_id")
+              elif [[ "$match_count" != 0 ]]; then
+                echo "::error::Found duplicate review items for ${platform} version ${VERSION}"
+                exit 1
+              fi
+              if [[ "$item_count" == 0 ]]; then
+                empty_drafts+=("$candidate_draft_id")
+              fi
+            done
+
+            if [[ "${#matching_drafts[@]}" == 1 ]]; then
+              draft_id=${matching_drafts[0]}
+            elif [[ "${#matching_drafts[@]}" != 0 ]]; then
+              echo "::error::Found ${#matching_drafts[@]} review drafts for ${platform} version ${VERSION}"
+              exit 1
+            elif [[ -n "$prior_draft_id" && "$prior_draft_exists" == true ]]; then
+              draft_id=$prior_draft_id
+            elif [[ "${#empty_drafts[@]}" == 1 ]]; then
+              draft_id=${empty_drafts[0]}
+            elif [[ "${#draft_ids[@]}" != 0 ]]; then
+              echo "::error::Cannot choose among existing ${platform} review drafts"
+              exit 1
+            else
+              result=$(asc review submissions-create \
+                --app "$ASC_APP_ID" \
+                --platform "$platform" \
+                --output json)
+              draft_id=$(jq -er '.data.id' <<< "$result")
+            fi
+
+            if [[ "${#matching_drafts[@]}" == 0 ]]; then
+              asc review items-add \
+                --submission "$draft_id" \
+                --item-type appStoreVersions \
+                --item-id "$version_id"
+            fi
+
+            items=$(asc review items-list \
+              --submission "$draft_id" \
+              --fields appStoreVersion \
+              --paginate \
+              --output json)
+            jq -e --arg version_id "$version_id" \
+              '[.data[] | select(.relationships.appStoreVersion.data.id == $version_id)] | length == 1' <<< "$items"
+            target=$(asc versions list --app "$ASC_APP_ID" --version "$VERSION" --platform "$platform" --output json)
+            jq -e \
+              '.data | length == 1 and .[0].attributes.appStoreState == "READY_FOR_REVIEW" and .[0].attributes.releaseType == "MANUAL"' <<< "$target"
+            echo "${platform} version ${VERSION} is ready for the final review-submission click"
+          done
