@@ -58,6 +58,8 @@ struct FirezoneApp: App {
         AppView()
           .environmentObject(errorHandler)
           .environmentObject(store)
+          // The status bar's clock and date would re-render every screenshot.
+          .statusBarHidden(MockRun.isActive)
       }
     #elseif os(macOS)
       mainWindowScene(store: store)
