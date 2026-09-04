@@ -10,9 +10,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import dagger.hilt.android.AndroidEntryPoint
-import dev.firezone.android.R
 import dev.firezone.android.core.data.Repository
-import dev.firezone.android.features.permission.ui.compose.PermissionScreen
+import dev.firezone.android.features.permission.notification.ui.compose.NotificationPermissionScreen
 import dev.firezone.android.features.session.ui.compose.FirezoneTheme
 import javax.inject.Inject
 
@@ -34,11 +33,8 @@ class NotificationPermissionActivity : AppCompatActivity() {
 
         setContent {
             FirezoneTheme {
-                PermissionScreen(
-                    title = R.string.enable_notification_permission,
-                    description = R.string.notification_permission_description,
-                    actionLabel = R.string.request_permission,
-                    onAction = ::requestNotificationPermission,
+                NotificationPermissionScreen(
+                    onRequestPermission = ::requestNotificationPermission,
                     onSkip = {
                         repository.setNotificationPermissionRequested()
                         finish()

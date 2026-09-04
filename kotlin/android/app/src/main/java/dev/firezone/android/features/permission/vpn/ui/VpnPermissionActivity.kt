@@ -5,8 +5,7 @@ import android.os.Bundle
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
-import dev.firezone.android.R
-import dev.firezone.android.features.permission.ui.compose.PermissionScreen
+import dev.firezone.android.features.permission.vpn.ui.compose.VpnPermissionScreen
 import dev.firezone.android.features.session.ui.compose.FirezoneTheme
 
 class VpnPermissionActivity : AppCompatActivity() {
@@ -22,12 +21,7 @@ class VpnPermissionActivity : AppCompatActivity() {
 
         setContent {
             FirezoneTheme {
-                PermissionScreen(
-                    title = R.string.enable_vpn_permission,
-                    description = R.string.vpn_permission_description,
-                    actionLabel = R.string.request_permission,
-                    onAction = ::requestPermissions,
-                )
+                VpnPermissionScreen(onRequestPermission = ::requestPermissions)
             }
         }
     }
