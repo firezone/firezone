@@ -324,7 +324,7 @@ jobs:
           firebase_args=(
             appdistribution:distribute "${{ matrix.output-path }}"
             --app "1:215658742954:android:51cc714762dbfbb59e7cd3"
-            --release-notes "https://www.firezone.dev/changelog"
+            --release-notes "https://www.firezone.dev/changelog#tab-android"
             --groups "firezone-engineering"
           )
 
@@ -374,11 +374,8 @@ jobs:
           tool: store-release
           args: >-
             android prepare
-            --package-name dev.firezone.android
             --bundle ${{ runner.temp }}/play-store/app-release.aab
             --version ${{ needs.update-release-draft.outputs.version }}
-            --track internal
-            --whats-new https://www.firezone.dev/changelog
             --screenshot kotlin/android/screenshots/sign-in.png
             --screenshot kotlin/android/screenshots/session-screen.png
             --screenshot kotlin/android/screenshots/session-screen-favorites.png

@@ -59,8 +59,6 @@ struct AppleUploadBuild {
     #[command(flatten)]
     auth: AppleAuth,
     #[arg(long)]
-    bundle_id: String,
-    #[arg(long)]
     version: String,
     #[arg(long)]
     build_number: String,
@@ -75,17 +73,11 @@ struct ApplePrepareVersion {
     #[command(flatten)]
     auth: AppleAuth,
     #[arg(long)]
-    bundle_id: String,
-    #[arg(long)]
     version: String,
     #[arg(long)]
     build_number: String,
     #[arg(long, value_enum)]
     platform: ApplePlatform,
-    #[arg(long, default_value = "en-US")]
-    locale: String,
-    #[arg(long)]
-    whats_new: String,
     #[arg(long, required = true)]
     screenshot: Vec<AppleScreenshot>,
 }
@@ -134,17 +126,9 @@ struct AndroidPrepare {
     #[arg(long, env = "ACCESS_TOKEN")]
     access_token: String,
     #[arg(long)]
-    package_name: String,
-    #[arg(long)]
     bundle: PathBuf,
     #[arg(long)]
     version: String,
-    #[arg(long, default_value = "internal")]
-    track: String,
-    #[arg(long, default_value = "en-US")]
-    locale: String,
-    #[arg(long)]
-    whats_new: String,
     #[arg(long, required = true)]
     screenshot: Vec<PathBuf>,
 }

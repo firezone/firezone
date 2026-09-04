@@ -11,33 +11,28 @@ use crate::{AndroidPrepare, http};
 const API_ROOT: &str = "https://androidpublisher.googleapis.com/androidpublisher/v3/applications";
 const UPLOAD_ROOT: &str =
     "https://androidpublisher.googleapis.com/upload/androidpublisher/v3/applications";
+const PACKAGE_NAME: &str = "dev.firezone.android";
+const TRACK: &str = "internal";
+const LOCALE: &str = "en-US";
+const CHANGELOG_URL: &str = "https://www.firezone.dev/changelog#tab-android";
 
 pub async fn prepare(args: AndroidPrepare) -> Result<()> {
     let bundle = read_file(&args.bundle)?;
     let screenshots = read_screenshots(&args.screenshot)?;
     let api = Api::new(args.access_token)?;
-    let edit_id = api.create_edit(&args.package_name).await?;
-    let version_code = api
-        .upload_bundle(&args.package_name, &edit_id, bundle)
+    let edit_id = api.create_edit(PACKAGE_NAME).await?;
+    let version_code = api.upload_bundle(PACKAGE_NAME, &edit_id, bundle).await?;
+    let track = api.track(PACKAGE_NAME, &edit_id, TRACK).await?;
+    let track = with_draft_release(track, version_code, &args.version)?;
+    api.update_track(PACKAGE_NAME, &edit_id, TRACK, &track)
         .await?;
-    let track = api.track(&args.package_name, &edit_id, &args.track).await?;
-    let track = with_draft_release(
-        track,
-        &args.track,
-        version_code,
-        &args.version,
-        &args.locale,
-        &args.whats_new,
-    )?;
-    api.update_track(&args.package_name, &edit_id, &args.track, &track)
+    api.replace_screenshots(PACKAGE_NAME, &edit_id, LOCALE, screenshots)
         .await?;
-    api.replace_screenshots(&args.package_name, &edit_id, &args.locale, screenshots)
-        .await?;
-    api.commit(&args.package_name, &edit_id).await?;
+    api.commit(PACKAGE_NAME, &edit_id).await?;
 
     println!(
-        "Prepared {} version {} ({version_code}) on the {} track without sending it for review",
-        args.package_name, args.version, args.track
+        "Prepared {PACKAGE_NAME} version {} ({version_code}) on the {TRACK} track without sending it for review",
+        args.version
     );
 
     Ok(())
@@ -198,18 +193,11 @@ impl Api {
     }
 }
 
-fn with_draft_release(
-    mut track: Value,
-    track_name: &str,
-    version_code: i32,
-    version: &str,
-    locale: &str,
-    whats_new: &str,
-) -> Result<Value> {
+fn with_draft_release(mut track: Value, version_code: i32, version: &str) -> Result<Value> {
     let object = track
         .as_object_mut()
         .context("Google Play returned a track that is not an object")?;
-    object.insert("track".to_owned(), json!(track_name));
+    object.insert("track".to_owned(), json!(TRACK));
     let releases = object
         .entry("releases")
         .or_insert_with(|| json!([]))
@@ -223,8 +211,8 @@ fn with_draft_release(
         "versionCodes": [version_code.to_string()],
         "status": "draft",
         "releaseNotes": [{
-            "language": locale,
-            "text": whats_new,
+            "language": LOCALE,
+            "text": CHANGELOG_URL,
         }],
     }));
 
@@ -285,14 +273,7 @@ mod tests {
                 {"name": "old draft", "status": "draft", "versionCodes": ["8"]},
             ],
         });
-        let Ok(actual) = with_draft_release(
-            input,
-            "internal",
-            9,
-            "1.2.3",
-            "en-US",
-            "https://www.firezone.dev/changelog",
-        ) else {
+        let Ok(actual) = with_draft_release(input, 9, "1.2.3") else {
             panic!("valid track should be updated");
         };
         let expected = json!({
@@ -305,7 +286,7 @@ mod tests {
                     "versionCodes": ["9"],
                     "releaseNotes": [{
                         "language": "en-US",
-                        "text": "https://www.firezone.dev/changelog",
+                        "text": "https://www.firezone.dev/changelog#tab-android",
                     }],
                 },
             ],

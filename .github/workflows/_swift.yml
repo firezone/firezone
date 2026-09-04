@@ -417,7 +417,6 @@ jobs:
           tool: store-release
           args: >-
             apple upload-build
-            --bundle-id dev.firezone.firezone
             --version ${{ needs.update-release-draft.outputs.version }}
             --build-number ${{ needs.update-release-draft.outputs.build_number }}
             --platform ios
@@ -428,7 +427,6 @@ jobs:
           tool: store-release
           args: >-
             apple upload-build
-            --bundle-id dev.firezone.firezone
             --version ${{ needs.update-release-draft.outputs.version }}
             --build-number ${{ needs.update-release-draft.outputs.build_number }}
             --platform mac-os
@@ -439,11 +437,9 @@ jobs:
           tool: store-release
           args: >-
             apple prepare-version
-            --bundle-id dev.firezone.firezone
             --version ${{ needs.update-release-draft.outputs.version }}
             --build-number ${{ needs.update-release-draft.outputs.build_number }}
             --platform ios
-            --whats-new https://www.firezone.dev/changelog
             --screenshot APP_IPHONE_67=swift/apple/screenshots/ios/iphone/welcome-light.png
             --screenshot APP_IPHONE_67=swift/apple/screenshots/ios/iphone/session-light.png
             --screenshot APP_IPHONE_67=swift/apple/screenshots/ios/iphone/session-scrolled-light.png
@@ -470,11 +466,9 @@ jobs:
           tool: store-release
           args: >-
             apple prepare-version
-            --bundle-id dev.firezone.firezone
             --version ${{ needs.update-release-draft.outputs.version }}
             --build-number ${{ needs.update-release-draft.outputs.build_number }}
             --platform mac-os
-            --whats-new https://www.firezone.dev/changelog
             --screenshot APP_DESKTOP=swift/apple/screenshots/macos/26/first-time-light.png
             --screenshot APP_DESKTOP=swift/apple/screenshots/macos/26/first-time-dark.png
             --screenshot APP_DESKTOP=swift/apple/screenshots/macos/26/settings-general-light.png

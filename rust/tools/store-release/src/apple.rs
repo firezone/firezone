@@ -20,6 +20,9 @@ use crate::{
 };
 
 const API_ROOT: &str = "https://api.appstoreconnect.apple.com/v1";
+const BUNDLE_ID: &str = "dev.firezone.firezone";
+const CHANGELOG_URL: &str = "https://www.firezone.dev/changelog#tab-apple";
+const LOCALE: &str = "en-US";
 const BUILD_POLL_INTERVAL: Duration = Duration::from_secs(15);
 const BUILD_POLLS: usize = 120;
 const SCREENSHOT_POLL_INTERVAL: Duration = Duration::from_secs(2);
@@ -29,7 +32,7 @@ pub async fn upload_build(args: AppleUploadBuild) -> Result<()> {
     let artifact = File::read(&args.artifact)?;
     let uti = artifact_uti(&args.artifact)?;
     let api = Api::new(args.auth)?;
-    let app_id = api.app_id(&args.bundle_id).await?;
+    let app_id = api.app_id(BUNDLE_ID).await?;
 
     if let Some(build_id) = api
         .existing_build(&app_id, &args.version, &args.build_number, args.platform)
@@ -68,23 +71,23 @@ pub async fn upload_build(args: AppleUploadBuild) -> Result<()> {
 pub async fn prepare_version(args: ApplePrepareVersion) -> Result<()> {
     let screenshots = ScreenshotGroups::read(args.platform, args.screenshot)?;
     let api = Api::new(args.auth)?;
-    let app_id = api.app_id(&args.bundle_id).await?;
+    let app_id = api.app_id(BUNDLE_ID).await?;
     let build_id = api
         .required_build(&app_id, &args.version, &args.build_number, args.platform)
         .await?;
     let version = api
-        .version(&app_id, &args.version, args.platform, &args.locale)
+        .version(&app_id, &args.version, args.platform, LOCALE)
         .await?;
     api.set_build(&version.id, &build_id).await?;
     let localization = api
         .localization(
             &version.id,
-            &args.locale,
-            &args.whats_new,
+            LOCALE,
+            CHANGELOG_URL,
             version.source_localization,
         )
         .await?;
-    api.set_whats_new(&localization.id, &args.whats_new).await?;
+    api.set_whats_new(&localization.id, CHANGELOG_URL).await?;
 
     for group in screenshots.groups {
         api.reconcile_screenshots(&localization.id, group).await?;
