@@ -2,17 +2,18 @@
 package dev.firezone.android.features.permission.ui.compose
 
 import androidx.annotation.StringRes
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.weight
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -36,15 +37,19 @@ internal fun PermissionScreen(
     modifier: Modifier = Modifier,
     onSkip: (() -> Unit)? = null,
 ) {
-    Scaffold(
-        modifier = modifier,
-        topBar = { FirezoneTopBar(actions = {}) },
-    ) { innerPadding ->
+    Column(
+        modifier =
+            modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background),
+    ) {
+        FirezoneTopBar(actions = {})
+
         Column(
             modifier =
                 Modifier
-                    .fillMaxSize()
-                    .padding(innerPadding)
+                    .weight(1f)
+                    .fillMaxWidth()
                     .verticalScroll(rememberScrollState())
                     .padding(horizontal = 32.dp, vertical = 16.dp),
             verticalArrangement = Arrangement.Center,
