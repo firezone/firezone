@@ -1,9 +1,9 @@
 use super::{
     icmp_error_hosts::IcmpErrorHosts,
     probe::{
-        ExpectedOutcome, ExpectedProbe, ProbeId, ProbeObservation, ProbeProtocol, ProbeRequest,
-        ReceivedRequest, ReceivedResponse, RejectionResponse, Remote, SubmittedRequest,
-        TraceRequirement,
+        DnsNatObservation, ExpectedOutcome, ExpectedProbe, ProbeId, ProbeObservation, ProbeProtocol,
+        ProbeRequest, ReceivedRequest, ReceivedResponse, RejectionResponse, Remote,
+        SubmittedRequest, TraceRequirement,
     },
     ref_client::RefClient,
     sim_client::SimClient,
@@ -20,6 +20,7 @@ use std::{
     marker::PhantomData,
     net::{IpAddr, SocketAddr},
     sync::atomic::{AtomicBool, Ordering},
+    time::Duration,
 };
 use tracing::{Level, Subscriber};
 use tracing_subscriber::Layer;
@@ -126,7 +127,6 @@ pub(crate) fn assert_probes(
                     submitted_request,
                     received_request,
                     ref_clients,
-                    sim_gateways,
                 );
                 assert_received_response(
                     expected,
@@ -155,6 +155,192 @@ pub(crate) fn assert_probes(
                     received_response,
                     Some(response),
                 );
+            }
+        }
+    }
+}
+
+/// Checks the gateway's stable DNS NAT mapping for each transport session.
+pub(crate) fn assert_dns_nat(
+    observations: &[DnsNatObservation],
+    sim_gateways: &BTreeMap<GatewayId, &SimGateway>,
+) {
+    const SESSION_TTL: Duration = Duration::from_secs(2 * 60);
+
+    let observations_by_udp_flow = observations
+        .iter()
+        .filter_map(|observation| {
+            observation
+                .udp_flow
+                .map(|flow_id| (flow_id, observation))
+        })
+        .into_group_map();
+
+    for (flow_id, flow_observations) in observations_by_udp_flow {
+        let [first, remaining @ ..] = flow_observations.as_slice() else {
+            continue;
+        };
+        let expected_proxy = first.submitted.packet.destination();
+        let expected_generation = first.received.dns_nat_generation;
+
+        for current in remaining {
+            let actual_proxy = current.submitted.packet.destination();
+            if actual_proxy != expected_proxy {
+                tracing::error!(target: "assertions", ?flow_id, %expected_proxy, %actual_proxy, "UDP flow changed its DNS proxy destination");
+            }
+
+            let actual_generation = current.received.dns_nat_generation;
+            if actual_generation != expected_generation {
+                tracing::error!(target: "assertions", ?flow_id, ?expected_generation, ?actual_generation, "UDP flow crossed a DNS NAT reset");
+            }
+        }
+    }
+
+    let observations_by_nat_key = observations
+        .iter()
+        .filter_map(|observation| {
+            let gateway = match observation.received.remote {
+                Remote::Gateway(gateway) => gateway,
+                Remote::Client(client) => {
+                    tracing::error!(target: "assertions", %client, "DNS NAT observation was recorded for a client request");
+                    return None;
+                }
+            };
+            let protocol = match observation.submitted.packet.source_protocol() {
+                Ok(ip_packet::Protocol::Udp(port)) => ip_packet::Protocol::Udp(port),
+                Ok(ip_packet::Protocol::IcmpEcho(identifier)) => {
+                    ip_packet::Protocol::IcmpEcho(identifier)
+                }
+                Ok(ip_packet::Protocol::Tcp(port)) => {
+                    tracing::error!(target: "assertions", %port, "DNS NAT observation was recorded for a TCP request");
+                    return None;
+                }
+                Err(error) => {
+                    tracing::error!(target: "assertions", %error, "DNS NAT request has no source protocol");
+                    return None;
+                }
+            };
+            let dns_nat_generation = match observation.received.dns_nat_generation {
+                Some(dns_nat_generation) => dns_nat_generation,
+                None => {
+                    tracing::error!(target: "assertions", client = %observation.submitted.client, %gateway, "DNS NAT observation has no gateway NAT generation");
+                    return None;
+                }
+            };
+
+            Some((
+                (
+                    observation.submitted.client,
+                    gateway,
+                    dns_nat_generation,
+                    observation.submitted.packet.destination(),
+                    protocol,
+                ),
+                observation,
+            ))
+        })
+        .into_group_map();
+
+    let initial_dns_mappings = observations_by_nat_key
+        .into_iter()
+        .flat_map(|((client, gateway, dns_nat_generation, proxy, protocol), observations)| {
+            observations
+                .chunk_by(|previous, current| {
+                    current
+                        .received
+                        .at
+                        .saturating_duration_since(previous.received.at)
+                        < SESSION_TTL
+                })
+                .filter_map(|session| {
+                    let [first, remaining @ ..] = session else {
+                        return None;
+                    };
+                    let expected_source = match first.received.packet.source_protocol() {
+                        Ok(protocol) => protocol,
+                        Err(error) => {
+                            tracing::error!(target: "assertions", %error, "Gateway-received DNS NAT request has no source protocol");
+                            return None;
+                        }
+                    };
+                    let expected_real_ip = first.received.packet.destination();
+
+                    for current in remaining {
+                        if current.domain != first.domain {
+                            tracing::error!(target: "assertions", %client, %gateway, dns_nat_generation, %proxy, ?protocol, expected = %first.domain, actual = %current.domain, "DNS NAT generation reused a proxy for another domain");
+                        }
+
+                        let actual_source = match current.received.packet.source_protocol() {
+                            Ok(protocol) => protocol,
+                            Err(error) => {
+                                tracing::error!(target: "assertions", %error, "Gateway-received DNS NAT request has no source protocol");
+                                continue;
+                            }
+                        };
+                        let actual_real_ip = current.received.packet.destination();
+
+                        if (actual_source, actual_real_ip)
+                            != (expected_source, expected_real_ip)
+                        {
+                            tracing::error!(target: "assertions", %client, %gateway, %proxy, ?protocol, ?expected_source, %expected_real_ip, ?actual_source, %actual_real_ip, "DNS NAT session changed its outside tuple");
+                        }
+                    }
+
+                    let order = match first.received.gateway_order {
+                        Some(order) => order,
+                        None => {
+                            tracing::error!(target: "assertions", %client, %gateway, "DNS NAT request has no gateway observation order");
+                            return None;
+                        }
+                    };
+                    let Some(gateway_state) = sim_gateways.get(&gateway) else {
+                        tracing::error!(target: "assertions", %gateway, "DNS NAT observation references an unknown gateway");
+                        return None;
+                    };
+                    let Some(resolution) = gateway_state.dns_resolution_before(
+                        client,
+                        &first.domain,
+                        first.received.at,
+                        order,
+                        dns_nat_generation,
+                        proxy,
+                    ) else {
+                        tracing::error!(target: "assertions", %client, %gateway, domain = %first.domain, "DNS NAT session has no preceding gateway resolution");
+                        return None;
+                    };
+
+                    assert_destination_is_dns_resource(
+                        &first.received.packet,
+                        &first.domain,
+                        &resolution.addresses,
+                    );
+
+                    Some((
+                        (
+                            client,
+                            gateway,
+                            dns_nat_generation,
+                            first.domain.clone(),
+                            resolution.order,
+                            proxy,
+                        ),
+                        expected_real_ip,
+                    ))
+                })
+                .collect_vec()
+        })
+        .into_group_map();
+
+    for ((client, gateway, dns_nat_generation, domain, resolution_order, proxy), real_ips) in
+        initial_dns_mappings
+    {
+        let [expected, remaining @ ..] = real_ips.as_slice() else {
+            continue;
+        };
+
+        for actual in remaining {
+            if actual != expected {
+                tracing::error!(target: "assertions", %client, %gateway, dns_nat_generation, %domain, resolution_order, %proxy, %expected, %actual, "DNS proxy mapped to different destinations within one resolution");
             }
         }
     }
@@ -212,7 +398,6 @@ fn assert_received_request(
     submitted_request: &SubmittedRequest,
     received_request: &ReceivedRequest,
     ref_clients: &BTreeMap<ClientId, &RefClient>,
-    sim_gateways: &BTreeMap<GatewayId, &SimGateway>,
 ) {
     assert_probe_payload(expected.id, &received_request.packet);
 
@@ -230,28 +415,13 @@ fn assert_received_request(
         Destination::IpAddr(destination) => {
             assert_destination_is_ip(&received_request.packet, destination);
         }
-        Destination::DomainName { name, .. } => {
-            let gateway = match received_request.remote {
-                Remote::Gateway(gateway) => gateway,
+        Destination::DomainName { .. } => {
+            match received_request.remote {
+                Remote::Gateway(_) => {}
                 Remote::Client(_) => {
                     tracing::error!(target: "assertions", id = ?expected.id, "DNS probe request was not received through a gateway");
-                    return;
                 }
-            };
-            let Some(possible_resource_ips) = sim_gateways.get(&gateway).and_then(|gateway| {
-                gateway
-                    .dns_resolutions
-                    .get(&(expected.origin, name.clone()))
-            }) else {
-                tracing::error!(target: "assertions", id = ?expected.id, "DNS probe has no gateway resolution");
-                return;
-            };
-
-            assert_destination_is_dns_resource(
-                &received_request.packet,
-                name,
-                possible_resource_ips,
-            );
+            }
         }
     }
 }

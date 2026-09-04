@@ -1560,7 +1560,7 @@ impl RefClient {
             .collect()
     }
 
-    fn internet_resource(&self) -> Option<ResourceId> {
+    pub(crate) fn internet_resource(&self) -> Option<ResourceId> {
         self.resources.iter().find_map(|r| match r {
             Resource::Dns(_) => None,
             Resource::Cidr(_) => None,
