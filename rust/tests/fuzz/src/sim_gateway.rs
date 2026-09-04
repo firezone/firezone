@@ -50,7 +50,7 @@ pub(crate) struct DnsResolution {
     pub(crate) at: Instant,
     pub(crate) order: u64,
     pub(crate) dns_nat_generation: u64,
-    proxy_ips: BTreeSet<IpAddr>,
+    proxy_ips: Vec<IpAddr>,
     pub(crate) addresses: Vec<IpAddr>,
 }
 
@@ -347,7 +347,6 @@ impl SimGateway {
         addresses: Vec<IpAddr>,
         at: Instant,
     ) {
-        let proxy_ips = proxy_ips.into_iter().collect();
         let proxies_were_reassigned = proxy_ips.iter().any(|proxy_ip| {
             self.dns_proxy_owners
                 .get(&(client, *proxy_ip))
@@ -454,11 +453,12 @@ impl SimGateway {
             .iter()
             .filter_map(|(client, resources)| {
                 let retained = authorizations.get(client);
-                let resources = resources
-                    .iter()
-                    .filter(|resource| retained.is_some_and(|set| set.contains(resource)))
-                    .copied()
-                    .collect();
+                let resources = BTreeSet::from_iter(
+                    resources
+                        .iter()
+                        .filter(|resource| retained.is_some_and(|set| set.contains(resource)))
+                        .copied(),
+                );
 
                 (!resources.is_empty()).then_some((*client, resources))
             })
@@ -509,13 +509,13 @@ impl SimGateway {
         let generation = self.dns_nat_generation(client) + 1;
         self.dns_nat_generations.insert(client, generation);
         self.dns_proxy_owners
-            .extract_if(|(owner, _), _| *owner == client)
+            .extract_if(.., |(owner, _), _| *owner == client)
             .for_each(drop);
     }
 
     fn record_peer_removed(&mut self, client: ClientId) {
         self.clients_by_ip
-            .extract_if(|_, owner| *owner == client)
+            .extract_if(.., |_, owner| *owner == client)
             .for_each(drop);
         self.start_new_dns_nat_generation(client);
     }
