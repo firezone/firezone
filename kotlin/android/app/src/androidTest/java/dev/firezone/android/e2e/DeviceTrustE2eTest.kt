@@ -131,6 +131,33 @@ class DeviceTrustE2eTest {
         awaitText("Select your client certificate")
     }
 
+    /**
+     * An MDM that cannot template the alias of a certificate it provisioned leaves the administrator
+     * naming one the KeyChain does not hold, which is how SCEP-issued certificates arrive. Android
+     * still lets the user release the real certificate from the chooser, so that release is what
+     * the tunnel has to present.
+     */
+    @Test
+    fun aManagedAliasTheKeyChainDoesNotHoldStillLetsTheUserReleaseTheCertificate() {
+        val certificate = testIdentity(SERIAL_CLAIM)
+        FakeKeyChain.install(ALIAS, certificate, granted = false)
+        FakeKeyChain.userChooses(ALIAS)
+        TestRestrictions.bundle.putString(X509_CERTIFICATE_ALIAS_RESTRICTION, "not-what-the-mdm-installed")
+        tokenStore.save(TOKEN)
+
+        launchApp()
+
+        awaitText("Select your client certificate")
+        composeRule.onNodeWithText("Select certificate").performClick()
+
+        await("the certificate screen to close") { !isOnScreen("Select your client certificate") }
+
+        startTunnelService()
+        val session = awaitSession()
+
+        assertArrayEquals(certificate.chain.first().encoded, session.tlsIdentity?.certificateChain()?.first())
+    }
+
     /** Installs [certificate] as granted and records its alias the way settings would. */
     private fun givenCertificate(certificate: TestIdentity) {
         FakeKeyChain.install(ALIAS, certificate, granted = true)
@@ -154,14 +181,15 @@ class DeviceTrustE2eTest {
         return exists
     }
 
-    private fun awaitText(text: String) =
-        await("\"$text\" on screen") {
-            // The splash screen is a View, so there are moments with no Compose content at all,
-            // which `fetchSemanticsNodes` reports as an error rather than as an empty screen.
-            runCatching {
-                composeRule.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty()
-            }.getOrDefault(false)
-        }
+    private fun awaitText(text: String) = await("\"$text\" on screen") { isOnScreen(text) }
+
+    private fun isOnScreen(text: String): Boolean {
+        // The splash screen is a View, so there are moments with no Compose content at all,
+        // which `fetchSemanticsNodes` reports as an error rather than as an empty screen.
+        return runCatching {
+            composeRule.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty()
+        }.getOrDefault(false)
+    }
 
     private fun await(
         what: String,

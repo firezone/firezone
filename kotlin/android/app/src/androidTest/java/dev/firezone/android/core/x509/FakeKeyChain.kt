@@ -23,6 +23,9 @@ object FakeKeyChain : KeyChain {
 
     private val entries = ConcurrentHashMap<String, Entry>()
 
+    @Volatile
+    private var userChoice: String? = null
+
     /** Files [identity] under [alias], granted to the app or merely installed. */
     fun install(
         alias: String,
@@ -32,8 +35,14 @@ object FakeKeyChain : KeyChain {
         entries[alias] = Entry(identity.chain, identity.privateKey, granted)
     }
 
+    /** Has the user pick [alias] in the chooser instead of the one offered to them. */
+    fun userChooses(alias: String) {
+        userChoice = alias
+    }
+
     fun reset() {
         entries.clear()
+        userChoice = null
     }
 
     override fun certificateChain(alias: String): List<X509Certificate>? = entries[alias]?.takeIf { it.granted }?.chain
@@ -46,14 +55,14 @@ object FakeKeyChain : KeyChain {
         preselectedAlias: String?,
         onChosen: (String?) -> Unit,
     ) {
-        // The user takes the offered certificate when the KeyChain holds it, and choosing is
-        // what grants it.
-        val entry = preselectedAlias?.let { alias -> entries[alias] }
+        // The user takes the offered certificate unless the test scripted another pick, either
+        // way only when the KeyChain holds it, and choosing is what grants it.
+        val alias = (userChoice ?: preselectedAlias)?.takeIf(entries::containsKey)
 
-        if (entry != null) {
-            entries[preselectedAlias] = entry.copy(granted = true)
+        if (alias != null) {
+            entries.computeIfPresent(alias) { _, entry -> entry.copy(granted = true) }
         }
 
-        onChosen(preselectedAlias.takeIf { entry != null })
+        onChosen(alias)
     }
 }
