@@ -46,7 +46,7 @@ internal_version_code=""
 
 cleanup() {
     if [[ -n "$edit_id" && "$committed" != true ]]; then
-        echo "Discarding Google Play edit $edit_id..."
+        echo "Discarding uncommitted Google Play edit $edit_id; published releases are unchanged..."
         gplay edits delete --package "$PACKAGE_NAME" --edit "$edit_id" --confirm || true
     fi
 }
@@ -55,33 +55,33 @@ trap cleanup EXIT
 create_edit() {
     local edit
 
-    echo "Creating Google Play edit..."
+    echo "Opening Google Play edit transaction..."
     edit=$(gplay edits create --package "$PACKAGE_NAME")
     edit_id=$(jq -er '.id' <<< "$edit")
-    echo "Created edit $edit_id."
+    echo "Opened edit $edit_id."
 }
 
 find_internal_release() {
     local internal
 
-    echo "Finding the exact completed internal release $RELEASE_NAME..."
-    internal=$(gplay tracks get \
+    echo "Finding the exact published internal release $RELEASE_NAME..."
+    internal=$(gplay tracks releases list \
         --package "$PACKAGE_NAME" \
-        --edit "$edit_id" \
         --track "$INTERNAL_TRACK")
 
     if ! jq -e --arg name "$RELEASE_NAME" '
         (.releases // []) as $releases
         | (($releases | length) == 1)
-        and ($releases[0].name == $name)
-        and ($releases[0].status == "completed")
-        and (($releases[0].versionCodes | length) == 1)' \
+        and ($releases[0].releaseName == $name)
+        and ($releases[0].track == "internal")
+        and ($releases[0].releaseLifecycleState == "RELEASE_LIFECYCLE_STATE_PUBLISHED")
+        and (($releases[0].activeArtifacts | length) == 1)' \
         <<< "$internal" >/dev/null; then
-        echo "Expected exactly one completed internal release named $RELEASE_NAME" >&2
+        echo "Expected exactly one published internal release named $RELEASE_NAME" >&2
         exit 1
     fi
 
-    internal_version_code=$(jq -er '.releases[0].versionCodes[0]' <<< "$internal")
+    internal_version_code=$(jq -er '.releases[0].activeArtifacts[0].versionCode | tostring' <<< "$internal")
     echo "Found $RELEASE_NAME with versionCode $internal_version_code."
 }
 
@@ -174,7 +174,6 @@ publish_internal() {
 }
 
 inspect_internal() {
-    create_edit
     find_internal_release
 
     if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
@@ -205,8 +204,8 @@ submit_production() {
         fi
     done
 
-    create_edit
     find_internal_release
+    create_edit
 
     production=$(gplay tracks get \
         --package "$PACKAGE_NAME" \
