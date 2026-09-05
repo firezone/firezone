@@ -3,7 +3,6 @@ defmodule Portal.Google.WebhookSyncTest do
   use Oban.Testing, repo: Portal.Repo
 
   import Portal.AccountFixtures
-  import Portal.DirectorySyncLockHelpers
   import Portal.GoogleDirectoryFixtures
   import Portal.GoogleAPIClientHelpers
   import Portal.GroupFixtures
@@ -12,7 +11,6 @@ defmodule Portal.Google.WebhookSyncTest do
 
   alias Portal.Actor
   alias Portal.ExternalIdentity
-  alias Portal.ExternalIdentitySyncState
   alias Portal.Google.APIClient
   alias Portal.Google.Sync
   alias Portal.Google.WebhookSync
@@ -41,7 +39,7 @@ defmodule Portal.Google.WebhookSyncTest do
       assert identity.directory_id == directory.id
       assert identity.account_id == account.id
 
-      state = Repo.get_by!(ExternalIdentitySyncState, external_identity_id: identity.id)
+      state = Repo.get_by!(Portal.DirectorySync.IdentityState, directory_id: identity.directory_id, idp_id: identity.idp_id)
       assert DateTime.diff(DateTime.utc_now(), state.synced_at) < 5
     end
 
@@ -255,16 +253,6 @@ defmodule Portal.Google.WebhookSyncTest do
 
       assert Repo.all(ExternalIdentity) == []
     end
-  end
-
-  test "snoozes while the directory lock is held", %{directory: directory} = ctx do
-    identity = directory_identity(ctx, "user-1")
-    stub_google(users: %{})
-    hold_directory_lock(:google, directory.id)
-
-    assert {:snooze, 30} = perform_job(WebhookSync, args(directory, "user-1"))
-
-    assert Repo.get_by(ExternalIdentity, id: identity.id)
   end
 
   test "skips accounts without directory sync" do

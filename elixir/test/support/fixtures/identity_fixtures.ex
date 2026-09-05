@@ -88,16 +88,16 @@ defmodule Portal.IdentityFixtures do
 
     {:ok, identity} = Portal.Repo.insert(changeset)
 
-    # If synced_at was provided, create a sync state record
-    if synced_at = Map.get(attrs, :synced_at) do
-      %Portal.ExternalIdentitySyncState{
-        external_identity_id: identity.id,
+    if (synced_at = Map.get(attrs, :synced_at)) && identity.directory_id && identity.idp_id do
+      %Portal.DirectorySync.IdentityState{
         account_id: account.id,
+        directory_id: identity.directory_id,
+        idp_id: identity.idp_id,
         synced_at: synced_at
       }
       |> Portal.Repo.insert!(
         on_conflict: {:replace, [:synced_at]},
-        conflict_target: [:account_id, :external_identity_id]
+        conflict_target: [:account_id, :directory_id, :idp_id]
       )
     end
 

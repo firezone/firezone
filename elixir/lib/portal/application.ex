@@ -41,12 +41,11 @@ defmodule Portal.Application do
     base_children = token_caches() ++ [
       # Core services
       Portal.Repo,
-      # Isolated connection pools (web/api/job/poller/lock)
+      # Isolated connection pools (web/api/job/poller)
       Portal.Repo.Web,
       Portal.Repo.Api,
       Portal.Repo.Job,
       Portal.Repo.Poller,
-      Portal.Repo.Lock,
       {Task.Supervisor, name: Portal.Analytics.TaskSupervisor},
       # Default pg scope for distributed process discovery (used by replication)
       %{id: :pg, start: {:pg, :start_link, []}},

@@ -60,16 +60,16 @@ defmodule Portal.GroupFixtures do
 
     {:ok, group} = Portal.Repo.insert(changeset)
 
-    # If synced_at was provided, create a sync state record
-    if synced_at = Map.get(attrs, :synced_at) do
-      %Portal.GroupSyncState{
-        group_id: group.id,
+    if (synced_at = Map.get(attrs, :synced_at)) && group.directory_id && group.idp_id do
+      %Portal.DirectorySync.GroupState{
         account_id: account.id,
+        directory_id: group.directory_id,
+        idp_id: group.idp_id,
         synced_at: synced_at
       }
       |> Portal.Repo.insert!(
         on_conflict: {:replace, [:synced_at]},
-        conflict_target: [:account_id, :group_id]
+        conflict_target: [:account_id, :directory_id, :idp_id]
       )
     end
 

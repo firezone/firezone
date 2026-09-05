@@ -1,7 +1,6 @@
 defmodule PortalAPI.IdentityControllerTest do
   use PortalAPI.ConnCase, async: true
 
-  alias Portal.ExternalIdentitySyncState
   alias Portal.Repo
 
   import Portal.AccountFixtures
@@ -129,7 +128,7 @@ defmodule PortalAPI.IdentityControllerTest do
           idp_id: "172836495673"
         })
 
-      sync_state = Repo.get_by!(ExternalIdentitySyncState, external_identity_id: identity.id)
+      sync_state = Repo.get_by!(Portal.DirectorySync.IdentityState, directory_id: identity.directory_id, idp_id: identity.idp_id)
 
       conn =
         conn

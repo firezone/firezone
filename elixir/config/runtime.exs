@@ -108,16 +108,6 @@ if config_env() == :prod do
            {:parameters, Keyword.merge(database_parameters, application_name: "poller")}
          ] ++ direct_pool_base_opts
 
-  # Isolated direct pool for directory sync locks: a holder keeps its connection
-  # for as long as a sync runs, and a session lock cannot live behind PgBouncer's
-  # transaction pooling
-  config :portal,
-         Portal.Repo.Lock,
-         [
-           {:pool_size, 10},
-           {:parameters, Keyword.merge(database_parameters, application_name: "lock")}
-         ] ++ direct_pool_base_opts
-
   config :portal, Portal.ChangeLogs.Consumer,
     enabled: env_var_to_config!(:change_logs_replication_enabled),
     replication_slot_name: env_var_to_config!(:database_change_logs_replication_slot_name),

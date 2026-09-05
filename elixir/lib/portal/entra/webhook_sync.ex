@@ -16,8 +16,8 @@ defmodule Portal.Entra.WebhookSync do
 
   use Oban.Worker, queue: :entra_webhook, max_attempts: 3
 
+  alias Portal.DirectorySync
   alias Portal.Entra
-  alias Portal.DirectorySync.Lock
   alias Portal.Microsoft.Graph.APIClient
   alias __MODULE__.Database
   require Logger
@@ -30,10 +30,6 @@ defmodule Portal.Entra.WebhookSync do
     states: [:available, :scheduled, :retryable],
     keys: [:directory_id, :resource, :resource_id]
   ]
-
-  # A full sync reads Graph long before it writes, so a notification waits
-  # for the directory lock instead of interleaving with one.
-  @snooze_seconds 30
 
   @impl Oban.Worker
   def new(args, opts), do: super(args, Keyword.put_new(opts, :unique, @unique))
@@ -57,20 +53,11 @@ defmodule Portal.Entra.WebhookSync do
         :ok
 
       directory ->
-        apply_with_lock(directory, resource, resource_id, change_type)
+        apply_notification(directory, resource, resource_id, change_type)
     end
   end
 
   def perform(_), do: :ok
-
-  defp apply_with_lock(directory, resource, resource_id, change_type) do
-    fun = fn -> apply_notification(directory, resource, resource_id, change_type) end
-
-    case Lock.try_run(:entra, directory.id, fun) do
-      {:ok, result} -> result
-      :busy -> {:snooze, @snooze_seconds}
-    end
-  end
 
   defp apply_notification(directory, resource, resource_id, change_type) do
     Logger.info("Applying Entra change notification",
@@ -84,26 +71,28 @@ defmodule Portal.Entra.WebhookSync do
   end
 
   defp apply_change(directory, "user", user_id, change_type) do
+    synced_at = DateTime.utc_now()
+
     case Database.get_identity(directory.account_id, Entra.Sync.issuer(directory), user_id) do
       nil -> :ok
-      identity when change_type == "deleted" -> remove_identity(directory, identity)
-      identity -> refresh_identity(directory, identity, user_id)
+      identity when change_type == "deleted" -> remove_identity(directory, identity, synced_at)
+      identity -> refresh_identity(directory, identity, synced_at, user_id)
     end
   end
 
   defp apply_change(directory, "group", group_id, change_type) do
     group = Database.get_group(directory.account_id, directory.id, group_id)
+    synced_at = DateTime.utc_now()
 
     cond do
       change_type == "deleted" ->
-        remove_group(directory, group)
+        remove_group(directory, group, synced_at)
 
       is_nil(group) and not directory.sync_all_groups ->
         :ok
 
       true ->
         access_token = Entra.Sync.get_access_token!(directory)
-        synced_at = DateTime.utc_now()
 
         case APIClient.get_group(access_token, group_id) do
           {:ok, %Req.Response{status: 200, body: %{"id" => id, "displayName" => name}}}
@@ -114,7 +103,7 @@ defmodule Portal.Entra.WebhookSync do
             :ok
 
           {:ok, %Req.Response{status: 404}} ->
-            remove_group(directory, group)
+            remove_group(directory, group, synced_at)
 
           {:ok, response} ->
             raise Entra.SyncError, error: response, directory_id: directory.id, step: :get_group
@@ -134,20 +123,19 @@ defmodule Portal.Entra.WebhookSync do
     :ok
   end
 
-  defp refresh_identity(directory, identity, user_id) do
+  defp refresh_identity(directory, identity, synced_at, user_id) do
     access_token = Entra.Sync.get_access_token!(directory)
-    synced_at = DateTime.utc_now()
 
     case APIClient.get_user(access_token, user_id) do
       {:ok, %Req.Response{status: 200, body: %{} = user}} ->
         if Entra.Sync.syncable_user?(user, directory.id) do
           upsert_identity(directory, synced_at, user)
         else
-          remove_identity(directory, identity)
+          remove_identity(directory, identity, synced_at)
         end
 
       {:ok, %Req.Response{status: 404}} ->
-        remove_identity(directory, identity)
+        remove_identity(directory, identity, synced_at)
 
       {:ok, response} ->
         raise Entra.SyncError, error: response, directory_id: directory.id, step: :get_user
@@ -176,14 +164,16 @@ defmodule Portal.Entra.WebhookSync do
     error in Entra.SyncError -> {:error, error}
   end
 
-  defp remove_identity(directory, identity) do
-    Database.delete_identity(identity)
-    Database.delete_actor_directory_memberships(directory.account_id, directory.id, identity.actor_id)
+  defp remove_identity(directory, identity, synced_at) do
+    {removed, _} =
+      DirectorySync.remove_identity(directory.account_id, directory.id, identity, synced_at)
+
     Entra.Sync.delete_actors_without_identities(directory)
 
     Logger.info("Removed identity from Entra change notification",
       entra_directory_id: directory.id,
-      external_identity_id: identity.id
+      external_identity_id: identity.id,
+      removed: removed
     )
 
     :ok
@@ -242,14 +232,16 @@ defmodule Portal.Entra.WebhookSync do
     not is_nil(Database.get_group(directory.account_id, directory.id, group_id))
   end
 
-  defp remove_group(_directory, nil), do: :ok
+  defp remove_group(_directory, nil, _synced_at), do: :ok
 
-  defp remove_group(directory, group) do
-    Database.delete_group(group)
+  defp remove_group(directory, group, synced_at) do
+    {removed, _} =
+      DirectorySync.remove_group(directory.account_id, directory.id, group, synced_at)
 
     Logger.info("Removed group from Entra change notification",
       entra_directory_id: directory.id,
-      group_id: group.id
+      group_id: group.id,
+      removed: removed
     )
 
     :ok
@@ -279,27 +271,6 @@ defmodule Portal.Entra.WebhookSync do
       |> Safe.one()
     end
 
-    def delete_identity(identity) do
-      from(i in Portal.ExternalIdentity,
-        where: i.account_id == ^identity.account_id,
-        where: i.id == ^identity.id
-      )
-      |> Safe.unscoped()
-      |> Safe.delete_all()
-    end
-
-    def delete_actor_directory_memberships(account_id, directory_id, actor_id) do
-      from(m in Portal.Membership,
-        join: g in Portal.Group,
-        on: m.group_id == g.id and m.account_id == g.account_id,
-        where: m.account_id == ^account_id,
-        where: m.actor_id == ^actor_id,
-        where: g.directory_id == ^directory_id
-      )
-      |> Safe.unscoped()
-      |> Safe.delete_all()
-    end
-
     def delete_unsynced_group_memberships(group, synced_at) do
       from(m in Portal.Membership,
         where: m.account_id == ^group.account_id,
@@ -316,13 +287,5 @@ defmodule Portal.Entra.WebhookSync do
       |> Safe.delete_all()
     end
 
-    def delete_group(group) do
-      from(g in Portal.Group,
-        where: g.account_id == ^group.account_id,
-        where: g.id == ^group.id
-      )
-      |> Safe.unscoped()
-      |> Safe.delete_all()
-    end
   end
 end

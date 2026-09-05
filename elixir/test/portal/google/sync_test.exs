@@ -4,7 +4,6 @@ defmodule Portal.Google.SyncTest do
 
   import Ecto.Query
   import Portal.AccountFixtures
-  import Portal.DirectorySyncLockHelpers
   import Portal.GoogleDirectoryFixtures
   import Portal.IdentityFixtures
   import Portal.ResourceFixtures
@@ -174,15 +173,6 @@ defmodule Portal.Google.SyncTest do
 
       assert log =~ "Google directory not found, disabled, or account disabled, skipping"
       assert log =~ directory.id
-    end
-
-    test "snoozes while the directory lock is held" do
-      account = account_fixture(features: %{idp_sync: true})
-      directory = google_directory_fixture(account: account)
-      args = %{"account_id" => directory.account_id, "directory_id" => directory.id}
-      hold_directory_lock(:google, directory.id)
-
-      assert {:snooze, 30} = perform_job(Sync, args)
     end
 
     test "performs successful sync with groups, org units, and user identity sync" do
@@ -2511,7 +2501,7 @@ defmodule Portal.Google.SyncTest do
       assert identity_after_stale.email == "old@example.com"
 
       sync_state_after_stale =
-        Repo.get_by!(Portal.ExternalIdentitySyncState, external_identity_id: identity.id)
+        Repo.get_by!(Portal.DirectorySync.IdentityState, directory_id: identity.directory_id, idp_id: identity.idp_id)
 
       assert DateTime.compare(sync_state_after_stale.synced_at, now) == :eq
 
@@ -2526,7 +2516,7 @@ defmodule Portal.Google.SyncTest do
       assert identity_after_fresh.email == "fresh@example.com"
 
       sync_state_after_fresh =
-        Repo.get_by!(Portal.ExternalIdentitySyncState, external_identity_id: identity.id)
+        Repo.get_by!(Portal.DirectorySync.IdentityState, directory_id: identity.directory_id, idp_id: identity.idp_id)
 
       assert DateTime.compare(sync_state_after_fresh.synced_at, future) == :eq
     end
@@ -2687,7 +2677,7 @@ defmodule Portal.Google.SyncTest do
       group_after_stale = Repo.get_by!(Portal.Group, id: group.id, account_id: account.id)
       assert group_after_stale.name == "Original Name"
 
-      sync_state_after_stale = Repo.get_by!(Portal.GroupSyncState, group_id: group.id)
+      sync_state_after_stale = Repo.get_by!(Portal.DirectorySync.GroupState, directory_id: group.directory_id, idp_id: group.idp_id)
       assert DateTime.compare(sync_state_after_stale.synced_at, now) == :eq
 
       assert {:ok, _} =
@@ -2702,7 +2692,7 @@ defmodule Portal.Google.SyncTest do
       group_after_fresh = Repo.get_by!(Portal.Group, id: group.id, account_id: account.id)
       assert group_after_fresh.name == "Fresh Name"
 
-      sync_state_after_fresh = Repo.get_by!(Portal.GroupSyncState, group_id: group.id)
+      sync_state_after_fresh = Repo.get_by!(Portal.DirectorySync.GroupState, directory_id: group.directory_id, idp_id: group.idp_id)
       assert DateTime.compare(sync_state_after_fresh.synced_at, future) == :eq
     end
 

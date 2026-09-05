@@ -1529,12 +1529,14 @@ defmodule PortalWeb.Actors do
         on: od.id == d.id and od.account_id == d.account_id and d.type == :okta,
         as: :okta_directory
       )
-      |> join(:left, [identities: i], ss in Portal.ExternalIdentitySyncState,
-        on: ss.external_identity_id == i.id and ss.account_id == i.account_id,
+      |> join(:left, [identities: i], ss in Portal.DirectorySync.IdentityState,
+        on:
+          ss.account_id == i.account_id and ss.directory_id == i.directory_id and
+            ss.idp_id == i.idp_id,
         as: :sync_state
       )
       |> select_merge(
-        [directory: d, google_directory: gd, entra_directory: ed, okta_directory: od],
+        [directory: d, google_directory: gd, entra_directory: ed, okta_directory: od, sync_state: ss],
         %{
           directory_name:
             fragment(
@@ -1542,11 +1544,11 @@ defmodule PortalWeb.Actors do
               gd.name,
               ed.name,
               od.name
-            )
+            ),
+          synced_at: ss.synced_at
         }
       )
       |> order_by([identities: i], desc: i.inserted_at)
-      |> preload([identities: i, sync_state: ss], sync_state: ss)
       |> Safe.scoped(subject)
       |> Safe.all()
     end

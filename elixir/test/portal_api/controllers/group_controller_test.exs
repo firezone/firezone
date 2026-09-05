@@ -1,7 +1,6 @@
 defmodule PortalAPI.GroupControllerTest do
   use PortalAPI.ConnCase, async: true
   alias Portal.Group
-  alias Portal.GroupSyncState
   alias Portal.Repo
 
   import Portal.AccountFixtures
@@ -210,7 +209,7 @@ defmodule PortalAPI.GroupControllerTest do
     } do
       group = synced_group_fixture(account: account)
 
-      sync_state = Repo.get_by(GroupSyncState, group_id: group.id)
+      sync_state = Repo.get_by(Portal.DirectorySync.GroupState, directory_id: group.directory_id, idp_id: group.idp_id)
 
       conn =
         conn

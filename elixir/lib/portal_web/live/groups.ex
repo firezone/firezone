@@ -1808,17 +1808,19 @@ defmodule PortalWeb.Groups do
           on: a.account_id == m.account_id,
           as: :actors
         )
-        |> join(:left, [groups: g], gss in Portal.GroupSyncState,
-          on: gss.group_id == g.id and gss.account_id == g.account_id,
+        |> join(:left, [groups: g], gss in Portal.DirectorySync.GroupState,
+          on:
+            gss.account_id == g.account_id and gss.directory_id == g.directory_id and
+              gss.idp_id == g.idp_id,
           as: :sync_state
         )
+        |> select_merge([sync_state: gss], %{synced_at: gss.synced_at})
         |> preload(
           [memberships: m, actors: a, directory: d, google_directory: gd,
-           entra_directory: ed, okta_directory: od, sync_state: gss],
+           entra_directory: ed, okta_directory: od],
           memberships: m,
           actors: a,
-          directory: {d, google_directory: gd, entra_directory: ed, okta_directory: od},
-          sync_state: gss
+          directory: {d, google_directory: gd, entra_directory: ed, okta_directory: od}
         )
 
       query |> Safe.scoped(subject) |> Safe.one()

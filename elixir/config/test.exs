@@ -36,13 +36,6 @@ for repo <- [
     queue_target: 1000
 end
 
-# Directory locks are session state taken from a second session, so the lock
-# pool stays out of the sandbox
-config :portal, Portal.Repo.Lock,
-  database: database,
-  pool_size: 10,
-  queue_target: 1000
-
 # Oban has its own config validation that prevents overriding config in runtime.exs,
 # so we explicitly set the config in dev.exs, test.exs, and runtime.exs (for prod) only.
 config :portal, Oban,

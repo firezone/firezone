@@ -20,7 +20,7 @@ defmodule Portal.Group do
 
     field :idp_id, :string
 
-    has_one :sync_state, Portal.GroupSyncState, foreign_key: :group_id, references: :id
+    field :synced_at, :utc_datetime_usec, virtual: true
 
     has_many :policies, Portal.Policy, references: :id
     has_many :memberships, Portal.Membership, references: :id, on_replace: :delete

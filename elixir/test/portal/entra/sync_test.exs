@@ -4,7 +4,6 @@ defmodule Portal.Entra.SyncTest do
 
   import Ecto.Query
   import Portal.AccountFixtures
-  import Portal.DirectorySyncLockHelpers
   import Portal.EntraDirectoryFixtures
 
   alias Portal.Microsoft.Graph.APIClient
@@ -24,16 +23,6 @@ defmodule Portal.Entra.SyncTest do
       end)
 
       :ok
-    end
-
-    test "snoozes while the directory lock is held" do
-      account = account_fixture(features: %{idp_sync: true})
-      directory = entra_directory_fixture(account: account)
-      args = %{account_id: directory.account_id, directory_id: directory.id}
-      hold_directory_lock(:entra, directory.id)
-
-      assert {:snooze, 60} = perform_job(Sync, args)
-      assert Repo.all(ExternalIdentity) == []
     end
 
     test "performs successful sync with assigned groups mode (sync_all_groups: false)" do
@@ -2249,88 +2238,6 @@ defmodule Portal.Entra.SyncTest do
                group.id
     end
 
-    test "raises SyncError when group member membership upserts fail" do
-      account = account_fixture(features: %{idp_sync: true})
-      directory = entra_directory_fixture(account: account, sync_all_groups: false)
-      {directory_sync_client_id, auth_provider_client_id} = entra_client_ids()
-
-      Req.Test.expect(APIClient, 30, fn %{request_path: path, query_string: query} = conn ->
-        cond do
-          String.ends_with?(path, "/oauth2/v2.0/token") ->
-            Req.Test.json(conn, %{"access_token" => "test_token"})
-
-          path == "/v1.0/servicePrincipals" ->
-            filter = URI.decode_query(query)["$filter"]
-
-            cond do
-              String.contains?(filter, directory_sync_client_id) ->
-                Req.Test.json(conn, %{"value" => [%{"id" => @test_service_principal_id}]})
-
-              String.contains?(filter, auth_provider_client_id) ->
-                Req.Test.json(conn, %{"value" => []})
-
-              true ->
-                Req.Test.json(conn, %{"value" => []})
-            end
-
-          String.contains?(path, "appRoleAssignedTo") ->
-            Req.Test.json(conn, %{
-              "value" => [
-                %{
-                  "principalId" => "user_123",
-                  "principalType" => "User",
-                  "principalDisplayName" => "Direct User"
-                },
-                %{
-                  "principalId" => "group_123",
-                  "principalType" => "Group",
-                  "principalDisplayName" => "Engineering"
-                }
-              ]
-            })
-
-          String.ends_with?(path, "/$batch") ->
-            Req.Test.json(conn, %{
-              "responses" => [
-                %{
-                  "id" => "1",
-                  "status" => 200,
-                  "body" => %{
-                    "id" => "user_123",
-                    "displayName" => "Direct User",
-                    "mail" => "direct@example.com",
-                    "userPrincipalName" => "direct@example.com",
-                    "accountEnabled" => true
-                  }
-                }
-              ]
-            })
-
-          String.contains?(path, "group_123/transitiveMembers") ->
-            duplicate_member =
-              active_entra_user(%{
-                "@odata.type" => "#microsoft.graph.user",
-                "id" => "user_123",
-                "displayName" => "Direct User",
-                "mail" => "direct@example.com",
-                "userPrincipalName" => "direct@example.com"
-              })
-
-            Req.Test.json(conn, %{"value" => [duplicate_member, duplicate_member]})
-
-          true ->
-            Req.Test.json(conn, %{"error" => "unexpected"})
-        end
-      end)
-
-      error =
-        assert_raise Portal.Entra.SyncError, fn ->
-          perform_job(Sync, %{account_id: directory.account_id, directory_id: directory.id})
-        end
-
-      assert error.step == :batch_upsert_memberships
-    end
-
     test "raises SyncError when direct user upserts fail because emails collide" do
       account = account_fixture(features: %{idp_sync: true})
       directory = entra_directory_fixture(account: account, sync_all_groups: false)
@@ -2475,7 +2382,7 @@ defmodule Portal.Entra.SyncTest do
                  [%{idp_id: "group1", name: "Group 1"}]
                )
 
-      assert {:error, _reason} =
+      assert {:ok, %{upserted_memberships: 1}} =
                Database.batch_upsert_memberships(
                  account.id,
                  issuer,
@@ -2532,7 +2439,7 @@ defmodule Portal.Entra.SyncTest do
       assert identity_after_stale.email == "old@example.com"
 
       sync_state_after_stale =
-        Repo.get_by!(Portal.ExternalIdentitySyncState, external_identity_id: identity.id)
+        Repo.get_by!(Portal.DirectorySync.IdentityState, directory_id: identity.directory_id, idp_id: identity.idp_id)
 
       assert DateTime.compare(sync_state_after_stale.synced_at, now) == :eq
 
@@ -2551,7 +2458,7 @@ defmodule Portal.Entra.SyncTest do
       assert identity_after_fresh.email == "fresh@example.com"
 
       sync_state_after_fresh =
-        Repo.get_by!(Portal.ExternalIdentitySyncState, external_identity_id: identity.id)
+        Repo.get_by!(Portal.DirectorySync.IdentityState, directory_id: identity.directory_id, idp_id: identity.idp_id)
 
       assert DateTime.compare(sync_state_after_fresh.synced_at, future) == :eq
     end
@@ -2655,7 +2562,7 @@ defmodule Portal.Entra.SyncTest do
                Database.batch_upsert_identities(account.id, issuer, directory.id, synced_at, attrs)
 
       sync_state =
-        Repo.get_by!(Portal.ExternalIdentitySyncState, external_identity_id: stale_identity.id)
+        Repo.get_by!(Portal.DirectorySync.IdentityState, directory_id: stale_identity.directory_id, idp_id: "new-object-id")
 
       assert DateTime.compare(sync_state.synced_at, synced_at) == :eq
     end
@@ -2823,7 +2730,7 @@ defmodule Portal.Entra.SyncTest do
       group_after_stale = Repo.get_by!(Group, id: group.id, account_id: account.id)
       assert group_after_stale.name == "Original Name"
 
-      sync_state_after_stale = Repo.get_by!(Portal.GroupSyncState, group_id: group.id)
+      sync_state_after_stale = Repo.get_by!(Portal.DirectorySync.GroupState, directory_id: group.directory_id, idp_id: group.idp_id)
       assert DateTime.compare(sync_state_after_stale.synced_at, now) == :eq
 
       assert {:ok, _} =
@@ -2834,7 +2741,7 @@ defmodule Portal.Entra.SyncTest do
       group_after_fresh = Repo.get_by!(Group, id: group.id, account_id: account.id)
       assert group_after_fresh.name == "Fresh Name"
 
-      sync_state_after_fresh = Repo.get_by!(Portal.GroupSyncState, group_id: group.id)
+      sync_state_after_fresh = Repo.get_by!(Portal.DirectorySync.GroupState, directory_id: group.directory_id, idp_id: group.idp_id)
       assert DateTime.compare(sync_state_after_fresh.synced_at, future) == :eq
     end
 

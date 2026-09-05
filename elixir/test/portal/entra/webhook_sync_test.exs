@@ -4,7 +4,6 @@ defmodule Portal.Entra.WebhookSyncTest do
 
   import Portal.AccountFixtures
   import Portal.ActorFixtures
-  import Portal.DirectorySyncLockHelpers
   import Portal.EntraDirectoryFixtures
   import Portal.GroupFixtures
   import Portal.IdentityFixtures
@@ -14,7 +13,6 @@ defmodule Portal.Entra.WebhookSyncTest do
   alias Portal.Entra.Sync
   alias Portal.Entra.WebhookSync
   alias Portal.ExternalIdentity
-  alias Portal.ExternalIdentitySyncState
   alias Portal.Group
   alias Portal.Membership
   alias Portal.Microsoft.Graph.APIClient
@@ -49,7 +47,7 @@ defmodule Portal.Entra.WebhookSyncTest do
       assert identity.email == "new@example.com"
       assert identity.directory_id == directory.id
 
-      state = Repo.get_by!(ExternalIdentitySyncState, external_identity_id: identity.id)
+      state = Repo.get_by!(Portal.DirectorySync.IdentityState, directory_id: identity.directory_id, idp_id: identity.idp_id)
       assert DateTime.diff(DateTime.utc_now(), state.synced_at) < 5
       assert account.id == identity.account_id
     end
@@ -241,15 +239,6 @@ defmodule Portal.Entra.WebhookSyncTest do
 
       refute Repo.get_by(Group, id: group.id)
     end
-  end
-
-  test "snoozes while the directory lock is held", %{directory: directory} = ctx do
-    identity = directory_identity(ctx, "user-1")
-    hold_directory_lock(:entra, directory.id)
-
-    assert {:snooze, 30} = perform_job(WebhookSync, user_args(directory, "user-1", "deleted"))
-
-    assert Repo.get_by(ExternalIdentity, id: identity.id)
   end
 
   test "skips accounts without directory sync" do

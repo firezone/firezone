@@ -411,12 +411,12 @@ defmodule PortalWeb.Actors.Components do
                       {identity.preferred_username}
                     </dd>
                   </div>
-                  <div :if={Ecto.assoc_loaded?(identity.sync_state) && identity.sync_state && identity.sync_state.synced_at}>
+                  <div :if={identity.synced_at}>
                     <dt class="text-[10px] font-semibold tracking-widest uppercase text-subtle">
                       Last Synced
                     </dt>
                     <dd class="text-xs text-body mt-0.5">
-                      <.relative_datetime datetime={identity.sync_state.synced_at} />
+                      <.relative_datetime datetime={identity.synced_at} />
                     </dd>
                   </div>
                 </dl>
