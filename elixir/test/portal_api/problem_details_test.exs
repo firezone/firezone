@@ -3,6 +3,26 @@ defmodule PortalAPI.ProblemDetailsTest do
 
   alias PortalAPI.ProblemDetails
 
+  describe "rate_limited/2" do
+    test "exposes the rounded-up delay to consumers without response headers" do
+      conn = ProblemDetails.rate_limited(Plug.Test.conn(:post, "/mcp"), 1501)
+
+      assert conn.status == 429
+      assert conn.halted
+      assert content_type(conn) =~ "application/problem+json"
+      assert Plug.Conn.get_resp_header(conn, "retry-after") == ["2"]
+      assert json_body(conn)["retry_after_seconds"] == 2
+      assert json_body(conn)["detail"] == "Rate limit exceeded. Retry after 2 seconds."
+    end
+
+    test "uses a minimum delay of one second" do
+      conn = ProblemDetails.rate_limited(Plug.Test.conn(:post, "/mcp"), 0)
+
+      assert Plug.Conn.get_resp_header(conn, "retry-after") == ["1"]
+      assert json_body(conn)["retry_after_seconds"] == 1
+    end
+  end
+
   describe "send/4" do
     test "builds an RFC 9457 body without a code member" do
       conn = ProblemDetails.send(Plug.Test.conn(:get, "/"), 404, "Not here")

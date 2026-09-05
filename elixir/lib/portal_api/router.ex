@@ -52,7 +52,7 @@ defmodule PortalAPI.Router do
     plug PortalAPI.Plugs.MCPRateLimit
     plug :accepts, ["json"]
     plug PortalAPI.Plugs.MCPAuth
-    plug PortalAPI.Plugs.RateLimit
+    plug PortalAPI.Plugs.RateLimit, mcp: true
     # Insert the load-bearing audit row before parsing. Tool attempts and
     # dispatch outcomes are separate metadata on the original /mcp request.
     plug PortalAPI.Plugs.RequestLog, mcp: true
