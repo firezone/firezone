@@ -6,12 +6,15 @@ defmodule Portal.Entra.WebhookSync do
   Notifications carry no resource data, so the worker re-reads the object from
   Graph and writes it with a fresh `synced_at`. The sync-state tables then make
   a slower full sync skip anything this worker wrote after that sync started,
-  so the newer webhook read wins over the older full-sync read.
+  so the newer webhook read wins over the older full-sync read. An object that
+  is gone, or a group that is no longer assigned to a Firezone app, leaves a
+  tombstone behind even when this directory never inserted it, so a full sync
+  page fetched before the change cannot insert it later.
 
-  Users are only updated when this directory already has an identity for them,
-  and groups only when the directory already tracks them (or syncs all
-  groups). Everything else is left to the full sync, which is the only place
-  that knows about app role assignments.
+  Users are only inserted by the full sync, which is the only place that knows
+  about app role assignments; a webhook refreshes or removes the identities it
+  already has. Groups are synced when the directory syncs all groups, or when
+  the group is assigned to one of the directory's Firezone apps.
   """
 
   use Oban.Worker, queue: :entra_webhook, max_attempts: 3
@@ -33,6 +36,11 @@ defmodule Portal.Entra.WebhookSync do
 
   @impl Oban.Worker
   def new(args, opts), do: super(args, Keyword.put_new(opts, :unique, @unique))
+
+  # Tombstones older than the grace period are pruned, so a job must not
+  # outlive it with an older timestamp.
+  @impl Oban.Worker
+  def timeout(_job), do: :timer.seconds(div(DirectorySync.tombstone_grace_seconds(), 2))
 
   @impl Oban.Worker
   def perform(%Oban.Job{
@@ -70,47 +78,68 @@ defmodule Portal.Entra.WebhookSync do
     apply_change(directory, resource, resource_id, change_type)
   end
 
-  defp apply_change(directory, "user", user_id, change_type) do
-    synced_at = DateTime.utc_now()
+  defp apply_change(directory, "user", user_id, "deleted") do
+    remove_identity(directory, user_id, DateTime.utc_now())
+  end
 
-    case Database.get_identity(directory.account_id, Entra.Sync.issuer(directory), user_id) do
-      nil -> :ok
-      identity when change_type == "deleted" -> remove_identity(directory, identity, synced_at)
-      identity -> refresh_identity(directory, identity, synced_at, user_id)
+  defp apply_change(directory, "user", user_id, _change_type) do
+    synced_at = DateTime.utc_now()
+    known? = Database.identity_exists?(directory.account_id, Entra.Sync.issuer(directory), user_id)
+    access_token = Entra.Sync.get_access_token!(directory)
+
+    case APIClient.get_user(access_token, user_id) do
+      {:ok, %Req.Response{status: 200, body: %{} = user}} ->
+        cond do
+          not Entra.Sync.syncable_user?(user, directory.id) ->
+            remove_identity(directory, user_id, synced_at)
+
+          known? ->
+            upsert_identity(directory, synced_at, user)
+
+          true ->
+            :ok
+        end
+
+      {:ok, %Req.Response{status: 404}} ->
+        remove_identity(directory, user_id, synced_at)
+
+      {:ok, response} ->
+        raise Entra.SyncError, error: response, directory_id: directory.id, step: :get_user
+
+      {:error, error} ->
+        raise Entra.SyncError, error: error, directory_id: directory.id, step: :get_user
     end
   end
 
-  defp apply_change(directory, "group", group_id, change_type) do
-    group = Database.get_group(directory.account_id, directory.id, group_id)
+  defp apply_change(directory, "group", group_id, "deleted") do
+    remove_group(directory, group_id, DateTime.utc_now())
+  end
+
+  defp apply_change(directory, "group", group_id, _change_type) do
     synced_at = DateTime.utc_now()
+    access_token = Entra.Sync.get_access_token!(directory)
+    assignment_check = assignment_check(directory, access_token)
 
-    cond do
-      change_type == "deleted" ->
-        remove_group(directory, group, synced_at)
+    if eligible_group?(directory, access_token, assignment_check, group_id) do
+      case APIClient.get_group(access_token, group_id) do
+        {:ok, %Req.Response{status: 200, body: %{"id" => id, "displayName" => name}}}
+        when is_binary(id) and is_binary(name) ->
+          resync_group(directory, access_token, synced_at, id, name)
+          resync_parent_groups(directory, access_token, synced_at, assignment_check, id)
+          Portal.Policy.reconnect_orphaned_policies(directory.account_id)
+          :ok
 
-      is_nil(group) and not directory.sync_all_groups ->
-        :ok
+        {:ok, %Req.Response{status: 404}} ->
+          remove_group(directory, group_id, synced_at)
 
-      true ->
-        access_token = Entra.Sync.get_access_token!(directory)
+        {:ok, response} ->
+          raise Entra.SyncError, error: response, directory_id: directory.id, step: :get_group
 
-        case APIClient.get_group(access_token, group_id) do
-          {:ok, %Req.Response{status: 200, body: %{"id" => id, "displayName" => name}}}
-          when is_binary(id) and is_binary(name) ->
-            resync_group(directory, access_token, synced_at, id, name)
-            resync_parent_groups(directory, access_token, synced_at, id)
-            Portal.Policy.reconnect_orphaned_policies(directory.account_id)
-            :ok
-
-          {:ok, %Req.Response{status: 404}} ->
-            remove_group(directory, group, synced_at)
-
-          {:ok, response} ->
-            raise Entra.SyncError, error: response, directory_id: directory.id, step: :get_group
-
-          {:error, error} ->
-            raise Entra.SyncError, error: error, directory_id: directory.id, step: :get_group
-        end
+        {:error, error} ->
+          raise Entra.SyncError, error: error, directory_id: directory.id, step: :get_group
+      end
+    else
+      remove_group(directory, group_id, synced_at)
     end
   end
 
@@ -123,32 +152,10 @@ defmodule Portal.Entra.WebhookSync do
     :ok
   end
 
-  defp refresh_identity(directory, identity, synced_at, user_id) do
-    access_token = Entra.Sync.get_access_token!(directory)
-
-    case APIClient.get_user(access_token, user_id) do
-      {:ok, %Req.Response{status: 200, body: %{} = user}} ->
-        if Entra.Sync.syncable_user?(user, directory.id) do
-          upsert_identity(directory, synced_at, user)
-        else
-          remove_identity(directory, identity, synced_at)
-        end
-
-      {:ok, %Req.Response{status: 404}} ->
-        remove_identity(directory, identity, synced_at)
-
-      {:ok, response} ->
-        raise Entra.SyncError, error: response, directory_id: directory.id, step: :get_user
-
-      {:error, error} ->
-        raise Entra.SyncError, error: error, directory_id: directory.id, step: :get_user
-    end
-  end
-
   defp upsert_identity(directory, synced_at, user) do
     case identity_attrs(directory, user) do
       {:ok, attrs} ->
-        Entra.Sync.batch_upsert_identities(directory, synced_at, [attrs])
+        Entra.Sync.batch_upsert_identities(directory, synced_at, [attrs], eligible: false)
 
       {:error, error} ->
         Logger.warning(Exception.message(error), entra_directory_id: directory.id)
@@ -164,19 +171,59 @@ defmodule Portal.Entra.WebhookSync do
     error in Entra.SyncError -> {:error, error}
   end
 
-  defp remove_identity(directory, identity, synced_at) do
+  defp remove_identity(directory, user_id, synced_at) do
     {removed, _} =
-      DirectorySync.remove_identity(directory.account_id, directory.id, identity, synced_at)
+      DirectorySync.remove_identity(
+        directory.account_id,
+        directory.id,
+        Entra.Sync.issuer(directory),
+        user_id,
+        synced_at
+      )
 
     Entra.Sync.delete_actors_without_identities(directory)
 
     Logger.info("Removed identity from Entra change notification",
       entra_directory_id: directory.id,
-      external_identity_id: identity.id,
+      user_id: user_id,
       removed: removed
     )
 
     :ok
+  end
+
+  # A directory that syncs assigned groups only must check the assignment
+  # itself: a refresh of a tracked group would otherwise keep a group the full
+  # sync found unassigned alive through the cleanup.
+  defp assignment_check(%{sync_all_groups: true}, _access_token), do: :all_groups
+
+  defp assignment_check(directory, access_token) do
+    {:assigned_to, Entra.Sync.service_principal_ids(directory, access_token)}
+  end
+
+  defp eligible_group?(_directory, _access_token, :all_groups, _group_id), do: true
+
+  defp eligible_group?(directory, access_token, {:assigned_to, service_principal_ids}, group_id) do
+    case APIClient.list_group_app_role_assignments(access_token, group_id) do
+      {:ok, %Req.Response{status: 200, body: %{"value" => assignments}}}
+      when is_list(assignments) ->
+        Enum.any?(assignments, &(&1["resourceId"] in service_principal_ids))
+
+      {:ok, %Req.Response{status: 404}} ->
+        false
+
+      {:ok, response} ->
+        raise Entra.SyncError,
+          error: response,
+          directory_id: directory.id,
+          step: :list_group_app_role_assignments
+
+      {:error, error} ->
+        raise Entra.SyncError,
+          error: error,
+          directory_id: directory.id,
+          step: :list_group_app_role_assignments
+    end
   end
 
   defp resync_group(directory, access_token, synced_at, group_id, group_name) do
@@ -203,7 +250,7 @@ defmodule Portal.Entra.WebhookSync do
 
   # A member change on a nested group changes the transitive members of every
   # group above it, but Graph only notifies about the group that changed.
-  defp resync_parent_groups(directory, access_token, synced_at, group_id) do
+  defp resync_parent_groups(directory, access_token, synced_at, assignment_check, group_id) do
     APIClient.stream_group_transitive_member_of_groups(access_token, group_id)
     |> Stream.each(fn
       {:error, error} ->
@@ -213,34 +260,32 @@ defmodule Portal.Entra.WebhookSync do
           step: :stream_group_transitive_member_of_groups
 
       parents when is_list(parents) ->
-        Enum.each(parents, &resync_parent_group(directory, access_token, synced_at, &1))
+        Enum.each(
+          parents,
+          &resync_parent_group(directory, access_token, synced_at, assignment_check, &1)
+        )
     end)
     |> Stream.run()
   end
 
-  defp resync_parent_group(directory, access_token, synced_at, parent) do
+  defp resync_parent_group(directory, access_token, synced_at, assignment_check, parent) do
     with id when is_binary(id) <- parent["id"],
-         name when is_binary(name) <- parent["displayName"],
-         true <- tracked_group?(directory, id) do
-      resync_group(directory, access_token, synced_at, id, name)
+         name when is_binary(name) <- parent["displayName"] do
+      if eligible_group?(directory, access_token, assignment_check, id) do
+        resync_group(directory, access_token, synced_at, id, name)
+      else
+        remove_group(directory, id, synced_at)
+      end
     end
   end
 
-  defp tracked_group?(%{sync_all_groups: true}, _group_id), do: true
-
-  defp tracked_group?(directory, group_id) do
-    not is_nil(Database.get_group(directory.account_id, directory.id, group_id))
-  end
-
-  defp remove_group(_directory, nil, _synced_at), do: :ok
-
-  defp remove_group(directory, group, synced_at) do
+  defp remove_group(directory, group_id, synced_at) do
     {removed, _} =
-      DirectorySync.remove_group(directory.account_id, directory.id, group, synced_at)
+      DirectorySync.remove_group(directory.account_id, directory.id, group_id, synced_at)
 
     Logger.info("Removed group from Entra change notification",
       entra_directory_id: directory.id,
-      group_id: group.id,
+      group_id: group_id,
       removed: removed
     )
 
@@ -251,14 +296,14 @@ defmodule Portal.Entra.WebhookSync do
     import Ecto.Query
     alias Portal.Safe
 
-    def get_identity(account_id, issuer, idp_id) do
+    def identity_exists?(account_id, issuer, idp_id) do
       from(i in Portal.ExternalIdentity,
         where: i.account_id == ^account_id,
         where: i.issuer == ^issuer,
         where: i.idp_id == ^idp_id
       )
       |> Safe.unscoped()
-      |> Safe.one()
+      |> Safe.exists?()
     end
 
     def get_group(account_id, directory_id, idp_id) do
@@ -286,6 +331,5 @@ defmodule Portal.Entra.WebhookSync do
       |> Safe.unscoped()
       |> Safe.delete_all()
     end
-
   end
 end

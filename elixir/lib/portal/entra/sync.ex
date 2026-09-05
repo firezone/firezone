@@ -175,12 +175,24 @@ defmodule Portal.Entra.Sync do
     end
   end
 
-  defp sync_assigned_groups(directory, access_token, synced_at) do
+   @doc """
+  Returns the ids of the service principals a group or user must be assigned
+  to for this directory to sync it: the Directory Sync app, and the deprecated
+  Authentication app when it is still installed.
+  """
+  def service_principal_ids(directory, access_token) do
     # Directory Sync app is REQUIRED - fail if not found (consent may have been revoked)
     directory_sync_sp_id = fetch_directory_sync_service_principal!(directory, access_token)
 
     # Auth Provider app is optional (deprecated) - returns nil if not found
     auth_provider_sp_id = fetch_auth_provider_service_principal(directory, access_token)
+
+    Enum.reject([directory_sync_sp_id, auth_provider_sp_id], &is_nil/1)
+  end
+
+  defp sync_assigned_groups(directory, access_token, synced_at) do
+    [directory_sync_sp_id | rest] = service_principal_ids(directory, access_token)
+    auth_provider_sp_id = List.first(rest)
 
     sync_assignments(directory, access_token, synced_at, directory_sync_sp_id)
 
@@ -563,7 +575,7 @@ defmodule Portal.Entra.Sync do
     memberships = Enum.map(user_members, fn member -> {group_id, member["id"]} end)
 
     unless Enum.empty?(identities) do
-      batch_upsert_identities(directory, synced_at, identities)
+      batch_upsert_identities(directory, synced_at, identities, quarantine: true)
     end
 
     unless Enum.empty?(memberships) do
@@ -571,7 +583,7 @@ defmodule Portal.Entra.Sync do
     end
   end
 
-  def batch_upsert_identities(directory, synced_at, identities) do
+  def batch_upsert_identities(directory, synced_at, identities, opts \\ []) do
     account_id = directory.account_id
     issuer = issuer(directory)
     directory_id = directory.id
@@ -581,7 +593,8 @@ defmodule Portal.Entra.Sync do
            issuer,
            directory_id,
            synced_at,
-           identities
+           identities,
+           opts
          ) do
       {:ok, %{upserted_identities: count}} ->
         Logger.debug("Upserted #{count} identities", entra_directory_id: directory.id)
@@ -771,14 +784,21 @@ defmodule Portal.Entra.Sync do
       changeset |> Safe.unscoped() |> Safe.update()
     end
 
-    def batch_upsert_identities(account_id, issuer, directory_id, synced_at, identities) do
+    def batch_upsert_identities(
+          account_id,
+          issuer,
+          directory_id,
+          synced_at,
+          identities,
+          opts \\ []
+        ) do
       DirectorySync.batch_upsert_identities(
         account_id,
         issuer,
         directory_id,
         synced_at,
         identities,
-        [:profile]
+        Keyword.put(opts, :fields, [:profile])
       )
     end
 

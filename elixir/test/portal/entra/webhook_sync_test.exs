@@ -114,10 +114,44 @@ defmodule Portal.Entra.WebhookSyncTest do
       assert Repo.get_by(Actor, id: actor.id)
     end
 
-    test "ignores users this directory does not know", %{directory: directory} do
+    test "does not insert users this directory does not know", %{directory: directory} do
+      stub_graph(users: %{"user-1" => graph_user("user-1", "New", "new@example.com")})
+
       assert :ok = perform_job(WebhookSync, user_args(directory, "user-1", "updated"))
 
       assert Repo.all(ExternalIdentity) == []
+      refute Repo.get_by(Portal.DirectorySync.IdentityState, directory_id: directory.id, idp_id: "user-1")
+    end
+
+    test "a deleted unknown user leaves a tombstone that blocks an older full-sync write",
+         %{directory: directory, issuer: issuer} do
+      assert :ok = perform_job(WebhookSync, user_args(directory, "user-1", "deleted"))
+
+      assert Repo.get_by(Portal.DirectorySync.IdentityState, directory_id: directory.id, idp_id: "user-1")
+
+      stale_synced_at = DateTime.add(DateTime.utc_now(), -60, :second)
+
+      {:ok, %{upserted_identities: 0}} =
+        Sync.Database.batch_upsert_identities(directory.account_id, issuer, directory.id, stale_synced_at, [
+          %{idp_id: "user-1", email: "stale@example.com", name: "Stale Name"}
+        ])
+
+      assert Repo.all(ExternalIdentity) == []
+    end
+
+    test "a refresh does not confirm a user the full sync no longer lists",
+         %{directory: directory} = ctx do
+      identity = directory_identity(ctx, "user-1", synced_at: DateTime.add(DateTime.utc_now(), -3600, :second))
+      stub_graph(users: %{"user-1" => graph_user("user-1", "Refreshed", "u1@example.com")})
+
+      assert :ok = perform_job(WebhookSync, user_args(directory, "user-1", "updated"))
+      assert Repo.get_by!(ExternalIdentity, id: identity.id).name == "Refreshed"
+
+      run_started_at = DateTime.add(DateTime.utc_now(), -60, :second)
+
+      {1, _} = Sync.Database.delete_unsynced_identities(directory.account_id, directory.id, run_started_at)
+
+      refute Repo.get_by(ExternalIdentity, id: identity.id)
     end
 
     test "skips a user whose email is invalid", %{directory: directory} = ctx do
@@ -147,13 +181,43 @@ defmodule Portal.Entra.WebhookSyncTest do
   end
 
   describe "group notifications" do
-    test "ignores untracked groups when syncing assigned groups only", %{directory: directory} do
-      stub_graph(groups: %{"group-1" => {"Engineering", [graph_user("user-1", "Alice", "a@example.com")]}})
+    test "fences an unassigned group when syncing assigned groups only", %{directory: directory} do
+      stub_graph(
+        groups: %{"group-1" => {"Engineering", [graph_user("user-1", "Alice", "a@example.com")]}},
+        assigned: []
+      )
 
       assert :ok = perform_job(WebhookSync, group_args(directory, "group-1", "updated"))
 
       assert Repo.all(Group) == []
       assert Repo.all(ExternalIdentity) == []
+      assert Repo.get_by(Portal.DirectorySync.GroupState, directory_id: directory.id, idp_id: "group-1")
+    end
+
+    test "creates an assigned group this directory has not inserted yet", %{directory: directory} do
+      stub_graph(groups: %{"group-1" => {"Engineering", [graph_user("user-1", "Alice", "a@example.com")]}})
+
+      assert :ok = perform_job(WebhookSync, group_args(directory, "group-1", "updated"))
+
+      assert %Group{name: "Engineering"} = Repo.get_by(Group, idp_id: "group-1")
+      assert Repo.get_by(ExternalIdentity, idp_id: "user-1")
+    end
+
+    test "removes a tracked group that is no longer assigned",
+         %{account: account, directory: directory, base_directory: base_directory} = ctx do
+      group = group_fixture(account: account, directory: base_directory, idp_id: "group-1")
+      carol = directory_identity(ctx, "user-carol")
+      membership_fixture(actor: Actor |> Repo.get_by!(id: carol.actor_id) |> Repo.preload(:account), group: group)
+
+      stub_graph(
+        groups: %{"group-1" => {"Engineering", [graph_user("user-carol", "Carol", "c@example.com")]}},
+        assigned: []
+      )
+
+      assert :ok = perform_job(WebhookSync, group_args(directory, "group-1", "updated"))
+
+      refute Repo.get_by(Group, id: group.id)
+      assert Repo.all(Membership) == []
     end
 
     test "renames a tracked group and reconciles its members",
@@ -312,10 +376,13 @@ defmodule Portal.Entra.WebhookSyncTest do
     }
   end
 
+  # Every group in `groups` counts as assigned to the Firezone app unless
+  # `assigned` names the assigned ones explicitly.
   defp stub_graph(opts) do
     users = Keyword.get(opts, :users, %{})
     groups = Keyword.get(opts, :groups, %{})
     parents = Keyword.get(opts, :parents, %{})
+    assigned = Keyword.get(opts, :assigned, Map.keys(groups))
 
     Req.Test.stub(APIClient, fn conn ->
       path = conn.request_path
@@ -323,6 +390,21 @@ defmodule Portal.Entra.WebhookSyncTest do
       cond do
         String.ends_with?(path, "/oauth2/v2.0/token") ->
           Req.Test.json(conn, %{"access_token" => "token"})
+
+        path == "/v1.0/servicePrincipals" ->
+          Req.Test.json(conn, %{"value" => [%{"id" => "sp-firezone", "appId" => "app"}]})
+
+        match?(["v1.0", "groups", _, "appRoleAssignments"], Path.split(String.trim_leading(path, "/"))) ->
+          ["v1.0", "groups", id, _] = Path.split(String.trim_leading(path, "/"))
+
+          assignments =
+            if id in assigned do
+              [%{"id" => "assignment-#{id}", "resourceId" => "sp-firezone"}]
+            else
+              []
+            end
+
+          Req.Test.json(conn, %{"value" => assignments})
 
         match?(["v1.0", "users", _], Path.split(String.trim_leading(path, "/"))) ->
           ["v1.0", "users", id] = Path.split(String.trim_leading(path, "/"))

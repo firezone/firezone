@@ -9,6 +9,8 @@ defmodule Portal.Repo.Migrations.CreateDirectorySyncStates do
 
   def up do
     for {table, old_table, entity_table, entity_fk} <- @tables do
+      identities? = table == :directory_identity_sync_states
+
       create_if_not_exists table(table, primary_key: false) do
         add(:account_id, references(:accounts, type: :binary_id, on_delete: :delete_all),
           null: false,
@@ -29,11 +31,16 @@ defmodule Portal.Repo.Migrations.CreateDirectorySyncStates do
         add(:idp_id, :text, null: false, primary_key: true)
         add(:synced_at, :timestamptz, null: false)
         add(:memberships_synced_at, :timestamptz)
+
+        if identities? do
+          add(:eligible_at, :timestamptz)
+          add(:org_unit_memberships_synced_at, :timestamptz)
+        end
       end
 
       execute("""
-      INSERT INTO #{table} (account_id, directory_id, idp_id, synced_at)
-      SELECT s.account_id, e.directory_id, e.idp_id, s.synced_at
+      INSERT INTO #{table} (account_id, directory_id, idp_id, synced_at#{if identities?, do: ", eligible_at", else: ""})
+      SELECT s.account_id, e.directory_id, e.idp_id, s.synced_at#{if identities?, do: ", s.synced_at", else: ""}
       FROM #{old_table} s
       JOIN #{entity_table} e ON e.account_id = s.account_id AND e.id = s.#{entity_fk}
       WHERE e.directory_id IS NOT NULL AND e.idp_id IS NOT NULL AND s.synced_at IS NOT NULL

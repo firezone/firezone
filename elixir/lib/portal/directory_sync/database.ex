@@ -4,13 +4,17 @@ defmodule Portal.DirectorySync.Database do
   alias Portal.Safe
 
   @identity_fields ~w[idp_id email name given_name family_name preferred_username]a
+  @tombstone_quarantine_seconds 15 * 60
+  @tombstone_grace_seconds 60 * 60
 
-  def batch_upsert_identities(_account_id, _issuer, _directory_id, _synced_at, [], _extra_fields),
+  def batch_upsert_identities(_account_id, _issuer, _directory_id, _synced_at, [], _opts),
     do: {:ok, %{upserted_identities: 0}}
 
-  def batch_upsert_identities(account_id, issuer, directory_id, synced_at, attrs, extra_fields) do
-    fields = @identity_fields ++ extra_fields
-    query = identity_upsert_query(length(attrs), fields)
+  def batch_upsert_identities(account_id, issuer, directory_id, synced_at, attrs, opts) do
+    fields = @identity_fields ++ Keyword.get(opts, :fields, [])
+    eligible? = Keyword.get(opts, :eligible, true)
+    quarantine? = Keyword.get(opts, :quarantine, false)
+    query = identity_upsert_query(length(attrs), fields, eligible?, quarantine?)
 
     params =
       Enum.flat_map(attrs, fn identity -> Enum.map(fields, &Map.get(identity, &1)) end) ++
@@ -43,182 +47,113 @@ defmodule Portal.DirectorySync.Database do
   def batch_upsert_memberships(_account_id, _issuer, _directory_id, _synced_at, []),
     do: {:ok, %{upserted_memberships: 0}}
 
+  # The rows are stamped in a second statement so a membership another writer
+  # inserted while this one waited is stamped too instead of being left for
+  # the cleanup to delete.
   def batch_upsert_memberships(account_id, issuer, directory_id, synced_at, tuples) do
-    query = membership_upsert_query(length(tuples))
+    tuples = Enum.uniq(tuples)
+    account_uuid = Ecto.UUID.dump!(account_id)
+    query = membership_insert_query(length(tuples))
 
     params =
       Enum.flat_map(tuples, fn {group_idp_id, user_idp_id} -> [group_idp_id, user_idp_id] end) ++
-        [Ecto.UUID.dump!(account_id), issuer, Ecto.UUID.dump!(directory_id), synced_at]
+        [account_uuid, issuer, Ecto.UUID.dump!(directory_id), synced_at]
 
-    result =
-      try do
-        Safe.unscoped() |> Safe.query(query, params)
-      rescue
-        error in DBConnection.EncodeError -> {:error, error}
+    Safe.unscoped()
+    |> Safe.transaction(fn ->
+      with {:ok, %Postgrex.Result{rows: pairs}} <- query(query, params),
+           {actor_ids, group_ids} = Enum.unzip(Enum.map(pairs, &List.to_tuple/1)),
+           {:ok, %Postgrex.Result{num_rows: num_rows}} <-
+             query(membership_stamp_query(), [account_uuid, actor_ids, group_ids, synced_at]) do
+        {:ok, %{upserted_memberships: num_rows}}
       end
-
-    case result do
-      {:ok, %Postgrex.Result{num_rows: num_rows}} -> {:ok, %{upserted_memberships: num_rows}}
-      {:error, reason} -> {:error, reason}
-    end
+    end)
   end
 
   @doc """
-  Removes one identity and its memberships in this directory unless a newer
-  write already claimed the user. The tombstone also stamps the user's
-  membership list, so an older membership write cannot re-add one.
+  Tombstones one identity key and, unless a newer write claimed it, removes
+  the identity that currently holds the key along with its memberships in
+  this directory. Works without a local identity, so a user deleted before
+  the full sync inserted them still leaves a tombstone behind.
   """
-  def remove_identity(account_id, directory_id, identity, synced_at) do
-    query = """
-    WITH claimed AS (
-      INSERT INTO directory_identity_sync_states
-        (account_id, directory_id, idp_id, synced_at, memberships_synced_at)
-      VALUES ($1, $2, $3, $4, $4)
-      ON CONFLICT (account_id, directory_id, idp_id) DO UPDATE SET
-        synced_at = EXCLUDED.synced_at,
-        memberships_synced_at = GREATEST(
-          directory_identity_sync_states.memberships_synced_at,
-          EXCLUDED.memberships_synced_at
-        )
-      WHERE directory_identity_sync_states.synced_at <= EXCLUDED.synced_at
-      RETURNING idp_id
-    ),
-    deleted_memberships AS (
-      DELETE FROM memberships m
-      USING groups g, claimed
-      WHERE m.account_id = $1
-        AND m.actor_id = $6
-        AND g.account_id = m.account_id
-        AND g.id = m.group_id
-        AND g.directory_id = $2
-      RETURNING m.id
-    )
-    DELETE FROM external_identities ei
-    USING claimed
-    WHERE ei.account_id = $1 AND ei.id = $5
-    """
+  def remove_identity(account_id, directory_id, issuer, idp_id, synced_at) do
+    account_uuid = Ecto.UUID.dump!(account_id)
+    directory_uuid = Ecto.UUID.dump!(directory_id)
 
-    params = [
-      Ecto.UUID.dump!(account_id),
-      Ecto.UUID.dump!(directory_id),
-      identity.idp_id,
-      synced_at,
-      Ecto.UUID.dump!(identity.id),
-      Ecto.UUID.dump!(identity.actor_id)
-    ]
-
-    {:ok, %Postgrex.Result{num_rows: num_rows}} = Safe.unscoped() |> Safe.query(query, params)
-    {num_rows, nil}
+    Safe.unscoped()
+    |> Safe.transaction(fn ->
+      with {:ok, %Postgrex.Result{num_rows: 1}} <-
+             query(identity_tombstone_query(), [account_uuid, directory_uuid, idp_id, synced_at]),
+           {:ok, %Postgrex.Result{num_rows: num_rows}} <-
+             query(identity_delete_query(), [account_uuid, directory_uuid, issuer, idp_id]) do
+        {:ok, num_rows}
+      else
+        {:ok, %Postgrex.Result{num_rows: 0}} -> {:ok, 0}
+        {:error, reason} -> {:error, reason}
+      end
+    end)
+    |> unwrap_count()
   end
 
   @doc """
-  Removes one group and its memberships unless a newer write already claimed it.
+  Tombstones one group key and, unless a newer write claimed it, removes the
+  group that currently holds the key with its memberships. Also serves as a
+  fence for a group this directory has not inserted yet.
   """
-  def remove_group(account_id, directory_id, group, synced_at) do
-    query = """
-    WITH claimed AS (
-      INSERT INTO directory_group_sync_states
-        (account_id, directory_id, idp_id, synced_at, memberships_synced_at)
-      VALUES ($1, $2, $3, $4, $4)
-      ON CONFLICT (account_id, directory_id, idp_id) DO UPDATE SET
-        synced_at = EXCLUDED.synced_at,
-        memberships_synced_at = GREATEST(
-          directory_group_sync_states.memberships_synced_at,
-          EXCLUDED.memberships_synced_at
-        )
-      WHERE directory_group_sync_states.synced_at <= EXCLUDED.synced_at
-      RETURNING idp_id
-    )
-    DELETE FROM groups g
-    USING claimed
-    WHERE g.account_id = $1 AND g.id = $5
-    """
+  def remove_group(account_id, directory_id, idp_id, synced_at) do
+    account_uuid = Ecto.UUID.dump!(account_id)
+    directory_uuid = Ecto.UUID.dump!(directory_id)
 
-    params = [
-      Ecto.UUID.dump!(account_id),
-      Ecto.UUID.dump!(directory_id),
-      group.idp_id,
-      synced_at,
-      Ecto.UUID.dump!(group.id)
-    ]
-
-    {:ok, %Postgrex.Result{num_rows: num_rows}} = Safe.unscoped() |> Safe.query(query, params)
-    {num_rows, nil}
+    Safe.unscoped()
+    |> Safe.transaction(fn ->
+      with {:ok, %Postgrex.Result{num_rows: 1}} <-
+             query(group_tombstone_query(), [account_uuid, directory_uuid, idp_id, synced_at]),
+           {:ok, %Postgrex.Result{num_rows: num_rows}} <-
+             query(group_delete_query(), [account_uuid, directory_uuid, idp_id]) do
+        {:ok, num_rows}
+      else
+        {:ok, %Postgrex.Result{num_rows: 0}} -> {:ok, 0}
+        {:error, reason} -> {:error, reason}
+      end
+    end)
+    |> unwrap_count()
   end
 
   @doc """
-  Marks a rewrite of one user's whole membership list, so membership writes
-  older than `synced_at` are skipped for that user from now on.
+  Marks a rewrite of one user's org unit memberships, so org unit membership
+  writes older than `synced_at` are skipped for that user from now on.
   """
-  def stamp_identity_memberships(account_id, directory_id, idp_id, synced_at) do
+  def stamp_identity_org_unit_memberships(account_id, directory_id, idp_id, synced_at) do
     from(s in Portal.DirectorySync.IdentityState,
       where: s.account_id == ^account_id,
       where: s.directory_id == ^directory_id,
       where: s.idp_id == ^idp_id,
-      where: is_nil(s.memberships_synced_at) or s.memberships_synced_at < ^synced_at
+      where:
+        is_nil(s.org_unit_memberships_synced_at) or
+          s.org_unit_memberships_synced_at < ^synced_at
     )
     |> Safe.unscoped()
-    |> Safe.update_all(set: [memberships_synced_at: synced_at])
+    |> Safe.update_all(set: [org_unit_memberships_synced_at: synced_at])
   end
 
   def delete_unsynced_identities(account_id, directory_id, synced_at) do
-    query = """
-    WITH stale AS (
-      SELECT ei.idp_id
-      FROM external_identities ei
-      LEFT JOIN directory_identity_sync_states s
-        ON s.account_id = ei.account_id
-        AND s.directory_id = ei.directory_id
-        AND s.idp_id = ei.idp_id
-      WHERE ei.account_id = $1
-        AND ei.directory_id = $2
-        AND ei.idp_id IS NOT NULL
-        AND (s.synced_at IS NULL OR s.synced_at < $3)
-    ),
-    tombstoned AS (
-      INSERT INTO directory_identity_sync_states (account_id, directory_id, idp_id, synced_at)
-      SELECT $1, $2, idp_id, $3 FROM stale ORDER BY idp_id
-      ON CONFLICT (account_id, directory_id, idp_id) DO UPDATE SET
-        synced_at = EXCLUDED.synced_at
-      WHERE directory_identity_sync_states.synced_at < EXCLUDED.synced_at
-      RETURNING idp_id
+    delete_stale(
+      identity_cleanup_tombstone_query(),
+      identity_cleanup_delete_query(),
+      account_id,
+      directory_id,
+      synced_at
     )
-    DELETE FROM external_identities ei
-    USING tombstoned t
-    WHERE ei.account_id = $1 AND ei.directory_id = $2 AND ei.idp_id = t.idp_id
-    """
-
-    delete_stale(query, account_id, directory_id, synced_at)
   end
 
   def delete_unsynced_groups(account_id, directory_id, synced_at) do
-    query = """
-    WITH stale AS (
-      SELECT g.idp_id
-      FROM groups g
-      LEFT JOIN directory_group_sync_states s
-        ON s.account_id = g.account_id
-        AND s.directory_id = g.directory_id
-        AND s.idp_id = g.idp_id
-      WHERE g.account_id = $1
-        AND g.directory_id = $2
-        AND g.idp_id IS NOT NULL
-        AND (s.synced_at IS NULL OR s.synced_at < $3)
-    ),
-    tombstoned AS (
-      INSERT INTO directory_group_sync_states (account_id, directory_id, idp_id, synced_at)
-      SELECT $1, $2, idp_id, $3 FROM stale ORDER BY idp_id
-      ON CONFLICT (account_id, directory_id, idp_id) DO UPDATE SET
-        synced_at = EXCLUDED.synced_at
-      WHERE directory_group_sync_states.synced_at < EXCLUDED.synced_at
-      RETURNING idp_id
+    delete_stale(
+      group_cleanup_tombstone_query(),
+      group_cleanup_delete_query(),
+      account_id,
+      directory_id,
+      synced_at
     )
-    DELETE FROM groups g
-    USING tombstoned t
-    WHERE g.account_id = $1 AND g.directory_id = $2 AND g.idp_id = t.idp_id
-    """
-
-    delete_stale(query, account_id, directory_id, synced_at)
   end
 
   def delete_unsynced_memberships(account_id, directory_id, synced_at) do
@@ -254,15 +189,22 @@ defmodule Portal.DirectorySync.Database do
   end
 
   @doc """
-  Drops tombstones older than `before`, the start of the previous completed
-  full sync, since no writer alive now can carry an older timestamp.
+  Drops tombstones older than both the previous completed full sync and the
+  webhook job timeout, so no writer that is still running can carry an older
+  timestamp.
   """
-  def prune_tombstones(account_id, directory_id, before) do
+  def prune_tombstones(account_id, directory_id, previous_run_started_at) do
+    grace = DateTime.add(DateTime.utc_now(), -@tombstone_grace_seconds, :second)
+    before = Enum.min([previous_run_started_at, grace], DateTime)
+
     from(s in Portal.DirectorySync.IdentityState,
       where: s.account_id == ^account_id,
       where: s.directory_id == ^directory_id,
       where: s.synced_at < ^before,
+      where: is_nil(s.eligible_at) or s.eligible_at < ^before,
       where: is_nil(s.memberships_synced_at) or s.memberships_synced_at < ^before,
+      where:
+        is_nil(s.org_unit_memberships_synced_at) or s.org_unit_memberships_synced_at < ^before,
       where:
         fragment(
           "NOT EXISTS (SELECT 1 FROM external_identities ei WHERE ei.account_id = ? AND ei.directory_id = ? AND ei.idp_id = ?)",
@@ -293,10 +235,42 @@ defmodule Portal.DirectorySync.Database do
     :ok
   end
 
-  defp delete_stale(query, account_id, directory_id, synced_at) do
-    params = [Ecto.UUID.dump!(account_id), Ecto.UUID.dump!(directory_id), synced_at]
-    {:ok, %Postgrex.Result{num_rows: num_rows}} = Safe.unscoped() |> Safe.query(query, params)
-    {num_rows, nil}
+  def full_sync_running?(worker, directory_id) do
+    from(j in Oban.Job,
+      where: j.worker == ^inspect(worker),
+      where: j.state == "executing",
+      where: fragment("?->>'directory_id' = ?", j.args, ^directory_id)
+    )
+    |> Safe.unscoped()
+    |> Safe.exists?()
+  end
+
+  def tombstone_grace_seconds, do: @tombstone_grace_seconds
+
+  defp delete_stale(tombstone_query, delete_query, account_id, directory_id, synced_at) do
+    account_uuid = Ecto.UUID.dump!(account_id)
+    directory_uuid = Ecto.UUID.dump!(directory_id)
+
+    Safe.unscoped()
+    |> Safe.transaction(fn ->
+      with {:ok, %Postgrex.Result{rows: rows}} <-
+             query(tombstone_query, [account_uuid, directory_uuid, synced_at]),
+           idp_ids = List.flatten(rows),
+           {:ok, %Postgrex.Result{num_rows: num_rows}} <-
+             query(delete_query, [account_uuid, directory_uuid, idp_ids]) do
+        {:ok, num_rows}
+      end
+    end)
+    |> unwrap_count()
+  end
+
+  defp unwrap_count({:ok, count}), do: {count, nil}
+  defp unwrap_count({:error, reason}), do: raise(reason)
+
+  defp query(sql, params) do
+    Safe.unscoped() |> Safe.query(sql, params)
+  rescue
+    error in DBConnection.EncodeError -> {:error, error}
   end
 
   # A concurrent OIDC sign-in can insert an identity for the same
@@ -317,7 +291,7 @@ defmodule Portal.DirectorySync.Database do
     end
   end
 
-  defp identity_upsert_query(count, fields) do
+  defp identity_upsert_query(count, fields, eligible?, quarantine?) do
     width = length(fields)
 
     values_clause =
@@ -342,18 +316,52 @@ defmodule Portal.DirectorySync.Database do
     current_values = Enum.map_join(compared, ", ", &"external_identities.#{&1}")
     excluded_values = Enum.map_join(compared, ", ", &"EXCLUDED.#{&1}")
 
+    eligible_at =
+      if eligible? do
+        "$#{synced_at}"
+      else
+        "NULL::timestamptz"
+      end
+
+    # A group member listing lags behind a deletion, so it may not revive a
+    # tombstone written moments ago. A direct read of the user may.
+    claim_source =
+      if quarantine? do
+        """
+        FROM input_data
+        WHERE idp_id NOT IN (
+          SELECT s.idp_id
+          FROM directory_identity_sync_states s
+          WHERE s.account_id = $#{account_id}
+            AND s.directory_id = $#{directory_id}
+            AND s.idp_id IN (SELECT idp_id FROM input_data)
+            AND s.synced_at > $#{synced_at}::timestamptz - interval '#{@tombstone_quarantine_seconds} seconds'
+            AND NOT EXISTS (
+              SELECT 1 FROM external_identities ei
+              WHERE ei.account_id = s.account_id
+                AND ei.directory_id = s.directory_id
+                AND ei.idp_id = s.idp_id
+            )
+        )
+        """
+      else
+        "FROM input_data"
+      end
+
     """
     WITH input_data AS (
       SELECT * FROM (VALUES #{values_clause})
       AS t(#{columns})
     ),
     claimed AS (
-      INSERT INTO directory_identity_sync_states (account_id, directory_id, idp_id, synced_at)
-      SELECT $#{account_id}, $#{directory_id}, idp_id, $#{synced_at}
-      FROM input_data
+      INSERT INTO directory_identity_sync_states
+        (account_id, directory_id, idp_id, synced_at, eligible_at)
+      SELECT $#{account_id}, $#{directory_id}, idp_id, $#{synced_at}, #{eligible_at}
+      #{claim_source}
       ORDER BY idp_id
       ON CONFLICT (account_id, directory_id, idp_id) DO UPDATE SET
-        synced_at = EXCLUDED.synced_at
+        synced_at = EXCLUDED.synced_at,
+        eligible_at = GREATEST(directory_identity_sync_states.eligible_at, EXCLUDED.eligible_at)
       WHERE directory_identity_sync_states.synced_at < EXCLUDED.synced_at
       RETURNING idp_id
     ),
@@ -535,10 +543,9 @@ defmodule Portal.DirectorySync.Database do
     """
   end
 
-  # Existing memberships are read but never re-written, so unchanged rows
-  # produce no WAL. The guards lock the group's and the user's state rows, so a
-  # concurrent list rewrite must wait for this statement and then sees its rows.
-  defp membership_upsert_query(count) do
+  # The guards lock the group's and the user's state rows, so a concurrent
+  # list rewrite must wait for this statement and then sees its rows.
+  defp membership_insert_query(count) do
     values_clause =
       Enum.map_join(1..count, ", ", fn i ->
         base = (i - 1) * 2
@@ -566,7 +573,7 @@ defmodule Portal.DirectorySync.Database do
       FOR SHARE
     ),
     identity_guards AS (
-      SELECT idp_id, memberships_synced_at
+      SELECT idp_id, memberships_synced_at, org_unit_memberships_synced_at
       FROM directory_identity_sync_states
       WHERE account_id = $#{account_id}
         AND directory_id = $#{directory_id}
@@ -575,7 +582,7 @@ defmodule Portal.DirectorySync.Database do
       FOR SHARE
     ),
     resolved_memberships AS (
-      SELECT
+      SELECT DISTINCT
         ei.actor_id,
         ag.id as group_id
       FROM membership_input mi
@@ -592,12 +599,11 @@ defmodule Portal.DirectorySync.Database do
       LEFT JOIN identity_guards ig ON ig.idp_id = mi.user_idp_id
       WHERE (gg.memberships_synced_at IS NULL OR gg.memberships_synced_at <= $#{synced_at})
         AND (ig.memberships_synced_at IS NULL OR ig.memberships_synced_at <= $#{synced_at})
-    ),
-    existing_memberships AS (
-      SELECT m.id, m.account_id, m.actor_id, m.group_id
-      FROM memberships m
-      WHERE m.account_id = $#{account_id}
-        AND (m.actor_id, m.group_id) IN (SELECT actor_id, group_id FROM resolved_memberships)
+        AND (
+          ag.entity_type <> 'org_unit'
+          OR ig.org_unit_memberships_synced_at IS NULL
+          OR ig.org_unit_memberships_synced_at <= $#{synced_at}
+        )
     ),
     new_memberships AS (
       INSERT INTO memberships (id, actor_id, group_id, account_id)
@@ -607,21 +613,161 @@ defmodule Portal.DirectorySync.Database do
         rm.group_id,
         $#{account_id} AS account_id
       FROM resolved_memberships rm
-      WHERE (rm.actor_id, rm.group_id) NOT IN (SELECT actor_id, group_id FROM existing_memberships)
+      WHERE NOT EXISTS (
+        SELECT 1 FROM memberships m
+        WHERE m.account_id = $#{account_id}
+          AND m.actor_id = rm.actor_id
+          AND m.group_id = rm.group_id
+      )
       ON CONFLICT (actor_id, group_id) DO NOTHING
-      RETURNING id, account_id
-    ),
-    all_membership_ids AS (
-      SELECT id, account_id FROM new_memberships
-      UNION
-      SELECT id, account_id FROM existing_memberships
+      RETURNING id
     )
+    SELECT actor_id, group_id FROM resolved_memberships
+    """
+  end
+
+  defp membership_stamp_query do
+    """
     INSERT INTO membership_sync_states (account_id, membership_id, synced_at)
-    SELECT account_id, id, $#{synced_at} FROM all_membership_ids
+    SELECT m.account_id, m.id, $4
+    FROM memberships m
+    JOIN unnest($2::uuid[], $3::uuid[]) AS p(actor_id, group_id)
+      ON p.actor_id = m.actor_id AND p.group_id = m.group_id
+    WHERE m.account_id = $1
     ON CONFLICT (account_id, membership_id) DO UPDATE SET
       synced_at = EXCLUDED.synced_at
     WHERE membership_sync_states.synced_at < EXCLUDED.synced_at
     RETURNING 1
+    """
+  end
+
+  # Removes claim on an equal timestamp too: a webhook job upserts the user it
+  # re-read and then removes them with the same timestamp when they turn out
+  # to have left every tracked group or org unit.
+  defp identity_tombstone_query do
+    """
+    INSERT INTO directory_identity_sync_states
+      (account_id, directory_id, idp_id, synced_at, memberships_synced_at)
+    VALUES ($1, $2, $3, $4, $4)
+    ON CONFLICT (account_id, directory_id, idp_id) DO UPDATE SET
+      synced_at = EXCLUDED.synced_at,
+      memberships_synced_at = GREATEST(
+        directory_identity_sync_states.memberships_synced_at,
+        EXCLUDED.memberships_synced_at
+      )
+    WHERE directory_identity_sync_states.synced_at <= EXCLUDED.synced_at
+    RETURNING idp_id
+    """
+  end
+
+  defp identity_delete_query do
+    """
+    WITH identity AS (
+      SELECT ei.id, ei.actor_id
+      FROM external_identities ei
+      WHERE ei.account_id = $1
+        AND ei.idp_id = $4
+        AND (ei.directory_id = $2 OR ei.issuer = $3)
+    ),
+    deleted_memberships AS (
+      DELETE FROM memberships m
+      USING identity i, groups g
+      WHERE m.account_id = $1
+        AND m.actor_id = i.actor_id
+        AND g.account_id = m.account_id
+        AND g.id = m.group_id
+        AND g.directory_id = $2
+      RETURNING m.id
+    )
+    DELETE FROM external_identities ei
+    USING identity i
+    WHERE ei.account_id = $1 AND ei.id = i.id
+    """
+  end
+
+  defp group_tombstone_query do
+    """
+    INSERT INTO directory_group_sync_states
+      (account_id, directory_id, idp_id, synced_at, memberships_synced_at)
+    VALUES ($1, $2, $3, $4, $4)
+    ON CONFLICT (account_id, directory_id, idp_id) DO UPDATE SET
+      synced_at = EXCLUDED.synced_at,
+      memberships_synced_at = GREATEST(
+        directory_group_sync_states.memberships_synced_at,
+        EXCLUDED.memberships_synced_at
+      )
+    WHERE directory_group_sync_states.synced_at <= EXCLUDED.synced_at
+    RETURNING idp_id
+    """
+  end
+
+  defp group_delete_query do
+    """
+    DELETE FROM groups g
+    WHERE g.account_id = $1 AND g.directory_id = $2 AND g.idp_id = $3
+    """
+  end
+
+  # An identity kept alive by a webhook that only re-read the user still goes
+  # when no listing confirmed it during this run.
+  defp identity_cleanup_tombstone_query do
+    """
+    WITH stale AS (
+      SELECT ei.idp_id
+      FROM external_identities ei
+      LEFT JOIN directory_identity_sync_states s
+        ON s.account_id = ei.account_id
+        AND s.directory_id = ei.directory_id
+        AND s.idp_id = ei.idp_id
+      WHERE ei.account_id = $1
+        AND ei.directory_id = $2
+        AND ei.idp_id IS NOT NULL
+        AND (s.eligible_at IS NULL OR s.eligible_at < $3)
+    )
+    INSERT INTO directory_identity_sync_states (account_id, directory_id, idp_id, synced_at)
+    SELECT $1, $2, idp_id, $3 FROM stale ORDER BY idp_id
+    ON CONFLICT (account_id, directory_id, idp_id) DO UPDATE SET
+      synced_at = GREATEST(directory_identity_sync_states.synced_at, EXCLUDED.synced_at)
+    WHERE directory_identity_sync_states.eligible_at IS NULL
+      OR directory_identity_sync_states.eligible_at < EXCLUDED.synced_at
+    RETURNING idp_id
+    """
+  end
+
+  defp identity_cleanup_delete_query do
+    """
+    DELETE FROM external_identities ei
+    WHERE ei.account_id = $1 AND ei.directory_id = $2 AND ei.idp_id = ANY($3::text[])
+    """
+  end
+
+  defp group_cleanup_tombstone_query do
+    """
+    WITH stale AS (
+      SELECT g.idp_id
+      FROM groups g
+      LEFT JOIN directory_group_sync_states s
+        ON s.account_id = g.account_id
+        AND s.directory_id = g.directory_id
+        AND s.idp_id = g.idp_id
+      WHERE g.account_id = $1
+        AND g.directory_id = $2
+        AND g.idp_id IS NOT NULL
+        AND (s.synced_at IS NULL OR s.synced_at < $3)
+    )
+    INSERT INTO directory_group_sync_states (account_id, directory_id, idp_id, synced_at)
+    SELECT $1, $2, idp_id, $3 FROM stale ORDER BY idp_id
+    ON CONFLICT (account_id, directory_id, idp_id) DO UPDATE SET
+      synced_at = EXCLUDED.synced_at
+    WHERE directory_group_sync_states.synced_at < EXCLUDED.synced_at
+    RETURNING idp_id
+    """
+  end
+
+  defp group_cleanup_delete_query do
+    """
+    DELETE FROM groups g
+    WHERE g.account_id = $1 AND g.directory_id = $2 AND g.idp_id = ANY($3::text[])
     """
   end
 end

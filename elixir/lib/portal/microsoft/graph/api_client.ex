@@ -124,6 +124,16 @@ defmodule Portal.Microsoft.Graph.APIClient do
   end
 
   @doc """
+  Lists the app role assignments granted to one group, so a webhook can check
+  that the group is still assigned to a Firezone app before it syncs it.
+  """
+  def list_group_app_role_assignments(access_token, group_id) do
+    query = URI.encode_query(%{"$select" => "id,resourceId"})
+
+    get("/v1.0/groups/#{group_id}/appRoleAssignments", query, access_token)
+  end
+
+  @doc """
   Streams assigned principals (users and groups) for the service principal.
   This respects group assignment settings in Entra.
   Returns a stream that yields pages of assignments.

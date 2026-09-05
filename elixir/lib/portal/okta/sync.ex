@@ -684,7 +684,7 @@ defmodule Portal.Okta.Sync do
               s.idp_id == i.idp_id,
           where: i.account_id == ^account_id,
           where: i.directory_id == ^directory_id,
-          where: is_nil(s.synced_at) or s.synced_at < ^synced_at,
+          where: is_nil(s.eligible_at) or s.eligible_at < ^synced_at,
           select: count(i.id)
         )
         |> Safe.unscoped()
@@ -740,14 +740,21 @@ defmodule Portal.Okta.Sync do
       |> Safe.all()
     end
 
-    def batch_upsert_identities(account_id, issuer, directory_id, synced_at, identities) do
+    def batch_upsert_identities(
+          account_id,
+          issuer,
+          directory_id,
+          synced_at,
+          identities,
+          opts \\ []
+        ) do
       DirectorySync.batch_upsert_identities(
         account_id,
         issuer,
         directory_id,
         synced_at,
         identities,
-        []
+        opts
       )
     end
 

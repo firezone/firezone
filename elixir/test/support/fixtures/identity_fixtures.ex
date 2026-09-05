@@ -93,10 +93,11 @@ defmodule Portal.IdentityFixtures do
         account_id: account.id,
         directory_id: identity.directory_id,
         idp_id: identity.idp_id,
-        synced_at: synced_at
+        synced_at: synced_at,
+        eligible_at: synced_at
       }
       |> Portal.Repo.insert!(
-        on_conflict: {:replace, [:synced_at]},
+        on_conflict: {:replace, [:synced_at, :eligible_at]},
         conflict_target: [:account_id, :directory_id, :idp_id]
       )
     end

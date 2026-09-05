@@ -8,9 +8,17 @@ defmodule Portal.DirectorySync.IdentityState do
   older write loses the claim, so a full sync page fetched before a webhook
   deleted the user can never bring the user back.
 
+  `eligible_at` is the newest time a listing that proves the user belongs in
+  this directory (a full sync, or a group resync after the group's app
+  assignment was checked) wrote the user. A webhook that only re-reads the
+  user does not set it, so the full sync cleanup can still remove a user who
+  lost every assignment while a webhook was refreshing their profile.
+
   `memberships_synced_at` marks the newest rewrite of this user's whole
-  membership list. A membership write older than that mark is skipped, which
-  covers a membership the database has never seen and so has no row to claim.
+  membership list, and `org_unit_memberships_synced_at` the newest rewrite of
+  their org unit memberships only. A membership write older than the mark
+  that applies is skipped, which covers a membership the database has never
+  seen and so has no row to claim.
   """
   use Ecto.Schema
   import Ecto.Changeset
@@ -23,7 +31,9 @@ defmodule Portal.DirectorySync.IdentityState do
     belongs_to :directory, Portal.Directory, primary_key: true
     field :idp_id, :string, primary_key: true
     field :synced_at, :utc_datetime_usec
+    field :eligible_at, :utc_datetime_usec
     field :memberships_synced_at, :utc_datetime_usec
+    field :org_unit_memberships_synced_at, :utc_datetime_usec
   end
 
   def changeset(%Ecto.Changeset{} = changeset) do

@@ -986,11 +986,11 @@ defmodule Portal.Google.Sync do
   # Batch DB helpers
 
   @doc false
-  def batch_upsert_identities(directory, synced_at, identities) do
+  def batch_upsert_identities(directory, synced_at, identities, opts \\ []) do
     account_id = directory.account_id
     directory_id = directory.id
 
-    case Database.batch_upsert_identities(account_id, directory_id, synced_at, identities) do
+    case Database.batch_upsert_identities(account_id, directory_id, synced_at, identities, opts) do
       {:ok, %{upserted_identities: count}} ->
         Logger.debug("Upserted #{count} identities", google_directory_id: directory.id)
         :ok
@@ -1082,14 +1082,14 @@ defmodule Portal.Google.Sync do
       changeset |> Safe.unscoped() |> Safe.update()
     end
 
-    def batch_upsert_identities(account_id, directory_id, synced_at, identities) do
+    def batch_upsert_identities(account_id, directory_id, synced_at, identities, opts \\ []) do
       DirectorySync.batch_upsert_identities(
         account_id,
         @issuer,
         directory_id,
         synced_at,
         identities,
-        [:picture]
+        Keyword.put(opts, :fields, [:picture])
       )
     end
 
