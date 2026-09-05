@@ -7,8 +7,6 @@ defmodule PortalAPI.Plugs.MCPRateLimit do
   used to bypass this inexpensive first line of defense.
   """
 
-  import Plug.Conn
-
   @cost 1
 
   def init(opts), do: opts
@@ -24,11 +22,7 @@ defmodule PortalAPI.Plugs.MCPRateLimit do
         conn
 
       {:deny, retry_after_ms} ->
-        retry_after = max(ceil(retry_after_ms / 1000), 1)
-
-        conn
-        |> put_resp_header("retry-after", Integer.to_string(retry_after))
-        |> PortalAPI.ProblemDetails.send(429, "Rate limit exceeded, retry after #{retry_after}s")
+        PortalAPI.ProblemDetails.rate_limited(conn, retry_after_ms)
     end
   end
 

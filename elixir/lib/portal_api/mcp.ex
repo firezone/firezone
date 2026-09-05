@@ -129,6 +129,10 @@ defmodule PortalAPI.MCP do
     `metadata.next_page` in the response and pass it as `page_cursor` to fetch \
     the next page. Prefer filtering with the documented query parameters over \
     listing everything and filtering afterwards.
+
+    On HTTP 429, wait at least `retry_after_seconds` from the error body before \
+    retrying. The same delay appears in the error message and `Retry-After` \
+    header. Rate-limited requests have not executed the tool.
     """
   end
 

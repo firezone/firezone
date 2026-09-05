@@ -11,8 +11,7 @@ defmodule PortalAPI.Schemas.ProblemDetails do
     not_found: "The requested resource could not be found.",
     conflict: "The request conflicts with the current state of the resource.",
     unprocessable_entity: "The request body failed validation.",
-    too_many_requests:
-      "Rate limit exceeded. Retry after the time indicated in the Retry-After header."
+    too_many_requests: "Rate limit exceeded. Retry after 5 seconds."
   }
 
   OpenApiSpex.schema(%{
@@ -40,6 +39,13 @@ defmodule PortalAPI.Schemas.ProblemDetails do
         type: :string,
         description: "Human-readable explanation specific to this occurrence of the problem.",
         example: "The requested resource could not be found."
+      },
+      retry_after_seconds: %Schema{
+        type: :integer,
+        minimum: 1,
+        description:
+          "Delay in seconds before retrying a rate-limited request. Matches the Retry-After header.",
+        example: 5
       }
     },
     required: [:type, :title, :status]
@@ -122,6 +128,13 @@ defmodule PortalAPI.Schemas.ProblemDetails do
     example =
       if code == :unprocessable_entity do
         Map.put(example, "validation_errors", %{"name" => ["can't be blank"]})
+      else
+        example
+      end
+
+    example =
+      if code == :too_many_requests do
+        Map.put(example, "retry_after_seconds", 5)
       else
         example
       end

@@ -57,6 +57,9 @@ defmodule PortalAPI.RateLimitTest do
 
       [retry_after] = get_resp_header(resp_conn, "retry-after")
       assert String.to_integer(retry_after) >= 1
+      body = json_response(resp_conn, 429)
+      assert body["retry_after_seconds"] == String.to_integer(retry_after)
+      assert body["detail"] == "Rate limit exceeded. Retry after #{retry_after} seconds."
     end
 
     test "rejects a rate-limited malformed JSON request before decoding it", %{

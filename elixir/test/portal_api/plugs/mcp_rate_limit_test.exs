@@ -17,6 +17,11 @@ defmodule PortalAPI.Plugs.MCPRateLimitTest do
     denied = MCPRateLimit.call(first, opts)
     assert denied.halted
     assert denied.status == 429
+    [retry_after] = Plug.Conn.get_resp_header(denied, "retry-after")
+    seconds = String.to_integer(retry_after)
+    body = JSON.decode!(denied.resp_body)
+    assert body["retry_after_seconds"] == seconds
+    assert body["detail"] == "Rate limit exceeded. Retry after #{seconds} seconds."
 
     refute MCPRateLimit.call(second, opts).halted
   end

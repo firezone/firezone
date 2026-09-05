@@ -343,6 +343,9 @@ defmodule PortalAPI.MCPControllerTest do
       assert [retry_after] = get_resp_header(limited, "retry-after")
       assert {seconds, ""} = Integer.parse(retry_after)
       assert seconds > 0
+      body = json_response(limited, 429)
+      assert body["retry_after_seconds"] == seconds
+      assert body["detail"] == "Rate limit exceeded. Retry after #{seconds} seconds."
     end
 
     test "rejects a body that is not JSON-RPC", %{conn: conn, actor: actor} do

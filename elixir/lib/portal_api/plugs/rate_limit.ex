@@ -1,6 +1,4 @@
 defmodule PortalAPI.Plugs.RateLimit do
-  import Plug.Conn
-
   @refill_rate_default Portal.Config.fetch_env!(:portal, PortalAPI.RateLimit)[:refill_rate]
   @capacity_default Portal.Config.fetch_env!(:portal, PortalAPI.RateLimit)[:capacity]
   @cost_default PortalAPI.RateLimit.default_cost()
@@ -28,12 +26,7 @@ defmodule PortalAPI.Plugs.RateLimit do
         conn
 
       {:deny, retry_after_ms} ->
-        conn
-        |> put_resp_header("retry-after", Integer.to_string(ceil(retry_after_ms / 1000)))
-        |> PortalAPI.ProblemDetails.send(
-          429,
-          "Rate limit exceeded. Retry after the time indicated in the Retry-After header."
-        )
+        PortalAPI.ProblemDetails.rate_limited(conn, retry_after_ms)
     end
   end
 
