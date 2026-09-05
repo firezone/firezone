@@ -1,5 +1,5 @@
 defmodule PortalWeb.OAuthControllerTest do
-  use PortalWeb.ConnCase, async: false
+  use PortalWeb.ConnCase, async: true
 
   import Portal.AccountFixtures
   import Portal.ActorFixtures
@@ -584,18 +584,13 @@ defmodule PortalWeb.OAuthControllerTest do
       ipv6 = {0x2606, 0x4700, 0, 0, 0, 0, 0, 0x1111}
       unknown = {192, 0, 2, 1}
 
-      on_exit(fn -> Geolix.Adapter.Fake.Storage.set(:city, {%{}, %{}}) end)
-
-      Geolix.Adapter.Fake.Storage.set(:city, {
-        %{
-          ipv4 => %{
-            country: %{iso_code: "US"},
-            city: %{names: %{en: "San Francisco"}},
-            location: %{}
-          },
-          ipv6 => %{country: %{iso_code: "AU"}}
+      Portal.Test.GeoAdapter.put_data(%{
+        ipv4 => %{
+          country: %{iso_code: "US"},
+          city: %{names: %{en: "San Francisco"}},
+          location: %{}
         },
-        %{}
+        ipv6 => %{country: %{iso_code: "AU"}}
       })
 
       client =
