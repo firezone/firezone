@@ -5189,12 +5189,6 @@
             "example": "The requested resource could not be found.",
             "type": "string"
           },
-          "retry_after_seconds": {
-            "description": "Delay in seconds before retrying a rate-limited request. Matches the Retry-After header.",
-            "example": 5,
-            "minimum": 1,
-            "type": "integer"
-          },
           "status": {
             "description": "HTTP status code.",
             "example": 404,
@@ -7277,8 +7271,7 @@
             "content": {
               "application/problem+json": {
                 "example": {
-                  "detail": "Rate limit exceeded. Retry after 5 seconds.",
-                  "retry_after_seconds": 5,
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
                   "status": 429,
                   "title": "Too Many Requests",
                   "type": "about:blank"
@@ -7395,8 +7388,7 @@
             "content": {
               "application/problem+json": {
                 "example": {
-                  "detail": "Rate limit exceeded. Retry after 5 seconds.",
-                  "retry_after_seconds": 5,
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
                   "status": 429,
                   "title": "Too Many Requests",
                   "type": "about:blank"
@@ -7529,8 +7521,7 @@
             "content": {
               "application/problem+json": {
                 "example": {
-                  "detail": "Rate limit exceeded. Retry after 5 seconds.",
-                  "retry_after_seconds": 5,
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
                   "status": 429,
                   "title": "Too Many Requests",
                   "type": "about:blank"
@@ -7644,8 +7635,7 @@
             "content": {
               "application/problem+json": {
                 "example": {
-                  "detail": "Rate limit exceeded. Retry after 5 seconds.",
-                  "retry_after_seconds": 5,
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
                   "status": 429,
                   "title": "Too Many Requests",
                   "type": "about:blank"
@@ -7757,8 +7747,7 @@
             "content": {
               "application/problem+json": {
                 "example": {
-                  "detail": "Rate limit exceeded. Retry after 5 seconds.",
-                  "retry_after_seconds": 5,
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
                   "status": 429,
                   "title": "Too Many Requests",
                   "type": "about:blank"
@@ -7902,8 +7891,7 @@
             "content": {
               "application/problem+json": {
                 "example": {
-                  "detail": "Rate limit exceeded. Retry after 5 seconds.",
-                  "retry_after_seconds": 5,
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
                   "status": 429,
                   "title": "Too Many Requests",
                   "type": "about:blank"
@@ -8047,8 +8035,7 @@
             "content": {
               "application/problem+json": {
                 "example": {
-                  "detail": "Rate limit exceeded. Retry after 5 seconds.",
-                  "retry_after_seconds": 5,
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
                   "status": 429,
                   "title": "Too Many Requests",
                   "type": "about:blank"
@@ -8172,8 +8159,7 @@
             "content": {
               "application/problem+json": {
                 "example": {
-                  "detail": "Rate limit exceeded. Retry after 5 seconds.",
-                  "retry_after_seconds": 5,
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
                   "status": 429,
                   "title": "Too Many Requests",
                   "type": "about:blank"
@@ -8295,8 +8281,7 @@
             "content": {
               "application/problem+json": {
                 "example": {
-                  "detail": "Rate limit exceeded. Retry after 5 seconds.",
-                  "retry_after_seconds": 5,
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
                   "status": 429,
                   "title": "Too Many Requests",
                   "type": "about:blank"
@@ -8451,8 +8436,7 @@
             "content": {
               "application/problem+json": {
                 "example": {
-                  "detail": "Rate limit exceeded. Retry after 5 seconds.",
-                  "retry_after_seconds": 5,
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
                   "status": 429,
                   "title": "Too Many Requests",
                   "type": "about:blank"
@@ -8607,8 +8591,7 @@
             "content": {
               "application/problem+json": {
                 "example": {
-                  "detail": "Rate limit exceeded. Retry after 5 seconds.",
-                  "retry_after_seconds": 5,
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
                   "status": 429,
                   "title": "Too Many Requests",
                   "type": "about:blank"
@@ -8716,8 +8699,7 @@
             "content": {
               "application/problem+json": {
                 "example": {
-                  "detail": "Rate limit exceeded. Retry after 5 seconds.",
-                  "retry_after_seconds": 5,
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
                   "status": 429,
                   "title": "Too Many Requests",
                   "type": "about:blank"
@@ -8835,8 +8817,7 @@
             "content": {
               "application/problem+json": {
                 "example": {
-                  "detail": "Rate limit exceeded. Retry after 5 seconds.",
-                  "retry_after_seconds": 5,
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
                   "status": 429,
                   "title": "Too Many Requests",
                   "type": "about:blank"
@@ -8960,8 +8941,7 @@
             "content": {
               "application/problem+json": {
                 "example": {
-                  "detail": "Rate limit exceeded. Retry after 5 seconds.",
-                  "retry_after_seconds": 5,
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
                   "status": 429,
                   "title": "Too Many Requests",
                   "type": "about:blank"
@@ -9069,8 +9049,7 @@
             "content": {
               "application/problem+json": {
                 "example": {
-                  "detail": "Rate limit exceeded. Retry after 5 seconds.",
-                  "retry_after_seconds": 5,
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
                   "status": 429,
                   "title": "Too Many Requests",
                   "type": "about:blank"
@@ -9184,8 +9163,7 @@
             "content": {
               "application/problem+json": {
                 "example": {
-                  "detail": "Rate limit exceeded. Retry after 5 seconds.",
-                  "retry_after_seconds": 5,
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
                   "status": 429,
                   "title": "Too Many Requests",
                   "type": "about:blank"
@@ -9297,8 +9275,7 @@
             "content": {
               "application/problem+json": {
                 "example": {
-                  "detail": "Rate limit exceeded. Retry after 5 seconds.",
-                  "retry_after_seconds": 5,
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
                   "status": 429,
                   "title": "Too Many Requests",
                   "type": "about:blank"
@@ -9443,8 +9420,7 @@
             "content": {
               "application/problem+json": {
                 "example": {
-                  "detail": "Rate limit exceeded. Retry after 5 seconds.",
-                  "retry_after_seconds": 5,
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
                   "status": 429,
                   "title": "Too Many Requests",
                   "type": "about:blank"
@@ -9589,8 +9565,7 @@
             "content": {
               "application/problem+json": {
                 "example": {
-                  "detail": "Rate limit exceeded. Retry after 5 seconds.",
-                  "retry_after_seconds": 5,
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
                   "status": 429,
                   "title": "Too Many Requests",
                   "type": "about:blank"
@@ -9704,8 +9679,7 @@
             "content": {
               "application/problem+json": {
                 "example": {
-                  "detail": "Rate limit exceeded. Retry after 5 seconds.",
-                  "retry_after_seconds": 5,
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
                   "status": 429,
                   "title": "Too Many Requests",
                   "type": "about:blank"
@@ -9819,8 +9793,7 @@
             "content": {
               "application/problem+json": {
                 "example": {
-                  "detail": "Rate limit exceeded. Retry after 5 seconds.",
-                  "retry_after_seconds": 5,
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
                   "status": 429,
                   "title": "Too Many Requests",
                   "type": "about:blank"
@@ -9952,8 +9925,7 @@
             "content": {
               "application/problem+json": {
                 "example": {
-                  "detail": "Rate limit exceeded. Retry after 5 seconds.",
-                  "retry_after_seconds": 5,
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
                   "status": 429,
                   "title": "Too Many Requests",
                   "type": "about:blank"
@@ -10097,8 +10069,7 @@
             "content": {
               "application/problem+json": {
                 "example": {
-                  "detail": "Rate limit exceeded. Retry after 5 seconds.",
-                  "retry_after_seconds": 5,
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
                   "status": 429,
                   "title": "Too Many Requests",
                   "type": "about:blank"
@@ -10222,8 +10193,7 @@
             "content": {
               "application/problem+json": {
                 "example": {
-                  "detail": "Rate limit exceeded. Retry after 5 seconds.",
-                  "retry_after_seconds": 5,
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
                   "status": 429,
                   "title": "Too Many Requests",
                   "type": "about:blank"
@@ -10345,8 +10315,7 @@
             "content": {
               "application/problem+json": {
                 "example": {
-                  "detail": "Rate limit exceeded. Retry after 5 seconds.",
-                  "retry_after_seconds": 5,
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
                   "status": 429,
                   "title": "Too Many Requests",
                   "type": "about:blank"
@@ -10464,8 +10433,7 @@
             "content": {
               "application/problem+json": {
                 "example": {
-                  "detail": "Rate limit exceeded. Retry after 5 seconds.",
-                  "retry_after_seconds": 5,
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
                   "status": 429,
                   "title": "Too Many Requests",
                   "type": "about:blank"
@@ -10583,8 +10551,7 @@
             "content": {
               "application/problem+json": {
                 "example": {
-                  "detail": "Rate limit exceeded. Retry after 5 seconds.",
-                  "retry_after_seconds": 5,
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
                   "status": 429,
                   "title": "Too Many Requests",
                   "type": "about:blank"
@@ -10697,8 +10664,7 @@
             "content": {
               "application/problem+json": {
                 "example": {
-                  "detail": "Rate limit exceeded. Retry after 5 seconds.",
-                  "retry_after_seconds": 5,
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
                   "status": 429,
                   "title": "Too Many Requests",
                   "type": "about:blank"
@@ -10816,8 +10782,7 @@
             "content": {
               "application/problem+json": {
                 "example": {
-                  "detail": "Rate limit exceeded. Retry after 5 seconds.",
-                  "retry_after_seconds": 5,
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
                   "status": 429,
                   "title": "Too Many Requests",
                   "type": "about:blank"
@@ -10934,8 +10899,7 @@
             "content": {
               "application/problem+json": {
                 "example": {
-                  "detail": "Rate limit exceeded. Retry after 5 seconds.",
-                  "retry_after_seconds": 5,
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
                   "status": 429,
                   "title": "Too Many Requests",
                   "type": "about:blank"
@@ -11049,8 +11013,7 @@
             "content": {
               "application/problem+json": {
                 "example": {
-                  "detail": "Rate limit exceeded. Retry after 5 seconds.",
-                  "retry_after_seconds": 5,
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
                   "status": 429,
                   "title": "Too Many Requests",
                   "type": "about:blank"
@@ -11162,8 +11125,7 @@
             "content": {
               "application/problem+json": {
                 "example": {
-                  "detail": "Rate limit exceeded. Retry after 5 seconds.",
-                  "retry_after_seconds": 5,
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
                   "status": 429,
                   "title": "Too Many Requests",
                   "type": "about:blank"
@@ -11307,8 +11269,7 @@
             "content": {
               "application/problem+json": {
                 "example": {
-                  "detail": "Rate limit exceeded. Retry after 5 seconds.",
-                  "retry_after_seconds": 5,
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
                   "status": 429,
                   "title": "Too Many Requests",
                   "type": "about:blank"
@@ -11452,8 +11413,7 @@
             "content": {
               "application/problem+json": {
                 "example": {
-                  "detail": "Rate limit exceeded. Retry after 5 seconds.",
-                  "retry_after_seconds": 5,
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
                   "status": 429,
                   "title": "Too Many Requests",
                   "type": "about:blank"
@@ -11571,8 +11531,7 @@
             "content": {
               "application/problem+json": {
                 "example": {
-                  "detail": "Rate limit exceeded. Retry after 5 seconds.",
-                  "retry_after_seconds": 5,
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
                   "status": 429,
                   "title": "Too Many Requests",
                   "type": "about:blank"
@@ -11686,8 +11645,7 @@
             "content": {
               "application/problem+json": {
                 "example": {
-                  "detail": "Rate limit exceeded. Retry after 5 seconds.",
-                  "retry_after_seconds": 5,
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
                   "status": 429,
                   "title": "Too Many Requests",
                   "type": "about:blank"
@@ -11799,8 +11757,7 @@
             "content": {
               "application/problem+json": {
                 "example": {
-                  "detail": "Rate limit exceeded. Retry after 5 seconds.",
-                  "retry_after_seconds": 5,
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
                   "status": 429,
                   "title": "Too Many Requests",
                   "type": "about:blank"
@@ -11945,8 +11902,7 @@
             "content": {
               "application/problem+json": {
                 "example": {
-                  "detail": "Rate limit exceeded. Retry after 5 seconds.",
-                  "retry_after_seconds": 5,
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
                   "status": 429,
                   "title": "Too Many Requests",
                   "type": "about:blank"
@@ -12091,8 +12047,7 @@
             "content": {
               "application/problem+json": {
                 "example": {
-                  "detail": "Rate limit exceeded. Retry after 5 seconds.",
-                  "retry_after_seconds": 5,
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
                   "status": 429,
                   "title": "Too Many Requests",
                   "type": "about:blank"
@@ -12205,8 +12160,7 @@
             "content": {
               "application/problem+json": {
                 "example": {
-                  "detail": "Rate limit exceeded. Retry after 5 seconds.",
-                  "retry_after_seconds": 5,
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
                   "status": 429,
                   "title": "Too Many Requests",
                   "type": "about:blank"
@@ -12309,8 +12263,7 @@
             "content": {
               "application/problem+json": {
                 "example": {
-                  "detail": "Rate limit exceeded. Retry after 5 seconds.",
-                  "retry_after_seconds": 5,
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
                   "status": 429,
                   "title": "Too Many Requests",
                   "type": "about:blank"
@@ -12466,8 +12419,7 @@
             "content": {
               "application/problem+json": {
                 "example": {
-                  "detail": "Rate limit exceeded. Retry after 5 seconds.",
-                  "retry_after_seconds": 5,
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
                   "status": 429,
                   "title": "Too Many Requests",
                   "type": "about:blank"
@@ -12584,8 +12536,7 @@
             "content": {
               "application/problem+json": {
                 "example": {
-                  "detail": "Rate limit exceeded. Retry after 5 seconds.",
-                  "retry_after_seconds": 5,
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
                   "status": 429,
                   "title": "Too Many Requests",
                   "type": "about:blank"
@@ -12709,8 +12660,7 @@
             "content": {
               "application/problem+json": {
                 "example": {
-                  "detail": "Rate limit exceeded. Retry after 5 seconds.",
-                  "retry_after_seconds": 5,
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
                   "status": 429,
                   "title": "Too Many Requests",
                   "type": "about:blank"
@@ -12832,8 +12782,7 @@
             "content": {
               "application/problem+json": {
                 "example": {
-                  "detail": "Rate limit exceeded. Retry after 5 seconds.",
-                  "retry_after_seconds": 5,
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
                   "status": 429,
                   "title": "Too Many Requests",
                   "type": "about:blank"
@@ -12941,8 +12890,7 @@
             "content": {
               "application/problem+json": {
                 "example": {
-                  "detail": "Rate limit exceeded. Retry after 5 seconds.",
-                  "retry_after_seconds": 5,
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
                   "status": 429,
                   "title": "Too Many Requests",
                   "type": "about:blank"
@@ -13060,8 +13008,7 @@
             "content": {
               "application/problem+json": {
                 "example": {
-                  "detail": "Rate limit exceeded. Retry after 5 seconds.",
-                  "retry_after_seconds": 5,
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
                   "status": 429,
                   "title": "Too Many Requests",
                   "type": "about:blank"
@@ -13174,8 +13121,7 @@
             "content": {
               "application/problem+json": {
                 "example": {
-                  "detail": "Rate limit exceeded. Retry after 5 seconds.",
-                  "retry_after_seconds": 5,
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
                   "status": 429,
                   "title": "Too Many Requests",
                   "type": "about:blank"
@@ -13288,8 +13234,7 @@
             "content": {
               "application/problem+json": {
                 "example": {
-                  "detail": "Rate limit exceeded. Retry after 5 seconds.",
-                  "retry_after_seconds": 5,
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
                   "status": 429,
                   "title": "Too Many Requests",
                   "type": "about:blank"
@@ -13402,8 +13347,7 @@
             "content": {
               "application/problem+json": {
                 "example": {
-                  "detail": "Rate limit exceeded. Retry after 5 seconds.",
-                  "retry_after_seconds": 5,
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
                   "status": 429,
                   "title": "Too Many Requests",
                   "type": "about:blank"
@@ -13511,8 +13455,7 @@
             "content": {
               "application/problem+json": {
                 "example": {
-                  "detail": "Rate limit exceeded. Retry after 5 seconds.",
-                  "retry_after_seconds": 5,
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
                   "status": 429,
                   "title": "Too Many Requests",
                   "type": "about:blank"
@@ -13647,8 +13590,7 @@
             "content": {
               "application/problem+json": {
                 "example": {
-                  "detail": "Rate limit exceeded. Retry after 5 seconds.",
-                  "retry_after_seconds": 5,
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
                   "status": 429,
                   "title": "Too Many Requests",
                   "type": "about:blank"
@@ -13793,8 +13735,7 @@
             "content": {
               "application/problem+json": {
                 "example": {
-                  "detail": "Rate limit exceeded. Retry after 5 seconds.",
-                  "retry_after_seconds": 5,
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
                   "status": 429,
                   "title": "Too Many Requests",
                   "type": "about:blank"
@@ -13939,8 +13880,7 @@
             "content": {
               "application/problem+json": {
                 "example": {
-                  "detail": "Rate limit exceeded. Retry after 5 seconds.",
-                  "retry_after_seconds": 5,
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
                   "status": 429,
                   "title": "Too Many Requests",
                   "type": "about:blank"
@@ -14058,8 +13998,7 @@
             "content": {
               "application/problem+json": {
                 "example": {
-                  "detail": "Rate limit exceeded. Retry after 5 seconds.",
-                  "retry_after_seconds": 5,
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
                   "status": 429,
                   "title": "Too Many Requests",
                   "type": "about:blank"
@@ -14172,8 +14111,7 @@
             "content": {
               "application/problem+json": {
                 "example": {
-                  "detail": "Rate limit exceeded. Retry after 5 seconds.",
-                  "retry_after_seconds": 5,
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
                   "status": 429,
                   "title": "Too Many Requests",
                   "type": "about:blank"
@@ -14286,8 +14224,7 @@
             "content": {
               "application/problem+json": {
                 "example": {
-                  "detail": "Rate limit exceeded. Retry after 5 seconds.",
-                  "retry_after_seconds": 5,
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
                   "status": 429,
                   "title": "Too Many Requests",
                   "type": "about:blank"
@@ -14401,8 +14338,7 @@
             "content": {
               "application/problem+json": {
                 "example": {
-                  "detail": "Rate limit exceeded. Retry after 5 seconds.",
-                  "retry_after_seconds": 5,
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
                   "status": 429,
                   "title": "Too Many Requests",
                   "type": "about:blank"
@@ -14510,8 +14446,7 @@
             "content": {
               "application/problem+json": {
                 "example": {
-                  "detail": "Rate limit exceeded. Retry after 5 seconds.",
-                  "retry_after_seconds": 5,
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
                   "status": 429,
                   "title": "Too Many Requests",
                   "type": "about:blank"
@@ -14625,8 +14560,7 @@
             "content": {
               "application/problem+json": {
                 "example": {
-                  "detail": "Rate limit exceeded. Retry after 5 seconds.",
-                  "retry_after_seconds": 5,
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
                   "status": 429,
                   "title": "Too Many Requests",
                   "type": "about:blank"
@@ -14740,8 +14674,7 @@
             "content": {
               "application/problem+json": {
                 "example": {
-                  "detail": "Rate limit exceeded. Retry after 5 seconds.",
-                  "retry_after_seconds": 5,
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
                   "status": 429,
                   "title": "Too Many Requests",
                   "type": "about:blank"
@@ -14853,8 +14786,7 @@
             "content": {
               "application/problem+json": {
                 "example": {
-                  "detail": "Rate limit exceeded. Retry after 5 seconds.",
-                  "retry_after_seconds": 5,
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
                   "status": 429,
                   "title": "Too Many Requests",
                   "type": "about:blank"
@@ -14998,8 +14930,7 @@
             "content": {
               "application/problem+json": {
                 "example": {
-                  "detail": "Rate limit exceeded. Retry after 5 seconds.",
-                  "retry_after_seconds": 5,
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
                   "status": 429,
                   "title": "Too Many Requests",
                   "type": "about:blank"
@@ -15143,8 +15074,7 @@
             "content": {
               "application/problem+json": {
                 "example": {
-                  "detail": "Rate limit exceeded. Retry after 5 seconds.",
-                  "retry_after_seconds": 5,
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
                   "status": 429,
                   "title": "Too Many Requests",
                   "type": "about:blank"
@@ -15262,8 +15192,7 @@
             "content": {
               "application/problem+json": {
                 "example": {
-                  "detail": "Rate limit exceeded. Retry after 5 seconds.",
-                  "retry_after_seconds": 5,
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
                   "status": 429,
                   "title": "Too Many Requests",
                   "type": "about:blank"
@@ -15377,8 +15306,7 @@
             "content": {
               "application/problem+json": {
                 "example": {
-                  "detail": "Rate limit exceeded. Retry after 5 seconds.",
-                  "retry_after_seconds": 5,
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
                   "status": 429,
                   "title": "Too Many Requests",
                   "type": "about:blank"
@@ -15505,8 +15433,7 @@
             "content": {
               "application/problem+json": {
                 "example": {
-                  "detail": "Rate limit exceeded. Retry after 5 seconds.",
-                  "retry_after_seconds": 5,
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
                   "status": 429,
                   "title": "Too Many Requests",
                   "type": "about:blank"
@@ -15593,8 +15520,7 @@
             "content": {
               "application/problem+json": {
                 "example": {
-                  "detail": "Rate limit exceeded. Retry after 5 seconds.",
-                  "retry_after_seconds": 5,
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
                   "status": 429,
                   "title": "Too Many Requests",
                   "type": "about:blank"
@@ -15708,8 +15634,7 @@
             "content": {
               "application/problem+json": {
                 "example": {
-                  "detail": "Rate limit exceeded. Retry after 5 seconds.",
-                  "retry_after_seconds": 5,
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
                   "status": 429,
                   "title": "Too Many Requests",
                   "type": "about:blank"
@@ -15823,8 +15748,7 @@
             "content": {
               "application/problem+json": {
                 "example": {
-                  "detail": "Rate limit exceeded. Retry after 5 seconds.",
-                  "retry_after_seconds": 5,
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
                   "status": 429,
                   "title": "Too Many Requests",
                   "type": "about:blank"
@@ -15937,8 +15861,7 @@
             "content": {
               "application/problem+json": {
                 "example": {
-                  "detail": "Rate limit exceeded. Retry after 5 seconds.",
-                  "retry_after_seconds": 5,
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
                   "status": 429,
                   "title": "Too Many Requests",
                   "type": "about:blank"
@@ -16046,8 +15969,7 @@
             "content": {
               "application/problem+json": {
                 "example": {
-                  "detail": "Rate limit exceeded. Retry after 5 seconds.",
-                  "retry_after_seconds": 5,
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
                   "status": 429,
                   "title": "Too Many Requests",
                   "type": "about:blank"
@@ -16183,8 +16105,7 @@
             "content": {
               "application/problem+json": {
                 "example": {
-                  "detail": "Rate limit exceeded. Retry after 5 seconds.",
-                  "retry_after_seconds": 5,
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
                   "status": 429,
                   "title": "Too Many Requests",
                   "type": "about:blank"
@@ -16329,8 +16250,7 @@
             "content": {
               "application/problem+json": {
                 "example": {
-                  "detail": "Rate limit exceeded. Retry after 5 seconds.",
-                  "retry_after_seconds": 5,
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
                   "status": 429,
                   "title": "Too Many Requests",
                   "type": "about:blank"
@@ -16475,8 +16395,7 @@
             "content": {
               "application/problem+json": {
                 "example": {
-                  "detail": "Rate limit exceeded. Retry after 5 seconds.",
-                  "retry_after_seconds": 5,
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
                   "status": 429,
                   "title": "Too Many Requests",
                   "type": "about:blank"
@@ -16590,8 +16509,7 @@
             "content": {
               "application/problem+json": {
                 "example": {
-                  "detail": "Rate limit exceeded. Retry after 5 seconds.",
-                  "retry_after_seconds": 5,
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
                   "status": 429,
                   "title": "Too Many Requests",
                   "type": "about:blank"
@@ -16704,8 +16622,7 @@
             "content": {
               "application/problem+json": {
                 "example": {
-                  "detail": "Rate limit exceeded. Retry after 5 seconds.",
-                  "retry_after_seconds": 5,
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
                   "status": 429,
                   "title": "Too Many Requests",
                   "type": "about:blank"
@@ -16819,8 +16736,7 @@
             "content": {
               "application/problem+json": {
                 "example": {
-                  "detail": "Rate limit exceeded. Retry after 5 seconds.",
-                  "retry_after_seconds": 5,
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
                   "status": 429,
                   "title": "Too Many Requests",
                   "type": "about:blank"
@@ -16934,8 +16850,7 @@
             "content": {
               "application/problem+json": {
                 "example": {
-                  "detail": "Rate limit exceeded. Retry after 5 seconds.",
-                  "retry_after_seconds": 5,
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
                   "status": 429,
                   "title": "Too Many Requests",
                   "type": "about:blank"
@@ -17043,8 +16958,7 @@
             "content": {
               "application/problem+json": {
                 "example": {
-                  "detail": "Rate limit exceeded. Retry after 5 seconds.",
-                  "retry_after_seconds": 5,
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
                   "status": 429,
                   "title": "Too Many Requests",
                   "type": "about:blank"
@@ -17158,8 +17072,7 @@
             "content": {
               "application/problem+json": {
                 "example": {
-                  "detail": "Rate limit exceeded. Retry after 5 seconds.",
-                  "retry_after_seconds": 5,
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
                   "status": 429,
                   "title": "Too Many Requests",
                   "type": "about:blank"
@@ -17271,8 +17184,7 @@
             "content": {
               "application/problem+json": {
                 "example": {
-                  "detail": "Rate limit exceeded. Retry after 5 seconds.",
-                  "retry_after_seconds": 5,
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
                   "status": 429,
                   "title": "Too Many Requests",
                   "type": "about:blank"
@@ -17416,8 +17328,7 @@
             "content": {
               "application/problem+json": {
                 "example": {
-                  "detail": "Rate limit exceeded. Retry after 5 seconds.",
-                  "retry_after_seconds": 5,
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
                   "status": 429,
                   "title": "Too Many Requests",
                   "type": "about:blank"
@@ -17561,8 +17472,7 @@
             "content": {
               "application/problem+json": {
                 "example": {
-                  "detail": "Rate limit exceeded. Retry after 5 seconds.",
-                  "retry_after_seconds": 5,
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
                   "status": 429,
                   "title": "Too Many Requests",
                   "type": "about:blank"
@@ -17677,8 +17587,7 @@
             "content": {
               "application/problem+json": {
                 "example": {
-                  "detail": "Rate limit exceeded. Retry after 5 seconds.",
-                  "retry_after_seconds": 5,
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
                   "status": 429,
                   "title": "Too Many Requests",
                   "type": "about:blank"
@@ -17792,8 +17701,7 @@
             "content": {
               "application/problem+json": {
                 "example": {
-                  "detail": "Rate limit exceeded. Retry after 5 seconds.",
-                  "retry_after_seconds": 5,
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
                   "status": 429,
                   "title": "Too Many Requests",
                   "type": "about:blank"
@@ -17955,8 +17863,7 @@
             "content": {
               "application/problem+json": {
                 "example": {
-                  "detail": "Rate limit exceeded. Retry after 5 seconds.",
-                  "retry_after_seconds": 5,
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
                   "status": 429,
                   "title": "Too Many Requests",
                   "type": "about:blank"
@@ -18101,8 +18008,7 @@
             "content": {
               "application/problem+json": {
                 "example": {
-                  "detail": "Rate limit exceeded. Retry after 5 seconds.",
-                  "retry_after_seconds": 5,
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
                   "status": 429,
                   "title": "Too Many Requests",
                   "type": "about:blank"
@@ -18210,8 +18116,7 @@
             "content": {
               "application/problem+json": {
                 "example": {
-                  "detail": "Rate limit exceeded. Retry after 5 seconds.",
-                  "retry_after_seconds": 5,
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
                   "status": 429,
                   "title": "Too Many Requests",
                   "type": "about:blank"
@@ -18338,8 +18243,7 @@
             "content": {
               "application/problem+json": {
                 "example": {
-                  "detail": "Rate limit exceeded. Retry after 5 seconds.",
-                  "retry_after_seconds": 5,
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
                   "status": 429,
                   "title": "Too Many Requests",
                   "type": "about:blank"
@@ -18472,8 +18376,7 @@
             "content": {
               "application/problem+json": {
                 "example": {
-                  "detail": "Rate limit exceeded. Retry after 5 seconds.",
-                  "retry_after_seconds": 5,
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
                   "status": 429,
                   "title": "Too Many Requests",
                   "type": "about:blank"
@@ -18633,8 +18536,7 @@
             "content": {
               "application/problem+json": {
                 "example": {
-                  "detail": "Rate limit exceeded. Retry after 5 seconds.",
-                  "retry_after_seconds": 5,
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
                   "status": 429,
                   "title": "Too Many Requests",
                   "type": "about:blank"
@@ -18771,8 +18673,7 @@
             "content": {
               "application/problem+json": {
                 "example": {
-                  "detail": "Rate limit exceeded. Retry after 5 seconds.",
-                  "retry_after_seconds": 5,
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
                   "status": 429,
                   "title": "Too Many Requests",
                   "type": "about:blank"
@@ -18889,8 +18790,7 @@
             "content": {
               "application/problem+json": {
                 "example": {
-                  "detail": "Rate limit exceeded. Retry after 5 seconds.",
-                  "retry_after_seconds": 5,
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
                   "status": 429,
                   "title": "Too Many Requests",
                   "type": "about:blank"
@@ -19008,8 +18908,7 @@
             "content": {
               "application/problem+json": {
                 "example": {
-                  "detail": "Rate limit exceeded. Retry after 5 seconds.",
-                  "retry_after_seconds": 5,
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
                   "status": 429,
                   "title": "Too Many Requests",
                   "type": "about:blank"
@@ -19122,8 +19021,7 @@
             "content": {
               "application/problem+json": {
                 "example": {
-                  "detail": "Rate limit exceeded. Retry after 5 seconds.",
-                  "retry_after_seconds": 5,
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
                   "status": 429,
                   "title": "Too Many Requests",
                   "type": "about:blank"
@@ -19231,8 +19129,7 @@
             "content": {
               "application/problem+json": {
                 "example": {
-                  "detail": "Rate limit exceeded. Retry after 5 seconds.",
-                  "retry_after_seconds": 5,
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
                   "status": 429,
                   "title": "Too Many Requests",
                   "type": "about:blank"
@@ -19346,8 +19243,7 @@
             "content": {
               "application/problem+json": {
                 "example": {
-                  "detail": "Rate limit exceeded. Retry after 5 seconds.",
-                  "retry_after_seconds": 5,
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
                   "status": 429,
                   "title": "Too Many Requests",
                   "type": "about:blank"
@@ -19472,8 +19368,7 @@
             "content": {
               "application/problem+json": {
                 "example": {
-                  "detail": "Rate limit exceeded. Retry after 5 seconds.",
-                  "retry_after_seconds": 5,
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
                   "status": 429,
                   "title": "Too Many Requests",
                   "type": "about:blank"
@@ -19614,8 +19509,7 @@
             "content": {
               "application/problem+json": {
                 "example": {
-                  "detail": "Rate limit exceeded. Retry after 5 seconds.",
-                  "retry_after_seconds": 5,
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
                   "status": 429,
                   "title": "Too Many Requests",
                   "type": "about:blank"
@@ -19723,8 +19617,7 @@
             "content": {
               "application/problem+json": {
                 "example": {
-                  "detail": "Rate limit exceeded. Retry after 5 seconds.",
-                  "retry_after_seconds": 5,
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
                   "status": 429,
                   "title": "Too Many Requests",
                   "type": "about:blank"
@@ -19838,8 +19731,7 @@
             "content": {
               "application/problem+json": {
                 "example": {
-                  "detail": "Rate limit exceeded. Retry after 5 seconds.",
-                  "retry_after_seconds": 5,
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
                   "status": 429,
                   "title": "Too Many Requests",
                   "type": "about:blank"
