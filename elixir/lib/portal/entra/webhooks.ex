@@ -7,6 +7,7 @@ defmodule Portal.Entra.Webhooks do
   `webhook_secret` are dropped.
   """
 
+  alias Portal.DirectorySync
   alias Portal.Entra
   alias __MODULE__.Database
   require Logger
@@ -114,10 +115,20 @@ defmodule Portal.Entra.Webhooks do
   end
 
   # Most changes in a tenant concern users and groups this directory never
-  # synced. Those are dropped here so they never become jobs.
+  # synced. Those are dropped here so they never become jobs, except while a
+  # full sync runs: it may be about to insert the object from a page fetched
+  # before the change, and only the job can leave the tombstone that stops it.
   defp in_scope([], _directory), do: []
 
   defp in_scope(changes, directory) do
+    if DirectorySync.full_sync_running?(Portal.Entra.Sync, directory.id) do
+      changes
+    else
+      known_changes(changes, directory)
+    end
+  end
+
+  defp known_changes(changes, directory) do
     user_ids = for {"user", id, _} <- changes, do: id
     group_ids = for {"group", id, _} <- changes, do: id
 

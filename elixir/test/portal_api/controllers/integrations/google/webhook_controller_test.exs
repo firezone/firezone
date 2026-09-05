@@ -1,5 +1,6 @@
 defmodule PortalAPI.Integrations.Google.WebhookControllerTest do
   use PortalAPI.ConnCase, async: true
+  import Ecto.Query
   use Oban.Testing, repo: Portal.Repo
 
   import Portal.AccountFixtures
@@ -83,6 +84,27 @@ defmodule PortalAPI.Integrations.Google.WebhookControllerTest do
       assert response(conn, 200) == ""
       assert [job] = all_enqueued(worker: Google.WebhookSync)
       assert job.args["user_id"] == "user-new"
+    end
+
+    test "queues unknown users while a full sync is running", %{
+      conn: conn,
+      directory: directory
+    } do
+      {:ok, job} =
+        Oban.insert(
+          Google.Sync.new(%{account_id: directory.account_id, directory_id: directory.id})
+        )
+
+      Portal.Repo.update_all(
+        from(j in Oban.Job, where: j.id == ^job.id),
+        set: [state: "executing"]
+      )
+
+      conn = post_notification(conn, directory, "delete", user("user-unknown"))
+
+      assert response(conn, 200) == ""
+      assert [job] = all_enqueued(worker: Google.WebhookSync)
+      assert job.args["user_id"] == "user-unknown"
     end
 
     test "drops notifications with the wrong token", %{conn: conn, directory: directory} do

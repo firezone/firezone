@@ -233,11 +233,13 @@ defmodule PortalAPI.GroupController do
         [groups: g],
         not (g.type == :managed and is_nil(g.idp_id) and g.name == "Everyone")
       )
-      |> join(:left, [groups: g], gss in Portal.GroupSyncState,
-        on: gss.group_id == g.id and gss.account_id == g.account_id,
+      |> join(:left, [groups: g], gss in Portal.DirectorySync.GroupState,
+        on:
+          gss.account_id == g.account_id and gss.directory_id == g.directory_id and
+            gss.idp_id == g.idp_id,
         as: :sync_state
       )
-      |> preload([sync_state: gss], sync_state: gss)
+      |> select_merge([sync_state: gss], %{synced_at: gss.synced_at})
       |> Safe.scoped(subject)
       |> Safe.list(__MODULE__, opts)
     end
@@ -249,11 +251,13 @@ defmodule PortalAPI.GroupController do
           where: g.id == ^id,
           where: g.type != :managed
         )
-        |> join(:left, [groups: g], gss in Portal.GroupSyncState,
-          on: gss.group_id == g.id and gss.account_id == g.account_id,
+        |> join(:left, [groups: g], gss in Portal.DirectorySync.GroupState,
+          on:
+            gss.account_id == g.account_id and gss.directory_id == g.directory_id and
+              gss.idp_id == g.idp_id,
           as: :sync_state
         )
-        |> preload([sync_state: gss], sync_state: gss)
+        |> select_merge([sync_state: gss], %{synced_at: gss.synced_at})
         |> Safe.scoped(subject)
         |> Safe.one()
 
@@ -265,19 +269,11 @@ defmodule PortalAPI.GroupController do
     end
 
     def insert_group(changeset, subject) do
-      # Manually-created groups never have a sync_state row; set it explicitly
-      # so JSON rendering doesn't trip the loud-on-NotLoaded preload check.
-      with {:ok, group} <- changeset |> Safe.scoped(subject) |> Safe.insert() do
-        {:ok, %{group | sync_state: nil}}
-      end
+      changeset |> Safe.scoped(subject) |> Safe.insert()
     end
 
     def update_group(changeset, subject) do
-      # This controller only updates non-IdP groups (see validate_group_updatable),
-      # so sync_state is always nil.
-      with {:ok, group} <- changeset |> Safe.scoped(subject) |> Safe.update() do
-        {:ok, %{group | sync_state: nil}}
-      end
+      changeset |> Safe.scoped(subject) |> Safe.update()
     end
 
     def delete_group(%Group{} = group, subject) do

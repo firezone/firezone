@@ -140,11 +140,13 @@ defmodule PortalAPI.ExternalIdentityController do
         where: ei.actor_id == ^actor_id,
         order_by: [desc: ei.inserted_at]
       )
-      |> join(:left, [external_identities: ei], iss in Portal.ExternalIdentitySyncState,
-        on: iss.external_identity_id == ei.id and iss.account_id == ei.account_id,
+      |> join(:left, [external_identities: ei], iss in Portal.DirectorySync.IdentityState,
+        on:
+          iss.account_id == ei.account_id and iss.directory_id == ei.directory_id and
+            iss.idp_id == ei.idp_id,
         as: :sync_state
       )
-      |> preload([sync_state: iss], sync_state: iss)
+      |> select_merge([sync_state: iss], %{synced_at: iss.synced_at})
       |> Safe.scoped(subject)
       |> Safe.list(__MODULE__, opts)
     end
@@ -162,11 +164,13 @@ defmodule PortalAPI.ExternalIdentityController do
           as: :external_identities,
           where: ei.id == ^id and ei.actor_id == ^actor_id and ei.account_id == ^subject.account.id
         )
-        |> join(:left, [external_identities: ei], iss in Portal.ExternalIdentitySyncState,
-          on: iss.external_identity_id == ei.id and iss.account_id == ei.account_id,
+        |> join(:left, [external_identities: ei], iss in Portal.DirectorySync.IdentityState,
+          on:
+            iss.account_id == ei.account_id and iss.directory_id == ei.directory_id and
+              iss.idp_id == ei.idp_id,
           as: :sync_state
         )
-        |> preload([sync_state: iss], sync_state: iss)
+        |> select_merge([sync_state: iss], %{synced_at: iss.synced_at})
         |> Safe.scoped(subject)
         |> Safe.one()
 

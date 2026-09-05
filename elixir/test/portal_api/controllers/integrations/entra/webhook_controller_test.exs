@@ -105,6 +105,29 @@ defmodule PortalAPI.Integrations.Entra.WebhookControllerTest do
       assert job.args["resource_id"] == "group-new"
     end
 
+    test "queues unknown users and groups while a full sync is running", %{
+      conn: conn,
+      directory: directory
+    } do
+      {:ok, job} =
+        Oban.insert(Entra.Sync.new(%{account_id: directory.account_id, directory_id: directory.id}))
+
+      Portal.Repo.update_all(
+        from(j in Oban.Job, where: j.id == ^job.id),
+        set: [state: "executing"]
+      )
+
+      conn =
+        post_notifications(conn, directory, [
+          change("Users", "user-unknown", "deleted"),
+          change("Groups", "group-unknown", "updated")
+        ])
+
+      assert response(conn, 202) == ""
+
+      assert length(all_enqueued(worker: Entra.WebhookSync)) == 2
+    end
+
     test "queues subscription maintenance for lifecycle events", %{
       conn: conn,
       directory: directory

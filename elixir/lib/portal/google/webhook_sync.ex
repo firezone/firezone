@@ -15,9 +15,9 @@ defmodule Portal.Google.WebhookSync do
 
   use Oban.Worker, queue: :google_webhook, max_attempts: 3
 
+  alias Portal.DirectorySync
   alias Portal.Google
   alias Portal.Google.APIClient
-  alias Portal.DirectorySync.Lock
   alias __MODULE__.Database
   require Logger
 
@@ -30,12 +30,13 @@ defmodule Portal.Google.WebhookSync do
     keys: [:directory_id, :user_id]
   ]
 
-  # A full sync reads Google long before it writes, so a notification waits
-  # for the directory lock instead of interleaving with one.
-  @snooze_seconds 30
-
   @impl Oban.Worker
   def new(args, opts), do: super(args, Keyword.put_new(opts, :unique, @unique))
+
+  # Tombstones older than the grace period are pruned, so a job must not
+  # outlive it with an older timestamp.
+  @impl Oban.Worker
+  def timeout(_job), do: :timer.seconds(div(DirectorySync.tombstone_grace_seconds(), 2))
 
   @impl Oban.Worker
   def perform(%Oban.Job{
@@ -50,18 +51,11 @@ defmodule Portal.Google.WebhookSync do
         :ok
 
       directory ->
-        apply_with_lock(directory, user_id)
+        apply_notification(directory, user_id)
     end
   end
 
   def perform(_), do: :ok
-
-  defp apply_with_lock(directory, user_id) do
-    case Lock.try_run(:google, directory.id, fn -> apply_notification(directory, user_id) end) do
-      {:ok, result} -> result
-      :busy -> {:snooze, @snooze_seconds}
-    end
-  end
 
   defp apply_notification(directory, user_id) do
     Logger.info("Applying Google user notification",
@@ -82,11 +76,11 @@ defmodule Portal.Google.WebhookSync do
         if Google.Sync.syncable_user?(user, directory.id) do
           refresh_user(directory, access_token, synced_at, identity, user)
         else
-          remove_identity(directory, identity)
+          remove_identity(directory, user_id, synced_at)
         end
 
       {:ok, %Req.Response{status: 404}} ->
-        remove_identity(directory, identity)
+        remove_identity(directory, user_id, synced_at)
 
       {:ok, response} ->
         raise Google.SyncError, error: response, directory_id: directory.id, step: :get_user
@@ -102,10 +96,10 @@ defmodule Portal.Google.WebhookSync do
     if is_nil(identity) and org_unit_ids == [] do
       :ok
     else
-      case upsert_identity(directory, synced_at, user) do
+      case upsert_identity(directory, synced_at, user, eligible: org_unit_ids != []) do
         :ok ->
           sync_org_unit_memberships(directory, synced_at, user["id"], org_unit_ids)
-          remove_identity_without_memberships(directory, user["id"])
+          remove_identity_without_memberships(directory, user["id"], synced_at)
 
         :skipped ->
           :ok
@@ -115,7 +109,7 @@ defmodule Portal.Google.WebhookSync do
 
   # Identities only exist through a synced group or org unit, so a user who
   # left their last one is gone as far as this directory is concerned.
-  defp remove_identity_without_memberships(directory, user_id) do
+  defp remove_identity_without_memberships(directory, user_id, synced_at) do
     case Database.get_identity(directory, user_id) do
       nil ->
         :ok
@@ -124,15 +118,15 @@ defmodule Portal.Google.WebhookSync do
         if Database.directory_membership_exists?(directory, identity.actor_id) do
           :ok
         else
-          remove_identity(directory, identity)
+          remove_identity(directory, user_id, synced_at)
         end
     end
   end
 
-  defp upsert_identity(directory, synced_at, user) do
+  defp upsert_identity(directory, synced_at, user, opts) do
     case identity_attrs(directory, user) do
       {:ok, attrs} ->
-        Google.Sync.batch_upsert_identities(directory, synced_at, [attrs])
+        Google.Sync.batch_upsert_identities(directory, synced_at, [attrs], opts)
 
       {:error, error} ->
         Logger.warning(Exception.message(error), google_directory_id: directory.id)
@@ -192,6 +186,13 @@ defmodule Portal.Google.WebhookSync do
         :ok
 
       identity ->
+        DirectorySync.stamp_identity_org_unit_memberships(
+          directory.account_id,
+          directory.id,
+          user_id,
+          synced_at
+        )
+
         {deleted, _} = Database.delete_unsynced_org_unit_memberships(directory, identity, synced_at)
 
         Logger.debug("Resynced org unit memberships from Google user notification",
@@ -204,16 +205,22 @@ defmodule Portal.Google.WebhookSync do
     end
   end
 
-  defp remove_identity(_directory, nil), do: :ok
+  defp remove_identity(directory, user_id, synced_at) do
+    {removed, _} =
+      DirectorySync.remove_identity(
+        directory.account_id,
+        directory.id,
+        Google.Sync.issuer(),
+        user_id,
+        synced_at
+      )
 
-  defp remove_identity(directory, identity) do
-    Database.delete_identity(identity)
-    Database.delete_actor_directory_memberships(directory, identity.actor_id)
     Google.Sync.delete_actors_without_identities(directory)
 
     Logger.info("Removed identity from Google user notification",
       google_directory_id: directory.id,
-      external_identity_id: identity.id
+      google_user_id: user_id,
+      removed: removed
     )
 
     :ok
@@ -246,27 +253,6 @@ defmodule Portal.Google.WebhookSync do
       )
       |> Safe.unscoped()
       |> Safe.exists?()
-    end
-
-    def delete_identity(identity) do
-      from(i in Portal.ExternalIdentity,
-        where: i.account_id == ^identity.account_id,
-        where: i.id == ^identity.id
-      )
-      |> Safe.unscoped()
-      |> Safe.delete_all()
-    end
-
-    def delete_actor_directory_memberships(directory, actor_id) do
-      from(m in Portal.Membership,
-        join: g in Portal.Group,
-        on: m.group_id == g.id and m.account_id == g.account_id,
-        where: m.account_id == ^directory.account_id,
-        where: m.actor_id == ^actor_id,
-        where: g.directory_id == ^directory.id
-      )
-      |> Safe.unscoped()
-      |> Safe.delete_all()
     end
 
     def delete_unsynced_org_unit_memberships(directory, identity, synced_at) do

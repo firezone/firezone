@@ -691,92 +691,6 @@ defmodule Portal.Okta.SyncTest do
       assert error.step == :batch_upsert_identities
     end
 
-    test "raises SyncError when duplicate group members cause membership upsert failure" do
-      account = account_fixture(features: %{idp_sync: true})
-
-      directory =
-        okta_directory_fixture(
-          account: account,
-          private_key_jwk: @test_private_key_jwk,
-          kid: "test_kid"
-        )
-
-      Req.Test.expect(APIClient, 100, fn %{request_path: path} = conn ->
-        cond do
-          String.ends_with?(path, "/oauth2/v1/token") ->
-            Req.Test.json(conn, %{
-              "access_token" => @test_access_token,
-              "token_type" => "DPoP",
-              "expires_in" => 3600
-            })
-
-          String.ends_with?(path, "/oauth2/v1/introspect") ->
-            Req.Test.json(conn, %{
-              "active" => true,
-              "scope" => "okta.apps.read okta.users.read okta.groups.read"
-            })
-
-          String.ends_with?(path, "/apps") and not String.contains?(path, "/users") and
-              not String.contains?(path, "/groups") ->
-            Req.Test.json(conn, [%{"id" => "app_123", "label" => "Test App"}])
-
-          String.contains?(path, "/apps/app_123/users") ->
-            Req.Test.json(conn, [
-              %{
-                "id" => "appuser_1",
-                "_embedded" => %{
-                  "user" => %{
-                    "id" => "user_123",
-                    "status" => "ACTIVE",
-                    "profile" => %{
-                      "email" => "alice@example.com",
-                      "firstName" => "Alice",
-                      "lastName" => "Smith"
-                    }
-                  }
-                }
-              }
-            ])
-
-          String.contains?(path, "/apps/app_123/groups") ->
-            Req.Test.json(conn, [
-              %{
-                "id" => "appgroup_1",
-                "_embedded" => %{
-                  "group" => %{
-                    "id" => "group_123",
-                    "profile" => %{"name" => "Engineering"}
-                  }
-                }
-              }
-            ])
-
-          String.contains?(path, "/groups/group_123/users") ->
-            duplicate_member = %{
-              "id" => "user_123",
-              "status" => "ACTIVE",
-              "profile" => %{
-                "email" => "alice@example.com",
-                "firstName" => "Alice",
-                "lastName" => "Smith"
-              }
-            }
-
-            Req.Test.json(conn, [duplicate_member, duplicate_member])
-
-          true ->
-            Req.Test.json(conn, %{"error" => "unexpected: #{path}"})
-        end
-      end)
-
-      error =
-        assert_raise SyncError, fn ->
-          perform_job(Sync, %{account_id: directory.account_id, directory_id: directory.id})
-        end
-
-      assert error.step == :batch_upsert_memberships
-    end
-
     test "raises SyncError when access token fetch fails" do
       account = account_fixture(features: %{idp_sync: true})
 
@@ -1849,7 +1763,7 @@ defmodule Portal.Okta.SyncTest do
                  [%{idp_id: "group1", name: "Group 1"}]
                )
 
-      assert {:error, _reason} =
+      assert {:ok, %{upserted_memberships: 1}} =
                Database.batch_upsert_memberships(
                  account.id,
                  "https://okta.example",
@@ -2028,7 +1942,7 @@ defmodule Portal.Okta.SyncTest do
       assert identity_after_stale.email == "old@example.com"
 
       sync_state_after_stale =
-        Repo.get_by!(Portal.ExternalIdentitySyncState, external_identity_id: identity.id)
+        Repo.get_by!(Portal.DirectorySync.IdentityState, directory_id: identity.directory_id, idp_id: identity.idp_id)
 
       assert DateTime.compare(sync_state_after_stale.synced_at, now) == :eq
 
@@ -2049,7 +1963,7 @@ defmodule Portal.Okta.SyncTest do
       assert identity_after_fresh.email == "fresh@example.com"
 
       sync_state_after_fresh =
-        Repo.get_by!(Portal.ExternalIdentitySyncState, external_identity_id: identity.id)
+        Repo.get_by!(Portal.DirectorySync.IdentityState, directory_id: identity.directory_id, idp_id: identity.idp_id)
 
       assert DateTime.compare(sync_state_after_fresh.synced_at, future) == :eq
     end
@@ -2303,7 +2217,7 @@ defmodule Portal.Okta.SyncTest do
       group_after_stale = Repo.get_by!(Group, id: group.id, account_id: account.id)
       assert group_after_stale.name == "Original Name"
 
-      sync_state_after_stale = Repo.get_by!(Portal.GroupSyncState, group_id: group.id)
+      sync_state_after_stale = Repo.get_by!(Portal.DirectorySync.GroupState, directory_id: group.directory_id, idp_id: group.idp_id)
       assert DateTime.compare(sync_state_after_stale.synced_at, now) == :eq
 
       assert {:ok, _} =
@@ -2314,7 +2228,7 @@ defmodule Portal.Okta.SyncTest do
       group_after_fresh = Repo.get_by!(Group, id: group.id, account_id: account.id)
       assert group_after_fresh.name == "Fresh Name"
 
-      sync_state_after_fresh = Repo.get_by!(Portal.GroupSyncState, group_id: group.id)
+      sync_state_after_fresh = Repo.get_by!(Portal.DirectorySync.GroupState, directory_id: group.directory_id, idp_id: group.idp_id)
       assert DateTime.compare(sync_state_after_fresh.synced_at, future) == :eq
     end
 

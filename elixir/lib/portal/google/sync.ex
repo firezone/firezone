@@ -26,18 +26,14 @@ defmodule Portal.Google.Sync do
     ]
 
   alias Portal.Google
-  alias Portal.DirectorySync.Lock
   alias __MODULE__.Database
   require Logger
   @db_batch_size 500
-  @snooze_seconds 30
 
   @impl Oban.Worker
   def perform(%Oban.Job{args: %{"account_id" => account_id, "directory_id" => directory_id}}) do
-    case Lock.try_run(:google, directory_id, fn -> run_sync(account_id, directory_id) end) do
-      {:ok, _result} -> :ok
-      :busy -> {:snooze, @snooze_seconds}
-    end
+    run_sync(account_id, directory_id)
+    :ok
   end
 
   def perform(_), do: :ok
@@ -82,6 +78,7 @@ defmodule Portal.Google.Sync do
 
     fetch_and_sync_all(directory, access_token, synced_at)
     delete_unsynced(directory, synced_at)
+    prune_tombstones(directory)
 
     # Reconnect orphaned policies after sync (groups may have been recreated)
     reconnected = Portal.Policy.reconnect_orphaned_policies(directory.account_id)
@@ -946,6 +943,12 @@ defmodule Portal.Google.Sync do
 
   # Cleanup
 
+  defp prune_tombstones(%{synced_at: nil}), do: :ok
+
+  defp prune_tombstones(directory) do
+    Database.prune_tombstones(directory.account_id, directory.id, directory.synced_at)
+  end
+
   defp delete_unsynced(directory, synced_at) do
     account_id = directory.account_id
     directory_id = directory.id
@@ -983,11 +986,11 @@ defmodule Portal.Google.Sync do
   # Batch DB helpers
 
   @doc false
-  def batch_upsert_identities(directory, synced_at, identities) do
+  def batch_upsert_identities(directory, synced_at, identities, opts \\ []) do
     account_id = directory.account_id
     directory_id = directory.id
 
-    case Database.batch_upsert_identities(account_id, directory_id, synced_at, identities) do
+    case Database.batch_upsert_identities(account_id, directory_id, synced_at, identities, opts) do
       {:ok, %{upserted_identities: count}} ->
         Logger.debug("Upserted #{count} identities", google_directory_id: directory.id)
         :ok
@@ -1054,6 +1057,7 @@ defmodule Portal.Google.Sync do
 
   defmodule Database do
     import Ecto.Query
+    alias Portal.DirectorySync
     alias Portal.Safe
 
     @issuer "https://accounts.google.com"
@@ -1078,506 +1082,42 @@ defmodule Portal.Google.Sync do
       changeset |> Safe.unscoped() |> Safe.update()
     end
 
-    def batch_upsert_identities(_account_id, _directory_id, _last_synced_at, []),
-      do: {:ok, %{upserted_identities: 0}}
-
-    def batch_upsert_identities(account_id, directory_id, last_synced_at, identity_attrs) do
-      query = build_identity_upsert_query(length(identity_attrs))
-
-      params =
-        build_identity_upsert_params(
-          account_id,
-          directory_id,
-          last_synced_at,
-          identity_attrs
-        )
-
-      run_identity_upsert(query, params)
-    end
-
-    # A concurrent OIDC sign-in can insert an identity for the same
-    # (account_id, idp_id, issuer) after this statement's snapshot is taken,
-    # which the (account_id, id) conflict target does not handle. Re-running
-    # picks up the now-committed row via pre_existing_identities and recycles
-    # it, so we retry once before surfacing the error.
-    defp run_identity_upsert(query, params, retry? \\ true) do
-      case Safe.unscoped() |> Safe.query(query, params) do
-        {:ok, %Postgrex.Result{rows: rows}} ->
-          {:ok, %{upserted_identities: length(rows)}}
-
-        {:error, %Postgrex.Error{postgres: %{code: :unique_violation}}} when retry? ->
-          run_identity_upsert(query, params, false)
-
-        {:error, reason} ->
-          {:error, reason}
-      end
-    end
-
-    defp build_identity_upsert_query(count) do
-      # Each identity has 7 fields: idp_id, email, name, given_name, family_name, preferred_username, picture
-      values_clause =
-        for i <- 1..count, base = (i - 1) * 7 do
-          "($#{base + 1}, $#{base + 2}, $#{base + 3}, $#{base + 4}, $#{base + 5}, $#{base + 6}, $#{base + 7})"
-        end
-        |> Enum.join(", ")
-
-      offset = count * 7
-      account_id = offset + 1
-      issuer = offset + 2
-      directory_id = offset + 3
-      last_synced_at = offset + 4
-
-      """
-      WITH input_data AS (
-        SELECT * FROM (VALUES #{values_clause})
-        AS t(idp_id, email, name, given_name, family_name, preferred_username, picture)
-      ),
-      pre_existing_identities AS (
-        SELECT ei.id, ei.account_id, ei.actor_id, ei.idp_id
-        FROM external_identities ei
-        WHERE ei.account_id = $#{account_id}
-          AND ei.issuer = $#{issuer}
-          AND ei.idp_id IN (SELECT idp_id FROM input_data)
-      ),
-      existing_actors_by_email AS (
-        SELECT DISTINCT ON (id.idp_id) a.id AS actor_id, id.idp_id
-        FROM input_data id
-        JOIN actors a ON a.email = id.email AND a.account_id = $#{account_id}
-        WHERE id.idp_id NOT IN (SELECT idp_id FROM pre_existing_identities)
-          AND id.email IS NOT NULL
-        ORDER BY id.idp_id, a.inserted_at ASC
-      ),
-      -- Recycles the actor's existing identity for this directory so a changed
-      -- idp_id (issuer unchanged) or a changed issuer (directory reverified
-      -- against a new domain) updates the row in place instead of inserting a
-      -- second one and tripping the (account_id, actor_id, issuer) unique index.
-      -- Matching on issuer OR directory_id covers both: issuer alone catches
-      -- legacy rows whose directory_id is NULL or differs; directory_id alone
-      -- catches the row whose issuer just changed. DISTINCT ON keeps one row per
-      -- actor, preferring the row that already holds the new issuer so updating
-      -- it cannot collide on that index.
-      existing_directory_identities AS (
-        SELECT DISTINCT ON (ei.actor_id) ei.id, ei.actor_id
-        FROM external_identities ei
-        WHERE ei.account_id = $#{account_id}
-          AND ei.actor_id IN (SELECT actor_id FROM existing_actors_by_email)
-          AND (ei.issuer = $#{issuer} OR ei.directory_id = $#{directory_id})
-        ORDER BY ei.actor_id, (ei.issuer = $#{issuer}) DESC
-      ),
-      actors_to_create AS (
-        SELECT
-          uuid_generate_v4() AS new_actor_id,
-          id.idp_id,
-          id.name,
-          id.email
-        FROM input_data id
-        WHERE id.idp_id NOT IN (SELECT idp_id FROM pre_existing_identities)
-          AND id.idp_id NOT IN (SELECT idp_id FROM existing_actors_by_email)
-      ),
-      new_actors AS (
-        INSERT INTO actors (id, type, account_id, name, email, created_by_directory_id, inserted_at, updated_at)
-        SELECT
-          new_actor_id,
-          'account_user',
-          $#{account_id},
-          name,
-          email,
-          $#{directory_id},
-          $#{last_synced_at},
-          $#{last_synced_at}
-        FROM actors_to_create
-        RETURNING id, name
-      ),
-      all_actor_mappings AS (
-        SELECT atc.new_actor_id AS actor_id, atc.idp_id, id.email, id.name, id.given_name, id.family_name, id.preferred_username, id.picture
-        FROM actors_to_create atc
-        JOIN input_data id ON id.idp_id = atc.idp_id
-        UNION ALL
-        SELECT ei.actor_id, ei.idp_id, id.email, id.name, id.given_name, id.family_name, id.preferred_username, id.picture
-        FROM pre_existing_identities ei
-        JOIN input_data id ON id.idp_id = ei.idp_id
-        UNION ALL
-        SELECT eabe.actor_id, eabe.idp_id, id.email, id.name, id.given_name, id.family_name, id.preferred_username, id.picture
-        FROM existing_actors_by_email eabe
-        JOIN input_data id ON id.idp_id = eabe.idp_id
-      ),
-      upserted_identities AS (
-        INSERT INTO external_identities (
-          id, actor_id, issuer, idp_id, directory_id, email, name, given_name, family_name, preferred_username, picture,
-          account_id, inserted_at, updated_at
-        )
-        SELECT
-          COALESCE(ei.id, edi.id, uuid_generate_v4()),
-          aam.actor_id,
-          $#{issuer},
-          aam.idp_id,
-          $#{directory_id},
-          aam.email,
-          aam.name,
-          aam.given_name,
-          aam.family_name,
-          aam.preferred_username,
-          aam.picture,
-          $#{account_id},
-          $#{last_synced_at},
-          $#{last_synced_at}
-        FROM all_actor_mappings aam
-        LEFT JOIN pre_existing_identities ei ON ei.idp_id = aam.idp_id
-        LEFT JOIN existing_directory_identities edi ON edi.actor_id = aam.actor_id
-        ON CONFLICT (account_id, id)
-        DO UPDATE SET
-          idp_id = EXCLUDED.idp_id,
-          issuer = EXCLUDED.issuer,
-          directory_id = EXCLUDED.directory_id,
-          email = EXCLUDED.email,
-          name = EXCLUDED.name,
-          given_name = EXCLUDED.given_name,
-          family_name = EXCLUDED.family_name,
-          preferred_username = EXCLUDED.preferred_username,
-          picture = EXCLUDED.picture,
-          updated_at = EXCLUDED.updated_at
-        WHERE (external_identities.idp_id, external_identities.issuer, external_identities.directory_id, external_identities.email, external_identities.name,
-               external_identities.given_name, external_identities.family_name,
-               external_identities.preferred_username, external_identities.picture)
-              IS DISTINCT FROM
-              (EXCLUDED.idp_id, EXCLUDED.issuer, EXCLUDED.directory_id, EXCLUDED.email, EXCLUDED.name,
-               EXCLUDED.given_name, EXCLUDED.family_name,
-               EXCLUDED.preferred_username, EXCLUDED.picture)
-          AND NOT EXISTS (
-            SELECT 1 FROM external_identity_sync_states iss
-            WHERE iss.account_id = external_identities.account_id
-              AND iss.external_identity_id = external_identities.id
-              AND iss.synced_at >= $#{last_synced_at}
-          )
-        RETURNING id, account_id, idp_id
-      ),
-      all_identity_ids AS (
-        SELECT id, account_id FROM upserted_identities
-        UNION
-        SELECT pei.id, pei.account_id
-        FROM pre_existing_identities pei
-        WHERE pei.idp_id NOT IN (SELECT idp_id FROM upserted_identities)
+    def batch_upsert_identities(account_id, directory_id, synced_at, identities, opts \\ []) do
+      DirectorySync.batch_upsert_identities(
+        account_id,
+        @issuer,
+        directory_id,
+        synced_at,
+        identities,
+        Keyword.put(opts, :fields, [:picture])
       )
-      INSERT INTO external_identity_sync_states (external_identity_id, account_id, synced_at)
-      SELECT id, account_id, $#{last_synced_at} FROM all_identity_ids
-      ON CONFLICT (account_id, external_identity_id) DO UPDATE SET
-        synced_at = EXCLUDED.synced_at
-      WHERE external_identity_sync_states.synced_at < EXCLUDED.synced_at
-      RETURNING 1
-      """
     end
 
-    defp build_identity_upsert_params(account_id, directory_id, last_synced_at, attrs) do
-      params =
-        Enum.flat_map(attrs, fn a ->
-          [
-            a.idp_id,
-            a.email,
-            a.name,
-            Map.get(a, :given_name),
-            Map.get(a, :family_name),
-            Map.get(a, :preferred_username),
-            Map.get(a, :picture)
-          ]
-        end)
+    defdelegate batch_upsert_groups(account_id, directory_id, synced_at, groups, entity_type),
+      to: DirectorySync
 
-      params ++
-        [
-          Ecto.UUID.dump!(account_id),
-          @issuer,
-          Ecto.UUID.dump!(directory_id),
-          last_synced_at
-        ]
-    end
-
-    def batch_upsert_groups(_account_id, _directory_id, _last_synced_at, [], _entity_type),
-      do: {:ok, %{upserted_groups: 0}}
-
-    def batch_upsert_groups(account_id, directory_id, last_synced_at, group_attrs, entity_type) do
-      query = build_group_upsert_query(length(group_attrs))
-
-      params =
-        build_group_upsert_params(
-          account_id,
-          directory_id,
-          last_synced_at,
-          group_attrs,
-          entity_type
-        )
-
-      case Safe.unscoped() |> Safe.query(query, params) do
-        {:ok, %Postgrex.Result{num_rows: num_rows}} ->
-          {:ok, %{upserted_groups: num_rows}}
-
-        {:error, reason} ->
-          {:error, reason}
-      end
-    end
-
-    defp build_group_upsert_query(count) do
-      # Each group has 3 fields: idp_id, name, email
-      values_clause =
-        for i <- 1..count, base = (i - 1) * 3 do
-          "($#{base + 1}, $#{base + 2}, $#{base + 3})"
-        end
-        |> Enum.join(", ")
-
-      offset = count * 3
-      account_id = offset + 1
-      directory_id = offset + 2
-      last_synced_at = offset + 3
-      entity_type = offset + 4
-
-      """
-      WITH input_data (idp_id, name, email) AS (
-        VALUES #{values_clause}
-      ),
-      pre_existing_groups AS (
-        SELECT g.id, g.account_id, g.idp_id
-        FROM groups g
-        WHERE g.account_id = $#{account_id}
-          AND g.idp_id IN (SELECT idp_id FROM input_data)
-      ),
-      upserted_groups AS (
-        INSERT INTO groups (
-          id, name, email, directory_id, idp_id, account_id,
-          inserted_at, updated_at, type, entity_type
-        )
-        SELECT
-          uuid_generate_v4(),
-          id.name,
-          id.email,
-          $#{directory_id},
-          id.idp_id,
-          $#{account_id},
-          $#{last_synced_at},
-          $#{last_synced_at},
-          'static',
-          $#{entity_type}
-        FROM input_data id
-        ON CONFLICT (account_id, idp_id) WHERE idp_id IS NOT NULL
-        DO UPDATE SET
-          name = EXCLUDED.name,
-          email = EXCLUDED.email,
-          directory_id = EXCLUDED.directory_id,
-          entity_type = EXCLUDED.entity_type,
-          updated_at = EXCLUDED.updated_at
-        WHERE (groups.name, groups.email, groups.directory_id, groups.entity_type)
-              IS DISTINCT FROM
-              (EXCLUDED.name, EXCLUDED.email, EXCLUDED.directory_id, EXCLUDED.entity_type)
-          AND NOT EXISTS (
-            SELECT 1 FROM group_sync_states gss
-            WHERE gss.account_id = groups.account_id
-              AND gss.group_id = groups.id
-              AND gss.synced_at >= $#{last_synced_at}
-          )
-        RETURNING id, account_id, idp_id
-      ),
-      all_group_ids AS (
-        SELECT id, account_id FROM upserted_groups
-        UNION
-        SELECT peg.id, peg.account_id
-        FROM pre_existing_groups peg
-        WHERE peg.idp_id NOT IN (SELECT idp_id FROM upserted_groups)
+    def batch_upsert_memberships(account_id, directory_id, synced_at, tuples) do
+      DirectorySync.batch_upsert_memberships(
+        account_id,
+        @issuer,
+        directory_id,
+        synced_at,
+        tuples
       )
-      INSERT INTO group_sync_states (account_id, group_id, synced_at)
-      SELECT account_id, id, $#{last_synced_at} FROM all_group_ids
-      ON CONFLICT (account_id, group_id) DO UPDATE SET
-        synced_at = EXCLUDED.synced_at
-      WHERE group_sync_states.synced_at < EXCLUDED.synced_at
-      RETURNING 1
-      """
     end
 
-    defp build_group_upsert_params(
-           account_id,
-           directory_id,
-           last_synced_at,
-           group_attrs,
-           entity_type
-         ) do
-      group_params =
-        group_attrs
-        |> Enum.flat_map(fn attrs ->
-          [attrs.idp_id, attrs.name, Map.get(attrs, :email)]
-        end)
+    defdelegate delete_unsynced_groups(account_id, directory_id, synced_at),
+      to: DirectorySync
 
-      group_params ++
-        [
-          Ecto.UUID.dump!(account_id),
-          Ecto.UUID.dump!(directory_id),
-          last_synced_at,
-          to_string(entity_type)
-        ]
-    end
+    defdelegate delete_unsynced_identities(account_id, directory_id, synced_at),
+      to: DirectorySync
 
-    def batch_upsert_memberships(_account_id, _directory_id, _last_synced_at, []),
-      do: {:ok, %{upserted_memberships: 0}}
+    defdelegate delete_unsynced_memberships(account_id, directory_id, synced_at),
+      to: DirectorySync
 
-    def batch_upsert_memberships(account_id, directory_id, last_synced_at, tuples) do
-      query = build_membership_upsert_query(length(tuples))
+    defdelegate delete_actors_without_identities(account_id, directory_id),
+      to: DirectorySync
 
-      params =
-        build_membership_upsert_params(account_id, directory_id, last_synced_at, tuples)
-
-      result =
-        try do
-          Safe.unscoped() |> Safe.query(query, params)
-        rescue
-          error in DBConnection.EncodeError -> {:error, error}
-        end
-
-      case result do
-        {:ok, %Postgrex.Result{num_rows: num_rows}} -> {:ok, %{upserted_memberships: num_rows}}
-        {:error, reason} -> {:error, reason}
-      end
-    end
-
-    defp build_membership_upsert_query(count) do
-      values_clause =
-        for i <- 1..count, base = (i - 1) * 2 do
-          "($#{base + 1}, $#{base + 2})"
-        end
-        |> Enum.join(", ")
-
-      offset = count * 2
-      account_id = offset + 1
-      issuer = offset + 2
-      last_synced_at = offset + 3
-
-      # Existing memberships are read but never re-written, so unchanged rows
-      # produce no WAL. New memberships go through a plain INSERT (no ON
-      # CONFLICT), so duplicate input tuples that don't match an existing row
-      # surface as a unique_violation — bubbled up as SyncError by the caller.
-      """
-      WITH membership_input AS (
-        SELECT * FROM (VALUES #{values_clause})
-        AS t(group_idp_id, user_idp_id)
-      ),
-      resolved_memberships AS (
-        SELECT
-          ei.actor_id,
-          ag.id as group_id
-        FROM membership_input mi
-        JOIN external_identities ei ON (
-          ei.idp_id = mi.user_idp_id
-          AND ei.account_id = $#{account_id}
-          AND ei.issuer = $#{issuer}
-        )
-        JOIN groups ag ON (
-          ag.idp_id = mi.group_idp_id
-          AND ag.account_id = $#{account_id}
-        )
-      ),
-      existing_memberships AS (
-        SELECT m.id, m.account_id, m.actor_id, m.group_id
-        FROM memberships m
-        WHERE m.account_id = $#{account_id}
-          AND (m.actor_id, m.group_id) IN (SELECT actor_id, group_id FROM resolved_memberships)
-      ),
-      new_memberships AS (
-        INSERT INTO memberships (id, actor_id, group_id, account_id)
-        SELECT
-          uuid_generate_v4(),
-          rm.actor_id,
-          rm.group_id,
-          $#{account_id} AS account_id
-        FROM resolved_memberships rm
-        WHERE (rm.actor_id, rm.group_id) NOT IN (SELECT actor_id, group_id FROM existing_memberships)
-        RETURNING id, account_id
-      ),
-      all_membership_ids AS (
-        SELECT id, account_id FROM new_memberships
-        UNION
-        SELECT id, account_id FROM existing_memberships
-      )
-      INSERT INTO membership_sync_states (account_id, membership_id, synced_at)
-      SELECT account_id, id, $#{last_synced_at} FROM all_membership_ids
-      ON CONFLICT (account_id, membership_id) DO UPDATE SET
-        synced_at = EXCLUDED.synced_at
-      WHERE membership_sync_states.synced_at < EXCLUDED.synced_at
-      RETURNING 1
-      """
-    end
-
-    defp build_membership_upsert_params(account_id, _directory_id, last_synced_at, tuples) do
-      params =
-        Enum.flat_map(tuples, fn {group_idp_id, user_idp_id} ->
-          [group_idp_id, user_idp_id]
-        end)
-
-      params ++ [Ecto.UUID.dump!(account_id), @issuer, last_synced_at]
-    end
-
-    def delete_unsynced_groups(account_id, directory_id, synced_at) do
-      query =
-        from(g in Portal.Group,
-          where: g.account_id == ^account_id,
-          where: g.directory_id == ^directory_id,
-          where:
-            fragment(
-              "NOT EXISTS (SELECT 1 FROM group_sync_states gss WHERE gss.group_id = ? AND gss.account_id = ? AND gss.synced_at >= ?)",
-              g.id,
-              g.account_id,
-              ^synced_at
-            )
-        )
-
-      query |> Safe.unscoped() |> Safe.delete_all()
-    end
-
-    def delete_unsynced_identities(account_id, directory_id, synced_at) do
-      query =
-        from(i in Portal.ExternalIdentity,
-          where: i.account_id == ^account_id,
-          where: i.directory_id == ^directory_id,
-          where:
-            fragment(
-              "NOT EXISTS (SELECT 1 FROM external_identity_sync_states iss WHERE iss.external_identity_id = ? AND iss.account_id = ? AND iss.synced_at >= ?)",
-              i.id,
-              i.account_id,
-              ^synced_at
-            )
-        )
-
-      query |> Safe.unscoped() |> Safe.delete_all()
-    end
-
-    def delete_unsynced_memberships(account_id, directory_id, synced_at) do
-      query =
-        from(m in Portal.Membership,
-          join: g in Portal.Group,
-          on: m.group_id == g.id and m.account_id == g.account_id,
-          where: g.account_id == ^account_id,
-          where: g.directory_id == ^directory_id,
-          where:
-            fragment(
-              "NOT EXISTS (SELECT 1 FROM membership_sync_states mss WHERE mss.membership_id = ? AND mss.account_id = ? AND mss.synced_at >= ?)",
-              m.id,
-              m.account_id,
-              ^synced_at
-            )
-        )
-
-      query |> Safe.unscoped() |> Safe.delete_all()
-    end
-
-    def delete_actors_without_identities(account_id, directory_id) do
-      # Delete actors that no longer have any identities
-      # This cleans up actors whose identities were deleted in the previous step
-      # Only delete actors created by this specific directory
-      query =
-        from(a in Portal.Actor,
-          where: a.account_id == ^account_id,
-          where: a.created_by_directory_id == ^directory_id,
-          where:
-            fragment(
-              "NOT EXISTS (SELECT 1 FROM external_identities WHERE actor_id = ?)",
-              a.id
-            )
-        )
-
-      query |> Safe.unscoped() |> Safe.delete_all()
-    end
+    defdelegate prune_tombstones(account_id, directory_id, before), to: DirectorySync
   end
 end

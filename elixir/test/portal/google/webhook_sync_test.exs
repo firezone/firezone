@@ -3,7 +3,6 @@ defmodule Portal.Google.WebhookSyncTest do
   use Oban.Testing, repo: Portal.Repo
 
   import Portal.AccountFixtures
-  import Portal.DirectorySyncLockHelpers
   import Portal.GoogleDirectoryFixtures
   import Portal.GoogleAPIClientHelpers
   import Portal.GroupFixtures
@@ -12,7 +11,6 @@ defmodule Portal.Google.WebhookSyncTest do
 
   alias Portal.Actor
   alias Portal.ExternalIdentity
-  alias Portal.ExternalIdentitySyncState
   alias Portal.Google.APIClient
   alias Portal.Google.Sync
   alias Portal.Google.WebhookSync
@@ -41,7 +39,7 @@ defmodule Portal.Google.WebhookSyncTest do
       assert identity.directory_id == directory.id
       assert identity.account_id == account.id
 
-      state = Repo.get_by!(ExternalIdentitySyncState, external_identity_id: identity.id)
+      state = Repo.get_by!(Portal.DirectorySync.IdentityState, directory_id: identity.directory_id, idp_id: identity.idp_id)
       assert DateTime.diff(DateTime.utc_now(), state.synced_at) < 5
     end
 
@@ -122,6 +120,24 @@ defmodule Portal.Google.WebhookSyncTest do
       assert Repo.all(ExternalIdentity) == []
     end
 
+    test "a deleted unknown user leaves a tombstone that blocks an older full-sync write",
+         %{directory: directory} do
+      stub_google(users: %{})
+
+      assert :ok = perform_job(WebhookSync, args(directory, "user-1"))
+
+      assert Repo.get_by(Portal.DirectorySync.IdentityState, directory_id: directory.id, idp_id: "user-1")
+
+      stale_synced_at = DateTime.add(DateTime.utc_now(), -60, :second)
+
+      {:ok, %{upserted_identities: 0}} =
+        Sync.Database.batch_upsert_identities(directory.account_id, directory.id, stale_synced_at, [
+          %{idp_id: "user-1", email: "stale@example.com", name: "Stale Name"}
+        ])
+
+      assert Repo.all(ExternalIdentity) == []
+    end
+
     test "skips a user without a primary email", %{directory: directory} = ctx do
       identity = directory_identity(ctx, "user-1", name: "Old Name")
 
@@ -195,6 +211,27 @@ defmodule Portal.Google.WebhookSyncTest do
       }
     end
 
+    test "an org unit rewrite does not block older group membership writes",
+         %{account: account, directory: directory, base_directory: base_directory, org_units: org_units} do
+      group = group_fixture(account: account, directory: base_directory, idp_id: "group-1")
+      user = google_user("user-1", "Alice", "alice@example.com", org_unit: "/Engineering")
+      stub_google(users: %{"user-1" => user}, org_units: org_units)
+
+      assert :ok = perform_job(WebhookSync, args(directory, "user-1"))
+
+      identity = Repo.get_by!(ExternalIdentity, idp_id: "user-1")
+      stale_synced_at = DateTime.add(DateTime.utc_now(), -60, :second)
+
+      {:ok, %{upserted_memberships: 1}} =
+        Sync.Database.batch_upsert_memberships(directory.account_id, directory.id, stale_synced_at, [
+          {"group-1", "user-1"},
+          {"ou-sales", "user-1"}
+        ])
+
+      assert Repo.get_by(Membership, actor_id: identity.actor_id, group_id: group.id)
+      refute Repo.get_by(Membership, actor_id: identity.actor_id, group_id: Repo.get_by!(Portal.Group, idp_id: "ou-sales").id)
+    end
+
     test "creates an identity for a new user in a tracked org unit",
          %{directory: directory, eng: eng, backend: backend, sales: sales, org_units: org_units} do
       user = google_user("user-1", "Alice", "alice@example.com", org_unit: "/Engineering/Backend")
@@ -255,16 +292,6 @@ defmodule Portal.Google.WebhookSyncTest do
 
       assert Repo.all(ExternalIdentity) == []
     end
-  end
-
-  test "snoozes while the directory lock is held", %{directory: directory} = ctx do
-    identity = directory_identity(ctx, "user-1")
-    stub_google(users: %{})
-    hold_directory_lock(:google, directory.id)
-
-    assert {:snooze, 30} = perform_job(WebhookSync, args(directory, "user-1"))
-
-    assert Repo.get_by(ExternalIdentity, id: identity.id)
   end
 
   test "skips accounts without directory sync" do

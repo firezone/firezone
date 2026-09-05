@@ -137,12 +137,9 @@ defmodule PortalAPI.Schemas.ExternalIdentity do
       %{
         email: identity.email || identity.idp_id,
         idp_id: identity.idp_id |> String.split(":", parts: 2) |> List.last(),
-        synced_at: synced_at(identity.sync_state)
+        synced_at: identity.synced_at
       }
     end
-
-    defp synced_at(%Portal.ExternalIdentitySyncState{synced_at: synced_at}), do: synced_at
-    defp synced_at(nil), do: nil
   end
 
   defmodule Request do

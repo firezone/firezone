@@ -957,10 +957,10 @@ defmodule PortalWeb.Groups.Components do
               <.relative_datetime datetime={@group.updated_at} />
             </dd>
           </div>
-          <div :if={Ecto.assoc_loaded?(@group.sync_state) && @group.sync_state && @group.sync_state.synced_at}>
+          <div :if={@group.synced_at}>
             <dt class="text-[10px] text-subtle mb-0.5">Last Synced</dt>
             <dd class="text-xs text-body mt-0.5">
-              <.relative_datetime datetime={@group.sync_state.synced_at} />
+              <.relative_datetime datetime={@group.synced_at} />
             </dd>
           </div>
           <div :if={@group.idp_id && get_idp_id(@group.idp_id)}>
