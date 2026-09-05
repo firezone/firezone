@@ -29,6 +29,12 @@ defmodule Portal.Cache.ClientTest do
       assert cached_policy.id == Ecto.UUID.dump!(policy.id)
       assert cached_policy.resource_id == Ecto.UUID.dump!(policy.resource_id)
     end
+
+    test "carries the postures tree" do
+      {:ok, postures} = Portal.Policies.Postures.cast(%{"intune" => %{"field" => "enrolled", "op" => "is", "value" => true}})
+      policy = %Portal.Policy{id: Ecto.UUID.generate(), resource_id: Ecto.UUID.generate(), conditions: [], postures: postures}
+      assert Cacheable.to_cache(policy).postures == postures
+    end
   end
 
   describe "update_resource/4" do
@@ -987,6 +993,53 @@ defmodule Portal.Cache.ClientTest do
 
       cached_resource = Map.fetch!(updated.resources, Ecto.UUID.dump!(resource.id))
       assert is_nil(cached_resource.site)
+    end
+  end
+  describe "postures" do
+    setup do
+      account = account_fixture()
+      actor = actor_fixture(type: :account_admin_user, account: account)
+      subject = subject_fixture(account: account, actor: actor, type: :client)
+      client = client_fixture(account: account, actor: actor)
+      group = group_fixture(account: account)
+      membership_fixture(account: account, actor: actor, group: group)
+      resource = dns_resource_fixture(account: account, site: site_fixture(account: account))
+
+      policy_fixture(
+        account: account,
+        group: group,
+        resource: resource,
+        postures: %{"intune" => %{"field" => "compliance_state", "op" => "is", "value" => "compliant"}}
+      )
+
+      compliant = %Portal.Intune.Device{compliance_state: "compliant"}
+      noncompliant = %Portal.Intune.Device{compliance_state: "noncompliant"}
+      %{subject: subject, client: client, resource: resource, compliant: compliant, noncompliant: noncompliant}
+    end
+
+    test "a passing posture makes the resource connectable and authorizes it", ctx do
+      client = %{ctx.client | posture: %{intune: [ctx.compliant]}}
+      {:ok, added, [], cache} = Cache.recompute_connectable_resources(nil, client, ctx.subject)
+      assert Enum.map(added, &Ecto.UUID.load!(&1.id)) == [ctx.resource.id]
+      assert {:ok, _resource, _membership_id, _policy_id, _expires_at} = Cache.authorize_resource(cache, client, ctx.resource.id, ctx.subject)
+    end
+
+    test "a failing posture keeps the resource out of the connectable list", ctx do
+      client = %{ctx.client | posture: %{intune: [ctx.noncompliant]}}
+      {:ok, [], [], _cache} = Cache.recompute_connectable_resources(nil, client, ctx.subject)
+
+      client = %{ctx.client | posture: %{}}
+      {:ok, [], [], _cache} = Cache.recompute_connectable_resources(nil, client, ctx.subject)
+    end
+
+    test "a posture that stops passing forbids a connectable resource", ctx do
+      passing = %{ctx.client | posture: %{intune: [ctx.compliant]}}
+      {:ok, _added, [], cache} = Cache.recompute_connectable_resources(nil, passing, ctx.subject)
+
+      failing = %{ctx.client | posture: %{intune: [ctx.noncompliant]}}
+
+      assert Cache.authorize_resource(cache, failing, ctx.resource.id, ctx.subject) ==
+               {:error, {:forbidden, violated_properties: [{:postures, :intune}]}}
     end
   end
 end

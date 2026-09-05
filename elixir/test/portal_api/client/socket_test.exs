@@ -1122,6 +1122,34 @@ defmodule PortalAPI.Client.SocketTest do
     end
   end
 
+  describe "connect/3 posture rows" do
+    setup do
+      account = Portal.DevicePostureFixtures.device_posture_account_fixture()
+      actor = actor_fixture(account: account)
+      token = client_token_fixture(account: account, actor: actor)
+      provider = Portal.IntuneFixtures.intune_posture_provider_fixture(account: account)
+      row = Portal.IntuneFixtures.intune_device_fixture(provider: provider, serial_number: "POSTURE-SER")
+      %{account: account, actor: actor, token: encode_token(token), row: row}
+    end
+
+    test "loads the matched provider rows onto the client", %{token: token, row: row} do
+      Portal.DevicePostureFixtures.enable_device_posture()
+      attrs = connect_attrs(token: token, device_serial: "POSTURE-SER")
+
+      assert {:ok, socket} = connect(Socket, attrs, connect_info: build_connect_info())
+      assert %{intune: [%Portal.Intune.Device{intune_id: intune_id}]} = socket.assigns.client.posture
+      assert intune_id == row.intune_id
+    end
+
+    test "loads nothing while the feature is off", %{token: token} do
+      Portal.DevicePostureFixtures.enable_device_posture(false)
+      attrs = connect_attrs(token: token, device_serial: "POSTURE-SER")
+
+      assert {:ok, socket} = connect(Socket, attrs, connect_info: build_connect_info())
+      assert socket.assigns.client.posture == %{}
+    end
+  end
+
   describe "id/1" do
     test "creates a channel for a client" do
       subject = subject_fixture(type: :client)

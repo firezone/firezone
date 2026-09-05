@@ -11,6 +11,7 @@ defmodule PortalAPI.Schemas.Gateway do
                :account_id,
                :actor_id,
                :attested?,
+               :posture,
                :client_token_id,
                :device_serial,
                :device_uuid,
