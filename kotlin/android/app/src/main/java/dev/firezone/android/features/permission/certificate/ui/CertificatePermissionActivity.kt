@@ -3,9 +3,11 @@ package dev.firezone.android.features.permission.certificate.ui
 
 import android.net.Uri
 import android.os.Bundle
-import android.widget.Toast
 import androidx.activity.compose.setContent
 import androidx.appcompat.app.AppCompatActivity
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import dagger.hilt.android.AndroidEntryPoint
 import dev.firezone.android.R
 import dev.firezone.android.core.data.Repository
@@ -33,6 +35,8 @@ class CertificatePermissionActivity : AppCompatActivity() {
     @Inject
     lateinit var keyChain: KeyChain
 
+    private var error by mutableStateOf<String?>(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -41,6 +45,7 @@ class CertificatePermissionActivity : AppCompatActivity() {
                 CertificatePermissionScreen(
                     onSelectCertificate = ::chooseCertificate,
                     onSkip = ::finish,
+                    error = error,
                 )
             }
         }
@@ -51,15 +56,21 @@ class CertificatePermissionActivity : AppCompatActivity() {
 
         // Android answers on a binder thread, so anything touching the UI hops back itself.
         keyChain.choosePrivateKeyAlias(this, requestUri(), configuredAlias) { alias ->
-            // KeyChain takes the configured alias as a pre-selection only, so the user can
-            // hand back a different one, which leaves the configured certificate still refused.
-            if (alias != null && alias == configuredAlias) {
-                finish()
-            } else {
-                runOnUiThread {
-                    Toast
-                        .makeText(this, R.string.device_trust_no_certificate_selected, Toast.LENGTH_LONG)
-                        .show()
+            // KeyChain takes the configured alias as a pre-selection only and grants whatever the
+            // user picks, so a different pick leaves the configured certificate as refused as before.
+            val message =
+                when {
+                    alias == null -> getString(R.string.device_trust_no_certificate_selected)
+                    alias != configuredAlias ->
+                        getString(R.string.device_trust_wrong_certificate_selected, alias, configuredAlias)
+                    else -> null
+                }
+
+            runOnUiThread {
+                if (message == null) {
+                    finish()
+                } else {
+                    error = message
                 }
             }
         }

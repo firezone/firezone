@@ -69,6 +69,7 @@ class DeviceTrustE2eTest {
         FakeSessionFactory.reset()
         FakeKeyChain.reset()
         SplashViewModel.certificateSelectionOffered = false
+        SplashViewModel.policyAsked = false
         finishAllActivities()
         stopTunnelService()
         preferences.edit().clear().commit()
@@ -136,23 +137,57 @@ class DeviceTrustE2eTest {
     /**
      * An MDM that cannot template the alias of a certificate it provisioned leaves the administrator
      * naming one the KeyChain does not hold, which is how SCEP-issued certificates arrive. Android
-     * still lets the user release the real certificate from the chooser, so that release is what
-     * the tunnel has to present.
+     * grants whatever the user picks in the chooser, but the administrator's word stands: a
+     * different pick is refused, with the mismatch spelled out.
      */
     @Test
-    fun aManagedAliasTheKeyChainDoesNotHoldStillLetsTheUserReleaseTheCertificate() {
-        val certificate = testIdentity(SERIAL_CLAIM)
-        FakeKeyChain.install(ALIAS, certificate, granted = false)
+    fun pickingAnotherCertificateThanTheConfiguredOneIsRefused() {
+        FakeKeyChain.install(ALIAS, testIdentity(SERIAL_CLAIM), granted = false)
         FakeKeyChain.userChooses(ALIAS)
-        TestRestrictions.bundle.putString(X509_CERTIFICATE_ALIAS_RESTRICTION, "not-what-the-mdm-installed")
-        tokenStore.save(TOKEN)
+        TestRestrictions.bundle.putString(X509_CERTIFICATE_ALIAS_RESTRICTION, MISNAMED_ALIAS)
 
         launchApp()
 
         awaitText("Select your client certificate")
         composeRule.onNodeWithText("Select certificate").performClick()
 
-        await("the certificate screen to close") { !isOnScreen("Select your client certificate") }
+        awaitText("You selected '$ALIAS', but your administrator configured '$MISNAMED_ALIAS'.", substring = true)
+        awaitText("Select your client certificate")
+        assertEquals(MISNAMED_ALIAS, repo.getX509CertificateAliasSync(TestRestrictions.bundle))
+    }
+
+    /**
+     * The zero-touch case: the administrator's policy answers the KeyChain for us with an alias
+     * nobody configured on our side, and nothing is asked of the user.
+     */
+    @Test
+    fun aPolicyAnswerNeedsNoConfigurationAndNoUser() {
+        val certificate = testIdentity(SERIAL_CLAIM)
+        FakeKeyChain.install(ALIAS, certificate, granted = true)
+        FakeKeyChain.policyAnswers(ALIAS)
+        tokenStore.save(TOKEN)
+
+        launchApp()
+
+        awaitText("Sign In")
+
+        startTunnelService()
+        val session = awaitSession()
+
+        assertArrayEquals(certificate.chain.first().encoded, session.tlsIdentity?.certificateChain()?.first())
+    }
+
+    @Test
+    fun aPolicyAnswerStandsInForAManagedAliasTheKeyChainDoesNotHold() {
+        val certificate = testIdentity(SERIAL_CLAIM)
+        FakeKeyChain.install(ALIAS, certificate, granted = true)
+        FakeKeyChain.policyAnswers(ALIAS)
+        TestRestrictions.bundle.putString(X509_CERTIFICATE_ALIAS_RESTRICTION, MISNAMED_ALIAS)
+        tokenStore.save(TOKEN)
+
+        launchApp()
+
+        awaitText("Sign In")
 
         startTunnelService()
         val session = awaitSession()
@@ -183,13 +218,14 @@ class DeviceTrustE2eTest {
         return exists
     }
 
-    private fun awaitText(text: String) = await("\"$text\" on screen") { isOnScreen(text) }
-
-    private fun isOnScreen(text: String): Boolean {
+    private fun awaitText(
+        text: String,
+        substring: Boolean = false,
+    ) = await("\"$text\" on screen") {
         // The splash screen is a View, so there are moments with no Compose content at all,
         // which `fetchSemanticsNodes` reports as an error rather than as an empty screen.
-        return runCatching {
-            composeRule.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty()
+        runCatching {
+            composeRule.onAllNodesWithText(text, substring = substring).fetchSemanticsNodes().isNotEmpty()
         }.getOrDefault(false)
     }
 
@@ -210,6 +246,7 @@ class DeviceTrustE2eTest {
 
     private companion object {
         const val ALIAS = "firezone-e2e"
+        const val MISNAMED_ALIAS = "not-what-the-mdm-installed"
         const val TOKEN = "browser-token"
         const val TIMEOUT_MS = 20_000L
 

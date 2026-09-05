@@ -26,6 +26,9 @@ object FakeKeyChain : KeyChain {
     @Volatile
     private var userChoice: String? = null
 
+    @Volatile
+    private var policyAnswer: String? = null
+
     /** Files [identity] under [alias], granted to the app or merely installed. */
     fun install(
         alias: String,
@@ -40,9 +43,15 @@ object FakeKeyChain : KeyChain {
         userChoice = alias
     }
 
+    /** Has the device policy answer [alias] when asked, granting it the way the real one does. */
+    fun policyAnswers(alias: String) {
+        policyAnswer = alias
+    }
+
     fun reset() {
         entries.clear()
         userChoice = null
+        policyAnswer = null
     }
 
     override fun certificateChain(alias: String): List<X509Certificate>? = entries[alias]?.takeIf { it.granted }?.chain
@@ -64,5 +73,19 @@ object FakeKeyChain : KeyChain {
         }
 
         onChosen(alias)
+    }
+
+    override fun policyAlias(
+        activity: Activity,
+        requestUri: Uri?,
+        onAnswer: (String?) -> Unit,
+    ) {
+        val alias = policyAnswer?.takeIf(entries::containsKey)
+
+        if (alias != null) {
+            entries.computeIfPresent(alias) { _, entry -> entry.copy(granted = true) }
+        }
+
+        onAnswer(alias)
     }
 }

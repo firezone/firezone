@@ -33,4 +33,20 @@ interface KeyChain {
         preselectedAlias: String?,
         onChosen: (String?) -> Unit,
     )
+
+    /**
+     * Asks the device policy which alias Firezone should present, without ever showing the chooser.
+     *
+     * A device or profile owner may answer the chooser on the user's behalf, which is how an
+     * administrator hands over a certificate whose alias never made it into our configuration. Where
+     * no policy answers, [onAnswer] gets `null` and nothing was shown. Like choosing, an answer
+     * arrives granted.
+     *
+     * [onAnswer] is called on a binder thread.
+     */
+    fun policyAlias(
+        activity: Activity,
+        requestUri: Uri?,
+        onAnswer: (String?) -> Unit,
+    )
 }

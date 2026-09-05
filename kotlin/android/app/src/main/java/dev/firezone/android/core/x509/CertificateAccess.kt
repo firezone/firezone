@@ -31,20 +31,40 @@ class CertificateAccess
                     repository.getX509CertificateAliasSync(applicationRestrictions)
                         ?: return@withContext false
 
-                try {
-                    keyChain.certificateChain(alias).isNullOrEmpty()
-                } catch (exception: CancellationException) {
-                    throw exception
-                } catch (exception: InterruptedException) {
-                    Thread.currentThread().interrupt()
-                    Log.d(TAG, "Could not check access to the certificate of alias '$alias'", exception)
+                isWithheld(alias)
+            }
 
-                    false
-                } catch (exception: Exception) {
-                    Log.d(TAG, "Could not check access to the certificate of alias '$alias'", exception)
-
-                    false
+        /**
+         * Whether the device policy is worth asking for an alias: certificate access is not turned
+         * off, and whatever alias we hold is either absent or withheld.
+         */
+        suspend fun needsPolicyAlias(): Boolean =
+            withContext(Dispatchers.IO) {
+                if (repository.isX509CertificateAccessDisabled(applicationRestrictions)) {
+                    return@withContext false
                 }
+
+                val alias =
+                    repository.getX509CertificateAliasSync(applicationRestrictions)
+                        ?: return@withContext true
+
+                isWithheld(alias)
+            }
+
+        private fun isWithheld(alias: String): Boolean =
+            try {
+                keyChain.certificateChain(alias).isNullOrEmpty()
+            } catch (exception: CancellationException) {
+                throw exception
+            } catch (exception: InterruptedException) {
+                Thread.currentThread().interrupt()
+                Log.d(TAG, "Could not check access to the certificate of alias '$alias'", exception)
+
+                false
+            } catch (exception: Exception) {
+                Log.d(TAG, "Could not check access to the certificate of alias '$alias'", exception)
+
+                false
             }
 
         private companion object {

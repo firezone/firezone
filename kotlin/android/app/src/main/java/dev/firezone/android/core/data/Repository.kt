@@ -155,29 +155,52 @@ class Repository
         /**
          * The KeyChain alias of the client certificate to present to the portal.
          *
-         * A managed configuration overrides whatever the user picked, and one that sets the alias to
-         * an empty value turns certificate-based device attestation off entirely.
+         * A managed configuration that sets the alias to an empty value turns certificate-based device
+         * attestation off entirely. Otherwise the alias the device policy answered with comes first,
+         * then the managed one, then the user's pick.
          */
-        fun getX509CertificateAliasSync(applicationRestrictions: Bundle): String? =
-            if (isX509CertificateAliasManaged(applicationRestrictions)) {
-                applicationRestrictions
-                    .getString(X509_CERTIFICATE_ALIAS_RESTRICTION)
-                    ?.takeUnless(String::isBlank)
-            } else {
-                sharedPreferences
-                    .getString(X509_CERTIFICATE_ALIAS_KEY, null)
-                    ?.takeUnless(String::isBlank)
+        fun getX509CertificateAliasSync(applicationRestrictions: Bundle): String? {
+            if (isX509CertificateAccessDisabled(applicationRestrictions)) {
+                return null
             }
 
-        fun isX509CertificateAliasManaged(applicationRestrictions: Bundle): Boolean =
-            applicationRestrictions.containsKey(X509_CERTIFICATE_ALIAS_RESTRICTION)
+            return getPolicyX509CertificateAliasSync()
+                ?: managedX509CertificateAlias(applicationRestrictions)
+                ?: sharedPreferences.getString(X509_CERTIFICATE_ALIAS_KEY, null)?.takeUnless(String::isBlank)
+        }
 
-        fun saveX509CertificateAliasSync(alias: String?) {
+        /** Whether an administrator dictates the alias, in the managed configuration or by answering the KeyChain. */
+        fun isX509CertificateAliasManaged(applicationRestrictions: Bundle): Boolean =
+            applicationRestrictions.containsKey(X509_CERTIFICATE_ALIAS_RESTRICTION) ||
+                getPolicyX509CertificateAliasSync() != null
+
+        /** Whether an administrator set the alias to an empty value, which turns certificate access off. */
+        fun isX509CertificateAccessDisabled(applicationRestrictions: Bundle): Boolean =
+            applicationRestrictions.containsKey(X509_CERTIFICATE_ALIAS_RESTRICTION) &&
+                managedX509CertificateAlias(applicationRestrictions) == null
+
+        private fun managedX509CertificateAlias(applicationRestrictions: Bundle): String? =
+            applicationRestrictions
+                .getString(X509_CERTIFICATE_ALIAS_RESTRICTION)
+                ?.takeUnless(String::isBlank)
+
+        fun getPolicyX509CertificateAliasSync(): String? =
+            sharedPreferences.getString(POLICY_X509_CERTIFICATE_ALIAS_KEY, null)?.takeUnless(String::isBlank)
+
+        fun saveX509CertificateAliasSync(alias: String?) = saveAliasSync(X509_CERTIFICATE_ALIAS_KEY, alias)
+
+        /** Records what the device policy answered, or that it answered nothing. */
+        fun savePolicyX509CertificateAliasSync(alias: String?) = saveAliasSync(POLICY_X509_CERTIFICATE_ALIAS_KEY, alias)
+
+        private fun saveAliasSync(
+            key: String,
+            alias: String?,
+        ) {
             sharedPreferences.edit().apply {
                 if (alias == null) {
-                    remove(X509_CERTIFICATE_ALIAS_KEY)
+                    remove(key)
                 } else {
-                    putString(X509_CERTIFICATE_ALIAS_KEY, alias)
+                    putString(key, alias)
                 }
                 apply()
             }
@@ -318,6 +341,7 @@ class Repository
             private const val START_ON_LOGIN_KEY = "startOnLogin"
             private const val CONNECT_ON_START_KEY = "connectOnStart"
             private const val X509_CERTIFICATE_ALIAS_KEY = "x509CertificateAlias"
+            private const val POLICY_X509_CERTIFICATE_ALIAS_KEY = "policyX509CertificateAlias"
             private const val MANAGED_AUTH_URL_KEY = "managedAuthUrl"
             private const val MANAGED_API_URL_KEY = "managedApiUrl"
             private const val MANAGED_LOG_FILTER_KEY = "managedLogFilter"

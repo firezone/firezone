@@ -41,6 +41,10 @@
 	<string name="device_trust_forget_certificate">Forget Selection</string>
 	<string name="device_trust_loading">Reading the KeyChain…</string>
 	<string name="device_trust_no_certificate_selected">No RSA or EC certificate was selected.</string>
+	<string name="device_trust_wrong_certificate_selected">
+		You selected \'%1$s\', but your administrator configured \'%2$s\'. Select the configured
+		certificate instead.
+	</string>
 	<string name="device_trust_not_released">
 		Android has not released this certificate to Firezone. Selecting it grants access.
 	</string>
@@ -149,9 +153,11 @@
 	</string>
 	<string name="config_x509_certificate_alias_title">Client Certificate Alias</string>
 	<string name="config_x509_certificate_alias_description">
-		The system KeyChain alias of the client certificate used for mutual TLS. The device policy
-		controller must install the key pair and grant dev.firezone.android access to it. Leave
-		empty to disable certificate-based device attestation.
+		The system KeyChain alias of the client certificate used for mutual TLS. Leave unset when the
+		device policy controller answers certificate requests from dev.firezone.android with the
+		alias itself. Otherwise the controller must install the key pair under this alias and grant
+		dev.firezone.android access to it. Set to an empty value to disable certificate-based device
+		attestation.
 	</string>
 
 	<string name="managed_setting_info_description">

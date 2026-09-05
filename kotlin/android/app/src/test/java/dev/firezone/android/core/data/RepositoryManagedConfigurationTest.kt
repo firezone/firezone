@@ -10,6 +10,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -167,6 +168,28 @@ class RepositoryManagedConfigurationTest {
             repository.saveManagedConfiguration(revokedRestrictions).first()
 
             assertEquals("user-alias", repository.getX509CertificateAliasSync(revokedRestrictions))
+        }
+
+    @Test
+    fun `the policy's alias comes before the managed one, unless attestation is off`() =
+        runBlocking {
+            repository.saveX509CertificateAliasSync("user-alias")
+            repository.savePolicyX509CertificateAliasSync("policy-alias")
+
+            assertEquals("policy-alias", repository.getX509CertificateAliasSync(Bundle()))
+            assertTrue(repository.isX509CertificateAliasManaged(Bundle()))
+
+            val managed = Bundle().apply { putString(X509_CERTIFICATE_ALIAS_RESTRICTION, "managed-alias") }
+            assertEquals("policy-alias", repository.getX509CertificateAliasSync(managed))
+
+            val off = Bundle().apply { putString(X509_CERTIFICATE_ALIAS_RESTRICTION, "") }
+            assertNull(repository.getX509CertificateAliasSync(off))
+            assertTrue(repository.isX509CertificateAccessDisabled(off))
+
+            repository.savePolicyX509CertificateAliasSync(null)
+
+            assertEquals("managed-alias", repository.getX509CertificateAliasSync(managed))
+            assertEquals("user-alias", repository.getX509CertificateAliasSync(Bundle()))
         }
 
     private fun allManagedConfig(): Bundle =
