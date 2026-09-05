@@ -27,11 +27,8 @@ object TestDpc {
     ) {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
 
-        val intent =
+        provision(
             Intent("dev.firezone.dpc.INSTALL_KEY_PAIR")
-                .setClassName(DPC_PACKAGE, "$DPC_PACKAGE.ProvisionReceiver")
-                // A freshly installed DPC has never run, and stopped packages receive nothing.
-                .addFlags(Intent.FLAG_INCLUDE_STOPPED_PACKAGES)
                 .putExtra("alias", alias)
                 .putExtra("password", password)
                 .putExtra("p12", Base64.encodeToString(p12, Base64.NO_WRAP))
@@ -39,7 +36,33 @@ object TestDpc {
                     if (grantToFirezone) {
                         putExtra("grantTo", context.packageName)
                     }
+                },
+            "install '$alias'",
+        )
+    }
+
+    /** Has the DPC answer the KeyChain chooser with [alias], or leave the choice to the user when `null`. */
+    fun answerChooserWith(alias: String?) {
+        provision(
+            Intent("dev.firezone.dpc.SET_POLICY_ALIAS").apply {
+                if (alias != null) {
+                    putExtra("alias", alias)
                 }
+            },
+            "answer the chooser with '$alias'",
+        )
+    }
+
+    private fun provision(
+        intent: Intent,
+        what: String,
+    ) {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+
+        intent
+            .setClassName(DPC_PACKAGE, "$DPC_PACKAGE.ProvisionReceiver")
+            // A freshly installed DPC has never run, and stopped packages receive nothing.
+            .addFlags(Intent.FLAG_INCLUDE_STOPPED_PACKAGES)
 
         val answered = CountDownLatch(1)
         var answerCode = NO_ANSWER
@@ -65,7 +88,7 @@ object TestDpc {
         )
 
         if (!answered.await(20, TimeUnit.SECONDS)) {
-            throw AssertionError("The DPC did not answer the install broadcast for '$alias'")
+            throw AssertionError("The DPC did not answer the broadcast to $what")
         }
 
         when (answerCode) {
@@ -77,7 +100,7 @@ object TestDpc {
                     "mise run //kotlin/android:managed-device:provision",
             )
 
-            else -> throw AssertionError("The DPC refused to install '$alias': $answer")
+            else -> throw AssertionError("The DPC refused to $what: $answer")
         }
     }
 

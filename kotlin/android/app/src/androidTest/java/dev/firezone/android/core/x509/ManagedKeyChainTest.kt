@@ -52,6 +52,7 @@ class ManagedKeyChainTest {
         finishAllActivities()
         preferences.edit().clear().commit()
         TestRestrictions.bundle.clear()
+        TestDpc.answerChooserWith(null)
     }
 
     @Test
@@ -125,7 +126,7 @@ class ManagedKeyChainTest {
             chosen.complete(alias)
         }
 
-        approveKeyChainChooser()
+        approveKeyChainChooser(CHOOSER_ALIAS)
 
         assertEquals(CHOOSER_ALIAS, chosen.get(TIMEOUT_MS, TimeUnit.MILLISECONDS))
 
@@ -134,16 +135,84 @@ class ManagedKeyChainTest {
         assertNotNull(systemKeyChain.certificateChain(CHOOSER_ALIAS))
     }
 
-    /** Confirms the system chooser, which arrives with the requested alias selected. */
-    private fun approveKeyChainChooser() {
+    @Test
+    fun anOfferedAliasTheKeyChainDoesNotHoldStillLetsTheUserChoose() {
+        val identity = testIdentity("firezone://serial/EMU-MISNAMED")
+
+        TestDpc.installKeyPair(MISNAMED_ALIAS, identity.pkcs12(MISNAMED_ALIAS, PASSWORD), PASSWORD, grantToFirezone = false)
+
+        launchApp()
+
+        val chosen = CompletableFuture<String?>()
+        systemKeyChain.choosePrivateKeyAlias(resumedActivity(), null, EMPTY_ALIAS) { alias ->
+            chosen.complete(alias)
+        }
+
+        approveKeyChainChooser(MISNAMED_ALIAS)
+
+        // The offered alias is a pre-selection only: the chooser lists what is installed regardless
+        // and grants whichever the user picks.
+        assertEquals(MISNAMED_ALIAS, chosen.get(TIMEOUT_MS, TimeUnit.MILLISECONDS))
+        assertNotNull(systemKeyChain.privateKey(MISNAMED_ALIAS))
+        assertNotNull(systemKeyChain.certificateChain(MISNAMED_ALIAS))
+    }
+
+    @Test
+    fun aPolicyAnswerArrivesGrantedAndWithoutAChooser() {
+        val identity = testIdentity("firezone://serial/EMU-POLICY")
+
+        TestDpc.installKeyPair(POLICY_ALIAS, identity.pkcs12(POLICY_ALIAS, PASSWORD), PASSWORD, grantToFirezone = false)
+        TestDpc.answerChooserWith(POLICY_ALIAS)
+
+        launchApp()
+
+        val answer = CompletableFuture<String?>()
+        systemKeyChain.policyAlias(resumedActivity(), null) { alias ->
+            answer.complete(alias)
+        }
+
+        // Nothing gets tapped, so an answer can only have come from the policy.
+        assertEquals(POLICY_ALIAS, answer.get(TIMEOUT_MS, TimeUnit.MILLISECONDS))
+        assertNotNull(systemKeyChain.privateKey(POLICY_ALIAS))
+        assertNotNull(systemKeyChain.certificateChain(POLICY_ALIAS))
+    }
+
+    @Test
+    fun withoutAPolicyAnswerAskingShowsNothing() {
+        val identity = testIdentity("firezone://serial/EMU-QUIET")
+
+        // A certificate the chooser would list, were it to open.
+        TestDpc.installKeyPair(QUIET_ALIAS, identity.pkcs12(QUIET_ALIAS, PASSWORD), PASSWORD, grantToFirezone = false)
+
+        launchApp()
+
+        val answer = CompletableFuture<String?>()
+        systemKeyChain.policyAlias(resumedActivity(), null) { alias ->
+            answer.complete(alias)
+        }
+
+        // A chooser would wait for the user and leave this hanging.
+        assertNull(answer.get(TIMEOUT_MS, TimeUnit.MILLISECONDS))
+        assertNull(systemKeyChain.privateKey(QUIET_ALIAS))
+
+        val device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
+        assertTrue("the KeyChain is still on screen", device.wait(Until.gone(By.pkg("com.android.keychain")), TIMEOUT_MS))
+    }
+
+    /** Confirms the system chooser with [alias] selected, whether or not it arrived preselected. */
+    private fun approveKeyChainChooser(alias: String) {
         val device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
 
         if (!device.wait(Until.hasObject(By.pkg("com.android.keychain")), TIMEOUT_MS)) {
             throw AssertionError("The KeyChain chooser never appeared")
         }
 
-        // Selecting the row is only needed when the pre-selection did not take.
-        device.findObject(By.textContains("device-trust"))?.click()
+        // Every row names its alias, which tells the certificates the other tests installed apart.
+        val row =
+            device.wait(Until.findObject(By.text(alias)), TIMEOUT_MS)
+                ?: throw AssertionError("The KeyChain chooser does not list '$alias'")
+
+        row.click()
 
         val confirm =
             device.wait(Until.findObject(By.res("android:id/button1")), TIMEOUT_MS)
@@ -186,6 +255,9 @@ class ManagedKeyChainTest {
         const val GRANTED_ALIAS = "firezone-test-granted"
         const val EMPTY_ALIAS = "firezone-test-never-installed"
         const val CHOOSER_ALIAS = "firezone-test-chooser"
+        const val MISNAMED_ALIAS = "firezone-test-misnamed"
+        const val POLICY_ALIAS = "firezone-test-policy"
+        const val QUIET_ALIAS = "firezone-test-quiet"
 
         const val PASSWORD = "firezone"
         const val TIMEOUT_MS = 20_000L

@@ -18,6 +18,7 @@ internal fun CertificatePermissionScreen(
     onSelectCertificate: () -> Unit,
     onSkip: () -> Unit,
     modifier: Modifier = Modifier,
+    error: String? = null,
 ) {
     PermissionScreen(
         title = R.string.device_trust_selection_title,
@@ -26,6 +27,7 @@ internal fun CertificatePermissionScreen(
         onAction = onSelectCertificate,
         onSkip = onSkip,
         modifier = modifier,
+        error = error,
     )
 }
 

@@ -55,24 +55,33 @@ class DeviceTrustSettingsFragment : Fragment() {
 
     private fun chooseCertificate() {
         val activity = requireActivity()
+        val state = viewModel.uiStateFlow.value
 
         // Android answers on a binder thread, so the ViewModel takes the alias directly and only
         // the toast has to hop onto the main thread.
-        keyChain.choosePrivateKeyAlias(
-            activity,
-            viewModel.keyChainRequestUri(),
-            viewModel.uiStateFlow.value.alias,
-        ) { alias ->
+        keyChain.choosePrivateKeyAlias(activity, viewModel.keyChainRequestUri(), state.alias) { alias ->
             if (alias == null) {
-                activity.runOnUiThread {
-                    Toast
-                        .makeText(activity, R.string.device_trust_no_certificate_selected, Toast.LENGTH_LONG)
-                        .show()
-                }
-            } else {
-                viewModel.onAliasSelected(alias)
+                toast(getString(R.string.device_trust_no_certificate_selected))
+
+                return@choosePrivateKeyAlias
             }
+
+            // The configured alias is a pre-selection only, so an administrator's certificate stays
+            // refused when the user picks another.
+            if (state.isManaged && alias != state.alias) {
+                toast(getString(R.string.device_trust_wrong_certificate_selected, alias, state.alias))
+
+                return@choosePrivateKeyAlias
+            }
+
+            viewModel.onAliasSelected(alias)
         }
+    }
+
+    private fun toast(message: String) {
+        val activity = requireActivity()
+
+        activity.runOnUiThread { Toast.makeText(activity, message, Toast.LENGTH_LONG).show() }
     }
 
     private fun forgetCertificate() {

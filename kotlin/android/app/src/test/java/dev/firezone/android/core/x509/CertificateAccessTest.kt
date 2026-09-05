@@ -69,6 +69,28 @@ class CertificateAccessTest {
     }
 
     @Test
+    fun `no configured alias is worth asking the policy about`() {
+        assertTrue(runBlocking { certificateAccess.needsPolicyAlias() })
+        assertEquals(emptySet<String>(), keyChain.requestedAliases.toSet())
+    }
+
+    @Test
+    fun `an alias the KeyChain withholds is worth asking the policy about`() {
+        restrictions.putString(X509_CERTIFICATE_ALIAS_RESTRICTION, "managed-alias")
+
+        assertTrue(runBlocking { certificateAccess.needsPolicyAlias() })
+        assertEquals(listOf("managed-alias"), keyChain.requestedAliases)
+    }
+
+    @Test
+    fun `a blank managed alias leaves the policy unasked`() {
+        restrictions.putString(X509_CERTIFICATE_ALIAS_RESTRICTION, "")
+
+        assertFalse(runBlocking { certificateAccess.needsPolicyAlias() })
+        assertEquals(emptySet<String>(), keyChain.requestedAliases.toSet())
+    }
+
+    @Test
     fun `a managed alias overrides the user's selection`() {
         restrictions.putString(X509_CERTIFICATE_ALIAS_RESTRICTION, "managed-alias")
         repository.saveX509CertificateAliasSync("user-alias")
@@ -100,5 +122,11 @@ class CertificateAccessTest {
             preselectedAlias: String?,
             onChosen: (String?) -> Unit,
         ): Unit = error("the chooser is an Activity affair, which this test never reaches")
+
+        override fun policyAlias(
+            activity: Activity,
+            requestUri: Uri?,
+            onAnswer: (String?) -> Unit,
+        ): Unit = error("asking the policy is an Activity affair, which this test never reaches")
     }
 }

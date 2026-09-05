@@ -34,6 +34,7 @@ class ProvisionReceiver : BroadcastReceiver() {
                 when (intent.action) {
                     INSTALL_KEY_PAIR -> installKeyPair(policy, admin, intent)
                     SET_RESTRICTIONS -> setRestrictions(policy, admin, intent)
+                    SET_POLICY_ALIAS -> setPolicyAlias(context, intent)
                     else -> "unknown action: ${intent.action}"
                 }
             }
@@ -99,11 +100,29 @@ class ProvisionReceiver : BroadcastReceiver() {
         return "set ${restrictions.keySet().joinToString().ifEmpty { "nothing" }} on $target"
     }
 
+    /**
+     * Sets the alias the DPC answers the KeyChain chooser with, or clears it.
+     *
+     * Answering is how an administrator hands an app a certificate silently, which is the state a
+     * corporate-owned device with a certificate selection rule is in.
+     */
+    private fun setPolicyAlias(
+        context: Context,
+        intent: Intent,
+    ): String {
+        val alias = intent.getStringExtra(ALIAS)
+
+        AdminReceiver.setPolicyAlias(context, alias)
+
+        return "the chooser is answered with ${alias?.let { "'$it'" } ?: "nothing"}"
+    }
+
     private fun Intent.requireString(name: String) = getStringExtra(name) ?: error("missing extra '$name'")
 
     private companion object {
         const val INSTALL_KEY_PAIR = "dev.firezone.dpc.INSTALL_KEY_PAIR"
         const val SET_RESTRICTIONS = "dev.firezone.dpc.SET_RESTRICTIONS"
+        const val SET_POLICY_ALIAS = "dev.firezone.dpc.SET_POLICY_ALIAS"
 
         const val ALIAS = "alias"
         const val P12 = "p12"

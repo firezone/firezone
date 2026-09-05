@@ -93,11 +93,15 @@ device can be in without a human at the screen: a certificate the app may use,
 one installed without a grant, an alias with nothing behind it, or nothing
 configured. The ungranted state is what a personally-owned device carrying a
 work profile looks like, and it is what sends the app to the certificate screen.
+A corporate-owned device whose policy names the certificate for the app is
+`policy-alias`: the DPC answers the KeyChain itself, and nothing is asked of
+the user or configured in the app.
 
 ```bash
 mise run //kotlin/android:managed-device:provision
 mise run //kotlin/android:managed-device:install-certificate --no-grant
 mise run //kotlin/android:managed-device:managed-config --alias firezone-client
+mise run //kotlin/android:managed-device:policy-alias --alias firezone-client
 ```
 
 `provision` makes the DPC the owner of the device, or of a work profile with
