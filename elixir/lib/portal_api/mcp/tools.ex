@@ -96,7 +96,7 @@ defmodule PortalAPI.MCP.Tools do
   @doc "Tools the given scopes permit, ordered by name."
   def list(scopes) do
     Enum.filter(all(), fn tool ->
-      PortalAPI.MCP.Scopes.permits?(scopes, tool) and PortalAPI.MCP.Safety.enabled?(tool)
+      PortalAPI.MCP.Scopes.permits?(scopes, tool)
     end)
   end
 

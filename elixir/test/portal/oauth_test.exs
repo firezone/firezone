@@ -24,6 +24,20 @@ defmodule Portal.OAuthTest do
     %{account: account, actor: actor, subject: subject, client: client}
   end
 
+  describe "resource_uri/0" do
+    test "uses the canonical REST API URL" do
+      Portal.Config.put_env_override(:rest_api_url, "https://rest-api.firezone.test/")
+
+      assert OAuth.resource_uri() == "https://rest-api.firezone.test/mcp"
+    end
+
+    test "falls back to the API endpoint when no REST API URL is configured" do
+      Portal.Config.put_env_override(:rest_api_url, nil)
+
+      assert OAuth.resource_uri() == PortalAPI.Endpoint.url() <> "/mcp"
+    end
+  end
+
   describe "validate_client/1" do
     test "accepts a client whose metadata lists the redirect uri", %{client: client} do
       assert {:ok, resolved, uri} = OAuth.validate_client(params(client))

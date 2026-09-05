@@ -70,7 +70,9 @@ defmodule PortalAPI.MCP do
 
   @doc "Where a client fetches this resource's OAuth metadata."
   def resource_metadata_url do
-    PortalAPI.Endpoint.url() <> "/.well-known/oauth-protected-resource/mcp"
+    resource_uri()
+    |> URI.merge(".well-known/oauth-protected-resource/mcp")
+    |> URI.to_string()
   end
 
   @doc "The authorization server that issues tokens for this resource."

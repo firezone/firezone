@@ -3,6 +3,28 @@ defmodule PortalAPI.OAuthMetadataControllerTest do
 
   alias PortalAPI.MCP
 
+  test "discovery and the authentication challenge use the canonical REST API host", %{conn: conn} do
+    base = "https://rest-api.firezone.test"
+    Portal.Config.put_env_override(:rest_api_url, base <> "/")
+
+    for path <- ["/.well-known/oauth-protected-resource", "/.well-known/oauth-protected-resource/mcp"] do
+      metadata = conn |> get(base <> path) |> json_response(200)
+
+      assert metadata["resource"] == base <> "/mcp"
+      assert metadata["authorization_servers"] == [PortalWeb.Endpoint.url()]
+    end
+
+    conn =
+      conn
+      |> put_req_header("content-type", "application/json")
+      |> post(base <> "/mcp", "{}")
+
+    assert json_response(conn, 401)
+
+    assert get_resp_header(conn, "www-authenticate") ==
+             [~s(Bearer resource_metadata="#{base}/.well-known/oauth-protected-resource/mcp")]
+  end
+
   test "publishes the protected resource metadata at the path scoped url", %{conn: conn} do
     conn = get(conn, "/.well-known/oauth-protected-resource/mcp")
 

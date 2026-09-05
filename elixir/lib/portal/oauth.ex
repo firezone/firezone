@@ -67,7 +67,10 @@ defmodule Portal.OAuth do
   resource server on every request, so a token issued for anything else is
   refused even while it is otherwise valid.
   """
-  def resource_uri, do: PortalAPI.Endpoint.url() <> "/mcp"
+  def resource_uri do
+    base = Portal.Config.get_env(:portal, :rest_api_url) || PortalAPI.Endpoint.url()
+    String.trim_trailing(base, "/") <> "/mcp"
+  end
 
   @doc """
   The cached client for `client_id`, or nil.

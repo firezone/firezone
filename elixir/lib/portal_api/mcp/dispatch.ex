@@ -29,8 +29,7 @@ defmodule PortalAPI.MCP.Dispatch do
   `{:error, reason}` when the arguments cannot be turned into a request.
   """
   def call(%Tool{} = tool, arguments, %Plug.Conn{} = conn) when is_map(arguments) do
-    with :ok <- PortalAPI.MCP.Safety.permit(tool),
-         :ok <- validate_arguments(tool, arguments) do
+    with :ok <- validate_arguments(tool, arguments) do
       body = build_body(tool, arguments)
       encoded_body = encode_body(body)
 

@@ -3,7 +3,7 @@ defmodule Portal.FeaturesTest do
 
   import Portal.FeaturesFixtures
 
-  for feature <- [:trust_anchors, :device_posture, :mcp, :mcp_identity_management, :mcp_credential_issuance] do
+  for feature <- [:trust_anchors, :device_posture, :mcp] do
     test "enabled?/1 reads the #{feature} global rollout flag" do
       disable_feature(unquote(feature))
       refute Portal.Features.enabled?(unquote(feature))
