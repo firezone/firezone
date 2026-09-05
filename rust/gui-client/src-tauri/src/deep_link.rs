@@ -1,17 +1,11 @@
 //! A module for registering, catching, and parsing deep links that are sent over to the app's already-running instance
 
-// The IPC parts use the same primitives as the Tunnel service, UDS on Linux
-// and named pipes on Windows, so TODO de-dupe the IPC code
-
 use crate::{
     auth,
     gui::{self, ServerMsg},
-    ipc::SocketId,
 };
 use anyhow::{Context as _, Result, bail};
-use futures::SinkExt as _;
 use secrecy::SecretString;
-use tokio_stream::StreamExt as _;
 use url::Url;
 
 #[cfg(any(target_os = "linux", target_os = "windows"))]
@@ -33,24 +27,7 @@ mod imp;
 pub use imp::register;
 
 pub async fn open(url: url::Url) -> Result<()> {
-    let (mut read, mut write) = crate::ipc::connect::<gui::ServerMsg, gui::ClientMsg>(
-        SocketId::Gui,
-        crate::ipc::ConnectOptions::default(),
-    )
-    .await?;
-
-    write
-        .send(&gui::ClientMsg::Deeplink(url))
-        .await
-        .context("Failed to send deep-link")?;
-
-    tracing::debug!("Sent deep-link, waiting for response");
-
-    let response = read
-        .next()
-        .await
-        .context("No response received")?
-        .context("Failed to receive response")?;
+    let response = gui::request(gui::ClientMsg::Deeplink(url)).await?;
 
     anyhow::ensure!(response == ServerMsg::Ack);
 
