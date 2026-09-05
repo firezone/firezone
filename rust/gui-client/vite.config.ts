@@ -22,7 +22,7 @@ const gitVersion =
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react(), tailwindcss(), preserveGitkeep()],
+  plugins: [react({ compiler: true }), tailwindcss(), preserveGitkeep()],
 
   define: {
     // mark:next-gui-version
