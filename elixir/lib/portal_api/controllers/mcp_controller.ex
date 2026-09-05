@@ -23,7 +23,7 @@ defmodule PortalAPI.MCPController do
   @base64_prefix "=?base64?"
   @base64_suffix "?="
 
-  plug :validate_origin
+  plug(:validate_origin)
 
   @spec handle(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def handle(conn, _params) do
@@ -51,8 +51,7 @@ defmodule PortalAPI.MCPController do
       MCP.error(
         nil,
         MCP.invalid_request(),
-        "The MCP endpoint accepts POST only. Protocol revision #{MCP.protocol_version()} " <>
-          "removed the GET stream and the DELETE session teardown."
+        "The MCP endpoint accepts POST only; it does not offer an SSE stream or sessions."
       )
     )
   end
@@ -61,15 +60,43 @@ defmodule PortalAPI.MCPController do
     conn = PortalAPI.Plugs.MCPRequestLog.identify(conn, method, params)
 
     with :ok <- validate_params(params),
-         :ok <- validate_protocol_version(conn, params),
-         :ok <- validate_header(conn, "mcp-method", method, "Mcp-Method"),
-         :ok <- validate_name_header(conn, method, params),
-         :ok <- validate_client_capabilities(params) do
+         :ok <- validate_protocol(conn, method, params) do
       dispatch(conn, id, method, params)
     else
       {:error, status, code, message, data} ->
         send_rpc(conn, status, MCP.error(id, code, message, data))
     end
+  end
+
+  # Streamable HTTP clients negotiate once via initialize. No session is needed:
+  # subsequent requests identify the negotiated revision in the version header.
+  defp dispatch(conn, id, "initialize", %{
+         "protocolVersion" => version,
+         "capabilities" => capabilities,
+         "clientInfo" => %{"name" => name, "version" => client_version}
+       })
+       when is_binary(version) and is_map(capabilities) and is_binary(name) and
+              is_binary(client_version) do
+    version = if MCP.legacy_version?(version), do: version, else: MCP.legacy_protocol_version()
+
+    send_rpc(
+      conn,
+      200,
+      MCP.result(id, %{
+        protocolVersion: version,
+        capabilities: %{tools: %{}},
+        serverInfo: MCP.server_info(),
+        instructions: MCP.instructions()
+      })
+    )
+  end
+
+  defp dispatch(conn, id, "initialize", _params) do
+    send_rpc(conn, 400, MCP.error(id, MCP.invalid_params(), "Invalid initialize parameters."))
+  end
+
+  defp dispatch(conn, id, "ping", _params) do
+    send_rpc(conn, 200, MCP.result(id, %{}))
   end
 
   defp dispatch(conn, id, "server/discover", _params) do
@@ -223,10 +250,36 @@ defmodule PortalAPI.MCPController do
     Map.get(body, "params", %{})
   end
 
-  defp validate_params(%{"_meta" => meta}) when is_map(meta), do: :ok
+  defp validate_params(params) when is_map(params) do
+    if is_map(Map.get(params, "_meta", %{})), do: :ok, else: invalid_params()
+  end
 
-  defp validate_params(_params) do
+  defp validate_params(_params), do: invalid_params()
+
+  defp invalid_params do
     {:error, 400, MCP.invalid_params(), "`params` and `params._meta` must be JSON objects.", nil}
+  end
+
+  defp validate_protocol(_conn, "initialize", _params), do: :ok
+
+  defp validate_protocol(conn, method, params) do
+    # A modern metadata envelope must still pass every modern routing check.
+    modern? = Map.has_key?(Map.get(params, "_meta", %{}), MCP.protocol_version_key())
+
+    case {modern?, get_req_header(conn, "mcp-protocol-version")} do
+      {false, [version]} when version in ["2025-03-26", "2025-06-18", "2025-11-25"] ->
+        :ok
+
+      {false, []} when method != "server/discover" ->
+        :ok
+
+      _ ->
+        with :ok <- validate_protocol_version(conn, params),
+             :ok <- validate_header(conn, "mcp-method", method, "Mcp-Method"),
+             :ok <- validate_name_header(conn, method, params) do
+          validate_client_capabilities(params)
+        end
+    end
   end
 
   defp validate_header(conn, header, expected, label) do
@@ -358,11 +411,12 @@ defmodule PortalAPI.MCPController do
         userinfo: nil
       }
       when is_binary(scheme) and is_binary(host) and path in [nil, ""] ->
-        String.downcase(scheme) == (conn.scheme |> Atom.to_string() |> String.downcase()) and
+        String.downcase(scheme) == conn.scheme |> Atom.to_string() |> String.downcase() and
           String.downcase(host) == String.downcase(conn.host) and
           effective_port(scheme, port) == conn.port
 
-      _other -> false
+      _other ->
+        false
     end
   end
 
