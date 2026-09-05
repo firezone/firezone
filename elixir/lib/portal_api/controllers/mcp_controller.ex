@@ -23,7 +23,7 @@ defmodule PortalAPI.MCPController do
   @base64_prefix "=?base64?"
   @base64_suffix "?="
 
-  plug(:validate_origin)
+  plug :validate_origin
 
   @spec handle(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def handle(conn, _params) do
@@ -411,12 +411,11 @@ defmodule PortalAPI.MCPController do
         userinfo: nil
       }
       when is_binary(scheme) and is_binary(host) and path in [nil, ""] ->
-        String.downcase(scheme) == conn.scheme |> Atom.to_string() |> String.downcase() and
+        String.downcase(scheme) == (conn.scheme |> Atom.to_string() |> String.downcase()) and
           String.downcase(host) == String.downcase(conn.host) and
           effective_port(scheme, port) == conn.port
 
-      _other ->
-        false
+      _other -> false
     end
   end
 
