@@ -395,7 +395,7 @@ config :argon2_elixir, t_cost: 1, m_cost: 8
 
 config :geolix,
   databases: [
-    %{id: :city, adapter: Geolix.Adapter.Fake, data: %{}}
+    %{id: :city, adapter: Portal.Test.GeoAdapter, data: %{}}
   ]
 
 default_assert_receive_timeout = 1_000

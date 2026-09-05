@@ -2,11 +2,9 @@ defmodule PortalAPI.MCP do
   @moduledoc """
   Model Context Protocol server for the Firezone REST API.
 
-  Implements revision `2026-07-28`, which is stateless: there is no
-  `initialize` handshake and no session, every request carries its own protocol
-  version and client capabilities in `_meta`, and the transport is a single
-  POST endpoint. That maps onto a plain Phoenix controller with no supervised
-  state of its own.
+  Implements stateless revision `2026-07-28` and the initialize handshake for
+  Streamable HTTP revisions `2025-03-26`, `2025-06-18`, and `2025-11-25`.
+  Both use a single POST endpoint without server-side session state.
 
   Tools are derived from the same `OpenApiSpex` operation specs that generate
   `openapi.json`, and every tool call is dispatched back through
@@ -16,7 +14,8 @@ defmodule PortalAPI.MCP do
   """
 
   @protocol_version "2026-07-28"
-  @supported_versions [@protocol_version]
+  @legacy_versions ["2025-11-25", "2025-06-18", "2025-03-26"]
+  @supported_versions [@protocol_version | @legacy_versions]
 
   @meta_prefix "io.modelcontextprotocol/"
   @protocol_version_key @meta_prefix <> "protocolVersion"
@@ -42,6 +41,9 @@ defmodule PortalAPI.MCP do
 
   @doc "Every protocol revision this server accepts on a request."
   def supported_versions, do: @supported_versions
+
+  def legacy_protocol_version, do: hd(@legacy_versions)
+  def legacy_version?(version), do: version in @legacy_versions
 
   def supported_version?(version), do: version in @supported_versions
 

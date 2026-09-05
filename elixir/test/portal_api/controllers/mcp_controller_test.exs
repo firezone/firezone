@@ -16,6 +16,101 @@ defmodule PortalAPI.MCPControllerTest do
     %{account: account, actor: actor}
   end
 
+  describe "Streamable HTTP compatibility" do
+    test "initializes, lists tools, and calls a tool without modern metadata", %{
+      conn: conn,
+      actor: actor
+    } do
+      conn = authorize_mcp_conn(conn, actor, ["actors:read"])
+
+      for version <- ["2025-03-26", "2025-06-18", "2025-11-25"] do
+        initialized =
+          legacy_rpc(conn, "initialize", %{
+            "protocolVersion" => version,
+            "capabilities" => %{},
+            "clientInfo" => %{"name" => "test-client", "version" => "1.0"}
+          })
+
+        assert %{
+                 "result" => %{
+                   "protocolVersion" => ^version,
+                   "capabilities" => %{"tools" => %{}},
+                   "serverInfo" => %{"name" => "firezone"}
+                 }
+               } = json_response(initialized, 200)
+
+        assert get_resp_header(initialized, "mcp-session-id") == []
+
+        notification =
+          conn
+          |> put_req_header("content-type", "application/json")
+          |> put_req_header("mcp-protocol-version", version)
+          |> post(
+            "/mcp",
+            Jason.encode!(%{"jsonrpc" => "2.0", "method" => "notifications/initialized"})
+          )
+
+        assert response(notification, 202) == ""
+
+        versioned = put_req_header(conn, "mcp-protocol-version", version)
+
+        assert %{"result" => %{"tools" => [_ | _]}} =
+                 versioned |> legacy_rpc("tools/list") |> json_response(200)
+
+        assert %{"result" => %{"isError" => false}} =
+                 versioned
+                 |> legacy_rpc("tools/call", %{"name" => "list_actors", "arguments" => %{}})
+                 |> json_response(200)
+
+        assert %{"result" => %{}} = versioned |> legacy_rpc("ping") |> json_response(200)
+      end
+    end
+
+    test "negotiates a supported revision for an unknown client revision", %{
+      conn: conn,
+      actor: actor
+    } do
+      response =
+        conn
+        |> authorize_mcp_conn(actor)
+        |> legacy_rpc("initialize", %{
+          "protocolVersion" => "unknown",
+          "capabilities" => %{},
+          "clientInfo" => %{"name" => "test-client", "version" => "1.0"}
+        })
+        |> json_response(200)
+
+      assert response["result"]["protocolVersion"] == MCP.legacy_protocol_version()
+    end
+
+    test "rejects malformed params and initialization fields", %{conn: conn, actor: actor} do
+      for params <- [nil, [], %{}, %{"_meta" => nil}, %{"protocolVersion" => 123}] do
+        response =
+          conn
+          |> authorize_mcp_conn(actor)
+          |> legacy_rpc("initialize", params)
+          |> json_response(400)
+
+        assert response["error"]["code"] == MCP.invalid_params()
+      end
+    end
+
+    test "allows omitted version and params for older clients", %{conn: conn, actor: actor} do
+      assert %{"result" => %{"tools" => _}} =
+               conn |> authorize_mcp_conn(actor) |> legacy_rpc("tools/list") |> json_response(200)
+    end
+  end
+
+  defp legacy_rpc(conn, method, params \\ :omitted) do
+    body = %{"jsonrpc" => "2.0", "id" => 1, "method" => method}
+    body = if params == :omitted, do: body, else: Map.put(body, "params", params)
+
+    conn
+    |> put_req_header("content-type", "application/json")
+    |> put_req_header("accept", "application/json, text/event-stream")
+    |> post("/mcp", Jason.encode!(body))
+  end
+
   describe "transport" do
     test "hides every MCP method when the global feature is disabled", %{conn: conn} do
       disable_feature(:mcp)

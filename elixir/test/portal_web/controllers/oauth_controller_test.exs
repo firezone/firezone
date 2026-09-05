@@ -580,11 +580,24 @@ defmodule PortalWeb.OAuthControllerTest do
       account: account,
       actor: actor
     } do
+      ipv4 = {104, 18, 0, 1}
+      ipv6 = {0x2606, 0x4700, 0, 0, 0, 0, 0, 0x1111}
+      unknown = {192, 0, 2, 1}
+
+      Portal.Test.GeoAdapter.put_data(%{
+        ipv4 => %{
+          country: %{iso_code: "US"},
+          city: %{names: %{en: "San Francisco"}},
+          location: %{}
+        },
+        ipv6 => %{country: %{iso_code: "AU"}}
+      })
+
       client =
         oauth_client_fixture(
-          resolved_ips: [%Postgrex.INET{address: {104, 18, 0, 1}}],
-          resolved_ip_location_region: "US",
-          resolved_ip_location_city: "San Francisco"
+          resolved_ips: Enum.map([ipv4, ipv6, unknown], &%Postgrex.INET{address: &1}),
+          resolved_ip_location_region: "GB",
+          resolved_ip_location_city: "Stale location"
         )
 
       conn =
@@ -595,7 +608,12 @@ defmodule PortalWeb.OAuthControllerTest do
       response = html_response(conn, 200)
 
       assert response =~ "104.18.0.1"
-      assert response =~ "San Francisco, US"
+      rows = response |> Floki.parse_document!() |> Floki.find("li") |> Enum.map(&Floki.text/1)
+      assert Enum.any?(rows, &(&1 =~ "104.18.0.1" and &1 =~ "San Francisco, US"))
+      assert Enum.any?(rows, &(&1 =~ "2606:4700::1111" and &1 =~ "AU"))
+      assert Enum.any?(rows, &(&1 =~ "192.0.2.1" and &1 =~ "Location unavailable"))
+      refute response =~ "Stale location"
+      assert response =~ "do not recognize it"
       assert response =~ "Verified address"
       assert response =~ URI.parse(client.client_id).host
 
