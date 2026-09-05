@@ -19,7 +19,7 @@ use crate::{
         SessionViewModel, X509CertificateChanged,
     },
 };
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, ErrorExt as _, Result, bail};
 use futures::SinkExt as _;
 use logging::err_with_src;
 use std::time::Duration;
@@ -262,19 +262,57 @@ fn spawn_notification(title: String, body: String, open_url: Option<url::Url>) {
     });
 }
 
-/// IPC messages that a newly launched instance may send to an already
-/// running instance of Firezone.
+/// IPC messages that a newly launched process (a second instance, a deep-link
+/// handler or a CLI subcommand) may send to the running instance of Firezone.
 #[derive(Debug, PartialEq, serde::Deserialize, serde::Serialize)]
 pub enum ClientMsg {
     Deeplink(url::Url),
     NewInstance,
+    ListResources,
+    SetInternetResourceEnabled(bool),
+    SignIn,
+    SignOut,
 }
 
-/// IPC messages that an already running instance may send back to a
-/// newly launched instance.
+/// IPC messages that the running instance sends back in reply to a [`ClientMsg`].
 #[derive(Debug, PartialEq, serde::Deserialize, serde::Serialize)]
 pub enum ServerMsg {
     Ack,
+    Resources(Vec<connlib_model::ResourceView>),
+    Error(String),
+}
+
+/// Sends one [`ClientMsg`] to the running instance and returns its reply.
+///
+/// # Errors
+///
+/// Fails if no instance is running or if the running instance replies with
+/// [`ServerMsg::Error`].
+pub async fn request(msg: ClientMsg) -> Result<ServerMsg> {
+    let (mut read, mut write) =
+        ipc::connect::<ServerMsg, ClientMsg>(SocketId::Gui, ipc::ConnectOptions::default())
+            .await
+            .map_err(|e| {
+                if e.any_is::<ipc::NotFound>() {
+                    return e.context("The Firezone GUI is not running");
+                }
+
+                e
+            })?;
+
+    write.send(&msg).await.context("Failed to send request")?;
+
+    let response = read
+        .next()
+        .await
+        .context("No response received")?
+        .context("Failed to receive response")?;
+
+    if let ServerMsg::Error(e) = response {
+        bail!("{e}");
+    }
+
+    Ok(response)
 }
 
 /// Runs the Tauri GUI and returns on exit or unrecoverable error

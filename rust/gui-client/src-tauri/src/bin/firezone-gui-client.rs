@@ -8,6 +8,7 @@ use std::{process::ExitCode, sync::Arc};
 
 use anyhow::{Context as _, ErrorExt, Result, bail};
 use clap::{Args, Parser};
+use connlib_model::ResourceView;
 use controller::Failure;
 use firezone_gui_client::{controller, deep_link, dialog, elevation, gui, logging};
 use tokio::runtime::Runtime;
@@ -159,6 +160,40 @@ fn try_main(cli: Cli, rt: &Runtime, log_guard: &mut Option<LogGuard>) -> Result<
 
             rt.block_on(deep_link::open(deep_link.url))
                 .context("Failed to open deep-link")?;
+
+            return Ok(());
+        }
+        Some(Cmd::ListResources(ListResourcesArgs { json })) => {
+            let reply = rt
+                .block_on(gui::request(gui::ClientMsg::ListResources))
+                .context("Failed to list resources")?;
+            let gui::ServerMsg::Resources(resources) = reply else {
+                bail!("Unexpected reply: {reply:?}");
+            };
+
+            print_resources(&resources, json)?;
+
+            return Ok(());
+        }
+        Some(Cmd::EnableInternetResource) => {
+            expect_ack(rt, gui::ClientMsg::SetInternetResourceEnabled(true))
+                .context("Failed to enable Internet Resource")?;
+
+            return Ok(());
+        }
+        Some(Cmd::DisableInternetResource) => {
+            expect_ack(rt, gui::ClientMsg::SetInternetResourceEnabled(false))
+                .context("Failed to disable Internet Resource")?;
+
+            return Ok(());
+        }
+        Some(Cmd::SignIn) => {
+            expect_ack(rt, gui::ClientMsg::SignIn).context("Failed to sign in")?;
+
+            return Ok(());
+        }
+        Some(Cmd::SignOut) => {
+            expect_ack(rt, gui::ClientMsg::SignOut).context("Failed to sign out")?;
 
             return Ok(());
         }
@@ -359,6 +394,23 @@ enum Cmd {
     OpenDeepLink(DeepLink),
     /// SmokeTest gets its own subcommand for historical reasons.
     SmokeTest,
+    /// Print the Resources of the running Firezone GUI.
+    ListResources(ListResourcesArgs),
+    /// Enable the Internet Resource in the running Firezone GUI.
+    EnableInternetResource,
+    /// Disable the Internet Resource in the running Firezone GUI.
+    DisableInternetResource,
+    /// Start the sign-in flow in the running Firezone GUI.
+    SignIn,
+    /// Sign out of the running Firezone GUI.
+    SignOut,
+}
+
+#[derive(Args)]
+struct ListResourcesArgs {
+    /// Print the Resources as JSON instead of a table.
+    #[arg(long)]
+    json: bool,
 }
 
 #[derive(clap::Subcommand)]
@@ -424,6 +476,63 @@ async fn debug_single_instance() -> anyhow::Result<()> {
             println!("second-instance: handshake completed, exiting");
         }
     }
+    Ok(())
+}
+
+fn expect_ack(rt: &Runtime, msg: gui::ClientMsg) -> Result<()> {
+    let reply = rt.block_on(gui::request(msg))?;
+
+    anyhow::ensure!(reply == gui::ServerMsg::Ack, "Unexpected reply: {reply:?}");
+
+    Ok(())
+}
+
+#[allow(
+    clippy::print_stdout,
+    reason = "the whole point of this subcommand is to print the resource list to stdout"
+)]
+fn print_resources(resources: &[ResourceView], json: bool) -> Result<()> {
+    if json {
+        println!("{}", serde_json::to_string_pretty(resources)?);
+
+        return Ok(());
+    }
+
+    let header = ["NAME", "TYPE", "ADDRESS", "STATUS"].map(str::to_owned);
+    let rows = resources.iter().map(|resource| {
+        let kind = match resource {
+            ResourceView::Dns(_) => "dns",
+            ResourceView::Cidr(_) => "cidr",
+            ResourceView::Internet(_) => "internet",
+        };
+
+        [
+            resource.name().to_owned(),
+            kind.to_owned(),
+            resource.pastable().into_owned(),
+            resource.status().to_string(),
+        ]
+    });
+    let table = std::iter::once(header).chain(rows).collect::<Vec<_>>();
+    let widths = std::array::from_fn::<_, 4, _>(|column| {
+        table
+            .iter()
+            .map(|row| row[column].len())
+            .max()
+            .unwrap_or_default()
+    });
+
+    for row in table {
+        let line = row
+            .iter()
+            .zip(widths)
+            .map(|(cell, width)| format!("{cell:<width$}"))
+            .collect::<Vec<_>>()
+            .join("  ");
+
+        println!("{}", line.trim_end());
+    }
+
     Ok(())
 }
 
