@@ -17,25 +17,31 @@ defmodule Portal.DirectorySync.Lock do
   defmodule Database do
     alias Portal.Safe
 
+    # DBConnection disconnects the checkout, and with it the running sync, at this deadline.
+    @checkout_timeout :timer.minutes(10)
+
     def try_run(key, fun) do
       Safe.unscoped()
-      |> Safe.checkout(fn ->
-        {:ok, %{rows: [[acquired?]]}} =
-          Safe.unscoped()
-          |> Safe.query("SELECT pg_try_advisory_lock(hashtextextended($1, 0))", [key])
+      |> Safe.checkout(
+        fn ->
+          {:ok, %{rows: [[acquired?]]}} =
+            Safe.unscoped()
+            |> Safe.query("SELECT pg_try_advisory_lock(hashtextextended($1, 0))", [key])
 
-        if acquired? do
-          try do
-            {:ok, fun.()}
-          after
-            {:ok, _} =
-              Safe.unscoped()
-              |> Safe.query("SELECT pg_advisory_unlock(hashtextextended($1, 0))", [key])
+          if acquired? do
+            try do
+              {:ok, fun.()}
+            after
+              {:ok, _} =
+                Safe.unscoped()
+                |> Safe.query("SELECT pg_advisory_unlock(hashtextextended($1, 0))", [key])
+            end
+          else
+            :busy
           end
-        else
-          :busy
-        end
-      end)
+        end,
+        timeout: @checkout_timeout
+      )
     end
   end
 end
