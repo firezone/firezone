@@ -50,8 +50,8 @@ defmodule Portal.Health do
     |> File.exists?()
   end
 
-  # Deliberately excludes the poller pools: their cycle-long checkouts would
-  # make the readiness query queue up and fail
+  # Deliberately excludes the poller and lock pools: their long checkouts
+  # would make the readiness query queue up and fail
   @repos [
     Portal.Repo,
     Portal.Repo.Web,

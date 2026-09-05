@@ -58,12 +58,13 @@ config :portal, Portal.Repo,
   start_apps_before_migration: [:ssl, :logger_json, :req],
   parameters: [application_name: "portal"]
 
-# Isolated connection pools (web/api/job/poller)
+# Isolated connection pools (web/api/job/poller/lock)
 for {repo, app_name} <- [
       {Portal.Repo.Web, "web"},
       {Portal.Repo.Api, "api"},
       {Portal.Repo.Job, "job"},
-      {Portal.Repo.Poller, "poller"}
+      {Portal.Repo.Poller, "poller"},
+      {Portal.Repo.Lock, "lock"}
     ] do
   config :portal, repo,
     hostname: "localhost",
