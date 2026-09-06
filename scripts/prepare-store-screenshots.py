@@ -32,10 +32,11 @@ MAC_CORNER_RADIUS = {
     "26": {"main": 15, "settings": 26},
 }
 MAIN_WINDOW_SCREENS = {"first-time", "grant-vpn"}
-# WindowServer draws the window's edge, and a hairline along its corner arcs, against
-# whatever is behind them, and not the same way twice. The capture gets a border of
-# its own over that edge, cut this much deeper into the corners than the window is.
-MAC_CORNER_MARGIN = 8
+# WindowServer draws the window's edge, and a hairline along its corner arcs,
+# against whatever is behind them, and not the same way twice. A band this wide
+# inside the edge is repainted from the window's own colours further in, and gets
+# a hairline of its own.
+MAC_EDGE = 5
 MAC_BORDER = {"light": (0xD9, 0xD9, 0xD9), "dark": (0x63, 0x63, 0x63)}
 MAC_SHADOW_OFFSET = (0, 50)
 MAC_SHADOW_BLUR = 35
@@ -89,6 +90,45 @@ def rounded_mask(size: tuple[int, int], radius: int, inset: int = 0) -> Image.Im
     return mask.resize(size, Image.Resampling.BOX)
 
 
+def repainted_edge(window: Image.Image, radius: int) -> Image.Image:
+    """The window with its outer band redrawn from the colours just inside it.
+
+    Each edge is stretched from the line `MAC_EDGE` pixels in; each corner square
+    is filled from a point on the same edge past the arc, where the titlebar or
+    the window body is plain.
+    """
+    width, height = window.size
+    edge = MAC_EDGE
+    inside = window.crop((edge, edge, width - edge, height - edge))
+    nearest = Image.Resampling.NEAREST
+
+    filled = window.copy()
+    top = inside.crop((0, 0, inside.width, 1))
+    bottom = inside.crop((0, inside.height - 1, inside.width, inside.height))
+    left = inside.crop((0, 0, 1, inside.height))
+    right = inside.crop((inside.width - 1, 0, inside.width, inside.height))
+    filled.paste(top.resize((inside.width, edge), nearest), (edge, 0))
+    filled.paste(bottom.resize((inside.width, edge), nearest), (edge, height - edge))
+    filled.paste(left.resize((edge, inside.height), nearest), (0, edge))
+    filled.paste(right.resize((edge, inside.height), nearest), (width - edge, edge))
+
+    corners = {
+        (0, 0): (radius, edge),
+        (width - radius, 0): (width - 1 - radius, edge),
+        (0, height - radius): (radius, height - 1 - edge),
+        (width - radius, height - radius): (
+            width - 1 - radius,
+            height - 1 - edge,
+        ),
+    }
+    for (x, y), source in corners.items():
+        filled.paste(window.getpixel(source), (x, y, x + radius, y + radius))
+
+    kept = rounded_mask(window.size, radius - edge, inset=edge)
+
+    return Image.composite(window, filled, kept)
+
+
 def frame_window(capture: Image.Image, radius: int, appearance: str) -> Image.Image:
     """The window on the store canvas: clipped, bordered and with a shadow.
 
@@ -96,7 +136,7 @@ def frame_window(capture: Image.Image, radius: int, appearance: str) -> Image.Im
     the masks alone and never sample the capture's own boundary pixels.
     """
     outer = rounded_mask(capture.size, radius)
-    inner = rounded_mask(capture.size, radius + MAC_CORNER_MARGIN, inset=1)
+    inner = rounded_mask(capture.size, radius - 1, inset=1)
     position = (
         (MAC_SIZE[0] - capture.width) // 2,
         (MAC_SIZE[1] - capture.height) // 2,
@@ -119,7 +159,7 @@ def frame_window(capture: Image.Image, radius: int, appearance: str) -> Image.Im
     canvas = Image.composite(border, canvas, placed(outer))
 
     window = Image.new("RGB", MAC_SIZE)
-    window.paste(capture.convert("RGB"), position)
+    window.paste(repainted_edge(capture.convert("RGB"), radius), position)
     return Image.composite(window, canvas, placed(inner))
 
 
