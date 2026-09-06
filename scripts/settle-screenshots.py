@@ -37,8 +37,11 @@ PATCH_FRACTION = 0.01
 
 def committed(path: str) -> bytes | None:
     """The file as HEAD has it, or None for one that HEAD does not carry."""
+    # `--filters` smudges the LFS pointer into the image.
     result = subprocess.run(
-        ["git", "show", f"HEAD:{path}"], capture_output=True, check=False
+        ["git", "cat-file", "--filters", f"--path={path}", f"HEAD:{path}"],
+        capture_output=True,
+        check=False,
     )
 
     return result.stdout if result.returncode == 0 else None

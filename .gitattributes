@@ -1,3 +1,9 @@
 # Don't allow Git to mess up line endings, ever
 # https://github.com/actions/checkout/issues/135#issuecomment-613329879
 * -text eol=lf
+
+# Screenshots are re-rendered by CI, and a PNG never deltas against its previous
+# version, so they live in Git LFS to keep the repository's history small.
+rust/gui-client/screenshots/**/*.png filter=lfs diff=lfs merge=lfs -text
+kotlin/android/screenshots/**/*.png filter=lfs diff=lfs merge=lfs -text
+swift/apple/screenshots/**/*.png filter=lfs diff=lfs merge=lfs -text
