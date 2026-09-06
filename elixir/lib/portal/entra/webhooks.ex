@@ -116,13 +116,12 @@ defmodule Portal.Entra.Webhooks do
     nil
   end
 
-  # Most user changes in a tenant concern users this directory never synced.
-  # Those are dropped here so they never become jobs, unless a job for the
-  # directory is running: it may still insert the user from a response fetched
-  # before this change, and only a job that runs after it can re-read the user
-  # and apply the change. Every group change becomes a job, because a change
-  # to an untracked group still changes the transitive members of the tracked
-  # groups above it, and only Graph knows which those are.
+  # Most changes in a tenant concern users and groups this directory never
+  # synced. Those are dropped here so they never become jobs, unless a job for
+  # the directory is running: it may still insert the object from a response
+  # fetched before this change, and only a job that runs after it can re-read
+  # the object and apply the change. A group nested in a tracked group is kept
+  # too, because its members are the tracked group's members.
   defp in_scope([], _directory), do: []
 
   defp in_scope(changes, directory) do
@@ -130,11 +129,19 @@ defmodule Portal.Entra.Webhooks do
       changes
     else
       user_ids = for {"user", id, _} <- changes, do: id
+      group_ids = for {"group", id, _} <- changes, do: id
       known_users = Database.known_user_ids(directory, user_ids)
+
+      known_groups =
+        if directory.sync_all_groups do
+          MapSet.new(group_ids)
+        else
+          Database.tracked_or_nested_group_ids(directory, group_ids)
+        end
 
       Enum.filter(changes, fn
         {"user", id, _} -> MapSet.member?(known_users, id)
-        {"group", _id, _} -> true
+        {"group", id, _} -> MapSet.member?(known_groups, id)
       end)
     end
   end
@@ -193,5 +200,20 @@ defmodule Portal.Entra.Webhooks do
       |> MapSet.new()
     end
 
+    def tracked_or_nested_group_ids(_directory, []), do: MapSet.new()
+
+    def tracked_or_nested_group_ids(directory, idp_ids) do
+      from(g in Portal.Group,
+        where: g.account_id == ^directory.account_id,
+        where: g.directory_id == ^directory.id,
+        where: g.idp_id in ^idp_ids or fragment("? && ?::text[]", g.nested_group_idp_ids, ^idp_ids),
+        select: {g.idp_id, g.nested_group_idp_ids}
+      )
+      |> Safe.unscoped()
+      |> Safe.all()
+      |> Enum.flat_map(fn {idp_id, nested_ids} -> [idp_id | nested_ids] end)
+      |> MapSet.new()
+      |> MapSet.intersection(MapSet.new(idp_ids))
+    end
   end
 end

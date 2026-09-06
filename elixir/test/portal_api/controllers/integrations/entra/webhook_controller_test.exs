@@ -47,13 +47,19 @@ defmodule PortalAPI.Integrations.Entra.WebhookControllerTest do
         identity_fixture(account: account, directory: base_directory, issuer: issuer, idp_id: id)
       end
 
-      group_fixture(account: account, directory: base_directory, idp_id: "group-1")
+      group_fixture(
+        account: account,
+        directory: base_directory,
+        idp_id: "group-1",
+        nested_group_idp_ids: ["group-nested"]
+      )
 
       conn =
         post_notifications(conn, directory, [
           change("Users", "user-1", "updated"),
           change("Users", "user-1", "updated"),
           change("Groups", "group-1", "updated"),
+          change("Groups", "group-nested", "updated"),
           change("Users", "user-2", "deleted"),
           change("Users", "user-unknown", "updated"),
           change("Groups", "group-unknown", "updated")
@@ -66,7 +72,7 @@ defmodule PortalAPI.Integrations.Entra.WebhookControllerTest do
 
       assert_enqueued(
         worker: Entra.WebhookSync,
-        args: %{resource: "group", resource_id: "group-unknown", change_type: "updated"}
+        args: %{resource: "group", resource_id: "group-nested", change_type: "updated"}
       )
 
       assert_enqueued(
@@ -91,7 +97,7 @@ defmodule PortalAPI.Integrations.Entra.WebhookControllerTest do
       )
     end
 
-    test "drops unknown users but queues unknown groups", %{
+    test "queues unknown groups when the directory syncs all groups", %{
       conn: conn,
       account: account
     } do
