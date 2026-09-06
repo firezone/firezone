@@ -1,0 +1,3 @@
+#!/bin/sh
+# `firezone` CLI entry point for the GUI Client.
+exec /usr/bin/firezone-client-gui "$@"

@@ -105,6 +105,9 @@ fzLib.buildRustPackage (
         mv $out/bin/firezone-gui-client $out/bin/firezone-client-gui
       fi
 
+      # `firezone` CLI entry point, mirroring linux_package/firezone.
+      makeWrapper $out/bin/firezone-client-gui $out/bin/firezone
+
       install -Dm644 gui-client/src-tauri/icons/32x32.png \
         $out/share/icons/hicolor/32x32/apps/firezone-client-gui.png
       install -Dm644 gui-client/src-tauri/icons/128x128.png \
