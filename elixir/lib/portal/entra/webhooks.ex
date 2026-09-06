@@ -116,38 +116,27 @@ defmodule Portal.Entra.Webhooks do
     nil
   end
 
-  # Most changes in a tenant concern users and groups this directory never
-  # synced. Those are dropped here so they never become jobs, unless a job for
-  # the directory is running: it may still insert the object from a response
-  # fetched before this change, and only a job that runs after it can re-read
-  # the object and apply the change.
+  # Most user changes in a tenant concern users this directory never synced.
+  # Those are dropped here so they never become jobs, unless a job for the
+  # directory is running: it may still insert the user from a response fetched
+  # before this change, and only a job that runs after it can re-read the user
+  # and apply the change. Every group change becomes a job, because a change
+  # to an untracked group still changes the transitive members of the tracked
+  # groups above it, and only Graph knows which those are.
   defp in_scope([], _directory), do: []
 
   defp in_scope(changes, directory) do
     if DirectorySync.busy?(@directory_workers, directory.id) do
       changes
     else
-      known_changes(changes, directory)
+      user_ids = for {"user", id, _} <- changes, do: id
+      known_users = Database.known_user_ids(directory, user_ids)
+
+      Enum.filter(changes, fn
+        {"user", id, _} -> MapSet.member?(known_users, id)
+        {"group", _id, _} -> true
+      end)
     end
-  end
-
-  defp known_changes(changes, directory) do
-    user_ids = for {"user", id, _} <- changes, do: id
-    group_ids = for {"group", id, _} <- changes, do: id
-
-    known_users = Database.known_user_ids(directory, user_ids)
-
-    known_groups =
-      if directory.sync_all_groups do
-        MapSet.new(group_ids)
-      else
-        Database.known_group_ids(directory, group_ids)
-      end
-
-    Enum.filter(changes, fn
-      {"user", id, _} -> MapSet.member?(known_users, id)
-      {"group", id, _} -> MapSet.member?(known_groups, id)
-    end)
   end
 
   defp change_job(directory, {resource, id, change_type}) do
@@ -204,18 +193,5 @@ defmodule Portal.Entra.Webhooks do
       |> MapSet.new()
     end
 
-    def known_group_ids(_directory, []), do: MapSet.new()
-
-    def known_group_ids(directory, idp_ids) do
-      from(g in Portal.Group,
-        where: g.account_id == ^directory.account_id,
-        where: g.directory_id == ^directory.id,
-        where: g.idp_id in ^idp_ids,
-        select: g.idp_id
-      )
-      |> Safe.unscoped()
-      |> Safe.all()
-      |> MapSet.new()
-    end
   end
 end

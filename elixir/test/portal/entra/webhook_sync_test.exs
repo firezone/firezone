@@ -97,18 +97,31 @@ defmodule Portal.Entra.WebhookSyncTest do
       refute Repo.get_by(ExternalIdentity, id: identity.id)
     end
 
-    test "removes a deleted user without calling Graph", %{directory: directory} = ctx do
+    test "removes a user on a deleted notification once Graph confirms it",
+         %{directory: directory} = ctx do
       identity = directory_identity(ctx, "user-1")
+      stub_graph(users: %{})
 
       assert :ok = perform_job(WebhookSync, user_args(directory, "user-1", "deleted"))
 
       refute Repo.get_by(ExternalIdentity, id: identity.id)
     end
 
+    test "keeps a user Graph restored after a stale deleted notification",
+         %{directory: directory} = ctx do
+      identity = directory_identity(ctx, "user-1", name: "Old Name")
+      stub_graph(users: %{"user-1" => graph_user("user-1", "Restored", "u1@example.com")})
+
+      assert :ok = perform_job(WebhookSync, user_args(directory, "user-1", "deleted"))
+
+      assert Repo.get_by!(ExternalIdentity, id: identity.id).name == "Restored"
+    end
+
     test "keeps an actor that still has other identities", %{directory: directory} = ctx do
       identity = directory_identity(ctx, "user-1")
       actor = mark_created_by_directory(identity.actor_id, directory)
       other = identity_fixture(account: ctx.account, actor: actor)
+      stub_graph(users: %{})
 
       assert :ok = perform_job(WebhookSync, user_args(directory, "user-1", "deleted"))
 
@@ -157,6 +170,23 @@ defmodule Portal.Entra.WebhookSyncTest do
 
       assert Repo.all(Group) == []
       assert Repo.all(ExternalIdentity) == []
+    end
+
+    test "reconciles tracked parents of an untracked child",
+         %{account: account, directory: directory, base_directory: base_directory} do
+      parent = group_fixture(account: account, directory: base_directory, idp_id: "parent")
+      alice = graph_user("user-alice", "Alice", "alice@example.com")
+
+      stub_graph(
+        groups: %{"child" => {"Child", [alice]}, "parent" => {"Parent", [alice]}},
+        parents: %{"child" => [%{"id" => "parent", "displayName" => "Parent"}]}
+      )
+
+      assert :ok = perform_job(WebhookSync, group_args(directory, "child", "updated"))
+
+      refute Repo.get_by(Group, idp_id: "child")
+      identity = Repo.get_by!(ExternalIdentity, idp_id: "user-alice")
+      assert Repo.get_by(Membership, actor_id: identity.actor_id, group_id: parent.id)
     end
 
     test "renames a tracked group and reconciles its members",
@@ -234,9 +264,10 @@ defmodule Portal.Entra.WebhookSyncTest do
       assert Repo.all(Membership) == []
     end
 
-    test "deletes a group on a deleted notification without calling Graph",
+    test "deletes a group on a deleted notification once Graph confirms it",
          %{account: account, directory: directory, base_directory: base_directory} do
       group = group_fixture(account: account, directory: base_directory, idp_id: "group-1")
+      stub_graph(groups: %{})
 
       assert :ok = perform_job(WebhookSync, group_args(directory, "group-1", "deleted"))
 

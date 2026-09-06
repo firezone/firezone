@@ -78,9 +78,11 @@ defmodule Portal.Google.Webhooks do
   # the user and apply the change.
   defp in_scope?(%{orgunit_sync_enabled: true}, _user_id), do: true
 
+  # Busy is read first: a full sync that inserts the user and finishes between
+  # the two reads is then caught by the identity lookup.
   defp in_scope?(directory, user_id) do
-    Database.identity_exists?(directory, user_id) or
-      DirectorySync.busy?(@directory_workers, directory.id)
+    DirectorySync.busy?(@directory_workers, directory.id) or
+      Database.identity_exists?(directory, user_id)
   end
 
   defmodule Database do

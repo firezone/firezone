@@ -2,9 +2,9 @@ defmodule Portal.DirectorySync do
   @moduledoc """
   One writer per directory. A full sync and the webhook jobs of a directory
   never run at the same time: a job snoozes while another job for its
-  directory is executing on a live node. Every job re-reads the provider when
-  it runs, so a change that arrived while another job was running is applied
-  by a fresh read after that job finished, and no stale response can undo a
+  directory may still be writing. Every job re-reads the provider when it
+  runs, so a change that arrived while another job was running is applied by
+  a fresh read after that job finished, and no stale response can undo a
   newer one.
 
   The check is safe because Oban commits a job to `executing` before
@@ -12,27 +12,45 @@ defmodule Portal.DirectorySync do
   only if the other was not executing at its own check, and both cannot be
   true. Both may snooze, which the jittered snooze resolves.
 
-  Every job has a timeout below Oban's Lifeline rescue window, so a job that
-  outlives it fails loudly instead of being run twice.
+  An executing row keeps blocking until its process certainly cannot write:
+  Oban kills a job at its timeout, so a row older than that plus a margin is
+  dead, and a node that restarts re-queues the rows it left behind, since a
+  node name cannot run twice. Leaving the cluster proves nothing, a
+  disconnected node can still reach the database.
   """
   alias __MODULE__.Database
 
+  @workers [
+    Portal.Entra.Sync,
+    Portal.Entra.WebhookSync,
+    Portal.Google.Sync,
+    Portal.Google.WebhookSync,
+    Portal.Okta.Sync
+  ]
+
   @full_sync_timeout :timer.minutes(100)
   @webhook_timeout :timer.minutes(30)
+  @dead_margin :timer.minutes(5)
 
   def full_sync_timeout, do: @full_sync_timeout
   def webhook_timeout, do: @webhook_timeout
 
   @doc """
-  Whether another job of `workers` for the directory is executing on a node
-  that is still part of the cluster. A job left executing by a node that went
-  away is ignored until Lifeline re-queues it.
+  Whether another job of `workers` for the directory is executing and young
+  enough that its process may still be alive.
   """
   def running_elsewhere?(workers, directory_id, %Oban.Job{id: job_id}) do
-    live_nodes = live_nodes()
+    timeouts = Map.new(workers, &{inspect(&1), &1.timeout(nil)})
+    now = DateTime.utc_now()
 
     Database.executing_jobs(workers, directory_id, job_id)
-    |> Enum.any?(&live?(&1, live_nodes))
+    |> Enum.any?(fn
+      %{attempted_at: nil} ->
+        true
+
+      %{worker: worker, attempted_at: attempted_at} ->
+        DateTime.diff(now, attempted_at, :millisecond) < timeouts[worker] + @dead_margin
+    end)
   end
 
   @doc """
@@ -46,12 +64,21 @@ defmodule Portal.DirectorySync do
 
   def snooze_seconds, do: 15 + :rand.uniform(30)
 
-  defp live_nodes do
-    [Oban.config().node | Enum.map(Node.list(), &to_string/1)]
+  @doc """
+  Re-queues the sync jobs this node left executing before it restarted, so a
+  deploy does not block their directories until the rows age out.
+  """
+  def rescue_own_orphans do
+    if Node.alive?() do
+      rescue_orphans(Oban.config().node)
+    else
+      0
+    end
   end
 
-  defp live?([node | _], live_nodes) when is_binary(node), do: node in live_nodes
-  defp live?(_attempted_by, _live_nodes), do: true
+  def rescue_orphans(node) do
+    Database.rescue_orphans(@workers, node)
+  end
 
   defmodule Database do
     @moduledoc false
@@ -64,7 +91,7 @@ defmodule Portal.DirectorySync do
         where: j.state == "executing",
         where: j.id != ^except_job_id,
         where: fragment("?->>'directory_id' = ?", j.args, ^directory_id),
-        select: j.attempted_by
+        select: %{worker: j.worker, attempted_at: j.attempted_at}
       )
       |> Safe.unscoped()
       |> Safe.all()
@@ -78,6 +105,29 @@ defmodule Portal.DirectorySync do
       )
       |> Safe.unscoped()
       |> Safe.exists?()
+    end
+
+    def rescue_orphans(workers, node) do
+      orphans =
+        from(j in Oban.Job,
+          where: j.worker in ^worker_names(workers),
+          where: j.state == "executing",
+          where: fragment("?[1] = ?", j.attempted_by, ^node)
+        )
+
+      {rescued, _} =
+        orphans
+        |> where([j], j.attempt < j.max_attempts)
+        |> Safe.unscoped()
+        |> Safe.update_all(set: [state: "available"])
+
+      {discarded, _} =
+        orphans
+        |> where([j], j.attempt >= j.max_attempts)
+        |> Safe.unscoped()
+        |> Safe.update_all(set: [state: "discarded", discarded_at: DateTime.utc_now()])
+
+      rescued + discarded
     end
 
     defp worker_names(workers), do: Enum.map(workers, &inspect/1)

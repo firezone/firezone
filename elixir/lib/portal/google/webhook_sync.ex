@@ -211,9 +211,7 @@ defmodule Portal.Google.WebhookSync do
   defp remove_identity(_directory, nil), do: :ok
 
   defp remove_identity(directory, identity) do
-    Database.delete_identity(identity)
-    Database.delete_actor_directory_memberships(directory, identity.actor_id)
-    Google.Sync.delete_actors_without_identities(directory)
+    {:ok, _} = Database.remove_identity(directory, identity)
 
     Logger.info("Removed identity from Google user notification",
       google_directory_id: directory.id,
@@ -226,6 +224,18 @@ defmodule Portal.Google.WebhookSync do
   defmodule Database do
     import Ecto.Query
     alias Portal.Safe
+
+    # One transaction, so a retry after a crash cannot find the identity gone
+    # and leave the memberships behind.
+    def remove_identity(directory, identity) do
+      Safe.unscoped()
+      |> Safe.transaction(fn ->
+        delete_identity(identity)
+        delete_actor_directory_memberships(directory, identity.actor_id)
+        Portal.Google.Sync.delete_actors_without_identities(directory)
+        {:ok, :removed}
+      end)
+    end
 
     def get_identity(directory, idp_id) do
       issuer = Portal.Google.Sync.issuer()

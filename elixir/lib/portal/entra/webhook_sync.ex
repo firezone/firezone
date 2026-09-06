@@ -81,45 +81,40 @@ defmodule Portal.Entra.WebhookSync do
     apply_change(directory, resource, resource_id, change_type)
   end
 
-  defp apply_change(directory, "user", user_id, change_type) do
+  # A notification is only a ping: the object is always re-read, so a queued
+  # deletion that Graph has since undone refreshes the object instead.
+  defp apply_change(directory, "user", user_id, _change_type) do
     case Database.get_identity(directory.account_id, Entra.Sync.issuer(directory), user_id) do
       nil -> :ok
-      identity when change_type == "deleted" -> remove_identity(directory, identity)
       identity -> refresh_identity(directory, identity, user_id)
     end
   end
 
-  defp apply_change(directory, "group", group_id, change_type) do
-    group = Database.get_group(directory.account_id, directory.id, group_id)
+  defp apply_change(directory, "group", group_id, _change_type) do
+    access_token = Entra.Sync.get_access_token!(directory)
+    synced_at = DateTime.utc_now()
 
-    cond do
-      change_type == "deleted" ->
-        remove_group(directory, group)
+    case APIClient.get_group(access_token, group_id) do
+      {:ok, %Req.Response{status: 200, body: %{"id" => id, "displayName" => name}}}
+      when is_binary(id) and is_binary(name) ->
+        if tracked_group?(directory, id) do
+          resync_group(directory, access_token, synced_at, id, name)
+        end
 
-      is_nil(group) and not directory.sync_all_groups ->
+        # An untracked child still changes the transitive members of every
+        # tracked group above it.
+        resync_parent_groups(directory, access_token, synced_at, id)
+        Portal.Policy.reconnect_orphaned_policies(directory.account_id)
         :ok
 
-      true ->
-        access_token = Entra.Sync.get_access_token!(directory)
-        synced_at = DateTime.utc_now()
+      {:ok, %Req.Response{status: 404}} ->
+        remove_group(directory, Database.get_group(directory.account_id, directory.id, group_id))
 
-        case APIClient.get_group(access_token, group_id) do
-          {:ok, %Req.Response{status: 200, body: %{"id" => id, "displayName" => name}}}
-          when is_binary(id) and is_binary(name) ->
-            resync_group(directory, access_token, synced_at, id, name)
-            resync_parent_groups(directory, access_token, synced_at, id)
-            Portal.Policy.reconnect_orphaned_policies(directory.account_id)
-            :ok
+      {:ok, response} ->
+        raise Entra.SyncError, error: response, directory_id: directory.id, step: :get_group
 
-          {:ok, %Req.Response{status: 404}} ->
-            remove_group(directory, group)
-
-          {:ok, response} ->
-            raise Entra.SyncError, error: response, directory_id: directory.id, step: :get_group
-
-          {:error, error} ->
-            raise Entra.SyncError, error: error, directory_id: directory.id, step: :get_group
-        end
+      {:error, error} ->
+        raise Entra.SyncError, error: error, directory_id: directory.id, step: :get_group
     end
   end
 
@@ -175,9 +170,7 @@ defmodule Portal.Entra.WebhookSync do
   end
 
   defp remove_identity(directory, identity) do
-    Database.delete_identity(identity)
-    Database.delete_actor_directory_memberships(directory.account_id, directory.id, identity.actor_id)
-    Entra.Sync.delete_actors_without_identities(directory)
+    {:ok, _} = Database.remove_identity(directory, identity)
 
     Logger.info("Removed identity from Entra change notification",
       entra_directory_id: directory.id,
@@ -256,6 +249,18 @@ defmodule Portal.Entra.WebhookSync do
   defmodule Database do
     import Ecto.Query
     alias Portal.Safe
+
+    # One transaction, so a retry after a crash cannot find the identity gone
+    # and leave the memberships behind.
+    def remove_identity(directory, identity) do
+      Safe.unscoped()
+      |> Safe.transaction(fn ->
+        delete_identity(identity)
+        delete_actor_directory_memberships(directory.account_id, directory.id, identity.actor_id)
+        Portal.Entra.Sync.delete_actors_without_identities(directory)
+        {:ok, :removed}
+      end)
+    end
 
     def get_identity(account_id, issuer, idp_id) do
       from(i in Portal.ExternalIdentity,

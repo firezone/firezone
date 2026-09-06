@@ -62,7 +62,12 @@ defmodule PortalAPI.Integrations.Entra.WebhookControllerTest do
       assert response(conn, 202) == ""
 
       jobs = all_enqueued(worker: Entra.WebhookSync)
-      assert length(jobs) == 3
+      assert length(jobs) == 4
+
+      assert_enqueued(
+        worker: Entra.WebhookSync,
+        args: %{resource: "group", resource_id: "group-unknown", change_type: "updated"}
+      )
 
       assert_enqueued(
         worker: Entra.WebhookSync,
@@ -86,7 +91,7 @@ defmodule PortalAPI.Integrations.Entra.WebhookControllerTest do
       )
     end
 
-    test "queues unknown groups when the directory syncs all groups", %{
+    test "drops unknown users but queues unknown groups", %{
       conn: conn,
       account: account
     } do
