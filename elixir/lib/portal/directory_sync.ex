@@ -14,9 +14,9 @@ defmodule Portal.DirectorySync do
 
   An executing row keeps blocking until its process certainly cannot write:
   Oban kills a job at its timeout, so a row older than that plus a margin is
-  dead, and a node that restarts re-queues the rows it left behind, since a
-  node name cannot run twice. Leaving the cluster proves nothing, a
-  disconnected node can still reach the database.
+  dead, and a node that shuts down re-queues the rows of the jobs Oban killed
+  on the way out (see `Portal.DirectorySync.Rescuer`). Leaving the cluster
+  proves nothing, a disconnected node can still reach the database.
   """
   alias __MODULE__.Database
 
@@ -65,17 +65,9 @@ defmodule Portal.DirectorySync do
   def snooze_seconds, do: 15 + :rand.uniform(30)
 
   @doc """
-  Re-queues the sync jobs this node left executing before it restarted, so a
-  deploy does not block their directories until the rows age out.
+  Re-queues the sync jobs `node` left executing, or discards the ones with no
+  attempts left, the way Oban's Lifeline would later.
   """
-  def rescue_own_orphans do
-    if Node.alive?() do
-      rescue_orphans(Oban.config().node)
-    else
-      0
-    end
-  end
-
   def rescue_orphans(node) do
     Database.rescue_orphans(@workers, node)
   end

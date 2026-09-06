@@ -200,13 +200,8 @@ defmodule Portal.Application do
     # generating the OpenAPI spec without a Postgres service). Oban 2.22+
     # verifies migrations at supervisor start, which requires a live DB.
     if Portal.Config.env_var_to_config!(:oban_enabled) do
-      [
-        {Portal.Oban, Application.fetch_env!(:portal, Oban)},
-        Supervisor.child_spec({Task, &Portal.DirectorySync.rescue_own_orphans/0},
-          id: :directory_sync_rescue,
-          restart: :temporary
-        )
-      ]
+      # The rescuer stops after Oban, once the jobs Oban killed are gone.
+      [Portal.DirectorySync.Rescuer, {Portal.Oban, Application.fetch_env!(:portal, Oban)}]
     else
       []
     end
