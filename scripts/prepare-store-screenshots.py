@@ -55,7 +55,7 @@ def screenshots(directory: Path) -> list[Path]:
 def write_rgb(path: Path, image: Image.Image) -> None:
     output = BytesIO()
     image.convert("RGB").save(output, format="PNG")
-    path.write_bytes(oxipng.optimize_from_memory(output.getvalue(), level=6))
+    path.write_bytes(oxipng.optimize_from_memory(output.getvalue(), level=2))
 
 
 def prepare_ios(directory: Path, accepted_sizes: set[tuple[int, int]]) -> None:
