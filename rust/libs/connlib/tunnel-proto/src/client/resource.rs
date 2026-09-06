@@ -92,12 +92,15 @@ pub struct StaticDevicePoolResource {
 /// A dynamic device pool resource.
 ///
 /// Dynamic device pools have a DNS pattern that connlib matches against to resolve device addresses.
+/// Membership is decided by the portal: any tunnel-range peer without a static pool route is
+/// requested through the pool on first use.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct DynamicDevicePoolResource {
     pub id: ResourceId,
     pub name: String,
     /// DNS pattern for the pool (e.g. `*.devices.example.com`).
     pub address: String,
+    pub filters: Vec<Filter>,
 }
 
 impl Resource {
@@ -200,7 +203,7 @@ impl Resource {
             Resource::Cidr(r) => &r.filters,
             Resource::StaticDevicePool(r) => &r.filters,
             Resource::Internet(_) => &[],
-            Resource::DynamicDevicePool(_) => &[],
+            Resource::DynamicDevicePool(r) => &r.filters,
         }
     }
 
@@ -332,6 +335,7 @@ impl DynamicDevicePoolResource {
             id: resource.id,
             name: resource.name,
             address: resource.address,
+            filters: resource.filters,
         }
     }
 }
@@ -438,6 +442,32 @@ mod tests {
         };
 
         assert_eq!(dns.ip_stack, IpStack::Dual)
+    }
+
+    #[test]
+    fn can_deserialize_dynamic_device_pool_filters() {
+        let resource =
+            Resource::from_description(ResourceDescription::DynamicDevicePool(serde_json::json!({
+                "address": "*.devices.example.com",
+                "filters": [{
+                    "protocol": "tcp",
+                    "port_range_start": 22,
+                    "port_range_end": 22
+                }],
+                "id": "03000143-e25e-45c7-aafb-144990e57dce",
+                "name": "devices",
+                "type": "dynamic_device_pool"
+            })))
+            .unwrap();
+
+        let Resource::DynamicDevicePool(pool) = resource else {
+            panic!("Unexpected resource")
+        };
+
+        assert_eq!(
+            pool.filters,
+            vec![Filter::Tcp(crate::messages::PortRange::single(22))]
+        );
     }
 
     #[test]
