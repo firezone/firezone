@@ -168,7 +168,10 @@ program: it is the app's own binary, reached through a symlink beside it at
 `Firezone.app/Contents/MacOS/firezone-cli`, and it picks the command line path
 when started under that name. Being the same bundle is what lets it use the VPN
 configuration and system extension the app set up, which a second bundle could
-not do. `mise run cli` finds it for you:
+not do. That also rules out a symlink from outside the bundle, which is why the
+app ships `Contents/Resources/firezone-cli.sh`, a wrapper that `exec`s the
+binary at its real path and is meant to be installed into `/usr/local/bin`. For
+a development build, `mise run cli` finds the binary for you:
 
 ```sh
 mise run cli -- --help
