@@ -22,14 +22,9 @@ defmodule PortalAPI.Integrations.AzureCommunicationServices.WebhookController do
       {:more, _, conn} ->
         send_resp(conn, 413, "Request Entity Too Large")
 
-      # coveralls-ignore-start
-      # Defensive: catches read_body/1 transport failures such as {:error, :timeout}
-      # or {:error, :closed}. These are impractical to trigger in tests, so this
-      # clause is excluded from coverage.
       {:error, reason} ->
         Logger.error("ACS Event Grid webhook body could not be read", reason: inspect(reason))
         send_resp(conn, 500, "Internal Error")
-        # coveralls-ignore-stop
     end
   end
 
