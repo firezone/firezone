@@ -1,13 +1,14 @@
 #!/usr/bin/env -S uv run --script
 # /// script
 # requires-python = ">=3.11"
-# dependencies = ["pillow"]
+# dependencies = ["pillow", "pyoxipng"]
 # ///
 """Turn the clients' screenshot galleries into store-ready PNGs."""
 
 from io import BytesIO
 from pathlib import Path
 
+import oxipng
 from PIL import Image, ImageDraw, ImageFilter
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -54,7 +55,7 @@ def screenshots(directory: Path) -> list[Path]:
 def write_rgb(path: Path, image: Image.Image) -> None:
     output = BytesIO()
     image.convert("RGB").save(output, format="PNG")
-    path.write_bytes(output.getvalue())
+    path.write_bytes(oxipng.optimize_from_memory(output.getvalue(), level=6))
 
 
 def prepare_ios(directory: Path, accepted_sizes: set[tuple[int, int]]) -> None:
