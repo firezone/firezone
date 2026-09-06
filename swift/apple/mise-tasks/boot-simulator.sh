@@ -28,9 +28,9 @@ xcrun simctl spawn "${udid}" defaults write \
   com.apple.Accessibility ReduceMotionEnabled -bool true
 
 # A bar button is drawn on a material of its own that reduced transparency does
-# not reach; increased contrast replaces it with a solid fill.
-xcrun simctl spawn "${udid}" defaults write \
-  com.apple.Accessibility DarkerSystemColorsEnabled -bool true
+# not reach; increased contrast replaces it with a solid fill. `simctl ui` is the
+# setter the accessibility server listens to, so this applies without a reboot.
+xcrun simctl ui "${udid}" increase_contrast enabled
 
 echo "${udid}"
 
