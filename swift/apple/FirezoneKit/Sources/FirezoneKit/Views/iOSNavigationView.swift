@@ -26,6 +26,7 @@ import SwiftUI
     var body: some View {
       NavigationStack {
         content
+          .mockFlatBars()
           .navigationBarTitleDisplayMode(.inline)
           .navigationBarItems(leading: authMenu, trailing: settingsButton)
           .alert(

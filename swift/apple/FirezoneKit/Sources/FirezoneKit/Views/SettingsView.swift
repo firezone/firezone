@@ -107,12 +107,14 @@ public struct SettingsView: View {
           VStack {
             TabView(selection: $selectedTab) {
               generalTab
+                .mockFlatBars()
                 .tabItem {
                   Image(systemName: "slider.horizontal.3")
                   Text("General")
                 }
                 .tag(Tab.general)
               advancedTab
+                .mockFlatBars()
                 .tabItem {
                   Image(systemName: "gearshape.2")
                   Text("Advanced")
@@ -121,6 +123,7 @@ public struct SettingsView: View {
                 .tag(Tab.advanced)
               if store.deviceTrustCertificateSummary != nil {
                 deviceTrustTab
+                  .mockFlatBars()
                   .tabItem {
                     Image(systemName: "rosette")
                     Text("Device Trust")
@@ -128,6 +131,7 @@ public struct SettingsView: View {
                   .tag(Tab.deviceTrust)
               }
               logsTab
+                .mockFlatBars()
                 .tabItem {
                   Image(systemName: "doc.text")
                   Text("Diagnostic Logs")
