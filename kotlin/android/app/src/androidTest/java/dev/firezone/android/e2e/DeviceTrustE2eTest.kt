@@ -13,7 +13,7 @@ import dagger.hilt.android.testing.HiltAndroidRule
 import dagger.hilt.android.testing.HiltAndroidTest
 import dev.firezone.android.core.data.Repository
 import dev.firezone.android.core.data.TokenStore
-import dev.firezone.android.core.data.X509_CERTIFICATE_ALIAS_RESTRICTION
+import dev.firezone.android.core.data.X509_CERTIFICATE_RESTRICTION
 import dev.firezone.android.core.x509.FakeKeyChain
 import dev.firezone.android.core.x509.TestIdentity
 import dev.firezone.android.core.x509.testIdentity
@@ -22,6 +22,7 @@ import dev.firezone.android.features.splash.ui.SplashViewModel
 import dev.firezone.android.tunnel.FakeSession
 import dev.firezone.android.tunnel.FakeSessionFactory
 import dev.firezone.android.tunnel.TestRestrictions
+import dev.firezone.android.tunnel.TunnelService
 import dev.firezone.android.tunnel.finishAllActivities
 import dev.firezone.android.tunnel.grantNotificationPermission
 import dev.firezone.android.tunnel.grantVpnConsent
@@ -34,6 +35,7 @@ import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -41,8 +43,8 @@ import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 
 /**
- * Pins how an optional device certificate combines with the portal token and Android's KeyChain
- * permission. Only the portal is stood in for, by the scripted session factory.
+ * Pins how the device certificate is found and combines with the portal token and Android's
+ * KeyChain permission. Only the portal is stood in for, by the scripted session factory.
  */
 @HiltAndroidTest
 class DeviceTrustE2eTest {
@@ -68,7 +70,6 @@ class DeviceTrustE2eTest {
         grantNotificationPermission()
         FakeSessionFactory.reset()
         FakeKeyChain.reset()
-        SplashViewModel.certificateSelectionOffered = false
         SplashViewModel.policyAsked = false
         finishAllActivities()
         stopTunnelService()
@@ -113,9 +114,18 @@ class DeviceTrustE2eTest {
         assertEquals("a session was opened without any credential", 0, FakeSessionFactory.opened)
     }
 
+    /**
+     * Nobody required a certificate and the policy names none, so an installed one is left alone:
+     * nothing is asked of the user and the session goes out without it.
+     */
     @Test
     fun aTokenAloneConnectsWithoutACertificate() {
+        FakeKeyChain.install(ALIAS, testIdentity(SERIAL_CLAIM), granted = false)
         tokenStore.save(TOKEN)
+
+        launchApp()
+
+        awaitText("Sign In")
 
         startTunnelService()
         val session = awaitSession()
@@ -124,41 +134,9 @@ class DeviceTrustE2eTest {
         assertEquals(TOKEN, session.config.token)
     }
 
-    @Test
-    fun anUngrantedManagedCertificateRoutesToDeviceTrust() {
-        FakeKeyChain.install(ALIAS, testIdentity(SERIAL_CLAIM), granted = false)
-        TestRestrictions.bundle.putString(X509_CERTIFICATE_ALIAS_RESTRICTION, ALIAS)
-
-        launchApp()
-
-        awaitText("Select your client certificate")
-    }
-
     /**
-     * An MDM that cannot template the alias of a certificate it provisioned leaves the administrator
-     * naming one the KeyChain does not hold, which is how SCEP-issued certificates arrive. Android
-     * grants whatever the user picks in the chooser, but the administrator's word stands: a
-     * different pick is refused, with the mismatch spelled out.
-     */
-    @Test
-    fun pickingAnotherCertificateThanTheConfiguredOneIsRefused() {
-        FakeKeyChain.install(ALIAS, testIdentity(SERIAL_CLAIM), granted = false)
-        FakeKeyChain.userChooses(ALIAS)
-        TestRestrictions.bundle.putString(X509_CERTIFICATE_ALIAS_RESTRICTION, MISNAMED_ALIAS)
-
-        launchApp()
-
-        awaitText("Select your client certificate")
-        composeRule.onNodeWithText("Select certificate").performClick()
-
-        awaitText("You selected '$ALIAS', but your administrator configured '$MISNAMED_ALIAS'.", substring = true)
-        awaitText("Select your client certificate")
-        assertEquals(MISNAMED_ALIAS, repo.getX509CertificateAliasSync(TestRestrictions.bundle))
-    }
-
-    /**
-     * The zero-touch case: the administrator's policy answers the KeyChain for us with an alias
-     * nobody configured on our side, and nothing is asked of the user.
+     * The zero-touch case: the administrator's policy answers the KeyChain for us, so the
+     * certificate is used without a word in the managed configuration and nothing asked of the user.
      */
     @Test
     fun aPolicyAnswerNeedsNoConfigurationAndNoUser() {
@@ -177,15 +155,33 @@ class DeviceTrustE2eTest {
         assertArrayEquals(certificate.chain.first().encoded, session.tlsIdentity?.certificateChain()?.first())
     }
 
+    /**
+     * A required certificate the policy does not hand over is the user's to release, which is how a
+     * work profile on a personally-owned device presents. The screen offers no way around it.
+     */
     @Test
-    fun aPolicyAnswerStandsInForAManagedAliasTheKeyChainDoesNotHold() {
+    fun aRequiredCertificateTheKeyChainWithholdsRoutesToDeviceTrust() {
+        FakeKeyChain.install(ALIAS, testIdentity(SERIAL_CLAIM), granted = false)
+        TestRestrictions.bundle.putBoolean(X509_CERTIFICATE_RESTRICTION, true)
+
+        launchApp()
+
+        awaitText("Select your client certificate")
+        assertTrue("the required certificate can be skipped", composeRule.onAllNodesWithText("Skip").fetchSemanticsNodes().isEmpty())
+    }
+
+    @Test
+    fun theReleasedCertificateIsRememberedAndPresented() {
         val certificate = testIdentity(SERIAL_CLAIM)
-        FakeKeyChain.install(ALIAS, certificate, granted = true)
-        FakeKeyChain.policyAnswers(ALIAS)
-        TestRestrictions.bundle.putString(X509_CERTIFICATE_ALIAS_RESTRICTION, MISNAMED_ALIAS)
+        FakeKeyChain.install(ALIAS, certificate, granted = false)
+        FakeKeyChain.userChooses(ALIAS)
+        TestRestrictions.bundle.putBoolean(X509_CERTIFICATE_RESTRICTION, true)
         tokenStore.save(TOKEN)
 
         launchApp()
+
+        awaitText("Select your client certificate")
+        composeRule.onNodeWithText("Select certificate").performClick()
 
         awaitText("Sign In")
 
@@ -195,9 +191,44 @@ class DeviceTrustE2eTest {
         assertArrayEquals(certificate.chain.first().encoded, session.tlsIdentity?.certificateChain()?.first())
     }
 
-    /** Installs [certificate] as granted and records its alias the way settings would. */
+    /**
+     * Android grants whatever the user picks in the chooser, but only a certificate carrying the
+     * device certificate's common name is the administrator's, so any other is refused.
+     */
+    @Test
+    fun pickingACertificateThatIsNotADeviceCertificateIsRefused() {
+        FakeKeyChain.install(OTHER_ALIAS, testIdentity(SERIAL_CLAIM, commonName = "mail.example.com"), granted = false)
+        FakeKeyChain.userChooses(OTHER_ALIAS)
+        TestRestrictions.bundle.putBoolean(X509_CERTIFICATE_RESTRICTION, true)
+
+        launchApp()
+
+        awaitText("Select your client certificate")
+        composeRule.onNodeWithText("Select certificate").performClick()
+
+        awaitText("'$OTHER_ALIAS' is not a Firezone device certificate.", substring = true)
+        awaitText("Select your client certificate")
+        assertNull(repo.getX509CertificateAliasSync(TestRestrictions.bundle))
+    }
+
+    /** A required certificate is not to be degraded past: without it there is no session. */
+    @Test
+    fun aRequiredCertificateStopsTheTunnelUntilReleased() {
+        FakeKeyChain.install(ALIAS, testIdentity(SERIAL_CLAIM), granted = false)
+        TestRestrictions.bundle.putBoolean(X509_CERTIFICATE_RESTRICTION, true)
+        tokenStore.save(TOKEN)
+
+        startTunnelService()
+
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        await("the tunnel to give up") { !TunnelService.isRunning(context) }
+        assertEquals("a session was opened without the required certificate", 0, FakeSessionFactory.opened)
+    }
+
+    /** Installs [certificate] as granted and records its alias the way discovery would. */
     private fun givenCertificate(certificate: TestIdentity) {
         FakeKeyChain.install(ALIAS, certificate, granted = true)
+        TestRestrictions.bundle.putBoolean(X509_CERTIFICATE_RESTRICTION, true)
         repo.saveX509CertificateAliasSync(ALIAS)
     }
 
@@ -246,7 +277,7 @@ class DeviceTrustE2eTest {
 
     private companion object {
         const val ALIAS = "firezone-e2e"
-        const val MISNAMED_ALIAS = "not-what-the-mdm-installed"
+        const val OTHER_ALIAS = "mail-e2e"
         const val TOKEN = "browser-token"
         const val TIMEOUT_MS = 20_000L
 

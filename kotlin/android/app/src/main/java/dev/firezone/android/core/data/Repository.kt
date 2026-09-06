@@ -21,8 +21,13 @@ import javax.inject.Inject
 const val ON_SYMBOL: String = "<->"
 const val OFF_SYMBOL: String = " — "
 
-/** Managed-configuration key naming the KeyChain alias to present to the portal. */
-const val X509_CERTIFICATE_ALIAS_RESTRICTION: String = "x509CertificateAlias"
+/**
+ * Managed-configuration key deciding whether a device certificate is presented to the portal.
+ *
+ * `true` requires one: the app finds it through the device policy or has the user release it.
+ * `false` turns certificates off. Absent, the app uses a certificate only if the policy names one.
+ */
+const val X509_CERTIFICATE_RESTRICTION: String = "deviceCertificate"
 
 enum class ResourceState {
     @SerializedName("enabled")
@@ -152,55 +157,34 @@ class Repository
                 emit(editor.apply())
             }.flowOn(coroutineDispatcher)
 
+        /** Whether an administrator requires a device certificate, which is what puts the user to work. */
+        fun isX509CertificateRequired(applicationRestrictions: Bundle): Boolean =
+            applicationRestrictions.containsKey(X509_CERTIFICATE_RESTRICTION) &&
+                applicationRestrictions.getBoolean(X509_CERTIFICATE_RESTRICTION)
+
+        /** Whether an administrator turned device certificates off, which stops the app even asking. */
+        fun isX509CertificateOff(applicationRestrictions: Bundle): Boolean =
+            applicationRestrictions.containsKey(X509_CERTIFICATE_RESTRICTION) &&
+                !applicationRestrictions.getBoolean(X509_CERTIFICATE_RESTRICTION)
+
         /**
-         * The KeyChain alias of the client certificate to present to the portal.
-         *
-         * A managed configuration that sets the alias to an empty value turns certificate-based device
-         * attestation off entirely. Otherwise the alias the device policy answered with comes first,
-         * then the managed one, then the user's pick.
+         * The KeyChain alias of the device certificate, as the device policy or the user named it,
+         * or `null` while none is known or the administrator turned certificates off.
          */
         fun getX509CertificateAliasSync(applicationRestrictions: Bundle): String? {
-            if (isX509CertificateAccessDisabled(applicationRestrictions)) {
+            if (isX509CertificateOff(applicationRestrictions)) {
                 return null
             }
 
-            return getPolicyX509CertificateAliasSync()
-                ?: managedX509CertificateAlias(applicationRestrictions)
-                ?: sharedPreferences.getString(X509_CERTIFICATE_ALIAS_KEY, null)?.takeUnless(String::isBlank)
+            return sharedPreferences.getString(X509_CERTIFICATE_ALIAS_KEY, null)?.takeUnless(String::isBlank)
         }
 
-        /** Whether an administrator dictates the alias, in the managed configuration or by answering the KeyChain. */
-        fun isX509CertificateAliasManaged(applicationRestrictions: Bundle): Boolean =
-            applicationRestrictions.containsKey(X509_CERTIFICATE_ALIAS_RESTRICTION) ||
-                getPolicyX509CertificateAliasSync() != null
-
-        /** Whether an administrator set the alias to an empty value, which turns certificate access off. */
-        fun isX509CertificateAccessDisabled(applicationRestrictions: Bundle): Boolean =
-            applicationRestrictions.containsKey(X509_CERTIFICATE_ALIAS_RESTRICTION) &&
-                managedX509CertificateAlias(applicationRestrictions) == null
-
-        private fun managedX509CertificateAlias(applicationRestrictions: Bundle): String? =
-            applicationRestrictions
-                .getString(X509_CERTIFICATE_ALIAS_RESTRICTION)
-                ?.takeUnless(String::isBlank)
-
-        fun getPolicyX509CertificateAliasSync(): String? =
-            sharedPreferences.getString(POLICY_X509_CERTIFICATE_ALIAS_KEY, null)?.takeUnless(String::isBlank)
-
-        fun saveX509CertificateAliasSync(alias: String?) = saveAliasSync(X509_CERTIFICATE_ALIAS_KEY, alias)
-
-        /** Records what the device policy answered, or that it answered nothing. */
-        fun savePolicyX509CertificateAliasSync(alias: String?) = saveAliasSync(POLICY_X509_CERTIFICATE_ALIAS_KEY, alias)
-
-        private fun saveAliasSync(
-            key: String,
-            alias: String?,
-        ) {
+        fun saveX509CertificateAliasSync(alias: String?) {
             sharedPreferences.edit().apply {
                 if (alias == null) {
-                    remove(key)
+                    remove(X509_CERTIFICATE_ALIAS_KEY)
                 } else {
-                    putString(key, alias)
+                    putString(X509_CERTIFICATE_ALIAS_KEY, alias)
                 }
                 apply()
             }
@@ -341,7 +325,6 @@ class Repository
             private const val START_ON_LOGIN_KEY = "startOnLogin"
             private const val CONNECT_ON_START_KEY = "connectOnStart"
             private const val X509_CERTIFICATE_ALIAS_KEY = "x509CertificateAlias"
-            private const val POLICY_X509_CERTIFICATE_ALIAS_KEY = "policyX509CertificateAlias"
             private const val MANAGED_AUTH_URL_KEY = "managedAuthUrl"
             private const val MANAGED_API_URL_KEY = "managedApiUrl"
             private const val MANAGED_LOG_FILTER_KEY = "managedLogFilter"

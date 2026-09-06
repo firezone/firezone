@@ -43,10 +43,7 @@ class OnboardingScreenshotTest {
     fun certificatePermission() =
         captureRoboImage("${roborazziSystemPropertyOutputDirectory()}/certificate-permission.png") {
             FirezoneTheme {
-                CertificatePermissionScreen(
-                    onSelectCertificate = {},
-                    onSkip = {},
-                )
+                CertificatePermissionScreen(onSelectCertificate = {})
             }
         }
 

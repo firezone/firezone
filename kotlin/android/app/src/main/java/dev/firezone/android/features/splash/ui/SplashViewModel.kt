@@ -15,17 +15,20 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.firezone.android.core.ApplicationMode
+import dev.firezone.android.core.Log
 import dev.firezone.android.core.data.Repository
 import dev.firezone.android.core.data.TokenStore
 import dev.firezone.android.core.x509.CertificateAccess
 import dev.firezone.android.core.x509.KeyChain
 import dev.firezone.android.tunnel.TunnelService
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import javax.inject.Inject
 import kotlin.coroutines.resume
@@ -86,16 +89,16 @@ internal class SplashViewModel
             // An administrator can name the certificate by answering the KeyChain for us, which
             // takes no configuration on our side and no tap on the user's. Ask once per launch
             // whenever nothing we hold loads, so a rotated certificate is picked up too.
-            if (!policyAsked && certificateAccess.needsPolicyAlias()) {
+            if (!policyAsked && certificateAccess.needsDiscovery()) {
                 policyAsked = true
-                repo.savePolicyX509CertificateAliasSync(askPolicyForAlias(activity))
+                rememberPolicyAlias(activity)
             }
 
-            // An administrator can configure a certificate that only the user can release, which
-            // is what a work profile on a personally-owned device looks like. Ask once per
-            // launch: pressing on without it only fails later, at the tunnel.
-            if (!certificateSelectionOffered && certificateAccess.needsSelection()) {
-                certificateSelectionOffered = true
+            // An administrator who requires a certificate the policy did not hand over leaves
+            // only the user to release it, which is what a work profile on a personally-owned
+            // device looks like. There is no way around that screen: coming back to the splash
+            // lands on it again until the certificate is released.
+            if (certificateAccess.needsSelection()) {
                 actionMutableStateFlow.value = ViewAction.NavigateToCertificatePermission
                 return
             }
@@ -126,6 +129,17 @@ internal class SplashViewModel
 
             // If we get here, we shouldn't start the tunnel, so show the sign in screen
             actionMutableStateFlow.value = ViewAction.NavigateToSignIn
+        }
+
+        /** Records the alias the device policy names, provided it holds a device certificate. */
+        private suspend fun rememberPolicyAlias(activity: Activity) {
+            val alias = askPolicyForAlias(activity) ?: return
+
+            if (withContext(Dispatchers.IO) { certificateAccess.holdsDeviceCertificate(alias) }) {
+                repo.saveX509CertificateAliasSync(alias)
+            } else {
+                Log.w(TAG, "The device policy named alias '$alias', which holds no device certificate")
+            }
         }
 
         /** The alias the device policy names for the portal, or `null` when it names none in time. */
@@ -178,15 +192,13 @@ internal class SplashViewModel
         }
 
         internal companion object {
-            /**
-             * Survives the ViewModel so the screen appears once per launch rather than every time
-             * the splash re-checks, and returns on the next start while the certificate is still
-             * out of reach. Tests reset it, since they share one process across many launches.
-             */
-            @Volatile
-            internal var certificateSelectionOffered = false
+            private const val TAG = "SplashViewModel"
 
-            /** Once per launch as well: the answer is recorded, so asking again gains nothing. */
+            /**
+             * Survives the ViewModel so the policy is asked once per launch rather than every time
+             * the splash re-checks: the answer is recorded, so asking again gains nothing. Tests
+             * reset it, since they share one process across many launches.
+             */
             @Volatile
             internal var policyAsked = false
         }

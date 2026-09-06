@@ -7,9 +7,10 @@ import dev.firezone.android.core.data.Repository
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import uniffi.x509claims.parseClientCertificate
 import javax.inject.Inject
 
-/** Answers whether Android must grant Firezone access to the configured certificate. */
+/** Answers whether the app still has to find the device certificate, and whose turn that is. */
 class CertificateAccess
     @Inject
     constructor(
@@ -18,29 +19,12 @@ class CertificateAccess
         private val keyChain: KeyChain,
     ) {
         /**
-         * Whether this device has a configured alias whose certificate Android will not hand over.
-         *
-         * A personally-owned device carrying a work profile cannot be granted the key by its
-         * administrator, and the KeyChain reports the certificate as absent until the user picks it once.
-         * A grant that is later revoked, or a certificate that is removed, lands here too, because
-         * offering the chooser is more useful than failing later when the tunnel starts.
+         * Whether the device policy is worth asking: certificates are not turned off, and no alias
+         * the app holds loads as a device certificate.
          */
-        suspend fun needsSelection(): Boolean =
+        suspend fun needsDiscovery(): Boolean =
             withContext(Dispatchers.IO) {
-                val alias =
-                    repository.getX509CertificateAliasSync(applicationRestrictions)
-                        ?: return@withContext false
-
-                isWithheld(alias)
-            }
-
-        /**
-         * Whether the device policy is worth asking for an alias: certificate access is not turned
-         * off, and whatever alias we hold is either absent or withheld.
-         */
-        suspend fun needsPolicyAlias(): Boolean =
-            withContext(Dispatchers.IO) {
-                if (repository.isX509CertificateAccessDisabled(applicationRestrictions)) {
+                if (repository.isX509CertificateOff(applicationRestrictions)) {
                     return@withContext false
                 }
 
@@ -48,23 +32,39 @@ class CertificateAccess
                     repository.getX509CertificateAliasSync(applicationRestrictions)
                         ?: return@withContext true
 
-                isWithheld(alias)
+                !holdsDeviceCertificate(alias)
             }
 
-        private fun isWithheld(alias: String): Boolean =
+        /**
+         * Whether the user has to release the certificate: the administrator requires one and the
+         * policy did not hand it over, which is what a work profile on a personally-owned device
+         * looks like.
+         */
+        suspend fun needsSelection(): Boolean = repository.isX509CertificateRequired(applicationRestrictions) && needsDiscovery()
+
+        /**
+         * Whether the KeyChain hands [alias] over and what it hands over is a device certificate,
+         * which is the same test the desktop clients apply when they walk their keystores.
+         *
+         * Blocks on the KeyChain, so callers stay off the main thread. A KeyChain that cannot be
+         * read answers `true`: that failure is the session's to report, not a reason to ask anyone.
+         */
+        fun holdsDeviceCertificate(alias: String): Boolean =
             try {
-                keyChain.certificateChain(alias).isNullOrEmpty()
+                val chain = keyChain.certificateChain(alias)
+
+                !chain.isNullOrEmpty() && parseClientCertificate(chain.first().encoded)?.isDeviceCertificate == true
             } catch (exception: CancellationException) {
                 throw exception
             } catch (exception: InterruptedException) {
                 Thread.currentThread().interrupt()
                 Log.d(TAG, "Could not check access to the certificate of alias '$alias'", exception)
 
-                false
+                true
             } catch (exception: Exception) {
                 Log.d(TAG, "Could not check access to the certificate of alias '$alias'", exception)
 
-                false
+                true
             }
 
         private companion object {

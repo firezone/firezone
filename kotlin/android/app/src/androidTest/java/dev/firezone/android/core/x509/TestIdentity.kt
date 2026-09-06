@@ -50,8 +50,17 @@ class TestIdentity(
     }
 }
 
-/** Mints a client identity whose leaf claims exactly [claims], e.g. `firezone://serial/EMU-1`. */
-fun testIdentity(vararg claims: String): TestIdentity {
+/** The subject common name that makes a certificate a device certificate to the clients. */
+const val DEVICE_CERTIFICATE_COMMON_NAME = "dev.firezone.device-trust"
+
+/**
+ * Mints a client identity whose leaf claims exactly [claims], e.g. `firezone://serial/EMU-1`,
+ * under [commonName], which is the device certificate's unless a test wants an impostor.
+ */
+fun testIdentity(
+    vararg claims: String,
+    commonName: String = DEVICE_CERTIFICATE_COMMON_NAME,
+): TestIdentity {
     val caKeyPair = rsaKeyPair()
     val caName = X500Name("O=Firezone,CN=Firezone Test CA")
     val notBefore = Date(System.currentTimeMillis() - TimeUnit.HOURS.toMillis(1))
@@ -76,7 +85,7 @@ fun testIdentity(vararg claims: String): TestIdentity {
             BigInteger.valueOf(2),
             notBefore,
             notAfter,
-            X500Name("O=Firezone,CN=dev.firezone.device-trust"),
+            X500Name("O=Firezone,CN=$commonName"),
             leafKeyPair.public,
         ).addExtension(Extension.basicConstraints, true, BasicConstraints(false))
             .addExtension(Extension.keyUsage, true, KeyUsage(KeyUsage.digitalSignature or KeyUsage.keyEncipherment))

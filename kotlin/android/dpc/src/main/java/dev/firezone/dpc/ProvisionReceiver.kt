@@ -82,7 +82,12 @@ class ProvisionReceiver : BroadcastReceiver() {
         return "installed '$alias' (certificates=${chain.size}, granted=${grantTo ?: "nobody"})"
     }
 
-    /** Sets one managed-configuration entry on a package, or clears its configuration entirely. */
+    /**
+     * Sets one managed-configuration entry on a package, or clears its configuration entirely.
+     *
+     * The entry is a string under `value`, or a boolean under `flag`, the way `am broadcast --ez`
+     * sends one.
+     */
     private fun setRestrictions(
         policy: DevicePolicyManager,
         admin: android.content.ComponentName,
@@ -92,7 +97,11 @@ class ProvisionReceiver : BroadcastReceiver() {
         val key = intent.getStringExtra(KEY)
         val restrictions =
             Bundle().apply {
-                if (key != null) putString(key, intent.requireString(VALUE))
+                when {
+                    key == null -> Unit
+                    intent.hasExtra(FLAG) -> putBoolean(key, intent.getBooleanExtra(FLAG, false))
+                    else -> putString(key, intent.requireString(VALUE))
+                }
             }
 
         policy.setApplicationRestrictions(admin, target, restrictions)
@@ -131,5 +140,6 @@ class ProvisionReceiver : BroadcastReceiver() {
         const val PACKAGE = "package"
         const val KEY = "key"
         const val VALUE = "value"
+        const val FLAG = "flag"
     }
 }

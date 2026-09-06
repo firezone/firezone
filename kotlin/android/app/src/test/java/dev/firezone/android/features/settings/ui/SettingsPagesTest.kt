@@ -7,14 +7,14 @@ import org.junit.Test
 
 class SettingsPagesTest {
     @Test
-    fun `device trust page requires a configured certificate alias`() {
+    fun `the device trust page appears only when asked for`() {
         assertEquals(
             listOf(R.id.settingsGeneral, R.id.settingsAdvanced, R.id.settingsLogs),
-            settingsPages(hasConfiguredCertificateAlias = false).map { it.first },
+            settingsPages(showDeviceTrust = false).map { it.first },
         )
         assertEquals(
             listOf(R.id.settingsGeneral, R.id.settingsAdvanced, R.id.settingsDeviceTrust, R.id.settingsLogs),
-            settingsPages(hasConfiguredCertificateAlias = true).map { it.first },
+            settingsPages(showDeviceTrust = true).map { it.first },
         )
     }
 }
