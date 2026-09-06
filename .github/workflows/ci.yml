@@ -255,10 +255,13 @@ jobs:
         run: |
           set -euo pipefail
 
+          # The clients built the merge commit, not the branch checked out here.
+          git fetch --depth=1 origin "$GITHUB_SHA"
+
           # `mise exec` puts `uv` on PATH: the shims the mise action sets up are
           # regenerated before it installs, not after.
           mise exec -- uv run scripts/prepare-store-screenshots.py
-          mise exec -- uv run scripts/settle-screenshots.py \
+          mise exec -- uv run scripts/settle-screenshots.py --baseline "$GITHUB_SHA" \
             rust/gui-client/screenshots kotlin/android/screenshots swift/apple/screenshots
       - name: Set up GnuPG for the screenshot commit
         uses: ./.github/actions/setup-gpg
