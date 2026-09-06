@@ -25,18 +25,25 @@ defmodule Portal.Google.Sync do
       keys: [:directory_id]
     ]
 
+  alias Portal.DirectorySync
   alias Portal.Google
-  alias Portal.DirectorySync.Lock
   alias __MODULE__.Database
   require Logger
   @db_batch_size 500
-  @snooze_seconds 30
+  @directory_workers [__MODULE__, Portal.Google.WebhookSync]
 
   @impl Oban.Worker
-  def perform(%Oban.Job{args: %{"account_id" => account_id, "directory_id" => directory_id}}) do
-    case Lock.try_run(:google, directory_id, fn -> run_sync(account_id, directory_id) end) do
-      {:ok, _result} -> :ok
-      :busy -> {:snooze, @snooze_seconds}
+  def timeout(_job), do: DirectorySync.full_sync_timeout()
+
+  @impl Oban.Worker
+  def perform(
+        %Oban.Job{args: %{"account_id" => account_id, "directory_id" => directory_id}} = job
+      ) do
+    if DirectorySync.running_elsewhere?(@directory_workers, directory_id, job) do
+      {:snooze, DirectorySync.snooze_seconds()}
+    else
+      run_sync(account_id, directory_id)
+      :ok
     end
   end
 

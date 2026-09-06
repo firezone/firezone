@@ -4,9 +4,9 @@ defmodule Portal.Google.WebhookSync do
   identities and org unit memberships of a Google directory.
 
   Notifications carry only the user id, so the worker re-reads the user and
-  writes it with a fresh `synced_at`. The sync-state tables then make a slower
-  full sync skip anything this worker wrote after that sync started, so the
-  newer webhook read wins over the older full-sync read.
+  writes it with a fresh `synced_at`. Jobs for one directory run one at a time
+  (see `Portal.DirectorySync`), so a notification that arrives during a full
+  sync is applied by a fresh read after that sync finished.
 
   A user is written when the directory already has an identity for them, or
   when org unit sync is on and the user sits in a tracked org unit. Group
@@ -15,9 +15,9 @@ defmodule Portal.Google.WebhookSync do
 
   use Oban.Worker, queue: :google_webhook, max_attempts: 3
 
+  alias Portal.DirectorySync
   alias Portal.Google
   alias Portal.Google.APIClient
-  alias Portal.DirectorySync.Lock
   alias __MODULE__.Database
   require Logger
 
@@ -30,17 +30,24 @@ defmodule Portal.Google.WebhookSync do
     keys: [:directory_id, :user_id]
   ]
 
-  # A full sync reads Google long before it writes, so a notification waits
-  # for the directory lock instead of interleaving with one.
-  @snooze_seconds 30
+  @directory_workers [Portal.Google.Sync, __MODULE__]
 
   @impl Oban.Worker
   def new(args, opts), do: super(args, Keyword.put_new(opts, :unique, @unique))
 
   @impl Oban.Worker
-  def perform(%Oban.Job{
-        args: %{"account_id" => account_id, "directory_id" => directory_id, "user_id" => user_id}
-      }) do
+  def timeout(_job), do: DirectorySync.webhook_timeout()
+
+  @impl Oban.Worker
+  def perform(
+        %Oban.Job{
+          args: %{
+            "account_id" => account_id,
+            "directory_id" => directory_id,
+            "user_id" => user_id
+          }
+        } = job
+      ) do
     case Google.Subscriptions.get_directory(account_id, directory_id) do
       nil ->
         Logger.info("Google directory not eligible for webhooks, skipping notification",
@@ -50,18 +57,15 @@ defmodule Portal.Google.WebhookSync do
         :ok
 
       directory ->
-        apply_with_lock(directory, user_id)
+        if DirectorySync.running_elsewhere?(@directory_workers, directory.id, job) do
+          {:snooze, DirectorySync.snooze_seconds()}
+        else
+          apply_notification(directory, user_id)
+        end
     end
   end
 
   def perform(_), do: :ok
-
-  defp apply_with_lock(directory, user_id) do
-    case Lock.try_run(:google, directory.id, fn -> apply_notification(directory, user_id) end) do
-      {:ok, result} -> result
-      :busy -> {:snooze, @snooze_seconds}
-    end
-  end
 
   defp apply_notification(directory, user_id) do
     Logger.info("Applying Google user notification",

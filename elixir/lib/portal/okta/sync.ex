@@ -11,6 +11,7 @@ defmodule Portal.Okta.Sync do
       keys: [:directory_id]
     ]
 
+  alias Portal.DirectorySync
   alias Portal.Okta
   alias __MODULE__.Database
 
@@ -26,7 +27,23 @@ defmodule Portal.Okta.Sync do
   ]
 
   @impl Oban.Worker
-  def perform(%Oban.Job{args: %{"account_id" => account_id, "directory_id" => directory_id}}) do
+  def timeout(_job), do: DirectorySync.full_sync_timeout()
+
+  @impl Oban.Worker
+  def perform(
+        %Oban.Job{args: %{"account_id" => account_id, "directory_id" => directory_id}} = job
+      ) do
+    if DirectorySync.running_elsewhere?([__MODULE__], directory_id, job) do
+      {:snooze, DirectorySync.snooze_seconds()}
+    else
+      run_sync(account_id, directory_id)
+      :ok
+    end
+  end
+
+  def perform(_), do: :ok
+
+  defp run_sync(account_id, directory_id) do
     Logger.info("Starting Okta directory sync",
       account_id: account_id,
       okta_directory_id: directory_id,
@@ -43,11 +60,7 @@ defmodule Portal.Okta.Sync do
       directory ->
         sync(directory)
     end
-
-    :ok
   end
-
-  def perform(_), do: :ok
 
   defp update(directory, attrs) do
     changeset =

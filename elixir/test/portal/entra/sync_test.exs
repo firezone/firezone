@@ -4,7 +4,6 @@ defmodule Portal.Entra.SyncTest do
 
   import Ecto.Query
   import Portal.AccountFixtures
-  import Portal.DirectorySyncLockHelpers
   import Portal.EntraDirectoryFixtures
 
   alias Portal.Microsoft.Graph.APIClient
@@ -26,13 +25,26 @@ defmodule Portal.Entra.SyncTest do
       :ok
     end
 
-    test "snoozes while the directory lock is held" do
+    test "snoozes while a webhook job for the directory is executing" do
       account = account_fixture(features: %{idp_sync: true})
       directory = entra_directory_fixture(account: account)
       args = %{account_id: directory.account_id, directory_id: directory.id}
-      hold_directory_lock(:entra, directory.id)
 
-      assert {:snooze, 60} = perform_job(Sync, args)
+      {:ok, job} =
+        Oban.insert(
+          Portal.Entra.WebhookSync.new(%{
+            account_id: directory.account_id,
+            directory_id: directory.id,
+            resource: "user",
+            resource_id: "user-1",
+            change_type: "updated"
+          })
+        )
+
+      Repo.update_all(from(j in Oban.Job, where: j.id == ^job.id), set: [state: "executing"])
+
+      assert {:snooze, seconds} = perform_job(Sync, args)
+      assert seconds in 16..45
       assert Repo.all(ExternalIdentity) == []
     end
 

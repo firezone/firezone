@@ -7,8 +7,11 @@ defmodule Portal.Entra.Webhooks do
   `webhook_secret` are dropped.
   """
 
+  alias Portal.DirectorySync
   alias Portal.Entra
   alias __MODULE__.Database
+
+  @directory_workers [Portal.Entra.Sync, Portal.Entra.WebhookSync]
   require Logger
 
   def handle_notifications(directory_id, notifications) when is_list(notifications) do
@@ -114,10 +117,21 @@ defmodule Portal.Entra.Webhooks do
   end
 
   # Most changes in a tenant concern users and groups this directory never
-  # synced. Those are dropped here so they never become jobs.
+  # synced. Those are dropped here so they never become jobs, unless a job for
+  # the directory is running: it may still insert the object from a response
+  # fetched before this change, and only a job that runs after it can re-read
+  # the object and apply the change.
   defp in_scope([], _directory), do: []
 
   defp in_scope(changes, directory) do
+    if DirectorySync.busy?(@directory_workers, directory.id) do
+      changes
+    else
+      known_changes(changes, directory)
+    end
+  end
+
+  defp known_changes(changes, directory) do
     user_ids = for {"user", id, _} <- changes, do: id
     group_ids = for {"group", id, _} <- changes, do: id
 

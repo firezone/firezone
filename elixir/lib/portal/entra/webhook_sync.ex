@@ -4,9 +4,9 @@ defmodule Portal.Entra.WebhookSync do
   identities, groups, and memberships of an Entra directory.
 
   Notifications carry no resource data, so the worker re-reads the object from
-  Graph and writes it with a fresh `synced_at`. The sync-state tables then make
-  a slower full sync skip anything this worker wrote after that sync started,
-  so the newer webhook read wins over the older full-sync read.
+  Graph and writes it with a fresh `synced_at`. Jobs for one directory run one
+  at a time (see `Portal.DirectorySync`), so a notification that arrives during
+  a full sync is applied by a fresh read after that sync finished.
 
   Users are only updated when this directory already has an identity for them,
   and groups only when the directory already tracks them (or syncs all
@@ -16,8 +16,8 @@ defmodule Portal.Entra.WebhookSync do
 
   use Oban.Worker, queue: :entra_webhook, max_attempts: 3
 
+  alias Portal.DirectorySync
   alias Portal.Entra
-  alias Portal.DirectorySync.Lock
   alias Portal.Microsoft.Graph.APIClient
   alias __MODULE__.Database
   require Logger
@@ -31,23 +31,26 @@ defmodule Portal.Entra.WebhookSync do
     keys: [:directory_id, :resource, :resource_id]
   ]
 
-  # A full sync reads Graph long before it writes, so a notification waits
-  # for the directory lock instead of interleaving with one.
-  @snooze_seconds 30
+  @directory_workers [Portal.Entra.Sync, __MODULE__]
 
   @impl Oban.Worker
   def new(args, opts), do: super(args, Keyword.put_new(opts, :unique, @unique))
 
   @impl Oban.Worker
-  def perform(%Oban.Job{
-        args: %{
-          "account_id" => account_id,
-          "directory_id" => directory_id,
-          "resource" => resource,
-          "resource_id" => resource_id,
-          "change_type" => change_type
-        }
-      }) do
+  def timeout(_job), do: DirectorySync.webhook_timeout()
+
+  @impl Oban.Worker
+  def perform(
+        %Oban.Job{
+          args: %{
+            "account_id" => account_id,
+            "directory_id" => directory_id,
+            "resource" => resource,
+            "resource_id" => resource_id,
+            "change_type" => change_type
+          }
+        } = job
+      ) do
     case Entra.Subscriptions.get_directory(account_id, directory_id) do
       nil ->
         Logger.info("Entra directory not eligible for webhooks, skipping notification",
@@ -57,20 +60,15 @@ defmodule Portal.Entra.WebhookSync do
         :ok
 
       directory ->
-        apply_with_lock(directory, resource, resource_id, change_type)
+        if DirectorySync.running_elsewhere?(@directory_workers, directory.id, job) do
+          {:snooze, DirectorySync.snooze_seconds()}
+        else
+          apply_notification(directory, resource, resource_id, change_type)
+        end
     end
   end
 
   def perform(_), do: :ok
-
-  defp apply_with_lock(directory, resource, resource_id, change_type) do
-    fun = fn -> apply_notification(directory, resource, resource_id, change_type) end
-
-    case Lock.try_run(:entra, directory.id, fun) do
-      {:ok, result} -> result
-      :busy -> {:snooze, @snooze_seconds}
-    end
-  end
 
   defp apply_notification(directory, resource, resource_id, change_type) do
     Logger.info("Applying Entra change notification",
