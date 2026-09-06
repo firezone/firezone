@@ -359,7 +359,7 @@ dependencies {
     implementation("androidx.activity:activity-compose:1.13.0")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.11.0")
     // Immutable collections give Compose stable (skippable) parameter types.
-    implementation("org.jetbrains.kotlinx:kotlinx-collections-immutable:0.5.1")
+    implementation("org.jetbrains.kotlinx:kotlinx-collections-immutable:0.5.2")
 
     // Slack's Compose lint checks. Lint check JARs are built against a lint API major
     // version (`lint = AGP + 23`): AGP 9.3 is lint 32.x, and 1.5.2 is built against lint
