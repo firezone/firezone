@@ -1,13 +1,15 @@
 #!/usr/bin/env -S uv run --script
 # /// script
 # requires-python = ">=3.11"
-# dependencies = ["pillow"]
+# dependencies = ["numpy", "pillow"]
 # ///
 """Turn the clients' screenshot galleries into store-ready PNGs."""
 
-from io import BytesIO
+import struct
+import zlib
 from pathlib import Path
 
+import numpy as np
 from PIL import Image, ImageDraw, ImageFilter
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -51,10 +53,44 @@ def screenshots(directory: Path) -> list[Path]:
     return paths
 
 
+# Rows per deflate block. A block boundary is where a change stops rippling.
+ROWS_PER_BLOCK = 16
+
+
+def png_chunk(kind: bytes, data: bytes) -> bytes:
+    body = kind + data
+    return struct.pack(">I", len(data)) + body + struct.pack(">I", zlib.crc32(body))
+
+
 def write_rgb(path: Path, image: Image.Image) -> None:
-    output = BytesIO()
-    image.convert("RGB").save(output, format="PNG")
-    path.write_bytes(output.getvalue())
+    """Write `image` as an RGB PNG whose deflate stream is byte-aligned every few rows.
+
+    A deflate block is not byte-aligned, so with an ordinary encoder one changed row
+    shifts every bit after it and the whole file differs. Flushing the stream every
+    `ROWS_PER_BLOCK` rows keeps a change local to its block, which is what lets git
+    store a re-render as a small delta against the previous one.
+    """
+    pixels = np.asarray(image.convert("RGB"), dtype=np.uint8)
+    height, width, _ = pixels.shape
+    # PNG filter type 1 (Sub): each byte minus the byte one pixel to its left.
+    left = np.concatenate([np.zeros((height, 1, 3), np.uint8), pixels[:, :-1]], axis=1)
+    filtered = (pixels - left).reshape(height, width * 3)
+    scanlines = np.concatenate([np.full((height, 1), 1, np.uint8), filtered], axis=1)
+
+    compressor = zlib.compressobj(9)
+    stream = bytearray()
+    for row in range(0, height, ROWS_PER_BLOCK):
+        stream += compressor.compress(scanlines[row : row + ROWS_PER_BLOCK].tobytes())
+        stream += compressor.flush(zlib.Z_SYNC_FLUSH)
+    stream += compressor.flush(zlib.Z_FINISH)
+
+    header = struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)
+    path.write_bytes(
+        b"\x89PNG\r\n\x1a\n"
+        + png_chunk(b"IHDR", header)
+        + png_chunk(b"IDAT", bytes(stream))
+        + png_chunk(b"IEND", b"")
+    )
 
 
 def prepare_ios(directory: Path, accepted_sizes: set[tuple[int, int]]) -> None:
