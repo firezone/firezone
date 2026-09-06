@@ -46,7 +46,7 @@ defmodule Portal.GroupFixtures do
 
     changeset =
       %Portal.Group{}
-      |> Ecto.Changeset.cast(group_attrs, [:name, :type, :entity_type, :idp_id])
+      |> Ecto.Changeset.cast(group_attrs, [:name, :type, :entity_type, :idp_id, :nested_group_idp_ids])
       |> Ecto.Changeset.put_assoc(:account, account)
       |> Portal.Group.changeset()
 

@@ -107,16 +107,17 @@ defmodule Portal.Entra.WebhookSync do
         Portal.Policy.reconnect_orphaned_policies(directory.account_id)
         :ok
 
-      # Graph cannot name the former parents of a deleted group, so only a full
-      # sync can drop the transitive memberships it contributed to them.
+      # Graph cannot name the former parents of a deleted group, so they come
+      # from the nesting each tracked group recorded while its members were
+      # fresh.
       {:ok, %Req.Response{status: 404}} ->
         remove_group(directory, Database.get_group(directory.account_id, directory.id, group_id))
 
-        {:ok, _job} =
-          %{account_id: directory.account_id, directory_id: directory.id}
-          |> Entra.Sync.new_recovery()
-          |> Oban.insert()
+        directory
+        |> Entra.Sync.parents_of(group_id)
+        |> Enum.each(&resync_stored_parent(directory, access_token, synced_at, &1))
 
+        Portal.Policy.reconnect_orphaned_policies(directory.account_id)
         :ok
 
       {:ok, response} ->
@@ -233,6 +234,23 @@ defmodule Portal.Entra.WebhookSync do
          name when is_binary(name) <- parent["displayName"],
          true <- tracked_group?(directory, id) do
       resync_group(directory, access_token, synced_at, id, name)
+    end
+  end
+
+  defp resync_stored_parent(directory, access_token, synced_at, parent) do
+    case APIClient.get_group(access_token, parent.idp_id) do
+      {:ok, %Req.Response{status: 200, body: %{"id" => id, "displayName" => name}}}
+      when is_binary(id) and is_binary(name) ->
+        resync_group(directory, access_token, synced_at, id, name)
+
+      {:ok, %Req.Response{status: 404}} ->
+        remove_group(directory, parent)
+
+      {:ok, response} ->
+        raise Entra.SyncError, error: response, directory_id: directory.id, step: :get_group
+
+      {:error, error} ->
+        raise Entra.SyncError, error: error, directory_id: directory.id, step: :get_group
     end
   end
 

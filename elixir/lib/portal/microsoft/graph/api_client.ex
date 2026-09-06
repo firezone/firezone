@@ -173,6 +173,17 @@ defmodule Portal.Microsoft.Graph.APIClient do
   end
 
   @doc """
+  Streams the groups nested, at any depth, inside a group.
+  Returns a stream that yields pages of groups with their ids.
+  """
+  def stream_group_transitive_member_groups(access_token, group_id) do
+    query = URI.encode_query(%{"$top" => @page_size, "$select" => "id"})
+    path = "/v1.0/groups/#{group_id}/transitiveMembers/microsoft.graph.group"
+
+    stream_pages(path, query, access_token)
+  end
+
+  @doc """
   Fetches multiple users by their IDs using JSON batching.
   Uses the $batch endpoint to get up to 20 users in a single HTTP request.
   Returns {:ok, users} where users is a list of user objects.

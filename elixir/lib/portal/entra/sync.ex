@@ -140,6 +140,39 @@ defmodule Portal.Entra.Sync do
         process_group_members_page(directory, synced_at, group_id, group_name, members)
     end)
     |> Stream.run()
+
+    record_nested_groups(directory, access_token, group_id)
+  end
+
+  @doc """
+  The groups this directory tracks that list `group_idp_id` among the groups
+  nested inside them.
+  """
+  def parents_of(directory, group_idp_id) do
+    Database.parents_of(directory.account_id, directory.id, group_idp_id)
+  end
+
+  # Only Graph knows a deleted group's former parents, so every tracked group
+  # remembers the groups nested inside it while its members are fresh.
+  defp record_nested_groups(directory, access_token, group_id) do
+    nested_ids =
+      APIClient.stream_group_transitive_member_groups(access_token, group_id)
+      |> Enum.flat_map(fn
+        {:error, error} ->
+          raise Entra.SyncError,
+            error: error,
+            directory_id: directory.id,
+            step: :stream_group_transitive_member_groups
+
+        groups when is_list(groups) ->
+          for %{"@odata.type" => "#microsoft.graph.group", "id" => id} <- groups,
+              is_binary(id),
+              do: id
+      end)
+      |> Enum.uniq()
+      |> Enum.sort()
+
+    Database.update_nested_groups(directory.account_id, directory.id, group_id, nested_ids)
   end
 
   def issuer(directory), do: "https://login.microsoftonline.com/#{directory.tenant_id}/v2.0"
@@ -781,6 +814,27 @@ defmodule Portal.Entra.Sync do
 
     def update_directory(changeset) do
       changeset |> Safe.unscoped() |> Safe.update()
+    end
+
+    def update_nested_groups(account_id, directory_id, group_idp_id, nested_ids) do
+      from(g in Portal.Group,
+        where: g.account_id == ^account_id,
+        where: g.directory_id == ^directory_id,
+        where: g.idp_id == ^group_idp_id,
+        where: g.nested_group_idp_ids != ^nested_ids
+      )
+      |> Safe.unscoped()
+      |> Safe.update_all(set: [nested_group_idp_ids: nested_ids])
+    end
+
+    def parents_of(account_id, directory_id, group_idp_id) do
+      from(g in Portal.Group,
+        where: g.account_id == ^account_id,
+        where: g.directory_id == ^directory_id,
+        where: ^group_idp_id in g.nested_group_idp_ids
+      )
+      |> Safe.unscoped()
+      |> Safe.all()
     end
 
     def batch_upsert_identities(

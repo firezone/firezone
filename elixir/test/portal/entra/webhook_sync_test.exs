@@ -262,15 +262,38 @@ defmodule Portal.Entra.WebhookSyncTest do
 
       refute Repo.get_by(Group, id: group.id)
       assert Repo.all(Membership) == []
-      assert_enqueued(worker: Sync, args: %{directory_id: directory.id})
     end
 
-    test "queues a full sync when an untracked group disappears", %{directory: directory} do
-      stub_graph(groups: %{})
+    test "resyncs the tracked parents a deleted child was nested in",
+         %{account: account, directory: directory, base_directory: base_directory} = ctx do
+      parent =
+        group_fixture(
+          account: account,
+          directory: base_directory,
+          idp_id: "parent",
+          nested_group_idp_ids: ["child"]
+        )
+
+      carol = directory_identity(ctx, "user-carol")
+      carol_actor = Actor |> Repo.get_by!(id: carol.actor_id) |> Repo.preload(:account)
+      membership_fixture(actor: carol_actor, group: parent)
+
+      stub_graph(groups: %{"parent" => {"Parent", []}})
 
       assert :ok = perform_job(WebhookSync, group_args(directory, "child", "deleted"))
 
-      assert_enqueued(worker: Sync, args: %{directory_id: directory.id})
+      refute Repo.get_by(Membership, actor_id: carol_actor.id, group_id: parent.id)
+      assert Repo.get_by!(Group, id: parent.id).nested_group_idp_ids == []
+    end
+
+    test "records the groups nested in a resynced group",
+         %{account: account, directory: directory, base_directory: base_directory} do
+      group = group_fixture(account: account, directory: base_directory, idp_id: "group-1")
+      stub_graph(groups: %{"group-1" => {"Engineering", []}}, nested: %{"group-1" => ["inner-b", "inner-a"]})
+
+      assert :ok = perform_job(WebhookSync, group_args(directory, "group-1", "updated"))
+
+      assert Repo.get_by!(Group, id: group.id).nested_group_idp_ids == ["inner-a", "inner-b"]
     end
 
     test "deletes a group on a deleted notification once Graph confirms it",
@@ -372,6 +395,7 @@ defmodule Portal.Entra.WebhookSyncTest do
     users = Keyword.get(opts, :users, %{})
     groups = Keyword.get(opts, :groups, %{})
     parents = Keyword.get(opts, :parents, %{})
+    nested = Keyword.get(opts, :nested, %{})
 
     Req.Test.stub(APIClient, fn conn ->
       path = conn.request_path
@@ -396,6 +420,11 @@ defmodule Portal.Entra.WebhookSyncTest do
           ["v1.0", "groups", id | _] = Path.split(String.trim_leading(path, "/"))
           {_name, members} = Map.fetch!(groups, id)
           Req.Test.json(conn, %{"value" => members})
+
+        String.ends_with?(path, "/transitiveMembers/microsoft.graph.group") ->
+          ["v1.0", "groups", id | _] = Path.split(String.trim_leading(path, "/"))
+          value = for child <- Map.get(nested, id, []), do: %{"@odata.type" => "#microsoft.graph.group", "id" => child}
+          Req.Test.json(conn, %{"value" => value})
 
         String.ends_with?(path, "/transitiveMemberOf/microsoft.graph.group") ->
           ["v1.0", "groups", id | _] = Path.split(String.trim_leading(path, "/"))
