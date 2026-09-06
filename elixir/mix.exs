@@ -84,7 +84,7 @@ defmodule Portal.MixProject do
       # Temporary fix for unread HTTP/2 bodies: https://github.com/mtrudel/bandit/issues/697
       {:bandit,
        github: "firezone/bandit",
-       ref: "dee0554b02974ed76c7a4f9cdfda01964e3a560d",
+       ref: "01617e0b7fc679a75058d1373d87cf50395ff1fb",
        override: true},
       {:plug, "~> 1.15"},
       {:gettext, "~> 1.0"},
