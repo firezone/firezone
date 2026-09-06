@@ -28,11 +28,6 @@ xcrun simctl spawn "${udid}" defaults write \
 xcrun simctl spawn "${udid}" defaults write \
   com.apple.Accessibility ReduceMotionEnabled -bool true
 
-# A bar button is drawn on a material of its own that reduced transparency does
-# not reach; increased contrast replaces it with a solid fill.
-xcrun simctl spawn "${udid}" defaults write \
-  com.apple.Accessibility DarkerSystemColorsEnabled -bool true
-
 echo "${udid}"
 
 if [ -n "${GITHUB_ENV:-}" ]; then
