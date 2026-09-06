@@ -10,7 +10,7 @@ defmodule PortalAPI.Router do
     plug PortalAPI.Plugs.RateLimit
 
     plug PortalAPI.Plugs.ParseBody,
-      parsers: [:json],
+      parsers: [PortalAPI.Parsers.JSON],
       pass: ["*/*"],
       json_decoder: Phoenix.json_library()
 
@@ -58,7 +58,7 @@ defmodule PortalAPI.Router do
     plug PortalAPI.Plugs.RequestLog, mcp: true
 
     plug PortalAPI.Plugs.MCPParseBody,
-      parsers: [:json],
+      parsers: [PortalAPI.Parsers.JSON],
       pass: ["*/*"],
       json_decoder: Phoenix.json_library(),
       length: 1_000_000
