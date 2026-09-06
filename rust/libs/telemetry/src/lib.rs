@@ -472,6 +472,15 @@ fn append_tracing_fields_to_message(mut log: Log) -> Log {
     ];
 
     for (key, attribute) in mem::take(&mut log.attributes) {
+        let value = match &attribute.0 {
+            serde_json::Value::String(value) => value.clone(),
+            serde_json::Value::Number(value) => value.to_string(),
+            serde_json::Value::Bool(value) => value.to_string(),
+            serde_json::Value::Null => continue,
+            serde_json::Value::Array(_) => continue,
+            serde_json::Value::Object(_) => continue,
+        };
+
         if IGNORED_ATTRS.iter().any(|attr| key.starts_with(attr)) {
             log.attributes.insert(key, attribute);
 
@@ -487,11 +496,7 @@ fn append_tracing_fields_to_message(mut log: Log) -> Log {
             continue;
         }
 
-        if let serde_json::Value::String(value) = &attribute.0 {
-            log.body.push_str(&format!(" {key}={value}"));
-        } else {
-            log.body.push_str(&format!(" {key}={}", attribute.0));
-        }
+        log.body.push_str(&format!(" {key}={value}"));
         log.attributes.insert(key.to_owned(), attribute);
     }
 
@@ -717,6 +722,24 @@ mod tests {
             log.body,
             "Foobar enabled=true flows=3 inner_src_port=52625 ratio=0.5"
         );
+    }
+
+    #[test]
+    fn ignores_null_and_compound_attributes() {
+        let mut log = log("Foobar", &[]);
+        log.attributes = BTreeMap::from([
+            ("empty".to_owned(), LogAttribute(serde_json::json!(null))),
+            ("list".to_owned(), LogAttribute(serde_json::json!([1, 2]))),
+            (
+                "object".to_owned(),
+                LogAttribute(serde_json::json!({"enabled": true})),
+            ),
+        ]);
+
+        let log = append_tracing_fields_to_message(log);
+
+        assert_eq!(log.body, "Foobar");
+        assert!(log.attributes.is_empty());
     }
 
     #[test]
