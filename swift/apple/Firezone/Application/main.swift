@@ -42,8 +42,11 @@ import Foundation
           Run firezone-cli from inside Firezone.app, for example
           /Applications/Firezone.app/Contents/MacOS/firezone-cli.
 
-          Putting that directory on your PATH works. A symlink to it from somewhere
-          else does not, because it leaves the client without the app's identity.
+          A symlink to it from somewhere else does not work, because it leaves the
+          client without the app's identity. To have it on your PATH, install the
+          wrapper script that ships with the app:
+
+            sudo install /Applications/Firezone.app/Contents/Resources/firezone-cli.sh /usr/local/bin/firezone-cli
 
           """.utf8))
       exit(1)
