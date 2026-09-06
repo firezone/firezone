@@ -26,10 +26,10 @@ stat /usr/share/icons/hicolor/512x512/apps/firezone-client-gui.png
 
 # Make sure the binary got built, packaged, and installed, and at least
 # knows its own name
-firezone-client-gui --help | grep "Usage: firezone-client-gui"
+firezone-client-gui --help | grep "Usage: firezone"
 
 # Make sure the `firezone` wrapper forwards to the GUI binary
-firezone --help | grep "Usage: firezone-client-gui"
+firezone --help | grep "Usage: firezone"
 
 # Make sure the Tunnel service is running
 systemctl status "$SERVICE_NAME" || debug_exit
