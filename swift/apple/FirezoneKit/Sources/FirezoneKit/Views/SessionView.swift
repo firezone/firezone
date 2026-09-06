@@ -20,9 +20,11 @@ import SwiftUI
       content
         .navigationDestination(for: Resource.self) { resource in
           ResourceView(resource: resource)
+            .mockFlatBars()
         }
         .navigationDestination(for: ConnectedDevice.self) { device in
           ConnectedDeviceView(device: device)
+            .mockFlatBars()
         }
     }
 
