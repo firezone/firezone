@@ -3,7 +3,6 @@ defmodule PortalAPI.MCPControllerTest do
 
   import Portal.AccountFixtures
   import Portal.ActorFixtures
-  import Portal.FeaturesFixtures
   import Portal.ResourceFixtures
   import Portal.SiteFixtures
 
@@ -112,17 +111,6 @@ defmodule PortalAPI.MCPControllerTest do
   end
 
   describe "transport" do
-    test "hides every MCP method when the global feature is disabled", %{conn: conn} do
-      disable_feature(:mcp)
-
-      assert conn
-             |> put_req_header("content-type", "application/json")
-             |> post("/mcp", "{")
-             |> response(404) == "Not Found"
-      assert conn |> get("/mcp") |> response(404) == "Not Found"
-      assert conn |> delete("/mcp") |> response(404) == "Not Found"
-    end
-
     test "rejects an unauthenticated request with a discovery challenge", %{conn: conn} do
       conn = rpc(conn, "server/discover")
 

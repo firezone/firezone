@@ -76,10 +76,9 @@ When updating the billing plan in stripe, use the Stripe Testing Docs for how to
 
 ### MCP server for local development
 
-MCP is disabled unless the global `features` row for `mcp` is enabled. Local
-seeds enable that flag. All tools use this single rollout flag; OAuth scopes
-and actor permissions control which actions a caller can perform. Tool
-annotations are descriptive hints, not authorization or confirmation controls.
+OAuth scopes and actor permissions control which actions a caller can perform.
+Tool annotations are descriptive hints, not authorization or confirmation
+controls.
 
 MCP request logs retain `/mcp` as the request path. The `mcp` metadata records
 the requested tool, dispatched REST method/path, and outcome/status without

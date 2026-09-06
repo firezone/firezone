@@ -3,7 +3,6 @@ defmodule PortalAPI.MCPSecurityTest do
 
   import Portal.AccountFixtures
   import Portal.ActorFixtures
-  import Portal.FeaturesFixtures
   import Portal.SiteFixtures
   import Portal.TokenFixtures
 
@@ -63,22 +62,6 @@ defmodule PortalAPI.MCPSecurityTest do
     end
   end
 
-  test "the single MCP flag controls all tools", %{conn: conn, actor: actor} do
-    enable_feature(:mcp)
-    conn = authorize_mcp_conn(conn, actor, Portal.Scope.all())
-    names = ["create_actor", "update_actor", "verify_client", "create_actor_client_token", "create_single_owner_gateway_token", "rotate_single_owner_gateway_token"]
-    result = rpc(conn, "tools/list", with_meta(%{}))
-    listed = json_response(result, 200)["result"]["tools"] |> Enum.map(& &1["name"])
-    for name <- names, do: assert(name in listed)
-
-    disable_feature(:mcp)
-    assert rpc(conn, "tools/list", with_meta(%{})) |> response(404) == "Not Found"
-
-    for name <- names do
-      assert call_tool(conn, name, %{}) |> response(404) == "Not Found"
-    end
-  end
-
   test "identity management requires the OAuth write scope", %{conn: conn, actor: actor} do
     attrs = %{"name" => "Delegated admin", "type" => "account_admin_user", "email" => "delegated@example.com", "allow_email_otp_sign_in" => true}
     result = conn |> authorize_mcp_conn(actor, ["actors:read"]) |> call_tool("create_actor", %{"actor" => attrs})
@@ -89,10 +72,6 @@ defmodule PortalAPI.MCPSecurityTest do
     result = call_tool(conn, "create_actor", %{"actor" => attrs})
     assert %{"result" => %{"isError" => false}} = json_response(result, 200)
     assert result.assigns.api_request_log.mcp["rest_status"] == 201
-
-    disable_feature(:mcp)
-    result = call_tool(conn, "create_actor", %{"actor" => attrs})
-    assert response(result, 404) == "Not Found"
   end
 
   test "credential issuance does not log its secret", %{conn: conn, actor: actor, account: account} do

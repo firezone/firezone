@@ -43,12 +43,11 @@ defmodule PortalAPI.Router do
     get "/", OpenApiSpex.Plug.SwaggerUI, path: "/openapi.json"
   end
 
-  # The rollout gate and IP bucket precede all attacker-controlled work. Once a
+  # The IP bucket precedes all attacker-controlled work. Once a
   # token is authenticated, every request is charged to its account and logged
   # before controller dispatch. Synthetic REST requests carry private skip
   # markers so this outer metering is never duplicated.
   pipeline :mcp do
-    plug PortalAPI.Plugs.MCPFeatureGate
     plug PortalAPI.Plugs.MCPRateLimit
     plug :accepts, ["json"]
     plug PortalAPI.Plugs.MCPAuth
