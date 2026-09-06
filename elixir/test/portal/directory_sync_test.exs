@@ -83,6 +83,18 @@ defmodule Portal.DirectorySyncTest do
       assert Repo.get!(Oban.Job, spent.id).state == "discarded"
       assert Repo.get!(Oban.Job, elsewhere.id).state == "executing"
     end
+
+    test "matches the node Oban stamps on a job it fetches", %{directory: directory} do
+      job = Oban.insert!(webhook_changeset(directory))
+      conf = Oban.config()
+      {:ok, meta} = Oban.Engine.init(conf, queue: "entra_webhook", limit: 1)
+      {:ok, {_meta, [%Oban.Job{id: fetched_id}]}} = Oban.Engine.fetch_jobs(conf, meta, %{})
+
+      assert fetched_id == job.id
+      assert Repo.get!(Oban.Job, job.id).state == "executing"
+      assert DirectorySync.rescue_orphans(Oban.Config.node_name()) == 1
+      assert Repo.get!(Oban.Job, job.id).state == "available"
+    end
   end
 
   test "snooze_seconds/0 spreads competing jobs apart" do

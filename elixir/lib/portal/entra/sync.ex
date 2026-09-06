@@ -18,6 +18,7 @@ defmodule Portal.Entra.Sync do
   require Logger
 
   @directory_workers [__MODULE__, Portal.Entra.WebhookSync]
+  @membership_batch_size 1000
 
   @doc """
   A recovery sync. It queues behind a sync that is already executing instead
@@ -120,18 +121,25 @@ defmodule Portal.Entra.Sync do
   @doc """
   Walks the members of one group, nested groups included, and upserts their
   identities and memberships. Shared by the full sync and the webhook worker.
+
+  `fetched` holds the members of every group read so far in this sync, so a
+  group nested under several roots is read from Graph once. Pass the returned
+  map to the next call.
   """
-  def sync_group_members(directory, access_token, synced_at, group_id, group_name) do
+  def sync_group_members(directory, access_token, synced_at, group_id, group_name, fetched \\ %{}) do
     Logger.debug("Walking members for group",
       entra_directory_id: directory.id,
       group_id: group_id,
       group_name: group_name
     )
 
-    nested_ids =
-      walk_group_members(directory, access_token, synced_at, group_id, group_name)
+    root = {group_id, group_name}
+
+    {nested_ids, fetched} =
+      walk(directory, access_token, synced_at, root, [group_id], MapSet.new([group_id]), fetched)
 
     Database.update_nested_groups(directory.account_id, directory.id, group_id, nested_ids)
+    fetched
   end
 
   @doc """
@@ -201,7 +209,7 @@ defmodule Portal.Entra.Sync do
     # Auth Provider app is optional (deprecated) - returns nil if not found
     auth_provider_sp_id = fetch_auth_provider_service_principal(directory, access_token)
 
-    sync_assignments(directory, access_token, synced_at, directory_sync_sp_id)
+    fetched = sync_assignments(directory, access_token, synced_at, directory_sync_sp_id, %{})
 
     # DEPRECATED: Also sync assignments from the Authentication app for backwards compatibility.
     # This supports existing Entra directory sync setups that have users assigned to the
@@ -209,10 +217,10 @@ defmodule Portal.Entra.Sync do
     # TODO: Remove this once all customers have migrated to assigning users to the
     # Directory Sync app.
     if auth_provider_sp_id do
-      sync_assignments(directory, access_token, synced_at, auth_provider_sp_id)
+      sync_assignments(directory, access_token, synced_at, auth_provider_sp_id, fetched)
+    else
+      fetched
     end
-
-    :ok
   end
 
   defp fetch_directory_sync_service_principal!(directory, access_token) do
@@ -258,15 +266,15 @@ defmodule Portal.Entra.Sync do
     end
   end
 
-  defp sync_assignments(directory, access_token, synced_at, service_principal_id) do
+  defp sync_assignments(directory, access_token, synced_at, service_principal_id, fetched) do
     Logger.debug("Streaming app role assignments",
       entra_directory_id: directory.id,
       service_principal_id: service_principal_id
     )
 
     APIClient.stream_app_role_assignments(access_token, service_principal_id)
-    |> Stream.each(fn
-      {:error, error} ->
+    |> Enum.reduce(fetched, fn
+      {:error, error}, _fetched ->
         Logger.debug("Failed to stream app role assignments",
           entra_directory_id: directory.id,
           error: inspect(error)
@@ -277,10 +285,9 @@ defmodule Portal.Entra.Sync do
           directory_id: directory.id,
           step: :stream_app_role_assignments
 
-      assignments when is_list(assignments) ->
-        process_app_role_assignments(directory, access_token, synced_at, assignments)
+      assignments, fetched when is_list(assignments) ->
+        process_app_role_assignments(directory, access_token, synced_at, assignments, fetched)
     end)
-    |> Stream.run()
   end
 
   # Fetches the service principal ID for the specified app type.
@@ -331,7 +338,7 @@ defmodule Portal.Entra.Sync do
     end
   end
 
-  defp process_app_role_assignments(directory, access_token, synced_at, assignments) do
+  defp process_app_role_assignments(directory, access_token, synced_at, assignments, fetched) do
     Logger.debug("Received app role assignments page",
       entra_directory_id: directory.id,
       count: length(assignments),
@@ -353,7 +360,7 @@ defmodule Portal.Entra.Sync do
     )
 
     sync_direct_user_assignments(directory, access_token, synced_at, user_assignments)
-    sync_group_assignments(directory, access_token, synced_at, group_assignments)
+    sync_group_assignments(directory, access_token, synced_at, group_assignments, fetched)
   end
 
   defp validate_assignments!(assignments, directory_id) do
@@ -439,9 +446,9 @@ defmodule Portal.Entra.Sync do
     end
   end
 
-  defp sync_group_assignments(_directory, _access_token, _synced_at, []), do: :ok
+  defp sync_group_assignments(_directory, _access_token, _synced_at, [], fetched), do: fetched
 
-  defp sync_group_assignments(directory, access_token, synced_at, group_assignments) do
+  defp sync_group_assignments(directory, access_token, synced_at, group_assignments, fetched) do
     # Build and sync groups
     groups =
       Enum.map(group_assignments, fn assignment ->
@@ -458,20 +465,16 @@ defmodule Portal.Entra.Sync do
 
     batch_upsert_groups(directory, synced_at, groups)
 
-    # For each group, walk and sync members
-    Enum.each(group_assignments, fn assignment ->
-      sync_assigned_group_members(directory, access_token, synced_at, assignment)
+    Enum.reduce(group_assignments, fetched, fn assignment, fetched ->
+      sync_group_members(
+        directory,
+        access_token,
+        synced_at,
+        assignment["principalId"],
+        assignment["principalDisplayName"],
+        fetched
+      )
     end)
-  end
-
-  defp sync_assigned_group_members(directory, access_token, synced_at, assignment) do
-    sync_group_members(
-      directory,
-      access_token,
-      synced_at,
-      assignment["principalId"],
-      assignment["principalDisplayName"]
-    )
   end
 
   defp sync_all_groups(directory, access_token, synced_at) do
@@ -479,8 +482,8 @@ defmodule Portal.Entra.Sync do
     Logger.debug("Streaming all groups from directory", entra_directory_id: directory.id)
 
     APIClient.stream_groups(access_token)
-    |> Stream.each(fn
-      {:error, error} ->
+    |> Enum.reduce(%{}, fn
+      {:error, error}, _fetched ->
         Logger.debug("Failed to stream groups",
           entra_directory_id: directory.id,
           error: inspect(error)
@@ -491,7 +494,7 @@ defmodule Portal.Entra.Sync do
           directory_id: directory.id,
           step: :stream_groups
 
-      groups when is_list(groups) ->
+      groups, fetched when is_list(groups) ->
         Logger.debug("Received groups page",
           entra_directory_id: directory.id,
           count: length(groups)
@@ -518,14 +521,17 @@ defmodule Portal.Entra.Sync do
           batch_upsert_groups(directory, synced_at, group_attrs)
         end
 
-        # For each group, walk and sync members
-        Enum.each(groups, fn group ->
-          sync_all_group_members(directory, access_token, synced_at, group)
+        Enum.reduce(groups, fetched, fn group, fetched ->
+          sync_group_members(
+            directory,
+            access_token,
+            synced_at,
+            group["id"],
+            group["displayName"],
+            fetched
+          )
         end)
     end)
-    |> Stream.run()
-
-    :ok
   end
 
   defp validate_group!(group, directory) do
@@ -544,42 +550,56 @@ defmodule Portal.Entra.Sync do
     end
   end
 
-  defp sync_all_group_members(directory, access_token, synced_at, group) do
-    sync_group_members(directory, access_token, synced_at, group["id"], group["displayName"])
-  end
-
   # Entra allows nesting cycles; visited keeps the walk finite.
-  defp walk_group_members(directory, access_token, synced_at, root_id, root_name) do
-    walk(directory, access_token, synced_at, root_id, root_name, [root_id], MapSet.new([root_id]))
+  defp walk(_directory, _access_token, _synced_at, {root_id, _root_name}, [], visited, fetched) do
+    {visited |> MapSet.delete(root_id) |> Enum.sort(), fetched}
   end
 
-  defp walk(_directory, _access_token, _synced_at, root_id, _root_name, [], visited) do
-    visited |> MapSet.delete(root_id) |> Enum.sort()
+  defp walk(directory, access_token, synced_at, {root_id, _} = root, [group_id | queue], visited, fetched) do
+    {members, fetched} =
+      case fetched do
+        %{^group_id => members} ->
+          add_memberships(directory, synced_at, root_id, members.users)
+          {members, fetched}
+
+        _ ->
+          members = fetch_group_members(directory, access_token, synced_at, root, group_id)
+          {members, Map.put(fetched, group_id, members)}
+      end
+
+    nested = Enum.reject(members.groups, &MapSet.member?(visited, &1))
+    visited = Enum.into(nested, visited)
+
+    walk(directory, access_token, synced_at, root, queue ++ nested, visited, fetched)
   end
 
-  defp walk(directory, access_token, synced_at, root_id, root_name, [group_id | queue], visited) do
-    {queue, visited} =
-      APIClient.stream_group_members(access_token, group_id)
-      |> Enum.reduce({queue, visited}, fn
-        {:error, error}, _acc ->
-          raise Entra.SyncError,
-            error: error,
-            directory_id: directory.id,
-            step: :stream_group_members
+  defp fetch_group_members(directory, access_token, synced_at, {root_id, root_name}, group_id) do
+    APIClient.stream_group_members(access_token, group_id)
+    |> Enum.reduce(%{users: [], groups: []}, fn
+      {:error, error}, _acc ->
+        raise Entra.SyncError,
+          error: error,
+          directory_id: directory.id,
+          step: :stream_group_members
 
-        members, {queue, visited} when is_list(members) ->
-          process_group_members_page(directory, synced_at, root_id, root_name, members)
+      members, acc when is_list(members) ->
+        user_ids = process_group_members_page(directory, synced_at, root_id, root_name, members)
 
-          nested =
-            for %{"@odata.type" => "#microsoft.graph.group", "id" => id} <- members,
-                is_binary(id),
-                not MapSet.member?(visited, id),
-                do: id
+        group_ids =
+          for %{"@odata.type" => "#microsoft.graph.group", "id" => id} <- members,
+              is_binary(id),
+              do: id
 
-          {queue ++ nested, Enum.into(nested, visited)}
-      end)
+        %{users: user_ids ++ acc.users, groups: group_ids ++ acc.groups}
+    end)
+  end
 
-    walk(directory, access_token, synced_at, root_id, root_name, queue, visited)
+  defp add_memberships(directory, synced_at, group_id, user_ids) do
+    user_ids
+    |> Enum.chunk_every(@membership_batch_size)
+    |> Enum.each(fn ids ->
+      batch_upsert_memberships(directory, synced_at, Enum.map(ids, &{group_id, &1}))
+    end)
   end
 
   defp process_group_members_page(directory, synced_at, group_id, group_name, members) do
@@ -620,6 +640,8 @@ defmodule Portal.Entra.Sync do
     unless Enum.empty?(memberships) do
       batch_upsert_memberships(directory, synced_at, memberships)
     end
+
+    Enum.map(user_members, & &1["id"])
   end
 
   def batch_upsert_identities(directory, synced_at, identities) do

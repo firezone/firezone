@@ -263,6 +263,72 @@ defmodule Portal.Entra.SyncTest do
       assert length(memberships) == 2
     end
 
+    test "reads each group once per sync however many groups nest it" do
+      account = account_fixture(features: %{idp_sync: true})
+      directory = entra_directory_fixture(account: account, sync_all_groups: true)
+      test_pid = self()
+
+      Req.Test.expect(APIClient, 100, fn %{request_path: path} = conn ->
+        cond do
+          String.ends_with?(path, "/oauth2/v2.0/token") ->
+            Req.Test.json(conn, %{"access_token" => "test_token"})
+
+          path == "/v1.0/groups" ->
+            Req.Test.json(conn, %{
+              "value" => [
+                %{"id" => "group_all", "displayName" => "All"},
+                %{"id" => "group_eng", "displayName" => "Engineering"},
+                %{"id" => "group_team", "displayName" => "Team"}
+              ]
+            })
+
+          String.contains?(path, "group_all/members") ->
+            Req.Test.json(conn, %{
+              "value" => [%{"@odata.type" => "#microsoft.graph.group", "id" => "group_eng"}]
+            })
+
+          String.contains?(path, "group_eng/members") ->
+            Req.Test.json(conn, %{
+              "value" => [%{"@odata.type" => "#microsoft.graph.group", "id" => "group_team"}]
+            })
+
+          String.contains?(path, "group_team/members") ->
+            send(test_pid, :team_read)
+
+            Req.Test.json(conn, %{
+              "value" => [
+                active_entra_user(%{
+                  "@odata.type" => "#microsoft.graph.user",
+                  "id" => "user_alice",
+                  "displayName" => "Alice",
+                  "mail" => "alice@example.com",
+                  "userPrincipalName" => "alice@example.com"
+                })
+              ]
+            })
+
+          true ->
+            Req.Test.json(conn, %{"error" => "unexpected: #{path}"})
+        end
+      end)
+
+      assert :ok = perform_job(Sync, %{account_id: directory.account_id, directory_id: directory.id})
+
+      assert_received :team_read
+      refute_received :team_read
+
+      identity = Repo.get_by!(ExternalIdentity, idp_id: "user_alice")
+      assert length(Repo.all_by(Membership, actor_id: identity.actor_id)) == 3
+
+      assert Repo.get_by!(Group, idp_id: "group_all").nested_group_idp_ids == [
+               "group_eng",
+               "group_team"
+             ]
+
+      assert Repo.get_by!(Group, idp_id: "group_eng").nested_group_idp_ids == ["group_team"]
+      assert Repo.get_by!(Group, idp_id: "group_team").nested_group_idp_ids == []
+    end
+
     test "skips disabled users from direct assignments and group memberships" do
       account = account_fixture(features: %{idp_sync: true})
       directory = entra_directory_fixture(account: account, sync_all_groups: false)
