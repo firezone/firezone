@@ -25,11 +25,17 @@ MAC_SIZE = (1440, 900)
 ANDROID_SIZE = (1080, 1920)
 MAC_BACKGROUND = (30, 30, 30)
 
-# WindowServer draws a window's edge and corners against whatever is behind them,
-# and not the same way twice. The capture is clipped to a rounded rectangle rounder
-# than any window it holds and given a border of its own, so none of those pixels
-# reach the store image.
-MAC_CORNER_RADIUS = 36
+# The windows' own corner radii, so the store image keeps their shape. Measured
+# from the captures: macOS 26 rounds its settings window more than the main one.
+MAC_CORNER_RADIUS = {
+    "15": {"main": 10, "settings": 10},
+    "26": {"main": 15, "settings": 26},
+}
+MAIN_WINDOW_SCREENS = {"first-time", "grant-vpn"}
+# WindowServer draws the window's edge, and a hairline along its corner arcs, against
+# whatever is behind them, and not the same way twice. The capture gets a border of
+# its own over that edge, cut this much deeper into the corners than the window is.
+MAC_CORNER_MARGIN = 8
 MAC_BORDER = {"light": (0xD9, 0xD9, 0xD9), "dark": (0x63, 0x63, 0x63)}
 MAC_SHADOW_OFFSET = (0, 50)
 MAC_SHADOW_BLUR = 35
@@ -83,14 +89,14 @@ def rounded_mask(size: tuple[int, int], radius: int, inset: int = 0) -> Image.Im
     return mask.resize(size, Image.Resampling.BOX)
 
 
-def frame_window(capture: Image.Image, appearance: str) -> Image.Image:
+def frame_window(capture: Image.Image, radius: int, appearance: str) -> Image.Image:
     """The window on the store canvas: clipped, bordered and with a shadow.
 
     Painted in layers over an opaque canvas, so the edge and the corners come from
     the masks alone and never sample the capture's own boundary pixels.
     """
-    outer = rounded_mask(capture.size, MAC_CORNER_RADIUS)
-    inner = rounded_mask(capture.size, MAC_CORNER_RADIUS - 1, inset=1)
+    outer = rounded_mask(capture.size, radius)
+    inner = rounded_mask(capture.size, radius + MAC_CORNER_MARGIN, inset=1)
     position = (
         (MAC_SIZE[0] - capture.width) // 2,
         (MAC_SIZE[1] - capture.height) // 2,
@@ -118,6 +124,9 @@ def frame_window(capture: Image.Image, appearance: str) -> Image.Image:
 
 
 def prepare_macos(directory: Path) -> None:
+    if directory.name not in MAC_CORNER_RADIUS:
+        raise RuntimeError(f"No window corner radius is known for macOS {directory.name}")
+
     for path in screenshots(directory):
         with Image.open(path) as image:
             if image.size == MAC_SIZE:
@@ -128,8 +137,10 @@ def prepare_macos(directory: Path) -> None:
                 relative = path.relative_to(REPO_ROOT)
                 raise RuntimeError(f"{relative} does not fit on a {MAC_SIZE} canvas")
 
-            appearance = path.stem.rsplit("-", 1)[-1]
-            write_rgb(path, frame_window(image, appearance))
+            screen, appearance = path.stem.rsplit("-", 1)
+            window = "main" if screen in MAIN_WINDOW_SCREENS else "settings"
+            radius = MAC_CORNER_RADIUS[directory.name][window]
+            write_rgb(path, frame_window(image, radius, appearance))
 
 
 def prepare_android(directory: Path) -> None:
