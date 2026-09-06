@@ -5,7 +5,6 @@ defmodule Portal.Entra.WebhookSyncTest do
   import Ecto.Query
 
   import Portal.AccountFixtures
-  import Portal.ActorFixtures
   import Portal.EntraDirectoryFixtures
   import Portal.GroupFixtures
   import Portal.IdentityFixtures
@@ -174,13 +173,17 @@ defmodule Portal.Entra.WebhookSyncTest do
 
     test "reconciles tracked parents of an untracked child",
          %{account: account, directory: directory, base_directory: base_directory} do
-      parent = group_fixture(account: account, directory: base_directory, idp_id: "parent")
+      parent =
+        group_fixture(
+          account: account,
+          directory: base_directory,
+          idp_id: "parent",
+          nested_group_idp_ids: ["child"]
+        )
+
       alice = graph_user("user-alice", "Alice", "alice@example.com")
 
-      stub_graph(
-        groups: %{"child" => {"Child", [alice]}, "parent" => {"Parent", [alice]}},
-        parents: %{"child" => [%{"id" => "parent", "displayName" => "Parent"}]}
-      )
+      stub_graph(groups: %{"child" => {"Child", [alice]}, "parent" => {"Parent", [graph_group("child")]}})
 
       assert :ok = perform_job(WebhookSync, group_args(directory, "child", "updated"))
 
@@ -220,13 +223,18 @@ defmodule Portal.Entra.WebhookSyncTest do
     test "reconciles tracked parent groups too",
          %{account: account, directory: directory, base_directory: base_directory} do
       child = group_fixture(account: account, directory: base_directory, idp_id: "child")
-      parent = group_fixture(account: account, directory: base_directory, idp_id: "parent")
+
+      parent =
+        group_fixture(
+          account: account,
+          directory: base_directory,
+          idp_id: "parent",
+          nested_group_idp_ids: ["child"]
+        )
+
       alice = graph_user("user-alice", "Alice", "alice@example.com")
 
-      stub_graph(
-        groups: %{"child" => {"Child", [alice]}, "parent" => {"Parent", [alice]}},
-        parents: %{"child" => [%{"id" => "parent", "displayName" => "Parent"}]}
-      )
+      stub_graph(groups: %{"child" => {"Child", [alice]}, "parent" => {"Parent", [graph_group("child")]}})
 
       assert :ok = perform_job(WebhookSync, group_args(directory, "child", "updated"))
 
@@ -235,20 +243,19 @@ defmodule Portal.Entra.WebhookSyncTest do
       assert Repo.get_by(Membership, actor_id: identity.actor_id, group_id: parent.id)
     end
 
-    test "creates unknown groups and parents when syncing all groups", %{account: account} do
+    test "creates an unknown group with its nested members when syncing all groups",
+         %{account: account} do
       directory = entra_directory_fixture(account: account, sync_all_groups: true)
       alice = graph_user("user-alice", "Alice", "alice@example.com")
 
-      stub_graph(
-        groups: %{"child" => {"Child", [alice]}, "parent" => {"Parent", [alice]}},
-        parents: %{"child" => [%{"id" => "parent", "displayName" => "Parent"}]}
-      )
+      stub_graph(groups: %{"parent" => {"Parent", [graph_group("child")]}, "child" => {"Child", [alice]}})
 
-      assert :ok = perform_job(WebhookSync, group_args(directory, "child", "updated"))
+      assert :ok = perform_job(WebhookSync, group_args(directory, "parent", "updated"))
 
-      assert %Group{name: "Child"} = Repo.get_by(Group, idp_id: "child")
-      assert %Group{name: "Parent"} = Repo.get_by(Group, idp_id: "parent")
-      assert length(Repo.all(Membership)) == 2
+      assert %Group{name: "Parent", nested_group_idp_ids: ["child"]} = Repo.get_by(Group, idp_id: "parent")
+      refute Repo.get_by(Group, idp_id: "child")
+      identity = Repo.get_by!(ExternalIdentity, idp_id: "user-alice")
+      assert [_] = Repo.all_by(Membership, actor_id: identity.actor_id)
     end
 
     test "deletes a group Graph no longer returns",
@@ -286,31 +293,24 @@ defmodule Portal.Entra.WebhookSyncTest do
       assert Repo.get_by!(Group, id: parent.id).nested_group_idp_ids == []
     end
 
-    test "treats a Microsoft 365 group, which cannot nest groups, as having none",
-         %{account: account, directory: directory, base_directory: base_directory} do
-      group =
-        group_fixture(
-          account: account,
-          directory: base_directory,
-          idp_id: "group-1",
-          nested_group_idp_ids: ["stale"]
-        )
-
-      stub_graph(groups: %{"group-1" => {"Engineering", []}}, nested: %{"group-1" => :unsupported})
-
-      assert :ok = perform_job(WebhookSync, group_args(directory, "group-1", "updated"))
-
-      assert Repo.get_by!(Group, id: group.id).nested_group_idp_ids == []
-    end
-
-    test "records the groups nested in a resynced group",
+    test "walks nested groups, records them, and flattens their users into the group",
          %{account: account, directory: directory, base_directory: base_directory} do
       group = group_fixture(account: account, directory: base_directory, idp_id: "group-1")
-      stub_graph(groups: %{"group-1" => {"Engineering", []}}, nested: %{"group-1" => ["inner-b", "inner-a"]})
+      alice = graph_user("user-alice", "Alice", "alice@example.com")
+
+      stub_graph(
+        groups: %{
+          "group-1" => {"Engineering", [graph_group("inner-b"), graph_group("inner-a")]},
+          "inner-a" => {"A", [alice, graph_group("group-1")]},
+          "inner-b" => {"B", [graph_group("inner-a")]}
+        }
+      )
 
       assert :ok = perform_job(WebhookSync, group_args(directory, "group-1", "updated"))
 
       assert Repo.get_by!(Group, id: group.id).nested_group_idp_ids == ["inner-a", "inner-b"]
+      identity = Repo.get_by!(ExternalIdentity, idp_id: "user-alice")
+      assert Repo.get_by(Membership, actor_id: identity.actor_id, group_id: group.id)
     end
 
     test "deletes a group on a deleted notification once Graph confirms it",
@@ -396,6 +396,8 @@ defmodule Portal.Entra.WebhookSyncTest do
     |> Repo.preload(:account)
   end
 
+  defp graph_group(id), do: %{"@odata.type" => "#microsoft.graph.group", "id" => id}
+
   defp graph_user(id, name, email, enabled \\ true) do
     %{
       "id" => id,
@@ -411,8 +413,6 @@ defmodule Portal.Entra.WebhookSyncTest do
   defp stub_graph(opts) do
     users = Keyword.get(opts, :users, %{})
     groups = Keyword.get(opts, :groups, %{})
-    parents = Keyword.get(opts, :parents, %{})
-    nested = Keyword.get(opts, :nested, %{})
 
     Req.Test.stub(APIClient, fn conn ->
       path = conn.request_path
@@ -433,28 +433,13 @@ defmodule Portal.Entra.WebhookSyncTest do
             nil -> json_or_404(conn, nil)
           end
 
-        String.ends_with?(path, "/transitiveMembers/microsoft.graph.user") ->
-          ["v1.0", "groups", id | _] = Path.split(String.trim_leading(path, "/"))
-          {_name, members} = Map.fetch!(groups, id)
-          Req.Test.json(conn, %{"value" => members})
-
-        String.ends_with?(path, "/transitiveMembers/microsoft.graph.group") ->
+        String.ends_with?(path, "/members") ->
           ["v1.0", "groups", id | _] = Path.split(String.trim_leading(path, "/"))
 
-          case Map.get(nested, id, []) do
-            :unsupported ->
-              conn
-              |> Plug.Conn.put_status(400)
-              |> Req.Test.json(%{"error" => %{"code" => "Request_UnsupportedQuery"}})
-
-            children ->
-              value = for child <- children, do: %{"@odata.type" => "#microsoft.graph.group", "id" => child}
-              Req.Test.json(conn, %{"value" => value})
+          case Map.get(groups, id) do
+            {_name, members} -> Req.Test.json(conn, %{"value" => members})
+            nil -> Req.Test.json(conn, %{"value" => []})
           end
-
-        String.ends_with?(path, "/transitiveMemberOf/microsoft.graph.group") ->
-          ["v1.0", "groups", id | _] = Path.split(String.trim_leading(path, "/"))
-          Req.Test.json(conn, %{"value" => Map.get(parents, id, [])})
 
         true ->
           Req.Test.json(conn, %{"error" => "unexpected: #{path}"})

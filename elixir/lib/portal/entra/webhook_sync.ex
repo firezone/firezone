@@ -103,7 +103,7 @@ defmodule Portal.Entra.WebhookSync do
 
         # An untracked child still changes the transitive members of every
         # tracked group above it.
-        resync_parent_groups(directory, access_token, synced_at, id)
+        resync_stored_parents(directory, access_token, synced_at, id)
         Portal.Policy.reconnect_orphaned_policies(directory.account_id)
         :ok
 
@@ -112,11 +112,7 @@ defmodule Portal.Entra.WebhookSync do
       # fresh.
       {:ok, %Req.Response{status: 404}} ->
         remove_group(directory, Database.get_group(directory.account_id, directory.id, group_id))
-
-        directory
-        |> Entra.Sync.parents_of(group_id)
-        |> Enum.each(&resync_stored_parent(directory, access_token, synced_at, &1))
-
+        resync_stored_parents(directory, access_token, synced_at, group_id)
         Portal.Policy.reconnect_orphaned_policies(directory.account_id)
         :ok
 
@@ -212,29 +208,11 @@ defmodule Portal.Entra.WebhookSync do
     end
   end
 
-  # A member change on a nested group changes the transitive members of every
-  # group above it, but Graph only notifies about the group that changed.
-  defp resync_parent_groups(directory, access_token, synced_at, group_id) do
-    APIClient.stream_group_transitive_member_of_groups(access_token, group_id)
-    |> Stream.each(fn
-      {:error, error} ->
-        raise Entra.SyncError,
-          error: error,
-          directory_id: directory.id,
-          step: :stream_group_transitive_member_of_groups
-
-      parents when is_list(parents) ->
-        Enum.each(parents, &resync_parent_group(directory, access_token, synced_at, &1))
-    end)
-    |> Stream.run()
-  end
-
-  defp resync_parent_group(directory, access_token, synced_at, parent) do
-    with id when is_binary(id) <- parent["id"],
-         name when is_binary(name) <- parent["displayName"],
-         true <- tracked_group?(directory, id) do
-      resync_group(directory, access_token, synced_at, id, name)
-    end
+  # Parents come from the nesting recorded at sync time, not from Graph.
+  defp resync_stored_parents(directory, access_token, synced_at, group_id) do
+    directory
+    |> Entra.Sync.parents_of(group_id)
+    |> Enum.each(&resync_stored_parent(directory, access_token, synced_at, &1))
   end
 
   defp resync_stored_parent(directory, access_token, synced_at, parent) do

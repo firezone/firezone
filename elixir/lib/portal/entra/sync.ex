@@ -118,30 +118,20 @@ defmodule Portal.Entra.Sync do
   end
 
   @doc """
-  Streams the transitive members of one group and upserts their identities and
-  memberships. Shared by the full sync and the webhook worker.
+  Walks the members of one group, nested groups included, and upserts their
+  identities and memberships. Shared by the full sync and the webhook worker.
   """
   def sync_group_members(directory, access_token, synced_at, group_id, group_name) do
-    Logger.debug("Streaming transitive members for group",
+    Logger.debug("Walking members for group",
       entra_directory_id: directory.id,
       group_id: group_id,
       group_name: group_name
     )
 
-    APIClient.stream_group_transitive_members(access_token, group_id)
-    |> Stream.each(fn
-      {:error, error} ->
-        raise Entra.SyncError,
-          error: error,
-          directory_id: directory.id,
-          step: :stream_group_transitive_members
+    nested_ids =
+      walk_group_members(directory, access_token, synced_at, group_id, group_name)
 
-      members when is_list(members) ->
-        process_group_members_page(directory, synced_at, group_id, group_name, members)
-    end)
-    |> Stream.run()
-
-    record_nested_groups(directory, access_token, group_id)
+    Database.update_nested_groups(directory.account_id, directory.id, group_id, nested_ids)
   end
 
   @doc """
@@ -150,32 +140,6 @@ defmodule Portal.Entra.Sync do
   """
   def parents_of(directory, group_idp_id) do
     Database.parents_of(directory.account_id, directory.id, group_idp_id)
-  end
-
-  # Only Graph knows a deleted group's former parents, so every tracked group
-  # remembers the groups nested inside it while its members are fresh.
-  defp record_nested_groups(directory, access_token, group_id) do
-    nested_ids =
-      APIClient.stream_group_transitive_member_groups(access_token, group_id)
-      |> Enum.flat_map(fn
-        {:error, %Req.Response{status: 400, body: %{"error" => %{"code" => "Request_UnsupportedQuery"}}}} ->
-          []
-
-        {:error, error} ->
-          raise Entra.SyncError,
-            error: error,
-            directory_id: directory.id,
-            step: :stream_group_transitive_member_groups
-
-        groups when is_list(groups) ->
-          for %{"@odata.type" => "#microsoft.graph.group", "id" => id} <- groups,
-              is_binary(id),
-              do: id
-      end)
-      |> Enum.uniq()
-      |> Enum.sort()
-
-    Database.update_nested_groups(directory.account_id, directory.id, group_id, nested_ids)
   end
 
   def issuer(directory), do: "https://login.microsoftonline.com/#{directory.tenant_id}/v2.0"
@@ -427,7 +391,7 @@ defmodule Portal.Entra.Sync do
     # Build and sync direct user identities
     # Note: appRoleAssignedTo only gives us principalId and principalDisplayName
     # We need to hydrate these with full user details using $batch endpoint
-    # Users in groups will get full details from transitiveMembers calls
+    # Users in groups will get full details from the group member walk
     Logger.debug("Processing direct user assignments",
       entra_directory_id: directory.id,
       count: length(user_assignments)
@@ -494,7 +458,7 @@ defmodule Portal.Entra.Sync do
 
     batch_upsert_groups(directory, synced_at, groups)
 
-    # For each group, stream and sync transitive members
+    # For each group, walk and sync members
     Enum.each(group_assignments, fn assignment ->
       sync_assigned_group_members(directory, access_token, synced_at, assignment)
     end)
@@ -554,7 +518,7 @@ defmodule Portal.Entra.Sync do
           batch_upsert_groups(directory, synced_at, group_attrs)
         end
 
-        # For each group, stream and sync transitive members
+        # For each group, walk and sync members
         Enum.each(groups, fn group ->
           sync_all_group_members(directory, access_token, synced_at, group)
         end)
@@ -584,15 +548,47 @@ defmodule Portal.Entra.Sync do
     sync_group_members(directory, access_token, synced_at, group["id"], group["displayName"])
   end
 
+  # Entra allows nesting cycles; visited keeps the walk finite.
+  defp walk_group_members(directory, access_token, synced_at, root_id, root_name) do
+    walk(directory, access_token, synced_at, root_id, root_name, [root_id], MapSet.new([root_id]))
+  end
+
+  defp walk(_directory, _access_token, _synced_at, root_id, _root_name, [], visited) do
+    visited |> MapSet.delete(root_id) |> Enum.sort()
+  end
+
+  defp walk(directory, access_token, synced_at, root_id, root_name, [group_id | queue], visited) do
+    {queue, visited} =
+      APIClient.stream_group_members(access_token, group_id)
+      |> Enum.reduce({queue, visited}, fn
+        {:error, error}, _acc ->
+          raise Entra.SyncError,
+            error: error,
+            directory_id: directory.id,
+            step: :stream_group_members
+
+        members, {queue, visited} when is_list(members) ->
+          process_group_members_page(directory, synced_at, root_id, root_name, members)
+
+          nested =
+            for %{"@odata.type" => "#microsoft.graph.group", "id" => id} <- members,
+                is_binary(id),
+                not MapSet.member?(visited, id),
+                do: id
+
+          {queue ++ nested, Enum.into(nested, visited)}
+      end)
+
+    walk(directory, access_token, synced_at, root_id, root_name, queue, visited)
+  end
+
   defp process_group_members_page(directory, synced_at, group_id, group_name, members) do
-    Logger.debug("Received transitive members page",
+    Logger.debug("Received members page",
       entra_directory_id: directory.id,
       group_id: group_id,
       count: length(members)
     )
 
-    # The API client already uses the microsoft.graph.user cast with
-    # accountEnabled=true filtering; keep a local guard as a safety net.
     user_members =
       Enum.filter(members, fn member ->
         graph_user_member?(member) and syncable_user?(member, directory.id)

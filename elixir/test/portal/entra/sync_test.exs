@@ -124,7 +124,7 @@ defmodule Portal.Entra.SyncTest do
               ]
             })
 
-          String.contains?(path, "transitiveMembers") ->
+          String.contains?(path, "/members") ->
             Req.Test.json(conn, %{
               "value" => [
                 active_entra_user(%{
@@ -211,7 +211,7 @@ defmodule Portal.Entra.SyncTest do
               ]
             })
 
-          String.contains?(path, "group_sales_123/transitiveMembers") ->
+          String.contains?(path, "group_sales_123/members") ->
             Req.Test.json(conn, %{
               "value" => [
                 active_entra_user(%{
@@ -224,7 +224,7 @@ defmodule Portal.Entra.SyncTest do
               ]
             })
 
-          String.contains?(path, "group_eng_123/transitiveMembers") ->
+          String.contains?(path, "group_eng_123/members") ->
             Req.Test.json(conn, %{
               "value" => [
                 active_entra_user(%{
@@ -356,7 +356,7 @@ defmodule Portal.Entra.SyncTest do
               ]
             })
 
-          String.contains?(path, "transitiveMembers") ->
+          String.contains?(path, "/members") ->
             Req.Test.json(conn, %{
               "value" => [
                 %{
@@ -629,7 +629,7 @@ defmodule Portal.Entra.SyncTest do
               ]
             })
 
-          String.contains?(path, "transitiveMembers") ->
+          String.contains?(path, "/members") ->
             Req.Test.json(conn, %{"value" => []})
 
           true ->
@@ -649,7 +649,7 @@ defmodule Portal.Entra.SyncTest do
       assert hd(new_groups).name == "New Group"
     end
 
-    test "filters out non-user members from group transitive members" do
+    test "filters out non-user members from group members" do
       account = account_fixture(features: %{idp_sync: true})
       directory = entra_directory_fixture(account: account, sync_all_groups: true)
 
@@ -664,7 +664,7 @@ defmodule Portal.Entra.SyncTest do
               "value" => [%{"id" => "group_123", "displayName" => "Test Group"}]
             })
 
-          String.contains?(path, "transitiveMembers") ->
+          String.contains?(path, "/members") ->
             Req.Test.json(conn, %{
               "value" => [
                 # This user should be included
@@ -959,7 +959,7 @@ defmodule Portal.Entra.SyncTest do
 
       # Mock transitive members with user missing id
       Req.Test.expect(APIClient, fn %{request_path: path} = conn ->
-        if String.contains?(path, "transitiveMembers") do
+        if String.contains?(path, "/members") do
           Req.Test.json(conn, %{
             "value" => [
               active_entra_user(%{
@@ -1211,7 +1211,7 @@ defmodule Portal.Entra.SyncTest do
             })
 
           # Transitive members for Engineering Team (from directory sync app)
-          String.contains?(path, "group_engineering_123/transitiveMembers") ->
+          String.contains?(path, "group_engineering_123/members") ->
             Req.Test.json(conn, %{
               "value" => [
                 active_entra_user(%{
@@ -1236,7 +1236,7 @@ defmodule Portal.Entra.SyncTest do
             })
 
           # Transitive members for Sales Team (from auth provider app)
-          String.contains?(path, "group_sales_123/transitiveMembers") ->
+          String.contains?(path, "group_sales_123/members") ->
             Req.Test.json(conn, %{
               "value" => [
                 active_entra_user(%{
@@ -1915,7 +1915,7 @@ defmodule Portal.Entra.SyncTest do
               ]
             })
 
-          String.contains?(path, "group_123/transitiveMembers") ->
+          String.contains?(path, "group_123/members") ->
             conn
             |> Plug.Conn.put_status(500)
             |> Req.Test.json(%{"error" => "server_error"})
@@ -1930,7 +1930,7 @@ defmodule Portal.Entra.SyncTest do
           perform_job(Sync, %{account_id: directory.account_id, directory_id: directory.id})
         end
 
-      assert error.step == :stream_group_transitive_members
+      assert error.step == :stream_group_members
     end
 
     test "raises SyncError when streaming all groups fails" do
@@ -1974,7 +1974,7 @@ defmodule Portal.Entra.SyncTest do
               "value" => [%{"id" => "group_123", "displayName" => "Engineering"}]
             })
 
-          String.contains?(path, "group_123/transitiveMembers") ->
+          String.contains?(path, "group_123/members") ->
             conn
             |> Plug.Conn.put_status(500)
             |> Req.Test.json(%{"error" => "server_error"})
@@ -1989,7 +1989,7 @@ defmodule Portal.Entra.SyncTest do
           perform_job(Sync, %{account_id: directory.account_id, directory_id: directory.id})
         end
 
-      assert error.step == :stream_group_transitive_members
+      assert error.step == :stream_group_members
     end
 
     test "validates groups have required id field" do
@@ -2053,7 +2053,7 @@ defmodule Portal.Entra.SyncTest do
               ]
             })
 
-          String.contains?(path, "group_123/transitiveMembers") ->
+          String.contains?(path, "group_123/members") ->
             Req.Test.json(conn, %{
               "value" => [
                 active_entra_user(%{
@@ -2247,7 +2247,7 @@ defmodule Portal.Entra.SyncTest do
               "value" => [%{"id" => "group_123", "displayName" => "Engineering"}]
             })
 
-          String.contains?(path, "group_123/transitiveMembers") ->
+          String.contains?(path, "group_123/members") ->
             Req.Test.json(conn, %{"value" => []})
 
           true ->
@@ -2318,7 +2318,7 @@ defmodule Portal.Entra.SyncTest do
               ]
             })
 
-          String.contains?(path, "group_123/transitiveMembers") ->
+          String.contains?(path, "group_123/members") ->
             duplicate_member =
               active_entra_user(%{
                 "@odata.type" => "#microsoft.graph.user",
