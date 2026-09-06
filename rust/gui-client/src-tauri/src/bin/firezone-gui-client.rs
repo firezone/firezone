@@ -315,7 +315,7 @@ fn try_main(cli: Cli, rt: &Runtime, log_guard: &mut Option<LogGuard>) -> Result<
 /// don't propagate when we use `RunAs` to elevate ourselves. So those must be run
 /// from an admin terminal, or with "Run as administrator" in the right-click menu.
 #[derive(Parser)]
-#[command(author, version, about, long_about = None)]
+#[command(author, version, about, long_about = None, bin_name = "firezone")]
 struct Cli {
     /// If true, check for updates every 30 seconds and pretend our current version is 1.0.0, so we'll always show the notification dot.
     #[arg(long, hide = true)]
