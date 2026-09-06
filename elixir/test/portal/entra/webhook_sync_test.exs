@@ -286,6 +286,23 @@ defmodule Portal.Entra.WebhookSyncTest do
       assert Repo.get_by!(Group, id: parent.id).nested_group_idp_ids == []
     end
 
+    test "treats a Microsoft 365 group, which cannot nest groups, as having none",
+         %{account: account, directory: directory, base_directory: base_directory} do
+      group =
+        group_fixture(
+          account: account,
+          directory: base_directory,
+          idp_id: "group-1",
+          nested_group_idp_ids: ["stale"]
+        )
+
+      stub_graph(groups: %{"group-1" => {"Engineering", []}}, nested: %{"group-1" => :unsupported})
+
+      assert :ok = perform_job(WebhookSync, group_args(directory, "group-1", "updated"))
+
+      assert Repo.get_by!(Group, id: group.id).nested_group_idp_ids == []
+    end
+
     test "records the groups nested in a resynced group",
          %{account: account, directory: directory, base_directory: base_directory} do
       group = group_fixture(account: account, directory: base_directory, idp_id: "group-1")
@@ -423,8 +440,17 @@ defmodule Portal.Entra.WebhookSyncTest do
 
         String.ends_with?(path, "/transitiveMembers/microsoft.graph.group") ->
           ["v1.0", "groups", id | _] = Path.split(String.trim_leading(path, "/"))
-          value = for child <- Map.get(nested, id, []), do: %{"@odata.type" => "#microsoft.graph.group", "id" => child}
-          Req.Test.json(conn, %{"value" => value})
+
+          case Map.get(nested, id, []) do
+            :unsupported ->
+              conn
+              |> Plug.Conn.put_status(400)
+              |> Req.Test.json(%{"error" => %{"code" => "Request_UnsupportedQuery"}})
+
+            children ->
+              value = for child <- children, do: %{"@odata.type" => "#microsoft.graph.group", "id" => child}
+              Req.Test.json(conn, %{"value" => value})
+          end
 
         String.ends_with?(path, "/transitiveMemberOf/microsoft.graph.group") ->
           ["v1.0", "groups", id | _] = Path.split(String.trim_leading(path, "/"))

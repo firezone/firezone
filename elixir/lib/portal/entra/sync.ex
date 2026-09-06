@@ -158,6 +158,9 @@ defmodule Portal.Entra.Sync do
     nested_ids =
       APIClient.stream_group_transitive_member_groups(access_token, group_id)
       |> Enum.flat_map(fn
+        {:error, %Req.Response{status: 400, body: %{"error" => %{"code" => "Request_UnsupportedQuery"}}}} ->
+          []
+
         {:error, error} ->
           raise Entra.SyncError,
             error: error,

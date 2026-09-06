@@ -174,13 +174,15 @@ defmodule Portal.Microsoft.Graph.APIClient do
 
   @doc """
   Streams the groups nested, at any depth, inside a group.
-  Returns a stream that yields pages of groups with their ids.
+  Returns a stream that yields pages of groups with their ids. Graph answers
+  with a 400 `Request_UnsupportedQuery` for a Microsoft 365 group, which
+  cannot contain groups.
   """
   def stream_group_transitive_member_groups(access_token, group_id) do
-    query = URI.encode_query(%{"$top" => @page_size, "$select" => "id"})
+    query = URI.encode_query(%{"$top" => @page_size, "$count" => "true", "$select" => "id"})
     path = "/v1.0/groups/#{group_id}/transitiveMembers/microsoft.graph.group"
 
-    stream_pages(path, query, access_token)
+    stream_pages(path, query, access_token, @advanced_query_headers)
   end
 
   @doc """
