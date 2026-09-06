@@ -19,8 +19,9 @@ fi
 xcrun simctl bootstatus "${udid}" -b
 
 # Sheet toolbars draw over a material that does not rasterise identically twice.
+# Reduce Transparency is stored under this key, not the one its name suggests.
 xcrun simctl spawn "${udid}" defaults write \
-  com.apple.Accessibility ReduceTransparencyEnabled -bool true
+  com.apple.Accessibility EnhancedBackgroundContrastEnabled -bool true
 
 # A control mid-animation rasterises differently from one that has settled, and
 # both hold still long enough to be photographed.
