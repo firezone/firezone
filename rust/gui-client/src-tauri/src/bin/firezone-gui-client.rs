@@ -72,13 +72,22 @@ fn main() -> ExitCode {
 /// Attaches to the console of the parent process so subcommand output and the stdout log layer are visible when launched from a terminal.
 ///
 /// Must run before the logger is set up because ANSI detection inspects stdout.
+/// Skipped when stdout is already usable (e.g. redirected to a pipe or file) because attaching would replace the inherited handles with the console.
 /// Failure means there is no parent console (e.g. launched from the Start menu), which is the normal GUI launch.
 #[cfg(all(target_os = "windows", not(debug_assertions)))]
 fn attach_parent_console() {
-    use windows::Win32::System::Console::{ATTACH_PARENT_PROCESS, AttachConsole};
+    use windows::Win32::System::Console::{
+        ATTACH_PARENT_PROCESS, AttachConsole, GetStdHandle, STD_OUTPUT_HANDLE,
+    };
 
-    // SAFETY: `AttachConsole` has no memory-safety preconditions.
-    let _ = unsafe { AttachConsole(ATTACH_PARENT_PROCESS) };
+    // SAFETY: `GetStdHandle` and `AttachConsole` have no memory-safety preconditions.
+    unsafe {
+        if GetStdHandle(STD_OUTPUT_HANDLE).is_ok_and(|h| !h.is_invalid()) {
+            return;
+        }
+
+        let _ = AttachConsole(ATTACH_PARENT_PROCESS);
+    }
 }
 
 fn try_main(cli: Cli, rt: &Runtime, log_guard: &mut Option<LogGuard>) -> Result<()> {
