@@ -1,0 +1,9 @@
+#!/bin/bash
+
+# Puts the headless client on the PATH. The installer passes the install location as $2.
+
+set -euo pipefail
+
+mkdir -p /usr/local/bin
+ln -sf "$2/Firezone.app/Contents/Resources/firezone" /usr/local/bin/firezone
+ln -sf "$2/Firezone.app/Contents/Resources/firezone-cli" /usr/local/bin/firezone-cli

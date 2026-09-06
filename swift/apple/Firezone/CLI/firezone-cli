@@ -1,0 +1,3 @@
+#!/bin/bash
+# Deprecated alias of `firezone`, kept so existing scripts keep working.
+exec /Applications/Firezone.app/Contents/MacOS/firezone-cli "$@"
