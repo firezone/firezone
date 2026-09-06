@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Installs the `firezone.cmd` wrapper into its own `cli` directory and puts
+  that directory on the system PATH. It must not sit next to `Firezone.exe`
+  because `PATHEXT` resolves `.exe` before `.cmd`, and `Firezone.exe` is a
+  GUI-subsystem binary the shell would not wait for.
+-->
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Fragment>
+    <DirectoryRef Id="INSTALLDIR">
+      <Directory Id="CliFolder" Name="cli">
+        <Component Id="FirezoneCli" Guid="6f3f2c1e-0f2a-4a4e-9c6b-2d9d0c5b7a11">
+          <File Id="FirezoneCliCmd" Name="firezone.cmd"
+                Source="../../../../gui-client/src-tauri/win_files/firezone.cmd" KeyPath="yes" />
+          <Environment Id="FirezoneCliPath" Name="PATH" Value="[INSTALLDIR]cli"
+                       Part="last" Action="set" System="yes" Permanent="no" />
+        </Component>
+      </Directory>
+    </DirectoryRef>
+  </Fragment>
+</Wix>

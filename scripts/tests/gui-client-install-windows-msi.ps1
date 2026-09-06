@@ -51,6 +51,17 @@ Assert-ValidSignature "$installDir\Firezone.exe"
 Assert-ValidSignature "$installDir\firezone-client-tunnel.exe"
 Assert-ValidSignature "$installDir\register-sparse.exe"
 
+Write-Output "==> Checking the firezone.cmd wrapper is installed and on PATH..."
+if (-not (Test-Path -LiteralPath "$installDir\cli\firezone.cmd")) {
+    Write-Error "Expected $installDir\cli\firezone.cmd to exist"
+    exit 1
+}
+$machinePath = [Environment]::GetEnvironmentVariable("Path", "Machine")
+if (($machinePath -split ";") -notcontains "$installDir\cli") {
+    Write-Error "Machine PATH does not contain $installDir\cli: $machinePath"
+    exit 1
+}
+
 Write-Output "==> Checking the tunnel service is running..."
 $null = sc.exe query FirezoneClientTunnelService | Select-String "RUNNING"
 if ($LASTEXITCODE -ne 0) {
