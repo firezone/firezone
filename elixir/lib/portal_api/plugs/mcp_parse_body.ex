@@ -20,12 +20,19 @@ defmodule PortalAPI.Plugs.MCPParseBody do
   def call(conn, opts) do
     Plug.Parsers.call(conn, opts)
   rescue
-    Plug.Parsers.ParseError ->
-      body = MCP.error(nil, MCP.parse_error(), "Parse error")
+    exception in Plug.Conn.WrapperError ->
+      case exception do
+        %{kind: :error, reason: %Plug.Parsers.ParseError{}, conn: conn} -> parse_error(conn)
+        _ -> reraise(exception, __STACKTRACE__)
+      end
+  end
 
-      conn
-      |> put_resp_content_type("application/json")
-      |> send_resp(400, Phoenix.json_library().encode_to_iodata!(body))
-      |> halt()
+  defp parse_error(conn) do
+    body = MCP.error(nil, MCP.parse_error(), "Parse error")
+
+    conn
+    |> put_resp_content_type("application/json")
+    |> send_resp(400, Phoenix.json_library().encode_to_iodata!(body))
+    |> halt()
   end
 end
