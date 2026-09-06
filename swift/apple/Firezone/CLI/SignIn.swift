@@ -31,7 +31,7 @@ enum SignIn {
   /// What to do about not having a token, written out so it can be followed as-is.
   static func instructions(authBaseURL: String, accountSlug: String) -> String {
     let url = signInURL(authBaseURL: authBaseURL, accountSlug: accountSlug)
-    let command = CommandLine.arguments.first ?? "firezone-cli"
+    let command = CommandLine.arguments.first ?? "firezone"
 
     return """
       No token found. To sign in:
