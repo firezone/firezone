@@ -61,8 +61,7 @@ class CertificatePermissionActivity : AppCompatActivity() {
             val message =
                 when {
                     alias == null -> getString(R.string.device_trust_no_certificate_selected)
-                    alias != configuredAlias ->
-                        getString(R.string.device_trust_wrong_certificate_selected, alias, configuredAlias)
+                    alias != configuredAlias -> getString(R.string.device_trust_wrong_certificate_selected, alias, configuredAlias)
                     else -> null
                 }
 
