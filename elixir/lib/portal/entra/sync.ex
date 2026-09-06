@@ -19,6 +19,14 @@ defmodule Portal.Entra.Sync do
 
   @directory_workers [__MODULE__, Portal.Entra.WebhookSync]
 
+  @doc """
+  A recovery sync. It queues behind a sync that is already executing instead
+  of collapsing into it, and then waits for it to finish.
+  """
+  def new_recovery(args) do
+    new(args, unique: [states: [:available, :scheduled, :retryable]])
+  end
+
   @impl Oban.Worker
   def timeout(_job), do: DirectorySync.full_sync_timeout()
 

@@ -262,6 +262,15 @@ defmodule Portal.Entra.WebhookSyncTest do
 
       refute Repo.get_by(Group, id: group.id)
       assert Repo.all(Membership) == []
+      assert_enqueued(worker: Sync, args: %{directory_id: directory.id})
+    end
+
+    test "queues a full sync when an untracked group disappears", %{directory: directory} do
+      stub_graph(groups: %{})
+
+      assert :ok = perform_job(WebhookSync, group_args(directory, "child", "deleted"))
+
+      assert_enqueued(worker: Sync, args: %{directory_id: directory.id})
     end
 
     test "deletes a group on a deleted notification once Graph confirms it",

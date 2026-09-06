@@ -107,8 +107,17 @@ defmodule Portal.Entra.WebhookSync do
         Portal.Policy.reconnect_orphaned_policies(directory.account_id)
         :ok
 
+      # Graph cannot name the former parents of a deleted group, so only a full
+      # sync can drop the transitive memberships it contributed to them.
       {:ok, %Req.Response{status: 404}} ->
         remove_group(directory, Database.get_group(directory.account_id, directory.id, group_id))
+
+        {:ok, _job} =
+          %{account_id: directory.account_id, directory_id: directory.id}
+          |> Entra.Sync.new_recovery()
+          |> Oban.insert()
+
+        :ok
 
       {:ok, response} ->
         raise Entra.SyncError, error: response, directory_id: directory.id, step: :get_group
