@@ -15,14 +15,7 @@ defmodule PortalWeb.SignUpControllerTest do
     } do
       mock_endpoint = Mocks.OIDC.mock_endpoint()
 
-      Portal.Config.put_env_override(:portal, Portal.Google.AuthProvider,
-        client_id: "test-client",
-        client_secret: "test-google-client-secret",
-        response_type: "code",
-        scope: "openid email profile",
-        discovery_document_uri: Mocks.OIDC.discovery_document_uri(),
-        req_opts: [retry: false, plug: {Req.Test, PortalWeb.OIDC}]
-      )
+      Mocks.OIDC.override_google_auth_provider_config()
 
       conn = post(conn, ~p"/sign_up/google")
 
@@ -47,14 +40,7 @@ defmodule PortalWeb.SignUpControllerTest do
     test "redirects back to sign-up with an error when Google discovery fails", %{conn: conn} do
       Mocks.OIDC.stub_connection_refused()
 
-      Portal.Config.put_env_override(:portal, Portal.Google.AuthProvider,
-        client_id: "test-client",
-        client_secret: "test-google-client-secret",
-        response_type: "code",
-        scope: "openid email profile",
-        discovery_document_uri: Mocks.OIDC.discovery_document_uri(),
-        req_opts: [retry: false, plug: {Req.Test, PortalWeb.OIDC}]
-      )
+      Mocks.OIDC.override_google_auth_provider_config()
 
       conn = post(conn, ~p"/sign_up/google")
 

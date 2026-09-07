@@ -3052,16 +3052,7 @@ defmodule PortalWeb.OIDCControllerTest do
     test "redirects to IdP with prompt=select_account", %{conn: conn} do
       account = account_fixture()
       mock_endpoint = Mocks.OIDC.mock_endpoint()
-
-      # Override Google config to use Req.Test mock
-      Portal.Config.put_env_override(:portal, Portal.Google.AuthProvider,
-        client_id: "test-client",
-        client_secret: "test-google-client-secret",
-        response_type: "code",
-        scope: "openid email profile",
-        discovery_document_uri: Mocks.OIDC.discovery_document_uri(),
-        req_opts: [retry: false, plug: {Req.Test, PortalWeb.OIDC}]
-      )
+      Mocks.OIDC.override_google_auth_provider_config()
 
       provider =
         google_provider_fixture(
@@ -3703,14 +3694,7 @@ defmodule PortalWeb.OIDCControllerTest do
   # Sets the secret_key_base from the endpoint so signed cookies can be read/written.
   describe "callback/2 for Google sign-up" do
     setup do
-      Portal.Config.put_env_override(:portal, Portal.Google.AuthProvider,
-        client_id: "test-client",
-        client_secret: "test-google-client-secret",
-        response_type: "code",
-        scope: "openid email profile",
-        discovery_document_uri: Mocks.OIDC.discovery_document_uri(),
-        req_opts: [retry: false, plug: {Req.Test, PortalWeb.OIDC}]
-      )
+      Mocks.OIDC.override_google_auth_provider_config()
 
       state = PortalWeb.OIDC.sign_verification_state(nil, "google-sign-up")
       %{state: state}
