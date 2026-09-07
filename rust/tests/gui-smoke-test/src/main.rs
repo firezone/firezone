@@ -133,7 +133,7 @@ fn binary_allowlist_rejection_test(app: &App) -> Result<()> {
     Ok(())
 }
 
-/// Spawn two `debug single-instance` invocations back-to-back and
+/// Spawn two `single-instance` invocations back-to-back and
 /// assert that:
 ///
 /// - The first acquires the launch lock and binds the GUI IPC pipe.
@@ -150,7 +150,7 @@ fn single_instance_test(app: &App) -> Result<()> {
     );
 
     let first = app
-        .gui_command(&["debug", "single-instance"])?
+        .gui_command(&["single-instance"])?
         .stdout(subprocess::Redirection::Pipe)
         .start()?;
 
@@ -159,7 +159,7 @@ fn single_instance_test(app: &App) -> Result<()> {
     std::thread::sleep(Duration::from_millis(500));
 
     let second = app
-        .gui_command(&["debug", "single-instance"])?
+        .gui_command(&["single-instance"])?
         .stdout(subprocess::Redirection::Pipe)
         .start()?;
     let second_capture = second
@@ -198,9 +198,7 @@ fn single_instance_test(app: &App) -> Result<()> {
 
 fn manual_tests(app: &App) -> Result<()> {
     tracing::info!("=== manual: replicate #6791 ===");
-    app.gui_command(&["debug", "replicate6791"])?
-        .start()?
-        .wait()?;
+    app.gui_command(&["replicate6791"])?.start()?.wait()?;
     tracing::info!("=== manual: replicate #6791 complete ===");
 
     tracing::info!("=== manual: --quit-after 10s ===");

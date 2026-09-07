@@ -148,23 +148,17 @@ fn try_main(cli: Cli, rt: &Runtime, log_guard: &mut Option<LogGuard>) -> Result<
         }
 
         // All commands below _don't_ end up running the GUI because they return early.
-        Some(Cmd::Debug {
-            command: DebugCommand::Replicate6791,
-        }) => {
+        Some(Cmd::Replicate6791) => {
             firezone_gui_client::auth::replicate_6791()?;
 
             return Ok(());
         }
-        Some(Cmd::Debug {
-            command: DebugCommand::SetAutostart(SetAutostartArgs { enabled }),
-        }) => {
+        Some(Cmd::SetAutostart(SetAutostartArgs { enabled })) => {
             rt.block_on(firezone_gui_client::gui::set_autostart(enabled))?;
 
             return Ok(());
         }
-        Some(Cmd::Debug {
-            command: DebugCommand::SingleInstance,
-        }) => {
+        Some(Cmd::SingleInstance) => {
             rt.block_on(debug_single_instance())?;
 
             return Ok(());
@@ -366,19 +360,12 @@ impl Cli {
 
 #[derive(clap::Subcommand)]
 enum Cmd {
-    Debug {
-        #[command(subcommand)]
-        command: DebugCommand,
-    },
-    Elevated,
     OpenDeepLink(DeepLink),
-    /// SmokeTest gets its own subcommand for historical reasons.
-    SmokeTest,
-}
-
-#[derive(clap::Subcommand)]
-enum DebugCommand {
+    #[command(hide = true)]
+    Elevated,
+    #[command(hide = true)]
     Replicate6791,
+    #[command(hide = true)]
     SetAutostart(SetAutostartArgs),
     /// Drive only the launch-lock + GUI IPC handshake — no controller, no
     /// auth, no tunnel-service IPC, no Tauri UI. Two invocations exercise
@@ -389,7 +376,10 @@ enum DebugCommand {
     /// - Second invocation: sees the lock held, connects to the pipe,
     ///   sends `NewInstance`, awaits the `Ack`, prints
     ///   `second-instance: …`, and exits.
+    #[command(hide = true)]
     SingleInstance,
+    #[command(hide = true)]
+    SmokeTest,
 }
 
 #[derive(clap::Parser)]
