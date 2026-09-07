@@ -193,6 +193,75 @@ defmodule Portal.Google.SyncTest do
       assert seconds in 16..45
     end
 
+    test "updates the name and email of an actor it created when the user changes" do
+      account = account_fixture()
+      directory = google_directory_fixture(account: account, domain: "example.com")
+      base_directory = Repo.get_by!(Portal.Directory, id: directory.id, account_id: account.id)
+
+      actor =
+        Portal.ActorFixtures.actor_fixture(account: account, name: "Old Name", email: "old@example.com")
+        |> Ecto.Changeset.change(created_by_directory_id: directory.id)
+        |> Repo.update!()
+
+      Portal.IdentityFixtures.identity_fixture(
+        account: account,
+        actor: actor,
+        directory: base_directory,
+        issuer: Sync.issuer(),
+        idp_id: "user1",
+        email: "old@example.com",
+        synced_at: DateTime.add(DateTime.utc_now(), -3600, :second)
+      )
+
+      Req.Test.expect(APIClient, fn conn ->
+        assert conn.request_path == "/token"
+        Req.Test.json(conn, %{"access_token" => "test_token", "expires_in" => 3600})
+      end)
+
+      Req.Test.expect(APIClient, fn conn ->
+        assert String.contains?(conn.request_path, "/groups")
+
+        Req.Test.json(conn, %{
+          "groups" => [%{"id" => "group1", "name" => "DevOps", "email" => "devops@example.com"}]
+        })
+      end)
+
+      Req.Test.expect(APIClient, fn conn ->
+        assert String.contains?(conn.request_path, "/orgunits")
+
+        Req.Test.json(conn, %{
+          "organizationUnits" => [
+            %{"orgUnitId" => "ou1", "name" => "Engineering", "orgUnitPath" => "/Engineering"}
+          ]
+        })
+      end)
+
+      Req.Test.expect(APIClient, fn conn ->
+        assert String.contains?(conn.request_path, "/users")
+
+        Req.Test.json(conn, %{
+          "users" => [
+            active_google_user(%{
+              "id" => "user1",
+              "primaryEmail" => "new@example.com",
+              "name" => %{"fullName" => "New Name", "givenName" => "New", "familyName" => "Name"}
+            })
+          ]
+        })
+      end)
+
+      Req.Test.expect(APIClient, fn conn ->
+        assert String.contains?(conn.request_path, "/groups/group1/members")
+        Req.Test.json(conn, %{"members" => [%{"id" => "user1", "type" => "USER", "email" => "new@example.com"}]})
+      end)
+
+      assert :ok = perform_job(Sync, %{"account_id" => directory.account_id, "directory_id" => directory.id})
+
+      actor = Repo.get_by!(Portal.Actor, id: actor.id)
+      assert actor.name == "New Name"
+      assert actor.email == "new@example.com"
+    end
+
     test "performs successful sync with groups, org units, and user identity sync" do
       account = account_fixture()
       directory = google_directory_fixture(account: account, domain: "example.com")

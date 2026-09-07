@@ -132,7 +132,8 @@ defmodule Portal.DirectorySync do
   @doc """
   Writes the identities a directory read, as `fields` name their attributes,
   creating an actor for each user the account does not know yet and recycling
-  the identity rows it already holds. A newer write for the same identity is
+  the identity rows it already holds. The actors the directory created follow
+  their identity's name and email. A newer write for the same identity is
   never undone by an older one.
   """
   def upsert_identities(account_id, issuer, directory_id, synced_at, identities, fields) do
@@ -407,7 +408,26 @@ defmodule Portal.DirectorySync do
               AND iss.external_identity_id = external_identities.id
               AND iss.synced_at >= $#{synced_at}
           )
-        RETURNING id, account_id, idp_id
+        RETURNING id, account_id, idp_id, actor_id, name, email
+      ),
+      -- Another actor may already hold the new address; the identity records
+      -- it either way, so only the name moves then.
+      updated_actors AS (
+        UPDATE actors a
+        SET name = ui.name,
+            email = CASE
+              WHEN EXISTS (
+                SELECT 1 FROM actors other
+                WHERE other.account_id = a.account_id AND other.email = ui.email AND other.id <> a.id
+              ) THEN a.email
+              ELSE ui.email
+            END,
+            updated_at = $#{synced_at}
+        FROM upserted_identities ui
+        WHERE a.account_id = ui.account_id
+          AND a.id = ui.actor_id
+          AND a.created_by_directory_id = $#{directory_id}
+          AND (a.name, a.email) IS DISTINCT FROM (ui.name, ui.email)
       ),
       all_identity_ids AS (
         SELECT id, account_id FROM upserted_identities
