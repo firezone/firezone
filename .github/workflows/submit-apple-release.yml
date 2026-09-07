@@ -189,6 +189,22 @@ jobs:
               --device-type APP_IPAD_PRO_3GEN_129 \
               --replace \
               --confirm
+
+            # Remove other size overrides so Apple scales the screenshots we upload.
+            asc screenshots list \
+              --app "$ASC_APP_ID" \
+              --version "$version" \
+              --platform IOS \
+              --locale en-US \
+              --output json \
+              | jq -r '.sets[]
+                  | select(.set.attributes.screenshotDisplayType
+                      | (startswith("APP_IPHONE_") and . != "APP_IPHONE_67")
+                        or (startswith("APP_IPAD_") and . != "APP_IPAD_PRO_3GEN_129"))
+                  | .screenshots[]?.id' \
+              | while IFS= read -r screenshot_id; do
+                  asc screenshots delete --id "$screenshot_id" --confirm
+                done
           else
             asc screenshots upload \
               --app "$ASC_APP_ID" \

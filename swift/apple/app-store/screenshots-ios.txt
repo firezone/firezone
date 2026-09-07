@@ -1,6 +1,5 @@
 welcome-light.png
 session-light.png
-session-menu-light.png
 resource-details-light.png
 resource-details-internet-light.png
 device-details-light.png
