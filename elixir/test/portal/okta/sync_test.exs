@@ -5,6 +5,7 @@ defmodule Portal.Okta.SyncTest do
   import Ecto.Query
   import ExUnit.CaptureLog
   import Portal.AccountFixtures
+  import Portal.ObanFixtures
   import Portal.OktaDirectoryFixtures
 
   alias Portal.Okta.APIClient
@@ -503,8 +504,7 @@ defmodule Portal.Okta.SyncTest do
       directory = okta_directory_fixture(account: account)
       args = %{account_id: directory.account_id, directory_id: directory.id}
 
-      {:ok, job} = Oban.insert(Sync.new(args))
-      Repo.update_all(from(j in Oban.Job, where: j.id == ^job.id), set: [state: "executing"])
+      executing_job(Sync.new(args))
 
       assert {:snooze, seconds} = perform_job(Sync, args)
       assert seconds in 16..45
@@ -1903,7 +1903,11 @@ defmodule Portal.Okta.SyncTest do
         )
 
       {deleted_count, _} =
-        Database.delete_unsynced_groups(account.id, directory.id, current_sync_time)
+        Portal.DirectorySync.Database.delete_unsynced_groups(
+          account.id,
+          directory.id,
+          current_sync_time
+        )
 
       assert deleted_count == 2
 
@@ -1955,7 +1959,11 @@ defmodule Portal.Okta.SyncTest do
       )
 
       {deleted_count, _} =
-        Database.delete_unsynced_identities(account.id, directory.id, current_sync_time)
+        Portal.DirectorySync.Database.delete_unsynced_identities(
+          account.id,
+          directory.id,
+          current_sync_time
+        )
 
       assert deleted_count == 1
 

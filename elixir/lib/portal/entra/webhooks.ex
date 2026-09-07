@@ -10,8 +10,6 @@ defmodule Portal.Entra.Webhooks do
   alias Portal.DirectorySync
   alias Portal.Entra
   alias __MODULE__.Database
-
-  @directory_workers [Portal.Entra.Sync, Portal.Entra.WebhookSync]
   require Logger
 
   def handle_notifications(directory_id, notifications) when is_list(notifications) do
@@ -125,7 +123,7 @@ defmodule Portal.Entra.Webhooks do
   defp in_scope([], _directory), do: []
 
   defp in_scope(changes, directory) do
-    if DirectorySync.busy?(@directory_workers, directory.id) do
+    if DirectorySync.busy?(:entra, directory.id) do
       changes
     else
       user_ids = for {"user", id, _} <- changes, do: id

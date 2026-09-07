@@ -2,9 +2,9 @@ defmodule Portal.Google.WebhookSyncTest do
   use Portal.DataCase, async: true
   use Oban.Testing, repo: Portal.Repo
 
-  import Ecto.Query
 
   import Portal.AccountFixtures
+  import Portal.ObanFixtures
   import Portal.GoogleDirectoryFixtures
   import Portal.GoogleAPIClientHelpers
   import Portal.GroupFixtures
@@ -305,10 +305,7 @@ defmodule Portal.Google.WebhookSyncTest do
     identity = directory_identity(ctx, "user-1")
     stub_google(users: %{})
 
-    {:ok, job} =
-      Oban.insert(Sync.new(%{account_id: directory.account_id, directory_id: directory.id}))
-
-    Repo.update_all(from(j in Oban.Job, where: j.id == ^job.id), set: [state: "executing"])
+    executing_job(Sync.new(%{account_id: directory.account_id, directory_id: directory.id}))
 
     assert {:snooze, seconds} = perform_job(WebhookSync, args(directory, "user-1"))
     assert seconds in 16..45

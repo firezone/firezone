@@ -10,8 +10,6 @@ defmodule Portal.Google.Webhooks do
   alias Portal.DirectorySync
   alias Portal.Google
   alias __MODULE__.Database
-
-  @directory_workers [Portal.Google.Sync, Portal.Google.WebhookSync]
   require Logger
 
   def handle_notification(directory_id, %{token: token, state: state}, body) do
@@ -81,7 +79,7 @@ defmodule Portal.Google.Webhooks do
   # Busy is read first: a full sync that inserts the user and finishes between
   # the two reads is then caught by the identity lookup.
   defp in_scope?(directory, user_id) do
-    DirectorySync.busy?(@directory_workers, directory.id) or
+    DirectorySync.busy?(:google, directory.id) or
       Database.identity_exists?(directory, user_id)
   end
 

@@ -4,6 +4,7 @@ defmodule PortalAPI.Integrations.Entra.WebhookControllerTest do
 
   import Ecto.Query
   import Portal.AccountFixtures
+  import Portal.ObanFixtures
   import Portal.EntraDirectoryFixtures
   import Portal.GroupFixtures
   import Portal.IdentityFixtures
@@ -120,10 +121,7 @@ defmodule PortalAPI.Integrations.Entra.WebhookControllerTest do
       conn: conn,
       directory: directory
     } do
-      {:ok, job} =
-        Oban.insert(Entra.Sync.new(%{account_id: directory.account_id, directory_id: directory.id}))
-
-      Portal.Repo.update_all(from(j in Oban.Job, where: j.id == ^job.id), set: [state: "executing"])
+      executing_job(Entra.Sync.new(%{account_id: directory.account_id, directory_id: directory.id}))
 
       conn =
         post_notifications(conn, directory, [
@@ -139,12 +137,10 @@ defmodule PortalAPI.Integrations.Entra.WebhookControllerTest do
       conn: conn,
       directory: directory
     } do
-      {:ok, running} =
-        Oban.insert(Entra.Sync.new(%{account_id: directory.account_id, directory_id: directory.id}))
-
-      Portal.Repo.update_all(from(j in Oban.Job, where: j.id == ^running.id),
-        set: [state: "executing"]
-      )
+      running =
+        executing_job(
+          Entra.Sync.new(%{account_id: directory.account_id, directory_id: directory.id})
+        )
 
       conn = post_notifications(conn, directory, [lifecycle("missed", "sub-users")])
 
@@ -187,12 +183,7 @@ defmodule PortalAPI.Integrations.Entra.WebhookControllerTest do
       directory: directory
     } do
       args = %{account_id: directory.account_id, directory_id: directory.id}
-      {:ok, job} = Oban.insert(Entra.Sync.new(args))
-
-      Portal.Repo.update_all(
-        from(j in Oban.Job, where: j.id == ^job.id),
-        set: [state: "executing"]
-      )
+      executing_job(Entra.Sync.new(args))
 
       conn = post_notifications(conn, directory, [lifecycle("missed", "sub-users")])
       assert response(conn, 202) == ""

@@ -1,14 +1,12 @@
 defmodule Portal.DirectorySyncTest do
   use Portal.DataCase, async: true
 
-  import Ecto.Query
   import Portal.AccountFixtures
+  import Portal.ObanFixtures
   import Portal.EntraDirectoryFixtures
 
   alias Portal.DirectorySync
   alias Portal.Entra
-
-  @workers [Entra.Sync, Entra.WebhookSync]
 
   setup do
     account = account_fixture(features: %{idp_sync: true})
@@ -18,84 +16,84 @@ defmodule Portal.DirectorySyncTest do
 
   describe "running_elsewhere?/3" do
     test "sees another executing job for the directory", %{directory: directory} do
-      other = executing(sync_changeset(directory))
+      other = executing_job(sync_changeset(directory))
       mine = Oban.insert!(webhook_changeset(directory))
 
-      assert DirectorySync.running_elsewhere?(@workers, directory.id, mine)
-      refute DirectorySync.running_elsewhere?(@workers, directory.id, other)
+      assert DirectorySync.running_elsewhere?(:entra, directory.id, mine)
+      refute DirectorySync.running_elsewhere?(:entra, directory.id, other)
     end
 
     test "ignores queued jobs and other directories", %{account: account, directory: directory} do
       other_directory = entra_directory_fixture(account: account)
-      executing(sync_changeset(other_directory))
+      executing_job(sync_changeset(other_directory))
       Oban.insert!(sync_changeset(directory))
       mine = Oban.insert!(webhook_changeset(directory))
 
-      refute DirectorySync.running_elsewhere?(@workers, directory.id, mine)
+      refute DirectorySync.running_elsewhere?(:entra, directory.id, mine)
     end
 
     test "ignores a row older than its worker's timeout", %{directory: directory} do
       dead_at = DateTime.add(DateTime.utc_now(), -(DirectorySync.webhook_timeout() + 360_000), :millisecond)
-      executing(webhook_changeset(directory), attempted_at: dead_at)
+      executing_job(webhook_changeset(directory), attempted_at: dead_at)
       mine = Oban.insert!(sync_changeset(directory))
 
-      refute DirectorySync.running_elsewhere?(@workers, directory.id, mine)
+      refute DirectorySync.running_elsewhere?(:entra, directory.id, mine)
     end
 
     test "still blocks on a full sync older than the webhook timeout", %{directory: directory} do
       attempted_at = DateTime.add(DateTime.utc_now(), -(DirectorySync.webhook_timeout() + 360_000), :millisecond)
-      executing(sync_changeset(directory), attempted_at: attempted_at)
+      executing_job(sync_changeset(directory), attempted_at: attempted_at)
       mine = Oban.insert!(webhook_changeset(directory))
 
-      assert DirectorySync.running_elsewhere?(@workers, directory.id, mine)
+      assert DirectorySync.running_elsewhere?(:entra, directory.id, mine)
     end
 
     test "ignores executing jobs of other workers for the directory", %{directory: directory} do
-      executing(subscriptions_changeset(directory))
+      executing_job(subscriptions_changeset(directory))
       mine = Oban.insert!(webhook_changeset(directory))
 
-      refute DirectorySync.running_elsewhere?(@workers, directory.id, mine)
+      refute DirectorySync.running_elsewhere?(:entra, directory.id, mine)
     end
 
     test "treats an executing row without attempted_at as alive", %{directory: directory} do
-      executing(sync_changeset(directory), attempted_at: nil)
+      executing_job(sync_changeset(directory), attempted_at: nil)
       mine = Oban.insert!(webhook_changeset(directory))
 
-      assert DirectorySync.running_elsewhere?(@workers, directory.id, mine)
+      assert DirectorySync.running_elsewhere?(:entra, directory.id, mine)
     end
 
     test "keeps blocking on a job whose node left the cluster", %{directory: directory} do
-      executing(sync_changeset(directory), attempted_by: ["portal@gone", Ecto.UUID.generate()])
+      executing_job(sync_changeset(directory), attempted_by: ["portal@gone", Ecto.UUID.generate()])
       mine = Oban.insert!(webhook_changeset(directory))
 
-      assert DirectorySync.running_elsewhere?(@workers, directory.id, mine)
+      assert DirectorySync.running_elsewhere?(:entra, directory.id, mine)
     end
   end
 
   describe "busy?/2" do
     test "is true only while a job for the directory is executing", %{directory: directory} do
-      refute DirectorySync.busy?(@workers, directory.id)
+      refute DirectorySync.busy?(:entra, directory.id)
 
       Oban.insert!(sync_changeset(directory))
-      refute DirectorySync.busy?(@workers, directory.id)
+      refute DirectorySync.busy?(:entra, directory.id)
 
-      executing(sync_changeset(directory))
-      assert DirectorySync.busy?(@workers, directory.id)
+      executing_job(sync_changeset(directory))
+      assert DirectorySync.busy?(:entra, directory.id)
     end
 
     test "ignores executing jobs of other workers", %{directory: directory} do
-      executing(subscriptions_changeset(directory))
+      executing_job(subscriptions_changeset(directory))
 
-      refute DirectorySync.busy?(@workers, directory.id)
+      refute DirectorySync.busy?(:entra, directory.id)
     end
   end
 
   describe "rescue_orphans/1" do
     test "re-queues this node's executing jobs and discards spent ones", %{directory: directory} do
       node = "portal@restarted"
-      retryable = executing(webhook_changeset(directory), attempted_by: [node, "a"])
-      spent = executing(sync_changeset(directory), attempted_by: [node, "b"])
-      elsewhere = executing(webhook_changeset(directory), attempted_by: ["portal@other", "c"])
+      retryable = executing_job(webhook_changeset(directory), attempted_by: [node, "a"])
+      spent = executing_job(sync_changeset(directory), attempted_by: [node, "b"])
+      elsewhere = executing_job(webhook_changeset(directory), attempted_by: ["portal@other", "c"])
 
       assert DirectorySync.rescue_orphans(node) == 2
 
@@ -106,7 +104,7 @@ defmodule Portal.DirectorySyncTest do
 
     test "leaves the jobs of other workers alone", %{directory: directory} do
       node = "portal@restarted"
-      other = executing(subscriptions_changeset(directory), attempted_by: [node, "d"])
+      other = executing_job(subscriptions_changeset(directory), attempted_by: [node, "d"])
 
       assert DirectorySync.rescue_orphans(node) == 0
       assert Repo.get!(Oban.Job, other.id).state == "executing"
@@ -155,21 +153,5 @@ defmodule Portal.DirectorySyncTest do
       directory_id: directory.id,
       action: "ensure"
     })
-  end
-
-  defp executing(changeset, opts \\ []) do
-    job = Oban.insert!(changeset)
-
-    Repo.update_all(
-      from(j in Oban.Job, where: j.id == ^job.id),
-      set: [
-        state: "executing",
-        attempt: 1,
-        attempted_at: Keyword.get(opts, :attempted_at, DateTime.utc_now()),
-        attempted_by: Keyword.get(opts, :attempted_by, ["portal@here", "uuid"])
-      ]
-    )
-
-    Repo.get!(Oban.Job, job.id)
   end
 end

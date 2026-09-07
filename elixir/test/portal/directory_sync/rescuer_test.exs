@@ -1,8 +1,8 @@
 defmodule Portal.DirectorySync.RescuerTest do
   use Portal.DataCase, async: true
 
-  import Ecto.Query
   import Portal.AccountFixtures
+  import Portal.ObanFixtures
   import Portal.EntraDirectoryFixtures
 
   alias Portal.DirectorySync.Rescuer
@@ -62,27 +62,15 @@ defmodule Portal.DirectorySync.RescuerTest do
   end
 
   defp executing(directory, attempted_by) do
-    job =
-      Oban.insert!(
-        Entra.WebhookSync.new(%{
-          account_id: directory.account_id,
-          directory_id: directory.id,
-          resource: "user",
-          resource_id: Ecto.UUID.generate(),
-          change_type: "updated"
-        })
-      )
-
-    Repo.update_all(
-      from(j in Oban.Job, where: j.id == ^job.id),
-      set: [
-        state: "executing",
-        attempt: 1,
-        attempted_at: DateTime.utc_now(),
-        attempted_by: attempted_by
-      ]
+    executing_job(
+      Entra.WebhookSync.new(%{
+        account_id: directory.account_id,
+        directory_id: directory.id,
+        resource: "user",
+        resource_id: Ecto.UUID.generate(),
+        change_type: "updated"
+      }),
+      attempted_by: attempted_by
     )
-
-    Repo.get!(Oban.Job, job.id)
   end
 end

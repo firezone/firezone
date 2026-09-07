@@ -4,6 +4,7 @@ defmodule Portal.Entra.SyncTest do
 
   import Ecto.Query
   import Portal.AccountFixtures
+  import Portal.ObanFixtures
   import Portal.EntraDirectoryFixtures
 
   alias Portal.Microsoft.Graph.APIClient
@@ -30,18 +31,15 @@ defmodule Portal.Entra.SyncTest do
       directory = entra_directory_fixture(account: account)
       args = %{account_id: directory.account_id, directory_id: directory.id}
 
-      {:ok, job} =
-        Oban.insert(
-          Portal.Entra.WebhookSync.new(%{
+      executing_job(
+        Portal.Entra.WebhookSync.new(%{
             account_id: directory.account_id,
             directory_id: directory.id,
             resource: "user",
             resource_id: "user-1",
             change_type: "updated"
-          })
-        )
-
-      Repo.update_all(from(j in Oban.Job, where: j.id == ^job.id), set: [state: "executing"])
+        })
+      )
 
       assert {:snooze, seconds} = perform_job(Sync, args)
       assert seconds in 16..45
@@ -2757,8 +2755,7 @@ defmodule Portal.Entra.SyncTest do
       directory = entra_directory_fixture(account: account)
       args = %{account_id: directory.account_id, directory_id: directory.id}
 
-      {:ok, running} = Oban.insert(Sync.new(args))
-      Repo.update_all(from(j in Oban.Job, where: j.id == ^running.id), set: [state: "executing"])
+      running = executing_job(Sync.new(args))
 
       assert {:ok, %Oban.Job{conflict?: true, id: id}} = Oban.insert(Sync.new(args))
       assert id == running.id

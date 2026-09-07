@@ -31,8 +31,6 @@ defmodule Portal.Entra.WebhookSync do
     keys: [:directory_id, :resource, :resource_id]
   ]
 
-  @directory_workers [Portal.Entra.Sync, __MODULE__]
-
   @impl Oban.Worker
   def new(args, opts), do: super(args, Keyword.put_new(opts, :unique, @unique))
 
@@ -60,11 +58,9 @@ defmodule Portal.Entra.WebhookSync do
         :ok
 
       directory ->
-        if DirectorySync.running_elsewhere?(@directory_workers, directory.id, job) do
-          {:snooze, DirectorySync.snooze_seconds()}
-        else
+        DirectorySync.run_alone(:entra, directory.id, job, fn ->
           apply_notification(directory, resource, resource_id, change_type)
-        end
+        end)
     end
   end
 
@@ -94,9 +90,8 @@ defmodule Portal.Entra.WebhookSync do
     access_token = Entra.Sync.get_access_token!(directory)
     synced_at = DateTime.utc_now()
 
-    case APIClient.get_group(access_token, group_id) do
-      {:ok, %Req.Response{status: 200, body: %{"id" => id, "displayName" => name}}}
-      when is_binary(id) and is_binary(name) ->
+    case fetch_group(directory, access_token, group_id) do
+      {:ok, id, name} ->
         fetched =
           if tracked_group?(directory, id) do
             resync_group(directory, access_token, synced_at, id, name, %{})
@@ -107,24 +102,17 @@ defmodule Portal.Entra.WebhookSync do
         # An untracked child still changes the transitive members of every
         # tracked group above it.
         resync_stored_parents(directory, access_token, synced_at, id, fetched)
-        Portal.Policy.reconnect_orphaned_policies(directory.account_id)
-        :ok
 
       # Graph cannot name the former parents of a deleted group, so they come
       # from the nesting each tracked group recorded while its members were
       # fresh.
-      {:ok, %Req.Response{status: 404}} ->
+      :not_found ->
         remove_group(directory, Database.get_group(directory.account_id, directory.id, group_id))
         resync_stored_parents(directory, access_token, synced_at, group_id, %{})
-        Portal.Policy.reconnect_orphaned_policies(directory.account_id)
-        :ok
-
-      {:ok, response} ->
-        raise Entra.SyncError, error: response, directory_id: directory.id, step: :get_group
-
-      {:error, error} ->
-        raise Entra.SyncError, error: error, directory_id: directory.id, step: :get_group
     end
+
+    Portal.Policy.reconnect_orphaned_policies(directory.account_id)
+    :ok
   end
 
   defp apply_change(directory, resource, _resource_id, _change_type) do
@@ -179,7 +167,7 @@ defmodule Portal.Entra.WebhookSync do
   end
 
   defp remove_identity(directory, identity) do
-    {:ok, _} = Database.remove_identity(directory, identity)
+    {:ok, _} = DirectorySync.remove_identity(directory.id, identity)
 
     Logger.info("Removed identity from Entra change notification",
       entra_directory_id: directory.id,
@@ -203,14 +191,24 @@ defmodule Portal.Entra.WebhookSync do
   end
 
   defp resync_stored_parent(directory, access_token, synced_at, parent, fetched) do
-    case APIClient.get_group(access_token, parent.idp_id) do
-      {:ok, %Req.Response{status: 200, body: %{"id" => id, "displayName" => name}}}
-      when is_binary(id) and is_binary(name) ->
+    case fetch_group(directory, access_token, parent.idp_id) do
+      {:ok, id, name} ->
         resync_group(directory, access_token, synced_at, id, name, fetched)
 
-      {:ok, %Req.Response{status: 404}} ->
+      :not_found ->
         remove_group(directory, parent)
         fetched
+    end
+  end
+
+  defp fetch_group(directory, access_token, group_id) do
+    case APIClient.get_group(access_token, group_id) do
+      {:ok, %Req.Response{status: 200, body: %{"id" => id, "displayName" => name}}}
+      when is_binary(id) and is_binary(name) ->
+        {:ok, id, name}
+
+      {:ok, %Req.Response{status: 404}} ->
+        :not_found
 
       {:ok, response} ->
         raise Entra.SyncError, error: response, directory_id: directory.id, step: :get_group
@@ -243,20 +241,6 @@ defmodule Portal.Entra.WebhookSync do
     import Ecto.Query
     alias Portal.Safe
 
-    # One transaction, so a retry after a crash cannot find the identity gone
-    # and leave the memberships behind. The actor is locked first, the order a
-    # plain actor deletion takes as it cascades, so the two cannot deadlock.
-    def remove_identity(directory, identity) do
-      Safe.unscoped()
-      |> Safe.transaction(fn ->
-        lock_actor(directory.account_id, identity.actor_id)
-        delete_identity(identity)
-        delete_actor_directory_memberships(directory.account_id, directory.id, identity.actor_id)
-        delete_actor_without_identities(directory.account_id, directory.id, identity.actor_id)
-        {:ok, :removed}
-      end)
-    end
-
     def get_identity(account_id, issuer, idp_id) do
       from(i in Portal.ExternalIdentity,
         where: i.account_id == ^account_id,
@@ -281,48 +265,6 @@ defmodule Portal.Entra.WebhookSync do
       from(g in Portal.Group,
         where: g.account_id == ^group.account_id,
         where: g.id == ^group.id
-      )
-      |> Safe.unscoped()
-      |> Safe.delete_all()
-    end
-
-    defp lock_actor(account_id, actor_id) do
-      from(a in Portal.Actor,
-        where: a.account_id == ^account_id,
-        where: a.id == ^actor_id,
-        lock: "FOR UPDATE"
-      )
-      |> Safe.unscoped()
-      |> Safe.one()
-    end
-
-    defp delete_identity(identity) do
-      from(i in Portal.ExternalIdentity,
-        where: i.account_id == ^identity.account_id,
-        where: i.id == ^identity.id
-      )
-      |> Safe.unscoped()
-      |> Safe.delete_all()
-    end
-
-    defp delete_actor_directory_memberships(account_id, directory_id, actor_id) do
-      from(m in Portal.Membership,
-        join: g in Portal.Group,
-        on: m.group_id == g.id and m.account_id == g.account_id,
-        where: m.account_id == ^account_id,
-        where: m.actor_id == ^actor_id,
-        where: g.directory_id == ^directory_id
-      )
-      |> Safe.unscoped()
-      |> Safe.delete_all()
-    end
-
-    defp delete_actor_without_identities(account_id, directory_id, actor_id) do
-      from(a in Portal.Actor,
-        where: a.account_id == ^account_id,
-        where: a.id == ^actor_id,
-        where: a.created_by_directory_id == ^directory_id,
-        where: fragment("NOT EXISTS (SELECT 1 FROM external_identities WHERE actor_id = ?)", a.id)
       )
       |> Safe.unscoped()
       |> Safe.delete_all()

@@ -17,7 +17,6 @@ defmodule Portal.Entra.Sync do
   alias __MODULE__.Database
   require Logger
 
-  @directory_workers [__MODULE__, Portal.Entra.WebhookSync]
   @batch_size 1000
 
   @doc """
@@ -35,12 +34,10 @@ defmodule Portal.Entra.Sync do
   def perform(
         %Oban.Job{args: %{"account_id" => account_id, "directory_id" => directory_id}} = job
       ) do
-    if DirectorySync.running_elsewhere?(@directory_workers, directory_id, job) do
-      {:snooze, DirectorySync.snooze_seconds()}
-    else
+    DirectorySync.run_alone(:entra, directory_id, job, fn ->
       run_sync(account_id, directory_id)
       :ok
-    end
+    end)
   end
 
   def perform(_), do: :ok
@@ -84,7 +81,7 @@ defmodule Portal.Entra.Sync do
     synced_at = DateTime.utc_now()
 
     fetch_and_sync_all(directory, access_token, synced_at)
-    delete_unsynced(directory, synced_at)
+    DirectorySync.prune(directory.account_id, directory.id, synced_at)
 
     # Reconnect orphaned policies after sync (groups may have been recreated)
     reconnected = Portal.Policy.reconnect_orphaned_policies(directory.account_id)
@@ -451,34 +448,20 @@ defmodule Portal.Entra.Sync do
     end
   end
 
-  defp sync_group_assignments(_directory, _access_token, _synced_at, [], fetched), do: fetched
-
   defp sync_group_assignments(directory, access_token, synced_at, group_assignments, fetched) do
-    # Build and sync groups
-    groups =
-      Enum.map(group_assignments, fn assignment ->
-        %{
-          idp_id: assignment["principalId"],
-          name: assignment["principalDisplayName"]
-        }
-      end)
+    groups = Enum.map(group_assignments, &{&1["principalId"], &1["principalDisplayName"]})
+    sync_groups(directory, access_token, synced_at, groups, fetched)
+  end
 
-    Logger.debug("Upserting groups",
-      entra_directory_id: directory.id,
-      count: length(groups)
+  defp sync_groups(directory, access_token, synced_at, groups, fetched) do
+    batch_upsert_groups(
+      directory,
+      synced_at,
+      Enum.map(groups, fn {id, name} -> %{idp_id: id, name: name} end)
     )
 
-    batch_upsert_groups(directory, synced_at, groups)
-
-    Enum.reduce(group_assignments, fetched, fn assignment, fetched ->
-      sync_group_members(
-        directory,
-        access_token,
-        synced_at,
-        assignment["principalId"],
-        assignment["principalDisplayName"],
-        fetched
-      )
+    Enum.reduce(groups, fetched, fn {id, name}, fetched ->
+      sync_group_members(directory, access_token, synced_at, id, name, fetched)
     end)
   end
 
@@ -505,37 +488,9 @@ defmodule Portal.Entra.Sync do
           count: length(groups)
         )
 
-        # Validate required fields in groups before processing
         Enum.each(groups, fn group -> validate_group!(group, directory) end)
-
-        # Build and sync groups
-        group_attrs =
-          Enum.map(groups, fn group ->
-            %{
-              idp_id: group["id"],
-              name: group["displayName"]
-            }
-          end)
-
-        unless Enum.empty?(group_attrs) do
-          Logger.debug("Upserting groups",
-            entra_directory_id: directory.id,
-            count: length(group_attrs)
-          )
-
-          batch_upsert_groups(directory, synced_at, group_attrs)
-        end
-
-        Enum.reduce(groups, fetched, fn group, fetched ->
-          sync_group_members(
-            directory,
-            access_token,
-            synced_at,
-            group["id"],
-            group["displayName"],
-            fetched
-          )
-        end)
+        groups = Enum.map(groups, &{&1["id"], &1["displayName"]})
+        sync_groups(directory, access_token, synced_at, groups, fetched)
     end)
   end
 
@@ -713,47 +668,6 @@ defmodule Portal.Entra.Sync do
     :ok
   end
 
-  defp delete_unsynced(directory, synced_at) do
-    account_id = directory.account_id
-    directory_id = directory.id
-
-    # Delete groups that weren't synced
-    {deleted_groups_count, _} =
-      Database.delete_unsynced_groups(account_id, directory_id, synced_at)
-
-    Logger.debug("Deleted unsynced groups",
-      entra_directory_id: directory.id,
-      count: deleted_groups_count
-    )
-
-    # Delete identities that weren't synced
-    {deleted_identities_count, _} =
-      Database.delete_unsynced_identities(account_id, directory_id, synced_at)
-
-    Logger.debug("Deleted unsynced identities",
-      entra_directory_id: directory.id,
-      count: deleted_identities_count
-    )
-
-    # Delete memberships that weren't synced
-    {deleted_memberships_count, _} =
-      Database.delete_unsynced_memberships(account_id, directory_id, synced_at)
-
-    Logger.debug("Deleted unsynced group memberships",
-      entra_directory_id: directory.id,
-      count: deleted_memberships_count
-    )
-
-    # Delete actors that no longer have any identities and were created by this directory
-    {deleted_actors_count, _} =
-      Database.delete_actors_without_identities(account_id, directory_id)
-
-    Logger.debug("Deleted actors without identities",
-      entra_directory_id: directory.id,
-      count: deleted_actors_count
-    )
-  end
-
   def syncable_user?(user, directory_id) do
     case Map.fetch(user, "accountEnabled") do
       {:ok, enabled} ->
@@ -846,8 +760,13 @@ defmodule Portal.Entra.Sync do
                insert_memberships(account_id, issuer, directory_id, synced_at, group_idp_id, batches) do
           update_nested_groups(account_id, directory_id, group_idp_id, nested_ids)
 
-          {deleted, _} =
-            delete_unsynced_group_memberships(account_id, directory_id, group_idp_id, synced_at)
+          deleted =
+            Portal.DirectorySync.prune_group_memberships(
+              account_id,
+              directory_id,
+              group_idp_id,
+              synced_at
+            )
 
           {:ok, deleted}
         end
@@ -1289,64 +1208,6 @@ defmodule Portal.Entra.Sync do
       params ++ [Ecto.UUID.dump!(account_id), issuer, last_synced_at]
     end
 
-    def delete_unsynced_groups(account_id, directory_id, synced_at) do
-      query =
-        from(g in Portal.Group,
-          where: g.account_id == ^account_id,
-          where: g.directory_id == ^directory_id,
-          where:
-            fragment(
-              "NOT EXISTS (SELECT 1 FROM group_sync_states gss WHERE gss.group_id = ? AND gss.account_id = ? AND gss.synced_at >= ?)",
-              g.id,
-              g.account_id,
-              ^synced_at
-            )
-        )
-
-      query |> Safe.unscoped() |> Safe.delete_all()
-    end
-
-    def delete_unsynced_identities(account_id, directory_id, synced_at) do
-      query =
-        from(i in Portal.ExternalIdentity,
-          where: i.account_id == ^account_id,
-          where: i.directory_id == ^directory_id,
-          where:
-            fragment(
-              "NOT EXISTS (SELECT 1 FROM external_identity_sync_states iss WHERE iss.external_identity_id = ? AND iss.account_id = ? AND iss.synced_at >= ?)",
-              i.id,
-              i.account_id,
-              ^synced_at
-            )
-        )
-
-      query |> Safe.unscoped() |> Safe.delete_all()
-    end
-
-    def delete_unsynced_memberships(account_id, directory_id, synced_at) do
-      unsynced_memberships(account_id, directory_id, synced_at)
-      |> Safe.unscoped()
-      |> Safe.delete_all()
-    end
-
-    def delete_actors_without_identities(account_id, directory_id) do
-      # Delete actors that no longer have any identities
-      # This cleans up actors whose identities were deleted in the previous step
-      # Only delete actors created by this specific directory
-      query =
-        from(a in Portal.Actor,
-          where: a.account_id == ^account_id,
-          where: a.created_by_directory_id == ^directory_id,
-          where:
-            fragment(
-              "NOT EXISTS (SELECT 1 FROM external_identities WHERE actor_id = ?)",
-              a.id
-            )
-        )
-
-      query |> Safe.unscoped() |> Safe.delete_all()
-    end
-
     defp insert_memberships(account_id, issuer, directory_id, synced_at, group_idp_id, batches) do
       Enum.reduce_while(batches, :ok, fn user_ids, :ok ->
         tuples = Enum.map(user_ids, &{group_idp_id, &1})
@@ -1367,29 +1228,6 @@ defmodule Portal.Entra.Sync do
       )
       |> Safe.unscoped()
       |> Safe.update_all(set: [nested_group_idp_ids: nested_ids])
-    end
-
-    defp delete_unsynced_group_memberships(account_id, directory_id, group_idp_id, synced_at) do
-      unsynced_memberships(account_id, directory_id, synced_at)
-      |> where([_m, g], g.idp_id == ^group_idp_id)
-      |> Safe.unscoped()
-      |> Safe.delete_all()
-    end
-
-    defp unsynced_memberships(account_id, directory_id, synced_at) do
-      from(m in Portal.Membership,
-        join: g in Portal.Group,
-        on: m.group_id == g.id and m.account_id == g.account_id,
-        where: g.account_id == ^account_id,
-        where: g.directory_id == ^directory_id,
-        where:
-          fragment(
-            "NOT EXISTS (SELECT 1 FROM membership_sync_states mss WHERE mss.membership_id = ? AND mss.account_id = ? AND mss.synced_at >= ?)",
-            m.id,
-            m.account_id,
-            ^synced_at
-          )
-      )
     end
   end
 end

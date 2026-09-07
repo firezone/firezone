@@ -4,6 +4,7 @@ defmodule Portal.Google.SyncTest do
 
   import Ecto.Query
   import Portal.AccountFixtures
+  import Portal.ObanFixtures
   import Portal.GoogleDirectoryFixtures
   import Portal.IdentityFixtures
   import Portal.ResourceFixtures
@@ -180,16 +181,13 @@ defmodule Portal.Google.SyncTest do
       directory = google_directory_fixture(account: account)
       args = %{"account_id" => directory.account_id, "directory_id" => directory.id}
 
-      {:ok, job} =
-        Oban.insert(
-          Portal.Google.WebhookSync.new(%{
-            account_id: directory.account_id,
-            directory_id: directory.id,
-            user_id: "user-1"
-          })
-        )
-
-      Repo.update_all(from(j in Oban.Job, where: j.id == ^job.id), set: [state: "executing"])
+      executing_job(
+        Portal.Google.WebhookSync.new(%{
+          account_id: directory.account_id,
+          directory_id: directory.id,
+          user_id: "user-1"
+        })
+      )
 
       assert {:snooze, seconds} = perform_job(Sync, args)
       assert seconds in 16..45

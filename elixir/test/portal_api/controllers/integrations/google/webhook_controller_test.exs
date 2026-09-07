@@ -1,9 +1,9 @@
 defmodule PortalAPI.Integrations.Google.WebhookControllerTest do
   use PortalAPI.ConnCase, async: true
-  import Ecto.Query
   use Oban.Testing, repo: Portal.Repo
 
   import Portal.AccountFixtures
+  import Portal.ObanFixtures
   import Portal.GoogleDirectoryFixtures
   import Portal.IdentityFixtures
 
@@ -90,12 +90,7 @@ defmodule PortalAPI.Integrations.Google.WebhookControllerTest do
       conn: conn,
       directory: directory
     } do
-      {:ok, job} =
-        Oban.insert(
-          Google.Sync.new(%{account_id: directory.account_id, directory_id: directory.id})
-        )
-
-      Portal.Repo.update_all(from(j in Oban.Job, where: j.id == ^job.id), set: [state: "executing"])
+      executing_job(Google.Sync.new(%{account_id: directory.account_id, directory_id: directory.id}))
 
       conn = post_notification(conn, directory, "delete", user("user-unknown"))
 

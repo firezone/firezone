@@ -33,12 +33,10 @@ defmodule Portal.Okta.Sync do
   def perform(
         %Oban.Job{args: %{"account_id" => account_id, "directory_id" => directory_id}} = job
       ) do
-    if DirectorySync.running_elsewhere?([__MODULE__], directory_id, job) do
-      {:snooze, DirectorySync.snooze_seconds()}
-    else
+    DirectorySync.run_alone(:okta, directory_id, job, fn ->
       run_sync(account_id, directory_id)
       :ok
-    end
+    end)
   end
 
   def perform(_), do: :ok
@@ -87,7 +85,7 @@ defmodule Portal.Okta.Sync do
     sync_all_apps!(apps, client, access_token, directory, synced_at)
     sync_all_memberships!(client, access_token, directory, synced_at)
     check_deletion_threshold!(directory, synced_at)
-    delete_unsynced(directory, synced_at)
+    DirectorySync.prune(directory.account_id, directory.id, synced_at)
 
     # Reconnect orphaned policies after sync (groups may have been recreated)
     reconnected = Portal.Policy.reconnect_orphaned_policies(directory.account_id)
@@ -547,47 +545,6 @@ defmodule Portal.Okta.Sync do
   end
 
   # Delete records that weren't synced this time
-  defp delete_unsynced(directory, synced_at) do
-    account_id = directory.account_id
-    directory_id = directory.id
-
-    # Delete groups that weren't synced
-    {deleted_groups_count, _} =
-      Database.delete_unsynced_groups(account_id, directory_id, synced_at)
-
-    Logger.debug("Deleted unsynced groups",
-      okta_directory_id: directory.id,
-      count: deleted_groups_count
-    )
-
-    # Delete identities that weren't synced
-    {deleted_identities_count, _} =
-      Database.delete_unsynced_identities(account_id, directory_id, synced_at)
-
-    Logger.debug("Deleted unsynced identities",
-      okta_directory_id: directory.id,
-      count: deleted_identities_count
-    )
-
-    # Delete memberships that weren't synced
-    {deleted_memberships_count, _} =
-      Database.delete_unsynced_memberships(account_id, directory_id, synced_at)
-
-    Logger.debug("Deleted unsynced group memberships",
-      okta_directory_id: directory.id,
-      count: deleted_memberships_count
-    )
-
-    # Delete actors that no longer have any identities and were created by this directory
-    {deleted_actors_count, _} =
-      Database.delete_actors_without_identities(account_id, directory_id)
-
-    Logger.debug("Deleted actors without identities",
-      okta_directory_id: directory.id,
-      count: deleted_actors_count
-    )
-  end
-
   # Circuit breaker protection against accidental mass deletion
   # This can happen if someone misconfigures or removes the Okta app
   defp check_deletion_threshold!(directory, synced_at) do
@@ -1160,74 +1117,5 @@ defmodule Portal.Okta.Sync do
     end
 
     # Cleanup functions
-    def delete_unsynced_groups(account_id, directory_id, synced_at) do
-      query =
-        from(g in Portal.Group,
-          where: g.account_id == ^account_id,
-          where: g.directory_id == ^directory_id,
-          where:
-            fragment(
-              "NOT EXISTS (SELECT 1 FROM group_sync_states gss WHERE gss.group_id = ? AND gss.account_id = ? AND gss.synced_at >= ?)",
-              g.id,
-              g.account_id,
-              ^synced_at
-            )
-        )
-
-      query |> Safe.unscoped() |> Safe.delete_all()
-    end
-
-    def delete_unsynced_identities(account_id, directory_id, synced_at) do
-      query =
-        from(i in Portal.ExternalIdentity,
-          where: i.account_id == ^account_id,
-          where: i.directory_id == ^directory_id,
-          where:
-            fragment(
-              "NOT EXISTS (SELECT 1 FROM external_identity_sync_states iss WHERE iss.external_identity_id = ? AND iss.account_id = ? AND iss.synced_at >= ?)",
-              i.id,
-              i.account_id,
-              ^synced_at
-            )
-        )
-
-      query |> Safe.unscoped() |> Safe.delete_all()
-    end
-
-    def delete_unsynced_memberships(account_id, directory_id, synced_at) do
-      query =
-        from(m in Portal.Membership,
-          join: g in Portal.Group,
-          on: m.group_id == g.id and m.account_id == g.account_id,
-          where: g.account_id == ^account_id,
-          where: g.directory_id == ^directory_id,
-          where:
-            fragment(
-              "NOT EXISTS (SELECT 1 FROM membership_sync_states mss WHERE mss.membership_id = ? AND mss.account_id = ? AND mss.synced_at >= ?)",
-              m.id,
-              m.account_id,
-              ^synced_at
-            )
-        )
-
-      query |> Safe.unscoped() |> Safe.delete_all()
-    end
-
-    def delete_actors_without_identities(account_id, directory_id) do
-      # Delete actors that no longer have any identities
-      # Only delete actors created by this specific directory
-      query =
-        from(a in Portal.Actor,
-          where: a.account_id == ^account_id,
-          where: a.created_by_directory_id == ^directory_id,
-          where:
-            fragment(
-              "NOT EXISTS (SELECT 1 FROM external_identities WHERE actor_id = ?)",
-              a.id
-            )
-        )
-
-      query |> Safe.unscoped() |> Safe.delete_all()
-    end
   end
 end

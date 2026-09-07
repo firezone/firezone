@@ -30,7 +30,6 @@ defmodule Portal.Google.Sync do
   alias __MODULE__.Database
   require Logger
   @db_batch_size 500
-  @directory_workers [__MODULE__, Portal.Google.WebhookSync]
 
   @impl Oban.Worker
   def timeout(_job), do: DirectorySync.full_sync_timeout()
@@ -39,12 +38,10 @@ defmodule Portal.Google.Sync do
   def perform(
         %Oban.Job{args: %{"account_id" => account_id, "directory_id" => directory_id}} = job
       ) do
-    if DirectorySync.running_elsewhere?(@directory_workers, directory_id, job) do
-      {:snooze, DirectorySync.snooze_seconds()}
-    else
+    DirectorySync.run_alone(:google, directory_id, job, fn ->
       run_sync(account_id, directory_id)
       :ok
-    end
+    end)
   end
 
   def perform(_), do: :ok
@@ -88,7 +85,7 @@ defmodule Portal.Google.Sync do
     synced_at = DateTime.utc_now()
 
     fetch_and_sync_all(directory, access_token, synced_at)
-    delete_unsynced(directory, synced_at)
+    DirectorySync.prune(directory.account_id, directory.id, synced_at)
 
     # Reconnect orphaned policies after sync (groups may have been recreated)
     reconnected = Portal.Policy.reconnect_orphaned_policies(directory.account_id)
@@ -949,40 +946,6 @@ defmodule Portal.Google.Sync do
 
   # Cleanup
 
-  defp delete_unsynced(directory, synced_at) do
-    account_id = directory.account_id
-    directory_id = directory.id
-
-    # Delete memberships before groups (memberships reference groups via FK)
-    {count, _} = Database.delete_unsynced_memberships(account_id, directory_id, synced_at)
-
-    Logger.debug("Deleted unsynced memberships",
-      google_directory_id: directory.id,
-      count: count
-    )
-
-    {count, _} = Database.delete_unsynced_groups(account_id, directory_id, synced_at)
-
-    Logger.debug("Deleted unsynced groups and org units",
-      google_directory_id: directory.id,
-      count: count
-    )
-
-    {count, _} = Database.delete_unsynced_identities(account_id, directory_id, synced_at)
-
-    Logger.debug("Deleted unsynced identities",
-      google_directory_id: directory.id,
-      count: count
-    )
-
-    {count, _} = Database.delete_actors_without_identities(account_id, directory_id)
-
-    Logger.debug("Deleted actors without identities",
-      google_directory_id: directory.id,
-      count: count
-    )
-  end
-
   # Batch DB helpers
 
   @doc false
@@ -1510,77 +1473,6 @@ defmodule Portal.Google.Sync do
         end)
 
       params ++ [Ecto.UUID.dump!(account_id), @issuer, last_synced_at]
-    end
-
-    def delete_unsynced_groups(account_id, directory_id, synced_at) do
-      query =
-        from(g in Portal.Group,
-          where: g.account_id == ^account_id,
-          where: g.directory_id == ^directory_id,
-          where:
-            fragment(
-              "NOT EXISTS (SELECT 1 FROM group_sync_states gss WHERE gss.group_id = ? AND gss.account_id = ? AND gss.synced_at >= ?)",
-              g.id,
-              g.account_id,
-              ^synced_at
-            )
-        )
-
-      query |> Safe.unscoped() |> Safe.delete_all()
-    end
-
-    def delete_unsynced_identities(account_id, directory_id, synced_at) do
-      query =
-        from(i in Portal.ExternalIdentity,
-          where: i.account_id == ^account_id,
-          where: i.directory_id == ^directory_id,
-          where:
-            fragment(
-              "NOT EXISTS (SELECT 1 FROM external_identity_sync_states iss WHERE iss.external_identity_id = ? AND iss.account_id = ? AND iss.synced_at >= ?)",
-              i.id,
-              i.account_id,
-              ^synced_at
-            )
-        )
-
-      query |> Safe.unscoped() |> Safe.delete_all()
-    end
-
-    def delete_unsynced_memberships(account_id, directory_id, synced_at) do
-      query =
-        from(m in Portal.Membership,
-          join: g in Portal.Group,
-          on: m.group_id == g.id and m.account_id == g.account_id,
-          where: g.account_id == ^account_id,
-          where: g.directory_id == ^directory_id,
-          where:
-            fragment(
-              "NOT EXISTS (SELECT 1 FROM membership_sync_states mss WHERE mss.membership_id = ? AND mss.account_id = ? AND mss.synced_at >= ?)",
-              m.id,
-              m.account_id,
-              ^synced_at
-            )
-        )
-
-      query |> Safe.unscoped() |> Safe.delete_all()
-    end
-
-    def delete_actors_without_identities(account_id, directory_id) do
-      # Delete actors that no longer have any identities
-      # This cleans up actors whose identities were deleted in the previous step
-      # Only delete actors created by this specific directory
-      query =
-        from(a in Portal.Actor,
-          where: a.account_id == ^account_id,
-          where: a.created_by_directory_id == ^directory_id,
-          where:
-            fragment(
-              "NOT EXISTS (SELECT 1 FROM external_identities WHERE actor_id = ?)",
-              a.id
-            )
-        )
-
-      query |> Safe.unscoped() |> Safe.delete_all()
     end
   end
 end

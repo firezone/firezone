@@ -5,6 +5,7 @@ defmodule Portal.Entra.WebhookSyncTest do
   import Ecto.Query
 
   import Portal.AccountFixtures
+  import Portal.ObanFixtures
   import Portal.EntraDirectoryFixtures
   import Portal.GroupFixtures
   import Portal.IdentityFixtures
@@ -544,10 +545,7 @@ defmodule Portal.Entra.WebhookSyncTest do
   test "snoozes while a full sync for the directory is executing", %{directory: directory} = ctx do
     identity = directory_identity(ctx, "user-1")
 
-    {:ok, job} =
-      Oban.insert(Sync.new(%{account_id: directory.account_id, directory_id: directory.id}))
-
-    Repo.update_all(from(j in Oban.Job, where: j.id == ^job.id), set: [state: "executing"])
+    executing_job(Sync.new(%{account_id: directory.account_id, directory_id: directory.id}))
 
     assert {:snooze, seconds} = perform_job(WebhookSync, user_args(directory, "user-1", "deleted"))
     assert seconds in 16..45
