@@ -244,13 +244,15 @@ defmodule Portal.Entra.WebhookSync do
     alias Portal.Safe
 
     # One transaction, so a retry after a crash cannot find the identity gone
-    # and leave the memberships behind.
+    # and leave the memberships behind. The actor is locked first, the order a
+    # plain actor deletion takes as it cascades, so the two cannot deadlock.
     def remove_identity(directory, identity) do
       Safe.unscoped()
       |> Safe.transaction(fn ->
+        lock_actor(directory.account_id, identity.actor_id)
         delete_identity(identity)
         delete_actor_directory_memberships(directory.account_id, directory.id, identity.actor_id)
-        Portal.Entra.Sync.delete_actors_without_identities(directory)
+        delete_actor_without_identities(directory.account_id, directory.id, identity.actor_id)
         {:ok, :removed}
       end)
     end
@@ -275,7 +277,26 @@ defmodule Portal.Entra.WebhookSync do
       |> Safe.one()
     end
 
-    def delete_identity(identity) do
+    def delete_group(group) do
+      from(g in Portal.Group,
+        where: g.account_id == ^group.account_id,
+        where: g.id == ^group.id
+      )
+      |> Safe.unscoped()
+      |> Safe.delete_all()
+    end
+
+    defp lock_actor(account_id, actor_id) do
+      from(a in Portal.Actor,
+        where: a.account_id == ^account_id,
+        where: a.id == ^actor_id,
+        lock: "FOR UPDATE"
+      )
+      |> Safe.unscoped()
+      |> Safe.one()
+    end
+
+    defp delete_identity(identity) do
       from(i in Portal.ExternalIdentity,
         where: i.account_id == ^identity.account_id,
         where: i.id == ^identity.id
@@ -284,7 +305,7 @@ defmodule Portal.Entra.WebhookSync do
       |> Safe.delete_all()
     end
 
-    def delete_actor_directory_memberships(account_id, directory_id, actor_id) do
+    defp delete_actor_directory_memberships(account_id, directory_id, actor_id) do
       from(m in Portal.Membership,
         join: g in Portal.Group,
         on: m.group_id == g.id and m.account_id == g.account_id,
@@ -296,10 +317,12 @@ defmodule Portal.Entra.WebhookSync do
       |> Safe.delete_all()
     end
 
-    def delete_group(group) do
-      from(g in Portal.Group,
-        where: g.account_id == ^group.account_id,
-        where: g.id == ^group.id
+    defp delete_actor_without_identities(account_id, directory_id, actor_id) do
+      from(a in Portal.Actor,
+        where: a.account_id == ^account_id,
+        where: a.id == ^actor_id,
+        where: a.created_by_directory_id == ^directory_id,
+        where: fragment("NOT EXISTS (SELECT 1 FROM external_identities WHERE actor_id = ?)", a.id)
       )
       |> Safe.unscoped()
       |> Safe.delete_all()

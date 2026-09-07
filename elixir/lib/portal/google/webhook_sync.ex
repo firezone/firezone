@@ -226,13 +226,15 @@ defmodule Portal.Google.WebhookSync do
     alias Portal.Safe
 
     # One transaction, so a retry after a crash cannot find the identity gone
-    # and leave the memberships behind.
+    # and leave the memberships behind. The actor is locked first, the order a
+    # plain actor deletion takes as it cascades, so the two cannot deadlock.
     def remove_identity(directory, identity) do
       Safe.unscoped()
       |> Safe.transaction(fn ->
+        lock_actor(directory.account_id, identity.actor_id)
         delete_identity(identity)
         delete_actor_directory_memberships(directory, identity.actor_id)
-        Portal.Google.Sync.delete_actors_without_identities(directory)
+        delete_actor_without_identities(directory, identity.actor_id)
         {:ok, :removed}
       end)
     end
@@ -262,27 +264,6 @@ defmodule Portal.Google.WebhookSync do
       |> Safe.exists?()
     end
 
-    def delete_identity(identity) do
-      from(i in Portal.ExternalIdentity,
-        where: i.account_id == ^identity.account_id,
-        where: i.id == ^identity.id
-      )
-      |> Safe.unscoped()
-      |> Safe.delete_all()
-    end
-
-    def delete_actor_directory_memberships(directory, actor_id) do
-      from(m in Portal.Membership,
-        join: g in Portal.Group,
-        on: m.group_id == g.id and m.account_id == g.account_id,
-        where: m.account_id == ^directory.account_id,
-        where: m.actor_id == ^actor_id,
-        where: g.directory_id == ^directory.id
-      )
-      |> Safe.unscoped()
-      |> Safe.delete_all()
-    end
-
     def delete_unsynced_org_unit_memberships(directory, identity, synced_at) do
       from(m in Portal.Membership,
         join: g in Portal.Group,
@@ -298,6 +279,48 @@ defmodule Portal.Google.WebhookSync do
             m.account_id,
             ^synced_at
           )
+      )
+      |> Safe.unscoped()
+      |> Safe.delete_all()
+    end
+
+    defp lock_actor(account_id, actor_id) do
+      from(a in Portal.Actor,
+        where: a.account_id == ^account_id,
+        where: a.id == ^actor_id,
+        lock: "FOR UPDATE"
+      )
+      |> Safe.unscoped()
+      |> Safe.one()
+    end
+
+    defp delete_identity(identity) do
+      from(i in Portal.ExternalIdentity,
+        where: i.account_id == ^identity.account_id,
+        where: i.id == ^identity.id
+      )
+      |> Safe.unscoped()
+      |> Safe.delete_all()
+    end
+
+    defp delete_actor_directory_memberships(directory, actor_id) do
+      from(m in Portal.Membership,
+        join: g in Portal.Group,
+        on: m.group_id == g.id and m.account_id == g.account_id,
+        where: m.account_id == ^directory.account_id,
+        where: m.actor_id == ^actor_id,
+        where: g.directory_id == ^directory.id
+      )
+      |> Safe.unscoped()
+      |> Safe.delete_all()
+    end
+
+    defp delete_actor_without_identities(directory, actor_id) do
+      from(a in Portal.Actor,
+        where: a.account_id == ^directory.account_id,
+        where: a.id == ^actor_id,
+        where: a.created_by_directory_id == ^directory.id,
+        where: fragment("NOT EXISTS (SELECT 1 FROM external_identities WHERE actor_id = ?)", a.id)
       )
       |> Safe.unscoped()
       |> Safe.delete_all()

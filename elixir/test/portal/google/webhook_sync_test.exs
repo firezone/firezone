@@ -97,6 +97,33 @@ defmodule Portal.Google.WebhookSyncTest do
       refute Repo.get_by(Actor, id: actor.id)
     end
 
+    test "locks the actor before removing its identity", %{directory: directory} = ctx do
+      identity = directory_identity(ctx, "user-1")
+      mark_created_by_directory(identity.actor_id, directory)
+      stub_google(users: %{})
+
+      queries =
+        capture_queries(fn ->
+          assert :ok = perform_job(WebhookSync, args(directory, "user-1"))
+        end)
+
+      assert one_transaction?(queries, "FOR UPDATE", ~s(DELETE FROM "external_identities"))
+    end
+
+    test "leaves other actors of the directory alone when removing a user",
+         %{directory: directory} = ctx do
+      identity = directory_identity(ctx, "user-1")
+      mark_created_by_directory(identity.actor_id, directory)
+      orphan = Portal.ActorFixtures.actor_fixture(account: ctx.account)
+      mark_created_by_directory(orphan.id, directory)
+      stub_google(users: %{})
+
+      assert :ok = perform_job(WebhookSync, args(directory, "user-1"))
+
+      refute Repo.get_by(Actor, id: identity.actor_id)
+      assert Repo.get_by(Actor, id: orphan.id)
+    end
+
     test "removes a user Google no longer returns", %{directory: directory} = ctx do
       identity = directory_identity(ctx, "user-1")
       stub_google(users: %{})

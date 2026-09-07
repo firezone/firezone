@@ -126,10 +126,6 @@ defmodule Portal.Google.Sync do
 
   def get_directory(account_id, directory_id), do: Database.get_directory(account_id, directory_id)
 
-  def delete_actors_without_identities(directory) do
-    Database.delete_actors_without_identities(directory.account_id, directory.id)
-  end
-
   def get_access_token!(directory) do
     Logger.debug("Getting access token", google_directory_id: directory.id)
 
