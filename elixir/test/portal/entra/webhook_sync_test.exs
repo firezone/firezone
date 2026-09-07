@@ -374,6 +374,73 @@ defmodule Portal.Entra.WebhookSyncTest do
       assert Repo.get_by!(Portal.Policy, account_id: account.id, id: policy.id).group_id == new_id
     end
 
+    test "writes a root's memberships in one statement however many groups nest them",
+         %{account: account, directory: directory, base_directory: base_directory} do
+      group = group_fixture(account: account, directory: base_directory, idp_id: "group-1")
+
+      stub_graph(
+        groups: %{
+          "group-1" =>
+            {"Engineering",
+             [graph_group("inner-a"), graph_user("user-alice", "Alice", "alice@example.com")]},
+          "inner-a" =>
+            {"A", [graph_group("inner-b"), graph_user("user-bob", "Bob", "bob@example.com")]},
+          "inner-b" => {"B", [graph_user("user-carol", "Carol", "carol@example.com")]}
+        }
+      )
+
+      queries =
+        capture_queries(fn ->
+          assert :ok = perform_job(WebhookSync, group_args(directory, "group-1", "updated"))
+        end)
+
+      assert Enum.count(queries, &String.contains?(&1, "membership_input")) == 1
+      assert length(Repo.all_by(Membership, group_id: group.id)) == 3
+    end
+
+    test "reads each group once per notification across the changed group and its parents",
+         %{account: account, directory: directory, base_directory: base_directory} do
+      group_fixture(account: account, directory: base_directory, idp_id: "child")
+
+      group_fixture(
+        account: account,
+        directory: base_directory,
+        idp_id: "parent",
+        nested_group_idp_ids: ["child"]
+      )
+
+      alice = graph_user("user-alice", "Alice", "alice@example.com")
+
+      stub_graph(
+        groups: %{"parent" => {"Parent", [graph_group("child")]}, "child" => {"Child", [alice]}},
+        notify: self()
+      )
+
+      assert :ok = perform_job(WebhookSync, group_args(directory, "child", "updated"))
+
+      assert_received {:members_read, "child"}
+      refute_received {:members_read, "child"}
+    end
+
+    test "grants a user reachable through two nested groups once",
+         %{account: account, directory: directory, base_directory: base_directory} do
+      group = group_fixture(account: account, directory: base_directory, idp_id: "group-1")
+      alice = graph_user("user-alice", "Alice", "alice@example.com")
+
+      stub_graph(
+        groups: %{
+          "group-1" => {"Engineering", [graph_group("inner-a"), graph_group("inner-b")]},
+          "inner-a" => {"A", [alice]},
+          "inner-b" => {"B", [alice]}
+        }
+      )
+
+      assert :ok = perform_job(WebhookSync, group_args(directory, "group-1", "updated"))
+
+      identity = Repo.get_by!(ExternalIdentity, idp_id: "user-alice")
+      assert [_] = Repo.all_by(Membership, actor_id: identity.actor_id, group_id: group.id)
+    end
+
     test "records the nesting and prunes stale members in one transaction",
          %{account: account, directory: directory, base_directory: base_directory} = ctx do
       parent =
@@ -536,6 +603,7 @@ defmodule Portal.Entra.WebhookSyncTest do
   defp stub_graph(opts) do
     users = Keyword.get(opts, :users, %{})
     groups = Keyword.get(opts, :groups, %{})
+    notify = Keyword.get(opts, :notify)
 
     Req.Test.stub(APIClient, fn conn ->
       path = conn.request_path
@@ -558,6 +626,10 @@ defmodule Portal.Entra.WebhookSyncTest do
 
         String.ends_with?(path, "/members") ->
           ["v1.0", "groups", id | _] = Path.split(String.trim_leading(path, "/"))
+
+          if notify do
+            send(notify, {:members_read, id})
+          end
 
           case Map.get(groups, id) do
             {_name, members} -> Req.Test.json(conn, %{"value" => members})

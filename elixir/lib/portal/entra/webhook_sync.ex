@@ -97,13 +97,16 @@ defmodule Portal.Entra.WebhookSync do
     case APIClient.get_group(access_token, group_id) do
       {:ok, %Req.Response{status: 200, body: %{"id" => id, "displayName" => name}}}
       when is_binary(id) and is_binary(name) ->
-        if tracked_group?(directory, id) do
-          resync_group(directory, access_token, synced_at, id, name)
-        end
+        fetched =
+          if tracked_group?(directory, id) do
+            resync_group(directory, access_token, synced_at, id, name, %{})
+          else
+            %{}
+          end
 
         # An untracked child still changes the transitive members of every
         # tracked group above it.
-        resync_stored_parents(directory, access_token, synced_at, id)
+        resync_stored_parents(directory, access_token, synced_at, id, fetched)
         Portal.Policy.reconnect_orphaned_policies(directory.account_id)
         :ok
 
@@ -112,7 +115,7 @@ defmodule Portal.Entra.WebhookSync do
       # fresh.
       {:ok, %Req.Response{status: 404}} ->
         remove_group(directory, Database.get_group(directory.account_id, directory.id, group_id))
-        resync_stored_parents(directory, access_token, synced_at, group_id)
+        resync_stored_parents(directory, access_token, synced_at, group_id, %{})
         Portal.Policy.reconnect_orphaned_policies(directory.account_id)
         :ok
 
@@ -186,27 +189,28 @@ defmodule Portal.Entra.WebhookSync do
     :ok
   end
 
-  defp resync_group(directory, access_token, synced_at, group_id, group_name) do
+  defp resync_group(directory, access_token, synced_at, group_id, group_name, fetched) do
     Entra.Sync.batch_upsert_groups(directory, synced_at, [%{idp_id: group_id, name: group_name}])
-    Entra.Sync.sync_group_members(directory, access_token, synced_at, group_id, group_name)
-    :ok
+    Entra.Sync.sync_group_members(directory, access_token, synced_at, group_id, group_name, fetched)
   end
 
-  # Parents come from the nesting recorded at sync time, not from Graph.
-  defp resync_stored_parents(directory, access_token, synced_at, group_id) do
+  # Parents come from the nesting recorded at sync time, not from Graph. One
+  # cache serves the whole job, so a group under several parents is read once.
+  defp resync_stored_parents(directory, access_token, synced_at, group_id, fetched) do
     directory
     |> Entra.Sync.parents_of(group_id)
-    |> Enum.each(&resync_stored_parent(directory, access_token, synced_at, &1))
+    |> Enum.reduce(fetched, &resync_stored_parent(directory, access_token, synced_at, &1, &2))
   end
 
-  defp resync_stored_parent(directory, access_token, synced_at, parent) do
+  defp resync_stored_parent(directory, access_token, synced_at, parent, fetched) do
     case APIClient.get_group(access_token, parent.idp_id) do
       {:ok, %Req.Response{status: 200, body: %{"id" => id, "displayName" => name}}}
       when is_binary(id) and is_binary(name) ->
-        resync_group(directory, access_token, synced_at, id, name)
+        resync_group(directory, access_token, synced_at, id, name, fetched)
 
       {:ok, %Req.Response{status: 404}} ->
         remove_group(directory, parent)
+        fetched
 
       {:ok, response} ->
         raise Entra.SyncError, error: response, directory_id: directory.id, step: :get_group

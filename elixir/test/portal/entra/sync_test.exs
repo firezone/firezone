@@ -421,6 +421,112 @@ defmodule Portal.Entra.SyncTest do
       refute Repo.get_by(Membership, id: membership.id)
     end
 
+    test "grants nothing from a walk that fails partway" do
+      account = account_fixture(features: %{idp_sync: true})
+      directory = entra_directory_fixture(account: account, sync_all_groups: true)
+
+      Req.Test.expect(APIClient, 100, fn %{request_path: path} = conn ->
+        cond do
+          String.ends_with?(path, "/oauth2/v2.0/token") ->
+            Req.Test.json(conn, %{"access_token" => "test_token"})
+
+          path == "/v1.0/groups" ->
+            Req.Test.json(conn, %{
+              "value" => [%{"id" => "group_parent", "displayName" => "Parent"}]
+            })
+
+          String.contains?(path, "group_parent/members") ->
+            Req.Test.json(conn, %{
+              "value" => [
+                %{"@odata.type" => "#microsoft.graph.group", "id" => "group_child"},
+                %{"@odata.type" => "#microsoft.graph.group", "id" => "group_broken"}
+              ]
+            })
+
+          String.contains?(path, "group_child/members") ->
+            Req.Test.json(conn, %{
+              "value" => [
+                active_entra_user(%{
+                  "@odata.type" => "#microsoft.graph.user",
+                  "id" => "user_alice",
+                  "displayName" => "Alice",
+                  "mail" => "alice@example.com",
+                  "userPrincipalName" => "alice@example.com"
+                })
+              ]
+            })
+
+          String.contains?(path, "group_broken/members") ->
+            conn
+            |> Plug.Conn.put_status(500)
+            |> Req.Test.json(%{"error" => "server_error"})
+
+          true ->
+            Req.Test.json(conn, %{"error" => "unexpected: #{path}"})
+        end
+      end)
+
+      assert_raise Portal.Entra.SyncError, fn ->
+        perform_job(Sync, %{account_id: directory.account_id, directory_id: directory.id})
+      end
+
+      parent = Repo.get_by!(Group, idp_id: "group_parent")
+      assert Repo.all_by(Membership, group_id: parent.id) == []
+    end
+
+    test "grants nothing from a group that vanishes between its member pages" do
+      account = account_fixture(features: %{idp_sync: true})
+      directory = entra_directory_fixture(account: account, sync_all_groups: true)
+
+      Req.Test.expect(APIClient, 100, fn %{request_path: path, query_string: query} = conn ->
+        cond do
+          String.ends_with?(path, "/oauth2/v2.0/token") ->
+            Req.Test.json(conn, %{"access_token" => "test_token"})
+
+          path == "/v1.0/groups" ->
+            Req.Test.json(conn, %{
+              "value" => [
+                %{"id" => "group_parent", "displayName" => "Parent"},
+                %{"id" => "group_second", "displayName" => "Second"}
+              ]
+            })
+
+          String.contains?(path, "group_parent/members") or
+              String.contains?(path, "group_second/members") ->
+            Req.Test.json(conn, %{
+              "value" => [%{"@odata.type" => "#microsoft.graph.group", "id" => "group_child"}]
+            })
+
+          String.contains?(path, "group_child/members") and query == "page=2" ->
+            conn
+            |> Plug.Conn.put_status(404)
+            |> Req.Test.json(%{"error" => %{"code" => "Request_ResourceNotFound"}})
+
+          String.contains?(path, "group_child/members") ->
+            Req.Test.json(conn, %{
+              "value" => [
+                active_entra_user(%{
+                  "@odata.type" => "#microsoft.graph.user",
+                  "id" => "user_ghost",
+                  "displayName" => "Ghost",
+                  "mail" => "ghost@example.com",
+                  "userPrincipalName" => "ghost@example.com"
+                })
+              ],
+              "@odata.nextLink" => "https://graph.microsoft.com/v1.0/groups/group_child/members?page=2"
+            })
+
+          true ->
+            Req.Test.json(conn, %{"error" => "unexpected: #{path}"})
+        end
+      end)
+
+      assert :ok = perform_job(Sync, %{account_id: directory.account_id, directory_id: directory.id})
+
+      refute Repo.get_by(ExternalIdentity, idp_id: "user_ghost")
+      assert Repo.all(Membership) == []
+    end
+
     test "skips disabled users from direct assignments and group memberships" do
       account = account_fixture(features: %{idp_sync: true})
       directory = entra_directory_fixture(account: account, sync_all_groups: false)
@@ -2483,7 +2589,7 @@ defmodule Portal.Entra.SyncTest do
                group.id
     end
 
-    test "raises SyncError when group member membership upserts fail" do
+    test "grants a member listed twice on one page once" do
       account = account_fixture(features: %{idp_sync: true})
       directory = entra_directory_fixture(account: account, sync_all_groups: false)
       {directory_sync_client_id, auth_provider_client_id} = entra_client_ids()
@@ -2557,12 +2663,10 @@ defmodule Portal.Entra.SyncTest do
         end
       end)
 
-      error =
-        assert_raise Portal.Entra.SyncError, fn ->
-          perform_job(Sync, %{account_id: directory.account_id, directory_id: directory.id})
-        end
+      assert :ok = perform_job(Sync, %{account_id: directory.account_id, directory_id: directory.id})
 
-      assert error.step == :batch_upsert_memberships
+      identity = Repo.get_by!(ExternalIdentity, idp_id: "user_123")
+      assert [_] = Repo.all_by(Membership, actor_id: identity.actor_id)
     end
 
     test "raises SyncError when direct user upserts fail because emails collide" do
