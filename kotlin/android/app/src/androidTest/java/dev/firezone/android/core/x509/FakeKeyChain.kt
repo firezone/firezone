@@ -6,6 +6,7 @@ import android.net.Uri
 import java.security.PrivateKey
 import java.security.cert.X509Certificate
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.ConcurrentLinkedQueue
 
 /**
  * Stands in for the system KeyChain, holding whatever a test installs.
@@ -23,8 +24,7 @@ object FakeKeyChain : KeyChain {
 
     private val entries = ConcurrentHashMap<String, Entry>()
 
-    @Volatile
-    private var userChoice: String? = null
+    private val userChoices = ConcurrentLinkedQueue<String>()
 
     @Volatile
     private var policyAnswer: String? = null
@@ -38,9 +38,9 @@ object FakeKeyChain : KeyChain {
         entries[alias] = Entry(identity.chain, identity.privateKey, granted)
     }
 
-    /** Has the user pick [alias] in the chooser instead of the one offered to them. */
-    fun userChooses(alias: String) {
-        userChoice = alias
+    /** Has the user pick [aliases] in the chooser, one per opening, instead of the one offered to them. */
+    fun userChooses(vararg aliases: String) {
+        userChoices.addAll(aliases)
     }
 
     /** Has the device policy answer [alias] when asked, granting it the way the real one does. */
@@ -50,7 +50,7 @@ object FakeKeyChain : KeyChain {
 
     fun reset() {
         entries.clear()
-        userChoice = null
+        userChoices.clear()
         policyAnswer = null
     }
 
@@ -66,7 +66,7 @@ object FakeKeyChain : KeyChain {
     ) {
         // The user takes the offered certificate unless the test scripted another pick, either
         // way only when the KeyChain holds it, and choosing is what grants it.
-        val alias = (userChoice ?: preselectedAlias)?.takeIf(entries::containsKey)
+        val alias = (userChoices.poll() ?: preselectedAlias)?.takeIf(entries::containsKey)
 
         if (alias != null) {
             entries.computeIfPresent(alias) { _, entry -> entry.copy(granted = true) }

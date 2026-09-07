@@ -192,14 +192,18 @@ class DeviceTrustE2eTest {
     }
 
     /**
-     * Android grants whatever the user picks in the chooser, but only a certificate carrying the
-     * device certificate's common name is the administrator's, so any other is refused.
+     * An MDM that also installs a mail certificate leaves the user to tell the two apart, and
+     * Android grants whichever they pick. Only the one carrying the device certificate's common
+     * name is the administrator's: the other is refused, and the chooser is offered again.
      */
     @Test
-    fun pickingACertificateThatIsNotADeviceCertificateIsRefused() {
-        FakeKeyChain.install(OTHER_ALIAS, testIdentity(SERIAL_CLAIM, commonName = "mail.example.com"), granted = false)
-        FakeKeyChain.userChooses(OTHER_ALIAS)
+    fun pickingTheMailCertificateIsRefusedUntilTheDeviceCertificateIsPicked() {
+        val certificate = testIdentity(SERIAL_CLAIM)
+        FakeKeyChain.install(ALIAS, certificate, granted = false)
+        FakeKeyChain.install(OTHER_ALIAS, testIdentity("mailto:user@example.com", commonName = "mail.example.com"), granted = false)
+        FakeKeyChain.userChooses(OTHER_ALIAS, ALIAS)
         TestRestrictions.bundle.putBoolean(X509_CERTIFICATE_RESTRICTION, true)
+        tokenStore.save(TOKEN)
 
         launchApp()
 
@@ -207,8 +211,16 @@ class DeviceTrustE2eTest {
         composeRule.onNodeWithText("Select certificate").performClick()
 
         awaitText("'$OTHER_ALIAS' is not a Firezone device certificate.", substring = true)
-        awaitText("Select your client certificate")
         assertNull(repo.getX509CertificateAliasSync(TestRestrictions.bundle))
+
+        composeRule.onNodeWithText("Select certificate").performClick()
+
+        awaitText("Sign In")
+
+        startTunnelService()
+        val session = awaitSession()
+
+        assertArrayEquals(certificate.chain.first().encoded, session.tlsIdentity?.certificateChain()?.first())
     }
 
     /** A required certificate is not to be degraded past: without it there is no session. */

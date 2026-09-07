@@ -145,6 +145,13 @@ jobs:
         with:
           name: android-coverage-${{ matrix.suite }}
           path: kotlin/android/coverage.ec
+      # System screens the tests photographed, such as the KeyChain chooser. Not committed like
+      # the rendered screenshots: a display capture is not stable to the byte across runs.
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: android-emulator-screenshots-${{ matrix.suite }}
+          path: kotlin/android/emulator-screenshots
+          if-no-files-found: ignore
 
   emulator-coverage:
     needs: emulator-tests

@@ -4,6 +4,7 @@ package dev.firezone.android.core.x509
 import android.app.Activity
 import android.content.Context
 import android.content.SharedPreferences
+import android.net.Uri
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
@@ -26,6 +27,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
+import java.io.File
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
@@ -199,6 +201,50 @@ class ManagedKeyChainTest {
         assertTrue("the KeyChain is still on screen", device.wait(Until.gone(By.pkg("com.android.keychain")), TIMEOUT_MS))
     }
 
+    /**
+     * An MDM that also installs a mail certificate leaves the user to tell the two apart in the
+     * chooser, with nothing preselected. The chooser as the user sees it is kept as a screenshot,
+     * which the test run hands back as an artifact.
+     */
+    @Test
+    fun theChooserListsEveryCertificateForTheUserToTellApart() {
+        val device = testIdentity("firezone://serial/EMU-TWO")
+        val mail = testIdentity("mailto:user@example.com", commonName = "mail.example.com")
+
+        TestDpc.installKeyPair(DEVICE_ALIAS, device.pkcs12(DEVICE_ALIAS, PASSWORD), PASSWORD, grantToFirezone = false)
+        TestDpc.installKeyPair(MAIL_ALIAS, mail.pkcs12(MAIL_ALIAS, PASSWORD), PASSWORD, grantToFirezone = false)
+
+        launchApp()
+
+        val chosen = CompletableFuture<String?>()
+        systemKeyChain.choosePrivateKeyAlias(resumedActivity(), Uri.parse("wss://api.firezone.dev"), null) { alias ->
+            chosen.complete(alias)
+        }
+
+        val screen = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
+
+        for (alias in listOf(DEVICE_ALIAS, MAIL_ALIAS)) {
+            assertNotNull("the chooser does not list '$alias'", screen.wait(Until.findObject(By.text(alias)), TIMEOUT_MS))
+        }
+
+        screenshot(screen, "keychain-chooser-two-certificates")
+
+        approveKeyChainChooser(DEVICE_ALIAS)
+
+        assertEquals(DEVICE_ALIAS, chosen.get(TIMEOUT_MS, TimeUnit.MILLISECONDS))
+    }
+
+    /** Photographs the display, system dialogs included, where `emulator-tests.sh` collects it. */
+    private fun screenshot(
+        screen: UiDevice,
+        name: String,
+    ) {
+        val directory = File(InstrumentationRegistry.getInstrumentation().targetContext.filesDir, "screenshots")
+        directory.mkdirs()
+
+        assertTrue("could not capture $name", screen.takeScreenshot(File(directory, "$name.png")))
+    }
+
     /** Confirms the system chooser with [alias] selected, whether or not it arrived preselected. */
     private fun approveKeyChainChooser(alias: String) {
         val device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
@@ -258,6 +304,8 @@ class ManagedKeyChainTest {
         const val MISNAMED_ALIAS = "firezone-test-misnamed"
         const val POLICY_ALIAS = "firezone-test-policy"
         const val QUIET_ALIAS = "firezone-test-quiet"
+        const val DEVICE_ALIAS = "firezone-device"
+        const val MAIL_ALIAS = "corp-mail"
 
         const val PASSWORD = "firezone"
         const val TIMEOUT_MS = 20_000L
