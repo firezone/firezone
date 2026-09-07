@@ -68,9 +68,12 @@ jobs:
         run: |
           # Use the submission's script and selection, with screenshot files from the build.
           git fetch --depth=1 origin "$GITHUB_SHA"
-          git restore --source="$GITHUB_SHA" --worktree -- \
-            scripts/upload/play-store.sh \
-            kotlin/android/screenshots/play-store.txt
+          git restore --source="$GITHUB_SHA" --worktree -- scripts/upload/play-store.sh
+          if [[ "$TARGET_TRACK" == production ]]; then
+            git restore --source="$GITHUB_SHA" --worktree -- \
+              kotlin/android/screenshots/play-store.txt \
+              kotlin/android/feature-graphic.png
+          fi
 
       - uses: ./.github/actions/setup-mise
         with:
@@ -112,18 +115,33 @@ jobs:
             printf "| Version code | \`%s\` |\n" "$VERSION_CODE"
             echo "| What's New | [Android changelog](https://www.firezone.dev/changelog#tab-android) |"
             echo
-            echo "### Store screenshots"
+            echo "### Store listing assets"
             echo
-            while IFS= read -r screenshot; do
-              if [[ ! -s "$screenshot" ]]; then
-                echo "Missing store screenshot: $screenshot" >&2
+            if [[ "$TARGET_TRACK" == production ]]; then
+              icon=kotlin/android/app/src/main/ic_launcher-playstore.png
+              if [[ ! -s "$icon" ]]; then
+                echo "Missing store icon: $icon" >&2
                 exit 1
               fi
-              printf -- "- [\`%s\`](https://github.com/%s/blob/%s/%s)\n" \
-                "$screenshot" "$GITHUB_REPOSITORY" "$SOURCE_SHA" "$screenshot"
-            done < kotlin/android/screenshots/play-store.txt
+              printf -- "- [App icon](https://github.com/%s/blob/%s/%s)\n" \
+                "$GITHUB_REPOSITORY" "$SOURCE_SHA" "$icon"
+              printf -- "- [Feature graphic](https://github.com/%s/blob/%s/kotlin/android/feature-graphic.png)\n" \
+                "$GITHUB_REPOSITORY" "$GITHUB_SHA"
+              while IFS= read -r screenshot; do
+                if [[ ! -s "$screenshot" ]]; then
+                  echo "Missing store screenshot: $screenshot" >&2
+                  exit 1
+                fi
+                printf -- "- [\`%s\`](https://github.com/%s/blob/%s/%s)\n" \
+                  "$screenshot" "$GITHUB_REPOSITORY" "$SOURCE_SHA" "$screenshot"
+              done < kotlin/android/screenshots/play-store.txt
+              echo
+              echo "The shared store listing icon, feature graphic, and screenshots will be replaced."
+            else
+              echo "The shared store listing is unchanged. Only the release is promoted to $TARGET_TRACK."
+            fi
             echo
-            echo "Review this summary and the [Play Console](https://play.google.com/console/) before approving promotion to $TARGET_TRACK and screenshot replacement. Managed Publishing still requires a manual publication after Google approves the changes."
+            echo "Review this summary and the [Play Console](https://play.google.com/console/) before approving promotion to $TARGET_TRACK. Managed Publishing still requires a manual publication after Google approves the changes."
           } >> "$GITHUB_STEP_SUMMARY"
 
   submit:
@@ -173,9 +191,12 @@ jobs:
         run: |
           # Match the script and selection used before approval, with image files from the build.
           git fetch --depth=1 origin "$GITHUB_SHA"
-          git restore --source="$GITHUB_SHA" --worktree -- \
-            scripts/upload/play-store.sh \
-            kotlin/android/screenshots/play-store.txt
+          git restore --source="$GITHUB_SHA" --worktree -- scripts/upload/play-store.sh
+          if [[ "$TARGET_TRACK" == production ]]; then
+            git restore --source="$GITHUB_SHA" --worktree -- \
+              kotlin/android/screenshots/play-store.txt \
+              kotlin/android/feature-graphic.png
+          fi
 
       - uses: ./.github/actions/setup-mise
         with:
@@ -193,7 +214,7 @@ jobs:
           access_token_scopes: https://www.googleapis.com/auth/androidpublisher
           access_token_lifetime: 3600s # Outlives the bounded upload and commit step.
 
-      - name: Submit the release and screenshots for review
+      - name: Submit for review
         working-directory: kotlin/android
         timeout-minutes: 30
         env:
