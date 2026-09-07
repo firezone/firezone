@@ -17,6 +17,11 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+# .NET resolves relative paths against the process directory, not PowerShell's location.
+$Exe = (Resolve-Path $Exe).Path
+if (-not [System.IO.Path]::IsPathRooted($Output)) {
+    $Output = Join-Path (Get-Location).Path $Output
+}
 Add-Type -AssemblyName System.Drawing
 Add-Type -TypeDefinition @'
 using System;
@@ -121,6 +126,9 @@ while (@($menus).Count -eq 0) {
 Start-Sleep -Milliseconds 500
 $menus = @(Get-MenuRects)
 Show-MenuRects 'Menu open' $menus
+if ($menus.Count -eq 0) {
+    throw "The menu closed again within 500 ms"
+}
 Write-Host "Foreground window: $([Win32]::GetForegroundWindow())"
 
 # MN_GETHMENU hands out the HMENU behind the popup window, which is how the item rows are found.
@@ -159,10 +167,10 @@ if ($target -lt 0) {
     }
 }
 
-$left = ($menus | ForEach-Object { $_.Rect.Left } | Measure-Object -Minimum).Minimum
-$top = ($menus | ForEach-Object { $_.Rect.Top } | Measure-Object -Minimum).Minimum
-$right = ($menus | ForEach-Object { $_.Rect.Right } | Measure-Object -Maximum).Maximum
-$bottom = ($menus | ForEach-Object { $_.Rect.Bottom } | Measure-Object -Maximum).Maximum
+$left = [int] ($menus | ForEach-Object { $_.Rect.Left } | Measure-Object -Minimum).Minimum
+$top = [int] ($menus | ForEach-Object { $_.Rect.Top } | Measure-Object -Minimum).Minimum
+$right = [int] ($menus | ForEach-Object { $_.Rect.Right } | Measure-Object -Maximum).Maximum
+$bottom = [int] ($menus | ForEach-Object { $_.Rect.Bottom } | Measure-Object -Maximum).Maximum
 $width = $right - $left
 $height = $bottom - $top
 Write-Host "Capturing $left,$top ${width}x${height}"
