@@ -169,6 +169,11 @@ impl GuiIntegration for TauriIntegration {
         self.tray.update(app_state)
     }
 
+    #[cfg(debug_assertions)]
+    fn popup_tray_menu(&self) -> Result<()> {
+        self.tray.popup()
+    }
+
     fn show_notification(&self, title: impl Into<String>, body: impl Into<String>) -> Result<()> {
         spawn_notification(title.into(), body.into(), None);
 
@@ -245,6 +250,22 @@ pub struct RunConfig {
     pub telemetry_allowed: bool,
     pub quit_after: Option<u64>,
     pub fail_with: Option<Failure>,
+    /// Ask the already running instance to pop its tray menu up, instead of
+    /// showing its window. Debug builds only.
+    #[cfg(debug_assertions)]
+    pub popup_tray_menu: bool,
+}
+
+impl RunConfig {
+    /// The message a second instance hands off to the running instance.
+    fn handoff(&self) -> ClientMsg {
+        #[cfg(debug_assertions)]
+        if self.popup_tray_menu {
+            return ClientMsg::PopupTrayMenu;
+        }
+
+        ClientMsg::NewInstance
+    }
 }
 
 /// Shows a notification without blocking the caller.
@@ -268,6 +289,10 @@ fn spawn_notification(title: String, body: String, open_url: Option<url::Url>) {
 pub enum ClientMsg {
     Deeplink(url::Url),
     NewInstance,
+    /// Pop the running instance's tray menu up on screen, so CI can photograph
+    /// it. Debug builds only, so a release build can't be told to do this.
+    #[cfg(debug_assertions)]
+    PopupTrayMenu,
 }
 
 /// IPC messages that an already running instance may send back to a
@@ -285,7 +310,7 @@ pub fn run(rt: &Runtime, config: RunConfig, reloader: logging::FilterReloadHandl
     #[cfg(not(debug_assertions))]
     crate::package_identity::ensure_package_identity()?;
 
-    let (gui_ipc, _launch_lock) = match rt.block_on(establish_single_instance())? {
+    let (gui_ipc, _launch_lock) = match rt.block_on(establish_single_instance(config.handoff()))? {
         SingleInstance::First { server, lock } => (server, lock),
         SingleInstance::SecondHandedOff => bail!(AlreadyRunning),
     };
@@ -584,8 +609,8 @@ pub enum SingleInstance {
         lock: LaunchLock,
     },
     /// Another instance was already running. We connected to its GUI
-    /// IPC pipe, sent `ClientMsg::NewInstance`, awaited the `Ack`,
-    /// and closed our end. Production callers bail with
+    /// IPC pipe, sent the hand-off message, awaited the `Ack`, and
+    /// closed our end. Production callers bail with
     /// [`AlreadyRunning`] here; the `single-instance` subcommand uses
     /// it as a successful end state for the second-instance side of
     /// the smoke test.
@@ -595,9 +620,9 @@ pub enum SingleInstance {
 /// Acquire the launch lock and produce a [`SingleInstance`] describing
 /// which role this process plays.
 /// First instance: opens the GUI IPC pipe server. Second instance:
-/// connects to the running instance, drives the `NewInstance` -> `Ack`
+/// connects to the running instance, drives the `handoff` -> `Ack`
 /// handshake to completion, and reports `SecondHandedOff`.
-pub async fn establish_single_instance() -> Result<SingleInstance> {
+pub async fn establish_single_instance(handoff: ClientMsg) -> Result<SingleInstance> {
     match launch_lock::acquire()? {
         FirstInstance::Yes(lock) => {
             tracing::debug!("Acquired launch lock, we are the first GUI instance");
@@ -618,11 +643,14 @@ pub async fn establish_single_instance() -> Result<SingleInstance> {
             .context("Failed to connect to running Firezone instance")
             .map_err(NewInstanceHandshakeFailed)?;
 
-            tokio::time::timeout(Duration::from_secs(5), new_instance_handshake(read, write))
-                .await
-                .context("Failed to handshake with existing instance in 5s")
-                .map_err(NewInstanceHandshakeFailed)?
-                .map_err(NewInstanceHandshakeFailed)?;
+            tokio::time::timeout(
+                Duration::from_secs(5),
+                new_instance_handshake(read, write, handoff),
+            )
+            .await
+            .context("Failed to handshake with existing instance in 5s")
+            .map_err(NewInstanceHandshakeFailed)?
+            .map_err(NewInstanceHandshakeFailed)?;
 
             Ok(SingleInstance::SecondHandedOff)
         }
@@ -659,8 +687,9 @@ pub async fn accept_one_for_debug(server: &mut ipc::Server) -> Result<ClientMsg>
 async fn new_instance_handshake(
     mut read: ClientRead<ServerMsg>,
     mut write: ClientWrite<ClientMsg>,
+    handoff: ClientMsg,
 ) -> Result<()> {
-    write.send(&ClientMsg::NewInstance).await?;
+    write.send(&handoff).await?;
     let response = read
         .next()
         .await

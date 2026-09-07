@@ -6,11 +6,13 @@
 //! drops the icon — so it uses the `tray_ksni` backend instead.
 
 use anyhow::{Context as _, Result};
-use tauri::{AppHandle, Manager as _, menu::ContextMenu as _};
+use tauri::AppHandle;
+#[cfg(debug_assertions)]
+use tauri::{Manager as _, menu::ContextMenu as _};
 
 use super::{
-    AppState, ConnlibState, Entry, Event, Icon, Image, Item, Menu, MenuItemIcon, TOOLTIP,
-    compose_icon, compositor, icon_from_state,
+    AppState, Entry, Event, Icon, Image, Item, Menu, MenuItemIcon, TOOLTIP, compose_icon,
+    compositor, icon_from_state,
 };
 
 type IsMenuItem = dyn tauri::menu::IsMenuItem<tauri::Wry>;
@@ -85,33 +87,41 @@ impl Tray {
 
     pub(crate) fn update(&mut self, state: AppState) {
         let new_icon = icon_from_state(&state);
-        let connected =
-            matches!(&state.connlib, ConnlibState::SignedIn(s) if !s.resources.is_empty());
 
         let menu = state.into_menu();
-        let menu_clone = menu.clone();
-        let app = self.app.clone();
-        let handle = self.handle.clone();
 
         if Some(&menu) == self.last_menu_set.as_ref() {
             tracing::debug!("Skipping redundant menu update");
         } else {
-            self.run_on_main_thread(move || {
-                let menu = match set_menu(handle, &app, &menu) {
-                    Ok(menu) => menu,
-                    Err(e) => {
-                        tracing::debug!("Error while updating tray menu: {e:#}");
-                        return;
-                    }
-                };
+            let app = self.app.clone();
+            let handle = self.handle.clone();
+            let menu = menu.clone();
 
-                if connected && super::take_popup_on_connect() {
-                    logging::unwrap_or_debug!(popup(&app, menu), "Failed to pop up tray menu: {}");
-                }
+            self.run_on_main_thread(move || {
+                logging::unwrap_or_debug!(
+                    set_menu(handle, &app, &menu),
+                    "Error while updating tray menu: {}"
+                );
             });
         }
         self.set_icon(new_icon);
-        self.last_menu_set = Some(menu_clone);
+        self.last_menu_set = Some(menu);
+    }
+
+    /// Pops the menu we installed last up on screen, so CI can photograph it.
+    #[cfg(debug_assertions)]
+    pub(crate) fn popup(&self) -> Result<()> {
+        let menu = self
+            .last_menu_set
+            .clone()
+            .context("No tray menu has been set yet")?;
+        let app = self.app.clone();
+
+        self.run_on_main_thread(move || {
+            logging::unwrap_or_debug!(popup(&app, &menu), "Failed to pop up tray menu: {}");
+        });
+
+        Ok(())
     }
 
     // Only needed for the stress test
@@ -144,21 +154,25 @@ impl Tray {
     }
 }
 
-fn set_menu(handle: tauri::tray::TrayIcon, app: &AppHandle, menu: &Menu) -> Result<TauriMenu> {
+fn set_menu(handle: tauri::tray::TrayIcon, app: &AppHandle, menu: &Menu) -> Result<()> {
     let menu = build_menu(app, menu).context("Failed to build tray menu")?;
 
     handle
         .set_tooltip(Some(TOOLTIP))
         .context("Failed to set tooltip")?;
     handle
-        .set_menu(Some(menu.clone()))
+        .set_menu(Some(menu))
         .context("Failed to set tray menu")?;
 
-    Ok(menu)
+    Ok(())
 }
 
 /// Pops `menu` up at the cursor, anchored to the (hidden) main window, for screenshots.
-fn popup(app: &AppHandle, menu: TauriMenu) -> Result<()> {
+///
+/// Builds its own Tauri menu: [`set_menu`] keeps only the abstract one.
+#[cfg(debug_assertions)]
+fn popup(app: &AppHandle, menu: &Menu) -> Result<()> {
+    let menu = build_menu(app, menu).context("Failed to build tray menu")?;
     let window = app
         .get_webview_window("main")
         .context("Couldn't get handle to window")?

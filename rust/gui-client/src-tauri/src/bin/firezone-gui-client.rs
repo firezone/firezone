@@ -106,11 +106,6 @@ fn try_main(cli: Cli, rt: &Runtime, log_guard: &mut Option<LogGuard>) -> Result<
         firezone_gui_client::mock_tunnel::enable();
     }
 
-    #[cfg(debug_assertions)]
-    if cli.popup_tray_menu {
-        firezone_gui_client::gui::system_tray::popup_on_connect();
-    }
-
     if cli.test_error_dialog {
         dialog::error("Dialogs are working!")?;
     }
@@ -126,6 +121,8 @@ fn try_main(cli: Cli, rt: &Runtime, log_guard: &mut Option<LogGuard>) -> Result<
         telemetry_allowed: cli.is_telemetry_allowed(),
         quit_after: cli.quit_after,
         fail_with: cli.fail_on_purpose(),
+        #[cfg(debug_assertions)]
+        popup_tray_menu: cli.popup_tray_menu,
     };
 
     // The authoritative advanced settings and machine-scope MDM policy are
@@ -349,8 +346,9 @@ struct Cli {
     #[arg(long, hide = true)]
     mock_tunnel: bool,
 
-    /// Pop the tray menu up on screen once connected, so CI can photograph it
-    /// without clicking the notification area. Debug builds only.
+    /// Ask the already running instance to pop its tray menu up on screen, so
+    /// CI can photograph it without clicking the notification area, then exit.
+    /// Debug builds only.
     #[cfg(debug_assertions)]
     #[arg(long, hide = true)]
     popup_tray_menu: bool,
@@ -436,7 +434,7 @@ pub struct DeepLink {
 async fn debug_single_instance() -> anyhow::Result<()> {
     use firezone_gui_client::gui::{self, SingleInstance};
 
-    match gui::establish_single_instance().await? {
+    match gui::establish_single_instance(gui::ClientMsg::NewInstance).await? {
         SingleInstance::First {
             mut server,
             lock: _lock,

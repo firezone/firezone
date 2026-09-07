@@ -109,6 +109,12 @@ impl Tray {
         self.last_icon = icon.clone();
         let _ = self.icon_tx.send(icon);
     }
+
+    /// DBusMenu leaves opening the menu to the host shell, so we cannot do it ourselves.
+    #[cfg(debug_assertions)]
+    pub(crate) fn popup(&self) -> Result<()> {
+        anyhow::bail!("Popping the tray menu up is not supported on Linux")
+    }
 }
 
 /// The background loop that applies menu and icon updates to the running tray.

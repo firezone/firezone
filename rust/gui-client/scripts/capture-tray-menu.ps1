@@ -3,11 +3,12 @@
 Photographs the tray menu of a debug GUI client with one resource's submenu expanded.
 
 .DESCRIPTION
-Launches the client against the in-process mock Tunnel service with `--popup-tray-menu`,
-which pops the connected-state menu up at the cursor. The script then clicks the requested
-submenu item, captures the screen region covered by the menu windows and saves it as a PNG.
-Meant for the Windows CI runners; everything it finds goes to stdout because the job log is
-all there is to debug with.
+Launches the client against the in-process mock Tunnel service, then invokes the same binary
+again with `--popup-tray-menu`, which asks the running instance over its GUI IPC pipe to pop
+the connected-state menu up at the cursor. The script then clicks the requested submenu item,
+captures the screen region covered by the menu windows and saves it as a PNG. Meant for the
+Windows CI runners; everything it finds goes to stdout because the job log is all there is to
+debug with.
 #>
 param(
     [Parameter(Mandatory)] [string] $Exe,
@@ -91,6 +92,35 @@ function Show-MenuRects([string] $Label, $Windows) {
     }
 }
 
+function Get-MenuItems([IntPtr] $Menu) {
+    $count = [Win32]::GetMenuItemCount($Menu)
+    Write-Host "Menu $Menu has $count items:"
+    for ($i = 0; $i -lt $count; $i++) {
+        $text = [Win32]::MenuItemText($Menu, $i).Replace('&', '')
+        Write-Host "  [$i] '$text'"
+        [pscustomobject] @{ Index = $i; Text = $text }
+    }
+}
+
+function Send-Escape([int] $Levels) {
+    foreach ($level in 1..$Levels) {
+        [Win32]::keybd_event(0x1B, 0, 0, [UIntPtr]::Zero)
+        [Win32]::keybd_event(0x1B, 0, 2, [UIntPtr]::Zero) # KEYEVENTF_KEYUP
+        Start-Sleep -Milliseconds 100
+    }
+}
+
+# Hidden so the console window of this short-lived process never covers the menu.
+function Request-Popup {
+    Write-Host "Requesting the menu: $Exe $($popupArguments -join ' ')"
+    $popup = Start-Process -FilePath $Exe -ArgumentList $popupArguments -PassThru -WindowStyle Hidden
+    if (-not $popup.WaitForExit(30000)) {
+        Stop-Process -Id $popup.Id -Force -ErrorAction SilentlyContinue
+        throw "The popup request never exited; it may have taken the launch lock itself"
+    }
+    Write-Host "Popup request exited with code $($popup.ExitCode)"
+}
+
 Write-Host "Screen: $([Win32]::GetSystemMetrics(0))x$([Win32]::GetSystemMetrics(1))"
 
 # Animations and shadows make the capture timing-dependent; the light theme keeps it deterministic.
@@ -104,50 +134,73 @@ New-Item -Path $personalize -Force | Out-Null
 Set-ItemProperty -Path $personalize -Name AppsUseLightTheme -Value 1 -Type DWord
 Set-ItemProperty -Path $personalize -Name SystemUsesLightTheme -Value 1 -Type DWord
 
-# The client pops the menu up at the cursor.
+# The menu pops up at the cursor, so park it in a corner where it always fits.
 [void][Win32]::SetCursorPos(40, 40)
 
-$arguments = @('--no-deep-links', '--no-elevation-check', '--no-error-dialog', '--skip-portal-auth', '--mock-tunnel', '--popup-tray-menu')
+# The GUI pipe that carries the popup request only admits processes carrying the installed
+# package's identity, which a `cargo build` exe doesn't have; `--skip-peer-verification`
+# relaxes that to the same test ACL the smoke test uses.
+$sharedArguments = @('--no-deep-links', '--no-elevation-check', '--no-error-dialog', '--skip-peer-verification')
+$arguments = $sharedArguments + @('--skip-portal-auth', '--mock-tunnel')
+$popupArguments = $sharedArguments + @('--popup-tray-menu')
 Write-Host "Launching $Exe $($arguments -join ' ')"
 $process = Start-Process -FilePath $Exe -ArgumentList $arguments -PassThru
 
+# The running instance answers the request only once its controller has bound the GUI pipe,
+# and lists resources only once the mock service has served them, so keep asking until the
+# menu we want is on screen.
 $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+$exitCode = 0
 $menus = @()
-while (@($menus).Count -eq 0) {
+$hmenu = [IntPtr]::Zero
+$target = -1
+while ($target -lt 0) {
     if ($process.HasExited) {
         throw "The client exited with code $($process.ExitCode) before showing a menu"
     }
     if ((Get-Date) -gt $deadline) {
-        throw "No popup menu appeared within $TimeoutSeconds seconds"
+        Write-Host "::error::Menu item '$Submenu' not found within $TimeoutSeconds seconds"
+        $exitCode = 1
+        $menus = @(Get-MenuRects)
+        break
     }
-    Start-Sleep -Milliseconds 250
+
+    Request-Popup
+
+    $appeared = (Get-Date).AddSeconds(5)
     $menus = @(Get-MenuRects)
-}
-Start-Sleep -Milliseconds 500
-$menus = @(Get-MenuRects)
-Show-MenuRects 'Menu open' $menus
-if ($menus.Count -eq 0) {
-    throw "The menu closed again within 500 ms"
-}
-Write-Host "Foreground window: $([Win32]::GetForegroundWindow())"
+    while ($menus.Count -eq 0 -and (Get-Date) -lt $appeared) {
+        Start-Sleep -Milliseconds 250
+        $menus = @(Get-MenuRects)
+    }
+    if ($menus.Count -eq 0) {
+        Write-Host 'No menu appeared; asking again'
+        continue
+    }
 
-# MN_GETHMENU hands out the HMENU behind the popup window, which is how the item rows are found.
-$root = $menus[0].Handle
-$hmenu = [Win32]::SendMessage($root, 0x01E1, [IntPtr]::Zero, [IntPtr]::Zero)
-$count = [Win32]::GetMenuItemCount($hmenu)
-Write-Host "Root menu $hmenu has $count items:"
-$target = -1
-for ($i = 0; $i -lt $count; $i++) {
-    $text = [Win32]::MenuItemText($hmenu, $i)
-    Write-Host "  [$i] '$text'"
-    if ($text.Replace('&', '') -eq $Submenu) { $target = $i }
+    Start-Sleep -Milliseconds 500
+    $menus = @(Get-MenuRects)
+    Show-MenuRects 'Menu open' $menus
+    if ($menus.Count -eq 0) {
+        Write-Host 'The menu closed again within 500 ms; asking again'
+        continue
+    }
+    Write-Host "Foreground window: $([Win32]::GetForegroundWindow())"
+
+    # MN_GETHMENU hands out the HMENU behind the popup window, which is how the item rows are found.
+    $hmenu = [Win32]::SendMessage($menus[0].Handle, 0x01E1, [IntPtr]::Zero, [IntPtr]::Zero)
+    $found = @(Get-MenuItems $hmenu | Where-Object { $_.Text -eq $Submenu })
+    if ($found.Count -gt 0) {
+        $target = $found[0].Index
+        break
+    }
+
+    Write-Host "'$Submenu' is not in the menu yet; dismissing it and asking again"
+    Send-Escape 1
+    Start-Sleep -Milliseconds 500
 }
 
-$exitCode = 0
-if ($target -lt 0) {
-    Write-Host "::error::Menu item '$Submenu' not found"
-    $exitCode = 1
-} else {
+if ($target -ge 0) {
     $rect = New-Object RECT
     [void][Win32]::GetMenuItemRect([IntPtr]::Zero, $hmenu, $target, [ref] $rect)
     $x = [int] (($rect.Left + $rect.Right) / 2)
@@ -165,6 +218,11 @@ if ($target -lt 0) {
         Write-Host "::error::The submenu did not open"
         $exitCode = 1
     }
+}
+
+if ($menus.Count -eq 0) {
+    Write-Host '::error::No menu is on screen, nothing to capture'
+    exit 1
 }
 
 $left = [int] ($menus | ForEach-Object { $_.Rect.Left } | Measure-Object -Minimum).Minimum
@@ -195,11 +253,7 @@ $bitmap.Dispose()
 Write-Host "Saved $Output ($((Get-Item $Output).Length) bytes)"
 
 # One Escape per open level, then stop the client.
-foreach ($level in 1..2) {
-    [Win32]::keybd_event(0x1B, 0, 0, [UIntPtr]::Zero)
-    [Win32]::keybd_event(0x1B, 0, 2, [UIntPtr]::Zero) # KEYEVENTF_KEYUP
-    Start-Sleep -Milliseconds 100
-}
+Send-Escape 2
 Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
 
 exit $exitCode
