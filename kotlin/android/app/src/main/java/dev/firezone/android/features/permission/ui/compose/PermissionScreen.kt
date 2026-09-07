@@ -35,6 +35,7 @@ internal fun PermissionScreen(
     onAction: () -> Unit,
     modifier: Modifier = Modifier,
     onSkip: (() -> Unit)? = null,
+    error: String? = null,
 ) {
     Column(
         modifier =
@@ -65,6 +66,15 @@ internal fun PermissionScreen(
                 textAlign = TextAlign.Center,
                 modifier = Modifier.padding(top = 16.dp),
             )
+            if (error != null) {
+                Text(
+                    text = error,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.error,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(top = 16.dp),
+                )
+            }
             Button(
                 onClick = onAction,
                 colors =

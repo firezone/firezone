@@ -2,9 +2,11 @@
 package dev.firezone.android.features
 
 import android.app.Application
+import androidx.compose.ui.res.stringResource
 import com.github.takahirom.roborazzi.ExperimentalRoborazziApi
 import com.github.takahirom.roborazzi.captureRoboImage
 import com.github.takahirom.roborazzi.roborazziSystemPropertyOutputDirectory
+import dev.firezone.android.R
 import dev.firezone.android.STORE_SCREENSHOT_QUALIFIERS
 import dev.firezone.android.features.permission.certificate.ui.compose.CertificatePermissionScreen
 import dev.firezone.android.features.permission.notification.ui.compose.NotificationPermissionScreen
@@ -43,9 +45,19 @@ class OnboardingScreenshotTest {
     fun certificatePermission() =
         captureRoboImage("${roborazziSystemPropertyOutputDirectory()}/certificate-permission.png") {
             FirezoneTheme {
+                CertificatePermissionScreen(onSelectCertificate = {})
+            }
+        }
+
+    // The user picked the mail certificate the MDM installed alongside the device certificate.
+    @OptIn(ExperimentalRoborazziApi::class)
+    @Test
+    fun certificatePermissionRefused() =
+        captureRoboImage("${roborazziSystemPropertyOutputDirectory()}/certificate-permission-refused.png") {
+            FirezoneTheme {
                 CertificatePermissionScreen(
                     onSelectCertificate = {},
-                    onSkip = {},
+                    error = stringResource(R.string.device_trust_not_device_certificate, "corp-mail"),
                 )
             }
         }

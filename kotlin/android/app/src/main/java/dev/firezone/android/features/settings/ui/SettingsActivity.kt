@@ -22,12 +22,12 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 /** The navigation item and the page it shows, in order. */
-internal fun settingsPages(hasConfiguredCertificateAlias: Boolean): List<Pair<Int, () -> Fragment>> =
+internal fun settingsPages(showDeviceTrust: Boolean): List<Pair<Int, () -> Fragment>> =
     buildList {
         add(R.id.settingsGeneral to { GeneralSettingsFragment() })
         add(R.id.settingsAdvanced to { AdvancedSettingsFragment() })
 
-        if (hasConfiguredCertificateAlias) {
+        if (showDeviceTrust) {
             add(R.id.settingsDeviceTrust to { DeviceTrustSettingsFragment() })
         }
 
@@ -39,9 +39,11 @@ internal class SettingsActivity : AppCompatActivity() {
     private lateinit var binding: ActivitySettingsBinding
     private val viewModel: SettingsViewModel by viewModels()
     private val pages: List<Pair<Int, () -> Fragment>> by lazy {
+        // The tab exists where a certificate is required or one was found, and nowhere else.
         settingsPages(
-            hasConfiguredCertificateAlias =
-                repository.getX509CertificateAliasSync(applicationRestrictions) != null,
+            showDeviceTrust =
+                repository.isX509CertificateRequired(applicationRestrictions) ||
+                    repository.getX509CertificateAliasSync(applicationRestrictions) != null,
         )
     }
     private var lastFocusedView: View? = null

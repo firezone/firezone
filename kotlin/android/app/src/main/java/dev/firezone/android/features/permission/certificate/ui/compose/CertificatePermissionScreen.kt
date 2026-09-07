@@ -9,23 +9,24 @@ import dev.firezone.android.features.permission.ui.compose.PermissionScreen
 import dev.firezone.android.features.session.ui.compose.FirezoneTheme
 
 /**
- * Explains why the client certificate needs picking and offers to start the selection.
+ * Explains why the device certificate needs picking and offers to start the selection.
  *
- * Styled and arranged like the sibling permission screens.
+ * Styled and arranged like the sibling permission screens, minus the way past them: the
+ * administrator requires the certificate, so there is nothing to skip to.
  */
 @Composable
 internal fun CertificatePermissionScreen(
     onSelectCertificate: () -> Unit,
-    onSkip: () -> Unit,
     modifier: Modifier = Modifier,
+    error: String? = null,
 ) {
     PermissionScreen(
         title = R.string.device_trust_selection_title,
         description = R.string.device_trust_selection_description,
         actionLabel = R.string.device_trust_select_certificate,
         onAction = onSelectCertificate,
-        onSkip = onSkip,
         modifier = modifier,
+        error = error,
     )
 }
 
@@ -33,9 +34,6 @@ internal fun CertificatePermissionScreen(
 @Composable
 private fun CertificatePermissionScreenPreview() {
     FirezoneTheme {
-        CertificatePermissionScreen(
-            onSelectCertificate = {},
-            onSkip = {},
-        )
+        CertificatePermissionScreen(onSelectCertificate = {})
     }
 }

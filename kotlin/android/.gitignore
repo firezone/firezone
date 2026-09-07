@@ -9,6 +9,10 @@ local.properties
 # Log/OS Files
 *.log
 
+# What `emulator-tests.sh` pulls off the device
+coverage.ec
+emulator-screenshots/
+
 # Android Studio generated files and folders
 captures/
 .externalNativeBuild/

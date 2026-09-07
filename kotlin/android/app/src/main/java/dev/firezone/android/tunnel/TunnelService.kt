@@ -372,6 +372,13 @@ class TunnelService : VpnService() {
                             identifierForVendor = null,
                         )
 
+                    // An administrator who requires a certificate wants no session without one.
+                    if (certificateAlias == null && repo.isX509CertificateRequired(appRestrictions)) {
+                        throw X509IdentityException(
+                            "Your administrator requires a device certificate, and none has been released to Firezone yet.",
+                        )
+                    }
+
                     // The KeyChain blocks on a system service and connlib reads the identity while
                     // it constructs the session, so load it before we get there.
                     val certificate =

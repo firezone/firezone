@@ -51,6 +51,8 @@ pub enum ValidationError {
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct ParsedCertificate {
     pub subject_cn: Option<String>,
+    /// Whether the subject common name marks this as a Firezone device certificate.
+    pub is_device_certificate: bool,
     pub subject: String,
     /// Human-readable renderings of all subject alternative names.
     pub subject_alternative_names: Vec<String>,
@@ -88,6 +90,7 @@ pub fn parse_client_certificate(der: Vec<u8>) -> Option<ParsedCertificate> {
 impl From<x509_claims::ParsedCertificate> for ParsedCertificate {
     fn from(parsed: x509_claims::ParsedCertificate) -> Self {
         let is_currently_valid = parsed.is_currently_valid();
+        let is_device_certificate = parsed.is_device_certificate();
         let detail_fields = parsed
             .detail_fields()
             .into_iter()
@@ -96,6 +99,7 @@ impl From<x509_claims::ParsedCertificate> for ParsedCertificate {
 
         Self {
             subject_cn: parsed.subject_cn,
+            is_device_certificate,
             subject: parsed.subject,
             subject_alternative_names: parsed.subject_alternative_names,
             mdm_device_id: Claim::from(parsed.mdm_device_id),
