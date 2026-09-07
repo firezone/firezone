@@ -17,7 +17,7 @@ defmodule PortalAPI.Integrations.AzureCommunicationServices.WebhookController do
   defp handle_body(conn, event_type) do
     case read_body(conn) do
       {:ok, body, conn} ->
-        dispatch_body(conn, event_type, body)
+        Portal.Conn.wrap_errors(conn, &dispatch_body(&1, event_type, body))
 
       {:more, _, conn} ->
         send_resp(conn, 413, "Request Entity Too Large")

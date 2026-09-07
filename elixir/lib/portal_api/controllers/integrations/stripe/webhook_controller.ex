@@ -10,8 +10,11 @@ defmodule PortalAPI.Integrations.Stripe.WebhookController do
     case get_req_header(conn, "stripe-signature") do
       [signature_header] ->
         case read_body(conn, length: 1_000_000) do
-          {:ok, body, conn} -> handle_body(conn, signature_header, body)
-          {:more, _, conn} -> send_resp(conn, 413, "Request Entity Too Large")
+          {:ok, body, conn} ->
+            Portal.Conn.wrap_errors(conn, &handle_body(&1, signature_header, body))
+
+          {:more, _, conn} ->
+            send_resp(conn, 413, "Request Entity Too Large")
 
           {:error, reason} ->
             Logger.error("Stripe webhook body could not be read", reason: inspect(reason))
