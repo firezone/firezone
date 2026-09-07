@@ -7,15 +7,22 @@ defmodule Portal.RepoQueryHelpers do
   @boundaries ["begin", "commit", "rollback"]
 
   def capture_queries(fun) do
+    fun |> capture_statements() |> Enum.map(&elem(&1, 0))
+  end
+
+  @doc """
+  The SQL the test process ran while `fun` ran, each with its parameters.
+  """
+  def capture_statements(fun) do
     test_pid = self()
     handler_id = "queries-#{System.unique_integer([:positive])}"
 
     :telemetry.attach(
       handler_id,
       [:portal, :repo, :query],
-      fn _event, _measurements, %{query: query}, _config ->
+      fn _event, _measurements, %{query: query, params: params}, _config ->
         if self() == test_pid do
-          send(test_pid, {:query, query})
+          send(test_pid, {:query, query, params})
         end
       end,
       nil
@@ -28,6 +35,16 @@ defmodule Portal.RepoQueryHelpers do
     end
 
     collect_queries([])
+  end
+
+  @doc """
+  The plan Postgres picks for a captured statement once sequential scans are
+  ruled out, so a test can pin the index a predicate is meant to use.
+  """
+  def indexed_plan(sql, params) do
+    Portal.Repo.query!("SET LOCAL enable_seqscan = off")
+    %{rows: rows} = Portal.Repo.query!("EXPLAIN " <> sql, params)
+    Enum.map_join(rows, "\n", &hd/1)
   end
 
   @doc """
@@ -49,7 +66,7 @@ defmodule Portal.RepoQueryHelpers do
 
   defp collect_queries(acc) do
     receive do
-      {:query, query} -> collect_queries([query | acc])
+      {:query, query, params} -> collect_queries([{query, params} | acc])
     after
       0 -> Enum.reverse(acc)
     end

@@ -39,10 +39,7 @@ defmodule Portal.DirectorySync.RescuerTest do
   end
 
   test "leaves jobs alone while Oban still runs", ctx do
-    Process.register(self(), :"oban-running-#{System.unique_integer([:positive])}")
-    [name] = for {name, pid} <- Process.registered() |> Enum.map(&{&1, Process.whereis(&1)}), pid == self(), do: name
-
-    pid = start_rescuer(node: ctx.node, oban: name)
+    pid = start_rescuer(node: ctx.node)
     :ok = GenServer.stop(pid, :shutdown)
 
     assert Repo.get!(Oban.Job, ctx.killed.id).state == "executing"

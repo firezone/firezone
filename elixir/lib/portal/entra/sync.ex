@@ -777,7 +777,7 @@ defmodule Portal.Entra.Sync do
       from(g in Portal.Group,
         where: g.account_id == ^account_id,
         where: g.directory_id == ^directory_id,
-        where: ^group_idp_id in g.nested_group_idp_ids
+        where: fragment("? @> ARRAY[?]::text[]", g.nested_group_idp_ids, ^group_idp_id)
       )
       |> Safe.unscoped()
       |> Safe.all()

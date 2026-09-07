@@ -5,6 +5,7 @@ defmodule PortalAPI.Integrations.Entra.WebhookControllerTest do
   import Ecto.Query
   import Portal.AccountFixtures
   import Portal.ObanFixtures
+  import Portal.RepoQueryHelpers
   import Portal.EntraDirectoryFixtures
   import Portal.GroupFixtures
   import Portal.IdentityFixtures
@@ -115,6 +116,38 @@ defmodule PortalAPI.Integrations.Entra.WebhookControllerTest do
 
       assert [job] = all_enqueued(worker: Entra.WebhookSync)
       assert job.args["resource_id"] == "group-new"
+    end
+
+    test "admits nested groups through the nesting index in a large directory", %{
+      conn: conn,
+      directory: directory
+    } do
+      base_directory = Portal.Repo.get_by!(Portal.Directory, id: directory.id)
+      account = Portal.Repo.get!(Portal.Account, directory.account_id)
+      bulk_groups_fixture(base_directory, 2000)
+
+      group_fixture(
+        account: account,
+        directory: base_directory,
+        idp_id: "group-1",
+        nested_group_idp_ids: ["group-nested"]
+      )
+
+      Portal.Repo.query!("ANALYZE groups")
+
+      statements =
+        capture_statements(fn ->
+          post_notifications(conn, directory, [change("Groups", "group-nested", "updated")])
+        end)
+
+      {sql, params} = Enum.find(statements, fn {sql, _params} -> String.contains?(sql, "&&") end)
+
+      assert indexed_plan(sql, params) =~ "groups_nested_group_idp_ids_index"
+
+      assert_enqueued(
+        worker: Entra.WebhookSync,
+        args: %{resource: "group", resource_id: "group-nested", change_type: "updated"}
+      )
     end
 
     test "queues unknown users and groups while a job for the directory is running", %{

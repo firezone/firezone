@@ -5,6 +5,7 @@ defmodule Portal.Entra.SyncTest do
   import Ecto.Query
   import Portal.AccountFixtures
   import Portal.ObanFixtures
+  import Portal.RepoQueryHelpers
   import Portal.EntraDirectoryFixtures
 
   alias Portal.Microsoft.Graph.APIClient
@@ -2746,6 +2747,33 @@ defmodule Portal.Entra.SyncTest do
         end
 
       assert error.step == :batch_upsert_identities
+    end
+  end
+
+  describe "parents_of/2" do
+    test "finds parents through the nesting index in a large directory" do
+      account = account_fixture(features: %{idp_sync: true})
+      directory = entra_directory_fixture(account: account)
+      base_directory = Repo.get_by!(Portal.Directory, id: directory.id, account_id: account.id)
+      Portal.GroupFixtures.bulk_groups_fixture(base_directory, 2000)
+
+      parent =
+        Portal.GroupFixtures.group_fixture(
+          account: account,
+          directory: base_directory,
+          idp_id: "parent",
+          nested_group_idp_ids: ["child"]
+        )
+
+      Repo.query!("ANALYZE groups")
+
+      [{sql, params}] =
+        capture_statements(fn ->
+          assert [%Group{id: id}] = Sync.parents_of(directory, "child")
+          assert id == parent.id
+        end)
+
+      assert indexed_plan(sql, params) =~ "groups_nested_group_idp_ids_index"
     end
   end
 

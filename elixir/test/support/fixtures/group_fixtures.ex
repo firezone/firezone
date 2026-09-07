@@ -20,6 +20,33 @@ defmodule Portal.GroupFixtures do
   end
 
   @doc """
+  Inserts `count` plain groups into the directory in one statement, for tests
+  that need a directory the size of a real tenant.
+  """
+  def bulk_groups_fixture(%Portal.Directory{} = directory, count) do
+    now = DateTime.utc_now()
+
+    rows =
+      for i <- 1..count do
+        %{
+          id: Ecto.UUID.generate(),
+          account_id: directory.account_id,
+          directory_id: directory.id,
+          name: "Bulk group #{i}",
+          idp_id: "bulk-group-#{i}",
+          type: :static,
+          entity_type: :group,
+          nested_group_idp_ids: [],
+          inserted_at: now,
+          updated_at: now
+        }
+      end
+
+    {^count, _} = Portal.Repo.insert_all(Portal.Group, rows)
+    :ok
+  end
+
+  @doc """
   Generate a group with valid default attributes.
 
   The group will be created with an associated account unless one is provided.

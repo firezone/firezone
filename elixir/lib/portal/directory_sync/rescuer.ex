@@ -34,7 +34,7 @@ defmodule Portal.DirectorySync.Rescuer do
 
   @impl true
   def terminate(:shutdown, %{node: node, oban: oban}) do
-    if is_nil(Process.whereis(oban)) do
+    if is_nil(Oban.Registry.whereis(oban)) do
       DirectorySync.rescue_orphans(node)
     else
       Logger.warning("Directory sync rescuer stopped while Oban still runs, leaving jobs alone",
