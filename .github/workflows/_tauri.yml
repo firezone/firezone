@@ -138,14 +138,14 @@ jobs:
         run: cargo build -p firezone-gui-client --bin firezone-gui-client
       - name: Capture the tray menu
         shell: pwsh
-        run: ./scripts/capture-tray-menu.ps1 -Exe ../target/debug/firezone-gui-client.exe -Output screenshots/tray-menu-light.png
+        run: ./scripts/capture-tray-menu.ps1 -Exe ../target/debug/firezone-gui-client.exe -Output screenshots/windows-tray-menu-light.png
         timeout-minutes: 5
       # Uploaded even when the capture went wrong, so the result can be inspected.
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
           name: gui-client-tray-screenshots
-          path: rust/gui-client/screenshots/tray-*.png
+          path: rust/gui-client/screenshots/windows-tray-*.png
           if-no-files-found: ignore
 
   build-gui:
