@@ -104,6 +104,10 @@ jobs:
         # archive so the downstream test-matrix jobs load them via `docker load`
         # instead of each running `docker build` + `apk add` against the Alpine
         # CDN, which was a recurring source of flaky failures.
+        #
+        # Without the guard, an empty `build_services` would build every
+        # buildable service of the compose project.
+        if: inputs.build_services != ''
         run: retry docker compose build ${{ inputs.build_services }}
       - name: Save pulled images as a single archive
         run: |
