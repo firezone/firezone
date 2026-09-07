@@ -586,9 +586,9 @@ pub enum SingleInstance {
     /// Another instance was already running. We connected to its GUI
     /// IPC pipe, sent `ClientMsg::NewInstance`, awaited the `Ack`,
     /// and closed our end. Production callers bail with
-    /// [`AlreadyRunning`] here; the `debug single-instance`
-    /// subcommand uses it as a successful end state for the
-    /// second-instance side of the smoke test.
+    /// [`AlreadyRunning`] here; the `single-instance` subcommand uses
+    /// it as a successful end state for the second-instance side of
+    /// the smoke test.
     SecondHandedOff,
 }
 
@@ -633,7 +633,7 @@ pub async fn establish_single_instance() -> Result<SingleInstance> {
 /// [`ClientMsg`], send a `ServerMsg::Ack`, and return the message
 /// so the caller can log / assert on it.
 ///
-/// Used by the `debug single-instance` subcommand to exercise the
+/// Used by the `single-instance` subcommand to exercise the
 /// pipe-server side of the launch-lock hand-off without standing up
 /// the controller or any other normal-runtime machinery. Production
 /// code uses the same `ipc::Server` + framed reader/writer types
