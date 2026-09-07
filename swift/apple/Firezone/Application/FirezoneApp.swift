@@ -24,7 +24,7 @@ struct FirezoneApp: App {
 
   init() {
     // Initialize Telemetry as early as possible
-    Telemetry.start()
+    Telemetry.start(enableMetricKit: true)
 
     installCertificateParser()
 
