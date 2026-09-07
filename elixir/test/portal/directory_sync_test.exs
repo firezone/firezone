@@ -1,6 +1,7 @@
 defmodule Portal.DirectorySyncTest do
   use Portal.DataCase, async: true
 
+  import Ecto.Query
   import Portal.AccountFixtures
   import Portal.ObanFixtures
   import Portal.EntraDirectoryFixtures
@@ -136,6 +137,36 @@ defmodule Portal.DirectorySyncTest do
       assert actor.created_by_directory_id == directory.id
 
       upsert(account, directory, [%{idp_id: "user-1", email: "new@example.com", name: "New Name"}], 0)
+
+      actor = Repo.get_by!(Actor, id: actor.id)
+      assert actor.name == "New Name"
+      assert actor.email == "new@example.com"
+    end
+
+    test "repairs an actor that fell behind its identity",
+         %{account: account, directory: directory} do
+      upsert(account, directory, [%{idp_id: "user-1", email: "old@example.com", name: "Old Name"}], -120)
+      actor = Repo.get_by!(Actor, account_id: account.id, email: "old@example.com")
+
+      Repo.update_all(
+        from(i in ExternalIdentity, where: i.account_id == ^account.id and i.idp_id == "user-1"),
+        set: [email: "new@example.com", name: "New Name"]
+      )
+
+      upsert(account, directory, [%{idp_id: "user-1", email: "new@example.com", name: "New Name"}], 0)
+
+      actor = Repo.get_by!(Actor, id: actor.id)
+      assert actor.name == "New Name"
+      assert actor.email == "new@example.com"
+    end
+
+    test "never moves an actor back to what an older sync saw",
+         %{account: account, directory: directory} do
+      upsert(account, directory, [%{idp_id: "user-1", email: "old@example.com", name: "Old Name"}], -120)
+      actor = Repo.get_by!(Actor, account_id: account.id, email: "old@example.com")
+      upsert(account, directory, [%{idp_id: "user-1", email: "new@example.com", name: "New Name"}], 0)
+
+      upsert(account, directory, [%{idp_id: "user-1", email: "old@example.com", name: "Old Name"}], -60)
 
       actor = Repo.get_by!(Actor, id: actor.id)
       assert actor.name == "New Name"

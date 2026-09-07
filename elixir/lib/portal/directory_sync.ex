@@ -408,26 +408,36 @@ defmodule Portal.DirectorySync do
               AND iss.external_identity_id = external_identities.id
               AND iss.synced_at >= $#{synced_at}
           )
-        RETURNING id, account_id, idp_id, actor_id, name, email
+        RETURNING id, account_id, idp_id
       ),
-      -- Another actor may already hold the new address; the identity records
-      -- it either way, so only the name moves then.
+      -- Every user in the batch, not only the ones whose identity changed, so
+      -- an actor that fell behind is caught up. Another actor may already hold
+      -- the new address; the identity records it either way, so only the name
+      -- moves then.
       updated_actors AS (
         UPDATE actors a
-        SET name = ui.name,
+        SET name = aam.name,
             email = CASE
               WHEN EXISTS (
                 SELECT 1 FROM actors other
-                WHERE other.account_id = a.account_id AND other.email = ui.email AND other.id <> a.id
+                WHERE other.account_id = a.account_id AND other.email = aam.email AND other.id <> a.id
               ) THEN a.email
-              ELSE ui.email
+              ELSE aam.email
             END,
             updated_at = $#{synced_at}
-        FROM upserted_identities ui
-        WHERE a.account_id = ui.account_id
-          AND a.id = ui.actor_id
+        FROM all_actor_mappings aam
+        LEFT JOIN pre_existing_identities ei ON ei.idp_id = aam.idp_id
+        LEFT JOIN existing_directory_identities edi ON edi.actor_id = aam.actor_id
+        WHERE a.account_id = $#{account_id}
+          AND a.id = aam.actor_id
           AND a.created_by_directory_id = $#{directory_id}
-          AND (a.name, a.email) IS DISTINCT FROM (ui.name, ui.email)
+          AND (a.name, a.email) IS DISTINCT FROM (aam.name, aam.email)
+          AND NOT EXISTS (
+            SELECT 1 FROM external_identity_sync_states iss
+            WHERE iss.account_id = $#{account_id}
+              AND iss.external_identity_id = COALESCE(ei.id, edi.id)
+              AND iss.synced_at >= $#{synced_at}
+          )
       ),
       all_identity_ids AS (
         SELECT id, account_id FROM upserted_identities
