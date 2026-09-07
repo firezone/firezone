@@ -574,7 +574,11 @@ class TunnelService : VpnService() {
         }
 
         val userName = Settings.Global.getString(contentResolver, Settings.Global.DEVICE_NAME)
-        return if (userName.isNullOrBlank()) Build.MODEL else userName
+        if (!userName.isNullOrBlank()) {
+            return userName
+        }
+
+        return Build.MODEL
     }
 
     sealed class TunnelCommand {
