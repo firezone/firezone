@@ -87,7 +87,8 @@ echo "==> Collecting the screenshots..."
 rm -rf emulator-screenshots
 mkdir -p emulator-screenshots
 
+# The digest tells whether a capture is stable from one run to the next.
 for name in $(adb shell run-as "$APP_PACKAGE" ls files/screenshots 2>/dev/null | tr -d '\r'); do
     adb shell run-as "$APP_PACKAGE" cat "files/screenshots/$name" >"emulator-screenshots/$name"
-    echo "    $name"
+    echo "    $(sha256sum "emulator-screenshots/$name" | cut -c1-16)  $name"
 done

@@ -41,6 +41,11 @@ object TestDpc {
         )
     }
 
+    /** Removes the key pair under [alias], so a test leaves the KeyChain as it found it. */
+    fun removeKeyPair(alias: String) {
+        provision(Intent("dev.firezone.dpc.REMOVE_KEY_PAIR").putExtra("alias", alias), "remove '$alias'")
+    }
+
     /** Has the DPC answer the KeyChain chooser with [alias], or leave the choice to the user when `null`. */
     fun answerChooserWith(alias: String?) {
         provision(

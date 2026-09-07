@@ -19,15 +19,16 @@ import dev.firezone.android.tunnel.TestRestrictions
 import dev.firezone.android.tunnel.finishAllActivities
 import dev.firezone.android.tunnel.grantNotificationPermission
 import dev.firezone.android.tunnel.launchApp
+import dev.firezone.android.tunnel.photographScreen
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
+import org.junit.After
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
-import java.io.File
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
@@ -46,6 +47,7 @@ class ManagedKeyChainTest {
     lateinit var preferences: SharedPreferences
 
     private val systemKeyChain = SystemKeyChain(ApplicationProvider.getApplicationContext<Context>())
+    private val installed = mutableListOf<String>()
 
     @Before
     fun setUp() {
@@ -57,11 +59,18 @@ class ManagedKeyChainTest {
         TestDpc.answerChooserWith(null)
     }
 
+    @After
+    fun tearDown() {
+        // The chooser lists everything installed, so what a test leaves behind is what the next
+        // one's user would see.
+        installed.forEach(TestDpc::removeKeyPair)
+    }
+
     @Test
     fun anInstalledButUngrantedAliasIsWithheld() {
         val identity = testIdentity("firezone://serial/EMU-UNGRANTED")
 
-        TestDpc.installKeyPair(UNGRANTED_ALIAS, identity.pkcs12(UNGRANTED_ALIAS, PASSWORD), PASSWORD, grantToFirezone = false)
+        install(UNGRANTED_ALIAS, identity, grantToFirezone = false)
 
         assertNull(systemKeyChain.privateKey(UNGRANTED_ALIAS))
         assertNull(systemKeyChain.certificateChain(UNGRANTED_ALIAS))
@@ -71,7 +80,7 @@ class ManagedKeyChainTest {
     fun aGrantedAliasHandsOverTheKeyAndTheFullChain() {
         val identity = testIdentity("firezone://serial/EMU-GRANTED")
 
-        TestDpc.installKeyPair(GRANTED_ALIAS, identity.pkcs12(GRANTED_ALIAS, PASSWORD), PASSWORD, grantToFirezone = true)
+        install(GRANTED_ALIAS, identity, grantToFirezone = true)
 
         val chain = systemKeyChain.certificateChain(GRANTED_ALIAS)
         val privateKey = systemKeyChain.privateKey(GRANTED_ALIAS)
@@ -117,7 +126,7 @@ class ManagedKeyChainTest {
     fun choosingTheCertificateGrantsTheConfiguredAlias() {
         val identity = testIdentity("firezone://serial/EMU-CHOOSER")
 
-        TestDpc.installKeyPair(CHOOSER_ALIAS, identity.pkcs12(CHOOSER_ALIAS, PASSWORD), PASSWORD, grantToFirezone = false)
+        install(CHOOSER_ALIAS, identity, grantToFirezone = false)
 
         assertNull(systemKeyChain.privateKey(CHOOSER_ALIAS))
 
@@ -141,7 +150,7 @@ class ManagedKeyChainTest {
     fun anOfferedAliasTheKeyChainDoesNotHoldStillLetsTheUserChoose() {
         val identity = testIdentity("firezone://serial/EMU-MISNAMED")
 
-        TestDpc.installKeyPair(MISNAMED_ALIAS, identity.pkcs12(MISNAMED_ALIAS, PASSWORD), PASSWORD, grantToFirezone = false)
+        install(MISNAMED_ALIAS, identity, grantToFirezone = false)
 
         launchApp()
 
@@ -163,7 +172,7 @@ class ManagedKeyChainTest {
     fun aPolicyAnswerArrivesGrantedAndWithoutAChooser() {
         val identity = testIdentity("firezone://serial/EMU-POLICY")
 
-        TestDpc.installKeyPair(POLICY_ALIAS, identity.pkcs12(POLICY_ALIAS, PASSWORD), PASSWORD, grantToFirezone = false)
+        install(POLICY_ALIAS, identity, grantToFirezone = false)
         TestDpc.answerChooserWith(POLICY_ALIAS)
 
         launchApp()
@@ -184,7 +193,7 @@ class ManagedKeyChainTest {
         val identity = testIdentity("firezone://serial/EMU-QUIET")
 
         // A certificate the chooser would list, were it to open.
-        TestDpc.installKeyPair(QUIET_ALIAS, identity.pkcs12(QUIET_ALIAS, PASSWORD), PASSWORD, grantToFirezone = false)
+        install(QUIET_ALIAS, identity, grantToFirezone = false)
 
         launchApp()
 
@@ -211,8 +220,8 @@ class ManagedKeyChainTest {
         val device = testIdentity("firezone://serial/EMU-TWO")
         val mail = testIdentity("mailto:user@example.com", commonName = "mail.example.com")
 
-        TestDpc.installKeyPair(DEVICE_ALIAS, device.pkcs12(DEVICE_ALIAS, PASSWORD), PASSWORD, grantToFirezone = false)
-        TestDpc.installKeyPair(MAIL_ALIAS, mail.pkcs12(MAIL_ALIAS, PASSWORD), PASSWORD, grantToFirezone = false)
+        install(DEVICE_ALIAS, device, grantToFirezone = false)
+        install(MAIL_ALIAS, mail, grantToFirezone = false)
 
         launchApp()
 
@@ -227,22 +236,20 @@ class ManagedKeyChainTest {
             assertNotNull("the chooser does not list '$alias'", screen.wait(Until.findObject(By.text(alias)), TIMEOUT_MS))
         }
 
-        screenshot(screen, "keychain-chooser-two-certificates")
+        photographScreen("keychain-chooser-two-certificates")
 
         approveKeyChainChooser(DEVICE_ALIAS)
 
         assertEquals(DEVICE_ALIAS, chosen.get(TIMEOUT_MS, TimeUnit.MILLISECONDS))
     }
 
-    /** Photographs the display, system dialogs included, where `emulator-tests.sh` collects it. */
-    private fun screenshot(
-        screen: UiDevice,
-        name: String,
+    private fun install(
+        alias: String,
+        identity: TestIdentity,
+        grantToFirezone: Boolean,
     ) {
-        val directory = File(InstrumentationRegistry.getInstrumentation().targetContext.filesDir, "screenshots")
-        directory.mkdirs()
-
-        assertTrue("could not capture $name", screen.takeScreenshot(File(directory, "$name.png")))
+        TestDpc.installKeyPair(alias, identity.pkcs12(alias, PASSWORD), PASSWORD, grantToFirezone)
+        installed += alias
     }
 
     /** Confirms the system chooser with [alias] selected, whether or not it arrived preselected. */
@@ -295,8 +302,7 @@ class ManagedKeyChainTest {
     }
 
     private companion object {
-        // One alias per test: a KeyChain grant is remembered per alias, so sharing one would
-        // let a granted test decide what an ungranted one sees.
+        // One alias per test, so a failure names the test that installed it.
         const val UNGRANTED_ALIAS = "firezone-test-ungranted"
         const val GRANTED_ALIAS = "firezone-test-granted"
         const val EMPTY_ALIAS = "firezone-test-never-installed"

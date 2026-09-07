@@ -33,6 +33,7 @@ class ProvisionReceiver : BroadcastReceiver() {
             runCatching {
                 when (intent.action) {
                     INSTALL_KEY_PAIR -> installKeyPair(policy, admin, intent)
+                    REMOVE_KEY_PAIR -> removeKeyPair(policy, admin, intent)
                     SET_RESTRICTIONS -> setRestrictions(policy, admin, intent)
                     SET_POLICY_ALIAS -> setPolicyAlias(context, intent)
                     else -> "unknown action: ${intent.action}"
@@ -80,6 +81,17 @@ class ProvisionReceiver : BroadcastReceiver() {
         }
 
         return "installed '$alias' (certificates=${chain.size}, granted=${grantTo ?: "nobody"})"
+    }
+
+    /** Removes the key pair under an alias, and with it every grant the alias carried. */
+    private fun removeKeyPair(
+        policy: DevicePolicyManager,
+        admin: android.content.ComponentName,
+        intent: Intent,
+    ): String {
+        val alias = intent.requireString(ALIAS)
+
+        return if (policy.removeKeyPair(admin, alias)) "removed '$alias'" else "nothing under '$alias'"
     }
 
     /**
@@ -130,6 +142,7 @@ class ProvisionReceiver : BroadcastReceiver() {
 
     private companion object {
         const val INSTALL_KEY_PAIR = "dev.firezone.dpc.INSTALL_KEY_PAIR"
+        const val REMOVE_KEY_PAIR = "dev.firezone.dpc.REMOVE_KEY_PAIR"
         const val SET_RESTRICTIONS = "dev.firezone.dpc.SET_RESTRICTIONS"
         const val SET_POLICY_ALIAS = "dev.firezone.dpc.SET_POLICY_ALIAS"
 
