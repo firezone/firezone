@@ -2457,19 +2457,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "firezone-cli"
-version = "1.0.0"
-dependencies = [
- "anyhow-ext",
- "clap",
- "nix 0.31.3",
- "rpassword",
- "secrecy",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
 name = "firezone-gateway"
 version = "1.6.1"
 dependencies = [
@@ -2498,6 +2485,7 @@ dependencies = [
  "otel-instruments",
  "phoenix-channel",
  "resolv-conf",
+ "rpassword",
  "rustls",
  "secrecy",
  "snownet",

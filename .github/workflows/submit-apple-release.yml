@@ -1,0 +1,337 @@
+name: Submit Apple release
+run-name: Submit ${{ inputs.platform }} release
+
+on:
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: App Store platform to submit for review
+        required: true
+        type: choice
+        options:
+          - iOS
+          - macOS
+
+permissions:
+  contents: read
+  security-events: write
+
+concurrency:
+  group: apple-release-main
+  cancel-in-progress: false
+
+env:
+  ASC_APP_ID: "6443661826"
+  ASC_PLATFORM: ${{ inputs.platform == 'iOS' && 'IOS' || 'MAC_OS' }}
+  ASC_KEY_TYPE: individual
+  ASC_STRICT_AUTH: "1"
+  ASC_TELEMETRY_DISABLED: "1"
+  # mark:next-apple-version
+  RELEASE_NAME: apple-client-1.5.20
+
+jobs:
+  prepare:
+    if: ${{ github.ref_name == 'main' }}
+    environment:
+      name: app-store
+      url: https://appstoreconnect.apple.com/apps/6443661826/distribution
+    runs-on: ubuntu-24.04
+    outputs:
+      source_sha: ${{ steps.release.outputs.source_sha }}
+      build_id: ${{ steps.build.outputs.build_id }}
+      phase: ${{ steps.build.outputs.phase }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: ./.github/actions/setup-mise
+        with:
+          install_args: --cd swift/apple github:rorkai/App-Store-Connect-CLI
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Resolve the GitHub draft release
+        id: release
+        working-directory: swift/apple
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          release=$(gh release view "$RELEASE_NAME" \
+            --repo "$GITHUB_REPOSITORY" \
+            --json isDraft,targetCommitish)
+          if [[ $(jq -r '.isDraft' <<< "$release") != true ]]; then
+            echo "$RELEASE_NAME is not a draft release" >&2
+            exit 1
+          fi
+          source_sha=$(jq -r '.targetCommitish' <<< "$release")
+          if [[ ! "$source_sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "$RELEASE_NAME does not target a full Git commit SHA" >&2
+            exit 1
+          fi
+          version="${RELEASE_NAME#apple-client-}"
+          ipa_path="$RUNNER_TEMP/firezone-ios-client-${version}.ipa"
+          gh release download "$RELEASE_NAME" \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern "firezone-ios-client-${version}.ipa" \
+            --dir "$RUNNER_TEMP"
+
+          # Both App Store artifacts share a build number, so either the iOS or
+          # macOS artifact could be used to resolve it.
+          build_number=$(asc distribute inspect --ipa "$ipa_path" --output json | jq -er '.app.buildNumber')
+          {
+            echo "build_number=$build_number"
+            echo "source_sha=$source_sha"
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ steps.release.outputs.source_sha }}
+
+      - name: Stage App Store inputs
+        run: |
+          if [[ ! -f scripts/upload/apple-version.sh ]]; then
+            echo "This draft predates the submission workflow. Run Swift from main and QA the new draft first." >&2
+            exit 1
+          fi
+          metadata_dir="$RUNNER_TEMP/app-store-metadata"
+          iphone_dir="$RUNNER_TEMP/app-store-screenshots/ios/iphone/en-US"
+          ipad_dir="$RUNNER_TEMP/app-store-screenshots/ios/ipad/en-US"
+          macos_dir="$RUNNER_TEMP/app-store-screenshots/macos/en-US"
+          mkdir -p "$metadata_dir" "$iphone_dir" "$ipad_dir" "$macos_dir"
+
+          cp swift/apple/app-store/metadata/en-US.json "$metadata_dir/en-US.json"
+          : > "$RUNNER_TEMP/app-store-screenshots.txt"
+
+          if [[ "$ASC_PLATFORM" == IOS ]]; then
+            mapfile -t screenshots < swift/apple/app-store/screenshots-ios.txt
+            for device in iphone ipad; do
+              for i in "${!screenshots[@]}"; do
+                screenshot=${screenshots[$i]}
+                printf -v filename '%02d-%s' "$((i + 1))" "$screenshot"
+                source_path="swift/apple/screenshots/ios/$device/$screenshot"
+                cp "$source_path" "$RUNNER_TEMP/app-store-screenshots/ios/$device/en-US/$filename"
+                printf '%s\n' "$source_path" >> "$RUNNER_TEMP/app-store-screenshots.txt"
+              done
+            done
+          else
+            mapfile -t screenshots < swift/apple/app-store/screenshots-macos.txt
+            for i in "${!screenshots[@]}"; do
+              screenshot=${screenshots[$i]}
+              printf -v filename '%02d-%s' "$((i + 1))" "$screenshot"
+              source_path="swift/apple/screenshots/macos/26/$screenshot"
+              cp "$source_path" "$macos_dir/$filename"
+              printf '%s\n' "$source_path" >> "$RUNNER_TEMP/app-store-screenshots.txt"
+            done
+          fi
+
+          {
+            echo "METADATA_DIR=$metadata_dir"
+            echo "IPHONE_SCREENSHOTS=${RUNNER_TEMP}/app-store-screenshots/ios/iphone"
+            echo "IPAD_SCREENSHOTS=${RUNNER_TEMP}/app-store-screenshots/ios/ipad"
+            echo "MACOS_SCREENSHOTS=${RUNNER_TEMP}/app-store-screenshots/macos"
+          } >> "$GITHUB_ENV"
+
+      - name: Create or reuse the App Store version
+        id: version
+        working-directory: swift/apple
+        env:
+          ASC_KEY_ID: ${{ secrets.APPLE_APP_STORE_CONNECT_APP_MANAGER_API_KEY_ID }}
+          ASC_PRIVATE_KEY_B64: ${{ secrets.APPLE_APP_STORE_CONNECT_APP_MANAGER_API_KEY }}
+        run: |
+          version="${RELEASE_NAME#apple-client-}"
+          target=$(asc versions list --app "$ASC_APP_ID" --version "$version" --platform "$ASC_PLATFORM" --output json)
+          count=$(jq -er '.data | length' <<< "$target")
+          if [[ "$count" == 0 ]]; then
+            source=$(asc versions list --app "$ASC_APP_ID" --platform "$ASC_PLATFORM" --latest --output json \
+              | jq -er 'if (.items | length) == 1 then .items[0].attributes.versionString else error("expected one source version") end')
+            asc versions create \
+              --app "$ASC_APP_ID" \
+              --version "$version" \
+              --platform "$ASC_PLATFORM" \
+              --copy-metadata-from "$source"
+          fi
+          source ../../scripts/upload/apple-version.sh
+          read_app_store_version
+          echo "phase=$version_phase" >> "$GITHUB_OUTPUT"
+
+      - name: Replace App Store screenshots and metadata
+        if: steps.version.outputs.phase == 'editable'
+        working-directory: swift/apple
+        env:
+          ASC_KEY_ID: ${{ secrets.APPLE_APP_STORE_CONNECT_APP_MANAGER_API_KEY_ID }}
+          ASC_PRIVATE_KEY_B64: ${{ secrets.APPLE_APP_STORE_CONNECT_APP_MANAGER_API_KEY }}
+        run: |
+          version="${RELEASE_NAME#apple-client-}"
+          if [[ "$ASC_PLATFORM" == IOS ]]; then
+            asc screenshots upload \
+              --app "$ASC_APP_ID" \
+              --version "$version" \
+              --platform IOS \
+              --path "$IPHONE_SCREENSHOTS" \
+              --device-type APP_IPHONE_67 \
+              --replace \
+              --confirm
+            asc screenshots upload \
+              --app "$ASC_APP_ID" \
+              --version "$version" \
+              --platform IOS \
+              --path "$IPAD_SCREENSHOTS" \
+              --device-type APP_IPAD_PRO_3GEN_129 \
+              --replace \
+              --confirm
+          else
+            asc screenshots upload \
+              --app "$ASC_APP_ID" \
+              --version "$version" \
+              --platform MAC_OS \
+              --path "$MACOS_SCREENSHOTS" \
+              --device-type APP_DESKTOP \
+              --replace \
+              --confirm
+          fi
+
+          asc apps info edit \
+            --app "$ASC_APP_ID" \
+            --version "$version" \
+            --platform "$ASC_PLATFORM" \
+            --from-dir "$METADATA_DIR"
+
+      - name: Attach the build
+        id: build
+        working-directory: swift/apple
+        env:
+          ASC_KEY_ID: ${{ secrets.APPLE_APP_STORE_CONNECT_APP_MANAGER_API_KEY_ID }}
+          ASC_PRIVATE_KEY_B64: ${{ secrets.APPLE_APP_STORE_CONNECT_APP_MANAGER_API_KEY }}
+          BUILD_NUMBER: ${{ steps.release.outputs.build_number }}
+        run: |
+          source ../../scripts/upload/apple-version.sh
+          read_app_store_version
+          build=$(asc builds info \
+            --app "$ASC_APP_ID" \
+            --version "$version" \
+            --build-number "$BUILD_NUMBER" \
+            --platform "$ASC_PLATFORM" \
+            --output json)
+          build_id=$(jq -er '.data.id' <<< "$build")
+          if [[ "$version_phase" == editable ]]; then
+            asc versions update \
+              --version-id "$version_id" \
+              --release-type MANUAL \
+              --output json
+            asc versions attach-build \
+              --version-id "$version_id" \
+              --build-id "$build_id" \
+              --output json
+            read_app_store_version
+          fi
+          verify_app_store_build "$build_id"
+          {
+            echo "build_id=$build_id"
+            echo "phase=$version_phase"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Summarize the candidate
+        env:
+          BUILD_NUMBER: ${{ steps.release.outputs.build_number }}
+          SOURCE_SHA: ${{ steps.release.outputs.source_sha }}
+          PLATFORM_NAME: ${{ inputs.platform }}
+          VERSION_PHASE: ${{ steps.build.outputs.phase }}
+        run: |
+          version="${RELEASE_NAME#apple-client-}"
+          short_sha=${SOURCE_SHA:0:12}
+          changelog=$(jq -er '.whatsNew' "$METADATA_DIR/en-US.json")
+          {
+            echo "## ${PLATFORM_NAME} ${version}"
+            echo
+            echo "- Source: [\`${short_sha}\`](https://github.com/${GITHUB_REPOSITORY}/commit/${SOURCE_SHA})"
+            echo "- Build: \`${BUILD_NUMBER}\`"
+            echo "- What's New: [Apple changelog]($changelog)"
+            echo "- [Open Firezone in App Store Connect](https://appstoreconnect.apple.com/apps/${ASC_APP_ID}/distribution)"
+            echo
+            if [[ "$VERSION_PHASE" == submitted ]]; then
+              echo "This build is already submitted. No further submission is needed."
+            else
+              echo "The build is attached and release is manual. Inspect this platform version, then approve the \`app-store-review\` deployment to send it for review."
+            fi
+            echo
+            echo "### Store screenshots from this draft"
+            echo
+            while IFS= read -r screenshot; do
+              printf -- "- [\`%s\`](https://github.com/%s/blob/%s/%s)\n" \
+                "$screenshot" "$GITHUB_REPOSITORY" "$SOURCE_SHA" "$screenshot"
+            done < "$RUNNER_TEMP/app-store-screenshots.txt"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  review:
+    needs: prepare
+    if: needs.prepare.outputs.phase != 'submitted'
+    environment:
+      name: app-store-review
+      url: https://appstoreconnect.apple.com/apps/6443661826/distribution
+    runs-on: ubuntu-24.04
+    permissions: {}
+    steps:
+      - name: Verify the approval environment
+        env:
+          APP_STORE_REVIEW_CONFIGURED: ${{ vars.APP_STORE_REVIEW_CONFIGURED }}
+        run: |
+          if [[ "$APP_STORE_REVIEW_CONFIGURED" != true ]]; then
+            echo "The app-store-review environment is not configured" >&2
+            exit 1
+          fi
+
+  submit:
+    needs: [prepare, review]
+    environment:
+      name: app-store
+      url: https://appstoreconnect.apple.com/apps/6443661826/distribution
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Revalidate the GitHub draft release
+        env:
+          EXPECTED_SOURCE_SHA: ${{ needs.prepare.outputs.source_sha }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          release=$(gh release view "$RELEASE_NAME" \
+            --repo "$GITHUB_REPOSITORY" \
+            --json isDraft,targetCommitish)
+          jq -e \
+            --arg source_sha "$EXPECTED_SOURCE_SHA" \
+            '.isDraft == true and .targetCommitish == $source_sha' \
+            <<< "$release" >/dev/null
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.prepare.outputs.source_sha }}
+
+      - uses: ./.github/actions/setup-mise
+        with:
+          install_args: --cd swift/apple github:rorkai/App-Store-Connect-CLI
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Submit the version
+        working-directory: swift/apple
+        env:
+          ASC_KEY_ID: ${{ secrets.APPLE_APP_STORE_CONNECT_APP_MANAGER_API_KEY_ID }}
+          ASC_PRIVATE_KEY_B64: ${{ secrets.APPLE_APP_STORE_CONNECT_APP_MANAGER_API_KEY }}
+          BUILD_ID: ${{ needs.prepare.outputs.build_id }}
+        run: |
+          source ../../scripts/upload/apple-version.sh
+          read_app_store_version
+          verify_app_store_build "$BUILD_ID"
+          if [[ "$version_phase" == submitted ]]; then
+            echo "This build is already submitted."
+            exit 0
+          fi
+          asc review submit \
+            --app "$ASC_APP_ID" \
+            --version-id "$version_id" \
+            --build-id "$BUILD_ID" \
+            --platform "$ASC_PLATFORM" \
+            --confirm \
+            --output json
+          read_app_store_version
+          if [[ "$version_phase" != submitted ]]; then
+            echo "Apple still reports $state. Inspect the submission in App Store Connect before rerunning." >&2
+            exit 1
+          fi
