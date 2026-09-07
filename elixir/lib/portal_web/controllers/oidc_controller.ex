@@ -51,6 +51,9 @@ defmodule PortalWeb.OIDCController do
           verification_ref
         )
 
+      :google_sign_up ->
+        handle_google_sign_up_callback(conn, code, state)
+
       _ ->
         handle_authentication_callback(conn, state, code)
     end
@@ -93,6 +96,9 @@ defmodule PortalWeb.OIDCController do
           lv_pid_string,
           verification_ref
         )
+
+      :google_sign_up ->
+        redirect_to_sign_up_with_error(conn, google_sign_up_authorization_error(params))
 
       _ ->
         handle_error(conn, {:error, :invalid_callback_params})
@@ -977,6 +983,67 @@ defmodule PortalWeb.OIDCController do
     })
   end
 
+  defp handle_google_sign_up_callback(conn, code, state) do
+    with {:ok, cookie} <- fetch_sign_up_cookie(conn),
+         :ok <- verify_state(cookie.state, state),
+         {:ok, %{config: config}} <- PortalWeb.OIDC.setup_verification("google_sign_up", []),
+         {:ok, claims, userinfo_result} <-
+           PortalWeb.OIDC.verify_callback(config, code, cookie.verifier),
+         {:ok, profile} <- IdentityProfile.build(claims, userinfo(userinfo_result), nil),
+         :ok <- enforce_verified_email(profile) do
+      conn
+      |> Cookie.SignUpState.delete()
+      |> put_session(PortalWeb.SignUp.session_key(), PortalWeb.SignUp.session_identity(profile))
+      |> redirect(to: ~p"/sign_up/google")
+    else
+      {:error, reason} ->
+        maybe_log_verification_error(reason)
+
+        conn
+        |> Cookie.SignUpState.delete()
+        |> redirect_to_sign_up_with_error(google_sign_up_error_message(reason))
+    end
+  end
+
+  defp fetch_sign_up_cookie(conn) do
+    case Cookie.SignUpState.fetch(conn) do
+      %Cookie.SignUpState{} = cookie -> {:ok, cookie}
+      nil -> {:error, :oidc_state_not_found}
+    end
+  end
+
+  defp userinfo({:ok, userinfo}) when is_map(userinfo), do: userinfo
+  defp userinfo(_result), do: %{}
+
+  defp redirect_to_sign_up_with_error(conn, error) do
+    conn
+    |> put_flash(:error, error)
+    |> redirect(to: ~p"/sign_up")
+  end
+
+  defp google_sign_up_authorization_error(%{"error" => "access_denied"}),
+    do: "Google sign-in was cancelled. Please try again."
+
+  defp google_sign_up_authorization_error(%{"error_description" => description})
+       when is_binary(description),
+       do: "Google sign-in failed: #{description}"
+
+  defp google_sign_up_authorization_error(%{"error" => error}) when is_binary(error),
+    do: "Google sign-in failed: #{error}"
+
+  defp google_sign_up_error_message(reason)
+       when reason in [:oidc_state_not_found, :state_mismatch],
+       do: "Your sign-up session has timed out. Please try again."
+
+  defp google_sign_up_error_message(reason)
+       when reason in [:email_not_verified, :email_verified_missing],
+       do: "Google did not confirm your email address. Please verify it with Google and try again."
+
+  defp google_sign_up_error_message(%Ecto.Changeset{}),
+    do: "Google returned invalid profile data. Please try again or sign up with email."
+
+  defp google_sign_up_error_message(reason), do: verification_error_message(reason)
+
   defp handle_oidc_verification(conn, code, lv_pid_string) do
     result =
       lv_pid_string
@@ -1640,6 +1707,8 @@ defmodule PortalWeb.OIDCController do
 
   defp parse_verified_callback_state(%{type: "oidc-auth-provider", lv_pid: lv_pid}),
     do: {:oidc_verification, lv_pid}
+
+  defp parse_verified_callback_state(%{type: "google-sign-up"}), do: :google_sign_up
 
   defp parse_verified_callback_state(%{
          type: "entra-auth-provider",

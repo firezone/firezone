@@ -8,8 +8,34 @@ defmodule PortalWeb.SignUpTest do
   @sign_up_token_salt "sign_up_email_v1"
 
   describe "mount" do
-    test "renders sign-up form by default", %{conn: conn} do
+    test "renders the sign-up method chooser by default", %{conn: conn} do
       {:ok, _lv, html} = live(conn, ~p"/sign_up")
+
+      assert html =~ "Create your organization"
+      assert html =~ "Sign up with <strong>Google</strong>"
+      assert html =~ "Sign up with <strong>email</strong>"
+      assert html =~ ~s(action="/sign_up/google")
+      refute html =~ ~s(name="registration[phone]")
+    end
+
+    test "choosing email shows the sign-up form", %{conn: conn} do
+      {:ok, lv, _html} = live(conn, ~p"/sign_up")
+
+      html =
+        lv
+        |> element("a", "Sign up with")
+        |> render_click()
+
+      assert_patch(lv, ~p"/sign_up/email")
+      assert html =~ ~s(name="registration[phone]")
+      assert html =~ "Work Email"
+      assert html =~ "Company Name"
+      assert html =~ "Your Name"
+      assert html =~ "Create Account"
+    end
+
+    test "renders sign-up form at /sign_up/email", %{conn: conn} do
+      {:ok, _lv, html} = live(conn, ~p"/sign_up/email")
 
       assert html =~ "Create your organization"
       assert html =~ ~s(name="registration[phone]")
@@ -18,7 +44,164 @@ defmodule PortalWeb.SignUpTest do
       assert html =~ "Your Name"
       assert html =~ "Create Account"
     end
+  end
 
+  describe "google action" do
+    test "visiting without a Google session shows error state", %{conn: conn} do
+      {:ok, _lv, html} = live(conn, ~p"/sign_up/google")
+
+      assert html =~ "Something went wrong"
+      assert html =~ "Google sign-up session is invalid or has expired"
+    end
+
+    test "expired Google session shows error state", %{conn: conn} do
+      conn = with_google_identity(conn, expires_at: System.os_time(:second) - 1)
+
+      {:ok, _lv, html} = live(conn, ~p"/sign_up/google")
+
+      assert html =~ "Something went wrong"
+      assert html =~ "Google sign-up session is invalid or has expired"
+    end
+
+    test "valid token shows the form with the verified email and prefilled name", %{conn: conn} do
+      conn = with_google_identity(conn, email: "ada@example.com", name: "Ada Lovelace")
+
+      {:ok, _lv, html} = live(conn, ~p"/sign_up/google")
+
+      assert html =~ "Almost there"
+      assert html =~ "ada@example.com"
+      assert html =~ "Verified by Google"
+      assert html =~ ~s(value="Ada Lovelace")
+      assert html =~ "Company Name"
+      refute html =~ ~s(name="registration[email]")
+    end
+
+    test "valid token for an email that already owns an account lists the accounts", %{
+      conn: conn
+    } do
+      email = "owner@example.com"
+      account = account_fixture(metadata: %{stripe: %{billing_email: email}})
+      conn = with_google_identity(conn, email: email)
+
+      {:ok, _lv, html} = live(conn, ~p"/sign_up/google")
+
+      assert html =~ "You already have an account"
+      assert html =~ account.name
+      assert html =~ ~s(href="/#{account.slug}/sign_in")
+    end
+
+    test "too-short company name stays on the form with errors", %{conn: conn} do
+      conn = with_google_identity(conn)
+
+      {:ok, lv, _html} = live(conn, ~p"/sign_up/google")
+
+      html =
+        lv
+        |> form("#google-sign-up-form",
+          registration: %{account: %{name: "AB"}, actor: %{name: "Ada Lovelace"}}
+        )
+        |> render_submit()
+
+      assert html =~ "at least 3 character"
+      refute html =~ "Your account has been created!"
+    end
+
+    test "submitting creates the account with Google and email providers", %{conn: conn} do
+      Stripe.stub(
+        [
+          {"POST", "/v1/customers", 200,
+           Stripe.customer_object("cus_test", "Google Corp", "ada@example.com")}
+        ] ++
+          Stripe.mock_create_subscription_endpoint()
+      )
+
+      conn =
+        with_google_identity(conn,
+          email: "ada@example.com",
+          name: "Ada Lovelace",
+          issuer: "https://accounts.google.com",
+          idp_id: "353690423699814251281"
+        )
+
+      {:ok, lv, _html} = live(conn, ~p"/sign_up/google")
+
+      html =
+        lv
+        |> form("#google-sign-up-form",
+          registration: %{account: %{name: "Google Corp"}, actor: %{name: "Ada Lovelace"}}
+        )
+        |> render_submit()
+
+      assert html =~ "Your account has been created!"
+      assert html =~ "Google Corp"
+      assert html =~ "Sign In with Google"
+      refute html =~ ~s(id="sign-in-form")
+
+      account = Portal.Repo.get_by!(Portal.Account, name: "Google Corp")
+
+      google_provider = Portal.Repo.get_by!(Portal.Google.AuthProvider, account_id: account.id)
+      assert google_provider.issuer == "https://accounts.google.com"
+      assert google_provider.name == "Google"
+      refute google_provider.is_disabled
+      assert html =~ ~s(href="/#{account.slug}/sign_in/google/#{google_provider.id}")
+
+      assert Portal.Repo.get_by!(Portal.EmailOTP.AuthProvider, account_id: account.id)
+
+      actor = Portal.Repo.get_by!(Portal.Actor, account_id: account.id, email: "ada@example.com")
+      assert actor.type == :account_admin_user
+      assert actor.name == "Ada Lovelace"
+      assert actor.allow_email_otp_sign_in
+
+      identity = Portal.Repo.get_by!(Portal.ExternalIdentity, account_id: account.id)
+      assert identity.actor_id == actor.id
+      assert identity.issuer == "https://accounts.google.com"
+      assert identity.idp_id == "353690423699814251281"
+      assert identity.email == "ada@example.com"
+      assert identity.name == "Ada Lovelace"
+      assert identity.given_name == "Ada"
+
+      assert_email_sent(fn email ->
+        assert email.subject == "Welcome to Firezone"
+        true
+      end)
+    end
+
+    test "submitting when the email now owns an account lists the accounts", %{conn: conn} do
+      email = "raced@example.com"
+      conn = with_google_identity(conn, email: email)
+
+      {:ok, lv, _html} = live(conn, ~p"/sign_up/google")
+
+      account = account_fixture(metadata: %{stripe: %{billing_email: email}})
+
+      html =
+        lv
+        |> form("#google-sign-up-form",
+          registration: %{account: %{name: "Raced Corp"}, actor: %{name: "Ada Lovelace"}}
+        )
+        |> render_submit()
+
+      assert html =~ "You already have an account"
+      assert html =~ account.name
+      refute Portal.Repo.get_by(Portal.Account, name: "Raced Corp")
+    end
+
+    test "Stripe provision failure shows error state", %{conn: conn} do
+      Stripe.stub([{"POST", "/v1/customers", 500, %{}}])
+      conn = with_google_identity(conn)
+
+      {:ok, lv, _html} = live(conn, ~p"/sign_up/google")
+
+      html =
+        lv
+        |> form("#google-sign-up-form",
+          registration: %{account: %{name: "Test Corp"}, actor: %{name: "Ada Lovelace"}}
+        )
+        |> render_submit()
+
+      assert html =~ "Something went wrong"
+      assert html =~ "temporary error"
+    end
   end
 
   describe "fill_form edge cases" do
@@ -26,7 +209,7 @@ defmodule PortalWeb.SignUpTest do
       email = "existing@example.com"
       account = account_fixture(metadata: %{stripe: %{billing_email: email}})
 
-      {:ok, lv, _html} = live(conn, ~p"/sign_up")
+      {:ok, lv, _html} = live(conn, ~p"/sign_up/email")
 
       html =
         lv
@@ -49,7 +232,7 @@ defmodule PortalWeb.SignUpTest do
     end
 
     test "too-short company name stays on fill_form with errors", %{conn: conn} do
-      {:ok, lv, _html} = live(conn, ~p"/sign_up")
+      {:ok, lv, _html} = live(conn, ~p"/sign_up/email")
 
       html =
         lv
@@ -67,7 +250,7 @@ defmodule PortalWeb.SignUpTest do
     end
 
     test "invalid email format on submit shows error", %{conn: conn} do
-      {:ok, lv, _html} = live(conn, ~p"/sign_up")
+      {:ok, lv, _html} = live(conn, ~p"/sign_up/email")
 
       html =
         lv
@@ -93,16 +276,16 @@ defmodule PortalWeb.SignUpTest do
         registration: %{email: email, account: %{name: "Test Corp"}, actor: %{name: "Test User"}}
       }
 
-      {:ok, lv, _} = live(conn, ~p"/sign_up")
+      {:ok, lv, _} = live(conn, ~p"/sign_up/email")
       lv |> form("form", attrs) |> render_submit()
 
-      {:ok, lv, _} = live(conn, ~p"/sign_up")
+      {:ok, lv, _} = live(conn, ~p"/sign_up/email")
       lv |> form("form", attrs) |> render_submit()
 
-      {:ok, lv, _} = live(conn, ~p"/sign_up")
+      {:ok, lv, _} = live(conn, ~p"/sign_up/email")
       lv |> form("form", attrs) |> render_submit()
 
-      {:ok, lv, _} = live(conn, ~p"/sign_up")
+      {:ok, lv, _} = live(conn, ~p"/sign_up/email")
 
       html = lv |> form("form", attrs) |> render_submit()
 
@@ -112,7 +295,7 @@ defmodule PortalWeb.SignUpTest do
 
   describe "form validation" do
     test "shows email validation error on change", %{conn: conn} do
-      {:ok, lv, _html} = live(conn, ~p"/sign_up")
+      {:ok, lv, _html} = live(conn, ~p"/sign_up/email")
 
       html =
         lv
@@ -125,7 +308,7 @@ defmodule PortalWeb.SignUpTest do
 
   describe "form submit" do
     test "valid form submission shows email sent step", %{conn: conn} do
-      {:ok, lv, _html} = live(conn, ~p"/sign_up")
+      {:ok, lv, _html} = live(conn, ~p"/sign_up/email")
 
       html =
         lv
@@ -153,7 +336,7 @@ defmodule PortalWeb.SignUpTest do
         )
 
       assert redirected_to(conn) == "/sign_up"
-      {:ok, lv, _html} = live(recycle(conn), ~p"/sign_up")
+      {:ok, lv, _html} = live(recycle(conn), ~p"/sign_up/email")
 
       lv
       |> form("form",
@@ -183,7 +366,7 @@ defmodule PortalWeb.SignUpTest do
     end
 
     test "honeypot submission shows email sent step without sending email", %{conn: conn} do
-      {:ok, lv, _html} = live(conn, ~p"/sign_up")
+      {:ok, lv, _html} = live(conn, ~p"/sign_up/email")
 
       html =
         lv
@@ -331,5 +514,21 @@ defmodule PortalWeb.SignUpTest do
       assert html =~ "Something went wrong"
       assert html =~ "invalid or has expired"
     end
+  end
+
+  defp with_google_identity(conn, attrs \\ []) do
+    email = Keyword.get(attrs, :email, "ada@example.com")
+
+    identity = %{
+      "email" => email,
+      "issuer" => Keyword.get(attrs, :issuer, "https://accounts.google.com"),
+      "idp_id" => Keyword.get(attrs, :idp_id, "353690423699814251281"),
+      "name" => Keyword.get(attrs, :name, "Ada Lovelace"),
+      "given_name" => "Ada",
+      "family_name" => "Lovelace",
+      "expires_at" => Keyword.get(attrs, :expires_at, System.os_time(:second) + 900)
+    }
+
+    Plug.Test.init_test_session(conn, %{"google_sign_up" => identity})
   end
 end

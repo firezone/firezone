@@ -3055,7 +3055,7 @@ defmodule PortalWeb.OIDCControllerTest do
 
       # Override Google config to use Req.Test mock
       Portal.Config.put_env_override(:portal, Portal.Google.AuthProvider,
-        client_id: "test-google-client-id",
+        client_id: "test-client",
         client_secret: "test-google-client-secret",
         response_type: "code",
         scope: "openid email profile",
@@ -3701,6 +3701,130 @@ defmodule PortalWeb.OIDCControllerTest do
   defp pending_identity_cookie_key(pending_identity_id), do: "pending_identity_#{pending_identity_id}"
 
   # Sets the secret_key_base from the endpoint so signed cookies can be read/written.
+  describe "callback/2 for Google sign-up" do
+    setup do
+      Portal.Config.put_env_override(:portal, Portal.Google.AuthProvider,
+        client_id: "test-client",
+        client_secret: "test-google-client-secret",
+        response_type: "code",
+        scope: "openid email profile",
+        discovery_document_uri: Mocks.OIDC.discovery_document_uri(),
+        req_opts: [retry: false, plug: {Req.Test, PortalWeb.OIDC}]
+      )
+
+      state = PortalWeb.OIDC.sign_verification_state(nil, "google-sign-up")
+      %{state: state}
+    end
+
+    test "redirects to the sign-up form with a signed identity token", %{
+      conn: conn,
+      state: state
+    } do
+      conn =
+        conn
+        |> Cookie.SignUpState.put(%Cookie.SignUpState{state: state, verifier: "test-verifier"})
+        |> recycle()
+        |> get(~p"/auth/oidc/callback", %{"state" => state, "code" => "test-code"})
+
+      assert redirected_to(conn) == "/sign_up/google"
+
+      identity = get_session(conn, "google_sign_up")
+      assert identity["email"] == "ada@example.com"
+      assert identity["issuer"] == "#{Mocks.OIDC.mock_endpoint()}/"
+      assert identity["idp_id"] == "353690423699814251281"
+      assert identity["name"] == "Ada Lovelace"
+      assert identity["given_name"] == "Ada"
+      refute Map.has_key?(identity, "picture")
+      assert_in_delta identity["expires_at"], System.os_time(:second) + 900, 5
+
+      assert conn.resp_cookies["sign_up_oidc"].max_age == 0
+    end
+
+    test "redirects to sign-up with an error when the cookie is missing", %{
+      conn: conn,
+      state: state
+    } do
+      conn = get(conn, ~p"/auth/oidc/callback", %{"state" => state, "code" => "test-code"})
+
+      assert redirected_to(conn) == "/sign_up"
+      assert flash(conn, :error) == "Your sign-up session has timed out. Please try again."
+    end
+
+    test "redirects to sign-up with an error when the state does not match the cookie", %{
+      conn: conn,
+      state: state
+    } do
+      other_state = "other-state"
+
+      conn =
+        conn
+        |> Cookie.SignUpState.put(%Cookie.SignUpState{
+          state: other_state,
+          verifier: "test-verifier"
+        })
+        |> recycle()
+        |> get(~p"/auth/oidc/callback", %{"state" => state, "code" => "test-code"})
+
+      assert redirected_to(conn) == "/sign_up"
+      assert flash(conn, :error) == "Your sign-up session has timed out. Please try again."
+    end
+
+    test "redirects to sign-up with an error when Google does not verify the email", %{
+      conn: conn,
+      state: state
+    } do
+      claims =
+        Mocks.OIDC.default_claims()
+        |> Map.put("nonce", PortalWeb.OIDC.nonce("test-verifier"))
+        |> Map.put("email_verified", false)
+
+      Mocks.OIDC.set_token_response(%{
+        "access_token" => "test-access-token",
+        "token_type" => "Bearer",
+        "id_token" => Mocks.OIDC.sign_openid_connect_token(claims)
+      })
+
+      Mocks.OIDC.set_userinfo_response(%{
+        "sub" => "353690423699814251281",
+        "email" => "ada@example.com",
+        "email_verified" => false
+      })
+
+      conn =
+        conn
+        |> Cookie.SignUpState.put(%Cookie.SignUpState{state: state, verifier: "test-verifier"})
+        |> recycle()
+        |> get(~p"/auth/oidc/callback", %{"state" => state, "code" => "test-code"})
+
+      assert redirected_to(conn) == "/sign_up"
+      assert flash(conn, :error) =~ "Google did not confirm your email address"
+    end
+
+    test "redirects to sign-up with an error when the code exchange fails", %{
+      conn: conn,
+      state: state
+    } do
+      Mocks.OIDC.set_token_error(400, %{"error" => "invalid_grant"})
+
+      conn =
+        conn
+        |> Cookie.SignUpState.put(%Cookie.SignUpState{state: state, verifier: "test-verifier"})
+        |> recycle()
+        |> get(~p"/auth/oidc/callback", %{"state" => state, "code" => "bad-code"})
+
+      assert redirected_to(conn) == "/sign_up"
+      assert flash(conn, :error) =~ "authorization code has expired"
+    end
+
+    test "redirects to sign-up when the user cancels at Google", %{conn: conn, state: state} do
+      conn =
+        get(conn, ~p"/auth/oidc/callback", %{"state" => state, "error" => "access_denied"})
+
+      assert redirected_to(conn) == "/sign_up"
+      assert flash(conn, :error) == "Google sign-in was cancelled. Please try again."
+    end
+  end
+
   defp with_endpoint_key_base(conn) do
     Map.put(conn, :secret_key_base, PortalWeb.Endpoint.config(:secret_key_base))
   end

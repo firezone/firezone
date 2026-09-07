@@ -361,6 +361,14 @@ defmodule PortalWeb.OIDC do
     {:ok, %{config: config}}
   end
 
+  def setup_verification("google_sign_up", _opts) do
+    config =
+      Portal.Config.fetch_env!(:portal, Portal.Google.AuthProvider)
+      |> verification_config([])
+
+    {:ok, %{config: config}}
+  end
+
   def setup_verification(provider_type, opts) do
     config = verification_config_for_type(provider_type, opts)
     {:ok, %{config: config}}
@@ -400,6 +408,7 @@ defmodule PortalWeb.OIDC do
   def verification_state_type("sentinel_log_sink"), do: "sentinel-log-sink"
 
   def verification_state_type("defender_posture_provider"), do: "defender-posture-provider"
+  def verification_state_type("google_sign_up"), do: "google-sign-up"
 
   def verification_state_type(type) when type in ["google", "okta", "oidc"],
     do: "oidc-auth-provider"
@@ -506,6 +515,21 @@ defmodule PortalWeb.OIDC do
     }
 
     {:ok, @entra_organizations_admin_consent_endpoint <> "?" <> URI.encode_query(params)}
+  end
+
+  # Sign-up has no existing session to step up, so an account picker is enough.
+  def build_verification_uri("google_sign_up", config, verifier, state_token) do
+    challenge = :crypto.hash(:sha256, verifier) |> Base.url_encode64(padding: false)
+
+    oidc_params = %{
+      state: state_token,
+      nonce: nonce(verifier),
+      code_challenge_method: :S256,
+      code_challenge: challenge,
+      prompt: "select_account"
+    }
+
+    OpenIDConnect.authorization_uri(config, callback_url(), oidc_params)
   end
 
   def build_verification_uri("sentinel_log_sink", config, _verifier, state_token) do
