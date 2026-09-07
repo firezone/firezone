@@ -118,6 +118,8 @@ function Request-Popup {
         Stop-Process -Id $popup.Id -Force -ErrorAction SilentlyContinue
         throw "The popup request never exited; it may have taken the launch lock itself"
     }
+    # `--no-error-dialog` makes the client report the hand-off to the running instance as a
+    # failure, so the code is only worth logging: whether the menu opens is the real signal.
     Write-Host "Popup request exited with code $($popup.ExitCode)"
 }
 
