@@ -136,9 +136,15 @@ jobs:
       - run: pnpm vite build
       - name: Build client
         run: cargo build -p firezone-gui-client --bin firezone-gui-client
+      - uses: ./.github/actions/setup-mise
+        with:
+          install_args: --cd rust/gui-client
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Start the mock client
+        run: mise run //rust/gui-client:start-mock-client
       - name: Capture the tray menu
-        shell: pwsh
-        run: ./scripts/capture-tray-menu.ps1 -Exe ../target/debug/firezone-gui-client.exe -Output screenshots/windows-tray-menu-light.png
+        run: mise run //rust/gui-client:tray-screenshot
         timeout-minutes: 5
       # Uploaded even when the capture went wrong, so the result can be inspected.
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
