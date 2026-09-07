@@ -18,8 +18,7 @@ mapfile -t SCREENSHOTS < "$REPO_ROOT/kotlin/android/screenshots/play-store.txt"
 readonly -a SCREENSHOTS
 
 case "$COMMAND" in
-    Intune) TARGET_TRACK="4699772446953372201" ;;
-    inspect | internal | production) TARGET_TRACK="$COMMAND" ;;
+    inspect | internal | production | Intune) TARGET_TRACK="$COMMAND" ;;
     *)
         echo "Unknown command: $COMMAND" >&2
         exit 1
