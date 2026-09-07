@@ -97,8 +97,7 @@ commit_edit() {
         --request POST \
         --header "Authorization: Bearer $ACCESS_TOKEN" \
         --header "Content-Length: 0" \
-        "$PUBLISHER_API/edits/$edit_id:commit?changesInReviewBehavior=ERROR_IF_IN_REVIEW" \
-        >/dev/null
+        "$PUBLISHER_API/edits/$edit_id:commit?changesInReviewBehavior=ERROR_IF_IN_REVIEW"
     committed=true
 }
 

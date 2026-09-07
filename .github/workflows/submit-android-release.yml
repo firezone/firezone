@@ -30,7 +30,7 @@ jobs:
     if: ${{ github.ref_name == 'main' }}
     runs-on: ubuntu-24.04
     permissions:
-      contents: read
+      contents: write # GitHub requires push access to read draft releases.
       id-token: write
       security-events: write
     outputs:
@@ -79,11 +79,12 @@ jobs:
 
       - name: Resolve the internal release
         id: play
+        working-directory: kotlin/android
         env:
           GPLAY_SERVICE_ACCOUNT_JSON: ${{ steps.gcp-auth.outputs.credentials_file_path }}
           SOURCE_SHA: ${{ steps.release.outputs.source_sha }}
           VERSION_NAME: ${{ steps.release.outputs.version_name }}
-        run: scripts/upload/play-store.sh inspect
+        run: ../../scripts/upload/play-store.sh inspect
 
       - name: Summarize the approval checkpoint
         env:
@@ -125,7 +126,7 @@ jobs:
       url: https://play.google.com/console/
     runs-on: ubuntu-24.04
     permissions:
-      contents: read
+      contents: write # Revalidating the draft also requires push access.
       id-token: write
       security-events: write
     steps:
@@ -174,12 +175,14 @@ jobs:
           service_account: play-store-prod-publisher@firezone-55040.iam.gserviceaccount.com
           token_format: access_token
           access_token_scopes: https://www.googleapis.com/auth/androidpublisher
-          access_token_lifetime: 600s
+          access_token_lifetime: 3600s # Outlives the bounded upload and commit step.
 
       - name: Submit the release and screenshots for review
+        working-directory: kotlin/android
+        timeout-minutes: 30
         env:
           ACCESS_TOKEN: ${{ steps.gcp-auth.outputs.access_token }}
           GPLAY_SERVICE_ACCOUNT_JSON: ${{ steps.gcp-auth.outputs.credentials_file_path }}
           SOURCE_SHA: ${{ needs.prepare.outputs.source_sha }}
           VERSION_NAME: ${{ needs.prepare.outputs.version_name }}
-        run: scripts/upload/play-store.sh "$TARGET_TRACK"
+        run: ../../scripts/upload/play-store.sh "$TARGET_TRACK"
