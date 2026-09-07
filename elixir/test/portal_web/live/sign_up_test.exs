@@ -162,6 +162,8 @@ defmodule PortalWeb.SignUpTest do
 
       assert_email_sent(fn email ->
         assert email.subject == "Welcome to Firezone"
+        assert email.to == [{"", "ada@example.com"}]
+        assert email.text_body =~ "http://localhost:13100/#{account.slug}"
         true
       end)
     end
