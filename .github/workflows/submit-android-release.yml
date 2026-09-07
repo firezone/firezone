@@ -8,10 +8,10 @@ on:
         description: Google Play track to submit for review
         required: true
         type: choice
-        default: Intune
+        default: production
         options:
-          - Intune
           - production
+          - Intune
 
 permissions:
   contents: read
