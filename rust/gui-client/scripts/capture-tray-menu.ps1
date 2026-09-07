@@ -175,9 +175,19 @@ $width = $right - $left
 $height = $bottom - $top
 Write-Host "Capturing $left,$top ${width}x${height}"
 
-$bitmap = New-Object System.Drawing.Bitmap $width, $height
+# Only the menus themselves; the corners of their bounding box stay transparent.
+$bitmap = New-Object System.Drawing.Bitmap $width, $height, ([System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
 $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
-$graphics.CopyFromScreen($left, $top, 0, 0, $bitmap.Size)
+$graphics.Clear([System.Drawing.Color]::Transparent)
+foreach ($w in $menus) {
+    $r = $w.Rect
+    $part = New-Object System.Drawing.Bitmap ($r.Right - $r.Left), ($r.Bottom - $r.Top), ([System.Drawing.Imaging.PixelFormat]::Format24bppRgb)
+    $partGraphics = [System.Drawing.Graphics]::FromImage($part)
+    $partGraphics.CopyFromScreen($r.Left, $r.Top, 0, 0, $part.Size)
+    $partGraphics.Dispose()
+    $graphics.DrawImage($part, $r.Left - $left, $r.Top - $top)
+    $part.Dispose()
+}
 New-Item -ItemType Directory -Path (Split-Path -Parent $Output) -Force | Out-Null
 $bitmap.Save($Output, [System.Drawing.Imaging.ImageFormat]::Png)
 $graphics.Dispose()
