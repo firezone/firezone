@@ -65,8 +65,10 @@ is left unchanged. A fresh Swift dispatch generates a new build number.
 
 Required secrets in the `main`-only `app-store` GitHub Environment:
 
-- `APPLE_APP_STORE_CONNECT_APP_MANAGER_API_KEY_ID`
-- `APPLE_APP_STORE_CONNECT_APP_MANAGER_API_KEY`
+- `APPLE_APP_STORE_CONNECT_APP_MANAGER_API_KEY_ID` (team key)
+- `APPLE_APP_STORE_CONNECT_APP_MANAGER_API_KEY` (raw `.p8` contents)
+
+The workflow also uses the repository secret `APPLE_APP_STORE_CONNECT_ISSUER_ID`.
 
 Do not configure required reviewers on `app-store`; `app-store-review` is the
 approval gate.
