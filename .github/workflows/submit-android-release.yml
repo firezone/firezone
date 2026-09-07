@@ -11,7 +11,7 @@ on:
         default: production
         options:
           - production
-          - Intune
+          - Intune (closed testing)
 
 permissions:
   contents: read
@@ -21,7 +21,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  TARGET_TRACK: ${{ inputs.track }}
+  TARGET_TRACK: ${{ inputs.track == 'Intune (closed testing)' && 'Intune' || inputs.track }}
   # mark:next-android-version
   RELEASE_NAME: android-client-1.5.14
 

@@ -26,7 +26,8 @@ Table of Contents:
 1. Submit the release for review:
    - For Apple, follow the [Apple client](#apple-client) instructions below.
    - For Android, run the [Submit Android release](../.github/workflows/submit-android-release.yml)
-     workflow on `main`, choosing `production` or `Intune`. Review its `prepare` summary and the
+     workflow on `main`, choosing `production` or `Intune (closed testing)`.
+     Review its `prepare` summary and the
      [Play Console](https://play.google.com/console/), then approve the protected
      `google-play` environment. Start a new run if the draft changed while
      approval was pending.
@@ -36,8 +37,8 @@ required reviewers, restrict deployments to `main`, and set its
 `GOOGLE_PLAY_CONFIGURED` variable to `true`. GitHub otherwise creates a referenced
 environment without protection.
 
-Create the `Intune` closed testing track and configure its organization access
-in Play Console before submitting to it. Both targets also update the shared
+Configure organization access for the `Intune` closed testing track in Play
+Console before submitting to it. Both targets also update the shared
 store screenshots and require manual publication under Managed Publishing.
 
 ### GitHub-released components (Linux, Windows, and Gateway)

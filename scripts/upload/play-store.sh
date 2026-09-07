@@ -9,7 +9,6 @@ readonly COMMAND="${1:?Usage: play-store.sh <inspect|internal|production|Intune>
 
 readonly PACKAGE_NAME="dev.firezone.android"
 readonly INTERNAL_TRACK="internal"
-readonly TARGET_TRACK="$COMMAND"
 readonly CHANGELOG_URL="https://www.firezone.dev/changelog#tab-android"
 readonly PUBLISHER_API="https://androidpublisher.googleapis.com/androidpublisher/v3/applications/$PACKAGE_NAME"
 readonly RELEASE_NAME="$VERSION_NAME@$SOURCE_SHA"
@@ -19,12 +18,14 @@ mapfile -t SCREENSHOTS < "$REPO_ROOT/kotlin/android/screenshots/play-store.txt"
 readonly -a SCREENSHOTS
 
 case "$COMMAND" in
-    inspect | internal | production | Intune) ;;
+    Intune) TARGET_TRACK="4699772446953372201" ;;
+    inspect | internal | production) TARGET_TRACK="$COMMAND" ;;
     *)
         echo "Unknown command: $COMMAND" >&2
         exit 1
         ;;
 esac
+readonly TARGET_TRACK
 
 export GPLAY_NO_UPDATE=1
 edit_id=""
