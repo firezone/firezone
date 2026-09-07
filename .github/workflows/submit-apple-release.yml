@@ -99,23 +99,27 @@ jobs:
           mkdir -p "$metadata_dir" "$iphone_dir" "$ipad_dir" "$macos_dir"
 
           cp swift/apple/app-store/metadata/en-US.json "$metadata_dir/en-US.json"
+          : > "$RUNNER_TEMP/app-store-screenshots.txt"
 
           if [[ "$ASC_PLATFORM" == IOS ]]; then
-            screenshots=(welcome session session-menu resource-details resource-details-internet device-details settings-general settings-advanced x509-filled)
+            mapfile -t screenshots < swift/apple/app-store/screenshots-ios.txt
             for device in iphone ipad; do
               for i in "${!screenshots[@]}"; do
                 screenshot=${screenshots[$i]}
-                printf -v filename '%02d-%s.png' "$((i + 1))" "$screenshot"
-                cp "swift/apple/screenshots/ios/$device/$screenshot-light.png" \
-                  "$RUNNER_TEMP/app-store-screenshots/ios/$device/en-US/$filename"
+                printf -v filename '%02d-%s' "$((i + 1))" "$screenshot"
+                source_path="swift/apple/screenshots/ios/$device/$screenshot"
+                cp "$source_path" "$RUNNER_TEMP/app-store-screenshots/ios/$device/en-US/$filename"
+                printf '%s\n' "$source_path" >> "$RUNNER_TEMP/app-store-screenshots.txt"
               done
             done
           else
-            screenshots=(first-time-light first-time-dark settings-general-light settings-general-dark settings-advanced-light settings-advanced-dark x509-filled-light x509-filled-dark grant-vpn-light grant-vpn-dark)
+            mapfile -t screenshots < swift/apple/app-store/screenshots-macos.txt
             for i in "${!screenshots[@]}"; do
               screenshot=${screenshots[$i]}
-              printf -v filename '%02d-%s.png' "$((i + 1))" "$screenshot"
-              cp "swift/apple/screenshots/macos/26/$screenshot.png" "$macos_dir/$filename"
+              printf -v filename '%02d-%s' "$((i + 1))" "$screenshot"
+              source_path="swift/apple/screenshots/macos/26/$screenshot"
+              cp "$source_path" "$macos_dir/$filename"
+              printf '%s\n' "$source_path" >> "$RUNNER_TEMP/app-store-screenshots.txt"
             done
           fi
 
@@ -234,11 +238,13 @@ jobs:
         run: |
           version="${RELEASE_NAME#apple-client-}"
           short_sha=${SOURCE_SHA:0:12}
+          changelog=$(jq -er '.whatsNew' "$METADATA_DIR/en-US.json")
           {
             echo "## ${PLATFORM_NAME} ${version}"
             echo
             echo "- Source: [\`${short_sha}\`](https://github.com/${GITHUB_REPOSITORY}/commit/${SOURCE_SHA})"
             echo "- Build: \`${BUILD_NUMBER}\`"
+            echo "- What's New: [Apple changelog]($changelog)"
             echo "- [Open Firezone in App Store Connect](https://appstoreconnect.apple.com/apps/${ASC_APP_ID}/distribution)"
             echo
             if [[ "$VERSION_PHASE" == submitted ]]; then
@@ -246,6 +252,13 @@ jobs:
             else
               echo "The build is attached and release is manual. Inspect this platform version, then approve the \`app-store-review\` deployment to send it for review."
             fi
+            echo
+            echo "### Store screenshots from this draft"
+            echo
+            while IFS= read -r screenshot; do
+              printf -- '- [`%s`](https://github.com/%s/blob/%s/%s)\n' \
+                "$screenshot" "$GITHUB_REPOSITORY" "$SOURCE_SHA" "$screenshot"
+            done < "$RUNNER_TEMP/app-store-screenshots.txt"
           } >> "$GITHUB_STEP_SUMMARY"
 
   review:
