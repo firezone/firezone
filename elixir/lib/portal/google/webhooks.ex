@@ -7,6 +7,7 @@ defmodule Portal.Google.Webhooks do
   the directory's `webhook_secret` are dropped.
   """
 
+  alias Portal.DirectorySync
   alias Portal.Google
   alias __MODULE__.Database
   require Logger
@@ -69,11 +70,17 @@ defmodule Portal.Google.Webhooks do
 
   # With org unit sync on, any user can gain an identity by sitting in a
   # tracked org unit, so every user event is worth a look. Otherwise only users
-  # that already have an identity here matter.
+  # that already have an identity here matter, plus any user while a job for
+  # the directory is running: it may still insert the user from a response
+  # fetched before this change, and only a job that runs after it can re-read
+  # the user and apply the change.
   defp in_scope?(%{orgunit_sync_enabled: true}, _user_id), do: true
 
+  # Busy is read first: a full sync that inserts the user and finishes between
+  # the two reads is then caught by the identity lookup.
   defp in_scope?(directory, user_id) do
-    Database.identity_exists?(directory, user_id)
+    DirectorySync.busy?(:google, directory.id) or
+      Database.identity_exists?(directory, user_id)
   end
 
   defmodule Database do

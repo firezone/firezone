@@ -5,6 +5,7 @@ defmodule Portal.Okta.SyncTest do
   import Ecto.Query
   import ExUnit.CaptureLog
   import Portal.AccountFixtures
+  import Portal.ObanFixtures
   import Portal.OktaDirectoryFixtures
 
   alias Portal.Okta.APIClient
@@ -496,6 +497,17 @@ defmodule Portal.Okta.SyncTest do
       # No data should be created
       assert Repo.all(ExternalIdentity) == []
       assert Repo.all(Group) == []
+    end
+
+    test "snoozes while another sync for the directory is executing" do
+      account = account_fixture(features: %{idp_sync: true})
+      directory = okta_directory_fixture(account: account)
+      args = %{account_id: directory.account_id, directory_id: directory.id}
+
+      executing_job(Sync.new(args))
+
+      assert {:snooze, seconds} = perform_job(Sync, args)
+      assert seconds in 16..45
     end
 
     test "raises SyncError when user is missing email field" do
@@ -1891,7 +1903,11 @@ defmodule Portal.Okta.SyncTest do
         )
 
       {deleted_count, _} =
-        Database.delete_unsynced_groups(account.id, directory.id, current_sync_time)
+        Portal.DirectorySync.Database.delete_unsynced_groups(
+          account.id,
+          directory.id,
+          current_sync_time
+        )
 
       assert deleted_count == 2
 
@@ -1943,7 +1959,11 @@ defmodule Portal.Okta.SyncTest do
       )
 
       {deleted_count, _} =
-        Database.delete_unsynced_identities(account.id, directory.id, current_sync_time)
+        Portal.DirectorySync.Database.delete_unsynced_identities(
+          account.id,
+          directory.id,
+          current_sync_time
+        )
 
       assert deleted_count == 1
 

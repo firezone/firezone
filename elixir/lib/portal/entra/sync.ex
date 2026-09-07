@@ -11,22 +11,33 @@ defmodule Portal.Entra.Sync do
       keys: [:directory_id]
     ]
 
+  alias Portal.DirectorySync
   alias Portal.Entra
-  alias Portal.DirectorySync.Lock
   alias Portal.Microsoft.Graph.APIClient
   alias __MODULE__.Database
   require Logger
 
-  # A recovery sync queued for a "missed" notification must run after, not
-  # alongside, a sync that already holds the directory lock.
-  @snooze_seconds 60
+  @batch_size 1000
+
+  @doc """
+  A recovery sync. It queues behind a sync that is already executing instead
+  of collapsing into it, and then waits for it to finish.
+  """
+  def new_recovery(args) do
+    new(args, unique: [states: [:available, :scheduled, :retryable]])
+  end
 
   @impl Oban.Worker
-  def perform(%Oban.Job{args: %{"account_id" => account_id, "directory_id" => directory_id}}) do
-    case Lock.try_run(:entra, directory_id, fn -> run_sync(account_id, directory_id) end) do
-      {:ok, _result} -> :ok
-      :busy -> {:snooze, @snooze_seconds}
-    end
+  def timeout(_job), do: DirectorySync.full_sync_timeout()
+
+  @impl Oban.Worker
+  def perform(
+        %Oban.Job{args: %{"account_id" => account_id, "directory_id" => directory_id}} = job
+      ) do
+    DirectorySync.run_alone(:entra, directory_id, job, fn ->
+      run_sync(account_id, directory_id)
+      :ok
+    end)
   end
 
   def perform(_), do: :ok
@@ -70,7 +81,7 @@ defmodule Portal.Entra.Sync do
     synced_at = DateTime.utc_now()
 
     fetch_and_sync_all(directory, access_token, synced_at)
-    delete_unsynced(directory, synced_at)
+    DirectorySync.prune(directory.account_id, directory.id, synced_at)
 
     # Reconnect orphaned policies after sync (groups may have been recreated)
     reconnected = Portal.Policy.reconnect_orphaned_policies(directory.account_id)
@@ -105,37 +116,49 @@ defmodule Portal.Entra.Sync do
   end
 
   @doc """
-  Streams the transitive members of one group and upserts their identities and
-  memberships. Shared by the full sync and the webhook worker.
+  Walks the members of one group, nested groups included. Nothing is written
+  until the walk is complete: then the identities are upserted, and the
+  memberships, the nesting, and the prune of the memberships the walk did not
+  find are committed together. Shared by the full sync and the webhook worker.
+
+  `fetched` holds the members of every group read so far in this job, so a
+  group nested under several roots is read from Graph once. Pass the returned
+  map to the next call.
   """
-  def sync_group_members(directory, access_token, synced_at, group_id, group_name) do
-    Logger.debug("Streaming transitive members for group",
+  def sync_group_members(directory, access_token, synced_at, group_id, group_name, fetched \\ %{}) do
+    Logger.debug("Walking members for group",
       entra_directory_id: directory.id,
       group_id: group_id,
       group_name: group_name
     )
 
-    APIClient.stream_group_transitive_members(access_token, group_id)
-    |> Stream.each(fn
-      {:error, error} ->
-        raise Entra.SyncError,
-          error: error,
-          directory_id: directory.id,
-          step: :stream_group_transitive_members
+    root = {group_id, group_name}
+    staged = %{users: MapSet.new(), identities: %{}}
 
-      members when is_list(members) ->
-        process_group_members_page(directory, synced_at, group_id, group_name, members)
-    end)
-    |> Stream.run()
+    {staged, nested_ids, fetched} =
+      walk(directory, access_token, root, [group_id], MapSet.new([group_id]), staged, fetched)
+
+    staged.identities
+    |> Map.values()
+    |> Enum.chunk_every(@batch_size)
+    |> Enum.each(&batch_upsert_identities(directory, synced_at, &1))
+
+    batches = staged.users |> Enum.to_list() |> Enum.chunk_every(@batch_size)
+    commit_group_walk(directory, synced_at, group_id, batches, nested_ids)
+    fetched
+  end
+
+  @doc """
+  The groups this directory tracks that list `group_idp_id` among the groups
+  nested inside them.
+  """
+  def parents_of(directory, group_idp_id) do
+    Database.parents_of(directory.account_id, directory.id, group_idp_id)
   end
 
   def issuer(directory), do: "https://login.microsoftonline.com/#{directory.tenant_id}/v2.0"
 
   def get_directory(account_id, directory_id), do: Database.get_directory(account_id, directory_id)
-
-  def delete_actors_without_identities(directory) do
-    Database.delete_actors_without_identities(directory.account_id, directory.id)
-  end
 
   def get_access_token!(directory) do
     Logger.debug("Getting access token", entra_directory_id: directory.id)
@@ -188,7 +211,7 @@ defmodule Portal.Entra.Sync do
     # Auth Provider app is optional (deprecated) - returns nil if not found
     auth_provider_sp_id = fetch_auth_provider_service_principal(directory, access_token)
 
-    sync_assignments(directory, access_token, synced_at, directory_sync_sp_id)
+    fetched = sync_assignments(directory, access_token, synced_at, directory_sync_sp_id, %{})
 
     # DEPRECATED: Also sync assignments from the Authentication app for backwards compatibility.
     # This supports existing Entra directory sync setups that have users assigned to the
@@ -196,10 +219,10 @@ defmodule Portal.Entra.Sync do
     # TODO: Remove this once all customers have migrated to assigning users to the
     # Directory Sync app.
     if auth_provider_sp_id do
-      sync_assignments(directory, access_token, synced_at, auth_provider_sp_id)
+      sync_assignments(directory, access_token, synced_at, auth_provider_sp_id, fetched)
+    else
+      fetched
     end
-
-    :ok
   end
 
   defp fetch_directory_sync_service_principal!(directory, access_token) do
@@ -245,15 +268,15 @@ defmodule Portal.Entra.Sync do
     end
   end
 
-  defp sync_assignments(directory, access_token, synced_at, service_principal_id) do
+  defp sync_assignments(directory, access_token, synced_at, service_principal_id, fetched) do
     Logger.debug("Streaming app role assignments",
       entra_directory_id: directory.id,
       service_principal_id: service_principal_id
     )
 
     APIClient.stream_app_role_assignments(access_token, service_principal_id)
-    |> Stream.each(fn
-      {:error, error} ->
+    |> Enum.reduce(fetched, fn
+      {:error, error}, _fetched ->
         Logger.debug("Failed to stream app role assignments",
           entra_directory_id: directory.id,
           error: inspect(error)
@@ -264,10 +287,9 @@ defmodule Portal.Entra.Sync do
           directory_id: directory.id,
           step: :stream_app_role_assignments
 
-      assignments when is_list(assignments) ->
-        process_app_role_assignments(directory, access_token, synced_at, assignments)
+      assignments, fetched when is_list(assignments) ->
+        process_app_role_assignments(directory, access_token, synced_at, assignments, fetched)
     end)
-    |> Stream.run()
   end
 
   # Fetches the service principal ID for the specified app type.
@@ -318,7 +340,7 @@ defmodule Portal.Entra.Sync do
     end
   end
 
-  defp process_app_role_assignments(directory, access_token, synced_at, assignments) do
+  defp process_app_role_assignments(directory, access_token, synced_at, assignments, fetched) do
     Logger.debug("Received app role assignments page",
       entra_directory_id: directory.id,
       count: length(assignments),
@@ -340,7 +362,7 @@ defmodule Portal.Entra.Sync do
     )
 
     sync_direct_user_assignments(directory, access_token, synced_at, user_assignments)
-    sync_group_assignments(directory, access_token, synced_at, group_assignments)
+    sync_group_assignments(directory, access_token, synced_at, group_assignments, fetched)
   end
 
   defp validate_assignments!(assignments, directory_id) do
@@ -378,7 +400,7 @@ defmodule Portal.Entra.Sync do
     # Build and sync direct user identities
     # Note: appRoleAssignedTo only gives us principalId and principalDisplayName
     # We need to hydrate these with full user details using $batch endpoint
-    # Users in groups will get full details from transitiveMembers calls
+    # Users in groups will get full details from the group member walk
     Logger.debug("Processing direct user assignments",
       entra_directory_id: directory.id,
       count: length(user_assignments)
@@ -426,39 +448,21 @@ defmodule Portal.Entra.Sync do
     end
   end
 
-  defp sync_group_assignments(_directory, _access_token, _synced_at, []), do: :ok
-
-  defp sync_group_assignments(directory, access_token, synced_at, group_assignments) do
-    # Build and sync groups
-    groups =
-      Enum.map(group_assignments, fn assignment ->
-        %{
-          idp_id: assignment["principalId"],
-          name: assignment["principalDisplayName"]
-        }
-      end)
-
-    Logger.debug("Upserting groups",
-      entra_directory_id: directory.id,
-      count: length(groups)
-    )
-
-    batch_upsert_groups(directory, synced_at, groups)
-
-    # For each group, stream and sync transitive members
-    Enum.each(group_assignments, fn assignment ->
-      sync_assigned_group_members(directory, access_token, synced_at, assignment)
-    end)
+  defp sync_group_assignments(directory, access_token, synced_at, group_assignments, fetched) do
+    groups = Enum.map(group_assignments, &{&1["principalId"], &1["principalDisplayName"]})
+    sync_groups(directory, access_token, synced_at, groups, fetched)
   end
 
-  defp sync_assigned_group_members(directory, access_token, synced_at, assignment) do
-    sync_group_members(
+  defp sync_groups(directory, access_token, synced_at, groups, fetched) do
+    batch_upsert_groups(
       directory,
-      access_token,
       synced_at,
-      assignment["principalId"],
-      assignment["principalDisplayName"]
+      Enum.map(groups, fn {id, name} -> %{idp_id: id, name: name} end)
     )
+
+    Enum.reduce(groups, fetched, fn {id, name}, fetched ->
+      sync_group_members(directory, access_token, synced_at, id, name, fetched)
+    end)
   end
 
   defp sync_all_groups(directory, access_token, synced_at) do
@@ -466,8 +470,8 @@ defmodule Portal.Entra.Sync do
     Logger.debug("Streaming all groups from directory", entra_directory_id: directory.id)
 
     APIClient.stream_groups(access_token)
-    |> Stream.each(fn
-      {:error, error} ->
+    |> Enum.reduce(%{}, fn
+      {:error, error}, _fetched ->
         Logger.debug("Failed to stream groups",
           entra_directory_id: directory.id,
           error: inspect(error)
@@ -478,41 +482,16 @@ defmodule Portal.Entra.Sync do
           directory_id: directory.id,
           step: :stream_groups
 
-      groups when is_list(groups) ->
+      groups, fetched when is_list(groups) ->
         Logger.debug("Received groups page",
           entra_directory_id: directory.id,
           count: length(groups)
         )
 
-        # Validate required fields in groups before processing
         Enum.each(groups, fn group -> validate_group!(group, directory) end)
-
-        # Build and sync groups
-        group_attrs =
-          Enum.map(groups, fn group ->
-            %{
-              idp_id: group["id"],
-              name: group["displayName"]
-            }
-          end)
-
-        unless Enum.empty?(group_attrs) do
-          Logger.debug("Upserting groups",
-            entra_directory_id: directory.id,
-            count: length(group_attrs)
-          )
-
-          batch_upsert_groups(directory, synced_at, group_attrs)
-        end
-
-        # For each group, stream and sync transitive members
-        Enum.each(groups, fn group ->
-          sync_all_group_members(directory, access_token, synced_at, group)
-        end)
+        groups = Enum.map(groups, &{&1["id"], &1["displayName"]})
+        sync_groups(directory, access_token, synced_at, groups, fetched)
     end)
-    |> Stream.run()
-
-    :ok
   end
 
   defp validate_group!(group, directory) do
@@ -531,25 +510,75 @@ defmodule Portal.Entra.Sync do
     end
   end
 
-  defp sync_all_group_members(directory, access_token, synced_at, group) do
-    sync_group_members(directory, access_token, synced_at, group["id"], group["displayName"])
+  # Entra allows nesting cycles; visited keeps the walk finite.
+  defp walk(_directory, _access_token, {root_id, _root_name}, [], visited, staged, fetched) do
+    {staged, visited |> MapSet.delete(root_id) |> Enum.sort(), fetched}
   end
 
-  defp process_group_members_page(directory, synced_at, group_id, group_name, members) do
-    Logger.debug("Received transitive members page",
+  defp walk(directory, access_token, root, [group_id | queue], visited, staged, fetched) do
+    {members, staged, fetched} =
+      case fetched do
+        %{^group_id => members} ->
+          {members, staged, fetched}
+
+        _ ->
+          {members, identities} = fetch_group_members(directory, access_token, root, group_id)
+          staged = %{staged | identities: Enum.into(identities, staged.identities, &{&1.idp_id, &1})}
+          {members, staged, Map.put(fetched, group_id, members)}
+      end
+
+    staged = %{staged | users: Enum.into(members.users, staged.users)}
+    nested = Enum.reject(members.groups, &MapSet.member?(visited, &1))
+    visited = Enum.into(nested, visited)
+
+    walk(directory, access_token, root, queue ++ nested, visited, staged, fetched)
+  end
+
+  defp fetch_group_members(directory, access_token, {root_id, root_name}, group_id) do
+    APIClient.stream_group_members(access_token, group_id)
+    |> Enum.reduce({%{users: [], groups: []}, []}, fn
+      # Deleted since its parent listed it: nothing it listed counts, and it
+      # stays in the nesting so its own notification still reaches the root.
+      {:error, %Req.Response{status: 404}}, _acc ->
+        Logger.info("Group vanished before its members were read",
+          entra_directory_id: directory.id,
+          group_id: group_id,
+          root_group_id: root_id
+        )
+
+        {%{users: [], groups: []}, []}
+
+      {:error, error}, _acc ->
+        raise Entra.SyncError,
+          error: error,
+          directory_id: directory.id,
+          step: :stream_group_members
+
+      members, {acc, identities} when is_list(members) ->
+        {user_ids, page_identities} = parse_members_page(directory, root_id, root_name, members)
+
+        group_ids =
+          for %{"@odata.type" => "#microsoft.graph.group", "id" => id} <- members,
+              is_binary(id),
+              do: id
+
+        {%{users: user_ids ++ acc.users, groups: group_ids ++ acc.groups},
+         page_identities ++ identities}
+    end)
+  end
+
+  defp parse_members_page(directory, group_id, group_name, members) do
+    Logger.debug("Received members page",
       entra_directory_id: directory.id,
       group_id: group_id,
       count: length(members)
     )
 
-    # The API client already uses the microsoft.graph.user cast with
-    # accountEnabled=true filtering; keep a local guard as a safety net.
     user_members =
       Enum.filter(members, fn member ->
         graph_user_member?(member) and syncable_user?(member, directory.id)
       end)
 
-    # Validate required fields for user members before processing
     Enum.each(user_members, fn member ->
       unless member["id"] do
         raise Entra.SyncError,
@@ -559,21 +588,42 @@ defmodule Portal.Entra.Sync do
       end
     end)
 
-    # Build identities for these members
     identities =
-      Enum.map(user_members, fn member ->
-        map_user_to_identity(member, directory.id, directory.email_field)
-      end)
+      Enum.map(user_members, &map_user_to_identity(&1, directory.id, directory.email_field))
 
-    # Build memberships (group_idp_id, user_idp_id)
-    memberships = Enum.map(user_members, fn member -> {group_id, member["id"]} end)
+    {Enum.map(user_members, & &1["id"]), identities}
+  end
 
-    unless Enum.empty?(identities) do
-      batch_upsert_identities(directory, synced_at, identities)
-    end
+  defp commit_group_walk(directory, synced_at, group_id, batches, nested_ids) do
+    case Database.commit_group_walk(
+           directory.account_id,
+           issuer(directory),
+           directory.id,
+           synced_at,
+           group_id,
+           batches,
+           nested_ids
+         ) do
+      {:ok, deleted} ->
+        Logger.debug("Committed group walk",
+          entra_directory_id: directory.id,
+          group_id: group_id,
+          deleted_memberships: deleted
+        )
 
-    unless Enum.empty?(memberships) do
-      batch_upsert_memberships(directory, synced_at, memberships)
+        :ok
+
+      {:error, reason} ->
+        Logger.error("Failed to upsert memberships",
+          reason: inspect(reason),
+          entra_directory_id: directory.id,
+          group_id: group_id
+        )
+
+        raise Entra.SyncError,
+          error: {:database, "failed to upsert memberships: #{inspect(reason)}"},
+          directory_id: directory.id,
+          step: :batch_upsert_memberships
     end
   end
 
@@ -616,77 +666,6 @@ defmodule Portal.Entra.Sync do
 
     Logger.debug("Upserted #{count} groups", entra_directory_id: directory.id)
     :ok
-  end
-
-  defp batch_upsert_memberships(directory, synced_at, memberships) do
-    account_id = directory.account_id
-    directory_id = directory.id
-    issuer = issuer(directory)
-
-    case Database.batch_upsert_memberships(
-           account_id,
-           issuer,
-           directory_id,
-           synced_at,
-           memberships
-         ) do
-      {:ok, %{upserted_memberships: count}} ->
-        Logger.debug("Upserted #{count} memberships", entra_directory_id: directory.id)
-        :ok
-
-      {:error, reason} ->
-        Logger.error("Failed to upsert memberships",
-          reason: inspect(reason),
-          count: length(memberships),
-          entra_directory_id: directory.id
-        )
-
-        raise Entra.SyncError,
-          error: {:database, "failed to upsert memberships: #{inspect(reason)}"},
-          directory_id: directory.id,
-          step: :batch_upsert_memberships
-    end
-  end
-
-  defp delete_unsynced(directory, synced_at) do
-    account_id = directory.account_id
-    directory_id = directory.id
-
-    # Delete groups that weren't synced
-    {deleted_groups_count, _} =
-      Database.delete_unsynced_groups(account_id, directory_id, synced_at)
-
-    Logger.debug("Deleted unsynced groups",
-      entra_directory_id: directory.id,
-      count: deleted_groups_count
-    )
-
-    # Delete identities that weren't synced
-    {deleted_identities_count, _} =
-      Database.delete_unsynced_identities(account_id, directory_id, synced_at)
-
-    Logger.debug("Deleted unsynced identities",
-      entra_directory_id: directory.id,
-      count: deleted_identities_count
-    )
-
-    # Delete memberships that weren't synced
-    {deleted_memberships_count, _} =
-      Database.delete_unsynced_memberships(account_id, directory_id, synced_at)
-
-    Logger.debug("Deleted unsynced group memberships",
-      entra_directory_id: directory.id,
-      count: deleted_memberships_count
-    )
-
-    # Delete actors that no longer have any identities and were created by this directory
-    {deleted_actors_count, _} =
-      Database.delete_actors_without_identities(account_id, directory_id)
-
-    Logger.debug("Deleted actors without identities",
-      entra_directory_id: directory.id,
-      count: deleted_actors_count
-    )
   end
 
   def syncable_user?(user, directory_id) do
@@ -768,6 +747,40 @@ defmodule Portal.Entra.Sync do
 
     def update_directory(changeset) do
       changeset |> Safe.unscoped() |> Safe.update()
+    end
+
+    # Memberships, nesting, and prune land together: anything less leaves
+    # grants without the nesting that names their source, so no notification
+    # could revoke them, or a parent that has forgotten a child whose stale
+    # members it still holds.
+    def commit_group_walk(account_id, issuer, directory_id, synced_at, group_idp_id, batches, nested_ids) do
+      Safe.unscoped()
+      |> Safe.transaction(fn ->
+        with :ok <-
+               insert_memberships(account_id, issuer, directory_id, synced_at, group_idp_id, batches) do
+          update_nested_groups(account_id, directory_id, group_idp_id, nested_ids)
+
+          deleted =
+            Portal.DirectorySync.prune_group_memberships(
+              account_id,
+              directory_id,
+              group_idp_id,
+              synced_at
+            )
+
+          {:ok, deleted}
+        end
+      end)
+    end
+
+    def parents_of(account_id, directory_id, group_idp_id) do
+      from(g in Portal.Group,
+        where: g.account_id == ^account_id,
+        where: g.directory_id == ^directory_id,
+        where: fragment("? @> ARRAY[?]::text[]", g.nested_group_idp_ids, ^group_idp_id)
+      )
+      |> Safe.unscoped()
+      |> Safe.all()
     end
 
     def batch_upsert_identities(
@@ -1195,76 +1208,26 @@ defmodule Portal.Entra.Sync do
       params ++ [Ecto.UUID.dump!(account_id), issuer, last_synced_at]
     end
 
-    def delete_unsynced_groups(account_id, directory_id, synced_at) do
-      query =
-        from(g in Portal.Group,
-          where: g.account_id == ^account_id,
-          where: g.directory_id == ^directory_id,
-          where:
-            fragment(
-              "NOT EXISTS (SELECT 1 FROM group_sync_states gss WHERE gss.group_id = ? AND gss.account_id = ? AND gss.synced_at >= ?)",
-              g.id,
-              g.account_id,
-              ^synced_at
-            )
-        )
+    defp insert_memberships(account_id, issuer, directory_id, synced_at, group_idp_id, batches) do
+      Enum.reduce_while(batches, :ok, fn user_ids, :ok ->
+        tuples = Enum.map(user_ids, &{group_idp_id, &1})
 
-      query |> Safe.unscoped() |> Safe.delete_all()
+        case batch_upsert_memberships(account_id, issuer, directory_id, synced_at, tuples) do
+          {:ok, _} -> {:cont, :ok}
+          {:error, reason} -> {:halt, {:error, reason}}
+        end
+      end)
     end
 
-    def delete_unsynced_identities(account_id, directory_id, synced_at) do
-      query =
-        from(i in Portal.ExternalIdentity,
-          where: i.account_id == ^account_id,
-          where: i.directory_id == ^directory_id,
-          where:
-            fragment(
-              "NOT EXISTS (SELECT 1 FROM external_identity_sync_states iss WHERE iss.external_identity_id = ? AND iss.account_id = ? AND iss.synced_at >= ?)",
-              i.id,
-              i.account_id,
-              ^synced_at
-            )
-        )
-
-      query |> Safe.unscoped() |> Safe.delete_all()
-    end
-
-    def delete_unsynced_memberships(account_id, directory_id, synced_at) do
-      query =
-        from(m in Portal.Membership,
-          join: g in Portal.Group,
-          on: m.group_id == g.id and m.account_id == g.account_id,
-          where: g.account_id == ^account_id,
-          where: g.directory_id == ^directory_id,
-          where:
-            fragment(
-              "NOT EXISTS (SELECT 1 FROM membership_sync_states mss WHERE mss.membership_id = ? AND mss.account_id = ? AND mss.synced_at >= ?)",
-              m.id,
-              m.account_id,
-              ^synced_at
-            )
-        )
-
-      query |> Safe.unscoped() |> Safe.delete_all()
-    end
-
-    def delete_actors_without_identities(account_id, directory_id) do
-      # Delete actors that no longer have any identities
-      # This cleans up actors whose identities were deleted in the previous step
-      # Only delete actors created by this specific directory
-      query =
-        from(a in Portal.Actor,
-          where: a.account_id == ^account_id,
-          where: a.created_by_directory_id == ^directory_id,
-          where:
-            fragment(
-              "NOT EXISTS (SELECT 1 FROM external_identities WHERE actor_id = ?)",
-              a.id
-            )
-        )
-
-      query |> Safe.unscoped() |> Safe.delete_all()
+    defp update_nested_groups(account_id, directory_id, group_idp_id, nested_ids) do
+      from(g in Portal.Group,
+        where: g.account_id == ^account_id,
+        where: g.directory_id == ^directory_id,
+        where: g.idp_id == ^group_idp_id,
+        where: g.nested_group_idp_ids != ^nested_ids
+      )
+      |> Safe.unscoped()
+      |> Safe.update_all(set: [nested_group_idp_ids: nested_ids])
     end
   end
-
 end

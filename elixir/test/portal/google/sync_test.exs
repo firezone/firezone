@@ -4,7 +4,7 @@ defmodule Portal.Google.SyncTest do
 
   import Ecto.Query
   import Portal.AccountFixtures
-  import Portal.DirectorySyncLockHelpers
+  import Portal.ObanFixtures
   import Portal.GoogleDirectoryFixtures
   import Portal.IdentityFixtures
   import Portal.ResourceFixtures
@@ -176,13 +176,21 @@ defmodule Portal.Google.SyncTest do
       assert log =~ directory.id
     end
 
-    test "snoozes while the directory lock is held" do
+    test "snoozes while a webhook job for the directory is executing" do
       account = account_fixture(features: %{idp_sync: true})
       directory = google_directory_fixture(account: account)
       args = %{"account_id" => directory.account_id, "directory_id" => directory.id}
-      hold_directory_lock(:google, directory.id)
 
-      assert {:snooze, 30} = perform_job(Sync, args)
+      executing_job(
+        Portal.Google.WebhookSync.new(%{
+          account_id: directory.account_id,
+          directory_id: directory.id,
+          user_id: "user-1"
+        })
+      )
+
+      assert {:snooze, seconds} = perform_job(Sync, args)
+      assert seconds in 16..45
     end
 
     test "performs successful sync with groups, org units, and user identity sync" do

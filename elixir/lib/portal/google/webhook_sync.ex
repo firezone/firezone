@@ -4,9 +4,9 @@ defmodule Portal.Google.WebhookSync do
   identities and org unit memberships of a Google directory.
 
   Notifications carry only the user id, so the worker re-reads the user and
-  writes it with a fresh `synced_at`. The sync-state tables then make a slower
-  full sync skip anything this worker wrote after that sync started, so the
-  newer webhook read wins over the older full-sync read.
+  writes it with a fresh `synced_at`. Jobs for one directory run one at a time
+  (see `Portal.DirectorySync`), so a notification that arrives during a full
+  sync is applied by a fresh read after that sync finished.
 
   A user is written when the directory already has an identity for them, or
   when org unit sync is on and the user sits in a tracked org unit. Group
@@ -15,9 +15,9 @@ defmodule Portal.Google.WebhookSync do
 
   use Oban.Worker, queue: :google_webhook, max_attempts: 3
 
+  alias Portal.DirectorySync
   alias Portal.Google
   alias Portal.Google.APIClient
-  alias Portal.DirectorySync.Lock
   alias __MODULE__.Database
   require Logger
 
@@ -30,17 +30,22 @@ defmodule Portal.Google.WebhookSync do
     keys: [:directory_id, :user_id]
   ]
 
-  # A full sync reads Google long before it writes, so a notification waits
-  # for the directory lock instead of interleaving with one.
-  @snooze_seconds 30
-
   @impl Oban.Worker
   def new(args, opts), do: super(args, Keyword.put_new(opts, :unique, @unique))
 
   @impl Oban.Worker
-  def perform(%Oban.Job{
-        args: %{"account_id" => account_id, "directory_id" => directory_id, "user_id" => user_id}
-      }) do
+  def timeout(_job), do: DirectorySync.webhook_timeout()
+
+  @impl Oban.Worker
+  def perform(
+        %Oban.Job{
+          args: %{
+            "account_id" => account_id,
+            "directory_id" => directory_id,
+            "user_id" => user_id
+          }
+        } = job
+      ) do
     case Google.Subscriptions.get_directory(account_id, directory_id) do
       nil ->
         Logger.info("Google directory not eligible for webhooks, skipping notification",
@@ -50,18 +55,13 @@ defmodule Portal.Google.WebhookSync do
         :ok
 
       directory ->
-        apply_with_lock(directory, user_id)
+        DirectorySync.run_alone(:google, directory.id, job, fn ->
+          apply_notification(directory, user_id)
+        end)
     end
   end
 
   def perform(_), do: :ok
-
-  defp apply_with_lock(directory, user_id) do
-    case Lock.try_run(:google, directory.id, fn -> apply_notification(directory, user_id) end) do
-      {:ok, result} -> result
-      :busy -> {:snooze, @snooze_seconds}
-    end
-  end
 
   defp apply_notification(directory, user_id) do
     Logger.info("Applying Google user notification",
@@ -207,9 +207,7 @@ defmodule Portal.Google.WebhookSync do
   defp remove_identity(_directory, nil), do: :ok
 
   defp remove_identity(directory, identity) do
-    Database.delete_identity(identity)
-    Database.delete_actor_directory_memberships(directory, identity.actor_id)
-    Google.Sync.delete_actors_without_identities(directory)
+    {:ok, _} = DirectorySync.remove_identity(directory.id, identity)
 
     Logger.info("Removed identity from Google user notification",
       google_directory_id: directory.id,
@@ -246,27 +244,6 @@ defmodule Portal.Google.WebhookSync do
       )
       |> Safe.unscoped()
       |> Safe.exists?()
-    end
-
-    def delete_identity(identity) do
-      from(i in Portal.ExternalIdentity,
-        where: i.account_id == ^identity.account_id,
-        where: i.id == ^identity.id
-      )
-      |> Safe.unscoped()
-      |> Safe.delete_all()
-    end
-
-    def delete_actor_directory_memberships(directory, actor_id) do
-      from(m in Portal.Membership,
-        join: g in Portal.Group,
-        on: m.group_id == g.id and m.account_id == g.account_id,
-        where: m.account_id == ^directory.account_id,
-        where: m.actor_id == ^actor_id,
-        where: g.directory_id == ^directory.id
-      )
-      |> Safe.unscoped()
-      |> Safe.delete_all()
     end
 
     def delete_unsynced_org_unit_memberships(directory, identity, synced_at) do

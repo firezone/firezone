@@ -340,19 +340,15 @@ defmodule Portal.Microsoft.Graph.APIClientTest do
     end
   end
 
-  describe "stream_group_transitive_members/2" do
-    test "streams transitive members of a group" do
+  describe "stream_group_members/2" do
+    test "streams the direct members of a group" do
       test_pid = self()
       group_id = "group_123"
 
       Req.Test.expect(APIClient, fn conn ->
-        # Verify the transitive members endpoint is being called
         assert conn.method == "GET"
-
-        assert conn.request_path ==
-                 "/v1.0/groups/#{group_id}/transitiveMembers/microsoft.graph.user"
-
-        assert {"consistencylevel", "eventual"} in conn.req_headers
+        assert conn.request_path == "/v1.0/groups/#{group_id}/members"
+        refute List.keyfind(conn.req_headers, "consistencylevel", 0)
 
         conn = Plug.Conn.fetch_query_params(conn)
         send(test_pid, {:members_request, conn.query_params})
@@ -360,6 +356,7 @@ defmodule Portal.Microsoft.Graph.APIClientTest do
         Req.Test.json(conn, %{
           "value" => [
             active_entra_user(%{
+              "@odata.type" => "#microsoft.graph.user",
               "id" => "user1",
               "displayName" => "User One",
               "mail" => "user1@example.com",
@@ -367,26 +364,21 @@ defmodule Portal.Microsoft.Graph.APIClientTest do
               "givenName" => "User",
               "surname" => "One"
             }),
-            active_entra_user(%{
-              "id" => "user2",
-              "displayName" => "User Two",
-              "mail" => "user2@example.com",
-              "userPrincipalName" => "user2@example.com"
-            })
+            %{"@odata.type" => "#microsoft.graph.group", "id" => "group_456"}
           ]
         })
       end)
 
       result =
-        APIClient.stream_group_transitive_members(@test_access_token, group_id)
+        APIClient.stream_group_members(@test_access_token, group_id)
         |> Enum.to_list()
 
-      assert [[%{"id" => "user1"}, %{"id" => "user2"}]] = result
+      assert [[%{"id" => "user1"}, %{"id" => "group_456"}]] = result
 
       assert_receive {:members_request, query_params}
-      assert query_params["$count"] == "true"
-      assert query_params["$filter"] == "accountEnabled eq true"
       assert query_params["$top"] == "999"
+      refute Map.has_key?(query_params, "$count")
+      refute Map.has_key?(query_params, "$filter")
 
       assert query_params["$select"] ==
                "id,displayName,mail,userPrincipalName,givenName,surname,accountEnabled"
@@ -400,8 +392,7 @@ defmodule Portal.Microsoft.Graph.APIClientTest do
         current_page = :counters.get(page_count, 1)
         :counters.add(page_count, 1, 1)
 
-        # Verify the transitive members endpoint is being called
-        assert conn.request_path =~ "/groups/#{group_id}/transitiveMembers"
+        assert conn.request_path == "/v1.0/groups/#{group_id}/members"
 
         response =
           case current_page do
@@ -409,7 +400,7 @@ defmodule Portal.Microsoft.Graph.APIClientTest do
               %{
                 "value" => [active_entra_user(%{"id" => "user1"})],
                 "@odata.nextLink" =>
-                  "https://graph.microsoft.com/v1.0/groups/#{group_id}/transitiveMembers/microsoft.graph.user?$skiptoken=xyz"
+                  "https://graph.microsoft.com/v1.0/groups/#{group_id}/members?$skiptoken=xyz"
               }
 
             1 ->
@@ -420,59 +411,10 @@ defmodule Portal.Microsoft.Graph.APIClientTest do
       end)
 
       result =
-        APIClient.stream_group_transitive_members(@test_access_token, group_id)
+        APIClient.stream_group_members(@test_access_token, group_id)
         |> Enum.to_list()
 
       assert [[%{"id" => "user1"}], [%{"id" => "user2"}]] = result
-    end
-
-    test "filters disabled users from transitive member pages" do
-      group_id = "group_123"
-
-      Req.Test.expect(APIClient, fn conn ->
-        Req.Test.json(conn, %{
-          "value" => [
-            %{"id" => "user1", "accountEnabled" => true},
-            %{"id" => "user2", "accountEnabled" => false}
-          ]
-        })
-      end)
-
-      result =
-        APIClient.stream_group_transitive_members(@test_access_token, group_id)
-        |> Enum.to_list()
-
-      assert [[%{"id" => "user1"}]] = result
-    end
-
-    test "logs and skips transitive members missing accountEnabled" do
-      group_id = "group_123"
-
-      Req.Test.expect(APIClient, fn conn ->
-        Req.Test.json(conn, %{
-          "value" => [
-            %{"id" => "user1", "displayName" => "User One", "mail" => "user1@example.com"},
-            %{
-              "id" => "user2",
-              "displayName" => "User Two",
-              "mail" => "user2@example.com",
-              "accountEnabled" => true
-            }
-          ]
-        })
-      end)
-
-      log =
-        capture_log(fn ->
-          result =
-            APIClient.stream_group_transitive_members(@test_access_token, group_id)
-            |> Enum.to_list()
-
-          assert [[%{"id" => "user2", "accountEnabled" => true}]] = result
-        end)
-
-      assert log =~ "Skipping Entra user with missing accountEnabled field"
-      assert log =~ "user1"
     end
   end
 
