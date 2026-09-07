@@ -79,3 +79,45 @@ url = "https://github.com/ktlint/ktlint/releases/download/1.7.1/ktlint-1.7.1.zip
 [tools.ktlint."platforms.windows-x64"]
 checksum = "sha256:d453b8347587241559d583102c18993a6efc7d7d1064d1a380f8a58eb53a0675"
 url = "https://github.com/ktlint/ktlint/releases/download/1.7.1/ktlint-1.7.1.zip"
+
+[[tools."github:tamtom/play-console-cli"]]
+version = "0.9.2"
+backend = "github:tamtom/play-console-cli"
+
+[tools."github:tamtom/play-console-cli".options]
+matching_regex = "^gplay-"
+
+[tools."github:tamtom/play-console-cli"."platforms.linux-arm64"]
+checksum = "sha256:b46951a5f1729a5c2edf4e0fd8a832ca80636129142f665588d4d977a5f4e168"
+url = "https://github.com/tamtom/play-console-cli/releases/download/v0.9.2/gplay-linux-arm64"
+url_api = "https://api.github.com/repos/tamtom/play-console-cli/releases/assets/528187937"
+
+[tools."github:tamtom/play-console-cli"."platforms.linux-arm64-musl"]
+checksum = "sha256:b46951a5f1729a5c2edf4e0fd8a832ca80636129142f665588d4d977a5f4e168"
+url = "https://github.com/tamtom/play-console-cli/releases/download/v0.9.2/gplay-linux-arm64"
+url_api = "https://api.github.com/repos/tamtom/play-console-cli/releases/assets/528187937"
+
+[tools."github:tamtom/play-console-cli"."platforms.linux-x64"]
+checksum = "sha256:1f2d001483b32d6d94a936f698eea97480ce0721295819030ef2a0597d6f4d24"
+url = "https://github.com/tamtom/play-console-cli/releases/download/v0.9.2/gplay-linux-amd64"
+url_api = "https://api.github.com/repos/tamtom/play-console-cli/releases/assets/528187940"
+
+[tools."github:tamtom/play-console-cli"."platforms.linux-x64-musl"]
+checksum = "sha256:1f2d001483b32d6d94a936f698eea97480ce0721295819030ef2a0597d6f4d24"
+url = "https://github.com/tamtom/play-console-cli/releases/download/v0.9.2/gplay-linux-amd64"
+url_api = "https://api.github.com/repos/tamtom/play-console-cli/releases/assets/528187940"
+
+[tools."github:tamtom/play-console-cli"."platforms.macos-arm64"]
+checksum = "sha256:7119d94f2bff17ed58a0b3618e17ad9063e3998011c6a9d9de7ec475bdbe34cb"
+url = "https://github.com/tamtom/play-console-cli/releases/download/v0.9.2/gplay-darwin-arm64"
+url_api = "https://api.github.com/repos/tamtom/play-console-cli/releases/assets/528187938"
+
+[tools."github:tamtom/play-console-cli"."platforms.macos-x64"]
+checksum = "sha256:de1d0900aad4e5ca99afd482bafbc6c1c86aebe570c1c82fd05c89afd06c0462"
+url = "https://github.com/tamtom/play-console-cli/releases/download/v0.9.2/gplay-darwin-amd64"
+url_api = "https://api.github.com/repos/tamtom/play-console-cli/releases/assets/528187941"
+
+[tools."github:tamtom/play-console-cli"."platforms.windows-x64"]
+checksum = "sha256:2d98387bf19fc6b9234a6c2e45297693e7c750f7f2055c04b702100ceb130101"
+url = "https://github.com/tamtom/play-console-cli/releases/download/v0.9.2/gplay-windows-amd64.exe"
+url_api = "https://api.github.com/repos/tamtom/play-console-cli/releases/assets/528187939"
