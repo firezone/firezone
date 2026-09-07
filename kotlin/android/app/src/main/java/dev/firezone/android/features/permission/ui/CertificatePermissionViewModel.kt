@@ -36,8 +36,14 @@ internal class CertificatePermissionViewModel
             keyChain.choosePrivateKeyAlias(activity, requestUri(), null) { alias ->
                 val outcome =
                     when {
-                        alias == null -> Outcome.NothingSelected
-                        !certificateAccess.holdsDeviceCertificate(alias) -> Outcome.NotADeviceCertificate(alias)
+                        alias == null -> {
+                            Outcome.NothingSelected
+                        }
+
+                        !certificateAccess.holdsDeviceCertificate(alias) -> {
+                            Outcome.NotADeviceCertificate(alias)
+                        }
+
                         else -> {
                             repository.saveX509CertificateAliasSync(alias)
                             Outcome.Selected

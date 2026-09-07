@@ -144,11 +144,13 @@ private fun CertificatePermissionRoute(
                                 null
                             }
 
-                            CertificatePermissionViewModel.Outcome.NothingSelected ->
+                            CertificatePermissionViewModel.Outcome.NothingSelected -> {
                                 activity.getString(R.string.device_trust_no_certificate_selected)
+                            }
 
-                            is CertificatePermissionViewModel.Outcome.NotADeviceCertificate ->
+                            is CertificatePermissionViewModel.Outcome.NotADeviceCertificate -> {
                                 activity.getString(R.string.device_trust_not_device_certificate, outcome.alias)
+                            }
                         }
                 }
             }
