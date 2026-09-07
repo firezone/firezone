@@ -32,6 +32,9 @@ env:
 jobs:
   prepare:
     if: ${{ github.ref_name == 'main' }}
+    permissions:
+      contents: write # GitHub requires push access to read draft releases.
+      security-events: write
     environment:
       name: app-store
       url: https://appstoreconnect.apple.com/apps/6443661826/distribution
@@ -281,6 +284,9 @@ jobs:
 
   submit:
     needs: [prepare, review]
+    permissions:
+      contents: write # Revalidating the draft also requires push access.
+      security-events: write
     environment:
       name: app-store
       url: https://appstoreconnect.apple.com/apps/6443661826/distribution
