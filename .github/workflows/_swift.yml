@@ -67,8 +67,7 @@ jobs:
   # hands the captures to commit-screenshots. Nothing is compared against a reference.
   # The same build runs on every macOS release, so the suite is built once here and
   # photographed on each release in parallel below.
-  build-macos-screenshots:
-    name: macos-screenshots-build
+  macos-screenshots-build:
     # A release dispatch from main only needs the builds, not the screenshots.
     if: "${{ !(github.event_name == 'workflow_dispatch' && github.ref_name == 'main') }}"
     runs-on: macos-26
@@ -120,7 +119,7 @@ jobs:
   # SDK it was built with, so the screens are drawn on every release CI can run.
   screenshots-macos:
     name: macos-${{ matrix.release }}-screenshots
-    needs: build-macos-screenshots
+    needs: macos-screenshots-build
     # Only a pull request has a diff to put the screens in.
     if: github.ref_name != 'main'
     runs-on: macos-${{ matrix.release }}
@@ -178,8 +177,7 @@ jobs:
   # The app target embeds the tunnel extension, which compiles connlib, and the
   # same simulator build runs on every device. So the iOS suite is built once here
   # and photographed on each simulator in parallel below.
-  build-ios-screenshots:
-    name: ios-screenshots-build
+  ios-screenshots-build:
     # A release dispatch from main only needs the builds, not the screenshots.
     if: "${{ !(github.event_name == 'workflow_dispatch' && github.ref_name == 'main') }}"
     runs-on: macos-26
@@ -225,7 +223,7 @@ jobs:
 
   screenshots-ios:
     name: ios-${{ matrix.device }}-screenshots
-    needs: build-ios-screenshots
+    needs: ios-screenshots-build
     # Only a pull request has a diff to put the screens in.
     if: github.ref_name != 'main'
     runs-on: macos-26
