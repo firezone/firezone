@@ -186,6 +186,26 @@ defmodule PortalWeb.SignUpTest do
       refute Portal.Repo.get_by(Portal.Account, name: "Raced Corp")
     end
 
+    test "submitting after the Google session expires shows error state", %{conn: conn} do
+      conn = with_google_identity(conn, expires_at: System.os_time(:second) + 1)
+
+      {:ok, lv, html} = live(conn, ~p"/sign_up/google")
+      assert html =~ "Almost there"
+
+      Process.sleep(1_100)
+
+      html =
+        lv
+        |> form("#google-sign-up-form",
+          registration: %{account: %{name: "Late Corp"}, actor: %{name: "Ada Lovelace"}}
+        )
+        |> render_submit()
+
+      assert html =~ "Something went wrong"
+      assert html =~ "Google sign-up session is invalid or has expired"
+      refute Portal.Repo.get_by(Portal.Account, name: "Late Corp")
+    end
+
     test "Stripe provision failure shows error state", %{conn: conn} do
       Stripe.stub([{"POST", "/v1/customers", 500, %{}}])
       conn = with_google_identity(conn)

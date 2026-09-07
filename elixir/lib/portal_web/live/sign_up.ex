@@ -180,13 +180,18 @@ defmodule PortalWeb.SignUp do
       } = identity
       when is_binary(email) and is_binary(issuer) and is_binary(idp_id) and
              is_integer(expires_at) ->
-        if expires_at > System.os_time(:second) do
-          %{
-            email: email,
-            issuer: issuer,
-            idp_id: idp_id,
-            profile_attrs: Map.take(identity, ~w[email name given_name family_name])
-          }
+        identity = %{
+          email: email,
+          issuer: issuer,
+          idp_id: idp_id,
+          expires_at: expires_at,
+          profile_attrs: Map.take(identity, ~w[email name given_name family_name])
+        }
+
+        if identity_expired?(identity) do
+          nil
+        else
+          identity
         end
 
       _ ->
@@ -743,9 +748,14 @@ defmodule PortalWeb.SignUp do
     end
   end
 
+  # A connected LiveView outlives the session entry, so the proof is checked again here.
   def handle_event("submit_google", %{"registration" => attrs}, socket) do
-    changeset = socket |> registration_changeset(attrs) |> Map.put(:action, :insert)
-    {:noreply, apply_google_registration(socket, changeset)}
+    if identity_expired?(socket.assigns.google_identity) do
+      {:noreply, sign_up_error(socket, @google_session_error)}
+    else
+      changeset = socket |> registration_changeset(attrs) |> Map.put(:action, :insert)
+      {:noreply, apply_google_registration(socket, changeset)}
+    end
   end
 
   defp apply_google_registration(socket, %{valid?: true} = changeset) do
@@ -791,6 +801,8 @@ defmodule PortalWeb.SignUp do
       end
     end
   end
+
+  defp identity_expired?(%{expires_at: expires_at}), do: expires_at <= System.os_time(:second)
 
   defp existing_accounts_step(socket, accounts) do
     assign(socket, step: :existing_accounts, existing_accounts: accounts)
