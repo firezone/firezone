@@ -64,11 +64,13 @@ jobs:
         with:
           ref: ${{ steps.release.outputs.source_sha }}
 
-      - name: Select store screenshots
+      - name: Select submission inputs
         run: |
-          # Use the submission's selection without changing the build's screenshot files.
+          # Use the submission's script and selection, with screenshot files from the build.
           git fetch --depth=1 origin "$GITHUB_SHA"
-          git restore --source="$GITHUB_SHA" --worktree -- kotlin/android/screenshots/play-store.txt
+          git restore --source="$GITHUB_SHA" --worktree -- \
+            scripts/upload/play-store.sh \
+            kotlin/android/screenshots/play-store.txt
 
       - uses: ./.github/actions/setup-mise
         with:
@@ -167,11 +169,13 @@ jobs:
         with:
           ref: ${{ needs.prepare.outputs.source_sha }}
 
-      - name: Select store screenshots
+      - name: Select submission inputs
         run: |
-          # Match the selection shown before approval, with image files from the build.
+          # Match the script and selection used before approval, with image files from the build.
           git fetch --depth=1 origin "$GITHUB_SHA"
-          git restore --source="$GITHUB_SHA" --worktree -- kotlin/android/screenshots/play-store.txt
+          git restore --source="$GITHUB_SHA" --worktree -- \
+            scripts/upload/play-store.sh \
+            kotlin/android/screenshots/play-store.txt
 
       - uses: ./.github/actions/setup-mise
         with:
