@@ -1,5 +1,5 @@
 // Licensed under Apache 2.0 (C) 2026 Firezone, Inc.
-package dev.firezone.android.features.customuri.ui
+package dev.firezone.android.features.auth.ui
 
 import android.app.Application
 import android.content.Intent
@@ -13,7 +13,7 @@ import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
 @Config(application = Application::class)
-class CustomUriHandlerActivityTest {
+class AuthFlowUiTest {
     @Test
     fun `main activity handoff replaces authentication task`() {
         val context = RuntimeEnvironment.getApplication()
