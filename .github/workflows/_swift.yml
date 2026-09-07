@@ -338,16 +338,18 @@ jobs:
           TEMP_DIR: "${{ runner.temp }}"
       - name: Upload .dmg artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        if: "${{ github.event_name == 'workflow_dispatch' && matrix.job_name == 'build-macos-standalone' }}"
+        if: "${{ matrix.job_name == 'build-macos-standalone' }}"
         with:
           name: macos-client-standalone-dmg
           path: "${{ runner.temp }}/${{ matrix.artifact-file }}"
+          retention-days: 7
       - name: Upload .pkg artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        if: "${{ github.event_name == 'workflow_dispatch' && matrix.job_name == 'build-macos-standalone' }}"
+        if: "${{ matrix.job_name == 'build-macos-standalone' }}"
         with:
           name: macos-client-standalone-pkg
           path: "${{ runner.temp }}/${{ matrix.pkg-artifact-file }}"
+          retention-days: 7
       - run: ${{ matrix.upload-script }}
         if: "${{ github.event_name == 'workflow_dispatch' && (github.ref_name == 'main' || matrix.job_name != 'build-macos-standalone') }}"
         env:
