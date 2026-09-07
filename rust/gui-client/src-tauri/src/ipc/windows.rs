@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::{ffi::c_void, io::ErrorKind, os::windows::io::AsRawHandle, time::Duration};
 use tokio::net::windows::named_pipe;
 use windows::Win32::{
-    Foundation::{HANDLE, HLOCAL, LocalFree},
+    Foundation::{HANDLE, HLOCAL},
     Security::{
         Authorization::{GetSecurityInfo, SE_KERNEL_OBJECT},
         IsWellKnownSid, OWNER_SECURITY_INFORMATION, PSECURITY_DESCRIPTOR, PSID,
@@ -20,6 +20,7 @@ use windows::Win32::{
         Threading::GetCurrentProcessId,
     },
 };
+use windows::core::Owned;
 use windows_security::pipe_dacl::{FileRights, PipeDacl, Trustee};
 
 /// Security descriptor for the Tunnel pipe.
@@ -332,16 +333,14 @@ fn is_pipe_owned_by_local_system(handle: HANDLE) -> Result<bool> {
         return Err(std::io::Error::from_raw_os_error(err.0 as i32))
             .context("GetSecurityInfo on pipe handle failed");
     }
+    // SAFETY: `sd` was allocated by `GetSecurityInfo` via `LocalAlloc`;
+    // wrap the underlying pointer as `HLOCAL` so `LocalFree` runs on
+    // scope exit. `owner_sid` points into this allocation.
+    let _sd_owned = unsafe { Owned::new(HLOCAL(sd.0)) };
 
     // SAFETY: `owner_sid` is a non-NULL pointer into `sd`'s buffer (still
     // alive for this call) and `IsWellKnownSid` does not retain it.
     let is_local_system = unsafe { IsWellKnownSid(owner_sid, WinLocalSystemSid) }.as_bool();
-
-    // SAFETY: `sd` was allocated by `GetSecurityInfo` and must be released
-    // with `LocalFree`. After this call no pointer derived from it is used.
-    unsafe {
-        let _ = LocalFree(Some(HLOCAL(sd.0)));
-    }
 
     Ok(is_local_system)
 }
