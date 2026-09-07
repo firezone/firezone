@@ -93,22 +93,11 @@ jobs:
       # The Windows client ignores RUST_LOG because it uses a settings file instead
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: ./.github/actions/setup-node
-        with:
-          npmjs-token: ${{ secrets.NPMJS_TOKEN }}
-          lockfile-dir: ./rust/gui-client
-      - uses: ./.github/actions/setup-rust-stable
-      - uses: ./.github/actions/setup-rust-sccache
-        with:
-          azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
-      - uses: ./.github/actions/setup-tauri-v2
+      - uses: ./.github/actions/build-gui-client
         timeout-minutes: 15
         with:
-          runtime: true
-      - run: pnpm install
-      - run: pnpm vite build
-      - name: Build client
-        run: cargo build -p firezone-gui-client --all-targets
+          npmjs-token: ${{ secrets.NPMJS_TOKEN }}
+          azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
       - name: Run smoke test
         working-directory: ./rust
         run: cargo run -p gui-smoke-test
@@ -116,26 +105,16 @@ jobs:
 
   # Photographs the tray menu of a client connected to the mock Tunnel service, with a
   # resource submenu expanded. Needs a real desktop, which the Windows runners have.
-  tray-screenshot:
+  windows-tray-screenshot:
     runs-on: windows-2025
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: ./.github/actions/setup-node
-        with:
-          npmjs-token: ${{ secrets.NPMJS_TOKEN }}
-          lockfile-dir: ./rust/gui-client
-      - uses: ./.github/actions/setup-rust-stable
-      - uses: ./.github/actions/setup-rust-sccache
-        with:
-          azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
-      - uses: ./.github/actions/setup-tauri-v2
+      - uses: ./.github/actions/build-gui-client
         timeout-minutes: 15
         with:
-          runtime: true
-      - run: pnpm install
-      - run: pnpm vite build
-      - name: Build client
-        run: cargo build -p firezone-gui-client --bin firezone-gui-client
+          npmjs-token: ${{ secrets.NPMJS_TOKEN }}
+          azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
+          cargo-args: --bin firezone-gui-client
       - uses: ./.github/actions/setup-mise
         with:
           install_args: --cd rust/gui-client
