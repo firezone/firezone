@@ -29,8 +29,79 @@ extension XCTestCase {
     as name: String,
     in appearance: Appearance
   ) -> Data {
+    deliver(as: name, in: appearance) { element.screenshot().pngRepresentation }
+  }
+
+  #if os(macOS)
+    /// The canvas the store preparation centres the screens on, so what shows
+    /// between the menus is already the right colour (`MAC_BACKGROUND` there).
+    private static let canvasColour = CGColor(
+      colorSpace: CGColorSpaceCreateDeviceRGB(),
+      components: [30.0 / 255.0, 30.0 / 255.0, 30.0 / 255.0, 1]
+    )!  // swiftlint:disable:this force_unwrapping
+
+    /// Photographs what spans more than one element, a menu together with the
+    /// submenu it has open, as the screen region covering `frames`, with
+    /// everything outside them painted in the canvas colour.
+    @discardableResult
+    func deliver(
+      _ frames: [CGRect],
+      as name: String,
+      in appearance: Appearance
+    ) -> Data {
+      deliver(as: name, in: appearance) {
+        let region = frames.reduce(CGRect.null) { $0.union($1) }
+        let scale = NSScreen.main?.backingScaleFactor ?? 1
+        let scaled = { (rect: CGRect) in
+          CGRect(
+            x: (rect.minX - region.minX) * scale, y: (rect.minY - region.minY) * scale,
+            width: rect.width * scale, height: rect.height * scale
+          )
+        }
+        let size = scaled(region).size
+
+        guard
+          let screen = XCUIScreen.main.screenshot().image
+            .cgImage(forProposedRect: nil, context: nil, hints: nil),
+          let cropped = screen.cropping(
+            to: CGRect(
+              x: region.minX * scale, y: region.minY * scale,
+              width: size.width, height: size.height
+            )),
+          let context = CGContext(
+            data: nil, width: Int(size.width), height: Int(size.height),
+            bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue
+          )
+        else { return Data() }
+
+        let whole = CGRect(origin: .zero, size: size)
+        context.setFillColor(Self.canvasColour)
+        context.fill(whole)
+
+        // Core Graphics measures from the bottom, the accessibility frames from the top.
+        context.clip(
+          to: frames.map(scaled).map {
+            CGRect(x: $0.minX, y: size.height - $0.maxY, width: $0.width, height: $0.height)
+          })
+        context.draw(cropped, in: whole)
+
+        guard let image = context.makeImage() else { return Data() }
+
+        return NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:])
+          ?? Data()
+      }
+    }
+  #endif
+
+  /// Delivers what `capture` photographs once it holds still.
+  private func deliver(
+    as name: String,
+    in appearance: Appearance,
+    capture: () -> Data
+  ) -> Data {
     let fileName = "\(name)-\(appearance.rawValue).png"
-    let image = settledScreenshot(of: element, as: fileName).pngRepresentation
+    let image = settledScreenshot(as: fileName, capture: capture)
 
     let attachment = XCTAttachment(data: image, uniformTypeIdentifier: "public.png")
     attachment.name = fileName
@@ -46,16 +117,15 @@ extension XCTestCase {
   /// spins while it adds up the log directory, and windows fade in. An image that
   /// catches a frame of that differs on every run, so a screen that will not hold
   /// still fails the test rather than being committed mid-motion.
-  private func settledScreenshot(of element: XCUIElement, as fileName: String) -> XCUIScreenshot {
+  private func settledScreenshot(as fileName: String, capture: () -> Data) -> Data {
     let attempts = 20
     // Three in a row rather than two, a second apart rather than half: a control
     // drawn on a material can hold one appearance long enough to look settled and
     // then reach another, and a pair of captures close together cannot tell that
     // from a picture that has stopped moving.
     let required = 3
-    var previous = element.screenshot()
-    var previousPNG = previous.pngRepresentation
-    var sizes = [previousPNG.count]
+    var previous = capture()
+    var sizes = [previous.count]
     var matches = 1
 
     for _ in 1...attempts {
@@ -65,11 +135,10 @@ extension XCTestCase {
       // which starts the count over.
       dismissBanner(before: fileName)
 
-      let current = element.screenshot()
-      let currentPNG = current.pngRepresentation
-      sizes.append(currentPNG.count)
+      let current = capture()
+      sizes.append(current.count)
 
-      if currentPNG == previousPNG {
+      if current == previous {
         matches += 1
 
         if matches >= required {
@@ -82,7 +151,6 @@ extension XCTestCase {
       }
 
       previous = current
-      previousPNG = currentPNG
     }
 
     report(fileName, heldStill: false, outOf: sizes)

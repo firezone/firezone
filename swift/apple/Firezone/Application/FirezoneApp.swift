@@ -36,6 +36,8 @@ struct FirezoneApp: App {
         // Before the scenes exist, so the bars are built from the appearance it
         // sets rather than adopting it on their next update.
         UIApplication.applyMockPresentation()
+      #else
+        NSApplication.applyMockPresentation()
       #endif
     #else
       let store = Store()
