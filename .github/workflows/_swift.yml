@@ -69,6 +69,8 @@ jobs:
   # SDK it was built with, so the macOS screens are drawn on every release CI can run.
   screenshots-macos:
     name: macos-${{ matrix.release }}-screenshots
+    # A release dispatch from main only needs the builds, not the screenshots.
+    if: "${{ !(github.event_name == 'workflow_dispatch' && github.ref_name == 'main') }}"
     runs-on: macos-${{ matrix.release }}
     strategy:
       fail-fast: false
@@ -140,6 +142,8 @@ jobs:
   # and photographed on each simulator in parallel below.
   build-ios-screenshots:
     name: ios-screenshots-build
+    # A release dispatch from main only needs the builds, not the screenshots.
+    if: "${{ !(github.event_name == 'workflow_dispatch' && github.ref_name == 'main') }}"
     runs-on: macos-26
     env:
       XCODE_VERSION: "26.2"
