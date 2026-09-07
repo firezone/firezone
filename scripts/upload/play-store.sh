@@ -152,7 +152,7 @@ inspect_internal() {
 }
 
 submit_release() {
-    local target screenshot screenshot_path icon_path
+    local target screenshot screenshot_path icon_path feature_graphic_path
     local -a screenshots
 
     if [[ "${GITHUB_ACTIONS:-false}" != true || "${GITHUB_REF_NAME:-}" != main ]]; then
@@ -162,8 +162,13 @@ submit_release() {
 
     if [[ "$TARGET_TRACK" == production ]]; then
         icon_path="$REPO_ROOT/kotlin/android/app/src/main/ic_launcher-playstore.png"
+        feature_graphic_path="$REPO_ROOT/kotlin/android/feature-graphic.png"
         if [[ ! -s "$icon_path" ]]; then
             echo "Missing store icon: $icon_path" >&2
+            exit 1
+        fi
+        if [[ ! -s "$feature_graphic_path" ]]; then
+            echo "Missing feature graphic: $feature_graphic_path" >&2
             exit 1
         fi
         mapfile -t screenshots < "$REPO_ROOT/kotlin/android/screenshots/play-store.txt"
@@ -216,6 +221,14 @@ submit_release() {
             --locale en-US \
             --type icon \
             --file "$icon_path"
+
+        echo "Updating en-US feature graphic..."
+        gplay images upload \
+            --package "$PACKAGE_NAME" \
+            --edit "$edit_id" \
+            --locale en-US \
+            --type featureGraphic \
+            --file "$feature_graphic_path"
 
         echo "Replacing en-US phone screenshots..."
         gplay images delete-all \

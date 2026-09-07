@@ -70,7 +70,9 @@ jobs:
           git fetch --depth=1 origin "$GITHUB_SHA"
           git restore --source="$GITHUB_SHA" --worktree -- scripts/upload/play-store.sh
           if [[ "$TARGET_TRACK" == production ]]; then
-            git restore --source="$GITHUB_SHA" --worktree -- kotlin/android/screenshots/play-store.txt
+            git restore --source="$GITHUB_SHA" --worktree -- \
+              kotlin/android/screenshots/play-store.txt \
+              kotlin/android/feature-graphic.png
           fi
 
       - uses: ./.github/actions/setup-mise
@@ -123,6 +125,8 @@ jobs:
               fi
               printf -- "- [App icon](https://github.com/%s/blob/%s/%s)\n" \
                 "$GITHUB_REPOSITORY" "$SOURCE_SHA" "$icon"
+              printf -- "- [Feature graphic](https://github.com/%s/blob/%s/kotlin/android/feature-graphic.png)\n" \
+                "$GITHUB_REPOSITORY" "$GITHUB_SHA"
               while IFS= read -r screenshot; do
                 if [[ ! -s "$screenshot" ]]; then
                   echo "Missing store screenshot: $screenshot" >&2
@@ -132,7 +136,7 @@ jobs:
                   "$screenshot" "$GITHUB_REPOSITORY" "$SOURCE_SHA" "$screenshot"
               done < kotlin/android/screenshots/play-store.txt
               echo
-              echo "The shared store listing icon and screenshots will be replaced."
+              echo "The shared store listing icon, feature graphic, and screenshots will be replaced."
             else
               echo "The shared store listing is unchanged. Only the release is promoted to $TARGET_TRACK."
             fi
@@ -189,7 +193,9 @@ jobs:
           git fetch --depth=1 origin "$GITHUB_SHA"
           git restore --source="$GITHUB_SHA" --worktree -- scripts/upload/play-store.sh
           if [[ "$TARGET_TRACK" == production ]]; then
-            git restore --source="$GITHUB_SHA" --worktree -- kotlin/android/screenshots/play-store.txt
+            git restore --source="$GITHUB_SHA" --worktree -- \
+              kotlin/android/screenshots/play-store.txt \
+              kotlin/android/feature-graphic.png
           fi
 
       - uses: ./.github/actions/setup-mise
