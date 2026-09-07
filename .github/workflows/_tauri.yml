@@ -53,8 +53,9 @@ jobs:
       - run: pnpm eslint .
 
   # Renders every screen the client can show to a PNG; nothing is compared against
-  # a reference.
+  # a reference. Only a pull request has a diff to put them in.
   screenshots:
+    if: github.ref_name != 'main'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

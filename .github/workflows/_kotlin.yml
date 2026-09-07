@@ -74,6 +74,9 @@ jobs:
           parallel: true
 
   screenshots:
+    # Only a pull request has a diff to put the screens in. `unit-tests` compiles the
+    # same sources on `main`, so the Gradle cache it writes there stays warm.
+    if: github.ref_name != 'main'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
