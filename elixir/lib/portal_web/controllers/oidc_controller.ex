@@ -128,7 +128,7 @@ defmodule PortalWeb.OIDCController do
         )
 
       {:sign_up, provider_type} ->
-        redirect_to_sign_up_with_error(conn, sign_up_authorization_error(provider_type, params))
+        handle_sign_up_authorization_error(conn, params, state, provider_type)
 
       _ ->
         handle_error(conn, {:error, :invalid_callback_params})
@@ -1062,15 +1062,35 @@ defmodule PortalWeb.OIDCController do
       "Please try again later or sign up with email."
   end
 
+  # The signed state alone is not browser-bound, so the cookie is required here
+  # too. Provider error text is logged, never shown, so a crafted callback link
+  # cannot put attacker-chosen words on the page.
+  defp handle_sign_up_authorization_error(conn, params, state, provider_type) do
+    error =
+      with {:ok, cookie} <- fetch_sign_up_cookie(conn),
+           :ok <- verify_state(cookie.state, state) do
+        sign_up_authorization_error(provider_type, params)
+      else
+        {:error, reason} -> sign_up_error_message(provider_type, reason)
+      end
+
+    conn
+    |> Cookie.SignUpState.delete()
+    |> redirect_to_sign_up_with_error(error)
+  end
+
   defp sign_up_authorization_error(provider_type, %{"error" => "access_denied"}),
     do: "#{sign_up_provider_name(provider_type)} sign-in was cancelled. Please try again."
 
-  defp sign_up_authorization_error(provider_type, %{"error_description" => description})
-       when is_binary(description),
-       do: "#{sign_up_provider_name(provider_type)} sign-in failed: #{description}"
+  defp sign_up_authorization_error(provider_type, params) do
+    Logger.info("Sign-up authorization error",
+      provider_type: provider_type,
+      error: params["error"],
+      error_description: params["error_description"]
+    )
 
-  defp sign_up_authorization_error(provider_type, %{"error" => error}) when is_binary(error),
-    do: "#{sign_up_provider_name(provider_type)} sign-in failed: #{error}"
+    "#{sign_up_provider_name(provider_type)} sign-in failed. Please try again."
+  end
 
   defp sign_up_error_message(_provider_type, reason)
        when reason in [:oidc_state_not_found, :state_mismatch],

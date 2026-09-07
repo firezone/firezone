@@ -3846,10 +3846,44 @@ defmodule PortalWeb.OIDCControllerTest do
 
     test "redirects to sign-up when the user cancels at Google", %{conn: conn, state: state} do
       conn =
-        get(conn, ~p"/auth/oidc/callback", %{"state" => state, "error" => "access_denied"})
+        conn
+        |> Cookie.SignUpState.put(%Cookie.SignUpState{state: state, verifier: "test-verifier"})
+        |> recycle()
+        |> get(~p"/auth/oidc/callback", %{"state" => state, "error" => "access_denied"})
 
       assert redirected_to(conn) == "/sign_up"
       assert flash(conn, :error) == "Google sign-in was cancelled. Please try again."
+      assert conn.resp_cookies["sign_up_oidc"].max_age == 0
+    end
+
+    test "never shows the provider's error description", %{conn: conn, state: state} do
+      conn =
+        conn
+        |> Cookie.SignUpState.put(%Cookie.SignUpState{state: state, verifier: "test-verifier"})
+        |> recycle()
+        |> get(~p"/auth/oidc/callback", %{
+          "state" => state,
+          "error" => "server_error",
+          "error_description" => "Call +1-555-0100 to restore your account"
+        })
+
+      assert redirected_to(conn) == "/sign_up"
+      assert flash(conn, :error) == "Google sign-in failed. Please try again."
+    end
+
+    test "rejects an error callback without the browser-bound cookie", %{
+      conn: conn,
+      state: state
+    } do
+      conn =
+        get(conn, ~p"/auth/oidc/callback", %{
+          "state" => state,
+          "error" => "server_error",
+          "error_description" => "Call +1-555-0100 to restore your account"
+        })
+
+      assert redirected_to(conn) == "/sign_up"
+      assert flash(conn, :error) == "Your sign-up session has timed out. Please try again."
     end
   end
 
