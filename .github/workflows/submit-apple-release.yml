@@ -23,7 +23,7 @@ concurrency:
 env:
   ASC_APP_ID: "6443661826"
   ASC_PLATFORM: ${{ inputs.platform == 'iOS' && 'IOS' || 'MAC_OS' }}
-  ASC_KEY_TYPE: individual
+  ASC_KEY_TYPE: team
   ASC_STRICT_AUTH: "1"
   ASC_TELEMETRY_DISABLED: "1"
   # mark:next-apple-version
@@ -138,7 +138,8 @@ jobs:
         working-directory: swift/apple
         env:
           ASC_KEY_ID: ${{ secrets.APPLE_APP_STORE_CONNECT_APP_MANAGER_API_KEY_ID }}
-          ASC_PRIVATE_KEY_B64: ${{ secrets.APPLE_APP_STORE_CONNECT_APP_MANAGER_API_KEY }}
+          ASC_ISSUER_ID: ${{ secrets.APPLE_APP_STORE_CONNECT_ISSUER_ID }}
+          ASC_PRIVATE_KEY: ${{ secrets.APPLE_APP_STORE_CONNECT_APP_MANAGER_API_KEY }}
         run: |
           version="${RELEASE_NAME#apple-client-}"
           target=$(asc versions list --app "$ASC_APP_ID" --version "$version" --platform "$ASC_PLATFORM" --output json)
@@ -150,6 +151,7 @@ jobs:
               --app "$ASC_APP_ID" \
               --version "$version" \
               --platform "$ASC_PLATFORM" \
+              --release-type MANUAL \
               --copy-metadata-from "$source"
           fi
           source ../../scripts/upload/apple-version.sh
@@ -161,7 +163,8 @@ jobs:
         working-directory: swift/apple
         env:
           ASC_KEY_ID: ${{ secrets.APPLE_APP_STORE_CONNECT_APP_MANAGER_API_KEY_ID }}
-          ASC_PRIVATE_KEY_B64: ${{ secrets.APPLE_APP_STORE_CONNECT_APP_MANAGER_API_KEY }}
+          ASC_ISSUER_ID: ${{ secrets.APPLE_APP_STORE_CONNECT_ISSUER_ID }}
+          ASC_PRIVATE_KEY: ${{ secrets.APPLE_APP_STORE_CONNECT_APP_MANAGER_API_KEY }}
         run: |
           version="${RELEASE_NAME#apple-client-}"
           if [[ "$ASC_PLATFORM" == IOS ]]; then
@@ -203,7 +206,8 @@ jobs:
         working-directory: swift/apple
         env:
           ASC_KEY_ID: ${{ secrets.APPLE_APP_STORE_CONNECT_APP_MANAGER_API_KEY_ID }}
-          ASC_PRIVATE_KEY_B64: ${{ secrets.APPLE_APP_STORE_CONNECT_APP_MANAGER_API_KEY }}
+          ASC_ISSUER_ID: ${{ secrets.APPLE_APP_STORE_CONNECT_ISSUER_ID }}
+          ASC_PRIVATE_KEY: ${{ secrets.APPLE_APP_STORE_CONNECT_APP_MANAGER_API_KEY }}
           BUILD_NUMBER: ${{ steps.release.outputs.build_number }}
         run: |
           source ../../scripts/upload/apple-version.sh
@@ -231,6 +235,20 @@ jobs:
             echo "build_id=$build_id"
             echo "phase=$version_phase"
           } >> "$GITHUB_OUTPUT"
+
+      - name: Check App Store submission readiness
+        if: steps.build.outputs.phase != 'submitted'
+        working-directory: swift/apple
+        env:
+          ASC_KEY_ID: ${{ secrets.APPLE_APP_STORE_CONNECT_APP_MANAGER_API_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.APPLE_APP_STORE_CONNECT_ISSUER_ID }}
+          ASC_PRIVATE_KEY: ${{ secrets.APPLE_APP_STORE_CONNECT_APP_MANAGER_API_KEY }}
+        run: |
+          asc validate \
+            --app "$ASC_APP_ID" \
+            --version "${RELEASE_NAME#apple-client-}" \
+            --platform "$ASC_PLATFORM" \
+            --output table
 
       - name: Summarize the candidate
         env:
@@ -319,7 +337,8 @@ jobs:
         working-directory: swift/apple
         env:
           ASC_KEY_ID: ${{ secrets.APPLE_APP_STORE_CONNECT_APP_MANAGER_API_KEY_ID }}
-          ASC_PRIVATE_KEY_B64: ${{ secrets.APPLE_APP_STORE_CONNECT_APP_MANAGER_API_KEY }}
+          ASC_ISSUER_ID: ${{ secrets.APPLE_APP_STORE_CONNECT_ISSUER_ID }}
+          ASC_PRIVATE_KEY: ${{ secrets.APPLE_APP_STORE_CONNECT_APP_MANAGER_API_KEY }}
           BUILD_ID: ${{ needs.prepare.outputs.build_id }}
         run: |
           source ../../scripts/upload/apple-version.sh
