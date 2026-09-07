@@ -53,15 +53,15 @@ from landing in the release while you execute this process.
    uploads the iOS and macOS builds and updates the GitHub draft.
 1. After QA passes, run the
    [`Submit Apple release`](../.github/workflows/submit-apple-release.yml)
-   workflow from `main`.
-1. When `stage` finishes, inspect both versions through the pending
+   workflow from `main`, selecting iOS or macOS.
+1. When `prepare` finishes, inspect the selected version through the pending
    `app-store-review` deployment link. Cancel the workflow if another build is
-   needed, or approve it to submit both versions with manual release.
+   needed, or approve it to submit that version with manual release. Repeat for
+   the other platform when ready.
 
-Required repository secrets:
-
-- `APPLE_APP_STORE_CONNECT_MARKETING_API_KEY_ID`
-- `APPLE_APP_STORE_CONNECT_MARKETING_API_KEY`
+The draft must come from a Swift run after this workflow was introduced.
+Rerun a failed submission job after fixing the error; an already-submitted build
+is left unchanged. A fresh Swift dispatch generates a new build number.
 
 Required secrets in the `main`-only `app-store` GitHub Environment:
 
