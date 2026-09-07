@@ -153,12 +153,11 @@
       return app
     }
 
-    /// Clicks the status item and hands back its open menu, once the menu lists
-    /// the mocked resources.
+    /// Clicks the status item and hands back its open menu.
     ///
-    /// Opened twice: the first time the store is still populating, and a title set
-    /// on a showing menu is drawn a shade differently from one drawn as the menu
-    /// opens. The second opening draws every row in one pass.
+    /// The rows reach the accessibility tree before the menu is ever shown, so the
+    /// store's resources are waited for first: a title set on a menu that is
+    /// already showing is drawn a shade differently from one drawn as it opens.
     private func openMenu(of app: XCUIApplication) throws -> XCUIElement {
       let item = app.statusItems.firstMatch
 
@@ -170,30 +169,20 @@
 
       let row = app.menuItems["Office network"]
 
-      item.click()
-
-      guard row.waitForExistence(timeout: 10) else {
-        print("The menu did not open; the app presents:\n\(app.debugDescription)")
+      guard row.waitForExistence(timeout: 30) else {
+        print("The menu never listed the resources; the app presents:\n\(app.debugDescription)")
 
         throw AppScreenshotError.menuDidNotOpen
       }
 
-      app.typeKey(.escape, modifierFlags: [])
-      _ = row.waitForNonExistence(timeout: 5)
       item.click()
-
-      guard row.waitForExistence(timeout: 10) else {
-        print("The menu did not open again; the app presents:\n\(app.debugDescription)")
-
-        throw AppScreenshotError.menuDidNotOpen
-      }
 
       // The menu is reported as the status item's child on some releases and as
       // the app's on others.
       let candidates = [item.menus.firstMatch, app.menus.firstMatch]
 
-      guard let menu = candidates.first(where: { $0.exists }) else {
-        print("No menu element found; the app presents:\n\(app.debugDescription)")
+      guard let menu = candidates.first(where: { $0.waitForExistence(timeout: 10) }) else {
+        print("The menu did not open; the app presents:\n\(app.debugDescription)")
 
         throw AppScreenshotError.menuDidNotOpen
       }
