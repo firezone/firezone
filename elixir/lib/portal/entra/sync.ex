@@ -120,7 +120,9 @@ defmodule Portal.Entra.Sync do
 
   @doc """
   Walks the members of one group, nested groups included, and upserts their
-  identities and memberships. Shared by the full sync and the webhook worker.
+  identities and memberships. The nesting it found and the memberships it did
+  not find are committed together. Shared by the full sync and the webhook
+  worker.
 
   `fetched` holds the members of every group read so far in this sync, so a
   group nested under several roots is read from Graph once. Pass the returned
@@ -138,7 +140,15 @@ defmodule Portal.Entra.Sync do
     {nested_ids, fetched} =
       walk(directory, access_token, synced_at, root, [group_id], MapSet.new([group_id]), fetched)
 
-    Database.update_nested_groups(directory.account_id, directory.id, group_id, nested_ids)
+    {:ok, deleted} =
+      Database.commit_group_walk(directory.account_id, directory.id, group_id, nested_ids, synced_at)
+
+    Logger.debug("Committed group walk",
+      entra_directory_id: directory.id,
+      group_id: group_id,
+      deleted_memberships: deleted
+    )
+
     fetched
   end
 
@@ -848,15 +858,19 @@ defmodule Portal.Entra.Sync do
       changeset |> Safe.unscoped() |> Safe.update()
     end
 
-    def update_nested_groups(account_id, directory_id, group_idp_id, nested_ids) do
-      from(g in Portal.Group,
-        where: g.account_id == ^account_id,
-        where: g.directory_id == ^directory_id,
-        where: g.idp_id == ^group_idp_id,
-        where: g.nested_group_idp_ids != ^nested_ids
-      )
-      |> Safe.unscoped()
-      |> Safe.update_all(set: [nested_group_idp_ids: nested_ids])
+    # The nesting and the prune land together: a crash between them would
+    # leave a parent that no longer names the child whose stale members it
+    # still holds, and no notification could reach that parent again.
+    def commit_group_walk(account_id, directory_id, group_idp_id, nested_ids, synced_at) do
+      Safe.unscoped()
+      |> Safe.transaction(fn ->
+        update_nested_groups(account_id, directory_id, group_idp_id, nested_ids)
+
+        {deleted, _} =
+          delete_unsynced_group_memberships(account_id, directory_id, group_idp_id, synced_at)
+
+        {:ok, deleted}
+      end)
     end
 
     def parents_of(account_id, directory_id, group_idp_id) do
@@ -1329,22 +1343,9 @@ defmodule Portal.Entra.Sync do
     end
 
     def delete_unsynced_memberships(account_id, directory_id, synced_at) do
-      query =
-        from(m in Portal.Membership,
-          join: g in Portal.Group,
-          on: m.group_id == g.id and m.account_id == g.account_id,
-          where: g.account_id == ^account_id,
-          where: g.directory_id == ^directory_id,
-          where:
-            fragment(
-              "NOT EXISTS (SELECT 1 FROM membership_sync_states mss WHERE mss.membership_id = ? AND mss.account_id = ? AND mss.synced_at >= ?)",
-              m.id,
-              m.account_id,
-              ^synced_at
-            )
-        )
-
-      query |> Safe.unscoped() |> Safe.delete_all()
+      unsynced_memberships(account_id, directory_id, synced_at)
+      |> Safe.unscoped()
+      |> Safe.delete_all()
     end
 
     def delete_actors_without_identities(account_id, directory_id) do
@@ -1364,6 +1365,39 @@ defmodule Portal.Entra.Sync do
 
       query |> Safe.unscoped() |> Safe.delete_all()
     end
-  end
 
+    defp update_nested_groups(account_id, directory_id, group_idp_id, nested_ids) do
+      from(g in Portal.Group,
+        where: g.account_id == ^account_id,
+        where: g.directory_id == ^directory_id,
+        where: g.idp_id == ^group_idp_id,
+        where: g.nested_group_idp_ids != ^nested_ids
+      )
+      |> Safe.unscoped()
+      |> Safe.update_all(set: [nested_group_idp_ids: nested_ids])
+    end
+
+    defp delete_unsynced_group_memberships(account_id, directory_id, group_idp_id, synced_at) do
+      unsynced_memberships(account_id, directory_id, synced_at)
+      |> where([_m, g], g.idp_id == ^group_idp_id)
+      |> Safe.unscoped()
+      |> Safe.delete_all()
+    end
+
+    defp unsynced_memberships(account_id, directory_id, synced_at) do
+      from(m in Portal.Membership,
+        join: g in Portal.Group,
+        on: m.group_id == g.id and m.account_id == g.account_id,
+        where: g.account_id == ^account_id,
+        where: g.directory_id == ^directory_id,
+        where:
+          fragment(
+            "NOT EXISTS (SELECT 1 FROM membership_sync_states mss WHERE mss.membership_id = ? AND mss.account_id = ? AND mss.synced_at >= ?)",
+            m.id,
+            m.account_id,
+            ^synced_at
+          )
+      )
+    end
+  end
 end

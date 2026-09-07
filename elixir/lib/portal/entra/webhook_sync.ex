@@ -188,24 +188,8 @@ defmodule Portal.Entra.WebhookSync do
 
   defp resync_group(directory, access_token, synced_at, group_id, group_name) do
     Entra.Sync.batch_upsert_groups(directory, synced_at, [%{idp_id: group_id, name: group_name}])
-
     Entra.Sync.sync_group_members(directory, access_token, synced_at, group_id, group_name)
-
-    case Database.get_group(directory.account_id, directory.id, group_id) do
-      nil ->
-        :ok
-
-      group ->
-        {deleted, _} = Database.delete_unsynced_group_memberships(group, synced_at)
-
-        Logger.debug("Resynced group from Entra change notification",
-          entra_directory_id: directory.id,
-          group_id: group_id,
-          deleted_memberships: deleted
-        )
-
-        :ok
-    end
+    :ok
   end
 
   # Parents come from the nesting recorded at sync time, not from Graph.
@@ -303,22 +287,6 @@ defmodule Portal.Entra.WebhookSync do
         where: m.account_id == ^account_id,
         where: m.actor_id == ^actor_id,
         where: g.directory_id == ^directory_id
-      )
-      |> Safe.unscoped()
-      |> Safe.delete_all()
-    end
-
-    def delete_unsynced_group_memberships(group, synced_at) do
-      from(m in Portal.Membership,
-        where: m.account_id == ^group.account_id,
-        where: m.group_id == ^group.id,
-        where:
-          fragment(
-            "NOT EXISTS (SELECT 1 FROM membership_sync_states mss WHERE mss.membership_id = ? AND mss.account_id = ? AND mss.synced_at >= ?)",
-            m.id,
-            m.account_id,
-            ^synced_at
-          )
       )
       |> Safe.unscoped()
       |> Safe.delete_all()

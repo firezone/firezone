@@ -19,6 +19,8 @@ defmodule Portal.Entra.WebhookSyncTest do
   alias Portal.Membership
   alias Portal.Microsoft.Graph.APIClient
 
+  @boundaries ["begin", "commit", "rollback"]
+
   setup do
     account = account_fixture(features: %{idp_sync: true})
     directory = entra_directory_fixture(account: account, sync_all_groups: false)
@@ -293,6 +295,40 @@ defmodule Portal.Entra.WebhookSyncTest do
       assert Repo.get_by!(Group, id: parent.id).nested_group_idp_ids == []
     end
 
+    test "records the nesting and prunes stale members in one transaction",
+         %{account: account, directory: directory, base_directory: base_directory} = ctx do
+      parent =
+        group_fixture(
+          account: account,
+          directory: base_directory,
+          idp_id: "parent",
+          nested_group_idp_ids: ["child"]
+        )
+
+      carol = directory_identity(ctx, "user-carol")
+      carol_actor = Actor |> Repo.get_by!(id: carol.actor_id) |> Repo.preload(:account)
+      membership_fixture(actor: carol_actor, group: parent)
+
+      stub_graph(groups: %{"parent" => {"Parent", []}})
+
+      queries =
+        capture_queries(fn ->
+          assert :ok = perform_job(WebhookSync, group_args(directory, "child", "deleted"))
+        end)
+
+      {before_nesting, from_nesting} =
+        Enum.split_while(queries, &(not String.contains?(&1, ~s(SET "nested_group_idp_ids"))))
+
+      {between, from_prune} =
+        from_nesting
+        |> tl()
+        |> Enum.split_while(&(not String.starts_with?(&1, ~s(DELETE FROM "memberships"))))
+
+      assert from_prune != []
+      assert before_nesting |> Enum.reverse() |> Enum.find(&(&1 in @boundaries)) == "begin"
+      refute Enum.any?(between, &(&1 in @boundaries))
+    end
+
     test "walks nested groups, records them, and flattens their users into the group",
          %{account: account, directory: directory, base_directory: base_directory} do
       group = group_fixture(account: account, directory: base_directory, idp_id: "group-1")
@@ -466,4 +502,36 @@ defmodule Portal.Entra.WebhookSyncTest do
   end
 
   defp json_or_404(conn, body), do: Req.Test.json(conn, body)
+
+  defp capture_queries(fun) do
+    test_pid = self()
+    handler_id = "queries-#{System.unique_integer([:positive])}"
+
+    :telemetry.attach(
+      handler_id,
+      [:portal, :repo, :query],
+      fn _event, _measurements, %{query: query}, _config ->
+        if self() == test_pid do
+          send(test_pid, {:query, query})
+        end
+      end,
+      nil
+    )
+
+    try do
+      fun.()
+    after
+      :telemetry.detach(handler_id)
+    end
+
+    collect_queries([])
+  end
+
+  defp collect_queries(acc) do
+    receive do
+      {:query, query} -> collect_queries([query | acc])
+    after
+      0 -> Enum.reverse(acc)
+    end
+  end
 end
