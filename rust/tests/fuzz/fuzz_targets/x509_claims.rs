@@ -10,7 +10,9 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use arbitrary::Arbitrary;
 use libfuzzer_sys::fuzz_target;
 use sha2::{Digest as _, Sha256};
-use x509_claims::{Claim, ParsedCertificate, ValidationError, parse_certificate};
+use x509_claims::{
+    Claim, DEVICE_CERTIFICATE_COMMON_NAME, ParsedCertificate, ValidationError, parse_certificate,
+};
 
 fuzz_target!(|input: Input| {
     let Some(certificate) = parse_certificate(input.der, instant(input.seconds_since_epoch)) else {
@@ -31,6 +33,7 @@ fuzz_target!(|input: Input| {
     assert_fingerprint_covers_the_input(&certificate, input.der);
     assert_serial_is_bounded(&certificate);
     assert_detail_fields_are_labelled(&certificate);
+    assert_device_certificate_follows_from_the_common_name(&certificate);
     assert_parsing_is_deterministic(&certificate, input.der, input.seconds_since_epoch);
 });
 
@@ -189,6 +192,17 @@ fn assert_detail_fields_are_labelled(certificate: &ParsedCertificate) {
     for field in certificate.detail_fields() {
         assert!(!field.label.is_empty());
     }
+}
+
+/// Asserts that being the device certificate follows from the subject common name and nothing else.
+///
+/// The desktop clients pick the certificate out of their keystores by that name, so a certificate
+/// the parser judged differently would be used by one platform and not another.
+fn assert_device_certificate_follows_from_the_common_name(certificate: &ParsedCertificate) {
+    assert_eq!(
+        certificate.is_device_certificate(),
+        certificate.subject_cn.as_deref() == Some(DEVICE_CERTIFICATE_COMMON_NAME)
+    );
 }
 
 /// Asserts that parsing is a function of the DER and the instant alone.
