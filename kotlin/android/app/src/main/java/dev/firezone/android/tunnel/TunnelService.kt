@@ -15,6 +15,7 @@ import android.os.Binder
 import android.os.Build
 import android.os.Bundle
 import android.os.IBinder
+import android.provider.Settings
 import com.google.android.gms.tasks.Tasks
 import com.google.firebase.installations.FirebaseInstallations
 import com.squareup.moshi.Moshi
@@ -567,12 +568,17 @@ class TunnelService : VpnService() {
     }
 
     private fun getDeviceName(): String {
-        val deviceName = appRestrictions.getString("deviceName")
-        return if (deviceName.isNullOrBlank() || deviceName == "null") {
-            Build.MODEL
-        } else {
-            deviceName
+        val managedName = appRestrictions.getString("deviceName")
+        if (!managedName.isNullOrBlank() && managedName != "null") {
+            return managedName
         }
+
+        val userName = Settings.Global.getString(contentResolver, Settings.Global.DEVICE_NAME)
+        if (!userName.isNullOrBlank()) {
+            return userName
+        }
+
+        return Build.MODEL
     }
 
     sealed class TunnelCommand {
