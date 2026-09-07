@@ -6,11 +6,11 @@
 //! drops the icon — so it uses the `tray_ksni` backend instead.
 
 use anyhow::{Context as _, Result};
-use tauri::AppHandle;
+use tauri::{AppHandle, Manager as _, menu::ContextMenu as _};
 
 use super::{
-    AppState, Entry, Event, Icon, Image, Item, Menu, MenuItemIcon, TOOLTIP, compose_icon,
-    compositor, icon_from_state,
+    AppState, ConnlibState, Entry, Event, Icon, Image, Item, Menu, MenuItemIcon, TOOLTIP,
+    compose_icon, compositor, icon_from_state,
 };
 
 type IsMenuItem = dyn tauri::menu::IsMenuItem<tauri::Wry>;
@@ -85,6 +85,8 @@ impl Tray {
 
     pub(crate) fn update(&mut self, state: AppState) {
         let new_icon = icon_from_state(&state);
+        let connected =
+            matches!(&state.connlib, ConnlibState::SignedIn(s) if !s.resources.is_empty());
 
         let menu = state.into_menu();
         let menu_clone = menu.clone();
@@ -95,10 +97,17 @@ impl Tray {
             tracing::debug!("Skipping redundant menu update");
         } else {
             self.run_on_main_thread(move || {
-                logging::unwrap_or_debug!(
-                    set_menu(handle, &app, &menu),
-                    "Error while updating tray menu: {}"
-                );
+                let menu = match set_menu(handle, &app, &menu) {
+                    Ok(menu) => menu,
+                    Err(e) => {
+                        tracing::debug!("Error while updating tray menu: {e:#}");
+                        return;
+                    }
+                };
+
+                if connected && super::take_popup_on_connect() {
+                    logging::unwrap_or_debug!(popup(&app, menu), "Failed to pop up tray menu: {}");
+                }
             });
         }
         self.set_icon(new_icon);
@@ -135,15 +144,35 @@ impl Tray {
     }
 }
 
-fn set_menu(handle: tauri::tray::TrayIcon, app: &AppHandle, menu: &Menu) -> Result<()> {
+fn set_menu(handle: tauri::tray::TrayIcon, app: &AppHandle, menu: &Menu) -> Result<TauriMenu> {
     let menu = build_menu(app, menu).context("Failed to build tray menu")?;
 
     handle
         .set_tooltip(Some(TOOLTIP))
         .context("Failed to set tooltip")?;
     handle
-        .set_menu(Some(menu))
+        .set_menu(Some(menu.clone()))
         .context("Failed to set tray menu")?;
+
+    Ok(menu)
+}
+
+/// Pops `menu` up at the cursor, anchored to the (hidden) main window, for screenshots.
+fn popup(app: &AppHandle, menu: TauriMenu) -> Result<()> {
+    let window = app
+        .get_webview_window("main")
+        .context("Couldn't get handle to window")?
+        .as_ref()
+        .window();
+
+    // `popup` runs `TrackPopupMenu` on the main thread and only returns once the
+    // menu closes, so it has to be requested from another thread.
+    std::thread::spawn(move || {
+        logging::unwrap_or_debug!(
+            menu.popup(window).context("Failed to pop up tray menu"),
+            "{}"
+        );
+    });
 
     Ok(())
 }

@@ -114,6 +114,40 @@ jobs:
         run: cargo run -p gui-smoke-test
         timeout-minutes: 4
 
+  # Photographs the tray menu of a client connected to the mock Tunnel service, with a
+  # resource submenu expanded. Needs a real desktop, which the Windows runners have.
+  tray-screenshot:
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-node
+        with:
+          npmjs-token: ${{ secrets.NPMJS_TOKEN }}
+          lockfile-dir: ./rust/gui-client
+      - uses: ./.github/actions/setup-rust-stable
+      - uses: ./.github/actions/setup-rust-sccache
+        with:
+          azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
+      - uses: ./.github/actions/setup-tauri-v2
+        timeout-minutes: 15
+        with:
+          runtime: true
+      - run: pnpm install
+      - run: pnpm vite build
+      - name: Build client
+        run: cargo build -p firezone-gui-client --bin firezone-gui-client
+      - name: Capture the tray menu
+        shell: pwsh
+        run: ./scripts/capture-tray-menu.ps1 -Exe ../target/debug/firezone-gui-client.exe -Output screenshots/tray-menu-light.png
+        timeout-minutes: 5
+      # Uploaded even when the capture went wrong, so the result can be inspected.
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: gui-client-tray-screenshots
+          path: rust/gui-client/screenshots/tray-*.png
+          if-no-files-found: ignore
+
   build-gui:
     name: build-gui-${{ matrix.runs-on }}
     needs: update-release-draft

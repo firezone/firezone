@@ -8,6 +8,7 @@
 use compositor::Image;
 use connlib_model::{ConnectedDeviceView, ResourceId, ResourceStatus, ResourceView};
 use std::collections::HashSet;
+use std::sync::atomic::{AtomicBool, Ordering};
 use url::Url;
 
 use crate::updates::Release;
@@ -74,6 +75,24 @@ const DISABLE: &str = "Disable this resource";
 const ENABLE: &str = "Enable this resource";
 
 const TOOLTIP: &str = "Firezone";
+
+/// Whether to pop the menu up on screen once the client is connected, so CI can photograph it.
+///
+/// Set once at startup via `--popup-tray-menu`. Debug builds only.
+static POPUP_ON_CONNECT: AtomicBool = AtomicBool::new(false);
+
+/// Set [`POPUP_ON_CONNECT`].
+///
+/// Call once at process startup, before the controller starts.
+pub fn popup_on_connect() {
+    POPUP_ON_CONNECT.store(true, Ordering::Relaxed);
+}
+
+/// Clears [`POPUP_ON_CONNECT`] and returns whether it was set, so the menu pops up only once.
+#[cfg(not(target_os = "linux"))]
+fn take_popup_on_connect() -> bool {
+    POPUP_ON_CONNECT.swap(false, Ordering::Relaxed)
+}
 
 /// Composes the tray icon's PNG layers into a single RGBA image.
 ///

@@ -106,6 +106,11 @@ fn try_main(cli: Cli, rt: &Runtime, log_guard: &mut Option<LogGuard>) -> Result<
         firezone_gui_client::mock_tunnel::enable();
     }
 
+    #[cfg(debug_assertions)]
+    if cli.popup_tray_menu {
+        firezone_gui_client::gui::system_tray::popup_on_connect();
+    }
+
     if cli.test_error_dialog {
         dialog::error("Dialogs are working!")?;
     }
@@ -343,6 +348,12 @@ struct Cli {
     #[cfg(debug_assertions)]
     #[arg(long, hide = true)]
     mock_tunnel: bool,
+
+    /// Pop the tray menu up on screen once connected, so CI can photograph it
+    /// without clicking the notification area. Debug builds only.
+    #[cfg(debug_assertions)]
+    #[arg(long, hide = true)]
+    popup_tray_menu: bool,
 }
 
 impl Cli {
