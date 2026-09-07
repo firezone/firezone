@@ -26,6 +26,7 @@ import dev.firezone.android.core.Telemetry
 import dev.firezone.android.core.data.ManagedConfigurationSource
 import dev.firezone.android.core.data.Repository
 import dev.firezone.android.core.data.ResourceState
+import dev.firezone.android.core.data.TokenStore
 import dev.firezone.android.core.data.isEnabled
 import dev.firezone.android.core.data.model.Config
 import dev.firezone.android.core.data.model.ManagedConfiguration
@@ -89,6 +90,9 @@ class TunnelService : VpnService() {
 
     @Inject
     internal lateinit var managedConfigurationSource: ManagedConfigurationSource
+
+    @Inject
+    internal lateinit var tokenStore: TokenStore
 
     @Inject
     internal lateinit var moshi: Moshi
@@ -419,7 +423,7 @@ class TunnelService : VpnService() {
         }
 
     private fun createConnection(managedConfiguration: ManagedConfiguration): ConnectionParameters? {
-        val credential = managedConfiguration.resolveSessionCredential(repo.getTokenSync())
+        val credential = managedConfiguration.resolveSessionCredential(tokenStore.get())
         val certificateAlias = repo.getX509CertificateAliasSync(applicationRestrictions.get())
 
         if (credential == null) {
@@ -471,6 +475,13 @@ class TunnelService : VpnService() {
                         deviceSerial = null,
                         identifierForVendor = null,
                     )
+
+                // An administrator who requires a certificate wants no session without one.
+                if (connection.certificateAlias == null && repo.isX509CertificateRequired(applicationRestrictions.get())) {
+                    throw X509IdentityException(
+                        "Your administrator requires a device certificate, and none has been released to Firezone yet.",
+                    )
+                }
 
                 // The KeyChain blocks on a system service and connlib reads the identity while
                 // it constructs the session, so load it before we get there.
@@ -910,15 +921,17 @@ class TunnelService : VpnService() {
                                 }
 
                                 is Event.Disconnected -> {
+                                    Log.i(TAG, "Disconnected by connlib: ${event.error.logMessage()}")
+
                                     if (
                                         connection.credential.origin.shouldClearSavedCredentials(
                                             event.error.requiresSignIn(),
                                         )
                                     ) {
-                                        repo.clearToken()
+                                        tokenStore.clear()
                                     }
 
-                                    stopReason = StopReason.Disconnected(event.error.message())
+                                    stopReason = StopReason.Disconnected(event.error.userMessage())
                                 }
 
                                 is Event.GatewayVersionMismatch -> {

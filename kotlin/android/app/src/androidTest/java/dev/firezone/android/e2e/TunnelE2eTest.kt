@@ -14,6 +14,7 @@ import androidx.test.core.app.ApplicationProvider
 import dagger.hilt.android.testing.HiltAndroidRule
 import dagger.hilt.android.testing.HiltAndroidTest
 import dev.firezone.android.core.data.Repository
+import dev.firezone.android.core.data.TokenStore
 import dev.firezone.android.tunnel.ACCOUNT_SLUG
 import dev.firezone.android.tunnel.ACTOR_NAME
 import dev.firezone.android.tunnel.FakeDisconnectError
@@ -58,6 +59,9 @@ class TunnelE2eTest {
 
     @Inject
     lateinit var repo: Repository
+
+    @Inject
+    internal lateinit var tokenStore: TokenStore
 
     @Inject
     lateinit var preferences: SharedPreferences
@@ -171,11 +175,11 @@ class TunnelE2eTest {
         awaitSignInScreen()
         assertEquals("the portal hung up", awaitDisconnectedNotification())
         // The token is still good, so the disconnect must not have discarded it.
-        assertEquals(TOKEN, repo.getTokenSync())
+        assertEquals(TOKEN, tokenStore.get())
     }
 
     @Test
-    fun aDisconnectErrorThatRequiresSigningInAgainAlsoDiscardsTheToken() {
+    fun aDisconnectErrorThatRequiresSigningInAgainDiscardsToken() {
         val session = signInAndConnect()
         launchApp()
         awaitSessionScreen()
@@ -184,7 +188,22 @@ class TunnelE2eTest {
 
         awaitSignInScreen()
         assertEquals("your session expired", awaitDisconnectedNotification())
-        assertNull(repo.getTokenSync())
+        assertNull(tokenStore.get())
+    }
+
+    @Test
+    fun signingOutDiscardsToken() {
+        val session = signInAndConnect()
+        session.emit(Event.ConnectedToPortal(accountSlug = ACCOUNT_SLUG, actorName = ACTOR_NAME))
+        launchApp()
+
+        awaitText("J")
+        composeRule.onNodeWithText("J").performClick()
+        awaitText("Sign Out")
+        composeRule.onNodeWithText("Sign Out").performClick()
+
+        await("the token to be cleared") { tokenStore.get() == null }
+        assertNull(tokenStore.get())
     }
 
     @Test
@@ -218,12 +237,7 @@ class TunnelE2eTest {
         return awaitSession()
     }
 
-    private fun signIn() {
-        runBlocking {
-            repo.saveNonceAndStateSync(nonce = NONCE, state = STATE)
-            repo.saveAuthCallbackIfStateValid(state = STATE, fragment = FRAGMENT)
-        }
-    }
+    private fun signIn() = tokenStore.save(TOKEN)
 
     private fun awaitSession(): FakeSession = runBlocking { withTimeout(TIMEOUT_MS) { FakeSessionFactory.awaitSession() } }
 
@@ -277,10 +291,7 @@ class TunnelE2eTest {
             .getSystemService(NotificationManager::class.java)
 
     private companion object {
-        const val NONCE = "stored-"
-        const val FRAGMENT = "token"
-        const val TOKEN = NONCE + FRAGMENT
-        const val STATE = "stored-state"
+        const val TOKEN = "stored-token"
         const val TIMEOUT_MS = 20_000L
     }
 }

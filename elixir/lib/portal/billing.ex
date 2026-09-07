@@ -738,17 +738,17 @@ defmodule Portal.Billing do
     end
 
     def count_1m_active_users_for_account(%Account{} = account) do
-      from(c in Device, as: :clients)
-      |> where([clients: c], c.type == :client)
-      |> where([clients: c], c.account_id == ^account.id)
-      |> where([clients: c], c.last_seen_at > ago(1, "month"))
-      |> join(:inner, [clients: c], a in Actor,
-        on: c.actor_id == a.id and c.account_id == a.account_id,
+      from(d in Device, as: :devices)
+      |> where([devices: d], d.type == :client)
+      |> where([devices: d], d.account_id == ^account.id)
+      |> where([devices: d], d.last_seen_at > ago(1, "month"))
+      |> join(:inner, [devices: d], a in Actor,
+        on: d.actor_id == a.id and d.account_id == a.account_id,
         as: :actor
       )
       |> where([actor: a], a.is_disabled == false)
       |> where([actor: a], a.type in [:account_user, :account_admin_user])
-      |> select([clients: c], c.actor_id)
+      |> select([devices: d], d.actor_id)
       |> distinct(true)
       |> Safe.unscoped()
       |> Safe.aggregate(:count)

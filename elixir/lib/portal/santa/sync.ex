@@ -45,7 +45,6 @@ defmodule Portal.Santa.Sync do
     {:santa_version, "santaVersion"},
     {:santanetd_version, "santanetdVersion"},
     {:last_seen_client_mode, "lastSeenClientMode"},
-    {:last_preflight_ip, "lastPreflightIp"},
     {:configured_client_mode, "configuredClientMode"},
     {:temporary_admin_mode_user, "temporaryAdminModeUser"}
   ]
@@ -55,8 +54,6 @@ defmodule Portal.Santa.Sync do
     {:tags_locked, "tagsLocked"},
     {:tags_truncated, "tagsTruncated"}
   ]
-
-  @integer_fields [{:sip_status, "sipStatus"}]
 
   @string_list_fields [
     {:primary_user_groups, "primaryUserGroups"},
@@ -168,9 +165,10 @@ defmodule Portal.Santa.Sync do
       posture_provider_id: provider.id,
       synced_at: synced_at
     }
+    |> Map.put(:last_preflight_ip, ip_or_nil(host["lastPreflightIp"]))
+    |> Map.put(:sip_status, sip_status(host))
     |> take(host, @text_fields, &nil_if_blank/1)
-    |> take(host, @boolean_fields, &boolean_or_nil/1)
-    |> take(host, @integer_fields, &integer_or_nil/1)
+    |> take(host, @boolean_fields, &boolean_or_false/1)
     |> take(host, @string_list_fields, &string_list_or_nil/1)
     |> take(host, @datetime_fields, &parse_datetime/1)
   end
@@ -185,11 +183,33 @@ defmodule Portal.Santa.Sync do
   defp nil_if_blank(value) when is_binary(value), do: value
   defp nil_if_blank(_value), do: nil
 
-  defp boolean_or_nil(value) when is_boolean(value), do: value
-  defp boolean_or_nil(_value), do: nil
+  # ProtoJSON omits fields at their default, so a missing bool is false and a
+  # missing sipStatus on a Mac is 0, meaning SIP is fully enabled.
+  defp boolean_or_false(value) when is_boolean(value), do: value
+  defp boolean_or_false(_value), do: false
 
-  defp integer_or_nil(value) when is_integer(value), do: value
-  defp integer_or_nil(_value), do: nil
+  defp sip_status(%{"sipStatus" => status}) when is_integer(status), do: status
+  defp sip_status(%{"osType" => "OS_TYPE_MACOS"}), do: 0
+  defp sip_status(_host), do: nil
+
+  # The host proto types the address as bytes, which ProtoJSON base64-encodes.
+  defp ip_or_nil(value) when is_binary(value) do
+    with {:ok, bytes} <- Base.decode64(value),
+         {:ok, ip} <- Portal.Types.IP.cast(bytes_to_address(bytes)) do
+      ip
+    else
+      _ -> nil
+    end
+  end
+
+  defp ip_or_nil(_value), do: nil
+
+  defp bytes_to_address(<<a, b, c, d>>), do: {a, b, c, d}
+
+  defp bytes_to_address(<<a::16, b::16, c::16, d::16, e::16, f::16, g::16, h::16>>),
+    do: {a, b, c, d, e, f, g, h}
+
+  defp bytes_to_address(_bytes), do: nil
 
   defp string_list_or_nil(value) when is_list(value), do: Enum.filter(value, &is_binary/1)
   defp string_list_or_nil(_value), do: nil

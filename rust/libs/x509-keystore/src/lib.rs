@@ -39,16 +39,13 @@ mod unsupported;
 #[cfg(not(any(target_os = "linux", target_os = "windows")))]
 use unsupported as keystore;
 
-/// The subject common name of the certificates Firezone's MDM integrations provision.
-const SUBJECT_COMMON_NAME: &str = "dev.firezone.device-trust";
-
 /// The X.509 client identity the platform keystore holds, if any.
 ///
 /// # Errors
 ///
 /// Returns an error whenever the walk fails; which failures a caller tolerates is its policy.
 pub fn identity() -> Result<Option<Identity>, Error> {
-    keystore::identity(SUBJECT_COMMON_NAME)
+    keystore::identity(x509_claims::DEVICE_CERTIFICATE_COMMON_NAME)
 }
 
 /// A client identity a keystore backend selected.

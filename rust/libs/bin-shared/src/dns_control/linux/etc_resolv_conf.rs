@@ -1,8 +1,7 @@
 use anyhow::{Context, Result, bail};
 use dns_types::DomainName;
 use std::{
-    fs,
-    io::{self, Write},
+    fs, io,
     net::IpAddr,
     path::{Path, PathBuf},
 };
@@ -82,16 +81,7 @@ fn configure_at_paths(
     // - If we crashed, and MAGIC_HEADER is still present, we already called `revert` above.
     // - If we crashed, but the user rewrote the file, our backup is out of date
     // - If we didn't crash, we should have reverted, so the backup is not needed.
-    //
-    // `atomicwrites` handles the fsync and rename-into-place tricks to resist file corruption
-    // if we lose power during the write.
-    let backup_file = atomicwrites::AtomicFile::new(
-        &paths.backup,
-        atomicwrites::OverwriteBehavior::AllowOverwrite,
-    );
-    backup_file
-        .write(|f| f.write_all(text.as_bytes()))
-        .context("Failed to back up `resolv.conf`")?;
+    atomicfs::write(&paths.backup, &text).context("Failed to back up `resolv.conf`")?;
 
     let mut new_resolv_conf = parsed;
 

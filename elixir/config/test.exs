@@ -253,6 +253,21 @@ config :portal, Portal.Crl.Sync,
     plug: {Req.Test, Portal.Crl.Sync}
   ]
 
+config :portal, Portal.OAuth.ClientMetadata,
+  req_opts: [
+    retry: false,
+    plug: {Req.Test, Portal.OAuth.ClientMetadata}
+  ],
+  # Req.Test never connects, but the mandatory protection still resolves before
+  # handing a request to its adapter. Use a known-public answer so metadata
+  # tests can keep descriptive fake hostnames (and localhost origin fixtures).
+  ssrf_protection_opts: [
+    resolver: fn
+      _host, :inet -> {:ok, [{8, 8, 8, 8}]}
+      _host, :inet6 -> {:error, :nxdomain}
+    end
+  ]
+
 config :portal, Portal.Ocsp.Sync,
   req_opts: [
     retry: false,
@@ -318,6 +333,13 @@ config :portal, PortalWeb.RateLimit,
   refill_rate: 100_000,
   capacity: 1_000_000
 
+# MCP controller tests share the loopback source IP, so dedicated limiter tests
+# pass strict values directly while the general suite uses a practically
+# unbounded bucket.
+config :portal, PortalAPI.Plugs.MCPRateLimit,
+  refill_rate: 100_000,
+  capacity: 1_000_000
+
 # The ingestion endpoint defaults to a strict 1 req/s per IP; keep it effectively
 # disabled in general tests (which share localhost) to avoid cross-test 429s.
 # Dedicated rate-limit tests pass strict opts directly to the plug instead.
@@ -373,7 +395,7 @@ config :argon2_elixir, t_cost: 1, m_cost: 8
 
 config :geolix,
   databases: [
-    %{id: :city, adapter: Geolix.Adapter.Fake, data: %{}}
+    %{id: :city, adapter: Portal.Test.GeoAdapter, data: %{}}
   ]
 
 default_assert_receive_timeout = 1_000

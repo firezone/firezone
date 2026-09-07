@@ -1,7 +1,7 @@
 defmodule PortalWeb.Actors.Components do
   use PortalWeb, :component_library
 
-  import PortalWeb.Clients.Components, only: [client_os_icon_name: 1]
+  import PortalWeb.Devices.Components, only: [os_icon_name: 1]
 
   attr :account, :any, required: true
   attr :actor, :any, default: nil
@@ -468,7 +468,7 @@ defmodule PortalWeb.Actors.Components do
                   <div class="flex items-center justify-center w-7 h-7 rounded-full bg-raised border border-border shrink-0">
                     <.icon
                       name={
-                        client_os_icon_name(
+                        os_icon_name(
                           token.last_used_device && token.last_used_device.last_seen_user_agent
                         )
                       }

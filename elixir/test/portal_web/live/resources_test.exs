@@ -111,11 +111,11 @@ defmodule PortalWeb.ResourcesTest do
       account: account,
       actor: actor
     } do
-      client_one = client_fixture(account: account, actor: actor)
-      client_two = client_fixture(account: account, actor: actor)
+      device_one = client_fixture(account: account, actor: actor)
+      device_two = client_fixture(account: account, actor: actor)
 
       _resource =
-        static_device_pool_resource_fixture(account: account, clients: [client_one, client_two])
+        static_device_pool_resource_fixture(account: account, devices: [device_one, device_two])
 
       {:ok, _lv, html} =
         conn
@@ -441,12 +441,12 @@ defmodule PortalWeb.ResourcesTest do
              }
     end
 
-    test "manages static device pool client picker", %{
+    test "manages static device pool device picker", %{
       conn: conn,
       account: account,
       actor: actor
     } do
-      client = client_fixture(account: account, actor: actor, name: "Workstation Alpha")
+      device = client_fixture(account: account, actor: actor, name: "Workstation Alpha")
 
       {:ok, lv, _html} =
         conn
@@ -457,35 +457,35 @@ defmodule PortalWeb.ResourcesTest do
       |> form("[phx-submit='submit_resource_form']", resource: %{type: "static_device_pool"})
       |> render_change()
 
-      assert render_focus(element(lv, "input[name='client_search']")) =~ "Search clients to add"
+      assert render_focus(element(lv, "input[name='device_search']")) =~ "Search devices to add"
 
       html =
         lv
-        |> element("input[name='client_search']")
-        |> render_change(%{"client_search" => "Workstation"})
+        |> element("input[name='device_search']")
+        |> render_change(%{"device_search" => "Workstation"})
 
-      assert html =~ client.name
+      assert html =~ device.name
 
-      html = render_click(lv, "add_client", %{"client_id" => client.id})
-      assert html =~ client.name
+      html = render_click(lv, "add_device", %{"device_id" => device.id})
+      assert html =~ device.name
 
-      html = render_click(lv, "remove_client", %{"client_id" => client.id})
+      html = render_click(lv, "remove_device", %{"device_id" => device.id})
       assert html =~ "Search above to add devices"
 
       lv
-      |> element("input[name='client_search']")
-      |> render_change(%{"client_search" => "Workstation"})
+      |> element("input[name='device_search']")
+      |> render_change(%{"device_search" => "Workstation"})
 
-      html = render_click(lv, "add_client", %{"client_id" => client.id})
-      assert html =~ client.name
+      html = render_click(lv, "add_device", %{"device_id" => device.id})
+      assert html =~ device.name
 
       assert has_element?(
                lv,
-               "button[phx-click='remove_client'][phx-value-client_id='#{client.id}']"
+               "button[phx-click='remove_device'][phx-value-device_id='#{device.id}']"
              )
     end
 
-    test "client picker search surfaces online clients ahead of the result limit", %{
+    test "device picker search surfaces online devices ahead of the result limit", %{
       account: account,
       actor: actor
     } do
@@ -495,14 +495,14 @@ defmodule PortalWeb.ResourcesTest do
         client_fixture(account: account, actor: actor, name: "Bulk Offline #{i}")
       end
 
-      online_client = client_fixture(account: account, actor: actor, name: "Bulk Online")
-      :ok = Portal.Presence.Clients.Account.track(account.id, online_client.id)
+      online_device = client_fixture(account: account, actor: actor, name: "Bulk Online")
+      :ok = Portal.Presence.Devices.Account.track(online_device)
 
-      results = PortalWeb.Resources.Components.Database.search_clients("Bulk", subject, [])
+      results = PortalWeb.Resources.Components.Database.search_devices("Bulk", subject, [])
 
       assert length(results) == 10
       assert [%{id: id, online?: true} | _] = results
-      assert id == online_client.id
+      assert id == online_device.id
     end
   end
 
@@ -1162,7 +1162,7 @@ defmodule PortalWeb.ResourcesTest do
       resource = resource_fixture(account: account, site: site)
       group = group_fixture(account: account)
       policy = policy_fixture(account: account, group: group, resource: resource)
-      client = client_fixture(account: account, actor: actor)
+      device = client_fixture(account: account, actor: actor)
       gateway = gateway_fixture(account: account, site: site)
       token = client_token_fixture(account: account, actor: actor)
 
@@ -1171,7 +1171,7 @@ defmodule PortalWeb.ResourcesTest do
         |> Ecto.Changeset.cast(
           %{
             policy_id: policy.id,
-            initiating_device_id: client.id,
+            initiating_device_id: device.id,
             receiving_device_id: gateway.id,
             resource_id: resource.id,
             token_id: token.id,
@@ -1319,16 +1319,16 @@ defmodule PortalWeb.ResourcesTest do
     end
   end
 
-  describe ":show clients tab (device pool)" do
-    test "defaults to the clients tab for device pool resources", %{
+  describe ":show devices tab (device pool)" do
+    test "defaults to the devices tab for device pool resources", %{
       conn: conn,
       account: account,
       actor: actor
     } do
-      client = client_fixture(account: account, actor: actor)
+      device = client_fixture(account: account, actor: actor)
 
       resource =
-        static_device_pool_resource_fixture(account: account, clients: [client])
+        static_device_pool_resource_fixture(account: account, devices: [device])
 
       {:ok, lv, _html} =
         conn
@@ -1338,35 +1338,35 @@ defmodule PortalWeb.ResourcesTest do
       assert has_element?(lv, "button[role='tab'][aria-selected]", "Pool Members")
     end
 
-    test "lists pool clients with owner and tunnel IPs", %{
+    test "lists pool devices with owner and tunnel IPs", %{
       conn: conn,
       account: account,
       actor: actor
     } do
-      client = client_fixture(account: account, actor: actor)
+      device = client_fixture(account: account, actor: actor)
 
       resource =
-        static_device_pool_resource_fixture(account: account, clients: [client])
+        static_device_pool_resource_fixture(account: account, devices: [device])
 
       {:ok, _lv, html} =
         conn
         |> authorize_conn(actor)
         |> live(~p"/#{account}/resources/#{resource.id}")
 
-      assert html =~ client.name
-      assert html =~ client.actor.name
-      assert html =~ to_string(client.ipv4)
+      assert html =~ device.name
+      assert html =~ device.actor.name
+      assert html =~ to_string(device.ipv4)
     end
 
-    test "shows an offline status for clients without presence", %{
+    test "shows an offline status for devices without presence", %{
       conn: conn,
       account: account,
       actor: actor
     } do
-      client = client_fixture(account: account, actor: actor)
+      device = client_fixture(account: account, actor: actor)
 
       resource =
-        static_device_pool_resource_fixture(account: account, clients: [client])
+        static_device_pool_resource_fixture(account: account, devices: [device])
 
       {:ok, _lv, html} =
         conn
@@ -1377,17 +1377,17 @@ defmodule PortalWeb.ResourcesTest do
       assert html =~ "0 / 1 online"
     end
 
-    test "shows an online status for connected clients", %{
+    test "shows an online status for connected devices", %{
       conn: conn,
       account: account,
       actor: actor
     } do
-      client = client_fixture(account: account, actor: actor)
+      device = client_fixture(account: account, actor: actor)
 
       resource =
-        static_device_pool_resource_fixture(account: account, clients: [client])
+        static_device_pool_resource_fixture(account: account, devices: [device])
 
-      :ok = Portal.Presence.Clients.Account.track(account.id, client.id)
+      :ok = Portal.Presence.Devices.Account.track(device)
 
       {:ok, _lv, html} =
         conn
@@ -1414,7 +1414,7 @@ defmodule PortalWeb.ResourcesTest do
       assert html =~ "An empty pool has nothing to connect to"
     end
 
-    test "warns in the resources list when the pool has no clients", %{
+    test "warns in the resources list when the pool has no devices", %{
       conn: conn,
       account: account,
       actor: actor
@@ -1430,16 +1430,16 @@ defmodule PortalWeb.ResourcesTest do
       refute html =~ "0 / 0 online"
     end
 
-    test "expands and collapses a client row to reveal details", %{
+    test "expands and collapses a device row to reveal details", %{
       conn: conn,
       account: account,
       actor: actor
     } do
-      client =
+      device =
         client_fixture(account: account, actor: actor, device_serial: "SERIAL-1234")
 
       resource =
-        static_device_pool_resource_fixture(account: account, clients: [client])
+        static_device_pool_resource_fixture(account: account, devices: [device])
 
       {:ok, lv, html} =
         conn
@@ -1448,13 +1448,13 @@ defmodule PortalWeb.ResourcesTest do
 
       refute html =~ "Tunnel IPv6"
 
-      html = render_click(lv, "toggle_pool_client_row", %{"id" => client.id})
+      html = render_click(lv, "toggle_pool_device_row", %{"id" => device.id})
       assert html =~ "Tunnel IPv6"
-      assert html =~ to_string(client.ipv6)
+      assert html =~ to_string(device.ipv6)
       assert html =~ "SERIAL-1234"
-      assert has_element?(lv, ~s|a[href="/#{account.slug}/clients/#{client.id}"]|)
+      assert has_element?(lv, ~s|a[href="/#{account.slug}/devices/#{device.id}"]|)
 
-      html = render_click(lv, "toggle_pool_client_row", %{"id" => client.id})
+      html = render_click(lv, "toggle_pool_device_row", %{"id" => device.id})
       refute html =~ "Tunnel IPv6"
     end
 
@@ -1463,53 +1463,53 @@ defmodule PortalWeb.ResourcesTest do
       account: account,
       actor: actor
     } do
-      client = client_fixture(account: account, actor: actor)
+      device = client_fixture(account: account, actor: actor)
 
       _session =
         client_session_fixture(
           account: account,
           actor: actor,
-          client: client,
+          client: device,
           user_agent: "Mac OS/14.0 connlib/1.3.0"
         )
 
       resource =
-        static_device_pool_resource_fixture(account: account, clients: [client])
+        static_device_pool_resource_fixture(account: account, devices: [device])
 
       {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
         |> live(~p"/#{account}/resources/#{resource.id}")
 
-      html = render_click(lv, "toggle_pool_client_row", %{"id" => client.id})
+      html = render_click(lv, "toggle_pool_device_row", %{"id" => device.id})
 
       assert html =~ "Operating System"
       assert html =~ "Mac OS 14.0"
       assert html =~ "Last Seen"
     end
 
-    test "switching to the clients tab patches the URL", %{
+    test "switching to the devices tab patches the URL", %{
       conn: conn,
       account: account,
       actor: actor
     } do
-      client = client_fixture(account: account, actor: actor)
+      device = client_fixture(account: account, actor: actor)
 
       resource =
-        static_device_pool_resource_fixture(account: account, clients: [client])
+        static_device_pool_resource_fixture(account: account, devices: [device])
 
       {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
         |> live(~p"/#{account}/resources/#{resource.id}?tab=groups")
 
-      render_click(lv, "switch_resource_tab", %{"tab" => "clients"})
-      assert_patch(lv, ~p"/#{account}/resources/#{resource.id}?tab=clients")
+      render_click(lv, "switch_resource_tab", %{"tab" => "devices"})
+      assert_patch(lv, ~p"/#{account}/resources/#{resource.id}?tab=devices")
 
       assert has_element?(lv, "button[role='tab'][aria-selected]", "Pool Members")
     end
 
-    test "does not show the clients tab for non-device-pool resources", %{
+    test "does not show the devices tab for non-device-pool resources", %{
       conn: conn,
       account: account,
       actor: actor
@@ -1525,7 +1525,7 @@ defmodule PortalWeb.ResourcesTest do
       assert has_element?(lv, "button[role='tab'][aria-selected]", "Groups")
     end
 
-    test "ignores the clients tab for non-device-pool resources and falls back to groups", %{
+    test "ignores the devices tab for non-device-pool resources and falls back to groups", %{
       conn: conn,
       account: account,
       actor: actor
@@ -1535,7 +1535,7 @@ defmodule PortalWeb.ResourcesTest do
       {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/resources/#{resource.id}?tab=clients")
+        |> live(~p"/#{account}/resources/#{resource.id}?tab=devices")
 
       assert has_element?(lv, "button[role='tab'][aria-selected]", "Groups")
     end

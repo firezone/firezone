@@ -11,6 +11,7 @@ import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
+import javax.inject.Singleton
 
 internal const val ENCRYPTED_SHARED_PREFERENCES = "encryptedSharedPreferences"
 
@@ -24,6 +25,7 @@ object AppModule {
     internal fun provideResources(app: Application): Resources = app.resources
 
     @Provides
+    @Singleton
     internal fun provideEncryptedSharedPreferences(app: Application): SharedPreferences =
         EncryptedSharedPreferences.create(
             app.applicationContext,

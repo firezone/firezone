@@ -212,8 +212,7 @@ defmodule PortalAPI.Client.DeviceTrust do
          subject = %Subject{
            account: account,
            actor: actor,
-           credential: %Credential{
-             type: :x509,
+           credential: %Credential.X509{
              id: Ecto.UUID.generate(),
              auth_provider_id: auth_provider.id
            },

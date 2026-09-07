@@ -17,12 +17,9 @@ defmodule Portal.Ops do
 
       iex> count_global_presences()
       [
-        {"presences:account_clients", 430},
-        {"presences:account_gateways", 421},
-        {"presences:actor_clients", 430},
-        {"presences:global_relays", 34},
-        {"presences:portal_sessions", 8},
-        {"presences:sites", 421}
+        {"presences:account_devices", 851},
+        {"presences:relays", 34},
+        {"presences:portal_sessions", 8}
       ]
 
   """
@@ -54,12 +51,9 @@ defmodule Portal.Ops do
 
       iex> count_local_presences()
       [
-        {"presences:account_clients", 215},
-        {"presences:account_gateways", 210},
-        {"presences:actor_clients", 215},
-        {"presences:global_relays", 17},
-        {"presences:portal_sessions", 4},
-        {"presences:sites", 210}
+        {"presences:account_devices", 425},
+        {"presences:relays", 17},
+        {"presences:portal_sessions", 4}
       ]
 
   """
@@ -76,12 +70,9 @@ defmodule Portal.Ops do
 
       iex> count_regional_presences("centralus")
       [
-        {"presences:account_clients", 215},
-        {"presences:account_gateways", 210},
-        {"presences:actor_clients", 215},
-        {"presences:global_relays", 17},
-        {"presences:portal_sessions", 4},
-        {"presences:sites", 210}
+        {"presences:account_devices", 425},
+        {"presences:relays", 17},
+        {"presences:portal_sessions", 4}
       ]
 
   """

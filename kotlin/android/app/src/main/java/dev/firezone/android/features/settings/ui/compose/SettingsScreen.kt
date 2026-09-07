@@ -80,7 +80,6 @@ internal fun SettingsScreen(
     onExportLogs: () -> Unit,
     onLogsShown: () -> Unit,
     onSelectCertificate: () -> Unit,
-    onForgetCertificate: () -> Unit,
     onDeviceTrustShown: () -> Unit,
     onSave: () -> Unit,
     onCancel: () -> Unit,
@@ -174,7 +173,6 @@ internal fun SettingsScreen(
                     DeviceTrustSettingsScreen(
                         state = deviceTrustState,
                         onSelectCertificate = onSelectCertificate,
-                        onForgetCertificate = onForgetCertificate,
                     )
                 }
 

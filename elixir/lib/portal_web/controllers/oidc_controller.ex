@@ -272,7 +272,7 @@ defmodule PortalWeb.OIDCController do
   end
 
   defp provider_redirect(conn, account, provider, params) do
-    opts = authorization_opts(provider)
+    opts = authorization_opts(provider, params)
 
     case PortalWeb.OIDC.authorization_uri(provider, opts) do
       {:ok, uri, state, verifier} ->
@@ -323,7 +323,13 @@ defmodule PortalWeb.OIDCController do
 
   defp authorization_error_message(reason), do: discovery_error_message(reason)
 
-  defp authorization_opts(provider) do
+  # An OAuth grant is a step-up operation. Starting a new OIDC round trip is
+  # not enough by itself because an IdP session can otherwise complete it
+  # silently; prompt=login requires a fresh authentication ceremony.
+  defp authorization_opts(_provider, %{"as" => "oauth"}),
+    do: [additional_params: %{prompt: "login"}]
+
+  defp authorization_opts(provider, _params) do
     if provider.__struct__ in [
          Portal.Google.AuthProvider,
          Portal.Entra.AuthProvider,
@@ -751,7 +757,10 @@ defmodule PortalWeb.OIDCController do
     expires_at = DateTime.add(DateTime.utc_now(), session_lifetime_secs, :second)
 
     case type do
-      :portal ->
+      t when t in [:portal, :oauth] ->
+      # Approving an app connection. A short lived session of its own, held in
+      # its own cookie, so it neither grants portal access nor is satisfied by
+      # portal access.
         Portal.Authentication.create_portal_session(
           identity.actor,
           provider.id,
@@ -789,12 +798,28 @@ defmodule PortalWeb.OIDCController do
     provider.portal_session_lifetime_secs || schema.default_portal_session_lifetime_secs()
   end
 
+  defp session_lifetime_secs(_provider, _schema, :oauth) do
+    PortalWeb.Cookie.OAuthSession.lifetime_secs()
+  end
+
   # Context: :portal
   # Store session cookie and redirect to portal or redirect_to parameter
   defp signed_in(conn, :portal, account, identity, session, _provider, _tokens, params) do
     conn
     |> PortalWeb.Cookie.Session.put(account.id, %PortalWeb.Cookie.Session{session_id: session.id})
     |> Redirector.portal_signed_in(account, params, identity.actor)
+  end
+
+  # Context: :oauth
+  # Store the approval-flow cookie only, and go back to the pending request.
+  defp signed_in(conn, :oauth, account, identity, session, _provider, _tokens, params) do
+    conn
+    |> PortalWeb.Cookie.OAuthSession.put(account.id, %PortalWeb.Cookie.OAuthSession{
+      session_id: session.id
+    })
+    |> Phoenix.Controller.redirect(
+      to: Redirector.sanitize_redirect_to(account, params["redirect_to"], identity.actor)
+    )
   end
 
   # Context: :gui_client
@@ -822,6 +847,7 @@ defmodule PortalWeb.OIDCController do
     )
   end
 
+  defp context_type(%{"as" => "oauth"}), do: :oauth
   defp context_type(%{"as" => "client"}), do: :gui_client
   defp context_type(%{"as" => "gui-client"}), do: :gui_client
   defp context_type(%{"as" => "headless-client"}), do: :headless_client

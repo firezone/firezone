@@ -1,6 +1,7 @@
 // Licensed under Apache 2.0 (C) 2026 Firezone, Inc.
 package dev.firezone.android.tunnel
 
+import android.app.Activity
 import android.app.ActivityManager
 import android.content.Context
 import android.content.Intent
@@ -9,6 +10,7 @@ import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
 import androidx.test.runner.lifecycle.Stage
 import androidx.test.uiautomator.UiDevice
 import dev.firezone.android.core.presentation.MainActivity
+import java.io.File
 import java.util.concurrent.TimeUnit
 
 // The tunnel runs as a `systemExempted` foreground service, which the platform only lets an app
@@ -73,6 +75,35 @@ fun finishAllActivities() {
     }
 }
 
+// An activity the app hands off to is still in flight in `system_server` when `startActivity`
+// returns, and Espresso's `intended` only drains the main looper before checking, so a test has to
+// wait for the screen itself before asserting anything about how it got there.
+fun awaitResumed(activity: Class<out Activity>) {
+    val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(20)
+
+    while (!isResumed(activity)) {
+        if (System.nanoTime() > deadline) {
+            throw AssertionError("Timed out waiting for ${activity.simpleName} to be on screen, showing ${resumedActivity()}")
+        }
+
+        Thread.sleep(50)
+    }
+}
+
+private fun isResumed(activity: Class<out Activity>): Boolean {
+    var resumed = false
+
+    InstrumentationRegistry.getInstrumentation().runOnMainSync {
+        resumed =
+            ActivityLifecycleMonitorRegistry
+                .getInstance()
+                .getActivitiesInStage(Stage.RESUMED)
+                .any { activity.isInstance(it) }
+    }
+
+    return resumed
+}
+
 // Names what the user would be looking at, which is what tells a screen that has not arrived yet
 // apart from an app that has closed.
 fun resumedActivity(): String {
@@ -104,6 +135,34 @@ fun stopTunnelService() {
         }
 
         Thread.sleep(50)
+    }
+}
+
+// Photographs the display, system dialogs included, into the app's private files where
+// `emulator-tests.sh` collects it. The status bar is pinned through SystemUI's demo mode for the
+// duration, so a clock or a battery level does not make two pictures of the same screen differ.
+fun photographScreen(name: String) {
+    val directory = File(InstrumentationRegistry.getInstrumentation().targetContext.filesDir, "screenshots")
+    directory.mkdirs()
+
+    shell("settings put global sysui_demo_allowed 1")
+    shell("am broadcast -a com.android.systemui.demo -e command enter")
+    shell("am broadcast -a com.android.systemui.demo -e command clock -e hhmm 1200")
+    shell("am broadcast -a com.android.systemui.demo -e command battery -e plugged false -e level 100")
+    shell("am broadcast -a com.android.systemui.demo -e command network -e wifi show -e level 4 -e fully true")
+    shell("am broadcast -a com.android.systemui.demo -e command network -e mobile hide")
+    shell("am broadcast -a com.android.systemui.demo -e command notifications -e visible false")
+    shell("am broadcast -a com.android.systemui.demo -e command status -e volume hide -e bluetooth hide")
+
+    try {
+        // The broadcasts land asynchronously, and the status bar redraws after them.
+        Thread.sleep(1_000)
+
+        if (!UiDevice.getInstance(InstrumentationRegistry.getInstrumentation()).takeScreenshot(File(directory, "$name.png"))) {
+            throw AssertionError("Could not photograph the screen for $name")
+        }
+    } finally {
+        shell("am broadcast -a com.android.systemui.demo -e command exit")
     }
 }
 

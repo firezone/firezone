@@ -35,25 +35,19 @@ import uniffi.x509claims.ValidationError
 /**
  * Shows which client certificate this device presents for device trust and what it contains.
  *
- * The screen is read-only when an administrator dictates the certificate, which is the case on
- * managed devices; otherwise the user picks one from the system KeyChain.
+ * The certificate is the administrator's, found through the device policy or released by the user
+ * once, so the screen describes it and only ever offers the release.
  */
 @Composable
 internal fun DeviceTrustSettingsScreen(
     state: DeviceTrustSettingsViewModel.UiState,
     onSelectCertificate: () -> Unit,
-    onForgetCertificate: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    // An alias whose certificate the KeyChain withholds is the personally-owned case: the
-    // administrator names the certificate, yet only the user can release it, so the chooser stays
-    // reachable there as well.
-    val needsSelection = state.alias != null && !state.isLoading && state.needsSelection
-
-    // An administrator's alias is not the user's to clear, and neither is one whose certificate is
-    // still withheld: that screen asks for a grant, and offering to forget the certificate in the
-    // same breath asks the reader to both make a selection and undo one.
-    val canForget = !state.isManaged && state.alias != null && !needsSelection
+    // A certificate the KeyChain withholds is the personally-owned case: the administrator
+    // installs the certificate, yet only the user can release it, so the chooser stays reachable
+    // here as well.
+    val needsSelection = !state.isLoading && state.needsSelection
 
     Column(
         modifier
@@ -94,12 +88,6 @@ internal fun DeviceTrustSettingsScreen(
         if (needsSelection) {
             OutlinedButton(onClick = onSelectCertificate, modifier = Modifier.fillMaxWidth()) {
                 Text(stringResource(R.string.device_trust_select_certificate))
-            }
-        }
-
-        if (canForget) {
-            OutlinedButton(onClick = onForgetCertificate, modifier = Modifier.fillMaxWidth()) {
-                Text(stringResource(R.string.device_trust_forget_certificate))
             }
         }
     }
@@ -251,7 +239,6 @@ private fun DeviceTrustSettingsScreenPreview() {
             state =
                 DeviceTrustSettingsViewModel.UiState(
                     alias = "firezone-device",
-                    isManaged = true,
                     details =
                         listOf(
                             DetailField("Common Name", "firezone-device", null),
@@ -261,7 +248,6 @@ private fun DeviceTrustSettingsScreenPreview() {
                         ),
                 ),
             onSelectCertificate = {},
-            onForgetCertificate = {},
         )
     }
 }

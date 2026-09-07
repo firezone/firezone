@@ -133,7 +133,7 @@ defmodule PortalWeb.NavigationComponents do
           navigate={~p"/#{@subject.account}/settings/profile"}
           class="block py-2 px-4 text-sm hover:bg-raised hover:text-heading"
         >
-          Profile
+          Your settings
         </.link>
       </li>
     </ul>
@@ -244,12 +244,15 @@ defmodule PortalWeb.NavigationComponents do
             >
               Sites
             </.sidebar_item>
+            <%!-- Signposts the rename for admins who knew this page as Clients. --%>
             <.sidebar_item
               current_path={@current_path}
-              navigate={~p"/#{@account}/clients"}
+              navigate={~p"/#{@account}/devices"}
               icon="ri-computer-line"
+              badge="NEW"
             >
-              Clients
+              <span class="line-through decoration-[1.3px]">Clients</span>
+              <span class="ml-0.5">Devices</span>
             </.sidebar_item>
           </ul>
         </div>

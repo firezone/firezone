@@ -325,7 +325,7 @@ defmodule PortalWeb.Settings.DNS do
                   :if={not Enum.empty?(dns_form[:addresses].value || [])}
                   class="text-xs text-body"
                 >
-                  Upstream resolvers will be used by Client devices in the order listed below.
+                  Upstream resolvers will be used by devices when the Firezone Client is signed in, in the order listed below.
                 </p>
                 <p
                   :if={Enum.empty?(dns_form[:addresses].value || [])}

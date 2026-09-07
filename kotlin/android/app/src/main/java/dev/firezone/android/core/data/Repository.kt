@@ -17,14 +17,18 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.withContext
-import java.security.MessageDigest
 import javax.inject.Inject
 
 const val ON_SYMBOL: String = "<->"
 const val OFF_SYMBOL: String = " — "
 
-/** Managed-configuration key naming the KeyChain alias to present to the portal. */
-const val X509_CERTIFICATE_ALIAS_RESTRICTION: String = "x509CertificateAlias"
+/**
+ * Managed-configuration key deciding whether a device certificate is presented to the portal.
+ *
+ * `true` requires one: the app finds it through the device policy or has the user release it.
+ * `false` turns certificates off. Absent, the app uses a certificate only if the policy names one.
+ */
+const val X509_CERTIFICATE_RESTRICTION: String = "deviceCertificate"
 
 enum class ResourceState {
     @SerializedName("enabled")
@@ -59,12 +63,6 @@ class Favorites(
     val inner: HashSet<String>,
 )
 
-enum class AuthCallbackResult {
-    NEW_HANDOFF,
-    PENDING_HANDOFF,
-    INVALID,
-}
-
 class Repository
     @Inject
     constructor(
@@ -77,7 +75,6 @@ class Repository
         private val _favorites =
             MutableStateFlow(Favorites(HashSet(sharedPreferences.getStringSet(FAVORITE_RESOURCES_KEY, null).orEmpty())))
         val favorites = _favorites.asStateFlow()
-        private val authStateLock = Any()
 
         fun getConfigSync(): Config = getUserConfigSync().withManagedOverrides()
 
@@ -156,25 +153,27 @@ class Repository
             }
         }
 
+        /** Whether an administrator requires a device certificate, which is what puts the user to work. */
+        fun isX509CertificateRequired(applicationRestrictions: Bundle): Boolean =
+            applicationRestrictions.containsKey(X509_CERTIFICATE_RESTRICTION) &&
+                applicationRestrictions.getBoolean(X509_CERTIFICATE_RESTRICTION)
+
+        /** Whether an administrator turned device certificates off, which stops the app even asking. */
+        fun isX509CertificateOff(applicationRestrictions: Bundle): Boolean =
+            applicationRestrictions.containsKey(X509_CERTIFICATE_RESTRICTION) &&
+                !applicationRestrictions.getBoolean(X509_CERTIFICATE_RESTRICTION)
+
         /**
-         * The KeyChain alias of the client certificate to present to the portal.
-         *
-         * A managed configuration overrides whatever the user picked, and one that sets the alias to
-         * an empty value turns certificate-based device attestation off entirely.
+         * The KeyChain alias of the device certificate, as the device policy or the user named it,
+         * or `null` while none is known or the administrator turned certificates off.
          */
-        fun getX509CertificateAliasSync(applicationRestrictions: Bundle): String? =
-            if (isX509CertificateAliasManaged(applicationRestrictions)) {
-                applicationRestrictions
-                    .getString(X509_CERTIFICATE_ALIAS_RESTRICTION)
-                    ?.takeUnless(String::isBlank)
-            } else {
-                sharedPreferences
-                    .getString(X509_CERTIFICATE_ALIAS_KEY, null)
-                    ?.takeUnless(String::isBlank)
+        fun getX509CertificateAliasSync(applicationRestrictions: Bundle): String? {
+            if (isX509CertificateOff(applicationRestrictions)) {
+                return null
             }
 
-        fun isX509CertificateAliasManaged(applicationRestrictions: Bundle): Boolean =
-            applicationRestrictions.containsKey(X509_CERTIFICATE_ALIAS_RESTRICTION)
+            return sharedPreferences.getString(X509_CERTIFICATE_ALIAS_KEY, null)?.takeUnless(String::isBlank)
+        }
 
         fun saveX509CertificateAliasSync(alias: String?) {
             sharedPreferences.edit().apply {
@@ -209,12 +208,6 @@ class Repository
             saveFavoritesSync()
         }
 
-        fun getTokenSync(): String? = sharedPreferences.getString(TOKEN_KEY, null)
-
-        fun getStateSync(): String? = sharedPreferences.getString(STATE_KEY, null)
-
-        fun getNonceSync(): String? = sharedPreferences.getString(NONCE_KEY, null)
-
         fun saveAccountSlug(value: String): Flow<Unit> =
             flow {
                 emit(
@@ -242,78 +235,6 @@ class Repository
                 .edit()
                 .putString(ENABLED_INTERNET_RESOURCE_KEY, Gson().toJson(value))
                 .apply()
-
-        fun saveNonceAndStateSync(
-            nonce: String,
-            state: String,
-        ) {
-            synchronized(authStateLock) {
-                sharedPreferences
-                    .edit()
-                    .putString(NONCE_KEY, nonce)
-                    .putString(STATE_KEY, state)
-                    .remove(PENDING_AUTH_HANDOFF_STATE_HASH_KEY)
-                    .apply()
-            }
-        }
-
-        suspend fun saveAuthCallbackIfStateValid(
-            state: String,
-            fragment: String,
-        ): AuthCallbackResult =
-            withContext(coroutineDispatcher) {
-                synchronized(authStateLock) {
-                    val stateHash = hashAuthState(state)
-                    val pendingStateHash = sharedPreferences.getString(PENDING_AUTH_HANDOFF_STATE_HASH_KEY, null)
-                    val isPendingHandoff = constantTimeEquals(pendingStateHash, stateHash)
-                    val expectedState = sharedPreferences.getString(STATE_KEY, "").orEmpty()
-                    val isExpectedState = constantTimeEquals(expectedState, state)
-                    when {
-                        isPendingHandoff -> {
-                            AuthCallbackResult.PENDING_HANDOFF
-                        }
-
-                        !isExpectedState -> {
-                            AuthCallbackResult.INVALID
-                        }
-
-                        else -> {
-                            val nonce = sharedPreferences.getString(NONCE_KEY, "").orEmpty()
-                            sharedPreferences
-                                .edit()
-                                .putString(TOKEN_KEY, nonce.plus(fragment))
-                                .remove(NONCE_KEY)
-                                .remove(STATE_KEY)
-                                .putString(PENDING_AUTH_HANDOFF_STATE_HASH_KEY, stateHash)
-                                .apply()
-
-                            AuthCallbackResult.NEW_HANDOFF
-                        }
-                    }
-                }
-            }
-
-        fun acknowledgeAuthCallbackHandoff(state: String): Boolean =
-            synchronized(authStateLock) {
-                val stateHash = hashAuthState(state)
-                val pendingStateHash = sharedPreferences.getString(PENDING_AUTH_HANDOFF_STATE_HASH_KEY, null)
-                val isPendingHandoff = constantTimeEquals(pendingStateHash, stateHash)
-                if (isPendingHandoff) {
-                    sharedPreferences.edit().remove(PENDING_AUTH_HANDOFF_STATE_HASH_KEY).apply()
-                }
-
-                isPendingHandoff
-            }
-
-        fun clearToken() {
-            synchronized(authStateLock) {
-                sharedPreferences.edit().apply {
-                    remove(TOKEN_KEY)
-                    remove(PENDING_AUTH_HANDOFF_STATE_HASH_KEY)
-                    apply()
-                }
-            }
-        }
 
         fun getManagedStatus(): ManagedConfigStatus =
             ManagedConfigStatus(
@@ -374,23 +295,6 @@ class Repository
                     },
             )
 
-        private fun hashAuthState(state: String): String =
-            MessageDigest
-                .getInstance("SHA-256")
-                .digest(state.toByteArray(Charsets.UTF_8))
-                .joinToString(separator = "") { byte -> "%02x".format(byte.toInt() and 0xff) }
-
-        private fun constantTimeEquals(
-            expected: String?,
-            actual: String,
-        ): Boolean =
-            expected?.let {
-                MessageDigest.isEqual(
-                    it.toByteArray(Charsets.UTF_8),
-                    actual.toByteArray(Charsets.UTF_8),
-                )
-            } ?: false
-
         companion object {
             private const val AUTH_URL_KEY = "authUrl"
             private const val API_URL_KEY = "apiUrl"
@@ -406,10 +310,6 @@ class Repository
             private const val MANAGED_ACCOUNT_SLUG_KEY = "managedAccountSlug"
             private const val MANAGED_START_ON_LOGIN_KEY = "managedStartOnLogin"
             private const val MANAGED_CONNECT_ON_START_KEY = "managedConnectOnStart"
-            private const val TOKEN_KEY = "token"
-            private const val NONCE_KEY = "nonce"
-            private const val STATE_KEY = "state"
-            private const val PENDING_AUTH_HANDOFF_STATE_HASH_KEY = "pendingAuthHandoffStateHash"
             private const val DEVICE_ID_KEY = "deviceId"
             private const val ENABLED_INTERNET_RESOURCE_KEY = "enabledInternetResource"
             private const val NOTIFICATION_PERMISSION_REQUESTED_KEY = "notificationPermissionRequested"

@@ -83,15 +83,20 @@ struct VPNConfigurationManagerTests {
     #expect(try manager.identityReference() == reference)
   }
 
-  @Test("A profile without a provider bundle identifier is managed")
+  @Test("A profile without a provider bundle identifier is managed and repaired")
   @MainActor
   func profileWithoutProviderBundleIdentifierIsManaged() async throws {
-    let factory = StubFactory([StubTunnelProviderManager(providerBundleIdentifier: nil)])
+    let stub = StubTunnelProviderManager(providerBundleIdentifier: nil)
+    let factory = StubFactory([stub])
 
     let manager = try #require(
       await VPNConfigurationManager.load(using: factory))
 
     #expect(manager.isManaged)
+    #expect(stub.saveCount == 1)
+    #expect(
+      (stub.protocolConfiguration as? NETunnelProviderProtocol)?.providerBundleIdentifier
+        == providerBundleIdentifier)
   }
 
   @Test("Configurations for another extension are ignored")

@@ -16,7 +16,9 @@ class FakeDisconnectError(
     private val signInRequired: Boolean,
     private val text: String = "session ended",
 ) : DisconnectError(NoHandle) {
-    override fun message(): String = text
+    override fun userMessage(): String = text
+
+    override fun logMessage(): String = text
 
     override fun requiresSignIn(): Boolean = signInRequired
 }

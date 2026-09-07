@@ -46,8 +46,12 @@ Application.ensure_all_started(:portal)
 account_id = \"c89bcc8c-9392-4dae-a40d-888aef6d28e0\"
 
 site = Portal.Repo.get_by!(Portal.Site, account_id: account_id, name: \"$site_name\")
-[gateway_id | _] = Portal.Presence.Gateways.Site.list(site.id) |> Map.keys()
-[client_id | _] = Portal.Presence.Clients.Account.list(account_id) |> Map.keys()
+online = Portal.Presence.Devices.Account.list(account_id)
+
+[gateway_id | _] =
+  for {id, %{metas: [%{type: :gateway, site_id: site_id} | _]}} <- online, site_id == site.id, do: id
+
+[client_id | _] = for {id, %{metas: [%{type: :client} | _]}} <- online, do: id
 resource = Portal.Repo.get_by!(Portal.Resource, account_id: account_id, name: \"$resource_name\")
 
 PortalAPI.Gateway.Channel.revoke_pair_access(gateway_id, client_id, resource.id)

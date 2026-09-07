@@ -41,13 +41,10 @@ defmodule Portal.Workers.OutdatedGateways do
   end
 
   defp all_online_gateways_for_account(account) do
-    gateways_by_id =
-      Database.all_gateways_for_account!(account)
-      |> Enum.group_by(& &1.id)
+    online_ids = Portal.Presence.Devices.online_ids(account.id, :gateway)
 
-    Database.all_sites_for_account!(account)
-    |> Enum.flat_map(&Database.all_online_gateway_ids_by_site_id!(&1.id))
-    |> Enum.flat_map(&Map.get(gateways_by_id, &1))
+    Database.all_gateways_for_account!(account)
+    |> Enum.filter(&(&1.id in online_ids))
   end
 
   defp send_notifications([], _account, _incompatible_client_count) do
@@ -169,18 +166,18 @@ defmodule Portal.Workers.OutdatedGateways do
     def count_incompatible_for(account, gateway_version) do
       %{major: g_major, minor: g_minor} = Version.parse!(gateway_version)
 
-      from(c in Device, as: :clients)
-      |> where([clients: c], c.type == :client)
-      |> where([clients: c], c.account_id == ^account.id)
-      |> where([clients: c], c.last_seen_at > ago(1, "week"))
+      from(d in Device, as: :devices)
+      |> where([devices: d], d.type == :client)
+      |> where([devices: d], d.account_id == ^account.id)
+      |> where([devices: d], d.last_seen_at > ago(1, "week"))
       |> where(
-        [clients: c],
-        fragment("split_part(?, '.', 1)::int", c.last_seen_version) < ^g_major or
-          (fragment("split_part(?, '.', 1)::int", c.last_seen_version) == ^g_major and
-             fragment("split_part(?, '.', 2)::int", c.last_seen_version) <= ^(g_minor - 2))
+        [devices: d],
+        fragment("split_part(?, '.', 1)::int", d.last_seen_version) < ^g_major or
+          (fragment("split_part(?, '.', 1)::int", d.last_seen_version) == ^g_major and
+             fragment("split_part(?, '.', 2)::int", d.last_seen_version) <= ^(g_minor - 2))
       )
-      |> join(:inner, [clients: c], a in Portal.Actor,
-        on: c.actor_id == a.id and c.account_id == a.account_id,
+      |> join(:inner, [devices: d], a in Portal.Actor,
+        on: d.actor_id == a.id and d.account_id == a.account_id,
         as: :actor
       )
       |> where([actor: a], a.is_disabled == false)
@@ -197,17 +194,5 @@ defmodule Portal.Workers.OutdatedGateways do
       |> Safe.all()
     end
 
-    def all_sites_for_account!(account) do
-      from(g in Portal.Site,
-        where: g.account_id == ^account.id
-      )
-      |> Safe.unscoped()
-      |> Safe.all()
-    end
-
-    def all_online_gateway_ids_by_site_id!(site_id) do
-      Portal.Presence.Gateways.Site.list(site_id)
-      |> Map.keys()
-    end
   end
 end

@@ -26,6 +26,11 @@ defmodule Portal.Entra.Directory do
     field :is_verified, :boolean, default: false, read_after_writes: true
     field :email_field, :string, default: "userPrincipalName"
 
+    field :webhook_secret, :string, redact: true
+    field :users_subscription_id, :string
+    field :groups_subscription_id, :string
+    field :subscriptions_expire_at, :utc_datetime_usec
+
     timestamps()
   end
 

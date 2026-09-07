@@ -17,12 +17,13 @@ opentelemetry = { workspace = true, features = ["metrics"] }
 proptest = { workspace = true, optional = true }
 rand = { workspace = true }
 secrecy = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
 sha2 = { workspace = true }
 smallvec = { workspace = true }
 stun_codec = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
-uuid = { workspace = true, features = ["v4"] }
+uuid = { workspace = true, features = ["serde", "v4"] }
 
 [dev-dependencies]
 test-strategy = { workspace = true }

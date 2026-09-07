@@ -13,9 +13,9 @@
   /// Answers the app's messages from state a scenario or a test sets, and moves through
   /// the statuses a start or stop would.
   ///
-  /// `@unchecked Sendable`: the protocol is `Sendable`, but the mock is only ever driven
-  /// from the main actor.
-  final class MockTunnelSession: TunnelSessionProtocol, @unchecked Sendable {
+  /// The app drives tunnel sessions from the main actor.
+  @MainActor
+  final class MockTunnelSession: @preconcurrency TunnelSessionProtocol {
     private(set) var status: NEVPNStatus
 
     /// What the next poll reports; `nil` resources are a portal that has not sent `init`.

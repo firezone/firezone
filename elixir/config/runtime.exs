@@ -256,8 +256,9 @@ if config_env() == :prod do
     # Refresh cached OCSP statuses hourly, for CAs that publish no list
     {"45 3 * * *", Portal.Ocsp.Scheduler},
 
-    # Schedule Entra directory sync every 2 hours
-    {"0 */2 * * *", Portal.Entra.Scheduler},
+    # Schedule Entra directory sync daily; Graph change notifications cover
+    # the hours in between
+    {"0 3 * * *", Portal.Entra.Scheduler},
 
     # Schedule Intune device inventory sync every 2 hours
     {"10 */2 * * *", Portal.Intune.Scheduler},
@@ -274,8 +275,9 @@ if config_env() == :prod do
     # Schedule SentinelOne device inventory sync every 2 hours
     {"35 */2 * * *", Portal.SentinelOne.Scheduler},
 
-    # Schedule Google directory sync every 2 hours
-    {"20 */2 * * *", Portal.Google.Scheduler},
+    # Group membership changes do not produce user push notifications, so run
+    # a full Google directory sync every four hours.
+    {"20 */4 * * *", Portal.Google.Scheduler},
 
     # Schedule Okta directory sync every 2 hours
     {"40 */2 * * *", Portal.Okta.Scheduler},
@@ -359,6 +361,15 @@ if config_env() == :prod do
     # Delete expired API tokens every 5 minutes
     {"*/5 * * * *", Portal.Workers.DeleteExpiredAPITokens},
 
+    # Delete spent OAuth authorization codes every 5 minutes
+    {"*/5 * * * *", Portal.Workers.DeleteExpiredOAuthAuthorizationCodes},
+
+    # Delete OAuth tokens past their refresh window every 5 minutes
+    {"*/5 * * * *", Portal.Workers.DeleteExpiredOAuthTokens},
+
+    # Evict stale OAuth client metadata nothing points at, hourly
+    {"0 * * * *", Portal.Workers.DeleteExpiredOAuthClients},
+
     # Delete rotated gateway tokens past their grace period every 5 minutes
     {"*/5 * * * *", Portal.Workers.DeleteRotatedGatewayTokens},
 
@@ -400,6 +411,8 @@ if config_env() == :prod do
       ocsp_sync: 5,
       entra_scheduler: 1,
       entra_sync: 5,
+    entra_subscriptions: 1,
+    entra_webhook: 5,
       intune_scheduler: 1,
       intune_sync: 5,
       iru_scheduler: 1,
@@ -412,6 +425,8 @@ if config_env() == :prod do
       sentinelone_sync: 5,
       google_scheduler: 1,
       google_sync: 5,
+      google_subscriptions: 1,
+      google_webhook: 5,
       okta_scheduler: 1,
       okta_sync: 5,
       splunk_scheduler: 1,
@@ -595,6 +610,10 @@ if config_env() == :prod do
              ]
 
     config :portal, PortalAPI.RateLimit,
+      refill_rate: env_var_to_config!(:api_refill_rate),
+      capacity: env_var_to_config!(:api_capacity)
+
+    config :portal, PortalAPI.Plugs.MCPRateLimit,
       refill_rate: env_var_to_config!(:api_refill_rate),
       capacity: env_var_to_config!(:api_capacity)
 

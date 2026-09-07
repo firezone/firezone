@@ -1,5 +1,6 @@
 defmodule PortalAPI.Client.Socket do
   use Phoenix.Socket
+  alias Portal.Authentication.Credential
   alias Portal.{Authentication, Device, PG, SessionLog, Version}
   alias Portal.Repo.Batch
   alias PortalAPI.Client.DeviceTrust
@@ -104,7 +105,7 @@ defmodule PortalAPI.Client.Socket do
   defp connect_with_token(context, attrs, socket, connect_info) do
     with {:ok, token} <- PortalAPI.Sockets.extract_token(attrs, connect_info),
          :ok <- PortalAPI.Sockets.RateLimit.check(connect_info, token: token),
-         {:ok, %{credential: %{type: :client_token, id: token_id}} = subject} <-
+         {:ok, %{credential: %Credential.ClientToken{id: token_id}} = subject} <-
            Authentication.authenticate(token, context) do
       do_connect(subject, token_id, nil, attrs, socket, connect_info)
     else

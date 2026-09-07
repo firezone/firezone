@@ -26,7 +26,7 @@ defmodule Portal.Authentication.Subject do
       actor_name: subject.actor.name,
       actor_email: subject.actor.email,
       actor_type: to_string(subject.actor.type),
-      auth_provider_id: subject.credential.auth_provider_id,
+      auth_provider_id: Credential.auth_provider_id(subject.credential),
       ip: format_ip(subject.context.remote_ip),
       ip_region: subject.context.remote_ip_location_region,
       ip_city: subject.context.remote_ip_location_city,

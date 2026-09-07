@@ -857,7 +857,8 @@ defmodule PortalWeb.Logs.FlowLogs do
 
   defp flow_log_json(log) do
     log
-    |> PortalAPI.LogJSON.flow_log()
+    |> PortalAPI.JSON.encode(schema: PortalAPI.Schemas.Log.Flow)
+    |> Map.fetch!(:data)
     |> JSON.encode!()
     |> JSON.decode!()
   end

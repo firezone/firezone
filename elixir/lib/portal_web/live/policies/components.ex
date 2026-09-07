@@ -1157,7 +1157,7 @@ defmodule PortalWeb.Policies.Components do
                         <p class="text-subtle font-medium mb-1">
                           {case row.initiating_device && row.initiating_device.type do
                             :gateway -> "Initiator (Gateway)"
-                            :client -> "Initiator (Client)"
+                            :client -> "Initiator (Device)"
                             _ -> "Initiator"
                           end}
                         </p>
@@ -1174,7 +1174,7 @@ defmodule PortalWeb.Policies.Components do
                         <p class="text-subtle font-medium mb-1">
                           {case row.receiving_device && row.receiving_device.type do
                             :gateway -> "Receiver (Gateway)"
-                            :client -> "Receiver (Client)"
+                            :client -> "Receiver (Device)"
                             _ -> "Receiver"
                           end}
                         </p>
@@ -1435,7 +1435,7 @@ defmodule PortalWeb.Policies.Components do
 
   @spec condition_values_display(map(), list(), any()) :: String.t()
   defp condition_values_display(%{property: :client_verified}, _providers, _account),
-    do: "Client must be verified"
+    do: "Device must be verified"
 
   defp condition_values_display(
          %{property: :auth_provider_id, values: values},
@@ -1813,7 +1813,7 @@ defmodule PortalWeb.Policies.Components do
         ]}
       >
         <p class="text-sm text-neutral-500 mb-4">
-          Allow access when the location of the Client meets the criteria specified below.
+          Allow access when the location of the device meets the criteria specified below.
         </p>
         <div class="grid gap-2 sm:grid-cols-5 sm:gap-4">
           <.input
@@ -1900,7 +1900,7 @@ defmodule PortalWeb.Policies.Components do
         ]}
       >
         <p class="text-sm text-neutral-500 mb-4">
-          Allow access when the IP of the Client meets the criteria specified below.
+          Allow access when the IP of the device meets the criteria specified below.
         </p>
         <div class="grid gap-2 sm:grid-cols-5 sm:gap-4">
           <.input
@@ -2082,11 +2082,11 @@ defmodule PortalWeb.Policies.Components do
         ]}
       >
         <p class="text-sm text-neutral-500 mb-4">
-          Allow access when the Client is manually verified by the administrator.
+          Allow access when the device is manually verified by the administrator.
         </p>
         <div class="space-y-2" phx-update="ignore" id="conditions-client-verified-values">
           <.toggle
-            label="Require client verification"
+            label="Require device verification"
             name="policy[conditions][client_verified][values][]"
             id="policy_conditions_client_verified_value"
             value="true"
@@ -2254,9 +2254,9 @@ defmodule PortalWeb.Policies.Components do
     ]
 
   @spec condition_type_label(atom()) :: String.t()
-  def condition_type_label(:client_verified), do: "Require Verified Client"
+  def condition_type_label(:client_verified), do: "Require Verified Device"
   def condition_type_label(:auth_provider_id), do: "Authentication Provider"
-  def condition_type_label(:remote_ip_location_region), do: "Client Location"
+  def condition_type_label(:remote_ip_location_region), do: "Device Location"
   def condition_type_label(:remote_ip), do: "IP Range"
   def condition_type_label(:current_utc_datetime), do: "Time of Day"
 

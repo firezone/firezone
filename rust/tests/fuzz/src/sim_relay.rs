@@ -11,6 +11,7 @@ use std::{
     net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
     time::{Duration, Instant, SystemTime},
 };
+use uuid::Uuid;
 
 pub(crate) struct SimRelay {
     pub(crate) sut: relay_proto::Server<StdRng>,
@@ -38,12 +39,13 @@ pub(crate) fn map_explode<'a>(
 
 impl SimRelay {
     pub(crate) fn new(seed: u64, ip4: Option<Ipv4Addr>, ip6: Option<Ipv6Addr>) -> Self {
-        let sut = relay_proto::Server::new(
+        let mut sut = relay_proto::Server::new(
             IpStack::from((ip4, ip6)),
             rand::rngs::StdRng::seed_from_u64(seed),
             3478,
             49152..=65535,
         );
+        sut.set_accounts([relay_proto::auth::AccountId::from(Uuid::nil())]);
 
         Self {
             sut,
@@ -186,9 +188,13 @@ impl SimRelay {
             .expect("expiry must be later than UNIX_EPOCH")
             .as_secs();
 
-        let password = relay_proto::auth::generate_password(auth_secret, secs, username);
+        let username = format!(
+            "{secs}:{}:{username}",
+            relay_proto::auth::hash_account_id(&relay_proto::auth::AccountId::from(Uuid::nil()))
+        );
+        let password = relay_proto::auth::generate_password(auth_secret, &username);
 
-        (format!("{secs}:{username}"), password)
+        (username, password)
     }
 }
 

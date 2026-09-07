@@ -18,11 +18,7 @@ struct X509IdentityTests {
 
     let schemes = try X509Identity.signatureSchemes(for: key)
 
-    #expect(
-      schemes == [
-        .rsaPssSha512, .rsaPssSha384, .rsaPssSha256,
-        .rsaPkcs1Sha512, .rsaPkcs1Sha384, .rsaPkcs1Sha256,
-      ])
+    #expect(schemes == [.rsaPssSha256, .rsaPkcs1Sha256])
   }
 
   @Test("An elliptic-curve key advertises only the scheme for its curve")

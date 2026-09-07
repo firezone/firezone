@@ -4,6 +4,7 @@ defmodule Portal.Entra.SyncTest do
 
   import Ecto.Query
   import Portal.AccountFixtures
+  import Portal.DirectorySyncLockHelpers
   import Portal.EntraDirectoryFixtures
 
   alias Portal.Microsoft.Graph.APIClient
@@ -23,6 +24,16 @@ defmodule Portal.Entra.SyncTest do
       end)
 
       :ok
+    end
+
+    test "snoozes while the directory lock is held" do
+      account = account_fixture(features: %{idp_sync: true})
+      directory = entra_directory_fixture(account: account)
+      args = %{account_id: directory.account_id, directory_id: directory.id}
+      hold_directory_lock(:entra, directory.id)
+
+      assert {:snooze, 60} = perform_job(Sync, args)
+      assert Repo.all(ExternalIdentity) == []
     end
 
     test "performs successful sync with assigned groups mode (sync_all_groups: false)" do
@@ -134,6 +145,11 @@ defmodule Portal.Entra.SyncTest do
       # Verify identities created (3 total: 1 direct user + 2 group members)
       identities = Repo.all(ExternalIdentity)
       assert length(identities) == 3
+
+      assert_enqueued(
+        worker: Portal.Entra.Subscriptions,
+        args: %{account_id: directory.account_id, directory_id: directory.id, action: "ensure"}
+      )
 
       identity_emails = Enum.map(identities, & &1.email) |> Enum.sort()
 

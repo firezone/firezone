@@ -2,8 +2,10 @@
 package dev.firezone.android.features.splash.ui
 
 import android.Manifest
+import android.app.Activity
 import android.content.Context
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.SavedStateHandle
@@ -11,89 +13,134 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.firezone.android.core.ApplicationMode
+import dev.firezone.android.core.Log
 import dev.firezone.android.core.data.ManagedConfigurationSource
 import dev.firezone.android.core.data.Repository
+import dev.firezone.android.core.data.TokenStore
 import dev.firezone.android.core.x509.CertificateAccess
+import dev.firezone.android.core.x509.KeyChain
 import dev.firezone.android.tunnel.TunnelService
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import javax.inject.Inject
+import kotlin.coroutines.resume
 
 private const val REQUEST_DELAY = 1000L
+private const val POLICY_ANSWER_TIMEOUT = 10_000L
 
 @HiltViewModel
 internal class SplashViewModel
     @Inject
     constructor(
         private val repo: Repository,
+        private val tokenStore: TokenStore,
         private val managedConfigurationSource: ManagedConfigurationSource,
         private val applicationMode: ApplicationMode,
         private val certificateAccess: CertificateAccess,
+        private val keyChain: KeyChain,
         savedStateHandle: SavedStateHandle,
     ) : ViewModel() {
         private val actionMutableStateFlow = MutableStateFlow<ViewAction?>(null)
         private val launchFlow = SplashLaunchFlow(savedStateHandle)
-        private var checkTunnelStateJob: Job? = null
+        private var check: Job? = null
         val actionStateFlow: StateFlow<ViewAction?> = actionMutableStateFlow
 
-        internal fun checkTunnelState(context: Context) {
-            checkTunnelStateJob?.cancel()
-            checkTunnelStateJob =
-                viewModelScope.launch {
-                    // Stay a while and enjoy the logo
-                    delay(REQUEST_DELAY)
+        internal fun checkTunnelState(activity: Activity) {
+            // Asking the device policy goes through an Activity of the KeyChain's, and coming back
+            // from it resumes the splash into a check that is still waiting for the answer.
+            if (check?.isActive == true) {
+                return
+            }
 
-                    // If we don't have VPN permission, we can't continue.
-                    if (!hasVpnPermissions(context) && applicationMode != ApplicationMode.TESTING) {
-                        publish(launchFlow.vpnPermissionRequired(), context)
-                        return@launch
-                    }
-
-                    // Check if we need to request notification permission (only once)
-                    if (shouldRequestNotificationPermission(context)) {
-                        publish(launchFlow.notificationPermissionRequired(), context)
-                        return@launch
-                    }
-
-                    // An administrator can configure a certificate that only the user can release, which
-                    // is what a work profile on a personally-owned device looks like. Ask once per
-                    // launch: pressing on without it only fails later, at the tunnel.
-                    if (!certificateSelectionOffered && certificateAccess.needsSelection()) {
-                        certificateSelectionOffered = true
-                        actionMutableStateFlow.value = ViewAction.NavigateToCertificatePermission
-                        return@launch
-                    }
-
-                    val managedConfiguration = managedConfigurationSource.refresh()
-                    val credential = managedConfiguration.resolveSessionCredential(repo.getTokenSync())
-                    val isRunning = TunnelService.isRunning(context)
-                    val connectOnStart =
-                        repo
-                            .getEffectiveConfig(repo.getUserConfigSync(), managedConfiguration)
-                            .connectOnStart
-
-                    publish(
-                        launchFlow.permissionsReady(
-                            hasToken = credential != null,
-                            isTunnelRunning = isRunning,
-                            connectOnStart = connectOnStart,
-                        ),
-                        context,
-                    )
-                }
+            check = viewModelScope.launch { checkTunnelStateNow(activity) }
         }
+
+        private suspend fun checkTunnelStateNow(activity: Activity) {
+            // Stay a while and enjoy the logo
+            delay(REQUEST_DELAY)
+
+            // If we don't have VPN permission, we can't continue.
+            if (!hasVpnPermissions(activity) && applicationMode != ApplicationMode.TESTING) {
+                publish(launchFlow.vpnPermissionRequired(), activity)
+                return
+            }
+
+            // Check if we need to request notification permission (only once)
+            if (shouldRequestNotificationPermission(activity)) {
+                publish(launchFlow.notificationPermissionRequired(), activity)
+                return
+            }
+
+            // An administrator can name the certificate by answering the KeyChain for us, which
+            // takes no configuration on our side and no tap on the user's. Ask once per launch
+            // whenever nothing we hold loads, so a rotated certificate is picked up too.
+            if (!policyAsked && certificateAccess.needsDiscovery()) {
+                policyAsked = true
+                rememberPolicyAlias(activity)
+            }
+
+            // An administrator who requires a certificate the policy did not hand over leaves
+            // only the user to release it, which is what a work profile on a personally-owned
+            // device looks like. There is no way around that screen: coming back to the splash
+            // lands on it again until the certificate is released.
+            if (certificateAccess.needsSelection()) {
+                actionMutableStateFlow.value = ViewAction.NavigateToCertificatePermission
+                return
+            }
+
+            val managedConfiguration = managedConfigurationSource.refresh()
+            val credential = managedConfiguration.resolveSessionCredential(tokenStore.get())
+            val isRunning = TunnelService.isRunning(activity)
+            val connectOnStart =
+                repo
+                    .getEffectiveConfig(repo.getUserConfigSync(), managedConfiguration)
+                    .connectOnStart
+
+            publish(
+                launchFlow.permissionsReady(
+                    hasToken = credential != null,
+                    isTunnelRunning = isRunning,
+                    connectOnStart = connectOnStart,
+                ),
+                activity,
+            )
+        }
+
+        /** Records the alias the device policy names, provided it holds a device certificate. */
+        private suspend fun rememberPolicyAlias(activity: Activity) {
+            val alias = askPolicyForAlias(activity) ?: return
+
+            if (withContext(Dispatchers.IO) { certificateAccess.holdsDeviceCertificate(alias) }) {
+                repo.saveX509CertificateAliasSync(alias)
+            } else {
+                Log.w(TAG, "The device policy named alias '$alias', which holds no device certificate")
+            }
+        }
+
+        /** The alias the device policy names for the portal, or `null` when it names none in time. */
+        private suspend fun askPolicyForAlias(activity: Activity): String? =
+            withTimeoutOrNull(POLICY_ANSWER_TIMEOUT) {
+                suspendCancellableCoroutine { continuation ->
+                    keyChain.policyAlias(activity, apiUri()) { alias ->
+                        if (continuation.isActive) {
+                            continuation.resume(alias)
+                        }
+                    }
+                }
+            }
+
+        /** The portal the certificate is meant for, which a policy may scope its answer to. */
+        private fun apiUri(): Uri? = runCatching { Uri.parse(repo.getConfigSync().apiUrl) }.getOrNull()
 
         internal fun clearAction() {
             actionMutableStateFlow.value = null
-        }
-
-        internal fun cancelTunnelStateCheck() {
-            checkTunnelStateJob?.cancel()
-            checkTunnelStateJob = null
-            clearAction()
         }
 
         private fun publish(
@@ -155,14 +202,16 @@ internal class SplashViewModel
             return true
         }
 
-        private companion object {
+        internal companion object {
+            private const val TAG = "SplashViewModel"
+
             /**
-             * Survives the ViewModel so the screen appears once per launch rather than every time
-             * the splash re-checks, and returns on the next start while the certificate is still
-             * out of reach.
+             * Survives the ViewModel so the policy is asked once per launch rather than every time
+             * the splash re-checks: the answer is recorded, so asking again gains nothing. Tests
+             * reset it, since they share one process across many launches.
              */
             @Volatile
-            private var certificateSelectionOffered = false
+            internal var policyAsked = false
         }
 
         internal sealed class ViewAction {

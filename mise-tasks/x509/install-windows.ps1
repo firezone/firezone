@@ -80,6 +80,3 @@ if (-not $provider -or $provider.Line -notmatch 'Key Storage Provider') {
     Write-Warning 'Delete it from Cert:\LocalMachine\My and import it again with certutil instead:'
     Write-Warning ('  certutil -f -p ' + $p12Password + ' -csp "Microsoft Software Key Storage Provider" -importpfx My ' + $p12Path)
 }
-
-Write-Output ''
-Write-Output "'firezone-client-tunnel.exe x509' prints what the Client makes of the store."

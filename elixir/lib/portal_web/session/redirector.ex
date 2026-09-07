@@ -8,6 +8,7 @@ defmodule PortalWeb.Session.Redirector do
   - Redirect path sanitization and validation
   """
   use PortalWeb, :verified_routes
+  alias Portal.Authentication.Credential
 
   alias Portal.Authentication
   alias Portal.Analytics.PostHog
@@ -187,7 +188,7 @@ defmodule PortalWeb.Session.Redirector do
     post_sign_out_url = url(~p"/#{account_or_slug}")
 
     # Delete the portal session for the subject
-    %{type: :portal_session, id: portal_session_id} = subject.credential
+    %Credential.PortalSession{id: portal_session_id} = subject.credential
 
     :ok =
       Authentication.delete_portal_session(%Portal.PortalSession{
@@ -219,7 +220,7 @@ defmodule PortalWeb.Session.Redirector do
       :resources -> ~p"/#{account}/resources"
       :groups -> ~p"/#{account}/groups"
       :policies -> ~p"/#{account}/policies"
-      :clients -> ~p"/#{account}/clients"
+      :devices -> ~p"/#{account}/devices"
       :actors -> ~p"/#{account}/actors"
       :sites -> ~p"/#{account}/sites"
       _ -> ~p"/#{account}/sites"

@@ -55,6 +55,11 @@ on:
         required: false
         type: string
         default: ${{ github.sha }}
+      api_fuzz:
+        description: "Also fuzz the REST API from its OpenAPI spec. Only depends on the portal, so one invocation is enough."
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   collect-images:
@@ -75,6 +80,45 @@ jobs:
       elixir_tag: ${{ inputs.elixir_tag }}
       http_test_server_image: ${{ inputs.http_test_server_image }}
       http_test_server_tag: ${{ inputs.http_test_server_tag }}
+
+  # Fuzzes the REST API from its OpenAPI spec against a seeded portal. Only
+  # postgres and the portal run, so it does not join the matrix above.
+  api-fuzz:
+    if: inputs.api_fuzz
+    runs-on: ubuntu-24.04
+    needs: collect-images
+    permissions:
+      contents: read
+    env:
+      PORTAL_IMAGE: ${{ inputs.portal_image }}
+      PORTAL_TAG: ${{ inputs.portal_tag }}
+      ELIXIR_IMAGE: ${{ inputs.elixir_image }}
+      ELIXIR_TAG: ${{ inputs.elixir_tag }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-docker
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: images-${{ inputs.id }}
+      - name: Load pre-pulled images
+        run: zstd -dc --long=30 images.tar.zst | docker load
+      - uses: ./.github/actions/setup-scripts
+      - name: Seed database
+        run: docker compose run --pull never elixir /bin/sh -c 'mix ecto.migrate && mix ecto.seed'
+      - name: Start the portal
+        run: |
+          retry docker compose up -d --wait portal --no-build --pull never
+          retry docker compose exec portal curl --fail --silent --output /dev/null http://localhost:8081/openapi.json
+      - run: ./scripts/tests/openapi-fuzz.sh
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: "!cancelled()"
+        with:
+          name: schemathesis-report-${{ inputs.id }}
+          path: schemathesis-report
+      - uses: ./.github/actions/show-compose-logs
+        if: "!cancelled()"
+        with:
+          services: portal postgres
 
   integration-tests:
     name: ${{ matrix.test.name || matrix.test.script }}

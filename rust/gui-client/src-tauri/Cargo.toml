@@ -118,6 +118,8 @@ features = [
     "Win32_System_Threading",
     # `ProcessIdToSessionId` for the GUI-pipe cross-session check.
     "Win32_System_RemoteDesktop",
+    # `AttachConsole` so release builds print to the terminal they were launched from.
+    "Win32_System_Console",
     # WinRT `Windows.Foundation.Uri` and
     # `Windows.Management.Deployment.PackageManager` for the
     # `register-sparse.exe` WiX custom action.

@@ -36,6 +36,34 @@ defmodule PortalWeb.Settings.ApiClients.Index do
       |> Safe.one!()
     end
 
+    @spec fetch_token_for_actor(binary(), any()) :: Portal.APIToken.t() | nil
+    def fetch_token_for_actor(actor_id, subject) do
+      from(t in Portal.APIToken,
+        where: t.actor_id == ^actor_id,
+        order_by: [desc: t.inserted_at],
+        limit: 1
+      )
+      |> Safe.scoped(subject)
+      |> Safe.one()
+    end
+
+    @spec update_actor_and_token_scopes(Ecto.Changeset.t(), [String.t()], any()) ::
+            {:ok, Portal.Actor.t()} | {:error, Ecto.Changeset.t()}
+    def update_actor_and_token_scopes(actor_changeset, scopes, subject) do
+      Safe.transact(fn ->
+        with {:ok, actor} <- Safe.scoped(actor_changeset, subject) |> Safe.update(),
+             {_count, nil} <-
+               from(t in Portal.APIToken,
+                 where: t.actor_id == ^actor.id,
+                 where: t.account_id == ^actor.account_id
+               )
+               |> Safe.scoped(subject)
+               |> Safe.update_all(set: [scopes: scopes]) do
+          {:ok, actor}
+        end
+      end)
+    end
+
     @spec create_api_token_with_actor(Ecto.Changeset.t(), map(), any()) ::
             {:ok, {Portal.Actor.t(), String.t()}} | {:error, Ecto.Changeset.t()}
     def create_api_token_with_actor(actor_changeset, token_attrs, subject) do
@@ -97,6 +125,7 @@ defmodule PortalWeb.Settings.ApiClients.Index do
       socket =
         socket
         |> assign(selected_actor: nil, encoded_token: nil, open_actor_actions_id: nil)
+        |> assign(selected_token: nil, scopes: [], scopes_error: nil)
         |> assign(form: to_form(changeset, as: "api_token"))
 
       {:noreply, socket}
@@ -115,11 +144,13 @@ defmodule PortalWeb.Settings.ApiClients.Index do
 
   def handle_params(%{"id" => id}, _uri, %{assigns: %{live_action: :edit}} = socket) do
     actor = Database.get_actor!(id, socket.assigns.subject)
+    token = Database.fetch_token_for_actor(actor.id, socket.assigns.subject)
     changeset = actor_name_changeset(actor, %{})
 
     socket =
       socket
       |> assign(selected_actor: actor, encoded_token: nil, open_actor_actions_id: nil)
+      |> assign(selected_token: token, scopes: (token && token.scopes) || [], scopes_error: nil)
       |> assign(form: to_form(changeset, as: "actor"))
 
     {:noreply, socket}
@@ -129,6 +160,9 @@ defmodule PortalWeb.Settings.ApiClients.Index do
     {:noreply,
      assign(socket,
        selected_actor: nil,
+       selected_token: nil,
+       scopes: [],
+       scopes_error: nil,
        form: nil,
        encoded_token: nil,
        pending_confirm: nil,
@@ -256,7 +290,7 @@ defmodule PortalWeb.Settings.ApiClients.Index do
             <!-- Panel body -->
             <div class="flex-1 overflow-y-auto px-5 py-4 space-y-4">
               <%= if is_nil(@encoded_token) do %>
-                <.api_token_creation_form form={@form} />
+                <.api_token_creation_form form={@form} scopes={@scopes} error={@scopes_error} />
               <% else %>
                 <.api_token_reveal encoded_token={@encoded_token} />
               <% end %>
@@ -314,6 +348,8 @@ defmodule PortalWeb.Settings.ApiClients.Index do
                 phx-debounce="300"
                 required
               />
+
+              <.api_token_scopes scopes={@scopes} error={@scopes_error} />
             </div>
 
     <!-- Panel footer -->
@@ -533,81 +569,86 @@ defmodule PortalWeb.Settings.ApiClients.Index do
     {:noreply, socket}
   end
 
-  def handle_event("validate_new", %{"api_token" => attrs}, socket) do
-    attrs = map_expires_at(attrs)
+  def handle_event("validate_new", params, socket) do
+    scopes = scopes_from(params)
+
+    attrs =
+      params
+      |> Map.get("api_token", %{})
+      |> map_expires_at()
+      |> Map.put("scopes", scopes)
 
     changeset =
       build_creation_changeset(attrs)
       |> Map.put(:action, :insert)
 
-    {:noreply, assign(socket, form: to_form(changeset, as: "api_token"))}
+    socket =
+      socket
+      |> assign(scopes: scopes, scopes_error: nil)
+      |> assign(form: to_form(changeset, as: "api_token"))
+
+    {:noreply, socket}
   end
 
-  def handle_event("create_token", %{"api_token" => attrs}, socket) do
+  def handle_event("select_scopes", %{"preset" => preset}, socket) do
+    {:noreply, assign(socket, scopes: Portal.Scope.preset(preset), scopes_error: nil)}
+  end
+
+  def handle_event("create_token", params, socket) do
     account = socket.assigns.account
+    scopes = scopes_from(params)
 
-    if Portal.Billing.can_create_api_clients?(account) do
-      attrs = map_expires_at(attrs)
-      {name, token_attrs} = Map.pop(attrs, "name")
-      actor_changeset = build_actor_changeset(%{"name" => name})
+    cond do
+      scopes == [] ->
+        {:noreply, assign(socket, scopes: scopes, scopes_error: scopes_error(scopes))}
 
-      case Database.create_api_token_with_actor(
-             actor_changeset,
-             token_attrs,
-             socket.assigns.subject
-           ) do
-        {:ok, {_actor, encoded_token}} ->
-          actors_with_tokens = Database.list_actors_with_token(socket.assigns.subject)
+      Portal.Billing.can_create_api_clients?(account) ->
+        do_create_token(params, scopes, socket)
 
-          socket =
-            socket
-            |> assign(encoded_token: encoded_token, actors_with_tokens: actors_with_tokens)
-
-          {:noreply, socket}
-
-        {:error, changeset} ->
-          {:noreply, assign(socket, form: to_form(changeset, as: "api_token"))}
-      end
-    else
-      socket =
-        socket
-        |> put_flash(
-          :error,
-          "You have reached the maximum number of API tokens allowed for your account."
-        )
-        |> push_patch(to: ~p"/#{account}/settings/api_clients")
-
-      {:noreply, socket}
+      true ->
+        {:noreply, billing_limit_reached(socket)}
     end
   end
 
-  def handle_event("validate_edit", %{"actor" => attrs}, socket) do
+  def handle_event("validate_edit", params, socket) do
     changeset =
-      actor_name_changeset(socket.assigns.selected_actor, attrs)
+      socket.assigns.selected_actor
+      |> actor_name_changeset(Map.get(params, "actor", %{}))
       |> Map.put(:action, :update)
 
-    {:noreply, assign(socket, form: to_form(changeset, as: "actor"))}
+    socket =
+      socket
+      |> assign(scopes: scopes_from(params), scopes_error: nil)
+      |> assign(form: to_form(changeset, as: "actor"))
+
+    {:noreply, socket}
   end
 
-  def handle_event("update_actor", %{"actor" => attrs}, socket) do
-    changeset = actor_name_changeset(socket.assigns.selected_actor, attrs)
+  def handle_event("update_actor", params, socket) do
+    scopes = scopes_from(params)
+    changeset = actor_name_changeset(socket.assigns.selected_actor, Map.get(params, "actor", %{}))
 
-    case Portal.Safe.scoped(changeset, socket.assigns.subject) |> Portal.Safe.update() do
-      {:ok, _actor} ->
-        actors_with_tokens = Database.list_actors_with_token(socket.assigns.subject)
+    with [_ | _] <- scopes,
+         {:ok, _actor} <-
+           Database.update_actor_and_token_scopes(changeset, scopes, socket.assigns.subject) do
+      actors_with_tokens = Database.list_actors_with_token(socket.assigns.subject)
 
-        socket =
-          socket
-          |> assign(actors_with_tokens: actors_with_tokens)
-          |> push_patch(to: ~p"/#{socket.assigns.account}/settings/api_clients")
+      socket =
+        socket
+        |> assign(actors_with_tokens: actors_with_tokens)
+        |> push_patch(to: ~p"/#{socket.assigns.account}/settings/api_clients")
 
-        {:noreply, socket}
+      {:noreply, socket}
+    else
+      [] ->
+        {:noreply, assign(socket, scopes: scopes, scopes_error: scopes_error(scopes))}
 
-      {:error, changeset} ->
-        {:noreply, assign(socket, form: to_form(changeset, as: "actor"))}
+      {:error, %Ecto.Changeset{} = changeset} ->
+        {:noreply, assign(socket, form: to_form(changeset, as: "actor"), scopes: scopes)}
     end
   end
 
+  # An api_client actor always has a token in practice; guard anyway.
   def handle_event("disable", %{"id" => id}, socket) do
     actor = get_actor_by_id(socket, id)
 
@@ -718,10 +759,49 @@ defmodule PortalWeb.Settings.ApiClients.Index do
     end
   end
 
+  defp do_create_token(params, scopes, socket) do
+    attrs =
+      params
+      |> Map.get("api_token", %{})
+      |> map_expires_at()
+      |> Map.put("scopes", scopes)
+
+    {name, token_attrs} = Map.pop(attrs, "name")
+    actor_changeset = build_actor_changeset(%{"name" => name})
+
+    case Database.create_api_token_with_actor(
+           actor_changeset,
+           token_attrs,
+           socket.assigns.subject
+         ) do
+      {:ok, {_actor, encoded_token}} ->
+        actors_with_tokens = Database.list_actors_with_token(socket.assigns.subject)
+
+        socket =
+          socket
+          |> assign(encoded_token: encoded_token, actors_with_tokens: actors_with_tokens)
+
+        {:noreply, socket}
+
+      {:error, changeset} ->
+        {:noreply, assign(socket, form: to_form(changeset, as: "api_token"))}
+    end
+  end
+
+  defp billing_limit_reached(socket) do
+    socket
+    |> put_flash(
+      :error,
+      "You have reached the maximum number of API tokens allowed for your account."
+    )
+    |> push_patch(to: ~p"/#{socket.assigns.account}/settings/api_clients")
+  end
+
   defp build_creation_changeset(attrs) do
     %APIToken{}
-    |> cast(attrs, [:name, :expires_at])
+    |> cast(attrs, [:name, :expires_at, :scopes])
     |> validate_required([:name, :expires_at])
+    |> Portal.Scope.validate(:scopes)
   end
 
   defp build_actor_changeset(attrs) do
@@ -737,6 +817,18 @@ defmodule PortalWeb.Settings.ApiClients.Index do
     |> validate_required([:name])
     |> validate_length(:name, min: 1, max: 255)
   end
+
+  # Read from the parameters rather than a changeset, since the edit panel is
+  # bound to the actor. Expanded because a locked read box submits nothing.
+  defp scopes_from(params) do
+    params
+    |> Map.get("api_token", %{})
+    |> Map.get("scopes", [])
+    |> Portal.Scope.expand()
+  end
+
+  defp scopes_error([]), do: "Select at least one permission"
+  defp scopes_error(_scopes), do: nil
 
   defp map_expires_at(attrs) do
     Map.update(attrs, "expires_at", nil, fn

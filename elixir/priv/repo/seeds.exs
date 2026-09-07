@@ -1261,7 +1261,7 @@ defmodule Portal.Repo.Seeds do
         device_enrollment_type: row.device_enrollment_type,
         device_registration_state: "registered",
         partner_reported_threat_state: "unknown",
-        jail_broken: "False",
+        jail_broken: false,
         is_encrypted: rem(i, 9) != 0,
         is_supervised: row.operating_system in ["iOS", "macOS"],
         entra_registered: true,
@@ -1444,7 +1444,7 @@ defmodule Portal.Repo.Seeds do
         risk_score: row.risk_score,
         exposure_level: row.exposure_level,
         device_value: if(rem(i, 6) == 0, do: "High", else: "Normal"),
-        rbac_group_id: "140",
+        rbac_group_id: 140,
         rbac_group_name: "Engineering",
         is_potential_duplication: false,
         is_excluded: false,
@@ -1801,7 +1801,11 @@ defmodule Portal.Repo.Seeds do
         monthly_active_users_count: 100,
         service_accounts_count: 10,
         sites_count: 3,
-        account_admin_users_count: 5
+        account_admin_users_count: 5,
+        # The OpenAPI fuzzer (scripts/tests/openapi-fuzz.sh) sends hundreds of
+        # requests per second at this account.
+        api_refill_rate: 10_000,
+        api_capacity: 100_000
       })
       |> Repo.insert!()
 
@@ -1884,7 +1888,7 @@ defmodule Portal.Repo.Seeds do
     system_subject = %Authentication.Subject{
       account: account,
       actor: %Actor{type: :system, id: Ecto.UUID.generate(), name: "System"},
-      credential: %Authentication.Credential{type: :token, id: Ecto.UUID.generate()},
+      credential: %Authentication.Credential.ClientToken{id: Ecto.UUID.generate()},
       expires_at: DateTime.utc_now() |> DateTime.add(1, :hour),
       context: %Authentication.Context{
         type: :client,
@@ -1953,7 +1957,10 @@ defmodule Portal.Repo.Seeds do
     other_system_subject = %Authentication.Subject{
       account: other_account,
       actor: %Actor{type: :system, id: Ecto.UUID.generate(), name: "System"},
-      credential: %Authentication.Credential{type: :portal_session, id: Ecto.UUID.generate()},
+      credential: %Authentication.Credential.PortalSession{
+        id: Ecto.UUID.generate(),
+        auth_provider_id: Ecto.UUID.generate()
+      },
       expires_at: DateTime.utc_now() |> DateTime.add(1, :hour),
       context: %Authentication.Context{
         type: :portal,
@@ -2249,7 +2256,10 @@ defmodule Portal.Repo.Seeds do
     admin_subject = %Authentication.Subject{
       account: account,
       actor: admin_actor,
-      credential: %Authentication.Credential{type: :portal_session, id: Ecto.UUID.generate()},
+      credential: %Authentication.Credential.PortalSession{
+        id: Ecto.UUID.generate(),
+        auth_provider_id: userpass_provider.id
+      },
       expires_at: DateTime.utc_now() |> DateTime.add(1, :hour),
       context: %Authentication.Context{
         type: :portal,
@@ -2261,7 +2271,10 @@ defmodule Portal.Repo.Seeds do
     unprivileged_subject = %Authentication.Subject{
       account: account,
       actor: unprivileged_actor,
-      credential: %Authentication.Credential{type: :token, id: unprivileged_client_token.id},
+      credential: %Authentication.Credential.ClientToken{
+        id: unprivileged_client_token.id,
+        auth_provider_id: unprivileged_client_token.auth_provider_id
+      },
       expires_at: unprivileged_client_token.expires_at,
       context: %Authentication.Context{
         type: :client,
@@ -2295,7 +2308,7 @@ defmodule Portal.Repo.Seeds do
     pool_member_subject = %Authentication.Subject{
       account: account,
       actor: pool_member_actor,
-      credential: %Authentication.Credential{type: :token, id: pool_member_token.id},
+      credential: %Authentication.Credential.ClientToken{id: pool_member_token.id},
       expires_at: pool_member_token.expires_at,
       context: %Authentication.Context{
         type: :client,
@@ -2712,6 +2725,36 @@ defmodule Portal.Repo.Seeds do
 
     IO.puts("Created sites:")
     IO.puts("  #{site.name} token: #{gateway_encoded_token}")
+    IO.puts("")
+
+    # Static API token for the OpenAPI fuzz run, see scripts/tests/openapi-fuzz.sh.
+    {:ok, fuzz_actor} =
+      Repo.insert(%Actor{
+        id: "8f1a5d2c-6b3e-4c7a-9d0f-1e2b3c4d5e6f",
+        account_id: account.id,
+        type: :api_client,
+        name: "OpenAPI Fuzzer"
+      })
+
+    fuzz_secret_fragment = "OPENAPIFUZZ0000000000000000000000000000000000000000000000"
+    fuzz_secret_salt = "openapi-fuzz-salt"
+
+    fuzz_api_token =
+      %Portal.APIToken{
+        id: "4c2d9a0e-7f6b-4e1c-8a3d-2b5c6d7e8f90",
+        account_id: account.id,
+        actor_id: fuzz_actor.id,
+        name: "openapi-fuzz",
+        scopes: Portal.Scope.all(),
+        secret_fragment: fuzz_secret_fragment,
+        secret_salt: fuzz_secret_salt,
+        secret_hash: Crypto.hash(:sha3_256, fuzz_secret_fragment <> fuzz_secret_salt),
+        expires_at: ~U[2099-01-01 00:00:00.000000Z]
+      }
+      |> Repo.insert!()
+
+    IO.puts("Created API token for the OpenAPI fuzzer:")
+    IO.puts("  Token: #{Authentication.encode_fragment!(fuzz_api_token)}")
     IO.puts("")
 
     # Pinned so auto-assigned IPs never randomly collide with the pool member's 100.64.0.2.

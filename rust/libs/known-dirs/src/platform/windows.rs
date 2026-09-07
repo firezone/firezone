@@ -17,7 +17,7 @@ pub fn app_local_data_dir() -> Result<PathBuf> {
 
 /// Path for Tunnel service config that the Tunnel service can write
 ///
-/// All writes should use `atomicwrites`.
+/// All writes should use `atomicfs`.
 ///
 /// On Windows, `C:/ProgramData/$BUNDLE_ID/config`
 pub fn tunnel_service_config() -> Option<PathBuf> {

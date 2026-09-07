@@ -2,6 +2,7 @@ defmodule PortalAPI.GatewayController do
   use PortalAPI, :controller
   use OpenApiSpex.ControllerSpecs
   alias PortalAPI.Pagination
+  alias PortalAPI.JSON
   alias PortalAPI.Error
   alias PortalAPI.Filters
   alias PortalAPI.Schemas.ProblemDetails
@@ -20,7 +21,7 @@ defmodule PortalAPI.GatewayController do
         type: :string,
         example: "00000000-0000-0000-0000-000000000000"
       ],
-      limit: [in: :query, description: "Limit Gateways returned", type: :integer, example: 10],
+      limit: [in: :query, description: "Limit Gateways returned", schema: PortalAPI.Pagination.limit_schema(), example: 10],
       page_cursor: [in: :query, description: "Next/Prev page cursor", type: :string],
       name: [in: :query, description: "Filter to the Gateway with this exact name", type: :string],
       ipv4: [in: :query, description: "Filter to the Gateway with this exact tunnel IPv4 address", type: :string],
@@ -41,7 +42,7 @@ defmodule PortalAPI.GatewayController do
            |> Keyword.put(:preload, [:online?])
            |> Keyword.put(:filter, coerce_filters(params)),
          {:ok, gateways, metadata} <- Database.list_gateways(conn.assigns.subject, list_opts) do
-      render(conn, :index, gateways: gateways, metadata: metadata)
+      json(conn, JSON.encode(gateways, metadata, schema: PortalAPI.Schemas.Gateway.Schema))
     else
       error -> Error.handle(conn, error)
     end
@@ -80,8 +81,8 @@ defmodule PortalAPI.GatewayController do
   @spec show(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def show(conn, %{"site_id" => site_id, "id" => id}) do
     with {:ok, gateway} <- Database.fetch_gateway(site_id, id, conn.assigns.subject) do
-      gateway = Presence.Gateways.preload_gateways_presence([gateway]) |> List.first()
-      render(conn, :show, gateway: gateway)
+      gateway = Presence.Devices.preload_presence([gateway]) |> List.first()
+      json(conn, JSON.encode(gateway, schema: PortalAPI.Schemas.Gateway.Schema))
     else
       error -> Error.handle(conn, error)
     end
@@ -134,13 +135,13 @@ defmodule PortalAPI.GatewayController do
     name = get_in(params, ["gateway", "name"])
 
     with {:ok, site} <- Database.fetch_site(site_id, subject),
-         {:ok, gateway, token, encoded_token} <- Database.provision_gateway(site, name, subject) do
-      gateway = Presence.Gateways.preload_gateways_presence([gateway]) |> List.first()
+         {:ok, gateway, token, _encoded_token} <- Database.provision_gateway(site, name, subject) do
+      gateway = Presence.Devices.preload_presence([gateway]) |> List.first()
 
       conn
       |> put_status(:created)
       |> put_resp_header("location", ~p"/sites/#{site_id}/gateways/#{gateway}")
-      |> render(:provisioned, gateway: gateway, token: token, encoded_token: encoded_token)
+      |> json(JSON.encode(%{gateway | provisioned_token: token}, schema: PortalAPI.Schemas.Gateway.Schema))
     else
       error -> Error.handle(conn, error)
     end
@@ -189,8 +190,8 @@ defmodule PortalAPI.GatewayController do
 
     with {:ok, gateway} <- Database.fetch_gateway(site_id, id, subject),
          {:ok, gateway} <- Database.rename_gateway(gateway, name, subject) do
-      gateway = Presence.Gateways.preload_gateways_presence([gateway]) |> List.first()
-      render(conn, :show, gateway: gateway)
+      gateway = Presence.Devices.preload_presence([gateway]) |> List.first()
+      json(conn, JSON.encode(gateway, schema: PortalAPI.Schemas.Gateway.Schema))
     else
       error -> Error.handle(conn, error)
     end
@@ -229,7 +230,7 @@ defmodule PortalAPI.GatewayController do
 
     with {:ok, gateway} <- Database.fetch_gateway(site_id, id, subject),
          {:ok, gateway} <- Database.delete_gateway(gateway, subject) do
-      render(conn, :show, gateway: gateway)
+      json(conn, JSON.encode(gateway, schema: PortalAPI.Schemas.Gateway.Schema))
     else
       error -> Error.handle(conn, error)
     end
@@ -290,7 +291,7 @@ defmodule PortalAPI.GatewayController do
 
     def preloads do
       [
-        online?: &Presence.Gateways.preload_gateways_presence/1
+        online?: &Presence.Devices.preload_presence/1
       ]
     end
 
@@ -376,7 +377,7 @@ defmodule PortalAPI.GatewayController do
     def delete_gateway(gateway, subject) do
       case Safe.scoped(gateway, subject) |> Safe.delete() do
         {:ok, deleted_gateway} ->
-          {:ok, Presence.Gateways.preload_gateways_presence([deleted_gateway]) |> List.first()}
+          {:ok, Presence.Devices.preload_presence([deleted_gateway]) |> List.first()}
 
         {:error, reason} ->
           {:error, reason}

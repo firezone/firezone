@@ -38,14 +38,15 @@
 	<string name="device_trust_select_certificate">Select certificate</string>
 	<string name="device_trust_selection_title">Select your client certificate</string>
 	<string name="device_trust_selection_description">
-		A certificate has been installed on this device but Firezone has not been granted access.
-		Please click \'Select certificate\' and select it on the presented system pop-up. Firezone
-		cannot use the installed certificate beforehand. You can change or revert this permission
-		in the Device Trust settings tab at any time.
+		Your administrator requires a client certificate on this device, and Firezone has not been
+		granted access to it yet. Please click \'Select certificate\' and select it on the presented
+		system pop-up. Firezone cannot connect before then.
 	</string>
-	<string name="device_trust_forget_certificate">Forget Selection</string>
 	<string name="device_trust_loading">Reading the KeyChain…</string>
 	<string name="device_trust_no_certificate_selected">No RSA or EC certificate was selected.</string>
+	<string name="device_trust_not_device_certificate">
+		\'%1$s\' is not a Firezone device certificate. Its common name must be dev.firezone.device-trust.
+	</string>
 	<string name="device_trust_not_released">
 		Android has not released this certificate to Firezone. Selecting it grants access.
 	</string>
@@ -152,11 +153,13 @@
 	<string name="config_connect_on_start_description">
 		Whether Firezone should automatically try to connect when the app is launched.
 	</string>
-	<string name="config_x509_certificate_alias_title">Client Certificate Alias</string>
-	<string name="config_x509_certificate_alias_description">
-		The system KeyChain alias of the client certificate used for mutual TLS. The device policy
-		controller must install the key pair and grant dev.firezone.android access to it. Leave
-		empty to disable certificate-based device attestation.
+	<string name="config_x509_certificate_title">Device Certificate</string>
+	<string name="config_x509_certificate_description">
+		Whether Firezone presents a client certificate for device attestation. When true, Firezone
+		uses the certificate the device policy controller names for it, or has the user release the
+		installed one before connecting. When false, no certificate is used. When unset, Firezone
+		uses a certificate only if the device policy controller names one. The certificate\'s subject
+		common name must be dev.firezone.device-trust.
 	</string>
 
 	<string name="managed_setting_info_description">

@@ -1,12 +1,12 @@
 [workspace]
 members = [
-    "cli",
     "client-ffi",
     "gateway",
     "gui-client/src-admx-macro",
     "gui-client/src-tauri",
     "headless-client",
     "libs/anyhow-ext",
+    "libs/atomicfs",
     "libs/backoff",
     "libs/bin-shared",
     "libs/client-shared",
@@ -72,7 +72,7 @@ admx-macro = { path = "gui-client/src-admx-macro" }
 anyhow = { package = "anyhow-ext", path = "libs/anyhow-ext" }
 arbitrary = "1.4.2"
 arboard = { version = "3.6.1", default-features = false }
-atomicwrites = "0.4.4"
+atomicfs = { path = "libs/atomicfs" }
 axum = { version = "0.8.8", default-features = false }
 aya = { git = "https://github.com/aya-rs/aya" }
 aya-build = { git = "https://github.com/aya-rs/aya" }
@@ -139,7 +139,7 @@ ip_network_table = { version = "0.2.0", default-features = false }
 is = "0.11.0"
 itertools = "0.15.0"
 jni = "0.22.4"
-jsonschema = { version = "0.51.0", default-features = false }
+jsonschema = { version = "0.52.0", default-features = false }
 keyring-core = "1.0.0"
 known-dirs = { path = "libs/known-dirs" }
 known-folders = "1.4.2"
@@ -298,7 +298,7 @@ boringtun = { git = "https://github.com/firezone/boringtun", branch = "master" }
 ip_network = { git = "https://github.com/JakubOnderka/ip_network", branch = "master" } # Waiting for release.
 ip_network_table = { git = "https://github.com/edmonds/ip_network_table", branch = "some-useful-traits" } # For `Debug` and `Clone`
 softbuffer = { git = "https://github.com/rust-windowing/softbuffer" } # Waiting for release.
-quinn-udp = { git = "https://github.com/firezone/quinn", version = "0.6.0", branch = "feat/handle-partial-sendmsg-x-progress" } # Waiting for https://github.com/quinn-rs/quinn/pull/2748.
+quinn-udp = { git = "https://github.com/firezone/quinn", version = "0.6.0", branch = "main" } # Waiting for https://github.com/quinn-rs/quinn/pull/2748 and https://github.com/quinn-rs/quinn/pull/2821.
 proptest = { git = "https://github.com/proptest-rs/proptest", branch = "main" } # Waiting for release.
 rtnetlink = { git = "https://github.com/rust-netlink/rtnetlink", branch = "main" } # Waiting for release.
 

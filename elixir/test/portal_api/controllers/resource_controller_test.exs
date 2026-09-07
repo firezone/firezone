@@ -341,7 +341,6 @@ defmodule PortalAPI.ResourceControllerTest do
                "type" => "about:blank",
                "status" => 422,
                "validation_errors" => %{
-                 "site_id" => ["can't be blank"],
                  "name" => ["can't be blank"],
                  "type" => ["can't be blank"]
                }
@@ -379,6 +378,25 @@ defmodule PortalAPI.ResourceControllerTest do
     # see PortalAPI.ResourceController.Database.reject_device_pool_type/1.
     # If pool creation is re-enabled, this test should go back to asserting
     # a 201 with a null address and no site_id.
+    test "returns 422 when an addressed type has no address", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      site = site_fixture(account: account)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> post("/resources",
+          resource: %{"name" => "No address", "type" => "dns", "address" => nil, "site_id" => site.id}
+        )
+
+      assert %{"status" => 422, "validation_errors" => %{"address" => ["can't be blank"]}} =
+               json_response(conn, 422)
+    end
+
     test "rejects creating a static device pool", %{
       conn: conn,
       actor: actor
@@ -395,7 +413,7 @@ defmodule PortalAPI.ResourceControllerTest do
         |> post("/resources", resource: attrs)
 
       assert resp = json_response(conn, 422)
-      assert resp["validation_errors"]["type"] == ["device pools cannot be created via the API"]
+      assert resp["validation_errors"]["type"] == ["is invalid"]
     end
 
     test "creates a resource with filters for Starter accounts", %{

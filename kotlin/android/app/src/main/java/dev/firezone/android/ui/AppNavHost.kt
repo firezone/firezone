@@ -6,18 +6,21 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.VpnService
 import android.os.Build
-import android.widget.Toast
 import androidx.activity.compose.LocalActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
-import androidx.lifecycle.compose.LifecycleResumeEffect
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
@@ -25,10 +28,10 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import dev.firezone.android.R
 import dev.firezone.android.features.auth.ui.AuthActivity
+import dev.firezone.android.features.permission.certificate.ui.compose.CertificatePermissionScreen
+import dev.firezone.android.features.permission.notification.ui.compose.NotificationPermissionScreen
 import dev.firezone.android.features.permission.ui.CertificatePermissionViewModel
-import dev.firezone.android.features.permission.ui.compose.CertificatePermissionScreen
-import dev.firezone.android.features.permission.ui.compose.NotificationPermissionScreen
-import dev.firezone.android.features.permission.ui.compose.VpnPermissionScreen
+import dev.firezone.android.features.permission.vpn.ui.compose.VpnPermissionScreen
 import dev.firezone.android.features.session.ui.SessionActivity
 import dev.firezone.android.features.settings.ui.SettingsActivity
 import dev.firezone.android.features.signin.ui.compose.SignInScreen
@@ -66,13 +69,13 @@ private fun SplashRoute(
     viewModel: SplashViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
+    val activity = LocalActivity.current ?: return
     val action by viewModel.actionStateFlow.collectAsStateWithLifecycle()
 
     // The other destinations hand control back here when they are done, and the answer can change
     // while the app is in the background, so the check runs on every resume rather than once.
-    LifecycleResumeEffect(Unit) {
-        viewModel.checkTunnelState(context)
-        onPauseOrDispose { viewModel.cancelTunnelStateCheck() }
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
+        viewModel.checkTunnelState(activity)
     }
 
     LaunchedEffect(action) {
@@ -128,22 +131,29 @@ private fun CertificatePermissionRoute(
     viewModel: CertificatePermissionViewModel = hiltViewModel(),
 ) {
     val activity = LocalActivity.current ?: return
+    var error by remember { mutableStateOf<String?>(null) }
 
     CertificatePermissionScreen(
         onSelectCertificate = {
-            viewModel.chooseCertificate(activity) { released ->
+            viewModel.chooseCertificate(activity) { outcome ->
                 activity.runOnUiThread {
-                    if (released) {
-                        navController.popBackStack()
-                    } else {
-                        Toast
-                            .makeText(activity, R.string.device_trust_no_certificate_selected, Toast.LENGTH_LONG)
-                            .show()
-                    }
+                    error =
+                        when (outcome) {
+                            CertificatePermissionViewModel.Outcome.Selected -> {
+                                navController.popBackStack()
+                                null
+                            }
+
+                            CertificatePermissionViewModel.Outcome.NothingSelected ->
+                                activity.getString(R.string.device_trust_no_certificate_selected)
+
+                            is CertificatePermissionViewModel.Outcome.NotADeviceCertificate ->
+                                activity.getString(R.string.device_trust_not_device_certificate, outcome.alias)
+                        }
                 }
             }
         },
-        onSkip = { navController.popBackStack() },
+        error = error,
     )
 }
 

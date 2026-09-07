@@ -7,7 +7,7 @@ import android.content.Context
 import android.net.Uri
 import android.os.Bundle
 import dev.firezone.android.core.data.Repository
-import dev.firezone.android.core.data.X509_CERTIFICATE_ALIAS_RESTRICTION
+import dev.firezone.android.core.data.X509_CERTIFICATE_RESTRICTION
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -21,7 +21,7 @@ import org.robolectric.annotation.Config
 import java.security.PrivateKey
 import java.security.cert.X509Certificate
 
-/** Pins which configured alias is checked before Android asks the user for access. */
+/** Pins when the device policy is asked for the certificate, and when the user is. */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], application = Application::class)
 class CertificateAccessTest {
@@ -37,44 +37,56 @@ class CertificateAccessTest {
     private val certificateAccess = CertificateAccess(repository, restrictions, keyChain)
 
     @Test
-    fun `no configured alias needs no selection`() {
+    fun `without a word from the administrator only the policy is asked`() {
+        assertTrue(runBlocking { certificateAccess.needsDiscovery() })
         assertFalse(runBlocking { certificateAccess.needsSelection() })
         assertEquals(emptySet<String>(), keyChain.requestedAliases.toSet())
     }
 
     @Test
-    fun `an alias the KeyChain withholds needs selection`() {
-        repository.saveX509CertificateAliasSync("user-alias")
+    fun `a required certificate nobody named yet is the user's to release`() {
+        restrictions.putBoolean(X509_CERTIFICATE_RESTRICTION, true)
 
+        assertTrue(runBlocking { certificateAccess.needsDiscovery() })
         assertTrue(runBlocking { certificateAccess.needsSelection() })
-        assertEquals(listOf("user-alias"), keyChain.requestedAliases)
+        assertEquals(emptySet<String>(), keyChain.requestedAliases.toSet())
     }
 
     @Test
-    fun `a blank managed alias turns certificate access off`() {
-        restrictions.putString(X509_CERTIFICATE_ALIAS_RESTRICTION, "")
-        repository.saveX509CertificateAliasSync("user-alias")
+    fun `a required certificate the KeyChain withholds is the user's to release`() {
+        restrictions.putBoolean(X509_CERTIFICATE_RESTRICTION, true)
+        repository.saveX509CertificateAliasSync("device-alias")
 
+        assertTrue(runBlocking { certificateAccess.needsSelection() })
+        assertEquals(listOf("device-alias"), keyChain.requestedAliases)
+    }
+
+    @Test
+    fun `a withheld certificate nobody required is only the policy's to name`() {
+        repository.saveX509CertificateAliasSync("device-alias")
+
+        assertTrue(runBlocking { certificateAccess.needsDiscovery() })
+        assertFalse(runBlocking { certificateAccess.needsSelection() })
+    }
+
+    @Test
+    fun `certificates turned off ask nobody`() {
+        restrictions.putBoolean(X509_CERTIFICATE_RESTRICTION, false)
+        repository.saveX509CertificateAliasSync("device-alias")
+
+        assertFalse(runBlocking { certificateAccess.needsDiscovery() })
         assertFalse(runBlocking { certificateAccess.needsSelection() })
         assertEquals(emptySet<String>(), keyChain.requestedAliases.toSet())
     }
 
     @Test
     fun `a KeyChain read failure is left for the session`() {
-        repository.saveX509CertificateAliasSync("user-alias")
+        restrictions.putBoolean(X509_CERTIFICATE_RESTRICTION, true)
+        repository.saveX509CertificateAliasSync("device-alias")
         keyChain.readFailure = IllegalStateException("KeyChain service unavailable")
 
+        assertFalse(runBlocking { certificateAccess.needsDiscovery() })
         assertFalse(runBlocking { certificateAccess.needsSelection() })
-    }
-
-    @Test
-    fun `a managed alias overrides the user's selection`() {
-        restrictions.putString(X509_CERTIFICATE_ALIAS_RESTRICTION, "managed-alias")
-        repository.saveX509CertificateAliasSync("user-alias")
-
-        runBlocking { certificateAccess.needsSelection() }
-
-        assertEquals(setOf("managed-alias"), keyChain.requestedAliases.toSet())
     }
 
     /** A KeyChain that holds nothing we may read, the way an unprovisioned device does. */
@@ -99,5 +111,11 @@ class CertificateAccessTest {
             preselectedAlias: String?,
             onChosen: (String?) -> Unit,
         ): Unit = error("the chooser is an Activity affair, which this test never reaches")
+
+        override fun policyAlias(
+            activity: Activity,
+            requestUri: Uri?,
+            onAnswer: (String?) -> Unit,
+        ): Unit = error("asking the policy is an Activity affair, which this test never reaches")
     }
 }

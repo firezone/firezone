@@ -11,6 +11,10 @@ permissions:
   contents: "read"
   id-token: "write" # OIDC auth
 
+concurrency:
+  group: ${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' && 'android-release-main' || format('android-ci-{0}', github.run_id) }}
+  cancel-in-progress: false
+
 # Stamped into every build below, so neither the emulator running the instrumented
 # tests nor a debug artifact someone installs later reports to Sentry. The release
 # build overrides it.
@@ -134,6 +138,9 @@ jobs:
         with:
           api-level: 34
           arch: x86_64
+          # 1080 by 1920 at xxhdpi, the size the rendered screenshots are drawn at, so a
+          # display capture can sit next to them.
+          profile: Nexus 5
           # An image without Play Services boots faster, and a device owner can only be
           # set while a device carries no accounts, which the managed suite's DPC needs.
           target: default
@@ -145,6 +152,13 @@ jobs:
         with:
           name: android-coverage-${{ matrix.suite }}
           path: kotlin/android/coverage.ec
+      # System screens the tests photographed, such as the KeyChain chooser, which
+      # `commit-screenshots` puts next to the rendered ones.
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: android-emulator-screenshots-${{ matrix.suite }}
+          path: kotlin/android/emulator-screenshots
+          if-no-files-found: ignore
 
   emulator-coverage:
     needs: emulator-tests
@@ -209,12 +223,18 @@ jobs:
   update-release-draft:
     name: update-release-draft
     runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.release-metadata.outputs.version }}
     permissions:
       contents: write # for updating the release draft
     env:
       # mark:next-android-version
       RELEASE_NAME: android-client-1.5.14
     steps:
+      - name: Set release metadata
+        id: release-metadata
+        working-directory: .
+        run: echo "version=${RELEASE_NAME#android-client-}" >> "$GITHUB_OUTPUT"
       - uses: release-drafter/release-drafter@34d80673e067bdc0c24568d3af899c216adcfaa9 # v7.7.0
         if: "${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}"
         id: update-release-draft
@@ -334,21 +354,18 @@ jobs:
           service_account: play-store-publisher@firezone-55040.iam.gserviceaccount.com
           token_format: access_token
           access_token_scopes: https://www.googleapis.com/auth/androidpublisher
-          access_token_lifetime: 600s
-      # The play-store-publisher service account is intentionally granted only
-      # internal-track upload permission in the Play Console. Production-track
-      # permission would let it (or anyone who compromises CI) publish a release
-      # straight to end users. Promotion from internal -> production is a manual
-      # step in the Play Console.
-      - name: Upload AAB to Google Play Console (internal track)
+          access_token_lifetime: 3600s # Outlives the bounded upload and commit step.
+      # Keep this service account limited to testing tracks in the Play Console.
+      - name: Publish Google Play internal release
         if: ${{ matrix.package-type == 'aab' && github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}
+        timeout-minutes: 30
         env:
+          GPLAY_SERVICE_ACCOUNT_JSON: ${{ steps.gcp-auth.outputs.credentials_file_path }}
           ACCESS_TOKEN: ${{ steps.gcp-auth.outputs.access_token }}
-          PACKAGE_NAME: dev.firezone.android
           AAB_PATH: ${{ matrix.output-path }}
-          TRACK: internal
-          RELEASE_STATUS: draft
-        run: ../../scripts/upload/play-store.sh
+          SOURCE_SHA: ${{ github.sha }}
+          VERSION_NAME: ${{ needs.update-release-draft.outputs.version }}
+        run: ../../scripts/upload/play-store.sh internal
 
   build_debug:
     # Android SDK tools hardware accel is available only on Linux runners

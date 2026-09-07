@@ -26,6 +26,9 @@ enum LogGuard {
 }
 
 fn main() -> ExitCode {
+    #[cfg(all(target_os = "windows", not(debug_assertions)))]
+    attach_parent_console();
+
     rustls::crypto::ring::default_provider()
         .install_default()
         .expect("Failed to install default crypto provider");
@@ -64,6 +67,18 @@ fn main() -> ExitCode {
     telemetry::stop();
 
     exit_code
+}
+
+/// Attaches to the console of the parent process so subcommand output and the stdout log layer are visible when launched from a terminal.
+///
+/// Must run before the logger is set up because ANSI detection inspects stdout.
+/// Failure means there is no parent console (e.g. launched from the Start menu), which is the normal GUI launch.
+#[cfg(all(target_os = "windows", not(debug_assertions)))]
+fn attach_parent_console() {
+    use windows::Win32::System::Console::{ATTACH_PARENT_PROCESS, AttachConsole};
+
+    // SAFETY: `AttachConsole` has no memory-safety preconditions.
+    let _ = unsafe { AttachConsole(ATTACH_PARENT_PROCESS) };
 }
 
 fn try_main(cli: Cli, rt: &Runtime, log_guard: &mut Option<LogGuard>) -> Result<()> {

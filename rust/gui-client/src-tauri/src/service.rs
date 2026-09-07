@@ -96,7 +96,8 @@ pub enum ServerMsg {
     ConnectResult(Result<(), String>),
     DisconnectedGracefully,
     OnDisconnect {
-        error_msg: String,
+        user_msg: String,
+        log_msg: String,
         requires_sign_in: bool,
     },
     AllGatewaysOffline {
@@ -674,7 +675,8 @@ impl<'a> Handler<'a> {
                 self.reset_telemetry_environment();
                 self.dns_controller.deactivate()?;
                 self.send_ipc(ServerMsg::OnDisconnect {
-                    error_msg: error.to_string(),
+                    user_msg: error.user_message(),
+                    log_msg: error.log_message(),
                     requires_sign_in: error.requires_sign_in(),
                 })
                 .await?

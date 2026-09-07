@@ -5,19 +5,23 @@ defmodule PortalAPI.Schemas.Site do
     require OpenApiSpex
     alias OpenApiSpex.Schema
 
+    @derive {PortalAPI.JSON.Encoder,
+             for: Portal.Site,
+             internal: [:account_id, :health_threshold, :inserted_at, :managed_by, :updated_at]}
     OpenApiSpex.schema(%{
       title: "Site",
       description: "Site",
       type: :object,
       properties: %{
-        id: %Schema{type: :string, format: :uuid, description: "Site ID"},
-        name: %Schema{type: :string, description: "Site Name"}
+        id: %Schema{
+          example: "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
+          type: :string,
+          format: :uuid,
+          description: "Site ID"
+        },
+        name: %Schema{example: "vpc-us-east", type: :string, description: "Site Name"}
       },
-      required: [:id, :name],
-      example: %{
-        "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-        "name" => "vpc-us-east"
-      }
+      required: [:id, :name]
     })
   end
 
@@ -33,17 +37,12 @@ defmodule PortalAPI.Schemas.Site do
         site: %Schema{
           type: :object,
           properties: %{
-            name: %Schema{type: :string, description: "Site Name"}
+            name: %Schema{example: "vpc-us-east", type: :string, description: "Site Name"}
           },
           required: [:name]
         }
       },
-      required: [:site],
-      example: %{
-        "site" => %{
-          "name" => "vpc-us-east"
-        }
-      }
+      required: [:site]
     })
   end
 
@@ -61,16 +60,11 @@ defmodule PortalAPI.Schemas.Site do
         site: %Schema{
           type: :object,
           properties: %{
-            name: %Schema{type: :string, description: "Site Name"}
+            name: %Schema{example: "vpc-us-east", type: :string, description: "Site Name"}
           }
         }
       },
-      required: [:site],
-      example: %{
-        "site" => %{
-          "name" => "vpc-us-east"
-        }
-      }
+      required: [:site]
     })
   end
 
@@ -85,12 +79,6 @@ defmodule PortalAPI.Schemas.Site do
       type: :object,
       properties: %{
         data: Site.Schema
-      },
-      example: %{
-        "data" => %{
-          "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-          "name" => "vpc-us-east"
-        }
       }
     })
   end
@@ -112,24 +100,6 @@ defmodule PortalAPI.Schemas.Site do
           items: Site.Schema
         },
         metadata: PaginationMetadata
-      },
-      example: %{
-        "data" => [
-          %{
-            "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-            "name" => "vpc-us-east"
-          },
-          %{
-            "id" => "6301d7d2-4938-4123-87de-282c01cca656",
-            "name" => "vpc-us-west"
-          }
-        ],
-        "metadata" => %{
-          "limit" => 10,
-          "total" => 100,
-          "prev_page" => "123123425",
-          "next_page" => "98776234123"
-        }
       }
     })
   end

@@ -3,12 +3,11 @@ defmodule PortalWeb.Sites do
   import PortalWeb.Sites.Components
   import PortalWeb.Resources.Components, only: [map_filters_form_attrs: 1]
   alias Portal.Presence
-  alias Portal.PubSub
   alias __MODULE__.Database
 
   def mount(_params, _session, socket) do
     if connected?(socket) do
-      :ok = Presence.Gateways.Account.subscribe(socket.assigns.account.id)
+      :ok = Presence.Devices.Account.subscribe(socket.assigns.account.id)
     end
 
     socket =
@@ -19,6 +18,7 @@ defmodule PortalWeb.Sites do
       |> assign(resources_counts: %{})
       |> assign(policies_counts: %{})
       |> assign(gateway_counts: %{})
+      |> assign(online_gateway_counts: %{})
       |> assign(internet_resource: nil)
       |> assign(internet_site: nil)
       |> assign(site_state_reset_assigns())
@@ -37,7 +37,6 @@ defmodule PortalWeb.Sites do
     if selected_site_matches?(socket, id) do
       {:noreply,
        socket
-       |> unsubscribe_deploy_site_presence()
        |> merge_state(:site_panel, %{
          tab: parse_panel_tab(params, socket.assigns.site_panel.gateway_tokens),
          view: :gateways,
@@ -55,7 +54,6 @@ defmodule PortalWeb.Sites do
         site ->
           {:noreply,
            socket
-           |> unsubscribe_deploy_site_presence()
            |> assign(site_panel_assigns(site, params, socket))}
       end
     end
@@ -67,7 +65,6 @@ defmodule PortalWeb.Sites do
 
       {:noreply,
        socket
-       |> unsubscribe_deploy_site_presence()
        |> merge_state(:site_panel, %{
          tab: parse_panel_tab(params, socket.assigns.site_panel.gateway_tokens),
          view: :edit_site,
@@ -87,7 +84,6 @@ defmodule PortalWeb.Sites do
 
           {:noreply,
            socket
-           |> unsubscribe_deploy_site_presence()
            |> assign(
              Keyword.merge(site_assigns,
                site_panel: Map.put(Keyword.fetch!(site_assigns, :site_panel), :view, :edit_site),
@@ -103,13 +99,12 @@ defmodule PortalWeb.Sites do
 
     {:noreply,
      socket
-     |> unsubscribe_deploy_site_presence()
      |> assign(site_state_reset_assigns())
      |> put_state(:new_site, %{open: true, form: to_form(changeset)})}
   end
 
   def handle_params(_params, _uri, socket) do
-    {:noreply, socket |> unsubscribe_deploy_site_presence() |> assign(site_state_reset_assigns())}
+    {:noreply, assign(socket, site_state_reset_assigns())}
   end
 
   defp redirect_to_sites_index(socket, message) do
@@ -342,7 +337,7 @@ defmodule PortalWeb.Sites do
                 </div>
               </td>
               <td class="px-4 py-3">
-                <% online = gateway_online_count(@internet_site.id) %>
+                <% online = Map.get(@online_gateway_counts, @internet_site.id, 0) %>
                 <span class="text-sm text-body tabular-nums">
                   {online}<span class="ml-1.5 text-[10px] text-subtle">online</span>
                 </span>
@@ -354,7 +349,7 @@ defmodule PortalWeb.Sites do
               </td>
               <td class="px-4 py-3">
                 <.site_status_badge status={
-                  compute_site_status(@internet_site.id, @internet_site.health_threshold)
+                  compute_site_status(online, @internet_site.health_threshold)
                 } />
               </td>
             </tr>
@@ -385,7 +380,7 @@ defmodule PortalWeb.Sites do
                 </div>
               </td>
               <td class="px-4 py-3">
-                <% online = gateway_online_count(site.id) %>
+                <% online = Map.get(@online_gateway_counts, site.id, 0) %>
                 <span class="text-sm text-body tabular-nums">
                   {online}<span class="ml-1.5 text-[10px] text-subtle">online</span>
                 </span>
@@ -396,7 +391,7 @@ defmodule PortalWeb.Sites do
                 </span>
               </td>
               <td class="px-4 py-3">
-                <.site_status_badge status={compute_site_status(site.id, site.health_threshold)} />
+                <.site_status_badge status={compute_site_status(online, site.health_threshold)} />
               </td>
             </tr>
           </tbody>
@@ -479,7 +474,7 @@ defmodule PortalWeb.Sites do
     all_gateways =
       site_id
       |> Database.list_gateways_for_site(subject)
-      |> Presence.Gateways.preload_gateways_presence()
+      |> Presence.Devices.preload_presence()
 
     gateways =
       if show_all? do
@@ -496,8 +491,7 @@ defmodule PortalWeb.Sites do
       env: nil,
       tab: "debian-instructions",
       connected?: false,
-      token: nil,
-      subscribed_site_id: nil
+      token: nil
     }
   end
 
@@ -528,13 +522,7 @@ defmodule PortalWeb.Sites do
 
   # ---- Helpers ----
 
-  defp gateway_online_count(site_id) do
-    Presence.Gateways.Site.list(site_id) |> map_size()
-  end
-
-  defp compute_site_status(site_id, threshold) do
-    online = gateway_online_count(site_id)
-
+  defp compute_site_status(online, threshold) do
     cond do
       online == 0 -> :offline
       online < threshold -> :degraded
@@ -874,11 +862,6 @@ defmodule PortalWeb.Sites do
             subject
           )
 
-        socket =
-          socket
-          |> unsubscribe_deploy_site_presence()
-          |> subscribe_deploy_site_presence(site.id)
-
         env = [
           {"FIREZONE_ID", Ecto.UUID.generate()},
           {"FIREZONE_TOKEN", encoded_token}
@@ -900,8 +883,7 @@ defmodule PortalWeb.Sites do
            env: env,
            tab: "debian-instructions",
            token: token,
-           connected?: false,
-           subscribed_site_id: site.id
+           connected?: false
          })}
 
       {:error, _} ->
@@ -916,7 +898,6 @@ defmodule PortalWeb.Sites do
   def handle_event("close_deploy", _params, socket) do
     {:noreply,
      socket
-     |> unsubscribe_deploy_site_presence()
      |> merge_state(:site_panel, %{view: :gateways})
      |> put_state(:site_deploy, base_site_deploy_state())}
   end
@@ -1181,25 +1162,17 @@ defmodule PortalWeb.Sites do
 
   def handle_info(
         %Phoenix.Socket.Broadcast{
-          event: "presence_diff",
-          topic: "presences:sites:" <> _site_id,
+          topic: "presences:account_devices:" <> _account_id,
           payload: %{joins: joins}
         },
         socket
       ) do
-    case site_deploy_connection_status(socket.assigns.site_deploy, joins) do
-      :noop ->
-        {:noreply, socket}
+    socket =
+      case site_deploy_connection_status(socket.assigns.site_deploy, joins) do
+        :noop -> socket
+        connected? -> merge_state(socket, :site_deploy, %{connected?: connected?})
+      end
 
-      connected? ->
-        {:noreply, merge_state(socket, :site_deploy, %{connected?: connected?})}
-    end
-  end
-
-  def handle_info(
-        %Phoenix.Socket.Broadcast{topic: "presences:account_gateways:" <> _account_id},
-        socket
-      ) do
     socket = load_sites_index_data(socket)
 
     {device_tokens, panel_gateways, total_gateway_count} =
@@ -1239,25 +1212,6 @@ defmodule PortalWeb.Sites do
 
   defp selected_site_matches?(socket, id) do
     match?(%{id: ^id}, socket.assigns.selected_site)
-  end
-
-  defp subscribe_deploy_site_presence(socket, site_id) do
-    if connected?(socket) and socket.assigns.site_deploy.subscribed_site_id != site_id do
-      :ok = Presence.Gateways.Site.subscribe(site_id)
-      merge_state(socket, :site_deploy, %{subscribed_site_id: site_id})
-    else
-      socket
-    end
-  end
-
-  defp unsubscribe_deploy_site_presence(socket) do
-    if connected?(socket) do
-      site_id = socket.assigns.site_deploy.subscribed_site_id
-        :ok = PubSub.unsubscribe("presences:sites:#{site_id}")
-        merge_state(socket, :site_deploy, %{subscribed_site_id: nil})
-    else
-        socket
-    end
   end
 
   defp parse_site_tab("resources"), do: :resources
@@ -1316,6 +1270,7 @@ defmodule PortalWeb.Sites do
     |> assign(resources_counts: resources_counts)
     |> assign(policies_counts: policies_counts)
     |> assign(gateway_counts: gateway_counts)
+    |> assign(online_gateway_counts: Presence.Devices.online_gateway_counts(socket.assigns.account.id))
     |> assign(internet_resource: internet_resource)
     |> assign(internet_site: internet_site)
   end
@@ -1588,7 +1543,7 @@ defmodule PortalWeb.Sites do
           nil
 
         resource ->
-          gateways = Presence.Gateways.preload_gateways_presence(resource.site.gateways)
+          gateways = Presence.Devices.preload_presence(resource.site.gateways)
           put_in(resource.site.gateways, gateways)
       end
     end

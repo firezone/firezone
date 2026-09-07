@@ -192,18 +192,18 @@ defmodule Portal.ResourceFixtures do
   end
 
   @doc """
-  Generate a static device pool resource and optionally attach clients to it.
+  Generate a static device pool resource and optionally attach devices to it.
   """
   def static_device_pool_resource_fixture(attrs \\ %{}) do
     attrs = Enum.into(attrs, %{})
     account = Map.get(attrs, :account) || account_fixture()
-    clients = Map.get(attrs, :clients, [])
+    devices = Map.get(attrs, :devices, [])
     unique_num = System.unique_integer([:positive, :monotonic])
 
     resource =
       resource_fixture(
         attrs
-        |> Map.delete(:clients)
+        |> Map.delete(:devices)
         |> Map.put(:account, account)
         |> Map.put(:type, :static_device_pool)
         |> Map.put_new(:name, "Device Pool #{unique_num}")
@@ -211,13 +211,13 @@ defmodule Portal.ResourceFixtures do
         |> Map.delete(:address)
       )
 
-    Enum.each(clients, fn client ->
+    Enum.each(devices, fn device ->
       %Portal.StaticDevicePoolMember{}
       |> Ecto.Changeset.cast(
         %{
           account_id: account.id,
           resource_id: resource.id,
-          device_id: client.id
+          device_id: device.id
         },
         [:account_id, :resource_id, :device_id]
       )

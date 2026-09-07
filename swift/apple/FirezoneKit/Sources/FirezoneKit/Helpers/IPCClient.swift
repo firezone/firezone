@@ -204,6 +204,7 @@ public enum IPCClient {
   /// Polling opts out: cycle-starting from the poll loop would wake the extension
   /// without a tunnel behind it, and the stop that follows churns the VPN status,
   /// which starts the loop over again.
+  @MainActor
   private static func sendProviderMessage(
     session: any TunnelSessionProtocol,
     message: ProviderMessage,
@@ -229,6 +230,7 @@ public enum IPCClient {
   /// On macOS, the tunnel needs to be in a connected, connecting, or reasserting state for the utun to be removed
   /// upon stopTunnel. We do this by ensuring the tunnel is "started" prior to any IPC call. If so, we return true
   /// so that the caller may stop the tunnel afterwards.
+  @MainActor
   private static func maybeCycleStart(_ session: any TunnelSessionProtocol) async throws -> Bool {
     if session.status == .invalid {
       throw Error.invalidStatus(session.status)

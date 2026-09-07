@@ -119,6 +119,23 @@ impl From<anyhow::Error> for DisconnectError {
 }
 
 impl DisconnectError {
+    /// Returns the sentence to show the user.
+    ///
+    /// Only [`phoenix_channel::Error`] is worded for a user. Anything else that ends a session
+    /// is an internal failure, which the user is told about without the diagnostics.
+    pub fn user_message(&self) -> String {
+        let Some(e) = self.0.any_downcast_ref::<phoenix_channel::Error>() else {
+            return "Firezone ran into an unrecoverable error.".to_owned();
+        };
+
+        e.to_string()
+    }
+
+    /// Returns the error with its full cause chain, for the logs.
+    pub fn log_message(&self) -> String {
+        format!("{:#}", self.0)
+    }
+
     /// Returns whether the stored token must be discarded and the user sent through sign-in again.
     ///
     /// This does not report whether the failure was authentication-related in general.
@@ -298,6 +315,7 @@ impl Eventloop {
                     return Ok(ControlFlow::Continue(()));
                 };
 
+                tunnel.state_mut().set_portal_connected(false);
                 tunnel.reset(&reason, now);
                 tunnel_bypass_resolver::reset_sockets();
                 telemetry::reset_ingest();
@@ -532,15 +550,26 @@ impl Eventloop {
                         || self.local_flow_logs,
                 );
 
-                if let Some(spool_root) = &self.flow_logs_dir
-                    && let Err(e) = flow_log_upload::configure_uploads(
+                if let Some(spool_root) = &self.flow_logs_dir {
+                    match flow_log_upload::configure_uploads(
                         spool_root,
                         &flow_logs.api_url,
                         flow_logs.upload_interval_secs,
                         flow_logs.upload_batch_size,
                     )
-                {
-                    tracing::warn!("Failed to persist flow-log upload config: {e:#}");
+                    .context("Failed to persist flow-log upload config")
+                    {
+                        Ok(()) => {}
+                        Err(e)
+                            if e.any_downcast_ref::<std::io::Error>()
+                                .is_some_and(|io| io.kind() == std::io::ErrorKind::StorageFull) =>
+                        {
+                            tracing::debug!("{e:#}");
+                        }
+                        Err(e) => {
+                            tracing::warn!("{e:#}");
+                        }
+                    }
                 }
 
                 let state = tunnel.state_mut();
@@ -857,8 +886,19 @@ fn persist_ingest_token(spool_root: Option<&std::path::Path>, token: &IngestToke
         return;
     }
 
-    if let Err(e) = flow_log_writer::write_token(spool_root, token.as_str()) {
-        tracing::warn!("Failed to persist flow-log ingest token: {e:#}");
+    match flow_log_writer::write_token(spool_root, token.as_str())
+        .context("Failed to persist flow-log ingest token")
+    {
+        Ok(()) => {}
+        Err(e)
+            if e.any_downcast_ref::<std::io::Error>()
+                .is_some_and(|io| io.kind() == std::io::ErrorKind::StorageFull) =>
+        {
+            tracing::debug!("{e:#}");
+        }
+        Err(e) => {
+            tracing::warn!("{e:#}");
+        }
     }
 }
 
@@ -1002,4 +1042,62 @@ fn parse_portal_domain(domain: &str) -> Option<dns_types::DomainName> {
             tracing::warn!(%domain, "Portal sent malformed device pool domain: {}", logging::err_with_src(e));
         })
         .ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn signing_failure_names_the_certificate_but_not_the_keystore() {
+        let error = portal_failure(phoenix_channel::Error::ClientCertificateSigningFailed(
+            "the keystore failed to sign: The requested operation is not supported. (0x80090029)"
+                .into(),
+        ));
+
+        assert_eq!(
+            error.user_message(),
+            "This device could not sign in with its certificate"
+        );
+        assert_eq!(
+            error.log_message(),
+            "Connection to portal failed: This device could not sign in with its certificate: the keystore failed to sign: The requested operation is not supported. (0x80090029)"
+        );
+    }
+
+    #[test]
+    fn lost_connection_names_the_portal_but_not_the_last_attempt() {
+        let error = portal_failure(phoenix_channel::Error::MaxRetriesReached {
+            final_error: "websocket connection failed".into(),
+        });
+
+        assert_eq!(
+            error.user_message(),
+            "The connection to the Firezone Portal was lost and could not be restored"
+        );
+        assert_eq!(
+            error.log_message(),
+            "Connection to portal failed: The connection to the Firezone Portal was lost and could not be restored: websocket connection failed"
+        );
+    }
+
+    #[test]
+    fn failures_without_a_message_for_the_user_are_reported_as_unrecoverable() {
+        let error = DisconnectError::from(
+            anyhow::Error::msg("failed to write to TUN device").context("connlib crashed"),
+        );
+
+        assert_eq!(
+            error.user_message(),
+            "Firezone ran into an unrecoverable error."
+        );
+        assert_eq!(
+            error.log_message(),
+            "connlib crashed: failed to write to TUN device"
+        );
+    }
+
+    fn portal_failure(error: phoenix_channel::Error) -> DisconnectError {
+        DisconnectError(anyhow::Error::new(error).context("Connection to portal failed"))
+    }
 }

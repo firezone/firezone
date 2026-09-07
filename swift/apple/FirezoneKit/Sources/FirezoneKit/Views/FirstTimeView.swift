@@ -14,6 +14,7 @@ import SwiftUI
     var body: some View {
       VStack(
         alignment: .center,
+        spacing: 24,
         content: {
           Spacer()
           Image("LogoText")
@@ -21,34 +22,31 @@ import SwiftUI
             .scaledToFit()
             .frame(maxWidth: 430)
             .padding(.horizontal, 10)
-          Spacer()
           Text(
             "You can sign in by clicking the Firezone icon in the macOS menu bar or clicking 'Open menu' below."
           )
           .font(.body)
           .multilineTextAlignment(.center)
-
-          Spacer()
-          HStack {
-            Button("Close this window") {
-              AppView.WindowDefinition.main.window()?.close()
+          VStack(spacing: 8) {
+            HStack {
+              Button("Close this window") {
+                AppView.WindowDefinition.main.window()?.close()
+              }
+              .buttonStyle(.borderedProminent)
+              .controlSize(.large)
+              Button("Open menu") {
+                store.requestOpenMenuBar()
+                AppView.WindowDefinition.main.window()?.close()
+              }
+              .buttonStyle(.borderedProminent)
+              .controlSize(.large)
             }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
-            Button("Open menu") {
-              store.requestOpenMenuBar()
-              AppView.WindowDefinition.main.window()?.close()
-            }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
+            Text(
+              "Firezone will continue running after this window is closed.\nIt will be available from the macOS menu bar."
+            )
+            .font(.caption)
+            .multilineTextAlignment(.center)
           }
-          Spacer()
-            .frame(maxHeight: 20)
-          Text(
-            "Firezone will continue running after this window is closed.\nIt will be available from the macOS menu bar."
-          )
-          .font(.caption)
-          .multilineTextAlignment(.center)
           Spacer()
         })
     }

@@ -236,8 +236,14 @@ impl ConnlibError {
 
 #[uniffi::export]
 impl DisconnectError {
-    pub fn message(&self) -> String {
-        self.0.to_string()
+    /// Returns the sentence to show the user.
+    pub fn user_message(&self) -> String {
+        self.0.user_message()
+    }
+
+    /// Returns the error with its full cause chain, for the logs.
+    pub fn log_message(&self) -> String {
+        self.0.log_message()
     }
 
     /// Returns whether the stored token must be discarded and the user sent through sign-in again.

@@ -3,13 +3,15 @@ package dev.firezone.android.features
 
 import android.app.Application
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.res.stringResource
 import com.github.takahirom.roborazzi.ExperimentalRoborazziApi
-import com.github.takahirom.roborazzi.RobolectricDeviceQualifiers
 import com.github.takahirom.roborazzi.captureRoboImage
 import com.github.takahirom.roborazzi.roborazziSystemPropertyOutputDirectory
-import dev.firezone.android.features.permission.ui.compose.CertificatePermissionScreen
-import dev.firezone.android.features.permission.ui.compose.NotificationPermissionScreen
-import dev.firezone.android.features.permission.ui.compose.VpnPermissionScreen
+import dev.firezone.android.R
+import dev.firezone.android.STORE_SCREENSHOT_QUALIFIERS
+import dev.firezone.android.features.permission.certificate.ui.compose.CertificatePermissionScreen
+import dev.firezone.android.features.permission.notification.ui.compose.NotificationPermissionScreen
+import dev.firezone.android.features.permission.vpn.ui.compose.VpnPermissionScreen
 import dev.firezone.android.features.signin.ui.compose.SignInScreen
 import dev.firezone.android.features.splash.ui.compose.SplashScreen
 import dev.firezone.android.ui.theme.FirezoneTheme
@@ -25,7 +27,7 @@ import org.robolectric.annotation.GraphicsMode
 @Config(
     sdk = [34],
     application = Application::class,
-    qualifiers = RobolectricDeviceQualifiers.Pixel5,
+    qualifiers = STORE_SCREENSHOT_QUALIFIERS,
 )
 class OnboardingScreenshotTest {
     @Test
@@ -44,9 +46,16 @@ class OnboardingScreenshotTest {
         }
 
     @Test
-    fun certificatePermission() =
-        capture("certificate-permission") {
-            CertificatePermissionScreen(onSelectCertificate = {}, onSkip = {})
+    fun certificatePermission() = capture("certificate-permission") { CertificatePermissionScreen(onSelectCertificate = {}) }
+
+    // The user picked the mail certificate the MDM installed alongside the device certificate.
+    @Test
+    fun certificatePermissionRefused() =
+        capture("certificate-permission-refused") {
+            CertificatePermissionScreen(
+                onSelectCertificate = {},
+                error = stringResource(R.string.device_trust_not_device_certificate, "corp-mail"),
+            )
         }
 
     @OptIn(ExperimentalRoborazziApi::class)

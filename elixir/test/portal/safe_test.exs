@@ -30,6 +30,17 @@ defmodule Portal.SafeTest do
     end
   end
 
+  describe "delete/1" do
+    test "returns not_found when the row was already deleted" do
+      account = account_fixture()
+      subject = admin_subject_fixture(account: account)
+      site = Portal.SiteFixtures.site_fixture(account: account)
+
+      assert {:ok, _site} = site |> Safe.scoped(subject) |> Safe.delete()
+      assert {:error, :not_found} = site |> Safe.scoped(subject) |> Safe.delete()
+    end
+  end
+
   # Exhaustive specification of the authorization matrix encoded in
   # `Portal.Safe.permit/3`. Each assertion pins one clause so that an accidental
   # change to a permission rule fails a test rather than silently widening or

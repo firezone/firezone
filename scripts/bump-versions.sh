@@ -106,14 +106,14 @@ function update_version_variables() {
 # before publishing the macOS standalone release.
 #
 # Instructions:
-# 1. Run the `Swift` workflow from `main`. This will push iOS and macOS app
-#    store builds to AppStore Connect and upload the iOS IPA along with the
-#    macOS standalone DMG and PKG to the drafted `apple-client` release.
-# 2. Sign in to AppStore Connect and create new iOS and macOS releases and
-#    submit them for review. Ensure the "automatically publish release" is
-#    DISABLED.
-# 3. Once *both* are approved, publish them in the app stores.
-# 4. Publish the drafted `apple-client` release on GitHub.
+# 1. Run the `Swift` workflow from `main`. This uploads the iOS and macOS builds
+#    to App Store Connect and replaces the drafted `apple-client` artifacts.
+# 2. Test the builds, then run the `Submit Apple release` workflow from `main`.
+#    Its first job creates or updates both versions, metadata, and screenshots.
+# 3. Inspect both versions from the pending `app-store` deployment, then
+#    approve it to attach the exact builds and submit them with manual release.
+# 4. Once *both* are approved, publish the drafted `apple-client` release on
+#    GitHub and release the approved versions in App Store Connect.
 # 5. Bump current_apple_client_version / next_apple_client_version at the top
 #    of this script (the release pipeline does this automatically via
 #    `update_version_variables`).
@@ -137,20 +137,23 @@ function apple() {
 # As such, the process for releasing Android is similar to Apple.
 #
 # Instructions:
-# 1. Run the `Kotlin` workflow from `main`. This will push an AAB to Firebase
-#    and upload a new APK to the drafted release.
-# 2. Sign in to Firebase and download the build AAB, optionally distributing it
-#    for release testing to perform any final QA tests.
-# 3. Sign in to the Play Console and create a new release and submit it for
-#    review. Optionally, allow the Play Console to automatically publish the
-#    release.
-# 4. Once the Play Store release is approved, publish the APK in the drafted
+# 1. Configure the Play internal-testing track's tester list and share its opt-in
+#    link. This is a one-time replacement for Firebase App Distribution.
+# 2. Run the `Kotlin` workflow from `main`. This uploads the APK to the drafted
+#    release and publishes the AAB to the Play internal-testing track.
+# 3. Use the internal-testing release for final QA.
+# 4. Run the `Submit Android release` workflow from `main`. Review its preparation
+#    summary, then approve the protected `google-play` environment.
+#    The workflow revalidates the draft, promotes the exact internal release,
+#    replaces the store screenshots, and submits both for review. Managed
+#    Publishing holds approved changes until they are explicitly published.
+# 5. Once the Play Store release is approved, publish the APK in the drafted
 #    release on GitHub.
-# 5. Bump current_android_client_version / next_android_client_version at the
+# 6. Bump current_android_client_version / next_android_client_version at the
 #    top of this script (the release pipeline does this automatically via
 #    `update_version_variables`).
-# 6. Run `scripts/bump-versions.sh android` to update the versions in the codebase.
-# 7. Commit the changes and open a PR.
+# 7. Run `scripts/bump-versions.sh android` to update the versions in the codebase.
+# 8. Commit the changes and open a PR.
 function android() {
     update_version_marker "mark:current-android-version" "$current_android_client_version"
     update_version_marker "mark:next-android-version" "$next_android_client_version"

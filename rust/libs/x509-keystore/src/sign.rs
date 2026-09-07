@@ -61,14 +61,12 @@ impl<S: Signer> PrivateKey for Key<S> {
 }
 
 /// The schemes a key of `algorithm` signs with, most preferred first.
+///
+/// RSA keys sign with SHA-256 alone: it is the only digest every TPM profile mandates and every TLS server has to accept.
 fn signature_schemes(algorithm: SigningAlgorithm) -> &'static [SignatureScheme] {
     match algorithm {
         SigningAlgorithm::RsaSha256 => &[
-            SignatureScheme::RSA_PSS_SHA512,
-            SignatureScheme::RSA_PSS_SHA384,
             SignatureScheme::RSA_PSS_SHA256,
-            SignatureScheme::RSA_PKCS1_SHA512,
-            SignatureScheme::RSA_PKCS1_SHA384,
             SignatureScheme::RSA_PKCS1_SHA256,
         ],
         SigningAlgorithm::EcdsaSha256 => &[SignatureScheme::ECDSA_NISTP256_SHA256],

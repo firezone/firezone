@@ -15,6 +15,8 @@ import androidx.compose.runtime.getValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dagger.hilt.android.AndroidEntryPoint
 import dev.firezone.android.R
+import dev.firezone.android.core.data.Repository
+import dev.firezone.android.core.x509.CertificateAccess
 import dev.firezone.android.core.x509.KeyChain
 import dev.firezone.android.features.settings.ui.compose.SettingsScreen
 import dev.firezone.android.ui.theme.FirezoneTheme
@@ -27,6 +29,15 @@ internal class SettingsActivity : AppCompatActivity() {
 
     @Inject
     internal lateinit var keyChain: KeyChain
+
+    @Inject
+    internal lateinit var certificateAccess: CertificateAccess
+
+    @Inject
+    internal lateinit var repository: Repository
+
+    @Inject
+    internal lateinit var applicationRestrictions: Bundle
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -55,9 +66,11 @@ internal class SettingsActivity : AppCompatActivity() {
                     isSaveEnabled = uiState.isSaveButtonEnabled,
                     logSizeBytes = uiState.logSizeBytes,
                     deviceTrustState = deviceTrustState,
-                    // Device Trust has nothing to say until a certificate is configured, whether
-                    // by an administrator or by the user.
-                    hasConfiguredCertificateAlias = deviceTrustState.alias != null,
+                    // The page exists where a certificate is required or one was found, and
+                    // nowhere else.
+                    hasConfiguredCertificateAlias =
+                        repository.isX509CertificateRequired(applicationRestrictions) ||
+                            deviceTrustState.alias != null,
                     warnBeforeSaving = isUserSignedIn,
                     onAuthUrlChange = viewModel::onAuthUrlChanged,
                     onApiUrlChange = viewModel::onApiUrlChanged,
@@ -70,7 +83,6 @@ internal class SettingsActivity : AppCompatActivity() {
                     onExportLogs = { viewModel.createLogZip(applicationContext) },
                     onLogsShown = { viewModel.onViewResume(applicationContext) },
                     onSelectCertificate = ::chooseCertificate,
-                    onForgetCertificate = deviceTrustViewModel::forgetSelection,
                     onDeviceTrustShown = deviceTrustViewModel::loadDetails,
                     onSave = viewModel::onSaveSettingsCompleted,
                     onCancel = viewModel::onCancel,
@@ -97,23 +109,27 @@ internal class SettingsActivity : AppCompatActivity() {
     }
 
     private fun chooseCertificate() {
-        // Android answers on a binder thread, so the ViewModel takes the alias directly and only
+        // Android answers on a binder thread, where reading the KeyChain back is fine and only
         // the toast has to hop onto the main thread.
-        keyChain.choosePrivateKeyAlias(
-            this,
-            deviceTrustViewModel.keyChainRequestUri(),
-            deviceTrustViewModel.uiStateFlow.value.alias,
-        ) { alias ->
+        keyChain.choosePrivateKeyAlias(this, deviceTrustViewModel.keyChainRequestUri(), null) { alias ->
             if (alias == null) {
-                runOnUiThread {
-                    Toast
-                        .makeText(this, R.string.device_trust_no_certificate_selected, Toast.LENGTH_LONG)
-                        .show()
-                }
-            } else {
-                deviceTrustViewModel.onAliasSelected(alias)
+                toast(getString(R.string.device_trust_no_certificate_selected))
+
+                return@choosePrivateKeyAlias
             }
+
+            if (!certificateAccess.holdsDeviceCertificate(alias)) {
+                toast(getString(R.string.device_trust_not_device_certificate, alias))
+
+                return@choosePrivateKeyAlias
+            }
+
+            deviceTrustViewModel.onAliasSelected(alias)
         }
+    }
+
+    private fun toast(message: String) {
+        runOnUiThread { Toast.makeText(this, message, Toast.LENGTH_LONG).show() }
     }
 
     private fun shareLogs(uri: Uri) {

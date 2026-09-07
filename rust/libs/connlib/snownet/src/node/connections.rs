@@ -65,6 +65,7 @@ where
                 .insert(conn.tunnel.remote_static_public().to_bytes(), now);
             self.disconnected_ids.insert(id, now);
             if let Some(ufrag) = conn.agent.local_ufrag() {
+                self.established_by_local_ufrag.remove(ufrag);
                 self.disconnected_ufrags.insert(ufrag.to_owned(), now);
             }
         }

@@ -543,6 +543,32 @@ defmodule PortalWeb.SitesTest do
       assert is_nil(token.rotated_at)
     end
 
+    test "deploy flips to connected when its gateway joins the account presence", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      site = site_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/sites/#{site.id}")
+
+      assert render_click(lv, "deploy_gateway") =~ "Waiting for connection..."
+
+      gateway = Repo.get_by!(Device, account_id: account.id, site_id: site.id, type: :gateway)
+      token = Repo.get_by!(GatewayToken, account_id: account.id, device_id: gateway.id)
+
+      send(lv.pid, %Phoenix.Socket.Broadcast{
+        topic: "presences:account_devices:#{account.id}",
+        event: "presence_diff",
+        payload: %{joins: %{gateway.id => %{metas: [%{token_id: token.id}]}}, leaves: %{}}
+      })
+
+      assert render(lv) =~ "Connected, click to continue"
+    end
+
     test "deploy no longer creates multi-owner site tokens", %{
       conn: conn,
       account: account,
@@ -638,10 +664,10 @@ defmodule PortalWeb.SitesTest do
       |> Repo.delete!()
 
       :ok = Portal.PG.join(new_token.id)
-      :ok = Portal.Presence.Gateways.Account.track(account.id, gateway.id)
+      :ok = Portal.Presence.Devices.Account.track(gateway)
 
       send(lv.pid, %Phoenix.Socket.Broadcast{
-        topic: "presences:account_gateways:#{account.id}",
+        topic: "presences:account_devices:#{account.id}",
         event: "presence_diff",
         payload: %{joins: %{}, leaves: %{}}
       })
@@ -677,7 +703,7 @@ defmodule PortalWeb.SitesTest do
       |> Repo.delete!()
 
       send(lv.pid, %Phoenix.Socket.Broadcast{
-        topic: "presences:account_gateways:#{account.id}",
+        topic: "presences:account_devices:#{account.id}",
         event: "presence_diff",
         payload: %{joins: %{}, leaves: %{}}
       })

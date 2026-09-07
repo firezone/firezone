@@ -6,7 +6,7 @@
 
 // Photographs the real iOS app against the mocked backend, one scenario per
 // launch. Nothing is compared against a reference: the images are the output,
-// and CI commits them to `swift/apple/screenshots/ios`.
+// and CI commits them to `swift/apple/screenshots/ios/<device>`.
 
 #if os(iOS)
   import CoreGraphics

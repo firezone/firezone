@@ -2,6 +2,7 @@ defmodule PortalAPI.PoolMemberController do
   use PortalAPI, :controller
   use OpenApiSpex.ControllerSpecs
   alias PortalAPI.Pagination
+  alias PortalAPI.JSON
   alias PortalAPI.Error
   alias PortalAPI.Schemas.ProblemDetails
   alias Portal.Resource
@@ -23,7 +24,7 @@ defmodule PortalAPI.PoolMemberController do
         description: "Resource ID",
         example: "00000000-0000-0000-0000-000000000000"
       ],
-      limit: [in: :query, description: "Limit Pool Members returned", type: :integer, example: 10],
+      limit: [in: :query, description: "Limit Pool Members returned", schema: PortalAPI.Pagination.limit_schema(), example: 10],
       page_cursor: [in: :query, description: "Next/Prev page cursor", type: :string]
     ],
     responses:
@@ -45,8 +46,8 @@ defmodule PortalAPI.PoolMemberController do
          :ok <- validate_device_pool(resource),
          {:ok, list_opts} <- Pagination.params_to_list_opts(params),
          list_opts = Keyword.put(list_opts, :filter, resource_id: resource_id),
-         {:ok, clients, metadata} <- Database.list_clients(subject, list_opts) do
-      render(conn, :index, clients: clients, metadata: metadata)
+         {:ok, clients, metadata} <- Database.list_devices(subject, list_opts) do
+      json(conn, JSON.encode(clients, metadata, schema: PortalAPI.Schemas.PoolMember.Schema))
     else
       error -> Error.handle(conn, error)
     end
@@ -97,7 +98,7 @@ defmodule PortalAPI.PoolMemberController do
          {:ok, device_ids} <- extract_device_ids(members),
          :ok <- Database.validate_client_devices(device_ids, subject),
          {:ok, device_ids} <- Database.replace_members(resource, device_ids, subject) do
-      render(conn, :members, device_ids: device_ids)
+      json(conn, %{data: %{device_ids: device_ids}})
     else
       error -> Error.handle(conn, error)
     end
@@ -155,7 +156,7 @@ defmodule PortalAPI.PoolMemberController do
          {:ok, remove} <- extract_id_list(params, "remove"),
          :ok <- Database.validate_client_devices(add, subject),
          {:ok, device_ids} <- Database.patch_members(resource, add, remove, subject) do
-      render(conn, :members, device_ids: device_ids)
+      json(conn, %{data: %{device_ids: device_ids}})
     else
       error -> Error.handle(conn, error)
     end
@@ -244,9 +245,9 @@ defmodule PortalAPI.PoolMemberController do
       end
     end
 
-    def list_clients(subject, opts \\ []) do
-      from(d in Device, as: :clients)
-      |> where([clients: d], d.type == :client)
+    def list_devices(subject, opts \\ []) do
+      from(d in Device, as: :devices)
+      |> where([devices: d], d.type == :client)
       |> Safe.scoped(subject)
       |> Safe.list(__MODULE__, opts)
     end
@@ -264,7 +265,7 @@ defmodule PortalAPI.PoolMemberController do
 
     defp filter_by_resource_id(queryable, resource_id) do
       queryable =
-        join(queryable, :inner, [clients: d], m in StaticDevicePoolMember,
+        join(queryable, :inner, [devices: d], m in StaticDevicePoolMember,
           on: m.device_id == d.id and m.account_id == d.account_id,
           as: :members
         )
@@ -274,8 +275,8 @@ defmodule PortalAPI.PoolMemberController do
 
     def cursor_fields do
       [
-        {:clients, :asc, :inserted_at},
-        {:clients, :asc, :id}
+        {:devices, :asc, :inserted_at},
+        {:devices, :asc, :id}
       ]
     end
 

@@ -1,5 +1,6 @@
 defmodule PortalWeb.Settings.Authentication do
   use PortalWeb, :live_view
+  alias Portal.Authentication.Credential
 
   alias Portal.{
     AuthProvider,
@@ -233,7 +234,7 @@ defmodule PortalWeb.Settings.Authentication do
     # Load providers again to ensure we have the latest state
     socket = init(socket)
 
-    if id == socket.assigns.subject.credential.auth_provider_id do
+    if id == Credential.auth_provider_id(socket.assigns.subject.credential) do
       {:noreply,
        put_flash(
          socket,
@@ -261,7 +262,8 @@ defmodule PortalWeb.Settings.Authentication do
     new_disabled_state = not provider.is_disabled
 
     can_disable =
-      id != socket.assigns.subject.credential.auth_provider_id or not new_disabled_state
+      id != Credential.auth_provider_id(socket.assigns.subject.credential) or
+        not new_disabled_state
 
     changeset =
       if can_disable do

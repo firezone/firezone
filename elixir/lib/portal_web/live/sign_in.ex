@@ -18,12 +18,30 @@ defmodule PortalWeb.SignIn do
     mount_account(account, params, socket)
   end
 
+  # The pending OAuth request rides through sign-in as redirect_to, so the app
+  # being connected can be named here. Read from the cache only: this page
+  # renders before the request has been validated, so it must not fetch.
+  defp connecting_client(%{"redirect_to" => redirect_to}) when is_binary(redirect_to) do
+    with %URI{path: path, query: query} when is_binary(query) <- URI.parse(redirect_to),
+         true <- String.ends_with?(path || "", "/oauth/authorize"),
+         %{"client_id" => client_id} <- URI.decode_query(query) do
+      Portal.OAuth.cached_client(client_id)
+    else
+      _other -> nil
+    end
+  end
+
+  defp connecting_client(_params), do: nil
+
   defp mount_account(account, params, socket) do
+    connecting_client = connecting_client(params)
+
     socket =
       assign(socket,
         page_title: "Sign In",
         account: account,
         params: PortalWeb.Authentication.take_sign_in_params(params),
+        connecting_client: connecting_client,
         google_auth_providers: auth_providers(account, Google.AuthProvider),
         okta_auth_providers: auth_providers(account, Okta.AuthProvider),
         entra_auth_providers: auth_providers(account, Entra.AuthProvider),
@@ -32,7 +50,13 @@ defmodule PortalWeb.SignIn do
         userpass_auth_provider: auth_providers(account, Userpass.AuthProvider)
       )
 
-    {:ok, socket}
+    if connecting_client do
+      # Part of an app connection, so it keeps the centered look the consent
+      # screen uses rather than the marketing panel of a plain sign-in.
+      {:ok, socket, layout: {PortalWeb.Layouts, :standalone}}
+    else
+      {:ok, socket}
+    end
   end
 
   def render(assigns) do
@@ -48,6 +72,8 @@ defmodule PortalWeb.SignIn do
         Contact your account manager or administrator to ensure uninterrupted service.
       </.flash>
     <% end %>
+
+    <.oauth_client_header :if={@connecting_client} client={@connecting_client} />
 
     <div class="flex items-center gap-3 mb-8 mt-4">
       <div class="w-11 h-11 rounded bg-brand/10 border border-brand/20 flex items-center justify-center shrink-0">
@@ -147,7 +173,7 @@ defmodule PortalWeb.SignIn do
     </.intersperse_blocks>
 
     <div
-      :if={!PortalWeb.Authentication.client_sign_in?(@params)}
+      :if={!PortalWeb.Authentication.client_sign_in?(@params) and is_nil(@connecting_client)}
       class="mt-8 pt-6 border-t border-border text-center"
     >
       <p class="text-xs text-subtle leading-relaxed">

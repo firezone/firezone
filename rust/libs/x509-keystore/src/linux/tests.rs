@@ -23,9 +23,8 @@ use cryptoki::{
     types::{AuthPin, Ulong},
 };
 use ring::signature::{
-    ECDSA_P256_SHA256_ASN1, RSA_PKCS1_2048_8192_SHA256, RSA_PKCS1_2048_8192_SHA384,
-    RSA_PKCS1_2048_8192_SHA512, RSA_PSS_2048_8192_SHA256, RSA_PSS_2048_8192_SHA384,
-    RSA_PSS_2048_8192_SHA512, UnparsedPublicKey, VerificationAlgorithm,
+    ECDSA_P256_SHA256_ASN1, RSA_PKCS1_2048_8192_SHA256, RSA_PSS_2048_8192_SHA256,
+    UnparsedPublicKey, VerificationAlgorithm,
 };
 use rustls::SignatureAlgorithm;
 use secrecy::ExposeSecret as _;
@@ -572,11 +571,7 @@ fn assert_signs_every_advertised_scheme(identity: &Identity, certificate: &[u8])
 fn verification_algorithm(scheme: SignatureScheme) -> &'static dyn VerificationAlgorithm {
     match scheme {
         SignatureScheme::RSA_PSS_SHA256 => &RSA_PSS_2048_8192_SHA256,
-        SignatureScheme::RSA_PSS_SHA384 => &RSA_PSS_2048_8192_SHA384,
-        SignatureScheme::RSA_PSS_SHA512 => &RSA_PSS_2048_8192_SHA512,
         SignatureScheme::RSA_PKCS1_SHA256 => &RSA_PKCS1_2048_8192_SHA256,
-        SignatureScheme::RSA_PKCS1_SHA384 => &RSA_PKCS1_2048_8192_SHA384,
-        SignatureScheme::RSA_PKCS1_SHA512 => &RSA_PKCS1_2048_8192_SHA512,
         SignatureScheme::ECDSA_NISTP256_SHA256 => &ECDSA_P256_SHA256_ASN1,
         unexpected => panic!("no `ring` verifier for {unexpected:?}"),
     }

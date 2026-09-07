@@ -413,7 +413,7 @@ defmodule PortalAPI.GroupControllerTest do
                json_response(conn, 404)
     end
 
-    test "returns not found for a body without group params when group does not exist", %{
+    test "returns bad request for a body without group params", %{
       conn: conn,
       actor: actor
     } do
@@ -423,8 +423,8 @@ defmodule PortalAPI.GroupControllerTest do
         |> put_req_header("content-type", "application/json")
         |> put("/groups/#{Ecto.UUID.generate()}")
 
-      assert %{"type" => "about:blank", "status" => 404, "title" => "Not Found"} =
-               json_response(conn, 404)
+      assert %{"type" => "about:blank", "status" => 400, "title" => "Bad Request"} =
+               json_response(conn, 400)
     end
 
     test "returns unauthorized when actor cannot read the group", %{

@@ -61,8 +61,8 @@ defmodule Portal.Defender.SyncTest do
     assert device.os_processor == "x64"
     assert device.os_architecture == "64-bit"
     assert device.os_build == 19_042
-    assert device.last_ip_address == "10.166.113.46"
-    assert device.last_external_ip_address == "167.220.203.175"
+    assert device.last_ip_address == %Postgrex.INET{address: {10, 166, 113, 46}}
+    assert device.last_external_ip_address == %Postgrex.INET{address: {167, 220, 203, 175}}
     assert device.agent_version == "10.8040.19041.4046"
     assert device.health_status == "Active"
     assert device.onboarding_status == "Onboarded"
@@ -72,7 +72,7 @@ defmodule Portal.Defender.SyncTest do
     assert device.exposure_level == "Low"
     assert device.device_value == "Normal"
     assert device.rbac_group_name == "The-A-Team"
-    assert device.rbac_group_id == "140"
+    assert device.rbac_group_id == 140
     assert device.entra_device_id == "fd2e4d29-7072-4195-aaa5-1af139b78028"
     assert device.entra_joined == true
     assert device.machine_tags == ["Tag1", "Tag2"]
@@ -108,7 +108,7 @@ defmodule Portal.Defender.SyncTest do
 
     assert :ok = perform_job(Sync, sync_args(provider))
 
-    assert Repo.get_by!(Device, defender_id: "machine-1").rbac_group_id == "140"
+    assert Repo.get_by!(Device, defender_id: "machine-1").rbac_group_id == 140
   end
 
   # The endpoint sends no next link, so a full page is the only signal that more

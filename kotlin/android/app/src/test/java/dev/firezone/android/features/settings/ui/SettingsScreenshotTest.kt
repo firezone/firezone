@@ -3,18 +3,14 @@ package dev.firezone.android.features.settings.ui
 
 import android.app.Application
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.semantics.SemanticsActions
-import androidx.compose.ui.semantics.SemanticsProperties
-import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.performSemanticsAction
 import com.github.takahirom.roborazzi.ExperimentalRoborazziApi
-import com.github.takahirom.roborazzi.RobolectricDeviceQualifiers
 import com.github.takahirom.roborazzi.captureScreenRoboImage
 import com.github.takahirom.roborazzi.roborazziSystemPropertyOutputDirectory
 import dev.firezone.android.R
+import dev.firezone.android.STORE_SCREENSHOT_QUALIFIERS
 import dev.firezone.android.core.data.model.ManagedConfigStatus
 import dev.firezone.android.features.settings.ui.compose.SettingsScreen
 import dev.firezone.android.ui.theme.FirezoneTheme
@@ -34,7 +30,7 @@ import dev.firezone.android.core.data.model.Config as FirezoneConfig
 @Config(
     sdk = [34],
     application = Application::class,
-    qualifiers = RobolectricDeviceQualifiers.Pixel5,
+    qualifiers = STORE_SCREENSHOT_QUALIFIERS,
 )
 class SettingsScreenshotTest {
     @get:Rule
@@ -55,51 +51,25 @@ class SettingsScreenshotTest {
     @Test
     fun deviceTrustSettingsWithExpiredCertificate() = captureDeviceTrustPage("device-trust-expired", expiredCertificate)
 
-    // The buttons follow the rows, so only the end of the scroll shows what an administrator's
-    // certificate takes away: the same certificate, picked by the user, still offers Forget.
-    @Test
-    fun deviceTrustSettingsWithManagedCertificate() =
-        captureDeviceTrustPage("device-trust-managed-scrolled", managedCertificate, scrollToEnd = true)
-
-    @Test
-    fun deviceTrustSettingsWithUnmanagedCertificate() =
-        captureDeviceTrustPage("device-trust-unmanaged-scrolled", availableCertificate, scrollToEnd = true)
-
     @Test
     fun logSettings() = captureSettingsPage("settings-logs", R.string.log_settings_title)
 
     private fun captureDeviceTrustPage(
         name: String,
         state: DeviceTrustSettingsViewModel.UiState,
-        scrollToEnd: Boolean = false,
-    ) = captureSettingsPage(name, R.string.device_trust_settings_title, state, scrollToEnd)
+    ) = captureSettingsPage(name, R.string.device_trust_settings_title, state)
 
     @OptIn(ExperimentalRoborazziApi::class)
     private fun captureSettingsPage(
         name: String,
         tabLabel: Int,
         deviceTrustState: DeviceTrustSettingsViewModel.UiState = DeviceTrustSettingsViewModel.UiState(),
-        scrollToEnd: Boolean = false,
     ) {
         composeRule.setContent { FirezoneTheme { SettingsScreenSample(deviceTrustState) } }
         composeRule.onNodeWithText(RuntimeEnvironment.getApplication().getString(tabLabel)).performClick()
         composeRule.waitForIdle()
 
-        if (scrollToEnd) {
-            scrollToEnd()
-        }
-
         captureScreenRoboImage("${roborazziSystemPropertyOutputDirectory()}/$name.png")
-    }
-
-    // The pager scrolls sideways, so the page under it is the only node with a vertical range to
-    // read the distance left to travel off.
-    private fun scrollToEnd() {
-        val page = composeRule.onNode(SemanticsMatcher.keyIsDefined(SemanticsProperties.VerticalScrollAxisRange))
-        val range = page.fetchSemanticsNode().config[SemanticsProperties.VerticalScrollAxisRange]
-
-        page.performSemanticsAction(SemanticsActions.ScrollBy) { it(0f, range.maxValue() - range.value()) }
-        composeRule.waitForIdle()
     }
 }
 
@@ -136,10 +106,6 @@ private val availableCertificate =
         alias = CERTIFICATE_ALIAS,
         details = certificateDetails(),
     )
-
-// The same certificate, handed down by an administrator and released by the KeyChain, which
-// leaves the user nothing to pick or clear.
-private val managedCertificate = availableCertificate.copy(isManaged = true)
 
 // An alias the KeyChain holds a certificate for but has not released to Firezone, which leaves
 // the app with nothing to present and nothing to read.
@@ -211,7 +177,6 @@ private fun SettingsScreenSample(deviceTrustState: DeviceTrustSettingsViewModel.
         onExportLogs = {},
         onLogsShown = {},
         onSelectCertificate = {},
-        onForgetCertificate = {},
         onDeviceTrustShown = {},
         onSave = {},
         onCancel = {},

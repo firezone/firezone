@@ -26,12 +26,23 @@ defmodule Portal.Google.Sync do
     ]
 
   alias Portal.Google
+  alias Portal.DirectorySync.Lock
   alias __MODULE__.Database
   require Logger
   @db_batch_size 500
+  @snooze_seconds 30
 
   @impl Oban.Worker
   def perform(%Oban.Job{args: %{"account_id" => account_id, "directory_id" => directory_id}}) do
+    case Lock.try_run(:google, directory_id, fn -> run_sync(account_id, directory_id) end) do
+      {:ok, _result} -> :ok
+      :busy -> {:snooze, @snooze_seconds}
+    end
+  end
+
+  def perform(_), do: :ok
+
+  defp run_sync(account_id, directory_id) do
     Logger.info("Starting Google directory sync",
       account_id: account_id,
       google_directory_id: directory_id,
@@ -46,14 +57,9 @@ defmodule Portal.Google.Sync do
         )
 
       directory ->
-        # Perform the sync
         sync(directory)
     end
-
-    :ok
   end
-
-  def perform(_), do: :ok
 
   defp update(directory, attrs) do
     changeset =
@@ -102,9 +108,22 @@ defmodule Portal.Google.Sync do
     Logger.info("Finished Google directory sync in #{duration} seconds",
       google_directory_id: directory.id
     )
+
+    {:ok, _job} =
+      %{account_id: directory.account_id, directory_id: directory.id, action: "ensure"}
+      |> Google.Subscriptions.new()
+      |> Oban.insert()
   end
 
-  defp get_access_token!(directory) do
+  def issuer, do: Database.issuer()
+
+  def get_directory(account_id, directory_id), do: Database.get_directory(account_id, directory_id)
+
+  def delete_actors_without_identities(directory) do
+    Database.delete_actors_without_identities(directory.account_id, directory.id)
+  end
+
+  def get_access_token!(directory) do
     Logger.debug("Getting access token", google_directory_id: directory.id)
 
     case get_access_token(directory) do
@@ -131,7 +150,7 @@ defmodule Portal.Google.Sync do
     end
   end
 
-  defp get_access_token(directory) do
+  def get_access_token(directory) do
     case directory.legacy_service_account_key do
       key when is_map(key) and map_size(key) > 0 ->
         Google.APIClient.get_access_token(directory.impersonation_email, key)
@@ -883,7 +902,7 @@ defmodule Portal.Google.Sync do
     Enum.filter(users, &syncable_user?(&1, directory.id))
   end
 
-  defp syncable_user?(user, directory_id) do
+  def syncable_user?(user, directory_id) do
     case {Map.fetch(user, "suspended"), Map.fetch(user, "archived")} do
       {{:ok, suspended}, {:ok, archived}} ->
         suspended != true and archived != true
@@ -899,7 +918,7 @@ defmodule Portal.Google.Sync do
     end
   end
 
-  defp map_user_to_identity(user, directory_id) do
+  def map_user_to_identity(user, directory_id) do
     primary_email = user["primaryEmail"]
 
     unless primary_email do
@@ -1038,6 +1057,8 @@ defmodule Portal.Google.Sync do
     alias Portal.Safe
 
     @issuer "https://accounts.google.com"
+
+    def issuer, do: @issuer
 
     def get_directory(account_id, id) do
       from(d in Google.Directory,

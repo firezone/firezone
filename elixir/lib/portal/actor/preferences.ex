@@ -2,7 +2,7 @@ defmodule Portal.Actor.Preferences do
   use Ecto.Schema
   import Ecto.Changeset
 
-  @start_page_values [:sites, :resources, :groups, :policies, :clients, :actors]
+  @start_page_values [:sites, :resources, :groups, :policies, :devices, :actors]
 
   @primary_key false
   embedded_schema do

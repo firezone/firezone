@@ -21,6 +21,7 @@ defmodule PortalWeb.ServiceAccounts do
 
     if connected?(socket) do
       :ok = PubSub.Changes.subscribe(socket.assigns.account.id, :actors)
+      :ok = Presence.Devices.Account.subscribe(socket.assigns.account.id)
     end
 
     socket =
@@ -30,8 +31,7 @@ defmodule PortalWeb.ServiceAccounts do
       |> assign_async(:actors_count, fn -> {:ok, %{actors_count: Database.count_actors(subject)}} end)
       |> assign(
         selected_actor: nil,
-        portal_sessions_subscribed_actor_id: nil,
-        client_tokens_subscribed_actor_id: nil
+        portal_sessions_subscribed_actor_id: nil
       )
       |> assign(base_actor_assigns())
       |> assign_live_table("actors",
@@ -65,8 +65,6 @@ defmodule PortalWeb.ServiceAccounts do
     socket = handle_live_tables_params(socket, params, uri)
 
     if selected_actor_matches?(socket, id) do
-      actor = socket.assigns.selected_actor
-
       socket =
         socket
         |> merge_state(:actor_panel,
@@ -78,7 +76,6 @@ defmodule PortalWeb.ServiceAccounts do
           confirm_delete_token_id: nil,
           confirm_delete_session_id: nil
         )
-        |> subscribe_client_tokens(actor)
 
       {:noreply, socket}
     else
@@ -126,7 +123,6 @@ defmodule PortalWeb.ServiceAccounts do
       socket
       |> assign(selected_actor: nil)
       |> assign(base_actor_assigns())
-      |> unsubscribe_client_tokens()
 
     {:noreply, socket}
   end
@@ -603,14 +599,18 @@ defmodule PortalWeb.ServiceAccounts do
   def handle_info(%Change{struct: %Actor{}}, socket), do: {:noreply, socket}
   def handle_info(%Change{old_struct: %Actor{}}, socket), do: {:noreply, socket}
 
-  def handle_info(%Phoenix.Socket.Broadcast{event: "presence_diff", topic: topic}, socket) do
+  def handle_info(
+        %Phoenix.Socket.Broadcast{event: "presence_diff", topic: topic, payload: payload},
+        socket
+      ) do
     actor = socket.assigns.selected_actor
 
     cond do
       is_nil(actor) ->
         {:noreply, socket}
 
-      topic == "presences:actor_clients:" <> actor.id ->
+      topic == "presences:account_devices:" <> socket.assigns.account.id and
+          Presence.Devices.diff_includes_actor?(payload, actor.id) ->
         tokens = Database.get_client_tokens_for_actor(actor.id, socket.assigns.subject)
         {:noreply, merge_state(socket, :actor_related, tokens: tokens)}
 
@@ -794,33 +794,6 @@ defmodule PortalWeb.ServiceAccounts do
     match?(%{id: ^id}, socket.assigns.selected_actor)
   end
 
-  defp subscribe_client_tokens(socket, actor) do
-    if connected?(socket) and socket.assigns.client_tokens_subscribed_actor_id != actor.id do
-      if prev_id = socket.assigns.client_tokens_subscribed_actor_id do
-        Presence.Clients.Actor.unsubscribe(prev_id)
-      end
-
-      Presence.Clients.Actor.subscribe(actor.id)
-      assign(socket, client_tokens_subscribed_actor_id: actor.id)
-    else
-      socket
-    end
-  end
-
-  defp unsubscribe_client_tokens(socket) do
-    cond do
-      not connected?(socket) ->
-        socket
-
-      id = socket.assigns[:client_tokens_subscribed_actor_id] ->
-        Presence.Clients.Actor.unsubscribe(id)
-        assign(socket, client_tokens_subscribed_actor_id: nil)
-
-      true ->
-        socket
-    end
-  end
-
   defp maybe_update_actor_assign(socket, id, updated_actor) do
     if Map.get(socket.assigns, :selected_actor) && socket.assigns.selected_actor.id == id do
       assign(socket, selected_actor: updated_actor)
@@ -845,7 +818,6 @@ defmodule PortalWeb.ServiceAccounts do
           actor_related:
             actor_related_state(tokens: tokens, groups: groups, created_token: created_token)
         )
-        |> subscribe_client_tokens(actor)
 
       _ ->
         socket
@@ -1044,7 +1016,7 @@ defmodule PortalWeb.ServiceAccounts do
 
       tokens
       |> preload_last_used_devices_for_tokens(subject)
-      |> Presence.Clients.preload_client_tokens_presence()
+      |> Presence.Devices.preload_client_tokens_presence()
     end
 
     defp preload_last_used_devices_for_tokens(tokens, subject) do

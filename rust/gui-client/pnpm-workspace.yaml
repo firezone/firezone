@@ -2,6 +2,7 @@ allowBuilds:
   "@parcel/watcher": true
   esbuild: true
 overrides:
+  "@humanfs/node": 0.16.8
   "brace-expansion@<=5.0.7": 5.0.9
   js-yaml@>=4.0.0 <4.3.1: 4.3.1
   nanoid@<3.3.17: 3.3.18

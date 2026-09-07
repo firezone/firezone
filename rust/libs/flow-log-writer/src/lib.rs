@@ -53,7 +53,6 @@
 
 use std::{
     hash::{Hash as _, Hasher as _},
-    io::Write as _,
     path::{Path, PathBuf},
     sync::{
         atomic::{AtomicU64, Ordering},
@@ -63,8 +62,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use anyhow::Context as _;
-use atomicwrites::{AtomicFile, OverwriteBehavior};
+use anyhow::{Context as _, ErrorExt as _};
 use base64::Engine as _;
 use chrono::DateTime;
 use flow_log_spool::serialize;
@@ -155,8 +153,8 @@ pub fn write_token(spool_root: &Path, token: &str) -> anyhow::Result<()> {
         .context("Token has a missing or invalid policy_authorization_id")?;
 
     let dir = spool_root.join(&role).join(&authz_id);
-    create_dir_secure(&dir)?;
-    write_file_secure(&dir.join("token"), token.as_bytes())?;
+    create_dir_secure(&dir).context("Failed to create authorization directory")?;
+    atomicfs::write(dir.join("token"), token).context("Failed to write token file")?;
 
     Ok(())
 }
@@ -400,31 +398,45 @@ fn writer_loop(root: &Path, rx: &mpsc::Receiver<Command>) {
             Command::Shutdown => break,
         };
 
-        if let Err(e) = write_report(root, &report) {
-            tracing::warn!("Failed to write flow-log report: {e:#}");
-        }
+        write_report(root, &report);
     }
 }
 
-fn write_report(root: &Path, report: &Report) -> anyhow::Result<()> {
+fn write_report(root: &Path, report: &Report) {
     let dir = root.join(&report.role).join(&report.authz_id);
 
     if !dir.join("token").exists() {
         tracing::debug!(authz_id = %report.authz_id, "No ingest token on disk for authorization; not spooling report");
 
-        return Ok(());
+        return;
     }
 
-    let contents = serialize(&serde_json::Value::Object(report.payload.clone()))?;
+    let contents = match serialize(&serde_json::Value::Object(report.payload.clone())) {
+        Ok(contents) => contents,
+        Err(e) => {
+            tracing::warn!("Failed to serialize flow-log report: {e:#}");
+
+            return;
+        }
+    };
 
     let suffix = if report.completed { "end" } else { "start" };
     let path = dir.join(format!(
         "{:010}-{}.{suffix}.json",
         report.flow_start, report.identity
     ));
-    write_file_secure(&path, &contents)?;
-
-    Ok(())
+    match atomicfs::write(&path, &contents).context("Failed to write flow-log report") {
+        Ok(()) => {}
+        Err(e)
+            if e.any_downcast_ref::<std::io::Error>()
+                .is_some_and(|io| io.kind() == std::io::ErrorKind::StorageFull) =>
+        {
+            tracing::debug!(path = %path.display(), "{e:#}");
+        }
+        Err(e) => {
+            tracing::warn!(path = %path.display(), "{e:#}");
+        }
+    }
 }
 
 /// A stable hash of the fields identifying a flow within an authorization.
@@ -447,17 +459,6 @@ fn flow_identity(fields: &serde_json::Map<String, serde_json::Value>) -> String 
     }
 
     format!("{:016x}", hasher.finish())
-}
-
-fn write_file_secure(path: &Path, bytes: &[u8]) -> anyhow::Result<()> {
-    // `AtomicFile` writes to a temp file, fsyncs it, then renames into place, so a
-    // reader never observes a partial file and a written file is durable.
-    AtomicFile::new(path, OverwriteBehavior::AllowOverwrite)
-        .write(|f| {
-            set_owner_only(f)?;
-            f.write_all(bytes)
-        })
-        .with_context(|| format!("Failed to atomically write {}", path.display()))
 }
 
 /// A policy-authorization id must be a hyphenated UUID; reject anything else so it
@@ -491,7 +492,7 @@ fn create_dir_secure(path: &Path) -> std::io::Result<()> {
     // The spool holds Bearer tokens, so lock each authorization directory down to
     // `LocalSystem` and `BUILTIN\Administrators` (the accounts the Gateway / Tunnel
     // service runs as), the equivalent of `0700` on Unix. `OICI` makes the token and
-    // report files inside inherit the same access, so `set_owner_only` is a no-op.
+    // report files inside inherit the same access.
     windows_security::SecurityDescriptor::from_sddl("D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)")
         .and_then(|descriptor| descriptor.apply_to_path(path))
         .map_err(|e| std::io::Error::other(format!("{e:#}")))
@@ -500,24 +501,6 @@ fn create_dir_secure(path: &Path) -> std::io::Result<()> {
 #[cfg(not(any(unix, windows)))]
 fn create_dir_secure(path: &Path) -> std::io::Result<()> {
     std::fs::create_dir_all(path)
-}
-
-#[cfg(unix)]
-fn set_owner_only(f: &std::fs::File) -> std::io::Result<()> {
-    use std::os::unix::fs::PermissionsExt as _;
-
-    f.set_permissions(std::fs::Permissions::from_mode(0o600))
-}
-
-// On Windows the files inherit their directory's DACL (see `create_dir_secure`), so
-// there is nothing to do here.
-#[cfg(not(unix))]
-#[expect(
-    clippy::unnecessary_wraps,
-    reason = "signature must match the unix version"
-)]
-fn set_owner_only(_f: &std::fs::File) -> std::io::Result<()> {
-    Ok(())
 }
 
 #[cfg(test)]

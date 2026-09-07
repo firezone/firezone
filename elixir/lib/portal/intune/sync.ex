@@ -123,7 +123,6 @@ defmodule Portal.Intune.Sync do
     {:compliance_state, "complianceState"},
     # Returned on every device but missing from the v1.0 property table.
     {:management_state, "managementState"},
-    {:jail_broken, "jailBroken"},
     {:management_agent, "managementAgent"},
     {:os_version, "osVersion"},
     {:eas_device_id, "easDeviceId"},
@@ -140,7 +139,6 @@ defmodule Portal.Intune.Sync do
     {:imei, "imei"},
     {:serial_number, "serialNumber"},
     {:phone_number, "phoneNumber"},
-    {:android_security_patch_level, "androidSecurityPatchLevel"},
     {:user_display_name, "userDisplayName"},
     {:wifi_mac_address, "wiFiMacAddress"},
     {:subscriber_carrier, "subscriberCarrier"},
@@ -192,20 +190,8 @@ defmodule Portal.Intune.Sync do
     {:attestation_status, "deviceHealthAttestationStatus"},
     {:attestation_content_version, "contentVersion"},
     {:attestation_identity_key, "attestationIdentityKey"},
-    {:attestation_data_execution_policy, "dataExcutionPolicy"},
-    {:attestation_bit_locker_status, "bitLockerStatus"},
     {:attestation_boot_manager_version, "bootManagerVersion"},
     {:attestation_code_integrity_check_version, "codeIntegrityCheckVersion"},
-    {:attestation_secure_boot, "secureBoot"},
-    {:attestation_boot_debugging, "bootDebugging"},
-    {:attestation_operating_system_kernel_debugging, "operatingSystemKernelDebugging"},
-    {:attestation_code_integrity, "codeIntegrity"},
-    {:attestation_test_signing, "testSigning"},
-    {:attestation_safe_mode, "safeMode"},
-    {:attestation_windows_pe, "windowsPE"},
-    {:attestation_early_launch_anti_malware_driver_protection,
-     "earlyLaunchAntiMalwareDriverProtection"},
-    {:attestation_virtual_secure_mode, "virtualSecureMode"},
     {:attestation_pcr_hash_algorithm, "pcrHashAlgorithm"},
     {:attestation_boot_app_security_version, "bootAppSecurityVersion"},
     {:attestation_boot_manager_security_version, "bootManagerSecurityVersion"},
@@ -216,13 +202,30 @@ defmodule Portal.Intune.Sync do
     {:attestation_code_integrity_policy, "codeIntegrityPolicy"},
     {:attestation_boot_revision_list_info, "bootRevisionListInfo"},
     {:attestation_operating_system_rev_list_info, "operatingSystemRevListInfo"},
-    {:attestation_health_status_mismatch_info, "healthStatusMismatchInfo"},
-    {:attestation_supported_status, "healthAttestationSupportedStatus"}
+    {:attestation_health_status_mismatch_info, "healthStatusMismatchInfo"}
   ]
 
   @attestation_integer_fields [
     {:attestation_reset_count, "resetCount"},
     {:attestation_restart_count, "restartCount"}
+  ]
+
+  # Booleans in the underlying health attestation report that Graph types as
+  # String. Their spelling is not documented, so the flag parser is lenient.
+  @attestation_flag_fields [
+    {:attestation_data_execution_policy_enabled, "dataExcutionPolicy"},
+    {:attestation_bit_locker_enabled, "bitLockerStatus"},
+    {:attestation_secure_boot, "secureBoot"},
+    {:attestation_boot_debugging, "bootDebugging"},
+    {:attestation_operating_system_kernel_debugging, "operatingSystemKernelDebugging"},
+    {:attestation_code_integrity, "codeIntegrity"},
+    {:attestation_test_signing, "testSigning"},
+    {:attestation_safe_mode, "safeMode"},
+    {:attestation_windows_pe, "windowsPE"},
+    {:attestation_early_launch_anti_malware_driver_protection,
+     "earlyLaunchAntiMalwareDriverProtection"},
+    {:attestation_virtual_secure_mode, "virtualSecureMode"},
+    {:attestation_supported, "healthAttestationSupportedStatus"}
   ]
 
   defp device_attrs(graph_device, provider, synced_at) do
@@ -234,6 +237,8 @@ defmodule Portal.Intune.Sync do
       posture_provider_id: provider.id,
       device_action_results: list_or_nil(graph_device["deviceActionResults"]),
       attestation_issued_at: parse_datetime(attestation["issuedDateTime"]),
+      jail_broken: flag_or_nil(graph_device["jailBroken"]),
+      android_security_patch_level: parse_date(graph_device["androidSecurityPatchLevel"]),
       synced_at: synced_at
     }
     |> take(graph_device, @text_fields, &nil_if_blank/1)
@@ -243,6 +248,7 @@ defmodule Portal.Intune.Sync do
     |> take(config_manager, @config_manager_fields, &boolean_or_nil/1)
     |> take(attestation, @attestation_text_fields, &nil_if_blank/1)
     |> take(attestation, @attestation_integer_fields, &integer_or_nil/1)
+    |> take(attestation, @attestation_flag_fields, &flag_or_nil/1)
   end
 
   defp take(attrs, source, fields, cast) do
@@ -256,6 +262,30 @@ defmodule Portal.Intune.Sync do
 
   defp integer_or_nil(value) when is_integer(value), do: value
   defp integer_or_nil(_), do: nil
+
+  @true_flags ~w[true enabled on yes 1]
+  @false_flags ~w[false disabled off no 0]
+
+  defp flag_or_nil(value) when is_boolean(value), do: value
+
+  defp flag_or_nil(value) when is_binary(value) do
+    case String.downcase(value) do
+      flag when flag in @true_flags -> true
+      flag when flag in @false_flags -> false
+      _ -> nil
+    end
+  end
+
+  defp flag_or_nil(_), do: nil
+
+  defp parse_date(value) when is_binary(value) do
+    case Date.from_iso8601(value) do
+      {:ok, date} -> date
+      _ -> nil
+    end
+  end
+
+  defp parse_date(_), do: nil
 
   defp list_or_nil(value) when is_list(value), do: value
   defp list_or_nil(_), do: nil

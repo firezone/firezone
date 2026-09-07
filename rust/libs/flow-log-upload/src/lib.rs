@@ -23,6 +23,7 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
 use std::{
+    collections::BinaryHeap,
     path::{Path, PathBuf},
     sync::{Arc, mpsc},
     time::{Duration, SystemTime, UNIX_EPOCH},
@@ -584,10 +585,11 @@ fn collect_batch(dir: &Path, batch_size: usize) -> Result<Option<(String, Vec<Pe
         Err(e) => return Err(e).context("Failed to read ingest token"),
     };
 
-    let files = report_files(dir).context("Failed to list reports")?;
+    // A completed flow is two files, so this many always hold a full batch.
+    let (files, mut backlog) =
+        report_files(dir, 2 * batch_size).context("Failed to list reports")?;
 
     let mut batch = Vec::new();
-    let mut backlog = false;
 
     for path in files {
         if batch.len() == batch_size {
@@ -611,12 +613,17 @@ fn collect_batch(dir: &Path, batch_size: usize) -> Result<Option<(String, Vec<Pe
     Ok(Some((token, batch, backlog)))
 }
 
-/// Lists a directory's report files, oldest first.
+/// Lists a directory's oldest report files, at most `limit`, oldest first. The
+/// `bool` reports whether any were left out.
 ///
 /// Report names start with the flow's zero-padded start timestamp and `read_dir`
-/// order is unspecified, so a lexical sort of the names yields oldest-first.
-fn report_files(dir: &Path) -> std::io::Result<Vec<PathBuf>> {
-    let mut files = Vec::new();
+/// order is unspecified, so lexical name order is oldest-first. Only the oldest
+/// `limit` are held while walking the directory: a spool that could not be
+/// uploaded for a while holds millions of reports, and listing them all costs
+/// memory proportional to the spool on every pass.
+fn report_files(dir: &Path, limit: usize) -> std::io::Result<(Vec<PathBuf>, bool)> {
+    let mut oldest = BinaryHeap::new();
+    let mut left_out = false;
 
     for entry in std::fs::read_dir(dir)? {
         let path = entry?.path();
@@ -627,12 +634,15 @@ fn report_files(dir: &Path) -> std::io::Result<Vec<PathBuf>> {
             continue;
         }
 
-        files.push(path);
+        oldest.push(path);
+
+        if oldest.len() > limit {
+            oldest.pop();
+            left_out = true;
+        }
     }
 
-    files.sort();
-
-    Ok(files)
+    Ok((oldest.into_sorted_vec(), left_out))
 }
 
 /// Loads the flow reported at `path` into a [`Pending`] upload.
@@ -1047,20 +1057,46 @@ mod tests {
             std::fs::write(dir.path().join(name), "{}").unwrap();
         }
 
-        let files = report_files(dir.path()).unwrap();
-        let names = files
-            .iter()
-            .map(|path| path.file_name().unwrap().to_str().unwrap())
-            .collect::<Vec<_>>();
+        let (files, left_out) = report_files(dir.path(), 10).unwrap();
 
         assert_eq!(
-            names,
+            file_names(&files),
             [
                 "1700000010-aaa.end.json",
                 "1700000020-ccc.end.json",
                 "1700000030-bbb.start.json"
             ]
         );
+        assert!(!left_out);
+    }
+
+    #[test]
+    fn report_files_keeps_only_the_oldest_up_to_the_limit() {
+        let dir = tempfile::tempdir().unwrap();
+
+        for name in [
+            "1700000040-ddd.start.json",
+            "1700000010-aaa.end.json",
+            "1700000030-ccc.end.json",
+            "1700000020-bbb.start.json",
+        ] {
+            std::fs::write(dir.path().join(name), "{}").unwrap();
+        }
+
+        let (files, left_out) = report_files(dir.path(), 2).unwrap();
+
+        assert_eq!(
+            file_names(&files),
+            ["1700000010-aaa.end.json", "1700000020-bbb.start.json"]
+        );
+        assert!(left_out);
+    }
+
+    fn file_names(files: &[PathBuf]) -> Vec<&str> {
+        files
+            .iter()
+            .map(|path| path.file_name().unwrap().to_str().unwrap())
+            .collect()
     }
 
     #[test]
