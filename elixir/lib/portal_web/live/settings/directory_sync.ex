@@ -1516,6 +1516,43 @@ defmodule PortalWeb.Settings.DirectorySync do
         </div>
 
         <div
+          :if={@type == "okta" and @form.source.data.id}
+          class="p-4 border border-border bg-raised rounded"
+        >
+          <h3 class="text-sm font-semibold text-heading">Event Hook</h3>
+          <p class="mt-1 text-xs text-body">
+            Okta can tell Firezone about changes as they happen, without any extra API scope.
+            In the Okta Admin Console go to <strong>Workflow → Event Hooks</strong>, create a hook
+            with the endpoint URL below, an <code>Authorization</code> header set to the value
+            below, and the events listed, then verify it.
+          </p>
+          <dl class="mt-3 space-y-3 text-xs">
+            <div>
+              <dt class="font-medium text-body mb-1">Endpoint URL</dt>
+              <dd>
+                <.copy id="okta-hook-url" class="flex items-center gap-2 font-mono break-all">
+                  {Okta.Webhooks.endpoint_url(@form.source.data.id)}
+                </.copy>
+              </dd>
+            </div>
+            <div>
+              <dt class="font-medium text-body mb-1">Authorization header value</dt>
+              <dd>
+                <.copy id="okta-hook-secret" class="flex items-center gap-2 font-mono break-all">
+                  {@form.source.data.webhook_secret}
+                </.copy>
+              </dd>
+            </div>
+            <div>
+              <dt class="font-medium text-body mb-1">Events</dt>
+              <dd class="font-mono text-subtle break-all">
+                {Enum.join(Okta.Webhooks.events(), ", ")}
+              </dd>
+            </div>
+          </dl>
+        </div>
+
+        <div
           :if={@type in ["google", "entra", "okta"]}
           class="p-4 border border-border bg-raised rounded"
         >

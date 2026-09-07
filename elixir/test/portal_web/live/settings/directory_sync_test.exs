@@ -1133,6 +1133,37 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
       assert_patch(lv, ~p"/#{account}/settings/directory_sync")
     end
 
+    test "shows the event hook endpoint and secret of an okta directory", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      directory = okta_directory_fixture(%{account: account})
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/directory_sync/okta/#{directory.id}/edit")
+
+      assert html =~ "Event Hook"
+      assert html =~ Portal.Okta.Webhooks.endpoint_url(directory.id)
+      assert html =~ directory.webhook_secret
+      assert html =~ "application.user_membership.add"
+    end
+
+    test "shows no event hook before an okta directory exists", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/directory_sync/okta/new")
+
+      refute html =~ "Event Hook"
+    end
+
     test "resets verification state for okta edit form", %{
       conn: conn,
       account: account,

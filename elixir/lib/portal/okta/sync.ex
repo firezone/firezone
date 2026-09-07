@@ -13,6 +13,7 @@ defmodule Portal.Okta.Sync do
 
   alias Portal.DirectorySync
   alias Portal.Okta
+  alias Portal.Okta.APIClient
   alias __MODULE__.Database
 
   require Logger
@@ -114,7 +115,7 @@ defmodule Portal.Okta.Sync do
     )
   end
 
-  defp get_access_token!(client, directory) do
+  def get_access_token!(client, directory) do
     Logger.debug("Getting access token", okta_directory_id: directory.id)
 
     case Okta.APIClient.fetch_access_token(client) do
@@ -237,47 +238,7 @@ defmodule Portal.Okta.Sync do
           step: :stream_app_users
 
       [] ->
-        account_id = directory.account_id
-        issuer = issuer(directory)
-        directory_id = directory.id
-        parsed_users = Enum.map(users, &parse_okta_user(&1, directory_id))
-
-        # Map users to identity attributes
-        identity_attrs =
-          Enum.map(parsed_users, fn user_data ->
-            %{
-              idp_id: user_data.okta_id,
-              email: user_data.email,
-              name: user_data.full_name,
-              given_name: user_data.first_name,
-              family_name: user_data.last_name,
-              preferred_username: user_data.email
-            }
-          end)
-
-        case Database.batch_upsert_identities(
-               account_id,
-               issuer,
-               directory_id,
-               synced_at,
-               identity_attrs
-             ) do
-          {:ok, %{upserted_identities: count}} ->
-            Logger.debug("Upserted #{count} identities", okta_directory_id: directory.id)
-            :ok
-
-          {:error, reason} ->
-            Logger.error("Failed to upsert identities",
-              reason: inspect(reason),
-              count: length(identity_attrs),
-              okta_directory_id: directory.id
-            )
-
-            raise Okta.SyncError,
-              error: "Failed to upsert identities: #{inspect(reason)}",
-              directory_id: directory.id,
-              step: :batch_upsert_identities
-        end
+        batch_upsert_identities(directory, synced_at, Enum.map(users, &identity_attrs(&1, directory.id)))
     end
   end
 
@@ -505,8 +466,112 @@ defmodule Portal.Okta.Sync do
     end
   end
 
-  # Helper to build issuer URL
-  defp issuer(directory), do: "https://#{directory.okta_domain}"
+  def issuer(directory), do: "https://#{directory.okta_domain}"
+
+  def get_directory(account_id, directory_id), do: Database.get_directory(account_id, directory_id)
+
+  def syncable_user?(%{"status" => status}), do: syncable_okta_user_status?(status)
+  def syncable_user?(_user), do: false
+
+  @doc """
+  The identity attributes for an Okta user, as the identity upsert expects them.
+  """
+  def identity_attrs(user, directory_id) do
+    parsed = parse_okta_user(user, directory_id)
+
+    %{
+      idp_id: parsed.okta_id,
+      email: parsed.email,
+      name: parsed.full_name,
+      given_name: parsed.first_name,
+      family_name: parsed.last_name,
+      preferred_username: parsed.email
+    }
+  end
+
+  def group_attrs(group) do
+    parsed = parse_okta_group(group)
+    %{idp_id: parsed.okta_id, name: parsed.name}
+  end
+
+  def batch_upsert_identities(directory, synced_at, identity_attrs) do
+    case Database.batch_upsert_identities(
+           directory.account_id,
+           issuer(directory),
+           directory.id,
+           synced_at,
+           identity_attrs
+         ) do
+      {:ok, %{upserted_identities: count}} ->
+        Logger.debug("Upserted #{count} identities", okta_directory_id: directory.id)
+        :ok
+
+      {:error, reason} ->
+        Logger.error("Failed to upsert identities",
+          reason: inspect(reason),
+          count: length(identity_attrs),
+          okta_directory_id: directory.id
+        )
+
+        raise Okta.SyncError,
+          error: "Failed to upsert identities: #{inspect(reason)}",
+          directory_id: directory.id,
+          step: :batch_upsert_identities
+    end
+  end
+
+  def upsert_group(directory, synced_at, group) do
+    {:ok, _} = Database.batch_upsert_groups(directory.account_id, directory.id, synced_at, [group])
+    :ok
+  end
+
+  @doc """
+  Re-reads the members of one tracked group and commits them together with the
+  prune of the memberships the read did not find.
+  """
+  def sync_group_members(directory, client, token, synced_at, group_idp_id) do
+    member_ids = fetch_group_members!(group_idp_id, client, token, directory.id)
+
+    directory.account_id
+    |> Database.commit_group_members(issuer(directory), directory.id, synced_at, group_idp_id, member_ids)
+    |> committed!(directory, :batch_upsert_memberships)
+  end
+
+  @doc """
+  Re-reads the groups one user belongs to and commits their memberships in the
+  groups the directory tracks together with the prune of the ones it left.
+  """
+  def sync_user_memberships(directory, client, token, synced_at, user_idp_id) do
+    group_idp_ids =
+      APIClient.stream_user_groups(client, token, user_idp_id)
+      |> Enum.map(fn
+        {:ok, %{"id" => id}} when is_binary(id) ->
+          id
+
+        {:ok, group} ->
+          raise Okta.SyncError,
+            error: {:validation, "group missing 'id' field: #{inspect(group)}"},
+            directory_id: directory.id,
+            step: :stream_user_groups
+
+        {:error, reason} ->
+          raise Okta.SyncError,
+            error: reason,
+            directory_id: directory.id,
+            step: :stream_user_groups
+      end)
+      |> then(&Database.tracked_group_idp_ids(directory.account_id, directory.id, &1))
+
+    directory.account_id
+    |> Database.commit_user_memberships(
+      issuer(directory),
+      directory.id,
+      synced_at,
+      user_idp_id,
+      group_idp_ids
+    )
+    |> committed!(directory, :batch_upsert_memberships)
+  end
 
   # Parses an Okta user API response into a structured map
   defp parse_okta_user(user, directory_id) do
@@ -532,6 +597,20 @@ defmodule Portal.Okta.Sync do
       last_name: last_name,
       full_name: "#{first_name} #{last_name}"
     }
+  end
+
+  defp committed!({:ok, _deleted}, _directory, _step), do: :ok
+
+  defp committed!({:error, reason}, directory, step) do
+    Logger.error("Failed to commit memberships",
+      reason: inspect(reason),
+      okta_directory_id: directory.id
+    )
+
+    raise Okta.SyncError,
+      error: "Failed to upsert memberships: #{inspect(reason)}",
+      directory_id: directory.id,
+      step: step
   end
 
   # Parses an Okta group API response into a structured map
@@ -696,6 +775,54 @@ defmodule Portal.Okta.Sync do
       )
       |> Safe.unscoped()
       |> Safe.all()
+    end
+
+    def tracked_group_idp_ids(_account_id, _directory_id, []), do: []
+
+    def tracked_group_idp_ids(account_id, directory_id, idp_ids) do
+      from(g in Portal.Group,
+        where: g.account_id == ^account_id,
+        where: g.directory_id == ^directory_id,
+        where: g.idp_id in ^idp_ids,
+        select: g.idp_id
+      )
+      |> Safe.unscoped()
+      |> Safe.all()
+    end
+
+    # Memberships and prune land together, so a crash between them cannot
+    # leave a group with stale members that nothing revokes.
+    def commit_group_members(account_id, issuer, directory_id, synced_at, group_idp_id, member_ids) do
+      tuples = member_ids |> Enum.uniq() |> Enum.map(&{group_idp_id, &1})
+
+      Safe.unscoped()
+      |> Safe.transaction(fn ->
+        with {:ok, _} <- batch_upsert_memberships(account_id, issuer, directory_id, synced_at, tuples) do
+          deleted =
+            Portal.DirectorySync.prune_group_memberships(
+              account_id,
+              directory_id,
+              group_idp_id,
+              synced_at
+            )
+
+          {:ok, deleted}
+        end
+      end)
+    end
+
+    def commit_user_memberships(account_id, issuer, directory_id, synced_at, user_idp_id, group_idp_ids) do
+      tuples = group_idp_ids |> Enum.uniq() |> Enum.map(&{&1, user_idp_id})
+
+      Safe.unscoped()
+      |> Safe.transaction(fn ->
+        with {:ok, _} <- batch_upsert_memberships(account_id, issuer, directory_id, synced_at, tuples) do
+          {deleted, _} =
+            delete_unsynced_user_memberships(account_id, issuer, directory_id, user_idp_id, synced_at)
+
+          {:ok, deleted}
+        end
+      end)
     end
 
     def batch_upsert_identities(account_id, issuer, directory_id, last_synced_at, identity_attrs) do
@@ -902,5 +1029,27 @@ defmodule Portal.Okta.Sync do
     end
 
     # Cleanup functions
+
+    defp delete_unsynced_user_memberships(account_id, issuer, directory_id, user_idp_id, synced_at) do
+      from(m in Portal.Membership,
+        join: g in Portal.Group,
+        on: m.group_id == g.id and m.account_id == g.account_id,
+        join: i in Portal.ExternalIdentity,
+        on: i.actor_id == m.actor_id and i.account_id == m.account_id,
+        where: m.account_id == ^account_id,
+        where: g.directory_id == ^directory_id,
+        where: i.issuer == ^issuer,
+        where: i.idp_id == ^user_idp_id,
+        where:
+          fragment(
+            "NOT EXISTS (SELECT 1 FROM membership_sync_states mss WHERE mss.membership_id = ? AND mss.account_id = ? AND mss.synced_at >= ?)",
+            m.id,
+            m.account_id,
+            ^synced_at
+          )
+      )
+      |> Safe.unscoped()
+      |> Safe.delete_all()
+    end
   end
 end
