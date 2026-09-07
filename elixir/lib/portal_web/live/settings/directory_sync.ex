@@ -625,7 +625,7 @@ defmodule PortalWeb.Settings.DirectorySync do
                       Groups
                     </th>
                     <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-40">
-                      Last Synced
+                      Last Full Sync
                     </th>
                     <th class="px-6 py-2.5 w-14"></th>
                   </tr>
@@ -853,7 +853,7 @@ defmodule PortalWeb.Settings.DirectorySync do
                       Groups
                     </th>
                     <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-40">
-                      Last Synced
+                      Last Full Sync
                     </th>
                     <th class="px-6 py-2.5 w-14"></th>
                   </tr>
