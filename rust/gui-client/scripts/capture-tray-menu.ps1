@@ -110,6 +110,28 @@ function Send-Escape([int] $Levels) {
     }
 }
 
+# A request sent before the client holds the launch lock would take the lock itself and turn
+# into the app, so wait for the pipe the running instance answers on. Enumerating the pipe
+# filesystem is the only way to see a named pipe; `Test-Path` cannot.
+function Wait-ForGuiPipe {
+    $pipe = 'dev.firezone.client_gui.ipc'
+    $deadline = (Get-Date).AddSeconds(60)
+    while ((Get-Date) -lt $deadline) {
+        try {
+            if ([System.IO.Directory]::GetFiles('\\.\pipe\') -match [regex]::Escape($pipe)) {
+                Write-Host "The running instance is listening on $pipe"
+                return
+            }
+        } catch {
+            Write-Host "Cannot list named pipes ($_); falling back to a fixed head start"
+            Start-Sleep -Seconds 5
+            return
+        }
+        Start-Sleep -Milliseconds 250
+    }
+    Write-Host "::warning::$pipe never showed up; requesting the menu anyway"
+}
+
 # Hidden so the console window of this short-lived process never covers the menu.
 function Request-Popup {
     Write-Host "Requesting the menu: $Exe $($popupArguments -join ' ')"
@@ -148,9 +170,10 @@ $popupArguments = $sharedArguments + @('--popup-tray-menu')
 Write-Host "Launching $Exe $($arguments -join ' ')"
 $process = Start-Process -FilePath $Exe -ArgumentList $arguments -PassThru
 
-# The running instance answers the request only once its controller has bound the GUI pipe,
-# and lists resources only once the mock service has served them, so keep asking until the
-# menu we want is on screen.
+Wait-ForGuiPipe
+
+# The menu lists resources only once the mock service has served them, so keep asking until
+# the menu we want is on screen.
 $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
 $exitCode = 0
 $menus = @()
