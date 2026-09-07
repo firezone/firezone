@@ -26,7 +26,7 @@ defmodule PortalAPI.Integrations.Okta.WebhookController do
 
     case read_body(conn, length: @max_body_bytes) do
       {:ok, body, conn} ->
-        handle_body(conn, conn.query_params["directory_id"], body)
+        Portal.Conn.wrap_errors(conn, &handle_body(&1, conn.query_params["directory_id"], body))
 
       {:more, _, conn} ->
         send_resp(conn, 413, "Request Entity Too Large")
