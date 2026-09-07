@@ -24,7 +24,7 @@ defmodule PortalAPI.SentinelOnePostureProviderController do
   operation :index,
     summary: "List SentinelOne posture providers",
     parameters: [
-      limit: [in: :query, description: "Limit providers returned", type: :integer],
+      limit: [in: :query, description: "Limit providers returned", schema: PortalAPI.Pagination.limit_schema()],
       page_cursor: [in: :query, description: "Next/previous page cursor", type: :string]
     ],
     responses:

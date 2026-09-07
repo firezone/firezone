@@ -4,6 +4,7 @@ defmodule Portal.Entra.SyncTest do
 
   import Ecto.Query
   import Portal.AccountFixtures
+  import Portal.DirectorySyncLockHelpers
   import Portal.EntraDirectoryFixtures
 
   alias Portal.Microsoft.Graph.APIClient
@@ -25,13 +26,11 @@ defmodule Portal.Entra.SyncTest do
       :ok
     end
 
-    test "snoozes while another sync for the same directory is executing" do
+    test "snoozes while the directory lock is held" do
       account = account_fixture(features: %{idp_sync: true})
       directory = entra_directory_fixture(account: account)
       args = %{account_id: directory.account_id, directory_id: directory.id}
-
-      {:ok, job} = Oban.insert(Sync.new(args))
-      Repo.update_all(from(j in Oban.Job, where: j.id == ^job.id), set: [state: "executing"])
+      hold_directory_lock(:entra, directory.id)
 
       assert {:snooze, 60} = perform_job(Sync, args)
       assert Repo.all(ExternalIdentity) == []

@@ -14,7 +14,7 @@ defmodule PortalAPI.ResourceController do
   operation :index,
     summary: "List Resources",
     parameters: [
-      limit: [in: :query, description: "Limit Resources returned", type: :integer, example: 10],
+      limit: [in: :query, description: "Limit Resources returned", schema: PortalAPI.Pagination.limit_schema(), example: 10],
       page_cursor: [in: :query, description: "Next/Prev page cursor", type: :string],
       name: [
         in: :query,

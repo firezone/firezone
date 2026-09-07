@@ -20,7 +20,7 @@ defmodule PortalAPI.ClientTokenController do
         type: :string,
         example: "00000000-0000-0000-0000-000000000000"
       ],
-      limit: [in: :query, description: "Limit Client Tokens returned", type: :integer],
+      limit: [in: :query, description: "Limit Client Tokens returned", schema: PortalAPI.Pagination.limit_schema()],
       page_cursor: [in: :query, description: "Next/Prev page cursor", type: :string]
     ],
     responses:

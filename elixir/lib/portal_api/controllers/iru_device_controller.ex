@@ -24,7 +24,7 @@ defmodule PortalAPI.IruDeviceController do
   operation :index,
     summary: "List synced Iru devices",
     parameters: [
-      limit: [in: :query, description: "Limit devices returned", type: :integer],
+      limit: [in: :query, description: "Limit devices returned", schema: PortalAPI.Pagination.limit_schema()],
       page_cursor: [in: :query, description: "Next/previous page cursor", type: :string]
     ],
     responses:

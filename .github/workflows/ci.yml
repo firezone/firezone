@@ -213,6 +213,7 @@ jobs:
     runs-on: ubuntu-24.04
     permissions:
       contents: write
+      pull-requests: write # the storage report comment
       security-events: write # trivy SARIF upload from setup-mise
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -254,10 +255,13 @@ jobs:
         run: |
           set -euo pipefail
 
+          # The clients built the merge commit, not the branch checked out here.
+          git fetch --depth=1 origin "$GITHUB_SHA"
+
           # `mise exec` puts `uv` on PATH: the shims the mise action sets up are
           # regenerated before it installs, not after.
           mise exec -- uv run scripts/prepare-store-screenshots.py
-          mise exec -- uv run scripts/settle-screenshots.py \
+          mise exec -- uv run scripts/settle-screenshots.py --baseline "$GITHUB_SHA" \
             rust/gui-client/screenshots kotlin/android/screenshots swift/apple/screenshots
       - name: Set up GnuPG for the screenshot commit
         uses: ./.github/actions/setup-gpg
@@ -266,6 +270,7 @@ jobs:
           key: ${{ secrets.RELEASE_PR_BOT_GPG_KEY }}
           email: github-bot@firezone.dev
       - name: Push the re-rendered screenshots
+        id: push
         env:
           HEAD_REF: ${{ github.head_ref }}
         run: |
@@ -290,12 +295,26 @@ jobs:
             git fetch origin "$HEAD_REF"
             git rebase "origin/$HEAD_REF"
             if git push origin "HEAD:$HEAD_REF"; then
+              echo "pushed=true" >> "$GITHUB_OUTPUT"
               exit 0
             fi
           done
 
           echo "Could not push the screenshots after three attempts." >&2
           exit 1
+      - name: Report what the re-render adds to the repository
+        if: steps.push.outputs.pushed == 'true'
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+
+          count=$(git diff --name-only HEAD~1 HEAD | wc -l)
+          on_disk=$(git diff --name-only HEAD~1 HEAD | xargs git ls-tree -r -l HEAD -- | awk '{ sum += $4 } END { print sum }')
+          # What the push carried: the new objects, delta-compressed against the parent.
+          stored=$( (echo HEAD; echo ^HEAD~1) | git pack-objects --thin --revs --stdout | wc -c )
+
+          gh pr comment "$PR_NUMBER" --body "Re-rendered $count screenshots: $(numfmt --to=iec-i --suffix=B "$on_disk") of PNGs, stored in git as $(numfmt --to=iec-i --suffix=B "$stored")."
 
   shell:
     name: shell-tests

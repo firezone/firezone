@@ -7,9 +7,10 @@ defmodule Portal.OAuth.ClientMetadata do
   document is fetched on demand, checked, and cached.
 
   The URL comes from whoever started the authorization request, so the fetch is
-  treated as hostile: `Portal.Req.SSRFProtection` is already attached to every
-  request and refuses private and reserved addresses, and the caps here bound
-  how much time and memory one lookup can cost.
+  treated as hostile: `Portal.Req.SSRFProtection` is attached explicitly to
+  these requests and refuses private and reserved addresses, independently of
+  the deployment-wide HTTP-client setting. The caps here bound how much time
+  and memory one lookup can cost.
   """
 
   alias Portal.OAuthClient
@@ -29,7 +30,10 @@ defmodule Portal.OAuth.ClientMetadata do
   @icon_types ~w[image/png image/jpeg image/gif image/webp image/x-icon image/vnd.microsoft.icon]
 
   @receive_timeout :timer.seconds(5)
-  @max_body_bytes 64 * 1024
+  # Client ID Metadata Documents are deliberately small. Keeping the draft's
+  # recommended 5 KiB limit also prevents a pre-authentication egress endpoint
+  # from becoming a cheap memory-amplification primitive.
+  @max_body_bytes 5 * 1024
   @min_cache :timer.minutes(5)
   @default_cache :timer.hours(1)
   @max_cache :timer.hours(24)
@@ -81,9 +85,15 @@ defmodule Portal.OAuth.ClientMetadata do
 
   defp validate_client_id(client_id) when is_binary(client_id) do
     case URI.parse(client_id) do
-      %URI{scheme: "https", host: host, path: path}
+      %URI{
+        scheme: "https",
+        host: host,
+        path: path,
+        fragment: nil,
+        userinfo: nil
+      }
       when is_binary(host) and is_binary(path) and path != "" and path != "/" ->
-        :ok
+        if dot_segment?(path), do: {:error, :invalid_client_id}, else: :ok
 
       _other ->
         {:error, :invalid_client_id}
@@ -91,6 +101,15 @@ defmodule Portal.OAuth.ClientMetadata do
   end
 
   defp validate_client_id(_client_id), do: {:error, :invalid_client_id}
+
+  defp dot_segment?(path) do
+    path
+    |> String.split("/", trim: false)
+    |> Enum.any?(fn segment ->
+      segment = String.replace(segment, ~r/%2e/i, ".")
+      segment in [".", ".."]
+    end)
+  end
 
   defp fetch_and_cache(client_id) do
     with {:ok, response} <- get(client_id),
@@ -109,7 +128,7 @@ defmodule Portal.OAuth.ClientMetadata do
   end
 
   defp get(client_id) do
-    Req.get(
+    protected_get(
       client_id,
       [
         headers: [{"accept", "application/json"}],
@@ -117,7 +136,7 @@ defmodule Portal.OAuth.ClientMetadata do
         max_retries: 0,
         redirect: false,
         into: &collect(&1, &2, @max_body_bytes)
-      ] ++ req_opts()
+      ]
     )
     |> case do
       {:ok, %Req.Response{status: 200} = response} -> {:ok, response}
@@ -158,7 +177,11 @@ defmodule Portal.OAuth.ClientMetadata do
   defp validate_document(document, client_id) do
     with %{"client_id" => ^client_id, "client_name" => name, "redirect_uris" => uris}
          when is_binary(name) and is_list(uris) <- document,
+         true <- String.trim(name) != "",
          true <- uris != [] and Enum.all?(uris, &usable_redirect_uri?/1),
+         true <- document["token_endpoint_auth_method"] in [nil, "none"],
+         false <- Map.has_key?(document, "client_secret"),
+         false <- Map.has_key?(document, "client_secret_expires_at"),
          true <- Enum.all?(~w[client_uri logo_uri], &optional_string?(document[&1])) do
       :ok
     else
@@ -212,14 +235,14 @@ defmodule Portal.OAuth.ClientMetadata do
   defp get_icon(uri) do
     with %URI{scheme: "https"} <- URI.parse(uri),
          {:ok, %Req.Response{status: 200, body: body} = response} when is_binary(body) <-
-           Req.get(
+           protected_get(
              uri,
              [
                receive_timeout: @receive_timeout,
                max_retries: 0,
                redirect: true,
                into: &collect(&1, &2, @max_icon_bytes)
-             ] ++ req_opts()
+             ]
            ),
          type when is_binary(type) <- content_type(response),
          true <- type in @icon_types,
@@ -296,7 +319,21 @@ defmodule Portal.OAuth.ClientMetadata do
     {region, city}
   end
 
-  defp req_opts, do: Portal.Config.fetch_env!(:portal, __MODULE__)[:req_opts] || []
+  # This fetch is security-sensitive and must remain protected even when an
+  # operator disables the global Req plugin for unrelated internal services.
+  # `allow_private_ips: false` also prevents this module's configurable Req
+  # options from accidentally weakening the local guarantee.
+  defp protected_get(uri, opts) do
+    config = Portal.Config.fetch_env!(:portal, __MODULE__)
+
+    request =
+      (config[:req_opts] || [])
+      |> Req.new()
+      |> Portal.Req.SSRFProtection.attach(config[:ssrf_protection_opts] || [])
+      |> Req.merge(url: uri, allow_private_ips: false)
+
+    Req.get(request, opts)
+  end
 
   defp cache_until(%Req.Response{} = response) do
     milliseconds =

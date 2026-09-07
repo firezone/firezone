@@ -107,6 +107,18 @@ defmodule PortalAPI.ActorControllerTest do
       assert %{"type" => "about:blank", "status" => 400} = json_response(conn, 400)
     end
 
+    test "returns error for a limit outside 1 to 100", %{conn: conn, actor: actor} do
+      for limit <- ["0", "-1", "101"] do
+        conn =
+          conn
+          |> authorize_conn(actor)
+          |> put_req_header("content-type", "application/json")
+          |> get("/actors", limit: limit)
+
+        assert %{"type" => "about:blank", "status" => 400} = json_response(conn, 400)
+      end
+    end
+
     test "filters by exact name match", %{conn: conn, account: account, actor: actor} do
       target = actor_fixture(account: account, name: "alice", type: :account_user)
       _other = actor_fixture(account: account, name: "bob", type: :account_user)

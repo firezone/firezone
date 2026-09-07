@@ -10,7 +10,7 @@ defmodule PortalAPI.Router do
     plug PortalAPI.Plugs.RateLimit
 
     plug PortalAPI.Plugs.ParseBody,
-      parsers: [:json],
+      parsers: [PortalAPI.Parsers.JSON],
       pass: ["*/*"],
       json_decoder: Phoenix.json_library()
 
@@ -41,6 +41,45 @@ defmodule PortalAPI.Router do
     pipe_through :public
 
     get "/", OpenApiSpex.Plug.SwaggerUI, path: "/openapi.json"
+  end
+
+  # The IP bucket precedes all attacker-controlled work. Once a
+  # token is authenticated, every request is charged to its account and logged
+  # before controller dispatch. Synthetic REST requests carry private skip
+  # markers so this outer metering is never duplicated.
+  pipeline :mcp do
+    plug PortalAPI.Plugs.MCPRateLimit
+    plug :accepts, ["json"]
+    plug PortalAPI.Plugs.MCPAuth
+    plug PortalAPI.Plugs.RateLimit, mcp: true
+    # Insert the load-bearing audit row before parsing. Tool attempts and
+    # dispatch outcomes are separate metadata on the original /mcp request.
+    plug PortalAPI.Plugs.RequestLog, mcp: true
+
+    plug PortalAPI.Plugs.MCPParseBody,
+      parsers: [PortalAPI.Parsers.JSON],
+      pass: ["*/*"],
+      json_decoder: Phoenix.json_library(),
+      length: 1_000_000
+
+  end
+
+  # Read before the client holds any credential, so it cannot be authenticated.
+  # Both paths are served: a client tries the one scoped to the MCP endpoint's
+  # path first and falls back to the root.
+  scope "/.well-known", PortalAPI do
+    pipe_through :public
+
+    get "/oauth-protected-resource/mcp", OAuthMetadataController, :show
+    get "/oauth-protected-resource", OAuthMetadataController, :show
+  end
+
+  scope "/mcp", PortalAPI do
+    pipe_through :mcp
+
+    post "/", MCPController, :handle
+    get "/", MCPController, :method_not_allowed
+    delete "/", MCPController, :method_not_allowed
   end
 
   pipeline :ingestion do
@@ -155,6 +194,10 @@ defmodule PortalAPI.Router do
     end
 
     scope "/entra", Entra do
+      post "/webhooks", WebhookController, :handle_webhook
+    end
+
+    scope "/google", Google do
       post "/webhooks", WebhookController, :handle_webhook
     end
 

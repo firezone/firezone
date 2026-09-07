@@ -152,7 +152,7 @@ defmodule PortalWeb.PageComponents do
       </div>
 
       <div class="mt-3 pt-3 border-t border-border">
-        <p class="text-xs font-medium text-subtle uppercase tracking-wide mb-1.5">
+        <p class="text-xs font-medium text-body uppercase tracking-wide mb-1.5">
           Verified address
         </p>
 
@@ -163,28 +163,32 @@ defmodule PortalWeb.PageComponents do
           </span>
         </p>
 
-        <p :if={@client.resolved_ips != []} class="mt-1.5 text-xs font-mono text-subtle break-all">
-          Served from {Enum.map_join(@client.resolved_ips, ", ", &to_string/1)}{origin_location(
-            @client
-          )}
-        </p>
+        <div :if={@client.resolved_ips != []} class="mt-1.5 text-xs text-body">
+          <p>Served from</p>
+          <ul class="mt-1 space-y-1">
+            <li :for={ip <- @client.resolved_ips} class="break-all">
+              <span class="font-mono">{to_string(ip)}</span>{origin_location(ip)}
+            </li>
+          </ul>
+        </div>
       </div>
 
-      <p class="mt-3 text-xs text-subtle leading-relaxed">
+      <p class="mt-3 text-xs text-body leading-relaxed">
         Only this address is checked. The name and icon are supplied by the app
-        itself. If you do not recognise it, close this window.
+        itself. If you do not recognize it, close this window.
       </p>
     </div>
     """
   end
 
-  defp origin_location(%{resolved_ip_location_region: nil}), do: ""
-
-  defp origin_location(%{resolved_ip_location_region: region, resolved_ip_location_city: nil}),
-    do: " · #{region}"
-
-  defp origin_location(%{resolved_ip_location_region: region, resolved_ip_location_city: city}),
-    do: " · #{city}, #{region}"
+  defp origin_location(%Postgrex.INET{address: address}) do
+    case Portal.Geo.locate(address, []) do
+      {nil, nil, _coordinates} -> " · Location unavailable"
+      {region, nil, _coordinates} -> " · #{region}"
+      {nil, city, _coordinates} -> " · #{city}"
+      {region, city, _coordinates} -> " · #{city}, #{region}"
+    end
+  end
 
   @doc """
   The tile identifying an OAuth client by its icon, falling back to its initial.

@@ -16,7 +16,7 @@ defmodule PortalAPI.ActorController do
   operation :index,
     summary: "List Actors",
     parameters: [
-      limit: [in: :query, description: "Limit Users returned", type: :integer, example: 10],
+      limit: [in: :query, description: "Limit Users returned", schema: PortalAPI.Pagination.limit_schema(), example: 10],
       page_cursor: [in: :query, description: "Next/Prev page cursor", type: :string],
       name: [in: :query, description: "Filter to Actors with this exact name", type: :string],
       email: [in: :query, description: "Filter to Actors with this exact email", type: :string],

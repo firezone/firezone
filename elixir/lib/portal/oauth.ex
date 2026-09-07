@@ -67,7 +67,10 @@ defmodule Portal.OAuth do
   resource server on every request, so a token issued for anything else is
   refused even while it is otherwise valid.
   """
-  def resource_uri, do: PortalAPI.Endpoint.url() <> "/mcp"
+  def resource_uri do
+    base = Portal.Config.get_env(:portal, :rest_api_url) || PortalAPI.Endpoint.url()
+    String.trim_trailing(base, "/") <> "/mcp"
+  end
 
   @doc """
   The cached client for `client_id`, or nil.
@@ -150,11 +153,13 @@ defmodule Portal.OAuth do
   @doc """
   Exchanges an authorization code for tokens.
 
-  The code row is deleted before anything else is checked, so a code replayed
-  in parallel finds nothing even if the first exchange later fails.
+  After the request names this resource, the code row is deleted before its
+  secret and bindings are checked, so a code replayed in parallel finds
+  nothing even if the first exchange later fails.
   """
   def exchange(params, expected_resource) do
-    with {:ok, encoded} <- fetch_param(params, "code"),
+    with :ok <- validate_resource(params, expected_resource),
+         {:ok, encoded} <- fetch_param(params, "code"),
          {:ok, verifier} <- fetch_verifier(params),
          {:ok, client_id} <- fetch_param(params, "client_id"),
          {:ok, {nonce, account_id, id, fragment}} <-
@@ -167,6 +172,7 @@ defmodule Portal.OAuth do
       issue(code, expected_resource)
     else
       {:error, :missing_param, param} -> invalid_request("#{param} is required.")
+      {:error, error, description} -> {:error, error, description}
       {:error, reason} -> invalid_grant(reason)
       :error -> invalid_grant(:secret_mismatch)
     end
@@ -180,7 +186,8 @@ defmodule Portal.OAuth do
   most one use before the real client's next refresh invalidates it.
   """
   def refresh(params, expected_resource) do
-    with {:ok, encoded} <- fetch_param(params, "refresh_token"),
+    with :ok <- validate_resource(params, expected_resource),
+         {:ok, encoded} <- fetch_param(params, "refresh_token"),
          {:ok, client_id} <- fetch_param(params, "client_id"),
          {:ok, {nonce, account_id, id, fragment}} <- decode(encoded, "mcp_refresh"),
          {:ok, token} <- Database.fetch_refreshable_token(account_id, id),
@@ -190,6 +197,7 @@ defmodule Portal.OAuth do
       rotate(token)
     else
       {:error, :missing_param, param} -> invalid_request("#{param} is required.")
+      {:error, error, description} -> {:error, error, description}
       {:error, reason} -> invalid_grant(reason)
     end
   end

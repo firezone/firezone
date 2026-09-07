@@ -431,6 +431,189 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
                )
     end
 
+    test "queues the first sync after creating a verified google directory", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      configure_google_directory_workload_identity()
+      configure_google_sync_authorization()
+
+      Req.Test.stub(ManagedIdentity, fn req_conn ->
+        Req.Test.json(req_conn, %{"error" => "not mocked"})
+      end)
+
+      Req.Test.stub(APIClient, fn req_conn ->
+        Req.Test.json(req_conn, %{"error" => "not mocked"})
+      end)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/directory_sync/google/new")
+
+      Req.Test.allow(ManagedIdentity, self(), lv.pid)
+      Req.Test.allow(APIClient, self(), lv.pid)
+      Req.Test.allow(PortalWeb.OIDC, self(), lv.pid)
+
+      expect_google_directory_service_access("C0123", "verified.example.com")
+
+      lv
+      |> form("#directory-form",
+        directory: %{
+          name: "Google First Sync",
+          impersonation_email: "sync-admin@verified.example.com"
+        }
+      )
+      |> render_change()
+
+      lv |> element("button[phx-click='start_verification']") |> render_click()
+      verification_ref = verification_ref_from_open_url(lv)
+      ack_ref = make_ref()
+
+      send(
+        lv.pid,
+        {:google_directory_sync_complete, "verified.example.com", verification_ref,
+         {self(), ack_ref}}
+      )
+
+      assert_receive {:verification_ack, ^ack_ref}
+
+      lv |> element("form#directory-form") |> render_submit()
+
+      directory =
+        Portal.Repo.get_by!(Portal.Google.Directory,
+          account_id: account.id,
+          name: "Google First Sync"
+        )
+
+      assert directory.is_verified
+
+      assert_enqueued(
+        worker: Portal.Google.Sync,
+        args: %{account_id: account.id, directory_id: directory.id}
+      )
+    end
+
+    test "cleans up the watch channel when a google directory is disabled or deleted", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      directory =
+        google_directory_fixture(%{
+          account: account,
+          name: "Google Ops",
+          impersonation_email: "ops-admin@example.com",
+          webhook_secret: "secret",
+          users_channel_id: "channel-1",
+          users_resource_id: "resource-1",
+          channel_expires_at: DateTime.add(DateTime.utc_now(), 5, :hour)
+        })
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/directory_sync")
+
+      html = render_click(lv, "toggle_directory", %{"id" => directory.id})
+      assert html =~ "Directory disabled successfully."
+
+      assert_enqueued(
+        worker: Portal.Google.Subscriptions,
+        args: %{
+          action: "stop",
+          account_id: account.id,
+          directory_id: directory.id,
+          impersonation_email: "ops-admin@example.com",
+          channel_id: "channel-1",
+          resource_id: "resource-1"
+        }
+      )
+
+      html = render_click(lv, "toggle_directory", %{"id" => directory.id})
+      assert html =~ "Directory enabled successfully."
+
+      assert_enqueued(
+        worker: Portal.Google.Subscriptions,
+        args: %{account_id: account.id, directory_id: directory.id, action: "ensure"}
+      )
+
+      html = render_click(lv, "delete_directory", %{"id" => directory.id})
+      assert html =~ "Directory deleted successfully."
+    end
+
+    test "drops the watch channel when a google directory moves to another domain", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      configure_google_directory_workload_identity()
+      configure_google_sync_authorization()
+
+      Req.Test.stub(ManagedIdentity, fn req_conn ->
+        Req.Test.json(req_conn, %{"error" => "not mocked"})
+      end)
+
+      Req.Test.stub(APIClient, fn req_conn ->
+        Req.Test.json(req_conn, %{"error" => "not mocked"})
+      end)
+
+      directory =
+        google_directory_fixture(%{
+          account: account,
+          name: "Google Move",
+          domain: "old.example.com",
+          impersonation_email: "sync-admin@old.example.com",
+          webhook_secret: "secret",
+          users_channel_id: "channel-1",
+          users_resource_id: "resource-1",
+          channel_expires_at: DateTime.add(DateTime.utc_now(), 5, :hour)
+        })
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/directory_sync/google/#{directory.id}/edit")
+
+      Req.Test.allow(ManagedIdentity, self(), lv.pid)
+      Req.Test.allow(APIClient, self(), lv.pid)
+      Req.Test.allow(PortalWeb.OIDC, self(), lv.pid)
+
+      expect_google_directory_service_access("C0123", "new.example.com")
+
+      render_click(lv, "reset_verification")
+      lv |> element("button[phx-click='start_verification']") |> render_click()
+      verification_ref = verification_ref_from_open_url(lv)
+      ack_ref = make_ref()
+
+      send(
+        lv.pid,
+        {:google_directory_sync_complete, "new.example.com", verification_ref,
+         {self(), ack_ref}}
+      )
+
+      assert_receive {:verification_ack, ^ack_ref}
+      render_hook(lv, "submit_directory", %{})
+
+      directory = Portal.Repo.get_by!(Portal.Google.Directory, id: directory.id)
+      assert directory.domain == "new.example.com"
+      assert is_nil(directory.users_channel_id)
+      assert is_nil(directory.users_resource_id)
+      assert is_nil(directory.channel_expires_at)
+
+      assert_enqueued(
+        worker: Portal.Google.Subscriptions,
+        args: %{
+          action: "stop",
+          directory_id: directory.id,
+          impersonation_email: "sync-admin@old.example.com",
+          channel_id: "channel-1",
+          resource_id: "resource-1"
+        }
+      )
+    end
+
     test "does not consume a Google directory verifier for a stale callback reference", %{
       conn: conn,
       account: account,

@@ -14,7 +14,7 @@ defmodule PortalAPI.ExternalIdentityController do
     summary: "List External Identities for an Actor",
     parameters: [
       actor_id: [in: :path, description: "Actor ID", type: :string],
-      limit: [in: :query, description: "Limit External Identities returned", type: :integer],
+      limit: [in: :query, description: "Limit External Identities returned", schema: PortalAPI.Pagination.limit_schema()],
       page_cursor: [in: :query, description: "Next/Prev page cursor", type: :string]
     ],
     responses:
