@@ -173,8 +173,10 @@
 
     static func mock(scenario: MockScenario = .connected, logDirectory: URL? = nil) -> Store {
       // swiftlint:disable:next no_userdefaults_standard - DI entry point
-      UserDefaults.standard.set(scenario.favorites, forKey: Favorites.key)
-      UserDefaults.standard.set(true, forKey: "launchedBefore")
+      let defaults = UserDefaults.standard
+      defaults.set(scenario.favorites, forKey: Favorites.key)
+      // Otherwise the welcome window opens over the screen being photographed.
+      defaults.set(true, forKey: "launchedBefore")
 
       seedConfiguration(with: scenario)
 
