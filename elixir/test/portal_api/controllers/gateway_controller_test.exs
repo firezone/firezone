@@ -51,6 +51,8 @@ defmodule PortalAPI.GatewayControllerTest do
 
       refute is_nil(id)
       refute is_nil(token)
+      assert {:ok, gateway_token} = Portal.Authentication.verify_gateway_token(token)
+      assert gateway_token.device_id == id
 
       assert [{"location", location}] =
                Enum.filter(conn.resp_headers, fn {k, _} -> k == "location" end)

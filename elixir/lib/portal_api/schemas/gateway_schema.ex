@@ -168,6 +168,13 @@ defmodule PortalAPI.Schemas.Gateway do
       %{online: device.online?, rotated_at: device.gateway_token_rotated_at}
     end
 
+    def map(%Portal.Device{provisioned_token: token} = device, map) when is_binary(token) do
+      device
+      |> Map.put(:provisioned_token, nil)
+      |> map(map)
+      |> Map.put(:token, token)
+    end
+
     def map(%Portal.Device{provisioned_token: token} = device, map) do
       device
       |> Map.put(:provisioned_token, nil)
