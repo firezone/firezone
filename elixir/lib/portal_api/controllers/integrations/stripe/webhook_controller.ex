@@ -7,9 +7,24 @@ defmodule PortalAPI.Integrations.Stripe.WebhookController do
   @scheme "v1"
 
   def handle_webhook(conn, _params) do
-    with [signature_header] <- get_req_header(conn, "stripe-signature"),
-         {:ok, body, conn} <- read_body(conn, length: 1_000_000),
-         {:ok, {timestamp, signatures}} <- fetch_timestamp_and_signatures(signature_header),
+    case get_req_header(conn, "stripe-signature") do
+      [signature_header] ->
+        case read_body(conn, length: 1_000_000) do
+          {:ok, body, conn} -> handle_body(conn, signature_header, body)
+          {:more, _, conn} -> send_resp(conn, 413, "Request Entity Too Large")
+
+          {:error, reason} ->
+            Logger.error("Stripe webhook body could not be read", reason: inspect(reason))
+            send_resp(conn, 500, "Internal Error")
+        end
+
+      [] ->
+        send_resp(conn, 400, "Bad Request: missing signature header")
+    end
+  end
+
+  defp handle_body(conn, signature_header, body) do
+    with {:ok, {timestamp, signatures}} <- fetch_timestamp_and_signatures(signature_header),
          :ok <- verify_timestamp(timestamp, @tolerance),
          secret = Billing.fetch_webhook_signing_secret!(),
          :ok <- verify_signatures(signatures, timestamp, body, secret),
@@ -17,18 +32,6 @@ defmodule PortalAPI.Integrations.Stripe.WebhookController do
          :ok <- Billing.handle_events([payload]) do
       send_resp(conn, 200, "")
     else
-      [] ->
-        send_resp(conn, 400, "Bad Request: missing signature header")
-
-      # coveralls-ignore-start
-      # Plug.Conn.read_body/2 never returns {:error, :too_large}; an oversized
-      # body yields {:more, _, _} which falls through to the catch-all below.
-      # This defensive clause is kept in case the adapter contract changes.
-      {:error, :too_large} ->
-        send_resp(conn, 413, "Request Entity Too Large")
-
-      # coveralls-ignore-stop
-
       {:error, :missing_timestamp} ->
         send_resp(conn, 400, "Bad Request: missing timestamp")
 

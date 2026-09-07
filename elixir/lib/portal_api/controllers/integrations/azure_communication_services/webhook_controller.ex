@@ -5,9 +5,31 @@ defmodule PortalAPI.Integrations.AzureCommunicationServices.WebhookController do
   require Logger
 
   def handle_webhook(conn, _params) do
-    with [event_type] <- get_req_header(conn, "aeg-event-type"),
-         {:ok, body, conn} <- read_body(conn),
-         {:ok, events} <- decode_events(body) do
+    case get_req_header(conn, "aeg-event-type") do
+      [event_type] ->
+        handle_body(conn, event_type)
+
+      [] ->
+        send_resp(conn, 400, "Bad Request: missing aeg-event-type header")
+    end
+  end
+
+  defp handle_body(conn, event_type) do
+    case read_body(conn) do
+      {:ok, body, conn} ->
+        dispatch_body(conn, event_type, body)
+
+      {:more, _, conn} ->
+        send_resp(conn, 413, "Request Entity Too Large")
+
+      {:error, reason} ->
+        Logger.error("ACS Event Grid webhook body could not be read", reason: inspect(reason))
+        send_resp(conn, 500, "Internal Error")
+    end
+  end
+
+  defp dispatch_body(conn, event_type, body) do
+    with {:ok, events} <- decode_events(body) do
       case dispatch_event_type(conn, event_type, events) do
         {:error, :invalid_secret} ->
           send_resp(conn, 401, "Unauthorized")
@@ -23,29 +45,8 @@ defmodule PortalAPI.Integrations.AzureCommunicationServices.WebhookController do
           conn
       end
     else
-      [] ->
-        send_resp(conn, 400, "Bad Request: missing aeg-event-type header")
-
-      # coveralls-ignore-start
-      # Defensive: only triggered by a payload exceeding read_body/2's default
-      # 8MB length, which Event Grid never sends. Allocating such a body in
-      # tests is wasteful, so this guard is excluded from coverage.
-      {:more, _, _} ->
-        send_resp(conn, 413, "Request Entity Too Large")
-
-      # coveralls-ignore-stop
-
       {:error, :invalid_json} ->
         send_resp(conn, 400, "Bad Request: invalid JSON")
-
-      # coveralls-ignore-start
-      # Defensive: catches read_body/1 transport failures such as {:error, :timeout}
-      # or {:error, :closed}. These are impractical to trigger in tests, so this
-      # clause is excluded from coverage.
-      {:error, reason} ->
-        Logger.error("ACS Event Grid webhook failed", reason: inspect(reason))
-        send_resp(conn, 500, "Internal Error")
-        # coveralls-ignore-stop
     end
   end
 
