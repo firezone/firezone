@@ -134,6 +134,9 @@ jobs:
         with:
           api-level: 34
           arch: x86_64
+          # 1080 by 1920 at xxhdpi, the size the rendered screenshots are drawn at, so a
+          # display capture can sit next to them.
+          profile: Nexus 5
           # An image without Play Services boots faster, and a device owner can only be
           # set while a device carries no accounts, which the managed suite's DPC needs.
           target: default
