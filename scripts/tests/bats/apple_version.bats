@@ -1,10 +1,11 @@
 #!/usr/bin/env bats
 
 setup() {
-    RELEASE_NAME=apple-client-1.0.0
-    ASC_APP_ID=app-id
-    ASC_PLATFORM=IOS
+    export RELEASE_NAME=apple-client-1.0.0
+    export ASC_APP_ID=app-id
+    export ASC_PLATFORM=IOS
     APP_STATE=WAITING_FOR_REVIEW
+    version_phase=""
     # shellcheck source=scripts/upload/apple-version.sh
     source "$BATS_TEST_DIRNAME/../../upload/apple-version.sh"
 }
@@ -29,7 +30,7 @@ asc() {
     run verify_app_store_build different-build
     [ "$status" -ne 0 ]
 
-    release_type=AFTER_APPROVAL
+    export release_type=AFTER_APPROVAL
     run verify_app_store_build build-id
     [ "$status" -ne 0 ]
 }
