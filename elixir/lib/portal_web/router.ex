@@ -87,7 +87,7 @@ defmodule PortalWeb.Router do
       live "/try", SignUp, :choose
     end
 
-    post "/sign_up/google", SignUpController, :google
+    post "/sign_up/:auth_provider_type", OIDCController, :sign_up
   end
 
   # Machine to machine, so no CSRF protection and no session: the client
