@@ -22,6 +22,7 @@ MOCK
 
     [ "$status" -eq 0 ]
     [ "$output" = "gateway stdout" ]
+    # shellcheck disable=SC2154 # `run --separate-stderr` assigns it
     [[ "$stderr" == *"deprecated"* ]]
     [[ "$stderr" == *'`firezone-gateway authenticate --replace`'* ]]
     [ "$(cat "$GATEWAY_CALLS_LOG")" = "authenticate --replace" ]
