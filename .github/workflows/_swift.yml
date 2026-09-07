@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: ${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' && 'apple-release-main' || github.run_id }}
+  group: ${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' && 'apple-release-main' || format('apple-ci-{0}', github.run_id) }}
   cancel-in-progress: false
 
 jobs:
