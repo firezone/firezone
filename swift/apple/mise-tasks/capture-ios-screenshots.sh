@@ -22,11 +22,11 @@ case "$(xcrun simctl list devices -j | jq -r --arg udid "${UDID}" \
 esac
 OUTPUT_DIR="${APPLE_DIR}/screenshots/ios/${DEVICE}"
 
-# The products of build-screenshots-ios, which the test run finds through the
+# The products of build-ios-ui-tests, which the test run finds through the
 # xctestrun beside them.
 XCTESTRUN="$(find "${DERIVED_DATA_PATH}/Build/Products" -maxdepth 1 -name '*.xctestrun' 2>/dev/null | head -n 1)"
 if [ -z "${XCTESTRUN}" ]; then
-  echo "No test products in ${DERIVED_DATA_PATH}; run the build-screenshots-ios task first" >&2
+  echo "No test products in ${DERIVED_DATA_PATH}; run the build-ios-ui-tests task first" >&2
   exit 1
 fi
 

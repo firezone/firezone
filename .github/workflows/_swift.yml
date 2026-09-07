@@ -90,11 +90,11 @@ jobs:
         with:
           path: ${{ runner.temp }}/DerivedData
           key: macos
-      - name: Build the macOS screenshot suite
+      - name: Build the macOS app and its UI tests
         # The runner context only exists at step level.
         env:
           DERIVED_DATA_PATH: ${{ runner.temp }}/DerivedData
-        run: mise run //swift/apple:build-screenshots-macos
+        run: mise run //swift/apple:build-macos-ui-tests
       # Packed because the artifact store drops the executable bits the app and
       # the test runner need.
       - name: Pack the test products
@@ -162,7 +162,7 @@ jobs:
         env:
           DERIVED_DATA_PATH: ${{ runner.temp }}/DerivedData
           RESULT_BUNDLE_DIR: ${{ runner.temp }}
-        run: mise run //swift/apple:screenshots-macos
+        run: mise run //swift/apple:capture-macos-screenshots
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: macos-${{ matrix.release }}-screenshots
@@ -202,10 +202,10 @@ jobs:
         with:
           path: ${{ runner.temp }}/DerivedData
           key: ios
-      - name: Build the iOS screenshot suite
+      - name: Build the iOS app and its UI tests
         env:
           DERIVED_DATA_PATH: ${{ runner.temp }}/DerivedData
-        run: mise run //swift/apple:build-screenshots-ios
+        run: mise run //swift/apple:build-ios-ui-tests
       # Packed because the artifact store drops the executable bits the app and
       # the test runner need.
       - name: Pack the test products
@@ -263,7 +263,7 @@ jobs:
         env:
           DERIVED_DATA_PATH: ${{ runner.temp }}/DerivedData
           RESULT_BUNDLE_DIR: ${{ runner.temp }}
-        run: mise run //swift/apple:screenshots-ios
+        run: mise run //swift/apple:capture-ios-screenshots
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ios-${{ matrix.device }}-screenshots

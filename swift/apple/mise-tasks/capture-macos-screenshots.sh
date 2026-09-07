@@ -9,11 +9,11 @@ DERIVED_DATA_PATH="${DERIVED_DATA_PATH:-${TMPDIR:-/tmp}/FirezoneUITests-macos}"
 # write over an existing bundle, and the last one stays around to inspect.
 RESULT_BUNDLE="${RESULT_BUNDLE_DIR:-${TMPDIR:-/tmp}}/FirezoneUITests-macos.xcresult"
 
-# The products of build-screenshots-macos, which the test run finds through the
+# The products of build-macos-ui-tests, which the test run finds through the
 # xctestrun beside them.
 XCTESTRUN="$(find "${DERIVED_DATA_PATH}/Build/Products" -maxdepth 1 -name '*.xctestrun' 2>/dev/null | head -n 1)"
 if [ -z "${XCTESTRUN}" ]; then
-  echo "No test products in ${DERIVED_DATA_PATH}; run the build-screenshots-macos task first" >&2
+  echo "No test products in ${DERIVED_DATA_PATH}; run the build-macos-ui-tests task first" >&2
   exit 1
 fi
 

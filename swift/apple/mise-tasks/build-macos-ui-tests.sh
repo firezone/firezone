@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-#MISE description="Build the macOS app and its screenshot suite, to be run by screenshots-macos"
+#MISE description="Build the macOS app and its UI tests, to be run by capture-macos-screenshots"
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
