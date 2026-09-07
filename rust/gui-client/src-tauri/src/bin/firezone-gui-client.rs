@@ -172,7 +172,6 @@ fn try_main(cli: Cli, rt: &Runtime, log_guard: &mut Option<LogGuard>) -> Result<
 
             return Ok(());
         }
-        #[cfg(debug_assertions)]
         Some(Cmd::OpenTrayMenu) => {
             rt.block_on(gui::open_tray_menu())
                 .context("Failed to open the running instance's tray menu")?;
@@ -398,8 +397,6 @@ enum Cmd {
     SmokeTest,
     /// Ask the already running instance to open its tray menu on screen, so CI
     /// can photograph it without clicking the notification area, then exit.
-    /// Debug builds only, so a release binary can't be told to do this.
-    #[cfg(debug_assertions)]
     #[command(hide = true)]
     OpenTrayMenu,
 }

@@ -90,7 +90,6 @@ pub trait GuiIntegration {
     fn set_tray_icon(&mut self, icon: system_tray::Icon);
     fn set_tray_menu(&mut self, app_state: system_tray::AppState);
     /// Opens the tray menu on screen, so CI can photograph it.
-    #[cfg(debug_assertions)]
     fn open_tray_menu(&self) -> Result<()>;
     fn show_notification(&self, title: impl Into<String>, body: impl Into<String>) -> Result<()>;
 
@@ -124,8 +123,7 @@ pub enum ControllerRequest {
         stem: PathBuf,
     },
     Fail(Failure),
-    /// Open the tray menu on screen. Debug builds only.
-    #[cfg(debug_assertions)]
+    /// Open the tray menu on screen.
     OpenTrayMenu,
     SignIn,
     SignOut,
@@ -522,7 +520,6 @@ impl<I: GuiIntegration> Controller<I> {
             }
             Fail(Failure::Error) => Err(anyhow!("Test error"))?,
             Fail(Failure::Panic) => panic!("Test panic"),
-            #[cfg(debug_assertions)]
             OpenTrayMenu => self.integration.open_tray_menu()?,
             SignIn | SystemTrayMenu(system_tray::Event::SignIn) => {
                 let auth_url = self.auth_url().clone();
@@ -827,7 +824,6 @@ impl<I: GuiIntegration> Controller<I> {
                 self.integration.show_overview_page(&session_view_model)?;
                 self.reload_device_trust().await?;
             }
-            #[cfg(debug_assertions)]
             gui::ClientMsg::OpenTrayMenu => {
                 self.handle_request(ControllerRequest::OpenTrayMenu).await?;
             }
@@ -1780,7 +1776,6 @@ mod tests {
             self.lock().tray_states.push(app_state);
         }
 
-        #[cfg(debug_assertions)]
         fn open_tray_menu(&self) -> Result<()> {
             self.lock().tray_menu_opens.push(());
 

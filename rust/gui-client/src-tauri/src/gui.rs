@@ -169,7 +169,6 @@ impl GuiIntegration for TauriIntegration {
         self.tray.update(app_state)
     }
 
-    #[cfg(debug_assertions)]
     fn open_tray_menu(&self) -> Result<()> {
         self.tray.open_menu()
     }
@@ -273,9 +272,7 @@ fn spawn_notification(title: String, body: String, open_url: Option<url::Url>) {
 pub enum ClientMsg {
     Deeplink(url::Url),
     NewInstance,
-    /// Open the running instance's tray menu on screen, so CI can photograph
-    /// it. Debug builds only, so a release build can't be told to do this.
-    #[cfg(debug_assertions)]
+    /// Open the running instance's tray menu on screen, so CI can photograph it.
     OpenTrayMenu,
 }
 
@@ -683,7 +680,6 @@ async fn new_instance_handshake(
 
 /// Asks the running instance to open its tray menu on screen, so CI can
 /// photograph it without clicking the notification area.
-#[cfg(debug_assertions)]
 pub async fn open_tray_menu() -> Result<()> {
     let (mut read, mut write) =
         ipc::connect::<ServerMsg, ClientMsg>(SocketId::Gui, ipc::ConnectOptions::default()).await?;

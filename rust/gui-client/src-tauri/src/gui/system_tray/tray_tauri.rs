@@ -6,9 +6,7 @@
 //! drops the icon — so it uses the `tray_ksni` backend instead.
 
 use anyhow::{Context as _, Result};
-use tauri::AppHandle;
-#[cfg(debug_assertions)]
-use tauri::{Manager as _, menu::ContextMenu as _};
+use tauri::{AppHandle, Manager as _, menu::ContextMenu as _};
 
 use super::{
     AppState, Entry, Event, Icon, Image, Item, Menu, MenuItemIcon, TOOLTIP, compose_icon,
@@ -109,7 +107,6 @@ impl Tray {
     }
 
     /// Opens the menu we installed last on screen, so CI can photograph it.
-    #[cfg(debug_assertions)]
     pub(crate) fn open_menu(&self) -> Result<()> {
         let menu = self
             .last_menu_set
@@ -170,7 +167,6 @@ fn set_menu(handle: tauri::tray::TrayIcon, app: &AppHandle, menu: &Menu) -> Resu
 /// Opens `menu` at the cursor, anchored to the (hidden) main window, for screenshots.
 ///
 /// Builds its own Tauri menu: [`set_menu`] keeps only the abstract one.
-#[cfg(debug_assertions)]
 fn open_menu(app: &AppHandle, menu: &Menu) -> Result<()> {
     let menu = build_menu(app, menu).context("Failed to build tray menu")?;
     let window = app
