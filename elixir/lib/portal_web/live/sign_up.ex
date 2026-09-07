@@ -139,9 +139,12 @@ defmodule PortalWeb.SignUp do
   end
 
   def handle_params(_params, _uri, %{assigns: %{live_action: :google}} = socket) do
-    case socket.assigns.google_identity do
-      nil -> {:noreply, sign_up_error(socket, @google_session_error)}
-      identity -> {:noreply, start_google_sign_up(socket, identity)}
+    identity = socket.assigns.google_identity
+
+    if is_nil(identity) or identity_expired?(identity) do
+      {:noreply, sign_up_error(socket, @google_session_error)}
+    else
+      {:noreply, start_google_sign_up(socket, identity)}
     end
   end
 

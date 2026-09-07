@@ -186,6 +186,20 @@ defmodule PortalWeb.SignUpTest do
       refute Portal.Repo.get_by(Portal.Account, name: "Raced Corp")
     end
 
+    test "patching back to the Google form after expiry shows error state", %{conn: conn} do
+      conn = with_google_identity(conn, expires_at: System.os_time(:second) + 1)
+
+      {:ok, lv, html} = live(conn, ~p"/sign_up/google")
+      assert html =~ "Almost there"
+
+      Process.sleep(1_100)
+
+      html = render_patch(lv, ~p"/sign_up/google")
+
+      assert html =~ "Something went wrong"
+      assert html =~ "Google sign-up session is invalid or has expired"
+    end
+
     test "submit_google from the email form is rejected", %{conn: conn} do
       conn = with_google_identity(conn, email: "attacker@example.com")
       victim = "victim@example.com"
