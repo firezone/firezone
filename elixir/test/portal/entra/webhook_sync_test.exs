@@ -73,6 +73,25 @@ defmodule Portal.Entra.WebhookSyncTest do
       assert Repo.get_by!(ExternalIdentity, id: identity.id).name == "Webhook Name"
     end
 
+    test "updates the actor the directory created when the user changes",
+         %{directory: directory} = ctx do
+      identity = directory_identity(ctx, "user-1", name: "Old Name", email: "old@example.com")
+
+      actor =
+        identity.actor_id
+        |> mark_created_by_directory(directory)
+        |> Ecto.Changeset.change(name: "Old Name", email: "old@example.com")
+        |> Repo.update!()
+
+      stub_graph(users: %{"user-1" => graph_user("user-1", "New Name", "new@example.com")})
+
+      assert :ok = perform_job(WebhookSync, user_args(directory, "user-1", "updated"))
+
+      actor = Repo.get_by!(Actor, id: actor.id)
+      assert actor.name == "New Name"
+      assert actor.email == "new@example.com"
+    end
+
     test "removes a disabled user with their memberships and directory actor",
          %{directory: directory, base_directory: base_directory} = ctx do
       identity = directory_identity(ctx, "user-1")
