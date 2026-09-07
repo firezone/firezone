@@ -91,6 +91,11 @@ jobs:
 
       - name: Stage App Store inputs
         run: |
+          # Use the submission's selection without changing the build's screenshot files.
+          git fetch --depth=1 origin "$GITHUB_SHA"
+          git restore --source="$GITHUB_SHA" --worktree -- \
+            swift/apple/app-store/screenshots-ios.txt \
+            swift/apple/app-store/screenshots-macos.txt
           if [[ ! -f scripts/upload/apple-version.sh ]]; then
             echo "This draft predates the submission workflow. Run Swift from main and QA the new draft first." >&2
             exit 1
