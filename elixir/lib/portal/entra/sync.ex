@@ -576,6 +576,17 @@ defmodule Portal.Entra.Sync do
   defp fetch_group_members(directory, access_token, synced_at, {root_id, root_name}, group_id) do
     APIClient.stream_group_members(access_token, group_id)
     |> Enum.reduce(%{users: [], groups: []}, fn
+      # Deleted since its parent listed it: its members fall out as stale, and
+      # it stays in the nesting so its own notification still reaches the root.
+      {:error, %Req.Response{status: 404}}, acc ->
+        Logger.info("Group vanished before its members were read",
+          entra_directory_id: directory.id,
+          group_id: group_id,
+          root_group_id: root_id
+        )
+
+        acc
+
       {:error, error}, _acc ->
         raise Entra.SyncError,
           error: error,

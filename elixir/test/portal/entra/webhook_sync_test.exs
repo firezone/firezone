@@ -313,6 +313,20 @@ defmodule Portal.Entra.WebhookSyncTest do
       assert Repo.get_by(Membership, actor_id: identity.actor_id, group_id: group.id)
     end
 
+    test "keeps walking when a nested group vanishes before its members are read",
+         %{account: account, directory: directory, base_directory: base_directory} do
+      group = group_fixture(account: account, directory: base_directory, idp_id: "group-1")
+      alice = graph_user("user-alice", "Alice", "alice@example.com")
+
+      stub_graph(groups: %{"group-1" => {"Engineering", [graph_group("gone"), alice]}})
+
+      assert :ok = perform_job(WebhookSync, group_args(directory, "group-1", "updated"))
+
+      assert Repo.get_by!(Group, id: group.id).nested_group_idp_ids == ["gone"]
+      identity = Repo.get_by!(ExternalIdentity, idp_id: "user-alice")
+      assert Repo.get_by(Membership, actor_id: identity.actor_id, group_id: group.id)
+    end
+
     test "deletes a group on a deleted notification once Graph confirms it",
          %{account: account, directory: directory, base_directory: base_directory} do
       group = group_fixture(account: account, directory: base_directory, idp_id: "group-1")
@@ -438,7 +452,7 @@ defmodule Portal.Entra.WebhookSyncTest do
 
           case Map.get(groups, id) do
             {_name, members} -> Req.Test.json(conn, %{"value" => members})
-            nil -> Req.Test.json(conn, %{"value" => []})
+            nil -> json_or_404(conn, nil)
           end
 
         true ->

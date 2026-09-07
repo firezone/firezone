@@ -329,6 +329,98 @@ defmodule Portal.Entra.SyncTest do
       assert Repo.get_by!(Group, idp_id: "group_team").nested_group_idp_ids == []
     end
 
+    test "keeps syncing when a nested group vanishes before its members are read" do
+      account = account_fixture(features: %{idp_sync: true})
+      directory = entra_directory_fixture(account: account, sync_all_groups: true)
+
+      Req.Test.expect(APIClient, 100, fn %{request_path: path} = conn ->
+        cond do
+          String.ends_with?(path, "/oauth2/v2.0/token") ->
+            Req.Test.json(conn, %{"access_token" => "test_token"})
+
+          path == "/v1.0/groups" ->
+            Req.Test.json(conn, %{"value" => [%{"id" => "group_all", "displayName" => "All"}]})
+
+          String.contains?(path, "group_all/members") ->
+            Req.Test.json(conn, %{
+              "value" => [
+                %{"@odata.type" => "#microsoft.graph.group", "id" => "group_gone"},
+                active_entra_user(%{
+                  "@odata.type" => "#microsoft.graph.user",
+                  "id" => "user_alice",
+                  "displayName" => "Alice",
+                  "mail" => "alice@example.com",
+                  "userPrincipalName" => "alice@example.com"
+                })
+              ]
+            })
+
+          String.contains?(path, "group_gone/members") ->
+            conn
+            |> Plug.Conn.put_status(404)
+            |> Req.Test.json(%{"error" => %{"code" => "Request_ResourceNotFound"}})
+
+          true ->
+            Req.Test.json(conn, %{"error" => "unexpected: #{path}"})
+        end
+      end)
+
+      assert :ok = perform_job(Sync, %{account_id: directory.account_id, directory_id: directory.id})
+
+      assert Repo.get_by!(Group, idp_id: "group_all").nested_group_idp_ids == ["group_gone"]
+      identity = Repo.get_by!(ExternalIdentity, idp_id: "user_alice")
+      assert [_] = Repo.all_by(Membership, actor_id: identity.actor_id)
+    end
+
+    test "prunes the members of a group deleted between the listing and its walk" do
+      account = account_fixture(features: %{idp_sync: true})
+      directory = entra_directory_fixture(account: account, sync_all_groups: true)
+      base_directory = Repo.get_by!(Portal.Directory, id: directory.id, account_id: account.id)
+
+      group =
+        Portal.GroupFixtures.group_fixture(
+          account: account,
+          directory: base_directory,
+          idp_id: "group_gone"
+        )
+
+      actor = Portal.ActorFixtures.actor_fixture(account: account)
+
+      Portal.IdentityFixtures.identity_fixture(
+        account: account,
+        actor: actor,
+        directory: base_directory,
+        issuer: Sync.issuer(directory),
+        idp_id: "user_carol"
+      )
+
+      membership =
+        Portal.MembershipFixtures.membership_fixture(account: account, actor: actor, group: group)
+
+      Req.Test.expect(APIClient, 100, fn %{request_path: path} = conn ->
+        cond do
+          String.ends_with?(path, "/oauth2/v2.0/token") ->
+            Req.Test.json(conn, %{"access_token" => "test_token"})
+
+          path == "/v1.0/groups" ->
+            Req.Test.json(conn, %{"value" => [%{"id" => "group_gone", "displayName" => "Gone"}]})
+
+          String.contains?(path, "group_gone/members") ->
+            conn
+            |> Plug.Conn.put_status(404)
+            |> Req.Test.json(%{"error" => %{"code" => "Request_ResourceNotFound"}})
+
+          true ->
+            Req.Test.json(conn, %{"error" => "unexpected: #{path}"})
+        end
+      end)
+
+      assert :ok = perform_job(Sync, %{account_id: directory.account_id, directory_id: directory.id})
+
+      assert Repo.get_by(Group, id: group.id)
+      refute Repo.get_by(Membership, id: membership.id)
+    end
+
     test "skips disabled users from direct assignments and group memberships" do
       account = account_fixture(features: %{idp_sync: true})
       directory = entra_directory_fixture(account: account, sync_all_groups: false)
