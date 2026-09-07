@@ -47,12 +47,12 @@ internal enum class SettingsPage(
 }
 
 /** The pages to show, in order. */
-internal fun settingsPages(hasConfiguredCertificateAlias: Boolean): List<SettingsPage> =
+internal fun settingsPages(showDeviceTrust: Boolean): List<SettingsPage> =
     buildList {
         add(SettingsPage.GENERAL)
         add(SettingsPage.ADVANCED)
 
-        if (hasConfiguredCertificateAlias) {
+        if (showDeviceTrust) {
             add(SettingsPage.DEVICE_TRUST)
         }
 
@@ -67,7 +67,7 @@ internal fun SettingsScreen(
     isSaveEnabled: Boolean,
     logSizeBytes: Long,
     deviceTrustState: DeviceTrustSettingsViewModel.UiState,
-    hasConfiguredCertificateAlias: Boolean,
+    showDeviceTrust: Boolean,
     warnBeforeSaving: Boolean,
     onAuthUrlChange: (String) -> Unit,
     onApiUrlChange: (String) -> Unit,
@@ -86,12 +86,12 @@ internal fun SettingsScreen(
     modifier: Modifier = Modifier,
     buildSha: String = stringResource(R.string.git_sha),
 ) {
-    val pages = remember(hasConfiguredCertificateAlias) { settingsPages(hasConfiguredCertificateAlias) }
+    val pages = remember(showDeviceTrust) { settingsPages(showDeviceTrust) }
     val pagerState = rememberPagerState(pageCount = { pages.size })
     val scope = rememberCoroutineScope()
     var showSaveWarning by rememberSaveable { mutableStateOf(false) }
 
-    // Forgetting the certificate drops a page, so the index can outrun the list for a frame.
+    // Revoking the certificate drops a page, so the index can outrun the list for a frame.
     val currentPage = pages.getOrNull(pagerState.currentPage)
 
     // The log directory grows while the app runs, and an administrator can install or revoke the

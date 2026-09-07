@@ -164,7 +164,7 @@ private fun SettingsScreenSample(deviceTrustState: DeviceTrustSettingsViewModel.
         isSaveEnabled = true,
         logSizeBytes = LOG_DIRECTORY_BYTES,
         deviceTrustState = deviceTrustState,
-        hasConfiguredCertificateAlias = deviceTrustState.alias != null,
+        showDeviceTrust = deviceTrustState.alias != null,
         warnBeforeSaving = false,
         onAuthUrlChange = {},
         onApiUrlChange = {},

@@ -68,7 +68,7 @@ internal class SettingsActivity : AppCompatActivity() {
                     deviceTrustState = deviceTrustState,
                     // The page exists where a certificate is required or one was found, and
                     // nowhere else.
-                    hasConfiguredCertificateAlias =
+                    showDeviceTrust =
                         repository.isX509CertificateRequired(applicationRestrictions) ||
                             deviceTrustState.alias != null,
                     warnBeforeSaving = isUserSignedIn,
