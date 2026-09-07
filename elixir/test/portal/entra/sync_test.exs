@@ -1164,6 +1164,70 @@ defmodule Portal.Entra.SyncTest do
       end
     end
 
+    test "reads a group assigned to both apps once" do
+      account = account_fixture(features: %{idp_sync: true})
+      directory = entra_directory_fixture(account: account, sync_all_groups: false)
+      {directory_sync_client_id, auth_provider_client_id} = entra_client_ids()
+      test_pid = self()
+
+      Req.Test.expect(APIClient, 20, fn %{request_path: path, query_string: query} = conn ->
+        cond do
+          String.ends_with?(path, "/oauth2/v2.0/token") ->
+            Req.Test.json(conn, %{"access_token" => "test_token"})
+
+          path == "/v1.0/servicePrincipals" ->
+            filter = URI.decode_query(query)["$filter"]
+
+            cond do
+              String.contains?(filter, directory_sync_client_id) ->
+                Req.Test.json(conn, %{"value" => [%{"id" => "sp_directory_sync"}]})
+
+              String.contains?(filter, auth_provider_client_id) ->
+                Req.Test.json(conn, %{"value" => [%{"id" => "sp_auth_provider"}]})
+
+              true ->
+                Req.Test.json(conn, %{"value" => []})
+            end
+
+          String.contains?(path, "appRoleAssignedTo") ->
+            Req.Test.json(conn, %{
+              "value" => [
+                %{
+                  "principalId" => "group_shared",
+                  "principalType" => "Group",
+                  "principalDisplayName" => "Shared"
+                }
+              ]
+            })
+
+          String.contains?(path, "group_shared/members") ->
+            send(test_pid, :members_read)
+
+            Req.Test.json(conn, %{
+              "value" => [
+                active_entra_user(%{
+                  "@odata.type" => "#microsoft.graph.user",
+                  "id" => "user_alice",
+                  "displayName" => "Alice",
+                  "mail" => "alice@example.com",
+                  "userPrincipalName" => "alice@example.com"
+                })
+              ]
+            })
+
+          true ->
+            Req.Test.json(conn, %{"error" => "unexpected: #{path}"})
+        end
+      end)
+
+      assert :ok = perform_job(Sync, %{account_id: directory.account_id, directory_id: directory.id})
+
+      assert_received :members_read
+      refute_received :members_read
+      identity = Repo.get_by!(ExternalIdentity, idp_id: "user_alice")
+      assert [_] = Repo.all_by(Membership, actor_id: identity.actor_id)
+    end
+
     test "syncs assignments from both directory sync and auth provider apps" do
       account = account_fixture(features: %{idp_sync: true})
       directory = entra_directory_fixture(account: account, sync_all_groups: false)
@@ -2580,6 +2644,23 @@ defmodule Portal.Entra.SyncTest do
         end
 
       assert error.step == :batch_upsert_identities
+    end
+  end
+
+  describe "new_recovery/1" do
+    test "queues behind an executing sync where a plain sync collapses into it" do
+      account = account_fixture(features: %{idp_sync: true})
+      directory = entra_directory_fixture(account: account)
+      args = %{account_id: directory.account_id, directory_id: directory.id}
+
+      {:ok, running} = Oban.insert(Sync.new(args))
+      Repo.update_all(from(j in Oban.Job, where: j.id == ^running.id), set: [state: "executing"])
+
+      assert {:ok, %Oban.Job{conflict?: true, id: id}} = Oban.insert(Sync.new(args))
+      assert id == running.id
+
+      assert {:ok, %Oban.Job{conflict?: false, state: "available"}} =
+               Oban.insert(Sync.new_recovery(args))
     end
   end
 

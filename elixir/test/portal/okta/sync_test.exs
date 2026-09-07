@@ -498,6 +498,18 @@ defmodule Portal.Okta.SyncTest do
       assert Repo.all(Group) == []
     end
 
+    test "snoozes while another sync for the directory is executing" do
+      account = account_fixture(features: %{idp_sync: true})
+      directory = okta_directory_fixture(account: account)
+      args = %{account_id: directory.account_id, directory_id: directory.id}
+
+      {:ok, job} = Oban.insert(Sync.new(args))
+      Repo.update_all(from(j in Oban.Job, where: j.id == ^job.id), set: [state: "executing"])
+
+      assert {:snooze, seconds} = perform_job(Sync, args)
+      assert seconds in 16..45
+    end
+
     test "raises SyncError when user is missing email field" do
       account = account_fixture(features: %{idp_sync: true})
 

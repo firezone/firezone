@@ -10,6 +10,7 @@ defmodule Portal.Google.WebhookSyncTest do
   import Portal.GroupFixtures
   import Portal.IdentityFixtures
   import Portal.MembershipFixtures
+  import Portal.RepoQueryHelpers
 
   alias Portal.Actor
   alias Portal.ExternalIdentity
@@ -78,6 +79,21 @@ defmodule Portal.Google.WebhookSyncTest do
 
       refute Repo.get_by(ExternalIdentity, id: identity.id)
       refute Repo.get_by(Membership, actor_id: actor.id)
+      refute Repo.get_by(Actor, id: actor.id)
+    end
+
+    test "removes an identity, its memberships, and its actor in one transaction",
+         %{directory: directory} = ctx do
+      identity = directory_identity(ctx, "user-1")
+      actor = mark_created_by_directory(identity.actor_id, directory)
+      stub_google(users: %{})
+
+      queries =
+        capture_queries(fn ->
+          assert :ok = perform_job(WebhookSync, args(directory, "user-1"))
+        end)
+
+      assert one_transaction?(queries, ~s(DELETE FROM "external_identities"), ~s(DELETE FROM "actors"))
       refute Repo.get_by(Actor, id: actor.id)
     end
 

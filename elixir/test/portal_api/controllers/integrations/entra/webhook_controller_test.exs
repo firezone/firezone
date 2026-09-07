@@ -135,6 +135,24 @@ defmodule PortalAPI.Integrations.Entra.WebhookControllerTest do
       assert length(all_enqueued(worker: Entra.WebhookSync)) == 2
     end
 
+    test "queues a recovery sync behind the running one for a missed notification", %{
+      conn: conn,
+      directory: directory
+    } do
+      {:ok, running} =
+        Oban.insert(Entra.Sync.new(%{account_id: directory.account_id, directory_id: directory.id}))
+
+      Portal.Repo.update_all(from(j in Oban.Job, where: j.id == ^running.id),
+        set: [state: "executing"]
+      )
+
+      conn = post_notifications(conn, directory, [lifecycle("missed", "sub-users")])
+
+      assert response(conn, 202) == ""
+      assert [job] = all_enqueued(worker: Entra.Sync)
+      assert job.id != running.id
+    end
+
     test "queues subscription maintenance for lifecycle events", %{
       conn: conn,
       directory: directory

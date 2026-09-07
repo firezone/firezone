@@ -50,6 +50,20 @@ defmodule Portal.DirectorySyncTest do
       assert DirectorySync.running_elsewhere?(@workers, directory.id, mine)
     end
 
+    test "ignores executing jobs of other workers for the directory", %{directory: directory} do
+      executing(subscriptions_changeset(directory))
+      mine = Oban.insert!(webhook_changeset(directory))
+
+      refute DirectorySync.running_elsewhere?(@workers, directory.id, mine)
+    end
+
+    test "treats an executing row without attempted_at as alive", %{directory: directory} do
+      executing(sync_changeset(directory), attempted_at: nil)
+      mine = Oban.insert!(webhook_changeset(directory))
+
+      assert DirectorySync.running_elsewhere?(@workers, directory.id, mine)
+    end
+
     test "keeps blocking on a job whose node left the cluster", %{directory: directory} do
       executing(sync_changeset(directory), attempted_by: ["portal@gone", Ecto.UUID.generate()])
       mine = Oban.insert!(webhook_changeset(directory))
@@ -68,6 +82,12 @@ defmodule Portal.DirectorySyncTest do
       executing(sync_changeset(directory))
       assert DirectorySync.busy?(@workers, directory.id)
     end
+
+    test "ignores executing jobs of other workers", %{directory: directory} do
+      executing(subscriptions_changeset(directory))
+
+      refute DirectorySync.busy?(@workers, directory.id)
+    end
   end
 
   describe "rescue_orphans/1" do
@@ -82,6 +102,14 @@ defmodule Portal.DirectorySyncTest do
       assert Repo.get!(Oban.Job, retryable.id).state == "available"
       assert Repo.get!(Oban.Job, spent.id).state == "discarded"
       assert Repo.get!(Oban.Job, elsewhere.id).state == "executing"
+    end
+
+    test "leaves the jobs of other workers alone", %{directory: directory} do
+      node = "portal@restarted"
+      other = executing(subscriptions_changeset(directory), attempted_by: [node, "d"])
+
+      assert DirectorySync.rescue_orphans(node) == 0
+      assert Repo.get!(Oban.Job, other.id).state == "executing"
     end
 
     test "matches the node Oban stamps on a job it fetches", %{directory: directory} do
@@ -118,6 +146,14 @@ defmodule Portal.DirectorySyncTest do
       resource: "user",
       resource_id: Ecto.UUID.generate(),
       change_type: "updated"
+    })
+  end
+
+  defp subscriptions_changeset(directory) do
+    Entra.Subscriptions.new(%{
+      account_id: directory.account_id,
+      directory_id: directory.id,
+      action: "ensure"
     })
   end
 
