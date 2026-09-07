@@ -186,6 +186,58 @@ defmodule PortalWeb.SignUpTest do
       refute Portal.Repo.get_by(Portal.Account, name: "Raced Corp")
     end
 
+    test "submit_google from the email form is rejected", %{conn: conn} do
+      conn = with_google_identity(conn, email: "attacker@example.com")
+      victim = "victim@example.com"
+      account = account_fixture(metadata: %{stripe: %{billing_email: victim}})
+
+      {:ok, lv, _html} = live(conn, ~p"/sign_up/email")
+
+      html =
+        render_submit(lv, "submit_google", %{
+          "registration" => %{
+            "email" => victim,
+            "account" => %{"name" => "Hijack Corp"},
+            "actor" => %{"name" => "Mallory"}
+          }
+        })
+
+      assert html =~ "Something went wrong"
+      refute html =~ account.name
+      refute html =~ "Hijack Corp"
+      refute Portal.Repo.get_by(Portal.Account, name: "Hijack Corp")
+      refute Portal.Repo.get_by(Portal.Actor, email: victim)
+    end
+
+    test "submit_google ignores an email smuggled into the form", %{conn: conn} do
+      Stripe.stub(
+        [
+          {"POST", "/v1/customers", 200,
+           Stripe.customer_object("cus_test", "Honest Corp", "ada@example.com")}
+        ] ++
+          Stripe.mock_create_subscription_endpoint()
+      )
+
+      conn = with_google_identity(conn, email: "ada@example.com")
+
+      {:ok, lv, _html} = live(conn, ~p"/sign_up/google")
+
+      html =
+        render_submit(lv, "submit_google", %{
+          "registration" => %{
+            "email" => "victim@example.com",
+            "account" => %{"name" => "Honest Corp"},
+            "actor" => %{"name" => "Ada Lovelace"}
+          }
+        })
+
+      assert html =~ "Your account has been created!"
+
+      account = Portal.Repo.get_by!(Portal.Account, name: "Honest Corp")
+      assert Portal.Repo.get_by!(Portal.Actor, account_id: account.id).email == "ada@example.com"
+      refute Portal.Repo.get_by(Portal.Actor, email: "victim@example.com")
+    end
+
     test "submitting after the Google session expires shows error state", %{conn: conn} do
       conn = with_google_identity(conn, expires_at: System.os_time(:second) + 1)
 

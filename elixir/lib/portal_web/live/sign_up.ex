@@ -748,14 +748,29 @@ defmodule PortalWeb.SignUp do
     end
   end
 
-  # A connected LiveView outlives the session entry, so the proof is checked again here.
-  def handle_event("submit_google", %{"registration" => attrs}, socket) do
-    if identity_expired?(socket.assigns.google_identity) do
+  # Only the Google step may create an account without an email round trip, and
+  # the email must come from the verified identity. A connected LiveView outlives
+  # the session entry, so the proof expiry is checked again here.
+  def handle_event(
+        "submit_google",
+        %{"registration" => attrs},
+        %{assigns: %{step: :google_form, google_identity: %{} = identity}} = socket
+      ) do
+    if identity_expired?(identity) do
       {:noreply, sign_up_error(socket, @google_session_error)}
     else
-      changeset = socket |> registration_changeset(attrs) |> Map.put(:action, :insert)
+      changeset =
+        attrs
+        |> Map.put("email", identity.email)
+        |> registration_changeset()
+        |> Map.put(:action, :insert)
+
       {:noreply, apply_google_registration(socket, changeset)}
     end
+  end
+
+  def handle_event("submit_google", _params, socket) do
+    {:noreply, sign_up_error(socket, @google_session_error)}
   end
 
   defp apply_google_registration(socket, %{valid?: true} = changeset) do
@@ -808,7 +823,7 @@ defmodule PortalWeb.SignUp do
     assign(socket, step: :existing_accounts, existing_accounts: accounts)
   end
 
-  # On the Google form the email always comes from the verified identity, never from the form.
+  # Validation on the Google form uses the verified email so domain errors show early.
   defp registration_changeset(%{assigns: %{step: :google_form, google_identity: identity}}, attrs) do
     attrs
     |> Map.put("email", identity.email)
