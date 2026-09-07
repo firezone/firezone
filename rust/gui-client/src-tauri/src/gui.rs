@@ -173,6 +173,10 @@ impl GuiIntegration for TauriIntegration {
         self.tray.open_menu()
     }
 
+    fn close_tray_menu(&self) -> Result<()> {
+        self.tray.close_menu()
+    }
+
     fn show_notification(&self, title: impl Into<String>, body: impl Into<String>) -> Result<()> {
         spawn_notification(title.into(), body.into(), None);
 
@@ -274,6 +278,8 @@ pub enum ClientMsg {
     NewInstance,
     /// Open the running instance's tray menu on screen, so CI can photograph it.
     OpenTrayMenu,
+    /// Close the tray menu again.
+    CloseTrayMenu,
 }
 
 /// IPC messages that an already running instance may send back to a
@@ -678,16 +684,12 @@ async fn new_instance_handshake(
     Ok(())
 }
 
-/// Asks the running instance to open its tray menu on screen, so CI can
-/// photograph it without clicking the notification area.
-pub async fn open_tray_menu() -> Result<()> {
+/// Hands `msg` to the already running instance and waits for it to acknowledge.
+pub async fn send_to_running_instance(msg: ClientMsg) -> Result<()> {
     let (mut read, mut write) =
         ipc::connect::<ServerMsg, ClientMsg>(SocketId::Gui, ipc::ConnectOptions::default()).await?;
 
-    write
-        .send(&ClientMsg::OpenTrayMenu)
-        .await
-        .context("Failed to send request")?;
+    write.send(&msg).await.context("Failed to send request")?;
 
     let response = read
         .next()

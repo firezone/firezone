@@ -110,9 +110,13 @@ impl Tray {
         let _ = self.icon_tx.send(icon);
     }
 
-    /// DBusMenu leaves opening the menu to the host shell, so we cannot do it ourselves.
+    /// DBusMenu leaves the menu to the host shell, so we can neither open nor close it ourselves.
     pub(crate) fn open_menu(&self) -> Result<()> {
         anyhow::bail!("Opening the tray menu is not supported on Linux")
+    }
+
+    pub(crate) fn close_menu(&self) -> Result<()> {
+        anyhow::bail!("Closing the tray menu is not supported on Linux")
     }
 }
 

@@ -121,6 +121,33 @@ impl Tray {
         Ok(())
     }
 
+    /// Closes the menu again, including any open submenu.
+    #[cfg(target_os = "windows")]
+    pub(crate) fn close_menu(&self) -> Result<()> {
+        use windows::Win32::{
+            Foundation::{LPARAM, WPARAM},
+            UI::WindowsAndMessaging::{PostMessageW, WM_CANCELMODE},
+        };
+
+        let hwnd = self
+            .app
+            .get_webview_window("main")
+            .context("Couldn't get handle to window")?
+            .hwnd()
+            .context("Couldn't get the window's HWND")?;
+
+        // `EndMenu` would need the main thread, which stays inside `TrackPopupMenu`
+        // until the menu closes.
+        // SAFETY: `PostMessageW` takes no pointers and is safe from any thread.
+        unsafe { PostMessageW(Some(hwnd), WM_CANCELMODE, WPARAM(0), LPARAM(0)) }
+            .context("Failed to post `WM_CANCELMODE`")
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    pub(crate) fn close_menu(&self) -> Result<()> {
+        anyhow::bail!("Closing the tray menu is not supported on macOS")
+    }
+
     // Only needed for the stress test
     // Otherwise it would be inlined
     pub(crate) fn set_icon(&mut self, icon: Icon) {
