@@ -91,8 +91,10 @@ defmodule PortalAPI.Router do
     plug PortalAPI.Plugs.IngestionRateLimit
     plug PortalAPI.Plugs.FlowLogAuth
 
+    # Preserve the post-read conn when malformed or oversized JSON raises so
+    # RescueRouterErrors can send the error without reusing stale adapter state.
     plug Plug.Parsers,
-      parsers: [:json],
+      parsers: [PortalAPI.Parsers.JSON],
       pass: ["*/*"],
       json_decoder: Phoenix.json_library(),
       length: 10_000_000
