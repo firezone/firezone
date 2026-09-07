@@ -1,0 +1,10 @@
+first-time-light.png
+first-time-dark.png
+settings-general-light.png
+settings-general-dark.png
+settings-advanced-light.png
+settings-advanced-dark.png
+x509-filled-light.png
+x509-filled-dark.png
+grant-vpn-light.png
+grant-vpn-dark.png
