@@ -14,8 +14,8 @@ use bimap::BiMap;
 use bytecodec::EncodeExt;
 use core::fmt;
 use logging::err_with_src;
-use opentelemetry::KeyValue;
-use opentelemetry::metrics::{Counter, Histogram, UpDownCounter};
+use otel_attributes::KeyValue;
+use otel_instruments::{Counter, Histogram, UpDownCounter};
 use rand::RngExt;
 use secrecy::SecretString;
 use smallvec::SmallVec;
@@ -190,9 +190,9 @@ where
     ) -> Self {
         // TODO: Validate that local IP isn't multicast / loopback etc.
 
-        let allocations_up_down_counter = crate::metrics::active_allocations();
-        let responses_counter = crate::metrics::responses();
-        let relayed_packet_size_histogram = crate::metrics::packet_size();
+        let allocations_up_down_counter = otel_instruments::relay_active_allocations();
+        let responses_counter = otel_instruments::relay_responses();
+        let relayed_packet_size_histogram = otel_instruments::relay_packet_size();
 
         Self {
             public_address: public_address.into(),
@@ -441,8 +441,10 @@ where
         };
 
         self.data_relayed += msg.len() as u64;
-        self.relayed_packet_size_histogram
-            .record(msg.len() as u64, &[crate::metrics::datapath_userspace()]);
+        self.relayed_packet_size_histogram.record(
+            msg.len() as u64,
+            &[otel_attributes::relay_datapath_userspace()],
+        );
 
         tracing::trace!(target: "wire", num_bytes = %msg.len());
 
@@ -885,8 +887,10 @@ where
         tracing::trace!(target: "wire", num_bytes = %data.len());
 
         self.data_relayed += data.len() as u64;
-        self.relayed_packet_size_histogram
-            .record(data.len() as u64, &[crate::metrics::datapath_userspace()]);
+        self.relayed_packet_size_histogram.record(
+            data.len() as u64,
+            &[otel_attributes::relay_datapath_userspace()],
+        );
 
         Some((channel.allocation, channel.peer_address))
     }
@@ -1096,7 +1100,7 @@ where
             CREATE_PERMISSION => "createpermission",
             _ => return,
         };
-        let error_code = error_code.map(|c| opentelemetry::Value::from(c as i64));
+        let error_code = error_code.map(|c| otel_attributes::Value::from(c as i64));
 
         // Use a `SmallVec` to avoid heap-allocations when collecting metrics.
         let mut attributes = SmallVec::<[KeyValue; 3]>::with_capacity(3);
