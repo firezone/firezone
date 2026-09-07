@@ -112,8 +112,8 @@ impl Tray {
 
     /// DBusMenu leaves opening the menu to the host shell, so we cannot do it ourselves.
     #[cfg(debug_assertions)]
-    pub(crate) fn popup(&self) -> Result<()> {
-        anyhow::bail!("Popping the tray menu up is not supported on Linux")
+    pub(crate) fn open_menu(&self) -> Result<()> {
+        anyhow::bail!("Opening the tray menu is not supported on Linux")
     }
 }
 

@@ -4,11 +4,11 @@ Photographs the tray menu of a debug GUI client with one resource's submenu expa
 
 .DESCRIPTION
 Launches the client against the in-process mock Tunnel service, then invokes the same binary
-again with `--popup-tray-menu`, which asks the running instance over its GUI IPC pipe to pop
-the connected-state menu up at the cursor. The script then clicks the requested submenu item,
-captures the screen region covered by the menu windows and saves it as a PNG. Meant for the
-Windows CI runners; everything it finds goes to stdout because the job log is all there is to
-debug with.
+again as `open-tray-menu`, which asks the running instance over its GUI IPC pipe to
+open the connected-state menu at the cursor. The script then clicks the requested submenu
+item, captures the screen region covered by the menu windows and saves it as a PNG. Meant for
+the Windows CI runners; everything it finds goes to stdout because the job log is all there is
+to debug with.
 #>
 param(
     [Parameter(Mandatory)] [string] $Exe,
@@ -110,9 +110,9 @@ function Send-Escape([int] $Levels) {
     }
 }
 
-# A request sent before the client holds the launch lock would take the lock itself and turn
-# into the app, so wait for the pipe the running instance answers on. Enumerating the pipe
-# filesystem is the only way to see a named pipe; `Test-Path` cannot.
+# The request only reaches an instance that has bound its GUI pipe, so wait for the pipe
+# instead of firing requests into the void. Enumerating the pipe filesystem is the only way
+# to see a named pipe; `Test-Path` cannot.
 function Wait-ForGuiPipe {
     $pipe = 'dev.firezone.client_gui.ipc'
     $deadline = (Get-Date).AddSeconds(60)
@@ -133,16 +133,16 @@ function Wait-ForGuiPipe {
 }
 
 # Hidden so the console window of this short-lived process never covers the menu.
-function Request-Popup {
-    Write-Host "Requesting the menu: $Exe $($popupArguments -join ' ')"
-    $popup = Start-Process -FilePath $Exe -ArgumentList $popupArguments -PassThru -WindowStyle Hidden
-    if (-not $popup.WaitForExit(30000)) {
-        Stop-Process -Id $popup.Id -Force -ErrorAction SilentlyContinue
-        throw "The popup request never exited; it may have taken the launch lock itself"
+function Request-Menu {
+    Write-Host "Requesting the menu: $Exe $($requestArguments -join ' ')"
+    $request = Start-Process -FilePath $Exe -ArgumentList $requestArguments -PassThru -WindowStyle Hidden
+    if (-not $request.WaitForExit(30000)) {
+        Stop-Process -Id $request.Id -Force -ErrorAction SilentlyContinue
+        throw "The request never exited"
     }
-    # `--no-error-dialog` makes the client report the hand-off to the running instance as a
-    # failure, so the code is only worth logging: whether the menu opens is the real signal.
-    Write-Host "Popup request exited with code $($popup.ExitCode)"
+    Write-Host "The request exited with code $($request.ExitCode)"
+
+    return $request.ExitCode
 }
 
 Write-Host "Screen: $([Win32]::GetSystemMetrics(0))x$([Win32]::GetSystemMetrics(1))"
@@ -158,15 +158,14 @@ New-Item -Path $personalize -Force | Out-Null
 Set-ItemProperty -Path $personalize -Name AppsUseLightTheme -Value 1 -Type DWord
 Set-ItemProperty -Path $personalize -Name SystemUsesLightTheme -Value 1 -Type DWord
 
-# The menu pops up at the cursor, so park it in a corner where it always fits.
+# The menu opens at the cursor, so park it in a corner where it always fits.
 [void][Win32]::SetCursorPos(40, 40)
 
-# The GUI pipe that carries the popup request only admits processes carrying the installed
+# The GUI pipe that carries the request only admits processes carrying the installed
 # package's identity, which a `cargo build` exe doesn't have; `--skip-peer-verification`
 # relaxes that to the same test ACL the smoke test uses.
-$sharedArguments = @('--no-deep-links', '--no-elevation-check', '--no-error-dialog', '--skip-peer-verification')
-$arguments = $sharedArguments + @('--skip-portal-auth', '--mock-tunnel')
-$popupArguments = $sharedArguments + @('--popup-tray-menu')
+$arguments = @('--no-deep-links', '--no-elevation-check', '--no-error-dialog', '--skip-peer-verification', '--skip-portal-auth', '--mock-tunnel')
+$requestArguments = @('open-tray-menu')
 Write-Host "Launching $Exe $($arguments -join ' ')"
 $process = Start-Process -FilePath $Exe -ArgumentList $arguments -PassThru
 
@@ -190,7 +189,11 @@ while ($target -lt 0) {
         break
     }
 
-    Request-Popup
+    if ((Request-Menu) -ne 0) {
+        Write-Host 'The running instance did not take the request; asking again'
+        Start-Sleep -Milliseconds 500
+        continue
+    }
 
     $appeared = (Get-Date).AddSeconds(5)
     $menus = @(Get-MenuRects)

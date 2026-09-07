@@ -89,9 +89,9 @@ pub trait GuiIntegration {
 
     fn set_tray_icon(&mut self, icon: system_tray::Icon);
     fn set_tray_menu(&mut self, app_state: system_tray::AppState);
-    /// Pops the tray menu up on screen, so CI can photograph it.
+    /// Opens the tray menu on screen, so CI can photograph it.
     #[cfg(debug_assertions)]
-    fn popup_tray_menu(&self) -> Result<()>;
+    fn open_tray_menu(&self) -> Result<()>;
     fn show_notification(&self, title: impl Into<String>, body: impl Into<String>) -> Result<()>;
 
     /// Shows a notification about a new release, opening its download URL on click where the platform supports it.
@@ -124,9 +124,9 @@ pub enum ControllerRequest {
         stem: PathBuf,
     },
     Fail(Failure),
-    /// Pop the tray menu up on screen. Debug builds only.
+    /// Open the tray menu on screen. Debug builds only.
     #[cfg(debug_assertions)]
-    PopupTrayMenu,
+    OpenTrayMenu,
     SignIn,
     SignOut,
     UpdateState,
@@ -523,7 +523,7 @@ impl<I: GuiIntegration> Controller<I> {
             Fail(Failure::Error) => Err(anyhow!("Test error"))?,
             Fail(Failure::Panic) => panic!("Test panic"),
             #[cfg(debug_assertions)]
-            PopupTrayMenu => self.integration.popup_tray_menu()?,
+            OpenTrayMenu => self.integration.open_tray_menu()?,
             SignIn | SystemTrayMenu(system_tray::Event::SignIn) => {
                 let auth_url = self.auth_url().clone();
                 let account_slug = self.account_slug().map(|a| a.to_owned());
@@ -828,9 +828,8 @@ impl<I: GuiIntegration> Controller<I> {
                 self.reload_device_trust().await?;
             }
             #[cfg(debug_assertions)]
-            gui::ClientMsg::PopupTrayMenu => {
-                self.handle_request(ControllerRequest::PopupTrayMenu)
-                    .await?;
+            gui::ClientMsg::OpenTrayMenu => {
+                self.handle_request(ControllerRequest::OpenTrayMenu).await?;
             }
         }
 
@@ -1324,7 +1323,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn pops_the_tray_menu_up_for_a_2nd_instance() {
+    async fn opens_the_tray_menu_on_request() {
         let _guard = logging::test("debug");
         let mut test_controller = Controller::start_for_test();
 
@@ -1332,11 +1331,11 @@ mod tests {
         mock_tunnel.send_hello().await;
 
         let (mut gui_rx, mut gui_tx) = test_controller.gui_ipc_connect().await;
-        gui_tx.send(&gui::ClientMsg::PopupTrayMenu).await.unwrap();
+        gui_tx.send(&gui::ClientMsg::OpenTrayMenu).await.unwrap();
         let response = gui_rx.next().await.unwrap().unwrap();
 
         assert_eq!(response, gui::ServerMsg::Ack);
-        assert_eq!(test_controller.integration().tray_popups.len(), 1);
+        assert_eq!(test_controller.integration().tray_menu_opens.len(), 1);
     }
 
     #[tokio::test]
@@ -1721,7 +1720,7 @@ mod tests {
         shown_overview_page: Vec<SessionViewModel>,
         shown_settings_page: Vec<(MdmSettings, GeneralSettings, AdvancedSettings)>,
         shown_about_page: Vec<()>,
-        tray_popups: Vec<()>,
+        tray_menu_opens: Vec<()>,
     }
 
     impl MockIntegration {
@@ -1782,8 +1781,8 @@ mod tests {
         }
 
         #[cfg(debug_assertions)]
-        fn popup_tray_menu(&self) -> Result<()> {
-            self.lock().tray_popups.push(());
+        fn open_tray_menu(&self) -> Result<()> {
+            self.lock().tray_menu_opens.push(());
 
             Ok(())
         }

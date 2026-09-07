@@ -121,8 +121,6 @@ fn try_main(cli: Cli, rt: &Runtime, log_guard: &mut Option<LogGuard>) -> Result<
         telemetry_allowed: cli.is_telemetry_allowed(),
         quit_after: cli.quit_after,
         fail_with: cli.fail_on_purpose(),
-        #[cfg(debug_assertions)]
-        popup_tray_menu: cli.popup_tray_menu,
     };
 
     // The authoritative advanced settings and machine-scope MDM policy are
@@ -171,6 +169,13 @@ fn try_main(cli: Cli, rt: &Runtime, log_guard: &mut Option<LogGuard>) -> Result<
         }
         Some(Cmd::SingleInstance) => {
             rt.block_on(debug_single_instance())?;
+
+            return Ok(());
+        }
+        #[cfg(debug_assertions)]
+        Some(Cmd::OpenTrayMenu) => {
+            rt.block_on(gui::open_tray_menu())
+                .context("Failed to open the running instance's tray menu")?;
 
             return Ok(());
         }
@@ -345,13 +350,6 @@ struct Cli {
     #[cfg(debug_assertions)]
     #[arg(long, hide = true)]
     mock_tunnel: bool,
-
-    /// Ask the already running instance to pop its tray menu up on screen, so
-    /// CI can photograph it without clicking the notification area, then exit.
-    /// Debug builds only.
-    #[cfg(debug_assertions)]
-    #[arg(long, hide = true)]
-    popup_tray_menu: bool,
 }
 
 impl Cli {
@@ -398,6 +396,12 @@ enum Cmd {
     SingleInstance,
     #[command(hide = true)]
     SmokeTest,
+    /// Ask the already running instance to open its tray menu on screen, so CI
+    /// can photograph it without clicking the notification area, then exit.
+    /// Debug builds only, so a release binary can't be told to do this.
+    #[cfg(debug_assertions)]
+    #[command(hide = true)]
+    OpenTrayMenu,
 }
 
 #[derive(clap::Parser)]
@@ -434,7 +438,7 @@ pub struct DeepLink {
 async fn debug_single_instance() -> anyhow::Result<()> {
     use firezone_gui_client::gui::{self, SingleInstance};
 
-    match gui::establish_single_instance(gui::ClientMsg::NewInstance).await? {
+    match gui::establish_single_instance().await? {
         SingleInstance::First {
             mut server,
             lock: _lock,

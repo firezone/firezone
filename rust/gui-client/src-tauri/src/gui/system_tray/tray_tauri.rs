@@ -108,9 +108,9 @@ impl Tray {
         self.last_menu_set = Some(menu);
     }
 
-    /// Pops the menu we installed last up on screen, so CI can photograph it.
+    /// Opens the menu we installed last on screen, so CI can photograph it.
     #[cfg(debug_assertions)]
-    pub(crate) fn popup(&self) -> Result<()> {
+    pub(crate) fn open_menu(&self) -> Result<()> {
         let menu = self
             .last_menu_set
             .clone()
@@ -118,7 +118,7 @@ impl Tray {
         let app = self.app.clone();
 
         self.run_on_main_thread(move || {
-            logging::unwrap_or_debug!(popup(&app, &menu), "Failed to pop up tray menu: {}");
+            logging::unwrap_or_debug!(open_menu(&app, &menu), "Failed to open the tray menu: {}");
         });
 
         Ok(())
@@ -167,11 +167,11 @@ fn set_menu(handle: tauri::tray::TrayIcon, app: &AppHandle, menu: &Menu) -> Resu
     Ok(())
 }
 
-/// Pops `menu` up at the cursor, anchored to the (hidden) main window, for screenshots.
+/// Opens `menu` at the cursor, anchored to the (hidden) main window, for screenshots.
 ///
 /// Builds its own Tauri menu: [`set_menu`] keeps only the abstract one.
 #[cfg(debug_assertions)]
-fn popup(app: &AppHandle, menu: &Menu) -> Result<()> {
+fn open_menu(app: &AppHandle, menu: &Menu) -> Result<()> {
     let menu = build_menu(app, menu).context("Failed to build tray menu")?;
     let window = app
         .get_webview_window("main")
@@ -179,11 +179,11 @@ fn popup(app: &AppHandle, menu: &Menu) -> Result<()> {
         .as_ref()
         .window();
 
-    // `popup` runs `TrackPopupMenu` on the main thread and only returns once the
-    // menu closes, so it has to be requested from another thread.
+    // Tauri's `popup` runs `TrackPopupMenu` on the main thread and only returns
+    // once the menu closes, so it has to be requested from another thread.
     std::thread::spawn(move || {
         logging::unwrap_or_debug!(
-            menu.popup(window).context("Failed to pop up tray menu"),
+            menu.popup(window).context("Failed to open the tray menu"),
             "{}"
         );
     });
