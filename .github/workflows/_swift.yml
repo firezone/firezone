@@ -65,19 +65,13 @@ jobs:
 
   # Photographs the real app against the mocked backend (see MockTunnel.swift) and
   # hands the captures to commit-screenshots. Nothing is compared against a reference.
-  # SwiftUI lays a window out with the macOS release it runs on rather than the
-  # SDK it was built with, so the macOS screens are drawn on every release CI can run.
-  # Only a pull request has a diff to put them in, so `main` stops after the build,
-  # which is what the cache below carries.
-  screenshots-macos:
-    name: macos-${{ matrix.release }}-screenshots
+  # The same build runs on every macOS release, so the suite is built once here and
+  # photographed on each release in parallel below.
+  build-macos-screenshots:
+    name: macos-screenshots-build
     # A release dispatch from main only needs the builds, not the screenshots.
     if: "${{ !(github.event_name == 'workflow_dispatch' && github.ref_name == 'main') }}"
-    runs-on: macos-${{ matrix.release }}
-    strategy:
-      fail-fast: false
-      matrix:
-        release: [26, 15]
+    runs-on: macos-26
     env:
       XCODE_VERSION: "26.2"
       # GIT_SHA stays unset: the settings screens print it as their build
@@ -94,6 +88,54 @@ jobs:
       - uses: ./.github/actions/setup-rust-sccache
         with:
           azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
+      - uses: ./.github/actions/restore-xcode-build
+        id: xcode-build
+        with:
+          path: ${{ runner.temp }}/DerivedData
+          key: macos
+      - name: Build the macOS screenshot suite
+        # The runner context only exists at step level.
+        env:
+          DERIVED_DATA_PATH: ${{ runner.temp }}/DerivedData
+        run: mise run //swift/apple:build-screenshots-macos
+      # Packed because the artifact store drops the executable bits the app and
+      # the test runner need.
+      - name: Pack the test products
+        run: tar -C "${RUNNER_TEMP}/DerivedData/Build" -cf "${RUNNER_TEMP}/macos-screenshots-build.tar" Products
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: macos-screenshots-build
+          path: ${{ runner.temp }}/macos-screenshots-build.tar
+          retention-days: 1
+      # Only `main` writes, so a pull request cannot evict what every run reads.
+      # `success()` is spelled out because naming a condition replaces the
+      # implicit one.
+      - uses: ./.github/actions/save-xcode-build
+        if: success() && github.ref_name == 'main' && steps.xcode-build.outputs.cache-hit != 'true'
+        with:
+          path: ${{ runner.temp }}/DerivedData
+          key: ${{ steps.xcode-build.outputs.key }}
+
+  # SwiftUI lays a window out with the macOS release it runs on rather than the
+  # SDK it was built with, so the screens are drawn on every release CI can run.
+  screenshots-macos:
+    name: macos-${{ matrix.release }}-screenshots
+    needs: build-macos-screenshots
+    # Only a pull request has a diff to put the screens in.
+    if: github.ref_name != 'main'
+    runs-on: macos-${{ matrix.release }}
+    strategy:
+      fail-fast: false
+      matrix:
+        release: [26, 15]
+    env:
+      XCODE_VERSION: "26.2"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: sudo xcode-select --switch "$(find /Applications -maxdepth 1 -name "Xcode*${XCODE_VERSION}*.app" | sort -V | tail -n 1)"
+      - uses: ./.github/actions/setup-mise
+        with:
+          install: false
       # GPU blend rounding differs between Apple chip generations, so a pixel wobble
       # can be traced to the chip that drew it.
       - name: Name the hardware under the VM
@@ -103,42 +145,29 @@ jobs:
           system_profiler SPDisplaysDataType | grep -E "Chipset|Model|Metal" || true
       # The wallpaper shows through the window corners, and macOS shifts it over the day.
       - name: Pin what is behind the windows
-        if: github.ref_name != 'main'
         run: |
           defaults -currentHost write com.apple.screensaver idleTime -int 0
 
           osascript -e "tell application \"System Events\" to tell every desktop \
             to set picture to \"${GITHUB_WORKSPACE}/swift/apple/FirezoneUITests/Resources/screenshot-backdrop.png\"" \
             || echo "::warning::Could not set the desktop picture; the window corners stay at the mercy of the wallpaper"
-      - uses: ./.github/actions/restore-xcode-build
-        id: xcode-build
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          path: ${{ runner.temp }}/DerivedData
-          key: macos-${{ matrix.release }}
-      - name: Build the macOS screenshot suite
-        # The runner context only exists at step level.
-        env:
-          DERIVED_DATA_PATH: ${{ runner.temp }}/DerivedData
-        run: mise run //swift/apple:build-screenshots-macos
+          name: macos-screenshots-build
+          path: ${{ runner.temp }}
+      - name: Unpack the test products
+        run: |
+          mkdir -p "${RUNNER_TEMP}/DerivedData/Build"
+          tar -C "${RUNNER_TEMP}/DerivedData/Build" -xf "${RUNNER_TEMP}/macos-screenshots-build.tar"
       - name: Photograph the macOS screens
-        if: github.ref_name != 'main'
         env:
           DERIVED_DATA_PATH: ${{ runner.temp }}/DerivedData
           RESULT_BUNDLE_DIR: ${{ runner.temp }}
         run: mise run //swift/apple:screenshots-macos
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        if: github.ref_name != 'main'
         with:
           name: macos-${{ matrix.release }}-screenshots
           path: swift/apple/screenshots/macos/${{ matrix.release }}
-      # Only `main` writes, so a pull request cannot evict what every run reads.
-      # `success()` is spelled out because naming a condition replaces the
-      # implicit one.
-      - uses: ./.github/actions/save-xcode-build
-        if: success() && github.ref_name == 'main' && steps.xcode-build.outputs.cache-hit != 'true'
-        with:
-          path: ${{ runner.temp }}/DerivedData
-          key: ${{ steps.xcode-build.outputs.key }}
       # The result bundles hold XCUITest's own failure screenshots and logs.
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: failure()
@@ -182,10 +211,8 @@ jobs:
       # Packed because the artifact store drops the executable bits the app and
       # the test runner need.
       - name: Pack the test products
-        if: github.ref_name != 'main'
         run: tar -C "${RUNNER_TEMP}/DerivedData/Build" -cf "${RUNNER_TEMP}/ios-screenshots-build.tar" Products
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        if: github.ref_name != 'main'
         with:
           name: ios-screenshots-build
           path: ${{ runner.temp }}/ios-screenshots-build.tar
