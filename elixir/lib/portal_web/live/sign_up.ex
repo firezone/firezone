@@ -1309,7 +1309,8 @@ defmodule PortalWeb.SignUp do
     def create_google_provider(account, identity) do
       create_provider(account, :google, Google.AuthProvider, %{
         issuer: identity.issuer,
-        is_verified: true
+        is_verified: true,
+        is_default: true
       })
     end
 

@@ -143,6 +143,7 @@ defmodule PortalWeb.SignUpTest do
       assert google_provider.issuer == "https://accounts.google.com"
       assert google_provider.name == "Google"
       refute google_provider.is_disabled
+      assert google_provider.is_default
       assert html =~ ~s(href="/#{account.slug}/sign_in/google/#{google_provider.id}")
 
       assert Portal.Repo.get_by!(Portal.EmailOTP.AuthProvider, account_id: account.id)
