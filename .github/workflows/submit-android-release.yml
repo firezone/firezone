@@ -1,7 +1,17 @@
 name: Submit Android release
+run-name: Submit Android release to ${{ inputs.track }}
 
 on:
   workflow_dispatch:
+    inputs:
+      track:
+        description: Google Play track to submit for review
+        required: true
+        type: choice
+        default: Intune
+        options:
+          - Intune
+          - production
 
 permissions:
   contents: read
@@ -11,6 +21,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
+  TARGET_TRACK: ${{ inputs.track }}
   # mark:next-android-version
   RELEASE_NAME: android-client-1.5.14
 
@@ -82,7 +93,7 @@ jobs:
           VERSION_NAME: ${{ steps.release.outputs.version_name }}
         run: |
           {
-            echo "## Android production submission"
+            echo "## Android submission to $TARGET_TRACK"
             echo
             echo "| Item | Value |"
             echo "| --- | --- |"
@@ -103,7 +114,7 @@ jobs:
                 "$screenshot" "$GITHUB_REPOSITORY" "$SOURCE_SHA" "$screenshot"
             done < kotlin/android/screenshots/play-store.txt
             echo
-            echo "Review this summary and the [Play Console](https://play.google.com/console/) before approving the \`google-play\` environment. Approval is the reminder and checkpoint that authorizes revalidation, screenshot replacement, production promotion, and review submission. Managed Publishing still requires a manual \`Publish changes\` action after Google approves the changes."
+            echo "Review this summary and the [Play Console](https://play.google.com/console/) before approving promotion to $TARGET_TRACK and screenshot replacement. Managed Publishing still requires a manual publication after Google approves the changes."
           } >> "$GITHUB_STEP_SUMMARY"
 
   submit:
@@ -171,4 +182,4 @@ jobs:
           GPLAY_SERVICE_ACCOUNT_JSON: ${{ steps.gcp-auth.outputs.credentials_file_path }}
           SOURCE_SHA: ${{ needs.prepare.outputs.source_sha }}
           VERSION_NAME: ${{ needs.prepare.outputs.version_name }}
-        run: scripts/upload/play-store.sh production
+        run: scripts/upload/play-store.sh "$TARGET_TRACK"

@@ -20,11 +20,13 @@ Table of Contents:
 1. Run the [`Kotlin`](../.github/workflows/_kotlin.yml) or
    [`Swift`](../.github/workflows/_swift.yml) workflow from `main` as
    appropriate.
+1. Android uploads to Firebase App Distribution and Google Play internal testing;
+   Apple uploads to TestFlight.
 1. Test the resulting Firebase App Distribution or TestFlight build.
 1. Submit the release for review:
    - For Apple, follow the [Apple client](#apple-client) instructions below.
    - For Android, run the [Submit Android release](../.github/workflows/submit-android-release.yml)
-     workflow on `main`. Review its `prepare` summary and the
+     workflow on `main`, choosing `production` or `Intune`. Review its `prepare` summary and the
      [Play Console](https://play.google.com/console/), then approve the protected
      `google-play` environment. Start a new run if the draft changed while
      approval was pending.
@@ -33,6 +35,10 @@ Before the first dispatch, explicitly create the `google-play` environment with
 required reviewers, restrict deployments to `main`, and set its
 `GOOGLE_PLAY_CONFIGURED` variable to `true`. GitHub otherwise creates a referenced
 environment without protection.
+
+Create the `Intune` closed testing track and configure its organization access
+in Play Console before submitting to it. Both targets also update the shared
+store screenshots and require manual publication under Managed Publishing.
 
 ### GitHub-released components (Linux, Windows, and Gateway)
 

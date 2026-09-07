@@ -2,14 +2,14 @@
 
 set -euo pipefail
 
-readonly COMMAND="${1:?Usage: play-store.sh <inspect|internal|production>}"
+readonly COMMAND="${1:?Usage: play-store.sh <inspect|internal|production|Intune>}"
 : "${VERSION_NAME:?VERSION_NAME is required}"
 : "${SOURCE_SHA:?SOURCE_SHA is required}"
 : "${GPLAY_SERVICE_ACCOUNT_JSON:?GPLAY_SERVICE_ACCOUNT_JSON is required}"
 
 readonly PACKAGE_NAME="dev.firezone.android"
 readonly INTERNAL_TRACK="internal"
-readonly PRODUCTION_TRACK="production"
+readonly TARGET_TRACK="$COMMAND"
 readonly CHANGELOG_URL="https://www.firezone.dev/changelog#tab-android"
 readonly PUBLISHER_API="https://androidpublisher.googleapis.com/androidpublisher/v3/applications/$PACKAGE_NAME"
 readonly RELEASE_NAME="$VERSION_NAME@$SOURCE_SHA"
@@ -19,7 +19,7 @@ mapfile -t SCREENSHOTS < "$REPO_ROOT/kotlin/android/screenshots/play-store.txt"
 readonly -a SCREENSHOTS
 
 case "$COMMAND" in
-    inspect | internal | production) ;;
+    inspect | internal | production | Intune) ;;
     *)
         echo "Unknown command: $COMMAND" >&2
         exit 1
@@ -154,11 +154,11 @@ inspect_internal() {
     echo "Verified $PACKAGE_NAME $RELEASE_NAME ($internal_version_code) on Google Play internal testing."
 }
 
-submit_production() {
-    local production screenshot screenshot_path
+submit_release() {
+    local target screenshot screenshot_path
 
     if [[ "${GITHUB_ACTIONS:-false}" != true || "${GITHUB_REF_NAME:-}" != main ]]; then
-        echo "Production submission is only allowed from main in GitHub Actions" >&2
+        echo "Track submission is only allowed from main in GitHub Actions" >&2
         exit 1
     fi
 
@@ -173,10 +173,10 @@ submit_production() {
     find_internal_release
     create_edit
 
-    production=$(gplay tracks get \
+    target=$(gplay tracks get \
         --package "$PACKAGE_NAME" \
         --edit "$edit_id" \
-        --track "$PRODUCTION_TRACK")
+        --track "$TARGET_TRACK")
     if jq -e \
         --arg name "$RELEASE_NAME" \
         --arg version_code "$internal_version_code" \
@@ -185,20 +185,20 @@ submit_production() {
         and $releases[0].name == $name
         and $releases[0].status == "completed"
         and $releases[0].versionCodes == [$version_code]' \
-        <<< "$production" >/dev/null; then
-        echo "Production already contains $RELEASE_NAME ($internal_version_code)."
+        <<< "$target" >/dev/null; then
+        echo "$TARGET_TRACK already contains $RELEASE_NAME ($internal_version_code)."
         return
     elif jq -e --arg version_code "$internal_version_code" \
         'any(.releases[]?.versionCodes[]?; . == $version_code)' \
-        <<< "$production" >/dev/null; then
-        echo "Production contains versionCode $internal_version_code in an unexpected release" >&2
+        <<< "$target" >/dev/null; then
+        echo "$TARGET_TRACK contains versionCode $internal_version_code in an unexpected release" >&2
         exit 1
     elif ! jq -e '
         (.releases // []) as $releases
         | (($releases | length) <= 1)
         and ((($releases | length) == 0) or $releases[0].status == "completed")' \
-        <<< "$production" >/dev/null; then
-        echo "Production has multiple releases or a release that is not completed" >&2
+        <<< "$target" >/dev/null; then
+        echo "$TARGET_TRACK has multiple releases or a release that is not completed" >&2
         exit 1
     fi
 
@@ -221,17 +221,17 @@ submit_production() {
             --file "$screenshot_path"
     done
 
-    update_track "$PRODUCTION_TRACK" "$internal_version_code"
+    update_track "$TARGET_TRACK" "$internal_version_code"
 
     echo "Validating edit $edit_id..."
     gplay edits validate --package "$PACKAGE_NAME" --edit "$edit_id"
     commit_edit
 
-    echo "Submitted $PACKAGE_NAME $RELEASE_NAME ($internal_version_code) and its screenshots for review."
+    echo "Submitted $PACKAGE_NAME $RELEASE_NAME ($internal_version_code) and its screenshots for review on $TARGET_TRACK."
 }
 
 case "$COMMAND" in
     inspect) inspect_internal ;;
     internal) publish_internal ;;
-    production) submit_production ;;
+    production | Intune) submit_release ;;
 esac
