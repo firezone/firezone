@@ -16,8 +16,7 @@ defmodule PortalAPI.Integrations.Google.WebhookController do
 
     case read_body(conn, length: @max_body_bytes) do
       {:ok, body, conn} ->
-        :ok = Google.Webhooks.handle_notification(conn.query_params["directory_id"], headers, decode(body))
-        send_resp(conn, 200, "")
+        Portal.Conn.wrap_errors(conn, &handle_body(&1, headers, body))
 
       {:more, _, conn} ->
         send_resp(conn, 413, "Request Entity Too Large")
@@ -26,6 +25,11 @@ defmodule PortalAPI.Integrations.Google.WebhookController do
         Logger.info("Google webhook rejected", reason: inspect(reason))
         send_resp(conn, 400, "Bad Request")
     end
+  end
+
+  defp handle_body(conn, headers, body) do
+    :ok = Google.Webhooks.handle_notification(conn.query_params["directory_id"], headers, decode(body))
+    send_resp(conn, 200, "")
   end
 
   # Google sends an empty body for the initial sync message.

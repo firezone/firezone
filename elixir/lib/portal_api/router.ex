@@ -3,21 +3,20 @@ defmodule PortalAPI.Router do
 
   pipeline :api do
     plug :accepts, ["json"]
-    # Authentication and the account limiter use only request metadata. Keep
-    # them ahead of the body parser so rejected requests never buffer or decode
-    # an attacker-controlled JSON body.
     plug PortalAPI.Plugs.Auth
     plug PortalAPI.Plugs.RateLimit
-
-    plug PortalAPI.Plugs.ParseBody,
-      parsers: [PortalAPI.Parsers.JSON],
-      pass: ["*/*"],
-      json_decoder: Phoenix.json_library()
-
     plug PortalAPI.Plugs.RequestLog
     plug PortalAPI.Plugs.Scope
     plug PortalAPI.Plugs.ValidateUUIDParams
     plug OpenApiSpex.Plug.PutApiSpec, module: PortalAPI.ApiSpec
+
+    # The plugs above use only request metadata, so a rejected request never
+    # buffers an attacker-controlled body. The parser is also last because
+    # Phoenix renders a pipeline error with the conn from before the body read.
+    plug PortalAPI.Plugs.ParseBody,
+      parsers: [Portal.Parsers.JSON],
+      pass: ["*/*"],
+      json_decoder: Phoenix.json_library()
   end
 
   pipeline :public do
@@ -57,7 +56,7 @@ defmodule PortalAPI.Router do
     plug PortalAPI.Plugs.RequestLog, mcp: true
 
     plug PortalAPI.Plugs.MCPParseBody,
-      parsers: [PortalAPI.Parsers.JSON],
+      parsers: [Portal.Parsers.JSON],
       pass: ["*/*"],
       json_decoder: Phoenix.json_library(),
       length: 1_000_000
@@ -94,7 +93,7 @@ defmodule PortalAPI.Router do
     # Preserve the post-read conn when malformed or oversized JSON raises so
     # RescueRouterErrors can send the error without reusing stale adapter state.
     plug Plug.Parsers,
-      parsers: [PortalAPI.Parsers.JSON],
+      parsers: [Portal.Parsers.JSON],
       pass: ["*/*"],
       json_decoder: Phoenix.json_library(),
       length: 10_000_000

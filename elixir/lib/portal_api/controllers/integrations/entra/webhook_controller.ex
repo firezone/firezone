@@ -26,7 +26,7 @@ defmodule PortalAPI.Integrations.Entra.WebhookController do
   defp handle_notifications(conn, directory_id) do
     case read_body(conn, length: @max_body_bytes) do
       {:ok, body, conn} ->
-        handle_notification_body(conn, directory_id, body)
+        Portal.Conn.wrap_errors(conn, &handle_notification_body(&1, directory_id, body))
 
       {:more, _, conn} ->
         send_resp(conn, 413, "Request Entity Too Large")

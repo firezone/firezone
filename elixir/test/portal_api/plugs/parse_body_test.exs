@@ -16,7 +16,7 @@ defmodule PortalAPI.Plugs.ParseBodyTest do
     opts =
       Keyword.merge(
         [
-          parsers: [PortalAPI.Parsers.JSON],
+          parsers: [Portal.Parsers.JSON],
           pass: ["*/*"],
           json_decoder: Phoenix.json_library(),
           body_reader: {__MODULE__, :read_body, []}
