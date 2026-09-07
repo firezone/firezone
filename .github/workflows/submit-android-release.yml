@@ -64,6 +64,12 @@ jobs:
         with:
           ref: ${{ steps.release.outputs.source_sha }}
 
+      - name: Select store screenshots
+        run: |
+          # Use the submission's selection without changing the build's screenshot files.
+          git fetch --depth=1 origin "$GITHUB_SHA"
+          git restore --source="$GITHUB_SHA" --worktree -- kotlin/android/screenshots/play-store.txt
+
       - uses: ./.github/actions/setup-mise
         with:
           install_args: --cd kotlin/android github:tamtom/play-console-cli
@@ -160,6 +166,12 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.prepare.outputs.source_sha }}
+
+      - name: Select store screenshots
+        run: |
+          # Match the selection shown before approval, with image files from the build.
+          git fetch --depth=1 origin "$GITHUB_SHA"
+          git restore --source="$GITHUB_SHA" --worktree -- kotlin/android/screenshots/play-store.txt
 
       - uses: ./.github/actions/setup-mise
         with:
