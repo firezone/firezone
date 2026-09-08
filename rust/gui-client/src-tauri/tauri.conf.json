@@ -45,12 +45,14 @@
           "RemoveOldFirezoneService",
           "FirezoneClientTunnelService",
           "SparsePackageMsix",
-          "RegisterSparseExe"
+          "RegisterSparseExe",
+          "FirezoneCli"
         ],
         "dialogImagePath": "./win_files/install_dialog.png",
         "fragmentPaths": [
           "./win_files/service.wxs",
-          "./win_files/sparse-package.wxs"
+          "./win_files/sparse-package.wxs",
+          "./win_files/cli.wxs"
         ],
         "template": "./win_files/main.wxs"
       }
