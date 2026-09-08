@@ -3,7 +3,8 @@
 
     <!-- Debug-only entry point that starts the app with connlib and the portal stood in for.
          Intentionally not a launcher activity so MainActivity stays the unambiguous default
-         launch target in debug builds. Launch it with `mise run //kotlin/android:dev-mock`. -->
+         launch target in debug builds. Launch it from an Android Studio run configuration, or
+         with `adb shell am start -n dev.firezone.android/<this activity>`. -->
     <application>
         <activity
             android:name="dev.firezone.android.core.MockLaunchActivity"
