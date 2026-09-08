@@ -20,10 +20,7 @@ extension FirezoneCLI {
     func run() async throws {
       Log.useCLIOutput()
 
-      let factory = NETunnelProviderManagerFactory()
-      guard let vpnManager = try await VPNConfigurationManager.load(using: factory) else {
-        throw CLIError("No VPN configuration found")
-      }
+      let vpnManager = try await VPNProfile.load()
 
       try await IPCClient.signOut(session: VPNProfile.session(for: vpnManager))
       Log.info("Signed out successfully")

@@ -282,6 +282,15 @@ public final class VPNConfigurationManager {
     )
   }
 
+  /// Whether the Internet Resource is switched on in the profile the app shares with
+  /// the headless client.
+  public func internetResourceEnabled() throws -> Bool {
+    let configuration = Configuration()
+    configuration.loadProviderConfiguration(try providerConfiguration())
+
+    return configuration.internetResourceEnabled
+  }
+
   func providerConfiguration() throws -> [String: String] {
     guard let protocolConfiguration = manager.protocolConfiguration as? NETunnelProviderProtocol
     else {

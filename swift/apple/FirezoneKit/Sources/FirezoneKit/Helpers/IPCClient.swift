@@ -97,7 +97,7 @@ public enum IPCClient {
   }
 
   @MainActor
-  static func pollUpdates(
+  public static func pollUpdates(
     session: any TunnelSessionProtocol, currentHash: Data
   ) async throws -> StatePollResponse {
     let message = ProviderMessage.pollUpdates(StatePollRequest(stateHash: currentHash))
@@ -120,7 +120,7 @@ public enum IPCClient {
   }
 
   @MainActor
-  static func setInternetResourceEnabled(
+  public static func setInternetResourceEnabled(
     session: any TunnelSessionProtocol,
     _ enabled: Bool
   ) async throws {
