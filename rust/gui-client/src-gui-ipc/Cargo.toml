@@ -1,0 +1,17 @@
+[package]
+name = "gui-ipc"
+version = "0.1.0"
+edition = { workspace = true }
+description = "Protocol spoken to a running Firezone GUI over its IPC socket."
+license = { workspace = true }
+
+[dependencies]
+anyhow = { workspace = true }
+client-ipc = { workspace = true }
+connlib-model = { workspace = true }
+futures = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+url = { workspace = true }
+
+[lints]
+workspace = true

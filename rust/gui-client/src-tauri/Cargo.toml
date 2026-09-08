@@ -27,6 +27,7 @@ fd-lock = { workspace = true }
 flow-log-upload = { workspace = true }
 flow-log-writer = { workspace = true }
 futures = { workspace = true }
+gui-ipc = { workspace = true }
 hex = { workspace = true }
 humantime = { workspace = true }
 ip-packet = { workspace = true }
