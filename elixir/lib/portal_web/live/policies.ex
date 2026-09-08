@@ -1284,7 +1284,7 @@ defmodule PortalWeb.Policies do
       ]
 
       schemas =
-        if Portal.Features.enabled?(:trust_anchors) do
+        if Portal.Features.enabled?(:x509_auth) do
           [Portal.X509.AuthProvider | schemas]
         else
           schemas
@@ -1298,7 +1298,7 @@ defmodule PortalWeb.Policies do
     end
 
     def x509_auth_provider_id(subject) do
-      if Portal.Features.enabled?(:trust_anchors) do
+      if Portal.Features.enabled?(:x509_auth) do
         Portal.X509.AuthProvider
         |> Safe.scoped(subject)
         |> Safe.one()

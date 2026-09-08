@@ -10,7 +10,6 @@ defmodule PortalWeb.Settings.DNS do
       socket
       |> assign(page_title: "DNS")
       |> assign(dns_account: account)
-      |> assign(trust_anchors_enabled?: PortalWeb.NavigationComponents.trust_anchors_enabled?())
       |> assign(device_posture_enabled?: PortalWeb.NavigationComponents.device_posture_enabled?())
 
     {:ok, socket}
@@ -39,7 +38,6 @@ defmodule PortalWeb.Settings.DNS do
       <.settings_nav
         account={@account}
         current_path={@current_path}
-        trust_anchors_enabled?={@trust_anchors_enabled?}
         device_posture_enabled?={@device_posture_enabled?}
       />
 

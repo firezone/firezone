@@ -47,7 +47,6 @@ defmodule PortalWeb.Settings.DirectorySync do
     socket =
       assign(socket,
         page_title: "Directory Sync",
-        trust_anchors_enabled?: PortalWeb.NavigationComponents.trust_anchors_enabled?(),
         device_posture_enabled?: PortalWeb.NavigationComponents.device_posture_enabled?()
       )
 
@@ -570,7 +569,6 @@ defmodule PortalWeb.Settings.DirectorySync do
       <.settings_nav
         account={@account}
         current_path={@current_path}
-        trust_anchors_enabled?={@trust_anchors_enabled?}
         device_posture_enabled?={@device_posture_enabled?}
       />
 
