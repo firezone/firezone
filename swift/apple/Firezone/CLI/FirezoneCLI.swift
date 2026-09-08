@@ -16,6 +16,7 @@ struct FirezoneCLI: AsyncParsableCommand {
     version: versionString,
     subcommands: [
       Connect.self,
+      Disconnect.self,
       SignOut.self,
       Status.self,
       Resources.self,
