@@ -2311,6 +2311,44 @@ defmodule PortalAPI.Client.ChannelTest do
       assert Enum.any?(resources, &(&1.id == resource.id))
     end
 
+    test "for client updates keeps this connection's attestation", %{
+      client: client,
+      actor: actor,
+      account: account,
+      subject: subject
+    } do
+      identity_fixture(actor: actor, account: account)
+      group = group_fixture(account: account)
+      site = site_fixture(account: account)
+      resource = dns_resource_fixture(account: account, site: site, ip_stack: :ipv4_only)
+
+      policy_fixture(
+        account: account,
+        group: group,
+        resource: resource,
+        conditions: [%{property: :device_attested, operator: :is, values: ["true"]}]
+      )
+
+      membership_fixture(account: account, actor: actor, group: group)
+
+      client = verify_device(client)
+      socket = join_channel(client, subject, attested?: true)
+      assert_push "init", %{resources: resources}
+      assert Enum.any?(resources, &(&1.id == resource.id))
+
+      send(socket.channel_pid, %Changes.Change{
+        lsn: 100,
+        op: :update,
+        old_struct: broadcast_struct(client),
+        struct: broadcast_struct(%{client | verified_at: nil})
+      })
+
+      assert %{assigns: %{client: updated}} = :sys.get_state(socket.channel_pid)
+      assert updated.attested?
+      assert updated.verified_at == nil
+      refute_push "resource_deleted", _payload
+    end
+
     test "for client address updates resends init with the new tunnel IPs", %{
       client: client,
       subject: subject,

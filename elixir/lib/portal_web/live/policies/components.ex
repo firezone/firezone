@@ -1444,7 +1444,7 @@ defmodule PortalWeb.Policies.Components do
     do: "Device must be verified"
 
   defp condition_values_display(%{property: :device_attested}, _providers, _account),
-    do: "Device must be attested"
+    do: "Devices must have a trusted X.509 certificate"
 
   defp condition_values_display(
          %{property: :auth_provider_id, values: values},
@@ -2281,7 +2281,7 @@ defmodule PortalWeb.Policies.Components do
 
   @spec condition_type_label(atom()) :: String.t()
   def condition_type_label(:client_verified), do: "Require Verified Device"
-  def condition_type_label(:device_attested), do: "Require attestation"
+  def condition_type_label(:device_attested), do: "Require Attestation"
   def condition_type_label(:auth_provider_id), do: "Authentication Provider"
   def condition_type_label(:remote_ip_location_region), do: "Device Location"
   def condition_type_label(:remote_ip), do: "IP Range"
