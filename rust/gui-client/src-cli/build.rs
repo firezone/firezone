@@ -10,14 +10,14 @@ fn main() {
     #[cfg(target_os = "windows")]
     if std::env::var("PROFILE").as_deref() == Ok("release") {
         embed_resource::compile_for(
-            "win_files/firezone.exe.manifest.rc",
-            ["firezone"],
+            "win_files/firezone-cli.exe.manifest.rc",
+            ["firezone-cli"],
             embed_resource::NONE,
         )
         .manifest_required()
         .expect("Failed to embed the package identity manifest");
 
-        println!("cargo:rerun-if-changed=win_files/firezone.exe.manifest");
-        println!("cargo:rerun-if-changed=win_files/firezone.exe.manifest.rc");
+        println!("cargo:rerun-if-changed=win_files/firezone-cli.exe.manifest");
+        println!("cargo:rerun-if-changed=win_files/firezone-cli.exe.manifest.rc");
     }
 }

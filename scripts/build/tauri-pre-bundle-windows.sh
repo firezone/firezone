@@ -20,8 +20,6 @@ set -euxo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WORKSPACE_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 TARGET_DIR="$WORKSPACE_ROOT/rust/target/release"
-# The CLI builds into a target directory of its own; see `build.bat`.
-CLI_DIR="$WORKSPACE_ROOT/rust/target/cli/release"
 
 echo "tauri-pre-bundle-windows.sh: PWD=$(pwd)"
 echo "tauri-pre-bundle-windows.sh: TARGET_DIR=$TARGET_DIR"
@@ -30,7 +28,7 @@ ls -la "$TARGET_DIR" 2>&1 | head -n 60 || true
 "$SCRIPT_DIR/sign.sh" \
     "$TARGET_DIR/firezone-client-tunnel.exe" \
     "$TARGET_DIR/register-sparse.exe" \
-    "$CLI_DIR/firezone.exe"
+    "$TARGET_DIR/firezone-cli.exe"
 # Do not enable this, Tauri already signs it for us after patching the binary.
 #    "$TARGET_DIR/Firezone.exe"
 

@@ -1,16 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Side-by-side / fusion manifest embedded into firezone.exe so the
-  Windows kernel attaches the Firezone sparse-MSIX package identity
-  to the process at `CreateProcess` time. The GUI's IPC pipe grants
-  read/write only to processes carrying that identity, so without
-  this the CLI is denied on every connection.
+  Side-by-side / fusion manifest embedded into firezone-cli.exe, which
+  the installer places at `cli\firezone.exe`, so the Windows kernel
+  attaches the Firezone sparse-MSIX package identity to the process at
+  `CreateProcess` time. The GUI's IPC pipe grants read/write only to
+  processes carrying that identity, so without this the CLI is denied
+  on every connection.
 
   `publisher` + `packageName` must match the `Identity` element in
   `src-tauri/win_files/AppxManifest.xml`; `applicationId` must match
   the `Id` attribute of an `<Application>` in that manifest, whose
-  `Executable` in turn has to name this binary's path below the MSI
-  install directory. See
+  `Executable` in turn has to name the installed path, not the name
+  this binary is built under. See
   https://learn.microsoft.com/en-us/windows/apps/desktop/modernize/grant-identity-to-nonpackaged-apps
 -->
 <assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">

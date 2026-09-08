@@ -91,8 +91,8 @@ fzLib.buildRustPackage (
       substituteInPlace gui-client/src-tauri/tauri.conf.json \
         --replace-fail '../../target/release/firezone-client-tunnel' \
           '../../target/${stdenv.hostPlatform.rust.rustcTarget}/release/firezone-client-tunnel' \
-        --replace-fail '"../../target/release/firezone"' \
-          '"../../target/${stdenv.hostPlatform.rust.rustcTarget}/release/firezone"'
+        --replace-fail '"../../target/release/firezone-cli"' \
+          '"../../target/${stdenv.hostPlatform.rust.rustcTarget}/release/firezone-cli"'
     '';
 
     # The `firezone` CLI is a workspace member of its own, so the Tauri hook's
