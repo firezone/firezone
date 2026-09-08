@@ -111,8 +111,17 @@ jobs:
         run: cargo build -p firezone-gui-client --all-targets
       - name: Run smoke test
         working-directory: ./rust
-        run: cargo run -p gui-smoke-test
-        timeout-minutes: 4
+        # The tray capture is opt-in per run: only one runner may draw the
+        # committed screenshot, or the Windows runners would fight over it.
+        run: cargo run -p gui-smoke-test -- ${{ matrix.runs-on == 'windows-2025' && '--tray-screenshot gui-client/screenshots/windows-tray-menu-light.png' || '' }}
+        timeout-minutes: 8
+      # Uploaded even when the capture went wrong, so the result can be inspected.
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: ${{ always() && matrix.runs-on == 'windows-2025' }}
+        with:
+          name: gui-client-tray-screenshots
+          path: rust/gui-client/screenshots/windows-tray-*.png
+          if-no-files-found: ignore
 
   build-gui:
     name: build-gui-${{ matrix.runs-on }}

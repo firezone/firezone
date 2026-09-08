@@ -10,6 +10,9 @@ use std::{
 };
 use subprocess::Exec;
 
+#[cfg(target_os = "windows")]
+mod tray_screenshot;
+
 #[cfg(target_os = "linux")]
 const FZ_GROUP: &str = "firezone-client";
 
@@ -38,6 +41,12 @@ struct Cli {
     /// Run tests that can't run in CI, like tests that need access to the staging network.
     #[arg(long)]
     manual_tests: bool,
+
+    /// Photograph the tray menu with a resource submenu expanded and write it
+    /// to this path.
+    #[cfg(target_os = "windows")]
+    #[arg(long)]
+    tray_screenshot: Option<PathBuf>,
 }
 
 fn main() -> Result<()> {
@@ -84,6 +93,13 @@ fn main() -> Result<()> {
 
     if cli.manual_tests {
         manual_tests(&app)?;
+    }
+
+    // Runs last so nothing else is holding the GUI IPC pipe the capture drives
+    // the menu through.
+    #[cfg(target_os = "windows")]
+    if let Some(output) = &cli.tray_screenshot {
+        tray_screenshot::capture(&app, output)?;
     }
 
     Ok(())

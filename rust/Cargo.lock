@@ -3353,9 +3353,12 @@ version = "0.1.0"
 dependencies = [
  "anyhow-ext",
  "clap",
+ "png 0.18.1",
  "subprocess",
  "tracing",
  "tracing-subscriber",
+ "windows",
+ "winreg 0.56.0",
 ]
 
 [[package]]
