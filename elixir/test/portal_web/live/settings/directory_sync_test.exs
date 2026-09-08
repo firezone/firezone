@@ -18,6 +18,121 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
     %{account: account, actor: actor}
   end
 
+  describe ":hook action" do
+    test "waits for Okta to verify the event hook and continues once it has", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      directory = okta_directory_fixture(%{account: account})
+
+      {:ok, lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/directory_sync/okta/#{directory.id}/hook")
+
+      assert html =~ "Waiting for verification"
+      assert html =~ Portal.Okta.Webhooks.endpoint_url(directory.id)
+      assert html =~ directory.webhook_secret
+
+      directory
+      |> Ecto.Changeset.change(webhook_verified_at: DateTime.utc_now())
+      |> Portal.Repo.update!()
+
+      send(lv.pid, :directories_changed)
+
+      assert render(lv) =~ "Verified, click to continue"
+    end
+
+    test "opens the panel after an okta directory is created", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/directory_sync/okta/new")
+
+      render_click(lv, "generate_keypair")
+
+      lv
+      |> form("#directory-form",
+        directory: %{name: "Okta", okta_domain: "acme.okta.com", client_id: "client-1"}
+      )
+      |> render_change()
+
+      Req.Test.stub(Portal.Okta.APIClient, fn conn ->
+        if String.ends_with?(conn.request_path, "/oauth2/v1/token") do
+          Req.Test.json(conn, %{"access_token" => "token", "token_type" => "DPoP"})
+        else
+          Req.Test.json(conn, [%{"id" => "one"}])
+        end
+      end)
+
+      Req.Test.allow(Portal.Okta.APIClient, self(), lv.pid)
+      lv |> element("button[phx-click='start_verification']") |> render_click()
+      render_hook(lv, "submit_directory", %{})
+
+      directory = Portal.Repo.get_by!(Portal.Okta.Directory, account_id: account.id, name: "Okta")
+      assert_patch(lv, ~p"/#{account}/settings/directory_sync/okta/#{directory.id}/hook")
+      assert render(lv) =~ "Waiting for verification"
+    end
+
+    test "re-verifies the event hook from the row menu", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      directory = okta_directory_fixture(%{account: account})
+
+      directory
+      |> Ecto.Changeset.change(webhook_verified_at: DateTime.utc_now())
+      |> Portal.Repo.update!()
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/directory_sync")
+
+      assert open_directory_actions(lv, directory.id) =~ "Re-verify event hook"
+
+      render_click(lv, "reverify_webhook", %{"id" => directory.id})
+
+      assert_patch(lv, ~p"/#{account}/settings/directory_sync/okta/#{directory.id}/hook")
+      assert render(lv) =~ "Waiting for verification"
+      assert is_nil(Portal.Repo.get!(Portal.Okta.Directory, directory.id).webhook_verified_at)
+    end
+
+    test "shows what each directory receives and when it last did", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      okta_directory_fixture(%{account: account, name: "Okta"})
+
+      okta_directory_fixture(%{account: account, name: "Okta live"})
+      |> Ecto.Changeset.change(
+        webhook_verified_at: DateTime.utc_now(),
+        webhook_received_at: DateTime.utc_now()
+      )
+      |> Portal.Repo.update!()
+
+      entra_directory_fixture(account: account)
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/directory_sync")
+
+      assert html =~ "Last Update"
+      assert html =~ "Not set up"
+      assert html =~ "Receives user and group changes from Okta as they happen."
+      assert html =~ "Receives user and group changes from Microsoft Entra as they happen."
+      assert html =~ "Nothing received yet."
+    end
+  end
+
   defp open_directory_actions(lv, directory_id) do
     lv
     |> element("button[phx-click='toggle_directory_actions'][phx-value-id='#{directory_id}']")

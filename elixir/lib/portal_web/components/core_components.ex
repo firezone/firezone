@@ -902,8 +902,19 @@ defmodule PortalWeb.CoreComponents do
   attr :navigate, :string, required: true
   attr :connected?, :boolean, required: true
   attr :type, :string, required: true
+  attr :waiting, :string, default: "Waiting for connection..."
+  attr :done, :string, default: "Connected, click to continue"
+  attr :skip_confirm, :string, default: nil
 
   def initial_connection_status(assigns) do
+    assigns =
+      assign(
+        assigns,
+        :skip_confirm,
+        assigns.skip_confirm ||
+          "Do you want to skip waiting for #{assigns.type} to be connected?"
+      )
+
     ~H"""
     <.link
       class={[
@@ -919,16 +930,16 @@ defmodule PortalWeb.CoreComponents do
         if @connected? do
           %{}
         else
-          %{"data-confirm" => "Do you want to skip waiting for #{@type} to be connected?"}
+          %{"data-confirm" => @skip_confirm}
         end
       }
     >
       <span :if={not @connected?}>
-        <.icon name="icon-spinner" class="animate-spin h-3.5 w-3.5 mr-1" /> Waiting for connection...
+        <.icon name="icon-spinner" class="animate-spin h-3.5 w-3.5 mr-1" /> {@waiting}
       </span>
 
       <span :if={@connected?}>
-        <.icon name="ri-check-line" class="h-3.5 w-3.5 mr-1" /> Connected, click to continue
+        <.icon name="ri-check-line" class="h-3.5 w-3.5 mr-1" /> {@done}
       </span>
     </.link>
     """

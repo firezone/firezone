@@ -27,6 +27,20 @@ defmodule PortalAPI.Integrations.Okta.WebhookControllerTest do
       assert json_response(conn, 200) == %{"verification" => "abc 123"}
     end
 
+    test "records the verification and tells the settings page",
+         %{conn: conn, account: account, directory: directory} do
+      :ok = Portal.PubSub.Changes.subscribe(account.id, :directories)
+
+      conn =
+        conn
+        |> put_req_header("x-okta-verification-challenge", "abc")
+        |> get("/integrations/okta/webhooks?directory_id=#{directory.id}")
+
+      assert json_response(conn, 200)
+      assert Portal.Repo.get!(Portal.Okta.Directory, directory.id).webhook_verified_at
+      assert_receive :directories_changed
+    end
+
     test "rejects a verification for an unknown directory", %{conn: conn} do
       conn =
         conn
@@ -70,6 +84,25 @@ defmodule PortalAPI.Integrations.Okta.WebhookControllerTest do
       assert length(jobs) == 2
       assert_enqueued(worker: Okta.WebhookSync, args: %{resource: "user", resource_id: "user-1"})
       assert_enqueued(worker: Okta.WebhookSync, args: %{resource: "group", resource_id: "group-1"})
+    end
+
+    test "records when a delivery was last accepted", %{conn: conn, directory: directory} do
+      assert is_nil(directory.webhook_received_at)
+
+      conn = post_events(conn, directory, [event("user.account.update_profile", [user("user-1")])])
+
+      assert response(conn, 204) == ""
+      assert Portal.Repo.get!(Portal.Okta.Directory, directory.id).webhook_received_at
+    end
+
+    test "records nothing for a refused delivery", %{conn: conn, directory: directory} do
+      conn =
+        post_events(conn, directory, [event("user.account.update_profile", [user("user-1")])],
+          secret: "nope"
+        )
+
+      assert response(conn, 401)
+      assert is_nil(Portal.Repo.get!(Portal.Okta.Directory, directory.id).webhook_received_at)
     end
 
     test "queues an unknown user an event adds to the directory", %{conn: conn, directory: directory} do

@@ -10,6 +10,7 @@ defmodule Portal.Okta.Webhooks do
 
   alias Portal.DirectorySync
   alias Portal.Okta
+  alias Portal.PubSub
   alias __MODULE__.Database
   require Logger
 
@@ -60,11 +61,14 @@ defmodule Portal.Okta.Webhooks do
   end
 
   @doc """
-  Whether a verification request names a directory that can take events.
+  Records that Okta reached the endpoint of a directory that can take events,
+  and tells the settings page, which waits for exactly this.
   """
   def verify(directory_id) do
     with {:ok, id} <- Ecto.UUID.cast(directory_id || ""),
-         %Okta.Directory{} <- Database.get_directory(id) do
+         %Okta.Directory{} = directory <- Database.get_directory(id) do
+      Database.mark_verified(directory)
+      PubSub.Changes.broadcast(directory.account_id, :directories, :directories_changed)
       :ok
     else
       _ -> {:error, :not_found}
@@ -75,6 +79,8 @@ defmodule Portal.Okta.Webhooks do
     with {:ok, id} <- Ecto.UUID.cast(directory_id || ""),
          %Okta.Directory{} = directory <- Database.get_directory(id),
          true <- authentic?(directory, authorization) do
+      Database.touch_received(directory)
+
       events
       |> Enum.flat_map(&parse_event(directory, &1))
       |> Enum.uniq()
@@ -184,6 +190,18 @@ defmodule Portal.Okta.Webhooks do
       )
       |> Safe.unscoped()
       |> Safe.one()
+    end
+
+    def mark_verified(directory) do
+      from(d in Portal.Okta.Directory, where: d.id == ^directory.id)
+      |> Safe.unscoped()
+      |> Safe.update_all(set: [webhook_verified_at: DateTime.utc_now()])
+    end
+
+    def touch_received(directory) do
+      from(d in Portal.Okta.Directory, where: d.id == ^directory.id)
+      |> Safe.unscoped()
+      |> Safe.update_all(set: [webhook_received_at: DateTime.utc_now()])
     end
 
     def known_user_ids(_directory, []), do: MapSet.new()

@@ -43,6 +43,8 @@ defmodule Portal.Google.Webhooks do
   defp handle_state(_directory, "sync", _body), do: :ok
 
   defp handle_state(directory, state, %{"id" => user_id}) when is_binary(user_id) do
+    Database.touch_received(directory)
+
     if in_scope?(directory, user_id) do
       {:ok, _job} =
         %{account_id: directory.account_id, directory_id: directory.id, user_id: user_id}
@@ -99,6 +101,12 @@ defmodule Portal.Google.Webhooks do
       )
       |> Safe.unscoped()
       |> Safe.one()
+    end
+
+    def touch_received(directory) do
+      from(d in Portal.Google.Directory, where: d.id == ^directory.id)
+      |> Safe.unscoped()
+      |> Safe.update_all(set: [webhook_received_at: DateTime.utc_now()])
     end
 
     def identity_exists?(directory, idp_id) do
