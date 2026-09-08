@@ -8,7 +8,7 @@ authors = ["Firezone, Inc."]
 license = { workspace = true }
 
 [[bin]]
-name = "firezone"
+name = "firezone-cli"
 path = "src/main.rs"
 
 [dependencies]
