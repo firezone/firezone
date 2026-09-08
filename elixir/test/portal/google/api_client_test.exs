@@ -1136,6 +1136,24 @@ defmodule Portal.Google.APIClientTest do
       assert {:ok, []} = APIClient.batch_get_users(@test_access_token, ["deleted-user"])
     end
 
+    test "skips soft-deleted 412 users in batch response" do
+      Req.Test.expect(APIClient, fn conn ->
+        boundary = "deleted_boundary"
+
+        body =
+          build_batch_body(boundary, [
+            {"HTTP/1.1 412 Precondition Failed",
+             JSON.encode!(%{"error" => %{"code" => 412, "message" => "User is deleted."}})}
+          ])
+
+        conn
+        |> Plug.Conn.put_resp_header("content-type", "multipart/mixed; boundary=#{boundary}")
+        |> Plug.Conn.send_resp(200, body)
+      end)
+
+      assert {:ok, []} = APIClient.batch_get_users(@test_access_token, ["deleted-user"])
+    end
+
     test "handles iodata response body for multipart parsing" do
       Req.Test.expect(APIClient, fn conn ->
         boundary = "iodata_boundary"

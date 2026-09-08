@@ -152,6 +152,38 @@ defmodule Portal.Google.WebhookSyncTest do
       refute Repo.get_by(ExternalIdentity, id: identity.id)
     end
 
+    test "removes a user Google soft-deleted", %{directory: directory} = ctx do
+      identity = directory_identity(ctx, "user-1")
+
+      Req.Test.stub(APIClient, fn conn ->
+        if conn.request_path == "/token" do
+          Req.Test.json(conn, %{"access_token" => "token", "expires_in" => 3600})
+        else
+          conn
+          |> Plug.Conn.put_status(412)
+          |> Req.Test.json(%{
+            "error" => %{
+              "code" => 412,
+              "message" => "User is deleted.",
+              "errors" => [
+                %{
+                  "domain" => "global",
+                  "location" => "If-Match",
+                  "locationType" => "header",
+                  "message" => "User is deleted.",
+                  "reason" => "conditionNotMet"
+                }
+              ]
+            }
+          })
+        end
+      end)
+
+      assert :ok = perform_job(WebhookSync, args(directory, "user-1"))
+
+      refute Repo.get_by(ExternalIdentity, id: identity.id)
+    end
+
     test "keeps an actor that still has other identities", %{directory: directory} = ctx do
       identity = directory_identity(ctx, "user-1")
       actor = mark_created_by_directory(identity.actor_id, directory)
