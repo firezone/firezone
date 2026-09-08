@@ -49,7 +49,7 @@
       field.typeKey(.tab, modifierFlags: [])
       XCTAssertEqual(field.value as? String, "firezoneqa")
       XCTAssertGreaterThanOrEqual(page.frame.width, 1024)
-      deliver(page, as: "reviewer-sign-in", in: .light)
+      deliver(browser.windows.firstMatch, as: "reviewer-sign-in", in: .light)
     }
   }
 #endif
