@@ -58,6 +58,7 @@
 		FZUIT0012E90000000000001 /* AppScreenshotTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FZUIT0012E90000000000010 /* AppScreenshotTests.swift */; };
 		FZUIT0012E90000000000002 /* ScreenshotDelivery.swift in Sources */ = {isa = PBXBuildFile; fileRef = FZUIT0012E90000000000012 /* ScreenshotDelivery.swift */; };
 		FZUIT0012E90000000000003 /* IOSScreenshotTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FZUIT0012E90000000000013 /* IOSScreenshotTests.swift */; };
+		FZUIT0012E90000000000004 /* ReviewerScreenshotTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FZUIT0012E90000000000014 /* ReviewerScreenshotTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -165,6 +166,7 @@
 		FZUIT0012E90000000000010 /* AppScreenshotTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppScreenshotTests.swift; sourceTree = "<group>"; };
 		FZUIT0012E90000000000012 /* ScreenshotDelivery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenshotDelivery.swift; sourceTree = "<group>"; };
 		FZUIT0012E90000000000013 /* IOSScreenshotTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IOSScreenshotTests.swift; sourceTree = "<group>"; };
+		FZUIT0012E90000000000014 /* ReviewerScreenshotTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReviewerScreenshotTests.swift; sourceTree = "<group>"; };
 		FZUIT0012E90000000000011 /* FirezoneUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = FirezoneUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -363,6 +365,7 @@
 			children = (
 				FZUIT0012E90000000000010 /* AppScreenshotTests.swift */,
 				FZUIT0012E90000000000013 /* IOSScreenshotTests.swift */,
+				FZUIT0012E90000000000014 /* ReviewerScreenshotTests.swift */,
 				FZUIT0012E90000000000012 /* ScreenshotDelivery.swift */,
 			);
 			path = FirezoneUITests;
@@ -765,6 +768,7 @@
 			files = (
 				FZUIT0012E90000000000001 /* AppScreenshotTests.swift in Sources */,
 				FZUIT0012E90000000000003 /* IOSScreenshotTests.swift in Sources */,
+				FZUIT0012E90000000000004 /* ReviewerScreenshotTests.swift in Sources */,
 				FZUIT0012E90000000000002 /* ScreenshotDelivery.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

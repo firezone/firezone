@@ -1,0 +1,10 @@
+{
+  "IOS": {
+    "notes": "review-notes-ios.txt",
+    "attachments": ["../screenshots/ios/iphone/reviewer-sign-in-light.png"]
+  },
+  "MAC_OS": {
+    "notes": "review-notes-macos.txt",
+    "attachments": ["../screenshots/macos/26/reviewer-sign-in-light.png"]
+  }
+}

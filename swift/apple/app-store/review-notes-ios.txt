@@ -1,0 +1,9 @@
+We've provisioned an app reviewer account for our test tenant so you can see how the app works. To sign in, **please follow these steps**:
+1. Launch the app
+2. Tap "Sign in"
+3. *** IMPORTANT ***: On the page that loads, enter "firezoneqa" where it says "Enter your organization's account slug". See attached screenshot for clarity. This is the app reviewer demo account we have provisioned for you.
+4. Tap "JumpCloud (App Reviewer Sign in)" as the sign in method
+5. Enter the credentials provided above and continue
+6. The app should now be signed in
+
+You should see a list of resources you can now connect to. For example, try loading "ifconfig.net" into your browser and notice that the IP address displayed is that of the Firezone gateway, not your actual IP address. This indicates your traffic is being tunneled to the "ifconfig.net" resource.
