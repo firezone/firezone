@@ -138,6 +138,14 @@
 
         try waitForSubmenu(of: row)
 
+        // Diagnostic, not to be kept: what the tree calls the panels, to be held
+        // against where they sit in the photographed desktop.
+        let submenu = row.menus.firstMatch
+        print(
+          "panels: menu \(menu.frame) submenu \(submenu.frame) "
+            + "display \(NSScreen.main?.frame ?? .zero) visible \(NSScreen.main?.visibleFrame ?? .zero)"
+        )
+
         // The desktop holds the menu, its submenu and nothing else, so the capture
         // takes what the app drew rather than the frames describing it.
         record(deliverDesktop(as: "menu", in: appearance), as: "menu", in: appearance)
