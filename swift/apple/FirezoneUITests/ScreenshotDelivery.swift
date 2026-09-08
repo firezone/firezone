@@ -18,6 +18,15 @@ enum Appearance: String, CaseIterable {
   case dark
 }
 
+#if os(macOS)
+  extension CGRect {
+    /// The rectangle in a photograph of what it measures in points.
+    func scaled(by scale: CGFloat) -> CGRect {
+      CGRect(x: minX * scale, y: minY * scale, width: width * scale, height: height * scale)
+    }
+  }
+#endif
+
 // Photographing is main-actor work in XCTest, and so is reading the image back.
 @MainActor
 extension XCTestCase {
@@ -37,56 +46,65 @@ extension XCTestCase {
     ///
     /// A menu and the submenu it opens are two windows that no one element covers, and
     /// what the screen holds around them is the shadow the OS draws, which is not the
-    /// same twice. Each panel is photographed on its own and laid where it stands, so
-    /// the picture is what the app drew; the ground it stands on, its border and its
-    /// shadow are prepare-store-screenshots.py's. A panel drawn over another goes last.
+    /// same twice. So the screen is photographed once and each panel cut out of it by
+    /// its frame: the picture is what the app drew, and the ground it stands on, its
+    /// border and its shadow are prepare-store-screenshots.py's. A panel drawn over
+    /// another goes last.
+    ///
+    /// Once, rather than one photograph per panel: photographing a menu on its own
+    /// draws it again, and a menu drawn on a material comes back a few steps
+    /// different every time, so no two captures of it agree.
     @discardableResult
     func deliver(_ panels: [XCUIElement], as name: String, in appearance: Appearance) -> Data {
       deliver(as: name, in: appearance) {
-        let photographed = panels.compactMap { panel -> (image: CGImage, frame: CGRect)? in
-          guard
-            let image = panel.screenshot().image
-              .cgImage(forProposedRect: nil, context: nil, hints: nil)
-          else { return nil }
+        guard
+          let display = NSScreen.main,
+          let screen = XCUIScreen.main.screenshot().image
+            .cgImage(forProposedRect: nil, context: nil, hints: nil)
+        else { return Data() }
 
-          return (image, panel.frame)
-        }
+        // A frame is measured in points and the photograph holds pixels.
+        let scale = CGFloat(screen.height) / display.frame.height
+        let frames = panels.map { $0.frame }
+        let cut = frames.compactMap { screen.cropping(to: $0.scaled(by: scale)) }
 
-        guard photographed.count == panels.count else { return Data() }
+        guard cut.count == frames.count else { return Data() }
 
-        return Self.composed(photographed)
+        return Self.composed(Array(zip(cut, frames)), at: scale)
       }
     }
 
     /// The panels on a transparent ground, as far apart as their frames are.
-    private static func composed(_ panels: [(image: CGImage, frame: CGRect)]) -> Data {
-      guard let first = panels.first else { return Data() }
+    private static func composed(_ panels: [(CGImage, CGRect)], at scale: CGFloat) -> Data {
+      guard let bounds = panels.map(\.1).reduce(nil, { $0?.union($1) ?? $1 }) else {
+        return Data()
+      }
 
-      let bounds = panels.dropFirst().reduce(first.frame) { $0.union($1.frame) }
-      // A screen can hold more pixels than it measures in points.
-      let scale = CGFloat(first.image.width) / first.frame.width
+      let ground = bounds.scaled(by: scale)
 
       guard
+        // The photograph's own space, so that laying a panel out does not convert it.
+        let space = panels.first?.0.colorSpace,
         let context = CGContext(
           data: nil,
-          width: Int(bounds.width * scale),
-          height: Int(bounds.height * scale),
+          width: Int(ground.width),
+          height: Int(ground.height),
           bitsPerComponent: 8,
           bytesPerRow: 0,
-          space: CGColorSpaceCreateDeviceRGB(),
+          space: space,
           bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
         )
       else { return Data() }
 
-      for panel in panels {
+      for (image, frame) in panels {
         // A context measures from the bottom of the picture and a frame from the top.
         context.draw(
-          panel.image,
+          image,
           in: CGRect(
-            x: (panel.frame.minX - bounds.minX) * scale,
-            y: (bounds.maxY - panel.frame.maxY) * scale,
-            width: panel.frame.width * scale,
-            height: panel.frame.height * scale
+            x: (frame.minX - bounds.minX) * scale,
+            y: (bounds.maxY - frame.maxY) * scale,
+            width: frame.width * scale,
+            height: frame.height * scale
           )
         )
       }
