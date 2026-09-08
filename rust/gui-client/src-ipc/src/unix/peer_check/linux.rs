@@ -21,7 +21,7 @@ impl AllowedPeer {
         }
     }
 
-    /// The packaged GUI and CLI binaries — the peers the GUI accepts on
+    /// The packaged GUI and CLI binaries, the peers the GUI accepts on
     /// its own socket. The CLI is a remote control for the running GUI,
     /// so it connects here and never to the tunnel daemon.
     #[cfg(not(any(test, feature = "test")))]
