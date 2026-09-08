@@ -28,6 +28,11 @@ pub(crate) struct Tray {
     handle: tauri::tray::TrayIcon,
     last_icon_set: Icon,
     last_menu_set: Option<Menu>,
+    /// The window an open menu is anchored to, resolved up front because Tauri
+    /// answers `hwnd` on the main thread, which an open menu blocks. Held as an
+    /// integer so that `Tray` stays `Send`.
+    #[cfg(target_os = "windows")]
+    main_window: isize,
 }
 
 fn icon_to_tauri_icon(that: &Icon) -> tauri::image::Image<'static> {
@@ -75,11 +80,21 @@ impl Tray {
             .build(&app)
             .context("Cannot build Tauri tray icon")?;
 
+        #[cfg(target_os = "windows")]
+        let main_window = app
+            .get_webview_window("main")
+            .context("Couldn't get handle to window")?
+            .hwnd()
+            .context("Couldn't get the window's HWND")?
+            .0 as isize;
+
         Ok(Self {
             app,
             handle: tray,
             last_icon_set: Default::default(),
             last_menu_set: None,
+            #[cfg(target_os = "windows")]
+            main_window,
         })
     }
 
@@ -125,21 +140,16 @@ impl Tray {
     #[cfg(target_os = "windows")]
     pub(crate) fn close_menu(&self) -> Result<()> {
         use windows::Win32::{
-            Foundation::{LPARAM, WPARAM},
+            Foundation::{HWND, LPARAM, WPARAM},
             UI::WindowsAndMessaging::{PostMessageW, WM_CANCELMODE},
         };
 
-        let hwnd = self
-            .app
-            .get_webview_window("main")
-            .context("Couldn't get handle to window")?
-            .hwnd()
-            .context("Couldn't get the window's HWND")?;
+        let owner = HWND(self.main_window as *mut _);
 
         // `EndMenu` would need the main thread, which stays inside `TrackPopupMenu`
         // until the menu closes.
         // SAFETY: `PostMessageW` takes no pointers and is safe from any thread.
-        unsafe { PostMessageW(Some(hwnd), WM_CANCELMODE, WPARAM(0), LPARAM(0)) }
+        unsafe { PostMessageW(Some(owner), WM_CANCELMODE, WPARAM(0), LPARAM(0)) }
             .context("Failed to post `WM_CANCELMODE`")
     }
 
