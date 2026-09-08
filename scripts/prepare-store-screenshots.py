@@ -214,7 +214,7 @@ def panel(
 ) -> tuple[Image.Image, Image.Image, Image.Image]:
     """`capture` placed at `at`, with the masks that clip it to a rounded rectangle."""
     content = Image.new("RGB", MAC_SIZE)
-    content.paste(repainted_edge(capture.convert("RGB"), radius), at)
+    content.paste(capture.convert("RGB"), at)
 
     return (
         content,
@@ -225,7 +225,7 @@ def panel(
 
 def frame_window(capture: Image.Image, radius: int, appearance: str) -> Image.Image:
     """The window on the store canvas: clipped, bordered and with a shadow."""
-    window = panel(capture, centred(capture.size), radius)
+    window = panel(repainted_edge(capture.convert("RGB"), radius), centred(capture.size), radius)
 
     return framed(window[1], [window], appearance)
 
@@ -250,15 +250,17 @@ def frame_menus(capture: Image.Image, appearance: str) -> Image.Image:
 
 
 def menus(capture: Image.Image) -> list[tuple[int, int, int, int]]:
-    """The rectangle each menu covers, left to right.
+    """The rectangle each menu covers, back to front.
 
     A menu's extent only changes across its corners, and by at most their radius, so
-    a bigger change is where one menu ends and the next begins. One that ends where
-    the next begins is standing behind it and reaches under it, far enough that its
-    corners do too.
+    a bigger change is where one menu ends and the next begins. A menu that ends where
+    the next begins is the one in front: what the screen showed of the one behind it
+    stops there. So it is drawn last, and over the corner of its neighbour, which is
+    where the screen had it.
     """
     drawn = np.asarray(capture.convert("RGBA"))[:, :, 3] > 0
     boxes: list[tuple[int, int, int, int]] = []
+    front: list[int] = []
 
     for x, column in enumerate(drawn.T):
         rows = np.flatnonzero(column)
@@ -277,13 +279,16 @@ def menus(capture: Image.Image) -> list[tuple[int, int, int, int]]:
         else:
             if last and last[2] == x:
                 boxes[-1] = (last[0], last[1], x + MENU_CORNER_RADIUS, last[3])
+                front.append(len(boxes) - 1)
 
             boxes.append((x, top, x + 1, bottom))
 
     if not boxes:
         raise RuntimeError("A menu capture holds no menus")
 
-    return boxes
+    return [box for index, box in enumerate(boxes) if index not in front] + [
+        boxes[index] for index in front
+    ]
 
 
 def prepare_macos(directory: Path) -> None:
