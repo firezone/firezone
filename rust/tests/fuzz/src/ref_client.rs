@@ -124,6 +124,12 @@ pub struct RefClient {
     /// our own pools reject still gets through when any held grant permits it.
     #[debug(skip)]
     dynamic_grants: BTreeMap<ClientId, BTreeSet<ResourceId>>,
+
+    /// Per dynamic device pool, the peer addresses this client resolved through it.
+    ///
+    /// Only these are requested through the pool; any other tunnel address is unroutable.
+    #[debug(skip)]
+    resolved_dynamic_peers: BTreeMap<ResourceId, BTreeSet<IpAddr>>,
 }
 
 impl RefClient {
@@ -166,6 +172,7 @@ impl RefClient {
             gateway_send_times: Default::default(),
             client_send_times: Default::default(),
             dynamic_grants: Default::default(),
+            resolved_dynamic_peers: Default::default(),
         }
     }
 
@@ -276,6 +283,7 @@ impl RefClient {
         }
 
         self.resources.retain(|r| r.id() != *resource);
+        self.resolved_dynamic_peers.remove(resource);
     }
 
     pub(crate) fn connected_resources(&self) -> impl Iterator<Item = ResourceId> + '_ {
@@ -291,6 +299,7 @@ impl RefClient {
 
     pub(crate) fn restart(&mut self, key: PrivateKey, now: Instant) {
         self.routes.clear();
+        self.resolved_dynamic_peers.clear();
 
         self.key = key;
 
@@ -700,7 +709,7 @@ impl RefClient {
 
         // Peer tunnel IPs first mean client-to-client device-pool routing. A
         // tunnel IP without a matching pool may still belong to a gateway, and
-        // any other one is claimed by a dynamic pool if the client has one.
+        // any other one is claimed by the dynamic pool that resolved it, if any.
         if let Some(ip) = dst.ip_addr().filter(|ip| tunnel_proto::is_peer(*ip)) {
             let static_pools = self.static_device_pool_by_tun_ip(ip);
 
@@ -712,7 +721,7 @@ impl RefClient {
                 return PacketRoute::Gateway(gateway);
             }
 
-            let dynamic_pools = self.dynamic_device_pools();
+            let dynamic_pools = self.dynamic_device_pools_resolving(ip);
 
             if !dynamic_pools.is_empty() {
                 return self.route_via_device_pools(ip, &dynamic_pools, protocol, client_by_ip);
@@ -799,9 +808,10 @@ impl RefClient {
     /// Records the dynamic-pool grant the SUT asks the portal for before sending to `dst`.
     ///
     /// Mirrors the SUT: a peer already authorised under a pool that permits the packet
-    /// needs no request; otherwise the lowest pool that permits it is requested, and a
-    /// malicious client without any permitting pool requests the lowest pool anyway
-    /// unless it already holds a grant for that peer.
+    /// needs no request; otherwise the highest pool that resolved the peer and permits
+    /// the packet is requested, and a malicious client without any permitting pool
+    /// requests the highest resolving pool anyway unless it already holds a grant for
+    /// that peer.
     pub(crate) fn note_device_pool_request(
         &mut self,
         dst: IpAddr,
@@ -816,14 +826,15 @@ impl RefClient {
             return;
         };
 
-        let pools = self.dynamic_device_pools();
+        let pools = self.dynamic_device_pools_resolving(dst);
         let held = self
             .dynamic_grants
             .get(&remote)
             .cloned()
             .unwrap_or_default();
 
-        if pools
+        if self
+            .dynamic_device_pools()
             .iter()
             .any(|(id, filters)| held.contains(id) && protocol_filter_allows(filters, protocol))
         {
@@ -832,10 +843,11 @@ impl RefClient {
 
         let permitting = pools
             .iter()
+            .rev()
             .find(|(_, filters)| protocol_filter_allows(filters, protocol))
             .map(|(id, _)| *id);
         let fallback = (self.malicious_behaviour.ignore_resource_filters && held.is_empty())
-            .then(|| pools.first().map(|(id, _)| *id))
+            .then(|| pools.last().map(|(id, _)| *id))
             .flatten();
 
         if let Some(requested) = permitting.or(fallback) {
@@ -930,14 +942,28 @@ impl RefClient {
             return;
         }
 
-        if let Some(resource) = self.local_dns_resource(query) {
+        if self.local_dns_resource(query).is_some() {
             self.expect_dns_response(query);
 
-            if self.connected_dns_resources.contains(&resource)
-                && matches!(query.r_type, RecordType::A | RecordType::AAAA)
-            {
-                self.dns_resource_resolutions
-                    .insert((resource, query.domain.clone()), now);
+            if matches!(query.r_type, RecordType::A | RecordType::AAAA) {
+                let resolved = self
+                    .connected_dns_resources
+                    .iter()
+                    .copied()
+                    .filter(|resource| {
+                        self.dns_resource_serves(
+                            *resource,
+                            &query.domain,
+                            query.r_type == RecordType::A,
+                            query.r_type == RecordType::AAAA,
+                        )
+                    })
+                    .collect_vec();
+
+                for resource in resolved {
+                    self.dns_resource_resolutions
+                        .insert((resource, query.domain.clone()), now);
+                }
             }
 
             return;
@@ -1158,6 +1184,66 @@ impl RefClient {
                 });
 
                 matches.then(|| (pool.id, pool.filters.clone()))
+            })
+            .collect()
+    }
+
+    /// Records that a name lookup through `pool` resolved to the peer at `ipv4` / `ipv6`.
+    pub(crate) fn note_device_pool_resolution(
+        &mut self,
+        pool: ResourceId,
+        ipv4: Ipv4Addr,
+        ipv6: Ipv6Addr,
+    ) {
+        let resolved = self.resolved_dynamic_peers.entry(pool).or_default();
+        resolved.insert(IpAddr::V4(ipv4));
+        resolved.insert(IpAddr::V6(ipv6));
+    }
+
+    /// The dynamic device pool the SUT resolves `domain` through: the lowest one matching it.
+    pub(crate) fn dynamic_device_pool_by_domain(&self, domain: &DomainName) -> Option<ResourceId> {
+        self.resources
+            .iter()
+            .filter_map(|resource| match resource {
+                Resource::DynamicDevicePool(pool) if dns::is_subdomain(domain, &pool.address) => {
+                    Some(pool.id)
+                }
+                Resource::DynamicDevicePool(_) => None,
+                Resource::Dns(_) => None,
+                Resource::Cidr(_) => None,
+                Resource::Internet(_) => None,
+                Resource::StaticDevicePool(_) => None,
+            })
+            .min()
+    }
+
+    /// Every dynamic device pool that resolved `ip`, with its filter set, lowest id first.
+    pub(crate) fn dynamic_device_pools_resolving(
+        &self,
+        ip: IpAddr,
+    ) -> Vec<(ResourceId, Vec<tunnel_proto::messages::Filter>)> {
+        self.dynamic_device_pools()
+            .into_iter()
+            .filter(|(id, _)| {
+                self.resolved_dynamic_peers
+                    .get(id)
+                    .is_some_and(|ips| ips.contains(&ip))
+            })
+            .collect()
+    }
+
+    /// Every peer address resolved through a dynamic pool, with that pool's filter set.
+    pub(crate) fn resolved_dynamic_peers(
+        &self,
+    ) -> Vec<(IpAddr, Vec<tunnel_proto::messages::Filter>)> {
+        self.dynamic_device_pools()
+            .into_iter()
+            .flat_map(|(id, filters)| {
+                self.resolved_dynamic_peers
+                    .get(&id)
+                    .into_iter()
+                    .flatten()
+                    .map(move |ip| (*ip, filters.clone()))
             })
             .collect()
     }
@@ -1459,21 +1545,49 @@ impl RefClient {
 
         let domains = self
             .resolved_domains()
-            .filter_map(|(domain, records)| {
-                self.dns_resource_by_domain_for_records(
-                    &domain,
+            .filter(|(domain, records)| {
+                self.dns_resource_serves(
+                    resource,
+                    domain,
                     records.contains(&RecordType::A),
                     records.contains(&RecordType::AAAA),
                 )
-                .filter(|candidate| *candidate == resource)
-                .map(|_| domain)
             })
+            .map(|(domain, _)| domain)
             .collect_vec();
 
         for domain in domains {
             self.dns_resource_resolutions
                 .insert((resource, domain), now);
         }
+    }
+
+    /// Whether the DNS resource `resource` covers `domain` and can serve the records it has.
+    ///
+    /// The gateway resolves a domain for whichever resource the client connects through, which
+    /// is chosen per packet by filter and need not be the one preferred for the records.
+    fn dns_resource_serves(
+        &self,
+        resource: ResourceId,
+        domain: &DomainName,
+        has_a_record: bool,
+        has_aaaa_record: bool,
+    ) -> bool {
+        self.resources
+            .iter()
+            .filter_map(|r| match r {
+                Resource::Dns(dns) if dns.id == resource => Some(dns),
+                Resource::Dns(_) => None,
+                Resource::Cidr(_) => None,
+                Resource::Internet(_) => None,
+                Resource::StaticDevicePool(_) => None,
+                Resource::DynamicDevicePool(_) => None,
+            })
+            .any(|dns| {
+                dns::is_subdomain(domain, &dns.address)
+                    && ((has_a_record && dns.ip_stack.supports_ipv4())
+                        || (has_aaaa_record && dns.ip_stack.supports_ipv6()))
+            })
     }
 
     pub(crate) fn dns_resource_resolution(

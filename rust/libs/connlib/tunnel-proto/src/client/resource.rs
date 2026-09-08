@@ -92,8 +92,8 @@ pub struct StaticDevicePoolResource {
 /// A dynamic device pool resource.
 ///
 /// Dynamic device pools have a DNS pattern that connlib matches against to resolve device addresses.
-/// Membership is decided by the portal: any tunnel-range peer without a static pool route is
-/// requested through the pool on first use.
+/// Membership is decided by the portal: a device the pool resolved by name is requested through
+/// the pool on first use.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct DynamicDevicePoolResource {
     pub id: ResourceId,

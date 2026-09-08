@@ -194,7 +194,7 @@ impl DeviceStubResolver {
         resource_id: ResourceId,
         domain: DomainName,
         result: Result<(Ipv4Addr, Ipv6Addr), FailReason>,
-    ) {
+    ) -> Option<(Ipv4Addr, Ipv6Addr)> {
         let pending = self
             .pending
             .extract_if(|(rid, dom, _), _| *rid == resource_id && *dom == domain)
@@ -203,7 +203,7 @@ impl DeviceStubResolver {
 
         if pending.is_empty() {
             tracing::debug!(%resource_id, %domain, "Received device pool resolution for unknown query");
-            return;
+            return None;
         }
 
         tracing::debug!(%resource_id, %domain, ?result, "Device FQDN resolved");
@@ -244,6 +244,8 @@ impl DeviceStubResolver {
                 response,
             });
         }
+
+        result.ok()
     }
 
     pub(crate) fn poll_event(&mut self) -> Option<Event> {

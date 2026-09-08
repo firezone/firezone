@@ -429,9 +429,23 @@ impl ClientState {
         domain: DomainName,
         result: Result<(Ipv4Addr, Ipv6Addr), FailReason>,
     ) {
-        self.device_stub_resolver
-            .handle_device_domain_resolved(resource_id, domain, result);
+        let resolved =
+            self.device_stub_resolver
+                .handle_device_domain_resolved(resource_id, domain, result);
         self.drain_device_stub_resolver_events();
+
+        let Some((ipv4, ipv6)) = resolved else {
+            return;
+        };
+        let Some(Resource::DynamicDevicePool(pool)) = self.resources_by_id.get(&resource_id) else {
+            return;
+        };
+        let filter = FilterEngine::new(&pool.filters);
+
+        self.routing_tables
+            .upsert_device_pool_address(ipv4.into(), resource_id, filter.clone());
+        self.routing_tables
+            .upsert_device_pool_address(ipv6.into(), resource_id, filter);
     }
 
     pub fn public_key(&self) -> PublicKey {
@@ -2530,13 +2544,9 @@ impl ClientState {
             ),
             Resource::Internet(_) => self.is_internet_resource_active,
             Resource::StaticDevicePool(_) => unreachable!("handled above"),
-            Resource::DynamicDevicePool(pool) => {
-                self.routing_tables
-                    .upsert_device_pool(pool.id, FilterEngine::new(&pool.filters));
-
-                self.device_stub_resolver
-                    .add_resource(pool.id, pool.address.clone())
-            }
+            Resource::DynamicDevicePool(pool) => self
+                .device_stub_resolver
+                .add_resource(pool.id, pool.address.clone()),
         };
 
         if activated {
@@ -3048,10 +3058,11 @@ mod tests {
     }
 
     #[test]
-    fn requests_authorization_for_unknown_peer_through_dynamic_pool() {
+    fn requests_authorization_for_resolved_peer_through_dynamic_pool() {
         let mut state = ClientState::for_test();
         state.update_interface_config(interface(own_tun_ipv4(), Ipv6Addr::LOCALHOST));
         state.upsert_resource(dynamic_pool(&[]), Instant::now());
+        resolve_dynamic_peer(&mut state);
 
         state
             .handle_tun_input(
@@ -3065,6 +3076,22 @@ mod tests {
             device_connection_intent(&mut state),
             Some((dynamic_pool_id(), IpAddr::V4(peer_tun_ipv4())))
         );
+    }
+
+    #[test]
+    fn unresolved_peer_packet_is_unroutable() {
+        let mut state = ClientState::for_test();
+        state.update_interface_config(interface(own_tun_ipv4(), Ipv6Addr::LOCALHOST));
+        state.upsert_resource(dynamic_pool(&[]), Instant::now());
+
+        let result = state.handle_tun_input(
+            udp_to_peer(1),
+            Instant::now(),
+            &mut snownet::TransmitBuffer::new(),
+        );
+
+        assert!(result.is_err());
+        assert_no_device_connection_intent(&mut state);
     }
 
     #[test]
@@ -3087,6 +3114,7 @@ mod tests {
         let mut state = ClientState::for_test();
         state.update_interface_config(interface(own_tun_ipv4(), Ipv6Addr::LOCALHOST));
         state.upsert_resource(dynamic_pool(&[Filter::Icmp]), Instant::now());
+        resolve_dynamic_peer(&mut state);
 
         state
             .handle_tun_input(
@@ -3109,6 +3137,7 @@ mod tests {
         let mut state = ClientState::for_test();
         state.update_interface_config(interface(own_tun_ipv4(), Ipv6Addr::LOCALHOST));
         state.upsert_resource(dynamic_pool(&[]), Instant::now());
+        resolve_dynamic_peer(&mut state);
         state.upsert_resource(static_pool_with_peer(), Instant::now());
 
         state
@@ -3131,6 +3160,7 @@ mod tests {
         let mut state = ClientState::for_test();
         state.update_interface_config(interface(own_tun_ipv4(), Ipv6Addr::LOCALHOST));
         state.upsert_resource(dynamic_pool(&[]), now);
+        resolve_dynamic_peer(&mut state);
         authorize_dynamic_peer(&mut state);
         assert_eq!(
             state.routing_tables.client_id_by_ip(peer_tun_ipv4().into()),
@@ -3160,6 +3190,7 @@ mod tests {
         let mut state = ClientState::for_test();
         state.update_interface_config(interface(own_tun_ipv4(), Ipv6Addr::LOCALHOST));
         state.upsert_resource(dynamic_pool(&[]), now);
+        resolve_dynamic_peer(&mut state);
         authorize_dynamic_peer(&mut state);
 
         state.remove_resource(dynamic_pool_id(), now);
@@ -3340,6 +3371,34 @@ mod tests {
         })
     }
 
+    // An app's DNS lookup of the peer's name, answered by the portal with its tunnel addresses.
+    fn resolve_dynamic_peer(state: &mut ClientState) {
+        let domain: DomainName = "peer.my.fz.internal".parse().unwrap();
+        let dns_server: SocketAddr = (Ipv4Addr::new(100, 100, 111, 1), 53).into();
+        let app: SocketAddr = (own_tun_ipv4(), 5353).into();
+
+        let response = state.handle_dns_query(
+            dns_types::Query::new(domain.clone(), dns_types::RecordType::A),
+            dns_server,
+            app,
+            dns::Upstream::Do53 { server: dns_server },
+            dns::Transport::Udp,
+            Instant::now(),
+        );
+        assert!(
+            response.is_none(),
+            "device pool names are resolved by the portal"
+        );
+
+        state.handle_device_pool_domain_resolved(
+            dynamic_pool_id(),
+            domain,
+            Ok((peer_tun_ipv4(), peer_tun_ipv6())),
+        );
+
+        while state.poll_packets().is_some() {}
+    }
+
     // What `handle_client_device_access_authorized` records for a dynamic pool peer,
     // minus the snownet connection, which needs a relay to have answered.
     fn authorize_dynamic_peer(state: &mut ClientState) {
@@ -3362,7 +3421,7 @@ mod tests {
                 },
                 IpConfig {
                     v4: peer_tun_ipv4(),
-                    v6: Ipv6Addr::new(0xfd00, 0x2021, 0x1111, 0, 0, 0, 0, 2),
+                    v6: peer_tun_ipv6(),
                 },
                 "peer".to_owned(),
             )
@@ -3385,7 +3444,7 @@ mod tests {
             devices: vec![crate::messages::client::DevicePoolMember {
                 id: peer_id(),
                 ipv4: Ipv4Network::from(peer_tun_ipv4()),
-                ipv6: Ipv6Network::from(Ipv6Addr::new(0xfd00, 0x2021, 0x1111, 0, 0, 0, 0, 2)),
+                ipv6: Ipv6Network::from(peer_tun_ipv6()),
             }],
             filters: vec![],
         })
@@ -3402,6 +3461,10 @@ mod tests {
 
     fn peer_tun_ipv4() -> Ipv4Addr {
         Ipv4Addr::new(100, 64, 0, 2)
+    }
+
+    fn peer_tun_ipv6() -> Ipv6Addr {
+        Ipv6Addr::new(0xfd00, 0x2021, 0x1111, 0, 0, 0, 0, 2)
     }
 
     fn peer_id() -> ClientId {
