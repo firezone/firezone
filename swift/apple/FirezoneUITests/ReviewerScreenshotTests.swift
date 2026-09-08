@@ -24,6 +24,11 @@
       let field = page.textFields.firstMatch
       XCTAssertTrue(field.waitForExistence(timeout: 60), "The account-slug form did not appear")
 
+      // The portal shows its desktop sidebar at a viewport width of 1024 pixels.
+      if page.frame.width < 1024 {
+        browser.windows.firstMatch.buttons[XCUIIdentifierFullScreenWindow].click()
+      }
+
       field.click()
       field.typeText("firezoneqa")
       let enteredSlug = XCTNSPredicateExpectation(
@@ -31,6 +36,7 @@
       XCTAssertEqual(XCTWaiter.wait(for: [enteredSlug], timeout: 10), .completed)
       field.typeKey(.tab, modifierFlags: [])
       XCTAssertEqual(field.value as? String, "firezoneqa")
+      XCTAssertGreaterThanOrEqual(page.frame.width, 1024)
       deliver(page, as: "reviewer-sign-in", in: .light)
     }
   }
