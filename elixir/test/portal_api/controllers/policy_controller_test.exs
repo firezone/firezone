@@ -333,6 +333,64 @@ defmodule PortalAPI.PolicyControllerTest do
              ]
     end
 
+    test "creates a policy with a client_attested condition", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      resource = resource_fixture(account: account)
+      group = group_fixture(account: account)
+
+      attrs = %{
+        "group_id" => group.id,
+        "resource_id" => resource.id,
+        "conditions" => [
+          %{"property" => "client_attested", "operator" => "is", "values" => ["true"]}
+        ]
+      }
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> post("/policies", policy: attrs)
+
+      assert resp = json_response(conn, 201)
+
+      assert resp["data"]["conditions"] == [
+               %{
+                 "property" => "client_attested",
+                 "operator" => "is",
+                 "values" => ["true"]
+               }
+             ]
+    end
+
+    test "rejects a client_attested condition with an unsupported operator", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      resource = resource_fixture(account: account)
+      group = group_fixture(account: account)
+
+      attrs = %{
+        "group_id" => group.id,
+        "resource_id" => resource.id,
+        "conditions" => [
+          %{"property" => "client_attested", "operator" => "is_in", "values" => ["true"]}
+        ]
+      }
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> post("/policies", policy: attrs)
+
+      assert json_response(conn, 422)
+    end
+
     test "creates a policy with auth_provider_id and time conditions", %{
       conn: conn,
       account: account,
@@ -810,6 +868,38 @@ defmodule PortalAPI.PolicyControllerTest do
       assert json_response(conn, 200)["data"]["conditions"] == [
                %{
                  "property" => "client_verified",
+                 "operator" => "is",
+                 "values" => ["true"]
+               }
+             ]
+    end
+
+    test "updates a policy to require an attested client", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      policy =
+        policy_with_conditions_fixture(%{
+          account: account,
+          conditions: [%{property: :client_verified, operator: :is, values: ["true"]}]
+        })
+
+      attrs = %{
+        "conditions" => [
+          %{"property" => "client_attested", "operator" => "is", "values" => ["true"]}
+        ]
+      }
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> put("/policies/#{policy.id}", policy: attrs)
+
+      assert json_response(conn, 200)["data"]["conditions"] == [
+               %{
+                 "property" => "client_attested",
                  "operator" => "is",
                  "values" => ["true"]
                }
