@@ -13,6 +13,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import dagger.hilt.android.AndroidEntryPoint
 import dev.firezone.android.R
+import dev.firezone.android.core.DebugOverrides
 import dev.firezone.android.core.Log
 import dev.firezone.android.features.auth.AUTH_CALLBACK_SCHEME
 import dev.firezone.android.tunnel.TunnelService
@@ -55,6 +56,12 @@ class AuthActivity : AppCompatActivity(R.layout.activity_auth) {
     }
 
     private fun launchAuthTab(url: String) {
+        if (DebugOverrides.skipPortalAuth) {
+            viewModel.processAuthCallback(fabricatedAuthCallback(url))
+
+            return
+        }
+
         try {
             AuthTabIntent
                 .Builder()

@@ -5,6 +5,7 @@ import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
+import dev.firezone.android.core.DebugOverrides
 import dev.firezone.android.tunnel.SessionFactory
 import dev.firezone.android.tunnel.TunnelService
 import dev.firezone.android.tunnel.TunnelSession
@@ -16,7 +17,7 @@ import uniffi.connlib.SessionInterface
 object TunnelModule {
     @Provides
     internal fun provideSessionFactory(): SessionFactory =
-        SessionFactory { config, tlsIdentity ->
+        DebugOverrides.sessionFactory ?: SessionFactory { config, tlsIdentity ->
             val session =
                 Session.newAndroid(
                     config = config,

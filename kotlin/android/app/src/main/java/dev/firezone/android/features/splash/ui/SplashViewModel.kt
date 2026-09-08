@@ -75,7 +75,7 @@ internal class SplashViewModel
             delay(REQUEST_DELAY)
 
             // If we don't have VPN permission, we can't continue.
-            if (!hasVpnPermissions(activity) && applicationMode != ApplicationMode.TESTING) {
+            if (!hasVpnPermissions(activity) && applicationMode == ApplicationMode.NORMAL) {
                 actionMutableStateFlow.value = ViewAction.NavigateToVpnPermission
                 return
             }
