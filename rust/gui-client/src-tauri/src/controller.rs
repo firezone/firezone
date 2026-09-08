@@ -854,16 +854,6 @@ impl<I: GuiIntegration> Controller<I> {
 
                 gui::ServerMsg::Ack
             }
-            gui::ClientMsg::SignIn => {
-                self.handle_request(ControllerRequest::SignIn).await?;
-
-                gui::ServerMsg::Ack
-            }
-            gui::ClientMsg::SignOut => {
-                self.handle_request(ControllerRequest::SignOut).await?;
-
-                gui::ServerMsg::Ack
-            }
         };
 
         Ok(reply)
@@ -1428,45 +1418,6 @@ mod tests {
         assert!(
             matches!(msg, service::ClientMsg::SetInternetResourceState(true)),
             "expected `SetInternetResourceState(true)` but got {msg:?}"
-        );
-    }
-
-    #[tokio::test]
-    async fn signs_in_over_gui_ipc() {
-        let _guard = logging::test("debug");
-        let mut test_controller = Controller::start_for_test();
-        let mut mock_tunnel = test_controller.tunnel_service_ipc_accept().await;
-        mock_tunnel.send_hello().await;
-
-        let response = test_controller
-            .gui_ipc_request(gui::ClientMsg::SignIn)
-            .await;
-
-        assert_eq!(response, gui::ServerMsg::Ack);
-        let auth_url = test_controller
-            .wait_integration(|i| i.opened_urls.first().cloned())
-            .await;
-        assert!(auth_url.contains("state="), "{auth_url}");
-    }
-
-    #[tokio::test]
-    async fn signs_out_over_gui_ipc() {
-        let _guard = logging::test("debug");
-        let mut test_controller = Controller::start_for_test();
-        let mut mock_tunnel = test_controller.tunnel_service_ipc_accept().await;
-        mock_tunnel.send_hello().await;
-        test_controller.sign_in().await;
-        mock_tunnel.start_ok().await;
-
-        let response = test_controller
-            .gui_ipc_request(gui::ClientMsg::SignOut)
-            .await;
-
-        assert_eq!(response, gui::ServerMsg::Ack);
-        let msg = mock_tunnel.next_msg().await;
-        assert!(
-            matches!(msg, service::ClientMsg::Disconnect),
-            "expected `Disconnect` but got {msg:?}"
         );
     }
 
