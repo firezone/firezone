@@ -1351,7 +1351,7 @@ defmodule PortalWeb.PoliciesTest do
 
       render_click(lv, "toggle_conditions_dropdown")
       html = render_click(lv, "add_condition", %{"type" => "device_attested"})
-      assert html =~ "Require attestation"
+      assert html =~ "Require Attestation"
     end
 
     test "saves device_attested condition to DB", %{conn: conn, account: account, actor: actor} do
@@ -1414,7 +1414,7 @@ defmodule PortalWeb.PoliciesTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/policies/#{policy.id}/edit")
 
-      assert html =~ "Require attestation"
+      assert html =~ "Require Attestation"
     end
   end
 
