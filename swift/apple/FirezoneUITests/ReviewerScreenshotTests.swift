@@ -11,8 +11,8 @@
   final class ReviewerScreenshotTests: XCTestCase {
     func testAccountSlug() throws {
       continueAfterFailure = false
-      guard #available(macOS 13.3, *) else {
-        throw XCTSkip("Opening Safari by URL requires macOS 13.3")
+      guard #available(macOS 26, *) else {
+        throw XCTSkip("The shared reviewer screenshot is captured on macOS 26")
       }
       let browser = XCUIApplication(bundleIdentifier: "com.apple.Safari")
       defer { browser.terminate() }
