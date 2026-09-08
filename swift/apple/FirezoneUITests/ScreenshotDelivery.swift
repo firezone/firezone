@@ -33,64 +33,108 @@ extension XCTestCase {
   }
 
   #if os(macOS)
-    /// The canvas the store preparation centres the screens on, so what shows
-    /// between the menus is already the right colour (`MAC_BACKGROUND` there).
-    private static let canvasColour = CGColor(
-      colorSpace: CGColorSpaceCreateDeviceRGB(),
-      components: [30.0 / 255.0, 30.0 / 255.0, 30.0 / 255.0, 1]
-    )!  // swiftlint:disable:this force_unwrapping
+    /// What the desktop is painted with: `screenshot-backdrop.png` is one pixel of
+    /// it, and the store canvas is padded with the same value (`MAC_BACKGROUND` in
+    /// prepare-store-screenshots.py), so a capture cropped by colour pads back out
+    /// without a seam.
+    private static let backdrop = 30
+    /// A channel this far from the backdrop was drawn by the app. The step below it
+    /// is the tail of a menu's shadow, which the margin keeps.
+    private static let backdropTolerance = 2
+    /// Kept around what the app drew, so the crop does not end wherever a shadow
+    /// happens to fade past the tolerance.
+    private static let desktopMargin: CGFloat = 32
 
-    /// Photographs what spans more than one element, a menu together with the
-    /// submenu it has open, as the screen region covering `frames`, with
-    /// everything outside them painted in the canvas colour.
+    /// Photographs the desktop: what the app has drawn on it, cropped to the pixels
+    /// that are not the backdrop, with the menu bar left out.
+    ///
+    /// A menu and the submenu it opens are two windows that no one element covers,
+    /// and the accessibility frames describing them report a menu's window on some
+    /// runs and its content rect on others, which moves a crop by the width of a
+    /// shadow. What the app drew does not move.
     @discardableResult
-    func deliver(
-      _ frames: [CGRect],
-      as name: String,
-      in appearance: Appearance
-    ) -> Data {
+    func deliverDesktop(as name: String, in appearance: Appearance) -> Data {
       deliver(as: name, in: appearance) {
-        let region = frames.reduce(CGRect.null) { $0.union($1) }
-        let scale = NSScreen.main?.backingScaleFactor ?? 1
-        let scaled = { (rect: CGRect) in
-          CGRect(
-            x: (rect.minX - region.minX) * scale, y: (rect.minY - region.minY) * scale,
-            width: rect.width * scale, height: rect.height * scale
-          )
-        }
-        let size = scaled(region).size
-
         guard
           let screen = XCUIScreen.main.screenshot().image
             .cgImage(forProposedRect: nil, context: nil, hints: nil),
-          let cropped = screen.cropping(
-            to: CGRect(
-              x: region.minX * scale, y: region.minY * scale,
-              width: size.width, height: size.height
-            )),
-          let context = CGContext(
-            data: nil, width: Int(size.width), height: Int(size.height),
-            bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(),
-            bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue
-          )
+          let region = Self.drawnRegion(of: screen),
+          let cropped = screen.cropping(to: region)
         else { return Data() }
 
-        let whole = CGRect(origin: .zero, size: size)
-        context.setFillColor(Self.canvasColour)
-        context.fill(whole)
-
-        // Core Graphics measures from the bottom, the accessibility frames from the top.
-        context.clip(
-          to: frames.map(scaled).map {
-            CGRect(x: $0.minX, y: size.height - $0.maxY, width: $0.width, height: $0.height)
-          })
-        context.draw(cropped, in: whole)
-
-        guard let image = context.makeImage() else { return Data() }
-
-        return NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:])
+        return NSBitmapImageRep(cgImage: cropped).representation(using: .png, properties: [:])
           ?? Data()
       }
+    }
+
+    /// The region of `screen` the app drew on, in the image's own coordinates.
+    ///
+    /// Only the desktop is searched: the menu bar carries a clock that no two
+    /// captures agree on, and the Dock is not the app's either.
+    private static func drawnRegion(of screen: CGImage) -> CGRect? {
+      let width = screen.width
+      let height = screen.height
+
+      guard
+        let desktop = NSScreen.main,
+        let context = CGContext(
+          data: nil, width: width, height: height, bitsPerComponent: 8,
+          bytesPerRow: width * 4, space: CGColorSpaceCreateDeviceRGB(),
+          bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue
+        )
+      else { return nil }
+
+      context.draw(screen, in: CGRect(x: 0, y: 0, width: width, height: height))
+
+      guard let pixels = context.data?.assumingMemoryBound(to: UInt8.self) else { return nil }
+
+      // Core Graphics drew the screen bottom up, which is how the screen measures
+      // itself as well, so the searched rows and the visible frame need no flipping
+      // between them. The bounds they produce are turned over further down.
+      let scale = CGFloat(height) / desktop.frame.height
+      let visible = desktop.visibleFrame
+      let margin = Int((desktopMargin * scale).rounded())
+      let firstRow = max(0, Int(visible.minY * scale))
+      let lastRow = min(height, Int(visible.maxY * scale))
+      let firstColumn = max(0, Int(visible.minX * scale))
+      let lastColumn = min(width, Int(visible.maxX * scale))
+
+      guard firstRow < lastRow, firstColumn < lastColumn else { return nil }
+
+      var left = width
+      var right = -1
+      var top = height
+      var bottom = -1
+
+      for row in firstRow..<lastRow {
+        for column in firstColumn..<lastColumn {
+          let pixel = (row * width + column) * 4
+          let furthest = max(
+            abs(Int(pixels[pixel]) - backdrop),
+            abs(Int(pixels[pixel + 1]) - backdrop),
+            abs(Int(pixels[pixel + 2]) - backdrop)
+          )
+
+          guard furthest >= backdropTolerance else { continue }
+
+          left = min(left, column)
+          right = max(right, column)
+          top = min(top, height - 1 - row)
+          bottom = max(bottom, height - 1 - row)
+        }
+      }
+
+      guard left <= right, top <= bottom else { return nil }
+
+      let x = max(firstColumn, left - margin)
+      let y = max(height - lastRow, top - margin)
+
+      return CGRect(
+        x: x,
+        y: y,
+        width: min(lastColumn - 1, right + margin) - x + 1,
+        height: min(height - firstRow - 1, bottom + margin) - y + 1
+      )
     }
   #endif
 

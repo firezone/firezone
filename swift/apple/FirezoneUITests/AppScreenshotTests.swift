@@ -133,9 +133,11 @@
         corner.withOffset(CGVector(dx: -20, dy: rowY)).hover()
         corner.withOffset(CGVector(dx: rowFrame.midX - menuFrame.minX, dy: rowY)).hover()
 
-        let submenu = try openSubmenu(of: app, beside: menu)
+        try waitForSubmenu(of: row)
 
-        capture([menuFrame, submenu.frame], as: "menu", in: appearance)
+        // The desktop holds the menu, its submenu and nothing else, so the capture
+        // takes what the app drew rather than the frames describing it.
+        record(deliverDesktop(as: "menu", in: appearance), as: "menu", in: appearance)
       }
     }
 
@@ -190,27 +192,22 @@
       return menu
     }
 
-    /// The submenu a hovered row has opened: the largest menu on screen besides `menu`.
+    /// Waits for the submenu the hovered `row` opens, by an item only it carries.
     ///
-    /// By frame rather than by index, because the tree also lists menus that are not
-    /// on screen, with an empty frame, and a ten-point stub in the screen's corner.
-    private func openSubmenu(of app: XCUIApplication, beside menu: XCUIElement) throws
-      -> XCUIElement
-    {
+    /// Hittable rather than present: a menu's items reach the accessibility tree
+    /// before it is ever shown, so existence cannot tell an open submenu from the
+    /// closed ones every other resource has.
+    private func waitForSubmenu(of row: XCUIElement) throws {
+      let item = row.menuItems["Copy address"].firstMatch
       let deadline = Date().addingTimeInterval(10)
 
       while Date() < deadline {
-        let others = app.menus.allElementsBoundByIndex
-          .filter { $0.frame.width > 50 && $0.frame != menu.frame }
-
-        if let submenu = others.max(by: { $0.frame.height < $1.frame.height }) {
-          return submenu
-        }
+        if item.exists, item.isHittable { return }
 
         Thread.sleep(forTimeInterval: 0.5)
       }
 
-      print("The submenu did not open; the app presents:\n\(app.debugDescription)")
+      print("The submenu did not open; the row presents:\n\(row.debugDescription)")
 
       throw AppScreenshotError.menuDidNotOpen
     }
@@ -233,12 +230,6 @@
       }
 
       record(deliver(window, as: name, in: appearance), as: name, in: appearance)
-    }
-
-    /// Photographs the region a screen covers when it is more than one element:
-    /// a menu together with the submenu it has open.
-    private func capture(_ frames: [CGRect], as name: String, in appearance: Appearance) {
-      record(deliver(frames, as: name, in: appearance), as: name, in: appearance)
     }
 
     private func record(_ image: Data, as name: String, in appearance: Appearance) {

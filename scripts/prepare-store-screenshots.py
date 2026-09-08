@@ -224,7 +224,8 @@ def prepare_macos(directory: Path) -> None:
 
             screen, appearance = path.stem.rsplit("-", 1)
             if screen == "menu":
-                # Two shapes on the canvas colour already (see ScreenshotDelivery.swift).
+                # The desktop, cropped to what the app drew on it (see
+                # ScreenshotDelivery.swift), so it is already the canvas colour.
                 write_rgb(path, centred(image))
                 continue
 
