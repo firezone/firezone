@@ -5,6 +5,7 @@
 //
 
 #if os(macOS)
+  import CoreGraphics
   import XCTest
 
   @MainActor
@@ -14,6 +15,17 @@
       guard #available(macOS 26, *) else {
         throw XCTSkip("The shared reviewer screenshot is captured on macOS 26")
       }
+      let display = CGMainDisplayID()
+      let originalMode = CGDisplayCopyDisplayMode(display)
+      defer { _ = CGDisplaySetDisplayMode(display, originalMode, nil) }
+      let modes = try XCTUnwrap(CGDisplayCopyAllDisplayModes(display, nil) as? [CGDisplayMode])
+      print("Available display modes: \(modes.map { "\($0.width)x\($0.height)" })")
+      let desktopMode = try XCTUnwrap(
+        modes.filter { $0.width >= 1440 && $0.height >= 900 }
+          .min { $0.width * $0.height < $1.width * $1.height },
+        "No desktop-sized display mode available")
+      XCTAssertEqual(CGDisplaySetDisplayMode(display, desktopMode, nil), .success)
+
       let browser = XCUIApplication(bundleIdentifier: "com.apple.Safari")
       defer { browser.terminate() }
 

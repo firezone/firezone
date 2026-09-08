@@ -1,5 +1,7 @@
 #!/usr/bin/env bats
 
+bats_require_minimum_version 1.5.0
+
 setup() {
     export ASC_PLATFORM=IOS VERSION_ID=ios-version
     export REVIEW_DIR="$BATS_TEST_TMPDIR/review"
@@ -38,13 +40,13 @@ asc() {
 @test "sync reviewer attachments without changing review details and skip identical reruns" {
     run bash "$BATS_TEST_DIRNAME/../../upload/apple-review.sh" "$REVIEW_DIR/sign-in.png"
     [ "$status" -eq 0 ]
-    ! grep -q details-update "$REVIEW_DIR/calls"
+    run ! grep -q details-update "$REVIEW_DIR/calls"
     jq -e '.data | length == 1' "$REVIEW_DIR/attachments.json"
 
     : > "$REVIEW_DIR/calls"
     run bash "$BATS_TEST_DIRNAME/../../upload/apple-review.sh" "$REVIEW_DIR/sign-in.png"
     [ "$status" -eq 0 ]
-    ! grep -Eq 'details-update|attachments-upload|attachments-delete' "$REVIEW_DIR/calls"
+    run ! grep -Eq 'details-update|attachments-upload|attachments-delete' "$REVIEW_DIR/calls"
 }
 
 @test "replace incomplete and obsolete CI attachments but preserve manual attachments" {
@@ -61,7 +63,7 @@ asc() {
 
     run bash "$BATS_TEST_DIRNAME/../../upload/apple-review.sh" "$REVIEW_DIR/sign-in.png"
     [ "$status" -ne 0 ]
-    ! grep -q attachments-delete "$REVIEW_DIR/calls"
+    run ! grep -q attachments-delete "$REVIEW_DIR/calls"
 }
 
 @test "missing screenshots fail before changing reviewer information" {
