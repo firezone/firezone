@@ -62,6 +62,21 @@ if (($machinePath -split ";") -notcontains "$installDir\cli") {
     exit 1
 }
 
+Write-Output '==> Checking `firezone --help` runs through the wrapper...'
+# The MSI edited the machine PATH after this process started, so pick it up.
+$env:Path = "$machinePath;" + [Environment]::GetEnvironmentVariable("Path", "User")
+$help = firezone --help | Out-String
+if ($LASTEXITCODE -ne 0) {
+    Write-Error "``firezone --help`` exited with ${LASTEXITCODE}: $help"
+    exit 1
+}
+# Matched case-insensitively, so this accepts `Firezone.exe` until the CLI
+# names itself `firezone` in its help output.
+if ($help -notmatch "Usage: firezone") {
+    Write-Error "``firezone --help`` printed no usage line: $help"
+    exit 1
+}
+
 Write-Output "==> Checking the tunnel service is running..."
 $null = sc.exe query FirezoneClientTunnelService | Select-String "RUNNING"
 if ($LASTEXITCODE -ne 0) {
