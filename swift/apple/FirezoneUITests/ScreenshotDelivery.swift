@@ -76,9 +76,9 @@ extension XCTestCase {
 
     /// The panels on a transparent ground, as far apart as their frames are.
     private static func composed(_ panels: [(CGImage, CGRect)], at scale: CGFloat) -> Data {
-      guard let bounds = panels.map(\.1).reduce(nil, { $0?.union($1) ?? $1 }) else {
-        return Data()
-      }
+      let bounds = panels.reduce(nil as CGRect?) { $0?.union($1.1) ?? $1.1 }
+
+      guard let bounds else { return Data() }
 
       let ground = bounds.scaled(by: scale)
 
