@@ -1,0 +1,22 @@
+[package]
+name = "firezone-cli"
+# mark:next-gui-version
+version = "1.5.18"
+description = "Command-line remote control for the Firezone GUI Client"
+edition = { workspace = true }
+authors = ["Firezone, Inc."]
+license = { workspace = true }
+
+[[bin]]
+name = "firezone"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = { workspace = true }
+clap = { workspace = true, features = ["derive"] }
+connlib-model = { workspace = true }
+gui-ipc = { workspace = true }
+tokio = { workspace = true, features = ["net", "rt", "time"] }
+
+[lints]
+workspace = true
