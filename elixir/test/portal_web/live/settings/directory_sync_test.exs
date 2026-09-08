@@ -33,7 +33,10 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
 
       assert html =~ "Waiting for Okta to verify"
       assert html =~ Portal.Okta.Webhooks.endpoint_url(directory.id)
+      assert html =~ "Authentication field"
       assert html =~ directory.webhook_secret
+      assert html =~ "Add user to application membership"
+      assert html =~ "application.user_membership.add"
 
       directory
       |> Ecto.Changeset.change(webhook_verified_at: DateTime.utc_now())

@@ -14,23 +14,23 @@ defmodule Portal.Okta.Webhooks do
   alias __MODULE__.Database
   require Logger
 
-  @events ~w[
-    user.lifecycle.create
-    user.lifecycle.activate
-    user.lifecycle.reactivate
-    user.lifecycle.suspend
-    user.lifecycle.unsuspend
-    user.lifecycle.deactivate
-    user.lifecycle.delete.initiated
-    user.account.update_profile
-    group.user_membership.add
-    group.user_membership.remove
-    group.profile.update
-    group.lifecycle.delete
-    group.application_assignment.add
-    group.application_assignment.remove
-    application.user_membership.add
-    application.user_membership.remove
+  @events [
+    {"user.lifecycle.create", "Create user"},
+    {"user.lifecycle.activate", "Activate user"},
+    {"user.lifecycle.reactivate", "Reactivate user"},
+    {"user.lifecycle.suspend", "Suspend user"},
+    {"user.lifecycle.unsuspend", "Unsuspend user"},
+    {"user.lifecycle.deactivate", "Deactivate user"},
+    {"user.lifecycle.delete.initiated", "Delete initiated for user"},
+    {"user.account.update_profile", "Update user profile"},
+    {"group.user_membership.add", "Add user to group"},
+    {"group.user_membership.remove", "Remove user from group"},
+    {"group.profile.update", "Update group profile"},
+    {"group.lifecycle.delete", "Delete group"},
+    {"group.application_assignment.add", "Assign app to group"},
+    {"group.application_assignment.remove", "Remove app from group"},
+    {"application.user_membership.add", "Add user to application membership"},
+    {"application.user_membership.remove", "Remove user's application membership"}
   ]
 
   # A user the directory does not know yet can only arrive through one of these.
@@ -50,7 +50,8 @@ defmodule Portal.Okta.Webhooks do
   @okta_id ~r/^[A-Za-z0-9_-]{1,64}$/
 
   @doc """
-  The event types the hook should subscribe to.
+  The events the hook should subscribe to, each with the name Okta's picker
+  shows for it.
   """
   def events, do: @events
 

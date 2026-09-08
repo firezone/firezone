@@ -879,7 +879,7 @@ defmodule PortalWeb.Settings.DirectorySync do
             <div class="flex-1 overflow-y-auto px-5 py-4">
               <p class="text-sm text-body">
                 Okta can send changes to Firezone as they happen. Without an event hook, changes
-                arrive with the daily sync. This page updates as soon as Okta verifies the hook.
+                arrive with the next full sync. This page updates as soon as Okta verifies the hook.
               </p>
               <div class="mt-4 p-4 border border-border bg-raised rounded">
                 <.okta_event_hook_details directory={@directory} />
@@ -1090,35 +1090,41 @@ defmodule PortalWeb.Settings.DirectorySync do
 
   defp okta_event_hook_details(assigns) do
     ~H"""
-    <ol class="mt-3 list-decimal list-inside space-y-1 text-xs text-body">
+    <ol class="mt-3 list-decimal list-inside space-y-3 text-xs text-body">
       <li>
         In the Okta Admin Console, go to <strong>Workflow → Event Hooks</strong>
         and click <strong>Create Event Hook</strong>.
       </li>
-      <li>Set the URL to the endpoint URL below.</li>
       <li>
-        Set the authentication field to <code>Authorization</code>
-        and the authentication secret to the value below.
+        <strong>Name:</strong> enter any name, for example <code>Firezone</code>.
       </li>
-      <li>Select the events below.</li>
+      <li>
+        <strong>URL:</strong> paste this endpoint.
+        <div class="mt-1 ml-5">
+          <.copy_value id="okta-hook-url" value={Okta.Webhooks.endpoint_url(@directory.id)} />
+        </div>
+      </li>
+      <li>
+        <strong>Authentication field:</strong> enter this header name.
+        <div class="mt-1 ml-5"><.copy_value id="okta-hook-header" value="Authorization" /></div>
+      </li>
+      <li>
+        <strong>Authentication secret:</strong> paste this value.
+        <div class="mt-1 ml-5">
+          <.copy_value id="okta-hook-secret" value={@directory.webhook_secret} />
+        </div>
+      </li>
+      <li><strong>Custom header fields:</strong> leave empty.</li>
+      <li>
+        <strong>Subscribe to events:</strong> search for each of these by name and add it.
+        <ol class="mt-1 ml-5 list-decimal list-inside space-y-0.5">
+          <li :for={{type, name} <- Okta.Webhooks.events()}>
+            {name} <code class="text-subtle">{type}</code>
+          </li>
+        </ol>
+      </li>
       <li>Click <strong>Save & Continue</strong>, then <strong>Verify</strong>.</li>
     </ol>
-    <dl class="mt-3 space-y-3 text-xs">
-      <div>
-        <dt class="font-medium text-body mb-1">Endpoint URL</dt>
-        <dd><.copy_value id="okta-hook-url" value={Okta.Webhooks.endpoint_url(@directory.id)} /></dd>
-      </div>
-      <div>
-        <dt class="font-medium text-body mb-1">Authentication secret</dt>
-        <dd><.copy_value id="okta-hook-secret" value={@directory.webhook_secret} /></dd>
-      </div>
-      <div>
-        <dt class="font-medium text-body mb-1">Events</dt>
-        <dd class="font-mono text-body break-all">
-          {Enum.join(Okta.Webhooks.events(), ", ")}
-        </dd>
-      </div>
-    </dl>
     """
   end
 
@@ -1156,7 +1162,7 @@ defmodule PortalWeb.Settings.DirectorySync do
   end
 
   defp receives("google") do
-    "Google sends user changes as they happen. Group changes come with the daily sync."
+    "Google sends user changes as they happen. Group changes come with the full sync."
   end
 
   defp receives("okta"), do: "Okta sends user and group changes as they happen."
