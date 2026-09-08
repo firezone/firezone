@@ -280,6 +280,7 @@ pub enum ClientMsg {
     CloseTrayMenu,
     ListResources,
     SetInternetResourceEnabled(bool),
+    Status,
 }
 
 /// IPC messages that the running instance sends back in reply to a [`ClientMsg`].
@@ -287,7 +288,16 @@ pub enum ClientMsg {
 pub enum ServerMsg {
     Ack,
     Resources(Vec<connlib_model::ResourceView>),
+    Status(StatusSummary),
     Error(String),
+}
+
+/// Summary of the running instance's state, as reported to the CLI.
+#[derive(Debug, PartialEq, serde::Deserialize, serde::Serialize)]
+pub struct StatusSummary {
+    pub signed_in: bool,
+    pub account_slug: Option<String>,
+    pub internet_resource_enabled: bool,
 }
 
 /// Sends one [`ClientMsg`] to the running instance and returns its reply.

@@ -193,25 +193,41 @@ fn try_main(cli: Cli, rt: &Runtime, log_guard: &mut Option<LogGuard>) -> Result<
 
             return Ok(());
         }
-        Some(Cmd::ListResources) => {
+        Some(Cmd::Status) => {
             let reply = rt
-                .block_on(gui::request(gui::ClientMsg::ListResources))
-                .context("Failed to list resources")?;
-            let gui::ServerMsg::Resources(resources) = reply else {
+                .block_on(gui::request(gui::ClientMsg::Status))
+                .context("Failed to query status")?;
+            let gui::ServerMsg::Status(status) = reply else {
                 bail!("Unexpected reply: {reply:?}");
             };
 
-            print_resources(&resources);
+            print_status(&status);
 
             return Ok(());
         }
-        Some(Cmd::EnableInternetResource) => {
+        Some(Cmd::Resources { command: None }) => {
+            list_resources(rt)?;
+
+            return Ok(());
+        }
+        Some(Cmd::Resources {
+            command: Some(ResourcesCmd::List),
+        }) => {
+            list_resources(rt)?;
+
+            return Ok(());
+        }
+        Some(Cmd::InternetResource {
+            command: InternetResourceCmd::Enable,
+        }) => {
             expect_ack(rt, gui::ClientMsg::SetInternetResourceEnabled(true))
                 .context("Failed to enable Internet Resource")?;
 
             return Ok(());
         }
-        Some(Cmd::DisableInternetResource) => {
+        Some(Cmd::InternetResource {
+            command: InternetResourceCmd::Disable,
+        }) => {
             expect_ack(rt, gui::ClientMsg::SetInternetResourceEnabled(false))
                 .context("Failed to disable Internet Resource")?;
 
@@ -407,12 +423,18 @@ impl Cli {
 #[derive(clap::Subcommand)]
 enum Cmd {
     OpenDeepLink(DeepLink),
-    /// Print the Resources of the running Firezone GUI.
-    ListResources,
-    /// Enable the Internet Resource in the running Firezone GUI.
-    EnableInternetResource,
-    /// Disable the Internet Resource in the running Firezone GUI.
-    DisableInternetResource,
+    /// Print the status of the running Firezone GUI.
+    Status,
+    /// Inspect the Resources of the running Firezone GUI.
+    Resources {
+        #[command(subcommand)]
+        command: Option<ResourcesCmd>,
+    },
+    /// Control the Internet Resource of the running Firezone GUI.
+    InternetResource {
+        #[command(subcommand)]
+        command: InternetResourceCmd,
+    },
     #[command(hide = true)]
     Elevated,
     #[command(hide = true)]
@@ -436,6 +458,21 @@ enum Cmd {
     OpenTrayMenu,
     #[command(hide = true)]
     CloseTrayMenu,
+}
+
+/// Omitting the subcommand is equivalent to [`ResourcesCmd::List`].
+#[derive(clap::Subcommand)]
+enum ResourcesCmd {
+    /// Print the Resources.
+    List,
+}
+
+#[derive(clap::Subcommand)]
+enum InternetResourceCmd {
+    /// Enable the Internet Resource.
+    Enable,
+    /// Disable the Internet Resource.
+    Disable,
 }
 
 #[derive(clap::Parser)]
@@ -488,12 +525,43 @@ async fn debug_single_instance() -> anyhow::Result<()> {
     Ok(())
 }
 
+fn list_resources(rt: &Runtime) -> Result<()> {
+    let reply = rt
+        .block_on(gui::request(gui::ClientMsg::ListResources))
+        .context("Failed to list resources")?;
+    let gui::ServerMsg::Resources(resources) = reply else {
+        bail!("Unexpected reply: {reply:?}");
+    };
+
+    print_resources(&resources);
+
+    Ok(())
+}
+
 fn expect_ack(rt: &Runtime, msg: gui::ClientMsg) -> Result<()> {
     let reply = rt.block_on(gui::request(msg))?;
 
     anyhow::ensure!(reply == gui::ServerMsg::Ack, "Unexpected reply: {reply:?}");
 
     Ok(())
+}
+
+#[allow(
+    clippy::print_stdout,
+    reason = "the whole point of this subcommand is to print the status to stdout"
+)]
+fn print_status(status: &gui::StatusSummary) {
+    let signed_in = if status.signed_in { "yes" } else { "no" };
+    let account = status.account_slug.as_deref().unwrap_or("unknown");
+    let internet_resource = if status.internet_resource_enabled {
+        "enabled"
+    } else {
+        "disabled"
+    };
+
+    println!("Signed in:         {signed_in}");
+    println!("Account:           {account}");
+    println!("Internet Resource: {internet_resource}");
 }
 
 #[allow(
