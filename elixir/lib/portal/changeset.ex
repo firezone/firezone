@@ -3,7 +3,6 @@ defmodule Portal.Changeset do
   This module extend `Ecto.Changeset`'s with custom validations and polymorphic embeds.
   """
   import Ecto.Changeset
-  import Bitwise
   alias Ecto.Changeset
 
   @special_use_ipv4_cidrs [
@@ -334,17 +333,13 @@ defmodule Portal.Changeset do
   end
 
   # IPv4-mapped IPv6 addresses (::ffff:w.x.y.z)
-  def private_ip?({0, 0, 0, 0, 0, 0xFFFF, w, x}), do: private_ip?(to_ipv4_tuple(w, x))
+  def private_ip?({0, 0, 0, 0, 0, 0xFFFF, _, _} = ip), do: private_ip?(Portal.Types.IP.unmap(ip))
   def private_ip?({_, _, _, _} = ip), do: private_ip_in_cidrs?(ip, @special_use_ipv4_cidrs)
 
   def private_ip?({_, _, _, _, _, _, _, _} = ip),
     do: private_ip_in_cidrs?(ip, @special_use_ipv6_cidrs)
 
   def private_ip?(_), do: false
-
-  defp to_ipv4_tuple(w, x) do
-    {w >>> 8, band(w, 0x00FF), x >>> 8, band(x, 0x00FF)}
-  end
 
   defp private_ip_in_cidrs?(ip, cidrs) do
     inet = %Postgrex.INET{address: ip}

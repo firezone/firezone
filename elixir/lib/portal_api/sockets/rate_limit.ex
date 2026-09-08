@@ -39,17 +39,10 @@ defmodule PortalAPI.Sockets.RateLimit do
   def retry_after_seconds, do: @retry_after_seconds
 
   defp build_key(connect_info, token) do
-    ip = extract_ip(connect_info)
+    ip = Portal.Sockets.remote_ip(connect_info)
     token_hash = hash_authorization(connect_info, token)
     "socket:#{ip_to_string(ip)}:#{token_hash}"
   end
-
-  defp extract_ip(%{x_headers: x_headers, peer_data: peer_data})
-       when is_list(x_headers) and x_headers != [] do
-    RemoteIp.from(x_headers, Portal.Endpoint.real_ip_opts()) || peer_data.address
-  end
-
-  defp extract_ip(%{peer_data: peer_data}), do: peer_data.address
 
   defp hash_authorization(_connect_info, token) when is_binary(token) do
     :crypto.hash(:sha256, token) |> Base.encode16(case: :lower) |> binary_part(0, 16)
