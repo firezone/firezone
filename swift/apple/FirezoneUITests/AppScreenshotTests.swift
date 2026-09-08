@@ -133,7 +133,7 @@
         corner.withOffset(CGVector(dx: -20, dy: rowY)).hover()
         corner.withOffset(CGVector(dx: rowFrame.midX - menuFrame.minX, dy: rowY)).hover()
 
-        let submenu = try openSubmenu(of: app, beside: menu)
+        let submenu = try openedSubmenu(of: row)
 
         capture([menuFrame, submenu.frame], as: "menu", in: appearance)
       }
@@ -190,27 +190,23 @@
       return menu
     }
 
-    /// The submenu a hovered row has opened: the largest menu on screen besides `menu`.
+    /// Waits for the submenu the hovered `row` opens, and hands it back.
     ///
-    /// By frame rather than by index, because the tree also lists menus that are not
-    /// on screen, with an empty frame, and a ten-point stub in the screen's corner.
-    private func openSubmenu(of app: XCUIApplication, beside menu: XCUIElement) throws
-      -> XCUIElement
-    {
+    /// The row's own, rather than the tallest menu that is not the menu: every resource
+    /// carries a submenu and they are all in the tree before any of them is shown, so
+    /// that handed back menus that were never on screen, whose frame the capture was
+    /// then cropped to. Hittable rather than present, for the same reason.
+    private func openedSubmenu(of row: XCUIElement) throws -> XCUIElement {
+      let item = row.menuItems["Copy address"].firstMatch
       let deadline = Date().addingTimeInterval(10)
 
       while Date() < deadline {
-        let others = app.menus.allElementsBoundByIndex
-          .filter { $0.frame.width > 50 && $0.frame != menu.frame }
-
-        if let submenu = others.max(by: { $0.frame.height < $1.frame.height }) {
-          return submenu
-        }
+        if item.exists, item.isHittable { return row.menus.firstMatch }
 
         Thread.sleep(forTimeInterval: 0.5)
       }
 
-      print("The submenu did not open; the app presents:\n\(app.debugDescription)")
+      print("The submenu did not open; the row presents:\n\(row.debugDescription)")
 
       throw AppScreenshotError.menuDidNotOpen
     }
