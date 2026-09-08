@@ -197,6 +197,25 @@ defmodule PortalAPI.Integrations.Okta.WebhookControllerTest do
       assert all_enqueued(worker: Okta.WebhookSync) == []
     end
 
+    test "logs a malformed event without its contents", %{conn: conn, directory: directory} do
+      malformed = %{
+        "eventType" => "user.lifecycle.create",
+        "target" => "not-a-list",
+        "actor" => %{"alternateId" => "ada@example.com", "displayName" => "Ada Lovelace"}
+      }
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          conn = post_events(conn, directory, [malformed])
+          assert response(conn, 204) == ""
+        end)
+
+      assert log =~ "Ignoring malformed Okta event"
+      assert log =~ "user.lifecycle.create"
+      refute log =~ "ada@example.com"
+      refute log =~ "Ada Lovelace"
+    end
+
     test "refuses a delivery with the wrong secret", %{conn: conn, directory: directory} do
       conn =
         post_events(conn, directory, [event("application.user_membership.add", [user("user-1")])],

@@ -150,11 +150,14 @@ defmodule Portal.Okta.Webhooks do
   defp parse_event(directory, event) do
     Logger.info("Ignoring malformed Okta event",
       okta_directory_id: directory.id,
-      event: inspect(event)
+      event_type: event_type(event)
     )
 
     []
   end
+
+  defp event_type(%{"eventType" => type}) when is_binary(type), do: type
+  defp event_type(_event), do: nil
 
   defp target_ids(targets, type) do
     for %{"type" => ^type, "id" => id} <- targets, is_binary(id), Regex.match?(@okta_id, id), do: id
