@@ -547,8 +547,8 @@ defmodule Portal.Google.APIClient do
   Fetches multiple users by Google user ID using the Google API Batch endpoint.
 
   Chunks `user_ids` into groups of #{@batch_size} and issues one multipart HTTP POST
-  per chunk. Users that return 404 (deleted from Google Workspace) are silently
-  skipped. Returns `{:ok, [user_map]}` or `{:error, reason}` on transport/HTTP failure.
+  per chunk. Users that return 404 or 412 (deleted from Google Workspace) are
+  silently skipped. Returns `{:ok, [user_map]}` or `{:error, reason}` on transport/HTTP failure.
   """
   @spec batch_get_users(String.t(), [String.t()]) :: {:ok, [map()]} | {:error, term()}
   def batch_get_users(_access_token, []), do: {:ok, []}
@@ -683,9 +683,9 @@ defmodule Portal.Google.APIClient do
     #   HTTP/1.1 200 OK\r\n<response headers>\r\n\r\n<JSON body>
     with [_outer_headers, nested] <- String.split(part, "\r\n\r\n", parts: 2),
          [status_and_headers, json_body] <- String.split(nested, "\r\n\r\n", parts: 2),
-         status when status in [200, 403, 404] <- extract_http_status(status_and_headers) do
+         status when status in [200, 403, 404, 412] <- extract_http_status(status_and_headers) do
       case status do
-        404 ->
+        status when status in [404, 412] ->
           {:ok, []}
 
         403 ->
@@ -695,7 +695,7 @@ defmodule Portal.Google.APIClient do
           decode_json_user(json_body)
       end
     else
-      status when is_integer(status) and status not in [200, 403, 404] ->
+      status when is_integer(status) and status not in [200, 403, 404, 412] ->
         log_batch_parse_issue("Failing batch users response part with unexpected status",
           status: status
         )
