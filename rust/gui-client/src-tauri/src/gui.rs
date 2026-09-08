@@ -6,7 +6,6 @@
 use crate::{
     controller::{Controller, ControllerRequest, Failure, GuiIntegration},
     deep_link,
-    ipc::{self, ClientRead, ClientWrite, SocketId},
     launch_lock::{self, FirstInstance, LaunchLock},
     logging::FileCount,
     settings::{
@@ -20,6 +19,7 @@ use crate::{
     },
 };
 use anyhow::{Context, ErrorExt as _, Result, bail};
+use client_ipc::{self as ipc, ClientRead, ClientWrite, SocketId};
 use futures::SinkExt as _;
 use logging::err_with_src;
 use std::time::Duration;

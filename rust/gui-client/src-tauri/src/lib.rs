@@ -19,7 +19,6 @@ pub mod deep_link;
 pub mod dialog;
 pub mod elevation;
 pub mod gui;
-pub mod ipc;
 pub mod launch_lock;
 pub mod logging;
 #[cfg(debug_assertions)]

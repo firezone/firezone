@@ -33,7 +33,7 @@ use windows_security::pipe_dacl::{FileRights, PipeDacl, Trustee};
 /// - ACEs: Full Access for `LocalSystem` (the account the service
 ///   runs as); read/write for any process carrying the Firezone
 ///   package's `WIN://SYSAPPID` identity attribute (a conditional
-///   ACE keyed on [`crate::PACKAGE_FAMILY_NAME`]). No
+///   ACE keyed on [`windows_package_identity::PACKAGE_FAMILY_NAME`]). No
 ///   `BUILTIN\Administrators` grant: only the package-identity'd GUI
 ///   should drive the tunnel, not arbitrary elevated processes.
 ///
@@ -54,7 +54,10 @@ fn tunnel_pipe_dacl() -> PipeDacl {
     PipeDacl::new()
         .owner(Trustee::local_system())
         .allow(FileRights::FullAccess, Trustee::local_system())
-        .allow_packaged(FileRights::ReadWrite, crate::PACKAGE_FAMILY_NAME)
+        .allow_packaged(
+            FileRights::ReadWrite,
+            windows_package_identity::PACKAGE_FAMILY_NAME,
+        )
 }
 
 /// Security descriptor for the GUI pipe.
@@ -66,7 +69,10 @@ fn tunnel_pipe_dacl() -> PipeDacl {
 fn gui_pipe_dacl() -> PipeDacl {
     PipeDacl::new()
         .allow(FileRights::FullAccess, Trustee::local_system())
-        .allow_packaged(FileRights::ReadWrite, crate::PACKAGE_FAMILY_NAME)
+        .allow_packaged(
+            FileRights::ReadWrite,
+            windows_package_identity::PACKAGE_FAMILY_NAME,
+        )
 }
 
 /// Relaxed DACL for test contexts (gui-smoke-test, `SocketId::Test`
@@ -76,7 +82,7 @@ fn gui_pipe_dacl() -> PipeDacl {
 /// either pipe would fail with `ERROR_ACCESS_DENIED`. Grant
 /// `BUILTIN\Users` instead so the test process can act as both server
 /// and client.
-#[cfg(any(debug_assertions, test))]
+#[cfg(any(debug_assertions, test, feature = "test"))]
 fn test_pipe_dacl() -> PipeDacl {
     PipeDacl::new()
         .allow(FileRights::FullAccess, Trustee::local_system())
@@ -106,7 +112,7 @@ pub struct Server {
 pub type ClientStream = named_pipe::NamedPipeClient;
 
 /// Alias for the server's half of a platform-specific IPC stream
-pub(crate) type ServerStream = named_pipe::NamedPipeServer;
+pub type ServerStream = named_pipe::NamedPipeServer;
 
 /// Connect to an IPC socket.
 ///
@@ -132,7 +138,7 @@ pub(crate) async fn connect_to_socket(id: SocketId) -> Result<ClientStream> {
 
 fn enforce_pipe_ownership(id: SocketId, handle: HANDLE) -> Result<()> {
     match id {
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test"))]
         SocketId::Test(_) => Ok(()),
         #[cfg(debug_assertions)]
         SocketId::Tunnel if SKIP_PEER_VERIFICATION.load(Ordering::Relaxed) => Ok(()),
@@ -151,7 +157,7 @@ fn enforce_pipe_ownership(id: SocketId, handle: HANDLE) -> Result<()> {
 impl Server {
     /// Platform-specific setup
     #[expect(clippy::unnecessary_wraps, reason = "Linux impl is fallible")]
-    pub(crate) fn new(id: SocketId) -> Result<Self> {
+    pub fn new(id: SocketId) -> Result<Self> {
         let pipe_path = ipc_path(id);
         let dacl = match id {
             // `gui-smoke-test` runs debug GUI / Tunnel binaries that
@@ -165,7 +171,7 @@ impl Server {
             }
             SocketId::Tunnel => tunnel_pipe_dacl(),
             SocketId::Gui => gui_pipe_dacl(),
-            #[cfg(test)]
+            #[cfg(any(test, feature = "test"))]
             SocketId::Test(_) => test_pipe_dacl(),
         };
         Ok(Self {
@@ -176,7 +182,7 @@ impl Server {
     }
 
     // `&mut self` needed to match the Linux signature
-    pub(crate) async fn next_client(&mut self) -> Result<(ServerStream, u32)> {
+    pub async fn next_client(&mut self) -> Result<(ServerStream, u32)> {
         // Fixes #5143. In the Tunnel service, if we close the pipe and immediately re-open
         // it, Tokio may not get a chance to clean up the pipe. Yielding seems to fix
         // this in tests, but `yield_now` doesn't make any such guarantees, so
@@ -272,12 +278,16 @@ fn create_pipe_server(
     }
 }
 
+/// Bundle ID / App ID the Client uses to distinguish itself from other
+/// programs on the system. Must match `firezone_gui_client::BUNDLE_ID`.
+const BUNDLE_ID: &str = "dev.firezone.client";
+
 fn ipc_path(id: SocketId) -> String {
     let name = match id {
-        SocketId::Tunnel => format!("{}_tunnel.ipc", crate::BUNDLE_ID),
-        SocketId::Gui => format!("{}_gui.ipc", crate::BUNDLE_ID),
-        #[cfg(test)]
-        SocketId::Test(id) => format!("{}_test_{id}.ipc", crate::BUNDLE_ID),
+        SocketId::Tunnel => format!("{BUNDLE_ID}_tunnel.ipc"),
+        SocketId::Gui => format!("{BUNDLE_ID}_gui.ipc"),
+        #[cfg(any(test, feature = "test"))]
+        SocketId::Test(id) => format!("{BUNDLE_ID}_test_{id}.ipc"),
     };
     named_pipe_path(&name)
 }
@@ -435,8 +445,7 @@ mod tests {
             Ok::<_, anyhow::Error>(())
         });
 
-        let (_rx, _tx) =
-            crate::ipc::connect::<(), ()>(ID, crate::ipc::ConnectOptions::default()).await?;
+        let (_rx, _tx) = crate::connect::<(), ()>(ID, crate::ConnectOptions::default()).await?;
 
         match super::create_pipe_server(&pipe_path, &super::gui_pipe_dacl()) {
             Err(super::PipeError::AccessDenied) => {}

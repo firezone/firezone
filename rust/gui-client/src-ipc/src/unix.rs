@@ -50,7 +50,7 @@ pub type ClientStream = UnixStream;
 /// Alias for the server's half of a platform-specific IPC stream
 ///
 /// On Windows `ClientStream` and `ServerStream` differ
-pub(crate) type ServerStream = UnixStream;
+pub type ServerStream = UnixStream;
 
 /// Connect to the Tunnel service
 #[expect(clippy::wildcard_enum_match_arm)]
@@ -77,7 +77,7 @@ pub async fn connect_to_socket(id: SocketId) -> Result<ClientStream> {
 
 impl Server {
     /// Platform-specific setup
-    pub(crate) fn new(id: SocketId) -> Result<Self> {
+    pub fn new(id: SocketId) -> Result<Self> {
         let sock_path = ipc_path(id)?;
 
         tracing::debug!(socket = %sock_path.display(), "Creating new IPC server");
@@ -102,7 +102,7 @@ impl Server {
         }
 
         let allowed_peer = cfg_select! {
-            all(target_os = "linux", test) => peer_check::AllowedPeer::for_current_exe(),
+            all(target_os = "linux", any(test, feature = "test")) => peer_check::AllowedPeer::for_current_exe(),
             target_os = "linux" => peer_check::AllowedPeer::firezone_gui_client(),
             target_os = "macos" => peer_check::AllowedPeer::stub(),
         };
@@ -114,7 +114,7 @@ impl Server {
         })
     }
 
-    pub(crate) async fn next_client(&mut self) -> Result<(ServerStream, u32)> {
+    pub async fn next_client(&mut self) -> Result<(ServerStream, u32)> {
         loop {
             let (stream, _) = self.listener.accept().await?;
             let cred = stream.peer_cred()?;
@@ -174,7 +174,7 @@ fn ipc_path(id: SocketId) -> Result<PathBuf> {
         SocketId::Gui => known_dirs::user_runtime()
             .context("Failed to get user runtime directory")?
             .join("gui.sock"),
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test"))]
         SocketId::Test(id) => known_dirs::user_runtime()
             .context("Failed to get user runtime directory")?
             .join(format!("ipc_test_{id}.sock")),

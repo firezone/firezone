@@ -1,0 +1,49 @@
+[package]
+name = "client-ipc"
+version = "0.1.0"
+edition = { workspace = true }
+description = "Bi-directional, cross-platform JSON IPC framework for the Firezone Client."
+license = { workspace = true }
+
+[features]
+test = [] # APIs only exposed for testing.
+
+[dependencies]
+anyhow = { workspace = true }
+known-dirs = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["io-util", "net", "time"] }
+tokio-util = { workspace = true, features = ["codec"] }
+tracing = { workspace = true }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+libc = { workspace = true }
+sd-notify = { workspace = true }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+windows-package-identity = { workspace = true }
+windows-security = { workspace = true }
+
+[target.'cfg(target_os = "windows")'.dependencies.windows]
+workspace = true
+features = [
+    "Win32_Foundation",
+    # `SECURITY_ATTRIBUTES`, `IsWellKnownSid` for the pipe
+    "Win32_Security",
+    # `GetSecurityInfo` for the pipe-owner SID check
+    "Win32_Security_Authorization",
+    "Win32_System_Pipes",
+    "Win32_System_Threading",
+    # `ProcessIdToSessionId` for the GUI-pipe cross-session check.
+    "Win32_System_RemoteDesktop",
+]
+
+[dev-dependencies]
+futures = { workspace = true }
+logging = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+
+[lints]
+workspace = true
