@@ -72,6 +72,11 @@ fzLib.buildRustPackage (
       # wrapGAppsHook3 turns bin/firezone-client-gui into a shell wrapper, so
       # /proc/<pid>/exe of the running GUI resolves to the `.…-wrapped` ELF.
       FIREZONE_GUI_PEER_EXE = "${placeholder "out"}/bin/.firezone-client-gui-wrapped";
+
+      # The GUI only accepts CLI connections from this exact executable path.
+      # `dontWrapGApps` below leaves bin/firezone unwrapped, so the CLI's
+      # /proc/<pid>/exe is the installed ELF itself.
+      FIREZONE_CLI_PEER_EXE = "${placeholder "out"}/bin/firezone";
     };
 
     postPatch = ''
@@ -85,7 +90,16 @@ fzLib.buildRustPackage (
       # cargo target directory.
       substituteInPlace gui-client/src-tauri/tauri.conf.json \
         --replace-fail '../../target/release/firezone-client-tunnel' \
-          '../../target/${stdenv.hostPlatform.rust.rustcTarget}/release/firezone-client-tunnel'
+          '../../target/${stdenv.hostPlatform.rust.rustcTarget}/release/firezone-client-tunnel' \
+        --replace-fail '"../../target/release/firezone"' \
+          '"../../target/${stdenv.hostPlatform.rust.rustcTarget}/release/firezone"'
+    '';
+
+    # The `firezone` CLI is a workspace member of its own, so the Tauri hook's
+    # single `cargo tauri build` never compiles it, yet the deb bundle it
+    # installs from expects the binary to be there.
+    preBuild = ''
+      cargo build --release --offline -j $NIX_BUILD_CORES -p firezone-cli
     '';
 
     # wrapGAppsHook3 wraps every executable in $out/bin, which would stamp the
