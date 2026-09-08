@@ -26,6 +26,7 @@ env:
   ASC_KEY_TYPE: team
   ASC_STRICT_AUTH: "1"
   ASC_TELEMETRY_DISABLED: "1"
+  REVIEWER_SCREENSHOT: screenshots/macos/26/reviewer-sign-in-light.png
   # mark:next-apple-version
   RELEASE_NAME: apple-client-1.5.20
 
@@ -96,9 +97,6 @@ jobs:
           git restore --source="$GITHUB_SHA" --worktree -- \
             swift/apple/app-store/screenshots-ios.txt \
             swift/apple/app-store/screenshots-macos.txt \
-            swift/apple/app-store/review.json \
-            swift/apple/app-store/review-notes-ios.txt \
-            swift/apple/app-store/review-notes-macos.txt \
             scripts/upload/apple-review.sh
           if [[ ! -f scripts/upload/apple-version.sh ]]; then
             echo "This draft predates the submission workflow. Run Swift from main and QA the new draft first." >&2
@@ -262,7 +260,7 @@ jobs:
             echo "phase=$version_phase"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Update reviewer notes and attachments
+      - name: Update reviewer attachments
         if: steps.build.outputs.phase == 'editable'
         working-directory: swift/apple
         env:
@@ -270,7 +268,7 @@ jobs:
           ASC_ISSUER_ID: ${{ secrets.APPLE_APP_STORE_CONNECT_ISSUER_ID }}
           ASC_PRIVATE_KEY: ${{ secrets.APPLE_APP_STORE_CONNECT_APP_MANAGER_API_KEY }}
           VERSION_ID: ${{ steps.build.outputs.version_id }}
-        run: bash ../../scripts/upload/apple-review.sh app-store/review.json
+        run: bash ../../scripts/upload/apple-review.sh "$REVIEWER_SCREENSHOT"
 
       # App info is shared across platforms, so its review state need not match
       # this version's state as `asc validate` expects.
@@ -324,12 +322,7 @@ jobs:
             done < "$RUNNER_TEMP/app-store-screenshots.txt"
             echo
             echo "### App Review"
-            review=$(jq -er --arg platform "$ASC_PLATFORM" '.[$platform]' swift/apple/app-store/review.json)
-            notes=$(jq -r '.notes' <<< "$review")
-            echo "- [Reviewer notes](https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_SHA}/swift/apple/app-store/${notes})"
-            while IFS= read -r attachment; do
-              echo "- [Reviewer attachment](https://github.com/${GITHUB_REPOSITORY}/blob/${SOURCE_SHA}/swift/apple/app-store/${attachment})"
-            done < <(jq -r '.attachments[]' <<< "$review")
+            echo "- [Reviewer attachment](https://github.com/${GITHUB_REPOSITORY}/blob/${SOURCE_SHA}/swift/apple/${REVIEWER_SCREENSHOT})"
           } >> "$GITHUB_STEP_SUMMARY"
 
   review:
