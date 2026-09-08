@@ -127,6 +127,22 @@ defmodule PortalAPI.Client.SocketTest do
       assert connect(Socket, attrs, connect_info: connect_info) == {:error, :invalid_token}
     end
 
+    test "stores an IPv4-mapped IPv6 peer address as IPv4" do
+      token = client_token_fixture()
+      encoded_token = encode_token(token)
+      {a, b, c, d} = @client_remote_ip
+      mapped_ip = {0, 0, 0, 0, 0, 0xFFFF, a * 256 + b, c * 256 + d}
+
+      attrs = connect_attrs(token: encoded_token)
+      connect_info = build_connect_info(ip: mapped_ip, token: encoded_token)
+
+      assert {:ok, socket} = connect(Socket, attrs, connect_info: connect_info)
+      assert client = Map.fetch!(socket.assigns, :client)
+
+      assert client.last_seen_remote_ip == @client_remote_ip
+      assert client.last_seen_remote_ip_location_city == "Kyiv"
+    end
+
     test "creates a new client for user identity" do
       token = client_token_fixture()
       encoded_token = encode_token(token)
