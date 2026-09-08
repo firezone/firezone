@@ -3,6 +3,7 @@ members = [
     "client-ffi",
     "gateway",
     "gui-client/src-admx-macro",
+    "gui-client/src-ipc",
     "gui-client/src-package-identity",
     "gui-client/src-tauri",
     "headless-client",
@@ -94,6 +95,7 @@ bytes = { version = "1.11.1", default-features = false }
 caps = "0.5.6"
 chrono = { version = "0.4.45", default-features = false, features = ["std", "clock", "oldtime", "serde"] }
 clap = "4.6.1"
+client-ipc = { path = "gui-client/src-ipc" }
 client-shared = { path = "libs/client-shared" }
 clock = { path = "libs/clock" }
 connlib-model = { path = "libs/connlib/model" }

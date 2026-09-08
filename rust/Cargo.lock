@@ -1343,6 +1343,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "client-ipc"
+version = "0.1.0"
+dependencies = [
+ "anyhow-ext",
+ "futures",
+ "known-dirs",
+ "libc",
+ "logging",
+ "sd-notify",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "windows",
+ "windows-package-identity",
+ "windows-security",
+]
+
+[[package]]
 name = "client-shared"
 version = "0.1.0"
 dependencies = [
@@ -2513,6 +2534,7 @@ dependencies = [
  "bin-shared",
  "chrono",
  "clap",
+ "client-ipc",
  "client-shared",
  "connlib-model",
  "dbus-secret-service-keyring-store",

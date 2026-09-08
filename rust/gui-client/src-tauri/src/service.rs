@@ -1,5 +1,4 @@
 use crate::{
-    ipc::{self, SocketId},
     logging,
     settings::{
         AdvancedSettings, MdmSettings, load_advanced_settings, load_mdm_settings, save_advanced,
@@ -14,6 +13,7 @@ use bin_shared::{
     platform::{UdpSocketFactory, tcp_socket_factory},
     signals,
 };
+use client_ipc::{self as ipc, SocketId};
 use client_shared::ConnectedAs;
 use connlib_model::{ResourceId, ResourceList};
 use futures::{
@@ -1010,9 +1010,9 @@ pub fn run_interactive(dns_control: DnsControlMethod, skip_peer_verification: bo
 /// This makes the timing neater in case the GUI starts up slowly.
 #[cfg(debug_assertions)]
 pub fn run_smoke_test() -> Result<()> {
-    use crate::ipc::{self, SocketId};
     use anyhow::{Context as _, bail};
     use bin_shared::{DnsController, device_id};
+    use client_ipc::{self as ipc, SocketId};
 
     // The smoke test runs this binary as an unprivileged subprocess of the
     // test runner — not as a Windows service under LocalSystem. Tell the IPC

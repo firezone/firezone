@@ -18,7 +18,7 @@ impl AllowedPeer {
     /// `FIREZONE_GUI_PEER_EXE` overrides the path at compile time for
     /// packaging schemes that don't install to `/usr/bin` (e.g. NixOS,
     /// where the GUI binary lives in the Nix store).
-    #[cfg(not(test))]
+    #[cfg(not(any(test, feature = "test")))]
     pub fn firezone_gui_client() -> Self {
         Self {
             exe: PathBuf::from(
@@ -29,7 +29,7 @@ impl AllowedPeer {
 
     /// Allowlist the currently-running test binary so the controller tests
     /// can connect to themselves.
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test"))]
     pub fn for_current_exe() -> Self {
         // Use the raw `/proc/self/exe` target (no canonicalisation) so it
         // matches what `verify` reads for the peer.

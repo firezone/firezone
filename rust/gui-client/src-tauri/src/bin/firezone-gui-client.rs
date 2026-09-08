@@ -94,7 +94,7 @@ fn attach_parent_console() {
 fn try_main(cli: Cli, rt: &Runtime, log_guard: &mut Option<LogGuard>) -> Result<()> {
     #[cfg(debug_assertions)]
     if cli.skip_peer_verification {
-        firezone_gui_client::ipc::skip_peer_verification();
+        client_ipc::skip_peer_verification();
     }
 
     #[cfg(debug_assertions)]
@@ -284,7 +284,7 @@ fn try_main(cli: Cli, rt: &Runtime, log_guard: &mut Option<LogGuard>) -> Result<
                 return Err(anyhow);
             }
 
-            if anyhow.any_is::<firezone_gui_client::ipc::WrongUser>() {
+            if anyhow.any_is::<client_ipc::WrongUser>() {
                 dialog::error(
                     "Firezone is already running in another logon session. \
                      Sign out of that session first, then try again.",
@@ -299,7 +299,7 @@ fn try_main(cli: Cli, rt: &Runtime, log_guard: &mut Option<LogGuard>) -> Result<
                 return Err(anyhow);
             }
 
-            if anyhow.any_is::<firezone_gui_client::ipc::NotFound>() {
+            if anyhow.any_is::<client_ipc::NotFound>() {
                 dialog::error("Couldn't find Firezone Tunnel service. Is the service running?")?;
                 return Err(anyhow);
             }

@@ -1,7 +1,6 @@
 use crate::{
     auth, deep_link, dialog,
     gui::{self, system_tray},
-    ipc::{self, SocketId},
     logging::{self, FileCount},
     service,
     settings::{AdvancedSettings, GeneralSettings, MdmSettings},
@@ -9,6 +8,7 @@ use crate::{
     view::{GeneralSettingsForm, SessionViewModel},
 };
 use anyhow::{Context, ErrorExt as _, Result, anyhow, bail};
+use client_ipc::{self as ipc, SocketId};
 use client_shared::ConnectedAs;
 use connlib_model::{ResourceId, ResourceList, ResourceView, Site};
 use futures::{
@@ -203,8 +203,7 @@ impl<I: GuiIntegration> Controller<I> {
     ) -> Result<()> {
         tracing::debug!("Starting new instance of `Controller`");
 
-        let (mut ipc_rx, mut ipc_client) =
-            ipc::connect(socket, ipc::ConnectOptions::default()).await?;
+        let (mut ipc_rx, mut ipc_client) = connect_to_tunnel_service(socket).await?;
 
         let (firezone_id, advanced_settings, mdm_settings, x509) = receive_hello(&mut ipc_rx)
             .await
@@ -1132,6 +1131,25 @@ impl<I: GuiIntegration> Controller<I> {
             .connect_on_start
             .or(self.general_settings.connect_on_start)
     }
+}
+
+/// Connects to the Tunnel service.
+///
+/// When the GUI is launched with `--mock-tunnel`, this hands back an in-memory
+/// channel served by an in-process mock instead of connecting to the real
+/// (root-only) Tunnel service. Debug builds only.
+async fn connect_to_tunnel_service(
+    socket: SocketId,
+) -> Result<(
+    ipc::ClientRead<service::ServerMsg>,
+    ipc::ClientWrite<service::ClientMsg>,
+)> {
+    #[cfg(debug_assertions)]
+    if socket == SocketId::Tunnel && crate::mock_tunnel::enabled() {
+        return Ok(ipc::framed(crate::mock_tunnel::spawn()));
+    }
+
+    ipc::connect(socket, ipc::ConnectOptions::default()).await
 }
 
 async fn receive_hello(
