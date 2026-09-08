@@ -10,6 +10,9 @@ import XCTest
 final class ReviewerScreenshotTests: XCTestCase {
   func testAccountSlug() throws {
     continueAfterFailure = false
+    guard #available(iOS 16.4, macOS 13.3, *) else {
+      throw XCTSkip("Opening Safari by URL requires iOS 16.4 or macOS 13.3")
+    }
     #if os(iOS)
       try XCTSkipIf(ProcessInfo.processInfo.environment["SCREENSHOT_APPEARANCE"] != "light")
       let browser = XCUIApplication(bundleIdentifier: "com.apple.mobilesafari")
@@ -26,7 +29,8 @@ final class ReviewerScreenshotTests: XCTestCase {
     XCTAssertTrue(field.waitForExistence(timeout: 60), "The account-slug form did not appear")
 
     let heading = page.staticTexts.containing(
-      NSPredicate(format: "label CONTAINS[c] %@ OR label CONTAINS[c] %@", "account slug", "Account ID")
+      NSPredicate(
+        format: "label CONTAINS[c] %@ OR label CONTAINS[c] %@", "account slug", "Account ID")
     ).firstMatch
     #if os(iOS)
       field.tap()
