@@ -39,8 +39,30 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
       assert html =~ "User assigned to app"
       assert html =~ "Okta profile updated"
       assert html =~ "application.user_membership.add"
+      assert html =~ "Choose a way to set up the event hook."
+      assert html =~ "Okta Admin Console"
+      assert html =~ "cURL"
+      assert html =~ "Terraform"
+      refute html =~ "https://#{directory.okta_domain}/api/v1/eventHooks"
+
+      html =
+        lv
+        |> element("button[phx-click='okta_setup_tab'][phx-value-tab='curl']")
+        |> render_click()
+
       assert html =~ "https://#{directory.okta_domain}/api/v1/eventHooks"
       assert html =~ "SSWS"
+      refute html =~ "Authentication field"
+
+      html =
+        lv
+        |> element("button[phx-click='okta_setup_tab'][phx-value-tab='terraform']")
+        |> render_click()
+
+      assert has_element?(lv, "#okta-hook-terraform")
+      assert html =~ "okta_event_hook"
+      assert html =~ "okta_event_hook_verification"
+      assert html =~ Portal.Okta.Webhooks.endpoint_url(directory.id)
 
       directory
       |> Ecto.Changeset.change(webhook_verified_at: DateTime.utc_now())

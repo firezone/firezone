@@ -136,6 +136,7 @@ defmodule PortalWeb.Settings.DirectorySync do
        form: to_form(changeset),
        public_jwk: public_jwk,
        is_legacy: is_legacy,
+       okta_setup_tab: "ui",
        open_directory_actions_id: nil
      )}
   end
@@ -146,7 +147,12 @@ defmodule PortalWeb.Settings.DirectorySync do
     {:noreply,
      socket
      |> clear_verification_state()
-     |> assign(directory: directory, type: "okta", open_directory_actions_id: nil)}
+     |> assign(
+       directory: directory,
+       type: "okta",
+       okta_setup_tab: "ui",
+       open_directory_actions_id: nil
+     )}
   end
 
   def handle_params(%{"type" => _type}, _url, _socket) do
@@ -159,6 +165,11 @@ defmodule PortalWeb.Settings.DirectorySync do
 
   def handle_event("close_panel", _params, socket) do
     {:noreply, push_patch(socket, to: ~p"/#{socket.assigns.account}/settings/directory_sync")}
+  end
+
+  def handle_event("okta_setup_tab", %{"tab" => tab}, socket)
+      when tab in ["ui", "curl", "terraform"] do
+    {:noreply, assign(socket, :okta_setup_tab, tab)}
   end
 
   def handle_event("handle_keydown", %{"key" => "Escape"}, socket)
@@ -835,6 +846,7 @@ defmodule PortalWeb.Settings.DirectorySync do
                 type={@type}
                 submit_event="submit_directory"
                 public_jwk={assigns[:public_jwk]}
+                okta_setup_tab={@okta_setup_tab}
               />
             </div>
             <.panel_footer>
@@ -882,7 +894,10 @@ defmodule PortalWeb.Settings.DirectorySync do
                 arrive with the next full sync. This page updates as soon as Okta verifies the hook.
               </p>
               <div class="mt-4 p-4 border border-border bg-raised rounded">
-                <.okta_event_hook_details directory={@directory} />
+                <.okta_event_hook_details
+                  directory={@directory}
+                  setup_tab={@okta_setup_tab}
+                />
               </div>
             </div>
             <.panel_footer>
@@ -1089,10 +1104,33 @@ defmodule PortalWeb.Settings.DirectorySync do
   end
 
   attr :directory, :any, required: true
+  attr :setup_tab, :string, required: true
 
   defp okta_event_hook_details(assigns) do
     ~H"""
-    <ol class="mt-3 list-decimal list-inside space-y-3 text-xs text-body">
+    <p class="mb-3 text-xs text-body">
+      Choose a way to set up the event hook.
+    </p>
+    <div class="flex border-b border-border mb-3" role="tablist">
+      <button
+        :for={{tab, label, icon} <- [{"ui", "Okta Admin Console", "ri-window-line"}, {"curl", "cURL", "ri-terminal-line"}, {"terraform", "Terraform", "icon-terraform"}]}
+        type="button"
+        role="tab"
+        aria-selected={to_string(@setup_tab == tab)}
+        phx-click="okta_setup_tab"
+        phx-value-tab={tab}
+        class={[
+          "flex items-center gap-1.5 px-4 py-2 text-xs font-medium border-b-2 -mb-px whitespace-nowrap transition-colors",
+          @setup_tab == tab && "border-brand text-brand",
+          @setup_tab != tab &&
+            "border-transparent text-body hover:text-heading hover:border-border-strong"
+        ]}
+      >
+        <.icon name={icon} class="w-3.5 h-3.5 shrink-0" />
+        {label}
+      </button>
+    </div>
+    <ol :if={@setup_tab == "ui"} class="list-decimal list-inside space-y-3 text-xs text-body">
       <li>
         In the Okta Admin Console, go to <strong>Workflow → Event Hooks</strong>
         and click <strong>Create Event Hook</strong>.
@@ -1131,12 +1169,21 @@ defmodule PortalWeb.Settings.DirectorySync do
       </li>
       <li>Click <strong>Save & Continue</strong>, then <strong>Verify</strong>.</li>
     </ol>
-    <p class="mt-4 text-xs text-body">
-      Or, create this event hook via the Okta API. Replace <code>OKTA_API_TOKEN</code>
-      with an API token from <strong>Security → API → Tokens</strong> in Okta. Then click
-      <strong>Verify</strong> next to the new hook in Okta.
-    </p>
-    <.code_block id="okta-hook-curl" class="mt-2 rounded text-xs">{okta_hook_curl(@directory)}</.code_block>
+    <div :if={@setup_tab == "curl"}>
+      <p class="text-xs text-body">
+        Replace <code>OKTA_API_TOKEN</code> with an API token from
+        <strong>Security → API → Tokens</strong> in Okta. Then click
+        <strong>Verify</strong> next to the new hook in Okta.
+      </p>
+      <.code_block id="okta-hook-curl" class="mt-2 rounded text-xs">{okta_hook_curl(@directory)}</.code_block>
+    </div>
+    <div :if={@setup_tab == "terraform"}>
+      <p class="text-xs text-body">
+        Add these resources to a configuration that uses the official
+        <code>okta/okta</code> provider. Applying it creates and verifies the event hook.
+      </p>
+      <.code_block id="okta-hook-terraform" class="mt-2 rounded text-xs">{okta_hook_terraform(@directory)}</.code_block>
+    </div>
     """
   end
 
@@ -1204,6 +1251,37 @@ defmodule PortalWeb.Settings.DirectorySync do
           }
         }
       }'
+    """
+  end
+
+  defp okta_hook_terraform(directory) do
+    events =
+      Okta.Webhooks.events()
+      |> Enum.map_join("\n", fn {type, _name} -> ~s(    "#{type}",) end)
+
+    """
+    resource "okta_event_hook" "firezone" {
+      name = "Firezone"
+      events = [
+    #{events}
+      ]
+
+      channel = {
+        type    = "HTTP"
+        version = "1.0.0"
+        uri     = "#{Okta.Webhooks.endpoint_url(directory.id)}"
+      }
+
+      auth = {
+        type  = "HEADER"
+        key   = "Authorization"
+        value = "#{directory.webhook_secret}"
+      }
+    }
+
+    resource "okta_event_hook_verification" "firezone" {
+      event_hook_id = okta_event_hook.firezone.id
+    }
     """
   end
 
@@ -1480,6 +1558,7 @@ defmodule PortalWeb.Settings.DirectorySync do
   attr :verification_error, :any, default: nil
   attr :verifying, :boolean, default: false
   attr :public_jwk, :any, default: nil
+  attr :okta_setup_tab, :string, default: "ui"
 
   defp directory_form(assigns) do
     ~H"""
@@ -1809,7 +1888,10 @@ defmodule PortalWeb.Settings.DirectorySync do
             An event hook in Okta sends changes to Firezone as they happen. No extra API scopes
             are needed.
           </p>
-          <.okta_event_hook_details directory={@form.source.data} />
+          <.okta_event_hook_details
+            directory={@form.source.data}
+            setup_tab={@okta_setup_tab}
+          />
         </div>
 
         <div
