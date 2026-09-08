@@ -1,11 +1,10 @@
 //! Verify that the peer of a connected Unix Domain Socket is a Firezone
-//! GUI binary installed at the canonical location.
+//! binary installed at a canonical location.
 //!
 //! Linux 6.5+ exposes `SO_PEERPIDFD` on `AF_UNIX` sockets which yields a
 //! `pidfd` pinned to a specific process incarnation. We resolve the peer's
-//! `/proc/<pid>/exe` symlink against a compile-time path
-//! (`/usr/bin/firezone-client-gui`) so even processes running as the same
-//! UID as the GUI cannot impersonate it.
+//! `/proc/<pid>/exe` symlink against a set of compile-time paths so even
+//! processes running as the same UID as the GUI cannot impersonate it.
 
 #![cfg_attr(target_os = "macos", allow(dead_code))]
 

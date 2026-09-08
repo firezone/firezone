@@ -8,22 +8,26 @@ use tokio::net::UnixStream;
 
 #[derive(Debug)]
 pub struct AllowedPeer {
-    exe: PathBuf,
+    exes: Vec<PathBuf>,
 }
 
 impl AllowedPeer {
     /// The packaged GUI binary — the only peer the tunnel daemon accepts
     /// in production.
-    ///
-    /// `FIREZONE_GUI_PEER_EXE` overrides the path at compile time for
-    /// packaging schemes that don't install to `/usr/bin` (e.g. NixOS,
-    /// where the GUI binary lives in the Nix store).
     #[cfg(not(any(test, feature = "test")))]
     pub fn firezone_gui_client() -> Self {
         Self {
-            exe: PathBuf::from(
-                option_env!("FIREZONE_GUI_PEER_EXE").unwrap_or("/usr/bin/firezone-client-gui"),
-            ),
+            exes: vec![gui_exe()],
+        }
+    }
+
+    /// The packaged GUI and CLI binaries — the peers the GUI accepts on
+    /// its own socket. The CLI is a remote control for the running GUI,
+    /// so it connects here and never to the tunnel daemon.
+    #[cfg(not(any(test, feature = "test")))]
+    pub fn firezone_gui_client_or_cli() -> Self {
+        Self {
+            exes: vec![gui_exe(), cli_exe()],
         }
     }
 
@@ -34,7 +38,7 @@ impl AllowedPeer {
         // Use the raw `/proc/self/exe` target (no canonicalisation) so it
         // matches what `verify` reads for the peer.
         let exe = std::env::current_exe().expect("test binary must have an exe path");
-        Self { exe }
+        Self { exes: vec![exe] }
     }
 
     /// Verify the peer of `stream` and return the stream on accept, or an
@@ -49,7 +53,7 @@ impl AllowedPeer {
     ///      pidfd keeps the PID from being reused.
     ///   3. Resolve `/proc/<peer_pid>/exe` and reject if the kernel marks
     ///      it `(deleted)`.
-    ///   4. Compare the resolved path against the allowlisted path.
+    ///   4. Compare the resolved path against the allowlisted paths.
     ///
     /// `/proc/<pid>/exe` is already a kernel-resolved absolute path with no
     /// symlink components, so we compare it directly rather than running it
@@ -83,16 +87,33 @@ impl AllowedPeer {
             );
         }
 
-        if target != self.exe {
+        if !self.exes.contains(&target) {
             bail!(
-                "Peer's executable `{}` does not match the expected GUI binary `{}`",
+                "Peer's executable `{}` does not match any allowed binary {:?}",
                 target.display(),
-                self.exe.display(),
+                self.exes,
             );
         }
 
         Ok(stream)
     }
+}
+
+/// The packaged GUI binary.
+///
+/// `FIREZONE_GUI_PEER_EXE` overrides the path at compile time for
+/// packaging schemes that don't install to `/usr/bin` (e.g. NixOS,
+/// where the GUI binary lives in the Nix store).
+#[cfg(not(any(test, feature = "test")))]
+fn gui_exe() -> PathBuf {
+    PathBuf::from(option_env!("FIREZONE_GUI_PEER_EXE").unwrap_or("/usr/bin/firezone-client-gui"))
+}
+
+/// The packaged CLI binary, overridable via `FIREZONE_CLI_PEER_EXE` for
+/// the same reason as [`gui_exe`].
+#[cfg(not(any(test, feature = "test")))]
+fn cli_exe() -> PathBuf {
+    PathBuf::from(option_env!("FIREZONE_CLI_PEER_EXE").unwrap_or("/usr/bin/firezone"))
 }
 
 fn peer_pidfd(socket_fd: RawFd) -> io::Result<OwnedFd> {
@@ -147,11 +168,11 @@ mod tests {
         let b = expected.verify(b).expect("self should verify");
 
         let other = AllowedPeer {
-            exe: PathBuf::from("/nonexistent/binary"),
+            exes: vec![PathBuf::from("/nonexistent/binary")],
         };
         let err = other.verify(b).expect_err("expected rejection");
         assert!(
-            format!("{err:#}").contains("does not match the expected GUI binary"),
+            format!("{err:#}").contains("does not match any allowed binary"),
             "unexpected error message: {err:#}"
         );
     }

@@ -103,7 +103,12 @@ impl Server {
 
         let allowed_peer = cfg_select! {
             all(target_os = "linux", any(test, feature = "test")) => peer_check::AllowedPeer::for_current_exe(),
-            target_os = "linux" => peer_check::AllowedPeer::firezone_gui_client(),
+            // The CLI only ever talks to the GUI, so the tunnel socket stays
+            // pinned to the GUI binary alone.
+            target_os = "linux" => match id {
+                SocketId::Tunnel => peer_check::AllowedPeer::firezone_gui_client(),
+                SocketId::Gui => peer_check::AllowedPeer::firezone_gui_client_or_cli(),
+            },
             target_os = "macos" => peer_check::AllowedPeer::stub(),
         };
 
