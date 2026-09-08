@@ -188,6 +188,8 @@ submit_release() {
         --package "$PACKAGE_NAME" \
         --edit "$edit_id" \
         --track "$TARGET_TRACK")
+    # The track update replaces drafts; only non-draft releases constrain promotion.
+    target=$(jq '.releases = [.releases[]? | select(.status != "draft")]' <<< "$target")
     if jq -e \
         --arg name "$RELEASE_NAME" \
         --arg version_code "$internal_version_code" \
@@ -209,7 +211,8 @@ submit_release() {
         | (($releases | length) <= 1)
         and ((($releases | length) == 0) or $releases[0].status == "completed")' \
         <<< "$target" >/dev/null; then
-        echo "$TARGET_TRACK has multiple releases or a release that is not completed" >&2
+        echo "$TARGET_TRACK has multiple non-draft releases or a release that is not completed" >&2
+        jq '.releases' <<< "$target" >&2
         exit 1
     fi
 
