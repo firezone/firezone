@@ -76,7 +76,7 @@ jobs:
   screenshots:
     # Only a pull request has a diff to put the screens in. `unit-tests` compiles the
     # same sources on `main`, so the Gradle cache it writes there stays warm.
-    if: github.ref_name != 'main'
+    if: github.ref_name != 'main' && !startsWith(github.head_ref, 'chore/publish-')
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -92,6 +92,8 @@ jobs:
           path: kotlin/android/screenshots
 
   emulator-tests:
+    env:
+      CAPTURE_SCREENSHOTS: ${{ !startsWith(github.head_ref, 'chore/publish-') }}
     # The tests run against what `build-debug` already produced, so a suite costs an emulator
     # rather than another Rust build. Adding one is a matrix entry.
     needs: build_debug
@@ -158,6 +160,7 @@ jobs:
       # System screens the tests photographed, such as the KeyChain chooser, which
       # `commit-screenshots` puts next to the rendered ones.
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: env.CAPTURE_SCREENSHOTS == 'true'
         with:
           name: android-emulator-screenshots-${{ matrix.suite }}
           path: kotlin/android/emulator-screenshots

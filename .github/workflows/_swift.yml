@@ -67,7 +67,7 @@ jobs:
   # once here and photographed on each release in parallel below.
   build-macos-ui-tests:
     # A release dispatch from main only needs the builds, not the screenshots.
-    if: "${{ !(github.event_name == 'workflow_dispatch' && github.ref_name == 'main') }}"
+    if: "${{ !startsWith(github.head_ref, 'chore/publish-') && !(github.event_name == 'workflow_dispatch' && github.ref_name == 'main') }}"
     runs-on: macos-26
     env:
       XCODE_VERSION: "26.2"
@@ -179,7 +179,7 @@ jobs:
   # once here and photographed on each simulator in parallel below.
   build-ios-ui-tests:
     # A release dispatch from main only needs the builds, not the screenshots.
-    if: "${{ !(github.event_name == 'workflow_dispatch' && github.ref_name == 'main') }}"
+    if: "${{ !startsWith(github.head_ref, 'chore/publish-') && !(github.event_name == 'workflow_dispatch' && github.ref_name == 'main') }}"
     runs-on: macos-26
     env:
       XCODE_VERSION: "26.2"
