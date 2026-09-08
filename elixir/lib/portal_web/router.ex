@@ -348,6 +348,7 @@ defmodule PortalWeb.Router do
           live "/new", DirectorySync, :select_type
           live "/:type/new", DirectorySync, :new
           live "/:type/:id/edit", DirectorySync, :edit
+          live "/:type/:id/hook", DirectorySync, :hook
         end
 
         scope "/device_posture" do

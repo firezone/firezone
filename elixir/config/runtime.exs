@@ -429,6 +429,7 @@ if config_env() == :prod do
       google_webhook: 5,
       okta_scheduler: 1,
       okta_sync: 5,
+      okta_webhook: 5,
       splunk_scheduler: 1,
       splunk_sync: 5,
       datadog_scheduler: 1,
