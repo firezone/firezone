@@ -2478,6 +2478,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "firezone-cli"
+version = "1.5.18"
+dependencies = [
+ "anyhow-ext",
+ "clap",
+ "connlib-model",
+ "gui-ipc",
+ "tokio",
+]
+
+[[package]]
 name = "firezone-gateway"
 version = "1.6.2"
 dependencies = [

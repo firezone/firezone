@@ -3,6 +3,7 @@ members = [
     "client-ffi",
     "gateway",
     "gui-client/src-admx-macro",
+    "gui-client/src-cli",
     "gui-client/src-gui-ipc",
     "gui-client/src-ipc",
     "gui-client/src-package-identity",
