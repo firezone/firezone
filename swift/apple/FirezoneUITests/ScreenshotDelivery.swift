@@ -18,15 +18,6 @@ enum Appearance: String, CaseIterable {
   case dark
 }
 
-#if os(macOS)
-  extension CGRect {
-    /// The rectangle in a photograph of what it measures in points.
-    func scaled(by scale: CGFloat) -> CGRect {
-      CGRect(x: minX * scale, y: minY * scale, width: width * scale, height: height * scale)
-    }
-  }
-#endif
-
 // Photographing is main-actor work in XCTest, and so is reading the image back.
 @MainActor
 extension XCTestCase {
@@ -42,77 +33,64 @@ extension XCTestCase {
   }
 
   #if os(macOS)
-    /// Photographs `panels` as they stand to each other, and nothing between them.
-    ///
-    /// A menu and the submenu it opens are two windows that no one element covers, and
-    /// what the screen holds around them is the shadow the OS draws, which is not the
-    /// same twice. So the screen is photographed once and each panel cut out of it by
-    /// its frame: the picture is what the app drew, and the ground it stands on, its
-    /// border and its shadow are prepare-store-screenshots.py's. A panel drawn over
-    /// another goes last.
-    ///
-    /// Once, rather than one photograph per panel: photographing a menu on its own
-    /// draws it again, and a menu drawn on a material comes back a few steps
-    /// different every time, so no two captures of it agree.
+    /// The canvas the store preparation centres the screens on, so what shows
+    /// between the menus is already the right colour (`MAC_BACKGROUND` there).
+    private static let canvasColour = CGColor(
+      colorSpace: CGColorSpaceCreateDeviceRGB(),
+      components: [30.0 / 255.0, 30.0 / 255.0, 30.0 / 255.0, 1]
+    )!  // swiftlint:disable:this force_unwrapping
+
+    /// Photographs what spans more than one element, a menu together with the
+    /// submenu it has open, as the screen region covering `frames`, with
+    /// everything outside them painted in the canvas colour.
     @discardableResult
-    func deliver(_ panels: [XCUIElement], as name: String, in appearance: Appearance) -> Data {
+    func deliver(
+      _ frames: [CGRect],
+      as name: String,
+      in appearance: Appearance
+    ) -> Data {
       deliver(as: name, in: appearance) {
+        let region = frames.reduce(CGRect.null) { $0.union($1) }
+        let scale = NSScreen.main?.backingScaleFactor ?? 1
+        let scaled = { (rect: CGRect) in
+          CGRect(
+            x: (rect.minX - region.minX) * scale, y: (rect.minY - region.minY) * scale,
+            width: rect.width * scale, height: rect.height * scale
+          )
+        }
+        let size = scaled(region).size
+
         guard
-          let display = NSScreen.main,
           let screen = XCUIScreen.main.screenshot().image
-            .cgImage(forProposedRect: nil, context: nil, hints: nil)
+            .cgImage(forProposedRect: nil, context: nil, hints: nil),
+          let cropped = screen.cropping(
+            to: CGRect(
+              x: region.minX * scale, y: region.minY * scale,
+              width: size.width, height: size.height
+            )),
+          let context = CGContext(
+            data: nil, width: Int(size.width), height: Int(size.height),
+            bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue
+          )
         else { return Data() }
 
-        // A frame is measured in points and the photograph holds pixels.
-        let scale = CGFloat(screen.height) / display.frame.height
-        let frames = panels.map { $0.frame }
-        let cut = frames.compactMap { screen.cropping(to: $0.scaled(by: scale)) }
+        let whole = CGRect(origin: .zero, size: size)
+        context.setFillColor(Self.canvasColour)
+        context.fill(whole)
 
-        guard cut.count == frames.count else { return Data() }
+        // Core Graphics measures from the bottom, the accessibility frames from the top.
+        context.clip(
+          to: frames.map(scaled).map {
+            CGRect(x: $0.minX, y: size.height - $0.maxY, width: $0.width, height: $0.height)
+          })
+        context.draw(cropped, in: whole)
 
-        return Self.composed(Array(zip(cut, frames)), at: scale)
+        guard let image = context.makeImage() else { return Data() }
+
+        return NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:])
+          ?? Data()
       }
-    }
-
-    /// The panels on a transparent ground, as far apart as their frames are.
-    private static func composed(_ panels: [(CGImage, CGRect)], at scale: CGFloat) -> Data {
-      let bounds = panels.reduce(nil as CGRect?) { $0?.union($1.1) ?? $1.1 }
-
-      guard let bounds else { return Data() }
-
-      let ground = bounds.scaled(by: scale)
-
-      guard
-        // The photograph's own space, so that laying a panel out does not convert it.
-        let space = panels.first?.0.colorSpace,
-        let context = CGContext(
-          data: nil,
-          width: Int(ground.width),
-          height: Int(ground.height),
-          bitsPerComponent: 8,
-          bytesPerRow: 0,
-          space: space,
-          bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-        )
-      else { return Data() }
-
-      for (image, frame) in panels {
-        // A context measures from the bottom of the picture and a frame from the top.
-        context.draw(
-          image,
-          in: CGRect(
-            x: (frame.minX - bounds.minX) * scale,
-            y: (bounds.maxY - frame.maxY) * scale,
-            width: frame.width * scale,
-            height: frame.height * scale
-          )
-        )
-      }
-
-      guard let composed = context.makeImage() else { return Data() }
-
-      return NSBitmapImageRep(cgImage: composed).representation(using: .png, properties: [:])
-        ?? Data()
     }
   #endif
 

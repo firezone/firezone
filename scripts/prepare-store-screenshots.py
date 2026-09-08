@@ -10,7 +10,7 @@ import zlib
 from pathlib import Path
 
 import numpy as np
-from PIL import Image, ImageChops, ImageDraw, ImageFilter
+from PIL import Image, ImageDraw, ImageFilter
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -34,8 +34,6 @@ MAC_CORNER_RADIUS = {
     "26": {"main": 15, "settings": 26},
 }
 MAIN_WINDOW_SCREENS = {"first-time", "grant-vpn"}
-# The menus' own corner radius, measured from the captures.
-MENU_CORNER_RADIUS = 12
 # WindowServer draws the window's edge, and a hairline along its corner arcs,
 # against whatever is behind them, and not the same way twice. A band this wide
 # inside the edge is repainted from the window's own colours further in, and gets
@@ -167,128 +165,47 @@ def repainted_edge(window: Image.Image, radius: int) -> Image.Image:
     return Image.composite(window, filled, kept)
 
 
-def framed(
-    shape: Image.Image,
-    panels: list[tuple[Image.Image, Image.Image, Image.Image]],
-    appearance: str,
-) -> Image.Image:
-    """The `panels` on the store canvas, bordered, with one shadow under `shape`.
+def frame_window(capture: Image.Image, radius: int, appearance: str) -> Image.Image:
+    """The window on the store canvas: clipped, bordered and with a shadow.
 
-    Each panel is a picture with the masks that clip it: the border comes from the
-    outer one and the panel itself from the inner, so an edge and a corner never
-    sample the capture's own boundary pixels. One shadow rather than one each,
-    because a panel standing over another does not cast onto it.
+    Painted in layers over an opaque canvas, so the edge and the corners come from
+    the masks alone and never sample the capture's own boundary pixels.
     """
+    outer = rounded_mask(capture.size, radius)
+    inner = rounded_mask(capture.size, radius - 1, inset=1)
+    position = (
+        (MAC_SIZE[0] - capture.width) // 2,
+        (MAC_SIZE[1] - capture.height) // 2,
+    )
+
+    def placed(mask: Image.Image, offset: tuple[int, int] = (0, 0)) -> Image.Image:
+        full = Image.new("L", MAC_SIZE, 0)
+        full.paste(mask, (position[0] + offset[0], position[1] + offset[1]))
+        return full
+
     canvas = Image.new("RGB", MAC_SIZE, MAC_BACKGROUND)
 
-    shadow = Image.new("L", MAC_SIZE, 0)
-    shadow.paste(
-        shape.point(lambda value: round(value * MAC_SHADOW_OPACITY)), MAC_SHADOW_OFFSET
+    shadow = placed(
+        outer.point(lambda value: round(value * MAC_SHADOW_OPACITY)), MAC_SHADOW_OFFSET
     )
     shadow = shadow.filter(ImageFilter.GaussianBlur(MAC_SHADOW_BLUR))
     canvas = Image.composite(Image.new("RGB", MAC_SIZE, (0, 0, 0)), canvas, shadow)
 
     border = Image.new("RGB", MAC_SIZE, MAC_BORDER[appearance])
+    canvas = Image.composite(border, canvas, placed(outer))
 
-    for content, outer, inner in panels:
-        canvas = Image.composite(border, canvas, outer)
-        canvas = Image.composite(content, canvas, inner)
-
-    return canvas
-
-
-def placed(mask: Image.Image, at: tuple[int, int]) -> Image.Image:
-    """`mask` on a canvas-sized one, at `at`."""
-    full = Image.new("L", MAC_SIZE, 0)
-    full.paste(mask, at)
-
-    return full
+    window = Image.new("RGB", MAC_SIZE)
+    window.paste(repainted_edge(capture.convert("RGB"), radius), position)
+    return Image.composite(window, canvas, placed(inner))
 
 
-def centred(size: tuple[int, int]) -> tuple[int, int]:
-    return ((MAC_SIZE[0] - size[0]) // 2, (MAC_SIZE[1] - size[1]) // 2)
-
-
-def panel(
-    capture: Image.Image, at: tuple[int, int], radius: int
-) -> tuple[Image.Image, Image.Image, Image.Image]:
-    """`capture` placed at `at`, with the masks that clip it to a rounded rectangle."""
-    content = Image.new("RGB", MAC_SIZE)
-    content.paste(capture.convert("RGB"), at)
-
-    return (
-        content,
-        placed(rounded_mask(capture.size, radius), at),
-        placed(rounded_mask(capture.size, radius - 1, inset=1), at),
+def centred(capture: Image.Image) -> Image.Image:
+    canvas = Image.new("RGB", MAC_SIZE, MAC_BACKGROUND)
+    canvas.paste(
+        capture.convert("RGB"),
+        ((MAC_SIZE[0] - capture.width) // 2, (MAC_SIZE[1] - capture.height) // 2),
     )
-
-
-def frame_window(capture: Image.Image, radius: int, appearance: str) -> Image.Image:
-    """The window on the store canvas: clipped, bordered and with a shadow."""
-    window = panel(repainted_edge(capture.convert("RGB"), radius), centred(capture.size), radius)
-
-    return framed(window[1], [window], appearance)
-
-
-def frame_menus(capture: Image.Image, appearance: str) -> Image.Image:
-    """The menus on the store canvas, clipped, bordered and with a shadow.
-
-    The capture holds the panels where they stood on the screen, so the picture keeps
-    how they meet: the one in front covers the border of the one behind it.
-    """
-    origin = centred(capture.size)
-    panels = [
-        panel(capture.crop(box), (origin[0] + box[0], origin[1] + box[1]), MENU_CORNER_RADIUS)
-        for box in menus(capture)
-    ]
-    shape = panels[0][1]
-
-    for _, outer, _ in panels[1:]:
-        shape = ImageChops.lighter(shape, outer)
-
-    return framed(shape, panels, appearance)
-
-
-def menus(capture: Image.Image) -> list[tuple[int, int, int, int]]:
-    """The rectangle each menu covers, back to front.
-
-    A menu's extent only changes across its corners, and by at most their radius, so
-    a bigger change is where one menu ends and the next begins. A menu that ends where
-    the next begins is the one in front: what the screen showed of the one behind it
-    stops there. So it is drawn last, and over the corner of its neighbour, which is
-    where the screen had it.
-    """
-    drawn = np.asarray(capture.convert("RGBA"))[:, :, 3] > 0
-    boxes: list[tuple[int, int, int, int]] = []
-    front: list[int] = []
-
-    for x, column in enumerate(drawn.T):
-        rows = np.flatnonzero(column)
-        if not rows.size:
-            continue
-
-        top, bottom = int(rows[0]), int(rows[-1]) + 1
-        last = boxes[-1] if boxes else None
-
-        if (
-            last
-            and abs(top - last[1]) <= MENU_CORNER_RADIUS
-            and abs(bottom - last[3]) <= MENU_CORNER_RADIUS
-        ):
-            boxes[-1] = (last[0], min(last[1], top), x + 1, max(last[3], bottom))
-        else:
-            if last and last[2] == x:
-                boxes[-1] = (last[0], last[1], x + MENU_CORNER_RADIUS, last[3])
-                front.append(len(boxes) - 1)
-
-            boxes.append((x, top, x + 1, bottom))
-
-    if not boxes:
-        raise RuntimeError("A menu capture holds no menus")
-
-    return [box for index, box in enumerate(boxes) if index not in front] + [
-        boxes[index] for index in front
-    ]
+    return canvas
 
 
 def prepare_macos(directory: Path) -> None:
@@ -297,12 +214,6 @@ def prepare_macos(directory: Path) -> None:
 
     for path in screenshots(directory):
         with Image.open(path) as image:
-            screen, appearance = path.stem.rsplit("-", 1)
-
-            if screen == "menu":
-                write_rgb(path, frame_menus(image, appearance))
-                continue
-
             if image.size == MAC_SIZE:
                 write_rgb(path, image)
                 continue
@@ -310,6 +221,12 @@ def prepare_macos(directory: Path) -> None:
             if image.width > MAC_SIZE[0] or image.height > MAC_SIZE[1]:
                 relative = path.relative_to(REPO_ROOT)
                 raise RuntimeError(f"{relative} does not fit on a {MAC_SIZE} canvas")
+
+            screen, appearance = path.stem.rsplit("-", 1)
+            if screen == "menu":
+                # Two shapes on the canvas colour already (see ScreenshotDelivery.swift).
+                write_rgb(path, centred(image))
+                continue
 
             window = "main" if screen in MAIN_WINDOW_SCREENS else "settings"
             radius = MAC_CORNER_RADIUS[directory.name][window]

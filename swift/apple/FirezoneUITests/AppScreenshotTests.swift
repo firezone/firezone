@@ -133,14 +133,9 @@
         corner.withOffset(CGVector(dx: -20, dy: rowY)).hover()
         corner.withOffset(CGVector(dx: rowFrame.midX - menuFrame.minX, dy: rowY)).hover()
 
-        try waitForSubmenu(of: row)
+        let submenu = try openedSubmenu(of: row)
 
-        // The submenu covers the menu where the two meet, so it is photographed onto it.
-        record(
-          deliver([menu, row.menus.firstMatch], as: "menu", in: appearance),
-          as: "menu",
-          in: appearance
-        )
+        capture([menuFrame, submenu.frame], as: "menu", in: appearance)
       }
     }
 
@@ -195,17 +190,18 @@
       return menu
     }
 
-    /// Waits for the submenu the hovered `row` opens, by an item only it carries.
+    /// Waits for the submenu the hovered `row` opens, and hands it back.
     ///
-    /// Hittable rather than present: a menu's items reach the accessibility tree
-    /// before it is ever shown, so existence cannot tell an open submenu from the
-    /// closed ones every other resource has.
-    private func waitForSubmenu(of row: XCUIElement) throws {
+    /// The row's own, rather than the tallest menu that is not the menu: every resource
+    /// carries a submenu and they are all in the tree before any of them is shown, so
+    /// that handed back menus that were never on screen, whose frame the capture was
+    /// then cropped to. Hittable rather than present, for the same reason.
+    private func openedSubmenu(of row: XCUIElement) throws -> XCUIElement {
       let item = row.menuItems["Copy address"].firstMatch
       let deadline = Date().addingTimeInterval(10)
 
       while Date() < deadline {
-        if item.exists, item.isHittable { return }
+        if item.exists, item.isHittable { return row.menus.firstMatch }
 
         Thread.sleep(forTimeInterval: 0.5)
       }
@@ -235,6 +231,12 @@
       record(deliver(window, as: name, in: appearance), as: name, in: appearance)
     }
 
+    /// Photographs the region a screen covers when it is more than one element:
+    /// a menu together with the submenu it has open.
+    private func capture(_ frames: [CGRect], as name: String, in appearance: Appearance) {
+      record(deliver(frames, as: name, in: appearance), as: name, in: appearance)
+    }
+
     private func record(_ image: Data, as name: String, in appearance: Appearance) {
       brightness["\(name)-\(appearance.rawValue)"] = meanBrightness(of: image)
       captured["\(name)-\(appearance.rawValue)"] = image
@@ -249,31 +251,25 @@
       XCTAssertLessThan(dark, light - 50, "\(name) is no darker in the dark appearance")
     }
 
-    /// The mean brightness of what the app drew, from every eighth pixel of a PNG,
-    /// on a 0 to 255 scale.
-    ///
-    /// The samples are the file's own numbers rather than a colour-managed reading of
-    /// them, which two appearances of the same screen are not far apart in. Where the
-    /// menus leave the picture empty there is nothing to weigh, so it is passed over.
+    /// The mean brightness of a PNG, from every eighth pixel, on a 0 to 255 scale.
     private func meanBrightness(of image: Data) -> Double {
       guard let bitmap = NSBitmapImageRep(data: image) else { return 0 }
 
       var total = 0.0
-      var counted = 0.0
-      var pixel = [Int](repeating: 0, count: 5)
+      var samples = 0.0
 
       for y in stride(from: 0, to: bitmap.pixelsHigh, by: 8) {
         for x in stride(from: 0, to: bitmap.pixelsWide, by: 8) {
-          bitmap.getPixel(&pixel, atX: x, y: y)
+          guard let pixel = bitmap.colorAt(x: x, y: y)?.usingColorSpace(.deviceRGB) else {
+            continue
+          }
 
-          guard !bitmap.hasAlpha || pixel[3] > 0 else { continue }
-
-          total += Double(pixel[0] + pixel[1] + pixel[2]) / 3
-          counted += 1
+          total += (pixel.redComponent + pixel.greenComponent + pixel.blueComponent) / 3
+          samples += 1
         }
       }
 
-      return counted > 0 ? total / counted : 0
+      return samples > 0 ? total / samples * 255 : 0
     }
 
     private func onlyWindow(of app: XCUIApplication) throws -> XCUIElement {
