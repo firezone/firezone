@@ -41,13 +41,6 @@ includes = ["mise-tasks"]
 description = "Run unit tests"
 run = "./gradlew test"
 
-[tasks.dev-mock]
-description = "Install and run the app with an in-process mock of connlib and the portal decoupled. Self-contained: no portal, no gateways, no tunnel. Pass `--ez signedIn true` to `am start` to begin already signed in."
-run = [
-    "./gradlew installDebug",
-    "adb shell am start -n dev.firezone.android/dev.firezone.android.core.MockLaunchActivity",
-]
-
 [tasks.screenshots]
 description = "Render the app's screens to PNGs in `kotlin/android/screenshots`"
 run = "./gradlew recordRoborazziDebug"

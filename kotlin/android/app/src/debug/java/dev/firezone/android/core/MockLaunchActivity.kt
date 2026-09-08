@@ -5,7 +5,6 @@ import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import dagger.hilt.android.AndroidEntryPoint
-import dev.firezone.android.core.data.TokenStore
 import dev.firezone.android.core.presentation.MainActivity
 import dev.firezone.android.features.auth.AuthCallbackHandler
 import dev.firezone.android.features.auth.PendingAuthSession
@@ -15,19 +14,16 @@ import javax.inject.Inject
 
 /**
  * Starts the app with connlib and the portal stood in for, the way `--mock-tunnel` and
- * `--skip-portal-auth` do for the GUI client. Debug builds only; see `mise run //kotlin/android:dev-mock`.
+ * `--skip-portal-auth` do for the GUI client. Debug builds only.
  *
- * Each extra is on unless one turns it off, so either stand-in can be exercised against the real
- * other half, and the launch can start from either side of sign-in:
+ * Run it from Android Studio with a configuration that launches this activity, or by hand. Either
+ * stand-in can be turned off to exercise the real other half:
  *
  *     adb shell am start -n dev.firezone.android/dev.firezone.android.core.MockLaunchActivity \
- *       --ez skipPortalAuth false --ez signedIn true
+ *       --ez skipPortalAuth false
  */
 @AndroidEntryPoint
 class MockLaunchActivity : ComponentActivity() {
-    @Inject
-    internal lateinit var tokenStore: TokenStore
-
     @Inject
     internal lateinit var pendingAuthSession: PendingAuthSession
 
@@ -42,13 +38,8 @@ class MockLaunchActivity : ComponentActivity() {
         }
         DebugOverrides.skipPortalAuth = intent.getBooleanExtra("skipPortalAuth", true)
 
-        // Where the launch starts is the launch's to say, so that neither the sign-in flow nor
-        // what a signed-in launch does, such as connecting on start, depends on what the last one
-        // left behind.
-        if (intent.getBooleanExtra("signedIn", false)) {
+        if (DebugOverrides.skipPortalAuth) {
             signIn()
-        } else {
-            tokenStore.clear()
         }
 
         startActivity(
@@ -59,7 +50,10 @@ class MockLaunchActivity : ComponentActivity() {
         finish()
     }
 
-    /** Signs in through the machinery a real callback drives, so the token is one the app issued. */
+    /**
+     * Signs the launch in through the machinery a real callback drives, so the token is one the app
+     * issued and everything a session needs, such as connecting on start, is in reach.
+     */
     private fun signIn() {
         pendingAuthSession.begin(nonce = NONCE, state = STATE)
         authCallbackHandler.handle(fabricatedAuthCallback(STATE))
