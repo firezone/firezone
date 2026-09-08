@@ -24,6 +24,7 @@ defmodule Portal.Google.APIClient do
   ]
   @token_cache Portal.Google.TokenCache
   @max_retries 5
+  @transient_statuses [408, 429, 500, 502, 503, 504]
 
   @doc """
   Gets a delegated Google Workspace access token using deployment credentials.
@@ -573,15 +574,16 @@ defmodule Portal.Google.APIClient do
     end
   end
 
-  # The batch endpoint answers 200 even when parts are throttled, so Req's retry
-  # never sees those. Re-sending the whole chunk is cheaper than tracking parts.
+  # The batch endpoint answers 200 even when parts are throttled or fail with a
+  # 5xx, so Req's retry never sees those. Re-sending the whole chunk is cheaper
+  # than tracking parts.
   defp get_users_chunk(access_token, chunk, retry_count \\ 0) do
     case do_batch_get_users(access_token, chunk) do
-      {:throttled, _response} when retry_count < @max_retries ->
+      {:retry, _response} when retry_count < @max_retries ->
         Process.sleep(batch_retry_delay(retry_count))
         get_users_chunk(access_token, chunk, retry_count + 1)
 
-      {:throttled, response} ->
+      {:retry, response} ->
         {:error, response}
 
       result ->
@@ -653,8 +655,8 @@ defmodule Portal.Google.APIClient do
         {:ok, users} ->
           {:cont, {:ok, Enum.reverse(users, acc)}}
 
-        {:throttled, _} = throttled ->
-          {:halt, throttled}
+        {:retry, _} = retry ->
+          {:halt, retry}
 
         {:error, _} = error ->
           {:halt, error}
@@ -695,6 +697,9 @@ defmodule Portal.Google.APIClient do
           decode_json_user(json_body)
       end
     else
+      status when status in @transient_statuses ->
+        {:retry, %Req.Response{status: status, body: %{"error" => "Batch users part failed"}}}
+
       status when is_integer(status) and status not in [200, 403, 404, 412] ->
         log_batch_parse_issue("Failing batch users response part with unexpected status",
           status: status
@@ -721,8 +726,7 @@ defmodule Portal.Google.APIClient do
 
   defp parse_forbidden_batch_part(json_body) do
     if usage_limits_error?(String.trim(json_body)) do
-      {:throttled,
-       %Req.Response{status: 403, body: %{"error" => "Batch users part throttled"}}}
+      {:retry, %Req.Response{status: 403, body: %{"error" => "Batch users part throttled"}}}
     else
       log_batch_parse_issue("Failing batch users response part with unexpected status",
         status: 403
@@ -845,7 +849,6 @@ defmodule Portal.Google.APIClient do
   # strategies miss it. A custom predicate replaces them, hence the repetition.
   # https://developers.google.com/workspace/admin/directory/v1/limits
   @usage_limits_domain "usageLimits"
-  @transient_statuses [408, 429, 500, 502, 503, 504]
   @transient_transport_reasons [:timeout, :econnrefused, :closed]
   @transient_http_reasons [:unprocessed, :pool_not_available]
 

@@ -1212,12 +1212,11 @@ defmodule Portal.Google.APIClientTest do
 
     test "returns error for unexpected per-part status in batch response" do
       Req.Test.expect(APIClient, fn conn ->
-        boundary = "server_error_part_boundary"
+        boundary = "teapot_part_boundary"
 
         body =
           build_batch_body(boundary, [
-            {"HTTP/1.1 500 Internal Server Error",
-             JSON.encode!(%{"error" => %{"message" => "boom"}})}
+            {"HTTP/1.1 418 I'm a teapot", JSON.encode!(%{"error" => %{"message" => "boom"}})}
           ])
 
         conn
@@ -1225,7 +1224,7 @@ defmodule Portal.Google.APIClientTest do
         |> Plug.Conn.send_resp(200, body)
       end)
 
-      assert {:error, %Req.Response{status: 500}} =
+      assert {:error, %Req.Response{status: 418}} =
                APIClient.batch_get_users(@test_access_token, ["user1"])
     end
 
@@ -1284,6 +1283,66 @@ defmodule Portal.Google.APIClientTest do
       end)
 
       assert {:error, %Req.Response{status: 403}} =
+               APIClient.batch_get_users(@test_access_token, ["user1"])
+
+      assert :counters.get(attempts, 1) == 6
+    end
+
+    test "retries the whole chunk when a part fails with a 5xx" do
+      Portal.Config.put_env_override(:portal, APIClient,
+        req_opts: [retry_delay: 0, plug: {Req.Test, APIClient}]
+      )
+
+      attempts = :counters.new(1, [:atomics])
+
+      Req.Test.expect(APIClient, 2, fn conn ->
+        :counters.add(attempts, 1, 1)
+        boundary = "server_error_part_boundary"
+
+        second_part =
+          case :counters.get(attempts, 1) do
+            1 -> {"HTTP/1.1 500 Internal Server Error", JSON.encode!(%{"error" => "boom"})}
+            2 -> {"HTTP/1.1 200 OK", JSON.encode!(active_google_user(%{"id" => "user2"}))}
+          end
+
+        body =
+          build_batch_body(boundary, [
+            {"HTTP/1.1 200 OK", JSON.encode!(active_google_user(%{"id" => "user1"}))},
+            second_part
+          ])
+
+        conn
+        |> Plug.Conn.put_resp_header("content-type", "multipart/mixed; boundary=#{boundary}")
+        |> Plug.Conn.send_resp(200, body)
+      end)
+
+      assert {:ok, users} = APIClient.batch_get_users(@test_access_token, ["user1", "user2"])
+      assert Enum.map(users, & &1["id"]) == ["user1", "user2"]
+      assert :counters.get(attempts, 1) == 2
+    end
+
+    test "surfaces the error when a 5xx part outlasts the retries" do
+      Portal.Config.put_env_override(:portal, APIClient,
+        req_opts: [retry_delay: 0, plug: {Req.Test, APIClient}]
+      )
+
+      attempts = :counters.new(1, [:atomics])
+
+      Req.Test.stub(APIClient, fn conn ->
+        :counters.add(attempts, 1, 1)
+        boundary = "always_failing_boundary"
+
+        body =
+          build_batch_body(boundary, [
+            {"HTTP/1.1 503 Service Unavailable", JSON.encode!(%{"error" => "boom"})}
+          ])
+
+        conn
+        |> Plug.Conn.put_resp_header("content-type", "multipart/mixed; boundary=#{boundary}")
+        |> Plug.Conn.send_resp(200, body)
+      end)
+
+      assert {:error, %Req.Response{status: 503}} =
                APIClient.batch_get_users(@test_access_token, ["user1"])
 
       assert :counters.get(attempts, 1) == 6

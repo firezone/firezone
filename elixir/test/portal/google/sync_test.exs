@@ -1209,6 +1209,10 @@ defmodule Portal.Google.SyncTest do
     end
 
     test "keeps identities when a batch part fails" do
+      Portal.Config.put_env_override(:portal, APIClient,
+        req_opts: [retry_delay: 0, plug: {Req.Test, APIClient}]
+      )
+
       account = account_fixture()
       directory = google_directory_fixture(account: account, domain: "example.com")
 
