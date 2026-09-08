@@ -34,10 +34,9 @@ MAC_CORNER_RADIUS = {
     "26": {"main": 15, "settings": 26},
 }
 MAIN_WINDOW_SCREENS = {"first-time", "grant-vpn"}
-# What a menu keeps of the desktop around it, and how far from the backdrop a
-# channel is before the pixel counts as something the app drew.
-MENU_MARGIN = 32
-MENU_TOLERANCE = 2
+# The step from one pixel to the next that marks an edge the app drew. The menus'
+# edges step by more than 20, the shadow they cast by no more than 1.
+MENU_STEP = 5
 # WindowServer draws the window's edge, and a hairline along its corner arcs,
 # against whatever is behind them, and not the same way twice. A band this wide
 # inside the edge is repainted from the window's own colours further in, and gets
@@ -203,37 +202,33 @@ def frame_window(capture: Image.Image, radius: int, appearance: str) -> Image.Im
     return Image.composite(window, canvas, placed(inner))
 
 
-def cropped_to_content(capture: Image.Image) -> Image.Image:
-    """A desktop capture, cropped to what the app drew on it.
+def centred_on_menus(desktop: Image.Image) -> Image.Image:
+    """A desktop capture on the store canvas, positioned by the menus it shows.
 
-    The desktop is painted in `MAC_BACKGROUND`, so what is not that colour is the
-    app's: the menus and the shadow they cast. A channel one step away is the tail
-    of that shadow, which the margin keeps.
+    The desktop is the canvas colour already, so the capture needs no crop, only the
+    offset that centres the menus. Their shadow reaches further on some sides than
+    others and must not count towards that, so they are found by their edges.
     """
-    pixels = np.asarray(capture.convert("RGB"), dtype=int)
-    drawn = np.abs(pixels - np.array(MAC_BACKGROUND)).max(axis=2) >= MENU_TOLERANCE
-    rows = np.flatnonzero(drawn.any(axis=1))
-    columns = np.flatnonzero(drawn.any(axis=0))
+    grey = np.asarray(desktop.convert("L"), dtype=int)
+    edges = np.zeros(grey.shape, dtype=bool)
+    edges[:, :-1] |= np.abs(np.diff(grey, axis=1)) > MENU_STEP
+    edges[:-1, :] |= np.abs(np.diff(grey, axis=0)) > MENU_STEP
+    rows = np.flatnonzero(edges.any(axis=1))
+    columns = np.flatnonzero(edges.any(axis=0))
 
     if not rows.size or not columns.size:
         raise RuntimeError("A desktop capture holds nothing but the desktop")
 
-    return capture.crop(
-        (
-            max(0, columns[0] - MENU_MARGIN),
-            max(0, rows[0] - MENU_MARGIN),
-            min(capture.width, columns[-1] + 1 + MENU_MARGIN),
-            min(capture.height, rows[-1] + 1 + MENU_MARGIN),
-        )
-    )
-
-
-def centred(capture: Image.Image) -> Image.Image:
+    menus = (columns[0], rows[0], columns[-1] + 1, rows[-1] + 1)
     canvas = Image.new("RGB", MAC_SIZE, MAC_BACKGROUND)
     canvas.paste(
-        capture.convert("RGB"),
-        ((MAC_SIZE[0] - capture.width) // 2, (MAC_SIZE[1] - capture.height) // 2),
+        desktop.convert("RGB"),
+        (
+            (MAC_SIZE[0] - menus[0] - menus[2]) // 2,
+            (MAC_SIZE[1] - menus[1] - menus[3]) // 2,
+        ),
     )
+
     return canvas
 
 
@@ -245,9 +240,8 @@ def prepare_macos(directory: Path) -> None:
         with Image.open(path) as image:
             screen, appearance = path.stem.rsplit("-", 1)
 
-            # A capture of the whole desktop, which is the canvas colour already.
             if screen == "menu":
-                write_rgb(path, centred(cropped_to_content(image)))
+                write_rgb(path, centred_on_menus(image))
                 continue
 
             if image.size == MAC_SIZE:
