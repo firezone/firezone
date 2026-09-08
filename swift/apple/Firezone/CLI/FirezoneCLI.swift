@@ -14,7 +14,14 @@ struct FirezoneCLI: AsyncParsableCommand {
     commandName: "firezone-cli",
     abstract: "Firezone headless Client",
     version: versionString,
-    subcommands: [Connect.self, SignOut.self, Extension.self],
+    subcommands: [
+      Connect.self,
+      SignOut.self,
+      Status.self,
+      Resources.self,
+      InternetResource.self,
+      Extension.self,
+    ],
     defaultSubcommand: Connect.self
   )
 
@@ -41,6 +48,16 @@ struct CLIError: Error, LocalizedError {
 /// Shared plumbing for the commands that talk to the VPN profile.
 enum VPNProfile {
   @MainActor
+  static func load() async throws -> VPNConfigurationManager {
+    let factory = NETunnelProviderManagerFactory()
+    guard let vpnManager = try await VPNConfigurationManager.load(using: factory) else {
+      throw CLIError("No VPN configuration found")
+    }
+
+    return vpnManager
+  }
+
+  @MainActor
   static func session(
     for vpnManager: VPNConfigurationManager
   ) throws -> any TunnelSessionProtocol {
@@ -49,5 +66,20 @@ enum VPNProfile {
     }
 
     return session
+  }
+
+  /// What the tunnel knows about the session, or `nil` when it isn't up to answer.
+  ///
+  /// An empty hash never matches the snapshot's, so the provider always sends the whole
+  /// thing rather than reporting it unchanged.
+  @MainActor
+  static func state(from session: any TunnelSessionProtocol) async -> ConnlibState? {
+    do {
+      return try await IPCClient.pollUpdates(session: session, currentHash: Data()).state
+    } catch {
+      Log.debug("Tunnel did not answer the state poll: \(error)")
+
+      return nil
+    }
   }
 }
