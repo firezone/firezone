@@ -263,7 +263,10 @@
 
       for y in stride(from: 0, to: bitmap.pixelsHigh, by: 8) {
         for x in stride(from: 0, to: bitmap.pixelsWide, by: 8) {
-          guard let pixel = bitmap.colorAt(x: x, y: y)?.usingColorSpace(.deviceRGB) else {
+          // In the space the captures are written in, so the backdrop below is the
+          // value the desktop and the store canvas are painted with rather than
+          // whatever another space encodes it as.
+          guard let pixel = bitmap.colorAt(x: x, y: y)?.usingColorSpace(.sRGB) else {
             continue
           }
 
