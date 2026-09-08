@@ -55,7 +55,6 @@ echo "==> Running the tests..."
 # Guarded because bash 3.2, which macOS still ships, treats an empty array as unset.
 result="$(adb shell am instrument -w \
     -e coverage true -e coverageFile "$COVERAGE_ON_DEVICE" \
-    -e captureScreenshots "${CAPTURE_SCREENSHOTS:-true}" \
     ${filter[@]+"${filter[@]}"} "$RUNNER")"
 
 echo "$result"
@@ -81,10 +80,6 @@ if [ ! -s coverage.ec ]; then
 fi
 
 echo "    $(wc -c <coverage.ec) bytes"
-
-if [[ "${CAPTURE_SCREENSHOTS:-true}" == false ]]; then
-    exit 0
-fi
 
 # Tests that photograph a system screen the app cannot render itself leave the pictures next to
 # the execution data, in the same private directory only `run-as` reaches.

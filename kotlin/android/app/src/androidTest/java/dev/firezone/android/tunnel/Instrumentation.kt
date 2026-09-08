@@ -142,10 +142,6 @@ fun stopTunnelService() {
 // `emulator-tests.sh` collects it. The status bar is pinned through SystemUI's demo mode for the
 // duration, so a clock or a battery level does not make two pictures of the same screen differ.
 fun photographScreen(name: String) {
-    if (InstrumentationRegistry.getArguments().getString("captureScreenshots") == "false") {
-        return
-    }
-
     val directory = File(InstrumentationRegistry.getInstrumentation().targetContext.filesDir, "screenshots")
     directory.mkdirs()
 
