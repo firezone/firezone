@@ -75,11 +75,14 @@ extension XCTestCase {
       let width = screen.width
       let height = screen.height
 
+      // Drawn in the screen's own colour space: converting to another one dithers
+      // the conversion, and the speckle that leaves across the flat backdrop reads
+      // as something the app drew, which grows the crop to take it in.
       guard
         let desktop = NSScreen.main,
         let context = CGContext(
           data: nil, width: width, height: height, bitsPerComponent: 8,
-          bytesPerRow: width * 4, space: CGColorSpaceCreateDeviceRGB(),
+          bytesPerRow: width * 4, space: screen.colorSpace ?? CGColorSpaceCreateDeviceRGB(),
           bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue
         )
       else { return nil }
