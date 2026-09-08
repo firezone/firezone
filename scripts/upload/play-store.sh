@@ -71,7 +71,7 @@ update_track() {
     releases=$(jq --compact-output --null-input \
         --arg name "$RELEASE_NAME" \
         --arg version_code "$version_code" \
-        --arg changelog "$CHANGELOG_URL" \
+        --arg changelog "See our full changelog at $CHANGELOG_URL." \
         '[{
             name: $name,
             versionCodes: [$version_code],

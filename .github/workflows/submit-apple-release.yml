@@ -293,7 +293,7 @@ jobs:
             echo
             echo "- Source: [\`${short_sha}\`](https://github.com/${GITHUB_REPOSITORY}/commit/${SOURCE_SHA})"
             echo "- Build: \`${BUILD_NUMBER}\`"
-            echo "- What's New: [Apple changelog]($changelog)"
+            echo "- What's New: $changelog"
             echo "- [Open Firezone in App Store Connect](https://appstoreconnect.apple.com/apps/${ASC_APP_ID}/distribution)"
             echo
             if [[ "$VERSION_PHASE" == submitted ]]; then
