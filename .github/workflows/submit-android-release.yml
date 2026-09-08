@@ -113,7 +113,7 @@ jobs:
             printf "| Source | [\`%s\`](https://github.com/%s/commit/%s) |\n" "$SOURCE_SHA" "$GITHUB_REPOSITORY" "$SOURCE_SHA"
             printf "| Play release | \`%s@%s\` |\n" "$VERSION_NAME" "$SOURCE_SHA"
             printf "| Version code | \`%s\` |\n" "$VERSION_CODE"
-            echo "| What's New | [Android changelog](https://www.firezone.dev/changelog#tab-android) |"
+            echo "| What's New | See our full changelog at https://www.firezone.dev/changelog#tab-android. |"
             echo
             echo "### Store listing assets"
             echo
