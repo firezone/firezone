@@ -862,6 +862,21 @@ impl<I: GuiIntegration> Controller<I> {
                     .map(|connected| connected.account_slug.clone()),
                 internet_resource_enabled: self.general_settings.internet_resource_enabled(),
             }),
+            gui::ClientMsg::Connect => {
+                let token = self
+                    .auth
+                    .token()
+                    .context("Not signed in, sign in with the Firezone GUI first")?;
+
+                self.start_session(token).await?;
+
+                gui::ServerMsg::Ack
+            }
+            gui::ClientMsg::Disconnect => {
+                self.disconnect().await?;
+
+                gui::ServerMsg::Ack
+            }
         };
 
         Ok(reply)
@@ -1467,6 +1482,63 @@ mod tests {
                 internet_resource_enabled: false,
             })
         );
+    }
+
+    #[tokio::test]
+    async fn connecting_without_a_token_fails() {
+        let _guard = logging::test("debug");
+        let mut test_controller = Controller::start_for_test();
+        let mut mock_tunnel = test_controller.tunnel_service_ipc_accept().await;
+        mock_tunnel.send_hello().await;
+
+        let response = test_controller
+            .gui_ipc_request(gui::ClientMsg::Connect)
+            .await;
+
+        assert!(matches!(response, gui::ServerMsg::Error(_)), "{response:?}");
+    }
+
+    #[tokio::test]
+    async fn disconnects_over_gui_ipc() {
+        let _guard = logging::test("debug");
+        let mut test_controller = Controller::start_for_test();
+        let mut mock_tunnel = test_controller.tunnel_service_ipc_accept().await;
+
+        boot_tunnel(
+            &mut test_controller,
+            &mut mock_tunnel,
+            vec![dns_resource_foo()],
+        )
+        .await;
+        test_controller
+            .wait_integration(|i| i.nth_notification(0))
+            .await;
+
+        // The first resource list also pushes the internet-resource state.
+        let msg = mock_tunnel.next_msg().await;
+        assert!(
+            matches!(msg, service::ClientMsg::SetInternetResourceState(false)),
+            "expected `SetInternetResourceState(false)` but got {msg:?}"
+        );
+
+        let response = test_controller
+            .gui_ipc_request(gui::ClientMsg::Disconnect)
+            .await;
+        assert_eq!(response, gui::ServerMsg::Ack);
+
+        let msg = mock_tunnel.next_msg().await;
+        assert!(
+            matches!(msg, service::ClientMsg::Disconnect),
+            "expected `Disconnect` but got {msg:?}"
+        );
+
+        // The token outlives the disconnect, so we can connect again.
+        let response = test_controller
+            .gui_ipc_request(gui::ClientMsg::Connect)
+            .await;
+        assert_eq!(response, gui::ServerMsg::Ack);
+
+        let _ = mock_tunnel.rx_connect().await;
     }
 
     #[tokio::test]

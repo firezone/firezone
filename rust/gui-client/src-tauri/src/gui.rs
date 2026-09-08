@@ -281,6 +281,8 @@ pub enum ClientMsg {
     ListResources,
     SetInternetResourceEnabled(bool),
     Status,
+    Connect,
+    Disconnect,
 }
 
 /// IPC messages that the running instance sends back in reply to a [`ClientMsg`].
