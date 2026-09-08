@@ -324,12 +324,12 @@ defmodule Portal.Policies.EvaluatorTest do
     end
   end
 
-  describe "fetch_conformation_expiration/3 with client_attested" do
+  describe "fetch_conformation_expiration/3 with device_attested" do
     test "is with values [\"true\"] returns ok when the connection attested" do
       attested_client = %Portal.Device{type: :client, attested?: true}
 
       condition = %{
-        property: :client_attested,
+        property: :device_attested,
         operator: :is,
         values: ["true"]
       }
@@ -341,7 +341,7 @@ defmodule Portal.Policies.EvaluatorTest do
       unattested_client = %Portal.Device{type: :client, attested?: false}
 
       condition = %{
-        property: :client_attested,
+        property: :device_attested,
         operator: :is,
         values: ["true"]
       }
@@ -358,7 +358,7 @@ defmodule Portal.Policies.EvaluatorTest do
       }
 
       condition = %{
-        property: :client_attested,
+        property: :device_attested,
         operator: :is,
         values: ["true"]
       }
@@ -371,7 +371,7 @@ defmodule Portal.Policies.EvaluatorTest do
       unattested_client = %Portal.Device{type: :client, attested?: false}
 
       condition = %{
-        property: :client_attested,
+        property: :device_attested,
         operator: :is,
         values: ["false"]
       }

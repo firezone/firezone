@@ -333,7 +333,7 @@ defmodule PortalAPI.PolicyControllerTest do
              ]
     end
 
-    test "creates a policy with a client_attested condition", %{
+    test "creates a policy with a device_attested condition", %{
       conn: conn,
       account: account,
       actor: actor
@@ -345,7 +345,7 @@ defmodule PortalAPI.PolicyControllerTest do
         "group_id" => group.id,
         "resource_id" => resource.id,
         "conditions" => [
-          %{"property" => "client_attested", "operator" => "is", "values" => ["true"]}
+          %{"property" => "device_attested", "operator" => "is", "values" => ["true"]}
         ]
       }
 
@@ -359,14 +359,14 @@ defmodule PortalAPI.PolicyControllerTest do
 
       assert resp["data"]["conditions"] == [
                %{
-                 "property" => "client_attested",
+                 "property" => "device_attested",
                  "operator" => "is",
                  "values" => ["true"]
                }
              ]
     end
 
-    test "rejects a client_attested condition with an unsupported operator", %{
+    test "rejects a device_attested condition with an unsupported operator", %{
       conn: conn,
       account: account,
       actor: actor
@@ -378,7 +378,7 @@ defmodule PortalAPI.PolicyControllerTest do
         "group_id" => group.id,
         "resource_id" => resource.id,
         "conditions" => [
-          %{"property" => "client_attested", "operator" => "is_in", "values" => ["true"]}
+          %{"property" => "device_attested", "operator" => "is_in", "values" => ["true"]}
         ]
       }
 
@@ -887,7 +887,7 @@ defmodule PortalAPI.PolicyControllerTest do
 
       attrs = %{
         "conditions" => [
-          %{"property" => "client_attested", "operator" => "is", "values" => ["true"]}
+          %{"property" => "device_attested", "operator" => "is", "values" => ["true"]}
         ]
       }
 
@@ -899,7 +899,7 @@ defmodule PortalAPI.PolicyControllerTest do
 
       assert json_response(conn, 200)["data"]["conditions"] == [
                %{
-                 "property" => "client_attested",
+                 "property" => "device_attested",
                  "operator" => "is",
                  "values" => ["true"]
                }

@@ -2249,7 +2249,7 @@ defmodule PortalAPI.Client.ChannelTest do
       assert payload == resource.id
     end
 
-    test "for client_attested conditions grants only the connection that attested",
+    test "for device_attested conditions grants only the connection that attested",
          %{
            client: client,
            actor: actor,
@@ -2273,7 +2273,7 @@ defmodule PortalAPI.Client.ChannelTest do
         resource: resource,
         conditions: [
           %{
-            property: :client_attested,
+            property: :device_attested,
             operator: :is,
             values: ["true"]
           }

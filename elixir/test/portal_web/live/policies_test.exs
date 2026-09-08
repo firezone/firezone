@@ -1339,7 +1339,7 @@ defmodule PortalWeb.PoliciesTest do
       assert html =~ "Require Verified Device"
     end
 
-    test "manages client_attested condition", %{conn: conn, account: account, actor: actor} do
+    test "manages device_attested condition", %{conn: conn, account: account, actor: actor} do
       group = group_fixture(account: account)
       resource = resource_fixture(account: account)
       policy = policy_fixture(group: group, resource: resource)
@@ -1350,11 +1350,11 @@ defmodule PortalWeb.PoliciesTest do
         |> live(~p"/#{account}/policies/#{policy.id}/edit")
 
       render_click(lv, "toggle_conditions_dropdown")
-      html = render_click(lv, "add_condition", %{"type" => "client_attested"})
+      html = render_click(lv, "add_condition", %{"type" => "device_attested"})
       assert html =~ "Require attestation"
     end
 
-    test "saves client_attested condition to DB", %{conn: conn, account: account, actor: actor} do
+    test "saves device_attested condition to DB", %{conn: conn, account: account, actor: actor} do
       group = group_fixture(account: account)
       resource = resource_fixture(account: account)
       policy = policy_fixture(group: group, resource: resource)
@@ -1365,7 +1365,7 @@ defmodule PortalWeb.PoliciesTest do
         |> live(~p"/#{account}/policies/#{policy.id}/edit")
 
       render_click(lv, "toggle_conditions_dropdown")
-      render_click(lv, "add_condition", %{"type" => "client_attested"})
+      render_click(lv, "add_condition", %{"type" => "device_attested"})
 
       html =
         lv
@@ -1384,11 +1384,11 @@ defmodule PortalWeb.PoliciesTest do
 
       assert Enum.any?(
                policy.conditions,
-               &(&1.property == :client_attested and &1.values == ["true"])
+               &(&1.property == :device_attested and &1.values == ["true"])
              )
     end
 
-    test "renders client_attested condition from saved policy", %{
+    test "renders device_attested condition from saved policy", %{
       conn: conn,
       account: account,
       actor: actor
@@ -1402,7 +1402,7 @@ defmodule PortalWeb.PoliciesTest do
           resource: resource,
           conditions: [
             %{
-              property: :client_attested,
+              property: :device_attested,
               operator: :is,
               values: ["true"]
             }
