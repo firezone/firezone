@@ -29,16 +29,21 @@ final class ReviewerScreenshotTests: XCTestCase {
     XCTAssertTrue(field.waitForExistence(timeout: 60), "The account-slug form did not appear")
 
     let heading = page.descendants(matching: .any).matching(
-      NSPredicate(
-        format: "label CONTAINS[c] %@ OR value CONTAINS[c] %@", "account slug", "account slug")
+      NSPredicate(format: "label CONTAINS[c] %@", "account slug")
     ).firstMatch
     #if os(iOS)
       field.tap()
-      field.typeText("firezoneqa")
-      heading.tap()
+      XCTAssertTrue(browser.keyboards.firstMatch.waitForExistence(timeout: 10))
     #else
       field.click()
-      field.typeText("firezoneqa")
+    #endif
+    field.typeText("firezoneqa")
+    let enteredSlug = XCTNSPredicateExpectation(
+      predicate: NSPredicate(format: "value == %@", "firezoneqa"), object: field)
+    XCTAssertEqual(XCTWaiter.wait(for: [enteredSlug], timeout: 10), .completed)
+    #if os(iOS)
+      heading.tap()
+    #else
       heading.click()
     #endif
     XCTAssertEqual(field.value as? String, "firezoneqa")
