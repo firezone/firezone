@@ -62,8 +62,6 @@ extension XCTestCase {
           let cropped = screen.cropping(to: region)
         else { return Data() }
 
-        print("desktop: \(name) covers \(region) of \(screen.width)x\(screen.height)")
-
         return NSBitmapImageRep(cgImage: cropped).representation(using: .png, properties: [:])
           ?? Data()
       }
