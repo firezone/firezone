@@ -8,7 +8,6 @@ use std::{process::ExitCode, sync::Arc};
 
 use anyhow::{Context as _, ErrorExt, Result, bail};
 use clap::{Args, Parser};
-use connlib_model::ResourceView;
 use controller::Failure;
 use firezone_gui_client::{controller, deep_link, dialog, elevation, gui, logging};
 use tokio::runtime::Runtime;
@@ -193,51 +192,6 @@ fn try_main(cli: Cli, rt: &Runtime, log_guard: &mut Option<LogGuard>) -> Result<
 
             return Ok(());
         }
-        Some(Cmd::Status) => {
-            let reply = rt
-                .block_on(gui_ipc::request(gui_ipc::ClientMsg::Status))
-                .context("Failed to query status")?;
-            let gui_ipc::ServerMsg::Status(status) = reply else {
-                bail!("Unexpected reply: {reply:?}");
-            };
-
-            print_status(&status);
-
-            return Ok(());
-        }
-        Some(Cmd::Connect) => {
-            expect_ack(rt, gui_ipc::ClientMsg::Connect).context("Failed to connect")?;
-
-            return Ok(());
-        }
-        Some(Cmd::Disconnect) => {
-            expect_ack(rt, gui_ipc::ClientMsg::Disconnect).context("Failed to disconnect")?;
-
-            return Ok(());
-        }
-        Some(Cmd::Resources {
-            command: None | Some(ResourcesCmd::List),
-        }) => {
-            list_resources(rt)?;
-
-            return Ok(());
-        }
-        Some(Cmd::InternetResource {
-            command: InternetResourceCmd::Enable,
-        }) => {
-            expect_ack(rt, gui_ipc::ClientMsg::SetInternetResourceEnabled(true))
-                .context("Failed to enable Internet Resource")?;
-
-            return Ok(());
-        }
-        Some(Cmd::InternetResource {
-            command: InternetResourceCmd::Disable,
-        }) => {
-            expect_ack(rt, gui_ipc::ClientMsg::SetInternetResourceEnabled(false))
-                .context("Failed to disable Internet Resource")?;
-
-            return Ok(());
-        }
         Some(Cmd::SmokeTest) => {
             // Can't check elevation here because the Windows CI is always elevated
             gui::run(rt, config, reloader)?;
@@ -326,7 +280,7 @@ fn try_main(cli: Cli, rt: &Runtime, log_guard: &mut Option<LogGuard>) -> Result<
 /// don't propagate when we use `RunAs` to elevate ourselves. So those must be run
 /// from an admin terminal, or with "Run as administrator" in the right-click menu.
 #[derive(Parser)]
-#[command(author, version, about, long_about = None, bin_name = "firezone")]
+#[command(author, version, about, long_about = None)]
 struct Cli {
     /// If true, check for updates every 30 seconds and pretend our current version is 1.0.0, so we'll always show the notification dot.
     #[arg(long, hide = true)]
@@ -428,22 +382,6 @@ impl Cli {
 #[derive(clap::Subcommand)]
 enum Cmd {
     OpenDeepLink(DeepLink),
-    /// Print the status of the running Firezone GUI.
-    Status,
-    /// Connect to Firezone using the stored credentials.
-    Connect,
-    /// Disconnect from Firezone, staying signed in.
-    Disconnect,
-    /// Inspect the Resources of the running Firezone GUI.
-    Resources {
-        #[command(subcommand)]
-        command: Option<ResourcesCmd>,
-    },
-    /// Control the Internet Resource of the running Firezone GUI.
-    InternetResource {
-        #[command(subcommand)]
-        command: InternetResourceCmd,
-    },
     #[command(hide = true)]
     Elevated,
     #[command(hide = true)]
@@ -467,21 +405,6 @@ enum Cmd {
     OpenTrayMenu,
     #[command(hide = true)]
     CloseTrayMenu,
-}
-
-/// Omitting the subcommand is equivalent to [`ResourcesCmd::List`].
-#[derive(clap::Subcommand)]
-enum ResourcesCmd {
-    /// Print the Resources.
-    List,
-}
-
-#[derive(clap::Subcommand)]
-enum InternetResourceCmd {
-    /// Enable the Internet Resource.
-    Enable,
-    /// Disable the Internet Resource.
-    Disable,
 }
 
 #[derive(clap::Parser)]
@@ -532,82 +455,6 @@ async fn debug_single_instance() -> anyhow::Result<()> {
         }
     }
     Ok(())
-}
-
-fn list_resources(rt: &Runtime) -> Result<()> {
-    let reply = rt
-        .block_on(gui_ipc::request(gui_ipc::ClientMsg::ListResources))
-        .context("Failed to list resources")?;
-    let gui_ipc::ServerMsg::Resources(resources) = reply else {
-        bail!("Unexpected reply: {reply:?}");
-    };
-
-    print_resources(&resources);
-
-    Ok(())
-}
-
-fn expect_ack(rt: &Runtime, msg: gui_ipc::ClientMsg) -> Result<()> {
-    let reply = rt.block_on(gui_ipc::request(msg))?;
-
-    anyhow::ensure!(
-        reply == gui_ipc::ServerMsg::Ack,
-        "Unexpected reply: {reply:?}"
-    );
-
-    Ok(())
-}
-
-#[allow(
-    clippy::print_stdout,
-    reason = "the whole point of this subcommand is to print the status to stdout"
-)]
-fn print_status(status: &gui_ipc::StatusSummary) {
-    let signed_in = if status.signed_in { "yes" } else { "no" };
-    let account = status.account_slug.as_deref().unwrap_or("unknown");
-    let internet_resource = if status.internet_resource_enabled {
-        "enabled"
-    } else {
-        "disabled"
-    };
-
-    println!("Signed in:         {signed_in}");
-    println!("Account:           {account}");
-    println!("Internet Resource: {internet_resource}");
-}
-
-#[allow(
-    clippy::print_stdout,
-    reason = "the whole point of this subcommand is to print the resource list to stdout"
-)]
-fn print_resources(resources: &[ResourceView]) {
-    let header = ["NAME", "ADDRESS", "STATUS"].map(str::to_owned);
-    let rows = resources.iter().map(|resource| {
-        [
-            resource.name().to_owned(),
-            resource.pastable().into_owned(),
-            resource.status().to_string(),
-        ]
-    });
-    let table = std::iter::once(header).chain(rows).collect::<Vec<_>>();
-    let widths = std::array::from_fn::<_, 3, _>(|column| {
-        table
-            .iter()
-            .map(|row| row[column].len())
-            .max()
-            .unwrap_or_default()
-    });
-
-    for row in table {
-        let line = row
-            .iter()
-            .zip(widths)
-            .map(|(cell, width)| format!("{cell:<width$}"))
-            .collect::<Vec<_>>()
-            .join("  ");
-
-        println!("{}", line.trim_end());
-    }
 }
 
 #[cfg(test)]
