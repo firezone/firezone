@@ -27,16 +27,16 @@ internal fun mainActivityHandoffIntent(context: Context): Intent =
 internal fun mainActivityReturnIntent(context: Context): Intent = Intent(context, MainActivity::class.java)
 
 /**
- * The callback the portal would send back for [authUrl], carrying its `state` so the pending
+ * The callback the portal would send back for a request that issued [state], so the pending
  * request still has to match it.
  *
  * Only reached with `DebugOverrides.skipPortalAuth` set, which stands the portal down without
  * standing down the sign-in it answers.
  */
-internal fun fabricatedAuthCallback(authUrl: String): Uri =
+internal fun fabricatedAuthCallback(state: String?): Uri =
     Uri
         .parse("$AUTH_CALLBACK_SCHEME://$AUTH_CALLBACK_HOST")
         .buildUpon()
-        .appendQueryParameter("state", Uri.parse(authUrl).getQueryParameter("state"))
+        .appendQueryParameter("state", state)
         .appendQueryParameter("fragment", "skip-portal-auth")
         .build()
