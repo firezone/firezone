@@ -69,6 +69,7 @@ tracing-log = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 tunnel-bypass-resolver = { workspace = true }
 url = { workspace = true }
+windows-package-identity = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
 x509-keystore = { workspace = true }
 zip = { workspace = true, features = ["deflate", "time"] }
@@ -137,8 +138,8 @@ features = [
 
 [build-dependencies]
 anyhow = { workspace = true }
-sha2 = { workspace = true }
 tauri-build = { workspace = true, features = [] }
+windows-package-identity = { workspace = true }
 
 [target.'cfg(target_os = "windows")'.build-dependencies]
 embed-resource = { workspace = true }

@@ -3,6 +3,7 @@ members = [
     "client-ffi",
     "gateway",
     "gui-client/src-admx-macro",
+    "gui-client/src-package-identity",
     "gui-client/src-tauri",
     "headless-client",
     "libs/anyhow-ext",
@@ -262,6 +263,7 @@ windows = "0.61.3"
 windows-core = "0.61.1"
 windows-implement = "0.60.0"
 windows-native-keyring-store = "1.1.0"
+windows-package-identity = { path = "gui-client/src-package-identity" }
 windows-security = { path = "libs/windows-security" }
 windows-service = "0.8.1"
 winreg = "0.56.0"
