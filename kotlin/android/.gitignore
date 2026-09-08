@@ -20,9 +20,11 @@ captures/
 *.apk
 output.json
 
-# IntelliJ
+# IntelliJ. Excluding the contents rather than the directory itself, so that the shared run
+# configurations below can be re-included: git will not descend into an excluded directory.
 *.iml
-.idea/
+.idea/*
+!.idea/runConfigurations/
 misc.xml
 deploymentTargetDropDown.xml
 render.experimental.xml
