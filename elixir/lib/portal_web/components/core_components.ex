@@ -905,6 +905,7 @@ defmodule PortalWeb.CoreComponents do
   attr :waiting, :string, default: "Waiting for connection..."
   attr :done, :string, default: "Connected, click to continue"
   attr :skip_confirm, :string, default: nil
+  attr :size, :string, default: "md"
 
   def initial_connection_status(assigns) do
     assigns =
@@ -918,9 +919,9 @@ defmodule PortalWeb.CoreComponents do
     ~H"""
     <.link
       class={[
-        "px-4 py-2",
+        connection_status_size(@size),
         "flex items-center",
-        "text-sm text-white",
+        "text-white",
         "rounded",
         "transition-colors",
         (@connected? && "bg-accent-450 hover:bg-accent-700") || "bg-primary-500 cursor-progress"
@@ -944,6 +945,9 @@ defmodule PortalWeb.CoreComponents do
     </.link>
     """
   end
+
+  defp connection_status_size("sm"), do: "px-3 py-1.5 text-xs"
+  defp connection_status_size(_size), do: "px-4 py-2 text-sm"
 
   @doc """
   Renders verification timestamp

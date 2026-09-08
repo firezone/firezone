@@ -31,7 +31,7 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/settings/directory_sync/okta/#{directory.id}/hook")
 
-      assert html =~ "Waiting for verification"
+      assert html =~ "Waiting for Okta to verify"
       assert html =~ Portal.Okta.Webhooks.endpoint_url(directory.id)
       assert html =~ directory.webhook_secret
 
@@ -76,7 +76,7 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
 
       directory = Portal.Repo.get_by!(Portal.Okta.Directory, account_id: account.id, name: "Okta")
       assert_patch(lv, ~p"/#{account}/settings/directory_sync/okta/#{directory.id}/hook")
-      assert render(lv) =~ "Waiting for verification"
+      assert render(lv) =~ "Waiting for Okta to verify"
     end
 
     test "re-verifies the event hook from the row menu", %{
@@ -100,7 +100,7 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
       render_click(lv, "reverify_webhook", %{"id" => directory.id})
 
       assert_patch(lv, ~p"/#{account}/settings/directory_sync/okta/#{directory.id}/hook")
-      assert render(lv) =~ "Waiting for verification"
+      assert render(lv) =~ "Waiting for Okta to verify"
       assert is_nil(Portal.Repo.get!(Portal.Okta.Directory, directory.id).webhook_verified_at)
     end
 
@@ -127,8 +127,8 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
 
       assert html =~ "Last Update"
       assert html =~ "Not set up"
-      assert html =~ "Receives user and group changes from Okta as they happen."
-      assert html =~ "Receives user and group changes from Microsoft Entra as they happen."
+      assert html =~ "Okta sends user and group changes as they happen."
+      assert html =~ "Microsoft Entra sends user and group changes as they happen."
       assert html =~ "Nothing received yet."
     end
   end

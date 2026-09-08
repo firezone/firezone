@@ -872,15 +872,14 @@ defmodule PortalWeb.Settings.DirectorySync do
             :if={@live_action == :hook and assigns[:directory] != nil}
             class="flex flex-col h-full overflow-hidden"
           >
-            <.panel_header title="Set up realtime updates" variant="plain">
+            <.panel_header title="Set up the Okta event hook" variant="plain">
               <:leading><.provider_icon provider="okta" size="md" /></:leading>
               <:adornment><.docs_action path="/directory-sync/okta" /></:adornment>
             </.panel_header>
             <div class="flex-1 overflow-y-auto px-5 py-4">
               <p class="text-sm text-body">
-                Until an event hook is set up, changes in Okta reach Firezone with the daily full
-                sync. With one, they are applied within seconds. Okta verifies the hook when you
-                save it, and this panel updates the moment that happens.
+                Okta can send changes to Firezone as they happen. Without an event hook, changes
+                arrive with the daily sync. This page updates as soon as Okta verifies the hook.
               </p>
               <div class="mt-4 p-4 border border-border bg-raised rounded">
                 <.okta_event_hook_details directory={@directory} />
@@ -890,9 +889,10 @@ defmodule PortalWeb.Settings.DirectorySync do
               <.panel_footer_button phx-click="close_panel">Cancel</.panel_footer_button>
               <.initial_connection_status
                 type="the event hook"
-                waiting="Waiting for verification..."
+                waiting="Waiting for Okta to verify..."
                 done="Verified, click to continue"
-                skip_confirm="Do you want to close this before Okta has verified the event hook?"
+                size="sm"
+                skip_confirm="Close before Okta has verified the hook?"
                 navigate={~p"/#{@account}/settings/directory_sync"}
                 connected?={not is_nil(@directory.webhook_verified_at)}
               />
@@ -1043,8 +1043,8 @@ defmodule PortalWeb.Settings.DirectorySync do
         </span>
       </:target>
       <:content>
-        Okta sends user and group changes as they happen once an event hook is set up.
-        Choose Set up event hook from the row menu.
+        Okta can send user and group changes as they happen. Set up the event hook from
+        the row menu.
       </:content>
     </.popover>
     """
@@ -1093,34 +1093,28 @@ defmodule PortalWeb.Settings.DirectorySync do
     <ol class="mt-3 list-decimal list-inside space-y-1 text-xs text-body">
       <li>
         In the Okta Admin Console, go to <strong>Workflow → Event Hooks</strong>
-        and create an event hook.
+        and click <strong>Create Event Hook</strong>.
       </li>
+      <li>Set the URL to the endpoint URL below.</li>
       <li>
-        Enter the endpoint URL below, set the authentication field to <code>Authorization</code>,
-        and paste the value below as its secret.
+        Set the authentication field to <code>Authorization</code>
+        and the authentication secret to the value below.
       </li>
-      <li>Subscribe the hook to the events below, save it, and verify it.</li>
+      <li>Select the events below.</li>
+      <li>Click <strong>Save & Continue</strong>, then <strong>Verify</strong>.</li>
     </ol>
     <dl class="mt-3 space-y-3 text-xs">
       <div>
         <dt class="font-medium text-body mb-1">Endpoint URL</dt>
-        <dd>
-          <.copy id="okta-hook-url" class="flex items-center gap-2 font-mono break-all">
-            {Okta.Webhooks.endpoint_url(@directory.id)}
-          </.copy>
-        </dd>
+        <dd><.copy_value id="okta-hook-url" value={Okta.Webhooks.endpoint_url(@directory.id)} /></dd>
       </div>
       <div>
-        <dt class="font-medium text-body mb-1">Authorization header value</dt>
-        <dd>
-          <.copy id="okta-hook-secret" class="flex items-center gap-2 font-mono break-all">
-            {@directory.webhook_secret}
-          </.copy>
-        </dd>
+        <dt class="font-medium text-body mb-1">Authentication secret</dt>
+        <dd><.copy_value id="okta-hook-secret" value={@directory.webhook_secret} /></dd>
       </div>
       <div>
         <dt class="font-medium text-body mb-1">Events</dt>
-        <dd class="font-mono text-subtle break-all">
+        <dd class="font-mono text-body break-all">
           {Enum.join(Okta.Webhooks.events(), ", ")}
         </dd>
       </div>
@@ -1128,15 +1122,44 @@ defmodule PortalWeb.Settings.DirectorySync do
     """
   end
 
+  attr :id, :string, required: true
+  attr :value, :string, required: true
+
+  defp copy_value(assigns) do
+    ~H"""
+    <div
+      id={@id}
+      phx-hook="CopyClipboard"
+      class="flex items-center gap-2 px-3 py-2 rounded border border-border bg-raised"
+    >
+      <span id={"#{@id}-text"} class="hidden">{@value}</span>
+      <code class="flex-1 text-xs font-mono text-body break-all">{@value}</code>
+      <button
+        type="button"
+        data-copy-to-clipboard-target={"#{@id}-text"}
+        class="shrink-0 text-subtle hover:text-heading transition-colors"
+        title="Copy to clipboard"
+      >
+        <span id={"#{@id}-default-message"}>
+          <.icon name="ri-clipboard-line" class="w-4 h-4" />
+        </span>
+        <span id={"#{@id}-success-message"} class="hidden">
+          <.icon name="ri-check-line" class="w-4 h-4 text-success" />
+        </span>
+      </button>
+    </div>
+    """
+  end
+
   defp receives("entra") do
-    "Receives user and group changes from Microsoft Entra as they happen."
+    "Microsoft Entra sends user and group changes as they happen."
   end
 
   defp receives("google") do
-    "Receives user changes from Google as they happen. Group changes come with the full sync."
+    "Google sends user changes as they happen. Group changes come with the daily sync."
   end
 
-  defp receives("okta"), do: "Receives user and group changes from Okta as they happen."
+  defp receives("okta"), do: "Okta sends user and group changes as they happen."
 
   attr :type, :string, required: true
   attr :account, :any, required: true
@@ -1727,8 +1750,8 @@ defmodule PortalWeb.Settings.DirectorySync do
             <.okta_event_hook_status directory={@form.source.data} />
           </div>
           <p class="mt-1 text-xs text-body">
-            Okta applies changes as they happen through an event hook you create in its Admin
-            Console. No extra API scope is needed.
+            An event hook in Okta sends changes to Firezone as they happen. No extra API scopes
+            are needed.
           </p>
           <.okta_event_hook_details directory={@form.source.data} />
         </div>
@@ -2168,7 +2191,7 @@ defmodule PortalWeb.Settings.DirectorySync do
     {:noreply,
      socket
      |> init()
-     |> put_flash(:success, "Directory saved. Set up the Okta event hook to apply changes as they happen.")
+     |> put_flash(:success, "Directory saved. Create the event hook in Okta to get changes as they happen.")
      |> push_patch(
        to: ~p"/#{socket.assigns.account}/settings/directory_sync/okta/#{directory.id}/hook"
      )}
