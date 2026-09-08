@@ -205,13 +205,8 @@ fn try_main(cli: Cli, rt: &Runtime, log_guard: &mut Option<LogGuard>) -> Result<
 
             return Ok(());
         }
-        Some(Cmd::Resources { command: None }) => {
-            list_resources(rt)?;
-
-            return Ok(());
-        }
         Some(Cmd::Resources {
-            command: Some(ResourcesCmd::List),
+            command: None | Some(ResourcesCmd::List),
         }) => {
             list_resources(rt)?;
 
