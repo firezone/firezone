@@ -1,10 +1,8 @@
 //! A module for registering, catching, and parsing deep links that are sent over to the app's already-running instance
 
-use crate::{
-    auth,
-    gui::{self, ServerMsg},
-};
+use crate::auth;
 use anyhow::{Context as _, Result, bail};
+use gui_ipc::{ClientMsg, ServerMsg};
 use secrecy::SecretString;
 use url::Url;
 
@@ -27,7 +25,7 @@ mod imp;
 pub use imp::register;
 
 pub async fn open(url: url::Url) -> Result<()> {
-    let response = gui::request(gui::ClientMsg::Deeplink(url)).await?;
+    let response = gui_ipc::request(ClientMsg::Deeplink(url)).await?;
 
     anyhow::ensure!(response == ServerMsg::Ack);
 

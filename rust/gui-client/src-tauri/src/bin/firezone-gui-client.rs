@@ -174,13 +174,13 @@ fn try_main(cli: Cli, rt: &Runtime, log_guard: &mut Option<LogGuard>) -> Result<
             return Ok(());
         }
         Some(Cmd::OpenTrayMenu) => {
-            rt.block_on(gui::send_and_await_ack(gui::ClientMsg::OpenTrayMenu))
+            rt.block_on(gui::send_and_await_ack(gui_ipc::ClientMsg::OpenTrayMenu))
                 .context("Failed to open the running instance's tray menu")?;
 
             return Ok(());
         }
         Some(Cmd::CloseTrayMenu) => {
-            rt.block_on(gui::send_and_await_ack(gui::ClientMsg::CloseTrayMenu))
+            rt.block_on(gui::send_and_await_ack(gui_ipc::ClientMsg::CloseTrayMenu))
                 .context("Failed to close the running instance's tray menu")?;
 
             return Ok(());
@@ -195,9 +195,9 @@ fn try_main(cli: Cli, rt: &Runtime, log_guard: &mut Option<LogGuard>) -> Result<
         }
         Some(Cmd::Status) => {
             let reply = rt
-                .block_on(gui::request(gui::ClientMsg::Status))
+                .block_on(gui_ipc::request(gui_ipc::ClientMsg::Status))
                 .context("Failed to query status")?;
-            let gui::ServerMsg::Status(status) = reply else {
+            let gui_ipc::ServerMsg::Status(status) = reply else {
                 bail!("Unexpected reply: {reply:?}");
             };
 
@@ -206,12 +206,12 @@ fn try_main(cli: Cli, rt: &Runtime, log_guard: &mut Option<LogGuard>) -> Result<
             return Ok(());
         }
         Some(Cmd::Connect) => {
-            expect_ack(rt, gui::ClientMsg::Connect).context("Failed to connect")?;
+            expect_ack(rt, gui_ipc::ClientMsg::Connect).context("Failed to connect")?;
 
             return Ok(());
         }
         Some(Cmd::Disconnect) => {
-            expect_ack(rt, gui::ClientMsg::Disconnect).context("Failed to disconnect")?;
+            expect_ack(rt, gui_ipc::ClientMsg::Disconnect).context("Failed to disconnect")?;
 
             return Ok(());
         }
@@ -225,7 +225,7 @@ fn try_main(cli: Cli, rt: &Runtime, log_guard: &mut Option<LogGuard>) -> Result<
         Some(Cmd::InternetResource {
             command: InternetResourceCmd::Enable,
         }) => {
-            expect_ack(rt, gui::ClientMsg::SetInternetResourceEnabled(true))
+            expect_ack(rt, gui_ipc::ClientMsg::SetInternetResourceEnabled(true))
                 .context("Failed to enable Internet Resource")?;
 
             return Ok(());
@@ -233,7 +233,7 @@ fn try_main(cli: Cli, rt: &Runtime, log_guard: &mut Option<LogGuard>) -> Result<
         Some(Cmd::InternetResource {
             command: InternetResourceCmd::Disable,
         }) => {
-            expect_ack(rt, gui::ClientMsg::SetInternetResourceEnabled(false))
+            expect_ack(rt, gui_ipc::ClientMsg::SetInternetResourceEnabled(false))
                 .context("Failed to disable Internet Resource")?;
 
             return Ok(());
@@ -536,9 +536,9 @@ async fn debug_single_instance() -> anyhow::Result<()> {
 
 fn list_resources(rt: &Runtime) -> Result<()> {
     let reply = rt
-        .block_on(gui::request(gui::ClientMsg::ListResources))
+        .block_on(gui_ipc::request(gui_ipc::ClientMsg::ListResources))
         .context("Failed to list resources")?;
-    let gui::ServerMsg::Resources(resources) = reply else {
+    let gui_ipc::ServerMsg::Resources(resources) = reply else {
         bail!("Unexpected reply: {reply:?}");
     };
 
@@ -547,10 +547,13 @@ fn list_resources(rt: &Runtime) -> Result<()> {
     Ok(())
 }
 
-fn expect_ack(rt: &Runtime, msg: gui::ClientMsg) -> Result<()> {
-    let reply = rt.block_on(gui::request(msg))?;
+fn expect_ack(rt: &Runtime, msg: gui_ipc::ClientMsg) -> Result<()> {
+    let reply = rt.block_on(gui_ipc::request(msg))?;
 
-    anyhow::ensure!(reply == gui::ServerMsg::Ack, "Unexpected reply: {reply:?}");
+    anyhow::ensure!(
+        reply == gui_ipc::ServerMsg::Ack,
+        "Unexpected reply: {reply:?}"
+    );
 
     Ok(())
 }
@@ -559,7 +562,7 @@ fn expect_ack(rt: &Runtime, msg: gui::ClientMsg) -> Result<()> {
     clippy::print_stdout,
     reason = "the whole point of this subcommand is to print the status to stdout"
 )]
-fn print_status(status: &gui::StatusSummary) {
+fn print_status(status: &gui_ipc::StatusSummary) {
     let signed_in = if status.signed_in { "yes" } else { "no" };
     let account = status.account_slug.as_deref().unwrap_or("unknown");
     let internet_resource = if status.internet_resource_enabled {

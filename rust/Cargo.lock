@@ -2546,6 +2546,7 @@ dependencies = [
  "flow-log-upload",
  "flow-log-writer",
  "futures",
+ "gui-ipc",
  "hex",
  "humantime",
  "ip-packet",
@@ -3367,6 +3368,18 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.119",
+]
+
+[[package]]
+name = "gui-ipc"
+version = "0.1.0"
+dependencies = [
+ "anyhow-ext",
+ "client-ipc",
+ "connlib-model",
+ "futures",
+ "serde",
+ "url",
 ]
 
 [[package]]
