@@ -854,6 +854,14 @@ impl<I: GuiIntegration> Controller<I> {
 
                 gui::ServerMsg::Ack
             }
+            gui::ClientMsg::Status => gui::ServerMsg::Status(gui::StatusSummary {
+                signed_in: matches!(self.status, Status::TunnelReady { .. }),
+                account_slug: self
+                    .connected_as
+                    .as_ref()
+                    .map(|connected| connected.account_slug.clone()),
+                internet_resource_enabled: self.general_settings.internet_resource_enabled(),
+            }),
         };
 
         Ok(reply)
@@ -1418,6 +1426,46 @@ mod tests {
         assert!(
             matches!(msg, service::ClientMsg::SetInternetResourceState(true)),
             "expected `SetInternetResourceState(true)` but got {msg:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn reports_status_over_gui_ipc() {
+        let _guard = logging::test("debug");
+        let mut test_controller = Controller::start_for_test();
+        let mut mock_tunnel = test_controller.tunnel_service_ipc_accept().await;
+        mock_tunnel.send_hello().await;
+
+        let response = test_controller
+            .gui_ipc_request(gui::ClientMsg::Status)
+            .await;
+        assert_eq!(
+            response,
+            gui::ServerMsg::Status(gui::StatusSummary {
+                signed_in: false,
+                account_slug: None,
+                internet_resource_enabled: false,
+            })
+        );
+
+        test_controller.sign_in().await;
+        mock_tunnel.start_ok().await;
+        mock_tunnel.send_connected_to_portal("firezone").await;
+        mock_tunnel.send_resources(vec![dns_resource_foo()]).await;
+        test_controller
+            .wait_integration(|i| i.nth_notification(0))
+            .await;
+
+        let response = test_controller
+            .gui_ipc_request(gui::ClientMsg::Status)
+            .await;
+        assert_eq!(
+            response,
+            gui::ServerMsg::Status(gui::StatusSummary {
+                signed_in: true,
+                account_slug: Some("firezone".to_owned()),
+                internet_resource_enabled: false,
+            })
         );
     }
 
@@ -2012,6 +2060,16 @@ mod tests {
                 .send(&service::ServerMsg::OnUpdateResources(ResourceList {
                     resources,
                     connected_devices: Vec::new(),
+                }))
+                .await
+                .unwrap();
+        }
+
+        async fn send_connected_to_portal(&mut self, account_slug: &str) {
+            self.tx
+                .send(&service::ServerMsg::ConnectedToPortal(ConnectedAs {
+                    account_slug: account_slug.to_owned(),
+                    actor_name: "Foo Bar".to_owned(),
                 }))
                 .await
                 .unwrap();
