@@ -205,6 +205,16 @@ fn try_main(cli: Cli, rt: &Runtime, log_guard: &mut Option<LogGuard>) -> Result<
 
             return Ok(());
         }
+        Some(Cmd::Connect) => {
+            expect_ack(rt, gui::ClientMsg::Connect).context("Failed to connect")?;
+
+            return Ok(());
+        }
+        Some(Cmd::Disconnect) => {
+            expect_ack(rt, gui::ClientMsg::Disconnect).context("Failed to disconnect")?;
+
+            return Ok(());
+        }
         Some(Cmd::Resources {
             command: None | Some(ResourcesCmd::List),
         }) => {
@@ -420,6 +430,10 @@ enum Cmd {
     OpenDeepLink(DeepLink),
     /// Print the status of the running Firezone GUI.
     Status,
+    /// Connect to Firezone using the stored credentials.
+    Connect,
+    /// Disconnect from Firezone, staying signed in.
+    Disconnect,
     /// Inspect the Resources of the running Firezone GUI.
     Resources {
         #[command(subcommand)]
