@@ -57,7 +57,7 @@ class AuthActivity : AppCompatActivity(R.layout.activity_auth) {
 
     private fun launchAuthTab(url: String) {
         if (DebugOverrides.skipPortalAuth) {
-            viewModel.processAuthCallback(fabricatedAuthCallback(url))
+            viewModel.processAuthCallback(fabricatedAuthCallback(Uri.parse(url).getQueryParameter("state")))
 
             return
         }

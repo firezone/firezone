@@ -19,7 +19,7 @@ class AuthFlowUiTest {
         val session = PendingAuthSession()
         session.begin(nonce = "nonce-", state = STATE)
 
-        val outcome = session.complete(fabricatedAuthCallback(authUrl(STATE)))
+        val outcome = session.complete(fabricatedAuthCallback(STATE))
 
         assertTrue(outcome is AuthCallbackOutcome.Success)
     }
@@ -29,12 +29,10 @@ class AuthFlowUiTest {
         val session = PendingAuthSession()
         session.begin(nonce = "nonce-", state = STATE)
 
-        val outcome = session.complete(fabricatedAuthCallback(authUrl("a-different-state")))
+        val outcome = session.complete(fabricatedAuthCallback("a-different-state"))
 
         assertEquals(AuthCallbackOutcome.Error("Invalid state parameter"), outcome)
     }
-
-    private fun authUrl(state: String) = "https://app.firezone.dev/example-corp?state=$state&nonce=nonce-&as=gui-client"
 
     private companion object {
         const val STATE = "the-state-the-request-issued"
