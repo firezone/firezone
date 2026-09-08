@@ -33,42 +33,68 @@ extension XCTestCase {
   }
 
   #if os(macOS)
-    /// Photographs the desktop: the screen without the menu bar, whose clock no two
-    /// captures agree on, and without the Dock, which is not the app's either.
+    /// Photographs `panels` as they stand to each other, and nothing between them.
     ///
-    /// The whole desktop rather than the menus standing on it. A menu and the submenu
-    /// it opens are two windows that no one element covers, and the accessibility
-    /// frames describing them report a menu's window on some runs and its content rect
-    /// on others, which moves a crop by the width of a shadow. An area that is the
-    /// same every time cannot come out covering another; what the picture is cropped
-    /// to afterwards is prepare-store-screenshots.py's business.
+    /// A menu and the submenu it opens are two windows that no one element covers, and
+    /// what the screen holds around them is the shadow the OS draws, which is not the
+    /// same twice. Each panel is photographed on its own and laid where it stands, so
+    /// the picture is what the app drew; the ground it stands on, its border and its
+    /// shadow are prepare-store-screenshots.py's. A panel drawn over another goes last.
     @discardableResult
-    func deliverDesktop(as name: String, in appearance: Appearance) -> Data {
+    func deliver(_ panels: [XCUIElement], as name: String, in appearance: Appearance) -> Data {
       deliver(as: name, in: appearance) {
-        guard
-          let display = NSScreen.main,
-          let screen = XCUIScreen.main.screenshot().image
-            .cgImage(forProposedRect: nil, context: nil, hints: nil),
-          let cropped = screen.cropping(to: Self.desktop(of: screen, on: display))
-        else { return Data() }
+        let photographed = panels.compactMap { panel -> (image: CGImage, frame: CGRect)? in
+          guard
+            let image = panel.screenshot().image
+              .cgImage(forProposedRect: nil, context: nil, hints: nil)
+          else { return nil }
 
-        return NSBitmapImageRep(cgImage: cropped).representation(using: .png, properties: [:])
-          ?? Data()
+          return (image, panel.frame)
+        }
+
+        guard photographed.count == panels.count else { return Data() }
+
+        return Self.composed(photographed)
       }
     }
 
-    /// Where the desktop sits in the screenshot: the display measures its visible
-    /// frame from the bottom of the screen and the image is measured from the top.
-    private static func desktop(of screen: CGImage, on display: NSScreen) -> CGRect {
-      let scale = CGFloat(screen.height) / display.frame.height
-      let visible = display.visibleFrame
+    /// The panels on a transparent ground, as far apart as their frames are.
+    private static func composed(_ panels: [(image: CGImage, frame: CGRect)]) -> Data {
+      guard let first = panels.first else { return Data() }
 
-      return CGRect(
-        x: visible.minX * scale,
-        y: (display.frame.maxY - visible.maxY) * scale,
-        width: visible.width * scale,
-        height: visible.height * scale
-      )
+      let bounds = panels.dropFirst().reduce(first.frame) { $0.union($1.frame) }
+      // A screen can hold more pixels than it measures in points.
+      let scale = CGFloat(first.image.width) / first.frame.width
+
+      guard
+        let context = CGContext(
+          data: nil,
+          width: Int(bounds.width * scale),
+          height: Int(bounds.height * scale),
+          bitsPerComponent: 8,
+          bytesPerRow: 0,
+          space: CGColorSpaceCreateDeviceRGB(),
+          bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        )
+      else { return Data() }
+
+      for panel in panels {
+        // A context measures from the bottom of the picture and a frame from the top.
+        context.draw(
+          panel.image,
+          in: CGRect(
+            x: (panel.frame.minX - bounds.minX) * scale,
+            y: (bounds.maxY - panel.frame.maxY) * scale,
+            width: panel.frame.width * scale,
+            height: panel.frame.height * scale
+          )
+        )
+      }
+
+      guard let composed = context.makeImage() else { return Data() }
+
+      return NSBitmapImageRep(cgImage: composed).representation(using: .png, properties: [:])
+        ?? Data()
     }
   #endif
 

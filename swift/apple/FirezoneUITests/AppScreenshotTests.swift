@@ -16,9 +16,6 @@
   final class AppScreenshotTests: XCTestCase {
     private static let appBundleID = "dev.firezone.firezone"
     private static let pointerParkingSpot = CGVector(dx: 0.5, dy: 1.2)
-    /// What the desktop is painted with (`MAC_BACKGROUND` in
-    /// prepare-store-screenshots.py), which the brightness below leaves out.
-    private static let backdrop = 30.0
 
     private static let settingsTabs = [
       (label: "General", name: "general"),
@@ -138,17 +135,12 @@
 
         try waitForSubmenu(of: row)
 
-        // Diagnostic, not to be kept: what the tree calls the panels, to be held
-        // against where they sit in the photographed desktop.
-        let submenu = row.menus.firstMatch
-        print(
-          "panels: menu \(menu.frame) submenu \(submenu.frame) "
-            + "display \(NSScreen.main?.frame ?? .zero) visible \(NSScreen.main?.visibleFrame ?? .zero)"
+        // The submenu covers the menu where the two meet, so it is photographed onto it.
+        record(
+          deliver([menu, row.menus.firstMatch], as: "menu", in: appearance),
+          as: "menu",
+          in: appearance
         )
-
-        // The desktop holds the menu, its submenu and nothing else, so the capture
-        // takes what the app drew rather than the frames describing it.
-        record(deliverDesktop(as: "menu", in: appearance), as: "menu", in: appearance)
       }
     }
 
@@ -260,10 +252,9 @@
     /// The mean brightness of what the app drew, from every eighth pixel of a PNG,
     /// on a 0 to 255 scale.
     ///
-    /// The samples are the file's own numbers, not a colour-managed reading of them,
-    /// which is what lets the backdrop be recognised and left out. A desktop capture
-    /// is mostly backdrop, and counting it would leave the two appearances a few
-    /// steps apart whatever the app drew on it.
+    /// The samples are the file's own numbers rather than a colour-managed reading of
+    /// them, which two appearances of the same screen are not far apart in. Where the
+    /// menus leave the picture empty there is nothing to weigh, so it is passed over.
     private func meanBrightness(of image: Data) -> Double {
       guard let bitmap = NSBitmapImageRep(data: image) else { return 0 }
 
@@ -275,11 +266,9 @@
         for x in stride(from: 0, to: bitmap.pixelsWide, by: 8) {
           bitmap.getPixel(&pixel, atX: x, y: y)
 
-          let brightness = Double(pixel[0] + pixel[1] + pixel[2]) / 3
+          guard !bitmap.hasAlpha || pixel[3] > 0 else { continue }
 
-          guard abs(brightness - Self.backdrop) > 1 else { continue }
-
-          total += brightness
+          total += Double(pixel[0] + pixel[1] + pixel[2]) / 3
           counted += 1
         }
       }
