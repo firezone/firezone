@@ -2181,32 +2181,12 @@ defmodule PortalWeb.Settings.DirectorySync do
   defp forget_subscriptions_on_tenant_change(changeset, _directory), do: changeset
 
   defp queue_initial_sync(
-         {:ok, %Entra.Directory{is_verified: true, is_disabled: false} = directory} = result,
+         {:ok, %{is_verified: true, is_disabled: false} = directory} = result,
          %{assigns: %{account: %{features: %{idp_sync: true}}}}
        ) do
     args = %{"account_id" => directory.account_id, "directory_id" => directory.id}
 
-    case Oban.insert(Entra.Sync.new(args)) do
-      {:ok, _job} ->
-        result
-
-      {:error, reason} ->
-        Logger.info("Failed to enqueue initial directory sync job",
-          id: directory.id,
-          reason: inspect(reason)
-        )
-
-        result
-    end
-  end
-
-  defp queue_initial_sync(
-         {:ok, %Google.Directory{is_verified: true, is_disabled: false} = directory} = result,
-         %{assigns: %{account: %{features: %{idp_sync: true}}}}
-       ) do
-    args = %{"account_id" => directory.account_id, "directory_id" => directory.id}
-
-    case Oban.insert(Google.Sync.new(args)) do
+    case Oban.insert(sync_module(directory).new(args)) do
       {:ok, _job} ->
         result
 
