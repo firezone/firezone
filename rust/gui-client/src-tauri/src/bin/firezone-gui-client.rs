@@ -193,7 +193,7 @@ fn try_main(cli: Cli, rt: &Runtime, log_guard: &mut Option<LogGuard>) -> Result<
 
             return Ok(());
         }
-        Some(Cmd::ListResources(ListResourcesArgs { json })) => {
+        Some(Cmd::ListResources) => {
             let reply = rt
                 .block_on(gui::request(gui::ClientMsg::ListResources))
                 .context("Failed to list resources")?;
@@ -201,7 +201,7 @@ fn try_main(cli: Cli, rt: &Runtime, log_guard: &mut Option<LogGuard>) -> Result<
                 bail!("Unexpected reply: {reply:?}");
             };
 
-            print_resources(&resources, json)?;
+            print_resources(&resources);
 
             return Ok(());
         }
@@ -214,16 +214,6 @@ fn try_main(cli: Cli, rt: &Runtime, log_guard: &mut Option<LogGuard>) -> Result<
         Some(Cmd::DisableInternetResource) => {
             expect_ack(rt, gui::ClientMsg::SetInternetResourceEnabled(false))
                 .context("Failed to disable Internet Resource")?;
-
-            return Ok(());
-        }
-        Some(Cmd::SignIn) => {
-            expect_ack(rt, gui::ClientMsg::SignIn).context("Failed to sign in")?;
-
-            return Ok(());
-        }
-        Some(Cmd::SignOut) => {
-            expect_ack(rt, gui::ClientMsg::SignOut).context("Failed to sign out")?;
 
             return Ok(());
         }
@@ -418,15 +408,11 @@ impl Cli {
 enum Cmd {
     OpenDeepLink(DeepLink),
     /// Print the Resources of the running Firezone GUI.
-    ListResources(ListResourcesArgs),
+    ListResources,
     /// Enable the Internet Resource in the running Firezone GUI.
     EnableInternetResource,
     /// Disable the Internet Resource in the running Firezone GUI.
     DisableInternetResource,
-    /// Start the sign-in flow in the running Firezone GUI.
-    SignIn,
-    /// Sign out of the running Firezone GUI.
-    SignOut,
     #[command(hide = true)]
     Elevated,
     #[command(hide = true)]
@@ -450,13 +436,6 @@ enum Cmd {
     OpenTrayMenu,
     #[command(hide = true)]
     CloseTrayMenu,
-}
-
-#[derive(Args)]
-struct ListResourcesArgs {
-    /// Print the Resources as JSON instead of a table.
-    #[arg(long)]
-    json: bool,
 }
 
 #[derive(clap::Parser)]
@@ -521,30 +500,17 @@ fn expect_ack(rt: &Runtime, msg: gui::ClientMsg) -> Result<()> {
     clippy::print_stdout,
     reason = "the whole point of this subcommand is to print the resource list to stdout"
 )]
-fn print_resources(resources: &[ResourceView], json: bool) -> Result<()> {
-    if json {
-        println!("{}", serde_json::to_string_pretty(resources)?);
-
-        return Ok(());
-    }
-
-    let header = ["NAME", "TYPE", "ADDRESS", "STATUS"].map(str::to_owned);
+fn print_resources(resources: &[ResourceView]) {
+    let header = ["NAME", "ADDRESS", "STATUS"].map(str::to_owned);
     let rows = resources.iter().map(|resource| {
-        let kind = match resource {
-            ResourceView::Dns(_) => "dns",
-            ResourceView::Cidr(_) => "cidr",
-            ResourceView::Internet(_) => "internet",
-        };
-
         [
             resource.name().to_owned(),
-            kind.to_owned(),
             resource.pastable().into_owned(),
             resource.status().to_string(),
         ]
     });
     let table = std::iter::once(header).chain(rows).collect::<Vec<_>>();
-    let widths = std::array::from_fn::<_, 4, _>(|column| {
+    let widths = std::array::from_fn::<_, 3, _>(|column| {
         table
             .iter()
             .map(|row| row[column].len())
@@ -562,8 +528,6 @@ fn print_resources(resources: &[ResourceView], json: bool) -> Result<()> {
 
         println!("{}", line.trim_end());
     }
-
-    Ok(())
 }
 
 #[cfg(test)]

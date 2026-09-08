@@ -280,8 +280,6 @@ pub enum ClientMsg {
     CloseTrayMenu,
     ListResources,
     SetInternetResourceEnabled(bool),
-    SignIn,
-    SignOut,
 }
 
 /// IPC messages that the running instance sends back in reply to a [`ClientMsg`].
