@@ -62,6 +62,8 @@ extension XCTestCase {
           let cropped = screen.cropping(to: region)
         else { return Data() }
 
+        print("desktop: \(name) covers \(region) of \(screen.width)x\(screen.height)")
+
         return NSBitmapImageRep(cgImage: cropped).representation(using: .png, properties: [:])
           ?? Data()
       }
@@ -75,69 +77,73 @@ extension XCTestCase {
       let width = screen.width
       let height = screen.height
 
-      // Drawn in the screen's own colour space: converting to another one dithers
-      // the conversion, and the speckle that leaves across the flat backdrop reads
-      // as something the app drew, which grows the crop to take it in.
+      // Read as the screenshot holds them, rather than drawn into a bitmap of our
+      // own: that copy is colour managed, and the speckle it leaves across the flat
+      // backdrop reads as something the app drew, which grew the crop to take in
+      // noise from the far side of the screen.
       guard
         let desktop = NSScreen.main,
-        let context = CGContext(
-          data: nil, width: width, height: height, bitsPerComponent: 8,
-          bytesPerRow: width * 4, space: screen.colorSpace ?? CGColorSpaceCreateDeviceRGB(),
-          bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue
-        )
+        screen.bitsPerPixel == 32,
+        let provider = screen.dataProvider,
+        let bytes = provider.data
       else { return nil }
 
-      context.draw(screen, in: CGRect(x: 0, y: 0, width: width, height: height))
+      let pixels = bytes as Data
+      // Which of the four bytes the colours start at: the alpha leads a `First`
+      // layout, and a little-endian order turns the whole pixel around.
+      let leadingAlpha: [CGImageAlphaInfo] = [.first, .premultipliedFirst, .noneSkipFirst]
+      let alphaLeads = leadingAlpha.contains(screen.alphaInfo)
+      let reversed = screen.bitmapInfo.contains(.byteOrder32Little)
+      let colours = alphaLeads != reversed ? 1 : 0
+      let rowBytes = screen.bytesPerRow
 
-      guard let pixels = context.data?.assumingMemoryBound(to: UInt8.self) else { return nil }
-
-      // Core Graphics drew the screen bottom up, which is how the screen measures
-      // itself as well, so the searched rows and the visible frame need no flipping
-      // between them. The bounds they produce are turned over further down.
       let scale = CGFloat(height) / desktop.frame.height
       let visible = desktop.visibleFrame
       let margin = Int((desktopMargin * scale).rounded())
-      let firstRow = max(0, Int(visible.minY * scale))
-      let lastRow = min(height, Int(visible.maxY * scale))
+      // The screen measures from the bottom and the image from the top.
+      let firstRow = max(0, height - Int(visible.maxY * scale))
+      let lastRow = min(height, height - Int(visible.minY * scale))
       let firstColumn = max(0, Int(visible.minX * scale))
       let lastColumn = min(width, Int(visible.maxX * scale))
 
       guard firstRow < lastRow, firstColumn < lastColumn else { return nil }
 
-      var left = width
-      var right = -1
-      var top = height
-      var bottom = -1
+      return pixels.withUnsafeBytes { bytes -> CGRect? in
+        var left = width
+        var right = -1
+        var top = height
+        var bottom = -1
 
-      for row in firstRow..<lastRow {
-        for column in firstColumn..<lastColumn {
-          let pixel = (row * width + column) * 4
-          let furthest = max(
-            abs(Int(pixels[pixel]) - backdrop),
-            abs(Int(pixels[pixel + 1]) - backdrop),
-            abs(Int(pixels[pixel + 2]) - backdrop)
-          )
+        for row in firstRow..<lastRow {
+          for column in firstColumn..<lastColumn {
+            let pixel = row * rowBytes + column * 4 + colours
+            let furthest = max(
+              abs(Int(bytes[pixel]) - backdrop),
+              abs(Int(bytes[pixel + 1]) - backdrop),
+              abs(Int(bytes[pixel + 2]) - backdrop)
+            )
 
-          guard furthest >= backdropTolerance else { continue }
+            guard furthest >= backdropTolerance else { continue }
 
-          left = min(left, column)
-          right = max(right, column)
-          top = min(top, height - 1 - row)
-          bottom = max(bottom, height - 1 - row)
+            left = min(left, column)
+            right = max(right, column)
+            top = min(top, row)
+            bottom = max(bottom, row)
+          }
         }
+
+        guard left <= right, top <= bottom else { return nil }
+
+        let x = max(firstColumn, left - margin)
+        let y = max(firstRow, top - margin)
+
+        return CGRect(
+          x: x,
+          y: y,
+          width: min(lastColumn - 1, right + margin) - x + 1,
+          height: min(lastRow - 1, bottom + margin) - y + 1
+        )
       }
-
-      guard left <= right, top <= bottom else { return nil }
-
-      let x = max(firstColumn, left - margin)
-      let y = max(height - lastRow, top - margin)
-
-      return CGRect(
-        x: x,
-        y: y,
-        width: min(lastColumn - 1, right + margin) - x + 1,
-        height: min(height - firstRow - 1, bottom + margin) - y + 1
-      )
     }
   #endif
 
