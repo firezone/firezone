@@ -24,8 +24,8 @@ current_gui_client_version="1.5.17"
 next_gui_client_version="1.5.18"
 current_headless_client_version="1.5.12"
 next_headless_client_version="1.5.13"
-current_gateway_version="1.6.0"
-next_gateway_version="1.6.1"
+current_gateway_version="1.6.1"
+next_gateway_version="1.6.2"
 
 function cargo_update_workspace() {
     pushd rust >/dev/null
