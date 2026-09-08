@@ -45,7 +45,9 @@ fn main() -> Result<()> {
 }
 
 #[derive(Parser)]
-#[command(author, version, about, long_about = None)]
+// The binary is built as `firezone-cli` to keep it from colliding with the GUI
+// on Windows, but every install renames it, so usage lines must say `firezone`.
+#[command(author, version, about, long_about = None, bin_name = "firezone")]
 struct Cli {
     #[command(subcommand)]
     command: Option<Cmd>,
