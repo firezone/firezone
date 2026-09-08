@@ -10,6 +10,35 @@ defmodule PortalAPI.Integrations.Okta.WebhookControllerTest do
 
   alias Portal.Okta
 
+  @resources %{
+    "user.lifecycle.create" => "user",
+    "user.lifecycle.activate" => "user",
+    "user.lifecycle.reactivate" => "user",
+    "user.lifecycle.suspend" => "user",
+    "user.lifecycle.unsuspend" => "user",
+    "user.lifecycle.deactivate" => "user",
+    "user.lifecycle.delete.initiated" => "user",
+    "user.account.update_profile" => "user",
+    "group.user_membership.add" => "user",
+    "group.user_membership.remove" => "user",
+    "group.profile.update" => "group",
+    "group.lifecycle.delete" => "group",
+    "group.application_assignment.add" => "group",
+    "group.application_assignment.remove" => "group",
+    "application.user_membership.add" => "user",
+    "application.user_membership.remove" => "user"
+  }
+
+  @admits %{
+    "user.lifecycle.create" => "user",
+    "user.lifecycle.activate" => "user",
+    "user.lifecycle.reactivate" => "user",
+    "user.lifecycle.unsuspend" => "user",
+    "group.user_membership.add" => "user",
+    "application.user_membership.add" => "user",
+    "group.application_assignment.add" => "group"
+  }
+
   setup do
     account = account_fixture(features: %{idp_sync: true})
     directory = okta_directory_fixture(account: account)
@@ -109,6 +138,79 @@ defmodule PortalAPI.Integrations.Okta.WebhookControllerTest do
       assert_enqueued(worker: Okta.WebhookSync, args: %{resource: "group", resource_id: "group-1"})
     end
 
+    test "routes every subscribed event to the resource it names",
+         %{conn: conn, account: account, directory: directory, base_directory: base_directory} do
+      identity_fixture(
+        account: account,
+        directory: base_directory,
+        issuer: Okta.Sync.issuer(directory),
+        idp_id: "user-1"
+      )
+
+      group_fixture(account: account, directory: base_directory, idp_id: "group-1")
+
+      types = Enum.map(Okta.Webhooks.events(), &elem(&1, 0))
+      assert Enum.sort(types) == Enum.sort(Map.keys(@resources))
+
+      for type <- types do
+        Portal.Repo.delete_all(Oban.Job)
+        targets = [user("user-1"), group("group-1"), app("app-1")]
+        conn = post_events(conn, directory, [event(type, targets)])
+
+        assert response(conn, 204) == ""
+        resource = Map.fetch!(@resources, type)
+        assert [job] = all_enqueued(worker: Okta.WebhookSync), "#{type} queued the wrong jobs"
+        assert job.args["resource"] == resource, "#{type} queued the wrong resource"
+        assert job.args["resource_id"] == "#{resource}-1"
+      end
+    end
+
+    test "admits unknown users and groups only for events that add them",
+         %{conn: conn, directory: directory} do
+      for {type, _name} <- Okta.Webhooks.events() do
+        Portal.Repo.delete_all(Oban.Job)
+        targets = [user("user-new"), group("group-new"), app("app-1")]
+        conn = post_events(conn, directory, [event(type, targets)])
+
+        assert response(conn, 204) == ""
+
+        case Map.get(@admits, type) do
+          nil ->
+            assert all_enqueued(worker: Okta.WebhookSync) == [], "#{type} admitted an unknown object"
+
+          resource ->
+            assert [job] = all_enqueued(worker: Okta.WebhookSync), "#{type} queued the wrong jobs"
+            assert job.args["resource"] == resource
+            assert job.args["resource_id"] == "#{resource}-new"
+        end
+      end
+    end
+
+    test "ignores events of a type the hook should not subscribe to",
+         %{conn: conn, account: account, directory: directory, base_directory: base_directory} do
+      identity_fixture(
+        account: account,
+        directory: base_directory,
+        issuer: Okta.Sync.issuer(directory),
+        idp_id: "user-1"
+      )
+
+      group_fixture(account: account, directory: base_directory, idp_id: "group-1")
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          conn =
+            post_events(conn, directory, [
+              event("application.lifecycle.update", [user("user-1"), group("group-1")])
+            ])
+
+          assert response(conn, 204) == ""
+        end)
+
+      assert log =~ "Ignoring Okta event of an unsupported type"
+      assert all_enqueued(worker: Okta.WebhookSync) == []
+    end
+
     test "records when a delivery was last accepted", %{conn: conn, directory: directory} do
       assert is_nil(directory.webhook_received_at)
 
@@ -204,9 +306,11 @@ defmodule PortalAPI.Integrations.Okta.WebhookControllerTest do
         "actor" => %{"alternateId" => "ada@example.com", "displayName" => "Ada Lovelace"}
       }
 
+      untyped = %{"target" => [user("user-1")], "actor" => %{"alternateId" => "grace@example.com"}}
+
       log =
         ExUnit.CaptureLog.capture_log(fn ->
-          conn = post_events(conn, directory, [malformed])
+          conn = post_events(conn, directory, [malformed, untyped])
           assert response(conn, 204) == ""
         end)
 
@@ -214,6 +318,39 @@ defmodule PortalAPI.Integrations.Okta.WebhookControllerTest do
       assert log =~ "user.lifecycle.create"
       refute log =~ "ada@example.com"
       refute log =~ "Ada Lovelace"
+      refute log =~ "grace@example.com"
+      assert all_enqueued(worker: Okta.WebhookSync) == []
+    end
+
+    test "builds the endpoint from the REST API URL when one is configured" do
+      Portal.Config.put_env_override(:portal, :rest_api_url, "https://api.example.com/")
+
+      assert Okta.Webhooks.endpoint_url("dir-1") ==
+               "https://api.example.com/integrations/okta/webhooks?directory_id=dir-1"
+
+      Portal.Config.put_env_override(:portal, :rest_api_url, nil)
+      base = Portal.Config.fetch_env!(:portal, :api_external_url) |> String.trim_trailing("/")
+
+      assert Okta.Webhooks.endpoint_url("dir-1") == "#{base}/integrations/okta/webhooks?directory_id=dir-1"
+    end
+
+    test "rejects a delivery whose body cannot be read", %{conn: conn, directory: directory} do
+      {_adapter, state} = conn.adapter
+
+      conn =
+        conn
+        |> put_req_header("authorization", directory.webhook_secret)
+        |> Map.put(:adapter, {__MODULE__.UnreadableBody, state})
+        |> Map.put(:query_string, "directory_id=#{directory.id}")
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          conn = PortalAPI.Integrations.Okta.WebhookController.call(conn, :handle_webhook)
+          assert response(conn, 400) == "Bad Request"
+        end)
+
+      assert log =~ "Okta webhook body could not be read"
+      assert all_enqueued(worker: Okta.WebhookSync) == []
     end
 
     test "refuses a delivery with the wrong secret", %{conn: conn, directory: directory} do
@@ -263,6 +400,11 @@ defmodule PortalAPI.Integrations.Okta.WebhookControllerTest do
 
       assert response(conn, 413)
     end
+  end
+
+  defmodule UnreadableBody do
+    def read_req_body(_state, _opts), do: {:error, :timeout}
+    defdelegate send_resp(state, status, headers, body), to: Plug.Adapters.Test.Conn
   end
 
   defp post_events(conn, directory, events, opts \\ []) do

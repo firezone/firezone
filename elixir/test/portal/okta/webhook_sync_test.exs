@@ -252,6 +252,48 @@ defmodule Portal.Okta.WebhookSyncTest do
     end
   end
 
+  test "removes a user whose Okta record has no status", %{directory: directory} = ctx do
+    directory_identity(ctx, "user-1")
+    user = okta_user("user-1", "Ada", "Lovelace", "ada@example.com") |> Map.delete("status")
+    stub_okta(users: %{"user-1" => user}, apps_for: %{"user-1" => ["app-1"]})
+
+    assert :ok = perform_job(WebhookSync, user_args(directory, "user-1"))
+    refute Portal.Repo.get_by(ExternalIdentity, idp_id: "user-1")
+  end
+
+    test "ignores jobs that name no user or group", %{directory: directory} do
+      args = %{account_id: directory.account_id, directory_id: directory.id, resource: "app", resource_id: "app-1"}
+
+      assert :ok = perform_job(WebhookSync, args)
+      assert :ok = perform_job(WebhookSync, %{})
+    end
+
+    for {step, failing, kind} <- [
+          {:get_user, ["users", "user-1"], :transport},
+          {:get_group, ["groups", "group-1"], :status},
+          {:get_group, ["groups", "group-1"], :transport},
+          {:list_user_apps, ["apps"], :status},
+          {:list_user_apps, ["apps"], :transport},
+          {:list_group_apps, ["groups", "group-1", "apps"], :status},
+          {:list_group_apps, ["groups", "group-1", "apps"], :transport},
+          {:stream_user_groups, ["users", "user-1", "groups"], :status},
+          {:stream_user_groups, ["users", "user-1", "groups"], :malformed}
+        ] do
+      test "fails on a #{kind} error from #{step}", %{directory: directory} do
+        stub_failure(unquote(failing), unquote(kind))
+
+        args =
+          if unquote(step) in [:get_group, :list_group_apps] do
+            group_args(directory, "group-1")
+          else
+            user_args(directory, "user-1")
+          end
+
+        error = assert_raise(Portal.Okta.SyncError, fn -> perform_job(WebhookSync, args) end)
+        assert error.step == unquote(step)
+      end
+    end
+
   test "snoozes while a full sync for the directory is executing", %{directory: directory} = ctx do
     identity = directory_identity(ctx, "user-1")
     stub_okta(users: %{})
@@ -370,6 +412,38 @@ defmodule Portal.Okta.WebhookSyncTest do
 
         _ ->
           Req.Test.json(conn, %{"error" => "unexpected: #{conn.request_path}"})
+      end
+    end)
+  end
+
+  defp stub_failure(failing, kind) do
+    Req.Test.stub(APIClient, fn conn ->
+      segments = conn.request_path |> String.trim_leading("/") |> Path.split()
+
+      case segments do
+        ["oauth2", "v1", "token"] ->
+          Req.Test.json(conn, %{"access_token" => "token", "token_type" => "DPoP", "expires_in" => 3600})
+
+        ["api", "v1" | ^failing] when kind == :status ->
+          conn |> Plug.Conn.put_status(500) |> Req.Test.json(%{"errorSummary" => "boom"})
+
+        ["api", "v1" | ^failing] when kind == :malformed ->
+          Req.Test.json(conn, [%{"profile" => %{"name" => "no id"}}])
+
+        ["api", "v1" | ^failing] ->
+          Req.Test.transport_error(conn, :econnrefused)
+
+        ["api", "v1", "apps"] ->
+          Req.Test.json(conn, [%{"id" => "app-1"}])
+
+        ["api", "v1", "users", "user-1"] ->
+          Req.Test.json(conn, okta_user("user-1", "Ada", "Lovelace", "ada@example.com"))
+
+        ["api", "v1", "groups", "group-1"] ->
+          Req.Test.json(conn, %{"id" => "group-1", "profile" => %{"name" => "Group 1"}})
+
+        _ ->
+          Req.Test.json(conn, [])
       end
     end)
   end
