@@ -109,12 +109,30 @@ jobs:
       - run: pnpm vite build
       - name: Build client
         run: cargo build -p firezone-gui-client --all-targets
-      - name: Run smoke test
+      - name: GUI starts, connects to the tunnel and quits
         working-directory: ./rust
-        # The tray capture is opt-in per run: only one runner may draw the
-        # committed screenshot, or the Windows runners would fight over it.
-        run: cargo run -p gui-smoke-test -- ${{ matrix.runs-on == 'windows-2025' && '--tray-screenshot gui-client/screenshots/windows-tray-menu-light.png' || '' }}
-        timeout-minutes: 8
+        run: cargo run -p gui-smoke-test -- starts-and-quits
+        timeout-minutes: 2
+      - name: GUI handles a crash
+        working-directory: ./rust
+        run: cargo run -p gui-smoke-test -- handles-crash
+        timeout-minutes: 2
+      - name: Tunnel service rejects a non-allowlisted GUI
+        if: runner.os == 'Linux'
+        working-directory: ./rust
+        run: cargo run -p gui-smoke-test -- rejects-unallowlisted-gui
+        timeout-minutes: 2
+      - name: Second GUI instance hands off to the first
+        working-directory: ./rust
+        run: cargo run -p gui-smoke-test -- hands-off-to-first-instance
+        timeout-minutes: 2
+      # Confined to a single runner: only one may draw the committed
+      # screenshot, or the Windows runners would fight over it.
+      - name: Photograph the tray menu
+        if: matrix.runs-on == 'windows-2025'
+        working-directory: ./rust
+        run: cargo run -p gui-smoke-test -- tray-screenshot --submenu "Engineering wiki" --output gui-client/screenshots/windows-tray-menu-light.png
+        timeout-minutes: 4
       # Uploaded even when the capture went wrong, so the result can be inspected.
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: ${{ always() && matrix.runs-on == 'windows-2025' }}

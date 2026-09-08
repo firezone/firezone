@@ -32,14 +32,11 @@ use windows::{
 };
 use winreg::{RegKey, enums::HKEY_CURRENT_USER};
 
-/// The resource whose submenu the capture expands.
-const SUBMENU: &str = "Engineering wiki";
-
 /// Popup menus are windows of this system class, one per open level.
 const MENU_CLASS: &str = "#32768";
 
-/// Photographs the tray menu with one resource's submenu expanded.
-pub(crate) fn capture(app: &App, output: &Path) -> Result<()> {
+/// Photographs the tray menu with the `submenu` row expanded.
+pub(crate) fn capture(app: &App, submenu: &str, output: &Path) -> Result<()> {
     prepare_desktop()?;
 
     tracing::info!("=== tray screenshot: GUI starts against the mock Tunnel service ===");
@@ -48,7 +45,7 @@ pub(crate) fn capture(app: &App, output: &Path) -> Result<()> {
         .start()
         .context("Failed to start the GUI")?;
 
-    let result = photograph(app, output);
+    let result = photograph(app, submenu, output);
 
     close_menu(app);
     if let Err(error) = gui.kill() {
@@ -101,9 +98,9 @@ fn prepare_desktop() -> Result<()> {
     Ok(())
 }
 
-fn photograph(app: &App, output: &Path) -> Result<()> {
-    let (hmenu, item) = open_menu_at_submenu(app)?;
-    click(hmenu, item)?;
+fn photograph(app: &App, submenu: &str, output: &Path) -> Result<()> {
+    let (hmenu, item) = open_menu_at_submenu(app, submenu)?;
+    click(hmenu, item, submenu)?;
 
     let menus = menu_windows();
     log_menu_windows("Submenu expanded", &menus);
@@ -118,12 +115,12 @@ fn photograph(app: &App, output: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Opens the tray menu until it lists [`SUBMENU`], and returns that menu with
+/// Opens the tray menu until it lists `submenu`, and returns that menu with
 /// the item's index.
 ///
 /// The menu only lists resources once the mock service has served them, so a
 /// menu without the item is closed again and asked for anew.
-fn open_menu_at_submenu(app: &App) -> Result<(HMENU, u32)> {
+fn open_menu_at_submenu(app: &App, submenu: &str) -> Result<(HMENU, u32)> {
     let deadline = Instant::now() + Duration::from_secs(120);
 
     while Instant::now() < deadline {
@@ -144,16 +141,16 @@ fn open_menu_at_submenu(app: &App) -> Result<(HMENU, u32)> {
         // hands out in response to `MN_GETHMENU`.
         let hmenu = unsafe { SendMessageW(first.hwnd, MN_GETHMENU, None, None) };
         let hmenu = HMENU(hmenu.0 as *mut _);
-        if let Some(item) = menu_items(hmenu).iter().position(|text| text == SUBMENU) {
+        if let Some(item) = menu_items(hmenu).iter().position(|text| text == submenu) {
             return Ok((hmenu, item as u32));
         }
 
-        tracing::info!("'{SUBMENU}' is not in the menu yet; closing it and asking again");
+        tracing::info!("'{submenu}' is not in the menu yet; closing it and asking again");
         close_menu(app);
         std::thread::sleep(Duration::from_millis(500));
     }
 
-    bail!("'{SUBMENU}' did not appear in the tray menu within 120 seconds")
+    bail!("'{submenu}' did not appear in the tray menu within 120 seconds")
 }
 
 /// Waits for the popup menu to appear, then for it to stay.
@@ -171,7 +168,7 @@ fn wait_for_menu() -> Vec<MenuWindow> {
 }
 
 /// Clicks the item at `index`, which expands its submenu.
-fn click(hmenu: HMENU, index: u32) -> Result<()> {
+fn click(hmenu: HMENU, index: u32, submenu: &str) -> Result<()> {
     let mut rect = RECT::default();
     // Without an owner window the rect comes back in screen coordinates.
     unsafe { GetMenuItemRect(None, hmenu, index, &mut rect) }
@@ -179,7 +176,7 @@ fn click(hmenu: HMENU, index: u32) -> Result<()> {
 
     let x = (rect.left + rect.right) / 2;
     let y = (rect.top + rect.bottom) / 2;
-    tracing::info!("Clicking '{SUBMENU}' (item {index}) at {x},{y}");
+    tracing::info!("Clicking '{submenu}' (item {index}) at {x},{y}");
     unsafe { SetCursorPos(x, y) }.context("Failed to move the cursor onto the menu item")?;
     std::thread::sleep(Duration::from_millis(100));
     unsafe {
