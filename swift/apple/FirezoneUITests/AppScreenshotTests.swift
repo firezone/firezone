@@ -16,6 +16,9 @@
   final class AppScreenshotTests: XCTestCase {
     private static let appBundleID = "dev.firezone.firezone"
     private static let pointerParkingSpot = CGVector(dx: 0.5, dy: 1.2)
+    /// What the desktop is painted with (`MAC_BACKGROUND` in
+    /// prepare-store-screenshots.py), which the brightness below leaves out.
+    private static let backdrop = 30.0 / 255.0
 
     private static let settingsTabs = [
       (label: "General", name: "general"),
@@ -246,7 +249,12 @@
       XCTAssertLessThan(dark, light - 50, "\(name) is no darker in the dark appearance")
     }
 
-    /// The mean brightness of a PNG, from every eighth pixel, on a 0 to 255 scale.
+    /// The mean brightness of what the app drew, from every eighth pixel of a PNG,
+    /// on a 0 to 255 scale.
+    ///
+    /// The desktop is left out of it: a desktop capture is mostly backdrop, and
+    /// counting that would leave the two appearances a few steps apart whatever the
+    /// app drew on it.
     private func meanBrightness(of image: Data) -> Double {
       guard let bitmap = NSBitmapImageRep(data: image) else { return 0 }
 
@@ -259,7 +267,11 @@
             continue
           }
 
-          total += (pixel.redComponent + pixel.greenComponent + pixel.blueComponent) / 3
+          let brightness = (pixel.redComponent + pixel.greenComponent + pixel.blueComponent) / 3
+
+          guard abs(brightness - Self.backdrop) > 1 / 255.0 else { continue }
+
+          total += brightness
           samples += 1
         }
       }

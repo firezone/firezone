@@ -34,6 +34,10 @@ MAC_CORNER_RADIUS = {
     "26": {"main": 15, "settings": 26},
 }
 MAIN_WINDOW_SCREENS = {"first-time", "grant-vpn"}
+# What a menu keeps of the desktop around it, and how far from the backdrop a
+# channel is before the pixel counts as something the app drew.
+MENU_MARGIN = 32
+MENU_TOLERANCE = 2
 # WindowServer draws the window's edge, and a hairline along its corner arcs,
 # against whatever is behind them, and not the same way twice. A band this wide
 # inside the edge is repainted from the window's own colours further in, and gets
@@ -199,6 +203,31 @@ def frame_window(capture: Image.Image, radius: int, appearance: str) -> Image.Im
     return Image.composite(window, canvas, placed(inner))
 
 
+def cropped_to_content(capture: Image.Image) -> Image.Image:
+    """A desktop capture, cropped to what the app drew on it.
+
+    The desktop is painted in `MAC_BACKGROUND`, so what is not that colour is the
+    app's: the menus and the shadow they cast. A channel one step away is the tail
+    of that shadow, which the margin keeps.
+    """
+    pixels = np.asarray(capture.convert("RGB"), dtype=int)
+    drawn = np.abs(pixels - np.array(MAC_BACKGROUND)).max(axis=2) >= MENU_TOLERANCE
+    rows = np.flatnonzero(drawn.any(axis=1))
+    columns = np.flatnonzero(drawn.any(axis=0))
+
+    if not rows.size or not columns.size:
+        raise RuntimeError("A desktop capture holds nothing but the desktop")
+
+    return capture.crop(
+        (
+            max(0, columns[0] - MENU_MARGIN),
+            max(0, rows[0] - MENU_MARGIN),
+            min(capture.width, columns[-1] + 1 + MENU_MARGIN),
+            min(capture.height, rows[-1] + 1 + MENU_MARGIN),
+        )
+    )
+
+
 def centred(capture: Image.Image) -> Image.Image:
     canvas = Image.new("RGB", MAC_SIZE, MAC_BACKGROUND)
     canvas.paste(
@@ -214,6 +243,13 @@ def prepare_macos(directory: Path) -> None:
 
     for path in screenshots(directory):
         with Image.open(path) as image:
+            screen, appearance = path.stem.rsplit("-", 1)
+
+            # A capture of the whole desktop, which is the canvas colour already.
+            if screen == "menu":
+                write_rgb(path, centred(cropped_to_content(image)))
+                continue
+
             if image.size == MAC_SIZE:
                 write_rgb(path, image)
                 continue
@@ -221,13 +257,6 @@ def prepare_macos(directory: Path) -> None:
             if image.width > MAC_SIZE[0] or image.height > MAC_SIZE[1]:
                 relative = path.relative_to(REPO_ROOT)
                 raise RuntimeError(f"{relative} does not fit on a {MAC_SIZE} canvas")
-
-            screen, appearance = path.stem.rsplit("-", 1)
-            if screen == "menu":
-                # The desktop, cropped to what the app drew on it (see
-                # ScreenshotDelivery.swift), so it is already the canvas colour.
-                write_rgb(path, centred(image))
-                continue
 
             window = "main" if screen in MAIN_WINDOW_SCREENS else "settings"
             radius = MAC_CORNER_RADIUS[directory.name][window]
