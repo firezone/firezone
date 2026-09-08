@@ -72,7 +72,7 @@ public enum IPCClient {
   /// that need it gone rather than going have to wait for the status to follow. Reports
   /// whether there was a running tunnel, so the caller can put back what it took down.
   @MainActor
-  static func stopIfRunning(session: any TunnelSessionProtocol) async -> Bool {
+  public static func stopIfRunning(session: any TunnelSessionProtocol) async -> Bool {
     let wasRunning = runningStatuses.contains(session.status)
 
     if wasRunning {
