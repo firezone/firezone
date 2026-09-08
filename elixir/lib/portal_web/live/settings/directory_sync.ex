@@ -886,7 +886,9 @@ defmodule PortalWeb.Settings.DirectorySync do
               </div>
             </div>
             <.panel_footer>
-              <.panel_footer_button phx-click="close_panel">Cancel</.panel_footer_button>
+              <.panel_footer_button phx-click="close_panel">
+                Continue without event hooks
+              </.panel_footer_button>
               <.initial_connection_status
                 type="the event hook"
                 waiting="Waiting for Okta to verify..."
@@ -1038,8 +1040,8 @@ defmodule PortalWeb.Settings.DirectorySync do
     ~H"""
     <.popover>
       <:target>
-        <span class="text-xs text-subtle underline underline-offset-2 decoration-1 decoration-dotted">
-          Not set up
+        <span class="inline-flex items-center gap-1 text-xs text-warning">
+          <.icon name="ri-error-warning-line" class="w-3.5 h-3.5 shrink-0" /> Not set up
         </span>
       </:target>
       <:content>

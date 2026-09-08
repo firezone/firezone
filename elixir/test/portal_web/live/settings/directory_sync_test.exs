@@ -32,6 +32,7 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
         |> live(~p"/#{account}/settings/directory_sync/okta/#{directory.id}/hook")
 
       assert html =~ "Waiting for Okta to verify"
+      assert html =~ "Continue without event hooks"
       assert html =~ Portal.Okta.Webhooks.endpoint_url(directory.id)
       assert html =~ "Authentication field"
       assert html =~ directory.webhook_secret
@@ -130,6 +131,7 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
 
       assert html =~ "Last Update"
       assert html =~ "Not set up"
+      assert html =~ "ri-error-warning-line"
       assert html =~ "Okta sends user and group changes as they happen."
       assert html =~ "Microsoft Entra sends user and group changes as they happen."
       assert html =~ "Nothing received yet."
