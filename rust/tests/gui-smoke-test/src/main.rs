@@ -9,6 +9,7 @@ use std::{
     time::Duration,
 };
 use subprocess::Exec;
+use tracing_subscriber::EnvFilter;
 
 #[cfg(target_os = "windows")]
 mod tray_screenshot;
@@ -50,7 +51,14 @@ struct Cli {
 }
 
 fn main() -> Result<()> {
-    tracing_subscriber::fmt::init();
+    // `EnvFilter`'s own default is `ERROR`, which hides everything this test
+    // reports about what it is doing. A hosted runner's job log is the only
+    // place a failure here can be debugged from.
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
+        )
+        .init();
     tracing::info!("Started logging");
     let cli = Cli::try_parse()?;
 
