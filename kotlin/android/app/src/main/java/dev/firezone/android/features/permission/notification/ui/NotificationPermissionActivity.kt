@@ -5,18 +5,18 @@ import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import dagger.hilt.android.AndroidEntryPoint
 import dev.firezone.android.core.data.Repository
-import dev.firezone.android.databinding.ActivityNotificationPermissionBinding
+import dev.firezone.android.features.permission.notification.ui.compose.NotificationPermissionScreen
+import dev.firezone.android.features.session.ui.compose.FirezoneTheme
 import javax.inject.Inject
 
 @AndroidEntryPoint
 class NotificationPermissionActivity : AppCompatActivity() {
-    private lateinit var binding: ActivityNotificationPermissionBinding
-
     @Inject
     lateinit var repository: Repository
 
@@ -30,17 +30,17 @@ class NotificationPermissionActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        binding = ActivityNotificationPermissionBinding.inflate(layoutInflater)
-        setContentView(binding.root)
 
-        binding.btnRequest.setOnClickListener {
-            requestNotificationPermission()
-        }
-
-        binding.btnSkip.setOnClickListener {
-            // Mark as requested even if user skips
-            repository.setNotificationPermissionRequested()
-            finish()
+        setContent {
+            FirezoneTheme {
+                NotificationPermissionScreen(
+                    onRequestPermission = ::requestNotificationPermission,
+                    onSkip = {
+                        repository.setNotificationPermissionRequested()
+                        finish()
+                    },
+                )
+            }
         }
     }
 

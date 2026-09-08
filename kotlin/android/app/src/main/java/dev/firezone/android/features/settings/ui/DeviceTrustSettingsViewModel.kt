@@ -34,10 +34,10 @@ internal class DeviceTrustSettingsViewModel
 
         fun loadDetails() {
             val alias = repository.getX509CertificateAliasSync(applicationRestrictions)
-            val isManaged = repository.isX509CertificateAliasManaged(applicationRestrictions)
 
+            // No alias yet means the policy named none, so it is the user's turn.
             uiMutableStateFlow.value =
-                UiState(alias = alias, isManaged = isManaged, isLoading = alias != null)
+                UiState(alias = alias, isLoading = alias != null, needsSelection = alias == null)
 
             loadJob?.cancel()
 
@@ -99,25 +99,9 @@ internal class DeviceTrustSettingsViewModel
                 }
         }
 
-        /** Records the alias the user picked, unless the administrator dictates one. */
+        /** Records the alias the user released, which the fragment has checked is a device certificate. */
         fun onAliasSelected(alias: String) {
-            if (repository.isX509CertificateAliasManaged(applicationRestrictions)) {
-                // The administrator chooses the alias; what the prompt achieves is the KeyChain
-                // grant that lets us read the key behind it.
-                Log.d(TAG, "Keeping the managed alias after the user answered the KeyChain prompt")
-            } else {
-                repository.saveX509CertificateAliasSync(alias)
-            }
-
-            loadDetails()
-        }
-
-        fun forgetSelection() {
-            if (repository.isX509CertificateAliasManaged(applicationRestrictions)) {
-                return
-            }
-
-            repository.saveX509CertificateAliasSync(null)
+            repository.saveX509CertificateAliasSync(alias)
             loadDetails()
         }
 
@@ -126,10 +110,9 @@ internal class DeviceTrustSettingsViewModel
 
         internal data class UiState(
             val alias: String? = null,
-            val isManaged: Boolean = false,
             val isLoading: Boolean = false,
             val details: List<DetailField> = emptyList(),
-            /** Whether Android must grant this app access to the configured certificate. */
+            /** Whether the user has to release the device certificate before the app can use one. */
             val needsSelection: Boolean = false,
         )
 

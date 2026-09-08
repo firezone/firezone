@@ -207,6 +207,17 @@ defmodule PortalAPI.SiteControllerTest do
       assert %{"type" => "about:blank", "status" => 401, "title" => "Unauthorized"} = json_response(conn, 401)
     end
 
+    test "returns bad request for a body that is not JSON", %{conn: conn, actor: actor} do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> post("/sites", "{not json")
+
+      assert %{"type" => "about:blank", "status" => 400, "title" => "Bad Request"} =
+               json_response(conn, 400)
+    end
+
     test "returns error on empty params/body", %{conn: conn, actor: actor} do
       conn =
         conn

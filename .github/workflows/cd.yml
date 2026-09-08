@@ -135,6 +135,7 @@ jobs:
     secrets: inherit
     permissions:
       checks: write # dorny/test-reporter
+      pull-requests: write # breaking OpenAPI changes comment
 
   swift:
     uses: ./.github/workflows/_swift.yml

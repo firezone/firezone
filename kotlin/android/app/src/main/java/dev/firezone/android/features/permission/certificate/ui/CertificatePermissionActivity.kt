@@ -3,24 +3,27 @@ package dev.firezone.android.features.permission.certificate.ui
 
 import android.net.Uri
 import android.os.Bundle
-import android.widget.Toast
 import androidx.activity.compose.setContent
 import androidx.appcompat.app.AppCompatActivity
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import dagger.hilt.android.AndroidEntryPoint
 import dev.firezone.android.R
 import dev.firezone.android.core.data.Repository
+import dev.firezone.android.core.x509.CertificateAccess
 import dev.firezone.android.core.x509.KeyChain
 import dev.firezone.android.features.permission.certificate.ui.compose.CertificatePermissionScreen
 import dev.firezone.android.features.session.ui.compose.FirezoneTheme
 import javax.inject.Inject
 
 /**
- * Asks the user to release the certificate an administrator configured for this device.
+ * Has the user release the device certificate an administrator requires.
  *
- * Reached only when the administrator named an alias that the KeyChain will not hand over, which
- * is what a work profile on a personally-owned device looks like: the administrator can install
- * the certificate and configure the app, but only the user can grant an app access to the key.
- * Selecting it once is enough, because the KeyChain remembers the grant.
+ * Reached only when the administrator requires a certificate that the device policy did not hand
+ * over, which is what a work profile on a personally-owned device looks like: the administrator can
+ * install the certificate, but only the user can grant an app access to the key. Selecting it once
+ * is enough, because the KeyChain remembers the grant and we remember the alias.
  */
 @AndroidEntryPoint
 class CertificatePermissionActivity : AppCompatActivity() {
@@ -28,10 +31,12 @@ class CertificatePermissionActivity : AppCompatActivity() {
     lateinit var repository: Repository
 
     @Inject
-    lateinit var applicationRestrictions: Bundle
+    lateinit var certificateAccess: CertificateAccess
 
     @Inject
     lateinit var keyChain: KeyChain
+
+    private var error by mutableStateOf<String?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -40,26 +45,32 @@ class CertificatePermissionActivity : AppCompatActivity() {
             FirezoneTheme {
                 CertificatePermissionScreen(
                     onSelectCertificate = ::chooseCertificate,
-                    onSkip = ::finish,
+                    error = error,
                 )
             }
         }
     }
 
     private fun chooseCertificate() {
-        val configuredAlias = repository.getX509CertificateAliasSync(applicationRestrictions)
+        // Android answers on a binder thread, where reading the KeyChain back is fine and anything
+        // touching the UI hops back itself.
+        keyChain.choosePrivateKeyAlias(this, requestUri(), null) { alias ->
+            val message =
+                when {
+                    alias == null -> getString(R.string.device_trust_no_certificate_selected)
+                    !certificateAccess.holdsDeviceCertificate(alias) -> getString(R.string.device_trust_not_device_certificate, alias)
+                    else -> null
+                }
 
-        // Android answers on a binder thread, so anything touching the UI hops back itself.
-        keyChain.choosePrivateKeyAlias(this, requestUri(), configuredAlias) { alias ->
-            // KeyChain takes the configured alias as a pre-selection only, so the user can
-            // hand back a different one, which leaves the configured certificate still refused.
-            if (alias != null && alias == configuredAlias) {
-                finish()
-            } else {
-                runOnUiThread {
-                    Toast
-                        .makeText(this, R.string.device_trust_no_certificate_selected, Toast.LENGTH_LONG)
-                        .show()
+            if (message == null) {
+                repository.saveX509CertificateAliasSync(alias)
+            }
+
+            runOnUiThread {
+                if (message == null) {
+                    finish()
+                } else {
+                    error = message
                 }
             }
         }

@@ -94,6 +94,9 @@ defmodule Portal.Account do
     # Set by Ops Admins only. Prevents account admins from modifying account settings.
     field :lock_enabled_at, :utc_datetime_usec
 
+    # Usage against `limits`, computed by the REST API when it renders the account.
+    field :limit_usage, :map, virtual: true
+
     timestamps()
   end
 

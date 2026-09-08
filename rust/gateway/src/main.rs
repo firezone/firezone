@@ -32,6 +32,7 @@ use tun::Tun;
 use url::Url;
 
 mod eventloop;
+mod manage;
 mod otel;
 
 const RELEASE: &str = concat!("gateway@", env!("CARGO_PKG_VERSION"));
@@ -46,6 +47,17 @@ const FLOW_LOGS_DIR: &str = "/var/lib/firezone/flow_logs";
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
+
+    if let Some(command) = cli.command {
+        return match manage::run(command) {
+            Ok(()) => ExitCode::SUCCESS,
+            #[expect(clippy::print_stderr, reason = "No logger has been set up yet")]
+            Err(e) => {
+                eprintln!("Error: {e:#}");
+                ExitCode::FAILURE
+            }
+        };
+    }
 
     #[expect(clippy::print_stderr, reason = "No logger has been set up yet")]
     #[cfg(target_os = "linux")]
@@ -334,6 +346,9 @@ async fn read_systemd_credential(name: &str) -> Result<SecretString> {
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Cli {
+    #[command(subcommand)]
+    command: Option<manage::Command>,
+
     #[arg(
         short = 'u',
         long,
@@ -539,6 +554,25 @@ fn make_directives(rust_log: Option<String>, flow_logs: bool) -> String {
 mod tests {
     use super::*;
     use tempfile::TempDir;
+
+    #[test]
+    fn parses_management_subcommand() {
+        let cli = Cli::try_parse_from(["firezone-gateway", "authenticate", "--replace"]).unwrap();
+
+        assert!(matches!(
+            cli.command,
+            Some(manage::Command::Authenticate { replace: true })
+        ));
+        assert!(cli.token.is_none());
+    }
+
+    #[test]
+    fn parses_positional_token() {
+        let cli = Cli::try_parse_from(["firezone-gateway", "some-token"]).unwrap();
+
+        assert!(cli.command.is_none());
+        assert_eq!(cli.token.unwrap().expose_secret(), "some-token");
+    }
 
     #[test]
     fn accepts_deprecated_name_arguments() {

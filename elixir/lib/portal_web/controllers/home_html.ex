@@ -124,34 +124,16 @@ defmodule PortalWeb.HomeHTML do
         <div class="flex-1 h-px bg-border"></div>
       </div>
       <div class="flex flex-col gap-2 mb-6">
-        <.account_button :for={account <- @accounts} account={account} params={@params} />
+        <.account_button
+          :for={account <- @accounts}
+          account={account}
+          href={~p"/#{account}/sign_in?#{@params}"}
+        />
       </div>
     </div>
 
     <%!-- Slug entry card --%>
-    <div class="rounded border border-border bg-raised p-4">
-      <p class="text-xs font-semibold text-body mb-3">
-        Enter your organization's account slug
-      </p>
-      <.form :let={f} for={%{}} action={~p"/sign_in?#{@params}"}>
-        <div class="flex gap-2">
-          <input
-            type="text"
-            name={f[:account_id_or_slug].name}
-            placeholder="e.g. acme-corp"
-            autofocus={@accounts == []}
-            required
-            class="flex-1 px-3 py-2 text-sm rounded border bg-input border-input-border text-heading outline-none focus:border-border-focus focus:ring-1 focus:ring-border-focus/30 transition-colors placeholder:text-muted"
-          />
-          <button
-            type="submit"
-            class="px-4 py-2 rounded text-sm font-semibold bg-brand text-white hover:bg-brand-dark transition-colors whitespace-nowrap"
-          >
-            Continue →
-          </button>
-        </div>
-      </.form>
-    </div>
+    <.account_slug_form action={~p"/sign_in?#{@params}"} autofocus={@accounts == []} />
 
     <div class="mt-6 text-xs text-subtle space-y-1.5 text-center">
       <p :if={!PortalWeb.Authentication.client_sign_in?(@params)}>
@@ -166,28 +148,4 @@ defmodule PortalWeb.HomeHTML do
     """
   end
 
-  defp account_button(assigns) do
-    ~H"""
-    <a
-      href={~p"/#{@account}/sign_in?#{@params}"}
-      class="w-full flex items-center gap-3 px-4 py-3 rounded border-2 border-border bg-surface hover:border-brand hover:shadow-sm transition-all duration-150 group"
-    >
-      <div class="w-9 h-9 rounded bg-brand/10 flex items-center justify-center shrink-0 group-hover:bg-brand/20 transition-colors">
-        <span class="text-sm font-bold text-brand">
-          {String.upcase(String.first(@account.name))}
-        </span>
-      </div>
-      <div class="flex-1 min-w-0">
-        <p class="text-sm font-semibold text-heading group-hover:text-brand transition-colors truncate">
-          {@account.name}
-        </p>
-        <p class="text-xs text-subtle truncate">{@account.slug}</p>
-      </div>
-      <.icon
-        name="ri-arrow-right-s-line"
-        class="w-5.5 h-5.5 text-muted group-hover:text-brand group-hover:translate-x-0.5 transition-all shrink-0"
-      />
-    </a>
-    """
-  end
 end

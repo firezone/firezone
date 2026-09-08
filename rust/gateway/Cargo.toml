@@ -16,7 +16,7 @@ revision = ""
 section = "Network"
 assets = [
     ["target/release/firezone-gateway", "usr/bin/", "755"],
-    ["target/release/firezone-cli", "usr/bin/firezone", "755"],
+    ["debian/firezone", "usr/bin/firezone", "755"],
     ["debian/firezone-gateway-init.sh", "usr/bin/firezone-gateway-init", "755"],
     ["debian/firezone-gateway.sysusers", "usr/lib/sysusers.d/firezone-gateway.conf", "644"],
     ["debian/firezone-gateway.tmpfiles", "usr/lib/tmpfiles.d/firezone-gateway.conf", "644"],
@@ -47,6 +47,7 @@ otel-attributes = { workspace = true }
 otel-instruments = { workspace = true }
 phoenix-channel = { workspace = true }
 resolv-conf = { workspace = true }
+rpassword = { workspace = true }
 rustls = { workspace = true }
 secrecy = { workspace = true }
 snownet = { workspace = true }

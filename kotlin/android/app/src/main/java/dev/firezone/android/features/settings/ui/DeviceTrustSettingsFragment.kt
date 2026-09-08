@@ -14,6 +14,7 @@ import androidx.fragment.app.viewModels
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dagger.hilt.android.AndroidEntryPoint
 import dev.firezone.android.R
+import dev.firezone.android.core.x509.CertificateAccess
 import dev.firezone.android.core.x509.KeyChain
 import dev.firezone.android.features.session.ui.compose.FirezoneTheme
 import dev.firezone.android.features.settings.ui.compose.DeviceTrustSettingsScreen
@@ -25,6 +26,9 @@ class DeviceTrustSettingsFragment : Fragment() {
 
     @Inject
     lateinit var keyChain: KeyChain
+
+    @Inject
+    lateinit var certificateAccess: CertificateAccess
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -40,7 +44,6 @@ class DeviceTrustSettingsFragment : Fragment() {
                     DeviceTrustSettingsScreen(
                         state = state,
                         onSelectCertificate = ::chooseCertificate,
-                        onForgetCertificate = ::forgetCertificate,
                     )
                 }
             }
@@ -56,30 +59,28 @@ class DeviceTrustSettingsFragment : Fragment() {
     private fun chooseCertificate() {
         val activity = requireActivity()
 
-        // Android answers on a binder thread, so the ViewModel takes the alias directly and only
+        // Android answers on a binder thread, where reading the KeyChain back is fine and only
         // the toast has to hop onto the main thread.
-        keyChain.choosePrivateKeyAlias(
-            activity,
-            viewModel.keyChainRequestUri(),
-            viewModel.uiStateFlow.value.alias,
-        ) { alias ->
+        keyChain.choosePrivateKeyAlias(activity, viewModel.keyChainRequestUri(), null) { alias ->
             if (alias == null) {
-                activity.runOnUiThread {
-                    Toast
-                        .makeText(activity, R.string.device_trust_no_certificate_selected, Toast.LENGTH_LONG)
-                        .show()
-                }
-            } else {
-                viewModel.onAliasSelected(alias)
+                toast(getString(R.string.device_trust_no_certificate_selected))
+
+                return@choosePrivateKeyAlias
             }
+
+            if (!certificateAccess.holdsDeviceCertificate(alias)) {
+                toast(getString(R.string.device_trust_not_device_certificate, alias))
+
+                return@choosePrivateKeyAlias
+            }
+
+            viewModel.onAliasSelected(alias)
         }
     }
 
-    private fun forgetCertificate() {
-        viewModel.forgetSelection()
+    private fun toast(message: String) {
+        val activity = requireActivity()
 
-        // The activity fixes its page set at creation so the pager and navigation always agree.
-        // Recreating it makes the now-unconfigured Device Trust page disappear too.
-        requireActivity().recreate()
+        activity.runOnUiThread { Toast.makeText(activity, message, Toast.LENGTH_LONG).show() }
     }
 }

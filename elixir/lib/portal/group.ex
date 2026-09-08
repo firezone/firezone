@@ -19,6 +19,7 @@ defmodule Portal.Group do
     field :entity_type, Ecto.Enum, values: ~w[group org_unit]a, default: :group
 
     field :idp_id, :string
+    field :nested_group_idp_ids, {:array, :string}, default: []
 
     has_one :sync_state, Portal.GroupSyncState, foreign_key: :group_id, references: :id
 

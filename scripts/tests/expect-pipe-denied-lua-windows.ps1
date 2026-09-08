@@ -13,7 +13,7 @@
 # thread; the kernel then performs the named-pipe access check
 # against the impersonation token.
 #
-# Safe against single-client pipes like `debug single-instance`:
+# Safe against single-client pipes like `single-instance`:
 # the kernel performs the DACL check *before* the server's
 # `ConnectNamedPipe` returns, so a denied open never consumes the
 # accept slot.

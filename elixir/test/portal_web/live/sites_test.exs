@@ -533,6 +533,13 @@ defmodule PortalWeb.SitesTest do
       html = render_click(lv, "deploy_gateway")
       assert html =~ "Deploy a Gateway"
 
+      encoded_token =
+        html
+        |> Floki.parse_fragment!()
+        |> Floki.find("#deploy-code-debian-token-code")
+        |> Floki.text()
+        |> String.trim()
+
       gateway =
         Repo.get_by!(Device, account_id: account.id, site_id: site.id, type: :gateway)
 
@@ -541,6 +548,8 @@ defmodule PortalWeb.SitesTest do
       token = Repo.get_by!(GatewayToken, account_id: account.id, device_id: gateway.id)
       assert is_nil(token.site_id)
       assert is_nil(token.rotated_at)
+      assert {:ok, verified_token} = Portal.Authentication.verify_gateway_token(encoded_token)
+      assert verified_token.id == token.id
     end
 
     test "deploy flips to connected when its gateway joins the account presence", %{

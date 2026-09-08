@@ -47,7 +47,6 @@ defmodule PortalWeb.Settings.DirectorySync do
     socket =
       assign(socket,
         page_title: "Directory Sync",
-        trust_anchors_enabled?: PortalWeb.NavigationComponents.trust_anchors_enabled?(),
         device_posture_enabled?: PortalWeb.NavigationComponents.device_posture_enabled?()
       )
 
@@ -570,7 +569,6 @@ defmodule PortalWeb.Settings.DirectorySync do
       <.settings_nav
         account={@account}
         current_path={@current_path}
-        trust_anchors_enabled?={@trust_anchors_enabled?}
         device_posture_enabled?={@device_posture_enabled?}
       />
 
@@ -625,7 +623,7 @@ defmodule PortalWeb.Settings.DirectorySync do
                       Groups
                     </th>
                     <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-40">
-                      Last Synced
+                      Last Full Sync
                     </th>
                     <th class="px-6 py-2.5 w-14"></th>
                   </tr>
@@ -853,7 +851,7 @@ defmodule PortalWeb.Settings.DirectorySync do
                       Groups
                     </th>
                     <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-40">
-                      Last Synced
+                      Last Full Sync
                     </th>
                     <th class="px-6 py-2.5 w-14"></th>
                   </tr>
@@ -1785,6 +1783,22 @@ defmodule PortalWeb.Settings.DirectorySync do
     end
   end
 
+  # A watch channel belongs to the Workspace customer it was opened in.
+  # Verifying against another domain or admin closes it and lets the next
+  # sync open a fresh one.
+  defp forget_subscriptions_on_tenant_change(changeset, %Google.Directory{} = directory) do
+    if get_change(changeset, :domain) || get_change(changeset, :impersonation_email) do
+      unsubscribe_webhooks(directory)
+
+      changeset
+      |> put_change(:users_channel_id, nil)
+      |> put_change(:users_resource_id, nil)
+      |> put_change(:channel_expires_at, nil)
+    else
+      changeset
+    end
+  end
+
   defp forget_subscriptions_on_tenant_change(changeset, _directory), do: changeset
 
   defp queue_initial_sync(
@@ -1794,6 +1808,26 @@ defmodule PortalWeb.Settings.DirectorySync do
     args = %{"account_id" => directory.account_id, "directory_id" => directory.id}
 
     case Oban.insert(Entra.Sync.new(args)) do
+      {:ok, _job} ->
+        result
+
+      {:error, reason} ->
+        Logger.info("Failed to enqueue initial directory sync job",
+          id: directory.id,
+          reason: inspect(reason)
+        )
+
+        result
+    end
+  end
+
+  defp queue_initial_sync(
+         {:ok, %Google.Directory{is_verified: true, is_disabled: false} = directory} = result,
+         %{assigns: %{account: %{features: %{idp_sync: true}}}}
+       ) do
+    args = %{"account_id" => directory.account_id, "directory_id" => directory.id}
+
+    case Oban.insert(Google.Sync.new(args)) do
       {:ok, _job} ->
         result
 
@@ -1839,6 +1873,31 @@ defmodule PortalWeb.Settings.DirectorySync do
     :ok
   end
 
+  defp unsubscribe_webhooks(%Google.Directory{users_channel_id: channel_id} = directory)
+       when is_binary(channel_id) do
+    args = %{
+      "action" => "stop",
+      "account_id" => directory.account_id,
+      "directory_id" => directory.id,
+      "impersonation_email" => directory.impersonation_email,
+      "channel_id" => channel_id,
+      "resource_id" => directory.users_resource_id
+    }
+
+    case Oban.insert(Google.Subscriptions.new(args)) do
+      {:ok, _job} ->
+        :ok
+
+      {:error, reason} ->
+        Logger.info("Failed to enqueue Google webhook cleanup job",
+          id: directory.id,
+          reason: inspect(reason)
+        )
+    end
+
+    :ok
+  end
+
   defp unsubscribe_webhooks(_directory), do: :ok
 
   defp subscribe_webhooks(%Entra.Directory{} = directory) do
@@ -1854,6 +1913,27 @@ defmodule PortalWeb.Settings.DirectorySync do
 
       {:error, reason} ->
         Logger.info("Failed to enqueue Entra webhook subscription job",
+          id: directory.id,
+          reason: inspect(reason)
+        )
+    end
+
+    :ok
+  end
+
+  defp subscribe_webhooks(%Google.Directory{} = directory) do
+    args = %{
+      "account_id" => directory.account_id,
+      "directory_id" => directory.id,
+      "action" => "ensure"
+    }
+
+    case Oban.insert(Google.Subscriptions.new(args)) do
+      {:ok, _job} ->
+        :ok
+
+      {:error, reason} ->
+        Logger.info("Failed to enqueue Google webhook subscription job",
           id: directory.id,
           reason: inspect(reason)
         )

@@ -9,6 +9,10 @@ use std::{
     time::Duration,
 };
 use subprocess::Exec;
+use tracing_subscriber::EnvFilter;
+
+#[cfg(target_os = "windows")]
+mod tray_screenshot;
 
 #[cfg(target_os = "linux")]
 const FZ_GROUP: &str = "firezone-client";
@@ -35,19 +39,70 @@ const EXE_EXTENSION: &str = "exe";
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
 struct Cli {
-    /// Run tests that can't run in CI, like tests that need access to the staging network.
-    #[arg(long)]
-    manual_tests: bool,
+    #[command(subcommand)]
+    command: Cmd,
+}
+
+#[derive(clap::Subcommand)]
+enum Cmd {
+    /// Assert the GUI starts, connects to the tunnel service and quits gracefully.
+    StartsAndQuits,
+    /// Assert a deliberate SIGSEGV in the GUI is handled.
+    HandlesCrash,
+    /// Assert the tunnel service rejects a GUI launched from a non-allowlisted path.
+    #[cfg(target_os = "linux")]
+    RejectsUnallowlistedGui,
+    /// Assert a second GUI invocation hands off to the first and both exit.
+    HandsOffToFirstInstance,
+    /// Replicate #6791. Needs access to the staging network, so CI can't run it.
+    Replicate6791,
+    /// Assert the GUI quits on `--quit-after`. Needs access to the staging network, so CI can't run it.
+    QuitsAfterTimeout,
+    /// Photograph the tray menu with a resource submenu expanded.
+    #[cfg(target_os = "windows")]
+    TrayScreenshot {
+        /// The resource whose submenu to expand.
+        #[arg(long)]
+        submenu: String,
+
+        /// Where to write the PNG.
+        #[arg(long)]
+        output: PathBuf,
+    },
 }
 
 fn main() -> Result<()> {
-    tracing_subscriber::fmt::init();
+    // `EnvFilter`'s own default is `ERROR`, which hides everything this test
+    // reports about what it is doing. A hosted runner's job log is the only
+    // place a failure here can be debugged from.
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
+        )
+        .init();
     tracing::info!("Started logging");
     let cli = Cli::try_parse()?;
 
     let app = App::new()?;
 
-    // Run normal smoke test
+    match cli.command {
+        Cmd::StartsAndQuits => starts_and_quits(&app)?,
+        Cmd::HandlesCrash => handles_crash(&app)?,
+        #[cfg(target_os = "linux")]
+        Cmd::RejectsUnallowlistedGui => binary_allowlist_rejection_test(&app)?,
+        Cmd::HandsOffToFirstInstance => single_instance_test(&app)?,
+        Cmd::Replicate6791 => replicate_6791(&app)?,
+        Cmd::QuitsAfterTimeout => quits_after_timeout(&app)?,
+        #[cfg(target_os = "windows")]
+        Cmd::TrayScreenshot { submenu, output } => {
+            tray_screenshot::capture(&app, &submenu, &output)?
+        }
+    }
+
+    Ok(())
+}
+
+fn starts_and_quits(app: &App) -> Result<()> {
     tracing::info!("=== normal smoke test: GUI starts, connects to tunnel, quits gracefully ===");
     let ipc_service = tunnel_service_command().arg("run-smoke-test").start()?;
     std::thread::sleep(Duration::from_millis(500)); // Wait for tunnel service to boot to write firezone-id.json
@@ -61,7 +116,10 @@ fn main() -> Result<()> {
     ipc_service.wait()?.fz_exit_ok().context("Tunnel service")?;
     tracing::info!("=== normal smoke test complete ===");
 
-    // Force the GUI to crash
+    Ok(())
+}
+
+fn handles_crash(app: &App) -> Result<()> {
     tracing::info!(
         "=== crash test: the GUI will deliberately SIGSEGV; any 'Segmentation fault' message that follows is expected ==="
     );
@@ -72,19 +130,6 @@ fn main() -> Result<()> {
     gui.wait()?;
     ipc_service.wait()?.fz_exit_ok().context("Tunnel service")?;
     tracing::info!("=== crash test complete: the expected SIGSEGV was handled ===");
-
-    // Confirm a GUI launched from a non-allowlisted path is rejected.
-    #[cfg(target_os = "linux")]
-    binary_allowlist_rejection_test(&app)?;
-
-    // Launch-lock hand-off smoke test. No tunnel service or display
-    // server required — the subcommand only drives the lock + GUI IPC
-    // pipe.
-    single_instance_test(&app)?;
-
-    if cli.manual_tests {
-        manual_tests(&app)?;
-    }
 
     Ok(())
 }
@@ -133,7 +178,7 @@ fn binary_allowlist_rejection_test(app: &App) -> Result<()> {
     Ok(())
 }
 
-/// Spawn two `debug single-instance` invocations back-to-back and
+/// Spawn two `single-instance` invocations back-to-back and
 /// assert that:
 ///
 /// - The first acquires the launch lock and binds the GUI IPC pipe.
@@ -150,7 +195,7 @@ fn single_instance_test(app: &App) -> Result<()> {
     );
 
     let first = app
-        .gui_command(&["debug", "single-instance"])?
+        .gui_command(&["single-instance"])?
         .stdout(subprocess::Redirection::Pipe)
         .start()?;
 
@@ -159,7 +204,7 @@ fn single_instance_test(app: &App) -> Result<()> {
     std::thread::sleep(Duration::from_millis(500));
 
     let second = app
-        .gui_command(&["debug", "single-instance"])?
+        .gui_command(&["single-instance"])?
         .stdout(subprocess::Redirection::Pipe)
         .start()?;
     let second_capture = second
@@ -196,13 +241,15 @@ fn single_instance_test(app: &App) -> Result<()> {
     Ok(())
 }
 
-fn manual_tests(app: &App) -> Result<()> {
+fn replicate_6791(app: &App) -> Result<()> {
     tracing::info!("=== manual: replicate #6791 ===");
-    app.gui_command(&["debug", "replicate6791"])?
-        .start()?
-        .wait()?;
+    app.gui_command(&["replicate6791"])?.start()?.wait()?;
     tracing::info!("=== manual: replicate #6791 complete ===");
 
+    Ok(())
+}
+
+fn quits_after_timeout(app: &App) -> Result<()> {
     tracing::info!("=== manual: --quit-after 10s ===");
     let ipc_service = tunnel_service_command().arg("run-smoke-test").start()?;
     let gui = app.gui_command(&["--quit-after", "10"])?.start()?;

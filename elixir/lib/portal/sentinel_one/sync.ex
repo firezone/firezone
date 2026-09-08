@@ -56,7 +56,6 @@ defmodule Portal.SentinelOne.Sync do
     {:model_name, "modelName"},
     {:machine_type, "machineType"},
     {:cpu_id, "cpuId"},
-    {:external_ip, "externalIp"},
     {:group_ip, "groupIp"},
     {:network_status, "networkStatus"},
     {:last_logged_in_user_name, "lastLoggedInUserName"},
@@ -72,12 +71,16 @@ defmodule Portal.SentinelOne.Sync do
     {:installer_type, "installerType"},
     {:ranger_version, "rangerVersion"},
     {:ranger_status, "rangerStatus"},
-    {:last_ip_to_management, "lastIpToMgmt"},
     {:operational_state, "operationalState"},
     {:remote_profiling_state, "remoteProfilingState"},
     {:storage_type, "storageType"},
     {:storage_name, "storageName"},
     {:detection_state, "detectionState"}
+  ]
+
+  @ip_fields [
+    {:external_ip, "externalIp"},
+    {:last_ip_to_management, "lastIpToMgmt"}
   ]
 
   @boolean_fields [
@@ -138,6 +141,7 @@ defmodule Portal.SentinelOne.Sync do
 
   @agent_view_properties Enum.map(
                            @text_fields ++
+                             @ip_fields ++
                              @boolean_fields ++
                              @integer_fields ++ @datetime_fields ++ @string_list_fields,
                            &elem(&1, 1)
@@ -292,6 +296,7 @@ defmodule Portal.SentinelOne.Sync do
       synced_at: synced_at
     }
     |> take(agent, @text_fields, &text_or_nil/1)
+    |> take(agent, @ip_fields, &ip_or_nil/1)
     |> take(agent, @boolean_fields, &boolean_or_nil/1)
     |> take(agent, @integer_fields, &integer_or_nil/1)
     |> take(agent, @datetime_fields, &parse_datetime/1)
@@ -312,6 +317,15 @@ defmodule Portal.SentinelOne.Sync do
   defp text_or_nil(value) when value in [nil, ""], do: nil
   defp text_or_nil(value) when is_binary(value), do: value
   defp text_or_nil(_value), do: nil
+
+  defp ip_or_nil(value) when is_binary(value) do
+    case Portal.Types.IP.cast(value) do
+      {:ok, ip} -> ip
+      _ -> nil
+    end
+  end
+
+  defp ip_or_nil(_value), do: nil
 
   defp boolean_or_nil(value) when is_boolean(value), do: value
   defp boolean_or_nil(_value), do: nil

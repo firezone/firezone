@@ -127,6 +127,22 @@ defmodule PortalAPI.Client.SocketTest do
       assert connect(Socket, attrs, connect_info: connect_info) == {:error, :invalid_token}
     end
 
+    test "stores an IPv4-mapped IPv6 peer address as IPv4" do
+      token = client_token_fixture()
+      encoded_token = encode_token(token)
+      {a, b, c, d} = @client_remote_ip
+      mapped_ip = {0, 0, 0, 0, 0, 0xFFFF, a * 256 + b, c * 256 + d}
+
+      attrs = connect_attrs(token: encoded_token)
+      connect_info = build_connect_info(ip: mapped_ip, token: encoded_token)
+
+      assert {:ok, socket} = connect(Socket, attrs, connect_info: connect_info)
+      assert client = Map.fetch!(socket.assigns, :client)
+
+      assert client.last_seen_remote_ip == @client_remote_ip
+      assert client.last_seen_remote_ip_location_city == "Kyiv"
+    end
+
     test "creates a new client for user identity" do
       token = client_token_fixture()
       encoded_token = encode_token(token)
@@ -912,13 +928,13 @@ defmodule PortalAPI.Client.SocketTest do
                {:error, :x509_user_type_not_allowed}
     end
 
-    test "returns a trust-anchor error when trust anchors are globally disabled", %{
+    test "refuses X.509 authentication when the feature is globally disabled", %{
       account: account,
       actor: actor,
       pki: pki
     } do
       _provider = x509_provider_fixture(account: account, is_disabled: false)
-      disable_feature(:trust_anchors)
+      disable_feature(:x509_auth)
 
       connect_info =
         build_connect_info(
@@ -927,7 +943,7 @@ defmodule PortalAPI.Client.SocketTest do
         )
 
       assert connect(Socket, connect_attrs([]), connect_info: connect_info) ==
-               {:error, :no_trust_anchors}
+               {:error, :x509_authentication_not_found}
     end
 
     test "refuses a connect through the mutual-TLS host without a certificate", %{token: token} do
@@ -1724,7 +1740,7 @@ defmodule PortalAPI.Client.SocketTest do
     Portal.Config.put_env_override(:portal, :mtls_external_url, "https://mtls.firezone.test/")
 
     account = account_fixture()
-    enable_feature(:trust_anchors)
+    enable_feature(:x509_auth)
     pki = pki()
     trust_anchor_fixture(account: account, certs: [pki.ca_der])
 

@@ -86,7 +86,7 @@ jobs:
           - release_name: gateway-1.6.2
             config_name: release-drafter-gateway.yml
           # mark:next-headless-version
-          - release_name: headless-client-1.5.12
+          - release_name: headless-client-1.5.13
             config_name: release-drafter-headless-client.yml
 
     steps:
@@ -119,9 +119,9 @@ jobs:
         target: [x86_64-pc-windows-msvc]
         package: [firezone-headless-client]
         # mark:next-headless-version
-        release_name: [headless-client-1.5.12]
+        release_name: [headless-client-1.5.13]
         # mark:next-headless-version
-        version: [1.5.12]
+        version: [1.5.13]
     env:
       ARTIFACT_PATH: ${{ matrix.artifact }}_${{ matrix.version }}_${{ matrix.arch }}.exe
       RELEASE_NAME: ${{ matrix.release_name }}
@@ -218,9 +218,9 @@ jobs:
             artifact: firezone-client-headless-linux
             image_name: client
             # mark:next-headless-version
-            release_name: headless-client-1.5.12
+            release_name: headless-client-1.5.13
             # mark:next-headless-version
-            version: 1.5.12
+            version: 1.5.13
           - package: firezone-relay
             artifact: firezone-relay
             image_name: relay
@@ -239,9 +239,9 @@ jobs:
       BINARY_DEST_PATH: ${{ matrix.name.artifact }}_${{ matrix.name.version }}_${{ matrix.arch.shortname }}
       SENTRY_ENVIRONMENT: "production"
       RESOLVED_SHA: ${{ inputs.sha || github.sha }}
-      # `firezone-cli` and the `.deb` are only produced for release Gateways, and
-      # only a dispatched build publishes them. On a push, the `.deb` would just
-      # expire unread as an artifact.
+      # The `.deb` is only produced for release Gateways, and only a dispatched
+      # build publishes it. On a push, the `.deb` would just expire unread as an
+      # artifact.
       BUILDS_DEB: ${{ github.event_name == 'workflow_dispatch' && inputs.profile == 'release' && inputs.stage == 'release' && matrix.name.artifact == 'firezone-gateway' }}
     outputs:
       client_image: ${{ steps.image-name.outputs.client_image }}
@@ -261,19 +261,11 @@ jobs:
         with:
           path: rust/target/${{ matrix.arch.target }}/${{ inputs.profile }}/${{ matrix.name.package }}
           key: ${{ matrix.name.package }}-${{ matrix.arch.target }}-${{ inputs.profile }}
-      # `firezone-cli` ships as an asset of the gateway's `.deb`, so it is built
-      # separately below and needs its own entry.
-      - uses: ./.github/actions/setup-rust-binary-cache
-        id: cli-binary-cache
-        if: ${{ env.BUILDS_DEB == 'true' }}
-        with:
-          path: rust/target/${{ matrix.arch.target }}/release/firezone-cli
-          key: firezone-cli-${{ matrix.arch.target }}-release
       # Restored binaries skip every `cargo build` below, so the toolchains only
       # needed to compile them are skipped too. `cargo deb` still needs cargo and
       # `cargo-deb`, and the relay still needs mise to stamp in the commit SHA.
       - uses: ./.github/actions/setup-musl
-        if: ${{ steps.binary-cache.outputs.cache-hit != 'true' || (env.BUILDS_DEB == 'true' && steps.cli-binary-cache.outputs.cache-hit != 'true') }}
+        if: steps.binary-cache.outputs.cache-hit != 'true'
         with:
           target: ${{ matrix.arch.target }}
       - uses: ./.github/actions/setup-rust-stable
@@ -362,9 +354,6 @@ jobs:
             --auth-mode login \
             --account-name firezoneartifacts
 
-      - name: Build firezone-cli
-        if: ${{ env.BUILDS_DEB == 'true' && steps.cli-binary-cache.outputs.cache-hit != 'true' }}
-        run: cargo build --bin firezone-cli --release --target ${{ matrix.arch.target }}
       - name: Create Firezone Gateway .deb package
         if: ${{ env.BUILDS_DEB == 'true' }}
         run: |

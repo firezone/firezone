@@ -8,7 +8,6 @@ defmodule Portal.Microsoft.Graph.APIClient do
   require Logger
 
   @entra_user_select_fields "id,displayName,mail,userPrincipalName,givenName,surname,accountEnabled"
-  @advanced_query_headers [{"ConsistencyLevel", "eventual"}]
   @applications [:entra, :intune]
   @page_size "999"
 
@@ -151,25 +150,15 @@ defmodule Portal.Microsoft.Graph.APIClient do
   end
 
   @doc """
-  Streams transitive members of a group.
-  Returns a stream that yields pages of members (users, groups, service principals).
-  Fetches user profile fields that map to our identity schema.
+  Streams the direct members of a group, users and nested groups alike, with
+  the user fields that map to our identity schema. Reads without a filter or
+  cast are served from the directory itself, not the eventual search index.
   """
-  def stream_group_transitive_members(access_token, group_id) do
-    # Use the user cast plus an accountEnabled filter so Graph excludes disabled
-    # users server-side before we build identities or memberships.
-    query =
-      URI.encode_query(%{
-        "$top" => @page_size,
-        "$count" => "true",
-        "$filter" => "accountEnabled eq true",
-        "$select" => @entra_user_select_fields
-      })
+  def stream_group_members(access_token, group_id) do
+    query = URI.encode_query(%{"$top" => @page_size, "$select" => @entra_user_select_fields})
+    path = "/v1.0/groups/#{group_id}/members"
 
-    path = "/v1.0/groups/#{group_id}/transitiveMembers/microsoft.graph.user"
-
-    stream_pages(path, query, access_token, @advanced_query_headers)
-    |> Stream.map(&filter_active_entra_users_result/1)
+    stream_pages(path, query, access_token)
   end
 
   @doc """
@@ -261,12 +250,6 @@ defmodule Portal.Microsoft.Graph.APIClient do
 
     {:ok, users}
   end
-
-  defp filter_active_entra_users_result(users) when is_list(users) do
-    Enum.filter(users, &active_entra_user?/1)
-  end
-
-  defp filter_active_entra_users_result(other), do: other
 
   defp active_entra_user?(user) do
     case Map.fetch(user, "accountEnabled") do
@@ -381,16 +364,6 @@ defmodule Portal.Microsoft.Graph.APIClient do
   end
 
   @doc """
-  Streams every group that transitively contains the given group.
-  """
-  def stream_group_transitive_member_of_groups(access_token, group_id) do
-    query = URI.encode_query(%{"$top" => @page_size, "$select" => "id,displayName"})
-    path = "/v1.0/groups/#{group_id}/transitiveMemberOf/microsoft.graph.group"
-
-    stream_pages(path, query, access_token, @advanced_query_headers)
-  end
-
-  @doc """
   Creates a change notification subscription.
   """
   def create_subscription(access_token, attrs) when is_map(attrs) do
@@ -431,9 +404,9 @@ defmodule Portal.Microsoft.Graph.APIClient do
     )
   end
 
-  defp stream_pages(path, query, access_token, headers \\ []) do
+  defp stream_pages(path, query, access_token) do
     Stream.resource(
-      fn -> {path, query, headers} end,
+      fn -> {path, query} end,
       fn
         nil ->
           {:halt, nil}
@@ -442,17 +415,17 @@ defmodule Portal.Microsoft.Graph.APIClient do
           # Halt stream on error
           {[error], nil}
 
-        {current_path, current_query, current_headers} ->
-          fetch_page(current_path, current_query, access_token, current_headers)
+        {current_path, current_query} ->
+          fetch_page(current_path, current_query, access_token)
       end,
       fn _ -> :ok end
     )
   end
 
-  defp fetch_page(current_path, current_query, access_token, headers) do
-    case get(current_path, current_query, access_token, headers) do
+  defp fetch_page(current_path, current_query, access_token) do
+    case get(current_path, current_query, access_token) do
       {:ok, %Req.Response{status: 200, body: body}} ->
-        parse_page_response(body, headers)
+        parse_page_response(body)
 
       {:ok, %Req.Response{} = response} ->
         # Non-200 response
@@ -464,7 +437,7 @@ defmodule Portal.Microsoft.Graph.APIClient do
     end
   end
 
-  defp parse_page_response(body, headers) do
+  defp parse_page_response(body) do
     case Map.fetch(body, "value") do
       {:ok, list} when is_list(list) ->
         # Empty list is valid - it means no results for this page
@@ -478,7 +451,7 @@ defmodule Portal.Microsoft.Graph.APIClient do
               uri = URI.parse(next_link)
               next_path = uri.path
               next_query = uri.query || ""
-              {next_path, next_query, headers}
+              {next_path, next_query}
           end
 
         {[list], next_state}

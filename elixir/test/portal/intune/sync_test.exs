@@ -68,7 +68,7 @@ defmodule Portal.Intune.SyncTest do
     assert device.operating_system == "Operating System value"
     assert device.compliance_state == "compliant"
     assert device.management_state == "managed"
-    assert device.jail_broken == "Jail Broken value"
+    assert device.jail_broken == true
     assert device.management_agent == "mdm"
     assert device.os_version == "Os Version value"
     assert device.eas_activated == true
@@ -92,7 +92,7 @@ defmodule Portal.Intune.SyncTest do
     assert device.compliance_grace_period_expiration_at == ~U[2017-01-01 07:56:44.951111Z]
     assert device.serial_number == "Serial Number value"
     assert device.phone_number == "Phone Number value"
-    assert device.android_security_patch_level == "Android Security Patch Level value"
+    assert device.android_security_patch_level == ~D[2024-05-05]
     assert device.user_display_name == "User Display Name value"
     assert device.wifi_mac_address == "Wi Fi Mac Address value"
     assert device.subscriber_carrier == "Subscriber Carrier value"
@@ -125,25 +125,23 @@ defmodule Portal.Intune.SyncTest do
     assert device.attestation_identity_key == "Attestation Identity Key value"
     assert device.attestation_reset_count == 10
     assert device.attestation_restart_count == 12
-    assert device.attestation_data_execution_policy == "Data Execution Policy value"
-    assert device.attestation_bit_locker_status == "Bit Locker Status value"
+    assert device.attestation_data_execution_policy_enabled == true
+    assert device.attestation_bit_locker_enabled == true
     assert device.attestation_boot_manager_version == "Boot Manager Version value"
     assert device.attestation_code_integrity_check_version == "Code Integrity Check Version value"
-    assert device.attestation_secure_boot == "Secure Boot value"
-    assert device.attestation_boot_debugging == "Boot Debugging value"
+    assert device.attestation_secure_boot == true
+    assert device.attestation_boot_debugging == false
 
-    assert device.attestation_operating_system_kernel_debugging ==
-             "Operating System Kernel Debugging value"
+    assert device.attestation_operating_system_kernel_debugging == false
 
-    assert device.attestation_code_integrity == "Code Integrity value"
-    assert device.attestation_test_signing == "Test Signing value"
-    assert device.attestation_safe_mode == "Safe Mode value"
-    assert device.attestation_windows_pe == "Windows PE value"
+    assert device.attestation_code_integrity == true
+    assert device.attestation_test_signing == false
+    assert device.attestation_safe_mode == false
+    assert device.attestation_windows_pe == false
 
-    assert device.attestation_early_launch_anti_malware_driver_protection ==
-             "Early Launch Anti Malware Driver Protection value"
+    assert device.attestation_early_launch_anti_malware_driver_protection == true
 
-    assert device.attestation_virtual_secure_mode == "Virtual Secure Mode value"
+    assert device.attestation_virtual_secure_mode == true
     assert device.attestation_pcr_hash_algorithm == "Pcr Hash Algorithm value"
     assert device.attestation_boot_app_security_version == "Boot App Security Version value"
     assert device.attestation_boot_manager_security_version == "Boot Manager Security Version value"
@@ -157,7 +155,7 @@ defmodule Portal.Intune.SyncTest do
     assert device.attestation_boot_revision_list_info == "Boot Revision List Info value"
     assert device.attestation_operating_system_rev_list_info == "Operating System Rev List Info value"
     assert device.attestation_health_status_mismatch_info == "Health Status Mismatch Info value"
-    assert device.attestation_supported_status == "Health Attestation Supported Status value"
+    assert device.attestation_supported == true
 
     assert [%{"actionName" => "Action Name value", "actionState" => "pending"}] =
              device.device_action_results
@@ -257,7 +255,7 @@ defmodule Portal.Intune.SyncTest do
 
     assert device.device_enrollment_type == "androidEnterpriseFullyManaged"
     assert device.management_agent == "googleCloudDevicePolicyController"
-    assert device.jail_broken == "Unknown"
+    assert is_nil(device.jail_broken)
   end
 
   test "follows every page of managed devices" do
@@ -465,7 +463,7 @@ defmodule Portal.Intune.SyncTest do
       "operatingSystem" => "Operating System value",
       "complianceState" => "compliant",
       "managementState" => "managed",
-      "jailBroken" => "Jail Broken value",
+      "jailBroken" => "True",
       "managementAgent" => "mdm",
       "osVersion" => "Os Version value",
       "easActivated" => true,
@@ -489,7 +487,7 @@ defmodule Portal.Intune.SyncTest do
       "complianceGracePeriodExpirationDateTime" => "2016-12-31T23:56:44.951111-08:00",
       "serialNumber" => "Serial Number value",
       "phoneNumber" => "Phone Number value",
-      "androidSecurityPatchLevel" => "Android Security Patch Level value",
+      "androidSecurityPatchLevel" => "2024-05-05",
       "userDisplayName" => "User Display Name value",
       "configurationManagerClientEnabledFeatures" => %{
         "inventory" => true,
@@ -509,20 +507,19 @@ defmodule Portal.Intune.SyncTest do
         "attestationIdentityKey" => "Attestation Identity Key value",
         "resetCount" => 10,
         "restartCount" => 12,
-        "dataExcutionPolicy" => "Data Execution Policy value",
-        "bitLockerStatus" => "Bit Locker Status value",
+        "dataExcutionPolicy" => "enabled",
+        "bitLockerStatus" => "On",
         "bootManagerVersion" => "Boot Manager Version value",
         "codeIntegrityCheckVersion" => "Code Integrity Check Version value",
-        "secureBoot" => "Secure Boot value",
-        "bootDebugging" => "Boot Debugging value",
-        "operatingSystemKernelDebugging" => "Operating System Kernel Debugging value",
-        "codeIntegrity" => "Code Integrity value",
-        "testSigning" => "Test Signing value",
-        "safeMode" => "Safe Mode value",
-        "windowsPE" => "Windows PE value",
-        "earlyLaunchAntiMalwareDriverProtection" =>
-          "Early Launch Anti Malware Driver Protection value",
-        "virtualSecureMode" => "Virtual Secure Mode value",
+        "secureBoot" => "True",
+        "bootDebugging" => "False",
+        "operatingSystemKernelDebugging" => "disabled",
+        "codeIntegrity" => "1",
+        "testSigning" => "0",
+        "safeMode" => "no",
+        "windowsPE" => "off",
+        "earlyLaunchAntiMalwareDriverProtection" => "yes",
+        "virtualSecureMode" => "enabled",
         "pcrHashAlgorithm" => "Pcr Hash Algorithm value",
         "bootAppSecurityVersion" => "Boot App Security Version value",
         "bootManagerSecurityVersion" => "Boot Manager Security Version value",
@@ -534,7 +531,7 @@ defmodule Portal.Intune.SyncTest do
         "bootRevisionListInfo" => "Boot Revision List Info value",
         "operatingSystemRevListInfo" => "Operating System Rev List Info value",
         "healthStatusMismatchInfo" => "Health Status Mismatch Info value",
-        "healthAttestationSupportedStatus" => "Health Attestation Supported Status value"
+        "healthAttestationSupportedStatus" => "true"
       },
       "subscriberCarrier" => "Subscriber Carrier value",
       "meid" => "Meid value",

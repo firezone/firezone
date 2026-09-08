@@ -5,25 +5,53 @@ defmodule PortalAPI.Schemas.ClientToken do
     require OpenApiSpex
     alias OpenApiSpex.Schema
 
+    @derive {PortalAPI.JSON.Encoder,
+             for: Portal.ClientToken,
+             internal: [
+               :account_id,
+               :auth_provider_id,
+               :auth_provider_name,
+               :auth_provider_type,
+               :last_used_device,
+               :online?
+             ]}
     OpenApiSpex.schema(%{
       title: "ClientToken",
       description: "Client Token metadata",
       type: :object,
       properties: %{
-        id: %Schema{type: :string, format: :uuid, description: "Client Token ID"},
-        actor_id: %Schema{type: :string, format: :uuid, description: "Actor ID"},
-        expires_at: %Schema{type: :string, format: :"date-time", description: "Expiration"},
-        inserted_at: %Schema{type: :string, format: :"date-time", description: "Creation timestamp"},
-        updated_at: %Schema{type: :string, format: :"date-time", description: "Update timestamp"}
+        id: %Schema{
+          example: "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
+          type: :string,
+          format: :uuid,
+          description: "Client Token ID"
+        },
+        actor_id: %Schema{
+          example: "43a7f82f-831a-4a9d-8f17-c66c2bb6e205",
+          type: :string,
+          format: :uuid,
+          description: "Actor ID"
+        },
+        expires_at: %Schema{
+          example: "2025-01-15T12:34:56.789Z",
+          type: :string,
+          format: :"date-time",
+          description: "Expiration"
+        },
+        inserted_at: %Schema{
+          example: "2025-01-15T12:34:56.789Z",
+          type: :string,
+          format: :"date-time",
+          description: "Creation timestamp"
+        },
+        updated_at: %Schema{
+          example: "2025-01-15T12:34:56.789Z",
+          type: :string,
+          format: :"date-time",
+          description: "Update timestamp"
+        }
       },
-      required: [:id, :actor_id, :expires_at, :inserted_at, :updated_at],
-      example: %{
-        "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-        "actor_id" => "43a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-        "expires_at" => "2025-01-15T12:34:56.789Z",
-        "inserted_at" => "2025-01-15T12:34:56.789Z",
-        "updated_at" => "2025-01-15T12:34:56.789Z"
-      }
+      required: [:actor_id, :expires_at, :id, :inserted_at, :updated_at]
     })
   end
 
@@ -36,12 +64,14 @@ defmodule PortalAPI.Schemas.ClientToken do
       description: "Client Token attributes",
       type: :object,
       properties: %{
-        expires_at: %Schema{type: :string, format: :"date-time", description: "Expiration"}
+        expires_at: %Schema{
+          example: "2025-01-15T12:34:56.789Z",
+          type: :string,
+          format: :"date-time",
+          description: "Expiration"
+        }
       },
-      required: [:expires_at],
-      example: %{
-        "expires_at" => "2025-01-15T12:34:56.789Z"
-      }
+      required: [:expires_at]
     })
   end
 
@@ -50,28 +80,67 @@ defmodule PortalAPI.Schemas.ClientToken do
     alias OpenApiSpex.Schema
     alias PortalAPI.Schemas.ClientToken
 
+    @derive {PortalAPI.JSON.Encoder,
+             for: Portal.ClientToken,
+             internal: [
+               :account_id,
+               :auth_provider_id,
+               :auth_provider_name,
+               :auth_provider_type,
+               :last_used_device,
+               :online?
+             ]}
     OpenApiSpex.schema(%{
-      title: "ClientTokenResponse",
-      description: "Client Token response",
+      title: "ClientTokenWithSecret",
+      description:
+        "Client Token as returned when it is created, including the encoded secret. " <>
+          "The secret is shown once and cannot be retrieved later.",
       type: :object,
       properties: %{
-        id: %Schema{type: :string, format: :uuid, description: "Client Token ID"},
-        actor_id: %Schema{type: :string, format: :uuid, description: "Actor ID"},
-        expires_at: %Schema{type: :string, format: :"date-time", description: "Expiration"},
-        inserted_at: %Schema{type: :string, format: :"date-time", description: "Creation timestamp"},
-        updated_at: %Schema{type: :string, format: :"date-time", description: "Update timestamp"},
-        token: %Schema{type: :string, description: "Encoded token secret"}
+        id: %Schema{
+          example: "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
+          type: :string,
+          format: :uuid,
+          description: "Client Token ID"
+        },
+        actor_id: %Schema{
+          example: "43a7f82f-831a-4a9d-8f17-c66c2bb6e205",
+          type: :string,
+          format: :uuid,
+          description: "Actor ID"
+        },
+        expires_at: %Schema{
+          example: "2025-01-15T12:34:56.789Z",
+          type: :string,
+          format: :"date-time",
+          description: "Expiration"
+        },
+        inserted_at: %Schema{
+          example: "2025-01-15T12:34:56.789Z",
+          type: :string,
+          format: :"date-time",
+          description: "Creation timestamp"
+        },
+        updated_at: %Schema{
+          example: "2025-01-15T12:34:56.789Z",
+          type: :string,
+          format: :"date-time",
+          description: "Update timestamp"
+        },
+        token: %Schema{
+          example: "secret-token-here",
+          type: :string,
+          description: "Encoded token secret"
+        }
       },
-      required: [:id, :actor_id, :expires_at, :inserted_at, :updated_at, :token],
-      example: %{
-        "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-        "actor_id" => "43a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-        "expires_at" => "2025-01-15T12:34:56.789Z",
-        "inserted_at" => "2025-01-15T12:34:56.789Z",
-        "updated_at" => "2025-01-15T12:34:56.789Z",
-        "token" => "secret-token-here"
-      }
+      required: [:actor_id, :expires_at, :id, :inserted_at, :token, :updated_at]
     })
+
+    # Only a token just created carries the secret fragment the encoded token is
+    # built from, which is why this is a separate schema from the read one.
+    def map(%Portal.ClientToken{} = token, _map) do
+      %{token: Portal.Authentication.encode_fragment!(token)}
+    end
   end
 
   defmodule Request do
@@ -85,12 +154,7 @@ defmodule PortalAPI.Schemas.ClientToken do
       properties: %{
         client_token: ClientToken.CreateSchema
       },
-      required: [:client_token],
-      example: %{
-        "client_token" => %{
-          "expires_at" => "2025-01-15T12:34:56.789Z"
-        }
-      }
+      required: [:client_token]
     })
   end
 
@@ -104,16 +168,6 @@ defmodule PortalAPI.Schemas.ClientToken do
       type: :object,
       properties: %{
         data: ClientToken.ResponseSchema
-      },
-      example: %{
-        "data" => %{
-          "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-          "actor_id" => "43a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-          "expires_at" => "2025-01-15T12:34:56.789Z",
-          "inserted_at" => "2025-01-15T12:34:56.789Z",
-          "updated_at" => "2025-01-15T12:34:56.789Z",
-          "token" => "secret-token-here"
-        }
       }
     })
   end
@@ -123,20 +177,11 @@ defmodule PortalAPI.Schemas.ClientToken do
     alias PortalAPI.Schemas.ClientToken
 
     OpenApiSpex.schema(%{
-      title: "ClientTokenResponse",
+      title: "ClientTokenShowResponse",
       description: "Response schema for Client Token metadata",
       type: :object,
       properties: %{
         data: ClientToken.Schema
-      },
-      example: %{
-        "data" => %{
-          "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-          "actor_id" => "43a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-          "expires_at" => "2025-01-15T12:34:56.789Z",
-          "inserted_at" => "2025-01-15T12:34:56.789Z",
-          "updated_at" => "2025-01-15T12:34:56.789Z"
-        }
       }
     })
   end
@@ -152,25 +197,21 @@ defmodule PortalAPI.Schemas.ClientToken do
       description: "Response schema for multiple Client Tokens",
       type: :object,
       properties: %{
-        data: %Schema{description: "Client Token metadata", type: :array, items: ClientToken.Schema},
+        data: %Schema{
+          example: [
+            %{
+              "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
+              "actor_id" => "43a7f82f-831a-4a9d-8f17-c66c2bb6e205",
+              "expires_at" => "2025-01-15T12:34:56.789Z",
+              "inserted_at" => "2025-01-15T12:34:56.789Z",
+              "updated_at" => "2025-01-15T12:34:56.789Z"
+            }
+          ],
+          description: "Client Token metadata",
+          type: :array,
+          items: ClientToken.Schema
+        },
         metadata: PaginationMetadata
-      },
-      example: %{
-        "data" => [
-          %{
-            "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-            "actor_id" => "43a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-            "expires_at" => "2025-01-15T12:34:56.789Z",
-            "inserted_at" => "2025-01-15T12:34:56.789Z",
-            "updated_at" => "2025-01-15T12:34:56.789Z"
-          }
-        ],
-        "metadata" => %{
-          "limit" => 10,
-          "count" => 1,
-          "prev_page" => nil,
-          "next_page" => nil
-        }
       }
     })
   end
@@ -187,14 +228,14 @@ defmodule PortalAPI.Schemas.ClientToken do
         data: %Schema{
           type: :object,
           properties: %{
-            id: %Schema{type: :string, format: :uuid, description: "Client Token ID"}
+            id: %Schema{
+              example: "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
+              type: :string,
+              format: :uuid,
+              description: "Client Token ID"
+            }
           },
           required: [:id]
-        }
-      },
-      example: %{
-        "data" => %{
-          "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205"
         }
       }
     })
@@ -213,16 +254,12 @@ defmodule PortalAPI.Schemas.ClientToken do
           type: :object,
           properties: %{
             deleted_count: %Schema{
+              example: 3,
               type: :integer,
               description: "Number of tokens that were deleted"
             }
           },
           required: [:deleted_count]
-        }
-      },
-      example: %{
-        "data" => %{
-          "deleted_count" => 3
         }
       }
     })

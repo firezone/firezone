@@ -3,24 +3,25 @@ defmodule PortalAPI.Router do
 
   pipeline :api do
     plug :accepts, ["json"]
-    # Authentication and the account limiter use only request metadata. Keep
-    # them ahead of the body parser so rejected requests never buffer or decode
-    # an attacker-controlled JSON body.
     plug PortalAPI.Plugs.Auth
     plug PortalAPI.Plugs.RateLimit
-
-    plug Plug.Parsers,
-      parsers: [:json],
-      pass: ["*/*"],
-      json_decoder: Phoenix.json_library()
-
     plug PortalAPI.Plugs.RequestLog
     plug PortalAPI.Plugs.Scope
     plug PortalAPI.Plugs.ValidateUUIDParams
+    plug OpenApiSpex.Plug.PutApiSpec, module: PortalAPI.ApiSpec
+
+    # The plugs above use only request metadata, so a rejected request never
+    # buffers an attacker-controlled body. The parser is also last because
+    # Phoenix renders a pipeline error with the conn from before the body read.
+    plug PortalAPI.Plugs.ParseBody,
+      parsers: [Portal.Parsers.JSON],
+      pass: ["*/*"],
+      json_decoder: Phoenix.json_library()
   end
 
   pipeline :public do
     plug :accepts, ["html", "xml", "json"]
+    plug OpenApiSpex.Plug.PutApiSpec, module: PortalAPI.ApiSpec
   end
 
   scope "/openapi" do
@@ -29,10 +30,55 @@ defmodule PortalAPI.Router do
     get "/", PortalAPI.OpenAPIController, :index
   end
 
+  scope "/openapi.json" do
+    pipe_through :public
+
+    get "/", OpenApiSpex.Plug.RenderSpec, []
+  end
+
   scope "/swaggerui" do
     pipe_through :public
 
     get "/", OpenApiSpex.Plug.SwaggerUI, path: "/openapi.json"
+  end
+
+  # The IP bucket precedes all attacker-controlled work. Once a
+  # token is authenticated, every request is charged to its account and logged
+  # before controller dispatch. Synthetic REST requests carry private skip
+  # markers so this outer metering is never duplicated.
+  pipeline :mcp do
+    plug PortalAPI.Plugs.MCPRateLimit
+    plug :accepts, ["json"]
+    plug PortalAPI.Plugs.MCPAuth
+    plug PortalAPI.Plugs.RateLimit, mcp: true
+    # Insert the load-bearing audit row before parsing. Tool attempts and
+    # dispatch outcomes are separate metadata on the original /mcp request.
+    plug PortalAPI.Plugs.RequestLog, mcp: true
+
+    plug PortalAPI.Plugs.MCPParseBody,
+      parsers: [Portal.Parsers.JSON],
+      pass: ["*/*"],
+      json_decoder: Phoenix.json_library(),
+      length: 1_000_000
+
+  end
+
+  # Read before the client holds any credential, so it cannot be authenticated.
+  # Both paths are served: a client tries the one scoped to the MCP endpoint's
+  # path first and falls back to the root.
+  scope "/.well-known", PortalAPI do
+    pipe_through :public
+
+    get "/oauth-protected-resource/mcp", OAuthMetadataController, :show
+    get "/oauth-protected-resource", OAuthMetadataController, :show
+  end
+
+  scope "/mcp", PortalAPI do
+    pipe_through :mcp
+
+    post "/", MCPController, :handle
+    get "/", MCPController, :method_not_allowed
+    delete "/", MCPController, :method_not_allowed
   end
 
   pipeline :ingestion do
@@ -44,8 +90,10 @@ defmodule PortalAPI.Router do
     plug PortalAPI.Plugs.IngestionRateLimit
     plug PortalAPI.Plugs.FlowLogAuth
 
+    # Preserve the post-read conn when malformed or oversized JSON raises so
+    # RescueRouterErrors can send the error without reusing stale adapter state.
     plug Plug.Parsers,
-      parsers: [:json],
+      parsers: [Portal.Parsers.JSON],
       pass: ["*/*"],
       json_decoder: Phoenix.json_library(),
       length: 10_000_000
@@ -147,6 +195,10 @@ defmodule PortalAPI.Router do
     end
 
     scope "/entra", Entra do
+      post "/webhooks", WebhookController, :handle_webhook
+    end
+
+    scope "/google", Google do
       post "/webhooks", WebhookController, :handle_webhook
     end
 

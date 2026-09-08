@@ -175,10 +175,10 @@ rec {
     gateway = "1.6.1";
 
     # mark:current-headless-version
-    headless = "1.5.11";
+    headless = "1.5.12";
 
     # mark:current-gui-version
-    gui = "1.5.16";
+    gui = "1.5.17";
   };
 
   meta = {

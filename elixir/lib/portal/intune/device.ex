@@ -55,7 +55,7 @@ defmodule Portal.Intune.Device do
     field :subscriber_carrier, :string
     field :wifi_mac_address, :string
     field :ethernet_mac_address, :string
-    field :android_security_patch_level, :string
+    field :android_security_patch_level, :date
     field :total_storage_space_bytes, :integer
     field :free_storage_space_bytes, :integer
     field :physical_memory_bytes, :integer
@@ -67,7 +67,7 @@ defmodule Portal.Intune.Device do
     field :device_enrollment_type, :string
     field :device_registration_state, :string
     field :partner_reported_threat_state, :string
-    field :jail_broken, :string
+    field :jail_broken, :boolean
     field :is_encrypted, :boolean
     field :is_supervised, :boolean
     field :entra_registered, :boolean
@@ -96,19 +96,19 @@ defmodule Portal.Intune.Device do
     field :attestation_identity_key, :string
     field :attestation_reset_count, :integer
     field :attestation_restart_count, :integer
-    field :attestation_data_execution_policy, :string
-    field :attestation_bit_locker_status, :string
+    field :attestation_data_execution_policy_enabled, :boolean
+    field :attestation_bit_locker_enabled, :boolean
     field :attestation_boot_manager_version, :string
     field :attestation_code_integrity_check_version, :string
-    field :attestation_secure_boot, :string
-    field :attestation_boot_debugging, :string
-    field :attestation_operating_system_kernel_debugging, :string
-    field :attestation_code_integrity, :string
-    field :attestation_test_signing, :string
-    field :attestation_safe_mode, :string
-    field :attestation_windows_pe, :string
-    field :attestation_early_launch_anti_malware_driver_protection, :string
-    field :attestation_virtual_secure_mode, :string
+    field :attestation_secure_boot, :boolean
+    field :attestation_boot_debugging, :boolean
+    field :attestation_operating_system_kernel_debugging, :boolean
+    field :attestation_code_integrity, :boolean
+    field :attestation_test_signing, :boolean
+    field :attestation_safe_mode, :boolean
+    field :attestation_windows_pe, :boolean
+    field :attestation_early_launch_anti_malware_driver_protection, :boolean
+    field :attestation_virtual_secure_mode, :boolean
     field :attestation_pcr_hash_algorithm, :string
     field :attestation_boot_app_security_version, :string
     field :attestation_boot_manager_security_version, :string
@@ -119,7 +119,7 @@ defmodule Portal.Intune.Device do
     field :attestation_boot_revision_list_info, :string
     field :attestation_operating_system_rev_list_info, :string
     field :attestation_health_status_mismatch_info, :string
-    field :attestation_supported_status, :string
+    field :attestation_supported, :boolean
 
     field :device_action_results, {:array, :map}
 

@@ -5,13 +5,35 @@ defmodule PortalAPI.Schemas.Client do
     require OpenApiSpex
     alias OpenApiSpex.Schema
 
+    @derive {PortalAPI.JSON.Encoder,
+             for: Portal.Device,
+             internal: [
+               :account_id,
+               :attested?,
+               :client_token_id,
+               :firezone_id_merged?,
+               :gateway_token_id,
+               :gateway_token_rotated_at,
+               :inserted_at,
+               :last_attested_cert_issuer,
+               :online?,
+               :provisioned_token,
+               :site_id,
+               :type
+             ]}
     OpenApiSpex.schema(%{
       title: "Client",
       description: "Client",
       type: :object,
       properties: %{
-        id: %Schema{type: :string, format: :uuid, description: "Client ID"},
+        id: %Schema{
+          example: "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
+          type: :string,
+          format: :uuid,
+          description: "Client ID"
+        },
         firezone_id: %Schema{
+          example: "b5bb9d8014a0f9b1d61e21e796d78dccdf1352f23cd32812f4850b878ae4944c",
           type: :string,
           nullable: true,
           description:
@@ -19,184 +41,219 @@ defmodule PortalAPI.Schemas.Client do
               "comes from an MDM-issued certificate, since a self-reported value could " <>
               "otherwise be used to claim another Client's record."
         },
-        actor_id: %Schema{type: :string, format: :uuid, description: "Actor ID"},
+        actor_id: %Schema{
+          example: "6ecc106b-75c1-48a5-846c-14782180c1ff",
+          type: :string,
+          format: :uuid,
+          description: "Actor ID"
+        },
         name: %Schema{
+          example: "John's Macbook Air",
           type: :string,
           description: "Client Name"
         },
         ipv4: %Schema{
+          example: "100.64.0.1",
           type: :string,
           description: "Tunnel IPv4 Address of Client"
         },
         ipv6: %Schema{
+          example: "fd00:2021:1111::1",
           type: :string,
           description: "Tunnel IPv6 Address of Client"
         },
         online: %Schema{
+          example: true,
           type: :boolean,
           description: "Online status of Client"
         },
         device_serial: %Schema{
+          example: "GCCFX0DBQ6L5",
           type: :string,
+          nullable: true,
           description: "Device manufacturer serial number (unavailable for mobile devices)"
         },
         device_uuid: %Schema{
+          example: "7A461FF9-0BE2-64A9-A418-539D9A21827B",
           type: :string,
-          format: :uuid,
+          nullable: true,
           description: "Device manufacturer UUID (unavailable for mobile devices)"
         },
         identifier_for_vendor: %Schema{
+          example: nil,
           type: :string,
+          nullable: true,
           description: "App installation ID (iOS only)"
         },
         firebase_installation_id: %Schema{
+          example: nil,
           type: :string,
+          nullable: true,
           description: "Firebase installation ID (Android only)"
         },
         hostname: %Schema{
+          example: "johns-macbook.example.com",
           type: :string,
           nullable: true,
           description: "Client hostname (FQDN used for dynamic device pool DNS resolution)"
         },
         last_attested_device_serial: %Schema{
+          example: "GCCFX0DBQ6L5",
           type: :string,
           nullable: true,
           readOnly: true,
           description: "Device serial number attested by an MDM-provisioned client certificate"
         },
         last_attested_device_uuid: %Schema{
+          example: "7A461FF9-0BE2-64A9-A418-539D9A21827B",
           type: :string,
           nullable: true,
           readOnly: true,
           description: "Device UUID attested by an MDM-provisioned client certificate"
         },
         last_attested_mdm_device_id: %Schema{
+          example: "5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3",
           type: :string,
           nullable: true,
           readOnly: true,
           description: "MDM device ID attested by an MDM-provisioned client certificate"
         },
         last_attested_cert_serial: %Schema{
+          example: "4A:2F:00:8C:11:03:9E:5B",
           type: :string,
           nullable: true,
           readOnly: true,
           description: "Serial number of the client certificate used for device verification"
         },
         last_attested_cert_fingerprint: %Schema{
+          example: "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
           type: :string,
           nullable: true,
           readOnly: true,
-          description: "SHA-256 fingerprint of the client certificate used for device verification"
+          description:
+            "SHA-256 fingerprint of the client certificate used for device verification"
         },
         last_attested_at: %Schema{
+          example: "2025-01-01T00:00:00Z",
           type: :string,
+          format: :"date-time",
           nullable: true,
           readOnly: true,
           description:
             "When the device last proved possession of an MDM-provisioned client certificate"
         },
         verified_at: %Schema{
+          example: "2025-01-01T00:00:00Z",
           type: :string,
+          format: :"date-time",
+          nullable: true,
           description: "Client verification timestamp"
         },
         public_key: %Schema{
+          example: "WdKAyoA45xJllRUYnFhI5+Y4EjSTs50MzYYHfrIhVAc=",
           type: :string,
           nullable: true,
           description: "WireGuard public key from the latest session"
         },
         last_seen_at: %Schema{
+          example: "2025-01-01T00:00:00Z",
           type: :string,
+          format: :"date-time",
           nullable: true,
           description: "Timestamp of the latest connection"
         },
         last_seen_version: %Schema{
+          example: "1.5.0",
           type: :string,
           nullable: true,
           description: "Client version from the latest session"
         },
         last_seen_user_agent: %Schema{
+          example: "macOS/14.0 apple-client/1.5.0",
           type: :string,
           nullable: true,
           description: "User agent from the latest session"
         },
         last_seen_remote_ip: %Schema{
+          example: "203.0.113.10",
           type: :string,
           nullable: true,
           description: "Remote IP from the latest session"
         },
         last_seen_remote_ip_location_region: %Schema{
+          example: "US",
           type: :string,
           nullable: true,
           description: "Remote IP region from the latest session"
         },
         last_seen_remote_ip_location_city: %Schema{
+          example: "New York",
           type: :string,
           nullable: true,
           description: "Remote IP city from the latest session"
         },
         last_seen_remote_ip_location_lat: %Schema{
+          example: 40.7128,
           type: :number,
           nullable: true,
           description: "Remote IP latitude from the latest session"
         },
         last_seen_remote_ip_location_lon: %Schema{
+          example: -74.006,
           type: :number,
           nullable: true,
           description: "Remote IP longitude from the latest session"
         },
         created_at: %Schema{
+          example: "2025-01-01T00:00:00Z",
           type: :string,
+          format: :"date-time",
           description: "Client creation timestamp"
         },
         updated_at: %Schema{
+          example: "2025-01-01T00:00:00Z",
           type: :string,
+          format: :"date-time",
           description: "Client update timestamp"
         }
       },
       required: [
-        :id,
         :actor_id,
+        :created_at,
+        :device_serial,
+        :device_uuid,
+        :firebase_installation_id,
         :firezone_id,
-        :name,
+        :hostname,
+        :id,
+        :identifier_for_vendor,
         :ipv4,
         :ipv6,
+        :last_attested_at,
+        :last_attested_cert_fingerprint,
+        :last_attested_cert_serial,
+        :last_attested_device_serial,
+        :last_attested_device_uuid,
+        :last_attested_mdm_device_id,
+        :last_seen_at,
+        :last_seen_remote_ip,
+        :last_seen_remote_ip_location_city,
+        :last_seen_remote_ip_location_lat,
+        :last_seen_remote_ip_location_lon,
+        :last_seen_remote_ip_location_region,
+        :last_seen_user_agent,
+        :last_seen_version,
+        :name,
         :online,
-        :created_at,
-        :updated_at
-      ],
-      example: %{
-        "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-        "firezone_id" => "b5bb9d8014a0f9b1d61e21e796d78dccdf1352f23cd32812f4850b878ae4944c",
-        "actor_id" => "6ecc106b-75c1-48a5-846c-14782180c1ff",
-        "name" => "John's Macbook Air",
-        "ipv4" => "100.64.0.1",
-        "ipv6" => "fd00:2021:1111::1",
-        "online" => true,
-        "device_serial" => "GCCFX0DBQ6L5",
-        "device_uuid" => "7A461FF9-0BE2-64A9-A418-539D9A21827B",
-        "identifier_for_vendor" => nil,
-        "firebase_installation_id" => nil,
-        "hostname" => "johns-macbook.example.com",
-        "last_attested_device_serial" => "GCCFX0DBQ6L5",
-        "last_attested_device_uuid" => "7A461FF9-0BE2-64A9-A418-539D9A21827B",
-        "last_attested_mdm_device_id" => "5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3",
-        "last_attested_cert_serial" => "4A:2F:00:8C:11:03:9E:5B",
-        "last_attested_cert_fingerprint" => "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
-        "last_attested_at" => "2025-01-01T00:00:00Z",
-        "verified_at" => "2025-01-01T00:00:00Z",
-        "public_key" => "WdKAyoA45xJllRUYnFhI5+Y4EjSTs50MzYYHfrIhVAc=",
-        "last_seen_at" => "2025-01-01T00:00:00Z",
-        "last_seen_version" => "1.5.0",
-        "last_seen_user_agent" => "macOS/14.0 apple-client/1.5.0",
-        "last_seen_remote_ip" => "203.0.113.10",
-        "last_seen_remote_ip_location_region" => "US",
-        "last_seen_remote_ip_location_city" => "New York",
-        "last_seen_remote_ip_location_lat" => 40.7128,
-        "last_seen_remote_ip_location_lon" => -74.006,
-        "created_at" => "2025-01-01T00:00:00Z",
-        "updated_at" => "2025-01-01T00:00:00Z"
-      }
+        :public_key,
+        :updated_at,
+        :verified_at
+      ]
     })
+
+    def map(%Portal.Device{} = device, _map) do
+      %{online: device.online?, created_at: device.inserted_at}
+    end
   end
 
   defmodule PutSchema do
@@ -209,14 +266,12 @@ defmodule PortalAPI.Schemas.Client do
       type: :object,
       properties: %{
         name: %Schema{
+          example: "John's Macbook Air",
           type: :string,
           description: "Client Name"
         }
       },
-      required: [:name],
-      example: %{
-        "name" => "John's Macbook Air"
-      }
+      required: [:name]
     })
   end
 
@@ -232,12 +287,7 @@ defmodule PortalAPI.Schemas.Client do
       properties: %{
         client: Client.PutSchema
       },
-      required: [:client],
-      example: %{
-        "client" => %{
-          "name" => "John's Macbook Air"
-        }
-      }
+      required: [:client]
     })
   end
 
@@ -252,31 +302,6 @@ defmodule PortalAPI.Schemas.Client do
       type: :object,
       properties: %{
         data: Client.GetSchema
-      },
-      example: %{
-        "data" => %{
-          "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-          "firezone_id" => "b5bb9d8014a0f9b1d61e21e796d78dccdf1352f23cd32812f4850b878ae4944c",
-          "actor_id" => "6ecc106b-75c1-48a5-846c-14782180c1ff",
-          "name" => "John's Macbook Air",
-          "ipv4" => "100.64.0.1",
-          "ipv6" => "fd00:2021:1111::1",
-          "online" => true,
-          "device_serial" => "GCCFX0DBQ6L5",
-          "device_uuid" => "7A461FF9-0BE2-64A9-A418-539D9A21827B",
-          "identifier_for_vendor" => nil,
-          "firebase_installation_id" => nil,
-          "hostname" => "johns-macbook.example.com",
-          "last_attested_device_serial" => "GCCFX0DBQ6L5",
-          "last_attested_device_uuid" => "7A461FF9-0BE2-64A9-A418-539D9A21827B",
-          "last_attested_mdm_device_id" => "5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3",
-          "last_attested_cert_serial" => "4A:2F:00:8C:11:03:9E:5B",
-          "last_attested_cert_fingerprint" => "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
-          "last_attested_at" => "2025-01-01T00:00:00Z",
-          "verified_at" => "2025-01-01T00:00:00Z",
-          "created_at" => "2025-01-01T00:00:00Z",
-          "updated_at" => "2025-01-01T00:00:00Z"
-        }
       }
     })
   end
@@ -294,61 +319,6 @@ defmodule PortalAPI.Schemas.Client do
       properties: %{
         data: %Schema{description: "Clients details", type: :array, items: Client.GetSchema},
         metadata: PaginationMetadata
-      },
-      example: %{
-        "data" => [
-          %{
-            "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-            "firezone_id" => "b5bb9d8014a0f9b1d61e21e796d78dccdf1352f23cd32812f4850b878ae4944c",
-            "actor_id" => "6ecc106b-75c1-48a5-846c-14782180c1ff",
-            "name" => "John's Macbook Air",
-            "ipv4" => "100.64.0.1",
-            "ipv6" => "fd00:2021:1111::1",
-            "online" => true,
-            "device_serial" => "GCCFX0DBQ6L5",
-            "device_uuid" => "7A461FF9-0BE2-64A9-A418-539D9A21827B",
-            "identifier_for_vendor" => nil,
-            "firebase_installation_id" => nil,
-            "hostname" => "johns-macbook.example.com",
-            "last_attested_device_serial" => "GCCFX0DBQ6L5",
-            "last_attested_device_uuid" => "7A461FF9-0BE2-64A9-A418-539D9A21827B",
-            "last_attested_mdm_device_id" => "5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3",
-            "last_attested_cert_serial" => "4A:2F:00:8C:11:03:9E:5B",
-            "last_attested_cert_fingerprint" => "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
-            "verified_at" => "2025-01-01T00:00:00Z",
-            "created_at" => "2025-01-01T00:00:00Z",
-            "updated_at" => "2025-01-01T00:00:00Z"
-          },
-          %{
-            "id" => "9a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-            "firezone_id" => "6c37c0042f40bbb16e007d0d6c8e77c0ac2cab3cc3b923c42d1157a934e436ac",
-            "actor_id" => "2ecc106b-75c1-48a5-846c-14782180c1ff",
-            "name" => "iPad",
-            "ipv4" => "100.64.0.2",
-            "ipv6" => "fd00:2021:1111::2",
-            "online" => false,
-            "device_serial" => nil,
-            "device_uuid" => nil,
-            "identifier_for_vendor" => "7A461FF9-0BE2-64A9-A418-539D9A21827B",
-            "firebase_installation_id" => nil,
-            "hostname" => nil,
-            "last_attested_device_serial" => nil,
-            "last_attested_device_uuid" => nil,
-            "last_attested_mdm_device_id" => nil,
-            "last_attested_cert_serial" => nil,
-            "last_attested_cert_fingerprint" => nil,
-            "last_attested_at" => nil,
-            "verified_at" => nil,
-            "created_at" => "2025-01-01T00:00:00Z",
-            "updated_at" => "2025-01-01T00:00:00Z"
-          }
-        ],
-        "metadata" => %{
-          "limit" => 2,
-          "total" => 100,
-          "prev_page" => "123123425",
-          "next_page" => "98776234123"
-        }
       }
     })
   end

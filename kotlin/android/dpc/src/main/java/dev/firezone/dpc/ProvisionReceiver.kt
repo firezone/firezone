@@ -33,7 +33,9 @@ class ProvisionReceiver : BroadcastReceiver() {
             runCatching {
                 when (intent.action) {
                     INSTALL_KEY_PAIR -> installKeyPair(policy, admin, intent)
+                    REMOVE_KEY_PAIR -> removeKeyPair(policy, admin, intent)
                     SET_RESTRICTIONS -> setRestrictions(policy, admin, intent)
+                    SET_POLICY_ALIAS -> setPolicyAlias(context, intent)
                     else -> "unknown action: ${intent.action}"
                 }
             }
@@ -81,7 +83,23 @@ class ProvisionReceiver : BroadcastReceiver() {
         return "installed '$alias' (certificates=${chain.size}, granted=${grantTo ?: "nobody"})"
     }
 
-    /** Sets one managed-configuration entry on a package, or clears its configuration entirely. */
+    /** Removes the key pair under an alias, and with it every grant the alias carried. */
+    private fun removeKeyPair(
+        policy: DevicePolicyManager,
+        admin: android.content.ComponentName,
+        intent: Intent,
+    ): String {
+        val alias = intent.requireString(ALIAS)
+
+        return if (policy.removeKeyPair(admin, alias)) "removed '$alias'" else "nothing under '$alias'"
+    }
+
+    /**
+     * Sets one managed-configuration entry on a package, or clears its configuration entirely.
+     *
+     * The entry is a string under `value`, or a boolean under `flag`, the way `am broadcast --ez`
+     * sends one.
+     */
     private fun setRestrictions(
         policy: DevicePolicyManager,
         admin: android.content.ComponentName,
@@ -91,7 +109,11 @@ class ProvisionReceiver : BroadcastReceiver() {
         val key = intent.getStringExtra(KEY)
         val restrictions =
             Bundle().apply {
-                if (key != null) putString(key, intent.requireString(VALUE))
+                when {
+                    key == null -> Unit
+                    intent.hasExtra(FLAG) -> putBoolean(key, intent.getBooleanExtra(FLAG, false))
+                    else -> putString(key, intent.requireString(VALUE))
+                }
             }
 
         policy.setApplicationRestrictions(admin, target, restrictions)
@@ -99,11 +121,30 @@ class ProvisionReceiver : BroadcastReceiver() {
         return "set ${restrictions.keySet().joinToString().ifEmpty { "nothing" }} on $target"
     }
 
+    /**
+     * Sets the alias the DPC answers the KeyChain chooser with, or clears it.
+     *
+     * Answering is how an administrator hands an app a certificate silently, which is the state a
+     * corporate-owned device with a certificate selection rule is in.
+     */
+    private fun setPolicyAlias(
+        context: Context,
+        intent: Intent,
+    ): String {
+        val alias = intent.getStringExtra(ALIAS)
+
+        AdminReceiver.setPolicyAlias(context, alias)
+
+        return "the chooser is answered with ${alias?.let { "'$it'" } ?: "nothing"}"
+    }
+
     private fun Intent.requireString(name: String) = getStringExtra(name) ?: error("missing extra '$name'")
 
     private companion object {
         const val INSTALL_KEY_PAIR = "dev.firezone.dpc.INSTALL_KEY_PAIR"
+        const val REMOVE_KEY_PAIR = "dev.firezone.dpc.REMOVE_KEY_PAIR"
         const val SET_RESTRICTIONS = "dev.firezone.dpc.SET_RESTRICTIONS"
+        const val SET_POLICY_ALIAS = "dev.firezone.dpc.SET_POLICY_ALIAS"
 
         const val ALIAS = "alias"
         const val P12 = "p12"
@@ -112,5 +153,6 @@ class ProvisionReceiver : BroadcastReceiver() {
         const val PACKAGE = "package"
         const val KEY = "key"
         const val VALUE = "value"
+        const val FLAG = "flag"
     }
 }

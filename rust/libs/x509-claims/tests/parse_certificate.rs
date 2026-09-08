@@ -24,6 +24,7 @@ fn recognizes_rsa_client_identity() {
         parse_certificate(RSA_LEAF, now()).expect("fixture should be a valid RSA certificate");
 
     assert_eq!(metadata.subject_cn.as_deref(), Some(SUBJECT_CN));
+    assert!(metadata.is_device_certificate());
     assert!(metadata.has_client_auth_eku);
     assert!(metadata.digital_signature_allowed);
     assert!(metadata.is_currently_valid());

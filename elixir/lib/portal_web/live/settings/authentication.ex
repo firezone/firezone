@@ -52,7 +52,7 @@ defmodule PortalWeb.Settings.Authentication do
     socket =
       assign(socket,
         page_title: "Authentication",
-        trust_anchors_enabled?: PortalWeb.NavigationComponents.trust_anchors_enabled?(),
+        x509_auth_enabled?: Portal.Features.enabled?(:x509_auth),
         device_posture_enabled?: PortalWeb.NavigationComponents.device_posture_enabled?()
       )
 
@@ -608,7 +608,7 @@ defmodule PortalWeb.Settings.Authentication do
     providers =
       Database.list_all_providers(
         socket.assigns.subject,
-        socket.assigns.trust_anchors_enabled?
+        socket.assigns.x509_auth_enabled?
       )
       |> Database.enrich_with_session_counts(socket.assigns.subject)
 
@@ -627,7 +627,6 @@ defmodule PortalWeb.Settings.Authentication do
       <.settings_nav
         account={@account}
         current_path={@current_path}
-        trust_anchors_enabled?={@trust_anchors_enabled?}
         device_posture_enabled?={@device_posture_enabled?}
       />
 
