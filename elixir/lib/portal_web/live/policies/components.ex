@@ -1444,7 +1444,7 @@ defmodule PortalWeb.Policies.Components do
     do: "Device must be verified"
 
   defp condition_values_display(%{property: :device_attested}, _providers, _account),
-    do: "Devices must have a trusted X.509 client certificate"
+    do: "Devices must have a trusted X.509 certificate"
 
   defp condition_values_display(
          %{property: :auth_provider_id, values: values},
