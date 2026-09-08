@@ -183,12 +183,12 @@ mise run cli -- extension status
 mise run cli -- connect --account-slug my-account
 ```
 
-`connect` is the default, so plain `firezone` brings the tunnel up. It returns
-once the tunnel is connected and leaves it running in the system extension,
-since the tunnel lives there rather than in this process. `connect --foreground`
-instead supervises the tunnel and stops it on exit, which is what a launchd
-service wants. `disconnect` takes the tunnel down again, and `sign-out` also
-drops the stored token. `status` reports the sign-in, tunnel and Internet
+`connect` brings the tunnel up. It returns once the tunnel is connected and
+leaves it running in the system extension, since the tunnel lives there rather
+than in this process. `connect --foreground` instead supervises the tunnel and
+stops it on exit, which is what a launchd service wants. `disconnect` takes the
+tunnel down again, and `sign-out` also drops the stored token. `status` is the
+default, so plain `firezone` reports the sign-in, tunnel and Internet
 Resource state. `resources list`, which is what plain `resources` runs, prints
 what the running tunnel can reach. `internet-resource enable` and
 `internet-resource disable` switch the Internet Resource, writing the choice to
@@ -216,7 +216,7 @@ terminal echo off, and a token typed at a prompt would stay in the scrollback.
 Pipe one in instead, which is what it tells you to do when it hasn't got one:
 
 ```sh
-pbpaste | firezone
+pbpaste | firezone connect
 ```
 
 Anything you don't set keeps whatever the app stored, since both share one VPN

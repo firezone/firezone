@@ -44,11 +44,11 @@ enum SignIn {
 
         3. Run:
 
-           pbpaste | \(command)
+           pbpaste | \(command) connect
 
       A token can also be set in FIREZONE_TOKEN, or read from a file:
 
-           \(command) < token
+           \(command) connect < token
 
       The token is saved to the Keychain, so later runs don't need one.
       """

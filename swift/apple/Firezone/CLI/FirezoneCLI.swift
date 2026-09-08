@@ -23,7 +23,7 @@ struct FirezoneCLI: AsyncParsableCommand {
       InternetResource.self,
       Extension.self,
     ],
-    defaultSubcommand: Connect.self
+    defaultSubcommand: Status.self
   )
 
   static var versionString: String {
