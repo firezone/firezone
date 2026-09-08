@@ -18,6 +18,7 @@ defmodule PortalWeb.Policies.Components do
     :remote_ip,
     :auth_provider_id,
     :client_verified,
+    :device_attested,
     :current_utc_datetime
   ]
 
@@ -1381,6 +1382,7 @@ defmodule PortalWeb.Policies.Components do
 
   @spec condition_short_label(atom()) :: String.t()
   def condition_short_label(:client_verified), do: "Verified"
+  def condition_short_label(:device_attested), do: "Attested"
   def condition_short_label(:auth_provider_id), do: "Auth"
   def condition_short_label(:remote_ip_location_region), do: "Location"
   def condition_short_label(:remote_ip), do: "IP Range"
@@ -1413,6 +1415,10 @@ defmodule PortalWeb.Policies.Components do
     do:
       "inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium shrink-0 text-success bg-success-light"
 
+  defp condition_type_badge_class(:device_attested),
+    do:
+      "inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium shrink-0 text-success bg-success-light"
+
   defp condition_type_badge_class(:auth_provider_id),
     do:
       "inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium shrink-0 text-badge-dns-text bg-badge-dns"
@@ -1436,6 +1442,9 @@ defmodule PortalWeb.Policies.Components do
   @spec condition_values_display(map(), list(), any()) :: String.t()
   defp condition_values_display(%{property: :client_verified}, _providers, _account),
     do: "Device must be verified"
+
+  defp condition_values_display(%{property: :device_attested}, _providers, _account),
+    do: "Device must be attested"
 
   defp condition_values_display(
          %{property: :auth_provider_id, values: values},
@@ -1610,6 +1619,16 @@ defmodule PortalWeb.Policies.Components do
       <span>by clients that are</span>
       <span :if={@values == ["true"]}>verified</span>
       <span :if={@values == ["false"]}>not verified</span>
+    </span>
+    """
+  end
+
+  defp condition(%{property: :device_attested} = assigns) do
+    ~H"""
+    <span :if={@values != []} class="mr-1">
+      <span>by clients that are</span>
+      <span :if={@values == ["true"]}>attested</span>
+      <span :if={@values == ["false"]}>not attested</span>
     </span>
     """
   end
@@ -2242,7 +2261,13 @@ defmodule PortalWeb.Policies.Components do
 
   @spec available_conditions(map() | nil) :: [atom()]
   def available_conditions(%{type: :internet}),
-    do: [:remote_ip_location_region, :remote_ip, :auth_provider_id, :client_verified]
+    do: [
+      :remote_ip_location_region,
+      :remote_ip,
+      :auth_provider_id,
+      :client_verified,
+      :device_attested
+    ]
 
   def available_conditions(_resource),
     do: [
@@ -2250,11 +2275,13 @@ defmodule PortalWeb.Policies.Components do
       :remote_ip,
       :auth_provider_id,
       :client_verified,
+      :device_attested,
       :current_utc_datetime
     ]
 
   @spec condition_type_label(atom()) :: String.t()
   def condition_type_label(:client_verified), do: "Require Verified Device"
+  def condition_type_label(:device_attested), do: "Require attestation"
   def condition_type_label(:auth_provider_id), do: "Authentication Provider"
   def condition_type_label(:remote_ip_location_region), do: "Device Location"
   def condition_type_label(:remote_ip), do: "IP Range"
@@ -2278,6 +2305,7 @@ defmodule PortalWeb.Policies.Components do
   def grant_condition_card(assigns) do
     ~H"""
     <.grant_client_verified_condition_card :if={@type == :client_verified} type={@type} />
+    <.grant_device_attested_condition_card :if={@type == :device_attested} type={@type} />
     <.grant_ip_range_condition_card
       :if={@type == :remote_ip}
       type={@type}
@@ -2354,6 +2382,31 @@ defmodule PortalWeb.Policies.Components do
       <input
         type="hidden"
         name="policy[conditions][client_verified][values][]"
+        value="true"
+      />
+    </div>
+    """
+  end
+
+  attr :type, :atom, required: true
+
+  defp grant_device_attested_condition_card(assigns) do
+    ~H"""
+    <div class="rounded-lg border border-border overflow-hidden">
+      <.grant_condition_card_header type={@type} />
+      <input
+        type="hidden"
+        name="policy[conditions][device_attested][property]"
+        value="device_attested"
+      />
+      <input
+        type="hidden"
+        name="policy[conditions][device_attested][operator]"
+        value="is"
+      />
+      <input
+        type="hidden"
+        name="policy[conditions][device_attested][values][]"
         value="true"
       />
     </div>

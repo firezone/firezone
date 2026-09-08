@@ -53,7 +53,8 @@ defmodule PortalAPI.Client.ChannelTest do
         last_seen_remote_ip_location_lat: subject.context.remote_ip_location_lat,
         last_seen_remote_ip_location_lon: subject.context.remote_ip_location_lon,
         last_seen_version: client_version,
-        last_seen_at: DateTime.utc_now()
+        last_seen_at: DateTime.utc_now(),
+        attested?: Keyword.get(opts, :attested?, false)
     }
 
     {:ok, _reply, socket} =
@@ -2246,6 +2247,68 @@ defmodule PortalAPI.Client.ChannelTest do
       # Client is no longer verified, resource should be deleted
       assert_push "resource_deleted", payload
       assert payload == resource.id
+    end
+
+    test "for device_attested conditions grants only the connection that attested",
+         %{
+           client: client,
+           actor: actor,
+           account: account,
+           subject: subject
+         } do
+      identity_fixture(actor: actor, account: account)
+      group = group_fixture(account: account)
+      site = site_fixture(account: account)
+
+      resource =
+        dns_resource_fixture(
+          account: account,
+          site: site,
+          ip_stack: :ipv4_only
+        )
+
+      policy_fixture(
+        account: account,
+        group: group,
+        resource: resource,
+        conditions: [
+          %{
+            property: :device_attested,
+            operator: :is,
+            values: ["true"]
+          }
+        ]
+      )
+
+      membership =
+        membership_fixture(
+          account: account,
+          actor: actor,
+          group: group
+        )
+
+      # A device that attested on an earlier connection but not on this one
+      # does not satisfy the condition: only the live session counts.
+      client = verify_device(client)
+
+      unattested_socket = join_channel(client, subject, attested?: false)
+      assert_push "init", %{resources: resources}
+      refute Enum.any?(resources, &(&1.id == resource.id))
+
+      send(unattested_socket.channel_pid, %Changes.Change{
+        lsn: 100,
+        op: :insert,
+        struct: membership
+      })
+
+      refute_push "resource_created_or_updated", _payload
+
+      Process.unlink(unattested_socket.channel_pid)
+      Process.exit(unattested_socket.channel_pid, :shutdown)
+
+      join_channel(client, subject, attested?: true)
+      assert_push "init", %{resources: resources}
+      assert Enum.any?(resources, &(&1.id == resource.id))
     end
 
     test "for client address updates resends init with the new tunnel IPs", %{

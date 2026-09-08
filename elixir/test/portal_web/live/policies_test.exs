@@ -1338,6 +1338,84 @@ defmodule PortalWeb.PoliciesTest do
 
       assert html =~ "Require Verified Device"
     end
+
+    test "manages device_attested condition", %{conn: conn, account: account, actor: actor} do
+      group = group_fixture(account: account)
+      resource = resource_fixture(account: account)
+      policy = policy_fixture(group: group, resource: resource)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/policies/#{policy.id}/edit")
+
+      render_click(lv, "toggle_conditions_dropdown")
+      html = render_click(lv, "add_condition", %{"type" => "device_attested"})
+      assert html =~ "Require attestation"
+    end
+
+    test "saves device_attested condition to DB", %{conn: conn, account: account, actor: actor} do
+      group = group_fixture(account: account)
+      resource = resource_fixture(account: account)
+      policy = policy_fixture(group: group, resource: resource)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/policies/#{policy.id}/edit")
+
+      render_click(lv, "toggle_conditions_dropdown")
+      render_click(lv, "add_condition", %{"type" => "device_attested"})
+
+      html =
+        lv
+        |> form("[phx-submit='submit_policy_form']",
+          policy: %{
+            group_id: group.id,
+            resource_id: resource.id,
+            description: "With client attested condition"
+          }
+        )
+        |> render_submit()
+
+      assert html =~ "updated successfully"
+
+      policy = Repo.get_by!(Policy, id: policy.id, account_id: account.id)
+
+      assert Enum.any?(
+               policy.conditions,
+               &(&1.property == :device_attested and &1.values == ["true"])
+             )
+    end
+
+    test "renders device_attested condition from saved policy", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      group = group_fixture(account: account)
+      resource = resource_fixture(account: account)
+
+      policy =
+        policy_fixture(
+          group: group,
+          resource: resource,
+          conditions: [
+            %{
+              property: :device_attested,
+              operator: :is,
+              values: ["true"]
+            }
+          ]
+        )
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/policies/#{policy.id}/edit")
+
+      assert html =~ "Require attestation"
+    end
   end
 
   describe ":show action authorizations tab" do
