@@ -89,7 +89,6 @@ pub trait GuiIntegration {
 
     fn set_tray_icon(&mut self, icon: system_tray::Icon);
     fn set_tray_menu(&mut self, app_state: system_tray::AppState);
-    /// Opens the tray menu on screen, so CI can photograph it.
     fn open_tray_menu(&self) -> Result<()>;
     fn close_tray_menu(&self) -> Result<()>;
     fn show_notification(&self, title: impl Into<String>, body: impl Into<String>) -> Result<()>;
@@ -124,7 +123,6 @@ pub enum ControllerRequest {
         stem: PathBuf,
     },
     Fail(Failure),
-    /// Open the tray menu on screen.
     OpenTrayMenu,
     CloseTrayMenu,
     SignIn,
@@ -1326,7 +1324,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn opens_the_tray_menu_on_request() {
+    async fn opens_and_closes_the_tray_menu_on_request() {
         let _guard = logging::test("debug");
         let mut test_controller = Controller::start_for_test();
 
@@ -1336,24 +1334,14 @@ mod tests {
         let (mut gui_rx, mut gui_tx) = test_controller.gui_ipc_connect().await;
         gui_tx.send(&gui::ClientMsg::OpenTrayMenu).await.unwrap();
         let response = gui_rx.next().await.unwrap().unwrap();
-
         assert_eq!(response, gui::ServerMsg::Ack);
-        assert_eq!(test_controller.integration().tray_menu_opens.len(), 1);
-    }
-
-    #[tokio::test]
-    async fn closes_the_tray_menu_on_request() {
-        let _guard = logging::test("debug");
-        let mut test_controller = Controller::start_for_test();
-
-        let mut mock_tunnel = test_controller.tunnel_service_ipc_accept().await;
-        mock_tunnel.send_hello().await;
 
         let (mut gui_rx, mut gui_tx) = test_controller.gui_ipc_connect().await;
         gui_tx.send(&gui::ClientMsg::CloseTrayMenu).await.unwrap();
         let response = gui_rx.next().await.unwrap().unwrap();
-
         assert_eq!(response, gui::ServerMsg::Ack);
+
+        assert_eq!(test_controller.integration().tray_menu_opens.len(), 1);
         assert_eq!(test_controller.integration().tray_menu_closes.len(), 1);
     }
 

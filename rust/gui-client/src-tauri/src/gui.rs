@@ -276,9 +276,7 @@ fn spawn_notification(title: String, body: String, open_url: Option<url::Url>) {
 pub enum ClientMsg {
     Deeplink(url::Url),
     NewInstance,
-    /// Open the running instance's tray menu on screen, so CI can photograph it.
     OpenTrayMenu,
-    /// Close the tray menu again.
     CloseTrayMenu,
 }
 
@@ -684,8 +682,7 @@ async fn new_instance_handshake(
     Ok(())
 }
 
-/// Hands `msg` to the already running instance and waits for it to acknowledge.
-pub async fn send_to_running_instance(msg: ClientMsg) -> Result<()> {
+pub async fn send_and_await_ack(msg: ClientMsg) -> Result<()> {
     let (mut read, mut write) =
         ipc::connect::<ServerMsg, ClientMsg>(SocketId::Gui, ipc::ConnectOptions::default()).await?;
 

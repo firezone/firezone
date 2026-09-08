@@ -173,13 +173,13 @@ fn try_main(cli: Cli, rt: &Runtime, log_guard: &mut Option<LogGuard>) -> Result<
             return Ok(());
         }
         Some(Cmd::OpenTrayMenu) => {
-            rt.block_on(gui::send_to_running_instance(gui::ClientMsg::OpenTrayMenu))
+            rt.block_on(gui::send_and_await_ack(gui::ClientMsg::OpenTrayMenu))
                 .context("Failed to open the running instance's tray menu")?;
 
             return Ok(());
         }
         Some(Cmd::CloseTrayMenu) => {
-            rt.block_on(gui::send_to_running_instance(gui::ClientMsg::CloseTrayMenu))
+            rt.block_on(gui::send_and_await_ack(gui::ClientMsg::CloseTrayMenu))
                 .context("Failed to close the running instance's tray menu")?;
 
             return Ok(());
@@ -401,11 +401,8 @@ enum Cmd {
     SingleInstance,
     #[command(hide = true)]
     SmokeTest,
-    /// Ask the already running instance to open its tray menu on screen, so CI
-    /// can photograph it without clicking the notification area, then exit.
     #[command(hide = true)]
     OpenTrayMenu,
-    /// Ask the already running instance to close its tray menu again, then exit.
     #[command(hide = true)]
     CloseTrayMenu,
 }
