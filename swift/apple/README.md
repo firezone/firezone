@@ -184,7 +184,12 @@ mise run cli -- connect --account-slug my-account
 ```
 
 `connect` is the default, so plain `firezone` brings the tunnel up and stays in
-the foreground until you stop it. `sign-out` drops the stored token.
+the foreground until you stop it. `sign-out` drops the stored token. `status`
+reports the sign-in, tunnel and Internet Resource state. `resources list`, which
+is what plain `resources` runs, prints what the running tunnel can reach.
+`internet-resource enable` and `internet-resource disable` switch the Internet
+Resource, writing the choice to the shared VPN profile the way the app's own
+toggle does.
 
 It talks to the same system extension as the GUI and will not start without it.
 `extension status` reports whether that extension is installed and matches the
