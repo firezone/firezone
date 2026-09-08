@@ -13,10 +13,10 @@ defmodule PortalAPI.Integrations.Okta.WebhookController do
     conn = fetch_query_params(conn)
 
     with [challenge] <- get_req_header(conn, "x-okta-verification-challenge"),
-         :ok <- Okta.Webhooks.verify(conn.query_params["directory_id"]) do
+         :ok <- Okta.Webhooks.verify(conn.query_params["directory_id"], authorization(conn)) do
       json(conn, %{"verification" => challenge})
     else
-      {:error, :not_found} -> send_resp(conn, 404, "Not Found")
+      {:error, :unauthorized} -> send_resp(conn, 401, "Unauthorized")
       _ -> send_resp(conn, 400, "Bad Request: missing verification challenge")
     end
   end
@@ -38,11 +38,9 @@ defmodule PortalAPI.Integrations.Okta.WebhookController do
   end
 
   defp handle_body(conn, directory_id, body) do
-    authorization = conn |> get_req_header("authorization") |> List.first()
-
     with {:ok, %{"data" => %{"events" => events}}} when is_list(events) <- JSON.decode(body),
          true <- length(events) <= @max_events,
-         :ok <- Okta.Webhooks.handle_events(directory_id, authorization, events) do
+         :ok <- Okta.Webhooks.handle_events(directory_id, authorization(conn), events) do
       send_resp(conn, 204, "")
     else
       false ->
@@ -50,9 +48,6 @@ defmodule PortalAPI.Integrations.Okta.WebhookController do
 
       {:error, :unauthorized} ->
         send_resp(conn, 401, "Unauthorized")
-
-      {:error, :not_found} ->
-        send_resp(conn, 404, "Not Found")
 
       {:ok, _other} ->
         send_resp(conn, 400, "Bad Request: missing events")
@@ -62,4 +57,6 @@ defmodule PortalAPI.Integrations.Okta.WebhookController do
         send_resp(conn, 400, "Bad Request: invalid JSON")
     end
   end
+
+  defp authorization(conn), do: conn |> get_req_header("authorization") |> List.first()
 end

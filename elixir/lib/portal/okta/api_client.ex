@@ -308,6 +308,18 @@ defmodule Portal.Okta.APIClient do
   end
 
   @doc """
+  Lists at most one application assigned to the group, enough to know whether
+  there is any.
+  """
+  @spec list_group_apps(t(), String.t(), String.t()) ::
+          {:ok, Req.Response.t()} | {:error, Exception.t()}
+  def list_group_apps(client, access_token, group_id) do
+    new_request(client, access_token)
+    |> Req.merge(url: "#{@groups_path}/#{group_id}/apps", params: [limit: 1])
+    |> Req.get()
+  end
+
+  @doc """
   Streams the groups a user belongs to.
   """
   @spec stream_user_groups(t(), String.t(), String.t()) :: Enumerable.t()

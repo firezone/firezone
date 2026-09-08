@@ -22,9 +22,30 @@ defmodule PortalAPI.Integrations.Okta.WebhookControllerTest do
       conn =
         conn
         |> put_req_header("x-okta-verification-challenge", "abc 123")
+        |> put_req_header("authorization", directory.webhook_secret)
         |> get("/integrations/okta/webhooks?directory_id=#{directory.id}")
 
       assert json_response(conn, 200) == %{"verification" => "abc 123"}
+    end
+
+    test "refuses a verification without the hook secret", %{conn: conn, directory: directory} do
+      conn =
+        conn
+        |> put_req_header("x-okta-verification-challenge", "abc 123")
+        |> get("/integrations/okta/webhooks?directory_id=#{directory.id}")
+
+      assert response(conn, 401)
+      assert is_nil(Portal.Repo.get!(Portal.Okta.Directory, directory.id).webhook_verified_at)
+    end
+
+    test "refuses a verification with the wrong secret", %{conn: conn, directory: directory} do
+      conn =
+        conn
+        |> put_req_header("x-okta-verification-challenge", "abc 123")
+        |> put_req_header("authorization", "nope")
+        |> get("/integrations/okta/webhooks?directory_id=#{directory.id}")
+
+      assert response(conn, 401)
     end
 
     test "records the verification and tells the settings page",
@@ -34,6 +55,7 @@ defmodule PortalAPI.Integrations.Okta.WebhookControllerTest do
       conn =
         conn
         |> put_req_header("x-okta-verification-challenge", "abc")
+        |> put_req_header("authorization", directory.webhook_secret)
         |> get("/integrations/okta/webhooks?directory_id=#{directory.id}")
 
       assert json_response(conn, 200)
@@ -41,13 +63,14 @@ defmodule PortalAPI.Integrations.Okta.WebhookControllerTest do
       assert_receive :directories_changed
     end
 
-    test "rejects a verification for an unknown directory", %{conn: conn} do
+    test "refuses a verification for an unknown directory like a wrong secret", %{conn: conn} do
       conn =
         conn
         |> put_req_header("x-okta-verification-challenge", "abc")
+        |> put_req_header("authorization", "anything")
         |> get("/integrations/okta/webhooks?directory_id=#{Ecto.UUID.generate()}")
 
-      assert response(conn, 404)
+      assert response(conn, 401)
     end
 
     test "rejects a verification without a challenge", %{conn: conn, directory: directory} do
@@ -73,9 +96,9 @@ defmodule PortalAPI.Integrations.Okta.WebhookControllerTest do
         post_events(conn, directory, [
           event("user.account.update_profile", [user("user-1")]),
           event("user.lifecycle.deactivate", [user("user-1")]),
-          event("group.lifecycle.update", [group("group-1")]),
+          event("group.profile.update", [group("group-1")]),
           event("user.account.update_profile", [user("user-unknown")]),
-          event("group.lifecycle.update", [group("group-unknown")])
+          event("group.profile.update", [group("group-unknown")])
         ])
 
       assert response(conn, 204) == ""
@@ -116,6 +139,31 @@ defmodule PortalAPI.Integrations.Okta.WebhookControllerTest do
       assert_enqueued(worker: Okta.WebhookSync, args: %{resource: "user", resource_id: "user-new"})
       assert_enqueued(worker: Okta.WebhookSync, args: %{resource: "user", resource_id: "user-joined"})
       assert length(all_enqueued(worker: Okta.WebhookSync)) == 2
+    end
+
+    test "queues an unknown group an application assignment adds", %{conn: conn, directory: directory} do
+      conn =
+        post_events(conn, directory, [
+          event("group.application_assignment.add", [group("group-new"), app("app-1")])
+        ])
+
+      assert response(conn, 204) == ""
+      assert_enqueued(worker: Okta.WebhookSync, args: %{resource: "group", resource_id: "group-new"})
+    end
+
+    test "queues a known group an application assignment removes",
+         %{conn: conn, account: account, directory: directory, base_directory: base_directory} do
+      group_fixture(account: account, directory: base_directory, idp_id: "group-1")
+
+      conn =
+        post_events(conn, directory, [
+          event("group.application_assignment.remove", [group("group-1"), app("app-1")]),
+          event("group.application_assignment.remove", [group("group-unknown"), app("app-1")])
+        ])
+
+      assert response(conn, 204) == ""
+      assert_enqueued(worker: Okta.WebhookSync, args: %{resource: "group", resource_id: "group-1"})
+      assert length(all_enqueued(worker: Okta.WebhookSync)) == 1
     end
 
     test "drops an unknown user for other events", %{conn: conn, directory: directory} do
@@ -168,7 +216,8 @@ defmodule PortalAPI.Integrations.Okta.WebhookControllerTest do
       assert response(conn, 401)
     end
 
-    test "drops a delivery for an unknown directory", %{conn: conn, directory: directory} do
+    test "refuses a delivery for an unknown directory like a wrong secret",
+         %{conn: conn, directory: directory} do
       conn =
         post_events(
           conn,
@@ -176,7 +225,7 @@ defmodule PortalAPI.Integrations.Okta.WebhookControllerTest do
           [event("application.user_membership.add", [user("user-1")])]
         )
 
-      assert response(conn, 404)
+      assert response(conn, 401)
     end
 
     test "rejects a body without events", %{conn: conn, directory: directory} do
@@ -223,4 +272,5 @@ defmodule PortalAPI.Integrations.Okta.WebhookControllerTest do
 
   defp user(id), do: %{"type" => "User", "id" => id, "alternateId" => "#{id}@example.com"}
   defp group(id), do: %{"type" => "UserGroup", "id" => id, "displayName" => id}
+  defp app(id), do: %{"type" => "AppInstance", "id" => id, "displayName" => id}
 end

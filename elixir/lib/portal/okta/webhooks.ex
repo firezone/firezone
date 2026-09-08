@@ -25,8 +25,10 @@ defmodule Portal.Okta.Webhooks do
     user.account.update_profile
     group.user_membership.add
     group.user_membership.remove
-    group.lifecycle.update
+    group.profile.update
     group.lifecycle.delete
+    group.application_assignment.add
+    group.application_assignment.remove
     application.user_membership.add
     application.user_membership.remove
   ]
@@ -40,6 +42,10 @@ defmodule Portal.Okta.Webhooks do
     group.user_membership.add
     application.user_membership.add
   ]
+
+  # A group the directory does not track only starts to matter once an
+  # application is assigned to it.
+  @admits_new_groups ~w[group.application_assignment.add]
 
   @okta_id ~r/^[A-Za-z0-9_-]{1,64}$/
 
@@ -61,17 +67,24 @@ defmodule Portal.Okta.Webhooks do
   end
 
   @doc """
-  Records that Okta reached the endpoint of a directory that can take events,
-  and tells the settings page, which waits for exactly this.
+  Records that Okta reached the endpoint with the directory's secret, and tells
+  the settings page, which waits for exactly this. An unknown directory and a
+  wrong secret look the same from outside.
   """
-  def verify(directory_id) do
+  def verify(directory_id, authorization) do
     with {:ok, id} <- Ecto.UUID.cast(directory_id || ""),
-         %Okta.Directory{} = directory <- Database.get_directory(id) do
+         %Okta.Directory{} = directory <- Database.get_directory(id),
+         true <- authentic?(directory, authorization) do
       Database.mark_verified(directory)
       PubSub.Changes.broadcast(directory.account_id, :directories, :directories_changed)
       :ok
     else
-      _ -> {:error, :not_found}
+      _ ->
+        Logger.warning("Refusing an Okta verification with a missing or invalid secret or directory",
+          okta_directory_id: directory_id
+        )
+
+        {:error, :unauthorized}
     end
   end
 
@@ -100,11 +113,11 @@ defmodule Portal.Okta.Webhooks do
         {:error, :unauthorized}
 
       _ ->
-        Logger.warning("Dropping Okta events for unknown directory",
+        Logger.warning("Refusing Okta events for an unknown directory",
           okta_directory_id: directory_id
         )
 
-        {:error, :not_found}
+        {:error, :unauthorized}
     end
   end
 
@@ -117,8 +130,8 @@ defmodule Portal.Okta.Webhooks do
   defp parse_event(directory, %{"eventType" => type, "target" => targets})
        when is_binary(type) and is_list(targets) do
     cond do
-      String.starts_with?(type, "group.lifecycle.") ->
-        for id <- target_ids(targets, "UserGroup"), do: {"group", id, false}
+      String.starts_with?(type, ["group.lifecycle.", "group.profile.", "group.application_assignment."]) ->
+        for id <- target_ids(targets, "UserGroup"), do: {"group", id, type in @admits_new_groups}
 
       String.starts_with?(type, ["user.", "group.user_membership.", "application.user_membership."]) ->
         for id <- target_ids(targets, "User"), do: {"user", id, type in @admits_new_users}
@@ -149,8 +162,8 @@ defmodule Portal.Okta.Webhooks do
   # Most events in an org concern users and groups this directory never
   # synced. Those are dropped here so they never become jobs, unless a job for
   # the directory is running: it may still insert the object from a response
-  # fetched before this change. A user an event adds is kept even when unknown,
-  # because that is how a user first reaches the directory.
+  # fetched before this change. A user or group an event adds is kept even
+  # when unknown, because that is how it first reaches the directory.
   defp in_scope([], _directory), do: []
 
   defp in_scope(changes, directory) do
@@ -162,7 +175,7 @@ defmodule Portal.Okta.Webhooks do
 
       Enum.filter(changes, fn
         {"user", id, new?} -> new? or MapSet.member?(known_users, id)
-        {"group", id, _} -> MapSet.member?(known_groups, id)
+        {"group", id, new?} -> new? or MapSet.member?(known_groups, id)
       end)
     end
   end

@@ -10,8 +10,8 @@ defmodule Portal.Okta.WebhookSync do
   A user is written when Okta still returns them, active, and assigned to at
   least one application, the way the full sync scopes users, and their
   memberships in the groups the directory tracks follow. Anything else about
-  the user is removed. A group is re-read only when the directory already
-  tracks it; which groups an application has is left to the full sync.
+  the user is removed. A group is written, created if need be, when Okta still
+  returns it with at least one application assigned, and removed otherwise.
   """
 
   use Oban.Worker, queue: :okta_webhook, max_attempts: 3
@@ -92,21 +92,32 @@ defmodule Portal.Okta.WebhookSync do
 
   defp apply_change(directory, "group", group_id) do
     Logger.info("Applying Okta group event", okta_directory_id: directory.id, group_id: group_id)
+    client = APIClient.new(directory)
+    access_token = Okta.Sync.get_access_token!(client, directory)
+    synced_at = DateTime.utc_now()
+    group = Database.get_group(directory.account_id, directory.id, group_id)
 
-    case Database.get_group(directory.account_id, directory.id, group_id) do
-      nil ->
-        Logger.info("Ignoring Okta event for a group this directory does not track",
-          okta_directory_id: directory.id,
-          group_id: group_id
-        )
+    case APIClient.get_group(client, access_token, group_id) do
+      {:ok, %Req.Response{status: 200, body: %{"id" => ^group_id} = okta_group}} ->
+        if assigned_group?(directory, client, access_token, group_id) do
+          Okta.Sync.upsert_group(directory, synced_at, Okta.Sync.group_attrs(okta_group))
+          Okta.Sync.sync_group_members(directory, client, access_token, synced_at, group_id)
+        else
+          remove_group(directory, group)
+        end
 
-        :ok
+      {:ok, %Req.Response{status: 404}} ->
+        remove_group(directory, group)
 
-      group ->
-        resync_group(directory, group)
-        Portal.Policy.reconnect_orphaned_policies(directory.account_id)
-        :ok
+      {:ok, response} ->
+        raise Okta.SyncError, error: response, directory_id: directory.id, step: :get_group
+
+      {:error, error} ->
+        raise Okta.SyncError, error: error, directory_id: directory.id, step: :get_group
     end
+
+    Portal.Policy.reconnect_orphaned_policies(directory.account_id)
+    :ok
   end
 
   defp apply_change(directory, resource, _resource_id) do
@@ -168,32 +179,30 @@ defmodule Portal.Okta.WebhookSync do
     end
   end
 
-  defp resync_group(directory, group) do
-    client = APIClient.new(directory)
-    access_token = Okta.Sync.get_access_token!(client, directory)
-    synced_at = DateTime.utc_now()
-
-    case APIClient.get_group(client, access_token, group.idp_id) do
-      {:ok, %Req.Response{status: 200, body: %{"id" => id} = okta_group}} when id == group.idp_id ->
-        Okta.Sync.upsert_group(directory, synced_at, Okta.Sync.group_attrs(okta_group))
-        Okta.Sync.sync_group_members(directory, client, access_token, synced_at, group.idp_id)
-
-      {:ok, %Req.Response{status: 404}} ->
-        Database.delete_group(group)
-
-        Logger.info("Removed group from Okta event",
-          okta_directory_id: directory.id,
-          group_id: group.id
-        )
-
-        :ok
+  defp assigned_group?(directory, client, access_token, group_id) do
+    case APIClient.list_group_apps(client, access_token, group_id) do
+      {:ok, %Req.Response{status: 200, body: apps}} when is_list(apps) ->
+        apps != []
 
       {:ok, response} ->
-        raise Okta.SyncError, error: response, directory_id: directory.id, step: :get_group
+        raise Okta.SyncError, error: response, directory_id: directory.id, step: :list_group_apps
 
       {:error, error} ->
-        raise Okta.SyncError, error: error, directory_id: directory.id, step: :get_group
+        raise Okta.SyncError, error: error, directory_id: directory.id, step: :list_group_apps
     end
+  end
+
+  defp remove_group(_directory, nil), do: :ok
+
+  defp remove_group(directory, group) do
+    Database.delete_group(group)
+
+    Logger.info("Removed group from Okta event",
+      okta_directory_id: directory.id,
+      group_id: group.id
+    )
+
+    :ok
   end
 
   defmodule Database do

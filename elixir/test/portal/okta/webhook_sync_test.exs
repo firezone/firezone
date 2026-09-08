@@ -188,7 +188,10 @@ defmodule Portal.Okta.WebhookSyncTest do
       carol_actor = Actor |> Repo.get_by!(id: carol.actor_id) |> Repo.preload(:account)
       membership_fixture(actor: carol_actor, group: group)
 
-      stub_okta(groups: %{"group-1" => {"Engineering", ["user-alice", "user-unknown"]}})
+      stub_okta(
+        groups: %{"group-1" => {"Engineering", ["user-alice", "user-unknown"]}},
+        apps_for_group: %{"group-1" => ["app-1"]}
+      )
 
       assert :ok = perform_job(WebhookSync, group_args(directory, "group-1"))
 
@@ -208,8 +211,40 @@ defmodule Portal.Okta.WebhookSyncTest do
       refute Repo.get_by(Group, id: group.id)
     end
 
-    test "ignores groups the directory does not track", %{directory: directory} do
-      stub_okta(groups: %{"group-1" => {"Engineering", []}})
+    test "creates a group an application was assigned with its members",
+         %{directory: directory} = ctx do
+      alice = directory_identity(ctx, "user-alice")
+
+      stub_okta(
+        groups: %{"group-1" => {"Engineering", ["user-alice"]}},
+        apps_for_group: %{"group-1" => ["app-1"]}
+      )
+
+      assert :ok = perform_job(WebhookSync, group_args(directory, "group-1"))
+
+      group = Repo.get_by!(Group, idp_id: "group-1")
+      assert group.name == "Engineering"
+      assert group.directory_id == directory.id
+      assert Repo.get_by(Membership, actor_id: alice.actor_id, group_id: group.id)
+    end
+
+    test "deletes a tracked group no application is assigned to",
+         %{account: account, directory: directory, base_directory: base_directory} = ctx do
+      group = group_fixture(account: account, directory: base_directory, idp_id: "group-1")
+      carol = directory_identity(ctx, "user-carol")
+      carol_actor = Actor |> Repo.get_by!(id: carol.actor_id) |> Repo.preload(:account)
+      membership_fixture(actor: carol_actor, group: group)
+
+      stub_okta(groups: %{"group-1" => {"Engineering", ["user-carol"]}}, apps_for_group: %{})
+
+      assert :ok = perform_job(WebhookSync, group_args(directory, "group-1"))
+
+      refute Repo.get_by(Group, id: group.id)
+      refute Repo.get_by(Membership, actor_id: carol_actor.id)
+    end
+
+    test "ignores an unknown group no application is assigned to", %{directory: directory} do
+      stub_okta(groups: %{"group-1" => {"Engineering", []}}, apps_for_group: %{})
 
       assert :ok = perform_job(WebhookSync, group_args(directory, "group-1"))
 
@@ -293,6 +328,7 @@ defmodule Portal.Okta.WebhookSyncTest do
     apps_for = Keyword.get(opts, :apps_for, %{})
     groups_for = Keyword.get(opts, :groups_for, %{})
     groups = Keyword.get(opts, :groups, %{})
+    apps_for_group = Keyword.get(opts, :apps_for_group, %{})
 
     Req.Test.stub(APIClient, fn conn ->
       segments = conn.request_path |> String.trim_leading("/") |> Path.split()
@@ -313,6 +349,9 @@ defmodule Portal.Okta.WebhookSyncTest do
 
         ["api", "v1", "users", user_id] ->
           json_or_404(conn, users[user_id])
+
+        ["api", "v1", "groups", group_id, "apps"] ->
+          Req.Test.json(conn, Enum.map(Map.get(apps_for_group, group_id, []), &%{"id" => &1}))
 
         ["api", "v1", "groups", group_id, "users"] ->
           case groups[group_id] do
