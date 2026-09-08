@@ -173,7 +173,10 @@
 
     static func mock(scenario: MockScenario = .connected, logDirectory: URL? = nil) -> Store {
       // swiftlint:disable:next no_userdefaults_standard - DI entry point
-      UserDefaults.standard.set(scenario.favorites, forKey: Favorites.key)
+      let defaults = UserDefaults.standard
+      defaults.set(scenario.favorites, forKey: Favorites.key)
+      // Otherwise the welcome window opens over the screen being photographed.
+      defaults.set(true, forKey: "launchedBefore")
 
       seedConfiguration(with: scenario)
 
@@ -288,12 +291,13 @@
   #endif
 
   #if os(macOS)
-    /// Holds the window observer below for the life of the process.
-    @MainActor private var mockWindowObserver: (any NSObjectProtocol)?
+    /// Holds the observers below for the life of the process.
+    @MainActor private var mockObservers: [any NSObjectProtocol] = []
 
     extension AppView.WindowDefinition {
       public static func mockFromCommandLine() -> Self? {
-        guard let name = flagValue("--mock-window") else { return nil }
+        // `none` leaves the full app running with its menu bar item and no window.
+        guard let name = flagValue("--mock-window"), name != "none" else { return nil }
 
         guard let window = Self(rawValue: name) else {
           Log.warning("Ignoring unknown --mock-window '\(name)'")
@@ -317,22 +321,41 @@
       /// while the window settles, hence the second pass a turn later.
       @MainActor
       public static func applyMockPresentation() {
-        shared.appearance = mockAppearance()
+        guard MockRun.isActive else { return }
 
-        mockWindowObserver = NotificationCenter.default.addObserver(
-          forName: NSWindow.didBecomeKeyNotification,
-          object: nil,
-          queue: .main
-        ) { notification in
-          guard let window = notification.object as? NSWindow else { return }
+        let appearance = mockAppearance()
+        shared.appearance = appearance
 
-          MainActor.assumeIsolated {
-            DispatchQueue.main.async { window.makeFirstResponder(nil) }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-              window.makeFirstResponder(nil)
+        mockObservers.append(
+          NotificationCenter.default.addObserver(
+            forName: NSWindow.didBecomeKeyNotification,
+            object: nil,
+            queue: .main
+          ) { notification in
+            guard let window = notification.object as? NSWindow else { return }
+
+            MainActor.assumeIsolated {
+              DispatchQueue.main.async { window.makeFirstResponder(nil) }
+              DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                window.makeFirstResponder(nil)
+              }
             }
-          }
-        }
+          })
+
+        // A menu takes the system's appearance rather than the app's, so the
+        // light and dark captures of it came out identical. Every menu is set as
+        // it opens, which reaches the submenus too.
+        mockObservers.append(
+          NotificationCenter.default.addObserver(
+            forName: NSMenu.didBeginTrackingNotification,
+            object: nil,
+            queue: .main
+          ) { notification in
+            // The observer runs on the main queue, whatever the compiler can see of it.
+            nonisolated(unsafe) let menu = notification.object as? NSMenu
+
+            MainActor.assumeIsolated { menu?.appearance = appearance }
+          })
       }
 
       private static func mockAppearance() -> NSAppearance? {

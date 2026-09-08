@@ -169,6 +169,14 @@ impl GuiIntegration for TauriIntegration {
         self.tray.update(app_state)
     }
 
+    fn open_tray_menu(&self) -> Result<()> {
+        self.tray.open_menu()
+    }
+
+    fn close_tray_menu(&self) -> Result<()> {
+        self.tray.close_menu()
+    }
+
     fn show_notification(&self, title: impl Into<String>, body: impl Into<String>) -> Result<()> {
         spawn_notification(title.into(), body.into(), None);
 
@@ -268,6 +276,8 @@ fn spawn_notification(title: String, body: String, open_url: Option<url::Url>) {
 pub enum ClientMsg {
     Deeplink(url::Url),
     NewInstance,
+    OpenTrayMenu,
+    CloseTrayMenu,
 }
 
 /// IPC messages that an already running instance may send back to a
@@ -586,9 +596,9 @@ pub enum SingleInstance {
     /// Another instance was already running. We connected to its GUI
     /// IPC pipe, sent `ClientMsg::NewInstance`, awaited the `Ack`,
     /// and closed our end. Production callers bail with
-    /// [`AlreadyRunning`] here; the `debug single-instance`
-    /// subcommand uses it as a successful end state for the
-    /// second-instance side of the smoke test.
+    /// [`AlreadyRunning`] here; the `single-instance` subcommand uses
+    /// it as a successful end state for the second-instance side of
+    /// the smoke test.
     SecondHandedOff,
 }
 
@@ -633,7 +643,7 @@ pub async fn establish_single_instance() -> Result<SingleInstance> {
 /// [`ClientMsg`], send a `ServerMsg::Ack`, and return the message
 /// so the caller can log / assert on it.
 ///
-/// Used by the `debug single-instance` subcommand to exercise the
+/// Used by the `single-instance` subcommand to exercise the
 /// pipe-server side of the launch-lock hand-off without standing up
 /// the controller or any other normal-runtime machinery. Production
 /// code uses the same `ipc::Server` + framed reader/writer types
@@ -668,6 +678,25 @@ async fn new_instance_handshake(
         .context("Failed to receive response")?;
 
     anyhow::ensure!(response == ServerMsg::Ack);
+
+    Ok(())
+}
+
+pub async fn send_and_await_ack(msg: ClientMsg) -> Result<()> {
+    let (mut read, mut write) =
+        ipc::connect::<ServerMsg, ClientMsg>(SocketId::Gui, ipc::ConnectOptions::default()).await?;
+
+    write.send(&msg).await.context("Failed to send request")?;
+
+    let response = read
+        .next()
+        .await
+        .context("No response received")?
+        .context("Failed to receive response")?;
+
+    anyhow::ensure!(response == ServerMsg::Ack);
+
+    tracing::info!("Running instance acknowledged the request, goodbye!");
 
     Ok(())
 }

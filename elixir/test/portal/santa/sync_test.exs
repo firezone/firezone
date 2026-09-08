@@ -44,7 +44,7 @@ defmodule Portal.Santa.SyncTest do
     assert device.last_sync_at == ~U[2026-08-26 18:10:00.123456Z]
     assert device.rule_sync_at == ~U[2026-08-26 18:09:00.000000Z]
     assert device.last_preflight_at == ~U[2026-08-26 18:08:00.000000Z]
-    assert device.last_preflight_ip == "wKgBAQ=="
+    assert device.last_preflight_ip == %Postgrex.INET{address: {192, 168, 1, 1}}
     assert device.tags == ["global", "production"]
     assert device.tags_locked
     refute device.tags_truncated
@@ -85,6 +85,30 @@ defmodule Portal.Santa.SyncTest do
     assert device.primary_user == "builder"
     assert device.santa_version == "2026.8"
     assert device.last_sync_at == ~U[2026-08-26 18:10:00.000000Z]
+    assert is_nil(device.sip_status)
+    refute device.primary_user_locked
+  end
+
+  test "reads fields ProtoJSON omits at their default values" do
+    provider = santa_posture_provider_fixture()
+
+    stub_api([
+      %{
+        "uuid" => "quiet-mac",
+        "hostname" => "quiet-mac",
+        "osType" => "OS_TYPE_MACOS",
+        "lastPreflightIp" => Base.encode64(<<0x2001::16, 0xDB8::16, 0::16, 0::16, 0::16, 0::16, 0::16, 1::16>>)
+      }
+    ])
+
+    assert :ok = perform_job(Sync, sync_args(provider))
+
+    device = Repo.get_by!(Device, santa_id: "quiet-mac")
+    assert device.sip_status == 0
+    refute device.primary_user_locked
+    refute device.tags_locked
+    refute device.tags_truncated
+    assert device.last_preflight_ip == %Postgrex.INET{address: {0x2001, 0xDB8, 0, 0, 0, 0, 0, 1}}
   end
 
   test "uses the Workshop ConnectRPC pagination and authorization contract" do

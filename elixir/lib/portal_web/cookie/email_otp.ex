@@ -10,7 +10,7 @@ defmodule PortalWeb.Cookie.EmailOTP do
           actor_id: Ecto.UUID.t(),
           passcode_id: Ecto.UUID.t(),
           email: String.t(),
-          context_type: :portal | :gui_client | :headless_client
+          context_type: :portal | :oauth | :gui_client | :headless_client
         }
 
   @cookie_key "email_otp"
@@ -72,7 +72,7 @@ defmodule PortalWeb.Cookie.EmailOTP do
     {actor_id, passcode_id, email, context_type} =
       case :erlang.binary_to_term(binary, [:safe]) do
         {actor_id, passcode_id, email, context_type}
-        when context_type in [:portal, :gui_client, :headless_client] ->
+        when context_type in [:portal, :oauth, :gui_client, :headless_client] ->
           {actor_id, passcode_id, email, context_type}
 
         # Cookies issued before context was bound to the OTP flow can safely be

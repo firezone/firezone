@@ -10,6 +10,7 @@ import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
 import androidx.test.runner.lifecycle.Stage
 import androidx.test.uiautomator.UiDevice
 import dev.firezone.android.core.presentation.MainActivity
+import java.io.File
 import java.util.concurrent.TimeUnit
 
 // The tunnel runs as a `systemExempted` foreground service, which the platform only lets an app
@@ -134,6 +135,34 @@ fun stopTunnelService() {
         }
 
         Thread.sleep(50)
+    }
+}
+
+// Photographs the display, system dialogs included, into the app's private files where
+// `emulator-tests.sh` collects it. The status bar is pinned through SystemUI's demo mode for the
+// duration, so a clock or a battery level does not make two pictures of the same screen differ.
+fun photographScreen(name: String) {
+    val directory = File(InstrumentationRegistry.getInstrumentation().targetContext.filesDir, "screenshots")
+    directory.mkdirs()
+
+    shell("settings put global sysui_demo_allowed 1")
+    shell("am broadcast -a com.android.systemui.demo -e command enter")
+    shell("am broadcast -a com.android.systemui.demo -e command clock -e hhmm 1200")
+    shell("am broadcast -a com.android.systemui.demo -e command battery -e plugged false -e level 100")
+    shell("am broadcast -a com.android.systemui.demo -e command network -e wifi show -e level 4 -e fully true")
+    shell("am broadcast -a com.android.systemui.demo -e command network -e mobile hide")
+    shell("am broadcast -a com.android.systemui.demo -e command notifications -e visible false")
+    shell("am broadcast -a com.android.systemui.demo -e command status -e volume hide -e bluetooth hide")
+
+    try {
+        // The broadcasts land asynchronously, and the status bar redraws after them.
+        Thread.sleep(1_000)
+
+        if (!UiDevice.getInstance(InstrumentationRegistry.getInstrumentation()).takeScreenshot(File(directory, "$name.png"))) {
+            throw AssertionError("Could not photograph the screen for $name")
+        }
+    } finally {
+        shell("am broadcast -a com.android.systemui.demo -e command exit")
     }
 }
 

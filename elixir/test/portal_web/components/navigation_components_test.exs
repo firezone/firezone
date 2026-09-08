@@ -3,7 +3,6 @@ defmodule PortalWeb.NavigationComponentsTest do
 
   import Portal.AccountFixtures
   import Portal.ActorFixtures
-  import Portal.FeaturesFixtures
 
   setup do
     account = account_fixture()
@@ -41,34 +40,28 @@ defmodule PortalWeb.NavigationComponentsTest do
   end
 
   describe "settings_nav trust anchors tab" do
-    test "hidden when trust_anchors feature is disabled", %{
-      conn: conn,
-      account: account,
-      actor: actor
-    } do
-      disable_feature(:trust_anchors)
-
-      {:ok, _lv, html} =
-        conn
-        |> authorize_conn(actor)
-        |> live(~p"/#{account}/settings/account")
-
-      refute html =~ "Trust Anchors"
-    end
-
-    test "shown when trust_anchors feature is enabled", %{
-      conn: conn,
-      account: account,
-      actor: actor
-    } do
-      enable_feature(:trust_anchors)
-
-      {:ok, _lv, html} =
+    test "is shown with a NEW badge", %{conn: conn, account: account, actor: actor} do
+      {:ok, lv, html} =
         conn
         |> authorize_conn(actor)
         |> live(~p"/#{account}/settings/account")
 
       assert html =~ "Trust Anchors"
+      assert has_element?(lv, "a[href='/#{account.slug}/settings/trust_anchors'] [data-settings-tab-badge]", "NEW")
+    end
+  end
+
+  describe "sidebar badges" do
+    test "only Settings and Devices carry a NEW badge", %{conn: conn, account: account, actor: actor} do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/account")
+
+      assert has_element?(lv, "a[href='/#{account.slug}/settings/account'] [data-sidebar-badge]", "NEW")
+      assert has_element?(lv, "a[href='/#{account.slug}/devices'] [data-sidebar-badge]", "NEW")
+      refute has_element?(lv, "a[href='/#{account.slug}/resources'] [data-sidebar-badge]")
+      refute has_element?(lv, "a[href='/#{account.slug}/logs/change_logs'] [data-sidebar-badge]")
     end
   end
 end

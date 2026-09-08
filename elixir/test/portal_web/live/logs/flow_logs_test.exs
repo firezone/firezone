@@ -521,7 +521,8 @@ defmodule PortalWeb.Logs.FlowLogsTest do
 
       expected_api_json =
         initiator
-        |> PortalAPI.LogJSON.flow_log()
+        |> PortalAPI.JSON.encode(schema: PortalAPI.Schemas.Log.Flow)
+    |> Map.fetch!(:data)
         |> JSON.encode!()
         |> JSON.decode!()
 

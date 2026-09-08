@@ -1,0 +1,6 @@
+first-time-light.png
+menu-light.png
+settings-general-light.png
+settings-advanced-light.png
+x509-filled-light.png
+grant-vpn-light.png

@@ -9,15 +9,10 @@ defmodule PortalWeb.Authentication do
   Returns the real IP address of the client.
   """
   def real_ip(socket) do
-    peer_data = Phoenix.LiveView.get_connect_info(socket, :peer_data)
-    x_headers = Phoenix.LiveView.get_connect_info(socket, :x_headers)
-
-    real_ip =
-      if is_list(x_headers) and x_headers != [] do
-        RemoteIp.from(x_headers, Portal.Endpoint.real_ip_opts())
-      end
-
-    real_ip || peer_data.address
+    Portal.Sockets.remote_ip(%{
+      peer_data: Phoenix.LiveView.get_connect_info(socket, :peer_data),
+      x_headers: Phoenix.LiveView.get_connect_info(socket, :x_headers)
+    })
   end
 
   @doc """

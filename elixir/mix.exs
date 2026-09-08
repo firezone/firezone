@@ -81,7 +81,11 @@ defmodule Portal.MixProject do
       {:phoenix_live_view, "~> 1.1"},
       {:phoenix_live_dashboard, "~> 0.8"},
       {:phoenix_live_reload, "~> 1.2", only: :dev},
-      {:bandit, "~> 1.0"},
+      # Temporary fix for unread HTTP/2 bodies: https://github.com/mtrudel/bandit/issues/697
+      {:bandit,
+       github: "firezone/bandit",
+       ref: "01617e0b7fc679a75058d1373d87cf50395ff1fb",
+       override: true},
       {:plug, "~> 1.15"},
       {:gettext, "~> 1.0"},
       {:remote_ip, "~> 1.1"},
@@ -200,7 +204,7 @@ defmodule Portal.MixProject do
       "assets.deploy": ["tailwind portal --minify", "esbuild portal --minify", "phx.digest"],
       "phx.server": ["ecto.create --quiet", "ecto.migrate", "phx.server"],
       "openapi.generate": [
-        "openapi.spec.json --spec PortalAPI.ApiSpec --pretty=true --vendor-extensions=false --filename priv/static/openapi.json"
+        "openapi.spec.json --spec PortalAPI.ApiSpec --pretty=true --vendor-extensions=false --filename priv/static/openapi.json --no-start-app"
       ],
       test: ["ecto.create --quiet", "ecto.migrate", "openapi.generate", "test"],
       start: ["compile --no-validate-compile-env", "phx.server", "run --no-halt"]

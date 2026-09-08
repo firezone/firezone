@@ -70,6 +70,10 @@ defmodule Portal.Resource do
       message:
         "IP stack must be one of 'dual', 'ipv4_only', 'ipv6_only' for DNS resources or NULL for others"
     )
+    |> check_constraint(:address,
+      name: :require_resources_address,
+      message: "must be set for cidr, ip, and dns Resources and empty for other types"
+    )
     |> cast_embed(:filters, with: &filter_changeset/2)
     |> assoc_constraint(:site)
     |> assoc_constraint(:account)

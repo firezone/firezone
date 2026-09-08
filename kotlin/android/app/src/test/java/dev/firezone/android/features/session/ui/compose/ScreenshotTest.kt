@@ -4,17 +4,19 @@ package dev.firezone.android.features.session.ui.compose
 import android.app.Application
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.test.hasScrollToIndexAction
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToIndex
+import androidx.compose.ui.test.performScrollToNode
 import com.github.takahirom.roborazzi.ExperimentalRoborazziApi
-import com.github.takahirom.roborazzi.RobolectricDeviceQualifiers
 import com.github.takahirom.roborazzi.captureRoboImage
 import com.github.takahirom.roborazzi.captureScreenRoboImage
 import com.github.takahirom.roborazzi.roborazziSystemPropertyOutputDirectory
 import dev.firezone.android.R
+import dev.firezone.android.STORE_SCREENSHOT_QUALIFIERS
 import dev.firezone.android.core.data.Favorites
 import dev.firezone.android.features.session.ui.ResourceUiModel
 import dev.firezone.android.tunnel.model.ConnectedDevice
@@ -37,7 +39,7 @@ import org.robolectric.annotation.GraphicsMode
 @Config(
     sdk = [34],
     application = Application::class,
-    qualifiers = RobolectricDeviceQualifiers.Pixel5,
+    qualifiers = STORE_SCREENSHOT_QUALIFIERS,
 )
 class ScreenshotTest {
     // Only the captures that have to drive the UI compose through this rule: the sheets and the
@@ -114,6 +116,9 @@ class ScreenshotTest {
         rowText: String,
     ) {
         composeRule.setContent { FirezoneTheme { SessionScreenSample() } }
+        composeRule
+            .onNode(hasScrollToIndexAction())
+            .performScrollToNode(hasText(rowText, substring = true))
         composeRule.onNodeWithText(rowText, substring = true).performClick()
         composeRule.waitForIdle()
         captureScreenRoboImage("${roborazziSystemPropertyOutputDirectory()}/$name.png")

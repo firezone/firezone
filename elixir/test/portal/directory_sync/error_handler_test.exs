@@ -122,6 +122,27 @@ defmodule Portal.DirectorySync.ErrorHandlerTest do
       %{account: account, directory: directory}
     end
 
+    test "a job timeout is reported without touching the directory", %{directory: directory} do
+      job = %Oban.Job{
+        id: 1,
+        args: %{"directory_id" => directory.id},
+        meta: %{},
+        queue: "okta_sync",
+        worker: "Portal.Okta.Sync"
+      }
+
+      error = Oban.TimeoutError.exception({Portal.Okta.Sync, :timer.minutes(100)})
+
+      context = ErrorHandler.handle_error(%{reason: error, job: job})
+
+      assert context.worker == "Portal.Okta.Sync"
+
+      untouched = Portal.Repo.get!(Portal.Okta.Directory, directory.id)
+      assert untouched.is_disabled == false
+      assert untouched.errored_at == nil
+      assert untouched.error_message == nil
+    end
+
     test "classifies check_deletion_threshold errors as client_error and disables directory",
          %{directory: directory} do
       job = %Oban.Job{

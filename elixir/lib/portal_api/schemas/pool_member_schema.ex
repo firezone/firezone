@@ -5,25 +5,68 @@ defmodule PortalAPI.Schemas.PoolMember do
     require OpenApiSpex
     alias OpenApiSpex.Schema
 
+    @derive {PortalAPI.JSON.Encoder,
+             for: Portal.Device,
+             internal: [
+               :account_id,
+               :actor_id,
+               :attested?,
+               :client_token_id,
+               :device_serial,
+               :device_uuid,
+               :firebase_installation_id,
+               :firezone_id,
+               :firezone_id_merged?,
+               :gateway_token_id,
+               :gateway_token_rotated_at,
+               :hostname,
+               :identifier_for_vendor,
+               :inserted_at,
+               :ipv4,
+               :ipv6,
+               :last_attested_at,
+               :last_attested_cert_fingerprint,
+               :last_attested_cert_issuer,
+               :last_attested_cert_serial,
+               :last_attested_device_serial,
+               :last_attested_device_uuid,
+               :last_attested_mdm_device_id,
+               :last_seen_remote_ip,
+               :last_seen_remote_ip_location_city,
+               :last_seen_remote_ip_location_lat,
+               :last_seen_remote_ip_location_lon,
+               :last_seen_remote_ip_location_region,
+               :last_seen_user_agent,
+               :last_seen_version,
+               :online?,
+               :provisioned_token,
+               :public_key,
+               :site_id,
+               :type,
+               :updated_at,
+               :verified_at
+             ]}
     OpenApiSpex.schema(%{
       title: "PoolMember",
       description: "A Client belonging to a static device pool Resource",
       type: :object,
       properties: %{
-        id: %Schema{type: :string, format: :uuid, description: "Client ID"},
-        name: %Schema{type: :string, description: "Client Name"},
+        id: %Schema{
+          example: "7cb89288-1fb3-433e-a522-2d087e45988d",
+          type: :string,
+          format: :uuid,
+          description: "Client ID"
+        },
+        name: %Schema{example: "jane-laptop", type: :string, description: "Client Name"},
         last_seen_at: %Schema{
+          example: "2024-01-15T10:30:00Z",
           type: :string,
           format: :"date-time",
           description: "Last time the Client was seen",
           nullable: true
         }
       },
-      example: %{
-        "id" => "7cb89288-1fb3-433e-a522-2d087e45988d",
-        "name" => "jane-laptop",
-        "last_seen_at" => "2024-01-15T10:30:00Z"
-      }
+      required: [:id, :last_seen_at, :name]
     })
   end
 
@@ -44,11 +87,13 @@ defmodule PortalAPI.Schemas.PoolMember do
           type: :object,
           properties: %{
             add: %Schema{
+              example: ["7cb89288-1fb3-433e-a522-2d087e45988d"],
               type: :array,
               description: "Client IDs to add to the pool",
               items: %Schema{type: :string, format: :uuid, description: "Client ID"}
             },
             remove: %Schema{
+              example: ["cc9f561a-444d-4083-ab38-0abc6cf2314c"],
               type: :array,
               description: "Client IDs to remove from the pool",
               items: %Schema{type: :string, format: :uuid, description: "Client ID"}
@@ -56,13 +101,7 @@ defmodule PortalAPI.Schemas.PoolMember do
           }
         }
       },
-      required: [:pool_members],
-      example: %{
-        "pool_members" => %{
-          "add" => ["7cb89288-1fb3-433e-a522-2d087e45988d"],
-          "remove" => ["cc9f561a-444d-4083-ab38-0abc6cf2314c"]
-        }
-      }
+      required: [:pool_members]
     })
   end
 
@@ -79,6 +118,10 @@ defmodule PortalAPI.Schemas.PoolMember do
       type: :object,
       properties: %{
         pool_members: %Schema{
+          example: [
+            %{"device_id" => "7cb89288-1fb3-433e-a522-2d087e45988d"},
+            %{"device_id" => "cc9f561a-444d-4083-ab38-0abc6cf2314c"}
+          ],
           type: :array,
           items: %Schema{
             type: :object,
@@ -89,13 +132,7 @@ defmodule PortalAPI.Schemas.PoolMember do
           }
         }
       },
-      required: [:pool_members],
-      example: %{
-        "pool_members" => [
-          %{"device_id" => "7cb89288-1fb3-433e-a522-2d087e45988d"},
-          %{"device_id" => "cc9f561a-444d-4083-ab38-0abc6cf2314c"}
-        ]
-      }
+      required: [:pool_members]
     })
   end
 
@@ -116,26 +153,6 @@ defmodule PortalAPI.Schemas.PoolMember do
           items: PoolMember.Schema
         },
         metadata: PaginationMetadata
-      },
-      example: %{
-        "data" => [
-          %{
-            "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-            "name" => "jane-laptop",
-            "last_seen_at" => "2024-01-15T10:30:00Z"
-          },
-          %{
-            "id" => "cc9f561a-444d-4083-ab38-0abc6cf2314c",
-            "name" => "field-tablet-02",
-            "last_seen_at" => nil
-          }
-        ],
-        "metadata" => %{
-          "limit" => 10,
-          "total" => 100,
-          "prev_page" => "123123425",
-          "next_page" => "98776234123"
-        }
       }
     })
   end
@@ -154,19 +171,15 @@ defmodule PortalAPI.Schemas.PoolMember do
           description: "Pool members",
           properties: %{
             device_ids: %Schema{
+              example: [
+                "4ddfa557-7dfc-484f-894c-2024ec3fe9f7",
+                "89d22f71-939d-442d-b148-897b730adfb4"
+              ],
               description: "Client IDs currently in the pool",
               type: :array,
               items: %Schema{type: :string, format: :uuid, description: "Client ID"}
             }
           }
-        }
-      },
-      example: %{
-        "data" => %{
-          "device_ids" => [
-            "4ddfa557-7dfc-484f-894c-2024ec3fe9f7",
-            "89d22f71-939d-442d-b148-897b730adfb4"
-          ]
         }
       }
     })

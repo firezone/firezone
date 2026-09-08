@@ -45,7 +45,7 @@ internal class SplashFragment : Fragment(R.layout.fragment_splash) {
 
     override fun onResume() {
         super.onResume()
-        viewModel.checkTunnelState(requireContext(), isInitialLaunch)
+        viewModel.checkTunnelState(requireActivity(), isInitialLaunch)
 
         isInitialLaunch = false
     }

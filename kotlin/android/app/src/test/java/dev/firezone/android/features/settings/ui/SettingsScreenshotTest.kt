@@ -12,11 +12,6 @@ import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
-import androidx.compose.ui.semantics.SemanticsActions
-import androidx.compose.ui.semantics.SemanticsProperties
-import androidx.compose.ui.test.hasScrollAction
-import androidx.compose.ui.test.junit4.createEmptyComposeRule
-import androidx.compose.ui.test.performSemanticsAction
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ViewModelProvider
@@ -26,10 +21,10 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import androidx.viewpager2.adapter.FragmentStateAdapter
 import com.github.takahirom.roborazzi.ExperimentalRoborazziApi
-import com.github.takahirom.roborazzi.RobolectricDeviceQualifiers
 import com.github.takahirom.roborazzi.captureRoboImage
 import com.github.takahirom.roborazzi.roborazziSystemPropertyOutputDirectory
 import dev.firezone.android.R
+import dev.firezone.android.STORE_SCREENSHOT_QUALIFIERS
 import dev.firezone.android.core.data.Repository
 import dev.firezone.android.databinding.ActivitySettingsBinding
 import dev.firezone.android.features.session.ui.compose.FirezoneTheme
@@ -38,7 +33,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
-import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.Robolectric
@@ -61,15 +55,9 @@ import dev.firezone.android.core.data.model.Config as FirezoneConfig
 @Config(
     sdk = [34],
     application = Application::class,
-    qualifiers = RobolectricDeviceQualifiers.Pixel5,
+    qualifiers = STORE_SCREENSHOT_QUALIFIERS,
 )
 class SettingsScreenshotTest {
-    // Reaches into the Compose content the fragments host, which the scrolled Device Trust
-    // captures have to drive. The rule hosts nothing itself; the activity below is still
-    // Robolectric's to build.
-    @get:Rule
-    val composeRule = createEmptyComposeRule()
-
     @Test
     fun generalSettings() = captureSettingsPage("settings-general", R.id.settingsGeneral)
 
@@ -85,14 +73,6 @@ class SettingsScreenshotTest {
     @Test
     fun deviceTrustSettingsWithExpiredCertificate() = captureDeviceTrustPage("device-trust-expired", expiredCertificate)
 
-    // The buttons follow the rows, so only the end of the scroll shows what an administrator's
-    // certificate takes away: the same certificate, picked by the user, still offers Forget.
-    @Test
-    fun deviceTrustSettingsWithManagedCertificate() = captureDeviceTrustPageEnd("device-trust-managed-scrolled", managedCertificate)
-
-    @Test
-    fun deviceTrustSettingsWithUnmanagedCertificate() = captureDeviceTrustPageEnd("device-trust-unmanaged-scrolled", availableCertificate)
-
     @Test
     fun logSettings() = captureSettingsPage("settings-logs", R.id.settingsLogs)
 
@@ -102,32 +82,17 @@ class SettingsScreenshotTest {
     ) {
         deviceTrustScreenshotState = state
 
-        captureSettingsPage(name, R.id.settingsDeviceTrust, hasConfiguredCertificateAlias = true)
-    }
-
-    private fun captureDeviceTrustPageEnd(
-        name: String,
-        state: DeviceTrustSettingsViewModel.UiState,
-    ) {
-        deviceTrustScreenshotState = state
-
-        captureSettingsPage(
-            name,
-            R.id.settingsDeviceTrust,
-            scrollToEnd = true,
-            hasConfiguredCertificateAlias = true,
-        )
+        captureSettingsPage(name, R.id.settingsDeviceTrust, showDeviceTrust = true)
     }
 
     @OptIn(ExperimentalRoborazziApi::class)
     private fun captureSettingsPage(
         name: String,
         navigationItemId: Int,
-        scrollToEnd: Boolean = false,
-        hasConfiguredCertificateAlias: Boolean = false,
+        showDeviceTrust: Boolean = false,
     ) {
         seedLogDirectory()
-        settingsScreenshotPages = settingsPages(hasConfiguredCertificateAlias)
+        settingsScreenshotPages = settingsPages(showDeviceTrust)
 
         val activity = Robolectric.buildActivity(SettingsScreenshotActivity::class.java).setup().get()
         activity.showPage(settingsScreenshotPages.indexOfFirst { it.first == navigationItemId })
@@ -142,21 +107,7 @@ class SettingsScreenshotTest {
             awaitLogDirectorySize(activity)
         }
 
-        if (scrollToEnd) {
-            scrollToEnd()
-        }
-
         activity.window.decorView.captureRoboImage("${roborazziSystemPropertyOutputDirectory()}/$name.png")
-    }
-
-    // `SessionScreen` scrolls a list, which can be driven to a row number; this screen is a plain
-    // scrolling `Column`, so the distance left to travel is read off the semantics tree instead.
-    private fun scrollToEnd() {
-        val rows = composeRule.onNode(hasScrollAction())
-        val range = rows.fetchSemanticsNode().config[SemanticsProperties.VerticalScrollAxisRange]
-
-        rows.performSemanticsAction(SemanticsActions.ScrollBy) { it(0f, range.maxValue() - range.value()) }
-        composeRule.waitForIdle()
     }
 
     // The logs page shows the size of the log directory, so give it one log file to measure.
@@ -196,7 +147,7 @@ private const val CERTIFICATE_ALIAS = "firezone-device"
 
 // The state `DeviceTrustScreenshotFragment` renders, set before the activity reaches Device Trust.
 private var deviceTrustScreenshotState = DeviceTrustSettingsViewModel.UiState()
-private var settingsScreenshotPages = settingsPages(hasConfiguredCertificateAlias = false)
+private var settingsScreenshotPages = settingsPages(showDeviceTrust = false)
 
 // A certificate the KeyChain released and whose every claim holds a value.
 private val availableCertificate =
@@ -204,10 +155,6 @@ private val availableCertificate =
         alias = CERTIFICATE_ALIAS,
         details = certificateDetails(),
     )
-
-// The same certificate, handed down by an administrator and released by the KeyChain, which
-// leaves the user nothing to pick or clear.
-private val managedCertificate = availableCertificate.copy(isManaged = true)
 
 // An alias the KeyChain holds a certificate for but has not released to Firezone, which leaves
 // the app with nothing to present and nothing to read.
@@ -335,7 +282,6 @@ internal class DeviceTrustScreenshotFragment : Fragment() {
                     DeviceTrustSettingsScreen(
                         state = deviceTrustScreenshotState,
                         onSelectCertificate = {},
-                        onForgetCertificate = {},
                     )
                 }
             }

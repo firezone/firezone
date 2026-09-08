@@ -139,7 +139,16 @@ pub struct ParsedCertificate {
     pub der_bytes: usize,
 }
 
+/// The subject common name Firezone's MDM integrations give device certificates, and the only
+/// one the clients consider.
+pub const DEVICE_CERTIFICATE_COMMON_NAME: &str = "dev.firezone.device-trust";
+
 impl ParsedCertificate {
+    /// Whether the subject common name marks this as a Firezone device certificate.
+    pub fn is_device_certificate(&self) -> bool {
+        self.subject_cn.as_deref() == Some(DEVICE_CERTIFICATE_COMMON_NAME)
+    }
+
     pub fn detail_fields(&self) -> Vec<DetailField> {
         let mut fields = vec![
             optional_field("Common Name", self.subject_cn.clone()),

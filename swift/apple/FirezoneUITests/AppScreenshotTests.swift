@@ -101,6 +101,44 @@
       }
     }
 
+    /// The menu bar menu with a resource hovered, so its submenu is open beside it.
+    ///
+    /// macOS 26 only: before it, the menu redraws its whole background a few steps
+    /// differently on every run once the submenu is open, so there is no picture to keep.
+    func testMenuWithResource() throws {
+      try XCTSkipIf(
+        ProcessInfo.processInfo.operatingSystemVersion.majorVersion < 26,
+        "the menu does not render repeatably before macOS 26"
+      )
+
+      for appearance in Appearance.allCases {
+        let app = launchApp(scenario: "connected", appearance: appearance, window: "none")
+        defer { app.terminate() }
+
+        let menu = try openMenu(of: app)
+        // The row and the submenu it opens share the title.
+        let row = menu.menuItems["Engineering wiki"].firstMatch
+        let menuFrame = menu.frame
+        let rowFrame = row.frame
+
+        // The pointer arrives from the side, because a row it highlights on its way
+        // is redrawn a shade differently from its first draw, and it leaves through
+        // the menu's padding rather than along the menu bar, where it would hand the
+        // menu to whichever status item it passed. Offsets are taken from the menu:
+        // an app with no window has no frame for a coordinate to be relative to.
+        let corner = menu.coordinate(withNormalizedOffset: .zero)
+        let rowY = rowFrame.midY - menuFrame.minY
+        corner.withOffset(CGVector(dx: 4, dy: 4)).hover()
+        corner.withOffset(CGVector(dx: -20, dy: 4)).hover()
+        corner.withOffset(CGVector(dx: -20, dy: rowY)).hover()
+        corner.withOffset(CGVector(dx: rowFrame.midX - menuFrame.minX, dy: rowY)).hover()
+
+        let submenu = try openSubmenu(of: app, beside: menu)
+
+        capture([menuFrame, submenu.frame], as: "menu", in: appearance)
+      }
+    }
+
     private func launchApp(
       scenario: String, appearance: Appearance, window: String
     ) -> XCUIApplication {
@@ -113,6 +151,68 @@
       app.launch()
 
       return app
+    }
+
+    /// Clicks the status item and hands back its open menu.
+    ///
+    /// The rows reach the accessibility tree before the menu is ever shown, so the
+    /// store's resources are waited for first: a title set on a menu that is
+    /// already showing is drawn a shade differently from one drawn as it opens.
+    private func openMenu(of app: XCUIApplication) throws -> XCUIElement {
+      let item = app.statusItems.firstMatch
+
+      guard item.waitForExistence(timeout: 30) else {
+        print("No status item appeared; the app presents:\n\(app.debugDescription)")
+
+        throw AppScreenshotError.statusItemNotFound
+      }
+
+      let row = app.menuItems["Office network"]
+
+      guard row.waitForExistence(timeout: 30) else {
+        print("The menu never listed the resources; the app presents:\n\(app.debugDescription)")
+
+        throw AppScreenshotError.menuDidNotOpen
+      }
+
+      item.click()
+
+      // The menu is reported as the status item's child on some releases and as
+      // the app's on others.
+      let candidates = [item.menus.firstMatch, app.menus.firstMatch]
+
+      guard let menu = candidates.first(where: { $0.waitForExistence(timeout: 10) }) else {
+        print("The menu did not open; the app presents:\n\(app.debugDescription)")
+
+        throw AppScreenshotError.menuDidNotOpen
+      }
+
+      return menu
+    }
+
+    /// The submenu a hovered row has opened: the largest menu on screen besides `menu`.
+    ///
+    /// By frame rather than by index, because the tree also lists menus that are not
+    /// on screen, with an empty frame, and a ten-point stub in the screen's corner.
+    private func openSubmenu(of app: XCUIApplication, beside menu: XCUIElement) throws
+      -> XCUIElement
+    {
+      let deadline = Date().addingTimeInterval(10)
+
+      while Date() < deadline {
+        let others = app.menus.allElementsBoundByIndex
+          .filter { $0.frame.width > 50 && $0.frame != menu.frame }
+
+        if let submenu = others.max(by: { $0.frame.height < $1.frame.height }) {
+          return submenu
+        }
+
+        Thread.sleep(forTimeInterval: 0.5)
+      }
+
+      print("The submenu did not open; the app presents:\n\(app.debugDescription)")
+
+      throw AppScreenshotError.menuDidNotOpen
     }
 
     /// Photographs the window and pins that its dark capture is actually dark.
@@ -132,7 +232,16 @@
         return
       }
 
-      let image = deliver(window, as: name, in: appearance)
+      record(deliver(window, as: name, in: appearance), as: name, in: appearance)
+    }
+
+    /// Photographs the region a screen covers when it is more than one element:
+    /// a menu together with the submenu it has open.
+    private func capture(_ frames: [CGRect], as name: String, in appearance: Appearance) {
+      record(deliver(frames, as: name, in: appearance), as: name, in: appearance)
+    }
+
+    private func record(_ image: Data, as name: String, in appearance: Appearance) {
       brightness["\(name)-\(appearance.rawValue)"] = meanBrightness(of: image)
       captured["\(name)-\(appearance.rawValue)"] = image
 
@@ -201,6 +310,8 @@
 
   private enum AppScreenshotError: Error {
     case windowDidNotAppear
+    case statusItemNotFound
+    case menuDidNotOpen
     case tabNotFound(String)
   }
 #endif

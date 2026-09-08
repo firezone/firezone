@@ -6,7 +6,7 @@
 //! drops the icon — so it uses the `tray_ksni` backend instead.
 
 use anyhow::{Context as _, Result};
-use tauri::AppHandle;
+use tauri::{AppHandle, Manager as _, menu::ContextMenu as _};
 
 use super::{
     AppState, Entry, Event, Icon, Image, Item, Menu, MenuItemIcon, TOOLTIP, compose_icon,
@@ -28,6 +28,11 @@ pub(crate) struct Tray {
     handle: tauri::tray::TrayIcon,
     last_icon_set: Icon,
     last_menu_set: Option<Menu>,
+    /// The window an open menu is anchored to, resolved up front because Tauri
+    /// answers `hwnd` on the main thread, which an open menu blocks. Held as an
+    /// integer so that `Tray` stays `Send`.
+    #[cfg(target_os = "windows")]
+    main_window: isize,
 }
 
 fn icon_to_tauri_icon(that: &Icon) -> tauri::image::Image<'static> {
@@ -75,11 +80,21 @@ impl Tray {
             .build(&app)
             .context("Cannot build Tauri tray icon")?;
 
+        #[cfg(target_os = "windows")]
+        let main_window = app
+            .get_webview_window("main")
+            .context("Couldn't get handle to window")?
+            .hwnd()
+            .context("Couldn't get the window's HWND")?
+            .0 as isize;
+
         Ok(Self {
             app,
             handle: tray,
             last_icon_set: Default::default(),
             last_menu_set: None,
+            #[cfg(target_os = "windows")]
+            main_window,
         })
     }
 
@@ -87,13 +102,14 @@ impl Tray {
         let new_icon = icon_from_state(&state);
 
         let menu = state.into_menu();
-        let menu_clone = menu.clone();
-        let app = self.app.clone();
-        let handle = self.handle.clone();
 
         if Some(&menu) == self.last_menu_set.as_ref() {
             tracing::debug!("Skipping redundant menu update");
         } else {
+            let app = self.app.clone();
+            let handle = self.handle.clone();
+            let menu = menu.clone();
+
             self.run_on_main_thread(move || {
                 logging::unwrap_or_debug!(
                     set_menu(handle, &app, &menu),
@@ -102,7 +118,44 @@ impl Tray {
             });
         }
         self.set_icon(new_icon);
-        self.last_menu_set = Some(menu_clone);
+        self.last_menu_set = Some(menu);
+    }
+
+    /// Opens the menu we installed last on screen, so CI can photograph it.
+    pub(crate) fn open_menu(&self) -> Result<()> {
+        let menu = self
+            .last_menu_set
+            .clone()
+            .context("No tray menu has been set yet")?;
+        let app = self.app.clone();
+
+        self.run_on_main_thread(move || {
+            logging::unwrap_or_debug!(open_menu(&app, &menu), "Failed to open the tray menu: {}");
+        });
+
+        Ok(())
+    }
+
+    /// Closes the menu again, including any open submenu.
+    #[cfg(target_os = "windows")]
+    pub(crate) fn close_menu(&self) -> Result<()> {
+        use windows::Win32::{
+            Foundation::{HWND, LPARAM, WPARAM},
+            UI::WindowsAndMessaging::{PostMessageW, WM_CANCELMODE},
+        };
+
+        let owner = HWND(self.main_window as *mut _);
+
+        // `EndMenu` would need the main thread, which stays inside `TrackPopupMenu`
+        // until the menu closes.
+        // SAFETY: `PostMessageW` takes no pointers and is safe from any thread.
+        unsafe { PostMessageW(Some(owner), WM_CANCELMODE, WPARAM(0), LPARAM(0)) }
+            .context("Failed to post `WM_CANCELMODE`")
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    pub(crate) fn close_menu(&self) -> Result<()> {
+        anyhow::bail!("Closing the tray menu is not supported on macOS")
     }
 
     // Only needed for the stress test
@@ -144,6 +197,29 @@ fn set_menu(handle: tauri::tray::TrayIcon, app: &AppHandle, menu: &Menu) -> Resu
     handle
         .set_menu(Some(menu))
         .context("Failed to set tray menu")?;
+
+    Ok(())
+}
+
+/// Opens `menu` at the cursor, anchored to the (hidden) main window, for screenshots.
+///
+/// Builds its own Tauri menu: [`set_menu`] keeps only the abstract one.
+fn open_menu(app: &AppHandle, menu: &Menu) -> Result<()> {
+    let menu = build_menu(app, menu).context("Failed to build tray menu")?;
+    let window = app
+        .get_webview_window("main")
+        .context("Couldn't get handle to window")?
+        .as_ref()
+        .window();
+
+    // Tauri's `popup` runs `TrackPopupMenu` on the main thread and only returns
+    // once the menu closes, so it has to be requested from another thread.
+    std::thread::spawn(move || {
+        logging::unwrap_or_debug!(
+            menu.popup(window).context("Failed to open the tray menu"),
+            "{}"
+        );
+    });
 
     Ok(())
 }

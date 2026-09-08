@@ -110,7 +110,6 @@ defmodule PortalWeb.Settings.ApiClients.Index do
       |> assign(selected_actor: nil)
       |> assign(form: nil, encoded_token: nil)
       |> assign(pending_confirm: nil, open_actor_actions_id: nil)
-      |> assign(trust_anchors_enabled?: PortalWeb.NavigationComponents.trust_anchors_enabled?())
       |> assign(device_posture_enabled?: PortalWeb.NavigationComponents.device_posture_enabled?())
 
     {:ok, socket}
@@ -176,7 +175,6 @@ defmodule PortalWeb.Settings.ApiClients.Index do
       <.settings_nav
         account={@account}
         current_path={@current_path}
-        trust_anchors_enabled?={@trust_anchors_enabled?}
         device_posture_enabled?={@device_posture_enabled?}
       />
 

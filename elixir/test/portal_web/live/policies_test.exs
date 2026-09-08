@@ -877,7 +877,7 @@ defmodule PortalWeb.PoliciesTest do
       account: account,
       actor: actor
     } do
-      enable_feature(:trust_anchors)
+      enable_feature(:x509_auth)
       x509_provider = x509_provider_fixture(account: account, is_disabled: false)
       group = group_fixture(account: account)
       resource = resource_fixture(account: account)
@@ -907,7 +907,7 @@ defmodule PortalWeb.PoliciesTest do
       account: account,
       actor: actor
     } do
-      enable_feature(:trust_anchors)
+      enable_feature(:x509_auth)
       x509_provider = x509_provider_fixture(account: account, is_disabled: false)
       _anchor = trust_anchor_fixture(account: account)
       group = group_fixture(account: account)
@@ -1186,7 +1186,7 @@ defmodule PortalWeb.PoliciesTest do
       account: account,
       actor: actor
     } do
-      enable_feature(:trust_anchors)
+      enable_feature(:x509_auth)
       x509_provider = x509_provider_fixture(account: account, is_disabled: false)
       group = group_fixture(account: account)
       resource = resource_fixture(account: account)

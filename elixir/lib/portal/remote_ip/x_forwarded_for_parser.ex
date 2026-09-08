@@ -36,7 +36,7 @@ defmodule Portal.RemoteIp.XForwardedForParser do
 
     case :inet.parse_strict_address(to_charlist(trimmed)) do
       {:ok, ip} ->
-        [ip]
+        [Portal.Types.IP.unmap(ip)]
 
       {:error, _} ->
         trimmed
@@ -47,7 +47,7 @@ defmodule Portal.RemoteIp.XForwardedForParser do
 
   defp parse_normalized_ip(candidate) do
     case :inet.parse_strict_address(to_charlist(candidate)) do
-      {:ok, ip} -> [ip]
+      {:ok, ip} -> [Portal.Types.IP.unmap(ip)]
       {:error, _} -> []
     end
   end

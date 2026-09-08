@@ -41,7 +41,7 @@ defmodule Portal.Santa.Device do
     field :last_sync_at, :utc_datetime_usec
     field :rule_sync_at, :utc_datetime_usec
     field :last_preflight_at, :utc_datetime_usec
-    field :last_preflight_ip, :string
+    field :last_preflight_ip, Portal.Types.IP
     field :tags, {:array, :string}
     field :tags_locked, :boolean
     field :tags_truncated, :boolean

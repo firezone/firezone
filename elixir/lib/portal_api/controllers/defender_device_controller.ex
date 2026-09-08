@@ -3,6 +3,7 @@ defmodule PortalAPI.DefenderDeviceController do
   use OpenApiSpex.ControllerSpecs
 
   alias PortalAPI.{Error, Pagination, Schemas.ProblemDetails}
+  alias PortalAPI.JSON
   alias __MODULE__.Database
 
   tags ["Defender Devices"]
@@ -23,7 +24,7 @@ defmodule PortalAPI.DefenderDeviceController do
   operation :index,
     summary: "List synced Defender devices",
     parameters: [
-      limit: [in: :query, description: "Limit devices returned", type: :integer],
+      limit: [in: :query, description: "Limit devices returned", schema: PortalAPI.Pagination.limit_schema()],
       page_cursor: [in: :query, description: "Next/previous page cursor", type: :string]
     ],
     responses:
@@ -58,7 +59,7 @@ defmodule PortalAPI.DefenderDeviceController do
   def index(conn, params) do
     with {:ok, opts} <- Pagination.params_to_list_opts(params),
          {:ok, devices, metadata} <- Database.list_devices(conn.assigns.subject, opts) do
-      render(conn, :index, devices: devices, metadata: metadata)
+      json(conn, JSON.encode(devices, metadata))
     else
       error -> Error.handle(conn, error)
     end
@@ -66,7 +67,7 @@ defmodule PortalAPI.DefenderDeviceController do
 
   def show(conn, %{"id" => id}) do
     with {:ok, device} <- Database.fetch_device(id, conn.assigns.subject) do
-      render(conn, :show, device: device)
+      json(conn, JSON.encode(device))
     else
       error -> Error.handle(conn, error)
     end

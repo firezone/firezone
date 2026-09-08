@@ -24,7 +24,7 @@ struct FirezoneApp: App {
 
   init() {
     // Initialize Telemetry as early as possible
-    Telemetry.start()
+    Telemetry.start(enableMetricKit: true)
 
     installCertificateParser()
 
@@ -36,6 +36,8 @@ struct FirezoneApp: App {
         // Before the scenes exist, so the bars are built from the appearance it
         // sets rather than adopting it on their next update.
         UIApplication.applyMockPresentation()
+      #else
+        NSApplication.applyMockPresentation()
       #endif
     #else
       let store = Store()
@@ -58,6 +60,8 @@ struct FirezoneApp: App {
         AppView()
           .environmentObject(errorHandler)
           .environmentObject(store)
+          // The status bar's clock and date would re-render every screenshot.
+          .statusBarHidden(MockRun.isActive)
       }
     #elseif os(macOS)
       mainWindowScene(store: store)

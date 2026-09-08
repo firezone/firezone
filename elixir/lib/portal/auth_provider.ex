@@ -79,7 +79,7 @@ defmodule Portal.AuthProvider do
   """
   @spec validate_context(
           map(),
-          :portal | :gui_client | :headless_client
+          :portal | :oauth | :gui_client | :headless_client
         ) :: :ok | {:error, :invalid_context}
   def validate_context(%{context: context}, context_type)
       when context_type in [:gui_client, :headless_client] and
@@ -87,8 +87,11 @@ defmodule Portal.AuthProvider do
     :ok
   end
 
-  def validate_context(%{context: context}, :portal)
-      when context in [:portal_only, :clients_and_portal] do
+  # Approving an app connection is a browser sign-in, so it is limited to the
+  # providers portal sign-in is limited to.
+  def validate_context(%{context: context}, context_type)
+      when context_type in [:portal, :oauth] and
+             context in [:portal_only, :clients_and_portal] do
     :ok
   end
 
