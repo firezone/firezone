@@ -96,8 +96,7 @@ jobs:
           git fetch --depth=1 origin "$GITHUB_SHA"
           git restore --source="$GITHUB_SHA" --worktree -- \
             swift/apple/app-store/screenshots-ios.txt \
-            swift/apple/app-store/screenshots-macos.txt \
-            scripts/upload/apple-review.sh
+            swift/apple/app-store/screenshots-macos.txt
           if [[ ! -f scripts/upload/apple-version.sh ]]; then
             echo "This draft predates the submission workflow. Run Swift from main and QA the new draft first." >&2
             exit 1
@@ -268,7 +267,19 @@ jobs:
           ASC_ISSUER_ID: ${{ secrets.APPLE_APP_STORE_CONNECT_ISSUER_ID }}
           ASC_PRIVATE_KEY: ${{ secrets.APPLE_APP_STORE_CONNECT_APP_MANAGER_API_KEY }}
           VERSION_ID: ${{ steps.build.outputs.version_id }}
-        run: bash ../../scripts/upload/apple-review.sh "$REVIEWER_SCREENSHOT"
+        run: |
+          set -euo pipefail
+
+          detail_id=$(asc review details-for-version --version-id "$VERSION_ID" --output json | jq -er '.data.id')
+          attachments=$(asc review attachments-list --review-detail "$detail_id" --paginate --output json | jq -r '.data[].id')
+
+          # Upload first so a failed upload leaves the existing attachments intact.
+          asc review attachments-upload --review-detail "$detail_id" --file "$REVIEWER_SCREENSHOT" --output json \
+            | jq -er '.data | select(.attributes.assetDeliveryState.state != "FAILED") | .id'
+
+          for id in $attachments; do
+            asc review attachments-delete --id "$id" --confirm
+          done
 
       # App info is shared across platforms, so its review state need not match
       # this version's state as `asc validate` expects.
