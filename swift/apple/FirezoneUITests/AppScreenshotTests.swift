@@ -18,7 +18,7 @@
     private static let pointerParkingSpot = CGVector(dx: 0.5, dy: 1.2)
     /// What the desktop is painted with (`MAC_BACKGROUND` in
     /// prepare-store-screenshots.py), which the brightness below leaves out.
-    private static let backdrop = 30.0 / 255.0
+    private static let backdrop = 30.0
 
     private static let settingsTabs = [
       (label: "General", name: "general"),
@@ -252,34 +252,31 @@
     /// The mean brightness of what the app drew, from every eighth pixel of a PNG,
     /// on a 0 to 255 scale.
     ///
-    /// The desktop is left out of it: a desktop capture is mostly backdrop, and
-    /// counting that would leave the two appearances a few steps apart whatever the
-    /// app drew on it.
+    /// The samples are the file's own numbers, not a colour-managed reading of them,
+    /// which is what lets the backdrop be recognised and left out. A desktop capture
+    /// is mostly backdrop, and counting it would leave the two appearances a few
+    /// steps apart whatever the app drew on it.
     private func meanBrightness(of image: Data) -> Double {
       guard let bitmap = NSBitmapImageRep(data: image) else { return 0 }
 
       var total = 0.0
-      var samples = 0.0
+      var counted = 0.0
+      var pixel = [Int](repeating: 0, count: 5)
 
       for y in stride(from: 0, to: bitmap.pixelsHigh, by: 8) {
         for x in stride(from: 0, to: bitmap.pixelsWide, by: 8) {
-          // In the space the captures are written in, so the backdrop below is the
-          // value the desktop and the store canvas are painted with rather than
-          // whatever another space encodes it as.
-          guard let pixel = bitmap.colorAt(x: x, y: y)?.usingColorSpace(.sRGB) else {
-            continue
-          }
+          bitmap.getPixel(&pixel, atX: x, y: y)
 
-          let brightness = (pixel.redComponent + pixel.greenComponent + pixel.blueComponent) / 3
+          let brightness = Double(pixel[0] + pixel[1] + pixel[2]) / 3
 
-          guard abs(brightness - Self.backdrop) > 1 / 255.0 else { continue }
+          guard abs(brightness - Self.backdrop) > 1 else { continue }
 
           total += brightness
-          samples += 1
+          counted += 1
         }
       }
 
-      return samples > 0 ? total / samples * 255 : 0
+      return counted > 0 ? total / counted : 0
     }
 
     private func onlyWindow(of app: XCUIApplication) throws -> XCUIElement {
