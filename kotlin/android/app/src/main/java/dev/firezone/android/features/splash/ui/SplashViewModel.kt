@@ -14,6 +14,7 @@ import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dev.firezone.android.core.DebugOverrides
 import dev.firezone.android.core.Log
 import dev.firezone.android.core.data.Repository
 import dev.firezone.android.core.data.TokenStore
@@ -73,7 +74,8 @@ internal class SplashViewModel
             delay(REQUEST_DELAY)
 
             // If we don't have VPN permission, we can't continue.
-            if (!hasVpnPermissions(activity)) {
+            // A mocked session establishes no tunnel, so it needs no consent to establish one.
+            if (!hasVpnPermissions(activity) && DebugOverrides.sessionFactory == null) {
                 actionMutableStateFlow.value = ViewAction.NavigateToVpnPermission
                 return
             }

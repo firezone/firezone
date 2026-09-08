@@ -1,15 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- Debug-only SampleSessionActivity: renders the session UI against mock data.
-         Intentionally not a launcher activity so MainActivity stays the unambiguous
-         default launch target in debug builds. Launch it explicitly with:
-         adb shell am start -n dev.firezone.android/dev.firezone.android.features.session.ui.compose.SampleSessionActivity -->
+    <!-- Debug-only entry point that starts the app with connlib and the portal stood in for.
+         Intentionally not a launcher activity so MainActivity stays the unambiguous default
+         launch target in debug builds. Launch it with `mise run //kotlin/android:dev-mock`. -->
     <application>
         <activity
-            android:name="dev.firezone.android.features.session.ui.compose.SampleSessionActivity"
+            android:name="dev.firezone.android.core.MockLaunchActivity"
             android:exported="true"
-            android:label="Firezone Sample"
+            android:label="Firezone Mock"
             android:theme="@style/AppTheme.Base" />
     </application>
 </manifest>
