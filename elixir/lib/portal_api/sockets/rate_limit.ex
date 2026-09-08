@@ -60,6 +60,5 @@ defmodule PortalAPI.Sockets.RateLimit do
 
   defp hash_authorization(_connect_info, _token), do: "none"
 
-  defp ip_to_string(ip) when is_tuple(ip), do: :inet.ntoa(ip) |> to_string()
-  defp ip_to_string(ip), do: to_string(ip)
+  defp ip_to_string(ip), do: :inet.ntoa(ip) |> to_string()
 end
