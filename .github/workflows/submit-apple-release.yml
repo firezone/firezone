@@ -253,23 +253,30 @@ jobs:
           fi
           verify_app_store_build "$build_id"
           {
+            echo "version_id=$version_id"
             echo "build_id=$build_id"
             echo "phase=$version_phase"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Check App Store submission readiness
+      # App info is shared across platforms, so its review state need not match
+      # this version's state as `asc validate` expects.
+      - name: Preview platform submission
         if: steps.build.outputs.phase != 'submitted'
         working-directory: swift/apple
         env:
           ASC_KEY_ID: ${{ secrets.APPLE_APP_STORE_CONNECT_APP_MANAGER_API_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.APPLE_APP_STORE_CONNECT_ISSUER_ID }}
           ASC_PRIVATE_KEY: ${{ secrets.APPLE_APP_STORE_CONNECT_APP_MANAGER_API_KEY }}
+          VERSION_ID: ${{ steps.build.outputs.version_id }}
+          BUILD_ID: ${{ steps.build.outputs.build_id }}
         run: |
-          asc validate \
+          asc review submit \
             --app "$ASC_APP_ID" \
-            --version "${RELEASE_NAME#apple-client-}" \
+            --version-id "$VERSION_ID" \
+            --build-id "$BUILD_ID" \
             --platform "$ASC_PLATFORM" \
-            --output table
+            --dry-run \
+            --output json
 
       - name: Summarize the candidate
         env:
