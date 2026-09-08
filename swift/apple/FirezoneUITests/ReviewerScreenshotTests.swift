@@ -28,9 +28,9 @@ final class ReviewerScreenshotTests: XCTestCase {
     let field = page.textFields.firstMatch
     XCTAssertTrue(field.waitForExistence(timeout: 60), "The account-slug form did not appear")
 
-    let heading = page.staticTexts.containing(
+    let heading = page.descendants(matching: .any).matching(
       NSPredicate(
-        format: "label CONTAINS[c] %@ OR label CONTAINS[c] %@", "account slug", "Account ID")
+        format: "label CONTAINS[c] %@ OR value CONTAINS[c] %@", "account slug", "account slug")
     ).firstMatch
     #if os(iOS)
       field.tap()
