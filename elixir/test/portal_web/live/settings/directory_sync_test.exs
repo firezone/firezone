@@ -73,7 +73,7 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
       assert render(lv) =~ "Verified, click to continue"
     end
 
-    test "opens the panel after an okta directory is created", %{
+    test "queues the first sync and opens the panel after an okta directory is created", %{
       conn: conn,
       account: account,
       actor: actor
@@ -104,8 +104,14 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
       render_hook(lv, "submit_directory", %{})
 
       directory = Portal.Repo.get_by!(Portal.Okta.Directory, account_id: account.id, name: "Okta")
+      assert directory.is_verified
       assert_patch(lv, ~p"/#{account}/settings/directory_sync/okta/#{directory.id}/hook")
       assert render(lv) =~ "Waiting for Okta to verify"
+
+      assert_enqueued(
+        worker: Portal.Okta.Sync,
+        args: %{account_id: account.id, directory_id: directory.id}
+      )
     end
 
     test "re-verifies the event hook from the row menu", %{
