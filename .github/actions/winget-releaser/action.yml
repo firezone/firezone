@@ -112,6 +112,21 @@ runs:
         GITHUB_TOKEN: ${{ inputs.token }}
       shell: pwsh
     - run: |
+        # komac update drops installers that have no counterpart in the previous version's manifest; fail instead of publishing a partial manifest.
+        $Out = Join-Path $env:RUNNER_TEMP 'winget-dry-run'
+        komac update '${{ inputs.identifier }}' --version '${{ steps.version-and-urls.outputs.version }}' --dry-run --output $Out --urls ${{ steps.version-and-urls.outputs.urls }}
+        if (-not $?) { exit 1 }
+        $Manifest = (Get-ChildItem -Path $Out -Recurse -Filter '*.installer.yaml' | Get-Content -Raw) -join "`n"
+        $Missing = '${{ steps.version-and-urls.outputs.urls }}'.Split(' ') | Where-Object { -not $Manifest.Contains($_) }
+        if ($Missing) {
+          Write-Output "::error::Installers missing from the generated manifest: $($Missing -join ', '). Seed a manifest that contains them once; komac will carry them forward from there."
+          exit 1
+        }
+      env:
+        KOMAC_FORK_OWNER: ${{ inputs.fork-user }}
+        GITHUB_TOKEN: ${{ inputs.token }}
+      shell: pwsh
+    - run: |
         $ReplaceFlag = $Null
         $ReleaseNotesUrlFlag = $Null
         if (${{ inputs.max-versions-to-keep }} -eq 1) {
