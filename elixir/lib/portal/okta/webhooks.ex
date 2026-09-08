@@ -15,22 +15,22 @@ defmodule Portal.Okta.Webhooks do
   require Logger
 
   @events [
-    {"user.lifecycle.create", "Create user"},
-    {"user.lifecycle.activate", "Activate user"},
-    {"user.lifecycle.reactivate", "Reactivate user"},
-    {"user.lifecycle.suspend", "Suspend user"},
-    {"user.lifecycle.unsuspend", "Unsuspend user"},
-    {"user.lifecycle.deactivate", "Deactivate user"},
-    {"user.lifecycle.delete.initiated", "Delete initiated for user"},
-    {"user.account.update_profile", "Update user profile"},
-    {"group.user_membership.add", "Add user to group"},
-    {"group.user_membership.remove", "Remove user from group"},
-    {"group.profile.update", "Update group profile"},
-    {"group.lifecycle.delete", "Delete group"},
-    {"group.application_assignment.add", "Assign app to group"},
-    {"group.application_assignment.remove", "Remove app from group"},
-    {"application.user_membership.add", "Add user to application membership"},
-    {"application.user_membership.remove", "Remove user's application membership"}
+    {"user.lifecycle.create", "User created"},
+    {"user.lifecycle.activate", "User activated"},
+    {"user.lifecycle.reactivate", "User reactivated"},
+    {"user.lifecycle.suspend", "User suspended"},
+    {"user.lifecycle.unsuspend", "User unsuspended"},
+    {"user.lifecycle.deactivate", "User deactivated"},
+    {"user.lifecycle.delete.initiated", "User deleted"},
+    {"user.account.update_profile", "User's Okta profile updated"},
+    {"group.user_membership.add", "User added to group"},
+    {"group.user_membership.remove", "User removed from group"},
+    {"group.profile.update", "Okta group profile updated"},
+    {"group.lifecycle.delete", "Delete Okta group."},
+    {"group.application_assignment.add", "Add assigned application to group."},
+    {"group.application_assignment.remove", "Remove assigned application from group."},
+    {"application.user_membership.add", "User assigned to app"},
+    {"application.user_membership.remove", "User unassigned from app"}
   ]
 
   # A user the directory does not know yet can only arrive through one of these.

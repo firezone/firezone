@@ -1118,20 +1118,31 @@ defmodule PortalWeb.Settings.DirectorySync do
       </li>
       <li><strong>Custom header fields:</strong> leave empty.</li>
       <li>
-        <strong>Subscribe to events:</strong> search for each of these by name and add it.
-        <ol class="mt-1 ml-5 list-decimal list-inside space-y-0.5">
-          <li :for={{type, name} <- Okta.Webhooks.events()}>
-            {name} <code class="text-subtle">{type}</code>
-          </li>
-        </ol>
+        <strong>Subscribe to events:</strong> paste each of these names into the picker and
+        select the match. There are {length(Okta.Webhooks.events())} of them.
+        <div class="mt-1 ml-5 space-y-1">
+          <.copy_value
+            :for={{type, name} <- Okta.Webhooks.events()}
+            id={"okta-hook-event-#{String.replace(type, ".", "-")}"}
+            value={name}
+            hint={type}
+          />
+        </div>
       </li>
       <li>Click <strong>Save & Continue</strong>, then <strong>Verify</strong>.</li>
     </ol>
+    <p class="mt-4 text-xs text-body">
+      Or, create this event hook via the Okta API. Replace <code>OKTA_API_TOKEN</code>
+      with an API token from <strong>Security → API → Tokens</strong> in Okta. Then click
+      <strong>Verify</strong> next to the new hook in Okta.
+    </p>
+    <.code_block id="okta-hook-curl" class="mt-2 rounded text-xs">{okta_hook_curl(@directory)}</.code_block>
     """
   end
 
   attr :id, :string, required: true
   attr :value, :string, required: true
+  attr :hint, :string, default: nil
 
   defp copy_value(assigns) do
     ~H"""
@@ -1141,7 +1152,10 @@ defmodule PortalWeb.Settings.DirectorySync do
       class="flex items-center gap-2 px-3 py-2 rounded border border-border bg-raised"
     >
       <span id={"#{@id}-text"} class="hidden">{@value}</span>
-      <code class="flex-1 text-xs font-mono text-body break-all">{@value}</code>
+      <div class="flex-1 min-w-0">
+        <code class="block text-xs font-mono text-body break-all">{@value}</code>
+        <code :if={@hint} class="block text-[10px] font-mono text-subtle break-all">{@hint}</code>
+      </div>
       <button
         type="button"
         data-copy-to-clipboard-target={"#{@id}-text"}
@@ -1156,6 +1170,40 @@ defmodule PortalWeb.Settings.DirectorySync do
         </span>
       </button>
     </div>
+    """
+  end
+
+  defp okta_hook_curl(directory) do
+    events =
+      Okta.Webhooks.events()
+      |> Enum.map_join(",\n", fn {type, _name} -> ~s(        "#{type}") end)
+
+    """
+    curl -X POST "https://#{directory.okta_domain}/api/v1/eventHooks" \\
+      -H "Authorization: SSWS ${OKTA_API_TOKEN}" \\
+      -H "Accept: application/json" \\
+      -H "Content-Type: application/json" \\
+      -d '{
+        "name": "Firezone",
+        "events": {
+          "type": "EVENT_TYPE",
+          "items": [
+    #{events}
+          ]
+        },
+        "channel": {
+          "type": "HTTP",
+          "version": "1.0.0",
+          "config": {
+            "uri": "#{Okta.Webhooks.endpoint_url(directory.id)}",
+            "authScheme": {
+              "type": "HEADER",
+              "key": "Authorization",
+              "value": "#{directory.webhook_secret}"
+            }
+          }
+        }
+      }'
     """
   end
 
