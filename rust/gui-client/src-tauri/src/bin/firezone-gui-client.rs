@@ -172,6 +172,18 @@ fn try_main(cli: Cli, rt: &Runtime, log_guard: &mut Option<LogGuard>) -> Result<
 
             return Ok(());
         }
+        Some(Cmd::OpenTrayMenu) => {
+            rt.block_on(gui::send_and_await_ack(gui::ClientMsg::OpenTrayMenu))
+                .context("Failed to open the running instance's tray menu")?;
+
+            return Ok(());
+        }
+        Some(Cmd::CloseTrayMenu) => {
+            rt.block_on(gui::send_and_await_ack(gui::ClientMsg::CloseTrayMenu))
+                .context("Failed to close the running instance's tray menu")?;
+
+            return Ok(());
+        }
         Some(Cmd::OpenDeepLink(deep_link)) => {
             tracing::info!("Opening deep-link");
 
@@ -389,6 +401,10 @@ enum Cmd {
     SingleInstance,
     #[command(hide = true)]
     SmokeTest,
+    #[command(hide = true)]
+    OpenTrayMenu,
+    #[command(hide = true)]
+    CloseTrayMenu,
 }
 
 #[derive(clap::Parser)]

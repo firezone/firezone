@@ -169,6 +169,14 @@ impl GuiIntegration for TauriIntegration {
         self.tray.update(app_state)
     }
 
+    fn open_tray_menu(&self) -> Result<()> {
+        self.tray.open_menu()
+    }
+
+    fn close_tray_menu(&self) -> Result<()> {
+        self.tray.close_menu()
+    }
+
     fn show_notification(&self, title: impl Into<String>, body: impl Into<String>) -> Result<()> {
         spawn_notification(title.into(), body.into(), None);
 
@@ -268,6 +276,8 @@ fn spawn_notification(title: String, body: String, open_url: Option<url::Url>) {
 pub enum ClientMsg {
     Deeplink(url::Url),
     NewInstance,
+    OpenTrayMenu,
+    CloseTrayMenu,
 }
 
 /// IPC messages that an already running instance may send back to a
@@ -668,6 +678,25 @@ async fn new_instance_handshake(
         .context("Failed to receive response")?;
 
     anyhow::ensure!(response == ServerMsg::Ack);
+
+    Ok(())
+}
+
+pub async fn send_and_await_ack(msg: ClientMsg) -> Result<()> {
+    let (mut read, mut write) =
+        ipc::connect::<ServerMsg, ClientMsg>(SocketId::Gui, ipc::ConnectOptions::default()).await?;
+
+    write.send(&msg).await.context("Failed to send request")?;
+
+    let response = read
+        .next()
+        .await
+        .context("No response received")?
+        .context("Failed to receive response")?;
+
+    anyhow::ensure!(response == ServerMsg::Ack);
+
+    tracing::info!("Running instance acknowledged the request, goodbye!");
 
     Ok(())
 }
