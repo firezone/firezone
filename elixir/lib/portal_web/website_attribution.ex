@@ -14,7 +14,7 @@ defmodule PortalWeb.WebsiteAttribution do
   @session_key "website_attribution"
   @source "www.firezone.dev"
   @click_params ~w[oppref gclid gbraid wbraid]
-  @marketing_params ["fz_marketing" | Enum.map(@click_params, &("fz_" <> &1))]
+  @marketing_params ["fz_mktg" | Enum.map(@click_params, &("fz_" <> &1))]
 
   @impl true
   def init(opts), do: opts
@@ -46,7 +46,7 @@ defmodule PortalWeb.WebsiteAttribution do
 
   defp attribution_params_present?(params) do
     Map.has_key?(params, @distinct_id_param) or Map.has_key?(params, @pathname_param) or
-      Map.has_key?(params, "fz_marketing")
+      Map.has_key?(params, "fz_mktg")
   end
 
   defp maybe_store_attribution(conn, params) do
@@ -66,7 +66,7 @@ defmodule PortalWeb.WebsiteAttribution do
     end
   end
 
-  defp store_marketing_attribution(conn, %{"fz_marketing" => allowed} = params)
+  defp store_marketing_attribution(conn, %{"fz_mktg" => allowed} = params)
        when allowed in ["true", "false"] do
     marketing = %{
       "marketing_allowed" => allowed == "true",
