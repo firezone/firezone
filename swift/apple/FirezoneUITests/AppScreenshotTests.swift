@@ -17,11 +17,18 @@
     private static let appBundleID = "dev.firezone.firezone"
     private static let pointerParkingSpot = CGVector(dx: 0.5, dy: 1.2)
 
+    /// Each tab, with a label only its own content carries: a tab that never
+    /// opened leaves the one before it on screen, holding perfectly still, and
+    /// the gallery takes that as a picture of the tab it asked for.
     private static let settingsTabs = [
-      (label: "General", name: "general"),
-      (label: "Advanced", name: "advanced"),
-      (label: "Diagnostic Logs", name: "logs"),
+      (label: "General", name: "general", showing: "Account Slug"),
+      (label: "Advanced", name: "advanced", showing: "Auth Base URL"),
+      (label: "Diagnostic Logs", name: "logs", showing: "Clear Log Directory"),
     ]
+
+    /// A field every parsed certificate carries, so the Device Trust tab can be
+    /// told from the one that was showing before it.
+    private static let certificateAnchor = "Signing Algorithm"
 
     /// The scenarios describing the states of the certificate tab.
     private static let certificateScenarios = [
@@ -65,7 +72,7 @@
         // General is already selected, and is clicked anyway so that every tab
         // arrives the same way.
         for tab in Self.settingsTabs {
-          try selectTab(tab.label, in: window)
+          try selectTab(tab.label, showing: tab.showing, in: window)
           capture(window, as: "settings-\(tab.name)", in: appearance)
         }
       }
@@ -79,7 +86,7 @@
           defer { app.terminate() }
 
           let window = try onlyWindow(of: app)
-          try selectTab("Device Trust", in: window)
+          try selectTab("Device Trust", showing: Self.certificateAnchor, in: window)
           capture(window, as: scenario, in: appearance)
         }
       }
@@ -285,9 +292,18 @@
       return window
     }
 
+    /// Opens the tab named `label` and waits for `anchor`, which only its own
+    /// content carries.
+    ///
     /// SwiftUI has drawn the macOS tab picker as different controls across
-    /// releases, so the first kind that answers to `label` wins.
-    private func selectTab(_ label: String, in window: XCUIElement) throws {
+    /// releases, so the first kind that answers to `label` wins. A click that
+    /// lands while the window is still arriving is dropped without a word, so it
+    /// is repeated until the content it asks for is on screen. The tab's own
+    /// selected trait would be the cheaper signal, but these controls do not
+    /// report it, not even for the tab that is already showing.
+    private func selectTab(
+      _ label: String, showing anchor: String, in window: XCUIElement
+    ) throws {
       let candidates = [
         window.tabs[label],
         window.tabGroups.buttons[label],
@@ -300,7 +316,15 @@
         throw AppScreenshotError.tabNotFound(label)
       }
 
-      tab.click()
+      for _ in 0..<3 {
+        tab.click()
+
+        if window.descendants(matching: .any)[anchor].waitForExistence(timeout: 10) {
+          return
+        }
+      }
+
+      throw AppScreenshotError.tabDidNotOpen(label)
     }
   }
 
@@ -309,5 +333,6 @@
     case statusItemNotFound
     case menuDidNotOpen
     case tabNotFound(String)
+    case tabDidNotOpen(String)
   }
 #endif
