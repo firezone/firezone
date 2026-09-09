@@ -50,7 +50,7 @@ struct GlobalOptions: ParsableArguments {
 /// asks for it, so the handful of lines a command runs in order to say go here
 /// instead. Stderr, leaving stdout to the data a command was asked for.
 func say(_ message: String) {
-  FileHandle.standardError.write(Data("\(message)\n".utf8))
+  try? FileHandle.standardError.write(contentsOf: Data("\(message)\n".utf8))
 }
 
 /// Something went wrong at runtime, as opposed to `ValidationError`, which is for a
