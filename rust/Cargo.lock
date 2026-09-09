@@ -2571,7 +2571,6 @@ dependencies = [
  "keyring-core",
  "known-dirs",
  "ksni",
- "libc",
  "logging",
  "mimalloc",
  "native-dialog",
