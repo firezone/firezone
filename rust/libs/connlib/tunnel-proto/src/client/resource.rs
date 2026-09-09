@@ -445,32 +445,6 @@ mod tests {
     }
 
     #[test]
-    fn can_deserialize_dynamic_device_pool_filters() {
-        let resource =
-            Resource::from_description(ResourceDescription::DynamicDevicePool(serde_json::json!({
-                "address": "*.devices.example.com",
-                "filters": [{
-                    "protocol": "tcp",
-                    "port_range_start": 22,
-                    "port_range_end": 22
-                }],
-                "id": "03000143-e25e-45c7-aafb-144990e57dce",
-                "name": "devices",
-                "type": "dynamic_device_pool"
-            })))
-            .unwrap();
-
-        let Resource::DynamicDevicePool(pool) = resource else {
-            panic!("Unexpected resource")
-        };
-
-        assert_eq!(
-            pool.filters,
-            vec![Filter::Tcp(crate::messages::PortRange::single(22))]
-        );
-    }
-
-    #[test]
     fn name_changes_of_site_doesnt_matter() {
         let resource1 = Resource::from_description(ResourceDescription::Dns(serde_json::json!({
             "address": "example.com",

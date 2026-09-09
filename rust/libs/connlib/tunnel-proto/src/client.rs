@@ -2278,13 +2278,10 @@ impl ClientState {
                     };
                     let filter = FilterEngine::new(&pool.filters);
 
-                    self.routing_tables.upsert_dynamic_peer(
-                        ipv4.into(),
-                        resource_id,
-                        filter.clone(),
-                    );
                     self.routing_tables
-                        .upsert_dynamic_peer(ipv6.into(), resource_id, filter);
+                        .upsert_peer(ipv4.into(), resource_id, filter.clone());
+                    self.routing_tables
+                        .upsert_peer(ipv6.into(), resource_id, filter);
                 }
                 device_stub_resolver::Event::SendResponse {
                     local,
@@ -2601,16 +2598,12 @@ impl ClientState {
         let mut any_inserted = false;
 
         for new_member in &new_pool.devices {
-            any_inserted |= self.routing_tables.upsert_static_peer(
-                new_member.ipv4.into(),
-                pool_id,
-                filter.clone(),
-            );
-            any_inserted |= self.routing_tables.upsert_static_peer(
-                new_member.ipv6.into(),
-                pool_id,
-                filter.clone(),
-            );
+            any_inserted |=
+                self.routing_tables
+                    .upsert_peer(new_member.ipv4.into(), pool_id, filter.clone());
+            any_inserted |=
+                self.routing_tables
+                    .upsert_peer(new_member.ipv6.into(), pool_id, filter.clone());
         }
 
         // When the filters change, refresh the inbound authorization on every

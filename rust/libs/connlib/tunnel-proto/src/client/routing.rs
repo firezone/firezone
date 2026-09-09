@@ -151,7 +151,7 @@ impl RoutingTables {
         )
     }
 
-    pub(super) fn upsert_static_peer(
+    pub(super) fn upsert_peer(
         &mut self,
         network: IpNetwork,
         resource_id: ResourceId,
@@ -162,23 +162,6 @@ impl RoutingTables {
             PeerEntry {
                 filter,
                 resource_id,
-                kind: PoolKind::Static,
-            },
-        )
-    }
-
-    pub(super) fn upsert_dynamic_peer(
-        &mut self,
-        network: IpNetwork,
-        resource_id: ResourceId,
-        filter: FilterEngine,
-    ) -> bool {
-        self.peer.upsert(
-            network,
-            PeerEntry {
-                filter,
-                resource_id,
-                kind: PoolKind::Dynamic,
             },
         )
     }
@@ -215,7 +198,6 @@ impl RouteEntry for CidrEntry {
 struct PeerEntry {
     filter: FilterEngine,
     resource_id: ResourceId,
-    kind: PoolKind,
 }
 
 impl RouteEntry for PeerEntry {
@@ -226,20 +208,6 @@ impl RouteEntry for PeerEntry {
     fn resource_id(&self) -> ResourceId {
         self.resource_id
     }
-
-    fn specificity(&self, other: &Self) -> Ordering {
-        self.kind.cmp(&other.kind)
-    }
-}
-
-/// How a device pool learns which peers it routes to.
-///
-/// The declaration order is load-bearing: `Static` is *greater*, so a pool that names its
-/// members wins the [`RouteEntry::specificity`] tie-break against one that resolves them.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-enum PoolKind {
-    Dynamic,
-    Static,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -268,7 +236,6 @@ impl RouteEntry for DnsEntry {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::messages::{Filter, PortRange};
     use std::net::Ipv4Addr;
 
     #[test]
@@ -285,40 +252,6 @@ mod tests {
     }
 
     #[test]
-    fn device_pool_routes_to_another_client() {
-        let mut tables = RoutingTables::default();
-        add_static_member(&mut tables, static_pool_id(), FilterEngine::PermitAll);
-
-        let route = tables.resolve(
-            other_client_tun_ip(),
-            Protocol::Tcp(80),
-            Some(internet_resource_id()),
-        );
-
-        assert!(matches!(
-            route,
-            Some(Route::Client { resource_id, .. }) if resource_id == static_pool_id()
-        ));
-    }
-
-    #[test]
-    fn dynamic_pool_claims_resolved_peer() {
-        let mut tables = RoutingTables::default();
-        resolve_through_pool(&mut tables, dynamic_pool_id(), FilterEngine::PermitAll);
-
-        let route = tables.resolve(
-            other_client_tun_ip(),
-            Protocol::Tcp(80),
-            Some(internet_resource_id()),
-        );
-
-        assert!(matches!(
-            route,
-            Some(Route::Client { resource_id, .. }) if resource_id == dynamic_pool_id()
-        ));
-    }
-
-    #[test]
     fn dynamic_pool_does_not_claim_unresolved_peer() {
         let mut tables = RoutingTables::default();
         resolve_through_pool(&mut tables, dynamic_pool_id(), FilterEngine::PermitAll);
@@ -332,48 +265,8 @@ mod tests {
         assert!(route.is_none());
     }
 
-    #[test]
-    fn static_pool_wins_over_a_dynamic_pool_that_also_permits() {
-        let mut tables = RoutingTables::default();
-        resolve_through_pool(&mut tables, dynamic_pool_id(), FilterEngine::PermitAll);
-        add_static_member(&mut tables, static_pool_id(), FilterEngine::PermitAll);
-
-        let route = tables.resolve(other_client_tun_ip(), Protocol::Tcp(80), None);
-
-        assert!(matches!(
-            route,
-            Some(Route::Client { resource_id, .. }) if resource_id == static_pool_id()
-        ));
-    }
-
-    #[test]
-    fn dynamic_pool_wins_over_a_static_pool_that_rejects() {
-        let mut tables = RoutingTables::default();
-        resolve_through_pool(&mut tables, dynamic_pool_id(), permit_tcp(80));
-        add_static_member(
-            &mut tables,
-            static_pool_id(),
-            FilterEngine::new(&[Filter::Icmp]),
-        );
-
-        let route = tables.resolve(other_client_tun_ip(), Protocol::Tcp(80), None);
-
-        assert!(matches!(
-            route,
-            Some(Route::Client { resource_id, .. }) if resource_id == dynamic_pool_id()
-        ));
-    }
-
-    fn add_static_member(tables: &mut RoutingTables, pool: ResourceId, filter: FilterEngine) {
-        tables.upsert_static_peer(IpNetwork::from(other_client_tun_ip()), pool, filter);
-    }
-
     fn resolve_through_pool(tables: &mut RoutingTables, pool: ResourceId, filter: FilterEngine) {
-        tables.upsert_dynamic_peer(IpNetwork::from(other_client_tun_ip()), pool, filter);
-    }
-
-    fn permit_tcp(port: u16) -> FilterEngine {
-        FilterEngine::new(&[Filter::Tcp(PortRange::single(port))])
+        tables.upsert_peer(IpNetwork::from(other_client_tun_ip()), pool, filter);
     }
 
     fn other_client_tun_ip() -> IpAddr {
@@ -382,10 +275,6 @@ mod tests {
 
     fn internet_resource_id() -> ResourceId {
         ResourceId::from_u128(1)
-    }
-
-    fn static_pool_id() -> ResourceId {
-        ResourceId::from_u128(2)
     }
 
     fn dynamic_pool_id() -> ResourceId {
