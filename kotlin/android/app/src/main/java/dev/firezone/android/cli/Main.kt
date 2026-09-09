@@ -20,22 +20,24 @@ private const val CALLING_PACKAGE = "com.android.shell"
 object Main {
     @JvmStatic
     fun main(args: Array<String>) {
-        val code = run(args)
+        val code = execute(args)
 
         // The binder threads this process picked up are not daemons, so returning from `main`
         // would leave it running.
         System.exit(code)
     }
 
-    private fun run(args: Array<String>): Int {
+    private fun execute(args: Array<String>): Int {
         if (args.size != 1 || args[0] != "status") {
             System.err.println(USAGE)
 
             return 2
         }
 
-        // `app_process` starts a bare VM, and the framework code below expects to run on a thread
-        // that has the main looper.
+        // `app_process` starts a bare VM, so nothing has set up the looper the framework calls
+        // below expect to find on this thread. The deprecation is aimed at apps, whose main looper
+        // the framework prepares for them.
+        @Suppress("DEPRECATION")
         Looper.prepareMainLooper()
 
         return try {
@@ -53,7 +55,7 @@ object Main {
     }
 
     // The same route AOSP's `content` tool takes: `IActivityManager` needs no `Context`, which this
-    // process has none of, and it starts the app if it is not already running.
+    // process does not have, and it starts the app if it is not already running.
     private fun status(): String {
         val activityManager =
             Class
@@ -75,10 +77,12 @@ object Main {
                 ?: throw IllegalStateException("No provider for $CLI_AUTHORITY. Is the Firezone app installed?")
 
         try {
-            val provider = holder.javaClass.getField("provider").get(holder)
-            val handshake = handshake(provider) ?: throw IllegalStateException("The app refused the handshake")
+            val provider =
+                holder.javaClass.getField("provider").get(holder)
+                    ?: throw IllegalStateException("$CLI_AUTHORITY published no provider")
+            val reply = handshake(provider) ?: throw IllegalStateException("The app refused the handshake")
             val cli =
-                IFirezoneCli.Stub.asInterface(handshake.getBinder(BINDER_KEY))
+                IFirezoneCli.Stub.asInterface(reply.getBinder(BINDER_KEY))
                     ?: throw IllegalStateException("The handshake carried no binder")
 
             return cli.status()
