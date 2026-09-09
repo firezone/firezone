@@ -180,7 +180,7 @@ binary for you:
 ```sh
 mise run cli -- --help
 mise run cli -- extension status
-mise run cli -- connect --account-slug my-account
+mise run cli -- connect
 ```
 
 `connect` brings the tunnel up. It returns once the tunnel is connected and
@@ -202,14 +202,12 @@ user to approve it. Launch the app once to do that.
 
 These environment variables are read when the matching flag is absent:
 
-| Variable                              | Flag                           |
-| ------------------------------------- | ------------------------------ |
-| `FIREZONE_TOKEN`                      | none, taken from the Keychain  |
-| `FIREZONE_ACCOUNT_SLUG`               | `--account-slug`               |
-| `FIREZONE_API_URL`                    | `--api-url`                    |
-| `FIREZONE_AUTH_BASE_URL`              | `--auth-base-url`              |
-| `FIREZONE_ACTIVATE_INTERNET_RESOURCE` | `--activate-internet-resource` |
-| `FIREZONE_LOG_FILTER`                 | none                           |
+| Variable                 | Flag                          |
+| ------------------------ | ----------------------------- |
+| `FIREZONE_TOKEN`         | none, taken from the Keychain |
+| `FIREZONE_API_URL`       | `--api-url`                   |
+| `FIREZONE_AUTH_BASE_URL` | `--auth-base-url`             |
+| `FIREZONE_LOG_FILTER`    | none                          |
 
 It never asks for a token at a prompt. The app is sandboxed, so it cannot turn
 terminal echo off, and a token typed at a prompt would stay in the scrollback.

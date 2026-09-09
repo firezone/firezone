@@ -23,12 +23,6 @@ extension FirezoneCLI {
     @Option(name: .long, help: ArgumentHelp("API URL.", visibility: .hidden))
     var apiUrl: String?
 
-    @Flag(name: .long, help: "Activate Internet Resource.")
-    var activateInternetResource = false
-
-    @Option(name: .long, help: "Account slug.")
-    var accountSlug: String?
-
     @Option(name: .long, help: ArgumentHelp("Auth base URL.", visibility: .hidden))
     var authBaseUrl: String?
 
@@ -51,30 +45,15 @@ extension FirezoneCLI {
       // Only what was actually asked for. The VPN profile is shared with the app, so
       // anything left unset here keeps the value the app stored.
       let apiURL = Self.setting(apiUrl, "FIREZONE_API_URL")
-      let accountSlug = Self.setting(self.accountSlug, "FIREZONE_ACCOUNT_SLUG")
       let logFilter = Self.setting(nil, "FIREZONE_LOG_FILTER")
-      let wantsInternetResource =
-        activateInternetResource
-        || ProcessInfo.processInfo.environment["FIREZONE_ACTIVATE_INTERNET_RESOURCE"] == "1"
-      // swiftlint:disable:next discouraged_optional_boolean - nil leaves the stored value
-      let internetResourceEnabled: Bool? = wantsInternetResource ? true : nil
 
       // Only used to build the sign-in URL, never written to the profile.
       let authBaseURLOverride = Self.setting(authBaseUrl, "FIREZONE_AUTH_BASE_URL")
 
-      Log.info("API URL: \(apiURL ?? "(unchanged)")")
-      Log.info("Account slug: \(accountSlug ?? "(unchanged)")")
-      Log.info("Internet resource: \(internetResourceEnabled.map(String.init) ?? "(unchanged)")")
-
       try await SystemExtension.requireInstalled()
 
       let tunnel = try await startTunnel(
-        overrides: ProviderOverrides(
-          apiURL: apiURL,
-          accountSlug: accountSlug,
-          logFilter: logFilter,
-          internetResourceEnabled: internetResourceEnabled
-        )
+        overrides: ProviderOverrides(apiURL: apiURL, logFilter: logFilter)
       )
 
       // Fall back to what the app is configured with, so a self-hosted deployment
@@ -83,7 +62,7 @@ extension FirezoneCLI {
         session: tunnel.session,
         noTokenAdvice: SignIn.instructions(
           authBaseURL: authBaseURLOverride ?? tunnel.signIn.authURL,
-          accountSlug: accountSlug ?? tunnel.signIn.accountSlug
+          accountSlug: tunnel.signIn.accountSlug
         )
       )
 
