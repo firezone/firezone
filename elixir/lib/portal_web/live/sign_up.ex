@@ -785,7 +785,8 @@ defmodule PortalWeb.SignUp do
           email: registration.email,
           account: %{name: registration.account.name},
           actor: %{name: registration.actor.name},
-          identity: socket.assigns.google_identity
+          identity: socket.assigns.google_identity,
+          marketing_attribution: get_in(socket.assigns.website_attribution || %{}, ["marketing"])
         }
 
         handle_registration_result(
@@ -1088,7 +1089,8 @@ defmodule PortalWeb.SignUp do
         registration = %{
           email: email,
           account: %{name: company_name},
-          actor: %{name: actor_name}
+          actor: %{name: actor_name},
+          marketing_attribution: get_in(registration_claims, [:website_attribution, "marketing"])
         }
 
         handle_registration_result(
@@ -1105,6 +1107,7 @@ defmodule PortalWeb.SignUp do
          website_attribution
        ) do
     Portal.Analytics.PostHog.identify_actor(actor, account, website_attribution)
+    Portal.Analytics.registration_completed(account, actor)
 
     assign(socket,
       step: :account_created,
@@ -1238,7 +1241,10 @@ defmodule PortalWeb.SignUp do
         attrs = %{
           id: account_id,
           name: registration.account.name,
-          metadata: %{stripe: stripe_metadata}
+          metadata: %{
+            stripe: stripe_metadata,
+            marketing_attribution: registration[:marketing_attribution]
+          }
         }
 
         insert_account_with_key_retry(attrs, changeset_fns.account)

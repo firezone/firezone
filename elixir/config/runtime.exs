@@ -716,6 +716,23 @@ if config_env() == :prod do
   config :portal, Portal.Telemetry,
     metrics_reporter: env_var_to_config!(:telemetry_metrics_reporter)
 
+  config :portal, Portal.Analytics.GoogleAds,
+    customer_id: env_var_to_config(:google_ads_customer_id),
+    login_customer_id: env_var_to_config(:google_ads_login_customer_id),
+    registration_conversion_action_id: env_var_to_config(:google_ads_registration_conversion_action_id),
+    subscription_conversion_action_id: env_var_to_config(:google_ads_subscription_conversion_action_id),
+    service_account_email: env_var_to_config(:google_ads_service_account_email),
+    workload_identity_provider: env_var_to_config(:google_ads_workload_identity_provider),
+    workload_identity_audience: env_var_to_config(:google_ads_workload_identity_audience),
+    endpoint: "https://datamanager.googleapis.com/v1/events:ingest",
+    req_opts: [receive_timeout: 5_000, retry: false]
+
+  config :portal, Portal.Analytics.OpenAI,
+    api_key: env_var_to_config(:openai_conversions_api_key),
+    pixel_id: env_var_to_config(:openai_conversions_pixel_id),
+    endpoint: "https://bzr.openai.com/v1/events",
+    req_opts: [receive_timeout: 5_000, retry: false]
+
   posthog_project_api_key = env_var_to_config(:posthog_project_api_key)
 
   config :portal, Portal.Analytics.PostHog,

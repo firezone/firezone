@@ -1,5 +1,6 @@
 defmodule PortalWeb.SignUpTest do
   use PortalWeb.ConnCase, async: true
+  use Oban.Testing, repo: Portal.Repo
 
   import Portal.AccountFixtures
 
@@ -107,6 +108,9 @@ defmodule PortalWeb.SignUpTest do
     end
 
     test "submitting creates the account with Google and email providers", %{conn: conn} do
+      Portal.Config.put_env_override(:portal, Portal.Analytics.OpenAI, api_key: "test-key")
+      attribution = %{"marketing_allowed" => true, "captured_at" => System.os_time(:second)}
+      conn = init_test_session(conn, website_attribution: %{"marketing" => attribution})
       Stripe.stub(
         [
           {"POST", "/v1/customers", 200,
@@ -138,6 +142,10 @@ defmodule PortalWeb.SignUpTest do
       refute html =~ ~s(id="sign-in-form")
 
       account = Portal.Repo.get_by!(Portal.Account, name: "Google Corp")
+      assert account.metadata.marketing_attribution == attribution
+      assert [%{args: %{"event" => event}}] = all_enqueued(worker: Portal.Analytics.OpenAI)
+      assert event["type"] == "registration_completed"
+      assert event["user"]["emails_sha256"] == [Portal.Analytics.hash_email("ada@example.com")]
 
       google_provider = Portal.Repo.get_by!(Portal.Google.AuthProvider, account_id: account.id)
       assert google_provider.issuer == "https://accounts.google.com"
@@ -537,6 +545,8 @@ defmodule PortalWeb.SignUpTest do
 
   describe "verify action (handle_params with token)" do
     test "valid token for new email creates account and shows welcome step", %{conn: conn} do
+      Portal.Config.put_env_override(:portal, Portal.Analytics.OpenAI, api_key: "test-key")
+      attribution = %{"marketing_allowed" => true, "captured_at" => System.os_time(:second)}
       Stripe.stub(
         [
           {"POST", "/v1/customers", 200,
@@ -549,7 +559,8 @@ defmodule PortalWeb.SignUpTest do
         Phoenix.Token.sign(PortalWeb.Endpoint, @sign_up_token_salt, %{
           email: "newuser@example.com",
           company_name: "Test Corp",
-          actor_name: "Test User"
+          actor_name: "Test User",
+          website_attribution: %{"marketing" => attribution}
         })
 
       {:ok, _lv, html} = live(conn, ~p"/verify_sign_up?token=#{token}")
@@ -559,6 +570,13 @@ defmodule PortalWeb.SignUpTest do
       assert html =~ "Sign In"
 
       account = Portal.Repo.get_by!(Portal.Account, name: "Test Corp")
+      assert account.metadata.marketing_attribution == attribution
+      assert [%{args: %{"event" => event}}] = all_enqueued(worker: Portal.Analytics.OpenAI)
+      assert event["type"] == "registration_completed"
+      assert event["user"]["emails_sha256"] == [Portal.Analytics.hash_email("newuser@example.com")]
+      # Reopening the verification link must not emit another conversion.
+      assert {:error, {:redirect, _}} = live(conn, ~p"/verify_sign_up?token=#{token}")
+      assert [_] = all_enqueued(worker: Portal.Analytics.OpenAI)
       provider = Portal.Repo.get_by!(Portal.X509.AuthProvider, account_id: account.id)
       assert provider.name == "X.509"
       assert provider.context == :clients_only

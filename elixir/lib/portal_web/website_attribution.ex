@@ -13,6 +13,8 @@ defmodule PortalWeb.WebsiteAttribution do
   @pathname_param "fz_website_path"
   @session_key "website_attribution"
   @source "www.firezone.dev"
+  @click_params ~w[oppref gclid gbraid wbraid]
+  @marketing_params ["fz_mktg" | Enum.map(@click_params, &("fz_" <> &1))]
 
   @impl true
   def init(opts), do: opts
@@ -43,10 +45,12 @@ defmodule PortalWeb.WebsiteAttribution do
   end
 
   defp attribution_params_present?(params) do
-    Map.has_key?(params, @distinct_id_param) or Map.has_key?(params, @pathname_param)
+    Map.has_key?(params, @distinct_id_param) or Map.has_key?(params, @pathname_param) or
+      Map.has_key?(params, "fz_mktg")
   end
 
   defp maybe_store_attribution(conn, params) do
+    conn = store_marketing_attribution(conn, params)
     with {:ok, distinct_id} <- valid_distinct_id(params[@distinct_id_param]),
          {:ok, website_path} <- valid_website_path(params[@pathname_param]) do
       attribution = %{
@@ -56,10 +60,42 @@ defmodule PortalWeb.WebsiteAttribution do
       }
 
       PostHog.capture_portal_landing(attribution, conn.request_path)
-      put_session(conn, @session_key, attribution)
+      put_session(conn, @session_key, Map.merge(fetch(get_session(conn)) || %{}, attribution))
     else
       _ -> conn
     end
+  end
+
+  defp store_marketing_attribution(conn, %{"fz_mktg" => allowed} = params)
+       when allowed in ["true", "false"] do
+    marketing = %{
+      "marketing_allowed" => allowed == "true",
+      "captured_at" => System.os_time(:second)
+    }
+
+    marketing =
+      if allowed == "true" do
+        Map.merge(marketing, click_references(params))
+      else
+        marketing
+      end
+
+    attribution = Map.put(fetch(get_session(conn)) || %{}, "marketing", marketing)
+    put_session(conn, @session_key, attribution)
+  end
+
+  defp store_marketing_attribution(conn, _params), do: conn
+
+  defp click_references(params) do
+    Enum.reduce(@click_params, %{}, fn key, acc ->
+      value = params["fz_" <> key]
+
+      if is_binary(value) and byte_size(value) in 1..2048 do
+        Map.put(acc, key, value)
+      else
+        acc
+      end
+    end)
   end
 
   defp valid_distinct_id(value) when is_binary(value) do
@@ -81,7 +117,7 @@ defmodule PortalWeb.WebsiteAttribution do
     query_string =
       conn.query_string
       |> URI.query_decoder()
-      |> Enum.reject(fn {key, _value} -> key in [@distinct_id_param, @pathname_param] end)
+      |> Enum.reject(fn {key, _value} -> key in [@distinct_id_param, @pathname_param] ++ @marketing_params end)
       |> URI.encode_query()
 
     if query_string == "" do

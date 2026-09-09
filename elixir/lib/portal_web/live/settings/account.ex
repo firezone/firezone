@@ -7,11 +7,12 @@ defmodule PortalWeb.Settings.Account do
   alias __MODULE__.Database
   require Logger
 
-  def mount(_params, _session, socket) do
+  def mount(_params, session, socket) do
     account = socket.assigns.account
     subject = socket.assigns.subject
     socket =
       assign(socket,
+        marketing_attribution: get_in(PortalWeb.WebsiteAttribution.fetch(session) || %{}, ["marketing"]),
         page_title: "Account",
         billing_provisioned: Billing.account_provisioned?(account),
         billing_plan_type: Billing.plan_type(account),
@@ -500,6 +501,11 @@ defmodule PortalWeb.Settings.Account do
   end
 
   def handle_event("redirect_to_billing_portal", _params, socket) do
+    Portal.Analytics.update_marketing_attribution(
+      socket.assigns.account,
+      socket.assigns.marketing_attribution
+    )
+
     with {:ok, billing_portal_url} <-
            Billing.billing_portal_url(
              socket.assigns.account,
