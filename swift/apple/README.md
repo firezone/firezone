@@ -205,7 +205,6 @@ These environment variables are read when the matching flag is absent:
 | Variable                 | Flag                          |
 | ------------------------ | ----------------------------- |
 | `FIREZONE_TOKEN`         | none, taken from the Keychain |
-| `FIREZONE_API_URL`       | `--api-url`                   |
 | `FIREZONE_AUTH_BASE_URL` | `--auth-base-url`             |
 | `FIREZONE_LOG_FILTER`    | none                          |
 

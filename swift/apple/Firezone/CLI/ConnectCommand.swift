@@ -20,9 +20,6 @@ extension FirezoneCLI {
         """
     )
 
-    @Option(name: .long, help: ArgumentHelp("API URL.", visibility: .hidden))
-    var apiUrl: String?
-
     @Option(name: .long, help: ArgumentHelp("Auth base URL.", visibility: .hidden))
     var authBaseUrl: String?
 
@@ -46,7 +43,6 @@ extension FirezoneCLI {
 
       // Only what was actually asked for. The VPN profile is shared with the app, so
       // anything left unset here keeps the value the app stored.
-      let apiURL = Self.setting(apiUrl, "FIREZONE_API_URL")
       let logFilter = Self.setting(nil, "FIREZONE_LOG_FILTER")
 
       // Only used to build the sign-in URL, never written to the profile.
@@ -55,7 +51,7 @@ extension FirezoneCLI {
       try await SystemExtension.requireInstalled()
 
       let tunnel = try await startTunnel(
-        overrides: ProviderOverrides(apiURL: apiURL, logFilter: logFilter)
+        overrides: ProviderOverrides(logFilter: logFilter)
       )
 
       // Fall back to what the app is configured with, so a self-hosted deployment
