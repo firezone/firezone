@@ -126,11 +126,11 @@ jobs:
   # which we consider too broad. The cost is that `komac sync-fork` fails
   # ("UpdateRef" denied) whenever upstream microsoft/winget-pkgs has new
   # commits touching `.github/workflows/*`, because fast-forwarding the fork
-  # then rewrites workflow files. The `winget-publish` environment below
+  # then rewrites workflow files. The `winget-pkgs` environment below
   # covers that: its required reviewers hold this job and get notified, which
   # is the prompt to hit "Sync fork" on firezone/winget-pkgs and then approve.
   # GitHub creates a referenced-but-missing environment with no protection
-  # rules, so that hold only exists while `winget-publish` has reviewers.
+  # rules, so that hold only exists while the environment has reviewers.
   #
   # Do NOT switch to a fine-grained PAT: komac opens the winget PR from
   # `firezone/winget-pkgs` into `microsoft/winget-pkgs`, and fine-grained PATs
@@ -145,7 +145,7 @@ jobs:
       }}
     runs-on: windows-latest
     environment:
-      name: winget-publish
+      name: winget-pkgs
       url: https://github.com/firezone/winget-pkgs
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
