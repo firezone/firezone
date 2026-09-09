@@ -120,7 +120,6 @@ impl ReferenceState {
                 for client in state.clients.values_mut() {
                     client.exec_mut(|client| {
                         client.remove_resource(id);
-                        client.forget_dynamic_grant(*id);
                     });
                 }
             }
@@ -177,7 +176,6 @@ impl ReferenceState {
                         }
                         client::Resource::DynamicDevicePool(r) => {
                             c.add_dynamic_device_pool_resource(r.clone());
-                            c.forget_dynamic_grant(r.id);
                         }
                         client::Resource::Internet(_) => unreachable!(),
                     })
@@ -317,8 +315,6 @@ impl ReferenceState {
                 sport,
                 dport,
             } => {
-                state.note_device_pool_request(*client_id, dst, Protocol::Tcp(dport.0));
-
                 let route = state.route_for_application_packet(
                     *client_id,
                     *src,
@@ -379,10 +375,6 @@ impl ReferenceState {
                     }
                     client.readd_all_resources();
                 });
-
-                for client in state.clients.values_mut() {
-                    client.exec_mut(|c| c.forget_dynamic_grants_held_by(*client_id));
-                }
             }
             Transition::ReconnectPortal { client_id } => {
                 // Reconnecting to the portal should have no noticeable impact on the data plane.
@@ -448,11 +440,7 @@ impl ReferenceState {
             Transition::RestartClient { client_id, key } => {
                 state.clients.get_mut(client_id).unwrap().exec_mut(|c| {
                     c.restart(*key, now);
-                });
-
-                for client in state.clients.values_mut() {
-                    client.exec_mut(|c| c.forget_dynamic_grants_held_by(*client_id));
-                }
+                })
             }
             Transition::UpdateDnsRecords { domain, records } => {
                 state.global_dns_records.merge(DnsRecords::from([(
@@ -471,22 +459,6 @@ impl ReferenceState {
         }
     }
 
-    fn note_device_pool_request(
-        &mut self,
-        origin: ClientId,
-        dst: &Destination,
-        protocol: Protocol,
-    ) {
-        let Some(dst) = dst.ip_addr() else {
-            return;
-        };
-        let clients_by_ip = self.client_ip_to_id();
-
-        self.clients.get_mut(&origin).unwrap().exec_mut(|client| {
-            client.note_device_pool_request(dst, protocol, |ip| clients_by_ip.get(&ip).copied());
-        });
-    }
-
     fn record_probe(
         &mut self,
         id: ProbeId,
@@ -494,8 +466,6 @@ impl ReferenceState {
         request: ProbeRequest,
         sent_at: Instant,
     ) {
-        self.note_device_pool_request(origin, request.destination(), request.protocol());
-
         let route = self.route_for_application_packet(
             origin,
             request.source(),

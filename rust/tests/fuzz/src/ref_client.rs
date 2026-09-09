@@ -118,13 +118,6 @@ pub struct RefClient {
     #[debug(skip)]
     client_send_times: BTreeMap<ClientId, BTreeSet<Instant>>,
 
-    /// Per peer Client, the dynamic device pools the portal granted it our access under.
-    ///
-    /// The peer enforces the union of these on what we send it, so a malicious packet
-    /// our own pools reject still gets through when any held grant permits it.
-    #[debug(skip)]
-    dynamic_grants: BTreeMap<ClientId, BTreeSet<ResourceId>>,
-
     /// Per dynamic device pool, the peer addresses this client resolved through it.
     ///
     /// Only these are requested through the pool; any other tunnel address is unroutable.
@@ -171,7 +164,6 @@ impl RefClient {
             connection_resets: Default::default(),
             gateway_send_times: Default::default(),
             client_send_times: Default::default(),
-            dynamic_grants: Default::default(),
             resolved_dynamic_peers: Default::default(),
         }
     }
@@ -708,26 +700,29 @@ impl RefClient {
         }
 
         // Peer tunnel IPs first mean client-to-client device-pool routing. A
-        // tunnel IP without a matching pool may still belong to a gateway, and
-        // any other one is claimed by the dynamic pool that resolved it, if any.
+        // tunnel IP without a matching pool may still belong to a gateway.
         if let Some(ip) = dst.ip_addr().filter(|ip| tunnel_proto::is_peer(*ip)) {
-            let static_pools = self.static_device_pool_by_tun_ip(ip);
+            let pools = self.device_pools_by_tun_ip(ip);
 
-            if !static_pools.is_empty() {
-                return self.route_via_device_pools(ip, &static_pools, protocol, client_by_ip);
+            if !pools.is_empty() {
+                let allowed = pools
+                    .iter()
+                    .any(|(_, filters)| protocol_filter_allows(filters, protocol));
+
+                if allowed {
+                    return client_by_ip(ip).map_or(PacketRoute::Drop, PacketRoute::Peer);
+                }
+
+                if !self.malicious_behaviour.ignore_resource_filters {
+                    return PacketRoute::RejectedByClient;
+                }
+
+                return client_by_ip(ip)
+                    .map(PacketRoute::PeerRejectedByPeer)
+                    .unwrap_or(PacketRoute::Drop);
             }
 
-            if let Some(gateway) = gateway_by_ip(ip) {
-                return PacketRoute::Gateway(gateway);
-            }
-
-            let dynamic_pools = self.dynamic_device_pools_resolving(ip);
-
-            if !dynamic_pools.is_empty() {
-                return self.route_via_device_pools(ip, &dynamic_pools, protocol, client_by_ip);
-            }
-
-            return PacketRoute::Drop;
+            return gateway_by_ip(ip).map_or(PacketRoute::Drop, PacketRoute::Gateway);
         }
 
         // Resource selection is the one deliberate classifier in the oracle.
@@ -763,111 +758,6 @@ impl RefClient {
         }
 
         PacketRoute::ResourceRejectedByGateway { resource, gateway }
-    }
-
-    fn route_via_device_pools(
-        &self,
-        ip: IpAddr,
-        pools: &[(ResourceId, Vec<tunnel_proto::messages::Filter>)],
-        protocol: Protocol,
-        client_by_ip: impl Fn(IpAddr) -> Option<ClientId>,
-    ) -> PacketRoute {
-        let allowed = pools
-            .iter()
-            .any(|(_, filters)| protocol_filter_allows(filters, protocol));
-
-        if allowed {
-            return client_by_ip(ip).map_or(PacketRoute::Drop, PacketRoute::Peer);
-        }
-
-        if !self.malicious_behaviour.ignore_resource_filters {
-            return PacketRoute::RejectedByClient;
-        }
-
-        let Some(remote) = client_by_ip(ip) else {
-            return PacketRoute::Drop;
-        };
-
-        if self.held_dynamic_grant_permits(remote, protocol) {
-            return PacketRoute::Peer(remote);
-        }
-
-        PacketRoute::PeerRejectedByPeer(remote)
-    }
-
-    fn held_dynamic_grant_permits(&self, remote: ClientId, protocol: Protocol) -> bool {
-        let Some(held) = self.dynamic_grants.get(&remote) else {
-            return false;
-        };
-
-        self.dynamic_device_pools()
-            .iter()
-            .any(|(id, filters)| held.contains(id) && protocol_filter_allows(filters, protocol))
-    }
-
-    /// Records the dynamic-pool grant the SUT asks the portal for before sending to `dst`.
-    ///
-    /// Mirrors the SUT: a peer already authorised under a pool that permits the packet
-    /// needs no request; otherwise the highest pool that resolved the peer and permits
-    /// the packet is requested, and a malicious client without any permitting pool
-    /// requests the highest resolving pool anyway unless it already holds a grant for
-    /// that peer.
-    pub(crate) fn note_device_pool_request(
-        &mut self,
-        dst: IpAddr,
-        protocol: Protocol,
-        client_by_ip: impl Fn(IpAddr) -> Option<ClientId>,
-    ) {
-        if !tunnel_proto::is_peer(dst) || !self.static_device_pool_by_tun_ip(dst).is_empty() {
-            return;
-        }
-
-        let Some(remote) = client_by_ip(dst) else {
-            return;
-        };
-
-        let pools = self.dynamic_device_pools_resolving(dst);
-        let held = self
-            .dynamic_grants
-            .get(&remote)
-            .cloned()
-            .unwrap_or_default();
-
-        if self
-            .dynamic_device_pools()
-            .iter()
-            .any(|(id, filters)| held.contains(id) && protocol_filter_allows(filters, protocol))
-        {
-            return;
-        }
-
-        let permitting = pools
-            .iter()
-            .rev()
-            .find(|(_, filters)| protocol_filter_allows(filters, protocol))
-            .map(|(id, _)| *id);
-        let fallback = (self.malicious_behaviour.ignore_resource_filters && held.is_empty())
-            .then(|| pools.last().map(|(id, _)| *id))
-            .flatten();
-
-        if let Some(requested) = permitting.or(fallback) {
-            self.dynamic_grants
-                .entry(remote)
-                .or_default()
-                .insert(requested);
-        }
-    }
-
-    /// The peer `receiver` reset its state, taking every grant it held from us with it.
-    pub(crate) fn forget_dynamic_grants_held_by(&mut self, receiver: ClientId) {
-        self.dynamic_grants.remove(&receiver);
-    }
-
-    /// The pool is gone or changed, so peers drop the grants they hold under it.
-    pub(crate) fn forget_dynamic_grant(&mut self, pool: ResourceId) {
-        for held in self.dynamic_grants.values_mut() {
-            held.remove(&pool);
-        }
     }
 
     fn connect_to_resource(&mut self, resource: ResourceId, destination: Destination) {
@@ -1162,15 +1052,19 @@ impl RefClient {
         protocol_filter_allows(filters, proto)
     }
 
-    /// Look up every static device pool that lists `ip` (the peer's tunnel
-    /// IP) as a member. Returns each authorising pool's resource ID along
-    /// with its filter set.
+    /// Every device pool that routes to the peer at `ip`, with its filter set.
     ///
-    /// Mirrors the production lookup in `client_routing_table` on the SUT.
-    pub(crate) fn static_device_pool_by_tun_ip(
+    /// A static pool routes to the members it names, a dynamic one to the peers it resolved.
+    fn device_pools_by_tun_ip(
         &self,
         ip: IpAddr,
     ) -> Vec<(ResourceId, Vec<tunnel_proto::messages::Filter>)> {
+        let dynamic = self.dynamic_device_pools().into_iter().filter(|(id, _)| {
+            self.resolved_dynamic_peers
+                .get(id)
+                .is_some_and(|ips| ips.contains(&ip))
+        });
+
         self.resources
             .iter()
             .filter_map(|r| {
@@ -1185,6 +1079,7 @@ impl RefClient {
 
                 matches.then(|| (pool.id, pool.filters.clone()))
             })
+            .chain(dynamic)
             .collect()
     }
 
@@ -1217,21 +1112,6 @@ impl RefClient {
             .min()
     }
 
-    /// Every dynamic device pool that resolved `ip`, with its filter set, lowest id first.
-    pub(crate) fn dynamic_device_pools_resolving(
-        &self,
-        ip: IpAddr,
-    ) -> Vec<(ResourceId, Vec<tunnel_proto::messages::Filter>)> {
-        self.dynamic_device_pools()
-            .into_iter()
-            .filter(|(id, _)| {
-                self.resolved_dynamic_peers
-                    .get(id)
-                    .is_some_and(|ips| ips.contains(&ip))
-            })
-            .collect()
-    }
-
     /// Every peer address resolved through a dynamic pool, with that pool's filter set.
     pub(crate) fn resolved_dynamic_peers(
         &self,
@@ -1248,10 +1128,8 @@ impl RefClient {
             .collect()
     }
 
-    /// Every dynamic device pool with its filter set, in the order the SUT considers them.
-    pub(crate) fn dynamic_device_pools(
-        &self,
-    ) -> Vec<(ResourceId, Vec<tunnel_proto::messages::Filter>)> {
+    /// Every dynamic device pool with its filter set.
+    fn dynamic_device_pools(&self) -> Vec<(ResourceId, Vec<tunnel_proto::messages::Filter>)> {
         let mut pools = self
             .resources
             .iter()
