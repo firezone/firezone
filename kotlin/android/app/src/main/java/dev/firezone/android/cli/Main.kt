@@ -12,7 +12,7 @@ import android.os.Process
 import com.github.ajalt.clikt.core.CliktError
 import com.github.ajalt.clikt.core.Context
 import com.github.ajalt.clikt.core.CoreCliktCommand
-import com.github.ajalt.clikt.core.parse
+import com.github.ajalt.clikt.core.main
 import com.github.ajalt.clikt.core.subcommands
 
 // `adb shell` runs as the primary user and this prototype offers no way to name another one.
@@ -23,28 +23,11 @@ private const val CALLING_PACKAGE = "com.android.shell"
 object Main {
     @JvmStatic
     fun main(args: Array<String>) {
-        val firezone = Firezone().subcommands(StatusCommand())
+        // Clikt exits by itself on a usage error, but returns here on success, and the binder
+        // threads this process picked up are not daemons.
+        Firezone().subcommands(StatusCommand()).main(args)
 
-        val code =
-            try {
-                firezone.parse(args)
-
-                0
-            } catch (e: CliktError) {
-                val message = firezone.getFormattedHelp(e)
-
-                if (e.statusCode == 0) {
-                    println(message)
-                } else {
-                    System.err.println(message)
-                }
-
-                e.statusCode
-            }
-
-        // The binder threads this process picked up are not daemons, so returning from `main`
-        // would leave it running.
-        System.exit(code)
+        System.exit(0)
     }
 }
 
