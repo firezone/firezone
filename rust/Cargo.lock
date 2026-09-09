@@ -2584,7 +2584,6 @@ dependencies = [
  "reqwest",
  "rustls",
  "sadness-generator",
- "sd-notify",
  "secrecy",
  "semver",
  "serde",
