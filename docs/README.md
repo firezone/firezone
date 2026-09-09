@@ -44,7 +44,10 @@ audit records. Gateways run in your infrastructure, and the full product source
 is available for inspection in this repository.
 
 <p align="center">
-  <img width="570" height="696" alt="Firezone component diagram" src="https://github.com/user-attachments/assets/53bcf629-0e8e-4e37-976d-82f528ad8301" />
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://github.com/user-attachments/assets/a95a32a3-9449-455e-85e8-20ee4327c1e1">
+    <img width="570" height="696" alt="Firezone component diagram" src="https://github.com/user-attachments/assets/411265e5-a131-4e25-9dad-1a0b77534b28" />
+  </picture>
 </p>
 
 ## Getting Started
