@@ -323,6 +323,10 @@ dependencies {
     // Security
     implementation("androidx.security:security-crypto:1.1.0")
 
+    // Management CLI. `clikt-core` is the clikt artifact without the `mordant` terminal renderer,
+    // which nothing behind `app_process` can use anyway.
+    implementation("com.github.ajalt.clikt:clikt-core:5.1.0")
+
     // JUnit
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.3.0")

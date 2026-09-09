@@ -8,9 +8,12 @@ import android.os.Bundle
 import android.os.IBinder
 import android.os.Looper
 import android.os.Process
+import com.github.ajalt.clikt.core.CliktError
+import com.github.ajalt.clikt.core.Context
+import com.github.ajalt.clikt.core.CoreCliktCommand
+import com.github.ajalt.clikt.core.parse
+import com.github.ajalt.clikt.core.subcommands
 import java.lang.reflect.InvocationTargetException
-
-private const val USAGE = "usage: firezone status"
 
 // `adb shell` runs as the primary user and this prototype offers no way to name another one.
 private const val USER_ID = 0
@@ -20,43 +23,61 @@ private const val CALLING_PACKAGE = "com.android.shell"
 object Main {
     @JvmStatic
     fun main(args: Array<String>) {
-        val code = execute(args)
+        val firezone = Firezone().subcommands(StatusCommand())
+
+        val code =
+            try {
+                firezone.parse(args)
+
+                0
+            } catch (e: CliktError) {
+                val message = firezone.getFormattedHelp(e)
+
+                if (e.statusCode == 0) {
+                    println(message)
+                } else {
+                    System.err.println(message)
+                }
+
+                e.statusCode
+            }
 
         // The binder threads this process picked up are not daemons, so returning from `main`
         // would leave it running.
         System.exit(code)
     }
+}
 
-    private fun execute(args: Array<String>): Int {
-        if (args.size != 1 || args[0] != "status") {
-            System.err.println(USAGE)
+private class Firezone : CoreCliktCommand(name = "firezone") {
+    override fun run() = Unit
+}
 
-            return 2
-        }
+private class StatusCommand : CoreCliktCommand(name = "status") {
+    override fun help(context: Context): String = "Report who this device is signed in as and which addresses it holds"
 
+    override fun run() {
         // `app_process` starts a bare VM, so nothing has set up the looper the framework calls
         // below expect to find on this thread. The deprecation is aimed at apps, whose main looper
         // the framework prepares for them.
         @Suppress("DEPRECATION")
         Looper.prepareMainLooper()
 
-        return try {
-            println(render(status()))
+        val status =
+            try {
+                fetchStatus()
+            } catch (e: Exception) {
+                // Reflection reports whatever the app threw wrapped, and the wrapper carries no message.
+                val failure = (e as? InvocationTargetException)?.cause ?: e
 
-            0
-        } catch (e: Exception) {
-            // Reflection reports whatever the app threw wrapped, and the wrapper carries no message.
-            val failure = (e as? InvocationTargetException)?.cause ?: e
+                throw CliktError("firezone: ${failure.message ?: failure}")
+            }
 
-            System.err.println("firezone: ${failure.message ?: failure}")
-
-            1
-        }
+        echo(render(status))
     }
 
     // The same route AOSP's `content` tool takes: `IActivityManager` needs no `Context`, which this
     // process does not have, and it starts the app if it is not already running.
-    private fun status(): Status {
+    private fun fetchStatus(): Status {
         val activityManager =
             Class
                 .forName("android.app.ActivityManager")
