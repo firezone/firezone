@@ -12,7 +12,6 @@ import android.net.Uri
 import android.os.Binder
 import android.os.Bundle
 import android.os.IBinder
-import android.os.Process
 import dev.firezone.android.tunnel.TunnelService
 import dev.firezone.android.tunnel.model.Resource
 import java.util.concurrent.CountDownLatch
@@ -23,6 +22,11 @@ internal const val HANDSHAKE_METHOD = "handshake"
 internal const val BINDER_KEY = "binder"
 
 private const val PROTOCOL_VERSION = 1
+
+// `Process.SHELL_UID` and `Process.ROOT_UID` name these, but only since API 29, and the app
+// supports 26.
+private const val SHELL_UID = 2000
+private const val ROOT_UID = 0
 private const val BIND_TIMEOUT_MS = 5_000L
 private const val TUNNEL_DOWN = "Tunnel: DOWN"
 
@@ -45,7 +49,7 @@ class CliProvider : ContentProvider() {
     ): Bundle {
         val uid = Binder.getCallingUid()
 
-        if (uid != Process.SHELL_UID && uid != Process.ROOT_UID) {
+        if (uid != SHELL_UID && uid != ROOT_UID) {
             throw SecurityException("uid $uid may not talk to the Firezone CLI")
         }
 
