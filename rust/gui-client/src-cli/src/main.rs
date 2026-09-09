@@ -72,9 +72,6 @@ fn run(cli: Cli) -> Result<()> {
 
             print_status(&status);
         }
-        Cmd::Disconnect => {
-            expect_ack(&rt, ClientMsg::Disconnect).context("Failed to disconnect")?
-        }
         Cmd::SignOut => expect_ack(&rt, ClientMsg::SignOut).context("Failed to sign out")?,
         Cmd::Resources {
             command: None | Some(ResourcesCmd::List),
@@ -117,8 +114,6 @@ impl Cli {
 enum Cmd {
     #[command(about = "Report the current status.")]
     Status,
-    #[command(about = "Disconnect, keeping the stored token.")]
-    Disconnect,
     #[command(about = "Sign out and remove the stored token.")]
     SignOut,
     #[command(about = "Inspect the Resources this Client can reach.")]
@@ -290,10 +285,6 @@ mod tests {
     #[test]
     fn subcommands() {
         assert!(matches!(command(&["firezone", "status"]), Cmd::Status));
-        assert!(matches!(
-            command(&["firezone", "disconnect"]),
-            Cmd::Disconnect
-        ));
         assert!(matches!(command(&["firezone", "sign-out"]), Cmd::SignOut));
         assert!(matches!(
             command(&["firezone", "resources"]),
