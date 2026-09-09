@@ -47,7 +47,7 @@ fn main() -> Result<()> {
 #[derive(Parser)]
 // The binary is built as `firezone-cli` to keep it from colliding with the GUI
 // on Windows, but every install renames it, so usage lines must say `firezone`.
-#[command(author, version, about, long_about = None, bin_name = "firezone")]
+#[command(author, version, about = "Firezone CLI", long_about = None, bin_name = "firezone")]
 struct Cli {
     #[command(subcommand)]
     command: Option<Cmd>,
@@ -60,20 +60,22 @@ impl Cli {
     }
 }
 
+// The help text is spelled out instead of taken from doc comments, which clap
+// strips the trailing period from. It has to read the same as the macOS Client's.
 #[derive(clap::Subcommand)]
 enum Cmd {
-    /// Print the status of the running Firezone GUI.
+    #[command(about = "Report the current status.")]
     Status,
-    /// Disconnect from Firezone, staying signed in.
+    #[command(about = "Disconnect, keeping the stored token.")]
     Disconnect,
-    /// Sign out and disconnect from Firezone.
+    #[command(about = "Sign out and remove the stored token.")]
     SignOut,
-    /// Inspect the Resources of the running Firezone GUI.
+    #[command(about = "Inspect the Resources this Client can reach.")]
     Resources {
         #[command(subcommand)]
         command: Option<ResourcesCmd>,
     },
-    /// Control the Internet Resource of the running Firezone GUI.
+    #[command(about = "Turn the Internet Resource on or off.")]
     InternetResource {
         #[command(subcommand)]
         command: InternetResourceCmd,
@@ -83,15 +85,15 @@ enum Cmd {
 /// Omitting the subcommand is equivalent to [`ResourcesCmd::List`].
 #[derive(clap::Subcommand)]
 enum ResourcesCmd {
-    /// Print the Resources.
+    #[command(about = "List the Resources this Client can reach. This is the default.")]
     List,
 }
 
 #[derive(clap::Subcommand)]
 enum InternetResourceCmd {
-    /// Enable the Internet Resource.
+    #[command(about = "Route traffic through the Internet Resource.")]
     Enable,
-    /// Disable the Internet Resource.
+    #[command(about = "Stop routing traffic through the Internet Resource.")]
     Disable,
 }
 
