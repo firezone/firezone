@@ -374,9 +374,9 @@ impl ClientState {
             })
         {}
 
-        let Some(cid) = ipv4
-            .and_then(|ip| self.routing_tables.client_id_by_ip(IpAddr::V4(ip)))
-            .or_else(|| ipv6.and_then(|ip| self.routing_tables.client_id_by_ip(IpAddr::V6(ip))))
+        let Some((cid, _)) = ipv4
+            .and_then(|ip| self.clients.peer_by_ip(IpAddr::V4(ip)))
+            .or_else(|| ipv6.and_then(|ip| self.clients.peer_by_ip(IpAddr::V6(ip))))
         else {
             return;
         };
@@ -443,9 +443,9 @@ impl ClientState {
         let filter = FilterEngine::new(&pool.filters);
 
         self.routing_tables
-            .upsert_device_pool_address(ipv4.into(), resource_id, filter.clone());
+            .upsert_dynamic_peer(ipv4.into(), resource_id, filter.clone());
         self.routing_tables
-            .upsert_device_pool_address(ipv6.into(), resource_id, filter);
+            .upsert_dynamic_peer(ipv6.into(), resource_id, filter);
     }
 
     pub fn public_key(&self) -> PublicKey {
@@ -672,7 +672,6 @@ impl ClientState {
                 Some(Route::Client {
                     filter,
                     resource_id: rid,
-                    client_id: cid,
                 }),
             ) => {
                 // A new direct-client flow must be permitted and authorized before it is sent.
@@ -681,17 +680,22 @@ impl ClientState {
                     return Ok(());
                 }
 
-                let already_authorised = self
-                    .authorized_resources
-                    .get(&rid)
-                    .is_some_and(|p| p.has_client(cid));
+                let authorized = self
+                    .clients
+                    .peer_by_ip(dst)
+                    .map(|(cid, _)| cid)
+                    .filter(|cid| {
+                        self.authorized_resources
+                            .get(&rid)
+                            .is_some_and(|p| p.has_client(*cid))
+                    });
 
-                if !already_authorised {
+                let Some(cid) = authorized else {
                     // Not yet authorized: Buffer + send request.
                     pending_authorizations
                         .on_not_authorized_device(rid, dst, packet, resources, now);
                     return Ok(());
-                }
+                };
 
                 let peer = self
                     .clients
@@ -752,22 +756,6 @@ impl ClientState {
                 };
 
                 (packet, gid.into())
-            }
-            (
-                None,
-                None,
-                Some(Route::DevicePool {
-                    filter,
-                    resource_id: rid,
-                }),
-            ) => {
-                if !filter_allows(&filter, dst_proto) {
-                    reply_with_icmp_prohibited(&mut self.buffered_packets, packet);
-                    return Ok(());
-                }
-
-                pending_authorizations.on_not_authorized_device(rid, dst, packet, resources, now);
-                return Ok(());
             }
             (None, None, None) => {
                 return Err(anyhow::Error::new(UnroutablePacket::unknown_resource(
@@ -1285,24 +1273,6 @@ impl ClientState {
                 }
             }
 
-            if let Some(Resource::DynamicDevicePool(pool)) = self.resources_by_id.get(&resource_id)
-            {
-                let filter = FilterEngine::new(&pool.filters);
-
-                self.routing_tables.upsert_dynamic_client(
-                    client_tun.v4.into(),
-                    resource_id,
-                    cid,
-                    filter.clone(),
-                );
-                self.routing_tables.upsert_dynamic_client(
-                    client_tun.v6.into(),
-                    resource_id,
-                    cid,
-                    filter,
-                );
-            }
-
             let (packets, _) = pending_authorization.into_buffered_packets();
 
             // The token logs our flows for the resource we asked for.
@@ -1337,8 +1307,6 @@ impl ClientState {
 
     /// Drop a previously-active inbound authorization for the given peer.
     pub fn handle_reject_client_device_access(&mut self, cid: ClientId, resource_id: ResourceId) {
-        self.routing_tables
-            .remove_dynamic_client(cid, Some(resource_id));
         if let Some(AccessPath::Direct(clients)) = self.authorized_resources.get_mut(&resource_id) {
             clients.remove(&cid);
         }
@@ -1578,8 +1546,6 @@ impl ClientState {
 
     /// Drops every grant the portal gave us towards `cid`, so the next flow asks again.
     fn forget_outbound_grants(&mut self, cid: ClientId) {
-        self.routing_tables.remove_dynamic_client(cid, None);
-
         for path in self.authorized_resources.values_mut() {
             let AccessPath::Direct(clients) = path else {
                 continue;
@@ -2608,9 +2574,9 @@ impl ClientState {
             // Scope removal to this pool's entries — a client can be a member of
             // multiple pools, and we must not touch entries owned by other pools.
             self.routing_tables
-                .remove_client(old_member.ipv4.into(), *cid, pool_id);
+                .remove_peer(old_member.ipv4.into(), pool_id);
             self.routing_tables
-                .remove_client(old_member.ipv6.into(), *cid, pool_id);
+                .remove_peer(old_member.ipv6.into(), pool_id);
             for _ in self
                 .pending_authorizations
                 .remove_device_authorizations(|pool, addr| {
@@ -2632,16 +2598,14 @@ impl ClientState {
         let mut any_inserted = false;
 
         for new_member in &new_pool.devices {
-            any_inserted |= self.routing_tables.upsert_client(
+            any_inserted |= self.routing_tables.upsert_static_peer(
                 new_member.ipv4.into(),
                 pool_id,
-                new_member.id,
                 filter.clone(),
             );
-            any_inserted |= self.routing_tables.upsert_client(
+            any_inserted |= self.routing_tables.upsert_static_peer(
                 new_member.ipv6.into(),
                 pool_id,
-                new_member.id,
                 filter.clone(),
             );
         }
@@ -3058,151 +3022,6 @@ mod tests {
     }
 
     #[test]
-    fn requests_authorization_for_resolved_peer_through_dynamic_pool() {
-        let mut state = ClientState::for_test();
-        state.update_interface_config(interface(own_tun_ipv4(), Ipv6Addr::LOCALHOST));
-        state.upsert_resource(dynamic_pool(&[]), Instant::now());
-        resolve_dynamic_peer(&mut state);
-
-        state
-            .handle_tun_input(
-                udp_to_peer(1),
-                Instant::now(),
-                &mut snownet::TransmitBuffer::new(),
-            )
-            .unwrap();
-
-        assert_eq!(
-            device_connection_intent(&mut state),
-            Some((dynamic_pool_id(), IpAddr::V4(peer_tun_ipv4())))
-        );
-    }
-
-    #[test]
-    fn unresolved_peer_packet_is_unroutable() {
-        let mut state = ClientState::for_test();
-        state.update_interface_config(interface(own_tun_ipv4(), Ipv6Addr::LOCALHOST));
-        state.upsert_resource(dynamic_pool(&[]), Instant::now());
-
-        let result = state.handle_tun_input(
-            udp_to_peer(1),
-            Instant::now(),
-            &mut snownet::TransmitBuffer::new(),
-        );
-
-        assert!(result.is_err());
-        assert_no_device_connection_intent(&mut state);
-    }
-
-    #[test]
-    fn peer_packet_without_dynamic_pool_is_unroutable() {
-        let mut state = ClientState::for_test();
-        state.update_interface_config(interface(own_tun_ipv4(), Ipv6Addr::LOCALHOST));
-
-        let result = state.handle_tun_input(
-            udp_to_peer(1),
-            Instant::now(),
-            &mut snownet::TransmitBuffer::new(),
-        );
-
-        assert!(result.is_err());
-        assert_no_device_connection_intent(&mut state);
-    }
-
-    #[test]
-    fn dynamic_pool_filter_rejects_peer_packet_locally() {
-        let mut state = ClientState::for_test();
-        state.update_interface_config(interface(own_tun_ipv4(), Ipv6Addr::LOCALHOST));
-        state.upsert_resource(dynamic_pool(&[Filter::Icmp]), Instant::now());
-        resolve_dynamic_peer(&mut state);
-
-        state
-            .handle_tun_input(
-                udp_to_peer(1),
-                Instant::now(),
-                &mut snownet::TransmitBuffer::new(),
-            )
-            .unwrap();
-
-        assert_no_device_connection_intent(&mut state);
-        assert!(
-            state
-                .poll_packets()
-                .is_some_and(|reply| reply.as_icmpv4().is_some())
-        );
-    }
-
-    #[test]
-    fn static_pool_member_is_requested_through_the_static_pool() {
-        let mut state = ClientState::for_test();
-        state.update_interface_config(interface(own_tun_ipv4(), Ipv6Addr::LOCALHOST));
-        state.upsert_resource(dynamic_pool(&[]), Instant::now());
-        resolve_dynamic_peer(&mut state);
-        state.upsert_resource(static_pool_with_peer(), Instant::now());
-
-        state
-            .handle_tun_input(
-                udp_to_peer(1),
-                Instant::now(),
-                &mut snownet::TransmitBuffer::new(),
-            )
-            .unwrap();
-
-        assert_eq!(
-            device_connection_intent(&mut state),
-            Some((static_pool_id(), IpAddr::V4(peer_tun_ipv4())))
-        );
-    }
-
-    #[test]
-    fn denied_access_forgets_the_dynamic_peer() {
-        let now = Instant::now();
-        let mut state = ClientState::for_test();
-        state.update_interface_config(interface(own_tun_ipv4(), Ipv6Addr::LOCALHOST));
-        state.upsert_resource(dynamic_pool(&[]), now);
-        resolve_dynamic_peer(&mut state);
-        authorize_dynamic_peer(&mut state);
-        assert_eq!(
-            state.routing_tables.client_id_by_ip(peer_tun_ipv4().into()),
-            Some(peer_id())
-        );
-
-        state.handle_client_device_access_denied(
-            Some(peer_tun_ipv4()),
-            None,
-            FailReason::Forbidden,
-            now,
-        );
-
-        state
-            .handle_tun_input(udp_to_peer(1), now, &mut snownet::TransmitBuffer::new())
-            .unwrap();
-        assert_eq!(
-            device_connection_intent(&mut state),
-            Some((dynamic_pool_id(), IpAddr::V4(peer_tun_ipv4())))
-        );
-        assert!(!state.authorized_resources[&dynamic_pool_id()].has_client(peer_id()));
-    }
-
-    #[test]
-    fn removing_the_dynamic_pool_forgets_its_peers() {
-        let now = Instant::now();
-        let mut state = ClientState::for_test();
-        state.update_interface_config(interface(own_tun_ipv4(), Ipv6Addr::LOCALHOST));
-        state.upsert_resource(dynamic_pool(&[]), now);
-        resolve_dynamic_peer(&mut state);
-        authorize_dynamic_peer(&mut state);
-
-        state.remove_resource(dynamic_pool_id(), now);
-
-        let result =
-            state.handle_tun_input(udp_to_peer(1), now, &mut snownet::TransmitBuffer::new());
-
-        assert!(result.is_err());
-        assert!(!state.authorized_resources.contains_key(&dynamic_pool_id()));
-    }
-
-    #[test]
     fn prefers_already_connected_gateways() {
         let mut state = ClientState::for_test();
         state.gateways_by_site.insert(
@@ -3351,132 +3170,6 @@ mod tests {
                 "unexpected device connection intent"
             );
         }
-    }
-
-    fn device_connection_intent(state: &mut ClientState) -> Option<(ResourceId, IpAddr)> {
-        iter::from_fn(|| state.poll_event()).find_map(|event| match event {
-            ClientEvent::ResourceConnectionIntent {
-                resource,
-                ip: Some(ip),
-                ..
-            } => Some((resource, ip)),
-            ClientEvent::ResourceConnectionIntent { ip: None, .. }
-            | ClientEvent::AddedIceCandidates { .. }
-            | ClientEvent::RemovedIceCandidates { .. }
-            | ClientEvent::DevicePoolDomainQueried { .. }
-            | ClientEvent::ResourcesChanged { .. }
-            | ClientEvent::DnsRecordsChanged { .. }
-            | ClientEvent::TunInterfaceUpdated(_)
-            | ClientEvent::NoRelays => None,
-        })
-    }
-
-    // An app's DNS lookup of the peer's name, answered by the portal with its tunnel addresses.
-    fn resolve_dynamic_peer(state: &mut ClientState) {
-        let domain: DomainName = "peer.my.fz.internal".parse().unwrap();
-        let dns_server: SocketAddr = (Ipv4Addr::new(100, 100, 111, 1), 53).into();
-        let app: SocketAddr = (own_tun_ipv4(), 5353).into();
-
-        let response = state.handle_dns_query(
-            dns_types::Query::new(domain.clone(), dns_types::RecordType::A),
-            dns_server,
-            app,
-            dns::Upstream::Do53 { server: dns_server },
-            dns::Transport::Udp,
-            Instant::now(),
-        );
-        assert!(
-            response.is_none(),
-            "device pool names are resolved by the portal"
-        );
-
-        state.handle_device_pool_domain_resolved(
-            dynamic_pool_id(),
-            domain,
-            Ok((peer_tun_ipv4(), peer_tun_ipv6())),
-        );
-
-        while state.poll_packets().is_some() {}
-    }
-
-    // What `handle_client_device_access_authorized` records for a dynamic pool peer,
-    // minus the snownet connection, which needs a relay to have answered.
-    fn authorize_dynamic_peer(state: &mut ClientState) {
-        state.routing_tables.upsert_dynamic_client(
-            peer_tun_ipv4().into(),
-            dynamic_pool_id(),
-            peer_id(),
-            FilterEngine::PermitAll,
-        );
-        state.authorized_resources.insert(
-            dynamic_pool_id(),
-            AccessPath::Direct(BTreeSet::from([peer_id()])),
-        );
-        state.clients.upsert(peer_id(), || {
-            ClientOnClient::new(
-                peer_id(),
-                IpConfig {
-                    v4: own_tun_ipv4(),
-                    v6: Ipv6Addr::LOCALHOST,
-                },
-                IpConfig {
-                    v4: peer_tun_ipv4(),
-                    v6: peer_tun_ipv6(),
-                },
-                "peer".to_owned(),
-            )
-        });
-    }
-
-    fn dynamic_pool(filters: &[Filter]) -> Resource {
-        Resource::DynamicDevicePool(resource::DynamicDevicePoolResource {
-            id: dynamic_pool_id(),
-            name: "my-devices".to_owned(),
-            address: "*.my.fz.internal".to_owned(),
-            filters: filters.to_vec(),
-        })
-    }
-
-    fn static_pool_with_peer() -> Resource {
-        Resource::StaticDevicePool(StaticDevicePoolResource {
-            id: static_pool_id(),
-            name: "static".to_owned(),
-            devices: vec![crate::messages::client::DevicePoolMember {
-                id: peer_id(),
-                ipv4: Ipv4Network::from(peer_tun_ipv4()),
-                ipv6: Ipv6Network::from(peer_tun_ipv6()),
-            }],
-            filters: vec![],
-        })
-    }
-
-    fn udp_to_peer(payload: u8) -> IpPacket {
-        ip_packet::make::udp_packet(own_tun_ipv4(), peer_tun_ipv4(), 1000, 2000, &[payload])
-            .unwrap()
-    }
-
-    fn own_tun_ipv4() -> Ipv4Addr {
-        Ipv4Addr::new(100, 64, 0, 1)
-    }
-
-    fn peer_tun_ipv4() -> Ipv4Addr {
-        Ipv4Addr::new(100, 64, 0, 2)
-    }
-
-    fn peer_tun_ipv6() -> Ipv6Addr {
-        Ipv6Addr::new(0xfd00, 0x2021, 0x1111, 0, 0, 0, 0, 2)
-    }
-
-    fn peer_id() -> ClientId {
-        ClientId::from_u128(7)
-    }
-
-    fn dynamic_pool_id() -> ResourceId {
-        ResourceId::from_u128(10)
-    }
-
-    fn static_pool_id() -> ResourceId {
-        ResourceId::from_u128(11)
     }
 }
 

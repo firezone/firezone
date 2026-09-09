@@ -93,17 +93,10 @@ where
 
     /// Removes all entries for a given resource ID.
     pub(crate) fn remove_by_id(&mut self, id: ResourceId) {
-        self.remove_if(|e| e.resource_id() == id);
-    }
-
-    /// Removes every entry, in any network, for which `predicate` returns true.
-    ///
-    /// Drops the networks that are left without entries.
-    pub(crate) fn remove_if(&mut self, predicate: impl Fn(&T) -> bool) {
         self.match_cache.clear();
 
         for (_, entries) in self.inner.iter_mut() {
-            for ele in entries.extract_if(.., |e| predicate(e)) {
+            for ele in entries.extract_if(.., |e| e.resource_id() == id) {
                 drop(ele)
             }
         }

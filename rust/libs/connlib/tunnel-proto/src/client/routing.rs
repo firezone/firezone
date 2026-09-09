@@ -1,6 +1,6 @@
 use std::{cmp::Ordering, net::IpAddr};
 
-use connlib_model::{ClientId, ResourceId};
+use connlib_model::ResourceId;
 use dns_types::DomainName;
 use ip_network::IpNetwork;
 use ip_packet::{Protocol, UnsupportedProtocol};
@@ -16,12 +16,6 @@ pub(super) enum Route {
     Client {
         filter: FilterEngine,
         resource_id: ResourceId,
-        client_id: ClientId,
-    },
-    /// An address a dynamic pool resolved a name to; the portal decides access on first use.
-    DevicePool {
-        filter: FilterEngine,
-        resource_id: ResourceId,
     },
     Gateway {
         filter: FilterEngine,
@@ -34,9 +28,7 @@ impl Route {
     #[cfg_attr(not(feature = "telemetry"), expect(dead_code))]
     pub(super) fn resource_id(&self) -> ResourceId {
         match self {
-            Self::Client { resource_id, .. }
-            | Self::DevicePool { resource_id, .. }
-            | Self::Gateway { resource_id, .. } => *resource_id,
+            Self::Client { resource_id, .. } | Self::Gateway { resource_id, .. } => *resource_id,
         }
     }
 }
@@ -46,11 +38,7 @@ impl Route {
 pub(super) struct RoutingTables {
     cidr: RoutingTable<CidrEntry>,
     dns: RoutingTable<DnsEntry>,
-    client: RoutingTable<ClientEntry>,
-    /// Peers reached through a dynamic pool, entered once the portal authorised them.
-    dynamic_client: RoutingTable<ClientEntry>,
-    /// Addresses a dynamic pool resolved a name to, entered before any authorisation.
-    dynamic_pool: RoutingTable<DevicePoolEntry>,
+    peer: RoutingTable<PeerEntry>,
 }
 
 impl RoutingTables {
@@ -61,71 +49,14 @@ impl RoutingTables {
         protocol: Protocol,
         internet_resource: Option<ResourceId>,
     ) -> Option<Route> {
-        if let Some(entry) = self.client.matches(destination, Ok(protocol)).cloned() {
+        if let Some(entry) = self.peer.matches(destination, Ok(protocol)).cloned() {
             return Some(Route::Client {
                 filter: entry.filter,
                 resource_id: entry.resource_id,
-                client_id: entry.client_id,
             });
         }
 
-        if let Some(entry) = self
-            .dynamic_client
-            .matches(destination, Ok(protocol))
-            .cloned()
-        {
-            let permitted = entry.filter.apply(Ok(protocol)).is_ok();
-            let route = Route::Client {
-                filter: entry.filter,
-                resource_id: entry.resource_id,
-                client_id: entry.client_id,
-            };
-
-            if permitted {
-                return Some(route);
-            }
-
-            // Another pool that resolved this peer may permit what the granting one does not.
-            return Some(
-                self.permitting_device_pool_route(destination, protocol)
-                    .unwrap_or(route),
-            );
-        }
-
-        if let Some(route) = self.resolve_resource(destination, protocol, internet_resource) {
-            return Some(route);
-        }
-
-        self.device_pool_route(destination, protocol)
-    }
-
-    /// The dynamic pool that resolved `destination`, if any.
-    ///
-    /// A pool whose filter permits the packet wins. When none does, one is returned anyway
-    /// so the caller rejects the packet through that pool's filter.
-    fn device_pool_route(&mut self, destination: IpAddr, protocol: Protocol) -> Option<Route> {
-        let entry = self.dynamic_pool.matches(destination, Ok(protocol))?;
-
-        Some(Route::DevicePool {
-            filter: entry.filter.clone(),
-            resource_id: entry.resource_id,
-        })
-    }
-
-    fn permitting_device_pool_route(
-        &mut self,
-        destination: IpAddr,
-        protocol: Protocol,
-    ) -> Option<Route> {
-        let route = self.device_pool_route(destination, protocol)?;
-
-        if let Route::DevicePool { filter, .. } = &route
-            && filter.apply(Ok(protocol)).is_err()
-        {
-            return None;
-        }
-
-        Some(route)
+        self.resolve_resource(destination, protocol, internet_resource)
     }
 
     /// Resolve only resources routed through a Gateway.
@@ -170,23 +101,6 @@ impl RoutingTables {
 
     pub(super) fn cidr_networks(&self) -> impl Iterator<Item = IpNetwork> + '_ {
         self.cidr.networks()
-    }
-
-    /// Returns the Client routed at `destination`.
-    ///
-    /// Every entry for a device address identifies the same Client, so the protocol used to
-    /// select between entries is irrelevant.
-    pub(super) fn client_id_by_ip(&mut self, destination: IpAddr) -> Option<ClientId> {
-        let protocol = Ok(Protocol::Tcp(0));
-
-        self.client
-            .matches(destination, protocol.clone())
-            .map(|entry| entry.client_id)
-            .or_else(|| {
-                self.dynamic_client
-                    .matches(destination, protocol)
-                    .map(|entry| entry.client_id)
-            })
     }
 
     pub(super) fn dns_resource(
@@ -237,51 +151,34 @@ impl RoutingTables {
         )
     }
 
-    pub(super) fn upsert_client(
+    pub(super) fn upsert_static_peer(
         &mut self,
         network: IpNetwork,
         resource_id: ResourceId,
-        client_id: ClientId,
         filter: FilterEngine,
     ) -> bool {
-        self.client.upsert(
+        self.peer.upsert(
             network,
-            ClientEntry {
+            PeerEntry {
                 filter,
                 resource_id,
-                client_id,
+                kind: PoolKind::Static,
             },
         )
     }
 
-    pub(super) fn upsert_device_pool_address(
+    pub(super) fn upsert_dynamic_peer(
         &mut self,
         network: IpNetwork,
         resource_id: ResourceId,
         filter: FilterEngine,
     ) -> bool {
-        self.dynamic_pool.upsert(
+        self.peer.upsert(
             network,
-            DevicePoolEntry {
+            PeerEntry {
                 filter,
                 resource_id,
-            },
-        )
-    }
-
-    pub(super) fn upsert_dynamic_client(
-        &mut self,
-        network: IpNetwork,
-        resource_id: ResourceId,
-        client_id: ClientId,
-        filter: FilterEngine,
-    ) -> bool {
-        self.dynamic_client.upsert(
-            network,
-            ClientEntry {
-                filter,
-                resource_id,
-                client_id,
+                kind: PoolKind::Dynamic,
             },
         )
     }
@@ -289,31 +186,12 @@ impl RoutingTables {
     pub(super) fn remove_by_id(&mut self, resource_id: ResourceId) {
         self.cidr.remove_by_id(resource_id);
         self.dns.remove_by_id(resource_id);
-        self.client.remove_by_id(resource_id);
-        self.dynamic_client.remove_by_id(resource_id);
-        self.dynamic_pool.remove_by_id(resource_id);
+        self.peer.remove_by_id(resource_id);
     }
 
-    pub(super) fn remove_client(
-        &mut self,
-        network: IpNetwork,
-        client_id: ClientId,
-        resource_id: ResourceId,
-    ) {
-        self.client.remove(network, |entry| {
-            entry.client_id == client_id && entry.resource_id == resource_id
-        });
-    }
-
-    /// Forgets every dynamic pool route to `client_id`, for one pool or all of them.
-    pub(super) fn remove_dynamic_client(
-        &mut self,
-        client_id: ClientId,
-        resource_id: Option<ResourceId>,
-    ) {
-        self.dynamic_client.remove_if(|entry| {
-            entry.client_id == client_id && resource_id.is_none_or(|rid| entry.resource_id == rid)
-        });
+    pub(super) fn remove_peer(&mut self, network: IpNetwork, resource_id: ResourceId) {
+        self.peer
+            .remove(network, |entry| entry.resource_id == resource_id);
     }
 }
 
@@ -334,12 +212,13 @@ impl RouteEntry for CidrEntry {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-struct DevicePoolEntry {
+struct PeerEntry {
     filter: FilterEngine,
     resource_id: ResourceId,
+    kind: PoolKind,
 }
 
-impl RouteEntry for DevicePoolEntry {
+impl RouteEntry for PeerEntry {
     fn filter(&self) -> &FilterEngine {
         &self.filter
     }
@@ -347,23 +226,20 @@ impl RouteEntry for DevicePoolEntry {
     fn resource_id(&self) -> ResourceId {
         self.resource_id
     }
+
+    fn specificity(&self, other: &Self) -> Ordering {
+        self.kind.cmp(&other.kind)
+    }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-struct ClientEntry {
-    filter: FilterEngine,
-    resource_id: ResourceId,
-    client_id: ClientId,
-}
-
-impl RouteEntry for ClientEntry {
-    fn filter(&self) -> &FilterEngine {
-        &self.filter
-    }
-
-    fn resource_id(&self) -> ResourceId {
-        self.resource_id
-    }
+/// How a device pool learns which peers it routes to.
+///
+/// The declaration order is load-bearing: `Static` is *greater*, so a pool that names its
+/// members wins the [`RouteEntry::specificity`] tie-break against one that resolves them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum PoolKind {
+    Dynamic,
+    Static,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -411,13 +287,7 @@ mod tests {
     #[test]
     fn device_pool_routes_to_another_client() {
         let mut tables = RoutingTables::default();
-        let client_id = ClientId::from_u128(3);
-        tables.upsert_client(
-            IpNetwork::from(other_client_tun_ip()),
-            ResourceId::from_u128(2),
-            client_id,
-            FilterEngine::PermitAll,
-        );
+        add_static_member(&mut tables, static_pool_id(), FilterEngine::PermitAll);
 
         let route = tables.resolve(
             other_client_tun_ip(),
@@ -425,7 +295,10 @@ mod tests {
             Some(internet_resource_id()),
         );
 
-        assert!(matches!(route, Some(Route::Client { client_id: c, .. }) if c == client_id));
+        assert!(matches!(
+            route,
+            Some(Route::Client { resource_id, .. }) if resource_id == static_pool_id()
+        ));
     }
 
     #[test]
@@ -441,7 +314,7 @@ mod tests {
 
         assert!(matches!(
             route,
-            Some(Route::DevicePool { resource_id, .. }) if resource_id == dynamic_pool_id()
+            Some(Route::Client { resource_id, .. }) if resource_id == dynamic_pool_id()
         ));
     }
 
@@ -460,126 +333,26 @@ mod tests {
     }
 
     #[test]
-    fn static_pool_route_wins_over_dynamic_pool() {
+    fn static_pool_wins_over_a_dynamic_pool_that_also_permits() {
         let mut tables = RoutingTables::default();
-        let client_id = ClientId::from_u128(3);
         resolve_through_pool(&mut tables, dynamic_pool_id(), FilterEngine::PermitAll);
-        tables.upsert_client(
-            IpNetwork::from(other_client_tun_ip()),
-            ResourceId::from_u128(2),
-            client_id,
-            FilterEngine::new(&[Filter::Icmp]),
-        );
-
-        let route = tables.resolve(
-            other_client_tun_ip(),
-            Protocol::Tcp(80),
-            Some(internet_resource_id()),
-        );
-
-        assert!(matches!(
-            route,
-            Some(Route::Client { client_id: c, resource_id, .. })
-                if c == client_id && resource_id == ResourceId::from_u128(2)
-        ));
-    }
-
-    #[test]
-    fn dynamic_pool_prefers_the_pool_whose_filter_permits() {
-        let mut tables = RoutingTables::default();
-        let icmp_pool = ResourceId::from_u128(20);
-        let tcp_pool = ResourceId::from_u128(21);
-        resolve_through_pool(&mut tables, icmp_pool, FilterEngine::new(&[Filter::Icmp]));
-        resolve_through_pool(
-            &mut tables,
-            tcp_pool,
-            FilterEngine::new(&[Filter::Tcp(PortRange::single(80))]),
-        );
-
-        let tcp = tables.resolve(other_client_tun_ip(), Protocol::Tcp(80), None);
-        let udp = tables.resolve(other_client_tun_ip(), Protocol::Udp(53), None);
-
-        assert!(matches!(
-            tcp,
-            Some(Route::DevicePool { resource_id, .. }) if resource_id == tcp_pool
-        ));
-        assert!(matches!(
-            udp,
-            Some(Route::DevicePool { filter, .. }) if filter.apply(Ok(Protocol::Udp(53))).is_err()
-        ));
-    }
-
-    #[test]
-    fn authorised_dynamic_peer_routes_directly() {
-        let mut tables = RoutingTables::default();
-        let client_id = ClientId::from_u128(3);
-        resolve_through_pool(&mut tables, dynamic_pool_id(), FilterEngine::PermitAll);
-        tables.upsert_dynamic_client(
-            IpNetwork::from(other_client_tun_ip()),
-            dynamic_pool_id(),
-            client_id,
-            FilterEngine::PermitAll,
-        );
+        add_static_member(&mut tables, static_pool_id(), FilterEngine::PermitAll);
 
         let route = tables.resolve(other_client_tun_ip(), Protocol::Tcp(80), None);
 
         assert!(matches!(
             route,
-            Some(Route::Client { client_id: c, resource_id, .. })
-                if c == client_id && resource_id == dynamic_pool_id()
-        ));
-        assert_eq!(
-            tables.client_id_by_ip(other_client_tun_ip()),
-            Some(client_id)
-        );
-    }
-
-    #[test]
-    fn authorised_dynamic_peer_defers_to_another_pool_that_permits() {
-        let mut tables = RoutingTables::default();
-        let client_id = ClientId::from_u128(3);
-        let icmp_pool = ResourceId::from_u128(20);
-        let tcp_pool = ResourceId::from_u128(21);
-        resolve_through_pool(&mut tables, icmp_pool, FilterEngine::new(&[Filter::Icmp]));
-        resolve_through_pool(
-            &mut tables,
-            tcp_pool,
-            FilterEngine::new(&[Filter::Tcp(PortRange::single(80))]),
-        );
-        tables.upsert_dynamic_client(
-            IpNetwork::from(other_client_tun_ip()),
-            icmp_pool,
-            client_id,
-            FilterEngine::new(&[Filter::Icmp]),
-        );
-
-        let tcp = tables.resolve(other_client_tun_ip(), Protocol::Tcp(80), None);
-        let udp = tables.resolve(other_client_tun_ip(), Protocol::Udp(53), None);
-
-        assert!(matches!(
-            tcp,
-            Some(Route::DevicePool { resource_id, .. }) if resource_id == tcp_pool
-        ));
-        assert!(matches!(
-            udp,
-            Some(Route::Client { client_id: c, resource_id, .. })
-                if c == client_id && resource_id == icmp_pool
+            Some(Route::Client { resource_id, .. }) if resource_id == static_pool_id()
         ));
     }
 
     #[test]
-    fn authorised_dynamic_peer_keeps_its_route_when_no_pool_permits() {
+    fn dynamic_pool_wins_over_a_static_pool_that_rejects() {
         let mut tables = RoutingTables::default();
-        let client_id = ClientId::from_u128(3);
-        resolve_through_pool(
+        resolve_through_pool(&mut tables, dynamic_pool_id(), permit_tcp(80));
+        add_static_member(
             &mut tables,
-            dynamic_pool_id(),
-            FilterEngine::new(&[Filter::Icmp]),
-        );
-        tables.upsert_dynamic_client(
-            IpNetwork::from(other_client_tun_ip()),
-            dynamic_pool_id(),
-            client_id,
+            static_pool_id(),
             FilterEngine::new(&[Filter::Icmp]),
         );
 
@@ -587,51 +360,20 @@ mod tests {
 
         assert!(matches!(
             route,
-            Some(Route::Client { client_id: c, filter, .. })
-                if c == client_id && filter.apply(Ok(Protocol::Tcp(80))).is_err()
+            Some(Route::Client { resource_id, .. }) if resource_id == dynamic_pool_id()
         ));
     }
 
-    #[test]
-    fn forgetting_a_dynamic_peer_falls_back_to_the_pool() {
-        let mut tables = RoutingTables::default();
-        let client_id = ClientId::from_u128(3);
-        resolve_through_pool(&mut tables, dynamic_pool_id(), FilterEngine::PermitAll);
-        tables.upsert_dynamic_client(
-            IpNetwork::from(other_client_tun_ip()),
-            dynamic_pool_id(),
-            client_id,
-            FilterEngine::PermitAll,
-        );
-
-        tables.remove_dynamic_client(client_id, None);
-
-        let route = tables.resolve(other_client_tun_ip(), Protocol::Tcp(80), None);
-
-        assert!(matches!(route, Some(Route::DevicePool { .. })));
-        assert_eq!(tables.client_id_by_ip(other_client_tun_ip()), None);
-    }
-
-    #[test]
-    fn removing_the_pool_drops_its_peers_and_resolutions() {
-        let mut tables = RoutingTables::default();
-        resolve_through_pool(&mut tables, dynamic_pool_id(), FilterEngine::PermitAll);
-        tables.upsert_dynamic_client(
-            IpNetwork::from(other_client_tun_ip()),
-            dynamic_pool_id(),
-            ClientId::from_u128(3),
-            FilterEngine::PermitAll,
-        );
-
-        tables.remove_by_id(dynamic_pool_id());
-
-        let route = tables.resolve(other_client_tun_ip(), Protocol::Tcp(80), None);
-
-        assert!(route.is_none());
+    fn add_static_member(tables: &mut RoutingTables, pool: ResourceId, filter: FilterEngine) {
+        tables.upsert_static_peer(IpNetwork::from(other_client_tun_ip()), pool, filter);
     }
 
     fn resolve_through_pool(tables: &mut RoutingTables, pool: ResourceId, filter: FilterEngine) {
-        tables.upsert_device_pool_address(IpNetwork::from(other_client_tun_ip()), pool, filter);
+        tables.upsert_dynamic_peer(IpNetwork::from(other_client_tun_ip()), pool, filter);
+    }
+
+    fn permit_tcp(port: u16) -> FilterEngine {
+        FilterEngine::new(&[Filter::Tcp(PortRange::single(port))])
     }
 
     fn other_client_tun_ip() -> IpAddr {
@@ -640,6 +382,10 @@ mod tests {
 
     fn internet_resource_id() -> ResourceId {
         ResourceId::from_u128(1)
+    }
+
+    fn static_pool_id() -> ResourceId {
+        ResourceId::from_u128(2)
     }
 
     fn dynamic_pool_id() -> ResourceId {
