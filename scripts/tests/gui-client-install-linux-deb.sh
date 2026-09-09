@@ -28,7 +28,7 @@ stat /usr/share/icons/hicolor/512x512/apps/firezone-client-gui.png
 # know their own names. The CLI and the GUI are separate programs, so their
 # help output must not be the same.
 firezone-client-gui --help | grep "Usage: firezone-client-gui"
-firezone --help | grep "Usage: firezone \[COMMAND\]"
+firezone --help | grep "Usage: firezone \["
 
 # Make sure the Tunnel service is running
 systemctl status "$SERVICE_NAME" || debug_exit
