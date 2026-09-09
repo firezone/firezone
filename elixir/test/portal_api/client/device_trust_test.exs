@@ -474,6 +474,18 @@ defmodule PortalAPI.Client.DeviceTrustTest do
   end
 
   describe "extract_identifiers/1" do
+    test "accepts iru-id and kandji-id as MDM device identifiers" do
+      for idtype <- ["iru-id", "kandji-id"] do
+        uri = ~c"firezone://#{idtype}/5F2E7B7A-9D54-4BD2-9D4F-8F6C2A01F9D3"
+
+        assert DeviceTrust.extract_identifiers(
+                 otp(sans: [{:uniformResourceIdentifier, uri}])
+               ) == %{
+                 last_attested_mdm_device_id: "5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3"
+               }
+      end
+    end
+
     test "reads every typed URI SAN into its column" do
       identifiers = DeviceTrust.extract_identifiers(otp(:rsa))
       assert identifiers.last_attested_device_serial == "C02XK1ZGJGH5"
