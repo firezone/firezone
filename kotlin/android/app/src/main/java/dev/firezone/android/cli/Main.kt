@@ -41,7 +41,7 @@ object Main {
         Looper.prepareMainLooper()
 
         return try {
-            println(status())
+            println(render(status()))
 
             0
         } catch (e: Exception) {
@@ -56,7 +56,7 @@ object Main {
 
     // The same route AOSP's `content` tool takes: `IActivityManager` needs no `Context`, which this
     // process does not have, and it starts the app if it is not already running.
-    private fun status(): String {
+    private fun status(): Status {
         val activityManager =
             Class
                 .forName("android.app.ActivityManager")
@@ -121,4 +121,13 @@ object Main {
                 Bundle::class.java,
             ).invoke(provider, attributionSource, CLI_AUTHORITY, HANDSHAKE_METHOD, null, null) as Bundle?
     }
+
+    private fun render(status: Status): String =
+        buildString {
+            appendLine("signed-in: ${if (status.signedIn) "yes" else "no"}")
+            status.accountSlug?.let { appendLine("account: $it") }
+            status.actorName?.let { appendLine("actor: $it") }
+            status.tunnelIpv4?.let { appendLine("tunnel-ipv4: $it") }
+            status.tunnelIpv6?.let { appendLine("tunnel-ipv6: $it") }
+        }.trimEnd()
 }

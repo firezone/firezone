@@ -12,8 +12,13 @@ import android.net.Uri
 import android.os.Binder
 import android.os.Bundle
 import android.os.IBinder
+import dagger.hilt.EntryPoint
+import dagger.hilt.InstallIn
+import dagger.hilt.android.EntryPointAccessors
+import dagger.hilt.components.SingletonComponent
+import dev.firezone.android.core.data.Repository
+import dev.firezone.android.core.data.TokenStore
 import dev.firezone.android.tunnel.TunnelService
-import dev.firezone.android.tunnel.model.Resource
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
@@ -28,7 +33,16 @@ private const val PROTOCOL_VERSION = 1
 private const val SHELL_UID = 2000
 private const val ROOT_UID = 0
 private const val BIND_TIMEOUT_MS = 5_000L
-private const val TUNNEL_DOWN = "Tunnel: DOWN"
+
+// Providers are created before `Application.onCreate`, so `@AndroidEntryPoint` cannot inject one.
+// The graph is up by the time a transaction arrives, which is why this is resolved per call.
+@EntryPoint
+@InstallIn(SingletonComponent::class)
+internal interface CliEntryPoint {
+    fun tokenStore(): TokenStore
+
+    fun repository(): Repository
+}
 
 // The CLI runs outside the app and has no `Context` to reach the tunnel with. A provider is the
 // one component the shell can address without one, so the handshake hands it a binder instead.
@@ -37,7 +51,7 @@ class CliProvider : ContentProvider() {
         object : IFirezoneCli.Stub() {
             override fun protocolVersion(): Int = PROTOCOL_VERSION
 
-            override fun status(): String = report(context!!)
+            override fun status(): Status = report(context!!)
         }
 
     override fun onCreate(): Boolean = true
@@ -88,9 +102,22 @@ class CliProvider : ContentProvider() {
         selectionArgs: Array<out String>?,
     ): Int = 0
 
-    private fun report(context: Context): String {
+    private fun report(context: Context): Status {
+        val app = EntryPointAccessors.fromApplication(context, CliEntryPoint::class.java)
+        val config = app.repository().getConfigSync()
+        val signedIn = app.tokenStore().get() != null
+        val accountSlug = config.accountSlug.ifEmpty { null }
+
+        // Who we are signed in as and which addresses we hold are the only fields the service
+        // knows, so nothing else pays for the binding.
         if (!TunnelService.isRunning(context)) {
-            return TUNNEL_DOWN
+            return Status(
+                signedIn = signedIn,
+                accountSlug = accountSlug,
+                actorName = null,
+                tunnelIpv4 = null,
+                tunnelIpv6 = null,
+            )
         }
 
         val connection = TunnelConnection()
@@ -106,30 +133,17 @@ class CliProvider : ContentProvider() {
                 connection.await()
                     ?: throw IllegalStateException("The tunnel service did not answer within ${BIND_TIMEOUT_MS}ms")
 
-            return describe(service)
+            return Status(
+                signedIn = signedIn,
+                accountSlug = accountSlug,
+                actorName = service.actorNameState.value,
+                tunnelIpv4 = service.tunnelIpv4State.value,
+                tunnelIpv6 = service.tunnelIpv6State.value,
+            )
         } finally {
             context.unbindService(connection)
         }
     }
-
-    private fun describe(service: TunnelService): String =
-        buildString {
-            appendLine("Tunnel: ${service.serviceState.value}")
-
-            service.actorNameState.value?.let { appendLine("Signed in as: $it") }
-
-            val resources = service.resourcesState.value
-            appendLine("Resources: ${resources.size}")
-            resources.forEach { appendLine("  ${describe(it)}") }
-
-            val devices = service.connectedDevicesState.value
-            if (devices.isNotEmpty()) {
-                appendLine("Connected devices: ${devices.size}")
-                devices.forEach { appendLine("  ${it.name} (${it.tunIpv4})") }
-            }
-        }.trimEnd()
-
-    private fun describe(resource: Resource): String = resource.address?.let { "${resource.name} ($it)" } ?: resource.name
 
     // The AIDL call arrives on a binder thread, which is the only one allowed to wait here:
     // `onServiceConnected` is dispatched on the main thread.

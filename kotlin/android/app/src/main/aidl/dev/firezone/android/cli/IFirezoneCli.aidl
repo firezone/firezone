@@ -1,7 +1,9 @@
 package dev.firezone.android.cli;
 
+import dev.firezone.android.cli.Status;
+
 interface IFirezoneCli {
     int protocolVersion();
 
-    String status();
+    Status status();
 }

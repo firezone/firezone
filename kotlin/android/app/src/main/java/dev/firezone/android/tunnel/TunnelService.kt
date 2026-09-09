@@ -95,8 +95,6 @@ class TunnelService : VpnService() {
     @Inject
     internal lateinit var x509Identity: X509Identity
 
-    private var tunnelIpv4Address: String? = null
-    private var tunnelIpv6Address: String? = null
     private var tunnelDnsAddresses: MutableList<String> = mutableListOf()
     private var tunnelSearchDomain: String? = null
     private var tunnelRoutes: MutableList<Cidr> = mutableListOf()
@@ -125,12 +123,16 @@ class TunnelService : VpnService() {
     private val _resourcesState = MutableStateFlow<List<Resource>>(emptyList())
     private val _connectedDevicesState = MutableStateFlow<List<ConnectedDevice>>(emptyList())
     private val _actorNameState = MutableStateFlow<String?>(null)
+    private val _tunnelIpv4State = MutableStateFlow<String?>(null)
+    private val _tunnelIpv6State = MutableStateFlow<String?>(null)
 
     // A `StateFlow` replays its current value to every new collector, so a newly bound SessionActivity catches up on its own.
     val serviceState: StateFlow<State> = _serviceState.asStateFlow()
     val resourcesState: StateFlow<List<Resource>> = _resourcesState.asStateFlow()
     val connectedDevicesState: StateFlow<List<ConnectedDevice>> = _connectedDevicesState.asStateFlow()
     val actorNameState: StateFlow<String?> = _actorNameState.asStateFlow()
+    val tunnelIpv4State: StateFlow<String?> = _tunnelIpv4State.asStateFlow()
+    val tunnelIpv6State: StateFlow<String?> = _tunnelIpv6State.asStateFlow()
 
     var tunnelResources: List<Resource>
         get() = _resourcesState.value
@@ -220,8 +222,8 @@ class TunnelService : VpnService() {
                     addSearchDomain(it)
                 }
 
-                addAddress(tunnelIpv4Address!!, 32)
-                addAddress(tunnelIpv6Address!!, 128)
+                addAddress(tunnelIpv4State.value!!, 32)
+                addAddress(tunnelIpv6State.value!!, 128)
             }.runCatching { establish() }
             .onFailure { Log.e(TAG, "Error establishing VPN service", it) }
             .onSuccess { fd ->
@@ -696,8 +698,8 @@ class TunnelService : VpnService() {
                                 is Event.TunInterfaceUpdated -> {
                                     tunnelDnsAddresses = event.dns.toMutableList()
                                     tunnelSearchDomain = event.searchDomain
-                                    tunnelIpv4Address = event.ipv4
-                                    tunnelIpv6Address = event.ipv6
+                                    _tunnelIpv4State.value = event.ipv4
+                                    _tunnelIpv6State.value = event.ipv6
                                     tunnelRoutes.clear()
                                     tunnelRoutes.addAll(
                                         event.ipv4Routes.map { cidr ->

@@ -4,22 +4,24 @@ package dev.firezone.android.e2e
 import android.content.SharedPreferences
 import dagger.hilt.android.testing.HiltAndroidRule
 import dagger.hilt.android.testing.HiltAndroidTest
+import dev.firezone.android.core.data.Repository
 import dev.firezone.android.core.data.TokenStore
 import dev.firezone.android.tunnel.ACCOUNT_SLUG
 import dev.firezone.android.tunnel.ACTOR_NAME
 import dev.firezone.android.tunnel.FakeSessionFactory
+import dev.firezone.android.tunnel.TUN_IPV4
+import dev.firezone.android.tunnel.TUN_IPV6
 import dev.firezone.android.tunnel.TestRestrictions
-import dev.firezone.android.tunnel.engineeringWiki
 import dev.firezone.android.tunnel.finishAllActivities
 import dev.firezone.android.tunnel.grantNotificationPermission
 import dev.firezone.android.tunnel.grantVpnConsent
 import dev.firezone.android.tunnel.shellOutput
 import dev.firezone.android.tunnel.startTunnelService
 import dev.firezone.android.tunnel.stopTunnelService
+import dev.firezone.android.tunnel.tunInterfaceUpdated
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -36,6 +38,9 @@ class CliE2eTest {
 
     @Inject
     internal lateinit var tokenStore: TokenStore
+
+    @Inject
+    lateinit var repository: Repository
 
     @Inject
     lateinit var preferences: SharedPreferences
@@ -62,22 +67,35 @@ class CliE2eTest {
         val session = runBlocking { withTimeout(TIMEOUT_MS) { FakeSessionFactory.awaitSession() } }
 
         session.emit(Event.ConnectedToPortal(accountSlug = ACCOUNT_SLUG, actorName = ACTOR_NAME))
-        session.emit(
-            Event.ResourcesUpdated(
-                resources = listOf(engineeringWiki),
-                connectedDevices = emptyList(),
+        session.emit(tunInterfaceUpdated())
+
+        val status = awaitStatus("the tunnel addresses to reach the CLI") { it.contains(TUN_IPV6) }
+
+        assertEquals(
+            listOf(
+                "signed-in: yes",
+                "account: $ACCOUNT_SLUG",
+                "actor: $ACTOR_NAME",
+                "tunnel-ipv4: $TUN_IPV4",
+                "tunnel-ipv6: $TUN_IPV6",
             ),
+            status.trim().lines(),
         )
+    }
 
-        val status = awaitStatus("the resource to reach the CLI") { it.contains("Engineering wiki") }
+    // Whether we are signed in and which account we belong to outlive the tunnel, so the CLI has
+    // to answer both without one.
+    @Test
+    fun statusReportsTheAccountWhileTheTunnelIsDown() {
+        tokenStore.save(TOKEN)
+        runBlocking { repository.saveAccountSlug(ACCOUNT_SLUG).collect {} }
 
-        assertTrue(status, status.contains("Tunnel: UP"))
-        assertTrue(status, status.contains("Signed in as: $ACTOR_NAME"))
+        assertEquals(listOf("signed-in: yes", "account: $ACCOUNT_SLUG"), status().trim().lines())
     }
 
     @Test
-    fun statusReportsTheTunnelIsDownWhenItIsNotRunning() {
-        assertEquals("Tunnel: DOWN", status().trim())
+    fun statusReportsBeingSignedOutWhenThereIsNoToken() {
+        assertEquals(listOf("signed-in: no"), status().trim().lines())
     }
 
     private fun awaitStatus(
