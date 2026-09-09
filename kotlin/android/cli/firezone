@@ -1,0 +1,4 @@
+#!/system/bin/sh
+CLASSPATH=$(pm path dev.firezone.android | grep base.apk | sed 's/^package://' | tr -d '\r')
+export CLASSPATH
+exec app_process /system/bin dev.firezone.android.cli.Main "$@"

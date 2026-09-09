@@ -168,8 +168,13 @@ fun photographScreen(name: String) {
 
 private fun packageName() = InstrumentationRegistry.getInstrumentation().targetContext.packageName
 
-private fun shell(command: String) {
+// `executeShellCommand` does not run a shell: it splits the line on whitespace and executes that,
+// so quotes, pipes, redirects and `VAR=value` prefixes reach the program as literal arguments.
+fun shellOutput(command: String): String =
     UiDevice.getInstance(InstrumentationRegistry.getInstrumentation()).executeShellCommand(command)
+
+private fun shell(command: String) {
+    shellOutput(command)
 }
 
 @Suppress("DEPRECATION")

@@ -49,6 +49,7 @@ val jacocoCli by configurations.creating
 
 android {
     buildFeatures {
+        aidl = true
         buildConfig = true
         resValues = true
     }

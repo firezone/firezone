@@ -32,6 +32,10 @@ adb install -r -g -t "$app_apk"
 echo "==> Installing ${test_apk}"
 adb install -r -g -t "$test_apk"
 
+echo "==> Pushing the CLI wrapper"
+adb push cli/firezone /data/local/tmp/firezone
+adb shell chmod 755 /data/local/tmp/firezone
+
 # Flags are AndroidJUnitRunner's own argument names, so `--notAnnotation X` reaches it as
 # `-e notAnnotation X` and its documentation reads across. Read positionally rather than through
 # `#USAGE`, which only binds under `mise run` and would leave a filter silently unset when a
