@@ -6,20 +6,35 @@ use connlib_model::ResourceView;
 use gui_ipc::{ClientMsg, NotRunning, ServerError, ServerMsg, StatusSummary};
 use std::process::ExitCode;
 use tokio::runtime::Runtime;
+use tracing_subscriber::filter::LevelFilter;
 
 #[allow(
     clippy::print_stderr,
     reason = "reporting the failure to the user is what this is for"
 )]
 fn main() -> ExitCode {
-    let Err(error) = run() else {
+    let cli = Cli::parse();
+    let debug = cli.debug;
+
+    if debug {
+        // Nothing installs a subscriber otherwise, so the `tracing` events of the
+        // libraries this is built on go nowhere, which is what we want by default.
+        tracing_subscriber::fmt()
+            .with_max_level(LevelFilter::DEBUG)
+            .with_writer(std::io::stderr)
+            .init();
+    }
+
+    let Err(error) = run(cli) else {
         return ExitCode::SUCCESS;
     };
 
-    eprintln!(
-        "{}",
-        expected(&error).unwrap_or_else(|| format!("{error:#}"))
-    );
+    // Under `--debug` the causes are the point.
+    let message = expected(&error)
+        .filter(|_| !debug)
+        .unwrap_or_else(|| format!("{error:#}"));
+
+    eprintln!("{message}");
 
     ExitCode::FAILURE
 }
@@ -40,8 +55,7 @@ fn expected(error: &anyhow::Error) -> Option<String> {
     }
 }
 
-fn run() -> Result<()> {
-    let cli = Cli::parse();
+fn run(cli: Cli) -> Result<()> {
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
@@ -83,6 +97,9 @@ fn run() -> Result<()> {
 // on Windows, but every install renames it, so usage lines must say `firezone`.
 #[command(author, version, about = "Firezone CLI", long_about = None, bin_name = "firezone")]
 struct Cli {
+    #[arg(long, global = true, help = "Mirror the internal log to stderr.")]
+    debug: bool,
+
     #[command(subcommand)]
     command: Option<Cmd>,
 }
