@@ -319,9 +319,7 @@ impl<I: GuiIntegration> Controller<I> {
                         Err(e) => {
                             tracing::debug!("Failed to handle GUI IPC message: {e:#}");
 
-                            gui_ipc::ServerMsg::Error(gui_ipc::ServerError::Other(format!(
-                                "{e:#}"
-                            )))
+                            gui_ipc::ServerMsg::Error(gui_ipc::ServerError::Other(format!("{e:#}")))
                         }
                     };
 
@@ -845,7 +843,9 @@ impl<I: GuiIntegration> Controller<I> {
             }
             gui_ipc::ClientMsg::ListResources => {
                 let Status::TunnelReady { resources } = &self.status else {
-                    return Ok(gui_ipc::ServerMsg::Error(gui_ipc::ServerError::NotConnected));
+                    return Ok(gui_ipc::ServerMsg::Error(
+                        gui_ipc::ServerError::NotConnected,
+                    ));
                 };
 
                 gui_ipc::ServerMsg::Resources(resources.resources.clone())
