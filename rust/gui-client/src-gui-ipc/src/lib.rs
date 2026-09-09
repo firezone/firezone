@@ -15,7 +15,6 @@ pub enum ClientMsg {
     ListResources,
     SetInternetResourceEnabled(bool),
     Status,
-    Disconnect,
     SignOut,
 }
 
