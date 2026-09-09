@@ -24,7 +24,6 @@ fn main() -> Result<()> {
 
             print_status(&status);
         }
-        Cmd::Connect => expect_ack(&rt, ClientMsg::Connect).context("Failed to connect")?,
         Cmd::Disconnect => {
             expect_ack(&rt, ClientMsg::Disconnect).context("Failed to disconnect")?
         }
@@ -64,8 +63,6 @@ impl Cli {
 enum Cmd {
     /// Print the status of the running Firezone GUI.
     Status,
-    /// Connect to Firezone using the stored credentials.
-    Connect,
     /// Disconnect from Firezone, staying signed in.
     Disconnect,
     /// Inspect the Resources of the running Firezone GUI.
@@ -184,7 +181,6 @@ mod tests {
     #[test]
     fn subcommands() {
         assert!(matches!(command(&["firezone", "status"]), Cmd::Status));
-        assert!(matches!(command(&["firezone", "connect"]), Cmd::Connect));
         assert!(matches!(
             command(&["firezone", "disconnect"]),
             Cmd::Disconnect

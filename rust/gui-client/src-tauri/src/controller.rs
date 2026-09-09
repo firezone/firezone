@@ -858,16 +858,6 @@ impl<I: GuiIntegration> Controller<I> {
                     .map(|connected| connected.account_slug.clone()),
                 internet_resource_enabled: self.general_settings.internet_resource_enabled(),
             }),
-            gui_ipc::ClientMsg::Connect => {
-                let token = self
-                    .auth
-                    .token()
-                    .context("Not signed in, sign in with the Firezone GUI first")?;
-
-                self.start_session(token).await?;
-
-                gui_ipc::ServerMsg::Ack
-            }
             gui_ipc::ClientMsg::Disconnect => {
                 self.disconnect().await?;
 
@@ -1509,23 +1499,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn connecting_without_a_token_fails() {
-        let _guard = logging::test("debug");
-        let mut test_controller = Controller::start_for_test();
-        let mut mock_tunnel = test_controller.tunnel_service_ipc_accept().await;
-        mock_tunnel.send_hello().await;
-
-        let response = test_controller
-            .gui_ipc_request(gui_ipc::ClientMsg::Connect)
-            .await;
-
-        assert!(
-            matches!(response, gui_ipc::ServerMsg::Error(_)),
-            "{response:?}"
-        );
-    }
-
-    #[tokio::test]
     async fn disconnects_over_gui_ipc() {
         let _guard = logging::test("debug");
         let mut test_controller = Controller::start_for_test();
@@ -1558,14 +1531,6 @@ mod tests {
             matches!(msg, service::ClientMsg::Disconnect),
             "expected `Disconnect` but got {msg:?}"
         );
-
-        // The token outlives the disconnect, so we can connect again.
-        let response = test_controller
-            .gui_ipc_request(gui_ipc::ClientMsg::Connect)
-            .await;
-        assert_eq!(response, gui_ipc::ServerMsg::Ack);
-
-        let _ = mock_tunnel.rx_connect().await;
     }
 
     #[tokio::test]
