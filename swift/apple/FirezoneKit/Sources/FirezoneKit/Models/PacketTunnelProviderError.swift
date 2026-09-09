@@ -23,14 +23,24 @@ public enum PacketTunnelProviderError: Error, CustomNSError, LocalizedError {
     }
   }
 
-  public var errorDescription: String? {
+  public var errorDescription: String? { message }
+
+  /// `LocalizedError` is a Swift witness, so it is lost when the error crosses to
+  /// another process: the network extension hands one to its completion handler and
+  /// the app receives an `NSError` carrying only the domain and code, which Foundation
+  /// renders as "The operation couldn't be completed." User info survives the trip.
+  public var errorUserInfo: [String: Any] {
+    [NSLocalizedDescriptionKey: message]
+  }
+
+  private var message: String {
     switch self {
     case .providerConfigurationIsInvalid:
-      return "The VPN profile is missing the settings the tunnel needs to start."
+      "The VPN profile is missing the settings the tunnel needs to start."
     case .firezoneIdIsInvalid:
-      return "The device identifier could not be read."
+      "The device identifier could not be read."
     case .credentialNotConfigured:
-      return "A sign-in token is not configured."
+      "A sign-in token is not configured."
     }
   }
 }
