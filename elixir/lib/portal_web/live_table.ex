@@ -568,7 +568,9 @@ defmodule PortalWeb.LiveTable do
           )
         ]}
       >
-        <option value="">All {pluralize(String.downcase(@filter.title))}</option>
+        <option value="" selected={@form[@filter.name].value in [nil, ""]}>
+          All {pluralize(String.downcase(@filter.title))}
+        </option>
         <option
           :for={{label, value} <- @filter.values}
           value={value}

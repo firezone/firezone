@@ -173,6 +173,8 @@ defmodule PortalWeb.FormComponents do
   end
 
   def input(%{type: "group_select"} = assigns) do
+    assigns = assign(assigns, :value, select_value(assigns))
+
     ~H"""
     <div>
       <.label :if={@label} for={@id}>{@label}</.label>
@@ -200,7 +202,7 @@ defmodule PortalWeb.FormComponents do
         multiple={@multiple}
         {@rest}
       >
-        <option :if={@prompt} value="">{@prompt}</option>
+        <option :if={@prompt} value="" selected={is_nil(@value)}>{@prompt}</option>
 
         <%= for {label, options} <- @options do %>
           <%= if label == nil do %>
@@ -220,6 +222,8 @@ defmodule PortalWeb.FormComponents do
   end
 
   def input(%{type: "select"} = assigns) do
+    assigns = assign(assigns, :value, select_value(assigns))
+
     ~H"""
     <div>
       <.label :if={@label} for={@id}>{@label}</.label>
@@ -247,7 +251,7 @@ defmodule PortalWeb.FormComponents do
         multiple={@multiple}
         {@rest}
       >
-        <option :if={@prompt} value="">{@prompt}</option>
+        <option :if={@prompt} value="" selected={is_nil(@value)}>{@prompt}</option>
         {Phoenix.HTML.Form.options_for_select(@options, @value)}
       </select>
       <.error :for={msg <- @errors} inline={@inline_errors} data-validation-error-for={@name}>
@@ -1159,5 +1163,51 @@ defmodule PortalWeb.FormComponents do
     }
 
     [icon_size[size]]
+  end
+
+  # morphdom stamps `selected` on the option the browser picks; render it on the same
+  # option or LiveView sees a focused select as changed on every patch and blurs it.
+  defp select_value(%{multiple: true} = assigns), do: assigns[:value]
+
+  defp select_value(assigns) do
+    value = assigns[:value]
+    options = assigns[:options] || []
+
+    cond do
+      option_value?(options, value) -> value
+      assigns[:prompt] -> nil
+      true -> first_option_value(options)
+    end
+  end
+
+  defp option_value?(_options, nil), do: false
+
+  defp option_value?(options, value) do
+    escaped = escape_option_value(value)
+    options |> option_values() |> Enum.any?(&(escape_option_value(&1) == escaped))
+  end
+
+  defp escape_option_value(value) do
+    value |> Phoenix.HTML.html_escape() |> Phoenix.HTML.safe_to_string()
+  end
+
+  defp first_option_value(options) do
+    case option_values(options) do
+      [nil | _] -> ""
+      [value | _] -> value
+      [] -> nil
+    end
+  end
+
+  defp option_values(options) do
+    Enum.flat_map(options, fn
+      {:hr, nil} -> []
+      :hr -> []
+      {_key, group} when is_list(group) -> option_values(group)
+      {_key, group} when is_map(group) and not is_struct(group) -> option_values(group)
+      {_key, value} -> [value]
+      option when is_list(option) -> [Keyword.get(option, :value)]
+      option -> [option]
+    end)
   end
 end
