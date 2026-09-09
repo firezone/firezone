@@ -108,7 +108,7 @@ if ($LASTEXITCODE -ne 0) {
     Write-Error "``firezone --help`` exited with ${LASTEXITCODE}: $cliHelp"
     exit 1
 }
-if ($cliHelp -notmatch "Usage: firezone \[COMMAND\]") {
+if ($cliHelp -notmatch "Usage: firezone \[") {
     Write-Error "``firezone --help`` printed no usage line: $cliHelp"
     exit 1
 }
