@@ -1,12 +1,46 @@
 //! Remote control for the running Firezone GUI Client.
 
-use anyhow::{Context as _, Result, bail};
+use anyhow::{Context as _, ErrorExt as _, Result, bail};
 use clap::Parser;
 use connlib_model::ResourceView;
-use gui_ipc::{ClientMsg, ServerMsg, StatusSummary};
+use gui_ipc::{ClientMsg, NotRunning, ServerError, ServerMsg, StatusSummary};
+use std::process::ExitCode;
 use tokio::runtime::Runtime;
 
-fn main() -> Result<()> {
+#[allow(
+    clippy::print_stderr,
+    reason = "reporting the failure to the user is what this is for"
+)]
+fn main() -> ExitCode {
+    let Err(error) = run() else {
+        return ExitCode::SUCCESS;
+    };
+
+    eprintln!(
+        "{}",
+        expected(&error).unwrap_or_else(|| format!("{error:#}"))
+    );
+
+    ExitCode::FAILURE
+}
+
+/// The single line to print for a failure the user is expected to run into.
+///
+/// Anything else keeps its cause chain, which is what makes a bug report useful.
+fn expected(error: &anyhow::Error) -> Option<String> {
+    if error.any_is::<NotRunning>() {
+        return Some(NotRunning.to_string());
+    }
+
+    let server_error = error.any_downcast_ref::<ServerError>()?;
+
+    match server_error {
+        ServerError::NotConnected => Some(server_error.to_string()),
+        ServerError::Other(_) => None,
+    }
+}
+
+fn run() -> Result<()> {
     let cli = Cli::parse();
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
