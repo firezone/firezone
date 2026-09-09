@@ -14,8 +14,10 @@ defmodule Portal.Analytics.OpenAI do
   alias Portal.Analytics
 
   def enabled? do
-    key = config()[:api_key]
-    is_binary(key) and String.trim(key) != ""
+    Enum.all?([:api_key, :pixel_id], fn key ->
+      value = config()[key]
+      is_binary(value) and String.trim(value) != ""
+    end)
   end
 
   @impl Oban.Worker
@@ -52,5 +54,5 @@ defmodule Portal.Analytics.OpenAI do
     end
   end
 
-  defp config, do: Portal.Config.fetch_env!(:portal, __MODULE__)
+  defp config, do: Portal.Config.get_env(:portal, __MODULE__, [])
 end

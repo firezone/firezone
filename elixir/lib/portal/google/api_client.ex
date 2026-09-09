@@ -48,6 +48,52 @@ defmodule Portal.Google.APIClient do
     get_delegated_access_token(impersonation_email, @customer_readonly_scope)
   end
 
+  @doc """
+  Gets a scoped token for the service account itself through workload identity
+  federation. Unlike Workspace delegation, this does not impersonate a user or
+  fall back to a private key. Identity settings must be supplied explicitly.
+  """
+  def get_service_account_access_token(identity, scope) do
+    config = Portal.Config.fetch_env!(:portal, __MODULE__)
+    identity = Keyword.merge(
+      [service_account_email: nil, workload_identity_provider: nil, workload_identity_audience: nil],
+      identity
+    )
+
+    with {:ok, federation} <- workload_identity_config(identity),
+         {:ok, federated_token} <-
+           TokenCache.fetch(token_cache(config),
+             {:federated_access_token, federation.provider, federation.audience},
+             fn -> fetch_federated_token(federation, config) end
+           ) do
+      TokenCache.fetch(token_cache(config),
+        {:service_account_access_token, federation.provider, federation.audience,
+         federation.service_account_email, scope},
+        fn -> generate_access_token(federation.service_account_email, federated_token, scope, config) end
+      )
+    else
+      :not_configured -> {:error, :service_account_not_configured}
+      {:error, _} = error -> error
+    end
+  end
+
+  defp generate_access_token(email, federated_token, scope, config) do
+    endpoint = "#{config[:iam_credentials_endpoint]}/v1/projects/-/serviceAccounts/#{URI.encode(email)}:generateAccessToken"
+
+    case Req.post(endpoint,
+           [auth: {:bearer, federated_token}, json: %{scope: [scope], lifetime: "3600s"}] ++ request_opts(config)
+         ) do
+      {:ok, %Req.Response{status: 200, body: %{"accessToken" => token, "expireTime" => expires_at}}}
+      when is_binary(token) and byte_size(token) > 0 ->
+        case DateTime.from_iso8601(expires_at) do
+          {:ok, timestamp, _} -> {:ok, %{token: token, expires_at: DateTime.to_unix(timestamp)}}
+          _ -> {:error, :invalid_service_account_token_expiration}
+        end
+      {:ok, %Req.Response{} = response} -> {:error, {:service_account_access_token, response}}
+      {:error, reason} -> {:error, {:service_account_access_token, reason}}
+    end
+  end
+
   defp get_delegated_access_token(impersonation_email, scope) do
     config = Portal.Config.fetch_env!(:portal, __MODULE__)
 

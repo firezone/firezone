@@ -3,7 +3,7 @@ defmodule Portal.Analytics.GoogleAds do
   Imports account conversions with the Google Data Manager API.
 
   Google destinations use numeric import conversion action IDs, not browser tag
-  labels. Only hashed email enters the job; OAuth credentials stay in runtime config.
+  labels. Only hashed email enters the job; federation settings stay in runtime config.
   https://developers.google.com/data-manager/api/devguides/events/send-events
   """
 
@@ -97,17 +97,16 @@ defmodule Portal.Analytics.GoogleAds do
   end
 
   defp access_token(config) do
-    opts = [form: [
-      grant_type: "refresh_token",
-      client_id: config[:client_id],
-      client_secret: config[:client_secret],
-      refresh_token: config[:refresh_token]
-    ]] ++ config[:req_opts]
+    identity = Keyword.take(config, [:service_account_email, :workload_identity_provider, :workload_identity_audience])
 
-    case Req.post(config[:token_endpoint], opts) do
-      {:ok, %Req.Response{status: 200, body: %{"access_token" => token}}}
-      when is_binary(token) and byte_size(token) > 0 -> {:ok, token}
-      result -> request_error(result)
+    case Portal.Google.APIClient.get_service_account_access_token(
+           identity, "https://www.googleapis.com/auth/datamanager"
+         ) do
+      {:ok, token} -> {:ok, token}
+      # Do not persist HTTP response bodies or identity tokens in Oban errors.
+      {:error, {_stage, %Req.Response{status: status}}} ->
+        request_error({:ok, %Req.Response{status: status}})
+      {:error, _} -> {:error, :authentication_failed}
     end
   end
 
@@ -137,8 +136,8 @@ defmodule Portal.Analytics.GoogleAds do
   defp conversion_action_id(_config, _event_type), do: nil
 
   defp configured?(config),
-    do: Enum.all?([:customer_id, :client_id, :client_secret, :refresh_token], &present?(config[&1]))
+    do: Enum.all?([:customer_id, :service_account_email, :workload_identity_provider, :workload_identity_audience], &present?(config[&1]))
 
   defp present?(value), do: is_binary(value) and String.trim(value) != ""
-  defp config, do: Portal.Config.fetch_env!(:portal, __MODULE__)
+  defp config, do: Portal.Config.get_env(:portal, __MODULE__, [])
 end

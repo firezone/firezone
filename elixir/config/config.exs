@@ -318,24 +318,6 @@ config :portal, Portal.Okta.AuthProvider,
 # 15 minutes in milliseconds
 config :portal, Portal.Okta.APIClient, req_opts: [receive_timeout: 900_000]
 
-config :portal, Portal.Analytics.GoogleAds,
-  customer_id: "3339175923",
-  login_customer_id: nil,
-  registration_conversion_action_id: "7754865801",
-  subscription_conversion_action_id: "7754865804",
-  client_id: nil,
-  client_secret: nil,
-  refresh_token: nil,
-  endpoint: "https://datamanager.googleapis.com/v1/events:ingest",
-  token_endpoint: "https://oauth2.googleapis.com/token",
-  req_opts: [receive_timeout: 5_000, retry: false]
-
-config :portal, Portal.Analytics.OpenAI,
-  api_key: nil,
-  pixel_id: "3b8jrA5hEKwRPyD15bYfAQ",
-  endpoint: "https://bzr.openai.com/v1/events",
-  req_opts: [receive_timeout: 5_000, retry: false]
-
 config :portal, Portal.Analytics.PostHog,
   enabled: false,
   endpoint: "https://e.firezone.dev/i/v0/e/",

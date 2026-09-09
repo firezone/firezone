@@ -8,12 +8,22 @@ defmodule Portal.Analytics.GoogleAdsTest do
 
   setup do
     Portal.Config.put_env_override(:portal, GoogleAds,
-      customer_id: "3339175923",
-      registration_conversion_action_id: "7754865801",
-      subscription_conversion_action_id: "7754865804",
-      client_id: "test-client",
-      client_secret: "test-secret",
-      refresh_token: "test-refresh-token",
+      customer_id: "1234567890",
+      registration_conversion_action_id: "1111111111",
+      subscription_conversion_action_id: "2222222222",
+      service_account_email: "ads@test-project.iam.gserviceaccount.com",
+      workload_identity_provider: "//iam.googleapis.com/projects/123/locations/global/workloadIdentityPools/portal/providers/azure",
+      workload_identity_audience: "api://portal-google",
+      req_opts: [retry: false, plug: {Req.Test, __MODULE__}]
+    )
+    Portal.Config.merge_env_override(:portal, Portal.Google.APIClient,
+      token_cache: :no_google_ads_test_cache,
+      sts_endpoint: "https://sts.googleapis.com/v1/token",
+      iam_credentials_endpoint: "https://iamcredentials.googleapis.com",
+      req_opts: [retry: false, plug: {Req.Test, __MODULE__}]
+    )
+    Portal.Config.merge_env_override(:portal, Portal.Azure.ManagedIdentity,
+      token_cache: :no_azure_ads_test_cache,
       req_opts: [retry: false, plug: {Req.Test, __MODULE__}]
     )
     account = account_fixture(metadata: %{
@@ -33,8 +43,8 @@ defmodule Portal.Analytics.GoogleAdsTest do
     assert [] = all_enqueued(worker: OpenAI)
     assert [%{args: %{"payload" => payload}}] = all_enqueued(worker: GoogleAds)
     assert payload["encoding"] == "HEX"
-    assert [%{"operatingAccount" => %{"accountType" => "GOOGLE_ADS", "accountId" => "3339175923"},
-      "productDestinationId" => "7754865801"}] = payload["destinations"]
+    assert [%{"operatingAccount" => %{"accountType" => "GOOGLE_ADS", "accountId" => "1234567890"},
+      "productDestinationId" => "1111111111"}] = payload["destinations"]
     assert [event] = payload["events"]
     assert event["transactionId"] == "registration_#{account.id}"
     assert event["eventTimestamp"] == account.inserted_at |> DateTime.truncate(:millisecond) |> DateTime.to_iso8601()
@@ -51,7 +61,7 @@ defmodule Portal.Analytics.GoogleAdsTest do
     Analytics.subscription_created(account, "sub_team_google", 1_800_000_000)
     Analytics.subscription_created(account, "sub_team_google", 1_800_000_000)
     assert [%{args: %{"payload" => payload}}] = all_enqueued(worker: GoogleAds)
-    assert hd(payload["destinations"])["productDestinationId"] == "7754865804"
+    assert hd(payload["destinations"])["productDestinationId"] == "2222222222"
     assert hd(payload["events"])["transactionId"] == "team_sub_team_google"
     assert hd(payload["events"])["eventTimestamp"] == "2027-01-15T08:00:00.000Z"
     assert hd(payload["events"])["userData"]["userIdentifiers"] == [%{"emailAddress" => GoogleAds.hash_email(account.metadata.stripe.billing_email)}]
@@ -84,7 +94,7 @@ defmodule Portal.Analytics.GoogleAdsTest do
   end
 
   test "missing credentials disables Google delivery", %{account: account} do
-    Portal.Config.merge_env_override(:portal, GoogleAds, refresh_token: nil)
+    Portal.Config.merge_env_override(:portal, GoogleAds, service_account_email: nil)
     Analytics.registration_completed(account, %Portal.Actor{email: "ada@example.com"})
     assert [] = all_enqueued(worker: GoogleAds)
   end
@@ -98,27 +108,19 @@ defmodule Portal.Analytics.GoogleAdsTest do
     assert hd(payload["destinations"])["loginAccount"] == %{"accountType" => "GOOGLE_ADS", "accountId" => "1112223333"}
   end
 
-  test "worker rechecks saved consent before any OAuth or Google request", %{account: account} do
+  test "worker rechecks saved consent before any identity or Google request", %{account: account} do
     Analytics.registration_completed(account, %Portal.Actor{email: "ada@example.com"})
     assert [job] = all_enqueued(worker: GoogleAds)
     Analytics.update_marketing_attribution(account, %{"marketing_allowed" => false})
     assert :ok = GoogleAds.perform(job)
   end
 
-  test "refreshes OAuth token and sends exact payload with retry-safe identifiers", %{account: account} do
+  test "federates the managed identity and sends exact payload with retry-safe identifiers", %{account: account} do
     Analytics.registration_completed(account, %Portal.Actor{email: "ada@example.com"})
     assert [job] = all_enqueued(worker: GoogleAds)
     payload = job.args["payload"]
     for response_status <- [503, 200] do
-      Req.Test.expect(__MODULE__, fn conn ->
-        assert conn.host == "oauth2.googleapis.com"
-        {:ok, body, conn} = Plug.Conn.read_body(conn)
-        assert URI.decode_query(body) == %{
-          "grant_type" => "refresh_token", "client_id" => "test-client",
-          "client_secret" => "test-secret", "refresh_token" => "test-refresh-token"
-        }
-        Req.Test.json(conn, %{"access_token" => "fresh-token"})
-      end)
+      expect_federation()
       Req.Test.expect(__MODULE__, fn conn ->
         assert conn.host == "datamanager.googleapis.com"
         assert conn.request_path == "/v1/events:ingest"
@@ -133,9 +135,80 @@ defmodule Portal.Analytics.GoogleAdsTest do
     end
   end
 
-  test "invalid OAuth credentials are not retried or logged in errors" do
-    Req.Test.expect(__MODULE__, fn conn -> Plug.Conn.send_resp(conn, 400, "invalid grant: test-refresh-token") end)
-    assert {:cancel, {:http_status, 400}} = GoogleAds.deliver(%{})
+  test "federation denial cancels without leaking identity tokens" do
+    expect_managed_identity()
+    Req.Test.expect(__MODULE__, fn conn ->
+      assert conn.host == "sts.googleapis.com"
+      Plug.Conn.send_resp(conn, 403, "denied: azure-token")
+    end)
+    assert {:cancel, {:http_status, 403}} = GoogleAds.deliver(%{})
+  end
+
+  test "missing runtime configuration disables both providers", %{account: account} do
+    Portal.Config.put_env_override(:portal, GoogleAds, [])
+    Portal.Config.put_env_override(:portal, OpenAI, api_key: "key", pixel_id: nil)
+    Analytics.registration_completed(account, %Portal.Actor{email: "ada@example.com"})
+    assert [] = all_enqueued(worker: GoogleAds)
+    assert [] = all_enqueued(worker: OpenAI)
+  end
+
+  test "caches scoped service-account tokens separately by identity and scope" do
+    cache = start_supervised!({Portal.TokenCache, name: :"ads_cache_#{System.unique_integer([:positive])}"})
+    Portal.Config.merge_env_override(:portal, Portal.Google.APIClient, token_cache: cache)
+    Req.Test.allow(__MODULE__, self(), cache)
+    identity = Portal.Config.fetch_env!(:portal, GoogleAds)
+      |> Keyword.take([:service_account_email, :workload_identity_provider, :workload_identity_audience])
+    scope = "https://www.googleapis.com/auth/datamanager"
+    expect_managed_identity()
+    expect_sts()
+    expect_service_account("ads@test-project.iam.gserviceaccount.com", scope)
+    assert {:ok, "fresh-token"} = Portal.Google.APIClient.get_service_account_access_token(identity, scope)
+    assert {:ok, "fresh-token"} = Portal.Google.APIClient.get_service_account_access_token(identity, scope)
+    expect_service_account("other@test-project.iam.gserviceaccount.com", scope)
+    assert {:ok, "fresh-token"} = Portal.Google.APIClient.get_service_account_access_token(Keyword.put(identity, :service_account_email, "other@test-project.iam.gserviceaccount.com"), scope)
+    expect_service_account("ads@test-project.iam.gserviceaccount.com", "another-scope")
+    assert {:ok, "fresh-token"} = Portal.Google.APIClient.get_service_account_access_token(identity, "another-scope")
+  end
+
+  defp expect_federation do
+    expect_managed_identity()
+    expect_sts()
+    expect_service_account("ads@test-project.iam.gserviceaccount.com", "https://www.googleapis.com/auth/datamanager")
+  end
+
+  defp expect_managed_identity do
+    Req.Test.expect(__MODULE__, fn conn ->
+      assert conn.request_path == "/metadata/identity/oauth2/token"
+      assert URI.decode_query(conn.query_string)["resource"] == "api://portal-google"
+      Req.Test.json(conn, %{"access_token" => "azure-token", "expires_on" => Integer.to_string(System.os_time(:second) + 3600)})
+    end)
+  end
+
+  defp expect_sts do
+    Req.Test.expect(__MODULE__, fn conn ->
+      assert conn.host == "sts.googleapis.com"
+      {:ok, body, conn} = Plug.Conn.read_body(conn)
+      assert URI.decode_query(body) == %{
+        "audience" => "//iam.googleapis.com/projects/123/locations/global/workloadIdentityPools/portal/providers/azure",
+        "grant_type" => "urn:ietf:params:oauth:grant-type:token-exchange",
+        "requested_token_type" => "urn:ietf:params:oauth:token-type:access_token",
+        "scope" => "https://www.googleapis.com/auth/cloud-platform",
+        "subject_token" => "azure-token",
+        "subject_token_type" => "urn:ietf:params:oauth:token-type:jwt"
+      }
+      Req.Test.json(conn, %{"access_token" => "federated-token", "expires_in" => 3600})
+    end)
+  end
+
+  defp expect_service_account(email, scope) do
+    Req.Test.expect(__MODULE__, fn conn ->
+      assert conn.host == "iamcredentials.googleapis.com"
+      assert conn.request_path == "/v1/projects/-/serviceAccounts/#{email}:generateAccessToken"
+      assert Plug.Conn.get_req_header(conn, "authorization") == ["Bearer federated-token"]
+      {:ok, body, conn} = Plug.Conn.read_body(conn)
+      assert JSON.decode!(body) == %{"scope" => [scope], "lifetime" => "3600s"}
+      Req.Test.json(conn, %{"accessToken" => "fresh-token", "expireTime" => DateTime.utc_now() |> DateTime.add(3600) |> DateTime.to_iso8601()})
+    end)
   end
 
   test "normalizes Gmail aliases while preserving other domains" do

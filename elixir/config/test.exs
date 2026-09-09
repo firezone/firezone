@@ -419,3 +419,14 @@ config :phoenix, :plug_init_mode, :runtime
 
 config :sentry,
   environment_name: :test
+
+# Test-only destinations; production ad configuration comes from runtime env vars.
+config :portal, Portal.Analytics.OpenAI,
+  api_key: nil,
+  pixel_id: "test-openai-pixel",
+  endpoint: "https://bzr.openai.com/v1/events",
+  req_opts: [retry: false]
+
+config :portal, Portal.Analytics.GoogleAds,
+  endpoint: "https://datamanager.googleapis.com/v1/events:ingest",
+  req_opts: [retry: false]

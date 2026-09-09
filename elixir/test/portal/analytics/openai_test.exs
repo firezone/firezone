@@ -39,7 +39,7 @@ defmodule Portal.Analytics.OpenAITest do
     test_pid = self()
     Req.Test.expect(__MODULE__, 2, fn conn ->
       assert Plug.Conn.get_req_header(conn, "authorization") == ["Bearer test-key"]
-      assert Plug.Conn.fetch_query_params(conn).query_params["pid"] == "3b8jrA5hEKwRPyD15bYfAQ"
+      assert Plug.Conn.fetch_query_params(conn).query_params["pid"] == "test-openai-pixel"
       {:ok, body, conn} = Plug.Conn.read_body(conn)
       send(test_pid, {:payload, JSON.decode!(body)})
       Plug.Conn.send_resp(conn, 503, "unavailable")
