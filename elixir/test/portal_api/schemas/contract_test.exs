@@ -20,7 +20,11 @@ defmodule PortalAPI.Schemas.ContractTest do
     %{schema: PortalAPI.Schemas.Site.Schema, struct: Portal.Site},
     %{schema: PortalAPI.Schemas.Group.Schema, struct: Portal.Group, attrs: %{sync_state: nil}},
     %{schema: PortalAPI.Schemas.Policy.Schema, struct: Portal.Policy},
-    %{schema: PortalAPI.Schemas.Resource.Schema, struct: Portal.Resource},
+    %{
+      schema: PortalAPI.Schemas.Resource.Schema,
+      struct: Portal.Resource,
+      omittable: [:ip_stack, :site_id]
+    },
     %{
       schema: PortalAPI.Schemas.Client.GetSchema,
       struct: Portal.Device,
@@ -94,7 +98,7 @@ defmodule PortalAPI.Schemas.ContractTest do
   ]
 
   for contract <- @contracts do
-    @contract Map.merge(%{aliases: [], attrs: %{}}, contract)
+    @contract Map.merge(%{aliases: [], attrs: %{}, omittable: []}, contract)
 
     describe "#{inspect(contract.schema)} against #{inspect(contract.struct)}" do
       test "encodes exactly the documented properties" do
@@ -139,9 +143,8 @@ defmodule PortalAPI.Schemas.ContractTest do
       test "marks every property required unless the payload may omit it" do
         schema = @contract.schema.schema()
         not_required = Map.keys(schema.properties) -- List.wrap(schema.required)
-        omittable = Map.get(%{PortalAPI.Schemas.Resource.Schema => [:ip_stack, :site_id]}, @contract.schema, [])
 
-        assert Enum.sort(not_required) == Enum.sort(omittable),
+        assert Enum.sort(not_required) == Enum.sort(@contract.omittable),
                "#{inspect(@contract.schema)} must list every property the payload always " <>
                  "carries as required. Not required: #{inspect(Enum.sort(not_required))}"
       end
