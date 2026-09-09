@@ -20,6 +20,12 @@ fun grantVpnConsent() {
     shell("appops set ${packageName()} ACTIVATE_VPN allow")
 }
 
+// The framework watches this op and revokes a VPN whose consent is withdrawn, which is the only
+// lever a test has on an interface the app has already established.
+fun revokeVpnConsent() {
+    shell("appops set ${packageName()} ACTIVATE_VPN deny")
+}
+
 // Without it the splash screen sends the app to the permission prompt instead of the session, and
 // nothing the tunnel posts on disconnect ever reaches the shade.
 fun grantNotificationPermission() {
@@ -184,5 +190,15 @@ private fun describeTunnelService(context: Context): String {
             .firstOrNull { it.service.className == TunnelService::class.java.name }
             ?: return "no record"
 
-    return "started=${info.started}, clients=${info.clientCount}, foreground=${info.foreground}"
+    return "started=${info.started}, clients=${info.clientCount}, foreground=${info.foreground}, " +
+        "bound by ${boundBy()}"
 }
+
+// `clientCount` says how many bindings hold the service open but not whose, and an established
+// VPN is bound by the framework itself rather than by anything a test can finish.
+private fun boundBy(): String =
+    shellOutput("dumpsys activity services ${packageName()}")
+        .lines()
+        .filter { it.contains("Connection") }
+        .joinToString("; ") { it.trim() }
+        .ifEmpty { "nothing the dump names" }
