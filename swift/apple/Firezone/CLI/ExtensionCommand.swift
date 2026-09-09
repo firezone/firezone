@@ -19,7 +19,7 @@ enum SystemExtension {
   static func requireInstalled() async throws {
     switch try await SystemExtensionManager().check() {
     case .installed:
-      Log.info("System extension is up to date")
+      say("System extension is up to date")
     case .needsInstall:
       throw CLIError(
         "System extension is not installed. Launch Firezone.app to install it.")
@@ -56,9 +56,11 @@ extension FirezoneCLI {
         discussion: "Exits non-zero unless the installed extension matches this build."
       )
 
+      @OptionGroup var global: GlobalOptions
+
       @MainActor
       func run() async throws {
-        Log.useCLIOutput()
+        Log.useCLIOutput(debug: global.debug)
 
         switch try await SystemExtensionManager().check() {
         case .installed:

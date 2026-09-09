@@ -35,6 +35,24 @@ struct FirezoneCLI: AsyncParsableCommand {
   }
 }
 
+/// The options every subcommand takes.
+///
+/// `ArgumentParser` has no global arguments, so each subcommand has to declare this
+/// for the flag to reach it.
+struct GlobalOptions: ParsableArguments {
+  @Flag(name: .long, help: "Mirror the internal log to stderr.")
+  var debug = false
+}
+
+/// Says something to the user, as opposed to logging it.
+///
+/// The log is the app talking to itself and stays off the terminal unless `--debug`
+/// asks for it, so the handful of lines a command runs in order to say go here
+/// instead. Stderr, leaving stdout to the data a command was asked for.
+func say(_ message: String) {
+  FileHandle.standardError.write(Data("\(message)\n".utf8))
+}
+
 /// Something went wrong at runtime, as opposed to `ValidationError`, which is for a
 /// command line we couldn't make sense of. Keeps the exit code off EX_USAGE and stops
 /// us printing usage at someone whose arguments were fine.

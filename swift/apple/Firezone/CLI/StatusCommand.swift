@@ -15,9 +15,11 @@ extension FirezoneCLI {
       abstract: "Report the current status."
     )
 
+    @OptionGroup var global: GlobalOptions
+
     @MainActor
     func run() async throws {
-      Log.useCLIOutput()
+      Log.useCLIOutput(debug: global.debug)
 
       let vpnManager = try await VPNProfile.load()
       let session = try VPNProfile.session(for: vpnManager)
