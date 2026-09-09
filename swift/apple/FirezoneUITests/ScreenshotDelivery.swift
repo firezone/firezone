@@ -18,6 +18,23 @@ enum Appearance: String, CaseIterable {
   case dark
 }
 
+@MainActor
+extension XCUIElement {
+  /// Whether the control reports itself selected within `timeout`.
+  ///
+  /// A press that lands while a screen is still arriving is dropped in silence,
+  /// and the tab that stays put then holds still enough to photograph, so the
+  /// caller presses again until this holds.
+  func waitToBeSelected(timeout: TimeInterval) -> Bool {
+    let selected = XCTNSPredicateExpectation(
+      predicate: NSPredicate(format: "isSelected == true"),
+      object: self
+    )
+
+    return XCTWaiter.wait(for: [selected], timeout: timeout) == .completed
+  }
+}
+
 // Photographing is main-actor work in XCTest, and so is reading the image back.
 @MainActor
 extension XCTestCase {

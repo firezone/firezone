@@ -17,10 +17,13 @@
     private static let appBundleID = "dev.firezone.firezone"
     private static let pointerParkingSpot = CGVector(dx: 0.5, dy: 1.2)
 
+    /// Each tab, with a label only its own content carries: a tab that never
+    /// opened leaves the one before it on screen, holding perfectly still, and
+    /// the gallery takes that as a picture of the tab it asked for.
     private static let settingsTabs = [
-      (label: "General", name: "general"),
-      (label: "Advanced", name: "advanced"),
-      (label: "Diagnostic Logs", name: "logs"),
+      (label: "General", name: "general", showing: "Account Slug"),
+      (label: "Advanced", name: "advanced", showing: "Auth Base URL"),
+      (label: "Diagnostic Logs", name: "logs", showing: "Clear Log Directory"),
     ]
 
     /// The scenarios describing the states of the certificate tab.
@@ -66,6 +69,8 @@
         // arrives the same way.
         for tab in Self.settingsTabs {
           try selectTab(tab.label, in: window)
+          try waitFor(
+            window.descendants(matching: .any)[tab.showing], on: "settings-\(tab.name)")
           capture(window, as: "settings-\(tab.name)", in: appearance)
         }
       }
@@ -300,7 +305,21 @@
         throw AppScreenshotError.tabNotFound(label)
       }
 
-      tab.click()
+      for _ in 0..<3 {
+        tab.click()
+
+        if tab.waitToBeSelected(timeout: 5) { return }
+      }
+
+      throw AppScreenshotError.tabNotSelected(label)
+    }
+
+    /// Blocks until `element` is on screen, so a capture cannot catch a tab that
+    /// has not drawn its own content yet.
+    private func waitFor(_ element: XCUIElement, on screen: String) throws {
+      guard element.waitForExistence(timeout: 30) else {
+        throw AppScreenshotError.screenDidNotAppear(screen)
+      }
     }
   }
 
@@ -308,6 +327,8 @@
     case windowDidNotAppear
     case statusItemNotFound
     case menuDidNotOpen
+    case screenDidNotAppear(String)
     case tabNotFound(String)
+    case tabNotSelected(String)
   }
 #endif

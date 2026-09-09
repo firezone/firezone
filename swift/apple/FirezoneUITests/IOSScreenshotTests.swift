@@ -14,10 +14,13 @@
 
   @MainActor
   final class IOSScreenshotTests: XCTestCase {
+    /// Each tab, with a label only its own content carries: a tab that never
+    /// opened leaves the one before it on screen, holding perfectly still, and
+    /// the gallery takes that as a picture of the tab it asked for.
     private static let settingsTabs = [
-      (label: "General", name: "general"),
-      (label: "Advanced", name: "advanced"),
-      (label: "Diagnostic Logs", name: "logs"),
+      (label: "General", name: "general", showing: "Account Slug"),
+      (label: "Advanced", name: "advanced", showing: "Auth Base URL"),
+      (label: "Diagnostic Logs", name: "logs", showing: "Clear Log Directory"),
     ]
 
     /// The scenarios describing the states of the certificate tab. Each image
@@ -130,6 +133,7 @@
 
       for tab in Self.settingsTabs {
         try selectTab(tab.label, in: app)
+        try waitFor(app.descendants(matching: .any)[tab.showing], on: "settings-\(tab.name)")
         deliver(app, as: "settings-\(tab.name)", in: appearance)
       }
     }
@@ -200,7 +204,13 @@
         throw IOSScreenshotError.tabNotFound(label)
       }
 
-      tab.tap()
+      for _ in 0..<3 {
+        tab.tap()
+
+        if tab.waitToBeSelected(timeout: 5) { return }
+      }
+
+      throw IOSScreenshotError.tabNotSelected(label)
     }
 
     /// Opens the account menu and waits for `item`, one of the controls it holds.
@@ -251,5 +261,6 @@
   private enum IOSScreenshotError: Error {
     case screenDidNotAppear(String)
     case tabNotFound(String)
+    case tabNotSelected(String)
   }
 #endif
