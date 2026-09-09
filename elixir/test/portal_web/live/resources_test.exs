@@ -1541,9 +1541,48 @@ defmodule PortalWeb.ResourcesTest do
     end
   end
 
+  describe "new resource form site select" do
+    test "keeps the site select markup stable across validation", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      site_fixture(account: account)
+
+      {:ok, lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources/new")
+
+      before = site_select(html)
+      assert [option] = Floki.find(before, "option[selected]")
+      assert Floki.attribute(option, "value") == [""]
+
+      html =
+        render_change(lv, "change_resource_form", %{
+          "_target" => ["resource", "address"],
+          "resource" => %{
+            "type" => "dns",
+            "name" => "My App",
+            "address" => "app.example.com",
+            "_unused_address_description" => "",
+            "address_description" => "",
+            "_unused_site_id" => "",
+            "site_id" => ""
+          }
+        })
+
+      assert Floki.raw_html(site_select(html)) == Floki.raw_html(before)
+    end
+  end
+
   defp count_occurrences(haystack, needle) do
     haystack
     |> :binary.matches(needle)
     |> length()
+  end
+
+  defp site_select(html) do
+    html |> Floki.parse_document!() |> Floki.find("#resource_site_id")
   end
 end

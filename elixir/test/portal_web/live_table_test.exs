@@ -296,7 +296,7 @@ defmodule PortalWeb.LiveTableTest do
       assert Floki.attribute(select, "name") == ["table-id[select]"]
 
       assert select |> List.first() |> elem(2) == [
-               {"option", [{"value", ""}], ["For any Select"]},
+               {"option", [{"value", ""}, {"selected", "selected"}], ["For any Select"]},
                {"option", [{"value", "1"}], ["One"]},
                {"option", [{"value", "2"}], ["Two"]},
                {"option", [{"value", "3"}], ["Three"]},
