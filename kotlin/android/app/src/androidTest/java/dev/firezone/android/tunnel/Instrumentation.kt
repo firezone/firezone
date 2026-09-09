@@ -20,12 +20,6 @@ fun grantVpnConsent() {
     shell("appops set ${packageName()} ACTIVATE_VPN allow")
 }
 
-// The framework watches this op and revokes a VPN whose consent is withdrawn, which is the only
-// lever a test has on an interface the app has already established.
-fun revokeVpnConsent() {
-    shell("appops set ${packageName()} ACTIVATE_VPN deny")
-}
-
 // Without it the splash screen sends the app to the permission prompt instead of the session, and
 // nothing the tunnel posts on disconnect ever reaches the shade.
 fun grantNotificationPermission() {

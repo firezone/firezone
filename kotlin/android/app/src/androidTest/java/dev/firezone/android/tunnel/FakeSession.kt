@@ -1,6 +1,7 @@
 // Licensed under Apache 2.0 (C) 2026 Firezone, Inc.
 package dev.firezone.android.tunnel
 
+import android.os.ParcelFileDescriptor
 import kotlinx.coroutines.channels.Channel
 import uniffi.connlib.AndroidSessionConfig
 import uniffi.connlib.ClientTlsIdentity
@@ -13,6 +14,11 @@ class FakeSession(
     val tlsIdentity: ClientTlsIdentity?,
 ) : TunnelSession {
     private val events = Channel<Event>(Channel.UNLIMITED)
+
+    // connlib owns the descriptor it is handed. Leaving it open keeps the interface the
+    // service established alive, and the framework holds the service bound while one is up,
+    // which no amount of stopping the service undoes.
+    private var tun: ParcelFileDescriptor? = null
 
     val commands = Channel<String>(Channel.UNLIMITED)
 
@@ -52,10 +58,14 @@ class FakeSession(
 
     override fun setTun(fd: Int) {
         commands.trySend("setTun")
+        tun?.close()
+        tun = ParcelFileDescriptor.adoptFd(fd)
     }
 
     override fun close() {
         events.close()
         commands.close()
+        tun?.close()
+        tun = null
     }
 }

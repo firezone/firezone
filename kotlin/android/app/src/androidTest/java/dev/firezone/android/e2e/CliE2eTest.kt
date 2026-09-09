@@ -15,14 +15,12 @@ import dev.firezone.android.tunnel.TestRestrictions
 import dev.firezone.android.tunnel.finishAllActivities
 import dev.firezone.android.tunnel.grantNotificationPermission
 import dev.firezone.android.tunnel.grantVpnConsent
-import dev.firezone.android.tunnel.revokeVpnConsent
 import dev.firezone.android.tunnel.shellOutput
 import dev.firezone.android.tunnel.startTunnelService
 import dev.firezone.android.tunnel.stopTunnelService
 import dev.firezone.android.tunnel.tunInterfaceUpdated
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
-import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -60,15 +58,6 @@ class CliE2eTest {
         stopTunnelService()
         preferences.edit().clear().commit()
         TestRestrictions.bundle.clear()
-    }
-
-    // `TunInterfaceUpdated` makes the service establish a real interface, and the framework binds
-    // it to dispatch `onRevoke`. That binding outlives `stopService`, and a bound service never
-    // leaves `getRunningServices`, so every later test would wait for a stop that cannot happen.
-    @After
-    fun tearDown() {
-        revokeVpnConsent()
-        stopTunnelService()
     }
 
     @Test
