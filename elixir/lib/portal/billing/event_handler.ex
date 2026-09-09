@@ -18,16 +18,33 @@ defmodule Portal.Billing.EventHandler do
   defp process_event_with_lock(event) do
     customer_id = extract_customer_id(event)
 
-    Database.with_customer_lock(customer_id, fn ->
+    result = Database.with_customer_lock(customer_id, fn ->
       process_event(event, customer_id)
     end)
+
+    # Dispatch only after the billing transaction has committed.
+    case result do
+      {:ok, {processed_event, %Portal.Account{} = account}} ->
+        Portal.Analytics.subscription_created(
+          account,
+          get_in(event, ["data", "object", "id"]),
+          event["created"]
+        )
+        {:ok, processed_event}
+
+      {:ok, {processed_event, nil}} -> {:ok, processed_event}
+      other -> other
+    end
   end
 
   defp process_event(event, customer_id) do
     with :ok <- check_event_processing_eligibility(event, customer_id),
+         previous_account = Database.account_by_customer_id(customer_id),
          :ok <- process_event_by_type(event),
          :ok <- record_processed_event(event, customer_id) do
-      {:ok, event}
+      account = Database.account_by_customer_id(customer_id)
+      conversion = if team_enrollment?(event, previous_account, account), do: account
+      {:ok, {event, conversion}}
     else
       {:skip, reason} ->
         Logger.info("Skipping stripe event", reason: inspect(reason))
@@ -41,6 +58,17 @@ defmodule Portal.Billing.EventHandler do
 
         {:error, reason}
     end
+  end
+
+  defp team_enrollment?(event, previous_account, account) do
+    event["type"] in ["customer.subscription.created", "customer.subscription.updated"] and
+      get_in(event, ["data", "object", "status"]) == "active" and
+      is_nil(get_in(event, ["data", "object", "pause_collection"])) and
+      not is_nil(previous_account) and not is_nil(account) and
+      Billing.plan_type(account) == :team and
+      (Billing.plan_type(previous_account) != :team or
+         not is_nil(previous_account.metadata.stripe.trial_ends_at) or
+         previous_account.metadata.stripe.subscription_status in ["trialing", "incomplete", "incomplete_expired"])
   end
 
   defp check_event_processing_eligibility(event, customer_id) do
@@ -274,6 +302,7 @@ defmodule Portal.Billing.EventHandler do
 
       stripe_metadata = %{
         "subscription_id" => subscription_id,
+        "subscription_status" => status,
         "product_name" => product_name,
         "trial_ends_at" => if(subscription_trialing?, do: DateTime.from_unix!(trial_end))
       }
@@ -667,6 +696,14 @@ defmodule Portal.Billing.EventHandler do
       Safe,
       X509
     }
+
+    def account_by_customer_id(customer_id) do
+      from(a in Account,
+        where: fragment("?->'stripe'->>'customer_id' = ?", a.metadata, ^customer_id)
+      )
+      |> Safe.unscoped()
+      |> Safe.one()
+    end
 
     def with_customer_lock(customer_id, fun) do
       hashed_id = :erlang.phash2(customer_id)

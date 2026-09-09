@@ -716,6 +716,18 @@ if config_env() == :prod do
   config :portal, Portal.Telemetry,
     metrics_reporter: env_var_to_config!(:telemetry_metrics_reporter)
 
+  config :portal, Portal.Analytics.GoogleAds,
+    customer_id: env_var_to_config!(:google_ads_customer_id),
+    login_customer_id: env_var_to_config(:google_ads_login_customer_id),
+    registration_conversion_action_id: env_var_to_config(:google_ads_registration_conversion_action_id),
+    subscription_conversion_action_id: env_var_to_config(:google_ads_subscription_conversion_action_id),
+    client_id: env_var_to_config(:google_ads_client_id),
+    client_secret: env_var_to_config(:google_ads_client_secret),
+    refresh_token: env_var_to_config(:google_ads_refresh_token)
+
+  config :portal, Portal.Analytics.OpenAI,
+    api_key: env_var_to_config(:openai_conversions_api_key)
+
   posthog_project_api_key = env_var_to_config(:posthog_project_api_key)
 
   config :portal, Portal.Analytics.PostHog,

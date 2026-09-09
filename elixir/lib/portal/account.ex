@@ -171,13 +171,13 @@ defmodule Portal.Account.Metadata do
 
   @primary_key false
   embedded_schema do
+    field :marketing_attribution, :map
     embeds_one :stripe, Portal.Account.Metadata.Stripe, on_replace: :update
   end
 
   def changeset(metadata \\ %__MODULE__{}, attrs) do
     metadata
-    # No scalar fields to cast, but cast/3 is required to populate params for cast_embed.
-    |> cast(attrs, [])
+    |> cast(attrs, [:marketing_attribution])
     |> cast_embed(:stripe, with: &Portal.Account.Metadata.Stripe.changeset/2)
   end
 end
@@ -190,6 +190,7 @@ defmodule Portal.Account.Metadata.Stripe do
   embedded_schema do
     field :customer_id, :string
     field :subscription_id, :string
+    field :subscription_status, :string
     field :product_name, :string
     field :billing_email, :string
     field :trial_ends_at, :utc_datetime_usec
@@ -201,6 +202,7 @@ defmodule Portal.Account.Metadata.Stripe do
     |> cast(attrs, [
       :customer_id,
       :subscription_id,
+      :subscription_status,
       :product_name,
       :billing_email,
       :trial_ends_at,
