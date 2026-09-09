@@ -255,13 +255,13 @@ mod tests {
         let table = status_table(&StatusSummary {
             signed_in: true,
             account_slug: Some("acme".to_owned()),
-            actor_name: Some("Ada Lovelace".to_owned()),
+            actor_name: Some("Jane Doe".to_owned()),
             internet_resource_enabled: true,
         });
 
         assert_eq!(
             table,
-            "Signed in          yes\nAccount            acme\nUser               Ada Lovelace\nInternet Resource  enabled"
+            "Signed in          yes\nAccount            acme\nUser               Jane Doe\nInternet Resource  enabled"
         );
     }
 
