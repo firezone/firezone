@@ -11,7 +11,7 @@ mod tracked_state;
 
 pub(crate) use crate::client::client_on_client::ClientOnClient;
 pub(crate) use crate::client::gateway_on_client::GatewayOnClient;
-use resource::{InternetResource, Resource, StaticDevicePoolResource};
+use resource::{DynamicDevicePoolResource, InternetResource, Resource, StaticDevicePoolResource};
 
 use crate::client::client_on_client::InboundResult;
 use crate::client::dns_cache::DnsCache;
@@ -2475,6 +2475,19 @@ impl ClientState {
             return;
         }
 
+        if let Resource::DynamicDevicePool(new_pool) = new_resource {
+            if self
+                .resources_by_id
+                .get(&new_pool.id)
+                .is_some_and(|resource| !matches!(resource, Resource::DynamicDevicePool(_)))
+            {
+                self.remove_resource(new_pool.id, now);
+            }
+
+            self.upsert_dynamic_device_pool(new_pool, now);
+            return;
+        }
+
         if let Some(resource) = self.resources_by_id.get(&new_resource.id()) {
             let resource_addressability_changed = resource.has_different_address(&new_resource)
                 || resource.has_different_ip_stack(&new_resource)
@@ -2510,9 +2523,7 @@ impl ClientState {
             ),
             Resource::Internet(_) => self.is_internet_resource_active,
             Resource::StaticDevicePool(_) => unreachable!("handled above"),
-            Resource::DynamicDevicePool(pool) => self
-                .device_stub_resolver
-                .add_resource(pool.id, pool.address.clone()),
+            Resource::DynamicDevicePool(_) => unreachable!("handled above"),
         };
 
         if activated {
@@ -2619,6 +2630,59 @@ impl ClientState {
         self.resources_by_id.insert(pool_id, resource.clone());
 
         if is_new || any_inserted {
+            self.log_activating_resource(&resource);
+        }
+
+        self.maybe_update_tun_routes();
+        self.resource_list.update(self.resource_list_snapshot());
+        self.dns_cache.flush("Resource added");
+    }
+
+    fn upsert_dynamic_device_pool(&mut self, new_pool: DynamicDevicePoolResource, now: Instant) {
+        let pool_id = new_pool.id;
+
+        let old_pool = self.resources_by_id.get(&pool_id).and_then(|r| match r {
+            Resource::DynamicDevicePool(p) => Some(p.clone()),
+            Resource::Dns(_) => None,
+            Resource::Cidr(_) => None,
+            Resource::Internet(_) => None,
+            Resource::StaticDevicePool(_) => None,
+        });
+
+        let address_changed = old_pool
+            .as_ref()
+            .is_some_and(|p| p.address != new_pool.address);
+        let filter_changed = old_pool
+            .as_ref()
+            .is_some_and(|p| p.filters != new_pool.filters);
+
+        if address_changed {
+            self.remove_resource(pool_id, now);
+        } else if filter_changed {
+            let filter = FilterEngine::new(&new_pool.filters);
+
+            // Established flows never re-resolve their peer, so the route to a resolved
+            // device is replaced rather than dropped.
+            for (ipv4, ipv6) in self.device_stub_resolver.resolved_devices(pool_id) {
+                self.routing_tables.remove_peer(ipv4.into(), pool_id);
+                self.routing_tables.remove_peer(ipv6.into(), pool_id);
+                self.routing_tables
+                    .upsert_peer(ipv4.into(), pool_id, filter.clone());
+                self.routing_tables
+                    .upsert_peer(ipv6.into(), pool_id, filter.clone());
+            }
+
+            self.handle_resource_filters_updated(pool_id, new_pool.filters.clone());
+        }
+
+        let activated = self
+            .device_stub_resolver
+            .add_resource(pool_id, new_pool.address.clone());
+
+        let resource = Resource::DynamicDevicePool(new_pool);
+        self.resources_by_id.insert(pool_id, resource.clone());
+
+        if activated && (old_pool.is_none() || address_changed) {
             self.log_activating_resource(&resource);
         }
 

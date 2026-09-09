@@ -429,13 +429,19 @@ impl RefClient {
         let r = Resource::DynamicDevicePool(r);
         let rid = r.id();
 
-        if let Some(existing) = self.resources.iter().find(|existing| existing.id() == rid)
-            && (existing.has_different_address(&r) || existing.has_different_filters(&r))
+        match self
+            .resources
+            .iter()
+            .position(|existing| existing.id() == rid)
         {
-            self.remove_resource(&existing.id());
+            Some(index) if self.resources[index].has_different_address(&r) => {
+                self.remove_resource(&rid);
+                self.resources.push(r);
+            }
+            // A filter change keeps the pool's resolutions: the client updates its routes in place.
+            Some(index) => self.resources[index] = r,
+            None => self.resources.push(r),
         }
-
-        self.resources.push(r);
     }
 
     pub(crate) fn add_static_device_pool_resource(&mut self, r: StaticDevicePoolResource) {
