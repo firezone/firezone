@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use anyhow::{Context as _, Result, bail};
 use tokio::net::UnixStream;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct AllowedPeer {
     exes: Vec<PathBuf>,
 }
@@ -14,7 +14,6 @@ pub struct AllowedPeer {
 impl AllowedPeer {
     /// The packaged GUI binary — the only peer the tunnel daemon accepts
     /// in production.
-    #[cfg(not(any(test, feature = "test")))]
     pub fn firezone_gui_client() -> Self {
         Self {
             exes: vec![gui_exe()],
@@ -24,7 +23,6 @@ impl AllowedPeer {
     /// The packaged GUI and CLI binaries, the peers the GUI accepts on
     /// its own socket. The CLI is a remote control for the running GUI,
     /// so it connects here and never to the tunnel daemon.
-    #[cfg(not(any(test, feature = "test")))]
     pub fn firezone_gui_client_or_cli() -> Self {
         Self {
             exes: vec![gui_exe(), cli_exe()],
@@ -104,14 +102,12 @@ impl AllowedPeer {
 /// `FIREZONE_GUI_PEER_EXE` overrides the path at compile time for
 /// packaging schemes that don't install to `/usr/bin` (e.g. NixOS,
 /// where the GUI binary lives in the Nix store).
-#[cfg(not(any(test, feature = "test")))]
 fn gui_exe() -> PathBuf {
     PathBuf::from(option_env!("FIREZONE_GUI_PEER_EXE").unwrap_or("/usr/bin/firezone-client-gui"))
 }
 
 /// The packaged CLI binary, overridable via `FIREZONE_CLI_PEER_EXE` for
 /// the same reason as [`gui_exe`].
-#[cfg(not(any(test, feature = "test")))]
 fn cli_exe() -> PathBuf {
     PathBuf::from(option_env!("FIREZONE_CLI_PEER_EXE").unwrap_or("/usr/bin/firezone"))
 }
