@@ -106,9 +106,6 @@ for details on the control plane, data plane, and connection lifecycle.
 
 ## Performance
 
-- **Throughput:** A typical Gateway on a 4-core Linux host with a recent kernel
-  and sub-10ms round-trip latency can deliver 2 Gbps+ of peer-to-peer WireGuard
-  traffic. See the [Gateway sizing guidelines](https://www.firezone.dev/kb/deploy/sizing).
 - **Latency:** Direct Client-to-Gateway connections avoid a central traffic hub.
   Relays provide connectivity when a direct path is unavailable.
 - **Scaling:** Add Gateways to distribute connections and increase aggregate
