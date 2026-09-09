@@ -57,7 +57,8 @@ defmodule PortalAPI.Client.DeviceTrust do
     "intune-id" => :last_attested_mdm_device_id,
     "ws1-uuid" => :last_attested_mdm_device_id,
     "jamf-id" => :last_attested_mdm_device_id,
-    "kandji-id" => :last_attested_mdm_device_id
+    "kandji-id" => :last_attested_mdm_device_id,
+    "iru-id" => :last_attested_mdm_device_id
   }
 
   @typed_uri_regex ~r{^firezone://([^/]+)/(.+)$}i
