@@ -49,6 +49,11 @@ pub(crate) enum Event {
         resource_id: ResourceId,
         domain: DomainName,
     },
+    ResolvedDevice {
+        resource_id: ResourceId,
+        ipv4: Ipv4Addr,
+        ipv6: Ipv6Addr,
+    },
     SendResponse {
         local: SocketAddr,
         remote: SocketAddr,
@@ -194,7 +199,7 @@ impl DeviceStubResolver {
         resource_id: ResourceId,
         domain: DomainName,
         result: Result<(Ipv4Addr, Ipv6Addr), FailReason>,
-    ) -> Option<(Ipv4Addr, Ipv6Addr)> {
+    ) {
         let pending = self
             .pending
             .extract_if(|(rid, dom, _), _| *rid == resource_id && *dom == domain)
@@ -203,7 +208,7 @@ impl DeviceStubResolver {
 
         if pending.is_empty() {
             tracing::debug!(%resource_id, %domain, "Received device pool resolution for unknown query");
-            return None;
+            return;
         }
 
         tracing::debug!(%resource_id, %domain, ?result, "Device FQDN resolved");
@@ -217,6 +222,11 @@ impl DeviceStubResolver {
                     ipv6,
                 },
             );
+            self.events.push_back(Event::ResolvedDevice {
+                resource_id,
+                ipv4,
+                ipv6,
+            });
         }
 
         for pending in pending {
@@ -244,8 +254,6 @@ impl DeviceStubResolver {
                 response,
             });
         }
-
-        result.ok()
     }
 
     pub(crate) fn poll_event(&mut self) -> Option<Event> {
@@ -451,7 +459,8 @@ mod tests {
         let responses = iter::from_fn(|| resolver.poll_event())
             .filter_map(|e| match e {
                 Event::SendResponse { response, .. } => Some(response),
-                _ => None,
+                Event::QueryDomain { .. } => None,
+                Event::ResolvedDevice { .. } => None,
             })
             .collect::<Vec<_>>();
         assert_eq!(responses.len(), 2);
@@ -504,6 +513,18 @@ mod tests {
             Ok((TEST_IPV4, TEST_IPV6)),
         );
 
+        let Some(Event::ResolvedDevice {
+            resource_id,
+            ipv4,
+            ipv6,
+        }) = resolver.poll_event()
+        else {
+            panic!("expected ResolvedDevice event")
+        };
+        assert_eq!(resource_id, rid);
+        assert_eq!(ipv4, TEST_IPV4);
+        assert_eq!(ipv6, TEST_IPV6);
+
         let Some(Event::SendResponse { response, .. }) = resolver.poll_event() else {
             panic!("expected SendResponse event")
         };
@@ -533,6 +554,9 @@ mod tests {
             Ok((TEST_IPV4, TEST_IPV6)),
         );
 
+        let Some(Event::ResolvedDevice { .. }) = resolver.poll_event() else {
+            panic!("expected ResolvedDevice event")
+        };
         let Some(Event::SendResponse { response, .. }) = resolver.poll_event() else {
             panic!("expected SendResponse event")
         };
@@ -618,7 +642,7 @@ mod tests {
             POOL_DOMAIN.parse().unwrap(),
             Ok((TEST_IPV4, TEST_IPV6)),
         );
-        resolver.poll_event();
+        iter::from_fn(|| resolver.poll_event()).for_each(drop);
 
         // Repeat A query hits the cache.
         let s = resolver.handle_query(
@@ -662,7 +686,7 @@ mod tests {
             POOL_DOMAIN.parse().unwrap(),
             Ok((TEST_IPV4, TEST_IPV6)),
         );
-        resolver.poll_event();
+        iter::from_fn(|| resolver.poll_event()).for_each(drop);
 
         resolver.remove_resource(rid);
         resolver.add_resource(rid, POOL_PATTERN.to_owned());

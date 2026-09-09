@@ -426,23 +426,9 @@ impl ClientState {
         domain: DomainName,
         result: Result<(Ipv4Addr, Ipv6Addr), FailReason>,
     ) {
-        let resolved =
-            self.device_stub_resolver
-                .handle_device_domain_resolved(resource_id, domain, result);
+        self.device_stub_resolver
+            .handle_device_domain_resolved(resource_id, domain, result);
         self.drain_device_stub_resolver_events();
-
-        let Some((ipv4, ipv6)) = resolved else {
-            return;
-        };
-        let Some(Resource::DynamicDevicePool(pool)) = self.resources_by_id.get(&resource_id) else {
-            return;
-        };
-        let filter = FilterEngine::new(&pool.filters);
-
-        self.routing_tables
-            .upsert_dynamic_peer(ipv4.into(), resource_id, filter.clone());
-        self.routing_tables
-            .upsert_dynamic_peer(ipv6.into(), resource_id, filter);
     }
 
     pub fn public_key(&self) -> PublicKey {
@@ -2279,6 +2265,26 @@ impl ClientState {
                             resource_id,
                             domain,
                         });
+                }
+                device_stub_resolver::Event::ResolvedDevice {
+                    resource_id,
+                    ipv4,
+                    ipv6,
+                } => {
+                    let Some(Resource::DynamicDevicePool(pool)) =
+                        self.resources_by_id.get(&resource_id)
+                    else {
+                        continue;
+                    };
+                    let filter = FilterEngine::new(&pool.filters);
+
+                    self.routing_tables.upsert_dynamic_peer(
+                        ipv4.into(),
+                        resource_id,
+                        filter.clone(),
+                    );
+                    self.routing_tables
+                        .upsert_dynamic_peer(ipv6.into(), resource_id, filter);
                 }
                 device_stub_resolver::Event::SendResponse {
                     local,
