@@ -29,9 +29,11 @@ extension FirezoneCLI {
     @Flag(name: .long, help: "Stay in the foreground and stop the tunnel on exit.")
     var foreground = false
 
+    @OptionGroup var global: GlobalOptions
+
     @MainActor
     mutating func run() async throws {
-      Log.useCLIOutput()
+      Log.useCLIOutput(debug: global.debug)
 
       if foreground {
         // Supervising ties the tunnel's lifetime to ours, so the menu bar app should stay
@@ -88,7 +90,7 @@ extension FirezoneCLI {
       if let existing = try await VPNConfigurationManager.load(using: factory) {
         vpnManager = existing
       } else {
-        Log.info("Creating VPN configuration...")
+        say("Creating VPN configuration...")
         vpnManager = try await VPNConfigurationManager.create(using: factory)
       }
 
@@ -115,7 +117,7 @@ extension FirezoneCLI {
         try IPCClient.start(session: session)
       }
 
-      Log.info("Tunnel started")
+      say("Tunnel started")
 
       return (session, signIn)
     }

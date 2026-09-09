@@ -16,19 +16,21 @@ extension FirezoneCLI {
       abstract: "Disconnect, keeping the stored token."
     )
 
+    @OptionGroup var global: GlobalOptions
+
     @MainActor
     func run() async throws {
-      Log.useCLIOutput()
+      Log.useCLIOutput(debug: global.debug)
 
       let vpnManager = try await VPNProfile.load()
       let session = try VPNProfile.session(for: vpnManager)
 
       guard await IPCClient.stopIfRunning(session: session) else {
-        Log.info("Tunnel was not running")
+        say("Tunnel was not running")
         return
       }
 
-      Log.info("Tunnel stopped")
+      say("Tunnel stopped")
     }
   }
 }

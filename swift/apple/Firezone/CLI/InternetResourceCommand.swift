@@ -23,9 +23,11 @@ extension FirezoneCLI {
         abstract: "Route traffic through the Internet Resource."
       )
 
+      @OptionGroup var global: GlobalOptions
+
       @MainActor
       func run() async throws {
-        try await InternetResource.apply(enabled: true)
+        try await InternetResource.apply(enabled: true, debug: global.debug)
       }
     }
 
@@ -35,9 +37,11 @@ extension FirezoneCLI {
         abstract: "Stop routing traffic through the Internet Resource."
       )
 
+      @OptionGroup var global: GlobalOptions
+
       @MainActor
       func run() async throws {
-        try await InternetResource.apply(enabled: false)
+        try await InternetResource.apply(enabled: false, debug: global.debug)
       }
     }
 
@@ -45,8 +49,8 @@ extension FirezoneCLI {
     /// pushed to a running tunnel: storing alone would not reach a live session, and
     /// pushing alone would be forgotten at the next start.
     @MainActor
-    fileprivate static func apply(enabled: Bool) async throws {
-      Log.useCLIOutput()
+    fileprivate static func apply(enabled: Bool, debug: Bool) async throws {
+      Log.useCLIOutput(debug: debug)
 
       let vpnManager = try await VPNProfile.load()
       try await vpnManager.save(overrides: ProviderOverrides(internetResourceEnabled: enabled))
@@ -57,7 +61,7 @@ extension FirezoneCLI {
         try await IPCClient.setInternetResourceEnabled(session: session, enabled)
       }
 
-      Log.info("Internet Resource \(enabled ? "enabled" : "disabled")")
+      say("Internet Resource \(enabled ? "enabled" : "disabled")")
     }
   }
 }
