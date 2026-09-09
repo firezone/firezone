@@ -45,3 +45,10 @@
     public static void main(java.lang.String[]);
 }
 -keep class dev.firezone.android.cli.IFirezoneCli$Stub { *; }
+
+# The CLI calls hidden framework interfaces through hand-written `compileOnly` stubs
+# (`app/src/frameworkStubs`), so they are absent from the APK and present on every device's boot
+# classpath.
+-dontwarn android.app.ContentProviderHolder
+-dontwarn android.app.IActivityManager
+-dontwarn android.content.IContentProvider
