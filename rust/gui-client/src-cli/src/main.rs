@@ -123,17 +123,30 @@ fn expect_ack(rt: &Runtime, msg: ClientMsg) -> Result<()> {
     reason = "the whole point of this subcommand is to print the status to stdout"
 )]
 fn print_status(status: &StatusSummary) {
-    let signed_in = if status.signed_in { "yes" } else { "no" };
-    let account = status.account_slug.as_deref().unwrap_or("unknown");
-    let internet_resource = if status.internet_resource_enabled {
-        "enabled"
-    } else {
-        "disabled"
-    };
+    let mut rows = vec![("Signed in", if status.signed_in { "yes" } else { "no" })];
 
-    println!("Signed in:         {signed_in}");
-    println!("Account:           {account}");
-    println!("Internet Resource: {internet_resource}");
+    if let Some(account_slug) = status.account_slug.as_deref().filter(|s| !s.is_empty()) {
+        rows.push(("Account", account_slug));
+    }
+
+    rows.push((
+        "Internet Resource",
+        if status.internet_resource_enabled {
+            "enabled"
+        } else {
+            "disabled"
+        },
+    ));
+
+    let width = rows
+        .iter()
+        .map(|(label, _)| label.len())
+        .max()
+        .unwrap_or_default();
+
+    for (label, value) in rows {
+        println!("{label:<width$}  {value}");
+    }
 }
 
 #[allow(

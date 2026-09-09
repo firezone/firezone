@@ -7,7 +7,6 @@
 import ArgumentParser
 import FirezoneKit
 import Foundation
-import NetworkExtension
 
 extension FirezoneCLI {
   struct Status: AsyncParsableCommand {
@@ -33,7 +32,6 @@ extension FirezoneCLI {
         rows.append(("Account", accountSlug))
       }
 
-      rows.append(("Tunnel", Self.describe(session.status)))
       rows.append(("Internet Resource", internetResourceEnabled ? "enabled" : "disabled"))
 
       let width = rows.map { $0.0.count }.max() ?? 0
@@ -42,18 +40,6 @@ extension FirezoneCLI {
         let paddedLabel = label.padding(toLength: width, withPad: " ", startingAt: 0)
 
         print("\(paddedLabel)  \(value)")
-      }
-    }
-
-    private static func describe(_ status: NEVPNStatus) -> String {
-      switch status {
-      case .invalid: return "invalid"
-      case .disconnected: return "disconnected"
-      case .connecting: return "connecting"
-      case .connected: return "connected"
-      case .reasserting: return "reasserting"
-      case .disconnecting: return "disconnecting"
-      @unknown default: return "unknown"
       }
     }
   }
