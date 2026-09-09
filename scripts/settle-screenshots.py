@@ -5,16 +5,14 @@
 # ///
 """Put back re-rendered screenshots that no one could tell apart.
 
-Two things move pixels without anything having changed. Antialiased text does not
-round a subpixel the same way twice, so a channel moves by one wherever text is
-drawn. And a control drawn on a material composites at one of two levels a few
-steps apart, uniformly across the whole of itself: iOS 26 draws the navigation
-bar's back button that way, and it settles on either 35 or 38 in the dark
-appearance. macOS composites the window title against the titlebar's material
-the same way, a further 13 steps apart.
+Several things move pixels without anything having changed. Antialiased text does
+not round a subpixel the same way twice. A control drawn on a material composites
+at one of two levels a few steps apart. And the compositor draws a window's edge,
+and the corner arcs of the menus and highlights inside it, against whatever lies
+behind them.
 
-Nobody can see either, but git can, and left alone they put a re-render commit on
-every pull request that touches the clients.
+Nobody can see any of it, but git can, and left alone it puts a re-render commit
+on every pull request that touches the clients.
 
 A render is judged against the commit the clients built, which on a pull request
 is its merge commit rather than the branch. A screen that main re-rendered after
@@ -30,15 +28,17 @@ from pathlib import Path
 
 from PIL import Image, ImageChops
 
-# One step of a channel. Two is already visible on a flat background.
-EDGE_TOLERANCE = 1
-
-# What a material's two levels span, and how much of the picture one control
-# drawn on it covers. The back button measures 5 steps across 0.42% of the
-# screen and the macOS window title 13 steps across 0.19%, so both leave room
-# without reaching a change worth seeing.
-PATCH_TOLERANCE = 14
-PATCH_FRACTION = 0.01
+# A difference nobody can see is thin: a channel that rounds the other way, or a
+# corner arc drawn a shade differently. A difference worth keeping covers whole
+# glyphs and whole controls. Averaging over a block tells the two apart where the
+# largest step in the picture cannot: two pixels on a menu's corner reach 15 steps
+# while the menu is untouched, and a date that really changed reaches 246 across
+# an area no larger.
+#
+# Over every re-render this gallery has produced, a block of invisible wobble
+# averages at most 2 and the smallest real change averages 8.
+BLOCK = 8
+BLOCK_TOLERANCE = 4
 
 
 def committed(revision: str, path: str) -> bytes | None:
@@ -57,20 +57,15 @@ def looks_the_same(path: str, before: bytes) -> bool:
             return False
 
         difference = ImageChops.difference(old.convert("RGB"), new.convert("RGB"))
-        pixels = difference.width * difference.height
         red, green, blue = difference.split()
-        # Per pixel, the channel that moved furthest. `getextrema` reports each
-        # channel over the whole picture, which cannot say how much of it moved.
+        # Per pixel the channel that moved furthest, then the mean of each block.
         worst = ImageChops.lighter(ImageChops.lighter(red, green), blue)
-        counts = worst.histogram()
+        blocks = worst.resize(
+            (max(1, worst.width // BLOCK), max(1, worst.height // BLOCK)),
+            Image.Resampling.BOX,
+        )
 
-    steps = max((value for value, count in enumerate(counts) if count), default=0)
-    moved = sum(counts[1:])
-
-    if steps <= EDGE_TOLERANCE:
-        return True
-
-    return steps <= PATCH_TOLERANCE and moved <= PATCH_FRACTION * pixels
+    return blocks.getextrema()[1] <= BLOCK_TOLERANCE
 
 
 def listed(*arguments: str) -> list[str]:
