@@ -858,6 +858,10 @@ impl<I: GuiIntegration> Controller<I> {
                     .connected_as
                     .as_ref()
                     .map(|connected| connected.account_slug.clone()),
+                actor_name: self
+                    .connected_as
+                    .as_ref()
+                    .map(|connected| connected.actor_name.clone()),
                 internet_resource_enabled: self.general_settings.internet_resource_enabled(),
             }),
             gui_ipc::ClientMsg::Disconnect => {
@@ -1480,6 +1484,7 @@ mod tests {
             gui_ipc::ServerMsg::Status(gui_ipc::StatusSummary {
                 signed_in: false,
                 account_slug: None,
+                actor_name: None,
                 internet_resource_enabled: false,
             })
         );
@@ -1500,6 +1505,7 @@ mod tests {
             gui_ipc::ServerMsg::Status(gui_ipc::StatusSummary {
                 signed_in: true,
                 account_slug: Some("firezone".to_owned()),
+                actor_name: Some("Foo Bar".to_owned()),
                 internet_resource_enabled: false,
             })
         );
@@ -1582,6 +1588,7 @@ mod tests {
             gui_ipc::ServerMsg::Status(gui_ipc::StatusSummary {
                 signed_in: false,
                 account_slug: None,
+                actor_name: None,
                 internet_resource_enabled: false,
             })
         );

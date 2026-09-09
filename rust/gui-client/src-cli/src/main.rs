@@ -185,6 +185,11 @@ fn status_table(status: &StatusSummary) -> String {
         rows.push(("Account", account_slug));
     }
 
+    // The portal does not always name the actor, and warns when it doesn't.
+    if let Some(actor_name) = status.actor_name.as_deref().filter(|s| !s.is_empty()) {
+        rows.push(("User", actor_name));
+    }
+
     if status.signed_in {
         rows.push((
             "Internet Resource",
@@ -255,12 +260,13 @@ mod tests {
         let table = status_table(&StatusSummary {
             signed_in: true,
             account_slug: Some("acme".to_owned()),
+            actor_name: Some("Ada Lovelace".to_owned()),
             internet_resource_enabled: true,
         });
 
         assert_eq!(
             table,
-            "Signed in          yes\nAccount            acme\nInternet Resource  enabled"
+            "Signed in          yes\nAccount            acme\nUser               Ada Lovelace\nInternet Resource  enabled"
         );
     }
 
@@ -269,6 +275,7 @@ mod tests {
         let table = status_table(&StatusSummary {
             signed_in: false,
             account_slug: None,
+            actor_name: None,
             internet_resource_enabled: true,
         });
 
