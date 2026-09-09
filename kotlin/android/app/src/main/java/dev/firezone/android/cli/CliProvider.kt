@@ -1,17 +1,13 @@
 // Licensed under Apache 2.0 (C) 2026 Firezone, Inc.
 package dev.firezone.android.cli
 
-import android.content.ComponentName
 import android.content.ContentProvider
 import android.content.ContentValues
 import android.content.Context
-import android.content.Intent
-import android.content.ServiceConnection
 import android.database.Cursor
 import android.net.Uri
 import android.os.Binder
 import android.os.Bundle
-import android.os.IBinder
 import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
 import dagger.hilt.android.EntryPointAccessors
@@ -19,8 +15,6 @@ import dagger.hilt.components.SingletonComponent
 import dev.firezone.android.core.data.Repository
 import dev.firezone.android.core.data.TokenStore
 import dev.firezone.android.tunnel.TunnelService
-import java.util.concurrent.CountDownLatch
-import java.util.concurrent.TimeUnit
 
 internal const val CLI_AUTHORITY = "dev.firezone.android.cli"
 internal const val HANDSHAKE_METHOD = "handshake"
@@ -32,7 +26,6 @@ private const val PROTOCOL_VERSION = 1
 // supports 26.
 private const val SHELL_UID = 2000
 private const val ROOT_UID = 0
-private const val BIND_TIMEOUT_MS = 5_000L
 
 // Providers are created before `Application.onCreate`, so `@AndroidEntryPoint` cannot inject one.
 // The graph is up by the time a transaction arrives, which is why this is resolved per call.
@@ -102,67 +95,20 @@ class CliProvider : ContentProvider() {
         selectionArgs: Array<out String>?,
     ): Int = 0
 
+    // The provider shares its process with the tunnel, so it reads the live service rather than
+    // binding to reach an object this process already holds. Nothing here can start the tunnel,
+    // which is the point: asking after it must not be what brings it up.
     private fun report(context: Context): Status {
         val app = EntryPointAccessors.fromApplication(context, CliEntryPoint::class.java)
-        val config = app.repository().getConfigSync()
-        val signedIn = app.tokenStore().get() != null
-        val accountSlug = config.accountSlug.ifEmpty { null }
+        val service = TunnelService.running()
+        val accountSlug = app.repository().getConfigSync().accountSlug
 
-        // Who we are signed in as and which addresses we hold are the only fields the service
-        // knows, so nothing else pays for the binding.
-        if (!TunnelService.isRunning(context)) {
-            return Status(
-                signedIn = signedIn,
-                accountSlug = accountSlug,
-                actorName = null,
-                tunnelIpv4 = null,
-                tunnelIpv6 = null,
-            )
-        }
-
-        val connection = TunnelConnection()
-
-        // Flags 0 rather than `BIND_AUTO_CREATE`: asking after the tunnel must never be what
-        // starts it.
-        if (!context.bindService(Intent(context, TunnelService::class.java), connection, 0)) {
-            throw IllegalStateException("The tunnel service is running but refused the binding")
-        }
-
-        try {
-            val service =
-                connection.await()
-                    ?: throw IllegalStateException("The tunnel service did not answer within ${BIND_TIMEOUT_MS}ms")
-
-            return Status(
-                signedIn = signedIn,
-                accountSlug = accountSlug,
-                actorName = service.actorNameState.value,
-                tunnelIpv4 = service.tunnelIpv4State.value,
-                tunnelIpv6 = service.tunnelIpv6State.value,
-            )
-        } finally {
-            context.unbindService(connection)
-        }
-    }
-
-    // The AIDL call arrives on a binder thread, which is the only one allowed to wait here:
-    // `onServiceConnected` is dispatched on the main thread.
-    private class TunnelConnection : ServiceConnection {
-        private val connected = CountDownLatch(1)
-
-        @Volatile
-        private var service: TunnelService? = null
-
-        override fun onServiceConnected(
-            name: ComponentName?,
-            binder: IBinder?,
-        ) {
-            service = (binder as TunnelService.LocalBinder).getService()
-            connected.countDown()
-        }
-
-        override fun onServiceDisconnected(name: ComponentName?) {}
-
-        fun await(): TunnelService? = if (connected.await(BIND_TIMEOUT_MS, TimeUnit.MILLISECONDS)) service else null
+        return Status(
+            signedIn = app.tokenStore().get() != null,
+            accountSlug = accountSlug.ifEmpty { null },
+            actorName = service?.actorNameState?.value,
+            tunnelIpv4 = service?.tunnelIpv4State?.value,
+            tunnelIpv6 = service?.tunnelIpv6State?.value,
+        )
     }
 }

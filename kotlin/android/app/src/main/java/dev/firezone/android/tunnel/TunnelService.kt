@@ -876,6 +876,8 @@ class TunnelService : VpnService() {
         @Volatile
         private var activeService: TunnelService? = null
 
+        fun running(): TunnelService? = activeService
+
         // Protects through the one live service; the session, telemetry, and
         // flow-log drains all share it. Without a running service our VPN cannot
         // be up, so the no-op is the correct bypass then too.
