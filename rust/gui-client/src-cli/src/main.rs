@@ -174,20 +174,27 @@ fn expect_ack(rt: &Runtime, msg: ClientMsg) -> Result<()> {
     reason = "the whole point of this subcommand is to print the status to stdout"
 )]
 fn print_status(status: &StatusSummary) {
+    println!("{}", status_table(status));
+}
+
+/// The status as a table, holding only the rows that say something about this state.
+fn status_table(status: &StatusSummary) -> String {
     let mut rows = vec![("Signed in", if status.signed_in { "yes" } else { "no" })];
 
     if let Some(account_slug) = status.account_slug.as_deref().filter(|s| !s.is_empty()) {
         rows.push(("Account", account_slug));
     }
 
-    rows.push((
-        "Internet Resource",
-        if status.internet_resource_enabled {
-            "enabled"
-        } else {
-            "disabled"
-        },
-    ));
+    if status.signed_in {
+        rows.push((
+            "Internet Resource",
+            if status.internet_resource_enabled {
+                "enabled"
+            } else {
+                "disabled"
+            },
+        ));
+    }
 
     let width = rows
         .iter()
@@ -195,9 +202,10 @@ fn print_status(status: &StatusSummary) {
         .max()
         .unwrap_or_default();
 
-    for (label, value) in rows {
-        println!("{label:<width$}  {value}");
-    }
+    rows.into_iter()
+        .map(|(label, value)| format!("{label:<width$}  {value}"))
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 #[allow(
@@ -240,6 +248,31 @@ mod tests {
 
     fn command(args: &[&str]) -> Cmd {
         Cli::parse_from(args).command()
+    }
+
+    #[test]
+    fn status_table_of_a_signed_in_client() {
+        let table = status_table(&StatusSummary {
+            signed_in: true,
+            account_slug: Some("acme".to_owned()),
+            internet_resource_enabled: true,
+        });
+
+        assert_eq!(
+            table,
+            "Signed in          yes\nAccount            acme\nInternet Resource  enabled"
+        );
+    }
+
+    #[test]
+    fn status_table_of_a_signed_out_client() {
+        let table = status_table(&StatusSummary {
+            signed_in: false,
+            account_slug: None,
+            internet_resource_enabled: true,
+        });
+
+        assert_eq!(table, "Signed in  no");
     }
 
     #[test]

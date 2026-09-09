@@ -24,7 +24,6 @@ extension FirezoneCLI {
       let vpnManager = try await VPNProfile.load()
       let session = try VPNProfile.session(for: vpnManager)
       let state = await VPNProfile.state(from: session)
-      let internetResourceEnabled = try vpnManager.internetResourceEnabled()
 
       // The provider only answers the poll while it is running, which is as close to
       // "signed in" as anything reachable from here gets.
@@ -34,7 +33,13 @@ extension FirezoneCLI {
         rows.append(("Account", accountSlug))
       }
 
-      rows.append(("Internet Resource", internetResourceEnabled ? "enabled" : "disabled"))
+      // The setting outlives the session it is stored alongside, but says nothing
+      // about a Client that isn't signed in.
+      if state != nil {
+        let internetResourceEnabled = try vpnManager.internetResourceEnabled()
+
+        rows.append(("Internet Resource", internetResourceEnabled ? "enabled" : "disabled"))
+      }
 
       let width = rows.map { $0.0.count }.max() ?? 0
 
