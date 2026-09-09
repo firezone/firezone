@@ -16,6 +16,22 @@
   | <a href="https://www.firezone.dev/support">Support</a>
 </p>
 
+---
+
+<p align="center">
+  <img src="https://img.shields.io/static/v1?logo=github&logoColor=959DA5&label=Test&labelColor=333a41&message=passing&color=3AC358" alt="firezone" />
+  <!--<a href="https://coveralls.io/github/firezone/firezone?branch=main">
+    <img src="https://coveralls.io/repos/github/firezone/firezone/badge.svg?branch=main" alt="Coverage Status" />
+  </a>-->
+  <img alt="GitHub commit activity" src="https://img.shields.io/github/commit-activity/m/firezone/firezone"/>
+  <img alt="GitHub closed issues" src="https://img.shields.io/github/issues-closed/firezone/firezone"/>
+  <a href="https://x.com/intent/follow?screen_name=firezonehq">
+    <img alt="X (formerly Twitter) Follow" src="https://img.shields.io/badge/Follow-%40firezonehq-black?style=flat&logo=x" />
+  </a>
+</p>
+
+---
+
 ## Overview
 
 [Firezone](https://www.firezone.dev/?utm_source=readme) is a secure remote access
