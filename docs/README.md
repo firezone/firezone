@@ -47,6 +47,31 @@ is available for inspection in this repository.
   <img width="516" height="630" alt="Firezone component diagram" src="https://github.com/user-attachments/assets/4907c733-168d-41c5-a6a0-fd020483bc96" />
 </p>
 
+## Getting Started
+
+### Cloud (recommended)
+
+[Sign up free](https://app.firezone.dev/sign_up?utm_source=readme) and follow
+the [Quickstart](https://www.firezone.dev/kb/quickstart) to:
+
+1. Deploy a Gateway in the network containing your Resources.
+2. Define Resources and policies that grant access to the appropriate groups.
+3. Install a Client, sign in, and connect to an authorized Resource.
+
+For plan details and feature availability, see [pricing](https://www.firezone.dev/pricing?utm_source=readme).
+
+### Self-hosting
+
+The [licenses](#license) permit self-hosting, subject to their terms. Production
+self-hosting is not officially supported. For development or evaluation, follow
+[CONTRIBUTING.md](CONTRIBUTING.md) to run a local environment.
+
+Published Clients are only guaranteed to work with the managed service. Internal
+APIs change, and app store releases may lag behind this repository. A self-hosted
+portal may require Clients built from a compatible revision. Build instructions
+are available in [swift/apple](../swift/apple),
+[kotlin/android](../kotlin/android), and [rust/gui-client](../rust/gui-client).
+
 ## Security and access controls
 
 - **Least-privilege access:** Grant groups access to specific Resources through
@@ -100,28 +125,19 @@ Log Sinks.
 [Learn about Audit Logs](https://www.firezone.dev/kb/audit-logs) and
 [configure Log Sinks](https://www.firezone.dev/kb/log-sinks).
 
-## Getting started
+## Performance
 
-[Create an account](https://app.firezone.dev/sign_up?utm_source=readme) and follow
-the [Quickstart](https://www.firezone.dev/kb/quickstart) to:
+- **Throughput:** A typical Gateway on a 4-core Linux host with a recent kernel
+  and sub-10ms round-trip latency can deliver 2 Gbps+ of peer-to-peer WireGuard
+  traffic. See the [Gateway sizing guidelines](https://www.firezone.dev/kb/deploy/sizing).
+- **Latency:** Direct Client-to-Gateway connections avoid a central traffic hub.
+  Relays provide connectivity when a direct path is unavailable.
+- **Scaling:** Add Gateways to distribute connections and increase aggregate
+  capacity. Deploy them near Resources to keep traffic paths short.
 
-1. Deploy a Gateway in the network containing your Resources.
-2. Define Resources and policies that grant access to the appropriate groups.
-3. Install a Client, sign in, and connect to an authorized Resource.
-
-For plan details and feature availability, see [pricing](https://www.firezone.dev/pricing?utm_source=readme).
-
-### Self-hosting
-
-The [licenses](#license) permit self-hosting, subject to their terms. Production
-self-hosting is not officially supported. For development or evaluation, follow
-[CONTRIBUTING.md](CONTRIBUTING.md) to run a local environment.
-
-Published Clients are only guaranteed to work with the managed service. Internal
-APIs change, and app store releases may lag behind this repository. A self-hosted
-portal may require Clients built from a compatible revision. Build instructions
-are available in [swift/apple](../swift/apple),
-[kotlin/android](../kotlin/android), and [rust/gui-client](../rust/gui-client).
+Throughput and memory usage depend on hardware, network conditions, and workload.
+See the [Gateway sizing documentation](https://www.firezone.dev/kb/deploy/sizing)
+for sizing and configuration guidance.
 
 ## Repository structure
 
@@ -156,6 +172,10 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, code guidelines,
 testing, and the pull request process. Browse
 [help wanted issues](https://github.com/firezone/firezone/issues?q=is%3Aissue+is%3Aopen+label%3Akind/help_wanted)
 for contribution opportunities.
+
+## Star History
+
+[![Star History Chart](https://api.gitrep.fyi/v1/star-history.svg?repos=firezone/firezone&theme=light&markers=true)](https://gitrep.fyi/history?compare=firezone/firezone)
 
 ## Security
 
