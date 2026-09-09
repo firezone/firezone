@@ -146,6 +146,7 @@ jobs:
       - name: Pin what is behind the windows
         run: |
           defaults -currentHost write com.apple.screensaver idleTime -int 0
+          osascript -e 'tell application "System Events" to tell appearance preferences to set dark mode to false'
 
           osascript -e "tell application \"System Events\" to tell every desktop \
             to set picture to \"${GITHUB_WORKSPACE}/swift/apple/FirezoneUITests/Resources/screenshot-backdrop.png\"" \
