@@ -15,6 +15,10 @@
 # Connections are not reused: for binary request bodies the client can send
 # a Content-Length shorter than the body, and the leftover bytes then corrupt
 # the next request on the same connection and show up as bogus failures.
+#
+# Use one worker: Schemathesis 4.25.2 iterates its shared resource repository
+# while other workers mutate it, causing "dictionary changed size during
+# iteration" during example generation.
 
 set -euo pipefail
 
@@ -58,7 +62,7 @@ fi
   --checks not_a_server_error,status_code_conformance,content_type_conformance,response_schema_conformance,negative_data_rejection,ignored_auth \
   --max-examples "${SCHEMATHESIS_MAX_EXAMPLES:-25}" \
   --max-failures 25 \
-  --workers 2 \
+  --workers 1 \
   --request-timeout 30 \
   --request-retries 3 \
   --generation-database none \
