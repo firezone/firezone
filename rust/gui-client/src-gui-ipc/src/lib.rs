@@ -1,6 +1,6 @@
 //! The protocol a newly launched process speaks to the running Firezone GUI.
 
-use anyhow::{Context as _, ErrorExt as _, Result, bail};
+use anyhow::{Context as _, ErrorExt as _, Result};
 use client_ipc::{ConnectOptions, SocketId};
 use futures::{SinkExt as _, StreamExt as _};
 
@@ -25,8 +25,25 @@ pub enum ServerMsg {
     Ack,
     Resources(Vec<connlib_model::ResourceView>),
     Status(StatusSummary),
-    Error(String),
+    Error(ServerError),
 }
+
+/// Why the running instance could not carry out a [`ClientMsg`].
+///
+/// [`ServerError::NotConnected`] is called out on its own because the CLI reports
+/// it as a plain fact rather than as a failure with a cause chain.
+#[derive(Debug, PartialEq, thiserror::Error, serde::Deserialize, serde::Serialize)]
+pub enum ServerError {
+    #[error("Not connected.")]
+    NotConnected,
+    #[error("{0}")]
+    Other(String),
+}
+
+/// There is no running instance of Firezone to talk to.
+#[derive(Debug, thiserror::Error)]
+#[error("Firezone is not running.")]
+pub struct NotRunning;
 
 /// Summary of the running instance's state, as reported to the CLI.
 #[derive(Debug, PartialEq, serde::Deserialize, serde::Serialize)]
@@ -48,7 +65,7 @@ pub async fn request(msg: ClientMsg) -> Result<ServerMsg> {
             .await
             .map_err(|e| {
                 if e.any_is::<client_ipc::NotFound>() {
-                    return e.context("The Firezone GUI is not running");
+                    return e.context(NotRunning);
                 }
 
                 e
@@ -63,7 +80,7 @@ pub async fn request(msg: ClientMsg) -> Result<ServerMsg> {
         .context("Failed to receive response")?;
 
     if let ServerMsg::Error(e) = response {
-        bail!("{e}");
+        return Err(e.into());
     }
 
     Ok(response)

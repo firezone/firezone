@@ -31,7 +31,7 @@ extension FirezoneCLI {
         let session = try VPNProfile.session(for: vpnManager)
 
         guard let state = await VPNProfile.state(from: session) else {
-          throw CLIError("Tunnel is not running")
+          throw CLIError("Not connected.")
         }
 
         var rows: [(String, String, String)] = [("NAME", "ADDRESS", "STATUS")]

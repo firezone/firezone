@@ -3389,6 +3389,7 @@ dependencies = [
  "connlib-model",
  "futures",
  "serde",
+ "thiserror 2.0.20",
  "url",
 ]
 
