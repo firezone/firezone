@@ -27,6 +27,7 @@ fn main() -> Result<()> {
         Cmd::Disconnect => {
             expect_ack(&rt, ClientMsg::Disconnect).context("Failed to disconnect")?
         }
+        Cmd::SignOut => expect_ack(&rt, ClientMsg::SignOut).context("Failed to sign out")?,
         Cmd::Resources {
             command: None | Some(ResourcesCmd::List),
         } => list_resources(&rt)?,
@@ -65,6 +66,8 @@ enum Cmd {
     Status,
     /// Disconnect from Firezone, staying signed in.
     Disconnect,
+    /// Sign out and disconnect from Firezone.
+    SignOut,
     /// Inspect the Resources of the running Firezone GUI.
     Resources {
         #[command(subcommand)]
@@ -185,6 +188,7 @@ mod tests {
             command(&["firezone", "disconnect"]),
             Cmd::Disconnect
         ));
+        assert!(matches!(command(&["firezone", "sign-out"]), Cmd::SignOut));
         assert!(matches!(
             command(&["firezone", "resources"]),
             Cmd::Resources { command: None }

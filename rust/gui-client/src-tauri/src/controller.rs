@@ -866,6 +866,11 @@ impl<I: GuiIntegration> Controller<I> {
 
                 gui_ipc::ServerMsg::Ack
             }
+            gui_ipc::ClientMsg::SignOut => {
+                self.sign_out().await?;
+
+                gui_ipc::ServerMsg::Ack
+            }
         };
 
         Ok(reply)
@@ -1533,6 +1538,53 @@ mod tests {
         assert!(
             matches!(msg, service::ClientMsg::Disconnect),
             "expected `Disconnect` but got {msg:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn signs_out_over_gui_ipc() {
+        let _guard = logging::test("debug");
+        let mut test_controller = Controller::start_for_test();
+        let mut mock_tunnel = test_controller.tunnel_service_ipc_accept().await;
+
+        boot_tunnel(
+            &mut test_controller,
+            &mut mock_tunnel,
+            vec![dns_resource_foo()],
+        )
+        .await;
+        test_controller
+            .wait_integration(|i| i.nth_notification(0))
+            .await;
+
+        // The first resource list also pushes the internet-resource state.
+        let msg = mock_tunnel.next_msg().await;
+        assert!(
+            matches!(msg, service::ClientMsg::SetInternetResourceState(false)),
+            "expected `SetInternetResourceState(false)` but got {msg:?}"
+        );
+
+        let response = test_controller
+            .gui_ipc_request(gui_ipc::ClientMsg::SignOut)
+            .await;
+        assert_eq!(response, gui_ipc::ServerMsg::Ack);
+
+        let msg = mock_tunnel.next_msg().await;
+        assert!(
+            matches!(msg, service::ClientMsg::Disconnect),
+            "expected `Disconnect` but got {msg:?}"
+        );
+
+        let response = test_controller
+            .gui_ipc_request(gui_ipc::ClientMsg::Status)
+            .await;
+        assert_eq!(
+            response,
+            gui_ipc::ServerMsg::Status(gui_ipc::StatusSummary {
+                signed_in: false,
+                account_slug: None,
+                internet_resource_enabled: false,
+            })
         );
     }
 
