@@ -17,6 +17,7 @@ clap = { workspace = true, features = ["derive"] }
 connlib-model = { workspace = true }
 gui-ipc = { workspace = true }
 tokio = { workspace = true, features = ["net", "rt", "time"] }
+tracing-subscriber = { workspace = true }
 
 [target.'cfg(target_os = "windows")'.build-dependencies]
 embed-resource = { workspace = true }

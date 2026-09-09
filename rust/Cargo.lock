@@ -2487,6 +2487,7 @@ dependencies = [
  "embed-resource",
  "gui-ipc",
  "tokio",
+ "tracing-subscriber",
 ]
 
 [[package]]
