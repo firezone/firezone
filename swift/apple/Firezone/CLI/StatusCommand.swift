@@ -13,7 +13,7 @@ extension FirezoneCLI {
   struct Status: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
       commandName: "status",
-      abstract: "Report the sign-in, tunnel and Internet Resource state."
+      abstract: "Report the current status."
     )
 
     @MainActor

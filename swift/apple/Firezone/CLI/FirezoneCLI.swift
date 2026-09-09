@@ -12,7 +12,7 @@ import NetworkExtension
 struct FirezoneCLI: AsyncParsableCommand {
   static let configuration = CommandConfiguration(
     commandName: "firezone",
-    abstract: "Firezone headless Client",
+    abstract: "Firezone CLI",
     version: versionString,
     subcommands: [
       Connect.self,

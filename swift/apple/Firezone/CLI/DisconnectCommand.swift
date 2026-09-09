@@ -13,7 +13,7 @@ extension FirezoneCLI {
   struct Disconnect: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
       commandName: "disconnect",
-      abstract: "Take the tunnel down, keeping the stored token."
+      abstract: "Disconnect, keeping the stored token."
     )
 
     @MainActor
