@@ -84,7 +84,6 @@ tauri = { workspace = true, features = ["tray-icon"] }
 dbus-secret-service-keyring-store = { workspace = true }
 dirs = { workspace = true }
 ksni = { workspace = true } # Tray icon for Linux.
-libc = { workspace = true }
 mimalloc = { workspace = true }
 nix = { workspace = true, features = ["user"] }
 sd-notify = { workspace = true }
