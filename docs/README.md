@@ -5,7 +5,7 @@
   </picture>
 </p>
 <p align="center">
-  <strong>Secure remote access with identity-based policies, Device Trust, and Audit Logs.</strong>
+  <strong>Blazing-fast remote access with identity-based policies, attested device trust, and detailed audit logs</strong>
 </p>
 
 <p align="center">
@@ -44,7 +44,7 @@ audit records. Gateways run in your infrastructure, and the full product source
 is available for inspection in this repository.
 
 <p align="center">
-  <img width="516" height="630" alt="Firezone component diagram" src="https://github.com/user-attachments/assets/4907c733-168d-41c5-a6a0-fd020483bc96" />
+  <img width="570" height="696" alt="Firezone component diagram" src="https://github.com/user-attachments/assets/53bcf629-0e8e-4e37-976d-82f528ad8301" />
 </p>
 
 ## Getting Started
@@ -72,58 +72,37 @@ portal may require Clients built from a compatible revision. Build instructions
 are available in [swift/apple](../swift/apple),
 [kotlin/android](../kotlin/android), and [rust/gui-client](../rust/gui-client).
 
-## Security and access controls
+## Features
 
 - **Least-privilege access:** Grant groups access to specific Resources through
   policies, including conditions that require device attestation.
+- **Device Trust:** Require cryptographic device verification in addition to user
+  authentication, using X.509 certificates issued by your MDM or enterprise PKI.
+  [Learn more](https://www.firezone.dev/kb/device-trust).
+- **Audit Logs:** Track configuration changes, sessions, API requests, and traffic
+  flows with 90-day retention. Export records to your SIEM through Log Sinks.
+  [Learn more](https://www.firezone.dev/kb/audit-logs).
+- **Device Pools:** Create a peer-to-peer mesh of devices with encrypted
+  Client-to-Client WireGuard tunnels, without deploying a Gateway. Policies
+  control which groups can reach the devices in each pool.
+  [Learn more](https://www.firezone.dev/kb/concepts/resources#device-pools).
 - **Identity provider integration:** Authenticate with Google Workspace, Okta,
   Microsoft Entra ID, or OIDC. Directory sync keeps users and groups aligned with
   your identity provider.
 - **Encrypted connectivity:** WireGuard tunnels encrypt traffic between Clients
-  and Gateways. Direct connections reduce routing overhead; Relays carry
-  encrypted traffic when a direct connection cannot be established.
+  and Gateways or between devices in a Device Pool. Direct connections reduce
+  routing overhead; Relays carry encrypted traffic when a direct connection
+  cannot be established.
 - **Distributed deployment:** Deploy Gateways near your Resources across cloud
   and on-premises environments. Use multiple Gateways for load balancing and
   failover.
 - **Cross-platform access:** Clients are available for Windows, macOS, Linux,
   iOS, and Android, with headless clients for automated workloads.
+- **Compliance:** The managed service is SOC 2 Type II compliant.
+  See the [Trust Center](https://trust.firezone.dev).
 
 See the [architecture documentation](https://www.firezone.dev/kb/architecture)
 for details on the control plane, data plane, and connection lifecycle.
-
-### Device Trust
-
-Require a verified device identity in addition to user authentication before
-allowing access to sensitive Resources. Device Trust validates X.509 certificates
-issued by your MDM or enterprise PKI and requires the Client to prove possession
-of the corresponding private key.
-
-Apply the **Require attestation** policy condition to restrict access to devices
-with a trusted certificate. Device keys can be hardware-backed where supported.
-Device Trust verifies device identity; it does not evaluate OS version, disk
-encryption, or endpoint protection status.
-
-[Learn about Device Trust](https://www.firezone.dev/kb/device-trust) or follow the
-[setup guide](https://www.firezone.dev/kb/device-trust/setup).
-
-### Audit Logs
-
-Investigate access, review configuration changes, and support compliance reviews
-with four audit log streams:
-
-| Log stream       | Visibility                                       |
-| ---------------- | ------------------------------------------------ |
-| Change Logs      | Who changed account configuration and when       |
-| Session Logs     | Who connected, from where, and with which device |
-| API Request Logs | Requests made using API tokens                   |
-| Flow Logs        | Traffic between Clients and Resources            |
-
-Logs are retained for 90 days and can be reviewed in the admin portal or queried
-through the REST API. Stream records to your SIEM or log management platform with
-Log Sinks.
-
-[Learn about Audit Logs](https://www.firezone.dev/kb/audit-logs) and
-[configure Log Sinks](https://www.firezone.dev/kb/log-sinks).
 
 ## Performance
 
