@@ -344,9 +344,7 @@ dependencies {
     // Security
     implementation("androidx.security:security-crypto:1.1.0")
 
-    // Management CLI. `clikt-core` is the clikt artifact without the `mordant` terminal renderer,
-    // which nothing behind `app_process` can use anyway.
-    implementation("com.github.ajalt.clikt:clikt-core:5.1.0")
+    // The CLI's hidden framework interfaces, declared at `app/src/frameworkStubs`.
     compileOnly(files(frameworkStubs))
 
     // JUnit

@@ -22,6 +22,7 @@ import dev.firezone.android.tunnel.tunInterfaceUpdated
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -96,6 +97,15 @@ class CliE2eTest {
     @Test
     fun statusReportsBeingSignedOutWhenThereIsNoToken() {
         assertEquals(listOf("signed-in: no"), status().trim().lines())
+    }
+
+    // The usage text is generated from the command list, so this is what catches a command that
+    // was added without a description, and the only path that reads the parser's own output.
+    @Test
+    fun theHelpListsTheCommands() {
+        val help = shellOutput("$CLI --help")
+
+        assertTrue(help, help.contains("status"))
     }
 
     private fun awaitStatus(

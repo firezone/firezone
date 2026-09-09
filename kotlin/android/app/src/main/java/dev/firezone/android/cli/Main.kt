@@ -9,50 +9,78 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Looper
 import android.os.Process
-import com.github.ajalt.clikt.core.CliktError
-import com.github.ajalt.clikt.core.Context
-import com.github.ajalt.clikt.core.CoreCliktCommand
-import com.github.ajalt.clikt.core.main
-import com.github.ajalt.clikt.core.subcommands
 
 // `adb shell` runs as the primary user and this prototype offers no way to name another one.
 private const val USER_ID = 0
 
 private const val CALLING_PACKAGE = "com.android.shell"
 
+// A new command is an entry here plus an arm in `execute`, which the compiler asks for because
+// the `when` over this is exhaustive. The usage text is built from these, so it cannot fall behind.
+private enum class Subcommand(
+    val label: String,
+    val description: String,
+) {
+    STATUS("status", "Report who this device is signed in as and which addresses it holds"),
+}
+
 object Main {
     @JvmStatic
     fun main(args: Array<String>) {
-        // Clikt exits by itself on a usage error, but returns here on success, and the binder
-        // threads this process picked up are not daemons.
-        Firezone().subcommands(StatusCommand()).main(args)
-
-        System.exit(0)
+        // The binder threads this process picked up are not daemons, so returning from `main`
+        // would leave it running.
+        System.exit(dispatch(args))
     }
-}
 
-private class Firezone : CoreCliktCommand(name = "firezone") {
-    override fun run() = Unit
-}
+    private fun dispatch(args: Array<String>): Int {
+        // No command takes arguments of its own yet, so its name is the whole command line.
+        val argument = args.singleOrNull()
 
-private class StatusCommand : CoreCliktCommand(name = "status") {
-    override fun help(context: Context): String = "Report who this device is signed in as and which addresses it holds"
+        if (argument == "--help") {
+            println(usage())
 
-    override fun run() {
+            return 0
+        }
+
+        val command =
+            Subcommand.entries.firstOrNull { it.label == argument }
+                ?: run {
+                    System.err.println(usage())
+
+                    return 2
+                }
+
         // `app_process` starts a bare VM, so nothing has set up the looper the framework calls
         // below expect to find on this thread. The deprecation is aimed at apps, whose main looper
         // the framework prepares for them.
         @Suppress("DEPRECATION")
         Looper.prepareMainLooper()
 
-        val status =
-            try {
-                fetchStatus()
-            } catch (e: Exception) {
-                throw CliktError("firezone: ${e.message ?: e}")
-            }
+        return try {
+            println(execute(command))
 
-        echo(render(status))
+            0
+        } catch (e: Exception) {
+            System.err.println("firezone: ${e.message ?: e}")
+
+            1
+        }
+    }
+
+    private fun execute(command: Subcommand): String =
+        when (command) {
+            Subcommand.STATUS -> render(fetchStatus())
+        }
+
+    private fun usage(): String {
+        val column = Subcommand.entries.maxOf { it.label.length } + 2
+
+        return buildString {
+            appendLine("usage: firezone <command>")
+            appendLine()
+            appendLine("commands:")
+            Subcommand.entries.forEach { appendLine("  ${it.label.padEnd(column)}${it.description}") }
+        }.trimEnd()
     }
 
     // The same route AOSP's `content` tool takes: `IActivityManager` needs no `Context`, which this
