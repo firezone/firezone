@@ -75,12 +75,7 @@ defmodule PortalWeb.WebsiteAttribution do
 
     marketing =
       if allowed == "true" do
-        Enum.reduce(@click_params, marketing, fn key, acc ->
-          value = params["fz_" <> key]
-          if is_binary(value) and byte_size(value) in 1..2048,
-            do: Map.put(acc, key, value),
-            else: acc
-        end)
+        Map.merge(marketing, click_references(params))
       else
         marketing
       end
@@ -90,6 +85,18 @@ defmodule PortalWeb.WebsiteAttribution do
   end
 
   defp store_marketing_attribution(conn, _params), do: conn
+
+  defp click_references(params) do
+    Enum.reduce(@click_params, %{}, fn key, acc ->
+      value = params["fz_" <> key]
+
+      if is_binary(value) and byte_size(value) in 1..2048 do
+        Map.put(acc, key, value)
+      else
+        acc
+      end
+    end)
+  end
 
   defp valid_distinct_id(value) when is_binary(value) do
     case Ecto.UUID.cast(value) do

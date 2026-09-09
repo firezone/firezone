@@ -62,6 +62,14 @@ defmodule Portal.Analytics do
       :ok
   end
 
+  @doc "Checks the latest saved consent before a queued conversion is delivered."
+  def delivery_allowed?(account_id) do
+    case Database.account(account_id) do
+      %{metadata: %{marketing_attribution: attribution}} -> marketing_allowed?(attribution)
+      _ -> false
+    end
+  end
+
   def marketing_allowed?(%{"marketing_allowed" => true, "captured_at" => captured_at})
       when is_integer(captured_at) do
     age = System.os_time(:second) - captured_at

@@ -64,11 +64,7 @@ defmodule Portal.Analytics.GoogleAds do
 
   @impl Oban.Worker
   def perform(%Oban.Job{args: %{"account_id" => account_id, "payload" => payload}}) do
-    case Analytics.Database.account(account_id) do
-      %{metadata: %{marketing_attribution: attribution}} ->
-        if Analytics.marketing_allowed?(attribution), do: deliver(payload), else: :ok
-      _ -> :ok
-    end
+    if Analytics.delivery_allowed?(account_id), do: deliver(payload), else: :ok
   end
 
   @doc false
@@ -77,22 +73,29 @@ defmodule Portal.Analytics.GoogleAds do
 
     if configured?(config) do
       with {:ok, token} <- access_token(config) do
-        opts = [auth: {:bearer, token}, json: payload] ++ config[:req_opts]
-
-        case Req.post(config[:endpoint], opts) do
-          {:ok, %Req.Response{status: status, body: %{"requestId" => request_id} = body}}
-          when status in 200..299 ->
-            # Ingestion is asynchronous. Retain the request ID for Google diagnostics,
-            # without logging the payload, hashed identifiers, or credentials.
-            Logger.info("Google Ads conversion accepted", request_id: request_id)
-            if body["fieldWarnings"] not in [nil, []],
-              do: Logger.warning("Google Ads conversion has field warnings", request_id: request_id)
-            :ok
-          result -> request_error(result)
-        end
+        send_payload(payload, token, config)
       end
     else
       :ok
+    end
+  end
+
+  defp send_payload(payload, token, config) do
+    opts = [auth: {:bearer, token}, json: payload] ++ config[:req_opts]
+
+    case Req.post(config[:endpoint], opts) do
+      {:ok, %Req.Response{status: status, body: %{"requestId" => request_id} = body}}
+      when status in 200..299 ->
+        # Ingestion is asynchronous. Retain only the request ID for diagnostics.
+        Logger.info("Google Ads conversion accepted", request_id: request_id)
+
+        if body["fieldWarnings"] not in [nil, []] do
+          Logger.warning("Google Ads conversion has field warnings", request_id: request_id)
+        end
+
+        :ok
+
+      result -> request_error(result)
     end
   end
 

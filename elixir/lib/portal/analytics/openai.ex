@@ -22,13 +22,7 @@ defmodule Portal.Analytics.OpenAI do
 
   @impl Oban.Worker
   def perform(%Oban.Job{args: %{"account_id" => account_id, "event" => event}}) do
-    case Analytics.Database.account(account_id) do
-      %{metadata: %{marketing_attribution: attribution}} ->
-        if Analytics.marketing_allowed?(attribution), do: deliver(event), else: :ok
-
-      _ ->
-        :ok
-    end
+    if Analytics.delivery_allowed?(account_id), do: deliver(event), else: :ok
   end
 
   @doc false
