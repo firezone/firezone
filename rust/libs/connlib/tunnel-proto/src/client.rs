@@ -385,10 +385,7 @@ impl ClientState {
 
         // TODO: Update resource list with offline client.
 
-        let Some(_) = self.clients.remove(&cid) else {
-            return;
-        };
-
+        self.clients.remove(&cid);
         self.node
             .close_connection(ClientOrGatewayId::Client(cid), p2p_control::goodbye(), now);
     }
