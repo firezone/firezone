@@ -168,8 +168,12 @@ fun photographScreen(name: String) {
 
 private fun packageName() = InstrumentationRegistry.getInstrumentation().targetContext.packageName
 
+// `executeShellCommand` does not run a shell: it splits the line on whitespace and executes that,
+// so quotes, pipes, redirects and `VAR=value` prefixes reach the program as literal arguments.
+fun shellOutput(command: String): String = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation()).executeShellCommand(command)
+
 private fun shell(command: String) {
-    UiDevice.getInstance(InstrumentationRegistry.getInstrumentation()).executeShellCommand(command)
+    shellOutput(command)
 }
 
 @Suppress("DEPRECATION")
@@ -180,5 +184,15 @@ private fun describeTunnelService(context: Context): String {
             .firstOrNull { it.service.className == TunnelService::class.java.name }
             ?: return "no record"
 
-    return "started=${info.started}, clients=${info.clientCount}, foreground=${info.foreground}"
+    return "started=${info.started}, clients=${info.clientCount}, foreground=${info.foreground}, " +
+        "bound by ${boundBy()}"
 }
+
+// `clientCount` says how many bindings hold the service open but not whose, and an established
+// VPN is bound by the framework itself rather than by anything a test can finish.
+private fun boundBy(): String =
+    shellOutput("dumpsys activity services ${packageName()}")
+        .lines()
+        .filter { it.contains("Connection") }
+        .joinToString("; ") { it.trim() }
+        .ifEmpty { "nothing the dump names" }

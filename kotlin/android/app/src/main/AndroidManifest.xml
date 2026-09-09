@@ -100,6 +100,12 @@
         </service>
 
         <provider
+            android:name="dev.firezone.android.cli.CliProvider"
+            android:authorities="dev.firezone.android.cli"
+            android:exported="true"
+            android:grantUriPermissions="false" />
+
+        <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.provider"
             android:exported="false"

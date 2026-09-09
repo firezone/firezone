@@ -1,9 +1,11 @@
 // Licensed under Apache 2.0 (C) 2026 Firezone, Inc.
 package dev.firezone.android.tunnel
 
+import uniffi.connlib.Cidr
 import uniffi.connlib.ConnectedDevice
 import uniffi.connlib.DisconnectError
 import uniffi.connlib.DnsResource
+import uniffi.connlib.Event
 import uniffi.connlib.InternetResource
 import uniffi.connlib.NoHandle
 import uniffi.connlib.Resource
@@ -26,6 +28,18 @@ class FakeDisconnectError(
 // The deployment the screenshot fixtures describe, so the galleries and these tests tell one story.
 const val ACTOR_NAME = "Jane Doe"
 const val ACCOUNT_SLUG = "example-corp"
+const val TUN_IPV4 = "100.64.7.41"
+const val TUN_IPV6 = "fd00:2021:1111::29"
+
+fun tunInterfaceUpdated() =
+    Event.TunInterfaceUpdated(
+        ipv4 = TUN_IPV4,
+        ipv6 = TUN_IPV6,
+        dns = listOf("100.100.111.1"),
+        searchDomain = null,
+        ipv4Routes = listOf(Cidr(address = "100.64.0.0", prefix = 11u)),
+        ipv6Routes = listOf(Cidr(address = "fd00:2021:1111::", prefix = 48u)),
+    )
 
 val engineeringWiki =
     Resource.Dns(

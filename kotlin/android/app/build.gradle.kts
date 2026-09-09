@@ -49,6 +49,7 @@ val jacocoCli by configurations.creating
 
 android {
     buildFeatures {
+        aidl = true
         buildConfig = true
         resValues = true
     }
@@ -256,6 +257,27 @@ abstract class CollectClasses
         }
     }
 
+// Hand-written declarations of the hidden framework interfaces the CLI talks to. The boot
+// classpath always wins at runtime, so the device never loads these; the jar exists only to give
+// the compiler types to check against, and every signature in it has to match the platform's
+// exactly or the call fails with `NoSuchMethodError` on the device.
+val compileFrameworkStubs =
+    tasks.register<JavaCompile>("compileFrameworkStubs") {
+        source(layout.projectDirectory.dir("src/frameworkStubs/java"))
+        classpath = files(androidComponents.sdkComponents.bootClasspath)
+        destinationDirectory = layout.buildDirectory.dir("frameworkStubs/classes")
+        options.release = 17
+    }
+
+// AGP resolves a compile classpath through an artifact view that accepts only jars, so handing it
+// the class directory instead would drop the stubs without a word.
+val frameworkStubs =
+    tasks.register<Jar>("frameworkStubs") {
+        from(compileFrameworkStubs.map { it.destinationDirectory })
+        archiveFileName = "framework-stubs.jar"
+        destinationDirectory = layout.buildDirectory.dir("frameworkStubs")
+    }
+
 dependencies {
     // The `nodeps` jar is already shaded, so its declared dependencies would only add jars for the
     // report step to pick the wrong one from.
@@ -321,6 +343,9 @@ dependencies {
 
     // Security
     implementation("androidx.security:security-crypto:1.1.0")
+
+    // The CLI's hidden framework interfaces, declared at `app/src/frameworkStubs`.
+    compileOnly(files(frameworkStubs))
 
     // JUnit
     testImplementation("junit:junit:4.13.2")

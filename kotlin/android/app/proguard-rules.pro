@@ -38,3 +38,17 @@
 # Persisted to SharedPreferences via Gson by constant name; renaming the
 # constants would corrupt existing installs on update.
 -keep class dev.firezone.android.core.data.ResourceState { *; }
+
+# Nothing in the app references the CLI: `app_process` resolves its entry point by name from the
+# shell wrapper, and the AIDL stub behind it is only ever entered from a binder transaction.
+-keep class dev.firezone.android.cli.Main {
+    public static void main(java.lang.String[]);
+}
+-keep class dev.firezone.android.cli.IFirezoneCli$Stub { *; }
+
+# The CLI calls hidden framework interfaces through hand-written `compileOnly` stubs
+# (`app/src/frameworkStubs`), so they are absent from the APK and present on every device's boot
+# classpath.
+-dontwarn android.app.ContentProviderHolder
+-dontwarn android.app.IActivityManager
+-dontwarn android.content.IContentProvider
