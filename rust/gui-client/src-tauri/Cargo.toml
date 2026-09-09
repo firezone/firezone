@@ -86,7 +86,6 @@ dirs = { workspace = true }
 ksni = { workspace = true } # Tray icon for Linux.
 mimalloc = { workspace = true }
 nix = { workspace = true, features = ["user"] }
-sd-notify = { workspace = true }
 tracing-journald = { workspace = true }
 
 [target.'cfg(target_os = "macos")'.dependencies]
