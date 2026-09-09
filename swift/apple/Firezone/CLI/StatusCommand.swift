@@ -33,6 +33,11 @@ extension FirezoneCLI {
         rows.append(("Account", accountSlug))
       }
 
+      // The portal does not always name the actor, and warns when it doesn't.
+      if let actorName = state?.actorName, !actorName.isEmpty {
+        rows.append(("User", actorName))
+      }
+
       // The setting outlives the session it is stored alongside, but says nothing
       // about a Client that isn't signed in.
       if state != nil {
