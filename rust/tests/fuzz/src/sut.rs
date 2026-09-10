@@ -1301,9 +1301,8 @@ impl TunnelTest {
                             make_preshared_key_and_ice(src_key, remote_key);
                         let use_iceless = portal.iceless();
 
-                        let pool_filters = portal
-                            .static_device_pool_filters(resource_id)
-                            .unwrap_or_default();
+                        let pool_filters =
+                            portal.device_pool_filters(resource_id).unwrap_or_default();
 
                         let remote_authorization =
                             tunnel_proto::messages::client::ResourceAuthorization {
@@ -1360,9 +1359,22 @@ impl TunnelTest {
                         })?;
                     }
                     None => {
-                        unreachable!(
-                            "device-connection intent for offline destination ip={ip} resource_id={resource_id}"
-                        )
+                        // Mimic the portal: a tunnel-range address that is no client's is denied.
+                        let (ipv4, ipv6) = match ip {
+                            std::net::IpAddr::V4(v4) => (Some(v4), None),
+                            std::net::IpAddr::V6(v6) => (None, Some(v6)),
+                        };
+
+                        let src_client = self.clients.get_mut(&src).expect("unknown source client");
+
+                        src_client.exec_mut(|c| {
+                            c.sut.handle_client_device_access_denied(
+                                ipv4,
+                                ipv6,
+                                tunnel_proto::messages::client::FailReason::NotFound,
+                                now,
+                            )
+                        });
                     }
                 }
 
