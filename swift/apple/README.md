@@ -183,16 +183,20 @@ mise run cli -- extension status
 mise run cli -- connect
 ```
 
-`connect` brings the tunnel up. It returns once the tunnel is connected and
-leaves it running in the system extension, since the tunnel lives there rather
+`connect` brings the tunnel up. It returns once the portal has named the
+session, so a `status` straight afterwards has something definite to say, and
+leaves the tunnel running in the system extension, since it lives there rather
 than in this process. `connect --foreground` instead supervises the tunnel and
 stops it on exit, which is what a launchd service wants. `disconnect` takes the
 tunnel down again, and `sign-out` also drops the stored token. `status`, which
-is what plain `firezone` runs, says whether the Client is signed in and to which
-account and user. `resources list`, which is what plain `resources` runs, prints
-what the running tunnel can reach. `internet-resource enable` and
-`internet-resource disable` switch the Internet Resource, writing the choice to
-the shared VPN profile the way the app's own toggle does.
+is what plain `firezone` runs, asks the extension where things stand, waking it
+briefly if the tunnel is down, and repeats what it said: not signed in, signed
+in but not connected, connecting, or signed in to an account as a user. Nothing
+is inferred from the extension failing to answer. `resources list`, which is
+what plain `resources` runs, prints what the running tunnel can reach.
+`internet-resource enable` and `internet-resource disable` switch the Internet
+Resource, writing the choice to the shared VPN profile the way the app's own
+toggle does.
 
 It talks to the same system extension as the GUI and will not start without it.
 `extension status` reports whether that extension is installed and matches the
