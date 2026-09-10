@@ -249,6 +249,12 @@
             "format": "uuid",
             "type": "string"
           },
+          "is_disabled": {
+            "default": false,
+            "description": "Whether the Policy is disabled. A disabled Policy grants no access but is otherwise retained. Defaults to false.",
+            "example": false,
+            "type": "boolean"
+          },
           "resource_id": {
             "description": "Resource ID",
             "example": "a9f60587-793c-46ae-8525-597f43ab2fb1",
@@ -18264,6 +18270,7 @@
       },
       "post": {
         "callbacks": {},
+        "description": "Creates a Policy.\n\nA Policy is enabled by default. Pass `is_disabled: true` to create it disabled, so it grants no access until enabled.\n",
         "operationId": "PortalAPI.PolicyController.create",
         "parameters": [],
         "requestBody": {
