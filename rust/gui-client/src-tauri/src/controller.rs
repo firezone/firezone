@@ -1866,12 +1866,11 @@ mod tests {
             ipc::ClientRead<gui_ipc::ServerMsg>,
             ipc::ClientWrite<gui_ipc::ClientMsg>,
         ) {
-            ipc::connect(
-                SocketId::Test(self.gui_id),
-                ipc::ConnectOptions { num_attempts: 2 },
-            )
-            .await
-            .unwrap()
+            // The pipe only exists once the eventloop reaches its first
+            // `next_client`, which two attempts can miss on a busy runner.
+            ipc::connect(SocketId::Test(self.gui_id), ipc::ConnectOptions::default())
+                .await
+                .unwrap()
         }
 
         async fn gui_ipc_request(&mut self, msg: gui_ipc::ClientMsg) -> gui_ipc::ServerMsg {
