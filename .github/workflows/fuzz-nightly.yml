@@ -82,7 +82,7 @@ jobs:
           RUST_LOG: debug
         run: |
           mise run //rust/tests/fuzz:unpack-corpus ${{ matrix.fuzz-target }}
-          mise run //rust/tests/fuzz:repro ${{ matrix.fuzz-target }} tests/fuzz/corpus/tunnel-proto/603f5004e41999c098452e7bcff8674477579515
+          mise run //rust/tests/fuzz:repro ${{ matrix.fuzz-target }} corpus/tunnel-proto/603f5004e41999c098452e7bcff8674477579515
       # A step of `grow` can fail on a corpus that already carries a crashing
       # input, and what the run discovered on top of it is worth pushing anyway.
       - name: Save corpus and coverage baseline
