@@ -507,7 +507,7 @@ fn arb_udp_packet(
     let probe_id = g.fresh_probe_id();
     let flow_id = g.fresh_udp_flow_id();
     let dst = into_destination(dst, resolved_ip);
-    Transition::SendUdpPacket {
+    Transition::SendUdpPacketOnNewFlow {
         flow_id,
         client_id,
         src,

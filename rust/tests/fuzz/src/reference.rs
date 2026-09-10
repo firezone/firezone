@@ -302,7 +302,7 @@ impl ReferenceState {
                     now,
                 );
             }
-            Transition::SendUdpPacket {
+            Transition::SendUdpPacketOnNewFlow {
                 flow_id,
                 client_id,
                 src,
@@ -349,7 +349,7 @@ impl ReferenceState {
                     ExpectedOutcome::Dropped | ExpectedOutcome::Rejected { .. } => {}
                 }
             }
-            Transition::SendUdpPacketOnFlow { flow_id, probe_id } => {
+            Transition::SendUdpPacketOnExistingFlow { flow_id, probe_id } => {
                 let flow = state
                     .udp_flows
                     .get(flow_id)

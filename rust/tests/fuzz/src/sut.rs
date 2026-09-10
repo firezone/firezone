@@ -381,7 +381,7 @@ impl TunnelTest {
 
                 buffered_transmits.push_from(transmit, client, now);
             }
-            Transition::SendUdpPacket {
+            Transition::SendUdpPacketOnNewFlow {
                 flow_id,
                 client_id,
                 src,
@@ -404,7 +404,7 @@ impl TunnelTest {
 
                 state.send_udp_probe(flow, probe_id, now, &mut buffered_transmits);
             }
-            Transition::SendUdpPacketOnFlow { flow_id, probe_id } => {
+            Transition::SendUdpPacketOnExistingFlow { flow_id, probe_id } => {
                 let flow = *state
                     .udp_flows
                     .get(&flow_id)

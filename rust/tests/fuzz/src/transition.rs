@@ -55,7 +55,7 @@ pub enum Transition {
         identifier: Identifier,
         probe_id: ProbeId,
     },
-    SendUdpPacket {
+    SendUdpPacketOnNewFlow {
         flow_id: UdpFlowId,
         client_id: ClientId,
         src: IpAddr,
@@ -64,7 +64,7 @@ pub enum Transition {
         dport: DPort,
         probe_id: ProbeId,
     },
-    SendUdpPacketOnFlow {
+    SendUdpPacketOnExistingFlow {
         flow_id: UdpFlowId,
         probe_id: ProbeId,
     },
@@ -133,8 +133,8 @@ impl Transition {
             Transition::UpdateStaticDevicePool { .. } => true,
             Transition::SetInternetResourceState { .. } => true,
             Transition::SendIcmpPacket { .. } => false,
-            Transition::SendUdpPacket { .. } => false,
-            Transition::SendUdpPacketOnFlow { .. } => false,
+            Transition::SendUdpPacketOnNewFlow { .. } => false,
+            Transition::SendUdpPacketOnExistingFlow { .. } => false,
             Transition::ConnectTcp { .. } => false,
             Transition::SendDnsQuery { .. } => false,
             Transition::SendDnsResourcePtrQuery { .. } => false,
@@ -192,8 +192,8 @@ impl Transition {
             Transition::UpdateStaticDevicePool { .. } => !flow.route.is_peer(),
             Transition::SetInternetResourceState { client_id, .. } => flow.client_id != *client_id,
             Transition::SendIcmpPacket { .. } => true,
-            Transition::SendUdpPacket { .. } => true,
-            Transition::SendUdpPacketOnFlow { .. } => true,
+            Transition::SendUdpPacketOnNewFlow { .. } => true,
+            Transition::SendUdpPacketOnExistingFlow { .. } => true,
             Transition::ConnectTcp { .. } => true,
             Transition::SendDnsQuery { .. } => true,
             Transition::SendDnsResourcePtrQuery { .. } => true,
