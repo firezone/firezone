@@ -21,7 +21,8 @@ def main():
     client = Path(sys.argv[1]).resolve()
     output = Path(sys.argv[2]).resolve()
     output.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix="gnome-tray-") as session:
+    # The document portal can leave a FUSE mount until dbus-run-session exits.
+    with tempfile.TemporaryDirectory(prefix="gnome-tray-", ignore_cleanup_errors=True) as session:
         capture(client, output, Path(session))
 
 
@@ -60,8 +61,8 @@ def capture(client, output, session):
         ("org.gnome.desktop.interface", "scaling-factor", "1"),
         ("org.gnome.desktop.session", "idle-delay", "0"),
         ("org.gnome.desktop.screensaver", "lock-enabled", "false"),
-        ("org.gnome.desktop.background", "picture-uri", ""),
-        ("org.gnome.desktop.background", "picture-uri-dark", ""),
+        ("org.gnome.desktop.background", "picture-uri", "''"),
+        ("org.gnome.desktop.background", "picture-uri-dark", "''"),
         ("org.gnome.desktop.background", "primary-color", "#ffffff"),
         ("org.gnome.desktop.background", "color-shading-type", "solid"),
         ("org.gnome.shell", "welcome-dialog-last-shown-version", "999"),
@@ -112,8 +113,8 @@ def capture(client, output, session):
             css.write_bytes(subprocess.check_output(["gresource", "extract", str(resource), css_entry]))
             print("Yaru resource:", resource, "stylesheet:", css_entry, flush=True)
             evaluate(f"""(() => {{
-                Main.sessionMode.themeResourceName = 'theme/Yaru/gnome-shell-theme.gresource';
-                Main.reloadThemeResource();
+                global.firezoneScreenshotTheme = Gio.Resource.load({json.dumps(str(resource))});
+                global.firezoneScreenshotTheme._register();
                 Main.setThemeStylesheet({json.dumps(str(css))});
                 Main.loadTheme();
                 Main.overview.hide();
@@ -129,9 +130,18 @@ def capture(client, output, session):
             ], stdout=client_log, stderr=subprocess.STDOUT)
 
             wait_for("Engineering wiki in the native menu", lambda: evaluate("""(() => {
+                const describe = menu => menu?._getMenuItems().map(item => ({
+                    label: item.label?.text, visible: item.visible,
+                    children: item.menu ? describe(item.menu) : undefined,
+                }));
+                global.firezoneScreenshotState = Object.entries(Main.panel.statusArea)
+                    .filter(([name]) => name.startsWith('appindicator-'))
+                    .map(([name, item]) => ({name, id: item._indicator?.id,
+                        menu: describe(item.menu)}));
                 const indicator = Object.values(Main.panel.statusArea).find(
                     item => item._indicator?.id === 'dev.firezone.client');
                 if (!indicator) return false;
+                global.get_window_actors().forEach(actor => actor.meta_window.minimize());
                 indicator.menu.open(false);
                 const wiki = indicator.menu._getMenuItems().find(
                     item => item.label?.text === 'Engineering wiki');
@@ -173,7 +183,7 @@ def capture(client, output, session):
         except Exception:
             try:
                 print("Shell state:", evaluate("""({
-                    panel: Object.keys(Main.panel.statusArea),
+                    panel: global.firezoneScreenshotState,
                     extensions: Main.extensionManager.getUuids().map(uuid => {
                         const extension = Main.extensionManager.lookup(uuid);
                         return {uuid, state: extension.state, errors: extension.errors};

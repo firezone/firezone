@@ -3,6 +3,11 @@ on:
   push:
     branches: [spike-gnome-tray-screenshot]
   workflow_dispatch:
+    inputs:
+      client-run-id:
+        description: Reuse the debug client artifact from an earlier spike run
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -13,6 +18,7 @@ env:
 
 jobs:
   build:
+    if: inputs.client-run-id == ''
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -31,7 +37,8 @@ jobs:
         run: |
           pnpm install --frozen-lockfile
           pnpm vite build
-          cargo build -p firezone-gui-client --bin firezone-gui-client
+          cargo build -p firezone-gui-client --bin firezone-gui-client --features tauri/custom-protocol
+          strip --strip-debug ../target/debug/firezone-gui-client
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: gnome-tray-client
@@ -40,6 +47,7 @@ jobs:
 
   capture:
     needs: build
+    if: ${{ !cancelled() && (needs.build.result == 'success' || inputs.client-run-id != '') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     strategy:
@@ -52,6 +60,8 @@ jobs:
         with:
           name: gnome-tray-client
           path: client
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.client-run-id || github.run_id }}
       - uses: ./.github/actions/apt-install
         with:
           packages: gnome-shell gnome-shell-extension-appindicator yaru-theme-gnome-shell fonts-cantarell libgl1-mesa-dri libwebkit2gtk-4.1-0 libayatana-appindicator3-1 libxdo3 gnome-keyring python3-gi python3-pil
@@ -59,6 +69,8 @@ jobs:
         timeout-minutes: 5
         run: |
           chmod +x client/firezone-gui-client
+          mkdir -p captures
+          dpkg-query -W gnome-shell gnome-shell-extension-appindicator yaru-theme-gnome-shell fonts-cantarell libgl1-mesa-dri > captures/packages.txt
           dbus-run-session -- /usr/bin/python3 scripts/tests/gnome-tray-screenshot.py client/firezone-gui-client captures
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
