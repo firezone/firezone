@@ -12,6 +12,8 @@ use subprocess::{Exec, Job, Redirection};
 use zbus::blocking::{Connection, connection::Builder};
 
 const YARU_RESOURCE: &str = "/usr/share/gnome-shell/theme/Yaru/gnome-shell-theme.gresource";
+const DISPLAY_WIDTH: i32 = 1920;
+const DISPLAY_HEIGHT: i32 = 1440;
 const DIAGNOSTICS: &str = "target/gui-smoke-test/gnome-tray";
 
 /// Photographs the native GNOME AppIndicator menu on a bus supplied by `dbus-run-session`.
@@ -34,7 +36,7 @@ pub(crate) fn capture(submenu: &str, output: &Path) -> Result<()> {
             tracing::warn!("Failed to collect menu diagnostics: {error:#}");
         }
         let desktop = std::path::absolute(Path::new(DIAGNOSTICS).join("failure-desktop.png"))?;
-        if let Err(error) = session.screenshot([0, 0, 1920, 1080], &desktop) {
+        if let Err(error) = session.screenshot([0, 0, DISPLAY_WIDTH, DISPLAY_HEIGHT], &desktop) {
             tracing::warn!("Failed to capture the desktop: {error:#}");
         }
     }
@@ -119,7 +121,7 @@ impl Session {
                 "--wayland",
                 "--headless",
                 "--virtual-monitor",
-                "1920x1080",
+                &format!("{DISPLAY_WIDTH}x{DISPLAY_HEIGHT}"),
                 "--unsafe-mode",
             ]),
         )?;
@@ -157,13 +159,9 @@ impl Session {
             ]),
         )?;
         let open = format!("global.firezoneScreenshot.open({})", json!(submenu));
-        self.wait_for("resource submenu", || {
+        self.wait_for("complete menu and stable geometry", || {
             Ok(self.eval(&open)?.as_bool() == Some(true))
         })?;
-        self.wait_for("menu geometry", || {
-            Ok(!self.eval("global.firezoneScreenshot.bounds()")?.is_null())
-        })?;
-        std::thread::sleep(Duration::from_secs(2));
         let bounds =
             serde_json::from_value::<[i32; 4]>(self.eval("global.firezoneScreenshot.bounds()")?)?;
         self.save_menu()?;
@@ -289,7 +287,12 @@ impl Session {
     fn screenshot(&self, bounds: [i32; 4], output: &Path) -> Result<()> {
         let [x, y, width, height] = bounds;
         ensure!(
-            x >= 0 && y >= 0 && width > 0 && height > 0 && x + width <= 1920 && y + height <= 1080,
+            x >= 0
+                && y >= 0
+                && width > 0
+                && height > 0
+                && x + width <= DISPLAY_WIDTH
+                && y + height <= DISPLAY_HEIGHT,
             "Invalid menu bounds: {bounds:?}"
         );
         let reply = self.connection.call_method(
