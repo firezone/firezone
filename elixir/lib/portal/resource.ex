@@ -114,16 +114,6 @@ defmodule Portal.Resource do
     }
   end
 
-  @doc "Whether `filters` let a packet with `protocol` and `port` through; no filters let everything through."
-  @spec filters_permit?([map()], :tcp | :udp | :icmp, non_neg_integer() | nil) :: boolean()
-  def filters_permit?([], _protocol, _port), do: true
-
-  def filters_permit?(filters, protocol, port) do
-    Enum.any?(filters, fn filter ->
-      filter.protocol == protocol and port_in_ranges?(port, filter.ports)
-    end)
-  end
-
   @doc """
   Validates that the Resource type and its Site agree with each other.
 
@@ -420,18 +410,6 @@ defmodule Portal.Resource do
       {_, :dynamic_device_pool} -> validate_required(changeset, [:device_membership_criteria])
       _ -> put_change(changeset, :device_membership_criteria, nil)
     end
-  end
-
-  defp port_in_ranges?(_port, []), do: true
-  defp port_in_ranges?(nil, _ranges), do: false
-
-  defp port_in_ranges?(port, ranges) do
-    Enum.any?(ranges, fn range ->
-      case range |> to_string() |> String.split("-") |> Enum.map(&String.to_integer(String.trim(&1))) do
-        [lower, upper] -> port >= lower and port <= upper
-        [single] -> port == single
-      end
-    end)
   end
 
   defp maybe_put_default_ip_stack(changeset) do
