@@ -2461,6 +2461,7 @@ name = "firezone-gateway"
 version = "1.6.2"
 dependencies = [
  "anyhow-ext",
+ "atomicfs",
  "backoff",
  "bin-shared",
  "caps",
@@ -2471,6 +2472,7 @@ dependencies = [
  "flow-log-writer",
  "futures",
  "futures-bounded",
+ "hex",
  "hickory-resolver",
  "humantime",
  "ip-packet",
@@ -2488,6 +2490,9 @@ dependencies = [
  "rpassword",
  "rustls",
  "secrecy",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
  "snownet",
  "socket-factory",
  "telemetry",
