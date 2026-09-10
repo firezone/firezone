@@ -40,12 +40,13 @@
 //! one) keeps both write-once, so the uploader can delete one without racing a
 //! concurrent write of the other.
 //!
-//! Two things bound what the spool costs a device. It holds at most
-//! [`MAX_REPORTS`], so a stretch the uploader cannot drain (an offline client,
-//! uploads disabled) settles at a fixed amount of disk instead of growing until
-//! the disk is full. And a write that runs out of disk parks the writes after it
-//! for [`DISK_FULL_COOLDOWN`], so a disk filled by anything else costs one
-//! failed write per cooldown rather than one per flow.
+//! Two things bound what the spool costs a device. It occupies at most
+//! [`SPOOL_BUDGET_BYTES`], charged in the volume's own allocation units, so a
+//! stretch the uploader cannot drain (an offline client, uploads disabled)
+//! settles at a fixed amount of disk instead of growing until the disk is full.
+//! And a write that runs out of disk parks the writes after it for
+//! [`DISK_FULL_COOLDOWN`], so a disk filled by anything else costs one failed
+//! write per cooldown rather than one per flow.
 //!
 //! Each report is written immediately as an atomic, fsync'd file, so nothing
 //! already produced is lost on an unclean exit. Writing happens on a dedicated
@@ -89,14 +90,6 @@ const CHANNEL_CAPACITY: usize = if cfg!(any(target_os = "ios", target_os = "andr
     10_000
 };
 
-/// Upper bound on one report's on-disk footprint.
-///
-/// Measured against the real worst case by `flow-tracker`'s
-/// `worst_case_report_fits_the_spool_budget`, which fails if the emitted schema
-/// outgrows it. Reports are small files and file systems allocate whole clusters
-/// (4 KiB on NTFS), so one occupies at most two.
-pub const MAX_REPORT_BYTES: u64 = 8 * 1024;
-
 /// How much disk the spool may occupy. Mobile gets less, for the same reasons as
 /// [`CHANNEL_CAPACITY`].
 const SPOOL_BUDGET_BYTES: u64 = if cfg!(any(target_os = "ios", target_os = "android")) {
@@ -105,8 +98,9 @@ const SPOOL_BUDGET_BYTES: u64 = if cfg!(any(target_os = "ios", target_os = "andr
     256 * 1024 * 1024
 };
 
-/// Reports the spool may hold before new ones are dropped.
-const MAX_REPORTS: u64 = SPOOL_BUDGET_BYTES / MAX_REPORT_BYTES;
+/// Charged per report when the volume does not report its allocation unit. The
+/// common default across NTFS, ext4 and APFS.
+const DEFAULT_CLUSTER_BYTES: u64 = 4096;
 
 /// How long a write that ran out of disk parks the ones after it.
 const DISK_FULL_COOLDOWN: Duration = Duration::from_secs(60);
@@ -443,9 +437,12 @@ fn writer_loop(root: &Path, rx: &mpsc::Receiver<Command>) {
 /// applies before a report is written rather than after the disk is already full.
 struct Spool {
     root: PathBuf,
-    /// Reports the spool may hold.
+    /// The volume's allocation unit, so a report is charged what it takes from
+    /// the disk rather than its serialized length.
+    cluster: u64,
+    /// Clusters the spool may occupy.
     capacity: u64,
-    /// Reports on disk as of `counted_at`, plus every write since. Only the
+    /// Clusters in use as of `counted_at`, plus every write since. Only the
     /// uploader deletes, so this can drift upwards but never down: reaching
     /// `capacity` early is corrected by a re-count, and the spool stays within
     /// its budget in between.
@@ -458,11 +455,20 @@ struct Spool {
 
 impl Spool {
     fn new(root: &Path) -> Self {
+        // The volume can only be queried through a path that exists, and the
+        // spool root is the writer's to create either way.
+        if let Err(e) = create_dir_secure(root) {
+            tracing::warn!(root = %root.display(), "Failed to create flow-log spool root: {e}");
+        }
+
+        let cluster = cluster_bytes(root).unwrap_or(DEFAULT_CLUSTER_BYTES).max(1);
+
         Self {
             root: root.to_owned(),
-            capacity: MAX_REPORTS,
+            cluster,
+            capacity: SPOOL_BUDGET_BYTES / cluster,
             // The spool carries over whatever the last run could not upload.
-            spooled: count_reports(root),
+            spooled: count_clusters(root, cluster),
             counted_at: Instant::now(),
             disk_full_until: None,
             dropped: 0,
@@ -485,7 +491,7 @@ impl Spool {
         }
 
         match write_report(&self.root, report) {
-            Outcome::Written => self.spooled += 1,
+            Outcome::Written { bytes } => self.spooled += clusters_for(bytes, self.cluster),
             Outcome::DiskFull => self.disk_full_until = Some(now + DISK_FULL_COOLDOWN),
             Outcome::Skipped => {}
         }
@@ -498,7 +504,7 @@ impl Spool {
             return false;
         }
 
-        self.spooled = count_reports(&self.root);
+        self.spooled = count_clusters(&self.root, self.cluster);
         self.counted_at = now;
 
         self.spooled < self.capacity
@@ -519,7 +525,9 @@ impl Spool {
 
 /// What became of one report handed to [`write_report`].
 enum Outcome {
-    Written,
+    Written {
+        bytes: u64,
+    },
     /// The disk is full, so every write after this one fails the same way until
     /// something frees space.
     DiskFull,
@@ -551,7 +559,9 @@ fn write_report(root: &Path, report: &Report) -> Outcome {
         report.flow_start, report.identity
     ));
     match atomicfs::write(&path, &contents).context("Failed to write flow-log report") {
-        Ok(()) => Outcome::Written,
+        Ok(()) => Outcome::Written {
+            bytes: contents.len() as u64,
+        },
         Err(e)
             if e.any_downcast_ref::<std::io::Error>()
                 .is_some_and(|io| io.kind() == std::io::ErrorKind::StorageFull) =>
@@ -568,23 +578,97 @@ fn write_report(root: &Path, report: &Report) -> Outcome {
     }
 }
 
-/// Counts the reports spooled under `root`, walking its
+/// What a report of `bytes` costs the spool.
+///
+/// File systems hand out whole clusters, so a 500-byte report still takes one,
+/// and an empty file is not free either.
+fn clusters_for(bytes: u64, cluster: u64) -> u64 {
+    bytes.div_ceil(cluster).max(1)
+}
+
+/// Sums what the reports spooled under `root` cost, walking its
 /// `<role>/<policy_authorization_id>` layout.
 ///
 /// Reports are the only `.json` files in an authorization directory: the token
 /// has no extension and `atomicfs` names its in-flight temporaries without one.
-fn count_reports(root: &Path) -> u64 {
-    let mut count = 0;
+/// A report whose size cannot be read is charged one cluster, the least it can
+/// cost.
+fn count_clusters(root: &Path, cluster: u64) -> u64 {
+    let mut clusters = 0;
 
     for role in entries(root) {
         for authz in entries(&role.path()) {
-            count += entries(&authz.path())
-                .filter(|report| report.path().extension().is_some_and(|ext| ext == "json"))
-                .count() as u64;
+            for report in entries(&authz.path()) {
+                if report.path().extension().is_none_or(|ext| ext != "json") {
+                    continue;
+                }
+
+                let bytes = report.metadata().map(|meta| meta.len()).unwrap_or(0);
+
+                clusters += clusters_for(bytes, cluster);
+            }
         }
     }
 
-    count
+    clusters
+}
+
+/// The allocation unit of the file system holding `path`, or `None` if the
+/// volume cannot be queried.
+///
+/// Chosen per volume when it is formatted rather than fixed by the platform
+/// (NTFS defaults to 4 KiB but scales with volume size, ReFS uses 4 KiB or
+/// 64 KiB), so it is read from the volume rather than assumed.
+#[cfg(unix)]
+fn cluster_bytes(path: &Path) -> Option<u64> {
+    let stats = nix::sys::statvfs::statvfs(path)
+        .inspect_err(|e| tracing::debug!(path = %path.display(), "Failed to stat volume: {e}"))
+        .ok()?;
+
+    Some(stats.fragment_size())
+}
+
+#[cfg(windows)]
+fn cluster_bytes(path: &Path) -> Option<u64> {
+    use std::os::windows::ffi::OsStrExt as _;
+    use windows::{
+        Win32::Storage::FileSystem::{GetDiskFreeSpaceW, GetVolumePathNameW},
+        core::PCWSTR,
+    };
+
+    let wide = path
+        .as_os_str()
+        .encode_wide()
+        .chain([0])
+        .collect::<Vec<_>>();
+    // `GetDiskFreeSpaceW` takes the volume's root, not an arbitrary directory.
+    let mut root = [0u16; 261]; // `MAX_PATH` plus the terminator.
+
+    unsafe { GetVolumePathNameW(PCWSTR(wide.as_ptr()), &mut root) }
+        .inspect_err(|e| tracing::debug!(path = %path.display(), "Failed to find volume: {e}"))
+        .ok()?;
+
+    let mut sectors_per_cluster = 0u32;
+    let mut bytes_per_sector = 0u32;
+
+    unsafe {
+        GetDiskFreeSpaceW(
+            PCWSTR(root.as_ptr()),
+            Some(&mut sectors_per_cluster),
+            Some(&mut bytes_per_sector),
+            None,
+            None,
+        )
+    }
+    .inspect_err(|e| tracing::debug!(path = %path.display(), "Failed to query volume: {e}"))
+    .ok()?;
+
+    Some(u64::from(sectors_per_cluster) * u64::from(bytes_per_sector))
+}
+
+#[cfg(not(any(unix, windows)))]
+fn cluster_bytes(_: &Path) -> Option<u64> {
+    None
 }
 
 /// Lists a directory, yielding nothing if it cannot be read.
@@ -667,6 +751,8 @@ mod tests {
     use tracing_subscriber::layer::SubscriberExt as _;
 
     const AUTHZ_ID: &str = "11111111-1111-1111-1111-111111111111";
+    /// Pinned so the tests do not depend on the volume they run on.
+    const CLUSTER: u64 = 4096;
 
     #[test]
     fn spools_start_and_end_reports_sharing_a_stem() {
@@ -780,6 +866,7 @@ mod tests {
         write_token(dir.path(), &token_for(AUTHZ_ID)).unwrap();
 
         let mut spool = Spool {
+            cluster: CLUSTER,
             capacity: 2,
             ..Spool::new(dir.path())
         };
@@ -787,7 +874,7 @@ mod tests {
             spool.write(&report(identity, false));
         }
 
-        assert_eq!(count_reports(dir.path()), 2);
+        assert_eq!(count_clusters(dir.path(), CLUSTER), 2);
     }
 
     #[test]
@@ -796,6 +883,7 @@ mod tests {
         write_token(dir.path(), &token_for(AUTHZ_ID)).unwrap();
 
         let mut spool = Spool {
+            cluster: CLUSTER,
             capacity: 2,
             ..Spool::new(dir.path())
         };
@@ -817,17 +905,18 @@ mod tests {
         write_token(dir.path(), &token_for(AUTHZ_ID)).unwrap();
 
         let mut spool = Spool {
+            cluster: CLUSTER,
             disk_full_until: Some(Instant::now() + DISK_FULL_COOLDOWN),
             ..Spool::new(dir.path())
         };
         spool.write(&report("a", false));
 
-        assert_eq!(count_reports(dir.path()), 0);
+        assert_eq!(count_clusters(dir.path(), CLUSTER), 0);
 
         spool.disk_full_until = Some(Instant::now());
         spool.write(&report("a", false));
 
-        assert_eq!(count_reports(dir.path()), 1);
+        assert_eq!(count_clusters(dir.path(), CLUSTER), 1);
     }
 
     #[test]
@@ -835,7 +924,10 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         write_token(dir.path(), &token_for(AUTHZ_ID)).unwrap();
 
-        let mut spool = Spool::new(dir.path());
+        let mut spool = Spool {
+            cluster: CLUSTER,
+            ..Spool::new(dir.path())
+        };
         spool.write(&report("a", false));
         spool.write(&report("a", true));
 
@@ -847,7 +939,66 @@ mod tests {
         // The uploader's config sits in the root, next to the role directories.
         std::fs::write(dir.path().join("upload.json"), "{}").unwrap();
 
-        assert_eq!(count_reports(dir.path()), 3);
+        assert_eq!(count_clusters(dir.path(), CLUSTER), 3);
+    }
+
+    #[test]
+    fn a_report_is_charged_whole_clusters() {
+        assert_eq!(clusters_for(0, CLUSTER), 1);
+        assert_eq!(clusters_for(489, CLUSTER), 1);
+        assert_eq!(clusters_for(CLUSTER, CLUSTER), 1);
+        assert_eq!(clusters_for(CLUSTER + 1, CLUSTER), 2);
+    }
+
+    /// Charging a report a whole cluster assumes it never spans more than one.
+    /// NTFS also stores small files inside the MFT, which costs no cluster at
+    /// all, so this reports what a report-sized file really takes (CI runs
+    /// tests with `--nocapture`).
+    #[cfg(windows)]
+    #[test]
+    #[allow(clippy::print_stdout)] // Reporting the measurement is the point.
+    fn a_report_sized_file_costs_at_most_one_cluster() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("report.json");
+        std::fs::write(&path, vec![b'x'; 489]).unwrap();
+
+        let cluster = cluster_bytes(dir.path()).expect("volume reports its allocation unit");
+        let allocated = allocated_bytes(&path);
+
+        println!("cluster={cluster} logical=489 allocated={allocated}");
+
+        assert!(
+            allocated <= cluster,
+            "a 489-byte report allocated {allocated} on a {cluster}-byte cluster"
+        );
+    }
+
+    /// What the file system actually reserved for `path`, which is zero for a
+    /// file NTFS keeps resident in the MFT.
+    #[cfg(windows)]
+    fn allocated_bytes(path: &Path) -> u64 {
+        use std::os::windows::io::AsRawHandle as _;
+        use windows::Win32::{
+            Foundation::HANDLE,
+            Storage::FileSystem::{
+                FILE_STANDARD_INFO, FileStandardInfo, GetFileInformationByHandleEx,
+            },
+        };
+
+        let file = std::fs::File::open(path).unwrap();
+        let mut info = FILE_STANDARD_INFO::default();
+
+        unsafe {
+            GetFileInformationByHandleEx(
+                HANDLE(file.as_raw_handle()),
+                FileStandardInfo,
+                std::ptr::from_mut(&mut info).cast(),
+                size_of::<FILE_STANDARD_INFO>() as u32,
+            )
+        }
+        .unwrap();
+
+        info.AllocationSize as u64
     }
 
     fn report(identity: &str, completed: bool) -> Report {

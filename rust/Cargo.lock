@@ -2749,12 +2749,14 @@ dependencies = [
  "base64 0.23.1",
  "chrono",
  "flow-log-spool",
+ "nix 0.31.3",
  "serde",
  "serde_json",
  "tempfile",
  "tracing",
  "tracing-subscriber",
  "uuid",
+ "windows",
  "windows-security",
 ]
 

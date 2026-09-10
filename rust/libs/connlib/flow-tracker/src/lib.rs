@@ -51,7 +51,7 @@ const FLOW_TIMEOUT: TimeDelta = TimeDelta::minutes(2);
 /// switchover; the cap bounds the tracker's memory and the emitted record's
 /// size. A change past the cap splits the flow instead of going unrecorded, so
 /// a peer cannot flap its path to keep later tuples out of the log.
-pub const MAX_CONTEXTS_PER_FLOW: usize = 16;
+const MAX_CONTEXTS_PER_FLOW: usize = 16;
 
 thread_local! {
     /// The [`FlowData`] for the packet currently being processed on this thread.
