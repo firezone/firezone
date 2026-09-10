@@ -1346,6 +1346,47 @@ defmodule PortalWeb.LiveTable do
     {:noreply, push_patch(socket, to: String.trim_trailing("#{path}?#{query}", "?"))}
   end
 
+  @doc """
+  Builds a patch path that carries the state of every live table on the socket
+  (filters, ordering, pagination) so that opening, closing or submitting a panel
+  does not reset the table.
+
+  Panel-local query keys such as `tab` and `page` are dropped; pass them in
+  `extra` when the target panel needs them. `return_to` is kept so a panel can
+  still navigate back to where it was opened from.
+
+  Accepts either a socket or the template assigns.
+  """
+  def live_table_path(socket_or_assigns, path, extra \\ [])
+
+  def live_table_path(%Phoenix.LiveView.Socket{assigns: assigns}, path, extra) do
+    live_table_path(assigns, path, extra)
+  end
+
+  def live_table_path(assigns, path, extra) when is_map(assigns) do
+    table_ids = Map.get(assigns, :live_table_ids, [])
+
+    query =
+      assigns
+      |> Map.get(:query_params, %{})
+      |> Map.filter(fn {key, _value} -> live_table_key?(key, table_ids) end)
+      |> Map.merge(Map.new(extra, fn {key, value} -> {to_string(key), value} end))
+      |> Map.reject(fn {_key, value} -> is_nil(value) end)
+      |> Plug.Conn.Query.encode()
+
+    if query == "" do
+      path
+    else
+      "#{path}?#{query}"
+    end
+  end
+
+  defp live_table_key?("return_to", _table_ids), do: true
+
+  defp live_table_key?(key, table_ids) do
+    Enum.any?(table_ids, &String.starts_with?(key, "#{&1}_"))
+  end
+
   defp put_page_to_params(params, id, page) do
     params
     |> delete_page_from_params(id)

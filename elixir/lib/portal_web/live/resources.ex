@@ -315,17 +315,20 @@ defmodule PortalWeb.Resources do
     {:noreply,
      socket
      |> put_flash(:error, message)
-     |> push_patch(to: ~p"/#{socket.assigns.account}/resources?#{socket.assigns.query_params}")}
+     |> push_patch(to: live_table_path(socket, ~p"/#{socket.assigns.account}/resources"))}
   end
 
-  defp resources_index_path(socket), do: ~p"/#{socket.assigns.account}/resources"
-  defp new_resource_path(socket), do: ~p"/#{socket.assigns.account}/resources/new"
+  defp resources_index_path(socket),
+    do: live_table_path(socket, ~p"/#{socket.assigns.account}/resources")
+
+  defp new_resource_path(socket),
+    do: live_table_path(socket, ~p"/#{socket.assigns.account}/resources/new")
 
   defp resource_show_path(socket, resource_id),
-    do: ~p"/#{socket.assigns.account}/resources/#{resource_id}"
+    do: live_table_path(socket, ~p"/#{socket.assigns.account}/resources/#{resource_id}")
 
   defp edit_resource_path(socket, resource_id),
-    do: ~p"/#{socket.assigns.account}/resources/#{resource_id}/edit"
+    do: live_table_path(socket, ~p"/#{socket.assigns.account}/resources/#{resource_id}/edit")
 
   defp cancel_resource_form_path(socket) do
     case socket.assigns.resource_panel.view do
@@ -569,7 +572,7 @@ defmodule PortalWeb.Resources do
                 </p>
               </div>
               <.link
-                patch={~p"/#{@account}/resources/new"}
+                patch={live_table_path(assigns, ~p"/#{@account}/resources/new")}
                 class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
               >
                 <.icon name="ri-add-line" class="w-3 h-3" /> Add a Resource
@@ -627,8 +630,7 @@ defmodule PortalWeb.Resources do
       do: handle_live_table_event(event, params, socket)
 
   def handle_event("close_panel", _params, socket) do
-    params = Map.drop(socket.assigns.query_params, ["tab"])
-    {:noreply, push_patch(socket, to: ~p"/#{socket.assigns.account}/resources?#{params}")}
+    {:noreply, push_patch(socket, to: live_table_path(socket, ~p"/#{socket.assigns.account}/resources"))}
   end
 
   def handle_event("open_new_form", _params, socket) do
@@ -658,15 +660,7 @@ defmodule PortalWeb.Resources do
         %{"tab" => tab},
         %{assigns: %{selected_resource: %Resource{} = resource}} = socket
       ) do
-    params =
-      socket.assigns.query_params
-      |> Map.put("tab", tab)
-      |> Map.delete("page")
-
-    {:noreply,
-     push_patch(socket,
-       to: ~p"/#{socket.assigns.account}/resources/#{resource}?#{params}"
-     )}
+    {:noreply, push_patch(socket, to: live_table_path(socket, ~p"/#{socket.assigns.account}/resources/#{resource}", tab: tab))}
   end
 
   def handle_event(
@@ -678,11 +672,9 @@ defmodule PortalWeb.Resources do
   end
 
   def handle_event("change_policy_authorizations_page", %{"page" => page}, socket) do
-    params = Map.put(socket.assigns.query_params, "page", page)
-
     {:noreply,
      push_patch(socket,
-       to: ~p"/#{socket.assigns.account}/resources/#{socket.assigns.selected_resource.id}?#{params}"
+       to: live_table_path(socket, ~p"/#{socket.assigns.account}/resources/#{socket.assigns.selected_resource.id}", tab: "authorizations", page: page)
      )}
   end
 
@@ -738,7 +730,7 @@ defmodule PortalWeb.Resources do
           {:noreply,
            socket
            |> reload_live_table!("resources")
-           |> push_patch(to: ~p"/#{socket.assigns.account}/resources/#{resource.id}")}
+           |> push_patch(to: live_table_path(socket, ~p"/#{socket.assigns.account}/resources/#{resource.id}"))}
 
         {:error, changeset} ->
           changeset = Map.put(changeset, :action, :validate)
@@ -760,7 +752,7 @@ defmodule PortalWeb.Resources do
           {:noreply,
            socket
            |> reload_live_table!("resources")
-           |> push_patch(to: ~p"/#{socket.assigns.account}/resources/#{updated_resource.id}")}
+           |> push_patch(to: live_table_path(socket, ~p"/#{socket.assigns.account}/resources/#{updated_resource.id}"))}
 
         {:error, changeset} ->
           changeset = Map.put(changeset, :action, :validate)
@@ -776,8 +768,7 @@ defmodule PortalWeb.Resources do
 
   def handle_event("handle_keydown", %{"key" => "Escape"}, socket)
       when not is_nil(socket.assigns.selected_resource) do
-    params = Map.drop(socket.assigns.query_params, ["tab"])
-    {:noreply, push_patch(socket, to: ~p"/#{socket.assigns.account}/resources?#{params}")}
+    {:noreply, push_patch(socket, to: live_table_path(socket, ~p"/#{socket.assigns.account}/resources"))}
   end
 
   def handle_event("handle_keydown", _params, socket) do
@@ -1173,7 +1164,7 @@ defmodule PortalWeb.Resources do
          socket
          |> put_flash(:success, "Resource \"#{resource.name}\" was deleted.")
          |> reload_live_table!("resources")
-         |> push_patch(to: ~p"/#{socket.assigns.account}/resources")}
+         |> push_patch(to: live_table_path(socket, ~p"/#{socket.assigns.account}/resources"))}
 
       {:error, _} ->
         {:noreply,

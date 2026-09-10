@@ -1625,4 +1625,108 @@ defmodule PortalWeb.PoliciesTest do
       assert html =~ "Total"
     end
   end
+  describe "live table filters across panel operations" do
+    setup %{account: account} do
+      group = group_fixture(account: account, name: "Engineering Team")
+      other_group = group_fixture(account: account, name: "Marketing Team")
+      resource = resource_fixture(account: account)
+      other_resource = resource_fixture(account: account)
+      matching = policy_fixture(group: group, resource: resource)
+      policy_fixture(group: other_group, resource: other_resource)
+      filter = %{"policies_filter[group_name]" => "Engineering"}
+
+      %{
+        group: group,
+        other_group: other_group,
+        resource: resource,
+        other_resource: other_resource,
+        matching: matching,
+        filter: filter
+      }
+    end
+
+    test "are kept when creating a policy", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      group: group,
+      other_group: other_group,
+      other_resource: other_resource,
+      filter: filter
+    } do
+      {:ok, lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/policies?#{filter}")
+
+      refute html =~ other_group.name
+
+      render_click(lv, "open_new_policy_form")
+      assert_patch(lv, ~p"/#{account}/policies/new?#{filter}")
+
+      render_click(lv, "cancel_policy_form")
+      assert_patch(lv, ~p"/#{account}/policies?#{filter}")
+
+      render_click(lv, "open_new_policy_form")
+
+      lv
+      |> form("[phx-submit='submit_policy_form']",
+        policy: %{
+          group_id: group.id,
+          resource_id: other_resource.id,
+          description: "Engineering access"
+        }
+      )
+      |> render_submit()
+
+      policy =
+        Portal.Repo.get_by!(Portal.Policy, group_id: group.id, resource_id: other_resource.id)
+
+      assert_patch(lv, ~p"/#{account}/policies/#{policy.id}?#{filter}")
+
+      html = render(lv)
+      assert html =~ "Engineering access"
+      refute html =~ other_group.name
+    end
+
+    test "are kept when editing a policy", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      group: group,
+      other_group: other_group,
+      resource: resource,
+      matching: matching,
+      filter: filter
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/policies/#{matching.id}?#{filter}")
+
+      render_click(lv, "open_edit_form")
+      assert_patch(lv, ~p"/#{account}/policies/#{matching.id}/edit?#{filter}")
+
+      render_click(lv, "cancel_policy_form")
+      assert_patch(lv, ~p"/#{account}/policies/#{matching.id}?#{filter}")
+
+      render_click(lv, "open_edit_form")
+
+      lv
+      |> form("[phx-submit='submit_policy_form']",
+        policy: %{
+          group_id: group.id,
+          resource_id: resource.id,
+          description: "Updated description"
+        }
+      )
+      |> render_submit()
+
+      assert_patch(lv, ~p"/#{account}/policies/#{matching.id}?#{filter}")
+
+      html = render(lv)
+      assert html =~ "Updated description"
+      refute html =~ other_group.name
+    end
+  end
 end

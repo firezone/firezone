@@ -313,8 +313,7 @@ defmodule PortalWeb.Devices do
       do: handle_live_table_event(event, params, socket)
 
   def handle_event("close_panel", _params, socket) do
-    params = Map.drop(socket.assigns.query_params, ["tab"])
-    {:noreply, push_patch(socket, to: ~p"/#{socket.assigns.account}/devices?#{params}")}
+    {:noreply, push_patch(socket, to: live_table_path(socket, ~p"/#{socket.assigns.account}/devices"))}
   end
 
   def handle_event(
@@ -322,15 +321,7 @@ defmodule PortalWeb.Devices do
         %{"tab" => tab},
         %{assigns: %{selected_device: %Device{} = device}} = socket
       ) do
-    params =
-      socket.assigns.query_params
-      |> Map.put("tab", tab)
-      |> Map.delete("page")
-
-    {:noreply,
-     push_patch(socket,
-       to: ~p"/#{socket.assigns.account}/devices/#{device}?#{params}"
-     )}
+    {:noreply, push_patch(socket, to: live_table_path(socket, ~p"/#{socket.assigns.account}/devices/#{device}", tab: tab))}
   end
 
   def handle_event("switch_device_tab", _params, %{assigns: %{selected_device: nil}} = socket) do
@@ -338,11 +329,9 @@ defmodule PortalWeb.Devices do
   end
 
   def handle_event("change_policy_authorizations_page", %{"page" => page}, socket) do
-    params = Map.put(socket.assigns.query_params, "page", page)
-
     {:noreply,
      push_patch(socket,
-       to: ~p"/#{socket.assigns.account}/devices/#{socket.assigns.selected_device.id}?#{params}"
+       to: live_table_path(socket, ~p"/#{socket.assigns.account}/devices/#{socket.assigns.selected_device.id}", tab: "authorizations", page: page)
      )}
   end
 
@@ -355,16 +344,12 @@ defmodule PortalWeb.Devices do
 
   def handle_event("open_device_edit_form", _params, socket) do
     {:noreply,
-     push_patch(socket,
-       to: ~p"/#{socket.assigns.account}/devices/#{socket.assigns.selected_device.id}/edit"
-     )}
+     push_patch(socket, to: live_table_path(socket, ~p"/#{socket.assigns.account}/devices/#{socket.assigns.selected_device.id}/edit"))}
   end
 
   def handle_event("cancel_device_edit_form", _params, socket) do
     {:noreply,
-     push_patch(socket,
-       to: ~p"/#{socket.assigns.account}/devices/#{socket.assigns.selected_device.id}"
-     )}
+     push_patch(socket, to: live_table_path(socket, ~p"/#{socket.assigns.account}/devices/#{socket.assigns.selected_device.id}"))}
   end
 
   def handle_event("change_device_edit_form", %{"device" => attrs}, socket) do
@@ -384,7 +369,7 @@ defmodule PortalWeb.Devices do
          socket
          |> put_flash(:success, "Device updated successfully.")
          |> reload_live_table!("devices")
-         |> push_patch(to: ~p"/#{socket.assigns.account}/devices/#{updated_client.id}")}
+         |> push_patch(to: live_table_path(socket, ~p"/#{socket.assigns.account}/devices/#{updated_client.id}"))}
 
       {:error, changeset} ->
         {:noreply,
@@ -397,15 +382,12 @@ defmodule PortalWeb.Devices do
   def handle_event("handle_keydown", _params, socket)
       when socket.assigns.device_panel.view == :edit_device do
     {:noreply,
-     push_patch(socket,
-       to: ~p"/#{socket.assigns.account}/devices/#{socket.assigns.selected_device.id}"
-     )}
+     push_patch(socket, to: live_table_path(socket, ~p"/#{socket.assigns.account}/devices/#{socket.assigns.selected_device.id}"))}
   end
 
   def handle_event("handle_keydown", _params, socket)
       when not is_nil(socket.assigns.selected_device) do
-    params = Map.drop(socket.assigns.query_params, ["tab"])
-    {:noreply, push_patch(socket, to: ~p"/#{socket.assigns.account}/devices?#{params}")}
+    {:noreply, push_patch(socket, to: live_table_path(socket, ~p"/#{socket.assigns.account}/devices"))}
   end
 
   def handle_event("handle_keydown", _params, socket) do
@@ -475,7 +457,7 @@ defmodule PortalWeb.Devices do
          |> put_flash(:success, "Device \"#{device.name}\" was deleted.")
          |> merge_state(:device_confirm, delete?: false)
          |> reload_live_table!("devices")
-         |> push_patch(to: ~p"/#{socket.assigns.account}/devices")}
+         |> push_patch(to: live_table_path(socket, ~p"/#{socket.assigns.account}/devices"))}
 
       {:error, _} ->
         {:noreply, merge_state(socket, :device_confirm, delete?: false)}
@@ -508,7 +490,7 @@ defmodule PortalWeb.Devices do
     {:noreply,
      socket
      |> put_flash(:error, message)
-     |> push_patch(to: ~p"/#{socket.assigns.account}/devices?#{socket.assigns.query_params}")}
+     |> push_patch(to: live_table_path(socket, ~p"/#{socket.assigns.account}/devices"))}
   end
 
   def handle_info(%Change{op: :insert, struct: %Device{type: :client}} = change, socket) do
