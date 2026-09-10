@@ -25,9 +25,9 @@ impl ProbeId {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub(crate) struct UdpFlowId(u64);
+pub(crate) struct FlowId(u64);
 
-impl UdpFlowId {
+impl FlowId {
     pub(crate) fn new(value: u64) -> Self {
         Self(value)
     }
@@ -40,17 +40,27 @@ pub(crate) enum ProbeProtocol {
 }
 
 #[derive(Debug, Clone)]
+pub(crate) struct IcmpFlow {
+    pub(crate) client_id: ClientId,
+    pub(crate) src: IpAddr,
+    pub(crate) dst: Destination,
+    pub(crate) identifier: Identifier,
+    pub(crate) next_seq: Seq,
+    pub(crate) route: FlowRoute,
+}
+
+#[derive(Debug, Clone)]
 pub(crate) struct UdpFlow {
     pub(crate) client_id: ClientId,
     pub(crate) src: IpAddr,
     pub(crate) dst: Destination,
     pub(crate) sport: SPort,
     pub(crate) dport: DPort,
-    pub(crate) route: UdpRoute,
+    pub(crate) route: FlowRoute,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum UdpRoute {
+pub(crate) enum FlowRoute {
     Resource {
         resource: ResourceId,
         gateway: GatewayId,
@@ -59,20 +69,35 @@ pub(crate) enum UdpRoute {
     Peer(ClientId),
 }
 
-impl UdpRoute {
+impl FlowRoute {
+    pub(crate) fn from_remote(remote: Remote, resource: Option<ResourceId>) -> Self {
+        match (remote, resource) {
+            (Remote::Gateway(gateway), Some(resource)) => {
+                FlowRoute::Resource { resource, gateway }
+            }
+            (Remote::Gateway(gateway), None) => FlowRoute::Gateway(gateway),
+            (Remote::Client(client), None) => FlowRoute::Peer(client),
+            (Remote::Client(client), Some(resource)) => {
+                panic!("client {client} cannot serve resource {resource}")
+            }
+        }
+    }
+
     pub(crate) fn packet_route(self) -> PacketRoute {
         match self {
-            UdpRoute::Resource { resource, gateway } => PacketRoute::Resource { resource, gateway },
-            UdpRoute::Gateway(gateway) => PacketRoute::Gateway(gateway),
-            UdpRoute::Peer(client) => PacketRoute::Peer(client),
+            FlowRoute::Resource { resource, gateway } => {
+                PacketRoute::Resource { resource, gateway }
+            }
+            FlowRoute::Gateway(gateway) => PacketRoute::Gateway(gateway),
+            FlowRoute::Peer(client) => PacketRoute::Peer(client),
         }
     }
 
     pub(crate) fn is_peer(self) -> bool {
         match self {
-            UdpRoute::Resource { .. } => false,
-            UdpRoute::Gateway(_) => false,
-            UdpRoute::Peer(_) => true,
+            FlowRoute::Resource { .. } => false,
+            FlowRoute::Gateway(_) => false,
+            FlowRoute::Peer(_) => true,
         }
     }
 }
@@ -242,7 +267,7 @@ pub(crate) enum ProbeObservation {
 #[derive(Debug, Clone)]
 pub(crate) struct DnsNatObservation {
     pub(crate) domain: dns_types::DomainName,
-    pub(crate) udp_flow: Option<UdpFlowId>,
+    pub(crate) flow_id: FlowId,
     pub(crate) submitted: SubmittedRequest,
     pub(crate) received: ReceivedRequest,
 }

@@ -1,8 +1,8 @@
 use super::dns_records::DnsRecords;
 use super::icmp_error_hosts::IcmpErrorHosts;
 use super::probe::{
-    ExpectedOutcome, ExpectedProbe, KnownLoss, PacketRoute, ProbeId, ProbeRequest, RejectionRemote,
-    Remote, TraceRequirement, UdpFlow, UdpFlowId, UdpRoute,
+    ExpectedOutcome, ExpectedProbe, FlowId, FlowRoute, IcmpFlow, KnownLoss, PacketRoute, ProbeId,
+    ProbeRequest, RejectionRemote, Remote, TraceRequirement, UdpFlow,
 };
 use super::{ref_client::*, ref_gateway::*, sim_net::*, stub_portal::StubPortal, transition::*};
 use connlib_model::{ClientId, GatewayId, RelayId, ResourceId, Site, StaticSecret};
@@ -51,7 +51,8 @@ pub struct ReferenceState {
 
     pub(crate) expected_probes: BTreeMap<ProbeId, ExpectedProbe>,
 
-    pub(crate) udp_flows: BTreeMap<UdpFlowId, UdpFlow>,
+    pub(crate) icmp_flows: BTreeMap<FlowId, IcmpFlow>,
+    pub(crate) udp_flows: BTreeMap<FlowId, UdpFlow>,
 }
 
 /// Implementation of our reference state machine.
@@ -83,6 +84,7 @@ impl ReferenceState {
             icmp_error_hosts,
             network,
             expected_probes: Default::default(),
+            icmp_flows: Default::default(),
             udp_flows: Default::default(),
         }
     }
@@ -93,8 +95,16 @@ impl ReferenceState {
     pub fn apply(mut state: Self, transition: &Transition, now: Instant) -> Self {
         let iceless = state.portal.iceless();
         for _ in state
+            .icmp_flows
+            .extract_if(.., |_, flow| {
+                !transition.retains_flow(flow.client_id, flow.route, iceless)
+            })
+        {}
+        for _ in state
             .udp_flows
-            .extract_if(.., |_, flow| !transition.retains_udp_flow(flow, iceless))
+            .extract_if(.., |_, flow| {
+                !transition.retains_flow(flow.client_id, flow.route, iceless)
+            })
         {}
 
         match transition {
@@ -282,7 +292,8 @@ impl ReferenceState {
                     c.on_dns_resource_ptr_query(dns_server, *query_id, *transport);
                 });
             }
-            Transition::SendIcmpPacket {
+            Transition::SendIcmpPacketOnNewFlow {
+                flow_id,
                 client_id,
                 src,
                 dst,
@@ -290,7 +301,7 @@ impl ReferenceState {
                 identifier,
                 probe_id,
             } => {
-                state.record_probe(
+                let outcome = state.record_probe(
                     *probe_id,
                     *client_id,
                     ProbeRequest::Icmp {
@@ -301,6 +312,49 @@ impl ReferenceState {
                     },
                     now,
                 );
+
+                match outcome {
+                    ExpectedOutcome::RoundTripCompleted { remote, resource } => {
+                        let flow = IcmpFlow {
+                            client_id: *client_id,
+                            src: *src,
+                            dst: dst.clone(),
+                            identifier: *identifier,
+                            next_seq: Seq(seq.0.wrapping_add(1)),
+                            route: FlowRoute::from_remote(remote, resource),
+                        };
+                        let previous = state.icmp_flows.insert(*flow_id, flow);
+                        assert!(previous.is_none(), "ICMP flow IDs must be unique");
+                    }
+                    ExpectedOutcome::Dropped => {}
+                    ExpectedOutcome::Rejected { .. } => {}
+                }
+            }
+            Transition::SendIcmpPacketOnExistingFlow {
+                flow_id,
+                seq,
+                probe_id,
+            } => {
+                let flow = {
+                    let flow = state
+                        .icmp_flows
+                        .get_mut(flow_id)
+                        .expect("reused ICMP flow must exist");
+                    assert_eq!(flow.next_seq, *seq, "reused ICMP sequence must be next");
+                    flow.next_seq = Seq(seq.0.wrapping_add(1));
+
+                    flow.clone()
+                };
+
+                match state.record_icmp_probe(*probe_id, &flow, *seq, now) {
+                    ExpectedOutcome::RoundTripCompleted { .. } => {}
+                    ExpectedOutcome::Dropped => {
+                        panic!("reused ICMP route must complete a round trip")
+                    }
+                    ExpectedOutcome::Rejected { .. } => {
+                        panic!("reused ICMP route must complete a round trip")
+                    }
+                }
             }
             Transition::SendUdpPacketOnNewFlow {
                 flow_id,
@@ -325,28 +379,19 @@ impl ReferenceState {
 
                 match outcome {
                     ExpectedOutcome::RoundTripCompleted { remote, resource } => {
-                        let route = match (remote, resource) {
-                            (Remote::Gateway(gateway), Some(resource)) => {
-                                UdpRoute::Resource { resource, gateway }
-                            }
-                            (Remote::Gateway(gateway), None) => UdpRoute::Gateway(gateway),
-                            (Remote::Client(client), None) => UdpRoute::Peer(client),
-                            (Remote::Client(client), Some(resource)) => {
-                                panic!("client {client} cannot serve resource {resource}")
-                            }
-                        };
                         let flow = UdpFlow {
                             client_id: *client_id,
                             src: *src,
                             dst: dst.clone(),
                             sport: *sport,
                             dport: *dport,
-                            route,
+                            route: FlowRoute::from_remote(remote, resource),
                         };
                         let previous = state.udp_flows.insert(*flow_id, flow);
                         assert!(previous.is_none(), "UDP flow IDs must be unique");
                     }
-                    ExpectedOutcome::Dropped | ExpectedOutcome::Rejected { .. } => {}
+                    ExpectedOutcome::Dropped => {}
+                    ExpectedOutcome::Rejected { .. } => {}
                 }
             }
             Transition::SendUdpPacketOnExistingFlow { flow_id, probe_id } => {
@@ -358,7 +403,10 @@ impl ReferenceState {
 
                 match state.record_udp_probe(*probe_id, &flow, now) {
                     ExpectedOutcome::RoundTripCompleted { .. } => {}
-                    ExpectedOutcome::Dropped | ExpectedOutcome::Rejected { .. } => {
+                    ExpectedOutcome::Dropped => {
+                        panic!("reused UDP route must complete a round trip")
+                    }
+                    ExpectedOutcome::Rejected { .. } => {
                         panic!("reused UDP route must complete a round trip")
                     }
                 }
@@ -514,6 +562,35 @@ impl ReferenceState {
 
     pub fn clear_expected_probes(state: &mut ReferenceState) {
         state.expected_probes.clear();
+    }
+
+    fn record_icmp_probe(
+        &mut self,
+        id: ProbeId,
+        flow: &IcmpFlow,
+        seq: Seq,
+        sent_at: Instant,
+    ) -> ExpectedOutcome {
+        let outcome = self
+            .clients
+            .get_mut(&flow.client_id)
+            .unwrap()
+            .exec_mut(|client| {
+                client.on_packet(flow.dst.clone(), flow.route.packet_route(), sent_at)
+            });
+
+        self.record_expected_probe(
+            id,
+            flow.client_id,
+            ProbeRequest::Icmp {
+                src: flow.src,
+                dst: flow.dst.clone(),
+                seq,
+                identifier: flow.identifier,
+            },
+            sent_at,
+            outcome,
+        )
     }
 
     fn record_udp_probe(
@@ -771,7 +848,14 @@ impl ReferenceState {
         )
     }
 
-    pub(crate) fn udp_flows(&self) -> Vec<UdpFlowId> {
+    pub(crate) fn icmp_flows(&self) -> Vec<(FlowId, Seq)> {
+        self.icmp_flows
+            .iter()
+            .map(|(id, flow)| (*id, flow.next_seq))
+            .collect()
+    }
+
+    pub(crate) fn udp_flows(&self) -> Vec<FlowId> {
         self.udp_flows.keys().copied().collect()
     }
 

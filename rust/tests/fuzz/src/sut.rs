@@ -6,10 +6,10 @@ use super::sim_client::SimClient;
 use super::sim_gateway::SimGateway;
 use super::sim_net::{Host, HostId, RoutingTable};
 use super::sim_relay::SimRelay;
-use super::transition::{Destination, DnsQuery};
+use super::transition::{DPort, Destination, DnsQuery, Identifier, SPort, Seq};
 use crate::assertions::*;
 use crate::flux_capacitor::FluxCapacitor;
-use crate::probe::{DnsNatObservation, ProbeId, ProbeObservation, Remote, UdpFlowId};
+use crate::probe::{DnsNatObservation, FlowId, ProbeId, ProbeObservation, Remote};
 use crate::resource as client;
 use crate::transition::Transition;
 use bufferpool::BufferPool;
@@ -52,8 +52,17 @@ pub struct TunnelTest {
     /// the portal after a roam.
     client_portal_offline_until: Option<(ClientId, Instant)>,
     network: RoutingTable,
-    udp_flows: BTreeMap<UdpFlowId, ResolvedUdpFlow>,
+    icmp_flows: BTreeMap<FlowId, ResolvedIcmpFlow>,
+    udp_flows: BTreeMap<FlowId, ResolvedUdpFlow>,
     dns_nat_observations: Vec<DnsNatObservation>,
+}
+
+#[derive(Clone, Copy)]
+struct ResolvedIcmpFlow {
+    client_id: ClientId,
+    src: IpAddr,
+    dst: IpAddr,
+    identifier: Identifier,
 }
 
 #[derive(Clone, Copy)]
@@ -61,8 +70,8 @@ struct ResolvedUdpFlow {
     client_id: ClientId,
     src: IpAddr,
     dst: IpAddr,
-    sport: crate::transition::SPort,
-    dport: crate::transition::DPort,
+    sport: SPort,
+    dport: DPort,
 }
 
 impl TunnelTest {
@@ -157,6 +166,7 @@ impl TunnelTest {
             gateways,
             relays,
             buffer_pool: BufferPool::new(1024, "test"),
+            icmp_flows: Default::default(),
             udp_flows: Default::default(),
             dns_nat_observations: Default::default(),
         };
@@ -174,6 +184,10 @@ impl TunnelTest {
         let utc_now = state.flux_capacitor.now();
         let mut application_probe = None;
 
+        for _ in state
+            .icmp_flows
+            .extract_if(.., |flow_id, _| !ref_state.icmp_flows.contains_key(flow_id))
+        {}
         for _ in state
             .udp_flows
             .extract_if(.., |flow_id, _| !ref_state.udp_flows.contains_key(flow_id))
@@ -356,7 +370,8 @@ impl TunnelTest {
                     .unwrap()
                     .exec_mut(|c| c.sut.set_internet_resource_state(active, now));
             }
-            Transition::SendIcmpPacket {
+            Transition::SendIcmpPacketOnNewFlow {
+                flow_id,
                 client_id,
                 src,
                 dst,
@@ -365,21 +380,30 @@ impl TunnelTest {
                 probe_id,
             } => {
                 let dst = address_from_destination(&dst, &state, &src, client_id);
-
-                let packet = ip_packet::make::icmp_request_packet(
+                let flow = ResolvedIcmpFlow {
+                    client_id,
                     src,
                     dst,
-                    seq.0,
-                    identifier.0,
-                    &probe_id.to_be_bytes(),
-                )
-                .unwrap();
+                    identifier,
+                };
+                let previous = state.icmp_flows.insert(flow_id, flow);
+                assert!(previous.is_none(), "ICMP flow IDs must be unique");
+                application_probe = Some((probe_id, flow_id));
 
-                let client = state.clients.get_mut(&client_id).unwrap();
-                let transmit = client.exec_mut(|sim| sim.encapsulate_probe(probe_id, packet, now));
-                application_probe = Some((probe_id, None));
+                state.send_icmp_probe(flow, seq, probe_id, now, &mut buffered_transmits);
+            }
+            Transition::SendIcmpPacketOnExistingFlow {
+                flow_id,
+                seq,
+                probe_id,
+            } => {
+                let flow = *state
+                    .icmp_flows
+                    .get(&flow_id)
+                    .expect("reused ICMP flow must exist");
+                application_probe = Some((probe_id, flow_id));
 
-                buffered_transmits.push_from(transmit, client, now);
+                state.send_icmp_probe(flow, seq, probe_id, now, &mut buffered_transmits);
             }
             Transition::SendUdpPacketOnNewFlow {
                 flow_id,
@@ -400,7 +424,7 @@ impl TunnelTest {
                 };
                 let previous = state.udp_flows.insert(flow_id, flow);
                 assert!(previous.is_none(), "UDP flow IDs must be unique");
-                application_probe = Some((probe_id, Some(flow_id)));
+                application_probe = Some((probe_id, flow_id));
 
                 state.send_udp_probe(flow, probe_id, now, &mut buffered_transmits);
             }
@@ -409,7 +433,7 @@ impl TunnelTest {
                     .udp_flows
                     .get(&flow_id)
                     .expect("reused UDP flow must exist");
-                application_probe = Some((probe_id, Some(flow_id)));
+                application_probe = Some((probe_id, flow_id));
 
                 state.send_udp_probe(flow, probe_id, now, &mut buffered_transmits);
             }
@@ -721,8 +745,8 @@ impl TunnelTest {
 
         state.advance(ref_state, &mut buffered_transmits);
 
-        if let Some((probe_id, udp_flow)) = application_probe {
-            state.record_dns_nat_observation(ref_state, probe_id, udp_flow);
+        if let Some((probe_id, flow_id)) = application_probe {
+            state.record_dns_nat_observation(ref_state, probe_id, flow_id);
         }
 
         state
@@ -788,6 +812,29 @@ impl TunnelTest {
         }
     }
 
+    fn send_icmp_probe(
+        &mut self,
+        flow: ResolvedIcmpFlow,
+        seq: Seq,
+        probe_id: ProbeId,
+        now: Instant,
+        buffered_transmits: &mut BufferedTransmits,
+    ) {
+        let packet = ip_packet::make::icmp_request_packet(
+            flow.src,
+            flow.dst,
+            seq.0,
+            flow.identifier.0,
+            &probe_id.to_be_bytes(),
+        )
+        .unwrap();
+
+        let client = self.clients.get_mut(&flow.client_id).unwrap();
+        let transmit = client.exec_mut(|sim| sim.encapsulate_probe(probe_id, packet, now));
+
+        buffered_transmits.push_from(transmit, client, now);
+    }
+
     fn send_udp_probe(
         &mut self,
         flow: ResolvedUdpFlow,
@@ -814,7 +861,7 @@ impl TunnelTest {
         &mut self,
         ref_state: &ReferenceState,
         probe_id: ProbeId,
-        udp_flow: Option<UdpFlowId>,
+        flow_id: FlowId,
     ) {
         let Some(expected) = ref_state.expected_probes.get(&probe_id) else {
             return;
@@ -857,7 +904,7 @@ impl TunnelTest {
 
         self.dns_nat_observations.push(DnsNatObservation {
             domain: name.clone(),
-            udp_flow,
+            flow_id,
             submitted: submitted.clone(),
             received: received.clone(),
         });

@@ -162,12 +162,12 @@ pub(crate) fn assert_dns_nat(
 ) {
     const SESSION_TTL: Duration = Duration::from_secs(2 * 60);
 
-    let observations_by_udp_flow = observations
+    let observations_by_flow = observations
         .iter()
-        .filter_map(|observation| observation.udp_flow.map(|flow_id| (flow_id, observation)))
+        .map(|observation| (observation.flow_id, observation))
         .into_group_map();
 
-    for (flow_id, flow_observations) in observations_by_udp_flow {
+    for (flow_id, flow_observations) in observations_by_flow {
         let [first, remaining @ ..] = flow_observations.as_slice() else {
             continue;
         };
@@ -177,12 +177,12 @@ pub(crate) fn assert_dns_nat(
         for current in remaining {
             let actual_proxy = current.submitted.packet.destination();
             if actual_proxy != expected_proxy {
-                tracing::error!(target: "assertions", ?flow_id, %expected_proxy, %actual_proxy, "UDP flow changed its DNS proxy destination");
+                tracing::error!(target: "assertions", ?flow_id, %expected_proxy, %actual_proxy, "Flow changed its DNS proxy destination");
             }
 
             let actual_generation = current.received.dns_nat_generation;
             if actual_generation != expected_generation {
-                tracing::error!(target: "assertions", ?flow_id, ?expected_generation, ?actual_generation, "UDP flow crossed a DNS NAT reset");
+                tracing::error!(target: "assertions", ?flow_id, ?expected_generation, ?actual_generation, "Flow crossed a DNS NAT reset");
             }
         }
     }
