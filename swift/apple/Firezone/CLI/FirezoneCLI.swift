@@ -22,9 +22,20 @@ struct FirezoneCLI: AsyncParsableCommand {
       Resources.self,
       InternetResource.self,
       Extension.self,
-    ],
-    defaultSubcommand: Status.self
+    ]
   )
+
+  @OptionGroup var global: GlobalOptions
+
+  /// `status` is what a bare `firezone` reports, but it is not `defaultSubcommand`.
+  /// That routes an unrecognised first argument into `status`, so the error and the
+  /// usage line it prints name a command the user never typed.
+  @MainActor
+  mutating func run() async throws {
+    Log.useCLIOutput(debug: global.debug)
+
+    try await Status.report()
+  }
 
   static var versionString: String {
     let version =
