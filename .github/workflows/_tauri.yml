@@ -130,7 +130,7 @@ jobs:
         timeout-minutes: 2
       # Confined to a single runner: only one may draw the committed
       # screenshot, or the Windows runners would fight over it.
-      - name: Photograph the tray menu
+      - name: Photograph the Windows tray menu
         if: matrix.runs-on == 'windows-2025' && !startsWith(github.head_ref, 'chore/publish-')
         working-directory: ./rust
         run: cargo run -p gui-smoke-test -- tray-screenshot --submenu "Engineering wiki" --output gui-client/screenshots/windows-tray-menu-light.png
