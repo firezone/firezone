@@ -7,7 +7,7 @@ use tunnel_proto::{
 };
 
 use super::{
-    probe::ProbeId,
+    probe::{FlowId, FlowRoute, ProbeId},
     reference::PrivateKey,
     resource::{CidrResource, Resource},
     sim_net::Host,
@@ -47,7 +47,8 @@ pub enum Transition {
         client_id: ClientId,
         active: bool,
     },
-    SendIcmpPacket {
+    SendIcmpPacketOnNewFlow {
+        flow_id: FlowId,
         client_id: ClientId,
         src: IpAddr,
         dst: Destination,
@@ -55,12 +56,22 @@ pub enum Transition {
         identifier: Identifier,
         probe_id: ProbeId,
     },
-    SendUdpPacket {
+    SendIcmpPacketOnExistingFlow {
+        flow_id: FlowId,
+        seq: Seq,
+        probe_id: ProbeId,
+    },
+    SendUdpPacketOnNewFlow {
+        flow_id: FlowId,
         client_id: ClientId,
         src: IpAddr,
         dst: Destination,
         sport: SPort,
         dport: DPort,
+        probe_id: ProbeId,
+    },
+    SendUdpPacketOnExistingFlow {
+        flow_id: FlowId,
         probe_id: ProbeId,
     },
     ConnectTcp {
@@ -127,8 +138,10 @@ impl Transition {
             Transition::ChangeResourceType { .. } => true,
             Transition::UpdateStaticDevicePool { .. } => true,
             Transition::SetInternetResourceState { .. } => true,
-            Transition::SendIcmpPacket { .. } => false,
-            Transition::SendUdpPacket { .. } => false,
+            Transition::SendIcmpPacketOnNewFlow { .. } => false,
+            Transition::SendIcmpPacketOnExistingFlow { .. } => false,
+            Transition::SendUdpPacketOnNewFlow { .. } => false,
+            Transition::SendUdpPacketOnExistingFlow { .. } => false,
             Transition::ConnectTcp { .. } => false,
             Transition::SendDnsQuery { .. } => false,
             Transition::SendDnsResourcePtrQuery { .. } => false,
@@ -146,6 +159,103 @@ impl Transition {
             Transition::DeauthorizeWhileGatewayIsPartitioned(_) => true,
             Transition::UpdateDnsRecords { .. } => false,
         }
+    }
+
+    /// Returns whether a flow remains predictable across this transition.
+    pub(crate) fn retains_flow(
+        &self,
+        client_id: ClientId,
+        route: FlowRoute,
+        iceless: bool,
+    ) -> bool {
+        match self {
+            Transition::AddResource(_) => match route {
+                FlowRoute::Resource { .. } => false,
+                FlowRoute::Gateway(_) => true,
+                FlowRoute::Peer(_) => true,
+            },
+            Transition::RemoveResource(resource) => match route {
+                FlowRoute::Resource { resource: used, .. } => used != *resource,
+                FlowRoute::Gateway(_) => false,
+                FlowRoute::Peer(_) => false,
+            },
+            Transition::ChangeCidrResourceAddress { .. } => match route {
+                FlowRoute::Resource { .. } => false,
+                FlowRoute::Gateway(_) => false,
+                FlowRoute::Peer(_) => true,
+            },
+            Transition::MoveResourceToNewSite { resource, .. } => match route {
+                FlowRoute::Resource { resource: used, .. } => used != resource.id(),
+                FlowRoute::Gateway(_) => false,
+                FlowRoute::Peer(_) => true,
+            },
+            Transition::ChangeFiltersOfResource { resource, .. } => match route {
+                FlowRoute::Resource { .. } => false,
+                FlowRoute::Gateway(_) => false,
+                FlowRoute::Peer(_) => !is_device_pool(resource),
+            },
+            Transition::ChangeResourceType {
+                old_resource,
+                new_resource,
+            } => match route {
+                FlowRoute::Resource { .. } => false,
+                FlowRoute::Gateway(_) => false,
+                FlowRoute::Peer(_) => {
+                    !is_device_pool(old_resource) && !is_device_pool(new_resource)
+                }
+            },
+            Transition::UpdateStaticDevicePool { .. } => !route.is_peer(),
+            Transition::SetInternetResourceState {
+                client_id: changed, ..
+            } => client_id != *changed,
+            Transition::SendIcmpPacketOnNewFlow { .. } => true,
+            Transition::SendIcmpPacketOnExistingFlow { .. } => true,
+            Transition::SendUdpPacketOnNewFlow { .. } => true,
+            Transition::SendUdpPacketOnExistingFlow { .. } => true,
+            Transition::ConnectTcp { .. } => true,
+            Transition::SendDnsQuery { .. } => true,
+            Transition::SendDnsResourcePtrQuery { .. } => true,
+            Transition::UpdateSystemDnsServers { .. } => true,
+            Transition::UpdateUpstreamDo53Servers(_) => true,
+            Transition::UpdateUpstreamDoHServers(_) => true,
+            Transition::UpdateUpstreamSearchDomain(_) => true,
+            Transition::RoamClient {
+                client_id: changed, ..
+            } => match route {
+                FlowRoute::Resource { .. } => iceless || client_id != *changed,
+                FlowRoute::Gateway(_) => iceless || client_id != *changed,
+                FlowRoute::Peer(peer) => iceless || (client_id != *changed && peer != *changed),
+            },
+            Transition::ReconnectPortal { .. } => true,
+            Transition::RestartClient {
+                client_id: restarted,
+                ..
+            } => match route {
+                FlowRoute::Resource { .. } => client_id != *restarted,
+                FlowRoute::Gateway(_) => client_id != *restarted,
+                FlowRoute::Peer(peer) => client_id != *restarted && peer != *restarted,
+            },
+            Transition::DeployNewRelays(_) => iceless,
+            Transition::PartitionRelaysFromPortal => false,
+            Transition::Idle => true,
+            Transition::RebootRelaysWhilePartitioned(_) => false,
+            Transition::DeauthorizeWhileGatewayIsPartitioned(resource) => match route {
+                FlowRoute::Resource { resource: used, .. } => used != *resource,
+                FlowRoute::Gateway(_) => false,
+                FlowRoute::Peer(_) => false,
+            },
+            Transition::UpdateDnsRecords { .. } => true,
+        }
+    }
+}
+
+fn is_device_pool(resource: &Resource) -> bool {
+    match resource {
+        Resource::Dns(_) => false,
+        Resource::Cidr(_) => false,
+        Resource::Internet(_) => false,
+        Resource::StaticDevicePool(_) => true,
+        Resource::DynamicDevicePool(_) => true,
     }
 }
 
