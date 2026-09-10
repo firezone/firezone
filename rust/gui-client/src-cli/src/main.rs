@@ -185,17 +185,6 @@ fn status_table(status: &StatusSummary) -> String {
         rows.push(("User", actor_name));
     }
 
-    if status.signed_in {
-        rows.push((
-            "Internet Resource",
-            if status.internet_resource_enabled {
-                "enabled"
-            } else {
-                "disabled"
-            },
-        ));
-    }
-
     let width = rows
         .iter()
         .map(|(label, _)| label.len())
@@ -256,12 +245,11 @@ mod tests {
             signed_in: true,
             account_slug: Some("acme".to_owned()),
             actor_name: Some("Jane Doe".to_owned()),
-            internet_resource_enabled: true,
         });
 
         assert_eq!(
             table,
-            "Signed in          yes\nAccount            acme\nUser               Jane Doe\nInternet Resource  enabled"
+            "Signed in  yes\nAccount    acme\nUser       Jane Doe"
         );
     }
 
@@ -271,7 +259,6 @@ mod tests {
             signed_in: false,
             account_slug: None,
             actor_name: None,
-            internet_resource_enabled: true,
         });
 
         assert_eq!(table, "Signed in  no");

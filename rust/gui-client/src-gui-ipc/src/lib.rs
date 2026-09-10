@@ -50,7 +50,6 @@ pub struct StatusSummary {
     pub signed_in: bool,
     pub account_slug: Option<String>,
     pub actor_name: Option<String>,
-    pub internet_resource_enabled: bool,
 }
 
 /// Sends one [`ClientMsg`] to the running instance and returns its reply.

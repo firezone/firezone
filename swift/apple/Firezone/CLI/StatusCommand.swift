@@ -38,14 +38,6 @@ extension FirezoneCLI {
         rows.append(("User", actorName))
       }
 
-      // The setting outlives the session it is stored alongside, but says nothing
-      // about a Client that isn't signed in.
-      if state != nil {
-        let internetResourceEnabled = try vpnManager.internetResourceEnabled()
-
-        rows.append(("Internet Resource", internetResourceEnabled ? "enabled" : "disabled"))
-      }
-
       let width = rows.map { $0.0.count }.max() ?? 0
 
       for (label, value) in rows {

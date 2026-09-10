@@ -862,7 +862,6 @@ impl<I: GuiIntegration> Controller<I> {
                     .connected_as
                     .as_ref()
                     .map(|connected| connected.actor_name.clone()),
-                internet_resource_enabled: self.general_settings.internet_resource_enabled(),
             }),
             gui_ipc::ClientMsg::SignOut => {
                 self.sign_out().await?;
@@ -1480,7 +1479,6 @@ mod tests {
                 signed_in: false,
                 account_slug: None,
                 actor_name: None,
-                internet_resource_enabled: false,
             })
         );
 
@@ -1501,7 +1499,6 @@ mod tests {
                 signed_in: true,
                 account_slug: Some("firezone".to_owned()),
                 actor_name: Some("Foo Bar".to_owned()),
-                internet_resource_enabled: false,
             })
         );
     }
@@ -1549,7 +1546,6 @@ mod tests {
                 signed_in: false,
                 account_slug: None,
                 actor_name: None,
-                internet_resource_enabled: false,
             })
         );
     }
