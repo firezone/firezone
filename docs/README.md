@@ -12,7 +12,6 @@
   <a href="https://www.firezone.dev/kb">Documentation</a>
   | <a href="https://www.firezone.dev/kb/quickstart">Quickstart</a>
   | <a href="https://www.firezone.dev/kb/client-apps">Download Clients</a>
-  | <a href="https://github.com/firezone/firezone/discussions">Discussions</a>
   | <a href="https://www.firezone.dev/support">Support</a>
 </p>
 
