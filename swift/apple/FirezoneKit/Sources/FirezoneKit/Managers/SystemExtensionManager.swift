@@ -8,21 +8,27 @@
   import NetworkExtension
   import SystemExtensions
 
-  enum SystemExtensionError: Error, CustomStringConvertible, LocalizedError {
+  public enum SystemExtensionError: Error, CustomStringConvertible, LocalizedError {
     case unknownResult(OSSystemExtensionRequest.Result)
+
+    /// macOS wants a human to approve the request in System Settings, and the caller
+    /// said nobody is there to do it.
+    case needsUserApproval
 
     case timedOut(seconds: Int)
 
-    var description: String {
+    public var description: String {
       switch self {
       case .unknownResult(let result):
         return "Unknown result: \(result)"
+      case .needsUserApproval:
+        return "System extension needs approval in System Settings"
       case .timedOut(let seconds):
         return "System extension request did not finish within \(seconds) seconds"
       }
     }
 
-    var errorDescription: String? { description }
+    public var errorDescription: String? { description }
   }
 
   public enum SystemExtensionStatus: Equatable, Sendable {
@@ -90,14 +96,24 @@
     ///
     /// Generous, because activating an extension makes macOS copy and validate it. It
     /// is here to turn a request that never reports anything into an error, not to
-    /// police a slow one.
+    /// police a slow one. The clock stops once macOS says it is waiting on the user,
+    /// since from then on a human at System Settings sets the pace.
     static let timeoutSeconds = 60
 
     // Delegate methods complete with either a true or false outcome or an Error
     private var continuation: CheckedContinuation<SystemExtensionStatus, Error>?
     private var timeoutTask: Task<Void, Never>?
 
-    override public init() {
+    /// Whether nobody is around to answer a System Settings prompt.
+    ///
+    /// The app leaves this alone, since the user is looking at the prompt macOS
+    /// raised. A terminal sets it, so a request that needs approval fails instead of
+    /// waiting on a prompt nobody is going to see.
+    private let unattended: Bool
+
+    public init(unattended: Bool = false) {
+      self.unattended = unattended
+
       super.init()
     }
 
@@ -181,11 +197,15 @@
     }
 
     nonisolated public func requestNeedsUserApproval(_ request: OSSystemExtensionRequest) {
-      // We assume this state until we receive a success response.
       Task { @MainActor in
-        // A human at System Settings sets the pace from here on, so our bound no
-        // longer applies.
-        self.cancelTimeout()
+        guard self.unattended else {
+          Log.info("Waiting for the system extension to be approved in System Settings")
+          self.cancelTimeout()
+
+          return
+        }
+
+        self.resumeErr(throwing: SystemExtensionError.needsUserApproval)
       }
     }
 
