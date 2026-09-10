@@ -19,6 +19,10 @@ gui-ipc = { workspace = true }
 tokio = { workspace = true, features = ["net", "rt", "time"] }
 tracing-subscriber = { workspace = true }
 
+[build-dependencies]
+clap = { workspace = true, features = ["derive"] }
+clap_complete = { workspace = true }
+
 [target.'cfg(target_os = "windows")'.build-dependencies]
 embed-resource = { workspace = true }
 
