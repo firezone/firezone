@@ -300,12 +300,6 @@ pub(crate) fn assert_dns_nat(
                         return None;
                     };
 
-                    assert_destination_is_dns_resource(
-                        &first.received.packet,
-                        &first.domain,
-                        &resolution.addresses,
-                    );
-
                     Some((
                         (
                             client,
@@ -315,21 +309,23 @@ pub(crate) fn assert_dns_nat(
                             resolution.order,
                             proxy,
                         ),
-                        expected_real_ip,
+                        (expected_real_ip, resolution.addresses.as_slice()),
                     ))
                 })
                 .collect_vec()
         })
         .into_group_map();
 
-    for ((client, gateway, dns_nat_generation, domain, resolution_order, proxy), real_ips) in
+    for ((client, gateway, dns_nat_generation, domain, resolution_order, proxy), mappings) in
         initial_dns_mappings
     {
-        let [expected, remaining @ ..] = real_ips.as_slice() else {
+        let [(expected, possible_resource_ips), remaining @ ..] = mappings.as_slice() else {
             continue;
         };
 
-        for actual in remaining {
+        assert_destination_is_dns_resource(*expected, &domain, possible_resource_ips);
+
+        for (actual, _) in remaining {
             if actual != expected {
                 tracing::error!(target: "assertions", %client, %gateway, dns_nat_generation, %domain, resolution_order, %proxy, %expected, %actual, "DNS proxy mapped to different destinations within one resolution");
             }
@@ -1014,12 +1010,10 @@ fn assert_destination_is_ip(gateway_received_request: &IpPacket, expected: &IpAd
 }
 
 fn assert_destination_is_dns_resource(
-    gateway_received_request: &IpPacket,
+    actual: IpAddr,
     domain: &dns_types::DomainName,
     possible_resource_ips: &[IpAddr],
 ) {
-    let actual = gateway_received_request.destination();
-
     if !possible_resource_ips.contains(&actual) {
         tracing::error!(target: "assertions", %domain, %actual, ?possible_resource_ips, "❌ Unknown resource IP");
     } else {
