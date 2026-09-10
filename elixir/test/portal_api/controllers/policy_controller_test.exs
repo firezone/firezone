@@ -126,6 +126,17 @@ defmodule PortalAPI.PolicyControllerTest do
       assert data["id"] == policy.id
     end
 
+    test "rejects 16-byte UUID filter values", %{conn: conn, actor: actor} do
+      conn = authorize_conn(conn, actor)
+
+      for filter <- ["group_id", "resource_id"],
+          value <- ["warehouse worker", URI.decode("%5CVf%C2%8E%C2%8C%F2%A9%A1%B8F%F4%8F%B8%8B")] do
+        response = get(conn, "/policies", %{filter => value, "limit" => "45"})
+
+        assert %{"status" => 400} = json_response(response, 400)
+      end
+    end
+
     test "rejects a malformed group_id filter value", %{conn: conn, actor: actor} do
       conn =
         conn

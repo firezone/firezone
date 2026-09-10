@@ -121,7 +121,7 @@ defmodule PortalAPI.LogControllerTest do
       conn1 =
         conn
         |> authorize_conn(actor)
-        |> get(~p"/logs?type=change&actor_id=#{actor_id}")
+        |> get(~p"/logs?type=change&actor_id=#{String.upcase(actor_id)}")
 
       assert %{"data" => [%{"log_id" => log_id}]} = json_response(conn1, 200)
       assert log_id == matching.log_id
@@ -656,6 +656,16 @@ defmodule PortalAPI.LogControllerTest do
 
       assert %{"detail" => detail} = json_response(conn, 400)
       assert detail =~ "`actor_id` must be a UUID"
+    end
+
+    test "rejects 16-byte actor IDs for every log type", %{conn: conn, actor: actor} do
+      conn = authorize_conn(conn, actor)
+
+      for type <- ["change", "session", "flow", "api_request"] do
+        response = get(conn, "/logs", type: type, actor_id: "warehouse worker")
+
+        assert %{"detail" => "`actor_id` must be a UUID"} = json_response(response, 400)
+      end
     end
 
     test "treats empty filter params as absent", %{conn: conn, actor: actor} do

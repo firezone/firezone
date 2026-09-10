@@ -260,8 +260,8 @@ defmodule PortalAPI.LogController do
 
   defp parse_uuid(value, name) when is_binary(value) do
     case Ecto.UUID.cast(value) do
-      {:ok, uuid} -> {:ok, uuid}
-      :error -> {:error, :bad_request, reason: "`#{name}` must be a UUID"}
+      {:ok, uuid} when byte_size(value) == 36 -> {:ok, uuid}
+      _ -> {:error, :bad_request, reason: "`#{name}` must be a UUID"}
     end
   end
 
