@@ -25,12 +25,7 @@ extension FirezoneCLI {
       let vpnManager = try await VPNProfile.load()
       let session = try VPNProfile.session(for: vpnManager)
 
-      guard await IPCClient.stopIfRunning(session: session) else {
-        say("Tunnel was not running")
-        return
-      }
-
-      say("Tunnel stopped")
+      _ = await IPCClient.stopIfRunning(session: session)
     }
   }
 }

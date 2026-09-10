@@ -113,8 +113,6 @@ extension FirezoneCLI {
         try IPCClient.start(session: session)
       }
 
-      say("Tunnel started")
-
       return (session, signIn)
     }
   }
