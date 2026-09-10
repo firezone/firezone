@@ -11,10 +11,7 @@ use std::{
 use subprocess::Exec;
 use tracing_subscriber::EnvFilter;
 
-#[cfg(target_os = "windows")]
-mod tray_screenshot;
-#[cfg(target_os = "linux")]
-#[path = "tray_screenshot/linux.rs"]
+#[cfg(any(target_os = "windows", target_os = "linux"))]
 mod tray_screenshot;
 
 #[cfg(target_os = "linux")]
