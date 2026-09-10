@@ -94,18 +94,12 @@ impl ReferenceState {
     /// Here is where we implement the "expected" logic.
     pub fn apply(mut state: Self, transition: &Transition, now: Instant) -> Self {
         let iceless = state.portal.iceless();
-        for _ in state
-            .icmp_flows
-            .extract_if(.., |_, flow| {
-                !transition.retains_flow(flow.client_id, flow.route, iceless)
-            })
-        {}
-        for _ in state
-            .udp_flows
-            .extract_if(.., |_, flow| {
-                !transition.retains_flow(flow.client_id, flow.route, iceless)
-            })
-        {}
+        for _ in state.icmp_flows.extract_if(.., |_, flow| {
+            !transition.retains_flow(flow.client_id, flow.route, iceless)
+        }) {}
+        for _ in state.udp_flows.extract_if(.., |_, flow| {
+            !transition.retains_flow(flow.client_id, flow.route, iceless)
+        }) {}
 
         match transition {
             Transition::AddResource(resource) => {

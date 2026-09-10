@@ -72,9 +72,7 @@ pub(crate) enum FlowRoute {
 impl FlowRoute {
     pub(crate) fn from_remote(remote: Remote, resource: Option<ResourceId>) -> Self {
         match (remote, resource) {
-            (Remote::Gateway(gateway), Some(resource)) => {
-                FlowRoute::Resource { resource, gateway }
-            }
+            (Remote::Gateway(gateway), Some(resource)) => FlowRoute::Resource { resource, gateway },
             (Remote::Gateway(gateway), None) => FlowRoute::Gateway(gateway),
             (Remote::Client(client), None) => FlowRoute::Peer(client),
             (Remote::Client(client), Some(resource)) => {

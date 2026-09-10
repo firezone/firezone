@@ -206,8 +206,7 @@ impl Transition {
             },
             Transition::UpdateStaticDevicePool { .. } => !route.is_peer(),
             Transition::SetInternetResourceState {
-                client_id: changed,
-                ..
+                client_id: changed, ..
             } => client_id != *changed,
             Transition::SendIcmpPacketOnNewFlow { .. } => true,
             Transition::SendIcmpPacketOnExistingFlow { .. } => true,
@@ -221,14 +220,11 @@ impl Transition {
             Transition::UpdateUpstreamDoHServers(_) => true,
             Transition::UpdateUpstreamSearchDomain(_) => true,
             Transition::RoamClient {
-                client_id: changed,
-                ..
+                client_id: changed, ..
             } => match route {
                 FlowRoute::Resource { .. } => iceless || client_id != *changed,
                 FlowRoute::Gateway(_) => iceless || client_id != *changed,
-                FlowRoute::Peer(peer) => {
-                    iceless || (client_id != *changed && peer != *changed)
-                }
+                FlowRoute::Peer(peer) => iceless || (client_id != *changed && peer != *changed),
             },
             Transition::ReconnectPortal { .. } => true,
             Transition::RestartClient {
