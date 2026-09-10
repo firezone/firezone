@@ -91,11 +91,11 @@ const CHANNEL_CAPACITY: usize = if cfg!(any(target_os = "ios", target_os = "andr
 
 /// Upper bound on one report's on-disk footprint.
 ///
-/// Every payload field is bounded: addresses, ports, RFC3339 timestamps, u64
-/// counters, a DNS name and the tracker's cap of 16 outer tuples put the
-/// serialized report just past 4 KiB. Reports are small files and file systems
-/// allocate whole clusters (4 KiB on NTFS), so one occupies at most two.
-const MAX_REPORT_BYTES: u64 = 8 * 1024;
+/// Measured against the real worst case by `flow-tracker`'s
+/// `worst_case_report_fits_the_spool_budget`, which fails if the emitted schema
+/// outgrows it. Reports are small files and file systems allocate whole clusters
+/// (4 KiB on NTFS), so one occupies at most two.
+pub const MAX_REPORT_BYTES: u64 = 8 * 1024;
 
 /// How much disk the spool may occupy. Mobile gets less, for the same reasons as
 /// [`CHANNEL_CAPACITY`].
