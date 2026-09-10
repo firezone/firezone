@@ -258,20 +258,14 @@ impl ReferenceState {
                 let global_dns_records = &state.global_dns_records;
                 let icmp_error_hosts = &state.icmp_error_hosts;
                 let resolved_device = matches!(query.r_type, RecordType::A | RecordType::AAAA)
-                    .then(|| {
-                        state
-                            .portal
-                            .resolve_device_pool_domain(&query.domain.to_string())
-                    })
+                    .then(|| state.portal.resolve_device_domain(&query.domain))
                     .flatten();
 
                 state.clients.get_mut(client_id).unwrap().exec_mut(|c| {
                     c.on_dns_query(query, upstream_do53, global_dns_records, icmp_error_hosts);
 
-                    if let Some((ipv4, ipv6)) = resolved_device
-                        && let Some(pool) = c.dynamic_device_pool_by_domain(&query.domain)
-                    {
-                        c.note_device_pool_resolution(pool, ipv4, ipv6);
+                    if let Some((ipv4, ipv6)) = resolved_device {
+                        c.note_device_resolution(ipv4, ipv6);
                     }
                 });
             }
@@ -1207,29 +1201,6 @@ impl ReferenceState {
             .collect()
     }
 
-    /// Eligible `(client, device-pool resource, reachable DNS server)` triples
-    /// for generating a device-pool DNS query transition.
-    ///
-    /// Pre-filters to the client × pool × reachable-dns cross-product so we
-    /// never emit a no-op transition because the sampled client can't reach
-    /// the sampled DNS server.
-    pub(crate) fn device_pool_query_targets(
-        &self,
-    ) -> Vec<(ClientId, client::DynamicDevicePoolResource, dns::Upstream)> {
-        let resources_on_client = self.device_pool_resources_on_client();
-        let dns_servers = self.reachable_dns_servers();
-
-        resources_on_client
-            .into_iter()
-            .flat_map(|(client_id, resource)| {
-                dns_servers
-                    .iter()
-                    .filter(move |(dns_client_id, _)| *dns_client_id == client_id)
-                    .map(move |(_, server)| (client_id, resource.clone(), server.clone()))
-            })
-            .collect()
-    }
-
     /// Generates `(src_client_id, dst_ip)` tuples for both tunnel IP families of every online
     /// client reachable from `src_client_id` via a device pool, paired with the pool
     /// filters that authorize the route.
@@ -1276,7 +1247,7 @@ impl ReferenceState {
                     .collect::<Vec<_>>();
                 let dynamic_targets = src_client
                     .inner()
-                    .resolved_dynamic_peers()
+                    .resolved_devices_with_pools()
                     .into_iter()
                     .map(|(ip, filters)| (filters, vec![ip]));
 
@@ -1299,33 +1270,6 @@ impl ReferenceState {
                 let ip4 = IpAddr::V4(c.inner().tunnel_ip4);
                 let ip6 = IpAddr::V6(c.inner().tunnel_ip6);
                 [(ip4, *id), (ip6, *id)]
-            })
-            .collect()
-    }
-
-    fn device_pool_resources_on_client(
-        &self,
-    ) -> Vec<(ClientId, client::DynamicDevicePoolResource)> {
-        let device_pool_resources = self
-            .portal
-            .all_resources()
-            .into_iter()
-            .filter_map(|r| match r {
-                client::Resource::DynamicDevicePool(r) => Some(r),
-                client::Resource::Dns(_) => None,
-                client::Resource::Cidr(_) => None,
-                client::Resource::Internet(_) => None,
-                client::Resource::StaticDevicePool(_) => None,
-            })
-            .collect::<Vec<_>>();
-
-        self.clients
-            .iter()
-            .flat_map(|(client_id, client)| {
-                device_pool_resources
-                    .iter()
-                    .filter(|r| client.inner().has_resource(r.id))
-                    .map(move |r| (*client_id, r.clone()))
             })
             .collect()
     }

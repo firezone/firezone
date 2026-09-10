@@ -118,11 +118,11 @@ pub struct RefClient {
     #[debug(skip)]
     client_send_times: BTreeMap<ClientId, BTreeSet<Instant>>,
 
-    /// Per dynamic device pool, the peer addresses this client resolved through it.
+    /// The peer addresses this client resolved from device names.
     ///
-    /// Only these are requested through the pool; any other tunnel address is unroutable.
+    /// Only these are requested from the portal; any other tunnel address is unroutable.
     #[debug(skip)]
-    resolved_dynamic_peers: BTreeMap<ResourceId, BTreeSet<IpAddr>>,
+    resolved_devices: BTreeSet<IpAddr>,
 }
 
 impl RefClient {
@@ -164,7 +164,7 @@ impl RefClient {
             connection_resets: Default::default(),
             gateway_send_times: Default::default(),
             client_send_times: Default::default(),
-            resolved_dynamic_peers: Default::default(),
+            resolved_devices: Default::default(),
         }
     }
 
@@ -275,7 +275,6 @@ impl RefClient {
         }
 
         self.resources.retain(|r| r.id() != *resource);
-        self.resolved_dynamic_peers.remove(resource);
     }
 
     pub(crate) fn connected_resources(&self) -> impl Iterator<Item = ResourceId> + '_ {
@@ -291,7 +290,7 @@ impl RefClient {
 
     pub(crate) fn restart(&mut self, key: PrivateKey, now: Instant) {
         self.routes.clear();
-        self.resolved_dynamic_peers.clear();
+        self.resolved_devices.clear();
 
         self.key = key;
 
@@ -708,7 +707,7 @@ impl RefClient {
         // Peer tunnel IPs first mean client-to-client device-pool routing. A
         // tunnel IP without a matching pool may still belong to a gateway.
         if let Some(ip) = dst.ip_addr().filter(|ip| tunnel_proto::is_peer(*ip)) {
-            let pools = self.device_pools_by_tun_ip(ip);
+            let pools = self.static_pools_by_tun_ip(ip);
 
             if !pools.is_empty() {
                 let allowed = pools
@@ -726,6 +725,21 @@ impl RefClient {
                 return client_by_ip(ip)
                     .map(PacketRoute::PeerRejectedByPeer)
                     .unwrap_or(PacketRoute::Drop);
+            }
+
+            // A resolved device is reached through the dynamic pool the portal picks for the
+            // packet; when none permits it, the portal denies the request and the packet is lost.
+            if self.resolved_devices.contains(&ip) {
+                let allowed = self
+                    .dynamic_device_pools()
+                    .iter()
+                    .any(|(_, filters)| protocol_filter_allows(filters, protocol));
+
+                if allowed {
+                    return client_by_ip(ip).map_or(PacketRoute::Drop, PacketRoute::Peer);
+                }
+
+                return PacketRoute::Drop;
             }
 
             return gateway_by_ip(ip).map_or(PacketRoute::Drop, PacketRoute::Gateway);
@@ -817,7 +831,7 @@ impl RefClient {
         global_dns_records: &DnsRecords,
         icmp_error_hosts: &IcmpErrorHosts,
     ) {
-        if self.is_dynamic_device_pool_dns_query(query) {
+        if self.is_device_dns_query(query) {
             self.expect_dns_response(query);
             return;
         }
@@ -946,22 +960,8 @@ impl RefClient {
         }
     }
 
-    fn is_dynamic_device_pool_dns_query(&self, query: &DnsQuery) -> bool {
-        self.is_device_pool_domain(&query.domain)
-    }
-
-    /// Returns whether a dynamic device pool claims the domain.
-    ///
-    /// Device pools resolve ahead of DNS resources, so a domain matching both is
-    /// answered from the pool and never resolves to a resource's proxy IPs.
-    fn is_device_pool_domain(&self, domain: &DomainName) -> bool {
-        self.resources.iter().any(|resource| match resource {
-            Resource::DynamicDevicePool(pool) => dns::is_subdomain(domain, &pool.address),
-            Resource::Dns(_) => false,
-            Resource::Cidr(_) => false,
-            Resource::Internet(_) => false,
-            Resource::StaticDevicePool(_) => false,
-        })
+    fn is_device_dns_query(&self, query: &DnsQuery) -> bool {
+        is_device_domain(&query.domain)
     }
 
     pub(crate) fn ipv4_cidr_resource_dsts(&self) -> Vec<(Ipv4Network, Vec<Filter>)> {
@@ -1060,19 +1060,11 @@ impl RefClient {
         protocol_filter_allows(filters, proto)
     }
 
-    /// Every device pool that routes to the peer at `ip`, with its filter set.
-    ///
-    /// A static pool routes to the members it names, a dynamic one to the peers it resolved.
-    fn device_pools_by_tun_ip(
+    /// Every static device pool that names the peer at `ip`, with its filter set.
+    fn static_pools_by_tun_ip(
         &self,
         ip: IpAddr,
     ) -> Vec<(ResourceId, Vec<tunnel_proto::messages::Filter>)> {
-        let dynamic = self.dynamic_device_pools().into_iter().filter(|(id, _)| {
-            self.resolved_dynamic_peers
-                .get(id)
-                .is_some_and(|ips| ips.contains(&ip))
-        });
-
         self.resources
             .iter()
             .filter_map(|r| {
@@ -1087,50 +1079,24 @@ impl RefClient {
 
                 matches.then(|| (pool.id, pool.filters.clone()))
             })
-            .chain(dynamic)
             .collect()
     }
 
-    /// Records that a name lookup through `pool` resolved to the peer at `ipv4` / `ipv6`.
-    pub(crate) fn note_device_pool_resolution(
-        &mut self,
-        pool: ResourceId,
-        ipv4: Ipv4Addr,
-        ipv6: Ipv6Addr,
-    ) {
-        let resolved = self.resolved_dynamic_peers.entry(pool).or_default();
-        resolved.insert(IpAddr::V4(ipv4));
-        resolved.insert(IpAddr::V6(ipv6));
+    /// Records that a device name resolved to the peer at `ipv4` / `ipv6`.
+    pub(crate) fn note_device_resolution(&mut self, ipv4: Ipv4Addr, ipv6: Ipv6Addr) {
+        self.resolved_devices.insert(IpAddr::V4(ipv4));
+        self.resolved_devices.insert(IpAddr::V6(ipv6));
     }
 
-    /// The dynamic device pool the SUT resolves `domain` through: the lowest one matching it.
-    pub(crate) fn dynamic_device_pool_by_domain(&self, domain: &DomainName) -> Option<ResourceId> {
-        self.resources
-            .iter()
-            .filter_map(|resource| match resource {
-                Resource::DynamicDevicePool(pool) if dns::is_subdomain(domain, &pool.address) => {
-                    Some(pool.id)
-                }
-                Resource::DynamicDevicePool(_) => None,
-                Resource::Dns(_) => None,
-                Resource::Cidr(_) => None,
-                Resource::Internet(_) => None,
-                Resource::StaticDevicePool(_) => None,
-            })
-            .min()
-    }
-
-    /// Every peer address resolved through a dynamic pool, with that pool's filter set.
-    pub(crate) fn resolved_dynamic_peers(
+    /// Every resolved peer address paired with each dynamic pool's filter set.
+    pub(crate) fn resolved_devices_with_pools(
         &self,
     ) -> Vec<(IpAddr, Vec<tunnel_proto::messages::Filter>)> {
         self.dynamic_device_pools()
             .into_iter()
-            .flat_map(|(id, filters)| {
-                self.resolved_dynamic_peers
-                    .get(&id)
-                    .into_iter()
-                    .flatten()
+            .flat_map(|(_, filters)| {
+                self.resolved_devices
+                    .iter()
                     .map(move |ip| (*ip, filters.clone()))
             })
             .collect()
@@ -1220,7 +1186,7 @@ impl RefClient {
                 self.dns_resource_by_domain(domain, |_| true, |_| true)
                     .is_some()
             })
-            .filter(|(domain, _)| !self.is_device_pool_domain(domain))
+            .filter(|(domain, _)| !is_device_domain(domain))
             .map(|(domain, ips)| (domain.clone(), ips.clone()))
     }
 
@@ -1628,7 +1594,15 @@ impl RefClient {
 }
 
 /// Applies the reference model's independent interpretation of resource filters.
-fn protocol_filter_allows(filters: &[Filter], protocol: Protocol) -> bool {
+/// Whether the SUT answers `domain` from the portal instead of DNS.
+///
+/// Device names resolve ahead of DNS resources, so a name matching both is answered
+/// from the portal and never resolves to a resource's proxy IPs.
+fn is_device_domain(domain: &DomainName) -> bool {
+    dns::device_slug(domain).is_some()
+}
+
+pub(crate) fn protocol_filter_allows(filters: &[Filter], protocol: Protocol) -> bool {
     match protocol {
         Protocol::Tcp(port) => tcp_filter_allows(filters, port),
         Protocol::Udp(port) => udp_filter_allows(filters, port),

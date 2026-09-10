@@ -65,7 +65,6 @@ pub(crate) struct StaticDevicePoolResource {
 pub(crate) struct DynamicDevicePoolResource {
     pub(crate) id: ResourceId,
     pub(crate) name: String,
-    pub(crate) address: String,
     pub(crate) filters: Vec<Filter>,
 }
 
@@ -151,9 +150,7 @@ impl Resource {
             (Resource::StaticDevicePool(a), Resource::StaticDevicePool(b)) => {
                 a.devices != b.devices
             }
-            (Resource::DynamicDevicePool(a), Resource::DynamicDevicePool(b)) => {
-                a.address != b.address
-            }
+            (Resource::DynamicDevicePool(_), Resource::DynamicDevicePool(_)) => false,
             _ => true,
         }
     }
@@ -240,7 +237,6 @@ impl Resource {
             Resource::DynamicDevicePool(r) => ResourceDescription::DynamicDevicePool(json!({
                 "id": r.id,
                 "name": r.name,
-                "address": r.address,
                 "filters": filters_json(r.filters),
             })),
         }

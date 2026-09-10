@@ -225,11 +225,9 @@ fn arb_internet_resource(g: &mut Generator, site: &Site) -> InternetResource {
 }
 
 fn arb_dynamic_device_pool_resource(g: &mut Generator) -> DynamicDevicePoolResource {
-    let base = arb_domain_name_string(g, 2, 3);
     DynamicDevicePoolResource {
         id: g.fresh_resource_id(),
         name: g.lower_ascii(4, 10),
-        address: format!("*.{base}"),
         filters: arb_filters(g),
     }
 }

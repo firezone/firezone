@@ -95,12 +95,16 @@ impl DevicePoolMember {
     }
 }
 
+/// A pool whose members the portal decides by a membership rule.
+///
+/// Devices are reached by name under the device domain; the portal picks the
+/// pool on the first packet, see [`EgressMessages::RequestDeviceAccess`].
+#[serde_as]
 #[derive(Debug, Deserialize)]
 pub struct ResourceDescriptionDynamicDevicePool {
     pub id: ResourceId,
     pub name: String,
-    /// DNS pattern for the pool (e.g. `*.devices.example.com`).
-    pub address: String,
+    #[serde_as(as = "VecSkipError<_, WarnOnInvalidFilter>")]
     #[serde(default)]
     pub filters: Vec<Filter>,
 }
@@ -199,13 +203,14 @@ pub struct ClientDeviceAccessAuthorized {
     #[serde(default)]
     pub use_iceless: bool,
 
-    /// The resource authorising this connection on the receiving side, as the
-    /// portal's minimal `{id, filters}` view. `None` on the initiating side.
+    /// The pool authorising this connection, as the portal's minimal `{id, filters}`
+    /// view. The receiving side always gets it as its inbound grant; the initiating
+    /// side gets it only in reply to `request_device_access`, as its outbound route.
     #[serde(default)]
     pub resource: Option<AuthorizedResource>,
 
     /// When the authorization expires, as a unix timestamp. `None` when it
-    /// never expires or on the initiating side.
+    /// never expires; only the receiving side enforces it.
     #[serde_as(as = "Option<DurationSeconds<u64>>")]
     #[serde(default)]
     pub expires_at: Option<Duration>,
@@ -291,21 +296,38 @@ pub struct ClientIceCandidateError {
     pub reason: FailReason,
 }
 
-/// Portal's response when a dynamic device pool domain is resolved.
+/// Portal's response when a device name is resolved.
 #[derive(Debug, Deserialize, Clone)]
-pub struct DevicePoolDomainResolved {
-    pub resource_id: ResourceId,
+pub struct DeviceDomainResolved {
     pub domain: String,
     pub ipv4: Ipv4Addr,
     pub ipv6: Ipv6Addr,
 }
 
-/// Portal's response when a dynamic device pool domain cannot be resolved.
+/// Portal's response when a device name cannot be resolved.
 #[derive(Debug, Deserialize, Clone)]
-pub struct DevicePoolDomainResolutionFailed {
-    pub resource_id: ResourceId,
+pub struct DeviceDomainResolutionFailed {
     pub domain: String,
     pub reason: FailReason,
+}
+
+/// The protocol and port of the packet that asks for access to a device.
+#[derive(Debug, Serialize, PartialEq, Eq, Clone, Copy)]
+#[serde(tag = "protocol", rename_all = "snake_case")]
+pub enum DeviceAccessProtocol {
+    Tcp { port: u16 },
+    Udp { port: u16 },
+    Icmp,
+}
+
+impl From<ip_packet::Protocol> for DeviceAccessProtocol {
+    fn from(protocol: ip_packet::Protocol) -> Self {
+        match protocol {
+            ip_packet::Protocol::Tcp(port) => Self::Tcp { port },
+            ip_packet::Protocol::Udp(port) => Self::Udp { port },
+            ip_packet::Protocol::IcmpEcho(_) => Self::Icmp,
+        }
+    }
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -367,8 +389,8 @@ pub enum IngressMessages {
     ClientDeviceAccessDenied(ClientDeviceAccessDenied),
     ClientIceCandidateError(ClientIceCandidateError),
 
-    DevicePoolDomainResolved(DevicePoolDomainResolved),
-    DevicePoolDomainResolutionFailed(DevicePoolDomainResolutionFailed),
+    DeviceDomainResolved(DeviceDomainResolved),
+    DeviceDomainResolutionFailed(DeviceDomainResolutionFailed),
 
     /// A resource's filters have changed while at least one authorization
     /// referencing it remains active.
@@ -415,9 +437,16 @@ pub enum EgressMessages {
         #[serde(skip_serializing_if = "Option::is_none")]
         ipv6: Option<Ipv6Addr>,
     },
-    ResolveDevicePoolDomain {
-        resource_id: ResourceId,
+    ResolveDeviceDomain {
         domain: String,
+    },
+    RequestDeviceAccess {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        ipv4: Option<Ipv4Addr>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        ipv6: Option<Ipv6Addr>,
+        #[serde(flatten)]
+        protocol: DeviceAccessProtocol,
     },
     NoRelays {},
     NewGatewayIceCandidates(GatewayIceCandidates),
@@ -1015,7 +1044,6 @@ mod tests {
                 "id": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
                 "type": "dynamic_device_pool",
                 "name": "Employee Laptops",
-                "address": "*.laptops.example.com",
                 "filters": [
                     {
                         "protocol": "tcp",
@@ -1038,7 +1066,6 @@ mod tests {
         };
         let desc = ResourceDescriptionDynamicDevicePool::deserialize(json).unwrap();
         assert_eq!(desc.name, "Employee Laptops");
-        assert_eq!(desc.address, "*.laptops.example.com");
         assert_eq!(
             desc.filters,
             vec![Filter::Tcp(crate::messages::PortRange::single(22))]
@@ -1046,18 +1073,16 @@ mod tests {
     }
 
     #[test]
-    fn resolve_device_pool_domain_serialises_correctly() {
-        let msg = EgressMessages::ResolveDevicePoolDomain {
-            resource_id: "b2c3d4e5-f6a7-8901-bcde-f12345678901".parse().unwrap(),
-            domain: "device-42.laptops.example.com".to_owned(),
+    fn resolve_device_domain_serialises_correctly() {
+        let msg = EgressMessages::ResolveDeviceDomain {
+            domain: "device-42.firezone.network".to_owned(),
         };
 
         let actual = serde_json::to_value(&msg).unwrap();
         let expected = serde_json::json!({
-            "event": "resolve_device_pool_domain",
+            "event": "resolve_device_domain",
             "payload": {
-                "resource_id": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
-                "domain": "device-42.laptops.example.com",
+                "domain": "device-42.firezone.network",
             }
         });
 
@@ -1065,20 +1090,55 @@ mod tests {
     }
 
     #[test]
-    fn can_deserialize_device_pool_domain_resolved() {
+    fn request_device_access_serialises_correctly() {
+        let tcp = EgressMessages::RequestDeviceAccess {
+            ipv4: Some("100.64.0.42".parse().unwrap()),
+            ipv6: None,
+            protocol: DeviceAccessProtocol::Tcp { port: 22 },
+        };
+        let icmp = EgressMessages::RequestDeviceAccess {
+            ipv4: None,
+            ipv6: Some("fd00:2021:1111::42".parse().unwrap()),
+            protocol: DeviceAccessProtocol::Icmp,
+        };
+
+        assert_eq!(
+            serde_json::to_value(&tcp).unwrap(),
+            serde_json::json!({
+                "event": "request_device_access",
+                "payload": {
+                    "ipv4": "100.64.0.42",
+                    "protocol": "tcp",
+                    "port": 22,
+                }
+            })
+        );
+        assert_eq!(
+            serde_json::to_value(&icmp).unwrap(),
+            serde_json::json!({
+                "event": "request_device_access",
+                "payload": {
+                    "ipv6": "fd00:2021:1111::42",
+                    "protocol": "icmp",
+                }
+            })
+        );
+    }
+
+    #[test]
+    fn can_deserialize_device_domain_resolved() {
         let json = serde_json::json!({
-            "event": "device_pool_domain_resolved",
+            "event": "device_domain_resolved",
             "payload": {
-                "resource_id": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
-                "domain": "device-42.laptops.example.com",
+                "domain": "device-42.firezone.network",
                 "ipv4": "100.64.0.42",
                 "ipv6": "fd00:2021:1111::42"
             }
         });
 
         let msg: IngressMessages = serde_json::from_value(json).unwrap();
-        let IngressMessages::DevicePoolDomainResolved(resolved) = msg else {
-            panic!("expected DevicePoolDomainResolved")
+        let IngressMessages::DeviceDomainResolved(resolved) = msg else {
+            panic!("expected DeviceDomainResolved")
         };
         assert_eq!(resolved.ipv4, "100.64.0.42".parse::<Ipv4Addr>().unwrap());
         assert_eq!(
@@ -1105,12 +1165,11 @@ mod tests {
     }
 
     #[test]
-    fn can_deserialize_device_pool_domain_resolution_failed() {
+    fn can_deserialize_device_domain_resolution_failed() {
         let json = serde_json::json!({
-            "event": "device_pool_domain_resolution_failed",
+            "event": "device_domain_resolution_failed",
             "payload": {
-                "resource_id": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
-                "domain": "device-42.laptops.example.com",
+                "domain": "device-42.firezone.network",
                 "reason": "not_found"
             }
         });
@@ -1118,7 +1177,7 @@ mod tests {
         let msg: IngressMessages = serde_json::from_value(json).unwrap();
         assert!(matches!(
             msg,
-            IngressMessages::DevicePoolDomainResolutionFailed(_)
+            IngressMessages::DeviceDomainResolutionFailed(_)
         ));
     }
 

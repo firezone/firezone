@@ -5,7 +5,7 @@ use std::{
 };
 
 use connlib_model::ResourceId;
-use ip_packet::IpPacket;
+use ip_packet::{IpPacket, Protocol};
 use ringbuffer::{AllocRingBuffer, RingBuffer as _};
 
 use crate::{
@@ -21,13 +21,22 @@ pub struct PendingAuthorizations {
     inner: BTreeMap<AuthorizationTarget, PendingAuthorization>,
 
     authorization_requests: VecDeque<AuthorizationRequest>,
+    device_access_requests: VecDeque<DeviceAccessRequest>,
 }
 
 /// What we are requesting authorization for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum AuthorizationTarget {
     Resource(ResourceId),
-    Device { pool: ResourceId, addr: IpAddr },
+    Device {
+        pool: ResourceId,
+        addr: IpAddr,
+    },
+    /// A device resolved by name; the portal picks the pool for the packet's protocol.
+    DeviceAccess {
+        addr: IpAddr,
+        protocol: Protocol,
+    },
 }
 
 impl From<ResourceId> for AuthorizationTarget {
@@ -43,6 +52,14 @@ pub struct AuthorizationRequest {
     ///
     /// `None` for gateway-routed resources where the portal picks the gateway.
     pub ip: Option<IpAddr>,
+}
+
+/// A request for access to a resolved device, made with the protocol and port of
+/// the packet so the portal can pick a pool that permits it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DeviceAccessRequest {
+    pub ip: IpAddr,
+    pub protocol: Protocol,
 }
 
 impl PendingAuthorizations {
@@ -100,11 +117,44 @@ impl PendingAuthorizations {
         );
     }
 
+    /// Records a packet to a resolved device that no pool has granted yet.
+    ///
+    /// No filter applies here: the portal decides with the packet's protocol.
+    #[tracing::instrument(level = "debug", skip_all, fields(%ip, ?protocol))]
+    pub fn on_not_authorized_device_access(
+        &mut self,
+        ip: IpAddr,
+        protocol: Protocol,
+        trigger: impl Into<Trigger>,
+        now: Instant,
+    ) {
+        self.upsert(
+            AuthorizationTarget::DeviceAccess { addr: ip, protocol },
+            trigger.into(),
+            now,
+        );
+    }
+
     pub fn remove(
         &mut self,
         target: impl Into<AuthorizationTarget>,
     ) -> Option<PendingAuthorization> {
         self.inner.remove(&target.into())
+    }
+
+    /// Removes and returns every device access entry whose address matches the predicate.
+    ///
+    /// The iterator must be consumed for the entries to be removed.
+    pub fn remove_device_access_authorizations<'a>(
+        &'a mut self,
+        mut f: impl FnMut(IpAddr) -> bool + 'a,
+    ) -> impl Iterator<Item = PendingAuthorization> + 'a {
+        self.inner
+            .extract_if(.., move |target, _| match target {
+                AuthorizationTarget::DeviceAccess { addr, .. } => f(*addr),
+                AuthorizationTarget::Resource(_) | AuthorizationTarget::Device { .. } => false,
+            })
+            .map(|(_, pending)| pending)
     }
 
     /// Removes and returns every device entry whose (pool, address) matches the predicate.
@@ -116,17 +166,23 @@ impl PendingAuthorizations {
     ) -> impl Iterator<Item = (ResourceId, PendingAuthorization)> + 'a {
         self.inner
             .extract_if(.., move |target, _| match target {
-                AuthorizationTarget::Resource(_) => false,
+                AuthorizationTarget::Resource(_) | AuthorizationTarget::DeviceAccess { .. } => {
+                    false
+                }
                 AuthorizationTarget::Device { pool, addr } => f(*pool, *addr),
             })
             .filter_map(|(target, pending)| match target {
                 AuthorizationTarget::Device { pool, .. } => Some((pool, pending)),
-                AuthorizationTarget::Resource(_) => None,
+                AuthorizationTarget::Resource(_) | AuthorizationTarget::DeviceAccess { .. } => None,
             })
     }
 
     pub fn poll_authorization_requests(&mut self) -> Option<AuthorizationRequest> {
         self.authorization_requests.pop_front()
+    }
+
+    pub fn poll_device_access_requests(&mut self) -> Option<DeviceAccessRequest> {
+        self.device_access_requests.pop_front()
     }
 
     fn upsert(&mut self, target: AuthorizationTarget, trigger: Trigger, now: Instant) {
@@ -150,17 +206,24 @@ impl PendingAuthorizations {
 
         pending.last_request_sent_at = now;
 
-        let request = match target {
-            AuthorizationTarget::Resource(rid) => AuthorizationRequest {
-                resource_id: rid,
-                ip: None,
-            },
-            AuthorizationTarget::Device { pool, addr } => AuthorizationRequest {
-                resource_id: pool,
-                ip: Some(addr),
-            },
-        };
-        self.authorization_requests.push_back(request);
+        match target {
+            AuthorizationTarget::Resource(rid) => {
+                self.authorization_requests.push_back(AuthorizationRequest {
+                    resource_id: rid,
+                    ip: None,
+                });
+            }
+            AuthorizationTarget::Device { pool, addr } => {
+                self.authorization_requests.push_back(AuthorizationRequest {
+                    resource_id: pool,
+                    ip: Some(addr),
+                });
+            }
+            AuthorizationTarget::DeviceAccess { addr, protocol } => {
+                self.device_access_requests
+                    .push_back(DeviceAccessRequest { ip: addr, protocol });
+            }
+        }
     }
 }
 
