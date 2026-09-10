@@ -30,7 +30,8 @@ defmodule PortalWeb.Policies.Components do
     dns: @all_conditions,
     ip: @all_conditions,
     cidr: @all_conditions,
-    static_device_pool: @all_conditions
+    static_device_pool: @all_conditions,
+    dynamic_device_pool: @all_conditions
   }
 
   attr(:policy, :map, required: true)

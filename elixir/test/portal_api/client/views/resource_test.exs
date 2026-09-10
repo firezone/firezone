@@ -83,7 +83,7 @@ defmodule PortalAPI.Client.Views.ResourceTest do
   end
 
   describe "render/1 for :dynamic_device_pool" do
-    test "renders id, type, name, address (pattern), and filters; no sites/gateway_groups" do
+    test "renders id, type, name and filters; no address, sites or gateway_groups" do
       id_bytes = Ecto.UUID.bingenerate()
       id_string = Ecto.UUID.cast!(id_bytes)
 
@@ -91,7 +91,7 @@ defmodule PortalAPI.Client.Views.ResourceTest do
         id: id_bytes,
         type: :dynamic_device_pool,
         name: "Laptops",
-        address: "*.laptops.example.com",
+        device_membership_criteria: Portal.Resource.DeviceMembershipCriteria.own_devices(),
         filters: [%{protocol: :tcp, ports: ["22"]}]
       }
 
@@ -100,9 +100,10 @@ defmodule PortalAPI.Client.Views.ResourceTest do
       assert rendered.id == id_string
       assert rendered.type == :dynamic_device_pool
       assert rendered.name == "Laptops"
-      assert rendered.address == "*.laptops.example.com"
       assert [%{protocol: :tcp, port_range_start: 22, port_range_end: 22}] = rendered.filters
 
+      refute Map.has_key?(rendered, :address)
+      refute Map.has_key?(rendered, :device_membership_criteria)
       refute Map.has_key?(rendered, :gateway_groups)
       refute Map.has_key?(rendered, :sites)
       refute Map.has_key?(rendered, :devices)

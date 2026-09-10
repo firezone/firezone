@@ -843,6 +843,18 @@ defmodule PortalWeb.SignUpTest do
       assert provider.name == "X.509"
       assert provider.context == :clients_only
       assert provider.is_disabled
+
+      pool =
+        Portal.Repo.get_by!(Portal.Resource, account_id: account.id, type: :dynamic_device_pool)
+
+      assert pool.name == "Your devices"
+      assert pool.device_membership_criteria == Portal.Resource.DeviceMembershipCriteria.own_devices()
+      assert is_nil(pool.address)
+      assert is_nil(pool.site_id)
+
+      everyone = Portal.Repo.get_by!(Portal.Group, account_id: account.id, name: "Everyone")
+      policy = Portal.Repo.get_by!(Portal.Policy, account_id: account.id, resource_id: pool.id)
+      assert policy.group_id == everyone.id
     end
 
     test "valid token for already-registered email redirects to account sign-in", %{conn: conn} do

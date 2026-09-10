@@ -26,6 +26,7 @@ defimpl Portal.Cache.Cacheable, for: Portal.Resource do
     %Portal.Cache.Cacheable.Resource{
       id: Ecto.UUID.dump!(resource.id),
       type: resource.type,
+      device_membership_criteria: resource.device_membership_criteria,
       name: resource.name,
       address: resource.address,
       address_description: resource.address_description,

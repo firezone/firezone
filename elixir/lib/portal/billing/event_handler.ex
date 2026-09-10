@@ -3,6 +3,7 @@ defmodule Portal.Billing.EventHandler do
   Handles Stripe webhook events for billing and subscription management.
   """
 
+  import Ecto.Changeset
   alias Portal.Accounts
   alias Portal.Billing
   alias Portal.Billing.Stripe.ProcessedEvents
@@ -513,13 +514,17 @@ defmodule Portal.Billing.EventHandler do
   defp setup_account_defaults(account, metadata, account_email) do
     # Create default groups and resources
     changeset = create_everyone_group_changeset(account)
-    {:ok, _everyone_group} = Database.insert(changeset)
+    {:ok, everyone_group} = Database.insert(changeset)
     changeset = create_site_changeset(account, %{name: "Default Site"})
     {:ok, _site} = Database.insert_site(changeset)
     changeset = create_internet_site_changeset(account)
     {:ok, internet_site} = Database.insert_site(changeset)
     changeset = create_internet_resource_changeset(account, internet_site)
     {:ok, _resource} = Database.insert(changeset)
+    changeset = create_self_device_pool_changeset(account)
+    {:ok, self_device_pool} = Database.insert(changeset)
+    changeset = create_self_device_pool_policy_changeset(everyone_group, self_device_pool)
+    {:ok, _policy} = Database.insert(changeset)
 
     # Create email provider
     {:ok, _email_provider} = Database.create_email_provider(account)
@@ -594,6 +599,27 @@ defmodule Portal.Billing.EventHandler do
     %Portal.Resource{site_id: site.id, account_id: account.id}
     |> cast(attrs, [:type, :name])
     |> validate_required([:name, :type])
+  end
+
+  defp create_self_device_pool_changeset(account) do
+    %Portal.Resource{account_id: account.id}
+    |> cast(Portal.Resource.self_device_pool_attrs(), [:type, :device_membership_criteria, :name])
+    |> validate_required([:type, :device_membership_criteria, :name])
+    |> Portal.Resource.changeset()
+  end
+
+  defp create_self_device_pool_policy_changeset(everyone_group, self_device_pool) do
+    %Portal.Policy{account_id: everyone_group.account_id}
+    |> cast(
+      %{
+        group_id: everyone_group.id,
+        resource_id: self_device_pool.id,
+        description: "Lets every actor reach their own devices."
+      },
+      [:group_id, :resource_id, :description]
+    )
+    |> validate_required([:group_id, :resource_id])
+    |> Portal.Policy.changeset()
   end
 
   # Account Updates
