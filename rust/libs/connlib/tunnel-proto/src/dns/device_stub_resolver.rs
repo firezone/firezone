@@ -655,7 +655,7 @@ mod tests {
             POOL_DOMAIN.parse().unwrap(),
             Ok((TEST_IPV4, TEST_IPV6)),
         );
-        iter::from_fn(|| resolver.poll_event()).for_each(drop);
+        for _ in iter::from_fn(|| resolver.poll_event()) {}
 
         // Repeat A query hits the cache.
         let s = resolver.handle_query(
@@ -699,7 +699,7 @@ mod tests {
             POOL_DOMAIN.parse().unwrap(),
             Ok((TEST_IPV4, TEST_IPV6)),
         );
-        iter::from_fn(|| resolver.poll_event()).for_each(drop);
+        for _ in iter::from_fn(|| resolver.poll_event()) {}
 
         resolver.remove_resource(rid);
         resolver.add_resource(rid, POOL_PATTERN.to_owned());
@@ -736,7 +736,7 @@ mod tests {
             POOL_DOMAIN.parse().unwrap(),
             Ok((TEST_IPV4, TEST_IPV6)),
         );
-        iter::from_fn(|| resolver.poll_event()).for_each(drop);
+        for _ in iter::from_fn(|| resolver.poll_event()) {}
 
         resolver.add_resource(rid, POOL_PATTERN.to_owned());
 
@@ -766,7 +766,7 @@ mod tests {
             POOL_DOMAIN.parse().unwrap(),
             Ok((TEST_IPV4, TEST_IPV6)),
         );
-        iter::from_fn(|| resolver.poll_event()).for_each(drop);
+        for _ in iter::from_fn(|| resolver.poll_event()) {}
 
         resolver.add_resource(rid, "*.other.example.com".to_owned());
 
