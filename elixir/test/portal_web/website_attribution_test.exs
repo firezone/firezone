@@ -52,4 +52,40 @@ defmodule PortalWeb.WebsiteAttributionTest do
     assert attribution["website_path"] == "/pricing"
     assert attribution["marketing"]["marketing_allowed"]
   end
+
+  test "direct signup uses the country default without website parameters", %{conn: conn} do
+    for {country, allowed} <- [{"US", true}, {"CA", true}, {"DE", false}, {"NO", false},
+                               {"GB", false}, {"XX", false}, {"", false}] do
+      result = conn |> put_req_header("x-geo-location-region", country) |> get("/sign_up")
+      marketing = WebsiteAttribution.fetch(get_session(result))["marketing"]
+      assert marketing["marketing_allowed"] == allowed
+      assert marketing["source"] == "region"
+      assert is_integer(marketing["captured_at"])
+    end
+  end
+
+  test "regional defaults preserve explicit opt-outs and honor GPC", %{conn: conn} do
+    conn = put_req_header(conn, "x-geo-location-region", "US")
+    denied = get(conn, "/sign_up?fz_mktg=false")
+    refute WebsiteAttribution.fetch(get_session(denied))["marketing"]["marketing_allowed"]
+
+    revisit = denied |> recycle() |> put_req_header("x-geo-location-region", "US") |> get("/sign_up")
+    refute WebsiteAttribution.fetch(get_session(revisit))["marketing"]["marketing_allowed"]
+
+    gpc = conn |> put_req_header("sec-gpc", "1") |> get("/sign_up?fz_mktg=true")
+    refute WebsiteAttribution.fetch(get_session(gpc))["marketing"]["marketing_allowed"]
+  end
+
+  test "regional allowance is re-evaluated when the visitor changes region", %{conn: conn} do
+    first = conn |> put_req_header("x-geo-location-region", "US") |> get("/sign_up")
+    assert WebsiteAttribution.fetch(get_session(first))["marketing"]["marketing_allowed"]
+    second = first |> recycle() |> put_req_header("x-geo-location-region", "DE") |> get("/sign_up/email")
+    refute WebsiteAttribution.fetch(get_session(second))["marketing"]["marketing_allowed"]
+  end
+
+  test "regional defaults preserve consent given in an opt-in country", %{conn: conn} do
+    result = conn |> put_req_header("x-geo-location-region", "DE") |> get("/sign_up?fz_mktg=true")
+    assert WebsiteAttribution.fetch(get_session(result))["marketing"]["marketing_allowed"]
+  end
+
 end

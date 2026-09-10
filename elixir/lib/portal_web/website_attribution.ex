@@ -1,6 +1,7 @@
 defmodule PortalWeb.WebsiteAttribution do
   @moduledoc """
-  Moves consented website attribution from the query string into the portal session.
+  Moves website attribution into the portal session and applies regional marketing
+  defaults for direct signups.
   """
 
   @behaviour Plug
@@ -15,6 +16,8 @@ defmodule PortalWeb.WebsiteAttribution do
   @source "www.firezone.dev"
   @click_params ~w[oppref gclid gbraid wbraid]
   @marketing_params ["fz_mktg" | Enum.map(@click_params, &("fz_" <> &1))]
+  # Keep aligned with website/src/lib/consent-region.ts (EU/EEA and UK).
+  @opt_in_countries ~w[AT BE BG HR CY CZ DK EE FI FR DE GR HU IE IT LV LT LU MT NL PL PT RO SK SI ES SE IS LI NO GB]
 
   @impl true
   def init(opts), do: opts
@@ -26,10 +29,11 @@ defmodule PortalWeb.WebsiteAttribution do
     if attribution_params_present?(conn.query_params) do
       conn
       |> maybe_store_attribution(conn.query_params)
+      |> signup_marketing_default()
       |> Phoenix.Controller.redirect(to: clean_request_target(conn))
       |> halt()
     else
-      conn
+      signup_marketing_default(conn)
     end
   end
 
@@ -43,6 +47,38 @@ defmodule PortalWeb.WebsiteAttribution do
     attribution = get_session(conn, @session_key)
     {delete_session(conn, @session_key), attribution}
   end
+
+  # Capture the decision before LiveView mounts so both Google signup and the
+  # signed email verification token carry it into account metadata. Never replace
+  # an explicit choice with a regional default. Re-evaluate earlier defaults so
+  # a later visit from an opt-in region cannot reuse an implied allowance.
+  defp signup_marketing_default(%{path_info: ["sign_up" | _]} = conn) do
+    attribution = fetch(get_session(conn)) || %{}
+    marketing = attribution["marketing"]
+
+    cond do
+      "1" in get_req_header(conn, "sec-gpc") ->
+        store_marketing_attribution(conn, %{"fz_mktg" => "false"})
+
+      is_map(marketing) and marketing["source"] != "region" ->
+        conn
+
+      Map.has_key?(conn.query_params, "fz_mktg") ->
+        conn
+
+      true ->
+        {country, _city, _coordinates} = Portal.Geo.locate(conn.remote_ip, conn.req_headers)
+        allowed = country in Portal.Geo.all_country_codes!() and country not in @opt_in_countries
+
+        put_session(conn, @session_key, Map.put(attribution, "marketing", %{
+          "marketing_allowed" => allowed,
+          "captured_at" => System.os_time(:second),
+          "source" => "region"
+        }))
+    end
+  end
+
+  defp signup_marketing_default(conn), do: conn
 
   defp attribution_params_present?(params) do
     Map.has_key?(params, @distinct_id_param) or Map.has_key?(params, @pathname_param) or
