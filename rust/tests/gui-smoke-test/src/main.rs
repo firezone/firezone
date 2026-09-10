@@ -13,6 +13,9 @@ use tracing_subscriber::EnvFilter;
 
 #[cfg(target_os = "windows")]
 mod tray_screenshot;
+#[cfg(target_os = "linux")]
+#[path = "tray_screenshot/linux.rs"]
+mod tray_screenshot;
 
 #[cfg(target_os = "linux")]
 const FZ_GROUP: &str = "firezone-client";
@@ -59,7 +62,7 @@ enum Cmd {
     /// Assert the GUI quits on `--quit-after`. Needs access to the staging network, so CI can't run it.
     QuitsAfterTimeout,
     /// Photograph the tray menu with a resource submenu expanded.
-    #[cfg(target_os = "windows")]
+    #[cfg(any(target_os = "windows", target_os = "linux"))]
     TrayScreenshot {
         /// The resource whose submenu to expand.
         #[arg(long)]
@@ -83,20 +86,16 @@ fn main() -> Result<()> {
     tracing::info!("Started logging");
     let cli = Cli::try_parse()?;
 
-    let app = App::new()?;
-
     match cli.command {
-        Cmd::StartsAndQuits => starts_and_quits(&app)?,
-        Cmd::HandlesCrash => handles_crash(&app)?,
+        Cmd::StartsAndQuits => starts_and_quits(&App::new()?)?,
+        Cmd::HandlesCrash => handles_crash(&App::new()?)?,
         #[cfg(target_os = "linux")]
-        Cmd::RejectsUnallowlistedGui => binary_allowlist_rejection_test(&app)?,
-        Cmd::HandsOffToFirstInstance => single_instance_test(&app)?,
-        Cmd::Replicate6791 => replicate_6791(&app)?,
-        Cmd::QuitsAfterTimeout => quits_after_timeout(&app)?,
-        #[cfg(target_os = "windows")]
-        Cmd::TrayScreenshot { submenu, output } => {
-            tray_screenshot::capture(&app, &submenu, &output)?
-        }
+        Cmd::RejectsUnallowlistedGui => binary_allowlist_rejection_test(&App::new()?)?,
+        Cmd::HandsOffToFirstInstance => single_instance_test(&App::new()?)?,
+        Cmd::Replicate6791 => replicate_6791(&App::new()?)?,
+        Cmd::QuitsAfterTimeout => quits_after_timeout(&App::new()?)?,
+        #[cfg(any(target_os = "windows", target_os = "linux"))]
+        Cmd::TrayScreenshot { submenu, output } => tray_screenshot::capture(&submenu, &output)?,
     }
 
     Ok(())

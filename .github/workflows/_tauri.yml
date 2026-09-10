@@ -109,7 +109,8 @@ jobs:
       - run: pnpm install
       - run: pnpm vite build
       - name: Build client
-        run: cargo build -p firezone-gui-client --all-targets
+        # The GNOME capture runs without a Vite server, so embed the frontend.
+        run: cargo build -p firezone-gui-client --all-targets ${{ matrix.runs-on == 'ubuntu-24.04' && '--features tauri/custom-protocol' || '' }}
       - name: GUI starts, connects to the tunnel and quits
         working-directory: ./rust
         run: cargo run -p gui-smoke-test -- starts-and-quits
@@ -138,8 +139,31 @@ jobs:
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: ${{ always() && matrix.runs-on == 'windows-2025' && !startsWith(github.head_ref, 'chore/publish-') }}
         with:
-          name: gui-client-tray-screenshots
+          name: gui-client-tray-screenshots-windows
           path: rust/gui-client/screenshots/windows-tray-*.png
+          if-no-files-found: ignore
+      - name: Install GNOME screenshot dependencies
+        if: matrix.runs-on == 'ubuntu-24.04' && !startsWith(github.head_ref, 'chore/publish-')
+        uses: ./.github/actions/apt-install
+        with:
+          packages: gnome-shell gnome-shell-extension-appindicator yaru-theme-gnome-shell fonts-cantarell libgl1-mesa-dri python3-gi
+      - name: Photograph the GNOME tray menu
+        id: gnome-tray
+        if: matrix.runs-on == 'ubuntu-24.04' && !startsWith(github.head_ref, 'chore/publish-')
+        working-directory: ./rust
+        run: cargo run -p gui-smoke-test -- tray-screenshot --submenu "Engineering wiki" --output gui-client/screenshots/gnome-tray-menu-light.png
+        timeout-minutes: 5
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: ${{ always() && steps.gnome-tray.outcome == 'success' }}
+        with:
+          name: gui-client-tray-screenshots-gnome
+          path: rust/gui-client/screenshots/gnome-tray-menu-light.png
+          if-no-files-found: error
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: ${{ always() && matrix.runs-on == 'ubuntu-24.04' && !startsWith(github.head_ref, 'chore/publish-') }}
+        with:
+          name: gui-client-tray-diagnostics-gnome
+          path: rust/target/gui-smoke-test/gnome-tray
           if-no-files-found: ignore
 
   build-gui:
