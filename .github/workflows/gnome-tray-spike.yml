@@ -1,7 +1,5 @@
 name: GNOME tray screenshot spike
 on:
-  push:
-    branches: [spike-gnome-tray-screenshot]
   workflow_dispatch:
     inputs:
       client-run-id:

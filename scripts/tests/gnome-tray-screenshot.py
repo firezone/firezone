@@ -21,9 +21,14 @@ def main():
     client = Path(sys.argv[1]).resolve()
     output = Path(sys.argv[2]).resolve()
     output.mkdir(parents=True, exist_ok=True)
-    # The document portal can leave a FUSE mount until dbus-run-session exits.
-    with tempfile.TemporaryDirectory(prefix="gnome-tray-", ignore_cleanup_errors=True) as session:
-        capture(client, output, Path(session))
+    with tempfile.TemporaryDirectory(prefix="gnome-tray-") as session:
+        try:
+            capture(client, output, Path(session))
+        finally:
+            # The document portal outlives the shell until dbus-run-session exits.
+            portal_mount = Path(session) / "runtime/doc"
+            if os.path.ismount(portal_mount):
+                subprocess.run(["fusermount3", "-u", str(portal_mount)], check=True)
 
 
 def capture(client, output, session):
@@ -137,11 +142,16 @@ def capture(client, output, session):
                 global.firezoneScreenshotState = Object.entries(Main.panel.statusArea)
                     .filter(([name]) => name.startsWith('appindicator-'))
                     .map(([name, item]) => ({name, id: item._indicator?.id,
+                        ready: item._menuClient?.isReady,
+                        pendingLayout: item._menuClient?._client._flagLayoutUpdateRequired,
                         menu: describe(item.menu)}));
                 const indicator = Object.values(Main.panel.statusArea).find(
                     item => item._indicator?.id === 'dev.firezone.client');
                 if (!indicator) return false;
                 global.get_window_actors().forEach(actor => actor.meta_window.minimize());
+                // An empty PopupMenu cannot open to activate deferred DBusMenu updates.
+                if (indicator._menuClient)
+                    indicator._menuClient._client.active = true;
                 indicator.menu.open(false);
                 const wiki = indicator.menu._getMenuItems().find(
                     item => item.label?.text === 'Engineering wiki');
@@ -151,6 +161,7 @@ def capture(client, output, session):
                 global.firezoneScreenshotSubmenu = wiki.menu;
                 return wiki.menu._getMenuItems().some(item => item.label?.text);
             })()"""), shell, gui)
+            print("Native menu:", evaluate("global.firezoneScreenshotState"), flush=True)
 
             geometry = """(() => {
                 const menus = [global.firezoneScreenshotMenu, global.firezoneScreenshotSubmenu];
