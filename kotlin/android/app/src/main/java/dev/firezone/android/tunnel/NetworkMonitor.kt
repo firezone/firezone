@@ -16,11 +16,6 @@ class NetworkMonitor(
         network: Network,
         linkProperties: LinkProperties,
     ) {
-        if (tunnelService.tunnelState != TunnelService.Companion.State.UP) {
-            tunnelService.tunnelState = TunnelService.Companion.State.UP
-            tunnelService.startConnectedNotification()
-        }
-
         if (lastDns != linkProperties.dnsServers) {
             lastDns = linkProperties.dnsServers
 

@@ -619,7 +619,7 @@ class TunnelService : VpnService() {
         return deviceId
     }
 
-    fun startConnectedNotification() {
+    private fun startConnectedNotification() {
         val notification = TunnelNotification.createConnectedNotification(this)
         startForeground(TunnelNotification.CONNECTED_NOTIFICATION_ID, notification)
     }
@@ -733,6 +733,13 @@ class TunnelService : VpnService() {
 
                             is TunnelCommand.SetTun -> {
                                 session.setTun(command.fd)
+
+                                // connlib only moves packets once it holds the TUN device, so this
+                                // is the first moment the tunnel is actually carrying traffic.
+                                if (tunnelState != State.UP) {
+                                    tunnelState = State.UP
+                                    startConnectedNotification()
+                                }
                             }
 
                             is TunnelCommand.Reset -> {
