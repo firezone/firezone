@@ -27,7 +27,7 @@ use tunnel::{
     GatewayEvent, GatewayTunnel, IPV4_TUNNEL, IPV6_TUNNEL, IpConfig, ResolveDnsRequest, TunnelError,
 };
 
-use crate::RELEASE;
+use crate::{RELEASE, account_slug};
 
 pub const PHOENIX_TOPIC: &str = "gateway";
 
@@ -46,6 +46,8 @@ pub struct Eventloop {
 
     /// The `--flow-logs` flag.
     local_flow_logs: bool,
+
+    account_slug: account_slug::Cache,
 
     resolve_tasks: futures_bounded::FuturesTupleSet<
         Result<Vec<IpAddr>, Arc<anyhow::Error>>,
@@ -85,6 +87,7 @@ impl Eventloop {
         resolver: TokioResolver,
         flow_logs_dir: std::path::PathBuf,
         local_flow_logs: bool,
+        account_slug: account_slug::Cache,
     ) -> Result<Self> {
         let (portal_event_tx, portal_event_rx) = mpsc::channel(128);
         let (portal_cmd_tx, portal_cmd_rx) = mpsc::channel(128);
@@ -104,6 +107,7 @@ impl Eventloop {
             resolver,
             flow_logs_dir,
             local_flow_logs,
+            account_slug,
             resolve_tasks: futures_bounded::FuturesTupleSet::new(
                 || futures_bounded::Delay::tokio(DNS_RESOLUTION_TIMEOUT),
                 1000,
@@ -428,6 +432,10 @@ impl Eventloop {
             }) => {
                 if let Some(account_slug) = account_slug {
                     telemetry::set_account_slug(account_slug.clone());
+
+                    if let Err(e) = self.account_slug.set(&account_slug) {
+                        tracing::debug!("Failed to cache account slug: {e:#}");
+                    }
 
                     analytics::identify(RELEASE.to_owned(), account_slug, None, None)
                 }

@@ -31,6 +31,7 @@ use tracing_subscriber::layer;
 use tun::Tun;
 use url::Url;
 
+mod account_slug;
 mod eventloop;
 mod manage;
 mod otel;
@@ -172,9 +173,15 @@ async fn try_main(cli: Cli) -> Result<()> {
             .context("Failed to read `FIREZONE_TOKEN` systemd credential")?,
     };
 
+    let account_slug = account_slug::Cache::new(&token);
+
     if cli.is_telemetry_allowed() {
         telemetry::start(cli.api_url.as_str(), RELEASE, telemetry::GATEWAY_DSN);
         telemetry::set_firezone_id(firezone_id.clone());
+
+        if let Some(slug) = account_slug.get() {
+            telemetry::set_account_slug(slug.to_owned());
+        }
     }
 
     if let Some(backend) = cli.metrics {
@@ -291,6 +298,7 @@ async fn try_main(cli: Cli) -> Result<()> {
         resolver,
         flow_logs_dir,
         cli.flow_logs,
+        account_slug,
     )?
     .run()
     .await
