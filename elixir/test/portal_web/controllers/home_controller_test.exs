@@ -7,6 +7,10 @@ defmodule PortalWeb.HomeControllerTest do
   @website_distinct_id "7d2ed047-64d3-41f9-9a41-ac2c9b92e761"
 
   describe "website attribution" do
+    setup %{conn: conn} do
+      %{conn: put_req_header(conn, "x-geo-location-region", "US")}
+    end
+
     test "stores attribution and redirects sign-up links to a clean URL", %{conn: conn} do
       conn =
         get(
@@ -16,11 +20,18 @@ defmodule PortalWeb.HomeControllerTest do
 
       assert redirected_to(conn) == "/sign_up"
 
-      assert get_session(conn, "website_attribution") == %{
+      assert %{"marketing" => marketing} = attribution = get_session(conn, "website_attribution")
+
+      assert Map.delete(attribution, "marketing") == %{
                "distinct_id" => @website_distinct_id,
                "source" => "www.firezone.dev",
                "website_path" => "/pricing"
              }
+
+      assert %{"marketing_allowed" => true, "source" => "region", "captured_at" => captured_at} =
+               marketing
+
+      assert is_integer(captured_at)
     end
 
     test "preserves unrelated sign-in parameters while removing attribution", %{conn: conn} do
@@ -33,11 +44,17 @@ defmodule PortalWeb.HomeControllerTest do
       assert redirected_to(conn) == "/sign_in?as=gui-client"
     end
 
-    test "removes invalid attribution without storing it", %{conn: conn} do
+    test "removes invalid website attribution while retaining the regional marketing default", %{conn: conn} do
       conn = get(conn, "/sign_up?fz_website_id=invalid&fz_website_path=%2Fpricing")
 
       assert redirected_to(conn) == "/sign_up"
-      assert get_session(conn, "website_attribution") == nil
+      assert %{"marketing" => marketing} = attribution = get_session(conn, "website_attribution")
+      assert Map.keys(attribution) == ["marketing"]
+
+      assert %{"marketing_allowed" => true, "source" => "region", "captured_at" => captured_at} =
+               marketing
+
+      assert is_integer(captured_at)
     end
   end
 

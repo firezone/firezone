@@ -8,6 +8,50 @@ defmodule PortalWeb.SignUpTest do
 
   @sign_up_token_salt "sign_up_email_v1"
 
+  describe "direct signup conversions" do
+    for {country, allowed} <- [{"US", true}, {"DE", false}] do
+      @country country
+      @allowed allowed
+      test "Google signup in #{country} applies regional tracking", %{conn: conn} do
+        email = "direct-google-#{@country}@example.com"
+        Portal.Config.put_env_override(:portal, Portal.Analytics.OpenAI, api_key: "test-key")
+        Stripe.stub([
+          {"POST", "/v1/customers", 200, Stripe.customer_object("cus_direct", "Direct Corp", email)}
+        ] ++ Stripe.mock_create_subscription_endpoint())
+        conn = conn |> put_req_header("x-geo-location-region", @country) |> with_google_identity(email: email)
+        {:ok, lv, _} = live(conn, ~p"/sign_up/google")
+        html = lv |> form("#google-sign-up-form", registration: %{account: %{name: "Direct Corp"}, actor: %{name: "Direct User"}}) |> render_submit()
+        assert html =~ "Your account has been created!"
+        account = Portal.Repo.get_by!(Portal.Account, name: "Direct Corp")
+        assert account.metadata.marketing_attribution["marketing_allowed"] == @allowed
+        assert length(all_enqueued(worker: Portal.Analytics.OpenAI)) == if(@allowed, do: 1, else: 0)
+      end
+
+      test "email signup in #{country} carries regional tracking through verification", %{conn: conn} do
+        email = "direct-email-#{@country}@example.com"
+        Portal.Config.put_env_override(:portal, Portal.Analytics.OpenAI, api_key: "test-key")
+        Stripe.stub([
+          {"POST", "/v1/customers", 200, Stripe.customer_object("cus_direct", "Direct Corp", email)}
+        ] ++ Stripe.mock_create_subscription_endpoint())
+        {:ok, lv, _} = live(put_req_header(conn, "x-geo-location-region", @country), ~p"/sign_up/email")
+        lv |> form("form", registration: %{email: email, phone: "", account: %{name: "Direct Corp"}, actor: %{name: "Direct User"}}) |> render_submit()
+        test_pid = self()
+        assert_email_sent(fn email ->
+          [_, token] = Regex.run(~r/verify_sign_up\?token=([^\s]+)/, email.text_body)
+          send(test_pid, {:verification_token, token})
+          true
+        end)
+        assert_receive {:verification_token, token}
+        # Verification may happen in a different browser without the signup session.
+        {:ok, _, html} = live(build_conn(), ~p"/verify_sign_up?token=#{token}")
+        assert html =~ "Your account has been created!"
+        account = Portal.Repo.get_by!(Portal.Account, name: "Direct Corp")
+        assert account.metadata.marketing_attribution["marketing_allowed"] == @allowed
+        assert length(all_enqueued(worker: Portal.Analytics.OpenAI)) == if(@allowed, do: 1, else: 0)
+      end
+    end
+  end
+
   describe "mount" do
     test "renders the sign-up method chooser by default", %{conn: conn} do
       {:ok, _lv, html} = live(conn, ~p"/sign_up")
@@ -452,11 +496,11 @@ defmodule PortalWeb.SignUpTest do
         assert {:ok, claims} =
                  Phoenix.Token.verify(PortalWeb.Endpoint, @sign_up_token_salt, token)
 
-        assert claims.website_attribution == %{
-                 "distinct_id" => distinct_id,
+        assert %{
+                 "distinct_id" => ^distinct_id,
                  "source" => "www.firezone.dev",
                  "website_path" => "/pricing"
-               }
+               } = claims.website_attribution
 
         true
       end)
