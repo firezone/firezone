@@ -46,6 +46,17 @@ const DEFAULT_MAX_PARTITION_TIME: Duration = Duration::from_secs(60 * 60 * 24); 
 /// with 0700/0600 permissions.
 const FLOW_LOGS_DIR: &str = "/var/lib/firezone/flow_logs";
 
+/// Exit code that tells systemd this failure needs an operator, so restarting cannot fix it.
+///
+/// `EX_CONFIG` from `sysexits.h`; `firezone-gateway.service` lists it in `RestartPreventExitStatus`.
+const EX_CONFIG: u8 = 78;
+
+/// Returns whether the portal refused our token and will keep refusing it.
+fn needs_new_token(e: &anyhow::Error) -> bool {
+    e.any_downcast_ref::<phoenix_channel::Error>()
+        .is_some_and(phoenix_channel::Error::requires_sign_in)
+}
+
 fn main() -> ExitCode {
     let cli = Cli::parse();
 
@@ -89,9 +100,20 @@ fn main() -> ExitCode {
         }
         Err(e) if e.any_is::<EventloopFailed>() => {
             tracing::error!("{e:#}");
+
+            let exit_code = if needs_new_token(&e) {
+                tracing::info!(
+                    "Replace the token in `/etc/firezone/gateway-token` and start the service again"
+                );
+
+                ExitCode::from(EX_CONFIG)
+            } else {
+                ExitCode::FAILURE
+            };
+
             telemetry::stop();
 
-            ExitCode::FAILURE
+            exit_code
         }
         Err(e) => {
             tracing::info!("{e:#}");
@@ -612,6 +634,16 @@ mod tests {
         unsafe {
             std::env::remove_var("CREDENTIALS_DIRECTORY");
         }
+    }
+
+    #[test]
+    fn only_an_invalid_token_needs_a_new_one() {
+        let invalid_token =
+            anyhow::Error::new(phoenix_channel::Error::InvalidToken).context(EventloopFailed);
+        let unrelated = anyhow::Error::msg("TUN device disappeared").context(EventloopFailed);
+
+        assert!(needs_new_token(&invalid_token));
+        assert!(!needs_new_token(&unrelated));
     }
 
     #[test]
