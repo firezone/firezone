@@ -131,11 +131,11 @@ impl Transition {
                     CidrResourceValue::Id(_) => {
                         unreachable!("resource identity is not editable")
                     }
-                    CidrResourceValue::Address(_) => true,
+                    CidrResourceValue::Address(_) => false,
                     CidrResourceValue::Name(_) => false,
                     CidrResourceValue::AddressDescription(_) => false,
-                    CidrResourceValue::Sites(_) => true,
-                    CidrResourceValue::Filters(_) => true,
+                    CidrResourceValue::Sites(_) => false,
+                    CidrResourceValue::Filters(_) => false,
                 },
                 ResourceEdit::StaticDevicePool(edit) => match &edit.value {
                     StaticDevicePoolResourceValue::Id(_) => {
@@ -153,7 +153,15 @@ impl Transition {
                     DynamicDevicePoolResourceValue::Address(_) => false,
                     DynamicDevicePoolResourceValue::Filters(_) => false,
                 },
-                ResourceEdit::Type(_) => true,
+                ResourceEdit::Type(edit) => match &edit.old_resource {
+                    Resource::Dns(_) => true,
+                    Resource::Cidr(_) => false,
+                    Resource::Internet(_) => {
+                        unreachable!("the Portal API does not allow editing the Internet Resource")
+                    }
+                    Resource::StaticDevicePool(_) => false,
+                    Resource::DynamicDevicePool(_) => false,
+                },
             },
             Transition::SetInternetResourceState { .. } => true,
             Transition::SendIcmpPacketOnNewFlow { .. } => false,
@@ -203,18 +211,18 @@ impl Transition {
                         unreachable!("resource identity is not editable")
                     }
                     DnsResourceValue::Address(_) => {
-                        retains_after_breaking_resource_edit(route, edit.resource.id)
+                        retains_after_gateway_resource_edit(route, edit.resource.id)
                     }
                     DnsResourceValue::Name(_) => true,
                     DnsResourceValue::AddressDescription(_) => true,
                     DnsResourceValue::Sites(_) => {
-                        retains_after_breaking_resource_edit(route, edit.resource.id)
+                        retains_after_gateway_resource_edit(route, edit.resource.id)
                     }
                     DnsResourceValue::IpStack(_) => {
-                        retains_after_breaking_resource_edit(route, edit.resource.id)
+                        retains_after_gateway_resource_edit(route, edit.resource.id)
                     }
                     DnsResourceValue::Filters(_) => {
-                        retains_after_filter_edit(route, edit.resource.id)
+                        retains_after_gateway_resource_edit(route, edit.resource.id)
                     }
                 },
                 ResourceEdit::Cidr(edit) => match &edit.value {
@@ -222,15 +230,15 @@ impl Transition {
                         unreachable!("resource identity is not editable")
                     }
                     CidrResourceValue::Address(_) => {
-                        retains_after_breaking_resource_edit(route, edit.resource.id)
+                        retains_after_gateway_resource_edit(route, edit.resource.id)
                     }
                     CidrResourceValue::Name(_) => true,
                     CidrResourceValue::AddressDescription(_) => true,
                     CidrResourceValue::Sites(_) => {
-                        retains_after_breaking_resource_edit(route, edit.resource.id)
+                        retains_after_gateway_resource_edit(route, edit.resource.id)
                     }
                     CidrResourceValue::Filters(_) => {
-                        retains_after_filter_edit(route, edit.resource.id)
+                        retains_after_gateway_resource_edit(route, edit.resource.id)
                     }
                 },
                 ResourceEdit::StaticDevicePool(edit) => match &edit.value {
@@ -313,15 +321,7 @@ impl Transition {
     }
 }
 
-fn retains_after_breaking_resource_edit(route: FlowRoute, resource: ResourceId) -> bool {
-    match route {
-        FlowRoute::Resource { resource: used, .. } => used != resource,
-        FlowRoute::Gateway(_) => false,
-        FlowRoute::Peer(_) => true,
-    }
-}
-
-fn retains_after_filter_edit(route: FlowRoute, resource: ResourceId) -> bool {
+fn retains_after_gateway_resource_edit(route: FlowRoute, resource: ResourceId) -> bool {
     match route {
         FlowRoute::Resource { resource: used, .. } => used != resource,
         FlowRoute::Gateway(_) => false,
