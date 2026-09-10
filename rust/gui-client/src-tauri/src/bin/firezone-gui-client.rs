@@ -127,8 +127,8 @@ fn try_main(cli: Cli, rt: &Runtime, log_guard: &mut Option<LogGuard>) -> Result<
     // owned by the privileged Tunnel service and arrive over the `Hello` IPC
     // message. Telemetry stays in `entrypoint` mode (started in `main`) and the
     // log filter is `RUST_LOG` or a hardcoded `info` until then; once `Hello`
-    // lands the controller re-applies the effective log filter and sends the
-    // real environment to the service via `StartTelemetry`.
+    // lands the controller re-applies the effective log filter and re-points
+    // telemetry at the effective API URL.
     let log_filter = std::env::var("RUST_LOG").unwrap_or_else(|_| "info".to_owned());
 
     *log_guard = None;

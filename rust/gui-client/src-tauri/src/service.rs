@@ -68,7 +68,6 @@ pub enum ClientMsg {
     ApplyAdvancedSettings(AdvancedSettings),
     SetInternetResourceState(bool),
     StartTelemetry {
-        environment: String,
         release: String,
     },
     #[cfg(debug_assertions)]
@@ -660,19 +659,11 @@ impl<'a> Handler<'a> {
         Poll::Pending
     }
 
-    /// Re-points telemetry to the neutral environment so events emitted while
-    /// disconnected aren't attributed to the ended session.
-    fn reset_telemetry_environment(&mut self) {
-        if let Some(release) = &self.telemetry_release {
-            telemetry::start("entrypoint", release, telemetry::GUI_DSN);
-        }
-    }
-
     async fn handle_connlib_event(&mut self, msg: client_shared::Event) -> Result<()> {
         match msg {
             client_shared::Event::Disconnected(error) => {
                 self.session = Session::None;
-                self.reset_telemetry_environment();
+                telemetry::set_account_slug(None);
                 self.dns_controller.deactivate()?;
                 self.send_ipc(ServerMsg::OnDisconnect {
                     user_msg: error.user_message(),
@@ -772,7 +763,7 @@ impl<'a> Handler<'a> {
             }
             ClientMsg::Disconnect => {
                 self.session = Session::None;
-                self.reset_telemetry_environment();
+                telemetry::set_account_slug(None);
                 self.dns_controller.deactivate()?;
 
                 // Always send `DisconnectedGracefully` even if we weren't connected,
@@ -806,10 +797,7 @@ impl<'a> Handler<'a> {
 
                 connlib.set_internet_resource_state(state);
             }
-            ClientMsg::StartTelemetry {
-                environment,
-                release,
-            } => {
+            ClientMsg::StartTelemetry { release } => {
                 // This is a bit hacky.
                 // It would be cleaner to pass it down from the `Cli` struct.
                 // However, the service can be run in many different ways and adapting all of those
@@ -821,8 +809,7 @@ impl<'a> Handler<'a> {
 
                 if !no_telemetry {
                     self.telemetry_release = Some(release.clone());
-                    telemetry::start(&environment, &release, telemetry::GUI_DSN);
-                    telemetry::set_firezone_id(self.device_id.id.clone());
+                    self.point_telemetry_at_api_url();
 
                     opentelemetry::global::set_meter_provider(
                         telemetry::SentryMeterProvider::default(),
@@ -845,6 +832,19 @@ impl<'a> Handler<'a> {
             .as_ref()
             .map(|u| u.as_str())
             .unwrap_or_else(|| self.advanced_settings.api_url.as_str())
+    }
+
+    /// Points telemetry at the API URL we would dial.
+    ///
+    /// Deriving the environment here instead of accepting one from the GUI is what keeps
+    /// telemetry off for unofficial deployments: it cannot name a portal we never talk to.
+    fn point_telemetry_at_api_url(&self) {
+        let Some(release) = &self.telemetry_release else {
+            return;
+        };
+
+        telemetry::start(self.api_url(), release, telemetry::GUI_DSN);
+        telemetry::set_firezone_id(self.device_id.id.clone()); // Re-pointing clears the identity.
     }
 
     /// One keystore read serves the whole attempt: the certificate presented to the portal and
@@ -872,6 +872,9 @@ impl<'a> Handler<'a> {
             },
             Ok(None) | Err(_) => None,
         };
+
+        // The settings may have moved since the GUI last asked us to start telemetry.
+        self.point_telemetry_at_api_url();
 
         let api_url = self.api_url().to_string();
         let url = LoginUrl::client(

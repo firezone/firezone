@@ -426,16 +426,13 @@ impl<I: GuiIntegration> Controller<I> {
     }
 
     async fn update_telemetry_context(&mut self) -> Result<()> {
-        let environment = self.api_url().to_string();
-
         if !self.telemetry_allowed {
             return Ok(());
         }
 
-        telemetry::start(&environment, crate::RELEASE, telemetry::GUI_DSN);
+        telemetry::start(self.api_url().as_str(), crate::RELEASE, telemetry::GUI_DSN);
 
         self.send_ipc(&service::ClientMsg::StartTelemetry {
-            environment: environment.clone(),
             release: crate::RELEASE.to_string(),
         })
         .await?;
