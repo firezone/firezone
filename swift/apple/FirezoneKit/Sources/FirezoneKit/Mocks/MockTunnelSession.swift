@@ -127,7 +127,7 @@
         }
       case .getStatus:
         // Named by the portal, or up and waiting on it, like the provider. A mock
-        // session is never asked while stopped, so the stopped answers do not arise.
+        // session is never asked while stopped, so that answer does not arise.
         let status: TunnelStatus =
           accountSlug != nil || actorName != nil
           ? .connected(accountSlug: accountSlug, actorName: actorName)

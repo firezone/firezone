@@ -130,12 +130,12 @@ struct IPCClientTests {
   func statusCycleStartsAStoppedTunnel() async throws {
     let session = RecordingTunnelSession(
       status: .disconnected,
-      responseData: try PropertyListEncoder().encode(TunnelStatus.signedIn)
+      responseData: try PropertyListEncoder().encode(TunnelStatus.disconnected)
     )
 
     let status = try await IPCClient.status(session: session)
 
-    #expect(status == .signedIn)
+    #expect(status == .disconnected)
     #expect(session.startTunnelCallCount == 1)
     #expect(session.startTunnelOptions?["cycleStart"] as? Bool == true)
     #expect(session.stopTunnelCallCount == 1)
