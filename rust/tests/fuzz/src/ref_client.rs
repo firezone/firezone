@@ -278,6 +278,28 @@ impl RefClient {
         self.resolved_dynamic_peers.remove(resource);
     }
 
+    pub(crate) fn update_resource_metadata(&mut self, resource: Resource) {
+        let existing = self
+            .resources
+            .iter_mut()
+            .find(|existing| existing.id() == resource.id())
+            .expect("an edited resource must exist on the client");
+
+        *existing = resource;
+    }
+
+    pub(crate) fn has_static_device_pool_member(&self, member: ClientId) -> bool {
+        self.resources.iter().any(|resource| match resource {
+            Resource::StaticDevicePool(pool) => {
+                pool.devices.iter().any(|device| device.id == member)
+            }
+            Resource::Dns(_) => false,
+            Resource::Cidr(_) => false,
+            Resource::Internet(_) => false,
+            Resource::DynamicDevicePool(_) => false,
+        })
+    }
+
     pub(crate) fn connected_resources(&self) -> impl Iterator<Item = ResourceId> + '_ {
         iter::empty()
             .chain(self.connected_cidr_resources.clone())

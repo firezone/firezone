@@ -28,8 +28,8 @@ enum DnsNameSpec {
         domain: DomainName,
         rtypes: Vec<RecordType>,
     },
-    Wildcard {
-        base: String,
+    Resource {
+        address: String,
     },
     KnownDevice {
         base: String,
@@ -62,15 +62,15 @@ pub(super) fn targets(state: &ReferenceState) -> Vec<DnsQueryTarget> {
         })
         .chain(
             state
-                .wildcard_dns_resources()
+                .dns_resources_on_any_client()
                 .into_iter()
                 .flat_map(|(client_id, resource)| {
                     servers.iter().filter(move |(id, _)| *id == client_id).map(
                         move |(_, dns_server)| DnsQueryTarget {
                             client_id,
                             dns_server: dns_server.clone(),
-                            name: DnsNameSpec::Wildcard {
-                                base: resource.address.trim_start_matches("*.").to_owned(),
+                            name: DnsNameSpec::Resource {
+                                address: resource.address.clone(),
                             },
                         },
                     )
@@ -108,10 +108,16 @@ pub(super) fn generate(
 ) -> Transition {
     let (domain, rtypes) = match target.name {
         DnsNameSpec::Concrete { domain, rtypes } => (domain, rtypes),
-        DnsNameSpec::Wildcard { base } => {
-            let domain = format!("{}.{}", g.lower_ascii(3, 6), base)
-                .parse::<DomainName>()
-                .unwrap();
+        DnsNameSpec::Resource { address } => {
+            let domain = match address
+                .strip_prefix("**.")
+                .or_else(|| address.strip_prefix("*."))
+            {
+                Some(base) => format!("{}.{}", g.lower_ascii(3, 6), base)
+                    .parse::<DomainName>()
+                    .unwrap(),
+                None => address.parse::<DomainName>().unwrap(),
+            };
             let rtypes = if g.bool() {
                 vec![RecordType::A]
             } else {
