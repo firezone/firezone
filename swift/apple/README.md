@@ -197,8 +197,12 @@ the shared VPN profile the way the app's own toggle does.
 It talks to the same system extension as the GUI and will not start without it.
 `extension status` reports whether that extension is installed and matches the
 build, and exits non-zero when it does not, so a setup script can check before
-going further. It cannot install the extension, since installing one needs a
-user to approve it. Launch the app once to do that.
+going further. `extension install` brings it up to the build, and `connect` does
+the same by itself when it finds a version mismatch: macOS replaces an extension
+the user has already approved without asking again, and the CLI runs with the
+app's bundle identity, so it can ask for that replacement. Neither can do the
+first install, which needs a user to approve the extension in System Settings.
+Launch the app once to do that.
 
 These environment variables are read when the matching flag is absent:
 
