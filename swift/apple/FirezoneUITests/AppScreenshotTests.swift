@@ -143,6 +143,17 @@
         let submenu = try openedSubmenu(of: row)
 
         capture([menuFrame, submenu.frame], as: "menu", in: appearance)
+
+        // Only the pointer resting on the row holds the submenu open, and the
+        // capture waits seconds for the screen to hold still. A submenu that
+        // closed in that time leaves the plain menu behind, which holds still
+        // perfectly and photographs as a screen this test never asked for.
+        guard submenuIsOpen(of: row) else {
+          print("The submenu closed while it was photographed; the row presents:")
+          print(row.debugDescription)
+
+          throw AppScreenshotError.menuDidNotStayOpen
+        }
       }
     }
 
@@ -197,18 +208,27 @@
       return menu
     }
 
+    /// Whether the submenu the hovered `row` opens is on screen.
+    ///
+    /// Hittable rather than present: every resource carries a submenu and they are
+    /// all in the tree before any of them is shown.
+    private func submenuIsOpen(of row: XCUIElement) -> Bool {
+      let item = row.menuItems["Copy address"].firstMatch
+
+      return item.exists && item.isHittable
+    }
+
     /// Waits for the submenu the hovered `row` opens, and hands it back.
     ///
     /// The row's own, rather than the tallest menu that is not the menu: every resource
     /// carries a submenu and they are all in the tree before any of them is shown, so
     /// that handed back menus that were never on screen, whose frame the capture was
-    /// then cropped to. Hittable rather than present, for the same reason.
+    /// then cropped to.
     private func openedSubmenu(of row: XCUIElement) throws -> XCUIElement {
-      let item = row.menuItems["Copy address"].firstMatch
       let deadline = Date().addingTimeInterval(10)
 
       while Date() < deadline {
-        if item.exists, item.isHittable { return row.menus.firstMatch }
+        if submenuIsOpen(of: row) { return row.menus.firstMatch }
 
         Thread.sleep(forTimeInterval: 0.5)
       }
@@ -332,6 +352,7 @@
     case windowDidNotAppear
     case statusItemNotFound
     case menuDidNotOpen
+    case menuDidNotStayOpen
     case tabNotFound(String)
     case tabDidNotOpen(String)
   }
