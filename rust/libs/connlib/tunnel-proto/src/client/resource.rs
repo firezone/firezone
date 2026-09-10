@@ -92,12 +92,15 @@ pub struct StaticDevicePoolResource {
 /// A dynamic device pool resource.
 ///
 /// Dynamic device pools have a DNS pattern that connlib matches against to resolve device addresses.
+/// Membership is decided by the portal: a device the pool resolved by name is requested through
+/// the pool on first use.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct DynamicDevicePoolResource {
     pub id: ResourceId,
     pub name: String,
     /// DNS pattern for the pool (e.g. `*.devices.example.com`).
     pub address: String,
+    pub filters: Vec<Filter>,
 }
 
 impl Resource {
@@ -200,7 +203,7 @@ impl Resource {
             Resource::Cidr(r) => &r.filters,
             Resource::StaticDevicePool(r) => &r.filters,
             Resource::Internet(_) => &[],
-            Resource::DynamicDevicePool(_) => &[],
+            Resource::DynamicDevicePool(r) => &r.filters,
         }
     }
 
@@ -332,6 +335,7 @@ impl DynamicDevicePoolResource {
             id: resource.id,
             name: resource.name,
             address: resource.address,
+            filters: resource.filters,
         }
     }
 }

@@ -174,8 +174,10 @@ impl ReferenceState {
                         client::Resource::StaticDevicePool(r) => {
                             c.add_static_device_pool_resource(r.clone());
                         }
+                        client::Resource::DynamicDevicePool(r) => {
+                            c.add_dynamic_device_pool_resource(r.clone());
+                        }
                         client::Resource::Internet(_) => unreachable!(),
-                        client::Resource::DynamicDevicePool(_) => unreachable!(),
                     })
                 }
             }
@@ -241,9 +243,22 @@ impl ReferenceState {
             Transition::SendDnsQuery { client_id, query } => {
                 let upstream_do53 = state.portal.upstream_do53();
                 let icmp_error_hosts = &state.icmp_error_hosts;
+                let resolved_device = matches!(query.r_type, RecordType::A | RecordType::AAAA)
+                    .then(|| {
+                        state
+                            .portal
+                            .resolve_device_pool_domain(&query.domain.to_string())
+                    })
+                    .flatten();
 
                 state.clients.get_mut(client_id).unwrap().exec_mut(|c| {
                     c.on_dns_query(query, upstream_do53, icmp_error_hosts, now);
+
+                    if let Some((ipv4, ipv6)) = resolved_device
+                        && let Some(pool) = c.dynamic_device_pool_by_domain(&query.domain)
+                    {
+                        c.note_device_pool_resolution(pool, ipv4, ipv6);
+                    }
                 });
             }
             Transition::SendDnsResourcePtrQuery {
@@ -850,7 +865,7 @@ impl ReferenceState {
                     client::Resource::Dns(_) => true,
                     client::Resource::StaticDevicePool(_) => true,
                     client::Resource::Internet(_) => false,
-                    client::Resource::DynamicDevicePool(_) => false,
+                    client::Resource::DynamicDevicePool(_) => true,
                 };
 
                 has_filters
@@ -864,6 +879,15 @@ impl ReferenceState {
 
     pub(crate) fn replaceable_resources_on_any_client(&self) -> Vec<client::Resource> {
         self.resources_with_filters_on_any_client()
+            .into_iter()
+            .filter(|resource| match resource {
+                client::Resource::Cidr(_) => true,
+                client::Resource::Dns(_) => true,
+                client::Resource::StaticDevicePool(_) => true,
+                client::Resource::Internet(_) => false,
+                client::Resource::DynamicDevicePool(_) => false,
+            })
+            .collect()
     }
 
     pub(crate) fn cidr_and_dns_resources_on_any_client(&self) -> Vec<client::Resource> {
@@ -1021,8 +1045,10 @@ impl ReferenceState {
     }
 
     /// Generates `(src_client_id, dst_ip)` tuples for both tunnel IP families of every online
-    /// client reachable from `src_client_id` via a static device pool, paired with the pool
+    /// client reachable from `src_client_id` via a device pool, paired with the pool
     /// filters that authorize the route.
+    ///
+    /// A static pool reaches its members; a dynamic pool reaches the peers resolved through it.
     pub(crate) fn pool_routed_other_client_tun_ips(&self) -> Vec<(ClientId, IpAddr, Vec<Filter>)> {
         let online_ips_by_id = self
             .clients
@@ -1039,34 +1065,42 @@ impl ReferenceState {
         self.clients
             .iter()
             .flat_map(|(src_id, src_client)| {
-                let online_ips_by_id = online_ips_by_id.clone();
                 let src_id = *src_id;
-
-                src_client
+                let (own_v4, own_v6) = online_ips_by_id[&src_id];
+                let static_targets = src_client
                     .inner()
                     .all_resources()
                     .into_iter()
                     .filter_map(|r| match r {
-                        client::Resource::StaticDevicePool(p) => Some(p),
+                        client::Resource::StaticDevicePool(p) => {
+                            let ips = p
+                                .devices
+                                .iter()
+                                .filter_map(|d| online_ips_by_id.get(&d.id).copied())
+                                .flat_map(|(v4, v6)| [v4, v6])
+                                .collect::<Vec<_>>();
+
+                            Some((p.filters, ips))
+                        }
+                        client::Resource::DynamicDevicePool(_) => None,
                         client::Resource::Dns(_) => None,
                         client::Resource::Cidr(_) => None,
                         client::Resource::Internet(_) => None,
-                        client::Resource::DynamicDevicePool(_) => None,
                     })
-                    .filter(|pool| pool_filters_allow_icmp_or_udp(&pool.filters))
-                    .flat_map(|pool| {
-                        let filters = pool.filters.clone();
-                        pool.devices
-                            .into_iter()
-                            .map(move |device| (device, filters.clone()))
-                    })
-                    .filter(move |(device, _)| device.id != src_id)
-                    .flat_map(move |(device, filters)| {
-                        let entry = online_ips_by_id.get(&device.id).copied();
-                        entry.into_iter().flat_map(move |(v4, v6)| {
-                            [(src_id, v4, filters.clone()), (src_id, v6, filters.clone())]
-                        })
-                    })
+                    .collect::<Vec<_>>();
+                let dynamic_targets = src_client
+                    .inner()
+                    .resolved_dynamic_peers()
+                    .into_iter()
+                    .map(|(ip, filters)| (filters, vec![ip]));
+
+                static_targets
+                    .into_iter()
+                    .chain(dynamic_targets)
+                    .filter(|(filters, _)| pool_filters_allow_icmp_or_udp(filters))
+                    .flat_map(|(filters, ips)| ips.into_iter().map(move |ip| (ip, filters.clone())))
+                    .filter(move |(ip, _)| *ip != own_v4 && *ip != own_v6)
+                    .map(move |(ip, filters)| (src_id, ip, filters))
             })
             .collect()
     }

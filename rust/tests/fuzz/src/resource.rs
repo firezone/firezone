@@ -66,6 +66,7 @@ pub(crate) struct DynamicDevicePoolResource {
     pub(crate) id: ResourceId,
     pub(crate) name: String,
     pub(crate) address: String,
+    pub(crate) filters: Vec<Filter>,
 }
 
 impl Resource {
@@ -129,7 +130,7 @@ impl Resource {
             Resource::Cidr(r) => &r.filters,
             Resource::StaticDevicePool(r) => &r.filters,
             Resource::Internet(_) => &[],
-            Resource::DynamicDevicePool(_) => &[],
+            Resource::DynamicDevicePool(r) => &r.filters,
         }
     }
 
@@ -199,7 +200,9 @@ impl Resource {
                 Self::StaticDevicePool(StaticDevicePoolResource { filters, ..r })
             }
             Resource::Internet(_) => self,
-            Resource::DynamicDevicePool(_) => self,
+            Resource::DynamicDevicePool(r) => {
+                Self::DynamicDevicePool(DynamicDevicePoolResource { filters, ..r })
+            }
         }
     }
 
@@ -238,6 +241,7 @@ impl Resource {
                 "id": r.id,
                 "name": r.name,
                 "address": r.address,
+                "filters": filters_json(r.filters),
             })),
         }
     }

@@ -242,12 +242,12 @@ defmodule PortalWeb.SignUpTest do
     end
 
     test "patching back to the Google form after expiry shows error state", %{conn: conn} do
-      conn = with_google_identity(conn, expires_at: System.os_time(:second) + 1)
+      conn = with_google_identity(conn)
 
       {:ok, lv, html} = live(conn, ~p"/sign_up/google")
       assert html =~ "Almost there"
 
-      Process.sleep(1_100)
+      expire_google_identity(lv)
 
       html = render_patch(lv, ~p"/sign_up/google")
 
@@ -308,12 +308,12 @@ defmodule PortalWeb.SignUpTest do
     end
 
     test "submitting after the Google session expires shows error state", %{conn: conn} do
-      conn = with_google_identity(conn, expires_at: System.os_time(:second) + 1)
+      conn = with_google_identity(conn)
 
       {:ok, lv, html} = live(conn, ~p"/sign_up/google")
       assert html =~ "Almost there"
 
-      Process.sleep(1_100)
+      expire_google_identity(lv)
 
       html =
         lv
@@ -665,6 +665,13 @@ defmodule PortalWeb.SignUpTest do
       assert html =~ "Something went wrong"
       assert html =~ "invalid or has expired"
     end
+  end
+
+  defp expire_google_identity(lv) do
+    # Expire the mounted identity without racing the clock during LiveView startup.
+    :sys.replace_state(lv.pid, fn state ->
+      put_in(state.socket.assigns.google_identity.expires_at, System.os_time(:second) - 1)
+    end)
   end
 
   defp with_google_identity(conn, attrs \\ []) do
