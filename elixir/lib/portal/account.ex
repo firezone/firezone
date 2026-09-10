@@ -173,12 +173,81 @@ defmodule Portal.Account.Metadata do
   embedded_schema do
     field :marketing_attribution, :map
     embeds_one :stripe, Portal.Account.Metadata.Stripe, on_replace: :update
+    embeds_one :sign_up_survey, Portal.Account.Metadata.SignUpSurvey, on_replace: :update
   end
 
   def changeset(metadata \\ %__MODULE__{}, attrs) do
     metadata
     |> cast(attrs, [:marketing_attribution])
     |> cast_embed(:stripe, with: &Portal.Account.Metadata.Stripe.changeset/2)
+    |> cast_embed(:sign_up_survey, with: &Portal.Account.Metadata.SignUpSurvey.changeset/2)
+  end
+end
+
+defmodule Portal.Account.Metadata.SignUpSurvey do
+  use Ecto.Schema
+  import Ecto.Changeset
+  import Portal.Changeset
+
+  @motivations ~w[performance access_controls simplicity security open_source cost other]
+  @previous_solutions ~w[tailscale twingate cloudflare openvpn wireguard zerotier cisco zscaler other]
+  @referral_sources ~w[search github reddit hacker_news word_of_mouth blog social_media event other]
+  @other_max_length 255
+
+  @primary_key false
+  embedded_schema do
+    field :motivation, :string
+    field :motivation_other, :string
+    field :switching, :boolean
+    field :previous_solution, :string
+    field :previous_solution_other, :string
+    field :referral_source, :string
+    field :referral_source_other, :string
+  end
+
+  def other_max_length, do: @other_max_length
+
+  def changeset(survey \\ %__MODULE__{}, attrs) do
+    survey
+    |> cast(attrs, [
+      :motivation,
+      :motivation_other,
+      :switching,
+      :previous_solution,
+      :previous_solution_other,
+      :referral_source,
+      :referral_source_other
+    ])
+    |> validate_required([:motivation, :switching, :referral_source])
+    |> validate_inclusion(:motivation, @motivations)
+    |> validate_inclusion(:referral_source, @referral_sources)
+    |> validate_previous_solution()
+    |> validate_other(:motivation, :motivation_other)
+    |> validate_other(:previous_solution, :previous_solution_other)
+    |> validate_other(:referral_source, :referral_source_other)
+  end
+
+  defp validate_previous_solution(changeset) do
+    if get_field(changeset, :switching) do
+      changeset
+      |> validate_required([:previous_solution])
+      |> validate_inclusion(:previous_solution, @previous_solutions)
+    else
+      changeset
+      |> put_change(:previous_solution, nil)
+      |> put_change(:previous_solution_other, nil)
+    end
+  end
+
+  defp validate_other(changeset, field, other_field) do
+    if get_field(changeset, field) == "other" do
+      changeset
+      |> trim_change(other_field)
+      |> validate_required([other_field])
+      |> validate_length(other_field, max: @other_max_length)
+    else
+      put_change(changeset, other_field, nil)
+    end
   end
 end
 

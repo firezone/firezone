@@ -28,6 +28,7 @@ defmodule PortalWeb.SignUp do
       field(:phone, :string)
       embeds_one(:account, Portal.Account)
       embeds_one(:actor, Actor)
+      embeds_one(:sign_up_survey, Portal.Account.Metadata.SignUpSurvey)
     end
 
     @spec changeset(map()) :: Ecto.Changeset.t()
@@ -41,6 +42,7 @@ defmodule PortalWeb.SignUp do
       |> validate_email_allowed()
       |> cast_embed(:account, with: fn _account, a -> create_account_changeset(a) end)
       |> cast_embed(:actor, with: fn _actor, a -> create_actor_changeset(a) end)
+      |> cast_embed(:sign_up_survey, required: true)
     end
 
     defp validate_email_allowed(changeset) do
@@ -285,6 +287,8 @@ defmodule PortalWeb.SignUp do
         <.input field={actor[:type]} type="hidden" />
       </.inputs_for>
 
+      <.survey_fields form={@form} />
+
       <div class="absolute -left-[10000px] top-auto w-px h-px overflow-hidden" aria-hidden="true">
         <.input
           field={@form[:phone]}
@@ -397,6 +401,8 @@ defmodule PortalWeb.SignUp do
         />
       </.inputs_for>
 
+      <.survey_fields form={@form} />
+
       <button
         type="submit"
         phx-disable-with="Creating..."
@@ -414,6 +420,122 @@ defmodule PortalWeb.SignUp do
         <.link href={~p"/sign_up"} class={[link_style()]}>Start over.</.link>
       </p>
     </.footer>
+    """
+  end
+
+  @motivation_options [
+    {"Better speed / performance", "performance"},
+    {"More granular access controls", "access_controls"},
+    {"Simpler to set up and manage", "simplicity"},
+    {"Better security", "security"},
+    {"Open source", "open_source"},
+    {"Lower cost", "cost"},
+    {"Something else", "other"}
+  ]
+
+  @previous_solution_options [
+    {"Tailscale", "tailscale"},
+    {"Twingate", "twingate"},
+    {"Cloudflare Zero Trust", "cloudflare"},
+    {"OpenVPN", "openvpn"},
+    {"WireGuard", "wireguard"},
+    {"ZeroTier", "zerotier"},
+    {"Cisco / AnyConnect", "cisco"},
+    {"Zscaler", "zscaler"},
+    {"Other", "other"}
+  ]
+
+  @referral_source_options [
+    {"Google / web search", "search"},
+    {"GitHub", "github"},
+    {"Reddit", "reddit"},
+    {"Hacker News", "hacker_news"},
+    {"Word of mouth", "word_of_mouth"},
+    {"Blog / article", "blog"},
+    {"Social media", "social_media"},
+    {"Conference / event", "event"},
+    {"Other", "other"}
+  ]
+
+  attr :form, :any, required: true
+
+  defp survey_fields(assigns) do
+    assigns =
+      assign(assigns,
+        motivation_options: @motivation_options,
+        previous_solution_options: @previous_solution_options,
+        referral_source_options: @referral_source_options,
+        other_max_length: Portal.Account.Metadata.SignUpSurvey.other_max_length()
+      )
+
+    ~H"""
+    <.inputs_for :let={survey} field={@form[:sign_up_survey]}>
+      <.input
+        field={survey[:motivation]}
+        type="select"
+        label="What prompted you to try Firezone?"
+        prompt="Select one"
+        options={@motivation_options}
+        required
+      />
+      <.input
+        :if={survey[:motivation].value == "other"}
+        field={survey[:motivation_other]}
+        type="text"
+        label="What prompted you?"
+        placeholder="Tell us in a few words"
+        maxlength={@other_max_length}
+        required
+        phx-debounce="300"
+      />
+
+      <.input
+        field={survey[:switching]}
+        type="select"
+        label="Are you switching from another VPN or ZTNA solution?"
+        prompt="Select one"
+        options={[{"Yes", "true"}, {"No", "false"}]}
+        required
+      />
+      <.input
+        :if={survey[:switching].value in [true, "true"]}
+        field={survey[:previous_solution]}
+        type="select"
+        label="Which one?"
+        prompt="Select one"
+        options={@previous_solution_options}
+        required
+      />
+      <.input
+        :if={survey[:switching].value in [true, "true"] and survey[:previous_solution].value == "other"}
+        field={survey[:previous_solution_other]}
+        type="text"
+        label="Which solution?"
+        placeholder="E.g. Example VPN"
+        maxlength={@other_max_length}
+        required
+        phx-debounce="300"
+      />
+
+      <.input
+        field={survey[:referral_source]}
+        type="select"
+        label="How did you first hear about Firezone?"
+        prompt="Select one"
+        options={@referral_source_options}
+        required
+      />
+      <.input
+        :if={survey[:referral_source].value == "other"}
+        field={survey[:referral_source_other]}
+        type="text"
+        label="Where did you hear about us?"
+        placeholder="Tell us in a few words"
+        maxlength={@other_max_length}
+        required
+        phx-debounce="300"
+      />
+    </.inputs_for>
     """
   end
 
@@ -786,7 +908,8 @@ defmodule PortalWeb.SignUp do
           account: %{name: registration.account.name},
           actor: %{name: registration.actor.name},
           identity: socket.assigns.google_identity,
-          marketing_attribution: get_in(socket.assigns.website_attribution || %{}, ["marketing"])
+          marketing_attribution: get_in(socket.assigns.website_attribution || %{}, ["marketing"]),
+          sign_up_survey: survey_attrs(registration.sign_up_survey)
         }
 
         handle_registration_result(
@@ -854,6 +977,7 @@ defmodule PortalWeb.SignUp do
           registration.email,
           registration.account.name,
           registration.actor.name,
+          survey_attrs(registration.sign_up_survey),
           socket.assigns.website_attribution
         )
       else
@@ -900,6 +1024,8 @@ defmodule PortalWeb.SignUp do
 
   defp honeypot_filled?(attrs), do: Map.get(attrs, "phone", "") != ""
 
+  defp survey_attrs(%Portal.Account.Metadata.SignUpSurvey{} = survey), do: Map.from_struct(survey)
+
   defp log_honeypot_hit(attrs, user_agent, real_ip) do
     Logger.warning("Sign-up honeypot triggered",
       email: normalize_log_value(Map.get(attrs, "email")),
@@ -924,13 +1050,14 @@ defmodule PortalWeb.SignUp do
     )
   end
 
-  @spec send_verification_email(String.t(), String.t(), String.t(), map() | nil) ::
+  @spec send_verification_email(String.t(), String.t(), String.t(), map(), map() | nil) ::
           {:ok, any()} | {:error, any()}
-  defp send_verification_email(email, company_name, actor_name, website_attribution) do
+  defp send_verification_email(email, company_name, actor_name, sign_up_survey, website_attribution) do
     payload = %{
       email: email,
       company_name: company_name,
       actor_name: actor_name,
+      sign_up_survey: sign_up_survey,
       website_attribution: website_attribution
     }
 
@@ -1090,7 +1217,8 @@ defmodule PortalWeb.SignUp do
           email: email,
           account: %{name: company_name},
           actor: %{name: actor_name},
-          marketing_attribution: get_in(registration_claims, [:website_attribution, "marketing"])
+          marketing_attribution: get_in(registration_claims, [:website_attribution, "marketing"]),
+          sign_up_survey: Map.get(registration_claims, :sign_up_survey)
         }
 
         handle_registration_result(
@@ -1243,7 +1371,8 @@ defmodule PortalWeb.SignUp do
           name: registration.account.name,
           metadata: %{
             stripe: stripe_metadata,
-            marketing_attribution: registration[:marketing_attribution]
+            marketing_attribution: registration[:marketing_attribution],
+            sign_up_survey: registration[:sign_up_survey]
           }
         }
 
