@@ -190,10 +190,11 @@ than in this process. `connect --foreground` instead supervises the tunnel and
 stops it on exit, which is what a launchd service wants. `disconnect` takes the
 tunnel down again, and `sign-out` also drops the stored token. `status`, which
 is what plain `firezone` runs, asks the extension where things stand, waking it
-briefly if the tunnel is down, and repeats what it said: not signed in, signed
-in but not connected, connecting, or signed in to an account as a user. Nothing
-is inferred from the extension failing to answer. `resources list`, which is
-what plain `resources` runs, prints what the running tunnel can reach.
+briefly if the tunnel is down, and repeats what it said: not connected,
+connecting, or signed in to an account as a user. Nothing is inferred from the
+extension failing to answer, and nothing is claimed about a stored token, since
+whether one still works is only known once it is tried. `resources list`, which
+is what plain `resources` runs, prints what the running tunnel can reach.
 `internet-resource enable` and `internet-resource disable` switch the Internet
 Resource, writing the choice to the shared VPN profile the way the app's own
 toggle does.

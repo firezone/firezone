@@ -30,10 +30,8 @@ extension FirezoneCLI {
       let session = try VPNProfile.session(for: vpnManager)
 
       switch try await IPCClient.status(session: session) {
-      case .signedOut:
-        print("Not signed in.")
-      case .signedIn:
-        print("Signed in, not connected.")
+      case .disconnected:
+        print("Not connected.")
       case .connecting:
         print("Connecting...")
       case .connected(let accountSlug, let actorName):

@@ -10,10 +10,9 @@
 /// earlier state cannot tell that from "nothing there". This is a plain statement
 /// instead, so a one-shot process never has to infer a state from an absence.
 public enum TunnelStatus: Codable, Equatable, Sendable {
-  /// No token is stored, so nothing could connect.
-  case signedOut
-  /// A token is stored but no tunnel is running.
-  case signedIn
+  /// No tunnel is running. Whether a stored token would still work is not knowable
+  /// until it is tried, so nothing is said about it.
+  case disconnected
   /// The tunnel is up and the portal has not yet said who this is.
   case connecting
   /// The portal has named the session. Either can be empty when it did not.
