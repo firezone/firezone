@@ -108,7 +108,7 @@ impl LoginUrl<PublicKeyParam> {
         let url = get_websocket_path(
             url,
             "client",
-            Some("v2"),
+            Some("v3"),
             Some(external_id),
             Some(device_name),
             None,
@@ -412,7 +412,7 @@ mod tests {
 
         assert_eq!(
             login_url.to_url(PublicKeyParam([0; 32])).path(),
-            "/client/v2/websocket"
+            "/client/v3/websocket"
         )
     }
 
