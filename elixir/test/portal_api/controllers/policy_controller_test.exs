@@ -315,6 +315,69 @@ defmodule PortalAPI.PolicyControllerTest do
       assert resp["data"]["conditions"] == []
     end
 
+    test "creates an enabled policy by default", %{conn: conn, account: account, actor: actor} do
+      resource = resource_fixture(account: account)
+      group = group_fixture(account: account)
+
+      attrs = %{"group_id" => group.id, "resource_id" => resource.id}
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> post("/policies", policy: attrs)
+
+      assert %{"data" => %{"id" => id, "is_disabled" => false}} = json_response(conn, 201)
+
+      assert %Policy{is_disabled: false} = Repo.get_by(Policy, id: id, account_id: account.id)
+    end
+
+    test "creates a disabled policy", %{conn: conn, account: account, actor: actor} do
+      resource = resource_fixture(account: account)
+      group = group_fixture(account: account)
+
+      attrs = %{
+        "group_id" => group.id,
+        "resource_id" => resource.id,
+        "is_disabled" => true
+      }
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> post("/policies", policy: attrs)
+
+      assert %{"data" => %{"id" => id, "is_disabled" => true}} = json_response(conn, 201)
+
+      assert %Policy{is_disabled: true} = Repo.get_by(Policy, id: id, account_id: account.id)
+    end
+
+    test "creates an enabled policy when is_disabled is false", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      resource = resource_fixture(account: account)
+      group = group_fixture(account: account)
+
+      attrs = %{
+        "group_id" => group.id,
+        "resource_id" => resource.id,
+        "is_disabled" => false
+      }
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> post("/policies", policy: attrs)
+
+      assert %{"data" => %{"id" => id, "is_disabled" => false}} = json_response(conn, 201)
+
+      assert %Policy{is_disabled: false} = Repo.get_by(Policy, id: id, account_id: account.id)
+    end
+
     test "creates a policy with conditions", %{conn: conn, account: account, actor: actor} do
       resource = resource_fixture(account: account)
       group = group_fixture(account: account)

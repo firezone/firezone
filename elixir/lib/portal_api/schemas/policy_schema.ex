@@ -108,6 +108,14 @@ defmodule PortalAPI.Schemas.Policy do
               "Defaults to true. Always false for Internet Resource policies.",
           default: true
         },
+        is_disabled: %Schema{
+          example: false,
+          type: :boolean,
+          description:
+            "Whether the Policy is disabled. A disabled Policy grants no access but is " <>
+              "otherwise retained. Defaults to false.",
+          default: false
+        },
         conditions: %Schema{
           example: [
             %{
