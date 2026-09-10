@@ -119,6 +119,30 @@ public enum IPCClient {
     return response
   }
 
+  /// Asks the extension what it knows about the session.
+  ///
+  /// By default a stopped tunnel is woken for the answer and stopped again, so the
+  /// caller gets a statement from the extension either way rather than guessing from
+  /// its silence. A caller that only wants to hear from a running tunnel opts out.
+  @MainActor
+  public static func status(
+    session: any TunnelSessionProtocol, wakeIfStopped: Bool = true
+  ) async throws -> TunnelStatus {
+    guard
+      let data = try await sendProviderMessage(
+        session: session, message: .getStatus, cycleStartIfStopped: wakeIfStopped
+      )
+    else {
+      throw Error.noIPCData
+    }
+
+    guard let status = try? decoder.decode(TunnelStatus.self, from: data) else {
+      throw Error.decodeIPCDataFailed
+    }
+
+    return status
+  }
+
   @MainActor
   public static func setInternetResourceEnabled(
     session: any TunnelSessionProtocol,

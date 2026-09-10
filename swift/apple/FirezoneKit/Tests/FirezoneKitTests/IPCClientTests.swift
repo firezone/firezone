@@ -107,6 +107,40 @@ struct IPCClientTests {
     #expect(request.stateHash == previousHash)
   }
 
+  @Test("status returns what the extension said")
+  func statusReturnsTheExtensionsAnswer() async throws {
+    let answer = TunnelStatus.connected(accountSlug: "acme", actorName: "Jane Doe")
+    let session = RecordingTunnelSession(
+      status: .connected,
+      responseData: try PropertyListEncoder().encode(answer)
+    )
+
+    let status = try await IPCClient.status(session: session)
+
+    #expect(status == answer)
+    #expect(session.sentMessages.count == 1)
+    guard case .getStatus = session.sentMessages[0] else {
+      Issue.record("Expected a getStatus message")
+      return
+    }
+    #expect(session.startTunnelCallCount == 0)
+  }
+
+  @Test("status wakes a stopped tunnel for its answer and stops it again")
+  func statusCycleStartsAStoppedTunnel() async throws {
+    let session = RecordingTunnelSession(
+      status: .disconnected,
+      responseData: try PropertyListEncoder().encode(TunnelStatus.signedIn)
+    )
+
+    let status = try await IPCClient.status(session: session)
+
+    #expect(status == .signedIn)
+    #expect(session.startTunnelCallCount == 1)
+    #expect(session.startTunnelOptions?["cycleStart"] as? Bool == true)
+    #expect(session.stopTunnelCallCount == 1)
+  }
+
   @Test("A running tunnel is stopped and reported")
   func stopIfRunningStopsRunningTunnel() async {
     for status in [NEVPNStatus.connected, .connecting, .reasserting] {
