@@ -6,7 +6,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import dev.firezone.android.R
 import dev.firezone.android.features.permission.ui.compose.PermissionScreen
-import dev.firezone.android.features.session.ui.compose.FirezoneTheme
+import dev.firezone.android.ui.theme.FirezoneTheme
 
 /**
  * Explains why the device certificate needs picking and offers to start the selection.
