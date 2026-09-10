@@ -86,13 +86,20 @@ fzLib.buildRustPackage (
       ln -s ${firezone-gui-client-frontend} gui-client/dist
 
       # The Nix Tauri hook installs from the deb bundle, which copies the
-      # tunnel binary from a path that assumes no --target triple in the
-      # cargo target directory.
+      # tunnel binary and the completions from paths that assume no --target
+      # triple in the cargo target directory. Every `files` entry has to be
+      # listed: a path left behind is only found when the bundle step fails.
       substituteInPlace gui-client/src-tauri/tauri.conf.json \
         --replace-fail '../../target/release/firezone-client-tunnel' \
           '../../target/${stdenv.hostPlatform.rust.rustcTarget}/release/firezone-client-tunnel' \
         --replace-fail '"../../target/release/firezone-cli"' \
-          '"../../target/${stdenv.hostPlatform.rust.rustcTarget}/release/firezone-cli"'
+          '"../../target/${stdenv.hostPlatform.rust.rustcTarget}/release/firezone-cli"' \
+        --replace-fail '../../target/release/completions/firezone.bash' \
+          '../../target/${stdenv.hostPlatform.rust.rustcTarget}/release/completions/firezone.bash' \
+        --replace-fail '../../target/release/completions/_firezone' \
+          '../../target/${stdenv.hostPlatform.rust.rustcTarget}/release/completions/_firezone' \
+        --replace-fail '../../target/release/completions/firezone.fish' \
+          '../../target/${stdenv.hostPlatform.rust.rustcTarget}/release/completions/firezone.fish'
     '';
 
     # The `firezone` CLI is a workspace member of its own, so the Tauri hook's
