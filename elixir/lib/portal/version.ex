@@ -100,12 +100,11 @@ defmodule Portal.Version do
     end
   end
 
-  # Dynamic device pool resources require the same minimum versions as static device
-  # pools: connlib's `DynamicDevicePool` resource type and `resolve_device_pool_domain`
-  # message support shipped together with the device-pool ingress wire format.
-  def client_supports_dynamic_device_pools?(%Device{} = client) do
-    client_supports_static_device_pools?(client)
-  end
+  # Dynamic device pools need the device domain messages (`resolve_device_domain` and
+  # `request_device_access`), which are the v3 client control protocol. The argument is
+  # the protocol version of the channel the client joined, see `PortalAPI.Client.V3.Channel`.
+  def client_supports_dynamic_device_pools?(protocol_version) when is_integer(protocol_version),
+    do: protocol_version >= 3
 
   # Receiving `client_device_access_authorized` / `client_device_access_denied` messages
   # for client-to-client connections requires:

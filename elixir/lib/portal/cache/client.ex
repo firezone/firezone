@@ -89,7 +89,10 @@ defmodule Portal.Cache.Client do
 
     # Map of device_id => {ipv4_tuple_or_nil, ipv6_tuple_or_nil} for every device appearing
     # in any connectable pool.
-    :device_addresses
+    :device_addresses,
+
+    # The client control protocol version of the channel this cache serves.
+    protocol_version: 1
   ]
 
   @type ipv4_tuple :: {byte(), byte(), byte(), byte()}
@@ -103,6 +106,7 @@ defmodule Portal.Cache.Client do
         }
 
   @type t :: %__MODULE__{
+          protocol_version: pos_integer(),
           policies: %{Cache.Cacheable.uuid_binary() => Portal.Cache.Cacheable.Policy.t()},
           resources: %{Cache.Cacheable.uuid_binary() => Portal.Cache.Cacheable.Resource.t()},
           memberships: %{Cache.Cacheable.uuid_binary() => Cache.Cacheable.uuid_binary()},
@@ -226,18 +230,22 @@ defmodule Portal.Cache.Client do
         ) ::
           {:ok, [Portal.Cache.Cacheable.Resource.t()], [Ecto.UUID.t()], t()}
 
-  def recompute_connectable_resources(nil, client, subject) do
-    hydrate(client, subject)
-    |> recompute_connectable_resources(client, subject)
+  def recompute_connectable_resources(cache, client, subject, opts \\ [])
+
+  def recompute_connectable_resources(nil, client, subject, opts) do
+    {protocol_version, opts} = Keyword.pop(opts, :protocol_version, 1)
+
+    hydrate(client, subject, protocol_version)
+    |> recompute_connectable_resources(client, subject, opts)
   end
 
-  def recompute_connectable_resources(cache, client, subject, opts \\ []) do
+  def recompute_connectable_resources(cache, client, subject, opts) do
     {toggle, _opts} = Keyword.pop(opts, :toggle, false)
 
     raw_connectable =
       cache.policies
       |> conforming_resource_ids(client, Credential.auth_provider_id(subject.credential))
-      |> adapted_resources(cache.resources, client)
+      |> adapted_resources(cache.resources, client, cache.protocol_version)
 
     {pool_members, device_addresses} = load_pool_state(raw_connectable, subject)
 
@@ -298,7 +306,10 @@ defmodule Portal.Cache.Client do
     previously_connectable = cache.connectable_resources
 
     # Use the previous connectable IDs so that the recomputation yields the difference
-    cache = %{hydrate(client, subject) | connectable_resources: previously_connectable}
+    cache = %{
+      hydrate(client, subject, cache.protocol_version)
+      | connectable_resources: previously_connectable
+    }
 
     recompute_connectable_resources(cache, client, subject)
   end
@@ -716,7 +727,8 @@ defmodule Portal.Cache.Client do
     {:ok, addresses, updated, [], cache}
   end
 
-  defp hydrate(client, subject) do
+  # `protocol_version` is the client control protocol of the channel this cache serves.
+  defp hydrate(client, subject, protocol_version) do
     attributes = %{
       actor_id: client.actor_id
     }
@@ -741,6 +753,7 @@ defmodule Portal.Cache.Client do
         end
 
       cache
+      |> Map.put(:protocol_version, protocol_version)
       |> Map.put(:memberships, memberships)
       |> Map.put(:connectable_resources, [])
       |> Map.put(:pool_members, %{})
@@ -748,9 +761,12 @@ defmodule Portal.Cache.Client do
     end
   end
 
-  defp adapted_resources(conforming_resource_ids, resources, client) do
+  defp adapted_resources(conforming_resource_ids, resources, client, protocol_version) do
     for id <- conforming_resource_ids,
-        adapted_resource = Map.get(resources, id) |> adapt(client),
+        resource = Map.get(resources, id),
+        resource.type != :dynamic_device_pool or
+          Portal.Version.client_supports_dynamic_device_pools?(protocol_version),
+        adapted_resource = adapt(resource, client),
         not is_nil(adapted_resource),
         resource_connectable_without_gateway?(adapted_resource) or
           not is_nil(adapted_resource.site) do
