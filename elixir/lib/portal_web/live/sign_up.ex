@@ -268,7 +268,7 @@ defmodule PortalWeb.SignUp do
         <.input
           field={account[:name]}
           type="text"
-          label="Company Name"
+          label="Organization Name"
           placeholder="E.g. Example Corp"
           required
           phx-debounce="300"
@@ -382,7 +382,7 @@ defmodule PortalWeb.SignUp do
         <.input
           field={account[:name]}
           type="text"
-          label="Company Name"
+          label="Organization Name"
           placeholder="E.g. Example Corp"
           required
           autofocus

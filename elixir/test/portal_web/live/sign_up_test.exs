@@ -75,7 +75,7 @@ defmodule PortalWeb.SignUpTest do
       assert_patch(lv, ~p"/sign_up/email")
       assert html =~ ~s(name="registration[phone]")
       assert html =~ "Work Email"
-      assert html =~ "Company Name"
+      assert html =~ "Organization Name"
       assert html =~ "Your Name"
       assert html =~ "Create Account"
     end
@@ -86,7 +86,7 @@ defmodule PortalWeb.SignUpTest do
       assert html =~ "Create your organization"
       assert html =~ ~s(name="registration[phone]")
       assert html =~ "Work Email"
-      assert html =~ "Company Name"
+      assert html =~ "Organization Name"
       assert html =~ "Your Name"
       assert html =~ "Create Account"
     end
@@ -118,7 +118,7 @@ defmodule PortalWeb.SignUpTest do
       assert html =~ "ada@example.com"
       assert html =~ "Verified by Google"
       assert html =~ ~s(value="Ada Lovelace")
-      assert html =~ "Company Name"
+      assert html =~ "Organization Name"
       refute html =~ ~s(name="registration[email]")
     end
 

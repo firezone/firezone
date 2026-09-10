@@ -106,7 +106,7 @@ defmodule PortalWeb.HomeControllerTest do
 
       assert html =~ "Let's get started!"
       assert html =~ "Which best describes why you're here?"
-      assert html =~ "My company uses Firezone"
+      assert html =~ "My organization uses Firezone"
       refute html =~ "Sign in to Firezone"
     end
 
