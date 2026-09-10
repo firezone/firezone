@@ -256,6 +256,12 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     return "\(name) (\(reason.rawValue))"
   }
 
+  /// The answer for a tunnel that is not running, which is all a cycle start ever
+  /// reaches: a real start sets `adapter` before it reports anything.
+  private static func storedTokenStatus() throws -> TunnelStatus {
+    try Token.load() == nil ? .signedOut : .signedIn
+  }
+
   // It would be helpful to be able to encapsulate Errors here. To do that
   // we need to update ProviderMessage to encode/decode Result to and from Data.
   // TODO: Move to a more abstract IPC protocol
@@ -291,6 +297,18 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         Task { @Sendable in
           let updates = await adapter.pollUpdates(request)
           completionHandler?(updates)
+        }
+      case .getStatus:
+        let adapter = self.adapter
+        Task { @Sendable in
+          do {
+            let status = try await adapter?.tunnelStatus() ?? Self.storedTokenStatus()
+            completionHandler?(try PropertyListEncoder().encode(status))
+          } catch {
+            // No answer beats a guessed one: the client reports the failure as such.
+            Log.error(error)
+            completionHandler?(nil)
+          }
         }
       case .getEncodedFirezoneId:
         guard let rawId = defaults.string(forKey: "firezoneId") else {
