@@ -79,6 +79,8 @@ jobs:
 
   compare:
     needs: capture
+    # Capture-only dispatches skip the build job, an ancestor of this job.
+    if: ${{ !cancelled() && needs.capture.result == 'success' }}
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
