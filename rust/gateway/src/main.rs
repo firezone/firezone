@@ -639,6 +639,23 @@ mod tests {
     }
 
     #[test]
+    fn systemd_units_prevent_restart_on_ex_config() {
+        let unit = include_str!("../debian/firezone-gateway.service");
+        let install_script = include_str!("../../../scripts/gateway-systemd-install.sh");
+
+        let directive = format!("RestartPreventExitStatus={EX_CONFIG}");
+
+        assert!(
+            unit.contains(&directive),
+            "`firezone-gateway.service` must carry `{directive}`"
+        );
+        assert!(
+            install_script.contains(&directive),
+            "`gateway-systemd-install.sh` must carry `{directive}`"
+        );
+    }
+
+    #[test]
     fn adds_flow_logs_directive_to_default() {
         let directives = make_directives(None, true);
 
