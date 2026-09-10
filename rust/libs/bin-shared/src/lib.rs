@@ -28,6 +28,7 @@ pub mod macos;
 #[cfg(target_os = "macos")]
 pub use macos as platform;
 
+pub mod account_slug;
 pub mod device_id;
 pub mod device_info;
 pub mod signals;
