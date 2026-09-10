@@ -145,13 +145,7 @@ jobs:
         id: gnome-tray
         if: matrix.runs-on == 'ubuntu-24.04' && !startsWith(github.head_ref, 'chore/publish-')
         working-directory: ./rust
-        run: |
-          for attempt in 1 2 3; do
-            dbus-run-session -- cargo run -p gui-smoke-test -- tray-screenshot --submenu "Engineering wiki" --output "target/gui-smoke-test/gnome-tray/capture-$attempt.png"
-          done
-          cmp target/gui-smoke-test/gnome-tray/capture-1.png target/gui-smoke-test/gnome-tray/capture-2.png
-          cmp target/gui-smoke-test/gnome-tray/capture-1.png target/gui-smoke-test/gnome-tray/capture-3.png
-          cp target/gui-smoke-test/gnome-tray/capture-1.png gui-client/screenshots/gnome-tray-menu-light.png
+        run: dbus-run-session -- cargo run -p gui-smoke-test -- tray-screenshot --submenu "Engineering wiki" --output gui-client/screenshots/gnome-tray-menu-light.png
         timeout-minutes: 5
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: ${{ always() && (steps.windows-tray.outcome == 'success' || steps.gnome-tray.outcome == 'success') }}

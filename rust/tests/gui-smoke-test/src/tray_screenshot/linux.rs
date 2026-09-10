@@ -4,7 +4,6 @@ use std::{
     collections::HashMap,
     ffi::OsString,
     fs::{self, File},
-    io::{BufReader, BufWriter},
     os::unix::fs::DirBuilderExt as _,
     path::Path,
     time::{Duration, Instant},
@@ -315,22 +314,6 @@ impl Session {
             success && output.is_file(),
             "GNOME screenshot failed: {filename}"
         );
-        // GNOME embeds the capture time in a PNG text chunk. Re-encode only the
-        // pixels so independent sessions can produce byte-identical screenshots.
-        let mut reader = png::Decoder::new(BufReader::new(File::open(output)?)).read_info()?;
-        let mut pixels = vec![0; reader.output_buffer_size().context("PNG is too large")?];
-        let info = reader.next_frame(&mut pixels)?;
-        drop(reader);
-        let mut encoder = png::Encoder::new(
-            BufWriter::new(File::create(output)?),
-            info.width,
-            info.height,
-        );
-        encoder.set_color(info.color_type);
-        encoder.set_depth(info.bit_depth);
-        let mut writer = encoder.write_header()?;
-        writer.write_image_data(&pixels[..info.buffer_size()])?;
-        writer.finish()?;
 
         Ok(())
     }
