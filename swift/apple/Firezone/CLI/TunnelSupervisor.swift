@@ -22,6 +22,8 @@ struct TunnelWatcher {
   }
 
   private static let connectTimeout = Duration.seconds(30)
+  private static let portalTimeout: Duration = .seconds(30)
+  private static let portalPollInterval: Duration = .milliseconds(250)
 
   let session: any TunnelSessionProtocol
   let noTokenAdvice: String
@@ -76,7 +78,12 @@ struct TunnelWatcher {
 
     for await outcome in outcomes {
       guard let stop = outcome else {
-        say("Tunnel connected")
+        if await portalNamedSession() {
+          say("Tunnel connected")
+        } else {
+          say("Tunnel connected, but the portal has not answered yet")
+        }
+
         return nil
       }
 
@@ -84,6 +91,32 @@ struct TunnelWatcher {
     }
 
     return .timedOut
+  }
+
+  /// Waits for the portal to say who this session is.
+  ///
+  /// The system reports the tunnel connected as soon as its interface is up, before
+  /// connlib has reached the portal. Returning then leaves a `status` run straight
+  /// afterwards with nothing definite to say, so this holds until the extension can
+  /// name the account, or until it is clear the portal is not answering.
+  private func portalNamedSession() async -> Bool {
+    let deadline = ContinuousClock.now + Self.portalTimeout
+
+    while ContinuousClock.now < deadline {
+      // A tunnel that went down meanwhile is the watcher's to report, not something
+      // to wake up for the sake of asking.
+      guard [.connected, .connecting, .reasserting].contains(session.status) else {
+        return false
+      }
+
+      if case .connected? = try? await IPCClient.status(session: session, wakeIfStopped: false) {
+        return true
+      }
+
+      try? await Task.sleep(for: Self.portalPollInterval)
+    }
+
+    return false
   }
 
   /// Returns when a connected tunnel is down again, with how it went down.
