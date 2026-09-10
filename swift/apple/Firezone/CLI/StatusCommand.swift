@@ -42,9 +42,9 @@ extension FirezoneCLI {
       let user = state.actorName.flatMap { $0.isEmpty ? nil : $0 }
 
       switch (account, user) {
-      case let (account?, user?): print("Signed in to \(account) as \(user).")
-      case let (account?, nil): print("Signed in to \(account).")
-      case let (nil, user?): print("Signed in as \(user).")
+      case (let account?, let user?): print("Signed in to \(account) as \(user).")
+      case (let account?, nil): print("Signed in to \(account).")
+      case (nil, let user?): print("Signed in as \(user).")
       case (nil, nil): print("Signed in.")
       }
     }
