@@ -131,9 +131,6 @@ TimeoutStartSec=15s
 TimeoutStopSec=15s
 Restart=always
 RestartSec=7
-# 78 is \`EX_CONFIG\` from \`sysexits.h\`: the portal refused the token, so restarting
-# cannot help until an operator installs a new one.
-RestartPreventExitStatus=78
 
 #####################
 # HARDENING OPTIONS #

@@ -26,6 +26,19 @@ impl Cache {
         Self::at(PathBuf::from(CACHE_PATH), token)
     }
 
+    /// Loads the Client's cache from the Tunnel service's config directory.
+    ///
+    /// # Errors
+    ///
+    /// If the config directory cannot be computed.
+    pub fn client(token: &SecretString) -> Result<Self> {
+        let path = known_dirs::tunnel_service_config()
+            .context("Failed to compute path for the account-slug cache")?
+            .join("account_slug");
+
+        Ok(Self::at(path, token))
+    }
+
     /// Returns the cached account slug, if there is one for the current token.
     pub fn get(&self) -> Option<&str> {
         self.slug.as_deref()

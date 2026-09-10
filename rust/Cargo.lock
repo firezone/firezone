@@ -772,7 +772,6 @@ dependencies = [
  "resolv-conf",
  "ring",
  "rtnetlink",
- "secrecy",
  "serde",
  "serde_json",
  "sha2 0.11.0",
