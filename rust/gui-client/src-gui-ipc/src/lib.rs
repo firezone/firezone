@@ -23,7 +23,7 @@ pub enum ClientMsg {
 pub enum ServerMsg {
     Ack,
     Resources(Vec<connlib_model::ResourceView>),
-    Status(StatusSummary),
+    Status(TunnelStatus),
     Error(ServerError),
 }
 
@@ -44,12 +44,19 @@ pub enum ServerError {
 #[error("Firezone is not running.")]
 pub struct NotRunning;
 
-/// Summary of the running instance's state, as reported to the CLI.
+/// The running instance's state, as reported to the CLI.
 #[derive(Debug, PartialEq, serde::Deserialize, serde::Serialize)]
-pub struct StatusSummary {
-    pub signed_in: bool,
-    pub account_slug: Option<String>,
-    pub actor_name: Option<String>,
+pub enum TunnelStatus {
+    /// No tunnel is up. Whether a stored token would still work is not knowable
+    /// until it is tried, so nothing is said about it.
+    Disconnected,
+    /// Signing in to the portal, or raising the tunnel once it has answered.
+    Connecting,
+    /// The portal has named the session. Either can be absent when it did not.
+    Connected {
+        account_slug: Option<String>,
+        actor_name: Option<String>,
+    },
 }
 
 /// Sends one [`ClientMsg`] to the running instance and returns its reply.

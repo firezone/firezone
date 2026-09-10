@@ -855,16 +855,21 @@ impl<I: GuiIntegration> Controller<I> {
 
                 gui_ipc::ServerMsg::Ack
             }
-            gui_ipc::ClientMsg::Status => gui_ipc::ServerMsg::Status(gui_ipc::StatusSummary {
-                signed_in: matches!(self.status, Status::TunnelReady { .. }),
-                account_slug: self
-                    .connected_as
-                    .as_ref()
-                    .map(|connected| connected.account_slug.clone()),
-                actor_name: self
-                    .connected_as
-                    .as_ref()
-                    .map(|connected| connected.actor_name.clone()),
+            gui_ipc::ClientMsg::Status => gui_ipc::ServerMsg::Status(match &self.status {
+                Status::TunnelReady { .. } => gui_ipc::TunnelStatus::Connected {
+                    account_slug: self
+                        .connected_as
+                        .as_ref()
+                        .map(|connected| connected.account_slug.clone()),
+                    actor_name: self
+                        .connected_as
+                        .as_ref()
+                        .map(|connected| connected.actor_name.clone()),
+                },
+                Status::WaitingForPortal | Status::WaitingForTunnel => {
+                    gui_ipc::TunnelStatus::Connecting
+                }
+                Status::Disconnected | Status::Quitting => gui_ipc::TunnelStatus::Disconnected,
             }),
             gui_ipc::ClientMsg::SignOut => {
                 self.sign_out().await?;
@@ -1478,11 +1483,7 @@ mod tests {
             .await;
         assert_eq!(
             response,
-            gui_ipc::ServerMsg::Status(gui_ipc::StatusSummary {
-                signed_in: false,
-                account_slug: None,
-                actor_name: None,
-            })
+            gui_ipc::ServerMsg::Status(gui_ipc::TunnelStatus::Disconnected)
         );
 
         test_controller.sign_in().await;
@@ -1498,8 +1499,7 @@ mod tests {
             .await;
         assert_eq!(
             response,
-            gui_ipc::ServerMsg::Status(gui_ipc::StatusSummary {
-                signed_in: true,
+            gui_ipc::ServerMsg::Status(gui_ipc::TunnelStatus::Connected {
                 account_slug: Some("firezone".to_owned()),
                 actor_name: Some("Foo Bar".to_owned()),
             })
@@ -1545,11 +1545,7 @@ mod tests {
             .await;
         assert_eq!(
             response,
-            gui_ipc::ServerMsg::Status(gui_ipc::StatusSummary {
-                signed_in: false,
-                account_slug: None,
-                actor_name: None,
-            })
+            gui_ipc::ServerMsg::Status(gui_ipc::TunnelStatus::Disconnected)
         );
     }
 
