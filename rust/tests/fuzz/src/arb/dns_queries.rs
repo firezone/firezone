@@ -76,28 +76,26 @@ pub(super) fn targets(state: &ReferenceState) -> Vec<DnsQueryTarget> {
                     )
                 }),
         )
-        .chain(state.device_pool_query_targets().into_iter().flat_map(
-            |(client_id, resource, dns_server)| {
-                let base = resource.address.trim_start_matches("*.").to_owned();
-                [
-                    (!labels.is_empty()).then(|| DnsQueryTarget {
-                        client_id,
-                        dns_server: dns_server.clone(),
-                        name: DnsNameSpec::KnownDevice {
-                            base: base.clone(),
-                            labels: labels.clone(),
-                        },
-                    }),
-                    Some(DnsQueryTarget {
-                        client_id,
-                        dns_server,
-                        name: DnsNameSpec::UnknownDevice { base },
-                    }),
-                ]
-                .into_iter()
-                .flatten()
-            },
-        ))
+        .chain(servers.iter().cloned().flat_map(|(client_id, dns_server)| {
+            let base = dns::DEVICE_DOMAIN.to_owned();
+            [
+                (!labels.is_empty()).then(|| DnsQueryTarget {
+                    client_id,
+                    dns_server: dns_server.clone(),
+                    name: DnsNameSpec::KnownDevice {
+                        base: base.clone(),
+                        labels: labels.clone(),
+                    },
+                }),
+                Some(DnsQueryTarget {
+                    client_id,
+                    dns_server,
+                    name: DnsNameSpec::UnknownDevice { base },
+                }),
+            ]
+            .into_iter()
+            .flatten()
+        }))
         .collect::<Vec<_>>()
 }
 

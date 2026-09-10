@@ -79,9 +79,15 @@ pub enum ClientEvent {
         /// `None` for intents to a gateway-routed resource.
         ip: Option<IpAddr>,
     },
-    DevicePoolDomainQueried {
-        resource_id: ResourceId,
+    /// A DNS query for a device name needs the portal to resolve it.
+    DeviceDomainQueried {
         domain: DomainName,
+    },
+    /// The first packet to a resolved device asks the portal for access with the
+    /// packet's protocol and port, so it can pick the pool that permits it.
+    DeviceAccessIntent {
+        ip: IpAddr,
+        protocol: ip_packet::Protocol,
     },
     /// The list of resources or connected device peers has changed; UI clients
     /// may have to be updated.
