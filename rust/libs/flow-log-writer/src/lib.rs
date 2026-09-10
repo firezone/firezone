@@ -40,6 +40,13 @@
 //! one) keeps both write-once, so the uploader can delete one without racing a
 //! concurrent write of the other.
 //!
+//! Two things bound what the spool costs a device. It holds at most
+//! [`MAX_REPORTS`], so a stretch the uploader cannot drain (an offline client,
+//! uploads disabled) settles at a fixed amount of disk instead of growing until
+//! the disk is full. And a write that runs out of disk parks the writes after it
+//! for [`DISK_FULL_COOLDOWN`], so a disk filled by anything else costs one
+//! failed write per cooldown rather than one per flow.
+//!
 //! Each report is written immediately as an atomic, fsync'd file, so nothing
 //! already produced is lost on an unclean exit. Writing happens on a dedicated
 //! thread fed by a channel so the per-file fsync never blocks the packet-processing
@@ -81,6 +88,31 @@ const CHANNEL_CAPACITY: usize = if cfg!(any(target_os = "ios", target_os = "andr
 } else {
     10_000
 };
+
+/// Upper bound on one report's on-disk footprint.
+///
+/// Every payload field is bounded: addresses, ports, RFC3339 timestamps, u64
+/// counters, a DNS name and the tracker's cap of 16 outer tuples put the
+/// serialized report just past 4 KiB. Reports are small files and file systems
+/// allocate whole clusters (4 KiB on NTFS), so one occupies at most two.
+const MAX_REPORT_BYTES: u64 = 8 * 1024;
+
+/// How much disk the spool may occupy. Mobile gets less, for the same reasons as
+/// [`CHANNEL_CAPACITY`].
+const SPOOL_BUDGET_BYTES: u64 = if cfg!(any(target_os = "ios", target_os = "android")) {
+    32 * 1024 * 1024
+} else {
+    256 * 1024 * 1024
+};
+
+/// Reports the spool may hold before new ones are dropped.
+const MAX_REPORTS: u64 = SPOOL_BUDGET_BYTES / MAX_REPORT_BYTES;
+
+/// How long a write that ran out of disk parks the ones after it.
+const DISK_FULL_COOLDOWN: Duration = Duration::from_secs(60);
+
+/// How often a full spool is re-counted to pick up the uploader's deletions.
+const RECOUNT_INTERVAL: Duration = Duration::from_secs(10);
 
 /// Creates the flow-log spooling layer plus the [`Guard`] keeping it durable.
 ///
@@ -392,23 +424,116 @@ impl FieldVisitor {
 }
 
 fn writer_loop(root: &Path, rx: &mpsc::Receiver<Command>) {
+    let mut spool = Spool::new(root);
+
     while let Ok(command) = rx.recv() {
         let report = match command {
             Command::Write(report) => report,
             Command::Shutdown => break,
         };
 
-        write_report(root, &report);
+        spool.write(&report);
     }
 }
 
-fn write_report(root: &Path, report: &Report) {
+/// How much of its disk budget the spool has used, and whether the disk has room
+/// at all.
+///
+/// Lives on the writer thread, the spool's only producer, so back-pressure
+/// applies before a report is written rather than after the disk is already full.
+struct Spool {
+    root: PathBuf,
+    /// Reports the spool may hold.
+    capacity: u64,
+    /// Reports on disk as of `counted_at`, plus every write since. Only the
+    /// uploader deletes, so this can drift upwards but never down: reaching
+    /// `capacity` early is corrected by a re-count, and the spool stays within
+    /// its budget in between.
+    spooled: u64,
+    counted_at: Instant,
+    /// When the disk-full circuit breaker re-arms, if it is tripped.
+    disk_full_until: Option<Instant>,
+    dropped: u64,
+}
+
+impl Spool {
+    fn new(root: &Path) -> Self {
+        Self {
+            root: root.to_owned(),
+            capacity: MAX_REPORTS,
+            // The spool carries over whatever the last run could not upload.
+            spooled: count_reports(root),
+            counted_at: Instant::now(),
+            disk_full_until: None,
+            dropped: 0,
+        }
+    }
+
+    fn write(&mut self, report: &Report) {
+        let now = Instant::now();
+
+        if self.disk_full_until.is_some_and(|until| now < until) {
+            self.drop_report("disk full");
+
+            return;
+        }
+
+        if self.spooled >= self.capacity && !self.recount(now) {
+            self.drop_report("spool full");
+
+            return;
+        }
+
+        match write_report(&self.root, report) {
+            Outcome::Written => self.spooled += 1,
+            Outcome::DiskFull => self.disk_full_until = Some(now + DISK_FULL_COOLDOWN),
+            Outcome::Skipped => {}
+        }
+    }
+
+    /// Re-counts the spool, at most once per [`RECOUNT_INTERVAL`], and reports
+    /// whether that left room for another report.
+    fn recount(&mut self, now: Instant) -> bool {
+        if now.duration_since(self.counted_at) < RECOUNT_INTERVAL {
+            return false;
+        }
+
+        self.spooled = count_reports(&self.root);
+        self.counted_at = now;
+
+        self.spooled < self.capacity
+    }
+
+    fn drop_report(&mut self, reason: &'static str) {
+        self.dropped += 1;
+
+        if self.dropped == 1 || self.dropped.is_multiple_of(1_000) {
+            tracing::debug!(
+                dropped = self.dropped,
+                reason,
+                "Not spooling flow-log report"
+            );
+        }
+    }
+}
+
+/// What became of one report handed to [`write_report`].
+enum Outcome {
+    Written,
+    /// The disk is full, so every write after this one fails the same way until
+    /// something frees space.
+    DiskFull,
+    /// Nothing was written, for a reason particular to this report.
+    Skipped,
+}
+
+fn write_report(root: &Path, report: &Report) -> Outcome {
     let dir = root.join(&report.role).join(&report.authz_id);
 
     if !dir.join("token").exists() {
         tracing::debug!(authz_id = %report.authz_id, "No ingest token on disk for authorization; not spooling report");
 
-        return;
+        return Outcome::Skipped;
     }
 
     let contents = match serialize(&serde_json::Value::Object(report.payload.clone())) {
@@ -416,7 +541,7 @@ fn write_report(root: &Path, report: &Report) {
         Err(e) => {
             tracing::warn!("Failed to serialize flow-log report: {e:#}");
 
-            return;
+            return Outcome::Skipped;
         }
     };
 
@@ -426,17 +551,48 @@ fn write_report(root: &Path, report: &Report) {
         report.flow_start, report.identity
     ));
     match atomicfs::write(&path, &contents).context("Failed to write flow-log report") {
-        Ok(()) => {}
+        Ok(()) => Outcome::Written,
         Err(e)
             if e.any_downcast_ref::<std::io::Error>()
                 .is_some_and(|io| io.kind() == std::io::ErrorKind::StorageFull) =>
         {
             tracing::debug!(path = %path.display(), "{e:#}");
+
+            Outcome::DiskFull
         }
         Err(e) => {
             tracing::warn!(path = %path.display(), "{e:#}");
+
+            Outcome::Skipped
         }
     }
+}
+
+/// Counts the reports spooled under `root`, walking its
+/// `<role>/<policy_authorization_id>` layout.
+///
+/// Reports are the only `.json` files in an authorization directory: the token
+/// has no extension and `atomicfs` names its in-flight temporaries without one.
+fn count_reports(root: &Path) -> u64 {
+    let mut count = 0;
+
+    for role in entries(root) {
+        for authz in entries(&role.path()) {
+            count += entries(&authz.path())
+                .filter(|report| report.path().extension().is_some_and(|ext| ext == "json"))
+                .count() as u64;
+        }
+    }
+
+    count
+}
+
+/// Lists a directory, yielding nothing if it cannot be read.
+fn entries(dir: &Path) -> impl Iterator<Item = std::fs::DirEntry> {
+    std::fs::read_dir(dir)
+        .into_iter()
+        .flatten()
+        .filter_map(Result::ok)
 }
 
 /// A stable hash of the fields identifying a flow within an authorization.
@@ -616,6 +772,99 @@ mod tests {
         assert!(!is_valid_authz_id("../../../../../../../etc/passwd"));
         assert!(!is_valid_authz_id("11111111-1111-1111-1111-11111111111g"));
         assert!(!is_valid_authz_id("11111111-1111-1111-1111-1111111111111"));
+    }
+
+    #[test]
+    fn stops_spooling_at_capacity() {
+        let dir = tempfile::tempdir().unwrap();
+        write_token(dir.path(), &token_for(AUTHZ_ID)).unwrap();
+
+        let mut spool = Spool {
+            capacity: 2,
+            ..Spool::new(dir.path())
+        };
+        for identity in ["a", "b", "c"] {
+            spool.write(&report(identity, false));
+        }
+
+        assert_eq!(count_reports(dir.path()), 2);
+    }
+
+    #[test]
+    fn resumes_spooling_once_a_recount_finds_room() {
+        let dir = tempfile::tempdir().unwrap();
+        write_token(dir.path(), &token_for(AUTHZ_ID)).unwrap();
+
+        let mut spool = Spool {
+            capacity: 2,
+            ..Spool::new(dir.path())
+        };
+        spool.write(&report("a", false));
+        spool.write(&report("b", false));
+
+        // The uploader ships one report and deletes it.
+        std::fs::remove_file(report_path(dir.path(), "a")).unwrap();
+        spool.counted_at = Instant::now() - RECOUNT_INTERVAL;
+
+        spool.write(&report("c", false));
+
+        assert!(report_path(dir.path(), "c").exists());
+    }
+
+    #[test]
+    fn a_full_disk_parks_writes_until_the_cooldown_passes() {
+        let dir = tempfile::tempdir().unwrap();
+        write_token(dir.path(), &token_for(AUTHZ_ID)).unwrap();
+
+        let mut spool = Spool {
+            disk_full_until: Some(Instant::now() + DISK_FULL_COOLDOWN),
+            ..Spool::new(dir.path())
+        };
+        spool.write(&report("a", false));
+
+        assert_eq!(count_reports(dir.path()), 0);
+
+        spool.disk_full_until = Some(Instant::now());
+        spool.write(&report("a", false));
+
+        assert_eq!(count_reports(dir.path()), 1);
+    }
+
+    #[test]
+    fn counts_reports_across_roles_but_not_tokens_or_config() {
+        let dir = tempfile::tempdir().unwrap();
+        write_token(dir.path(), &token_for(AUTHZ_ID)).unwrap();
+
+        let mut spool = Spool::new(dir.path());
+        spool.write(&report("a", false));
+        spool.write(&report("a", true));
+
+        let initiator = dir.path().join("initiator").join(AUTHZ_ID);
+        std::fs::create_dir_all(&initiator).unwrap();
+        std::fs::write(initiator.join("token"), "token").unwrap();
+        std::fs::write(initiator.join("1700000000-b.start.json"), "{}").unwrap();
+
+        // The uploader's config sits in the root, next to the role directories.
+        std::fs::write(dir.path().join("upload.json"), "{}").unwrap();
+
+        assert_eq!(count_reports(dir.path()), 3);
+    }
+
+    fn report(identity: &str, completed: bool) -> Report {
+        Report {
+            role: "responder".to_owned(),
+            authz_id: AUTHZ_ID.to_owned(),
+            flow_start: 1_700_000_000,
+            identity: identity.to_owned(),
+            completed,
+            payload: serde_json::Map::new(),
+        }
+    }
+
+    fn report_path(root: &Path, identity: &str) -> PathBuf {
+        root.join("responder")
+            .join(AUTHZ_ID)
+            .join(format!("1700000000-{identity}.start.json"))
     }
 
     fn token_for(authz_id: &str) -> String {
