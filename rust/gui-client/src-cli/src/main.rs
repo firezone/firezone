@@ -3,7 +3,7 @@
 use anyhow::{Context as _, ErrorExt as _, Result, bail};
 use clap::Parser;
 use connlib_model::ResourceView;
-use gui_ipc::{ClientMsg, NotRunning, ServerError, ServerMsg, StatusSummary};
+use gui_ipc::{ClientMsg, NotRunning, ServerError, ServerMsg, TunnelStatus};
 use std::process::ExitCode;
 use tokio::runtime::Runtime;
 use tracing_subscriber::filter::LevelFilter;
@@ -168,18 +168,23 @@ fn expect_ack(rt: &Runtime, msg: ClientMsg) -> Result<()> {
     clippy::print_stdout,
     reason = "the whole point of this subcommand is to print the status to stdout"
 )]
-fn print_status(status: &StatusSummary) {
+fn print_status(status: &TunnelStatus) {
     println!("{}", status_line(status));
 }
 
 /// The status as one sentence, naming only what the portal supplied.
-fn status_line(status: &StatusSummary) -> String {
-    if !status.signed_in {
-        return "Not signed in.".to_owned();
-    }
+fn status_line(status: &TunnelStatus) -> String {
+    let (account_slug, actor_name) = match status {
+        TunnelStatus::Disconnected => return "Not connected.".to_owned(),
+        TunnelStatus::Connecting => return "Connecting...".to_owned(),
+        TunnelStatus::Connected {
+            account_slug,
+            actor_name,
+        } => (account_slug, actor_name),
+    };
 
-    let account = status.account_slug.as_deref().filter(|s| !s.is_empty());
-    let user = status.actor_name.as_deref().filter(|s| !s.is_empty());
+    let account = account_slug.as_deref().filter(|s| !s.is_empty());
+    let user = actor_name.as_deref().filter(|s| !s.is_empty());
 
     match (account, user) {
         (Some(account), Some(user)) => format!("Signed in to {account} as {user}."),
@@ -233,8 +238,7 @@ mod tests {
 
     #[test]
     fn status_of_a_signed_in_client() {
-        let line = status_line(&StatusSummary {
-            signed_in: true,
+        let line = status_line(&TunnelStatus::Connected {
             account_slug: Some("acme".to_owned()),
             actor_name: Some("Jane Doe".to_owned()),
         });
@@ -244,8 +248,7 @@ mod tests {
 
     #[test]
     fn status_of_a_signed_in_client_the_portal_did_not_name() {
-        let line = status_line(&StatusSummary {
-            signed_in: true,
+        let line = status_line(&TunnelStatus::Connected {
             account_slug: Some("acme".to_owned()),
             actor_name: None,
         });
@@ -254,14 +257,13 @@ mod tests {
     }
 
     #[test]
-    fn status_of_a_signed_out_client() {
-        let line = status_line(&StatusSummary {
-            signed_in: false,
-            account_slug: None,
-            actor_name: None,
-        });
+    fn status_of_a_connecting_client() {
+        assert_eq!(status_line(&TunnelStatus::Connecting), "Connecting...");
+    }
 
-        assert_eq!(line, "Not signed in.");
+    #[test]
+    fn status_of_a_disconnected_client() {
+        assert_eq!(status_line(&TunnelStatus::Disconnected), "Not connected.");
     }
 
     #[test]
