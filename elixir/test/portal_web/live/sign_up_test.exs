@@ -7,6 +7,7 @@ defmodule PortalWeb.SignUpTest do
   alias Portal.Mocks.Stripe
 
   @sign_up_token_salt "sign_up_email_v1"
+  @survey %{motivation: "security", switching: "false", referral_source: "github"}
 
   describe "direct signup conversions" do
     for {country, allowed} <- [{"US", true}, {"DE", false}] do
@@ -20,7 +21,7 @@ defmodule PortalWeb.SignUpTest do
         ] ++ Stripe.mock_create_subscription_endpoint())
         conn = conn |> put_req_header("x-geo-location-region", @country) |> with_google_identity(email: email)
         {:ok, lv, _} = live(conn, ~p"/sign_up/google")
-        html = lv |> form("#google-sign-up-form", registration: %{account: %{name: "Direct Corp"}, actor: %{name: "Direct User"}}) |> render_submit()
+        html = lv |> form("#google-sign-up-form", registration: %{account: %{name: "Direct Corp"}, actor: %{name: "Direct User"}, sign_up_survey: @survey}) |> render_submit()
         assert html =~ "Your account has been created!"
         account = Portal.Repo.get_by!(Portal.Account, name: "Direct Corp")
         assert account.metadata.marketing_attribution["marketing_allowed"] == @allowed
@@ -34,7 +35,7 @@ defmodule PortalWeb.SignUpTest do
           {"POST", "/v1/customers", 200, Stripe.customer_object("cus_direct", "Direct Corp", email)}
         ] ++ Stripe.mock_create_subscription_endpoint())
         {:ok, lv, _} = live(put_req_header(conn, "x-geo-location-region", @country), ~p"/sign_up/email")
-        lv |> form("form", registration: %{email: email, phone: "", account: %{name: "Direct Corp"}, actor: %{name: "Direct User"}}) |> render_submit()
+        lv |> form("form", registration: %{email: email, phone: "", account: %{name: "Direct Corp"}, actor: %{name: "Direct User"}, sign_up_survey: @survey}) |> render_submit()
         test_pid = self()
         assert_email_sent(fn email ->
           [_, token] = Regex.run(~r/verify_sign_up\?token=([^\s]+)/, email.text_body)
@@ -74,7 +75,7 @@ defmodule PortalWeb.SignUpTest do
       assert_patch(lv, ~p"/sign_up/email")
       assert html =~ ~s(name="registration[phone]")
       assert html =~ "Work Email"
-      assert html =~ "Company Name"
+      assert html =~ "Organization Name"
       assert html =~ "Your Name"
       assert html =~ "Create Account"
     end
@@ -85,7 +86,7 @@ defmodule PortalWeb.SignUpTest do
       assert html =~ "Create your organization"
       assert html =~ ~s(name="registration[phone]")
       assert html =~ "Work Email"
-      assert html =~ "Company Name"
+      assert html =~ "Organization Name"
       assert html =~ "Your Name"
       assert html =~ "Create Account"
     end
@@ -117,7 +118,7 @@ defmodule PortalWeb.SignUpTest do
       assert html =~ "ada@example.com"
       assert html =~ "Verified by Google"
       assert html =~ ~s(value="Ada Lovelace")
-      assert html =~ "Company Name"
+      assert html =~ "Organization Name"
       refute html =~ ~s(name="registration[email]")
     end
 
@@ -143,7 +144,7 @@ defmodule PortalWeb.SignUpTest do
       html =
         lv
         |> form("#google-sign-up-form",
-          registration: %{account: %{name: "AB"}, actor: %{name: "Ada Lovelace"}}
+          registration: %{account: %{name: "AB"}, actor: %{name: "Ada Lovelace"}, sign_up_survey: @survey}
         )
         |> render_submit()
 
@@ -176,7 +177,7 @@ defmodule PortalWeb.SignUpTest do
       html =
         lv
         |> form("#google-sign-up-form",
-          registration: %{account: %{name: "Google Corp"}, actor: %{name: "Ada Lovelace"}}
+          registration: %{account: %{name: "Google Corp"}, actor: %{name: "Ada Lovelace"}, sign_up_survey: @survey}
         )
         |> render_submit()
 
@@ -232,7 +233,7 @@ defmodule PortalWeb.SignUpTest do
       html =
         lv
         |> form("#google-sign-up-form",
-          registration: %{account: %{name: "Raced Corp"}, actor: %{name: "Ada Lovelace"}}
+          registration: %{account: %{name: "Raced Corp"}, actor: %{name: "Ada Lovelace"}, sign_up_survey: @survey}
         )
         |> render_submit()
 
@@ -296,7 +297,12 @@ defmodule PortalWeb.SignUpTest do
           "registration" => %{
             "email" => "victim@example.com",
             "account" => %{"name" => "Honest Corp"},
-            "actor" => %{"name" => "Ada Lovelace"}
+            "actor" => %{"name" => "Ada Lovelace"},
+            "sign_up_survey" => %{
+              "motivation" => "security",
+              "switching" => "false",
+              "referral_source" => "github"
+            }
           }
         })
 
@@ -318,7 +324,7 @@ defmodule PortalWeb.SignUpTest do
       html =
         lv
         |> form("#google-sign-up-form",
-          registration: %{account: %{name: "Late Corp"}, actor: %{name: "Ada Lovelace"}}
+          registration: %{account: %{name: "Late Corp"}, actor: %{name: "Ada Lovelace"}, sign_up_survey: @survey}
         )
         |> render_submit()
 
@@ -336,7 +342,7 @@ defmodule PortalWeb.SignUpTest do
       html =
         lv
         |> form("#google-sign-up-form",
-          registration: %{account: %{name: "Test Corp"}, actor: %{name: "Ada Lovelace"}}
+          registration: %{account: %{name: "Test Corp"}, actor: %{name: "Ada Lovelace"}, sign_up_survey: @survey}
         )
         |> render_submit()
 
@@ -358,7 +364,7 @@ defmodule PortalWeb.SignUpTest do
           registration: %{
             email: email,
             account: %{name: "Another Corp"},
-            actor: %{name: "Another User"}
+            actor: %{name: "Another User"}, sign_up_survey: @survey
           }
         )
         |> render_submit()
@@ -381,7 +387,7 @@ defmodule PortalWeb.SignUpTest do
           registration: %{
             email: "someone@example.com",
             account: %{name: "AB"},
-            actor: %{name: "Test User"}
+            actor: %{name: "Test User"}, sign_up_survey: @survey
           }
         )
         |> render_submit()
@@ -399,7 +405,7 @@ defmodule PortalWeb.SignUpTest do
           registration: %{
             email: "not-an-email",
             account: %{name: "Test Corp"},
-            actor: %{name: "Test User"}
+            actor: %{name: "Test User"}, sign_up_survey: @survey
           }
         )
         |> render_submit()
@@ -414,7 +420,7 @@ defmodule PortalWeb.SignUpTest do
       email = "ratelimit@example.com"
 
       attrs = %{
-        registration: %{email: email, account: %{name: "Test Corp"}, actor: %{name: "Test User"}}
+        registration: %{email: email, account: %{name: "Test Corp"}, actor: %{name: "Test User"}, sign_up_survey: @survey}
       }
 
       {:ok, lv, _} = live(conn, ~p"/sign_up/email")
@@ -458,7 +464,7 @@ defmodule PortalWeb.SignUpTest do
             email: "newuser@example.com",
             phone: "",
             account: %{name: "Test Corp"},
-            actor: %{name: "Test User"}
+            actor: %{name: "Test User"}, sign_up_survey: @survey
           }
         )
         |> render_submit()
@@ -485,7 +491,7 @@ defmodule PortalWeb.SignUpTest do
           email: "attributed@example.com",
           phone: "",
           account: %{name: "Attributed Corp"},
-          actor: %{name: "Attributed User"}
+          actor: %{name: "Attributed User"}, sign_up_survey: @survey
         }
       )
       |> render_submit()
@@ -516,7 +522,7 @@ defmodule PortalWeb.SignUpTest do
             email: "bot@example.com",
             phone: "555-0100",
             account: %{name: "Bot Corp"},
-            actor: %{name: "Bot User"}
+            actor: %{name: "Bot User"}, sign_up_survey: @survey
           }
         )
         |> render_submit()
@@ -525,6 +531,214 @@ defmodule PortalWeb.SignUpTest do
       refute_email_sent()
     end
 
+  end
+
+  describe "sign-up survey" do
+    test "renders the survey questions on both forms", %{conn: conn} do
+      {:ok, _lv, html} = live(conn, ~p"/sign_up/email")
+      assert html =~ "What prompted you to try Firezone?"
+      assert html =~ "Are you switching from another VPN or ZTNA solution?"
+      assert html =~ "How did you first hear about Firezone?"
+      refute html =~ "Which one?"
+
+      {:ok, _lv, html} = live(with_google_identity(conn), ~p"/sign_up/google")
+      assert html =~ "What prompted you to try Firezone?"
+      assert html =~ "How did you first hear about Firezone?"
+    end
+
+    test "unanswered questions keep the form with errors", %{conn: conn} do
+      {:ok, lv, _html} = live(conn, ~p"/sign_up/email")
+
+      html =
+        lv
+        |> form("form",
+          registration: %{
+            email: "survey@example.com",
+            account: %{name: "Survey Corp"},
+            actor: %{name: "Survey User"},
+            sign_up_survey: %{motivation: "", switching: "", referral_source: ""}
+          }
+        )
+        |> render_submit()
+
+      assert html =~ "can&#39;t be blank"
+      refute html =~ "Check your email"
+      refute_email_sent()
+    end
+
+    test "switching to another solution reveals and requires the previous solution", %{conn: conn} do
+      {:ok, lv, _html} = live(conn, ~p"/sign_up/email")
+
+      html =
+        lv
+        |> form("form", registration: %{sign_up_survey: %{switching: "true"}})
+        |> render_change()
+
+      assert html =~ "Which one?"
+      assert html =~ "Tailscale"
+
+      html =
+        lv
+        |> form("form",
+          registration: %{
+            email: "switcher@example.com",
+            account: %{name: "Switcher Corp"},
+            actor: %{name: "Switcher"},
+            sign_up_survey: %{motivation: "cost", switching: "true", referral_source: "reddit"}
+          }
+        )
+        |> render_submit()
+
+      assert html =~ "can&#39;t be blank"
+      refute html =~ "Check your email"
+    end
+
+    test "other answers reveal a bounded free-text field", %{conn: conn} do
+      {:ok, lv, _html} = live(conn, ~p"/sign_up/email")
+
+      html =
+        lv
+        |> form("form", registration: %{sign_up_survey: %{motivation: "other"}})
+        |> render_change()
+
+      assert html =~ ~s(name="registration[sign_up_survey][motivation_other]")
+      assert html =~ ~s(maxlength="255")
+
+      submit = fn other ->
+        lv
+        |> form("form",
+          registration: %{
+            email: "other@example.com",
+            account: %{name: "Other Corp"},
+            actor: %{name: "Other User"},
+            sign_up_survey: %{
+              motivation: "other",
+              motivation_other: other,
+              switching: "false",
+              referral_source: "github"
+            }
+          }
+        )
+        |> render_submit()
+      end
+
+      assert submit.("   ") =~ "can&#39;t be blank"
+      assert submit.(String.duplicate("a", 256)) =~ "should be at most 255 character"
+      refute_email_sent()
+      assert submit.("Needed IPv6 support") =~ "Check your email"
+      assert_email_sent()
+    end
+
+    test "Google signup stores the survey in account metadata", %{conn: conn} do
+      Stripe.stub(
+        [
+          {"POST", "/v1/customers", 200,
+           Stripe.customer_object("cus_test", "Survey Corp", "ada@example.com")}
+        ] ++ Stripe.mock_create_subscription_endpoint()
+      )
+
+      {:ok, lv, _html} = live(with_google_identity(conn), ~p"/sign_up/google")
+
+      lv
+      |> form("#google-sign-up-form",
+        registration: %{sign_up_survey: %{switching: "true", referral_source: "other"}}
+      )
+      |> render_change()
+
+      html =
+        lv
+        |> form("#google-sign-up-form",
+          registration: %{sign_up_survey: %{previous_solution: "other"}}
+        )
+        |> render_change()
+
+      assert html =~ ~s(name="registration[sign_up_survey][previous_solution_other]")
+
+      html =
+        lv
+        |> form("#google-sign-up-form",
+          registration: %{
+            account: %{name: "Survey Corp"},
+            actor: %{name: "Ada Lovelace"},
+            sign_up_survey: %{
+              motivation: "open_source",
+              switching: "true",
+              previous_solution: "other",
+              previous_solution_other: "  Homegrown WireGuard  ",
+              referral_source: "other",
+              referral_source_other: "A podcast"
+            }
+          }
+        )
+        |> render_submit()
+
+      assert html =~ "Your account has been created!"
+
+      account = Portal.Repo.get_by!(Portal.Account, name: "Survey Corp")
+
+      assert %Portal.Account.Metadata.SignUpSurvey{
+               motivation: "open_source",
+               motivation_other: nil,
+               switching: true,
+               previous_solution: "other",
+               previous_solution_other: "Homegrown WireGuard",
+               referral_source: "other",
+               referral_source_other: "A podcast"
+             } = account.metadata.sign_up_survey
+    end
+
+    test "email signup carries the survey through the verification token", %{conn: conn} do
+      Stripe.stub(
+        [
+          {"POST", "/v1/customers", 200,
+           Stripe.customer_object("cus_test", "Token Corp", "token@example.com")}
+        ] ++ Stripe.mock_create_subscription_endpoint()
+      )
+
+      {:ok, lv, _html} = live(conn, ~p"/sign_up/email")
+
+      lv
+      |> form("form",
+        registration: %{
+          email: "token@example.com",
+          phone: "",
+          account: %{name: "Token Corp"},
+          actor: %{name: "Token User"},
+          sign_up_survey: %{
+            motivation: "simplicity",
+            switching: "false",
+            referral_source: "hacker_news"
+          }
+        }
+      )
+      |> render_submit()
+
+      test_pid = self()
+
+      assert_email_sent(fn email ->
+        [_, token] = Regex.run(~r/verify_sign_up\?token=([^\s]+)/, email.text_body)
+        send(test_pid, {:verification_token, token})
+        true
+      end)
+
+      assert_receive {:verification_token, token}
+
+      assert {:ok, %{sign_up_survey: %{motivation: "simplicity", previous_solution: nil}}} =
+               Phoenix.Token.verify(PortalWeb.Endpoint, @sign_up_token_salt, token)
+
+      {:ok, _lv, html} = live(build_conn(), ~p"/verify_sign_up?token=#{token}")
+      assert html =~ "Your account has been created!"
+
+      account = Portal.Repo.get_by!(Portal.Account, name: "Token Corp")
+
+      assert %Portal.Account.Metadata.SignUpSurvey{
+               motivation: "simplicity",
+               switching: false,
+               previous_solution: nil,
+               referral_source: "hacker_news",
+               referral_source_other: nil
+             } = account.metadata.sign_up_survey
+    end
   end
 
   describe "verify action — mount" do
