@@ -171,12 +171,16 @@ lets it use the VPN configuration and system extension the app set up, which a
 second bundle could not do. That also rules out a symlink to the binary from
 outside the bundle, which is why the app ships `Contents/Resources/firezone`, a
 wrapper that `exec`s the binary at its real path. The standalone `.pkg` symlinks
-it into `/usr/local/bin`; other installs do the same by hand with
+it into `/usr/local/bin`. The `.dmg` and App Store builds are sandboxed and
+cannot, so they offer `Install Command Line Tool…` in the menu bar: it opens
+Terminal on a script that makes the same symlink with `sudo`. That entry is
+hidden once `/usr/local/bin/firezone` exists, and the symlink can always be made
+by hand with
 `sudo ln -sf /Applications/Firezone.app/Contents/Resources/firezone /usr/local/bin/firezone`.
 `Contents/Resources/firezone-cli` is the previous name, kept as a deprecated
 alias that prints a warning.
 
-The `.pkg` also writes shell completions, to
+The `.pkg` and that script also write shell completions, to
 `/usr/local/share/zsh/site-functions/_firezone`,
 `/usr/local/etc/bash_completion.d/firezone` and
 `/usr/local/share/fish/vendor_completions.d/firezone.fish`. `ArgumentParser`
