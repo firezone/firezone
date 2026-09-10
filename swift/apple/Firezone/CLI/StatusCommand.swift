@@ -28,24 +28,25 @@ extension FirezoneCLI {
     static func report() async throws {
       let vpnManager = try await VPNProfile.load()
       let session = try VPNProfile.session(for: vpnManager)
-      let state = await VPNProfile.state(from: session)
 
-      // The provider only answers the poll while it is running, which is as close to
-      // "signed in" as anything reachable from here gets.
-      guard let state else {
+      switch try await IPCClient.status(session: session) {
+      case .signedOut:
         print("Not signed in.")
-        return
-      }
+      case .signedIn:
+        print("Signed in, not connected.")
+      case .connecting:
+        print("Connecting...")
+      case .connected(let accountSlug, let actorName):
+        // The portal does not always name the actor, and warns when it doesn't.
+        let account = accountSlug.flatMap { $0.isEmpty ? nil : $0 }
+        let user = actorName.flatMap { $0.isEmpty ? nil : $0 }
 
-      // The portal does not always name the actor, and warns when it doesn't.
-      let account = state.accountSlug.flatMap { $0.isEmpty ? nil : $0 }
-      let user = state.actorName.flatMap { $0.isEmpty ? nil : $0 }
-
-      switch (account, user) {
-      case (let account?, let user?): print("Signed in to \(account) as \(user).")
-      case (let account?, nil): print("Signed in to \(account).")
-      case (nil, let user?): print("Signed in as \(user).")
-      case (nil, nil): print("Signed in.")
+        switch (account, user) {
+        case (let account?, let user?): print("Signed in to \(account) as \(user).")
+        case (let account?, nil): print("Signed in to \(account).")
+        case (nil, let user?): print("Signed in as \(user).")
+        case (nil, nil): print("Signed in.")
+        }
       }
     }
   }
