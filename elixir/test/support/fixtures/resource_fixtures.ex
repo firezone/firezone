@@ -50,6 +50,7 @@ defmodule Portal.ResourceFixtures do
         :address,
         :address_description,
         :type,
+        :device_membership_criteria,
         :ip_stack
       ])
       |> Ecto.Changeset.cast_embed(:filters, with: &filter_changeset/2)
@@ -229,8 +230,8 @@ defmodule Portal.ResourceFixtures do
   end
 
   @doc """
-  Generate a dynamic device pool resource. The pattern (`:address`) defaults to
-  `*.devices.example.com` if not provided.
+  Generate a dynamic device pool resource. The membership rule defaults to the
+  `Your devices` rule every account gets at sign-up.
   """
   def dynamic_device_pool_resource_fixture(attrs \\ %{}) do
     attrs = Enum.into(attrs, %{})
@@ -241,8 +242,8 @@ defmodule Portal.ResourceFixtures do
       attrs
       |> Map.put(:account, account)
       |> Map.put(:type, :dynamic_device_pool)
+      |> Map.put_new(:device_membership_criteria, Portal.Resource.DeviceMembershipCriteria.own_devices())
       |> Map.put_new(:name, "Dynamic Device Pool #{unique_num}")
-      |> Map.put_new(:address, "*.devices.example.com")
       |> Map.delete(:site)
     )
   end

@@ -106,6 +106,24 @@ defmodule PortalWeb.ResourcesTest do
       refute html =~ "No Site Associated"
     end
 
+    test "shows the Your devices pool with the device domain and no site", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      dynamic_device_pool_resource_fixture(account: account, name: "Your devices")
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources")
+
+      assert html =~ "Your devices"
+      assert html =~ "Dynamic Pool"
+      assert html =~ "&lt;slug&gt;.firezone.network"
+      assert html =~ "No Site Needed"
+    end
+
     test "shows online member count instead of offline for device pools", %{
       conn: conn,
       account: account,
@@ -975,6 +993,68 @@ defmodule PortalWeb.ResourcesTest do
 
       assert html =~ "updated successfully"
       assert html =~ "Updated Resource Name"
+    end
+
+    test "creates a Your devices pool from the members choice", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources/new")
+
+      lv
+      |> form("[phx-submit='submit_resource_form']", resource: %{type: "static_device_pool"})
+      |> render_change()
+
+      assert has_element?(lv, "#resource-form-members--own-devices")
+
+      html =
+        lv
+        |> form("[phx-submit='submit_resource_form']",
+          resource: %{type: "static_device_pool", members: "own_devices", name: "Laptops"}
+        )
+        |> render_submit()
+
+      assert html =~ "created successfully"
+
+      resource = Repo.get_by!(Portal.Resource, account_id: account.id, name: "Laptops")
+      assert resource.type == :dynamic_device_pool
+      assert resource.device_membership_criteria == Portal.Resource.DeviceMembershipCriteria.own_devices()
+      assert is_nil(resource.address)
+      assert is_nil(resource.site_id)
+    end
+
+    test "updates the Your devices pool without a site and keeps its type and rule", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      resource = dynamic_device_pool_resource_fixture(account: account, name: "Your devices")
+
+      {:ok, lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources/#{resource.id}/edit")
+
+      assert html =~ "Edit Resource"
+      assert has_element?(lv, "#resource-form-members--own-devices[checked]")
+      refute has_element?(lv, "#resource-form_site_id")
+
+      html =
+        lv
+        |> form("[phx-submit='submit_resource_form']", resource: %{name: "Own Devices"})
+        |> render_submit()
+
+      assert html =~ "updated successfully"
+
+      updated = Repo.get_by!(Portal.Resource, account_id: account.id, id: resource.id)
+      assert updated.name == "Own Devices"
+      assert updated.type == :dynamic_device_pool
+      assert updated.device_membership_criteria == Portal.Resource.DeviceMembershipCriteria.own_devices()
+      assert is_nil(updated.address)
     end
 
     test "rejects moving a resource to the Internet Site", %{

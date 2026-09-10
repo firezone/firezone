@@ -6,7 +6,8 @@ defmodule PortalAPI.Schemas.Resource do
     alias OpenApiSpex.Schema
 
     @derive {PortalAPI.JSON.Encoder,
-             for: Portal.Resource, internal: [:account_id, :inserted_at, :updated_at]}
+             for: Portal.Resource,
+             internal: [:account_id, :device_membership_criteria, :inserted_at, :updated_at]}
     OpenApiSpex.schema(%{
       title: "Resource",
       description: "Resource",
@@ -49,7 +50,7 @@ defmodule PortalAPI.Schemas.Resource do
           example: "0642e09d-b3a2-47e4-9cd1-c2195faeeb67",
           title: "SiteID",
           description:
-            "Site to connect the Resource to. Required for all types except `static_device_pool`.",
+            "Site to connect the Resource to. Required for all types except device pools.",
           type: :string,
           format: :uuid
         },
