@@ -174,8 +174,16 @@ wrapper that `exec`s the binary at its real path. The standalone `.pkg` symlinks
 it into `/usr/local/bin`; other installs do the same by hand with
 `sudo ln -sf /Applications/Firezone.app/Contents/Resources/firezone /usr/local/bin/firezone`.
 `Contents/Resources/firezone-cli` is the previous name, kept as a deprecated
-alias that prints a warning. For a development build, `mise run cli` finds the
-binary for you:
+alias that prints a warning.
+
+The `.pkg` also writes shell completions, to
+`/usr/local/share/zsh/site-functions/_firezone`,
+`/usr/local/etc/bash_completion.d/firezone` and
+`/usr/local/share/fish/vendor_completions.d/firezone.fish`. `ArgumentParser`
+generates them, so `firezone --generate-completion-script <bash|zsh|fish>`
+produces the same thing for an install that came from somewhere else.
+
+For a development build, `mise run cli` finds the binary for you:
 
 ```sh
 mise run cli -- --help
