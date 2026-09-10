@@ -22,6 +22,7 @@ import dev.firezone.android.tunnel.FakeSession
 import dev.firezone.android.tunnel.FakeSessionFactory
 import dev.firezone.android.tunnel.TestRestrictions
 import dev.firezone.android.tunnel.TunnelNotification
+import dev.firezone.android.tunnel.UNASSIGNABLE_IPV6
 import dev.firezone.android.tunnel.benchController
 import dev.firezone.android.tunnel.engineeringWiki
 import dev.firezone.android.tunnel.finishAllActivities
@@ -32,6 +33,7 @@ import dev.firezone.android.tunnel.launchApp
 import dev.firezone.android.tunnel.resumedActivity
 import dev.firezone.android.tunnel.startTunnelService
 import dev.firezone.android.tunnel.stopTunnelService
+import dev.firezone.android.tunnel.tunInterface
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
@@ -230,6 +232,28 @@ class TunnelE2eTest {
         assertEquals("Managed Pixel", session.config.deviceName)
     }
 
+    @Test
+    fun theTunnelInterfaceReachesConnlib() {
+        val session = signInAndConnect()
+
+        session.emit(tunInterface())
+
+        awaitCommand(session, "setTun")
+    }
+
+    @Test
+    fun anInterfaceTheDeviceRefusesIsReportedAndEndsTheSession() {
+        val session = signInAndConnect()
+
+        session.emit(tunInterface(ipv6 = UNASSIGNABLE_IPV6))
+
+        assertEquals(
+            "This device rejected Firezone's tunnel configuration. Contact your administrator for support.",
+            awaitErrorNotification(),
+        )
+        awaitCommand(session, "disconnect")
+    }
+
     private fun signInAndConnect(): FakeSession {
         signIn()
         startTunnelService()
@@ -262,6 +286,17 @@ class TunnelE2eTest {
         return disconnectedNotification()
     }
 
+    private fun awaitErrorNotification(): String? {
+        await("the error notification") { errorNotification() != null }
+
+        return errorNotification()
+    }
+
+    private fun awaitCommand(
+        session: FakeSession,
+        command: String,
+    ) = runBlocking { withTimeout(TIMEOUT_MS) { session.awaitCommand(command) } }
+
     private fun await(
         what: String,
         condition: () -> Boolean,
@@ -277,10 +312,14 @@ class TunnelE2eTest {
         }
     }
 
-    private fun disconnectedNotification(): String? =
+    private fun disconnectedNotification(): String? = notificationText(TunnelNotification.DISCONNECTED_NOTIFICATION_ID)
+
+    private fun errorNotification(): String? = notificationText(TunnelNotification.ERROR_NOTIFICATION_ID)
+
+    private fun notificationText(id: Int): String? =
         notificationManager()
             .activeNotifications
-            .firstOrNull { it.id == TunnelNotification.DISCONNECTED_NOTIFICATION_ID }
+            .firstOrNull { it.id == id }
             ?.notification
             ?.extras
             ?.getString(Notification.EXTRA_TEXT)

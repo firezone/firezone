@@ -169,7 +169,7 @@ class TunnelService : VpnService() {
             binder
         }
 
-    private fun buildVpnService() {
+    private fun vpnBuilder(): Builder {
         fun handleApplications(
             appRestrictions: Bundle,
             key: String,
@@ -180,7 +180,7 @@ class TunnelService : VpnService() {
             }
         }
 
-        Builder()
+        return Builder()
             .apply {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                     setMetered(false) // Inherit the metered status from the underlying networks.
@@ -222,16 +222,43 @@ class TunnelService : VpnService() {
 
                 addAddress(tunnelIpv4Address!!, 32)
                 addAddress(tunnelIpv6Address!!, 128)
-            }.runCatching { establish() }
-            .onFailure { Log.e(TAG, "Error establishing VPN service", it) }
-            .onSuccess { fd ->
-                if (fd == null) {
-                    Log.d(TAG, "VpnService.Builder.establish() returned null")
-                    return@onSuccess
-                }
-
-                sendTunnelCommand(TunnelCommand.SetTun(fd.detachFd()))
             }
+    }
+
+    private fun buildVpnService() {
+        if (tunnelIpv4Address == null || tunnelIpv6Address == null) {
+            // A managed-configuration change can land before connlib has handed us an interface.
+            Log.d(TAG, "Not building the VPN interface: connlib has not configured one yet")
+            return
+        }
+
+        // Both assembling the interface and handing it to the system can be rejected, and either
+        // way connlib is left without a TUN device and moves no traffic at all.
+        val fd =
+            try {
+                vpnBuilder().establish()
+            } catch (e: Exception) {
+                Log.e(TAG, "Cannot establish the VPN interface", e)
+                showErrorNotification(
+                    "Could not create the VPN interface",
+                    "This device rejected Firezone's tunnel configuration. Contact your administrator for support.",
+                )
+                disconnect()
+                return
+            }
+
+        if (fd == null) {
+            // `establish` only returns null once our VPN consent is gone.
+            Log.e(TAG, "VpnService.Builder.establish() returned null")
+            showErrorNotification(
+                "VPN permission required",
+                "Firezone is no longer allowed to set up a VPN on this device. Open Firezone to grant the permission again.",
+            )
+            disconnect()
+            return
+        }
+
+        sendTunnelCommand(TunnelCommand.SetTun(fd.detachFd()))
     }
 
     private val restrictionsFilter = IntentFilter(Intent.ACTION_APPLICATION_RESTRICTIONS_CHANGED)
