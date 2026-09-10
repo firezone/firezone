@@ -60,8 +60,6 @@ extension FirezoneCLI {
       {
         try await IPCClient.setInternetResourceEnabled(session: session, enabled)
       }
-
-      say("Internet Resource \(enabled ? "enabled" : "disabled")")
     }
   }
 }

@@ -25,7 +25,6 @@ extension FirezoneCLI {
       let vpnManager = try await VPNProfile.load()
 
       try await IPCClient.signOut(session: VPNProfile.session(for: vpnManager))
-      say("Signed out successfully")
     }
   }
 }
