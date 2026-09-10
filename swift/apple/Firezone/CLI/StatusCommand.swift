@@ -27,23 +27,20 @@ extension FirezoneCLI {
 
       // The provider only answers the poll while it is running, which is as close to
       // "signed in" as anything reachable from here gets.
-      var rows: [(String, String)] = [("Signed in", state == nil ? "no" : "yes")]
-
-      if let accountSlug = state?.accountSlug, !accountSlug.isEmpty {
-        rows.append(("Account", accountSlug))
+      guard let state else {
+        print("Not signed in.")
+        return
       }
 
       // The portal does not always name the actor, and warns when it doesn't.
-      if let actorName = state?.actorName, !actorName.isEmpty {
-        rows.append(("User", actorName))
-      }
+      let account = state.accountSlug.flatMap { $0.isEmpty ? nil : $0 }
+      let user = state.actorName.flatMap { $0.isEmpty ? nil : $0 }
 
-      let width = rows.map { $0.0.count }.max() ?? 0
-
-      for (label, value) in rows {
-        let paddedLabel = label.padding(toLength: width, withPad: " ", startingAt: 0)
-
-        print("\(paddedLabel)  \(value)")
+      switch (account, user) {
+      case let (account?, user?): print("Signed in to \(account) as \(user).")
+      case let (account?, nil): print("Signed in to \(account).")
+      case let (nil, user?): print("Signed in as \(user).")
+      case (nil, nil): print("Signed in.")
       }
     }
   }

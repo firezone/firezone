@@ -169,32 +169,24 @@ fn expect_ack(rt: &Runtime, msg: ClientMsg) -> Result<()> {
     reason = "the whole point of this subcommand is to print the status to stdout"
 )]
 fn print_status(status: &StatusSummary) {
-    println!("{}", status_table(status));
+    println!("{}", status_line(status));
 }
 
-/// The status as a table, holding only the rows that say something about this state.
-fn status_table(status: &StatusSummary) -> String {
-    let mut rows = vec![("Signed in", if status.signed_in { "yes" } else { "no" })];
-
-    if let Some(account_slug) = status.account_slug.as_deref().filter(|s| !s.is_empty()) {
-        rows.push(("Account", account_slug));
+/// The status as one sentence, naming only what the portal supplied.
+fn status_line(status: &StatusSummary) -> String {
+    if !status.signed_in {
+        return "Not signed in.".to_owned();
     }
 
-    // The portal does not always name the actor, and warns when it doesn't.
-    if let Some(actor_name) = status.actor_name.as_deref().filter(|s| !s.is_empty()) {
-        rows.push(("User", actor_name));
+    let account = status.account_slug.as_deref().filter(|s| !s.is_empty());
+    let user = status.actor_name.as_deref().filter(|s| !s.is_empty());
+
+    match (account, user) {
+        (Some(account), Some(user)) => format!("Signed in to {account} as {user}."),
+        (Some(account), None) => format!("Signed in to {account}."),
+        (None, Some(user)) => format!("Signed in as {user}."),
+        (None, None) => "Signed in.".to_owned(),
     }
-
-    let width = rows
-        .iter()
-        .map(|(label, _)| label.len())
-        .max()
-        .unwrap_or_default();
-
-    rows.into_iter()
-        .map(|(label, value)| format!("{label:<width$}  {value}"))
-        .collect::<Vec<_>>()
-        .join("\n")
 }
 
 #[allow(
@@ -240,28 +232,36 @@ mod tests {
     }
 
     #[test]
-    fn status_table_of_a_signed_in_client() {
-        let table = status_table(&StatusSummary {
+    fn status_of_a_signed_in_client() {
+        let line = status_line(&StatusSummary {
             signed_in: true,
             account_slug: Some("acme".to_owned()),
             actor_name: Some("Jane Doe".to_owned()),
         });
 
-        assert_eq!(
-            table,
-            "Signed in  yes\nAccount    acme\nUser       Jane Doe"
-        );
+        assert_eq!(line, "Signed in to acme as Jane Doe.");
     }
 
     #[test]
-    fn status_table_of_a_signed_out_client() {
-        let table = status_table(&StatusSummary {
+    fn status_of_a_signed_in_client_the_portal_did_not_name() {
+        let line = status_line(&StatusSummary {
+            signed_in: true,
+            account_slug: Some("acme".to_owned()),
+            actor_name: None,
+        });
+
+        assert_eq!(line, "Signed in to acme.");
+    }
+
+    #[test]
+    fn status_of_a_signed_out_client() {
+        let line = status_line(&StatusSummary {
             signed_in: false,
             account_slug: None,
             actor_name: None,
         });
 
-        assert_eq!(table, "Signed in  no");
+        assert_eq!(line, "Not signed in.");
     }
 
     #[test]
