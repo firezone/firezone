@@ -1,12 +1,15 @@
 //! Remote control for the running Firezone GUI Client.
 
+use crate::cli::{Cli, Cmd, InternetResourceCmd, ResourcesCmd};
 use anyhow::{Context as _, ErrorExt as _, Result, bail};
-use clap::Parser;
+use clap::Parser as _;
 use connlib_model::ResourceView;
 use gui_ipc::{ClientMsg, NotRunning, ServerError, ServerMsg, TunnelStatus};
 use std::process::ExitCode;
 use tokio::runtime::Runtime;
 use tracing_subscriber::filter::LevelFilter;
+
+mod cli;
 
 #[allow(
     clippy::print_stderr,
@@ -87,60 +90,6 @@ fn run(cli: Cli) -> Result<()> {
     }
 
     Ok(())
-}
-
-#[derive(Parser)]
-// The binary is built as `firezone-cli` to keep it from colliding with the GUI
-// on Windows, but every install renames it, so usage lines must say `firezone`.
-#[command(author, version, about = "Firezone CLI", long_about = None, bin_name = "firezone")]
-struct Cli {
-    #[arg(long, global = true, help = "Mirror the internal log to stderr.")]
-    debug: bool,
-
-    #[command(subcommand)]
-    command: Option<Cmd>,
-}
-
-impl Cli {
-    /// Omitting the subcommand is equivalent to [`Cmd::Status`].
-    fn command(self) -> Cmd {
-        self.command.unwrap_or(Cmd::Status)
-    }
-}
-
-// The help text is spelled out instead of taken from doc comments, which clap
-// strips the trailing period from. It has to read the same as the macOS Client's.
-#[derive(clap::Subcommand)]
-enum Cmd {
-    #[command(about = "Report the current status.")]
-    Status,
-    #[command(about = "Sign out and remove the stored token.")]
-    SignOut,
-    #[command(about = "Inspect the Resources this Client can reach.")]
-    Resources {
-        #[command(subcommand)]
-        command: Option<ResourcesCmd>,
-    },
-    #[command(about = "Turn the Internet Resource on or off.")]
-    InternetResource {
-        #[command(subcommand)]
-        command: InternetResourceCmd,
-    },
-}
-
-/// Omitting the subcommand is equivalent to [`ResourcesCmd::List`].
-#[derive(clap::Subcommand)]
-enum ResourcesCmd {
-    #[command(about = "List the Resources this Client can reach. This is the default.")]
-    List,
-}
-
-#[derive(clap::Subcommand)]
-enum InternetResourceCmd {
-    #[command(about = "Route traffic through the Internet Resource.")]
-    Enable,
-    #[command(about = "Stop routing traffic through the Internet Resource.")]
-    Disable,
 }
 
 fn list_resources(rt: &Runtime) -> Result<()> {

@@ -19,6 +19,9 @@
           "/usr/lib/sysusers.d/firezone-client-tunnel.conf": "./linux_package/sysusers.conf",
           "/usr/bin/firezone-client-tunnel": "../../target/release/firezone-client-tunnel",
           "/usr/bin/firezone": "../../target/release/firezone-cli",
+          "/usr/share/bash-completion/completions/firezone": "../../target/release/completions/firezone.bash",
+          "/usr/share/zsh/site-functions/_firezone": "../../target/release/completions/_firezone",
+          "/usr/share/fish/vendor_completions.d/firezone.fish": "../../target/release/completions/firezone.fish",
           "/usr/share/metainfo/dev.firezone.client.metainfo.xml": "./linux_package/dev.firezone.client.metainfo.xml"
         },
         "desktopTemplate": "./linux_package/firezone-client-gui.desktop"
@@ -32,6 +35,9 @@
           "/usr/lib/sysusers.d/firezone-client-tunnel.conf": "./linux_package/sysusers.conf",
           "/usr/bin/firezone-client-tunnel": "../../target/release/firezone-client-tunnel",
           "/usr/bin/firezone": "../../target/release/firezone-cli",
+          "/usr/share/bash-completion/completions/firezone": "../../target/release/completions/firezone.bash",
+          "/usr/share/zsh/site-functions/_firezone": "../../target/release/completions/_firezone",
+          "/usr/share/fish/vendor_completions.d/firezone.fish": "../../target/release/completions/firezone.fish",
           "/usr/share/metainfo/dev.firezone.client.metainfo.xml": "./linux_package/dev.firezone.client.metainfo.xml"
         },
         "desktopTemplate": "./linux_package/firezone-client-gui.desktop"
