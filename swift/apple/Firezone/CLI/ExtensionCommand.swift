@@ -72,8 +72,8 @@ extension FirezoneCLI {
   struct Extension: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
       commandName: "extension",
-      abstract: "Inspect the system extension.",
-      subcommands: [Status.self]
+      abstract: "Inspect and update the system extension.",
+      subcommands: [Status.self, Install.self]
     )
 
     struct Status: AsyncParsableCommand {
@@ -90,6 +90,48 @@ extension FirezoneCLI {
         Log.useCLIOutput(debug: global.debug)
 
         switch try await SystemExtensionManager(unattended: true).check() {
+        case .installed:
+          print("installed")
+        case .needsInstall:
+          print("not installed")
+          throw ExitCode(1)
+        case .needsReplacement:
+          print("different version installed")
+          throw ExitCode(1)
+        case .needsReboot:
+          print("restart required to finish update")
+          throw ExitCode(1)
+        }
+      }
+    }
+
+    struct Install: AsyncParsableCommand {
+      static let configuration = CommandConfiguration(
+        commandName: "install",
+        abstract: "Bring the system extension up to this build.",
+        discussion: """
+          Replaces an extension that was already approved, which macOS does without \
+          prompting. A first install needs a user to approve it in System Settings, \
+          which only Firezone.app can ask for. Exits non-zero unless the extension \
+          ends up matching this build.
+          """
+      )
+
+      @OptionGroup var global: GlobalOptions
+
+      @MainActor
+      func run() async throws {
+        Log.useCLIOutput(debug: global.debug)
+
+        let status: SystemExtensionStatus
+        do {
+          status = try await SystemExtensionManager(unattended: true).tryInstall()
+        } catch SystemExtensionError.needsUserApproval {
+          print("needs approval in System Settings; launch Firezone.app to approve it")
+          throw ExitCode(1)
+        }
+
+        switch status {
         case .installed:
           print("installed")
         case .needsInstall:
