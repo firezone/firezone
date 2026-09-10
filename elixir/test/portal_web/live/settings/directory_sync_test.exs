@@ -519,6 +519,9 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
       |> element("button[phx-click='start_verification']")
       |> render_click()
 
+      # Wait for the queued :do_verification message before checking its event.
+      render(lv)
+
       assert_push_event(lv, "open_url", %{url: url})
       params = url |> URI.parse() |> Map.fetch!(:query) |> URI.decode_query()
 
