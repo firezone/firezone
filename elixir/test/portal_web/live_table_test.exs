@@ -858,6 +858,63 @@ defmodule PortalWeb.LiveTableTest do
     end
   end
 
+  describe "live_table_path/3" do
+    setup do
+      socket =
+        %Phoenix.LiveView.Socket{
+          assigns: %{__changed__: %{}, live_table_ids: ["actors", "groups"]}
+        }
+        |> put_uri_assigns(
+          "/acc/actors/1?actors_page=2" <>
+            "&actors_filter%5Bname%5D=buz" <>
+            "&actors_order_by=actors%3Aasc%3Aname" <>
+            "&groups_page_size=25" <>
+            "&tab=groups&page=3&return_to=%2Facc%2Fgroups"
+        )
+
+      %{socket: socket}
+    end
+
+    test "keeps table state and return_to but drops panel keys", %{socket: socket} do
+      assert {"/acc/actors/new", query} = split_path(live_table_path(socket, "/acc/actors/new"))
+
+      assert query == %{
+               "actors_page" => "2",
+               "actors_filter[name]" => "buz",
+               "actors_order_by" => "actors:asc:name",
+               "groups_page_size" => "25",
+               "return_to" => "/acc/groups"
+             }
+    end
+
+    test "merges extra params and drops nil values", %{socket: socket} do
+      {_path, query} =
+        split_path(live_table_path(socket, "/acc/actors/1", tab: "groups", page: nil))
+
+      assert query["tab"] == "groups"
+      refute Map.has_key?(query, "page")
+      assert query["actors_filter[name]"] == "buz"
+    end
+
+    test "returns the bare path when there is nothing to carry" do
+      socket =
+        %Phoenix.LiveView.Socket{assigns: %{__changed__: %{}, live_table_ids: ["actors"]}}
+        |> put_uri_assigns("/acc/actors?tab=groups")
+
+      assert live_table_path(socket, "/acc/actors/new") == "/acc/actors/new"
+    end
+
+    test "accepts template assigns", %{socket: socket} do
+      assert live_table_path(socket.assigns, "/acc/actors/new") ==
+               live_table_path(socket, "/acc/actors/new")
+    end
+  end
+
+  defp split_path(path) do
+    %URI{path: path, query: query} = URI.parse(path)
+    {path, URI.decode_query(query || "")}
+  end
+
   defp fetch_patched_query_params!(socket) do
     assert {:noreply, %{redirected: {:live, :patch, %{kind: :push, to: to}}}} = socket
     uri = URI.parse(to)

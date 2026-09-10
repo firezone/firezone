@@ -12,7 +12,7 @@ defmodule PortalWeb.Groups.Components do
   attr :account, :any, required: true
   attr :group, :any, default: nil
   attr :flash, :map, required: true
-  attr :query_params, :map, default: %{}
+  attr :edit_path, :string, default: nil
   attr :panel, :map, required: true
   attr :form_state, :map, required: true
   attr :members_state, :map, required: true
@@ -57,6 +57,7 @@ defmodule PortalWeb.Groups.Components do
         :if={@group && @view == :list}
         account={@account}
         group={@group}
+        edit_path={@edit_path}
         flash={@flash}
         panel={@panel}
         members_state={@members_state}
@@ -233,6 +234,7 @@ defmodule PortalWeb.Groups.Components do
 
   attr :account, :any, required: true
   attr :group, :any, required: true
+  attr :edit_path, :string, required: true
   attr :flash, :map, required: true
   attr :panel, :map, required: true
   attr :members_state, :map, required: true
@@ -249,7 +251,12 @@ defmodule PortalWeb.Groups.Components do
 
     ~H"""
     <div class="flex flex-col h-full overflow-hidden">
-      <.group_details_header account={@account} group={@group} confirm_delete?={@confirm_delete?} />
+      <.group_details_header
+        account={@account}
+        group={@group}
+        edit_path={@edit_path}
+        confirm_delete?={@confirm_delete?}
+      />
 
       <div class="flex flex-1 min-h-0 divide-x divide-border">
         <div class="flex-1 flex flex-col overflow-hidden">
@@ -288,6 +295,7 @@ defmodule PortalWeb.Groups.Components do
 
   attr :account, :any, required: true
   attr :group, :any, required: true
+  attr :edit_path, :string, required: true
   attr :confirm_delete?, :boolean, required: true
 
   def group_details_header(assigns) do
@@ -318,7 +326,7 @@ defmodule PortalWeb.Groups.Components do
         <div class="flex items-center gap-1.5 shrink-0">
           <.link
             :if={editable_group?(@group) and not @confirm_delete?}
-            patch={~p"/#{@account}/groups/#{@group.id}/edit"}
+            patch={@edit_path}
             class="flex items-center gap-1 px-2.5 py-1.5 rounded text-xs border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
           >
             <.icon name="ri-pencil-line" class="w-3.5 h-3.5" /> Edit
