@@ -346,7 +346,7 @@ def wait_for(description, predicate, *processes):
 
 
 def interrupt(signum, _frame):
-    raise TimeoutError(f"Tray screenshot interrupted by signal {signum}")
+    raise SystemExit(f"Tray screenshot interrupted by signal {signum}")
 
 
 if __name__ == "__main__":
