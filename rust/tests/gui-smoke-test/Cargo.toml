@@ -7,6 +7,7 @@ license = { workspace = true }
 [dependencies]
 anyhow = { workspace = true }
 clap = { workspace = true, features = ["derive"] }
+png = { workspace = true }
 subprocess = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
@@ -17,7 +18,6 @@ tempfile = { workspace = true }
 zbus = { workspace = true }
 
 [target.'cfg(target_os = "windows")'.dependencies]
-png = { workspace = true }
 # `AppsUseLightTheme` / `SystemUsesLightTheme` to pin the light theme
 winreg = { workspace = true }
 
