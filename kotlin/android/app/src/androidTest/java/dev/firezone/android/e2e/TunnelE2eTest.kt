@@ -242,10 +242,22 @@ class TunnelE2eTest {
     }
 
     @Test
-    fun anInterfaceTheDeviceRefusesIsReportedAndEndsTheSession() {
+    fun anAddressTheDeviceRefusesLeavesTheFamilyItAccepts() {
         val session = signInAndConnect()
 
         session.emit(tunInterface(ipv6 = UNASSIGNABLE_IPV6))
+
+        awaitCommand(session, "setTun")
+        assertNull(errorNotification())
+    }
+
+    @Test
+    fun anInterfaceTheDeviceRefusesEntirelyIsReportedAndEndsTheSession() {
+        val session = signInAndConnect()
+
+        // `VpnService.Builder` rejects loopback outright, so no address family is left to fall
+        // back to.
+        session.emit(tunInterface(ipv4 = "127.0.0.1", ipv6 = "::1"))
 
         assertEquals(
             "This device rejected Firezone's tunnel configuration. Contact your administrator for support.",
