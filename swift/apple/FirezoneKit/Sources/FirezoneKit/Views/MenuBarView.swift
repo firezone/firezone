@@ -5,6 +5,7 @@
 //
 
 #if os(macOS)
+  import Foundation
   import NetworkExtension
   import SwiftUI
 
@@ -185,6 +186,14 @@
       Button("Settings") {
         AppView.WindowDefinition.settings.openWindow()
       }
+
+      // Stands in for the CLI already being on the PATH, which the `.pkg`
+      // arranges for us and the other installs cannot.
+      if !FileManager.default.fileExists(atPath: "/usr/local/bin/firezone") {
+        Button("Install Command Line Tool…") {
+          installCommandLineTool()
+        }
+      }
     }
 
     func openAdminPortal() {
@@ -217,6 +226,18 @@
           ?? URL(string: ConfigurationDefaults.supportURL)
       else { return }
       Task { await NSWorkspace.shared.openAsync(url) }
+    }
+
+    func installCommandLineTool() {
+      Task {
+        do {
+          let scriptURL = try CLIInstaller.writeInstallScript()
+          await NSWorkspace.shared.openAsync(scriptURL)
+        } catch {
+          Log.error(error)
+          MacOSAlert.show(for: error)
+        }
+      }
     }
   }
 
