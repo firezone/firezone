@@ -204,7 +204,7 @@ pub fn enforce_size_cap(log_dirs: &[&Path], max_size_mb: u32) -> u64 {
                         tracing::debug!(path = %path.display(), "Log file already deleted");
                     }
                     ErrorKind::PermissionDenied => {
-                        tracing::warn!(path = %path.display(), "Permission denied deleting old log file");
+                        tracing::debug!(path = %path.display(), "Permission denied deleting old log file");
                     }
                     _ => {
                         tracing::warn!(path = %path.display(), error = %e, "Failed to delete old log file");
