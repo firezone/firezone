@@ -139,6 +139,23 @@ defmodule Portal.Repo.FilterTest do
       assert validate_value(filter, Ecto.UUID.generate()) == :ok
     end
 
+    test "UUID filters require a textual UUID" do
+      for type <- [{:string, :uuid}, {:string, :uuid_or_blank}] do
+        filter = %Filter{type: type}
+        uuid = Ecto.UUID.generate()
+
+        assert validate_value(filter, uuid) == :ok
+        assert validate_value(filter, String.upcase(uuid)) == :ok
+
+        for value <- ["warehouse worker", Ecto.UUID.dump!(uuid)] do
+          assert validate_value(filter, value) ==
+                   {:error, {:invalid_type, type: type, value: value}}
+        end
+      end
+
+      assert validate_value(%Filter{type: {:string, :uuid_or_blank}}, "") == :ok
+    end
+
     test "validates that value is whitelisted" do
       filter = %Filter{
         type: :string,
