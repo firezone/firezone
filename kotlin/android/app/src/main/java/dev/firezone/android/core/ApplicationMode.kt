@@ -3,5 +3,10 @@ package dev.firezone.android.core
 
 enum class ApplicationMode {
     NORMAL,
+
+    /** Instrumented tests: no real VPN to grant permission for. */
     TESTING,
+
+    /** A debug launch against a mocked connlib: likewise no real VPN. */
+    MOCK,
 }
