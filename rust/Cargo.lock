@@ -3354,11 +3354,14 @@ dependencies = [
  "anyhow-ext",
  "clap",
  "png 0.18.1",
+ "serde_json",
  "subprocess",
+ "tempfile",
  "tracing",
  "tracing-subscriber",
  "windows",
  "winreg 0.56.0",
+ "zbus",
 ]
 
 [[package]]

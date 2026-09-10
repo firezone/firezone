@@ -106,10 +106,16 @@ jobs:
         timeout-minutes: 15
         with:
           runtime: true
+      - name: Install GNOME screenshot dependencies
+        if: matrix.runs-on == 'ubuntu-24.04' && !startsWith(github.head_ref, 'chore/publish-')
+        uses: ./.github/actions/apt-install
+        with:
+          packages: gnome-shell gnome-shell-extension-appindicator yaru-theme-gnome-shell fonts-cantarell libgl1-mesa-dri
       - run: pnpm install
       - run: pnpm vite build
-      - name: Build client
-        run: cargo build -p firezone-gui-client --all-targets
+      - name: Build client and smoke tests
+        # The GNOME capture runs without a Vite server, so embed the frontend.
+        run: cargo build -p firezone-gui-client -p gui-smoke-test --all-targets ${{ matrix.runs-on == 'ubuntu-24.04' && '--features tauri/custom-protocol' || '' }}
       - name: GUI starts, connects to the tunnel and quits
         working-directory: ./rust
         run: cargo run -p gui-smoke-test -- starts-and-quits
@@ -129,17 +135,29 @@ jobs:
         timeout-minutes: 2
       # Confined to a single runner: only one may draw the committed
       # screenshot, or the Windows runners would fight over it.
-      - name: Photograph the tray menu
+      - name: Photograph the Windows tray menu
+        id: windows-tray
         if: matrix.runs-on == 'windows-2025' && !startsWith(github.head_ref, 'chore/publish-')
         working-directory: ./rust
         run: cargo run -p gui-smoke-test -- tray-screenshot --submenu "Engineering wiki" --output gui-client/screenshots/windows-tray-menu-light.png
         timeout-minutes: 4
-      # Uploaded even when the capture went wrong, so the result can be inspected.
+      - name: Photograph the GNOME tray menu
+        id: gnome-tray
+        if: matrix.runs-on == 'ubuntu-24.04' && !startsWith(github.head_ref, 'chore/publish-')
+        working-directory: ./rust
+        run: dbus-run-session -- cargo run -p gui-smoke-test -- tray-screenshot --submenu "Engineering wiki" --output gui-client/screenshots/gnome-tray-menu-light.png
+        timeout-minutes: 5
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        if: ${{ always() && matrix.runs-on == 'windows-2025' && !startsWith(github.head_ref, 'chore/publish-') }}
+        if: ${{ always() && (steps.windows-tray.outcome == 'success' || steps.gnome-tray.outcome == 'success') }}
         with:
-          name: gui-client-tray-screenshots
-          path: rust/gui-client/screenshots/windows-tray-*.png
+          name: gui-client-tray-screenshots-${{ matrix.runs-on }}
+          path: rust/gui-client/screenshots/${{ runner.os == 'Windows' && 'windows' || 'gnome' }}-tray-menu-light.png
+          if-no-files-found: error
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: ${{ always() && matrix.runs-on == 'ubuntu-24.04' && !startsWith(github.head_ref, 'chore/publish-') }}
+        with:
+          name: gui-client-tray-diagnostics-gnome
+          path: rust/target/gui-smoke-test/gnome-tray
           if-no-files-found: ignore
 
   build-gui:

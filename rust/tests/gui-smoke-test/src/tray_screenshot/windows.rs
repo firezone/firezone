@@ -36,7 +36,8 @@ use winreg::{RegKey, enums::HKEY_CURRENT_USER};
 const MENU_CLASS: &str = "#32768";
 
 /// Photographs the tray menu with the `submenu` row expanded.
-pub(crate) fn capture(app: &App, submenu: &str, output: &Path) -> Result<()> {
+pub(crate) fn capture(submenu: &str, output: &Path) -> Result<()> {
+    let app = App::new()?;
     prepare_desktop()?;
 
     tracing::info!("=== tray screenshot: GUI starts against the mock Tunnel service ===");
@@ -45,16 +46,18 @@ pub(crate) fn capture(app: &App, submenu: &str, output: &Path) -> Result<()> {
         .start()
         .context("Failed to start the GUI")?;
 
-    let result = photograph(app, submenu, output);
+    let result = photograph(&app, submenu, output);
 
-    close_menu(app);
+    close_menu(&app);
     if let Err(error) = gui.kill() {
         tracing::warn!("Failed to kill the GUI: {error:#}");
     }
     let _ = gui.wait();
     tracing::info!("=== tray screenshot complete ===");
 
-    result
+    result?;
+
+    Ok(())
 }
 
 /// Prepares the desktop so the same pixels come out of every run.
