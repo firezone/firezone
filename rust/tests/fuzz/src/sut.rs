@@ -174,10 +174,10 @@ impl TunnelTest {
         let utc_now = state.flux_capacitor.now();
         let mut application_probe = None;
 
-        state
+        for _ in state
             .udp_flows
             .extract_if(.., |flow_id, _| !ref_state.udp_flows.contains_key(flow_id))
-            .for_each(drop);
+        {}
 
         // Act: Apply the transition
         match transition {

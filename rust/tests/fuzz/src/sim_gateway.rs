@@ -497,15 +497,17 @@ impl SimGateway {
     fn start_new_dns_nat_generation(&mut self, client: ClientId) {
         let generation = self.dns_nat_generation(client) + 1;
         self.dns_nat_generations.insert(client, generation);
-        self.dns_proxy_owners
+        for _ in self
+            .dns_proxy_owners
             .extract_if(.., |(owner, _), _| *owner == client)
-            .for_each(drop);
+        {}
     }
 
     fn record_peer_removed(&mut self, client: ClientId) {
-        self.clients_by_ip
+        for _ in self
+            .clients_by_ip
             .extract_if(.., |_, owner| *owner == client)
-            .for_each(drop);
+        {}
         self.start_new_dns_nat_generation(client);
     }
 

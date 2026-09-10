@@ -92,10 +92,10 @@ impl ReferenceState {
     /// Here is where we implement the "expected" logic.
     pub fn apply(mut state: Self, transition: &Transition, now: Instant) -> Self {
         let iceless = state.portal.iceless();
-        state
+        for _ in state
             .udp_flows
             .extract_if(.., |_, flow| !transition.retains_udp_flow(flow, iceless))
-            .for_each(drop);
+        {}
 
         match transition {
             Transition::AddResource(resource) => {
