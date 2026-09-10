@@ -21,6 +21,7 @@ defmodule PortalAPI.Schemas.PoolMember do
                :gateway_token_rotated_at,
                :hostname,
                :identifier_for_vendor,
+               :slug,
                :inserted_at,
                :ipv4,
                :ipv6,

@@ -566,7 +566,7 @@ defmodule PortalAPI.Client.Socket do
       if client = find_by_firezone_id(actor_id, firezone_id, subject) do
         {:ok, merge_hardware_ids(client, changeset), false}
       else
-        with {:ok, client} <- changeset |> Safe.scoped(subject) |> Safe.insert() do
+        with {:ok, client} <- insert_with_slug(changeset, subject) do
           {:ok, client, false}
         end
       end
@@ -576,11 +576,30 @@ defmodule PortalAPI.Client.Socket do
       result =
         changeset
         |> Ecto.Changeset.put_change(:firezone_id, nil)
-        |> Safe.scoped(subject)
-        |> Safe.insert()
+        |> insert_with_slug(subject)
 
       with {:ok, client} <- result do
         {:ok, client, true}
+      end
+    end
+
+    # A concurrent first connect of two same-named devices can race for a slug, so a
+    # unique violation on it is retried with a fresh probe.
+    defp insert_with_slug(changeset, subject, attempt \\ 1) do
+      changeset
+      |> Portal.Devices.put_free_slug(subject.account.id, Portal.Devices.owner_name(subject.actor))
+      |> Safe.scoped(subject)
+      |> Safe.insert()
+      |> case do
+        {:error, %Ecto.Changeset{errors: errors} = failed} when attempt < 3 ->
+          if Keyword.has_key?(errors, :slug) do
+            insert_with_slug(changeset, subject, attempt + 1)
+          else
+            {:error, failed}
+          end
+
+        result ->
+          result
       end
     end
 

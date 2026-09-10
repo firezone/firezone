@@ -194,6 +194,7 @@ defmodule PortalAPI.Gateway.Socket do
     |> put_change(:type, :gateway)
     |> put_change(:account_id, site.account_id)
     |> put_change(:site_id, site.id)
+    |> Portal.Devices.put_free_slug(site.account_id, nil)
     |> validate_required(required_fields)
     |> Device.changeset()
     |> public_socket_changeset()

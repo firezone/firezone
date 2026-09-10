@@ -657,8 +657,8 @@ defmodule PortalWeb.Devices do
       import Ecto.Changeset
 
       device
-      |> cast(attrs, [:name])
-      |> validate_required([:name])
+      |> cast(attrs, [:name, :slug])
+      |> validate_required([:name, :slug])
       |> Portal.Device.changeset()
     end
 
