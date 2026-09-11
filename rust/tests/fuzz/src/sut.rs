@@ -13,7 +13,7 @@ use crate::probe::{DnsNatObservation, FlowId, ProbeId, ProbeObservation, Remote}
 use crate::resource as client;
 use crate::transition::Transition;
 use bufferpool::BufferPool;
-use connlib_model::{ClientId, ClientOrGatewayId, GatewayId, PublicKey, RelayId, ResourceId};
+use connlib_model::{ClientId, ClientOrGatewayId, GatewayId, PublicKey, RelayId};
 use dns_types::ResponseCode;
 use dns_types::prelude::*;
 use ip_packet::Ecn;
@@ -30,6 +30,7 @@ use std::{
     time::{Duration, Instant},
 };
 use tracing::debug_span;
+use tunnel_proto::ResolvedDevice;
 use tunnel_proto::dns::is_subdomain;
 use tunnel_proto::messages::client::FailReason;
 use tunnel_proto::messages::gateway::Client;
@@ -1301,114 +1302,6 @@ impl TunnelTest {
         }
     }
 
-    fn client_by_tun_ip(&self, ip: IpAddr) -> Option<ClientId> {
-        self.clients.iter().find_map(|(id, client)| {
-            client
-                .inner()
-                .sut
-                .tunnel_ip_config()
-                .is_some_and(|tun| tun.is_ip(ip))
-                .then_some(*id)
-        })
-    }
-
-    /// Mimics the portal denying a device access request.
-    fn deny_device_access(&mut self, src: ClientId, ip: IpAddr, reason: FailReason, now: Instant) {
-        let (ipv4, ipv6) = match ip {
-            IpAddr::V4(v4) => (Some(v4), None),
-            IpAddr::V6(v6) => (None, Some(v6)),
-        };
-
-        let src_client = self.clients.get_mut(&src).expect("unknown source client");
-
-        src_client.exec_mut(|c| {
-            c.sut
-                .handle_client_device_access_denied(ipv4, ipv6, reason, now)
-        });
-    }
-
-    /// Mimics the portal authorising `src` towards `remote_id` through a pool.
-    ///
-    /// `outbound_grant` hands the pool back to the initiator too, as `request_device_access` does.
-    #[expect(clippy::too_many_arguments)]
-    fn grant_device_access(
-        &mut self,
-        src: ClientId,
-        remote_id: ClientId,
-        resource_id: ResourceId,
-        filters: Vec<tunnel_proto::messages::Filter>,
-        outbound_grant: bool,
-        use_iceless: bool,
-        now: Instant,
-    ) -> Result<(), ClientEventError> {
-        let src_client = self.clients.get(&src).expect("unknown source client");
-        let src_key = src_client.inner().sut.public_key();
-        let src_tun = src_client.inner().sut.tunnel_ip_config().unwrap();
-
-        let remote_client = self.clients.get(&remote_id).expect("unknown remote client");
-        let remote_key = remote_client.inner().sut.public_key();
-        let remote_tun = remote_client.inner().sut.tunnel_ip_config().unwrap();
-
-        let (preshared_key, local_client_ice, remote_client_ice) =
-            make_preshared_key_and_ice(src_key, remote_key);
-        let authorization = || tunnel_proto::messages::client::ResourceAuthorization {
-            resource_id,
-            filters: filters.clone(),
-            expires_at: None,
-        };
-
-        self.clients
-            .get_mut(&remote_id)
-            .expect("unknown remote client")
-            .exec_mut(|c| {
-                c.sut
-                    .handle_client_device_access_authorized(
-                        src,
-                        src_key,
-                        src_tun,
-                        preshared_key.clone(),
-                        remote_client_ice.clone(),
-                        local_client_ice.clone(),
-                        tunnel_proto::messages::IceRole::Controlled,
-                        use_iceless,
-                        "initiating client".to_owned(),
-                        Some(authorization()),
-                        test_ingest_token(),
-                        now,
-                    )
-                    .map_err(|error| ClientEventError::Client {
-                        id: remote_id,
-                        error,
-                    })?;
-
-                Ok(())
-            })?;
-
-        self.clients
-            .get_mut(&src)
-            .expect("unknown source client")
-            .exec_mut(|c| {
-                c.sut
-                    .handle_client_device_access_authorized(
-                        remote_id,
-                        remote_key,
-                        remote_tun,
-                        preshared_key,
-                        local_client_ice,
-                        remote_client_ice,
-                        tunnel_proto::messages::IceRole::Controlling,
-                        use_iceless,
-                        "target client".to_owned(),
-                        outbound_grant.then(authorization),
-                        test_ingest_token(),
-                        now,
-                    )
-                    .map_err(|error| ClientEventError::Client { id: src, error })?;
-
-                Ok(())
-            })
-    }
-
     fn on_client_event(
         &mut self,
         src: ClientId,
@@ -1584,42 +1477,110 @@ impl TunnelTest {
                 ip: Some(ip),
                 ..
             } => {
-                let Some(remote_id) = self.client_by_tun_ip(ip) else {
-                    // Mimic the portal: a tunnel-range address that is no client's is denied.
-                    self.deny_device_access(src, ip, FailReason::NotFound, now);
-                    return Ok(());
-                };
-                let filters = portal.device_pool_filters(resource_id).unwrap_or_default();
+                let src_client = self.clients.get(&src).expect("unknown source client");
 
-                self.grant_device_access(
-                    src,
-                    remote_id,
-                    resource_id,
-                    filters,
-                    false,
-                    portal.iceless(),
-                    now,
-                )
-            }
-            ClientEvent::DeviceAccessIntent { ip, protocol } => {
-                let Some(remote_id) = self.client_by_tun_ip(ip) else {
-                    self.deny_device_access(src, ip, FailReason::NotFound, now);
-                    return Ok(());
-                };
-                let Some((resource_id, filters)) = portal.authorize_device_access(protocol) else {
-                    self.deny_device_access(src, ip, FailReason::Forbidden, now);
-                    return Ok(());
-                };
+                let src_key = src_client.inner().sut.public_key();
+                let src_tun = src_client.inner().sut.tunnel_ip_config().unwrap();
 
-                self.grant_device_access(
-                    src,
-                    remote_id,
-                    resource_id,
-                    filters,
-                    true,
-                    portal.iceless(),
-                    now,
-                )
+                let maybe_remote_client = self.clients.iter_mut().find(|(_, client)| {
+                    client
+                        .inner()
+                        .sut
+                        .tunnel_ip_config()
+                        .is_some_and(|tun| match ip {
+                            std::net::IpAddr::V4(v4) => tun.v4 == v4,
+                            std::net::IpAddr::V6(v6) => tun.v6 == v6,
+                        })
+                });
+
+                match maybe_remote_client {
+                    Some((remote_id, remote_client)) => {
+                        let remote_id = *remote_id;
+                        let remote_tun = remote_client.inner().sut.tunnel_ip_config().unwrap();
+                        let remote_key = remote_client.inner().sut.public_key();
+
+                        let (preshared_key, local_client_ice, remote_client_ice) =
+                            make_preshared_key_and_ice(src_key, remote_key);
+                        let use_iceless = portal.iceless();
+
+                        let pool_filters =
+                            portal.device_pool_filters(resource_id).unwrap_or_default();
+
+                        let remote_authorization =
+                            tunnel_proto::messages::client::ResourceAuthorization {
+                                resource_id,
+                                filters: pool_filters,
+                                expires_at: None,
+                            };
+                        remote_client.exec_mut(|c| {
+                            c.sut
+                                .handle_client_device_access_authorized(
+                                    src,
+                                    src_key,
+                                    src_tun,
+                                    preshared_key.clone(),
+                                    remote_client_ice.clone(),
+                                    local_client_ice.clone(),
+                                    tunnel_proto::messages::IceRole::Controlled,
+                                    use_iceless,
+                                    "initiating client".to_owned(),
+                                    Some(remote_authorization),
+                                    test_ingest_token(),
+                                    now,
+                                )
+                                .map_err(|error| ClientEventError::Client {
+                                    id: remote_id,
+                                    error,
+                                })?;
+
+                            Ok(())
+                        })?;
+
+                        let local_client =
+                            self.clients.get_mut(&src).expect("unknown source client");
+
+                        local_client.exec_mut(|c| {
+                            c.sut
+                                .handle_client_device_access_authorized(
+                                    remote_id,
+                                    remote_key,
+                                    remote_tun,
+                                    preshared_key,
+                                    local_client_ice,
+                                    remote_client_ice,
+                                    tunnel_proto::messages::IceRole::Controlling,
+                                    use_iceless,
+                                    "target client".to_owned(),
+                                    None,
+                                    test_ingest_token(),
+                                    now,
+                                )
+                                .map_err(|error| ClientEventError::Client { id: src, error })?;
+
+                            Ok(())
+                        })?;
+                    }
+                    None => {
+                        // Mimic the portal: a tunnel-range address that is no client's is denied.
+                        let (ipv4, ipv6) = match ip {
+                            std::net::IpAddr::V4(v4) => (Some(v4), None),
+                            std::net::IpAddr::V6(v6) => (None, Some(v6)),
+                        };
+
+                        let src_client = self.clients.get_mut(&src).expect("unknown source client");
+
+                        src_client.exec_mut(|c| {
+                            c.sut.handle_client_device_access_denied(
+                                ipv4,
+                                ipv6,
+                                tunnel_proto::messages::client::FailReason::NotFound,
+                                now,
+                            )
+                        });
+                    }
+                }
+
+                Ok(())
             }
             ClientEvent::ResourcesChanged { resources } => {
                 let client = self.clients.get_mut(&src).unwrap();
@@ -1664,11 +1625,32 @@ impl TunnelTest {
                 Ok(())
             }
             ClientEvent::DeviceDomainQueried { domain } => {
-                let client = self.clients.get_mut(&src).unwrap();
+                // The portal answers a name with the pools that admit the device; access
+                // is asked for on the first packet, like for a static pool member.
+                let result = match portal.resolve_device_domain(&domain) {
+                    None => Err(FailReason::NotFound),
+                    Some((id, ipv4, ipv6)) => {
+                        let pools = ref_state
+                            .clients
+                            .get(&src)
+                            .expect("unknown source client")
+                            .inner()
+                            .device_pools_admitting(id);
 
-                let result = portal
-                    .resolve_device_domain(&domain)
-                    .ok_or(FailReason::NotFound);
+                        if pools.is_empty() {
+                            Err(FailReason::Forbidden)
+                        } else {
+                            Ok(ResolvedDevice {
+                                id,
+                                ipv4,
+                                ipv6,
+                                pools,
+                            })
+                        }
+                    }
+                };
+
+                let client = self.clients.get_mut(&src).expect("unknown source client");
                 client.exec_mut(|c| {
                     c.sut.handle_device_domain_resolved(domain, result);
                 });
@@ -1911,7 +1893,6 @@ fn is_portal_bound_event(event: &ClientEvent) -> bool {
         ClientEvent::RemovedIceCandidates { .. } => true,
         ClientEvent::ResourceConnectionIntent { .. } => true,
         ClientEvent::DeviceDomainQueried { .. } => true,
-        ClientEvent::DeviceAccessIntent { .. } => true,
         ClientEvent::ResourcesChanged { .. } => false,
         ClientEvent::DnsRecordsChanged { .. } => false,
         ClientEvent::TunInterfaceUpdated(_) => false,

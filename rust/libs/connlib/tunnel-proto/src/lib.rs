@@ -51,7 +51,9 @@ pub const IPV6_TUNNEL: Ipv6Network =
     };
 
 pub use client::dns_config::DnsMapping;
-pub use client::{ClientState, DNS_SENTINELS_V4, DNS_SENTINELS_V6, IPV4_RESOURCES, IPV6_RESOURCES};
+pub use client::{
+    ClientState, DNS_SENTINELS_V4, DNS_SENTINELS_V6, IPV4_RESOURCES, IPV6_RESOURCES, ResolvedDevice,
+};
 pub use dns::DnsResourceRecord;
 pub use gateway::{DnsResourceNatEntry, GatewayState, ResolveDnsRequest};
 #[cfg(feature = "malicious-behaviour")]
@@ -79,15 +81,10 @@ pub enum ClientEvent {
         /// `None` for intents to a gateway-routed resource.
         ip: Option<IpAddr>,
     },
-    /// A DNS query for a device name needs the portal to resolve it.
+    /// A DNS query for a device name asks the portal to resolve it, if one of our
+    /// pools admits the device.
     DeviceDomainQueried {
         domain: DomainName,
-    },
-    /// The first packet to a resolved device asks the portal for access with the
-    /// packet's protocol and port, so it can pick the pool that permits it.
-    DeviceAccessIntent {
-        ip: IpAddr,
-        protocol: ip_packet::Protocol,
     },
     /// The list of resources or connected device peers has changed; UI clients
     /// may have to be updated.

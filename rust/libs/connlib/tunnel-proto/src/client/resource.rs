@@ -91,13 +91,15 @@ pub struct StaticDevicePoolResource {
 
 /// A dynamic device pool resource.
 ///
-/// Membership is decided by the portal: the first packet to a device resolved by
-/// name asks the portal for access, and the portal answers with the pool that
-/// admits the device and permits the packet.
+/// Membership is decided by the portal: resolving a device name answers with the
+/// pools that admit the device, which then joins `devices` and is routed like a
+/// static pool member, asking for access on the first packet.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct DynamicDevicePoolResource {
     pub id: ResourceId,
     pub name: String,
+    /// The devices resolved into the pool so far; never sent by the portal.
+    pub devices: Vec<DevicePoolMember>,
     pub filters: Vec<Filter>,
 }
 
@@ -330,6 +332,7 @@ impl DynamicDevicePoolResource {
         Self {
             id: resource.id,
             name: resource.name,
+            devices: Vec::new(),
             filters: resource.filters,
         }
     }

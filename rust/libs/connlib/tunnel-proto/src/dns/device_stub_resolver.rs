@@ -46,10 +46,6 @@ pub(crate) enum Event {
     QueryDomain {
         domain: DomainName,
     },
-    ResolvedDevice {
-        ipv4: Ipv4Addr,
-        ipv6: Ipv6Addr,
-    },
     SendResponse {
         local: SocketAddr,
         remote: SocketAddr,
@@ -154,7 +150,6 @@ impl DeviceStubResolver {
 
         if let Ok((ipv4, ipv6)) = result {
             self.resolved.insert(domain, (ipv4, ipv6));
-            self.events.push_back(Event::ResolvedDevice { ipv4, ipv6 });
         }
 
         for pending in pending {
@@ -182,6 +177,15 @@ impl DeviceStubResolver {
                 response,
             });
         }
+    }
+
+    /// Forgets the resolution of a device, so its next lookup asks the portal again.
+    ///
+    /// A resolution stands for the grant that came with it; when the grant goes, so
+    /// does the answer.
+    pub(crate) fn forget_device(&mut self, ipv4: Ipv4Addr, ipv6: Ipv6Addr) {
+        self.resolved
+            .retain(|_, (v4, v6)| *v4 != ipv4 && *v6 != ipv6);
     }
 
     pub(crate) fn poll_event(&mut self) -> Option<Event> {
@@ -301,7 +305,7 @@ mod tests {
     }
 
     #[test]
-    fn resolution_answers_every_waiter_and_reports_the_device() {
+    fn resolution_answers_every_waiter() {
         let mut resolver = DeviceStubResolver::default();
         handle(&mut resolver, DEVICE, dns_types::RecordType::A);
         handle(&mut resolver, DEVICE, dns_types::RecordType::AAAA);
@@ -311,14 +315,12 @@ mod tests {
 
         let events = drain(&mut resolver);
         let [
-            Event::ResolvedDevice { ipv4, ipv6 },
             Event::SendResponse { response: a, .. },
             Event::SendResponse { response: aaaa, .. },
         ] = events.as_slice()
         else {
             panic!("unexpected events: {events:?}")
         };
-        assert_eq!((*ipv4, *ipv6), (TEST_IPV4, TEST_IPV6));
         assert!(
             a.records()
                 .any(|r| r.data() == &dns_types::records::a(TEST_IPV4))
@@ -327,6 +329,26 @@ mod tests {
             aaaa.records()
                 .any(|r| r.data() == &dns_types::records::aaaa(TEST_IPV6))
         );
+    }
+
+    #[test]
+    fn forgetting_the_device_asks_the_portal_again() {
+        let mut resolver = DeviceStubResolver::default();
+        handle(&mut resolver, DEVICE, dns_types::RecordType::A);
+        drain(&mut resolver);
+        resolver.handle_device_domain_resolved(domain(DEVICE), Ok((TEST_IPV4, TEST_IPV6)));
+        drain(&mut resolver);
+
+        resolver.forget_device(TEST_IPV4, TEST_IPV6);
+
+        assert!(matches!(
+            handle(&mut resolver, DEVICE, dns_types::RecordType::A),
+            ResolveStrategy::Pending
+        ));
+        assert!(matches!(
+            resolver.poll_event(),
+            Some(Event::QueryDomain { domain: queried }) if queried.to_string() == DEVICE
+        ));
     }
 
     #[test]
