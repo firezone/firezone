@@ -7,75 +7,22 @@
 #if os(macOS)
   import Foundation
 
-  /// Puts the headless client on the PATH for installs that did not come from the `.pkg`.
+  /// The command that puts the CLI on the PATH for installs that did not come from the `.pkg`.
   ///
-  /// We are sandboxed, so we can neither write `/usr/local/bin` nor ask for the privileges to
-  /// do so. Instead we write a script into our own container and hand it to Terminal, which is
-  /// not sandboxed and can prompt for `sudo`. The script does what
-  /// `scripts/build/macos-pkg-scripts/postinstall` does for the `.pkg`; keep the two in step.
+  /// The sandbox stops us from doing this ourselves, and from handing Terminal a script that
+  /// would: everything we write is quarantined, and Gatekeeper refuses to open a quarantined
+  /// script. The user runs the command instead, which also puts the `sudo` prompt in front of
+  /// the person who can answer it.
   enum CLIInstaller {
-    static func writeInstallScript() throws -> URL {
-      let fileManager = FileManager.default
-      var scriptURL = fileManager
-        .temporaryDirectory
-        .appendingPathComponent("install-firezone-cli.command")
+    static var installCommand: String {
+      // The wrapper, not the binary beside it: the client only has the app's bundle
+      // identity when started at its real path.
+      let firezone = Bundle.main.bundleURL
+        .appendingPathComponent("Contents/Resources/firezone")
+        .path
+        .replacingOccurrences(of: "'", with: "'\\''")
 
-      try script().write(to: scriptURL, atomically: true, encoding: .utf8)
-      try fileManager.setAttributes([.posixPermissions: 0o755], ofItemAtPath: scriptURL.path)
-
-      // Everything a sandboxed app writes is quarantined, and Gatekeeper reports a
-      // quarantined unsigned script as damaged rather than as blocked.
-      var withoutQuarantine = URLResourceValues()
-      withoutQuarantine.quarantineProperties = nil
-      try scriptURL.setResourceValues(withoutQuarantine)
-
-      return scriptURL
-    }
-
-    private static func script() -> String {
-      let bundlePath = Bundle.main.bundleURL.path.replacingOccurrences(of: "'", with: "'\\''")
-
-      return """
-        #!/bin/bash
-
-        set -euo pipefail
-
-        # The wrapper, not the binary beside it: the client only has the app's bundle
-        # identity when started at its real path.
-        firezone='\(bundlePath)/Contents/Resources/firezone'
-
-        # Terminal opens on the previous session and echoes the path it just ran,
-        # neither of which the reader needs.
-        clear
-
-        echo "Installing the Firezone CLI into /usr/local/bin, with completions for"
-        echo "zsh, bash and fish. This needs administrator privileges."
-        echo
-
-        # Ask once, up front, rather than at whichever command needs it first.
-        sudo -v -p "Password for %u: "
-
-        sudo mkdir -p /usr/local/bin
-        sudo ln -sf "$firezone" /usr/local/bin/firezone
-
-        install_completion() {
-            local shell="$1"
-            local path="$2"
-
-            sudo mkdir -p "$(dirname "$path")"
-            "$firezone" --generate-completion-script "$shell" | sudo tee "$path" >/dev/null
-        }
-
-        # Each of these is where the shell picks completions up on its own. Best-effort,
-        # because putting the client on the PATH is what this is for and a shell nobody
-        # uses must not fail it.
-        install_completion zsh /usr/local/share/zsh/site-functions/_firezone || true
-        install_completion bash /usr/local/etc/bash_completion.d/firezone || true
-        install_completion fish /usr/local/share/fish/vendor_completions.d/firezone.fish || true
-
-        echo
-        echo "Done. Open a new terminal and run 'firezone --help'."
-        """
+      return "sudo mkdir -p /usr/local/bin && sudo ln -sf '\(firezone)' /usr/local/bin/firezone"
     }
   }
 #endif
