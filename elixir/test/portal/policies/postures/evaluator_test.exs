@@ -6,6 +6,7 @@ defmodule Portal.Policies.Postures.EvaluatorTest do
   alias Portal.Policies.Postures.Evaluator
 
   @now ~U[2026-09-04 12:00:00Z]
+  @failed {:error, [:postures]}
 
   defp postures(map) do
     {:ok, postures} = Postures.cast(map)
@@ -14,8 +15,15 @@ defmodule Portal.Policies.Postures.EvaluatorTest do
 
   defp leaf(field, op, value \\ :none) do
     base = %{"field" => field, "op" => op}
-    if value == :none, do: base, else: Map.put(base, "value", value)
+
+    if value == :none do
+      base
+    else
+      Map.put(base, "value", value)
+    end
   end
+
+  defp all_rows(leaf), do: Map.put(leaf, "rows", "all")
 
   defp device(attrs \\ []) do
     struct!(%Device{type: :client, posture: %{}, attested?: false}, attrs)
@@ -27,7 +35,7 @@ defmodule Portal.Policies.Postures.EvaluatorTest do
 
   defp pass?(field, op, value, row_attrs) do
     device = device(posture: %{intune: [intune(row_attrs)]})
-    evaluate(%{"intune" => leaf(field, op, value)}, device) == {:ok, nil}
+    evaluate(leaf("intune.#{field}", op, value), device) == {:ok, nil}
   end
 
   describe "evaluate/3 structure" do
@@ -35,67 +43,58 @@ defmodule Portal.Policies.Postures.EvaluatorTest do
       assert Evaluator.evaluate(nil, device(), @now) == {:ok, nil}
     end
 
-    test "an empty tree passes" do
-      assert evaluate(%{}, device()) == {:ok, nil}
+    test "a bare leaf at the root passes or fails as one posture" do
+      device = device(posture: %{intune: [intune(compliance_state: "compliant")]})
+      assert evaluate(leaf("intune.compliance_state", "is", "compliant"), device) == {:ok, nil}
+      assert evaluate(leaf("intune.compliance_state", "is", "noncompliant"), device) == @failed
     end
 
-    test "every provider must pass and failures are reported in provider order" do
+    test "providers mix anywhere in the tree" do
       device = device(posture: %{intune: [intune(compliance_state: "compliant")]}, hostname: "laptop")
 
       map = %{
-        "sentinelone" => leaf("enrolled", "is", true),
-        "intune" => leaf("compliance_state", "is", "compliant"),
-        "firezone" => leaf("hostname", "is", "desktop")
+        "or" => [
+          leaf("sentinelone.enrolled", "is", true),
+          %{"and" => [leaf("intune.compliance_state", "is", "compliant"), leaf("firezone.hostname", "is", "laptop")]}
+        ]
       }
 
-      assert evaluate(map, device) == {:error, [{:postures, :firezone}, {:postures, :sentinelone}]}
+      assert evaluate(map, device) == {:ok, nil}
+
+      map = %{"and" => [leaf("sentinelone.enrolled", "is", true), leaf("intune.compliance_state", "is", "compliant")]}
+      assert evaluate(map, device) == @failed
     end
 
-    test "the expiry is the earliest across providers" do
+    test "and passes when every child passes and expires with the first child" do
       device =
         device(
-          posture: %{intune: [intune(last_sync_at: ~U[2026-09-04 10:00:00Z])]},
+          posture: %{intune: [intune(last_sync_at: ~U[2026-09-04 10:00:00Z], is_encrypted: true)]},
           last_attested_at: ~U[2026-09-04 11:00:00Z]
         )
 
       map = %{
-        "firezone" => leaf("last_attested_at", "within_last", "PT2H"),
-        "intune" => leaf("last_sync_at", "within_last", "PT3H")
+        "and" => [
+          leaf("intune.last_sync_at", "within_last", "PT3H"),
+          leaf("firezone.last_attested_at", "within_last", "PT1H30M"),
+          leaf("intune.is_encrypted", "is", true)
+        ]
       }
 
-      assert evaluate(map, device) == {:ok, ~U[2026-09-04 13:00:00Z]}
-    end
+      assert evaluate(map, device) == {:ok, ~U[2026-09-04 12:30:00Z]}
 
-    test "and passes when every child passes and expires with the first child" do
-      device = device(posture: %{intune: [intune(last_sync_at: ~U[2026-09-04 11:00:00Z], is_encrypted: true)]})
-
-      map = %{
-        "intune" => %{
-          "and" => [
-            leaf("last_sync_at", "within_last", "PT2H"),
-            leaf("last_sync_at", "within_last", "PT5H"),
-            leaf("is_encrypted", "is", true)
-          ]
-        }
-      }
-
-      assert evaluate(map, device) == {:ok, ~U[2026-09-04 13:00:00Z]}
-
-      map = put_in(map, ["intune", "and"], [leaf("is_encrypted", "is", true), leaf("is_encrypted", "is", false)])
-      assert evaluate(map, device) == {:error, [{:postures, :intune}]}
+      map = %{"and" => [leaf("intune.is_encrypted", "is", true), leaf("intune.is_encrypted", "is", false)]}
+      assert evaluate(map, device) == @failed
     end
 
     test "or passes when any child passes and lives as long as the longest passing child" do
       device = device(posture: %{intune: [intune(last_sync_at: ~U[2026-09-04 11:00:00Z], is_encrypted: false)]})
 
       map = %{
-        "intune" => %{
-          "or" => [
-            leaf("is_encrypted", "is", true),
-            leaf("last_sync_at", "within_last", "PT2H"),
-            leaf("last_sync_at", "within_last", "PT5H")
-          ]
-        }
+        "or" => [
+          leaf("intune.is_encrypted", "is", true),
+          leaf("intune.last_sync_at", "within_last", "PT2H"),
+          leaf("intune.last_sync_at", "within_last", "PT5H")
+        ]
       }
 
       assert evaluate(map, device) == {:ok, ~U[2026-09-04 16:00:00Z]}
@@ -103,25 +102,23 @@ defmodule Portal.Policies.Postures.EvaluatorTest do
 
     test "or never expires when a passing child never expires" do
       device = device(posture: %{intune: [intune(last_sync_at: ~U[2026-09-04 11:00:00Z], is_encrypted: true)]})
-      map = %{"intune" => %{"or" => [leaf("is_encrypted", "is", true), leaf("last_sync_at", "within_last", "PT2H")]}}
+      map = %{"or" => [leaf("intune.is_encrypted", "is", true), leaf("intune.last_sync_at", "within_last", "PT2H")]}
       assert evaluate(map, device) == {:ok, nil}
     end
 
     test "or fails when no child passes" do
       device = device(posture: %{intune: [intune(is_encrypted: false)]})
-      map = %{"intune" => %{"or" => [leaf("is_encrypted", "is", true), leaf("notes", "exists")]}}
-      assert evaluate(map, device) == {:error, [{:postures, :intune}]}
+      map = %{"or" => [leaf("intune.is_encrypted", "is", true), leaf("intune.notes", "exists")]}
+      assert evaluate(map, device) == @failed
     end
 
     test "not inverts and drops the expiry" do
       device = device(posture: %{intune: [intune(last_sync_at: ~U[2026-09-04 11:00:00Z])]})
-      assert evaluate(%{"intune" => %{"not" => leaf("last_sync_at", "within_last", "PT2H")}}, device) ==
-               {:error, [{:postures, :intune}]}
-
-      assert evaluate(%{"intune" => %{"not" => leaf("last_sync_at", "within_last", "PT10M")}}, device) == {:ok, nil}
+      assert evaluate(%{"not" => leaf("intune.last_sync_at", "within_last", "PT2H")}, device) == @failed
+      assert evaluate(%{"not" => leaf("intune.last_sync_at", "within_last", "PT10M")}, device) == {:ok, nil}
     end
 
-    test "rows any passes when one row passes and lives as long as the longest" do
+    test "a leaf passes when any row passes and lives as long as the longest" do
       rows = [
         intune(compliance_state: "noncompliant", last_sync_at: ~U[2026-09-04 11:00:00Z]),
         intune(compliance_state: "compliant", last_sync_at: ~U[2026-09-04 11:30:00Z]),
@@ -130,14 +127,10 @@ defmodule Portal.Policies.Postures.EvaluatorTest do
 
       device = device(posture: %{intune: rows})
 
-      map = %{
-        "intune" => %{"and" => [leaf("compliance_state", "is", "compliant"), leaf("last_sync_at", "within_last", "PT2H")]}
-      }
-
+      map = %{"and" => [leaf("intune.compliance_state", "is", "compliant"), leaf("intune.last_sync_at", "within_last", "PT2H")]}
       assert evaluate(map, device) == {:ok, ~U[2026-09-04 13:30:00Z]}
 
-      map = %{"intune" => leaf("compliance_state", "is", "conflict")}
-      assert evaluate(map, device) == {:error, [{:postures, :intune}]}
+      assert evaluate(leaf("intune.compliance_state", "is", "conflict"), device) == @failed
     end
 
     test "rows all needs every row to pass and expires with the first" do
@@ -148,39 +141,55 @@ defmodule Portal.Policies.Postures.EvaluatorTest do
 
       device = device(posture: %{intune: rows})
 
-      expr = %{"and" => [leaf("compliance_state", "is", "compliant"), leaf("last_sync_at", "within_last", "PT2H")]}
-      map = %{"intune" => %{"rows" => "all", "expr" => expr}}
+      map = %{
+        "and" => [
+          all_rows(leaf("intune.compliance_state", "is", "compliant")),
+          all_rows(leaf("intune.last_sync_at", "within_last", "PT2H"))
+        ]
+      }
+
       assert evaluate(map, device) == {:ok, ~U[2026-09-04 13:00:00Z]}
 
       device = device(posture: %{intune: [intune(compliance_state: "noncompliant") | rows]})
-      assert evaluate(map, device) == {:error, [{:postures, :intune}]}
+      assert evaluate(map, device) == @failed
     end
 
-    test "a provider with no rows runs the tree against an empty row, for both row modes" do
+    test "each leaf picks its rows on its own" do
+      rows = [
+        intune(compliance_state: "compliant", last_sync_at: ~U[2026-01-01 00:00:00Z]),
+        intune(compliance_state: "noncompliant", last_sync_at: ~U[2026-09-04 11:00:00Z])
+      ]
+
+      device = device(posture: %{intune: rows})
+
+      fresh = leaf("intune.last_sync_at", "within_last", "PT2H")
+      compliant = leaf("intune.compliance_state", "is", "compliant")
+      assert evaluate(%{"and" => [compliant, fresh]}, device) == {:ok, ~U[2026-09-04 13:00:00Z]}
+      assert evaluate(%{"and" => [all_rows(compliant), fresh]}, device) == @failed
+    end
+
+    test "a leaf whose provider has no rows runs against an empty row, for both row modes" do
       device = device()
-      assert evaluate(%{"intune" => leaf("compliance_state", "is", "compliant")}, device) == {:error, [{:postures, :intune}]}
+      assert evaluate(leaf("intune.compliance_state", "is", "compliant"), device) == @failed
+      assert evaluate(all_rows(leaf("intune.compliance_state", "is", "compliant")), device) == @failed
+      assert evaluate(leaf("intune.compliance_state", "does_not_exist"), device) == {:ok, nil}
+      assert evaluate(leaf("intune.enrolled", "is", false), device) == {:ok, nil}
+      assert evaluate(leaf("intune.enrolled", "is", true), device) == @failed
 
-      map = %{"intune" => %{"rows" => "all", "expr" => leaf("compliance_state", "is", "compliant")}}
-      assert evaluate(map, device) == {:error, [{:postures, :intune}]}
-
-      assert evaluate(%{"intune" => leaf("compliance_state", "does_not_exist")}, device) == {:ok, nil}
-      assert evaluate(%{"intune" => leaf("enrolled", "is", false)}, device) == {:ok, nil}
-      assert evaluate(%{"intune" => leaf("enrolled", "is", true)}, device) == {:error, [{:postures, :intune}]}
-
-      map = %{"intune" => %{"or" => [leaf("compliance_state", "is", "compliant"), leaf("enrolled", "is", false)]}}
+      map = %{"or" => [leaf("intune.compliance_state", "is", "compliant"), leaf("intune.enrolled", "is", false)]}
       assert evaluate(map, device) == {:ok, nil}
     end
 
     test "enrolled is true when a row matched" do
       device = device(posture: %{intune: [intune([])]})
-      assert evaluate(%{"intune" => leaf("enrolled", "is", true)}, device) == {:ok, nil}
+      assert evaluate(leaf("intune.enrolled", "is", true), device) == {:ok, nil}
     end
 
     test "firezone reads the device itself, including the live attested flag" do
       device = device(hostname: "Laptop", attested?: true)
-      assert evaluate(%{"firezone" => leaf("hostname", "is", "laptop")}, device) == {:ok, nil}
-      assert evaluate(%{"firezone" => leaf("attested", "is", true)}, device) == {:ok, nil}
-      assert evaluate(%{"firezone" => leaf("attested", "is", false)}, device) == {:error, [{:postures, :firezone}]}
+      assert evaluate(leaf("firezone.hostname", "is", "laptop"), device) == {:ok, nil}
+      assert evaluate(leaf("firezone.attested", "is", true), device) == {:ok, nil}
+      assert evaluate(leaf("firezone.attested", "is", false), device) == @failed
     end
   end
 
@@ -249,8 +258,8 @@ defmodule Portal.Policies.Postures.EvaluatorTest do
 
     test "floats" do
       device = device(posture: %{iru: [struct!(Portal.Iru.Device, device_capacity_gb: 128.0)]})
-      assert evaluate(%{"iru" => leaf("device_capacity_gb", "gte", 128)}, device) == {:ok, nil}
-      assert evaluate(%{"iru" => leaf("device_capacity_gb", "lt", 128)}, device) == {:error, [{:postures, :iru}]}
+      assert evaluate(leaf("iru.device_capacity_gb", "gte", 128), device) == {:ok, nil}
+      assert evaluate(leaf("iru.device_capacity_gb", "lt", 128), device) == @failed
     end
   end
 
@@ -287,9 +296,9 @@ defmodule Portal.Policies.Postures.EvaluatorTest do
 
     test "within_last passes until the field ages past the window" do
       device = device(posture: %{intune: [intune(last_sync_at: ~U[2026-09-04 10:30:00Z])]})
-      assert evaluate(%{"intune" => leaf("last_sync_at", "within_last", "PT2H")}, device) == {:ok, ~U[2026-09-04 12:30:00Z]}
-      assert evaluate(%{"intune" => leaf("last_sync_at", "within_last", "PT1H")}, device) == {:error, [{:postures, :intune}]}
-      assert evaluate(%{"intune" => leaf("last_sync_at", "within_last", "PT1H30M")}, device) == {:ok, ~U[2026-09-04 12:00:00Z]}
+      assert evaluate(leaf("intune.last_sync_at", "within_last", "PT2H"), device) == {:ok, ~U[2026-09-04 12:30:00Z]}
+      assert evaluate(leaf("intune.last_sync_at", "within_last", "PT1H"), device) == @failed
+      assert evaluate(leaf("intune.last_sync_at", "within_last", "PT1H30M"), device) == {:ok, ~U[2026-09-04 12:00:00Z]}
     end
 
     test "not_within_last passes once the field is older than the window" do
@@ -299,7 +308,7 @@ defmodule Portal.Policies.Postures.EvaluatorTest do
 
     test "future values are within the window" do
       device = device(posture: %{intune: [intune(last_sync_at: ~U[2026-09-05 12:00:00Z])]})
-      assert evaluate(%{"intune" => leaf("last_sync_at", "within_last", "PT1H")}, device) == {:ok, ~U[2026-09-05 13:00:00Z]}
+      assert evaluate(leaf("intune.last_sync_at", "within_last", "PT1H"), device) == {:ok, ~U[2026-09-05 13:00:00Z]}
     end
   end
 
@@ -314,13 +323,11 @@ defmodule Portal.Policies.Postures.EvaluatorTest do
     test "within_last treats the date as midnight UTC" do
       device = device(posture: %{intune: [intune(android_security_patch_level: ~D[2026-08-05])]})
 
-      assert evaluate(%{"intune" => leaf("android_security_patch_level", "within_last", "P90D")}, device) ==
+      assert evaluate(leaf("intune.android_security_patch_level", "within_last", "P90D"), device) ==
                {:ok, ~U[2026-11-03 00:00:00Z]}
 
-      assert evaluate(%{"intune" => leaf("android_security_patch_level", "within_last", "P30D")}, device) ==
-               {:error, [{:postures, :intune}]}
-
-      assert evaluate(%{"intune" => leaf("android_security_patch_level", "not_within_last", "P30D")}, device) == {:ok, nil}
+      assert evaluate(leaf("intune.android_security_patch_level", "within_last", "P30D"), device) == @failed
+      assert evaluate(leaf("intune.android_security_patch_level", "not_within_last", "P30D"), device) == {:ok, nil}
     end
   end
 
@@ -330,21 +337,18 @@ defmodule Portal.Policies.Postures.EvaluatorTest do
       v6 = %Postgrex.INET{address: {0x2001, 0xDB8, 0, 0, 0, 0, 0, 1}, netmask: nil}
       device = device(posture: %{defender: [struct!(Portal.Defender.Device, last_ip_address: v4, last_external_ip_address: v6)]})
 
-      assert evaluate(%{"defender" => leaf("last_ip_address", "is_in_cidr", ["10.0.0.0/8"])}, device) == {:ok, nil}
-      assert evaluate(%{"defender" => leaf("last_ip_address", "is_in_cidr", ["10.1.2.3"])}, device) == {:ok, nil}
-      assert evaluate(%{"defender" => leaf("last_ip_address", "is_in_cidr", ["192.168.0.0/16"])}, device) ==
-               {:error, [{:postures, :defender}]}
-      assert evaluate(%{"defender" => leaf("last_ip_address", "is_not_in_cidr", ["192.168.0.0/16"])}, device) == {:ok, nil}
-      assert evaluate(%{"defender" => leaf("last_ip_address", "is_not_in_cidr", ["10.0.0.0/8"])}, device) ==
-               {:error, [{:postures, :defender}]}
-      assert evaluate(%{"defender" => leaf("last_external_ip_address", "is_in_cidr", ["2001:db8::/32"])}, device) == {:ok, nil}
-      assert evaluate(%{"defender" => leaf("last_external_ip_address", "is_in_cidr", ["10.0.0.0/8"])}, device) ==
-               {:error, [{:postures, :defender}]}
+      assert evaluate(leaf("defender.last_ip_address", "is_in_cidr", ["10.0.0.0/8"]), device) == {:ok, nil}
+      assert evaluate(leaf("defender.last_ip_address", "is_in_cidr", ["10.1.2.3"]), device) == {:ok, nil}
+      assert evaluate(leaf("defender.last_ip_address", "is_in_cidr", ["192.168.0.0/16"]), device) == @failed
+      assert evaluate(leaf("defender.last_ip_address", "is_not_in_cidr", ["192.168.0.0/16"]), device) == {:ok, nil}
+      assert evaluate(leaf("defender.last_ip_address", "is_not_in_cidr", ["10.0.0.0/8"]), device) == @failed
+      assert evaluate(leaf("defender.last_external_ip_address", "is_in_cidr", ["2001:db8::/32"]), device) == {:ok, nil}
+      assert evaluate(leaf("defender.last_external_ip_address", "is_in_cidr", ["10.0.0.0/8"]), device) == @failed
     end
 
     test "firezone tunnel addresses" do
       device = device(ipv4: %Postgrex.INET{address: {100, 64, 0, 5}, netmask: nil})
-      assert evaluate(%{"firezone" => leaf("ipv4", "is_in_cidr", ["100.64.0.0/10"])}, device) == {:ok, nil}
+      assert evaluate(leaf("firezone.ipv4", "is_in_cidr", ["100.64.0.0/10"]), device) == {:ok, nil}
     end
   end
 
@@ -352,7 +356,7 @@ defmodule Portal.Policies.Postures.EvaluatorTest do
     defp defender(attrs), do: device(posture: %{defender: [struct!(Portal.Defender.Device, attrs)]})
 
     defp defender_pass?(field, op, value, attrs) do
-      evaluate(%{"defender" => leaf(field, op, value)}, defender(attrs)) == {:ok, nil}
+      evaluate(leaf("defender.#{field}", op, value), defender(attrs)) == {:ok, nil}
     end
 
     test "string arrays compare elements case-insensitively" do
@@ -380,7 +384,7 @@ defmodule Portal.Policies.Postures.EvaluatorTest do
       refute defender_pass?("ip_addresses", "exists", :none, [])
 
       s1 = device(posture: %{sentinelone: [struct!(Portal.SentinelOne.Device, cloud_providers: %{})]})
-      assert evaluate(%{"sentinelone" => leaf("cloud_providers", "is_empty")}, s1) == {:ok, nil}
+      assert evaluate(leaf("sentinelone.cloud_providers", "is_empty"), s1) == {:ok, nil}
     end
   end
 end

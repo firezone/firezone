@@ -1053,7 +1053,7 @@ defmodule Portal.Policies.EvaluatorTest do
   describe "ensure_policy_conforms/3" do
     setup do
       {:ok, postures} =
-        Portal.Policies.Postures.cast(%{"intune" => %{"field" => "last_sync_at", "op" => "within_last", "value" => "PT1H"}})
+        Portal.Policies.Postures.cast(%{"field" => "intune.last_sync_at", "op" => "within_last", "value" => "PT1H"})
 
       fresh = %Portal.Intune.Device{last_sync_at: DateTime.add(DateTime.utc_now(), -600)}
       stale = %Portal.Intune.Device{last_sync_at: DateTime.add(DateTime.utc_now(), -7200)}
@@ -1089,13 +1089,13 @@ defmodule Portal.Policies.EvaluatorTest do
     test "reports posture failures", ctx do
       policy = %{conditions: [ctx.condition], postures: ctx.postures}
       client = %{ctx.verified | posture: %{intune: [ctx.stale]}}
-      assert ensure_policy_conforms(policy, client, nil) == {:error, [{:postures, :intune}]}
+      assert ensure_policy_conforms(policy, client, nil) == {:error, [:postures]}
     end
 
     test "reports both when both fail", ctx do
       policy = %{conditions: [ctx.condition], postures: ctx.postures}
       client = %{ctx.verified | verified_at: nil, posture: %{}}
-      assert ensure_policy_conforms(policy, client, nil) == {:error, [:client_verified, {:postures, :intune}]}
+      assert ensure_policy_conforms(policy, client, nil) == {:error, [:client_verified, :postures]}
     end
   end
 end

@@ -2,10 +2,11 @@ defmodule Portal.Policies.Postures.Evaluator do
   @moduledoc """
   Decides whether a device satisfies a policy's postures.
 
-  Every provider tree must pass. A tree runs against the rows the device
-  matched for that provider, `firezone` against the device itself. A NULL
-  field fails every operator except `does_not_exist`, and a provider with no
-  rows runs its tree once against an empty row, so nothing passes by absence.
+  A leaf runs against the rows the device matched for its provider, and a
+  `firezone` leaf against the device itself. A leaf holds when any row holds,
+  or when every row holds for `rows: all`. A NULL field fails every operator
+  except `does_not_exist`, and a leaf whose provider matched no rows runs
+  once against an empty row, so nothing passes by absence.
 
   The result carries the earliest moment a passing `within_last` leaf stops
   holding, which the caller folds into the authorization's expiry.
@@ -13,68 +14,54 @@ defmodule Portal.Policies.Postures.Evaluator do
 
   alias Portal.Device
   alias Portal.Policies.Postures
-  alias Portal.Policies.Postures.{And, Leaf, Not, Or, Provider}
-
-  @type violation :: {:postures, atom()}
+  alias Portal.Policies.Postures.{And, Leaf, Not, Or}
 
   @spec evaluate(Postures.t() | nil, Device.t(), DateTime.t()) ::
-          {:ok, DateTime.t() | nil} | {:error, [violation()]}
+          {:ok, DateTime.t() | nil} | {:error, [:postures]}
   def evaluate(nil, %Device{}, %DateTime{}), do: {:ok, nil}
 
-  def evaluate(%Postures{providers: providers}, %Device{type: :client} = device, %DateTime{} = now) do
-    providers
-    |> Enum.sort_by(fn {provider, _entry} -> provider_rank(provider) end)
-    |> Enum.reduce({[], nil}, fn {provider, entry}, {violated, expires_at} ->
-      case evaluate_provider(provider, entry, device, now) do
-        {true, provider_expires_at} -> {violated, earliest(expires_at, provider_expires_at)}
-        {false, _expires_at} -> {[{:postures, provider} | violated], expires_at}
-      end
-    end)
-    |> case do
-      {[], expires_at} -> {:ok, expires_at}
-      {violated, _expires_at} -> {:error, Enum.reverse(violated)}
+  def evaluate(%Postures{expr: expr}, %Device{type: :client} = device, %DateTime{} = now) do
+    case evaluate_node(expr, device, now) do
+      {true, expires_at} -> {:ok, expires_at}
+      {false, _expires_at} -> {:error, [:postures]}
     end
   end
 
-  defp evaluate_provider(:firezone, %Provider{expr: expr}, device, now) do
-    evaluate_node(expr, device, device, now)
+  defp evaluate_node(%And{nodes: nodes}, device, now) do
+    nodes |> Enum.map(&evaluate_node(&1, device, now)) |> all_pass()
   end
 
-  defp evaluate_provider(provider, %Provider{rows: mode, expr: expr}, device, now) do
-    case Map.get(device.posture, provider, []) do
-      [] -> evaluate_node(expr, nil, device, now)
-      rows -> evaluate_rows(mode, rows, expr, device, now)
-    end
+  defp evaluate_node(%Or{nodes: nodes}, device, now) do
+    nodes |> Enum.map(&evaluate_node(&1, device, now)) |> any_pass()
   end
 
-  defp evaluate_rows(:any, rows, expr, device, now) do
-    rows
-    |> Enum.map(&evaluate_node(expr, &1, device, now))
-    |> any_pass()
-  end
-
-  defp evaluate_rows(:all, rows, expr, device, now) do
-    rows
-    |> Enum.map(&evaluate_node(expr, &1, device, now))
-    |> all_pass()
-  end
-
-  defp evaluate_node(%And{nodes: nodes}, row, device, now) do
-    nodes |> Enum.map(&evaluate_node(&1, row, device, now)) |> all_pass()
-  end
-
-  defp evaluate_node(%Or{nodes: nodes}, row, device, now) do
-    nodes |> Enum.map(&evaluate_node(&1, row, device, now)) |> any_pass()
-  end
-
-  defp evaluate_node(%Not{node: node}, row, device, now) do
-    {passed?, _expires_at} = evaluate_node(node, row, device, now)
+  defp evaluate_node(%Not{node: node}, device, now) do
+    {passed?, _expires_at} = evaluate_node(node, device, now)
     {not passed?, nil}
   end
 
-  defp evaluate_node(%Leaf{} = leaf, row, device, now) do
-    value = field_value(leaf.field, row, device)
-    evaluate_leaf(leaf, value, now)
+  defp evaluate_node(%Leaf{provider: :firezone} = leaf, device, now) do
+    evaluate_leaf(leaf, field_value(leaf.field, device, device), now)
+  end
+
+  defp evaluate_node(%Leaf{provider: provider, rows: rows} = leaf, device, now) do
+    results =
+      device
+      |> matched_rows(provider)
+      |> Enum.map(&evaluate_leaf(leaf, field_value(leaf.field, &1, device), now))
+
+    case rows do
+      :any -> any_pass(results)
+      :all -> all_pass(results)
+    end
+  end
+
+  # No rows still runs the leaf once, against nothing, so absence cannot pass.
+  defp matched_rows(device, provider) do
+    case Map.get(device.posture, provider, []) do
+      [] -> [nil]
+      rows -> rows
+    end
   end
 
   # Everything must hold, so the result holds until the first child stops holding.
@@ -250,9 +237,5 @@ defmodule Portal.Policies.Postures.Evaluator do
   defp compare_moment(:not_within_last, value, %Duration{} = duration, now) do
     cutoff = DateTime.shift(now, Duration.negate(duration))
     {DateTime.compare(value, cutoff) == :lt, nil}
-  end
-
-  defp provider_rank(provider) do
-    Enum.find_index(Portal.Policies.Postures.Fields.providers(), &(&1 == provider))
   end
 end
