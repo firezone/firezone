@@ -7,11 +7,12 @@ defmodule PortalWeb.Settings.Account do
   alias __MODULE__.Database
   require Logger
 
-  def mount(_params, _session, socket) do
+  def mount(_params, session, socket) do
     account = socket.assigns.account
     subject = socket.assigns.subject
     socket =
       assign(socket,
+        marketing_attribution: get_in(PortalWeb.WebsiteAttribution.fetch(session) || %{}, ["marketing"]),
         page_title: "Account",
         billing_provisioned: Billing.account_provisioned?(account),
         billing_plan_type: Billing.plan_type(account),
@@ -25,7 +26,6 @@ defmodule PortalWeb.Settings.Account do
         users_count: Database.count_users_for_account(subject),
         active_users_count: Database.count_1m_active_users_for_account(subject),
         sites_count: Database.count_groups_for_account(subject),
-        trust_anchors_enabled?: PortalWeb.NavigationComponents.trust_anchors_enabled?(),
         device_posture_enabled?: PortalWeb.NavigationComponents.device_posture_enabled?()
       )
 
@@ -38,7 +38,6 @@ defmodule PortalWeb.Settings.Account do
       <.settings_nav
         account={@account}
         current_path={@current_path}
-        trust_anchors_enabled?={@trust_anchors_enabled?}
         device_posture_enabled?={@device_posture_enabled?}
       >
         <:actions>
@@ -502,6 +501,11 @@ defmodule PortalWeb.Settings.Account do
   end
 
   def handle_event("redirect_to_billing_portal", _params, socket) do
+    Portal.Analytics.update_marketing_attribution(
+      socket.assigns.account,
+      socket.assigns.marketing_attribution
+    )
+
     with {:ok, billing_portal_url} <-
            Billing.billing_portal_url(
              socket.assigns.account,

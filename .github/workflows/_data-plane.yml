@@ -83,10 +83,10 @@ jobs:
       matrix:
         include:
           # mark:next-gateway-version
-          - release_name: gateway-1.6.1
+          - release_name: gateway-1.6.2
             config_name: release-drafter-gateway.yml
           # mark:next-headless-version
-          - release_name: headless-client-1.5.12
+          - release_name: headless-client-1.5.13
             config_name: release-drafter-headless-client.yml
 
     steps:
@@ -119,9 +119,9 @@ jobs:
         target: [x86_64-pc-windows-msvc]
         package: [firezone-headless-client]
         # mark:next-headless-version
-        release_name: [headless-client-1.5.12]
+        release_name: [headless-client-1.5.13]
         # mark:next-headless-version
-        version: [1.5.12]
+        version: [1.5.13]
     env:
       ARTIFACT_PATH: ${{ matrix.artifact }}_${{ matrix.version }}_${{ matrix.arch }}.exe
       RELEASE_NAME: ${{ matrix.release_name }}
@@ -218,9 +218,9 @@ jobs:
             artifact: firezone-client-headless-linux
             image_name: client
             # mark:next-headless-version
-            release_name: headless-client-1.5.12
+            release_name: headless-client-1.5.13
             # mark:next-headless-version
-            version: 1.5.12
+            version: 1.5.13
           - package: firezone-relay
             artifact: firezone-relay
             image_name: relay
@@ -228,9 +228,9 @@ jobs:
             artifact: firezone-gateway
             image_name: gateway
             # mark:next-gateway-version
-            release_name: gateway-1.6.1
+            release_name: gateway-1.6.2
             # mark:next-gateway-version
-            version: 1.6.1
+            version: 1.6.2
           - package: http-test-server
             artifact: http-test-server
             image_name: http-test-server
@@ -483,7 +483,7 @@ jobs:
           - name: relay
           - name: gateway
             # mark:next-gateway-version
-            version: 1.6.1
+            version: 1.6.2
           - name: client
             # mark:next-client-version
             version: 1.0.6

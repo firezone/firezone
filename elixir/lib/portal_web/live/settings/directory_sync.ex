@@ -47,7 +47,6 @@ defmodule PortalWeb.Settings.DirectorySync do
     socket =
       assign(socket,
         page_title: "Directory Sync",
-        trust_anchors_enabled?: PortalWeb.NavigationComponents.trust_anchors_enabled?(),
         device_posture_enabled?: PortalWeb.NavigationComponents.device_posture_enabled?()
       )
 
@@ -57,6 +56,15 @@ defmodule PortalWeb.Settings.DirectorySync do
 
     {:ok, init(socket, new: true)}
   end
+
+  defp refresh_hook_directory(%{assigns: %{live_action: :hook, directory: directory}} = socket) do
+    case Database.reload(directory, socket.assigns.subject) do
+      nil -> push_patch(socket, to: ~p"/#{socket.assigns.account}/settings/directory_sync")
+      directory -> assign(socket, directory: directory)
+    end
+  end
+
+  defp refresh_hook_directory(socket), do: socket
 
   defp init(socket, opts \\ []) do
     new = Keyword.get(opts, :new, false)
@@ -127,6 +135,21 @@ defmodule PortalWeb.Settings.DirectorySync do
        form: to_form(changeset),
        public_jwk: public_jwk,
        is_legacy: is_legacy,
+       okta_setup_tab: "ui",
+       open_directory_actions_id: nil
+     )}
+  end
+
+  def handle_params(%{"type" => "okta", "id" => id}, _url, %{assigns: %{live_action: :hook}} = socket) do
+    directory = Database.get_directory!(Okta.Directory, id, socket.assigns.subject)
+
+    {:noreply,
+     socket
+     |> clear_verification_state()
+     |> assign(
+       directory: directory,
+       type: "okta",
+       okta_setup_tab: "ui",
        open_directory_actions_id: nil
      )}
   end
@@ -143,8 +166,13 @@ defmodule PortalWeb.Settings.DirectorySync do
     {:noreply, push_patch(socket, to: ~p"/#{socket.assigns.account}/settings/directory_sync")}
   end
 
+  def handle_event("okta_setup_tab", %{"tab" => tab}, socket)
+      when tab in ["ui", "curl", "terraform"] do
+    {:noreply, assign(socket, :okta_setup_tab, tab)}
+  end
+
   def handle_event("handle_keydown", %{"key" => "Escape"}, socket)
-      when socket.assigns.live_action in [:select_type, :new, :edit] do
+      when socket.assigns.live_action in [:select_type, :new, :edit, :hook] do
     {:noreply, push_patch(socket, to: ~p"/#{socket.assigns.account}/settings/directory_sync")}
   end
 
@@ -321,6 +349,18 @@ defmodule PortalWeb.Settings.DirectorySync do
           {:noreply, put_flash(socket, :error, "Failed to queue directory sync.")}
       end
     end
+  end
+
+  def handle_event("reverify_webhook", %{"id" => id}, socket) do
+    directory = Database.get_directory!(Okta.Directory, id, socket.assigns.subject)
+
+    {:ok, _directory} =
+      directory
+      |> change(webhook_verified_at: nil)
+      |> Database.update_directory(socket.assigns.subject)
+
+    {:noreply,
+     push_patch(socket, to: ~p"/#{socket.assigns.account}/settings/directory_sync/okta/#{id}/hook")}
   end
 
   def handle_event("toggle_directory_actions", %{"id" => id}, socket) do
@@ -505,7 +545,7 @@ defmodule PortalWeb.Settings.DirectorySync do
   end
 
   def handle_info(:directories_changed, socket) do
-    {:noreply, init(socket)}
+    {:noreply, socket |> init() |> refresh_hook_directory()}
   end
 
   def handle_info(_message, socket), do: {:noreply, socket}
@@ -570,7 +610,6 @@ defmodule PortalWeb.Settings.DirectorySync do
       <.settings_nav
         account={@account}
         current_path={@current_path}
-        trust_anchors_enabled?={@trust_anchors_enabled?}
         device_posture_enabled?={@device_posture_enabled?}
       />
 
@@ -625,7 +664,10 @@ defmodule PortalWeb.Settings.DirectorySync do
                       Groups
                     </th>
                     <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-40">
-                      Last Synced
+                      Last Full Sync
+                    </th>
+                    <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-40">
+                      Last Update
                     </th>
                     <th class="px-6 py-2.5 w-14"></th>
                   </tr>
@@ -802,6 +844,7 @@ defmodule PortalWeb.Settings.DirectorySync do
                 type={@type}
                 submit_event="submit_directory"
                 public_jwk={assigns[:public_jwk]}
+                okta_setup_tab={@okta_setup_tab}
               />
             </div>
             <.panel_footer>
@@ -818,6 +861,56 @@ defmodule PortalWeb.Settings.DirectorySync do
               >
                 Save
               </.panel_footer_button>
+            </.panel_footer>
+          </div>
+        </div>
+
+        <div
+          id="hook-directory-panel"
+          class={[
+            "fixed top-14 right-0 bottom-0 z-20 flex flex-col w-full lg:w-3/4 xl:w-1/2",
+            "bg-elevated border-l border-border-strong",
+            "shadow-[-4px_0px_20px_rgba(0,0,0,0.07)]",
+            "transition-transform duration-200 ease-in-out",
+            (@live_action == :hook && assigns[:directory] != nil && "translate-x-0") ||
+              "translate-x-full"
+          ]}
+          phx-window-keydown="handle_keydown"
+          phx-key="Escape"
+        >
+          <div
+            :if={@live_action == :hook and assigns[:directory] != nil}
+            class="flex flex-col h-full overflow-hidden"
+          >
+            <.panel_header title="Set up the Okta event hook" variant="plain">
+              <:leading><.provider_icon provider="okta" size="md" /></:leading>
+              <:adornment><.docs_action path="/directory-sync/okta" /></:adornment>
+            </.panel_header>
+            <div class="flex-1 overflow-y-auto px-5 py-4">
+              <p class="text-sm text-body">
+                Okta can send changes to Firezone as they happen. Without an event hook, changes
+                arrive with the next full sync. This page updates as soon as Okta verifies the hook.
+              </p>
+              <div class="mt-4 p-4 border border-border bg-raised rounded">
+                <.okta_event_hook_details
+                  directory={@directory}
+                  setup_tab={@okta_setup_tab}
+                />
+              </div>
+            </div>
+            <.panel_footer>
+              <.panel_footer_button phx-click="close_panel">
+                Continue without event hooks
+              </.panel_footer_button>
+              <.initial_connection_status
+                type="the event hook"
+                waiting="Waiting for Okta to verify..."
+                done="Verified, click to continue"
+                size="sm"
+                skip_confirm="Close before Okta has verified the hook?"
+                navigate={~p"/#{@account}/settings/directory_sync"}
+                connected?={not is_nil(@directory.webhook_verified_at)}
+              />
             </.panel_footer>
           </div>
         </div>
@@ -853,7 +946,10 @@ defmodule PortalWeb.Settings.DirectorySync do
                       Groups
                     </th>
                     <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-40">
-                      Last Synced
+                      Last Full Sync
+                    </th>
+                    <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-40">
+                      Last Update
                     </th>
                     <th class="px-6 py-2.5 w-14"></th>
                   </tr>
@@ -884,6 +980,7 @@ defmodule PortalWeb.Settings.DirectorySync do
                     <td class="px-6 py-3 w-28 text-sm text-heading tabular-nums">42</td>
                     <td class="px-6 py-3 w-28 text-sm text-heading tabular-nums">8</td>
                     <td class="px-6 py-3 w-40 text-xs text-body">2 hours ago</td>
+                    <td class="px-6 py-3 w-40 text-xs text-body">5 minutes ago</td>
                     <td class="px-6 py-3 w-14"></td>
                   </tr>
                   <tr class="border-b border-border">
@@ -915,6 +1012,7 @@ defmodule PortalWeb.Settings.DirectorySync do
                     </td>
                     <td class="px-6 py-3 w-28 text-sm text-heading tabular-nums">15</td>
                     <td class="px-6 py-3 w-40 text-xs text-body">1 hour ago</td>
+                    <td class="px-6 py-3 w-40 text-xs text-body">5 minutes ago</td>
                     <td class="px-6 py-3 w-14"></td>
                   </tr>
                 </tbody>
@@ -947,6 +1045,253 @@ defmodule PortalWeb.Settings.DirectorySync do
     </div>
     """
   end
+
+  attr :type, :string, required: true
+  attr :directory, :any, required: true
+
+  defp webhook_activity(%{type: "okta", directory: %{webhook_verified_at: nil}} = assigns) do
+    ~H"""
+    <.popover>
+      <:target>
+        <span class="inline-flex items-center gap-1 text-xs text-warning">
+          <.icon name="ri-error-warning-line" class="w-3.5 h-3.5 shrink-0" /> Not set up
+        </span>
+      </:target>
+      <:content>
+        Okta can send user and group changes as they happen. Set up the event hook from
+        the row menu.
+      </:content>
+    </.popover>
+    """
+  end
+
+  defp webhook_activity(assigns) do
+    ~H"""
+    <.popover>
+      <:target>
+        <span class="text-xs text-body underline underline-offset-2 decoration-1 decoration-dotted">
+          <.relative_datetime datetime={@directory.webhook_received_at} popover={false} />
+        </span>
+      </:target>
+      <:content>
+        <p>{receives(@type)}</p>
+        <p :if={@directory.webhook_received_at} class="mt-1">
+          Last received {@directory.webhook_received_at}.
+        </p>
+        <p :if={is_nil(@directory.webhook_received_at)} class="mt-1">Nothing received yet.</p>
+      </:content>
+    </.popover>
+    """
+  end
+
+  attr :directory, :any, required: true
+
+  defp okta_event_hook_status(%{directory: %{webhook_verified_at: nil}} = assigns) do
+    ~H"""
+    <span class="text-xs text-subtle">Not verified</span>
+    """
+  end
+
+  defp okta_event_hook_status(assigns) do
+    ~H"""
+    <span class="flex items-center gap-1 text-xs text-green-700">
+      <.icon name="ri-check-line" class="w-3.5 h-3.5" />
+      Verified <.relative_datetime datetime={@directory.webhook_verified_at} />
+    </span>
+    """
+  end
+
+  attr :directory, :any, required: true
+  attr :setup_tab, :string, required: true
+
+  defp okta_event_hook_details(assigns) do
+    ~H"""
+    <p class="mb-3 text-xs text-body">
+      Choose a way to set up the event hook.
+    </p>
+    <div class="flex border-b border-border mb-3" role="tablist">
+      <button
+        :for={{tab, label, icon} <- [{"ui", "Okta Admin Console", "ri-window-line"}, {"curl", "cURL", "ri-terminal-line"}, {"terraform", "Terraform", "icon-terraform"}]}
+        type="button"
+        role="tab"
+        aria-selected={to_string(@setup_tab == tab)}
+        phx-click="okta_setup_tab"
+        phx-value-tab={tab}
+        class={[
+          "flex items-center gap-1.5 px-4 py-2 text-xs font-medium border-b-2 -mb-px whitespace-nowrap transition-colors",
+          @setup_tab == tab && "border-brand text-brand",
+          @setup_tab != tab &&
+            "border-transparent text-body hover:text-heading hover:border-border-strong"
+        ]}
+      >
+        <.icon name={icon} class="w-3.5 h-3.5 shrink-0" />
+        {label}
+      </button>
+    </div>
+    <ol :if={@setup_tab == "ui"} class="list-decimal list-inside space-y-3 text-xs text-body">
+      <li>
+        In the Okta Admin Console, go to <strong>Workflow → Event Hooks</strong>
+        and click <strong>Create Event Hook</strong>.
+      </li>
+      <li>
+        <strong>Name:</strong> enter any name, for example <code>Firezone</code>.
+      </li>
+      <li>
+        <strong>URL:</strong> paste this endpoint.
+        <div class="mt-1 ml-5">
+          <.copy_value id="okta-hook-url" value={Okta.Webhooks.endpoint_url(@directory.id)} />
+        </div>
+      </li>
+      <li>
+        <strong>Authentication field:</strong> enter this header name.
+        <div class="mt-1 ml-5"><.copy_value id="okta-hook-header" value="Authorization" /></div>
+      </li>
+      <li>
+        <strong>Authentication secret:</strong> paste this value.
+        <div class="mt-1 ml-5">
+          <.copy_value id="okta-hook-secret" value={@directory.webhook_secret} />
+        </div>
+      </li>
+      <li><strong>Custom header fields:</strong> leave empty.</li>
+      <li>
+        <strong>Subscribe to events:</strong> paste each of these names into the picker and
+        select the match. There are {length(Okta.Webhooks.events())} of them.
+        <div class="mt-1 ml-5 space-y-1">
+          <.copy_value
+            :for={{type, name} <- Okta.Webhooks.events()}
+            id={"okta-hook-event-#{String.replace(type, ".", "-")}"}
+            value={name}
+            hint={type}
+          />
+        </div>
+      </li>
+      <li>Click <strong>Save & Continue</strong>, then <strong>Verify</strong>.</li>
+    </ol>
+    <div :if={@setup_tab == "curl"}>
+      <p class="text-xs text-body">
+        Replace <code>OKTA_API_TOKEN</code> with an API token from
+        <strong>Security → API → Tokens</strong> in Okta. Then click
+        <strong>Verify</strong> next to the new hook in Okta.
+      </p>
+      <.code_block id="okta-hook-curl" class="mt-2 rounded text-xs">{okta_hook_curl(@directory)}</.code_block>
+    </div>
+    <div :if={@setup_tab == "terraform"}>
+      <p class="text-xs text-body">
+        Add these resources to a configuration that uses the official
+        <code>okta/okta</code> provider. Applying it creates and verifies the event hook.
+      </p>
+      <.code_block id="okta-hook-terraform" class="mt-2 rounded text-xs">{okta_hook_terraform(@directory)}</.code_block>
+    </div>
+    """
+  end
+
+  attr :id, :string, required: true
+  attr :value, :string, required: true
+  attr :hint, :string, default: nil
+
+  defp copy_value(assigns) do
+    ~H"""
+    <div
+      id={@id}
+      phx-hook="CopyClipboard"
+      class="flex items-center gap-2 px-3 py-2 rounded border border-border bg-raised"
+    >
+      <span id={"#{@id}-text"} class="hidden">{@value}</span>
+      <div class="flex-1 min-w-0">
+        <code class="block text-xs font-mono text-body break-all">{@value}</code>
+        <code :if={@hint} class="block text-[10px] font-mono text-subtle break-all">{@hint}</code>
+      </div>
+      <button
+        type="button"
+        data-copy-to-clipboard-target={"#{@id}-text"}
+        class="shrink-0 text-subtle hover:text-heading transition-colors"
+        title="Copy to clipboard"
+      >
+        <span id={"#{@id}-default-message"}>
+          <.icon name="ri-clipboard-line" class="w-4 h-4" />
+        </span>
+        <span id={"#{@id}-success-message"} class="hidden">
+          <.icon name="ri-check-line" class="w-4 h-4 text-success" />
+        </span>
+      </button>
+    </div>
+    """
+  end
+
+  defp okta_hook_curl(directory) do
+    events =
+      Okta.Webhooks.events()
+      |> Enum.map_join(",\n", fn {type, _name} -> ~s(        "#{type}") end)
+
+    """
+    curl -X POST "https://#{directory.okta_domain}/api/v1/eventHooks" \\
+      -H "Authorization: SSWS ${OKTA_API_TOKEN}" \\
+      -H "Accept: application/json" \\
+      -H "Content-Type: application/json" \\
+      -d '{
+        "name": "Firezone",
+        "events": {
+          "type": "EVENT_TYPE",
+          "items": [
+    #{events}
+          ]
+        },
+        "channel": {
+          "type": "HTTP",
+          "version": "1.0.0",
+          "config": {
+            "uri": "#{Okta.Webhooks.endpoint_url(directory.id)}",
+            "authScheme": {
+              "type": "HEADER",
+              "key": "Authorization",
+              "value": "#{directory.webhook_secret}"
+            }
+          }
+        }
+      }'
+    """
+  end
+
+  defp okta_hook_terraform(directory) do
+    events =
+      Okta.Webhooks.events()
+      |> Enum.map_join("\n", fn {type, _name} -> ~s(    "#{type}",) end)
+
+    """
+    resource "okta_event_hook" "firezone" {
+      name = "Firezone"
+      events = [
+    #{events}
+      ]
+
+      channel = {
+        type    = "HTTP"
+        version = "1.0.0"
+        uri     = "#{Okta.Webhooks.endpoint_url(directory.id)}"
+      }
+
+      auth = {
+        type  = "HEADER"
+        key   = "Authorization"
+        value = "#{directory.webhook_secret}"
+      }
+    }
+
+    resource "okta_event_hook_verification" "firezone" {
+      event_hook_id = okta_event_hook.firezone.id
+    }
+    """
+  end
+
+  defp receives("entra") do
+    "Microsoft Entra sends user and group changes as they happen."
+  end
+
+  defp receives("google") do
+    "Google sends user changes as they happen. Group changes come with the full sync."
+  end
+
+  defp receives("okta"), do: "Okta sends user and group changes as they happen."
 
   attr :type, :string, required: true
   attr :account, :any, required: true
@@ -1028,6 +1373,9 @@ defmodule PortalWeb.Settings.DirectorySync do
             <% end %>
         <% end %>
       </td>
+      <td class="px-6 py-3 w-40">
+        <.webhook_activity type={@type} directory={@directory} />
+      </td>
       <td class="px-6 py-3 w-14">
         <div class="flex justify-end">
           <.actions_dropdown
@@ -1050,6 +1398,16 @@ defmodule PortalWeb.Settings.DirectorySync do
               class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-raised transition-colors text-body disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <.icon name="ri-loop-left-line" class="w-3.5 h-3.5 shrink-0" /> Sync Now
+            </button>
+            <button
+              :if={@type == "okta"}
+              type="button"
+              phx-click="reverify_webhook"
+              phx-value-id={@directory.id}
+              class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-raised transition-colors text-body"
+            >
+              <.icon name="ri-flashlight-line" class="w-3.5 h-3.5 shrink-0" />
+              {if @directory.webhook_verified_at, do: "Re-verify event hook", else: "Set up event hook"}
             </button>
             <div class="my-1 border-t border-border"></div>
             <.button_with_confirmation
@@ -1198,6 +1556,7 @@ defmodule PortalWeb.Settings.DirectorySync do
   attr :verification_error, :any, default: nil
   attr :verifying, :boolean, default: false
   attr :public_jwk, :any, default: nil
+  attr :okta_setup_tab, :string, default: "ui"
 
   defp directory_form(assigns) do
     ~H"""
@@ -1516,6 +1875,24 @@ defmodule PortalWeb.Settings.DirectorySync do
         </div>
 
         <div
+          :if={@type == "okta" and @form.source.data.id}
+          class="p-4 border border-border bg-raised rounded"
+        >
+          <div class="flex items-center justify-between gap-3">
+            <h3 class="text-sm font-semibold text-heading">Event Hook</h3>
+            <.okta_event_hook_status directory={@form.source.data} />
+          </div>
+          <p class="mt-1 text-xs text-body">
+            An event hook in Okta sends changes to Firezone as they happen. No extra API scopes
+            are needed.
+          </p>
+          <.okta_event_hook_details
+            directory={@form.source.data}
+            setup_tab={@okta_setup_tab}
+          />
+        </div>
+
+        <div
           :if={@type in ["google", "entra", "okta"]}
           class="p-4 border border-border bg-raised rounded"
         >
@@ -1804,32 +2181,12 @@ defmodule PortalWeb.Settings.DirectorySync do
   defp forget_subscriptions_on_tenant_change(changeset, _directory), do: changeset
 
   defp queue_initial_sync(
-         {:ok, %Entra.Directory{is_verified: true, is_disabled: false} = directory} = result,
+         {:ok, %{is_verified: true, is_disabled: false} = directory} = result,
          %{assigns: %{account: %{features: %{idp_sync: true}}}}
        ) do
     args = %{"account_id" => directory.account_id, "directory_id" => directory.id}
 
-    case Oban.insert(Entra.Sync.new(args)) do
-      {:ok, _job} ->
-        result
-
-      {:error, reason} ->
-        Logger.info("Failed to enqueue initial directory sync job",
-          id: directory.id,
-          reason: inspect(reason)
-        )
-
-        result
-    end
-  end
-
-  defp queue_initial_sync(
-         {:ok, %Google.Directory{is_verified: true, is_disabled: false} = directory} = result,
-         %{assigns: %{account: %{features: %{idp_sync: true}}}}
-       ) do
-    args = %{"account_id" => directory.account_id, "directory_id" => directory.id}
-
-    case Oban.insert(Google.Sync.new(args)) do
+    case Oban.insert(sync_module(directory).new(args)) do
       {:ok, _job} ->
         result
 
@@ -1945,6 +2302,16 @@ defmodule PortalWeb.Settings.DirectorySync do
   end
 
   defp subscribe_webhooks(_directory), do: :ok
+
+  defp handle_submit({:ok, %Okta.Directory{} = directory}, %{assigns: %{live_action: :new}} = socket) do
+    {:noreply,
+     socket
+     |> init()
+     |> put_flash(:success, "Directory saved. Create the event hook in Okta to get changes as they happen.")
+     |> push_patch(
+       to: ~p"/#{socket.assigns.account}/settings/directory_sync/okta/#{directory.id}/hook"
+     )}
+  end
 
   defp handle_submit({:ok, _directory}, socket) do
     {:noreply,

@@ -99,7 +99,6 @@ defmodule PortalWeb.Settings.DevicePosture do
      socket
      |> assign(
        page_title: "Device Posture",
-       trust_anchors_enabled?: PortalWeb.NavigationComponents.trust_anchors_enabled?(),
        device_posture_enabled?: true,
        type: nil,
        provider: nil,
@@ -647,7 +646,6 @@ defmodule PortalWeb.Settings.DevicePosture do
       <.settings_nav
         account={@account}
         current_path={@current_path}
-        trust_anchors_enabled?={@trust_anchors_enabled?}
         device_posture_enabled?={@device_posture_enabled?}
       />
 

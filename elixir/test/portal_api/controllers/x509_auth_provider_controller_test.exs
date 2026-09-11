@@ -7,7 +7,7 @@ defmodule PortalAPI.X509AuthProviderControllerTest do
   import Portal.FeaturesFixtures
 
   setup do
-    enable_feature(:trust_anchors)
+    enable_feature(:x509_auth)
     account = account_fixture()
     actor = api_client_fixture(account: account)
 
@@ -54,13 +54,13 @@ defmodule PortalAPI.X509AuthProviderControllerTest do
       assert json_response(conn, 404)
     end
 
-    test "is unavailable when trust anchors are globally disabled", %{
+    test "is unavailable when X.509 authentication is globally disabled", %{
       conn: conn,
       account: account,
       actor: actor
     } do
       _provider = x509_provider_fixture(account: account)
-      disable_feature(:trust_anchors)
+      disable_feature(:x509_auth)
 
       conn = conn |> authorize_conn(actor) |> get("/x509_auth_provider")
 

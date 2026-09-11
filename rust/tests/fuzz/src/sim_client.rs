@@ -65,7 +65,7 @@ pub(crate) struct SimClient {
     pub(crate) received_tcp_dns_responses: BTreeSet<(dns::Upstream, QueryId)>,
 
     pub(crate) probe_observations: Vec<ProbeObservation>,
-    sent_probes: BTreeMap<ProbeProtocol, ProbeId>,
+    sent_probes: Vec<(ProbeId, ProbeProtocol)>,
 
     pub(crate) tcp_dns_client: dns_over_tcp::Client,
 
@@ -276,9 +276,11 @@ impl SimClient {
     ) -> Option<snownet::Transmit> {
         let protocol = probe_protocol_from_request(&packet)
             .expect("probe packets must be ICMP echo requests or UDP packets");
-        let previous = self.sent_probes.insert(protocol, id);
-
-        assert!(previous.is_none(), "probe transport tuples must be unique");
+        assert!(
+            self.sent_probes.iter().all(|(sent, _)| *sent != id),
+            "probe IDs must be unique"
+        );
+        self.sent_probes.push((id, protocol));
 
         self.probe_observations
             .push(ProbeObservation::RequestSubmitted(SubmittedRequest {
@@ -361,7 +363,7 @@ impl SimClient {
                             dport: DPort(dst),
                         };
 
-                        if let Some(id) = self.sent_probes.get(&protocol).copied() {
+                        if let Some(id) = self.latest_probe_for(protocol) {
                             self.record_received_response(id, packet, now);
                         } else if dst != 53 {
                             tracing::error!(?protocol, "Received ICMP error for unknown UDP probe");
@@ -380,7 +382,7 @@ impl SimClient {
                             identifier: Identifier(id),
                         };
 
-                        if let Some(id) = self.sent_probes.get(&protocol).copied() {
+                        if let Some(id) = self.latest_probe_for(protocol) {
                             self.record_received_response(id, packet, now);
                         } else {
                             tracing::error!(
@@ -429,7 +431,7 @@ impl SimClient {
                 return None;
             };
 
-            if self.sent_probes.values().any(|sent| *sent == id) {
+            if self.sent_probes.iter().any(|(sent, _)| *sent == id) {
                 self.record_received_response(id, packet, now);
                 return None;
             }
@@ -601,6 +603,8 @@ impl SimClient {
                 id,
                 at,
                 remote: Remote::Client(self.id),
+                gateway_order: None,
+                dns_nat_generation: None,
                 packet,
             }));
     }
@@ -622,6 +626,17 @@ impl SimClient {
         self.received_tcp_dns_responses.clear();
         self.tcp_client.reset();
         self.failed_tcp_packets.clear();
+    }
+
+    pub(crate) fn clear_probe_observations(&mut self) {
+        self.probe_observations.clear();
+    }
+
+    fn latest_probe_for(&self, protocol: ProbeProtocol) -> Option<ProbeId> {
+        self.sent_probes
+            .iter()
+            .rev()
+            .find_map(|(id, candidate)| (*candidate == protocol).then_some(*id))
     }
 }
 

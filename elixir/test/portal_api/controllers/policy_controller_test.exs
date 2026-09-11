@@ -126,6 +126,17 @@ defmodule PortalAPI.PolicyControllerTest do
       assert data["id"] == policy.id
     end
 
+    test "rejects 16-byte UUID filter values", %{conn: conn, actor: actor} do
+      conn = authorize_conn(conn, actor)
+
+      for filter <- ["group_id", "resource_id"],
+          value <- ["warehouse worker", URI.decode("%5CVf%C2%8E%C2%8C%F2%A9%A1%B8F%F4%8F%B8%8B")] do
+        response = get(conn, "/policies", %{filter => value, "limit" => "45"})
+
+        assert %{"status" => 400} = json_response(response, 400)
+      end
+    end
+
     test "rejects a malformed group_id filter value", %{conn: conn, actor: actor} do
       conn =
         conn
@@ -304,6 +315,69 @@ defmodule PortalAPI.PolicyControllerTest do
       assert resp["data"]["conditions"] == []
     end
 
+    test "creates an enabled policy by default", %{conn: conn, account: account, actor: actor} do
+      resource = resource_fixture(account: account)
+      group = group_fixture(account: account)
+
+      attrs = %{"group_id" => group.id, "resource_id" => resource.id}
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> post("/policies", policy: attrs)
+
+      assert %{"data" => %{"id" => id, "is_disabled" => false}} = json_response(conn, 201)
+
+      assert %Policy{is_disabled: false} = Repo.get_by(Policy, id: id, account_id: account.id)
+    end
+
+    test "creates a disabled policy", %{conn: conn, account: account, actor: actor} do
+      resource = resource_fixture(account: account)
+      group = group_fixture(account: account)
+
+      attrs = %{
+        "group_id" => group.id,
+        "resource_id" => resource.id,
+        "is_disabled" => true
+      }
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> post("/policies", policy: attrs)
+
+      assert %{"data" => %{"id" => id, "is_disabled" => true}} = json_response(conn, 201)
+
+      assert %Policy{is_disabled: true} = Repo.get_by(Policy, id: id, account_id: account.id)
+    end
+
+    test "creates an enabled policy when is_disabled is false", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      resource = resource_fixture(account: account)
+      group = group_fixture(account: account)
+
+      attrs = %{
+        "group_id" => group.id,
+        "resource_id" => resource.id,
+        "is_disabled" => false
+      }
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> post("/policies", policy: attrs)
+
+      assert %{"data" => %{"id" => id, "is_disabled" => false}} = json_response(conn, 201)
+
+      assert %Policy{is_disabled: false} = Repo.get_by(Policy, id: id, account_id: account.id)
+    end
+
     test "creates a policy with conditions", %{conn: conn, account: account, actor: actor} do
       resource = resource_fixture(account: account)
       group = group_fixture(account: account)
@@ -331,6 +405,64 @@ defmodule PortalAPI.PolicyControllerTest do
                  "values" => ["US"]
                }
              ]
+    end
+
+    test "creates a policy with a device_attested condition", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      resource = resource_fixture(account: account)
+      group = group_fixture(account: account)
+
+      attrs = %{
+        "group_id" => group.id,
+        "resource_id" => resource.id,
+        "conditions" => [
+          %{"property" => "device_attested", "operator" => "is", "values" => ["true"]}
+        ]
+      }
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> post("/policies", policy: attrs)
+
+      assert resp = json_response(conn, 201)
+
+      assert resp["data"]["conditions"] == [
+               %{
+                 "property" => "device_attested",
+                 "operator" => "is",
+                 "values" => ["true"]
+               }
+             ]
+    end
+
+    test "rejects a device_attested condition with an unsupported operator", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      resource = resource_fixture(account: account)
+      group = group_fixture(account: account)
+
+      attrs = %{
+        "group_id" => group.id,
+        "resource_id" => resource.id,
+        "conditions" => [
+          %{"property" => "device_attested", "operator" => "is_in", "values" => ["true"]}
+        ]
+      }
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> post("/policies", policy: attrs)
+
+      assert json_response(conn, 422)
     end
 
     test "creates a policy with auth_provider_id and time conditions", %{
@@ -810,6 +942,38 @@ defmodule PortalAPI.PolicyControllerTest do
       assert json_response(conn, 200)["data"]["conditions"] == [
                %{
                  "property" => "client_verified",
+                 "operator" => "is",
+                 "values" => ["true"]
+               }
+             ]
+    end
+
+    test "updates a policy to require an attested client", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      policy =
+        policy_with_conditions_fixture(%{
+          account: account,
+          conditions: [%{property: :client_verified, operator: :is, values: ["true"]}]
+        })
+
+      attrs = %{
+        "conditions" => [
+          %{"property" => "device_attested", "operator" => "is", "values" => ["true"]}
+        ]
+      }
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> put("/policies/#{policy.id}", policy: attrs)
+
+      assert json_response(conn, 200)["data"]["conditions"] == [
+               %{
+                 "property" => "device_attested",
                  "operator" => "is",
                  "values" => ["true"]
                }

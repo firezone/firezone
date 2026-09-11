@@ -1,7 +1,7 @@
 [package]
 name = "firezone-gui-client"
 # mark:next-gui-version
-version = "1.5.17"
+version = "1.5.18"
 description = "Firezone"
 edition = { workspace = true }
 default-run = "firezone-gui-client"
@@ -120,6 +120,8 @@ features = [
     "Win32_System_RemoteDesktop",
     # `AttachConsole` so release builds print to the terminal they were launched from.
     "Win32_System_Console",
+    # `PostMessageW` to close the tray menu from off the main thread.
+    "Win32_UI_WindowsAndMessaging",
     # WinRT `Windows.Foundation.Uri` and
     # `Windows.Management.Deployment.PackageManager` for the
     # `register-sparse.exe` WiX custom action.

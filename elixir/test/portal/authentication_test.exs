@@ -776,6 +776,17 @@ defmodule Portal.AuthenticationTest do
   end
 
   describe "verify_gateway_token/1 with single-owner tokens" do
+    test "rejects a signed token with a nil secret fragment" do
+      gateway = gateway_fixture()
+      token = gateway_token_fixture(gateway: gateway)
+      config = Portal.Config.fetch_env!(:portal, Portal.Tokens)
+      key_base = Keyword.fetch!(config, :key_base)
+      salt = Keyword.fetch!(config, :salt) <> "gateway"
+      malformed = "." <> Plug.Crypto.sign(key_base, salt, {token.account_id, token.id, nil})
+
+      assert {:error, :invalid_token} = verify_gateway_token(malformed)
+    end
+
     test "verifies an active single-owner token" do
       gateway = gateway_fixture()
       token = gateway_token_fixture(gateway: gateway)

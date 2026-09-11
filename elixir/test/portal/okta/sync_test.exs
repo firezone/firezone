@@ -5,6 +5,7 @@ defmodule Portal.Okta.SyncTest do
   import Ecto.Query
   import ExUnit.CaptureLog
   import Portal.AccountFixtures
+  import Portal.ObanFixtures
   import Portal.OktaDirectoryFixtures
 
   alias Portal.Okta.APIClient
@@ -144,6 +145,76 @@ defmodule Portal.Okta.SyncTest do
       updated_directory = Repo.get(Portal.Okta.Directory, directory.id)
       refute is_nil(updated_directory.synced_at)
       assert updated_directory.error_message == nil
+    end
+
+    test "updates the name and email of an actor it created when the user changes" do
+      account = account_fixture(features: %{idp_sync: true})
+
+      directory =
+        okta_directory_fixture(
+          account: account,
+          private_key_jwk: @test_private_key_jwk,
+          kid: "test_kid"
+        )
+
+      base_directory = Repo.get_by!(Portal.Directory, id: directory.id, account_id: account.id)
+
+      actor =
+        Portal.ActorFixtures.actor_fixture(account: account, name: "Old Name", email: "old@example.com")
+        |> Ecto.Changeset.change(created_by_directory_id: directory.id)
+        |> Repo.update!()
+
+      Portal.IdentityFixtures.identity_fixture(
+        account: account,
+        actor: actor,
+        directory: base_directory,
+        issuer: "https://#{directory.okta_domain}",
+        idp_id: "user_123",
+        email: "old@example.com",
+        synced_at: DateTime.add(DateTime.utc_now(), -3600, :second)
+      )
+
+      user = %{
+        "id" => "user_123",
+        "status" => "ACTIVE",
+        "profile" => %{"email" => "new@example.com", "firstName" => "New", "lastName" => "Name"}
+      }
+
+      Req.Test.expect(APIClient, 100, fn %{request_path: path} = conn ->
+        cond do
+          String.ends_with?(path, "/oauth2/v1/token") ->
+            Req.Test.json(conn, %{
+              "access_token" => @test_access_token,
+              "token_type" => "DPoP",
+              "expires_in" => 3600
+            })
+
+          String.ends_with?(path, "/oauth2/v1/introspect") ->
+            Req.Test.json(conn, %{
+              "active" => true,
+              "scope" => "okta.apps.read okta.users.read okta.groups.read"
+            })
+
+          String.ends_with?(path, "/apps") and not String.contains?(path, "/users") and
+              not String.contains?(path, "/groups") ->
+            Req.Test.json(conn, [%{"id" => "app_123", "label" => "Test App"}])
+
+          String.contains?(path, "/apps/app_123/users") ->
+            Req.Test.json(conn, [%{"id" => "appuser_1", "_embedded" => %{"user" => user}}])
+
+          String.contains?(path, "/apps/app_123/groups") ->
+            Req.Test.json(conn, [])
+
+          true ->
+            Req.Test.json(conn, %{"error" => "unexpected: #{path}"})
+        end
+      end)
+
+      assert :ok = perform_job(Sync, %{account_id: directory.account_id, directory_id: directory.id})
+
+      actor = Repo.get_by!(Portal.Actor, id: actor.id)
+      assert actor.name == "New Name"
+      assert actor.email == "new@example.com"
     end
 
     test "filters app users by syncable Okta status" do
@@ -496,6 +567,17 @@ defmodule Portal.Okta.SyncTest do
       # No data should be created
       assert Repo.all(ExternalIdentity) == []
       assert Repo.all(Group) == []
+    end
+
+    test "snoozes while another sync for the directory is executing" do
+      account = account_fixture(features: %{idp_sync: true})
+      directory = okta_directory_fixture(account: account)
+      args = %{account_id: directory.account_id, directory_id: directory.id}
+
+      executing_job(Sync.new(args))
+
+      assert {:snooze, seconds} = perform_job(Sync, args)
+      assert seconds in 16..45
     end
 
     test "raises SyncError when user is missing email field" do
@@ -1891,7 +1973,11 @@ defmodule Portal.Okta.SyncTest do
         )
 
       {deleted_count, _} =
-        Database.delete_unsynced_groups(account.id, directory.id, current_sync_time)
+        Portal.DirectorySync.Database.delete_unsynced_groups(
+          account.id,
+          directory.id,
+          current_sync_time
+        )
 
       assert deleted_count == 2
 
@@ -1943,7 +2029,11 @@ defmodule Portal.Okta.SyncTest do
       )
 
       {deleted_count, _} =
-        Database.delete_unsynced_identities(account.id, directory.id, current_sync_time)
+        Portal.DirectorySync.Database.delete_unsynced_identities(
+          account.id,
+          directory.id,
+          current_sync_time
+        )
 
       assert deleted_count == 1
 

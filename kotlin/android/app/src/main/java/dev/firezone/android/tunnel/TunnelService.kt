@@ -15,6 +15,7 @@ import android.os.Binder
 import android.os.Build
 import android.os.Bundle
 import android.os.IBinder
+import android.provider.Settings
 import com.google.android.gms.tasks.Tasks
 import com.google.firebase.installations.FirebaseInstallations
 import com.squareup.moshi.Moshi
@@ -99,6 +100,7 @@ class TunnelService : VpnService() {
     private var tunnelDnsAddresses: MutableList<String> = mutableListOf()
     private var tunnelSearchDomain: String? = null
     private var tunnelRoutes: MutableList<Cidr> = mutableListOf()
+    private var acceptedFamilies: Set<AddressFamily>? = null
     private var resourceState: ResourceState = ResourceState.UNSET
 
     // For reacting to changes to the network
@@ -168,7 +170,7 @@ class TunnelService : VpnService() {
             binder
         }
 
-    private fun buildVpnService() {
+    private fun vpnBuilder(families: Set<AddressFamily>): Builder {
         fun handleApplications(
             appRestrictions: Bundle,
             key: String,
@@ -179,13 +181,15 @@ class TunnelService : VpnService() {
             }
         }
 
-        Builder()
+        val routes = tunnelRoutes.filter { familyOf(it.address) in families }
+
+        return Builder()
             .apply {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                     setMetered(false) // Inherit the metered status from the underlying networks.
                 }
 
-                if (tunnelRoutes.all { it.prefix != 0 }) {
+                if (routes.all { it.prefix != 0 }) {
                     // Allow traffic to bypass the VPN interface when Always-on VPN is enabled only
                     // if full-route is not enabled.
                     allowBypass()
@@ -207,11 +211,11 @@ class TunnelService : VpnService() {
                 addDisallowedApplication("com.google.firebase.messaging") // Firebase Cloud Messaging
                 addDisallowedApplication("com.google.android.gsf") // Google Services Framework
 
-                tunnelRoutes.forEach {
+                routes.forEach {
                     addRoute(it.address, it.prefix)
                 }
 
-                tunnelDnsAddresses.forEach { dns ->
+                tunnelDnsAddresses.filter { familyOf(it) in families }.forEach { dns ->
                     addDnsServer(dns)
                 }
 
@@ -219,18 +223,72 @@ class TunnelService : VpnService() {
                     addSearchDomain(it)
                 }
 
-                addAddress(tunnelIpv4Address!!, 32)
-                addAddress(tunnelIpv6Address!!, 128)
-            }.runCatching { establish() }
-            .onFailure { Log.e(TAG, "Error establishing VPN service", it) }
-            .onSuccess { fd ->
-                if (fd == null) {
-                    Log.d(TAG, "VpnService.Builder.establish() returned null")
-                    return@onSuccess
+                if (AddressFamily.V4 in families) {
+                    addAddress(tunnelIpv4Address!!, 32)
                 }
 
-                sendTunnelCommand(TunnelCommand.SetTun(fd.detachFd()))
+                if (AddressFamily.V6 in families) {
+                    addAddress(tunnelIpv6Address!!, 128)
+                }
             }
+    }
+
+    private fun buildVpnService() {
+        if (tunnelIpv4Address == null || tunnelIpv6Address == null) {
+            // A managed-configuration change can land before connlib has handed us an interface.
+            Log.d(TAG, "Not building the VPN interface: connlib has not configured one yet")
+            return
+        }
+
+        // Android hands the addresses to the kernel one at a time and discards the ones it already
+        // applied as soon as one is rejected, so a device that refuses IPv6 fails the entire
+        // interface. Dropping the family it will not take is the only way to get a TUN device there.
+        //
+        // A rejected `establish` also tears down the interface we already have, so stay on the
+        // families this device accepted rather than re-running the doomed attempts on every update.
+        val attempts = acceptedFamilies?.let { listOf(it) } ?: ADDRESS_FAMILY_ATTEMPTS
+        var lastFailure: Throwable? = null
+
+        for (families in attempts) {
+            val fd =
+                try {
+                    vpnBuilder(families).establish()
+                } catch (e: Exception) {
+                    Log.d(TAG, "Cannot establish the VPN interface for $families", e)
+                    lastFailure = e
+                    continue
+                }
+
+            if (fd == null) {
+                // `establish` only returns null once our VPN consent is gone, and no narrower
+                // interface wins it back.
+                Log.e(TAG, "VpnService.Builder.establish() returned null")
+                showErrorNotification(
+                    "VPN permission required",
+                    "Firezone is no longer allowed to set up a VPN on this device. Open Firezone to grant the permission again.",
+                )
+                disconnect()
+                return
+            }
+
+            if (families != ALL_ADDRESS_FAMILIES) {
+                Log.i(TAG, "Established the VPN interface with $families only")
+            }
+
+            acceptedFamilies = families
+            sendTunnelCommand(TunnelCommand.SetTun(fd.detachFd()))
+            return
+        }
+
+        // Whatever we learned about this device no longer holds, so start over next time.
+        acceptedFamilies = null
+
+        Log.e(TAG, "Cannot establish the VPN interface", checkNotNull(lastFailure))
+        showErrorNotification(
+            "Could not create the VPN interface",
+            "This device rejected Firezone's tunnel configuration. Contact your administrator for support.",
+        )
+        disconnect()
     }
 
     private val restrictionsFilter = IntentFilter(Intent.ACTION_APPLICATION_RESTRICTIONS_CHANGED)
@@ -561,18 +619,23 @@ class TunnelService : VpnService() {
         return deviceId
     }
 
-    fun startConnectedNotification() {
+    private fun startConnectedNotification() {
         val notification = TunnelNotification.createConnectedNotification(this)
         startForeground(TunnelNotification.CONNECTED_NOTIFICATION_ID, notification)
     }
 
     private fun getDeviceName(): String {
-        val deviceName = appRestrictions.getString("deviceName")
-        return if (deviceName.isNullOrBlank() || deviceName == "null") {
-            Build.MODEL
-        } else {
-            deviceName
+        val managedName = appRestrictions.getString("deviceName")
+        if (!managedName.isNullOrBlank() && managedName != "null") {
+            return managedName
         }
+
+        val userName = Settings.Global.getString(contentResolver, Settings.Global.DEVICE_NAME)
+        if (!userName.isNullOrBlank()) {
+            return userName
+        }
+
+        return Build.MODEL
     }
 
     sealed class TunnelCommand {
@@ -670,6 +733,13 @@ class TunnelService : VpnService() {
 
                             is TunnelCommand.SetTun -> {
                                 session.setTun(command.fd)
+
+                                // connlib only moves packets once it holds the TUN device, so this
+                                // is the first moment the tunnel is actually carrying traffic.
+                                if (tunnelState != State.UP) {
+                                    tunnelState = State.UP
+                                    startConnectedNotification()
+                                }
                             }
 
                             is TunnelCommand.Reset -> {
@@ -838,6 +908,23 @@ class TunnelService : VpnService() {
             UP,
             DOWN,
         }
+
+        enum class AddressFamily {
+            V4,
+            V6,
+        }
+
+        private val ALL_ADDRESS_FAMILIES = setOf(AddressFamily.V4, AddressFamily.V6)
+
+        // Ordered from the interface we want to the ones we settle for.
+        private val ADDRESS_FAMILY_ATTEMPTS =
+            listOf(
+                ALL_ADDRESS_FAMILIES,
+                setOf(AddressFamily.V4),
+                setOf(AddressFamily.V6),
+            )
+
+        private fun familyOf(address: String): AddressFamily = if (address.contains(':')) AddressFamily.V6 else AddressFamily.V4
 
         private const val SESSION_NAME: String = "Firezone Connection"
         private const val MTU: Int = 1280

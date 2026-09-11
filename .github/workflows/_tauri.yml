@@ -27,7 +27,7 @@ jobs:
     runs-on: ubuntu-24.04
     env:
       # mark:next-gui-version
-      RELEASE_NAME: gui-client-1.5.17
+      RELEASE_NAME: gui-client-1.5.18
     steps:
       - uses: release-drafter/release-drafter@34d80673e067bdc0c24568d3af899c216adcfaa9 # v7.7.0
         if: "${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}"
@@ -53,8 +53,9 @@ jobs:
       - run: pnpm eslint .
 
   # Renders every screen the client can show to a PNG; nothing is compared against
-  # a reference.
+  # a reference. Only a pull request has a diff to put them in.
   screenshots:
+    if: github.ref_name != 'main' && !startsWith(github.head_ref, 'chore/publish-')
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -105,14 +106,59 @@ jobs:
         timeout-minutes: 15
         with:
           runtime: true
+      - name: Install GNOME screenshot dependencies
+        if: matrix.runs-on == 'ubuntu-24.04' && !startsWith(github.head_ref, 'chore/publish-')
+        uses: ./.github/actions/apt-install
+        with:
+          packages: gnome-shell gnome-shell-extension-appindicator yaru-theme-gnome-shell fonts-cantarell libgl1-mesa-dri
       - run: pnpm install
       - run: pnpm vite build
-      - name: Build client
-        run: cargo build -p firezone-gui-client --all-targets
-      - name: Run smoke test
+      - name: Build client and smoke tests
+        # The GNOME capture runs without a Vite server, so embed the frontend.
+        run: cargo build -p firezone-gui-client -p gui-smoke-test --all-targets ${{ matrix.runs-on == 'ubuntu-24.04' && '--features tauri/custom-protocol' || '' }}
+      - name: GUI starts, connects to the tunnel and quits
         working-directory: ./rust
-        run: cargo run -p gui-smoke-test
+        run: cargo run -p gui-smoke-test -- starts-and-quits
+        timeout-minutes: 2
+      - name: GUI handles a crash
+        working-directory: ./rust
+        run: cargo run -p gui-smoke-test -- handles-crash
+        timeout-minutes: 2
+      - name: Tunnel service rejects a non-allowlisted GUI
+        if: runner.os == 'Linux'
+        working-directory: ./rust
+        run: cargo run -p gui-smoke-test -- rejects-unallowlisted-gui
+        timeout-minutes: 2
+      - name: Second GUI instance hands off to the first
+        working-directory: ./rust
+        run: cargo run -p gui-smoke-test -- hands-off-to-first-instance
+        timeout-minutes: 2
+      # Confined to a single runner: only one may draw the committed
+      # screenshot, or the Windows runners would fight over it.
+      - name: Photograph the Windows tray menu
+        id: windows-tray
+        if: matrix.runs-on == 'windows-2025' && !startsWith(github.head_ref, 'chore/publish-')
+        working-directory: ./rust
+        run: cargo run -p gui-smoke-test -- tray-screenshot --submenu "Engineering wiki" --output gui-client/screenshots/windows-tray-menu-light.png
         timeout-minutes: 4
+      - name: Photograph the GNOME tray menu
+        id: gnome-tray
+        if: matrix.runs-on == 'ubuntu-24.04' && !startsWith(github.head_ref, 'chore/publish-')
+        working-directory: ./rust
+        run: dbus-run-session -- cargo run -p gui-smoke-test -- tray-screenshot --submenu "Engineering wiki" --output gui-client/screenshots/gnome-tray-menu-light.png
+        timeout-minutes: 5
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: ${{ always() && (steps.windows-tray.outcome == 'success' || steps.gnome-tray.outcome == 'success') }}
+        with:
+          name: gui-client-tray-screenshots-${{ matrix.runs-on }}
+          path: rust/gui-client/screenshots/${{ runner.os == 'Windows' && 'windows' || 'gnome' }}-tray-menu-light.png
+          if-no-files-found: error
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: ${{ always() && matrix.runs-on == 'ubuntu-24.04' && !startsWith(github.head_ref, 'chore/publish-') }}
+        with:
+          name: gui-client-tray-diagnostics-gnome
+          path: rust/target/gui-smoke-test/gnome-tray
+          if-no-files-found: ignore
 
   build-gui:
     name: build-gui-${{ matrix.runs-on }}
@@ -144,16 +190,16 @@ jobs:
             pkg-extension: msi
     env:
       # mark:next-gui-version
-      ARTIFACT_SRC: ./rust/gui-client/firezone-client-gui-${{ matrix.os }}_1.5.17_${{ matrix.arch }}
+      ARTIFACT_SRC: ./rust/gui-client/firezone-client-gui-${{ matrix.os }}_1.5.18_${{ matrix.arch }}
       # mark:next-gui-version
-      ARTIFACT_DST: firezone-client-gui-${{ matrix.os }}_1.5.17_${{ matrix.arch }}
+      ARTIFACT_DST: firezone-client-gui-${{ matrix.os }}_1.5.18_${{ matrix.arch }}
       AZURE_KEY_VAULT_URI: ${{ vars.AZURE_CODESIGNING_KEY_VAULT_URI }}
       AZURE_CERT_NAME: ${{ vars.AZURE_CODESIGNING_CERTIFICATE_NAME }}
       # mark:next-gui-version
-      BINARY_DEST_PATH: firezone-client-gui-${{ matrix.os }}_1.5.17_${{ matrix.arch }}
+      BINARY_DEST_PATH: firezone-client-gui-${{ matrix.os }}_1.5.18_${{ matrix.arch }}
       # Seems like there's no way to de-dupe env vars that depend on each other
       # mark:next-gui-version
-      FIREZONE_GUI_VERSION: 1.5.17
+      FIREZONE_GUI_VERSION: 1.5.18
       RENAME_SCRIPT: ../../scripts/build/tauri-rename-${{ matrix.os }}.sh
       SYMBOLS_SCRIPT: ../../scripts/build/tauri-symbols-${{ matrix.os }}.sh
       TEST_INSTALL_SCRIPT: ../../scripts/tests/gui-client-install-${{ matrix.os }}-${{ matrix.pkg-extension }}

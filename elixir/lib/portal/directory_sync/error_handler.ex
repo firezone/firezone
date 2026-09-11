@@ -5,11 +5,25 @@ defmodule Portal.DirectorySync.ErrorHandler do
   Routes errors to provider-specific handlers and builds Sentry context.
   """
 
+  require Logger
+
   @doc """
   Handle an error from a directory sync job.
 
-  Routes to the appropriate provider handler and returns Sentry context.
+  Routes to the appropriate provider handler and returns Sentry context. A
+  job timeout is ours to act on, not the admin's, so it is reported without
+  touching the directory.
   """
+  def handle_error(%{reason: %Oban.TimeoutError{} = reason, job: job}) do
+    Logger.warning("Directory sync job timed out and left the directory unchanged",
+      worker: job.worker,
+      directory_id: job.args["directory_id"],
+      error_message: Exception.message(reason)
+    )
+
+    build_sentry_context(reason, job)
+  end
+
   def handle_error(%{reason: reason, job: job}) do
     directory_id = job.args["directory_id"]
 

@@ -26,6 +26,7 @@ env:
   ASC_KEY_TYPE: team
   ASC_STRICT_AUTH: "1"
   ASC_TELEMETRY_DISABLED: "1"
+  REVIEWER_SCREENSHOT: screenshots/macos/26/reviewer-sign-in-light.png
   # mark:next-apple-version
   RELEASE_NAME: apple-client-1.5.20
 
@@ -91,6 +92,11 @@ jobs:
 
       - name: Stage App Store inputs
         run: |
+          # Use the submission's selection without changing the build's screenshot files.
+          git fetch --depth=1 origin "$GITHUB_SHA"
+          git restore --source="$GITHUB_SHA" --worktree -- \
+            swift/apple/app-store/screenshots-ios.txt \
+            swift/apple/app-store/screenshots-macos.txt
           if [[ ! -f scripts/upload/apple-version.sh ]]; then
             echo "This draft predates the submission workflow. Run Swift from main and QA the new draft first." >&2
             exit 1
@@ -184,6 +190,22 @@ jobs:
               --device-type APP_IPAD_PRO_3GEN_129 \
               --replace \
               --confirm
+
+            # Remove other size overrides so Apple scales the screenshots we upload.
+            asc screenshots list \
+              --app "$ASC_APP_ID" \
+              --version "$version" \
+              --platform IOS \
+              --locale en-US \
+              --output json \
+              | jq -r '.sets[]
+                  | select(.set.attributes.screenshotDisplayType
+                      | (startswith("APP_IPHONE_") and . != "APP_IPHONE_67")
+                        or (startswith("APP_IPAD_") and . != "APP_IPAD_PRO_3GEN_129"))
+                  | .screenshots[]?.id' \
+              | while IFS= read -r screenshot_id; do
+                  asc screenshots delete --id "$screenshot_id" --confirm
+                done
           else
             asc screenshots upload \
               --app "$ASC_APP_ID" \
@@ -232,23 +254,52 @@ jobs:
           fi
           verify_app_store_build "$build_id"
           {
+            echo "version_id=$version_id"
             echo "build_id=$build_id"
             echo "phase=$version_phase"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Check App Store submission readiness
+      - name: Update reviewer attachments
+        if: steps.build.outputs.phase == 'editable'
+        working-directory: swift/apple
+        env:
+          ASC_KEY_ID: ${{ secrets.APPLE_APP_STORE_CONNECT_APP_MANAGER_API_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.APPLE_APP_STORE_CONNECT_ISSUER_ID }}
+          ASC_PRIVATE_KEY: ${{ secrets.APPLE_APP_STORE_CONNECT_APP_MANAGER_API_KEY }}
+          VERSION_ID: ${{ steps.build.outputs.version_id }}
+        run: |
+          set -euo pipefail
+
+          detail_id=$(asc review details-for-version --version-id "$VERSION_ID" --output json | jq -er '.data.id')
+          attachments=$(asc review attachments-list --review-detail "$detail_id" --paginate --output json | jq -r '.data[].id')
+
+          # Upload first so a failed upload leaves the existing attachments intact.
+          asc review attachments-upload --review-detail "$detail_id" --file "$REVIEWER_SCREENSHOT" --output json \
+            | jq -er '.data | select(.attributes.assetDeliveryState.state != "FAILED") | .id'
+
+          for id in $attachments; do
+            asc review attachments-delete --id "$id" --confirm
+          done
+
+      # App info is shared across platforms, so its review state need not match
+      # this version's state as `asc validate` expects.
+      - name: Preview platform submission
         if: steps.build.outputs.phase != 'submitted'
         working-directory: swift/apple
         env:
           ASC_KEY_ID: ${{ secrets.APPLE_APP_STORE_CONNECT_APP_MANAGER_API_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.APPLE_APP_STORE_CONNECT_ISSUER_ID }}
           ASC_PRIVATE_KEY: ${{ secrets.APPLE_APP_STORE_CONNECT_APP_MANAGER_API_KEY }}
+          VERSION_ID: ${{ steps.build.outputs.version_id }}
+          BUILD_ID: ${{ steps.build.outputs.build_id }}
         run: |
-          asc validate \
+          asc review submit \
             --app "$ASC_APP_ID" \
-            --version "${RELEASE_NAME#apple-client-}" \
+            --version-id "$VERSION_ID" \
+            --build-id "$BUILD_ID" \
             --platform "$ASC_PLATFORM" \
-            --output table
+            --dry-run \
+            --output json
 
       - name: Summarize the candidate
         env:
@@ -265,7 +316,7 @@ jobs:
             echo
             echo "- Source: [\`${short_sha}\`](https://github.com/${GITHUB_REPOSITORY}/commit/${SOURCE_SHA})"
             echo "- Build: \`${BUILD_NUMBER}\`"
-            echo "- What's New: [Apple changelog]($changelog)"
+            echo "- What's New: $changelog"
             echo "- [Open Firezone in App Store Connect](https://appstoreconnect.apple.com/apps/${ASC_APP_ID}/distribution)"
             echo
             if [[ "$VERSION_PHASE" == submitted ]]; then
@@ -280,6 +331,9 @@ jobs:
               printf -- "- [\`%s\`](https://github.com/%s/blob/%s/%s)\n" \
                 "$screenshot" "$GITHUB_REPOSITORY" "$SOURCE_SHA" "$screenshot"
             done < "$RUNNER_TEMP/app-store-screenshots.txt"
+            echo
+            echo "### App Review"
+            echo "- [Reviewer attachment](https://github.com/${GITHUB_REPOSITORY}/blob/${SOURCE_SHA}/swift/apple/${REVIEWER_SCREENSHOT})"
           } >> "$GITHUB_STEP_SUMMARY"
 
   review:

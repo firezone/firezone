@@ -221,7 +221,7 @@ defmodule PortalAPI.MembershipController do
   end
 
   defp valid_actor_id?(value) when is_binary(value) do
-    match?({:ok, _uuid}, Ecto.UUID.cast(value))
+    match?({:ok, _uuid}, Ecto.UUID.dump(value))
   end
 
   defp valid_actor_id?(_value), do: false

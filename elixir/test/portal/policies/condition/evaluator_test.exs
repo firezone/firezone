@@ -324,6 +324,63 @@ defmodule Portal.Policies.EvaluatorTest do
     end
   end
 
+  describe "fetch_conformation_expiration/3 with device_attested" do
+    test "is with values [\"true\"] returns ok when the connection attested" do
+      attested_client = %Portal.Device{type: :client, attested?: true}
+
+      condition = %{
+        property: :device_attested,
+        operator: :is,
+        values: ["true"]
+      }
+
+      assert fetch_conformation_expiration(condition, attested_client, nil) == {:ok, nil}
+    end
+
+    test "is with values [\"true\"] returns error when the connection did not attest" do
+      unattested_client = %Portal.Device{type: :client, attested?: false}
+
+      condition = %{
+        property: :device_attested,
+        operator: :is,
+        values: ["true"]
+      }
+
+      assert fetch_conformation_expiration(condition, unattested_client, nil) == :error
+    end
+
+    test "is with values [\"true\"] ignores past attestation of the device row" do
+      client = %Portal.Device{
+        type: :client,
+        attested?: false,
+        last_attested_at: DateTime.utc_now(),
+        verified_at: DateTime.utc_now()
+      }
+
+      condition = %{
+        property: :device_attested,
+        operator: :is,
+        values: ["true"]
+      }
+
+      assert fetch_conformation_expiration(condition, client, nil) == :error
+    end
+
+    test "is with values other than [\"true\"] always returns ok" do
+      attested_client = %Portal.Device{type: :client, attested?: true}
+      unattested_client = %Portal.Device{type: :client, attested?: false}
+
+      condition = %{
+        property: :device_attested,
+        operator: :is,
+        values: ["false"]
+      }
+
+      assert fetch_conformation_expiration(condition, attested_client, nil) == {:ok, nil}
+      assert fetch_conformation_expiration(condition, unattested_client, nil) == {:ok, nil}
+    end
+  end
+
   describe "fetch_conformation_expiration/3 with remote_ip_location_region" do
     test "returns error when region is nil regardless of operator" do
       client = %Portal.Device{type: :client, last_seen_remote_ip_location_region: nil}

@@ -162,18 +162,9 @@ defmodule PortalAPI.Sockets do
     )
   end
 
-  def auth_context(%{user_agent: user_agent, x_headers: x_headers, peer_data: peer_data}, type) do
-    remote_ip = real_ip(x_headers, peer_data)
+  def auth_context(%{user_agent: user_agent, x_headers: x_headers} = connect_info, type) do
+    remote_ip = Portal.Sockets.remote_ip(connect_info)
     Portal.Authentication.Context.build(remote_ip, user_agent, x_headers, type)
-  end
-
-  defp real_ip(x_headers, peer_data) do
-    real_ip =
-      if is_list(x_headers) and x_headers != [] do
-        RemoteIp.from(x_headers, Portal.Endpoint.real_ip_opts())
-      end
-
-    real_ip || peer_data.address
   end
 
   @session_field_limits %{

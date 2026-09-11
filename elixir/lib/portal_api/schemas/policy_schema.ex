@@ -28,6 +28,10 @@ defmodule PortalAPI.Schemas.Policy do
         IANA timezone name, e.g. `"M/09:00-17:00/America/New_York"`.
       * `client_verified` with `is`: `values` is a single-element list
         containing `"true"` or `"false"`.
+      * `device_attested` with `is`: `values` is a single-element list
+        containing `"true"` or `"false"`. `"true"` requires the Client to
+        have presented a valid X.509 certificate from one of the account's
+        trust anchors on its current connection.
       """,
       type: :object,
       properties: %{
@@ -40,7 +44,8 @@ defmodule PortalAPI.Schemas.Policy do
             "remote_ip",
             "auth_provider_id",
             "current_utc_datetime",
-            "client_verified"
+            "client_verified",
+            "device_attested"
           ]
         },
         operator: %Schema{
@@ -102,6 +107,14 @@ defmodule PortalAPI.Schemas.Policy do
             "Whether flow logs are reported for connections authorized by this Policy. " <>
               "Defaults to true. Always false for Internet Resource policies.",
           default: true
+        },
+        is_disabled: %Schema{
+          example: false,
+          type: :boolean,
+          description:
+            "Whether the Policy is disabled. A disabled Policy grants no access but is " <>
+              "otherwise retained. Defaults to false.",
+          default: false
         },
         conditions: %Schema{
           example: [

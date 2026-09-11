@@ -1535,4 +1535,49 @@ defmodule PortalWeb.DevicesTest do
        [[{:AttributeTypeAndValue, {2, 5, 4, 3}, {:utf8String, common_name}}]]}
     )
   end
+  describe "live table filters across panel operations" do
+    setup %{account: account, actor: actor} do
+      matching = client_fixture(account: account, actor: actor, name: "laptop-alpha")
+      other = client_fixture(account: account, actor: actor, name: "desktop-beta")
+      filter = %{"devices_filter[search]" => "laptop"}
+      %{matching: matching, other: other, filter: filter}
+    end
+
+    test "are kept when editing a device", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      matching: matching,
+      other: other,
+      filter: filter
+    } do
+      {:ok, lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/devices/#{matching.id}?#{filter}")
+
+      refute html =~ other.name
+
+      render_click(lv, "open_device_edit_form")
+      assert_patch(lv, ~p"/#{account}/devices/#{matching.id}/edit?#{filter}")
+
+      render_click(lv, "cancel_device_edit_form")
+      assert_patch(lv, ~p"/#{account}/devices/#{matching.id}?#{filter}")
+
+      render_click(lv, "open_device_edit_form")
+
+      lv
+      |> form("[phx-submit='submit_device_edit_form']", device: %{name: "laptop-renamed"})
+      |> render_submit()
+
+      assert_patch(lv, ~p"/#{account}/devices/#{matching.id}?#{filter}")
+
+      html = render(lv)
+      assert html =~ "laptop-renamed"
+      refute html =~ other.name
+
+      render_click(lv, "close_panel")
+      assert_patch(lv, ~p"/#{account}/devices?#{filter}")
+    end
+  end
 end

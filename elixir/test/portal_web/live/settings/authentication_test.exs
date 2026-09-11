@@ -176,7 +176,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       actor: actor,
       conn: conn
     } do
-      enable_feature(:trust_anchors)
+      enable_feature(:x509_auth)
       provider = x509_provider_fixture(account: account)
 
       {:ok, lv, html} =
@@ -208,7 +208,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       actor: actor,
       conn: conn
     } do
-      enable_feature(:trust_anchors)
+      enable_feature(:x509_auth)
       _provider = x509_provider_fixture(account: account)
       _anchor = trust_anchor_fixture(account: account)
 
@@ -221,7 +221,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       refute html =~ "No devices will be able to use this authentication provider"
     end
 
-    test "hides X.509 when trust anchors are globally disabled", %{
+    test "hides X.509 when X.509 authentication is globally disabled", %{
       account: account,
       actor: actor,
       conn: conn
@@ -1384,7 +1384,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       actor: actor,
       conn: conn
     } do
-      enable_feature(:trust_anchors)
+      enable_feature(:x509_auth)
       provider = x509_provider_fixture(account: account)
 
       {:ok, lv, _html} =

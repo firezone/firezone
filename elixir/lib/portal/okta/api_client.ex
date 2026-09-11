@@ -270,6 +270,65 @@ defmodule Portal.Okta.APIClient do
     |> stream_all()
   end
 
+  @doc """
+  Reads one user.
+  """
+  @spec get_user(t(), String.t(), String.t()) :: {:ok, Req.Response.t()} | {:error, Exception.t()}
+  def get_user(client, access_token, user_id) do
+    new_request(client, access_token)
+    |> Req.merge(
+      url: "#{@users_path}/#{user_id}",
+      headers: [
+        {"Content-Type", "application/json; okta-response=omitCredentials,omitCredentialsLinks"}
+      ]
+    )
+    |> Req.get()
+  end
+
+  @doc """
+  Reads one group.
+  """
+  @spec get_group(t(), String.t(), String.t()) :: {:ok, Req.Response.t()} | {:error, Exception.t()}
+  def get_group(client, access_token, group_id) do
+    new_request(client, access_token)
+    |> Req.merge(url: "#{@groups_path}/#{group_id}")
+    |> Req.get()
+  end
+
+  @doc """
+  Lists at most one application the user is assigned to, enough to know
+  whether there is any.
+  """
+  @spec list_user_apps(t(), String.t(), String.t()) ::
+          {:ok, Req.Response.t()} | {:error, Exception.t()}
+  def list_user_apps(client, access_token, user_id) do
+    new_request(client, access_token)
+    |> Req.merge(url: @apps_path, params: [filter: ~s(user.id eq "#{user_id}"), limit: 1])
+    |> Req.get()
+  end
+
+  @doc """
+  Lists at most one application assigned to the group, enough to know whether
+  there is any.
+  """
+  @spec list_group_apps(t(), String.t(), String.t()) ::
+          {:ok, Req.Response.t()} | {:error, Exception.t()}
+  def list_group_apps(client, access_token, group_id) do
+    new_request(client, access_token)
+    |> Req.merge(url: "#{@groups_path}/#{group_id}/apps", params: [limit: 1])
+    |> Req.get()
+  end
+
+  @doc """
+  Streams the groups a user belongs to.
+  """
+  @spec stream_user_groups(t(), String.t(), String.t()) :: Enumerable.t()
+  def stream_user_groups(client, access_token, user_id) do
+    new_request(client, access_token)
+    |> Req.merge(url: "#{@users_path}/#{user_id}/groups", params: [limit: 200])
+    |> stream_all()
+  end
+
   defp new_request(%APIClient{} = client, access_token, nonce \\ nil) do
     req_opts =
       [base_url: client.base_url]

@@ -645,7 +645,7 @@ fn mdm_attribute(attribute: &str) -> bool {
 fn device_id_attribute(attribute: &str) -> bool {
     matches!(
         attribute,
-        "intune-id" | "entra-id" | "ws1-uuid" | "jamf-id" | "kandji-id"
+        "intune-id" | "entra-id" | "ws1-uuid" | "jamf-id" | "kandji-id" | "iru-id"
     )
 }
 

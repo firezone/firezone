@@ -1637,4 +1637,93 @@ defmodule PortalWeb.ActorsTest do
       refute_receive {:DOWN, ^ref, :process, ^pid, _reason}, 500
     end
   end
+  describe "live table filters across panel operations" do
+    setup %{account: account} do
+      matching = actor_fixture(account: account, name: "Johnny Appleseed")
+      other = actor_fixture(account: account, name: "Zelda Fitzgerald")
+      filter = %{"actors_filter[name_or_email]" => "johnny"}
+      %{matching: matching, other: other, filter: filter}
+    end
+
+    test "are kept when creating a user", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      other: other,
+      filter: filter
+    } do
+      {:ok, lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/actors?#{filter}")
+
+      refute html =~ other.name
+
+      render_click(lv, "open_new_actor_panel")
+      assert_patch(lv, ~p"/#{account}/actors/new?#{filter}")
+
+      render_click(lv, "close_panel")
+      assert_patch(lv, ~p"/#{account}/actors?#{filter}")
+
+      render_click(lv, "open_new_actor_panel")
+      render_click(lv, "select_new_actor_type", %{"type" => "user"})
+
+      lv
+      |> form("form[phx-submit='create_user']",
+        actor: %{
+          name: "Johnny Cash",
+          email: "johnny.cash@example.com",
+          type: "account_user",
+          allow_email_otp_sign_in: "true"
+        }
+      )
+      |> render_submit()
+
+      created = Portal.Repo.get_by!(Actor, account_id: account.id, name: "Johnny Cash")
+      assert_patch(lv, ~p"/#{account}/actors/#{created.id}?#{filter}")
+
+      html = render(lv)
+      assert html =~ "Johnny Cash"
+      refute html =~ other.name
+    end
+
+    test "are kept when editing a user", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      matching: matching,
+      other: other,
+      filter: filter
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/actors/#{matching}?#{filter}")
+
+      render_click(lv, "open_actor_edit_form")
+      assert_patch(lv, ~p"/#{account}/actors/#{matching}/edit?#{filter}")
+
+      render_click(lv, "cancel_actor_edit_form")
+      assert_patch(lv, ~p"/#{account}/actors/#{matching}?#{filter}")
+
+      render_click(lv, "open_actor_edit_form")
+
+      lv
+      |> form("form[phx-submit='save']",
+        actor: %{
+          name: "Johnny Renamed",
+          email: matching.email,
+          type: "account_user",
+          allow_email_otp_sign_in: "true"
+        }
+      )
+      |> render_submit()
+
+      assert_patch(lv, ~p"/#{account}/actors/#{matching}?#{filter}")
+
+      html = render(lv)
+      assert html =~ "Johnny Renamed"
+      refute html =~ other.name
+    end
+  end
 end

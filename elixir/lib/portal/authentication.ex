@@ -464,15 +464,23 @@ defmodule Portal.Authentication do
     end
   end
 
-  defp verify_secret_hash(token, nonce, fragment) do
-    expected_hash = Portal.Crypto.hash(:sha3_256, nonce <> fragment <> token.secret_salt)
+  defp verify_secret_hash(
+         %{secret_salt: secret_salt, secret_hash: secret_hash},
+         nonce,
+         fragment
+       )
+       when is_binary(secret_salt) and is_binary(secret_hash) and is_binary(nonce) and
+              is_binary(fragment) do
+    expected_hash = Portal.Crypto.hash(:sha3_256, nonce <> fragment <> secret_salt)
 
-    if Plug.Crypto.secure_compare(expected_hash, token.secret_hash) do
+    if Plug.Crypto.secure_compare(expected_hash, secret_hash) do
       :ok
     else
       :error
     end
   end
+
+  defp verify_secret_hash(_token, _nonce, _fragment), do: :error
 
   # Authentication
 

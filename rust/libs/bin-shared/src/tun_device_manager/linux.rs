@@ -255,8 +255,8 @@ async fn configure_ips(
         .await
         {
             Ok(()) => tracing::debug!("Successfully created routing rules for IPv4"),
-            Err(NetlinkError(err)) if err.raw_code() == -libc::EOPNOTSUPP => {
-                tracing::warn!(
+            Err(NetlinkError(err)) if is_unsupported(err.raw_code()) => {
+                tracing::debug!(
                     "VRF/fwmark routing rules not supported for IPv4 (possibly WSL or kernel without VRF): {err}"
                 )
             }
@@ -273,8 +273,8 @@ async fn configure_ips(
         .await
         {
             Ok(()) => tracing::debug!("Successfully created routing rules for IPv6"),
-            Err(NetlinkError(err)) if err.raw_code() == -libc::EOPNOTSUPP => {
-                tracing::warn!(
+            Err(NetlinkError(err)) if is_unsupported(err.raw_code()) => {
+                tracing::debug!(
                     "VRF/fwmark routing rules not supported for IPv6 (possibly WSL or kernel without VRF): {err}"
                 )
             }
@@ -426,6 +426,14 @@ async fn install_rules<const N: usize, T>(
     }
 
     Ok(())
+}
+
+/// Whether a netlink error means the kernel does not offer the facility we asked for.
+///
+/// A kernel built without VRF answers `EOPNOTSUPP`; one booted with IPv6 disabled
+/// answers `EAFNOSUPPORT` instead.
+fn is_unsupported(raw_code: i32) -> bool {
+    raw_code == -libc::EOPNOTSUPP || raw_code == -libc::EAFNOSUPPORT
 }
 
 /// Disables automatic IPv6 link-local address generation on the TUN device.

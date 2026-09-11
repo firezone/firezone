@@ -1541,9 +1541,168 @@ defmodule PortalWeb.ResourcesTest do
     end
   end
 
+  describe "new resource form site select" do
+    test "keeps the site select markup stable across validation", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      site_fixture(account: account)
+
+      {:ok, lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources/new")
+
+      before = site_select(html)
+      assert [option] = Floki.find(before, "option[selected]")
+      assert Floki.attribute(option, "value") == [""]
+
+      html =
+        render_change(lv, "change_resource_form", %{
+          "_target" => ["resource", "address"],
+          "resource" => %{
+            "type" => "dns",
+            "name" => "My App",
+            "address" => "app.example.com",
+            "_unused_address_description" => "",
+            "address_description" => "",
+            "_unused_site_id" => "",
+            "site_id" => ""
+          }
+        })
+
+      assert Floki.raw_html(site_select(html)) == Floki.raw_html(before)
+    end
+  end
+
   defp count_occurrences(haystack, needle) do
     haystack
     |> :binary.matches(needle)
     |> length()
+  end
+
+  defp site_select(html) do
+    html |> Floki.parse_document!() |> Floki.find("#resource_site_id")
+  end
+  describe "live table filters across panel operations" do
+    setup %{account: account} do
+      site = site_fixture(account: account)
+      matching = resource_fixture(account: account, site: site, name: "alpha-server")
+      other = resource_fixture(account: account, site: site, name: "beta-server")
+      filter = %{"resources_filter[name_or_address]" => "alpha"}
+      %{site: site, matching: matching, other: other, filter: filter}
+    end
+
+    test "are kept when creating a resource", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      site: site,
+      other: other,
+      filter: filter
+    } do
+      {:ok, lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources?#{filter}")
+
+      refute html =~ other.name
+
+      render_click(lv, "open_new_form")
+      assert_patch(lv, ~p"/#{account}/resources/new?#{filter}")
+
+      render_click(lv, "cancel_resource_form")
+      assert_patch(lv, ~p"/#{account}/resources?#{filter}")
+
+      render_click(lv, "open_new_form")
+
+      lv
+      |> form("[phx-submit='submit_resource_form']", resource: %{type: "dns"})
+      |> render_change()
+
+      lv
+      |> form("[phx-submit='submit_resource_form']",
+        resource: %{
+          type: "dns",
+          name: "alpha-two",
+          address: "alpha2.example.com",
+          site_id: site.id
+        }
+      )
+      |> render_submit()
+
+      resource = Repo.get_by!(Resource, account_id: account.id, name: "alpha-two")
+      assert_patch(lv, ~p"/#{account}/resources/#{resource.id}?#{filter}")
+
+      html = render(lv)
+      assert html =~ "alpha-two"
+      refute html =~ other.name
+    end
+
+    test "are kept when editing and deleting a resource", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      matching: matching,
+      other: other,
+      filter: filter
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources/#{matching.id}?#{filter}")
+
+      render_click(lv, "open_edit_form")
+      assert_patch(lv, ~p"/#{account}/resources/#{matching.id}/edit?#{filter}")
+
+      render_click(lv, "cancel_resource_form")
+      assert_patch(lv, ~p"/#{account}/resources/#{matching.id}?#{filter}")
+
+      render_click(lv, "open_edit_form")
+
+      lv
+      |> form("[phx-submit='submit_resource_form']", resource: %{name: "alpha-renamed"})
+      |> render_submit()
+
+      assert_patch(lv, ~p"/#{account}/resources/#{matching.id}?#{filter}")
+
+      html = render(lv)
+      assert html =~ "alpha-renamed"
+      refute html =~ other.name
+
+      render_click(lv, "confirm_delete_resource")
+      render_click(lv, "delete_resource")
+      assert_patch(lv, ~p"/#{account}/resources?#{filter}")
+    end
+
+    test "are kept when granting access to a resource", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      matching: matching,
+      other: other,
+      filter: filter
+    } do
+      group = group_fixture(account: account, name: "Engineering")
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources/#{matching.id}?#{filter}")
+
+      render_click(lv, "open_grant_form")
+      render_click(lv, "toggle_grant_group", %{"group_id" => group.id})
+
+      html =
+        lv
+        |> form("#grant-form")
+        |> render_submit()
+
+      assert Repo.get_by!(Policy, resource_id: matching.id, group_id: group.id)
+      assert html =~ group.name
+      refute html =~ other.name
+      assert has_element?(lv, "input[name='resources[name_or_address]'][value='alpha']")
+    end
   end
 end

@@ -1,4 +1,4 @@
-defmodule PortalAPI.Parsers.JSON do
+defmodule Portal.Parsers.JSON do
   @moduledoc """
   JSON parser that carries the latest connection when decoding fails.
 

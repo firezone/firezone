@@ -78,12 +78,16 @@ defmodule PortalWeb.Router do
         PortalWeb.LiveHooks.PutDynamicRepo,
         PortalWeb.LiveHooks.AllowEctoSandbox
       ] do
-      live "/sign_up", SignUp, :fill_form
+      live "/sign_up", SignUp, :choose
+      live "/sign_up/email", SignUp, :fill_form
+      live "/sign_up/google", SignUp, :google
       live "/verify_sign_up", SignUp, :verify
       live "/find_account", FindAccount
       # Maintained from the LaunchHN - show SignUp form
-      live "/try", SignUp, :fill_form
+      live "/try", SignUp, :choose
     end
+
+    post "/sign_up/:auth_provider_type", OIDCController, :sign_up
   end
 
   # Machine to machine, so no CSRF protection and no session: the client
@@ -348,6 +352,7 @@ defmodule PortalWeb.Router do
           live "/new", DirectorySync, :select_type
           live "/:type/new", DirectorySync, :new
           live "/:type/:id/edit", DirectorySync, :edit
+          live "/:type/:id/hook", DirectorySync, :hook
         end
 
         scope "/device_posture" do

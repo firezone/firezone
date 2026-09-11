@@ -14,12 +14,9 @@ readonly PUBLISHER_API="https://androidpublisher.googleapis.com/androidpublisher
 readonly RELEASE_NAME="$VERSION_NAME@$SOURCE_SHA"
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 readonly REPO_ROOT
-mapfile -t SCREENSHOTS < "$REPO_ROOT/kotlin/android/screenshots/play-store.txt"
-readonly -a SCREENSHOTS
 
 case "$COMMAND" in
-    Intune) TARGET_TRACK="4699772446953372201" ;;
-    inspect | internal | production) TARGET_TRACK="$COMMAND" ;;
+    inspect | internal | production | Intune) TARGET_TRACK="$COMMAND" ;;
     *)
         echo "Unknown command: $COMMAND" >&2
         exit 1
@@ -74,7 +71,7 @@ update_track() {
     releases=$(jq --compact-output --null-input \
         --arg name "$RELEASE_NAME" \
         --arg version_code "$version_code" \
-        --arg changelog "$CHANGELOG_URL" \
+        --arg changelog "See our full changelog at $CHANGELOG_URL." \
         '[{
             name: $name,
             versionCodes: [$version_code],
@@ -155,20 +152,34 @@ inspect_internal() {
 }
 
 submit_release() {
-    local target screenshot screenshot_path
+    local target screenshot screenshot_path icon_path feature_graphic_path
+    local -a screenshots
 
     if [[ "${GITHUB_ACTIONS:-false}" != true || "${GITHUB_REF_NAME:-}" != main ]]; then
         echo "Track submission is only allowed from main in GitHub Actions" >&2
         exit 1
     fi
 
-    for screenshot in "${SCREENSHOTS[@]}"; do
-        screenshot_path="$REPO_ROOT/$screenshot"
-        if [[ ! -s "$screenshot_path" ]]; then
-            echo "Missing store screenshot: $screenshot" >&2
+    if [[ "$TARGET_TRACK" == production ]]; then
+        icon_path="$REPO_ROOT/kotlin/android/app/src/main/ic_launcher-playstore.png"
+        feature_graphic_path="$REPO_ROOT/kotlin/android/feature-graphic.png"
+        if [[ ! -s "$icon_path" ]]; then
+            echo "Missing store icon: $icon_path" >&2
             exit 1
         fi
-    done
+        if [[ ! -s "$feature_graphic_path" ]]; then
+            echo "Missing feature graphic: $feature_graphic_path" >&2
+            exit 1
+        fi
+        mapfile -t screenshots < "$REPO_ROOT/kotlin/android/screenshots/play-store.txt"
+        for screenshot in "${screenshots[@]}"; do
+            screenshot_path="$REPO_ROOT/$screenshot"
+            if [[ ! -s "$screenshot_path" ]]; then
+                echo "Missing store screenshot: $screenshot" >&2
+                exit 1
+            fi
+        done
+    fi
 
     find_internal_release
     create_edit
@@ -177,6 +188,8 @@ submit_release() {
         --package "$PACKAGE_NAME" \
         --edit "$edit_id" \
         --track "$TARGET_TRACK")
+    # The track update replaces drafts; only non-draft releases constrain promotion.
+    target=$(jq '.releases = [.releases[]? | select(.status != "draft")]' <<< "$target")
     if jq -e \
         --arg name "$RELEASE_NAME" \
         --arg version_code "$internal_version_code" \
@@ -198,28 +211,49 @@ submit_release() {
         | (($releases | length) <= 1)
         and ((($releases | length) == 0) or $releases[0].status == "completed")' \
         <<< "$target" >/dev/null; then
-        echo "$TARGET_TRACK has multiple releases or a release that is not completed" >&2
+        echo "$TARGET_TRACK has multiple non-draft releases or a release that is not completed" >&2
+        jq '.releases' <<< "$target" >&2
         exit 1
     fi
 
-    echo "Replacing en-US phone screenshots..."
-    gplay images delete-all \
-        --package "$PACKAGE_NAME" \
-        --edit "$edit_id" \
-        --locale en-US \
-        --type phoneScreenshots \
-        --confirm
-
-    for screenshot in "${SCREENSHOTS[@]}"; do
-        screenshot_path="$REPO_ROOT/$screenshot"
-        echo "Uploading $screenshot..."
+    if [[ "$TARGET_TRACK" == production ]]; then
+        echo "Updating en-US app icon..."
         gplay images upload \
             --package "$PACKAGE_NAME" \
             --edit "$edit_id" \
             --locale en-US \
+            --type icon \
+            --file "$icon_path"
+
+        echo "Updating en-US feature graphic..."
+        gplay images upload \
+            --package "$PACKAGE_NAME" \
+            --edit "$edit_id" \
+            --locale en-US \
+            --type featureGraphic \
+            --file "$feature_graphic_path"
+
+        echo "Replacing en-US phone screenshots..."
+        gplay images delete-all \
+            --package "$PACKAGE_NAME" \
+            --edit "$edit_id" \
+            --locale en-US \
             --type phoneScreenshots \
-            --file "$screenshot_path"
-    done
+            --confirm
+
+        for screenshot in "${screenshots[@]}"; do
+            screenshot_path="$REPO_ROOT/$screenshot"
+            echo "Uploading $screenshot..."
+            gplay images upload \
+                --package "$PACKAGE_NAME" \
+                --edit "$edit_id" \
+                --locale en-US \
+                --type phoneScreenshots \
+                --file "$screenshot_path"
+        done
+    else
+        echo "Leaving the shared store listing unchanged for $TARGET_TRACK."
+    fi
 
     update_track "$TARGET_TRACK" "$internal_version_code"
 
@@ -227,7 +261,7 @@ submit_release() {
     gplay edits validate --package "$PACKAGE_NAME" --edit "$edit_id"
     commit_edit
 
-    echo "Submitted $PACKAGE_NAME $RELEASE_NAME ($internal_version_code) and its screenshots for review on $TARGET_TRACK."
+    echo "Submitted $PACKAGE_NAME $RELEASE_NAME ($internal_version_code) for review on $TARGET_TRACK."
 }
 
 case "$COMMAND" in
