@@ -26,7 +26,7 @@ defmodule Portal.Cache.Cacheable.Resource do
   @type t :: %__MODULE__{
           id: Portal.Cache.Cacheable.uuid_binary(),
           name: String.t(),
-          type: :cidr | :ip | :dns | :internet | :static_device_pool | :dynamic_device_pool,
+          type: :cidr | :ip | :dns | :internet | :device_pool,
           device_membership_criteria: Portal.Resource.DeviceMembershipCriteria.t() | nil,
           address: String.t(),
           address_description: String.t(),

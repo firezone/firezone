@@ -214,7 +214,7 @@ defmodule Portal.VersionTest do
     end
   end
 
-  describe "client_supports_static_device_pools?/1" do
+  describe "client_supports_device_pools?/1" do
     test "uses component-specific minimum versions" do
       cases = [
         {"Mac OS/15.1.1 apple-client/1.5.16 (arm64; 24.1.0)", "1.5.15", "1.5.16"},
@@ -224,13 +224,13 @@ defmodule Portal.VersionTest do
       ]
 
       for {user_agent, unsupported_version, supported_version} <- cases do
-        refute Portal.Version.client_supports_static_device_pools?(%Portal.Device{
+        refute Portal.Version.client_supports_device_pools?(%Portal.Device{
                  type: :client,
                  last_seen_version: unsupported_version,
                  last_seen_user_agent: user_agent
                })
 
-        assert Portal.Version.client_supports_static_device_pools?(%Portal.Device{
+        assert Portal.Version.client_supports_device_pools?(%Portal.Device{
                  type: :client,
                  last_seen_version: supported_version,
                  last_seen_user_agent: user_agent
@@ -239,13 +239,13 @@ defmodule Portal.VersionTest do
     end
 
     test "returns false for nil last_seen_version or last_seen_user_agent" do
-      refute Portal.Version.client_supports_static_device_pools?(%Portal.Device{
+      refute Portal.Version.client_supports_device_pools?(%Portal.Device{
                type: :client,
                last_seen_version: nil,
                last_seen_user_agent: "Android/14 android-client/1.5.11"
              })
 
-      refute Portal.Version.client_supports_static_device_pools?(%Portal.Device{
+      refute Portal.Version.client_supports_device_pools?(%Portal.Device{
                type: :client,
                last_seen_version: "1.5.11",
                last_seen_user_agent: nil

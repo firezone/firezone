@@ -26,7 +26,6 @@ defmodule Portal.Changes.Consumer do
     "sites" => Hooks.Sites,
     "policies" => Hooks.Policies,
     "resources" => Hooks.Resources,
-    "static_device_pool_members" => Hooks.StaticDevicePoolMembers,
     "client_tokens" => Hooks.ClientTokens,
     "portal_sessions" => Hooks.PortalSessions,
     "google_auth_providers" => Hooks.AuthProviders,

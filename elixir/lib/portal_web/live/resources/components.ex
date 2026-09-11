@@ -23,8 +23,7 @@ defmodule PortalWeb.Resources.Components do
     dns: %{index: 2, label: "DNS"},
     ip: %{index: 3, label: "IP"},
     cidr: %{index: 4, label: "CIDR"},
-    static_device_pool: %{index: 5, label: "Device Pools"},
-    dynamic_device_pool: %{index: 6, label: "Dynamic Device Pools"}
+    device_pool: %{index: 5, label: "Device Pools"}
   }
 
   def fetch_resource_option(id, subject) do
@@ -70,8 +69,7 @@ defmodule PortalWeb.Resources.Components do
     {resource.id, resource.name, resource}
   end
 
-  def nil_site_label(%{type: type}) when type in [:static_device_pool, :dynamic_device_pool],
-    do: "No Site Needed"
+  def nil_site_label(%{type: :device_pool}), do: "No Site Needed"
   def nil_site_label(_resource), do: "No Site Associated"
 
   def map_filters_form_attrs(attrs) do
@@ -406,17 +404,15 @@ defmodule PortalWeb.Resources.Components do
         </li>
         <li>
           <.input
-            id="resource-form-type--static-device-pool"
+            id="resource-form-type--device-pool"
             type="radio_button_group"
             field={@form[:type]}
-            value="static_device_pool"
-            checked={
-              to_string(@form[:type].value) in ["static_device_pool", "dynamic_device_pool"]
-            }
+            value="device_pool"
+            checked={to_string(@form[:type].value) == "device_pool"}
             required
           />
           <label
-            for="resource-form-type--static-device-pool"
+            for="resource-form-type--device-pool"
             class="inline-flex items-center justify-between w-full p-3 text-body bg-surface border border-border rounded cursor-pointer peer-checked:border-brand peer-checked:text-brand hover:text-heading hover:bg-raised transition-colors"
           >
             <div class="block">
@@ -450,15 +446,15 @@ defmodule PortalWeb.Resources.Components do
       <ul class="grid w-full max-w-md gap-3 grid-cols-2">
         <li>
           <.input
-            id="resource-form-members--static"
+            id="resource-form-members--listed"
             type="radio_button_group"
             field={@form[:members]}
-            value="static"
-            checked={@members == :static}
+            value="listed"
+            checked={@members == :listed}
             required
           />
           <label
-            for="resource-form-members--static"
+            for="resource-form-members--listed"
             class="inline-flex items-center justify-between w-full p-3 text-body bg-surface border border-border rounded cursor-pointer peer-checked:border-brand peer-checked:text-brand hover:text-heading hover:bg-raised transition-colors"
           >
             <div class="block">
@@ -500,16 +496,25 @@ defmodule PortalWeb.Resources.Components do
     """
   end
 
-  @doc "Which kind of members a pool form describes, from the members choice or the pool type."
-  @spec pool_members(Phoenix.HTML.Form.t()) :: :static | :own_devices
+  @doc "Which kind of members a pool form describes, from the members choice or the resource."
+  @spec pool_members(Phoenix.HTML.Form.t()) :: :listed | :own_devices
   def pool_members(form) do
-    case {to_string(form[:members].value), to_string(form[:type].value)} do
-      {"own_devices", _type} -> :own_devices
-      {"static", _type} -> :static
-      {_choice, "dynamic_device_pool"} -> :own_devices
-      _ -> :static
+    case to_string(form[:members].value) do
+      "own_devices" -> :own_devices
+      "listed" -> :listed
+      _ -> if own_devices_pool?(form.data), do: :own_devices, else: :listed
     end
   end
+
+  @doc "Whether a device pool lists its devices instead of holding each actor's own devices."
+  @spec lists_devices?(map()) :: boolean()
+  def lists_devices?(%{type: :device_pool, device_membership_criteria: criteria}),
+    do: match?({:ok, _}, Portal.Resource.DeviceMembershipCriteria.device_ids(criteria))
+
+  def lists_devices?(_resource), do: false
+
+  defp own_devices_pool?(%{type: :device_pool} = resource), do: not lists_devices?(resource)
+  defp own_devices_pool?(_resource), do: false
 
   attr :form, :any, required: true
   attr :resource, :any, default: nil
@@ -534,7 +539,7 @@ defmodule PortalWeb.Resources.Components do
 
     <div :if={
       (is_nil(@resource) || @resource.type != :internet) &&
-        to_string(@form[:type].value) not in ["static_device_pool", "dynamic_device_pool"]
+        to_string(@form[:type].value) != "device_pool"
     }>
       <label
         for={@form[:address].id}
@@ -562,7 +567,7 @@ defmodule PortalWeb.Resources.Components do
 
     <div :if={
       (is_nil(@resource) || @resource.type != :internet) &&
-        to_string(@form[:type].value) not in ["static_device_pool", "dynamic_device_pool"]
+        to_string(@form[:type].value) != "device_pool"
     }>
       <label
         for={@form[:address_description].id}
@@ -831,7 +836,7 @@ defmodule PortalWeb.Resources.Components do
 
   def resource_site_selector(assigns) do
     ~H"""
-    <div :if={to_string(@form[:type].value) not in ["static_device_pool", "dynamic_device_pool"]}>
+    <div :if={to_string(@form[:type].value) != "device_pool"}>
       <label
         for={@form[:site_id].id}
         class="block text-xs font-medium text-body mb-1.5"
@@ -1016,17 +1021,15 @@ defmodule PortalWeb.Resources.Components do
           <.resource_core_fields form={@resource_form} resource={@resource} />
 
           <.resource_pool_members_section
-            :if={
-              to_string(@resource_form[:type].value) in [
-                "static_device_pool",
-                "dynamic_device_pool"
-              ]
-            }
+            :if={to_string(@resource_form[:type].value) == "device_pool"}
             form={@resource_form}
           />
 
           <.resource_device_pool_section
-            :if={to_string(@resource_form[:type].value) == "static_device_pool"}
+            :if={
+              to_string(@resource_form[:type].value) == "device_pool" and
+                pool_members(@resource_form) == :listed
+            }
             selected_devices={@resource_form_selected_devices}
             device_search={@resource_form_device_search}
             device_search_results={@resource_form_device_search_results}
@@ -1100,13 +1103,13 @@ defmodule PortalWeb.Resources.Components do
               />
             </div>
             <p
-              :if={@resource.type not in [:internet, :dynamic_device_pool]}
+              :if={@resource.type not in [:internet, :device_pool]}
               class="font-mono text-xs text-subtle mt-0.5 truncate"
             >
               {@resource.address}
             </p>
             <p
-              :if={@resource.type == :dynamic_device_pool}
+              :if={@resource.type == :device_pool and not lists_devices?(@resource)}
               class="font-mono text-xs text-subtle mt-0.5 truncate"
             >
               &lt;slug&gt;.{Portal.Device.domain()}
@@ -1189,7 +1192,7 @@ defmodule PortalWeb.Resources.Components do
       class="flex items-end gap-0 px-5 border-b border-border bg-raised shrink-0"
     >
       <button
-        :if={@resource.type == :static_device_pool}
+        :if={lists_devices?(@resource)}
         role="tab"
         aria-selected={@tab == :devices}
         phx-click="switch_resource_tab"
@@ -1976,19 +1979,19 @@ defmodule PortalWeb.Resources.Components do
               end}
             </dd>
           </div>
-          <div :if={@resource.type not in [:internet, :static_device_pool, :dynamic_device_pool]}>
+          <div :if={@resource.type not in [:internet, :device_pool]}>
             <dt class="text-[10px] text-subtle mb-0.5">Address</dt>
             <dd class="font-mono text-xs text-heading font-medium break-all">
               {@resource.address}
             </dd>
           </div>
-          <div :if={@resource.type == :dynamic_device_pool}>
+          <div :if={@resource.type == :device_pool and not lists_devices?(@resource)}>
             <dt class="text-[10px] text-subtle mb-0.5">Address</dt>
             <dd class="font-mono text-xs text-heading font-medium break-all">
               &lt;slug&gt;.{Portal.Device.domain()}
             </dd>
           </div>
-          <div :if={@resource.type == :static_device_pool}>
+          <div :if={lists_devices?(@resource)}>
             <dt class="text-[10px] text-subtle mb-0.5">Address</dt>
             <dd class="text-xs italic text-muted">Multiple Addresses</dd>
           </div>
@@ -2121,7 +2124,14 @@ defmodule PortalWeb.Resources.Components do
   attr :pool_member_ids, :list, default: []
   attr :online_ids, :any, default: %MapSet{}
 
-  def resource_status_badge(%{resource: %{type: :static_device_pool}} = assigns) do
+  def resource_status_badge(
+        %{
+          resource: %{
+            type: :device_pool,
+            device_membership_criteria: %Portal.Resource.DeviceMembershipCriteria{field: :id}
+          }
+        } = assigns
+      ) do
     online = Enum.count(assigns.pool_member_ids, &MapSet.member?(assigns.online_ids, &1))
     assigns = assign(assigns, online: online, total: length(assigns.pool_member_ids))
 
@@ -2135,10 +2145,10 @@ defmodule PortalWeb.Resources.Components do
     """
   end
 
-  def resource_status_badge(%{resource: %{type: :dynamic_device_pool}} = assigns) do
+  def resource_status_badge(%{resource: %{type: :device_pool}} = assigns) do
     ~H"""
     <.status_badge style={:neutral}>
-      Dynamic
+      Own devices
     </.status_badge>
     """
   end
@@ -2158,8 +2168,7 @@ defmodule PortalWeb.Resources.Components do
   def resource_type_label(:ip), do: "IP"
   def resource_type_label(:cidr), do: "CIDR"
   def resource_type_label(:internet), do: "Internet"
-  def resource_type_label(:static_device_pool), do: "Device Pool"
-  def resource_type_label(:dynamic_device_pool), do: "Dynamic Pool"
+  def resource_type_label(:device_pool), do: "Device Pool"
   def resource_type_label(type), do: to_string(type)
 
   @spec type_badge_class(atom()) :: String.t()
@@ -2179,7 +2188,7 @@ defmodule PortalWeb.Resources.Components do
     do:
       "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-medium trcking-wider uppercase bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300"
 
-  def type_badge_class(type) when type in [:static_device_pool, :dynamic_device_pool],
+  def type_badge_class(:device_pool),
     do:
       "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-medium tracking-wider uppercase bg-badge-device-pool text-badge-device-pool-text"
 
@@ -2189,7 +2198,7 @@ defmodule PortalWeb.Resources.Components do
 
   defmodule Database do
     import Ecto.Query
-    alias Portal.{Device, Resource, Safe, StaticDevicePoolMember}
+    alias Portal.{Device, Resource, Safe}
 
     @device_identifier_fields ~w[
       firezone_id
@@ -2300,80 +2309,6 @@ defmodule PortalWeb.Resources.Components do
 
         _ ->
           {:error, :invalid_devices}
-      end
-    end
-
-    def sync_static_pool_members(
-          %Portal.Resource{type: :static_device_pool} = resource,
-          devices,
-          subject
-        ) do
-      selected_device_ids = devices |> Enum.map(& &1.id) |> Enum.uniq()
-
-      existing_device_ids =
-        from(m in StaticDevicePoolMember,
-          where: m.resource_id == ^resource.id,
-          select: m.device_id
-        )
-        |> Safe.scoped(subject)
-        |> Safe.all()
-        |> case do
-          {:error, _} -> []
-          ids -> ids
-        end
-
-      to_remove = existing_device_ids -- selected_device_ids
-      to_add = selected_device_ids -- existing_device_ids
-
-      with :ok <- maybe_delete_pool_members(resource, to_remove, subject),
-           :ok <- maybe_insert_pool_members(resource, to_add, subject) do
-        :ok
-      end
-    end
-
-    def sync_static_pool_members(%Portal.Resource{} = resource, _devices, subject) do
-      case from(m in StaticDevicePoolMember, where: m.resource_id == ^resource.id)
-           |> Safe.scoped(subject)
-           |> Safe.delete_all() do
-        {:error, reason} -> {:error, reason}
-        {_, _} -> :ok
-      end
-    end
-
-    defp maybe_delete_pool_members(_resource, [], _subject), do: :ok
-
-    defp maybe_delete_pool_members(resource, to_remove, subject) do
-      case from(m in StaticDevicePoolMember,
-             where: m.resource_id == ^resource.id and m.device_id in ^to_remove
-           )
-           |> Safe.scoped(subject)
-           |> Safe.delete_all() do
-        {:error, reason} -> {:error, reason}
-        {_, _} -> :ok
-      end
-    end
-
-    defp maybe_insert_pool_members(_resource, [], _subject), do: :ok
-
-    defp maybe_insert_pool_members(resource, to_add, subject) do
-      entries =
-        Enum.map(to_add, fn device_id ->
-          %{
-            account_id: resource.account_id,
-            resource_id: resource.id,
-            device_id: device_id,
-            device_type: :client,
-            id: Ecto.UUID.generate()
-          }
-        end)
-
-      case Safe.scoped(subject)
-           |> Safe.insert_all(StaticDevicePoolMember, entries,
-             on_conflict: :nothing,
-             conflict_target: [:account_id, :resource_id, :device_id]
-           ) do
-        {:error, reason} -> {:error, reason}
-        {_, _} -> :ok
       end
     end
   end

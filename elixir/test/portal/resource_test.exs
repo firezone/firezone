@@ -238,58 +238,54 @@ defmodule Portal.ResourceTest do
     end
   end
 
-  describe "changeset/1 static device pool type" do
-    test "sets address and site_id to nil for static device pool type" do
-      changeset =
-        build_changeset(%{
-          type: :static_device_pool,
-          address: "ignored.example.com",
-          site_id: Ecto.UUID.generate()
-        })
-
-      assert get_change(changeset, :address) == nil
-      assert get_change(changeset, :site_id) == nil
-    end
-
-    test "clears existing address and site when changing to static device pool" do
-      existing = %Resource{type: :dns, address: "example.com", site_id: Ecto.UUID.generate()}
-      changeset = build_changeset_on_existing(existing, %{type: :static_device_pool})
-
-      assert get_change(changeset, :address) == nil
-      assert get_change(changeset, :site_id) == nil
-    end
-  end
-
-  describe "changeset/1 dynamic device pool type" do
-    test "requires a membership rule" do
-      changeset = build_changeset(%{type: :dynamic_device_pool, name: "Pool"})
+  describe "changeset/1 device pool type" do
+    test "requires membership criteria" do
+      changeset = build_changeset(%{type: :device_pool, name: "Pool"})
 
       refute changeset.valid?
       assert "can't be blank" in errors_on(changeset)[:device_membership_criteria]
     end
 
-    test "accepts the own devices rule as a struct or as its wire shape" do
+    test "accepts the own devices criteria as a struct or as its wire shape" do
       for criteria <- [
             Portal.Resource.DeviceMembershipCriteria.own_devices(),
             %{"device" => %{"field" => "actor_id", "op" => "eq", "value" => %{"subject" => "actor_id"}}}
           ] do
-        changeset = build_changeset(%{type: :dynamic_device_pool, name: "Pool", device_membership_criteria: criteria})
+        changeset = build_changeset(%{type: :device_pool, name: "Pool", device_membership_criteria: criteria})
 
         assert changeset.valid?
         assert get_change(changeset, :device_membership_criteria) == Portal.Resource.DeviceMembershipCriteria.own_devices()
       end
     end
 
-    test "rejects a rule outside the grammar" do
+    test "accepts a device list as a struct or as its wire shape" do
+      ids = Enum.sort([Ecto.UUID.generate(), Ecto.UUID.generate()])
+
+      for criteria <- [
+            Portal.Resource.DeviceMembershipCriteria.devices(Enum.reverse(ids)),
+            %{"device" => %{"field" => "id", "op" => "in", "value" => Enum.reverse(ids)}}
+          ] do
+        changeset = build_changeset(%{type: :device_pool, name: "Pool", device_membership_criteria: criteria})
+
+        assert changeset.valid?
+
+        assert get_change(changeset, :device_membership_criteria) ==
+                 Portal.Resource.DeviceMembershipCriteria.devices(ids)
+      end
+    end
+
+    test "rejects criteria outside the grammar" do
       for criteria <- [
             %{},
             %{"device" => %{"field" => "hostname", "op" => "eq", "value" => %{"subject" => "actor_id"}}},
             %{"device" => %{"field" => "actor_id", "op" => "in", "value" => %{"subject" => "actor_id"}}},
             %{"device" => %{"field" => "actor_id", "op" => "eq", "value" => "literal"}},
+            %{"device" => %{"field" => "id", "op" => "in", "value" => %{"subject" => "actor_id"}}},
+            %{"device" => %{"field" => "id", "op" => "in", "value" => ["not-a-uuid"]}},
             %{"intune" => %{"field" => "actor_id", "op" => "eq", "value" => %{"subject" => "actor_id"}}},
             "own_devices"
           ] do
-        changeset = build_changeset(%{type: :dynamic_device_pool, name: "Pool", device_membership_criteria: criteria})
+        changeset = build_changeset(%{type: :device_pool, name: "Pool", device_membership_criteria: criteria})
 
         refute changeset.valid?, "Expected #{inspect(criteria)} to be rejected"
         assert "is invalid" in errors_on(changeset)[:device_membership_criteria]
@@ -299,7 +295,7 @@ defmodule Portal.ResourceTest do
     test "clears the address and site" do
       changeset =
         build_changeset(%{
-          type: :dynamic_device_pool,
+          type: :device_pool,
           device_membership_criteria: Portal.Resource.DeviceMembershipCriteria.own_devices(),
           address: "*.devices.example.com",
           site_id: Ecto.UUID.generate()
@@ -310,7 +306,20 @@ defmodule Portal.ResourceTest do
       assert get_change(changeset, :site_id) == nil
     end
 
-    test "clears the membership rule of other types" do
+    test "clears existing address and site when changing to a device pool" do
+      existing = %Resource{type: :dns, address: "example.com", site_id: Ecto.UUID.generate()}
+
+      changeset =
+        build_changeset_on_existing(existing, %{
+          type: :device_pool,
+          device_membership_criteria: Portal.Resource.DeviceMembershipCriteria.devices([])
+        })
+
+      assert get_change(changeset, :address) == nil
+      assert get_change(changeset, :site_id) == nil
+    end
+
+    test "clears the membership criteria of other types" do
       changeset =
         build_changeset(%{
           type: :dns,
@@ -325,7 +334,7 @@ defmodule Portal.ResourceTest do
   describe "self_device_pool_attrs/0" do
     test "is the Your devices pool" do
       assert Portal.Resource.self_device_pool_attrs() == %{
-               type: :dynamic_device_pool,
+               type: :device_pool,
                device_membership_criteria: Portal.Resource.DeviceMembershipCriteria.own_devices(),
                name: "Your devices"
              }

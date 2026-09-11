@@ -24,7 +24,7 @@ defmodule PortalAPI.Schemas.Resource do
           example: "10.0.0.10",
           type: :string,
           nullable: true,
-          description: "Resource address. Null for `static_device_pool` Resources."
+          description: "Resource address. Null for `device_pool` Resources."
         },
         address_description: %Schema{
           example: "Production Database",
@@ -36,10 +36,9 @@ defmodule PortalAPI.Schemas.Resource do
           example: "ip",
           type: :string,
           description:
-            "Resource type. For `static_device_pool` and `dynamic_device_pool`, `address` " <>
-              "is not applicable. Only `cidr`, `ip`, and `dns` Resources can be created " <>
-              "through the API.",
-          enum: ["cidr", "ip", "dns", "internet", "static_device_pool", "dynamic_device_pool"]
+            "Resource type. For `device_pool`, `address` is not applicable. Only `cidr`, " <>
+              "`ip`, and `dns` Resources can be created through the API.",
+          enum: ["cidr", "ip", "dns", "internet", "device_pool"]
         },
         ip_stack: %Schema{
           type: :string,
@@ -108,7 +107,7 @@ defmodule PortalAPI.Schemas.Resource do
       title: "ResourceCreateRequest",
       description:
         "POST body for creating a Resource. `site_id` is required.\n\n" <>
-          "Device pools (`static_device_pool`) cannot currently be created through this " <>
+          "Device pools (`device_pool`) cannot currently be created through this " <>
           "API - create them in the admin portal. Existing pools can be read, updated, " <>
           "deleted, and have their members managed here as normal.",
       type: :object,
@@ -117,7 +116,7 @@ defmodule PortalAPI.Schemas.Resource do
           type: :object,
           properties: %{
             name: %Schema{
-              # static_device_pool is deliberately absent: pools cannot be
+              # device_pool is deliberately absent: pools cannot be
               # created or converted to through this API for now. It stays
               # in the response schema below, since existing pools are
               # still returned. See
@@ -219,8 +218,8 @@ defmodule PortalAPI.Schemas.Resource do
               type: :string,
               description:
                 "Resource type. `internet` is accepted only in the Internet Site. " <>
-                  "`static_device_pool` is accepted only on a Resource that already is one.",
-              enum: ["cidr", "ip", "dns", "internet", "static_device_pool"]
+                  "`device_pool` is accepted only on a Resource that already is one.",
+              enum: ["cidr", "ip", "dns", "internet", "device_pool"]
             },
             ip_stack: %Schema{
               type: :string,

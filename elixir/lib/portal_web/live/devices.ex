@@ -555,7 +555,6 @@ defmodule PortalWeb.Devices do
     alias Portal.PolicyAuthorization
     alias Portal.Group
     alias Portal.Resource
-    alias Portal.StaticDevicePoolMember
     alias Portal.Repo.Filter
     alias Portal.Repo.OffsetPaginator
     alias Portal.PostureProvider
@@ -728,14 +727,11 @@ defmodule PortalWeb.Devices do
             [Resource.t()]
     def list_device_pools(%Device{} = device, subject) do
       from(r in Resource, as: :resources)
-      |> join(:inner, [resources: r], m in StaticDevicePoolMember,
-        on: m.resource_id == r.id and m.account_id == r.account_id,
-        as: :members
+      |> where([resources: r], r.type == :device_pool)
+      |> where(
+        [resources: r],
+        fragment("jsonb_exists(? #> '{device,value}', ?)", r.device_membership_criteria, ^device.id)
       )
-      |> where([members: m], m.device_id == ^device.id)
-      # The REST API can retype a pool without clearing its members, so filter on
-      # the resource rather than trusting the membership rows alone.
-      |> where([resources: r], r.type == :static_device_pool)
       |> order_by([resources: r], asc: r.name)
       |> Safe.scoped(subject)
       |> Safe.all()

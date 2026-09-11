@@ -655,7 +655,7 @@
         "type": "object"
       },
       "ResourceCreateRequest": {
-        "description": "POST body for creating a Resource. `site_id` is required.\n\nDevice pools (`static_device_pool`) cannot currently be created through this API - create them in the admin portal. Existing pools can be read, updated, deleted, and have their members managed here as normal.",
+        "description": "POST body for creating a Resource. `site_id` is required.\n\nDevice pools (`device_pool`) cannot currently be created through this API - create them in the admin portal. Existing pools can be read, updated, deleted, and have their members managed here as normal.",
         "properties": {
           "resource": {
             "properties": {
@@ -4228,7 +4228,7 @@
         "description": "Resource",
         "properties": {
           "address": {
-            "description": "Resource address. Null for `static_device_pool` Resources.",
+            "description": "Resource address. Null for `device_pool` Resources.",
             "example": "10.0.0.10",
             "nullable": true,
             "type": "string"
@@ -4282,14 +4282,13 @@
             "type": "string"
           },
           "type": {
-            "description": "Resource type. For `static_device_pool` and `dynamic_device_pool`, `address` is not applicable. Only `cidr`, `ip`, and `dns` Resources can be created through the API.",
+            "description": "Resource type. For `device_pool`, `address` is not applicable. Only `cidr`, `ip`, and `dns` Resources can be created through the API.",
             "enum": [
               "cidr",
               "ip",
               "dns",
               "internet",
-              "static_device_pool",
-              "dynamic_device_pool"
+              "device_pool"
             ],
             "example": "ip",
             "type": "string"
@@ -5297,13 +5296,13 @@
                 "type": "string"
               },
               "type": {
-                "description": "Resource type. `internet` is accepted only in the Internet Site. `static_device_pool` is accepted only on a Resource that already is one.",
+                "description": "Resource type. `internet` is accepted only in the Internet Site. `device_pool` is accepted only on a Resource that already is one.",
                 "enum": [
                   "cidr",
                   "ip",
                   "dns",
                   "internet",
-                  "static_device_pool"
+                  "device_pool"
                 ],
                 "example": "ip",
                 "type": "string"
@@ -5480,7 +5479,7 @@
         "type": "object"
       },
       "PoolMember": {
-        "description": "A Client belonging to a static device pool Resource",
+        "description": "A Client a device pool Resource names as a member",
         "properties": {
           "id": {
             "description": "Client ID",
@@ -12332,7 +12331,7 @@
             }
           },
           {
-            "description": "Filter to Resources of this type: cidr, ip, dns, or static_device_pool.",
+            "description": "Filter to Resources of this type: cidr, ip, dns, or device_pool.",
             "example": "dns",
             "in": "query",
             "name": "type",
@@ -16005,7 +16004,7 @@
     "/resources/{resource_id}/pool_members": {
       "get": {
         "callbacks": {},
-        "description": "Lists the Clients belonging to a `static_device_pool` Resource.\n\nReturns 400 for any other Resource type - only device pools have members.\n",
+        "description": "Lists the Clients a `device_pool` Resource names as its members.\n\nReturns 400 for any other Resource type, and for a device pool whose members are\neach actor's own devices rather than a list.\n",
         "operationId": "PortalAPI.PoolMemberController.index",
         "parameters": [
           {

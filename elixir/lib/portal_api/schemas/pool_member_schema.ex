@@ -49,7 +49,7 @@ defmodule PortalAPI.Schemas.PoolMember do
              ]}
     OpenApiSpex.schema(%{
       title: "PoolMember",
-      description: "A Client belonging to a static device pool Resource",
+      description: "A Client a device pool Resource names as a member",
       type: :object,
       properties: %{
         id: %Schema{

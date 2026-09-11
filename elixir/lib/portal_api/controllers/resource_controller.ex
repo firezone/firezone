@@ -23,7 +23,7 @@ defmodule PortalAPI.ResourceController do
       ],
       type: [
         in: :query,
-        description: "Filter to Resources of this type: cidr, ip, dns, or static_device_pool.",
+        description: "Filter to Resources of this type: cidr, ip, dns, or device_pool.",
         type: :string,
         example: "dns"
       ],
@@ -231,7 +231,7 @@ defmodule PortalAPI.ResourceController do
 
     required =
       case Ecto.Changeset.get_field(changeset, :type) do
-        :static_device_pool -> ~w[name type]a
+        :device_pool -> ~w[name type]a
         :internet -> ~w[name type site_id]a
         _ -> ~w[name type site_id address]a
       end
@@ -268,7 +268,7 @@ defmodule PortalAPI.ResourceController do
             {"CIDR", "cidr"},
             {"IP", "ip"},
             {"DNS", "dns"},
-            {"Static Device Pool", "static_device_pool"}
+            {"Device Pool", "device_pool"}
           ],
           fun: &filter_by_type/2
         },
@@ -318,8 +318,8 @@ defmodule PortalAPI.ResourceController do
       {queryable, dynamic}
     end
 
-    defp filter_by_type(queryable, "static_device_pool") do
-      dynamic = dynamic([resources: r], r.type == :static_device_pool)
+    defp filter_by_type(queryable, "device_pool") do
+      dynamic = dynamic([resources: r], r.type == :device_pool)
       {queryable, dynamic}
     end
 
@@ -384,7 +384,7 @@ defmodule PortalAPI.ResourceController do
     # works normally against a pool that already exists.
     #
     # What this rejects is any request that *changes* a Resource's type to
-    # static_device_pool, which is why it runs on the update path too: doing
+    # device_pool, which is why it runs on the update path too: doing
     # it there would be creating a pool by another name. It is not a block on
     # updating pools.
     #
@@ -393,15 +393,15 @@ defmodule PortalAPI.ResourceController do
     # and cast/3 only recording a change when the value differs from the
     # stored one. So renaming an existing pool passes, and so does a PUT that
     # restates the pool's own type - only a genuine transition into
-    # static_device_pool is refused.
+    # device_pool is refused.
     #
     # To re-enable, in this file:
     #
     #   1. Delete this function and both of its call sites (create_changeset/2
     #      and Database.changeset/3).
-    #   2. Add "static_device_pool" back to the `type` enum in
+    #   2. Add "device_pool" back to the `type` enum in
     #      PortalAPI.Schemas.Resource's CreateParams and UpdateParams, and
-    #      restore the "site_id is required unless type is static_device_pool"
+    #      restore the "site_id is required unless type is device_pool"
     #      note in the CreateRequest description.
     #
     # Everything else already supports pools and needs no change: the
@@ -409,13 +409,13 @@ defmodule PortalAPI.ResourceController do
     # special-case them, Portal.Resource nulls site_id for pool types, and
     # PortalAPI.PoolMemberController manages membership. Outside this repo,
     # the Terraform provider's firezone_resource still advertises
-    # static_device_pool in its type validator - it will start getting 422s
-    # until it is updated to match.
+    # static_device_pool in its type validator - it gets 422s until it is
+    # updated to match.
     def reject_device_pool_type(changeset) do
       Ecto.Changeset.validate_exclusion(
         changeset,
         :type,
-        [:static_device_pool, :dynamic_device_pool],
+        [:device_pool],
         message: "device pools cannot be created via the API"
       )
     end
@@ -430,7 +430,7 @@ defmodule PortalAPI.ResourceController do
 
       required_fields =
         case Ecto.Changeset.get_field(changeset, :type) do
-          :static_device_pool -> ~w[name type]a
+          :device_pool -> ~w[name type]a
           :internet -> ~w[name type site_id]a
           _ -> ~w[name type site_id address]a
         end

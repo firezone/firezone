@@ -107,7 +107,6 @@ config :portal, Portal.ChangeLogs.Consumer,
     gateway_tokens
     policies
     resources
-    static_device_pool_members
     client_tokens
     one_time_passcodes
     api_tokens
@@ -160,7 +159,6 @@ config :portal, Portal.Changes.Consumer,
     sites
     policies
     resources
-    static_device_pool_members
     client_tokens
     google_auth_providers
     entra_auth_providers

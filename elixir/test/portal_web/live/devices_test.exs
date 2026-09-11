@@ -329,7 +329,7 @@ defmodule PortalWeb.DevicesTest do
       client = client_fixture(account: account, actor: actor)
 
       pool =
-        static_device_pool_resource_fixture(
+        device_pool_resource_fixture(
           account: account,
           name: "Engineering Laptops",
           devices: [client]

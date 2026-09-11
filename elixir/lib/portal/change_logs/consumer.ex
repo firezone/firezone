@@ -39,7 +39,6 @@ defmodule Portal.ChangeLogs.Consumer do
     "policies" => Portal.Policy,
     "resources" => Portal.Resource,
     "sites" => Portal.Site,
-    "static_device_pool_members" => Portal.StaticDevicePoolMember,
     "client_tokens" => Portal.ClientToken,
     "trust_anchor_certificates" => Portal.TrustAnchorCertificate,
     "trust_anchors" => Portal.TrustAnchor,

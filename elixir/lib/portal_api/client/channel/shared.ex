@@ -91,7 +91,7 @@ defmodule PortalAPI.Client.Channel.Shared do
         nil,
         socket.assigns.client,
         socket.assigns.subject,
-        protocol_version: socket.assigns.channel_protocol.protocol_version()
+        protocol_version: protocol_version(socket)
       )
 
     # Hydrate inbound policy_authorizations cache so the channel can react to filter
@@ -174,7 +174,7 @@ defmodule PortalAPI.Client.Channel.Shared do
       push(
         socket,
         "resource_created_or_updated",
-        Views.Resource.render(resource, socket.assigns.client)
+        Views.Resource.render(resource, socket.assigns.client, protocol_version(socket))
       )
     end
 
@@ -743,12 +743,12 @@ defmodule PortalAPI.Client.Channel.Shared do
   ####################################
 
   # This message is sent by the client to request authorization for a resource served by a
-  # gateway or, for static_device_pool resources, a peer client.
+  # gateway or, on the v2 protocol, a device pool member.
   #
   # For gateway-backed resources, `connected_gateway_ids` indicates that the client is already
   # connected to some of the gateways, so the gateway can be reused by multiplexing the connection.
   #
-  # For static_device_pool resources, the payload also carries `ipv4` or `ipv6` of the target
+  # For device pool resources, the payload also carries `ipv4` or `ipv6` of the target
   # member device.
   def handle_in(
         "request_authorization",
@@ -761,9 +761,8 @@ defmodule PortalAPI.Client.Channel.Shared do
            resource_id,
            socket.assigns.subject
          ) do
-      {:ok, %Cache.Cacheable.Resource{type: type} = resource, membership_id, policy_id,
-       expires_at}
-      when type in [:static_device_pool, :dynamic_device_pool] ->
+      {:ok, %Cache.Cacheable.Resource{type: :device_pool} = resource, membership_id, policy_id,
+       expires_at} ->
         handle_request_pool_authorization(
           resource_id,
           resource,
@@ -806,26 +805,36 @@ defmodule PortalAPI.Client.Channel.Shared do
     end
   end
 
-  # Connlib intercepts DNS queries for `<slug>.firezone.network`. A name resolves only
-  # when a connectable pool admits the device. The answer names those pools so connlib
-  # routes the first packet through one of them by its filters and only then asks for
-  # access, like it does for a static pool member.
+  # Connlib intercepts DNS queries for `<slug>.firezone.network`. Every client device in
+  # the account resolves; access is decided when connlib sees a packet for the address.
   def handle_in("resolve_device_domain", %{"domain" => domain}, socket) when is_binary(domain) do
-    with {:ok, %Portal.Device{} = device} <- resolve_device_domain(domain, socket),
-         {:ok, resource_ids} <- admitting_device_pools(device, socket) do
-      push(socket, "device_domain_resolved", %{
-        domain: domain,
-        client_id: device.id,
-        ipv4: %Postgrex.INET{address: device.ipv4.address, netmask: 32},
-        ipv6: %Postgrex.INET{address: device.ipv6.address, netmask: 128},
-        resource_ids: resource_ids
-      })
-    else
+    case resolve_device_domain(domain, socket) do
+      {:ok, %Portal.Device{} = device} ->
+        push(socket, "device_domain_resolved", %{
+          domain: domain,
+          ipv4: %Postgrex.INET{address: device.ipv4.address, netmask: 32},
+          ipv6: %Postgrex.INET{address: device.ipv6.address, netmask: 128}
+        })
+
       {:error, reason} ->
         push(socket, "device_domain_resolution_failed", %{domain: domain, reason: reason})
     end
 
     {:noreply, socket}
+  end
+
+  # Connlib asks for access when it sees a packet for a tunnel address that no pool it
+  # already holds permits. The portal finds the device behind the address, picks the pool
+  # by the flow and tells both sides which pool authorized the connection.
+  #
+  # Older clients send this message by accident for any packet into 100.64.0.0/10, a
+  # leftover of the client-to-client PoC, so it only means something on the v3 protocol.
+  def handle_in("request_device_access", payload, socket) do
+    if protocol_version(socket) >= 3 do
+      handle_request_device_access(payload, socket)
+    else
+      {:noreply, socket}
+    end
   end
 
   # DEPRECATED IN 1.4
@@ -1160,13 +1169,6 @@ defmodule PortalAPI.Client.Channel.Shared do
     {:noreply, socket}
   end
 
-  # Some clients send these sporadically by accident since any packet with a destination in
-  # 100.64.0.0/10 will trigger it in certain older clients. Message was introduced for the PoC
-  # of client-to-client, but was replaced with the standard create-authorization message. We no-op it.
-  def handle_in("request_device_access", _payload, socket) do
-    {:noreply, socket}
-  end
-
   # Catch-all for unknown messages
   def handle_in(message, payload, socket) do
     unknown_message(message, payload, socket)
@@ -1223,13 +1225,19 @@ defmodule PortalAPI.Client.Channel.Shared do
 
   defp parse_target_address(_), do: {:error, :missing_address}
 
-  defp resolve_device_domain(domain, socket) do
-    domain = String.downcase(domain)
-    slug = domain |> String.split(".") |> hd()
+  defp parse_flow(%{"protocol" => "icmp"}), do: {:ok, :icmp}
 
-    with true <- domain == Portal.Device.fqdn_for_slug(slug) || {:error, :not_found},
-         {:ok, %Portal.Device{} = device} <-
-           Database.get_device_by_slug(slug, socket.assigns.subject) do
+  defp parse_flow(%{"protocol" => "tcp", "port" => port}) when is_integer(port) and port in 0..65_535,
+    do: {:ok, {:tcp, port}}
+
+  defp parse_flow(%{"protocol" => "udp", "port" => port}) when is_integer(port) and port in 0..65_535,
+    do: {:ok, {:udp, port}}
+
+  defp parse_flow(_payload), do: {:error, :invalid_flow}
+
+  defp fetch_target_device(target, socket) do
+    with {:ok, %Portal.Device{} = device} <-
+           Database.get_device_by_address(target, socket.assigns.subject) do
       if device.id == socket.assigns.client.id do
         {:error, :forbidden}
       else
@@ -1238,75 +1246,12 @@ defmodule PortalAPI.Client.Channel.Shared do
     end
   end
 
-  defp admitting_device_pools(device, socket) do
-    cache = socket.assigns.cache
-    subject = socket.assigns.subject
+  defp resolve_device_domain(domain, socket) do
+    domain = String.downcase(domain)
+    slug = domain |> String.split(".") |> hd()
 
-    cache.connectable_resources
-    |> Enum.filter(&pool_admits?(&1, cache, device, subject))
-    |> Enum.map(&Ecto.UUID.load!(&1.id))
-    |> Enum.sort()
-    |> case do
-      [] -> {:error, :forbidden}
-      resource_ids -> {:ok, resource_ids}
-    end
-  end
-
-  defp pool_admits?(
-         %Cache.Cacheable.Resource{type: :static_device_pool} = pool,
-         cache,
-         device,
-         _subject
-       ) do
-    target = {:ipv4, device.ipv4.address}
-
-    match?(
-      {:ok, _device_id},
-      Cache.Client.authorize_device_access(cache, Ecto.UUID.load!(pool.id), target)
-    )
-  end
-
-  defp pool_admits?(
-         %Cache.Cacheable.Resource{type: :dynamic_device_pool} = pool,
-         _cache,
-         device,
-         subject
-       ) do
-    Portal.Resource.DeviceMembershipCriteria.member?(
-      pool.device_membership_criteria,
-      device,
-      subject
-    )
-  end
-
-  defp pool_admits?(%Cache.Cacheable.Resource{}, _cache, _device, _subject), do: false
-
-  # Dispatches the pool authorization check by resource type. Static pools have
-  # their member set pre-loaded in the cache; dynamic pools resolve the target IP
-  # to a device at request-time and check the pool's membership criteria on it.
-  defp authorize_pool_target(
-         %Cache.Cacheable.Resource{type: :static_device_pool},
-         cache,
-         resource_id,
-         target,
-         _subject
-       ) do
-    Cache.Client.authorize_device_access(cache, resource_id, target)
-  end
-
-  defp authorize_pool_target(
-         %Cache.Cacheable.Resource{type: :dynamic_device_pool, device_membership_criteria: criteria},
-         _cache,
-         _resource_id,
-         target,
-         subject
-       ) do
-    with {:ok, %Portal.Device{} = device} <-
-           Database.get_device_by_address(target, subject),
-         true <- Portal.Resource.DeviceMembershipCriteria.member?(criteria, device, subject) do
-      {:ok, device.id}
-    else
-      _ -> {:error, :forbidden}
+    with true <- domain == Portal.Device.fqdn_for_slug(slug) || {:error, :not_found} do
+      Database.get_device_by_slug(slug, socket.assigns.subject)
     end
   end
 
@@ -1443,6 +1388,53 @@ defmodule PortalAPI.Client.Channel.Shared do
     end
   end
 
+  defp handle_request_device_access(payload, socket) do
+    with {:ok, target} <- parse_target_address(payload),
+         {:ok, flow} <- parse_flow(payload),
+         {:ok, %Portal.Device{} = device} <- fetch_target_device(target, socket),
+         {:ok, resource, membership_id, policy_id, expires_at} <-
+           Cache.Client.authorize_device_pool(
+             socket.assigns.cache,
+             socket.assigns.client,
+             device,
+             flow,
+             socket.assigns.subject
+           ) do
+      case find_online_client_by_address(socket.assigns.client.account_id, target) do
+        {:ok, target_client_id, target_meta} ->
+          handle_authorized_pool_target(
+            target_client_id,
+            target_meta,
+            resource,
+            membership_id,
+            policy_id,
+            expires_at,
+            payload,
+            socket
+          )
+
+        :offline ->
+          push(socket, "client_device_access_denied", %{
+            client_id: device.id,
+            ipv4: payload["ipv4"],
+            ipv6: payload["ipv6"],
+            reason: :offline
+          })
+
+          {:noreply, socket}
+      end
+    else
+      {:error, reason} ->
+        push(socket, "client_device_access_denied", %{
+          ipv4: payload["ipv4"],
+          ipv6: payload["ipv6"],
+          reason: reason
+        })
+
+        {:noreply, socket}
+    end
+  end
+
   defp handle_request_pool_authorization(
          resource_id,
          resource,
@@ -1456,13 +1448,7 @@ defmodule PortalAPI.Client.Channel.Shared do
 
     with {:ok, target} <- parse_target_address(payload),
          {:ok, target_device_id} <-
-           authorize_pool_target(
-             resource,
-             socket.assigns.cache,
-             resource_id,
-             target,
-             socket.assigns.subject
-           ) do
+           Cache.Client.authorize_device_access(socket.assigns.cache, resource_id, target) do
       # Once the target IP is authorized for the pool we know the device id, so even
       # offline-target denials can carry it back to the initiator.
       case find_online_client_by_address(account_id, target) do
@@ -1723,10 +1709,9 @@ defmodule PortalAPI.Client.Channel.Shared do
     # Mirror the gateway's create-authorization payload on the receiver side: the
     # receiving client gets the full resource view (filters, type, name,
     # devices) plus the subject (actor) view, in addition to peer/ICE fields.
-    # We render with the initiator's session here — for static_device_pool
-    # resources the version-dependent codepaths in the resource view aren't
-    # exercised (no site fields), so this is safe across version skew.
-    rendered_resource = Views.Resource.render(resource, socket.assigns.client)
+    # We render with the initiator's session here — the receiver only reads the
+    # id and filters out of it, so this is safe across version skew.
+    rendered_resource = Views.Resource.render(resource, socket.assigns.client, protocol_version(socket))
 
     rendered_subject = PortalAPI.Gateway.Views.Subject.render(socket.assigns.subject)
 
@@ -1764,6 +1749,7 @@ defmodule PortalAPI.Client.Channel.Shared do
 
     initiator_payload = %{
       client_id: target_client_id,
+      resource_id: Ecto.UUID.load!(resource.id),
       client_public_key: target_meta.public_key,
       client_ipv4: %Postgrex.INET{address: target_meta.ipv4},
       client_ipv6: %Postgrex.INET{address: target_meta.ipv6},
@@ -1800,7 +1786,7 @@ defmodule PortalAPI.Client.Channel.Shared do
       flow_logs: flow_logs_config(),
       account_slug: socket.assigns.subject.account.slug,
       actor_name: socket.assigns.subject.actor.name,
-      resources: Views.Resource.render_many(resources, socket.assigns.client),
+      resources: Views.Resource.render_many(resources, socket.assigns.client, protocol_version(socket)),
       authorizations: Views.PolicyAuthorization.render_many(socket.assigns.authorizations_cache),
       relays:
         Views.Relay.render_many(
@@ -2196,7 +2182,7 @@ defmodule PortalAPI.Client.Channel.Shared do
          },
          %{assigns: %{client: %{id: client_id}}} = socket
        ) do
-    if socket.assigns.channel_protocol.protocol_version() >= 3 and
+    if protocol_version(socket) >= 3 and
          not expired?(policy_authorization) do
       push(socket, "reject_access", %{
         client_id: policy_authorization.receiving_device_id,
@@ -2219,38 +2205,20 @@ defmodule PortalAPI.Client.Channel.Shared do
        ) do
     maybe_push_resource_filters_updated(socket, resource, old_filters, filters)
 
-    Cache.Client.update_resource(
-      socket.assigns.cache,
-      resource,
-      socket.assigns.client,
-      socket.assigns.subject
-    )
-    |> push_resource_updates(socket)
-  end
+    {:ok, _added, _removed_ids, cache} =
+      result =
+      Cache.Client.update_resource(
+        socket.assigns.cache,
+        resource,
+        socket.assigns.client,
+        socket.assigns.subject
+      )
 
-  # STATIC DEVICE POOL MEMBERS
+    for addresses <- Cache.Client.removed_member_addresses(socket.assigns.cache, cache) do
+      push_device_access_denied(socket, addresses)
+    end
 
-  defp handle_change(
-         %Change{op: :insert, struct: %Portal.StaticDevicePoolMember{} = member},
-         socket
-       ) do
-    Cache.Client.add_static_device_pool_member(
-      socket.assigns.cache,
-      member,
-      socket.assigns.subject
-    )
-    |> push_resource_updates(socket)
-  end
-
-  defp handle_change(
-         %Change{op: :delete, old_struct: %Portal.StaticDevicePoolMember{} = member},
-         socket
-       ) do
-    {:ok, denied, added, removed_ids, cache} =
-      Cache.Client.delete_static_device_pool_member(socket.assigns.cache, member)
-
-    push_device_access_denied(socket, denied)
-    push_resource_updates({:ok, added, removed_ids, cache}, socket)
+    push_resource_updates(result, socket)
   end
 
   # NON-SELF CLIENT DEVICES (members of a pool we have access to)
@@ -2283,6 +2251,8 @@ defmodule PortalAPI.Client.Channel.Shared do
   end
 
   defp handle_change(%Change{}, socket), do: {:noreply, socket}
+
+  defp protocol_version(socket), do: socket.assigns.channel_protocol.protocol_version()
 
   defp expired?(%Portal.PolicyAuthorization{expires_at: nil}), do: false
 
@@ -2450,7 +2420,7 @@ defmodule PortalAPI.Client.Channel.Shared do
       push(
         socket,
         "resource_created_or_updated",
-        Views.Resource.render(resource, socket.assigns.client)
+        Views.Resource.render(resource, socket.assigns.client, protocol_version(socket))
       )
     end
 
@@ -2892,8 +2862,6 @@ defmodule PortalAPI.Client.Channel.Shared do
 
     @doc """
       Fetches a client device by its tunnel IPv4 or IPv6 within the subject's account.
-      Used to create an authorization against a dynamic device pool: we resolve the
-      target IP to a device and let the caller run the pool's rule on it.
     """
     def get_device_by_address({:ipv4, ipv4_tuple}, subject) do
       fetch_device_by_inet(:ipv4, %Postgrex.INET{address: ipv4_tuple}, subject)

@@ -2,9 +2,12 @@ defmodule Portal.Changes.Hooks.ResourcesTest do
   use Portal.DataCase, async: true
   import Portal.Changes.Hooks.Resources
   import Portal.AccountFixtures
+  import Portal.ActorFixtures
+  import Portal.DeviceFixtures
   import Portal.ResourceFixtures
   import Portal.PolicyAuthorizationFixtures
   alias Portal.Changes.Change
+  alias Portal.Resource.DeviceMembershipCriteria
   alias Portal.PolicyAuthorization
   alias Portal.Resource
   alias Portal.PubSub
@@ -102,6 +105,71 @@ defmodule Portal.Changes.Hooks.ResourcesTest do
 
       assert :ok = on_update(0, old_data, data)
       refute Repo.get_by(PolicyAuthorization, id: policy_authorization.id)
+    end
+
+    test "criteria change deletes the authorizations of devices that left the pool" do
+      account = account_fixture()
+      initiator = client_fixture(account: account)
+      kept = client_fixture(account: account)
+      dropped = client_fixture(account: account)
+      pool = device_pool_resource_fixture(account: account, devices: [kept, dropped])
+
+      kept_pa =
+        policy_authorization_fixture(account: account, resource: pool, client: initiator, gateway: kept)
+
+      dropped_pa =
+        policy_authorization_fixture(account: account, resource: pool, client: initiator, gateway: dropped)
+
+      old_data = %{
+        "id" => pool.id,
+        "account_id" => account.id,
+        "type" => "device_pool",
+        "device_membership_criteria" => DeviceMembershipCriteria.to_map(pool.device_membership_criteria)
+      }
+
+      data =
+        Map.put(
+          old_data,
+          "device_membership_criteria",
+          DeviceMembershipCriteria.to_map(DeviceMembershipCriteria.devices([kept.id]))
+        )
+
+      assert :ok = on_update(0, old_data, data)
+      assert Repo.get_by(PolicyAuthorization, id: kept_pa.id)
+      refute Repo.get_by(PolicyAuthorization, id: dropped_pa.id)
+    end
+
+    test "own devices criteria delete the authorizations toward other actors' devices" do
+      account = account_fixture()
+      actor = actor_fixture(account: account)
+      initiator = client_fixture(account: account, actor: actor)
+      own = client_fixture(account: account, actor: actor)
+      stranger = client_fixture(account: account)
+      pool = device_pool_resource_fixture(account: account, devices: [own, stranger])
+
+      own_pa =
+        policy_authorization_fixture(account: account, resource: pool, client: initiator, gateway: own)
+
+      stranger_pa =
+        policy_authorization_fixture(account: account, resource: pool, client: initiator, gateway: stranger)
+
+      old_data = %{
+        "id" => pool.id,
+        "account_id" => account.id,
+        "type" => "device_pool",
+        "device_membership_criteria" => DeviceMembershipCriteria.to_map(pool.device_membership_criteria)
+      }
+
+      data =
+        Map.put(
+          old_data,
+          "device_membership_criteria",
+          DeviceMembershipCriteria.to_map(DeviceMembershipCriteria.own_devices())
+        )
+
+      assert :ok = on_update(0, old_data, data)
+      assert Repo.get_by(PolicyAuthorization, id: own_pa.id)
+      refute Repo.get_by(PolicyAuthorization, id: stranger_pa.id)
     end
   end
 

@@ -121,7 +121,8 @@ defmodule Portal.Repo.Seeds do
         address: attrs[:address] || attrs["address"],
         address_description: attrs[:address_description] || attrs["address_description"],
         filters: attrs[:filters] || attrs["filters"] || [],
-        site_id: attrs[:site_id] || attrs["site_id"]
+        site_id: attrs[:site_id] || attrs["site_id"],
+        device_membership_criteria: attrs[:device_membership_criteria]
       }
       |> Repo.insert!()
 
@@ -1905,7 +1906,7 @@ defmodule Portal.Repo.Seeds do
       |> Repo.insert!()
 
       IO.puts("Created #{self_device_pool.name} pool for #{seed_account.name}:")
-      IO.puts("  <slug>.#{Portal.Device.domain()} - Dynamic Device Pool - policy: Everyone")
+      IO.puts("  <slug>.#{Portal.Device.domain()} - Device Pool - policy: Everyone")
       IO.puts("")
     end
 
@@ -3041,22 +3042,15 @@ defmodule Portal.Repo.Seeds do
     {:ok, pool_resource} =
       create_resource(
         %{
-          type: :static_device_pool,
+          type: :device_pool,
           name: "CI Static Pool",
           address_description: "CI integration test static device pool",
-          site_id: site.id,
+          device_membership_criteria:
+            Portal.Resource.DeviceMembershipCriteria.devices([pool_member_device.id]),
           filters: []
         },
         admin_subject
       )
-
-    %Portal.StaticDevicePoolMember{
-      account_id: account.id,
-      resource_id: pool_resource.id,
-      device_id: pool_member_device.id,
-      device_type: :client
-    }
-    |> Repo.insert!()
 
     IO.puts("Created resources:")
     IO.puts("  #{dns_google_resource.address} - DNS - gateways: #{gateway_name}")
