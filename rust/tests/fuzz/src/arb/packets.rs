@@ -6,11 +6,10 @@ use std::{
 use connlib_model::ClientId;
 use dns_types::DomainName;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
-use tunnel_proto::messages::{Filter, PortRange, client::DevicePoolMember};
+use tunnel_proto::messages::{Filter, PortRange};
 
 use super::context::Generator;
 use crate::reference::ReferenceState;
-use crate::resource::StaticDevicePoolResource;
 use crate::transition::{Destination, Transition};
 
 /// Represents a semantic destination selected by the state-aware grammar.
@@ -300,35 +299,9 @@ pub(super) fn host_in_v6(g: &mut Generator, network: Ipv6Network) -> Ipv6Addr {
     Ipv6Addr::from(base.wrapping_add(off))
 }
 
-/// Selects online clients as `/32` and `/128` device members.
-pub(super) fn arb_static_pool_members(
-    g: &mut Generator,
-    state: &ReferenceState,
-    pool: &StaticDevicePoolResource,
-) -> Vec<DevicePoolMember> {
-    arb_online_static_pool_members(g, state)
-        .into_iter()
-        .chain(offline_static_pool_members(state, pool))
-        .collect()
-}
-
-pub(super) fn arb_online_static_pool_members(
-    g: &mut Generator,
-    state: &ReferenceState,
-) -> Vec<DevicePoolMember> {
-    state
-        .clients
-        .iter()
-        .filter(|_| g.bool())
-        .map(|(id, client)| {
-            let client = client.inner();
-            DevicePoolMember {
-                id: *id,
-                ipv4: Ipv4Network::new(client.tunnel_ip4, 32).unwrap(),
-                ipv6: Ipv6Network::new(client.tunnel_ip6, 128).unwrap(),
-            }
-        })
-        .collect()
+/// Selects a subset of the online clients as a pool's members.
+pub(super) fn arb_pool_members(g: &mut Generator, state: &ReferenceState) -> BTreeSet<ClientId> {
+    state.clients.keys().filter(|_| g.bool()).copied().collect()
 }
 
 fn host_in_network(g: &mut Generator, network: IpNetwork) -> IpAddr {
@@ -463,18 +436,6 @@ fn arb_unfiltered_packet(
         arb_udp_packet(g, client_id, src, DstSpec::Ip(dst), dport)
     }
 }
-fn offline_static_pool_members(
-    state: &ReferenceState,
-    pool: &StaticDevicePoolResource,
-) -> impl Iterator<Item = DevicePoolMember> {
-    let online_ids = state.clients.keys().copied().collect::<BTreeSet<_>>();
-
-    pool.devices
-        .iter()
-        .filter(move |d| !online_ids.contains(&d.id))
-        .cloned()
-}
-
 fn arb_icmp_packet(
     g: &mut Generator,
     client_id: ClientId,

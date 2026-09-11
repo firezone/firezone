@@ -104,6 +104,19 @@ where
         self.inner.retain(|_, entries| !entries.is_empty());
     }
 
+    /// Replaces every entry of `id` with what `f` makes of it.
+    pub(crate) fn update_by_id(&mut self, id: ResourceId, f: impl Fn(&T) -> T) {
+        self.match_cache.clear();
+
+        for (_, entries) in self.inner.iter_mut() {
+            let updated = entries
+                .extract_if(.., |e| e.resource_id() == id)
+                .map(|e| f(&e))
+                .collect::<Vec<_>>();
+            entries.extend(updated);
+        }
+    }
+
     /// Removes entries for `network` for which `predicate` returns true.
     ///
     /// Drops the network from the table if no entries remain.
