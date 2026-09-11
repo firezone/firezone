@@ -200,7 +200,7 @@ defmodule Portal.Changes.Hooks.PoliciesTest do
         "postures" => nil
       }
 
-      data = Map.put(old_data, "postures", %{"intune" => %{"field" => "enrolled", "op" => "is", "value" => true}})
+      data = Map.put(old_data, "postures", %{"field" => "intune.enrolled", "op" => "is", "value" => true})
       policy_authorization = policy_authorization_fixture(policy: policy, account: account)
 
       assert :ok = on_update(0, old_data, data)

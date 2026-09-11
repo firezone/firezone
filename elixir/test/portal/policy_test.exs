@@ -233,26 +233,28 @@ defmodule Portal.PolicyTest do
     test "stores a valid tree" do
       changeset =
         %Policy{}
-        |> cast(%{postures: %{"intune" => %{"field" => "compliance_state", "op" => "is", "value" => "compliant"}}}, [:postures])
+        |> cast(%{postures: %{"field" => "intune.compliance_state", "op" => "is", "value" => "compliant"}}, [:postures])
         |> Policy.changeset()
 
-      assert %Portal.Policies.Postures{providers: %{intune: _}} = get_change(changeset, :postures)
+      assert %Portal.Policies.Postures{expr: %Portal.Policies.Postures.Leaf{provider: :intune}} = get_change(changeset, :postures)
       assert changeset.valid?
     end
 
     test "reports an invalid tree on postures" do
       changeset =
         %Policy{}
-        |> cast(%{postures: %{"intune" => %{"field" => "nope", "op" => "is", "value" => "x"}}}, [:postures])
+        |> cast(%{postures: %{"field" => "intune.nope", "op" => "is", "value" => "x"}}, [:postures])
         |> Policy.changeset()
 
-      assert %{postures: ["intune.field: intune has no field nope"]} = errors_on(changeset)
+      assert %{postures: ["field: intune has no field nope"]} = errors_on(changeset)
     end
 
     test "round trips through the database" do
       map = %{
-        "firezone" => %{"field" => "attested", "op" => "is", "value" => true},
-        "intune" => %{"rows" => "all", "expr" => %{"field" => "last_sync_at", "op" => "within_last", "value" => "PT24H"}}
+        "and" => [
+          %{"field" => "firezone.attested", "op" => "is", "value" => true},
+          %{"field" => "intune.last_sync_at", "op" => "within_last", "value" => "PT24H", "rows" => "all"}
+        ]
       }
 
       policy = policy_fixture(postures: map)

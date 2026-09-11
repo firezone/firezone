@@ -31,7 +31,7 @@ defmodule Portal.Cache.ClientTest do
     end
 
     test "carries the postures tree" do
-      {:ok, postures} = Portal.Policies.Postures.cast(%{"intune" => %{"field" => "enrolled", "op" => "is", "value" => true}})
+      {:ok, postures} = Portal.Policies.Postures.cast(%{"field" => "intune.enrolled", "op" => "is", "value" => true})
       policy = %Portal.Policy{id: Ecto.UUID.generate(), resource_id: Ecto.UUID.generate(), conditions: [], postures: postures}
       assert Cacheable.to_cache(policy).postures == postures
     end
@@ -1009,7 +1009,7 @@ defmodule Portal.Cache.ClientTest do
         account: account,
         group: group,
         resource: resource,
-        postures: %{"intune" => %{"field" => "compliance_state", "op" => "is", "value" => "compliant"}}
+        postures: %{"field" => "intune.compliance_state", "op" => "is", "value" => "compliant"}
       )
 
       compliant = %Portal.Intune.Device{compliance_state: "compliant"}
@@ -1039,7 +1039,7 @@ defmodule Portal.Cache.ClientTest do
       failing = %{ctx.client | posture: %{intune: [ctx.noncompliant]}}
 
       assert Cache.authorize_resource(cache, failing, ctx.resource.id, ctx.subject) ==
-               {:error, {:forbidden, violated_properties: [{:postures, :intune}]}}
+               {:error, {:forbidden, violated_properties: [:postures]}}
     end
   end
 end
