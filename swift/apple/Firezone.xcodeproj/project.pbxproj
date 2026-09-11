@@ -39,6 +39,7 @@
 		8DCC021D28D512AC007E12D2 /* FirezoneApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8DCC021C28D512AC007E12D2 /* FirezoneApp.swift */; };
 		8DCC022628D512AE007E12D2 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 8DCC022528D512AE007E12D2 /* Assets.xcassets */; };
 		8DCC022A28D512AE007E12D2 /* Preview Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 8DCC022928D512AE007E12D2 /* Preview Assets.xcassets */; };
+		8DE1077D2F60000100BEEF01 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 8DCC022528D512AE007E12D2 /* Assets.xcassets */; };
 		8DE452A82CE6C194004CEDF9 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D5047E82CE6A8F4009802E9 /* main.swift */; };
 		8DFDEAC72D2CEBA500615095 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 8DA12C322BB7DA04007D91EB /* PrivacyInfo.xcprivacy */; };
 		9A1000012F10000100BEEF01 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A1000042F10000100BEEF01 /* main.swift */; };
@@ -552,6 +553,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				8DE1077D2F60000100BEEF01 /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -906,6 +908,7 @@
 		8D5047F12CE6A8F4009802E9 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = FirezoneNetworkExtension/FirezoneNetworkExtension.entitlements;
 				CODE_SIGN_IDENTITY = "$(inherited)";
 				CODE_SIGN_STYLE = "$(inherited)";
@@ -950,6 +953,7 @@
 		8D5047F22CE6A8F4009802E9 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = FirezoneNetworkExtension/FirezoneNetworkExtension.entitlements;
 				CODE_SIGN_IDENTITY = "$(inherited)";
@@ -1391,6 +1395,7 @@
 		A1B2C3D52CE6A8F4009802E9 /* Profile */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = FirezoneNetworkExtension/FirezoneNetworkExtension.entitlements;
 				CODE_SIGN_IDENTITY = "$(inherited)";
