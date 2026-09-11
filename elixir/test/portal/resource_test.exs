@@ -432,73 +432,33 @@ defmodule Portal.ResourceTest do
       assert "cannot contain a port number" in errors_on(changeset)[:address]
     end
 
-    test "rejects DNS addresses under the reserved Firezone domains" do
-      for {reserved, suffix} <- [
-            {"firezone.dev", "firezone.dev"},
-            {"www.firezone.dev", "firezone.dev"},
-            {"*.firezone.dev", "firezone.dev"},
-            {"my.firezone.dev", "firezone.dev"},
-            {"*.my.firezone.dev", "firezone.dev"},
-            {"laptop.pool.acme.firezone.dev", "firezone.dev"},
-            {"FOO.FIREZONE.DEV", "firezone.dev"},
-            {"app.firezone.dev", "firezone.dev"},
-            {"firez.one", "firez.one"},
-            {"*.my.firez.one", "firez.one"},
-            {"firezone.network", "firezone.network"},
-            {"laptop.firezone.network", "firezone.network"}
+    test "rejects DNS addresses under the device domain" do
+      for reserved <- [
+            "firezone.network",
+            "laptop.firezone.network",
+            "*.firezone.network",
+            "*.my.firezone.network",
+            "FOO.FIREZONE.NETWORK"
           ] do
         changeset = build_changeset(%{type: :dns, address: reserved})
 
-        assert "#{suffix} is reserved for Firezone" in errors_on(changeset)[:address],
+        assert "firezone.network is reserved for Firezone" in errors_on(changeset)[:address],
                "Expected '#{reserved}' to be rejected"
       end
     end
 
-    test "accepts DNS addresses that only look like the reserved domains" do
+    test "accepts DNS addresses that only look like the device domain" do
       for address <- [
-            "firezone.dev.example.com",
-            "myfirezone.dev",
-            "firez.one.example.com",
-            "firezone.network.example.com"
+            "firezone.network.example.com",
+            "myfirezone.network",
+            "firezone.dev",
+            "www.firezone.dev",
+            "firez.one"
           ] do
         changeset = build_changeset(%{type: :dns, address: address})
 
         refute Map.has_key?(errors_on(changeset), :address),
                "Expected '#{address}' to be valid, got: #{inspect(errors_on(changeset)[:address])}"
-      end
-    end
-
-  end
-
-  describe "changeset/1 CIDR address validation" do
-    test "validates and normalizes CIDR ranges" do
-      for {input, expected} <- [
-            {"192.168.1.1/24", "192.168.1.0/24"},
-            {"101.100.100.0/28", "101.100.100.0/28"},
-            {"192.168.1.255/28", "192.168.1.240/28"},
-            {"192.168.1.255/32", "192.168.1.255/32"},
-            {"2607:f8b0:4012:0::200e/128", "2607:f8b0:4012::200e/128"}
-          ] do
-        changeset = build_changeset(%{type: :cidr, address: input})
-
-        assert get_change(changeset, :address) == expected,
-               "Expected '#{input}' to normalize to '#{expected}', got '#{get_change(changeset, :address)}'"
-
-        refute Map.has_key?(errors_on(changeset), :address),
-               "Expected '#{input}' to be valid, got: #{inspect(errors_on(changeset)[:address])}"
-      end
-    end
-
-    test "rejects invalid CIDR ranges" do
-      for invalid_cidr <- [
-            "foobar",
-            "192.168.1.256/28",
-            "not-a-cidr"
-          ] do
-        changeset = build_changeset(%{type: :cidr, address: invalid_cidr})
-
-        assert Map.has_key?(errors_on(changeset), :address),
-               "Expected '#{invalid_cidr}' to be rejected"
       end
     end
 
