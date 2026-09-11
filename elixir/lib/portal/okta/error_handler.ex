@@ -12,11 +12,10 @@ defmodule Portal.Okta.ErrorHandler do
 
   @non_disabling_steps [:batch_upsert_identities, :batch_upsert_memberships]
 
-  # Req has already retried these before the response reaches us, so an
-  # exhausted throttle means the provider is busy, not that the directory is
-  # misconfigured. Disabling on one would make the admin re-verify to recover
-  # from rate limiting.
-  @throttled_statuses [408, 429]
+  # Okta can return intermittent 403s as well as timeouts and rate limits.
+  # Treat these as transient even after HTTP retries are exhausted so a single
+  # failure does not disable the directory.
+  @transient_statuses [403, 408, 429]
 
   def handle(%Okta.SyncError{error: error, step: step}, directory_id) do
     type = classify(error, step)
@@ -37,7 +36,7 @@ defmodule Portal.Okta.ErrorHandler do
 
   # Classification
 
-  defp classify(%Req.Response{status: status}) when status in @throttled_statuses,
+  defp classify(%Req.Response{status: status}) when status in @transient_statuses,
     do: :transient
 
   defp classify(%Req.Response{status: status}) when status >= 400 and status < 500 do
