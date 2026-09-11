@@ -625,7 +625,8 @@ fn cluster_bytes(path: &Path) -> Option<u64> {
         .inspect_err(|e| tracing::debug!(path = %path.display(), "Failed to stat volume: {e}"))
         .ok()?;
 
-    Some(stats.fragment_size())
+    // `c_ulong` is 32-bit on Android's 32-bit ABIs.
+    Some(stats.fragment_size() as u64)
 }
 
 #[cfg(windows)]
