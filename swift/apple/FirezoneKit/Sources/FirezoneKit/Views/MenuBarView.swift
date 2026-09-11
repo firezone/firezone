@@ -190,7 +190,7 @@
       // Stands in for the CLI already being on the PATH, which the `.pkg`
       // arranges for us and the other installs cannot.
       if !FileManager.default.fileExists(atPath: "/usr/local/bin/firezone") {
-        Button("Install Command Line Tool…") {
+        Button("Install Firezone CLI") {
           installCommandLineTool()
         }
       }

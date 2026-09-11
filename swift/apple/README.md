@@ -172,10 +172,10 @@ second bundle could not do. That also rules out a symlink to the binary from
 outside the bundle, which is why the app ships `Contents/Resources/firezone`, a
 wrapper that `exec`s the binary at its real path. The standalone `.pkg` symlinks
 it into `/usr/local/bin`. The `.dmg` and App Store builds are sandboxed and
-cannot, so they offer `Install Command Line Tool…` in the menu bar: it opens
-Terminal on a script that makes the same symlink with `sudo`. That entry is
-hidden once `/usr/local/bin/firezone` exists, and the symlink can always be made
-by hand with
+cannot, so they offer `Install Firezone CLI` in the menu bar: it opens Terminal
+on a script that makes the same symlink with `sudo`. That entry is hidden once
+`/usr/local/bin/firezone` exists, and the symlink can always be made by hand
+with
 `sudo ln -sf /Applications/Firezone.app/Contents/Resources/firezone /usr/local/bin/firezone`.
 `Contents/Resources/firezone-cli` is the previous name, kept as a deprecated
 alias that prints a warning.
