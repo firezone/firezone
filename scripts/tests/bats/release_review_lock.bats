@@ -32,18 +32,18 @@ MOCK
 
 @test "a new release can be built but cannot be locked" {
     echo '[[]]' >"$RESPONSE"
-    run bash "$script" check
+    run env usage_cmd=check bash "$script"
     [ "$status" -eq 0 ]
-    run bash "$script" lock
+    run env usage_cmd=lock bash "$script"
     [ "$status" -ne 0 ]
     [ ! -f "$UPLOADED" ]
 }
 
 @test "API failure blocks building and submission" {
     export GH_FAIL=true
-    run bash "$script" check
+    run env usage_cmd=check bash "$script"
     [ "$status" -ne 0 ]
-    run bash "$script" lock
+    run env usage_cmd=lock bash "$script"
     [ "$status" -ne 0 ]
     [ ! -f "$UPLOADED" ]
 }
@@ -51,18 +51,18 @@ MOCK
 @test "a review lock on a later page prevents rebuilding and supports submission retries" {
     jq '[[{tag_name: "unrelated"}], [.[0][0] | .assets += [{name: "review-submission.json"}]]]' "$RESPONSE" >"$RESPONSE.tmp"
     mv "$RESPONSE.tmp" "$RESPONSE"
-    run bash "$script" check
+    run env usage_cmd=check bash "$script"
     [ "$status" -ne 0 ]
     [[ "$output" == *"locked for store review"* ]]
-    run bash "$script" lock
+    run env usage_cmd=lock bash "$script"
     [ "$status" -eq 0 ]
     [ ! -f "$UPLOADED" ]
 }
 
 @test "an editable draft can be built and locked with its asset manifest" {
-    run bash "$script" check
+    run env usage_cmd=check bash "$script"
     [ "$status" -eq 0 ]
-    run bash "$script" lock
+    run env usage_cmd=lock bash "$script"
     [ "$status" -eq 0 ]
     jq -e --arg sha "$EXPECTED_SOURCE_SHA" '
         .source_sha == $sha and .submission_run == "https://github.com/firezone/firezone/actions/runs/123"
@@ -71,7 +71,7 @@ MOCK
 
 @test "a changed source cannot be locked" {
     export EXPECTED_SOURCE_SHA=other
-    run bash "$script" lock
+    run env usage_cmd=lock bash "$script"
     [ "$status" -ne 0 ]
     [ ! -f "$UPLOADED" ]
 }
@@ -79,9 +79,9 @@ MOCK
 @test "published releases cannot be rebuilt or locked" {
     jq '.[0][0].draft = false' "$RESPONSE" >"$RESPONSE.tmp"
     mv "$RESPONSE.tmp" "$RESPONSE"
-    run bash "$script" check
+    run env usage_cmd=check bash "$script"
     [ "$status" -ne 0 ]
-    run bash "$script" lock
+    run env usage_cmd=lock bash "$script"
     [ "$status" -ne 0 ]
     [ ! -f "$UPLOADED" ]
 }

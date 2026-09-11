@@ -1,14 +1,12 @@
 #!/usr/bin/env bash
 #MISE description="Check or lock a release draft for store review"
+#USAGE cmd "check" help="Fail if the release draft is locked for store review"
+#USAGE cmd "lock" help="Lock the release draft before submitting it for store review"
 
 # Build and submission workflows must hold the same concurrency group.
 set -euo pipefail
 
-mode=${1:?Expected check or lock}
-case "$mode" in
-check | lock) ;;
-*) exit 1 ;;
-esac
+mode=${usage_cmd:?Expected check or lock}
 
 # Listing distinguishes a missing release from an API or authentication failure.
 release=$(gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/releases?per_page=100" | jq -c --arg name "$RELEASE_NAME" '
