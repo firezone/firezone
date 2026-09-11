@@ -27,7 +27,7 @@ MOCK
     jq -n --arg name "$RELEASE_NAME" --arg sha "$EXPECTED_SOURCE_SHA" \
         '[[{tag_name: $name, draft: true, target_commitish: $sha,
             assets: [{name: "client.ipa", digest: "sha256:abc", size: 42}]}]]' >"$RESPONSE"
-    script="$BATS_TEST_DIRNAME/../../upload/release-review-lock.sh"
+    script="$BATS_TEST_DIRNAME/../../../mise-tasks/release/review-lock.sh"
 }
 
 @test "a new release can be built but cannot be locked" {

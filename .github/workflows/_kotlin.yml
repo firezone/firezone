@@ -241,12 +241,16 @@ jobs:
         run: echo "version=${RELEASE_NAME#android-client-}" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         if: github.event_name == 'workflow_dispatch' && github.ref_name == 'main'
+      - uses: ./.github/actions/setup-mise
+        if: github.event_name == 'workflow_dispatch' && github.ref_name == 'main'
+        with:
+          install: false
       - name: Check the release is not locked for review
         if: github.event_name == 'workflow_dispatch' && github.ref_name == 'main'
         working-directory: .
         env:
           GH_TOKEN: ${{ github.token }}
-        run: bash scripts/upload/release-review-lock.sh check
+        run: mise run //:release:review-lock check
       - uses: release-drafter/release-drafter@34d80673e067bdc0c24568d3af899c216adcfaa9 # v7.7.0
         if: "${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}"
         id: update-release-draft

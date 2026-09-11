@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+#MISE description="Check or lock a release draft for store review"
 
 # Build and submission workflows must hold the same concurrency group.
 set -euo pipefail

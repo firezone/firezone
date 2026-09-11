@@ -167,11 +167,14 @@ jobs:
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      - uses: ./.github/actions/setup-mise
+        with:
+          install: false
       - name: Lock the draft before submitting for review
         env:
           GH_TOKEN: ${{ github.token }}
           EXPECTED_SOURCE_SHA: ${{ needs.prepare.outputs.source_sha }}
-        run: bash scripts/upload/release-review-lock.sh lock
+        run: mise run //:release:review-lock lock
 
       - name: Revalidate the GitHub draft release
         env:
