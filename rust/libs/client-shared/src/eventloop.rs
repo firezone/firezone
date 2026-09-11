@@ -27,9 +27,7 @@ use tunnel::messages::client::{
     ResourceFiltersUpdated,
 };
 use tunnel::messages::{IngestToken, RelaysPresence, SnownetCapabilities};
-use tunnel::{
-    ClientEvent, ClientTunnel, DnsResourceRecord, IpConfig, ResolvedDevice, TunConfig, TunnelError,
-};
+use tunnel::{ClientEvent, ClientTunnel, DnsResourceRecord, IpConfig, TunConfig, TunnelError};
 
 /// In-memory cache for DNS resource records.
 ///
@@ -402,20 +400,26 @@ impl Eventloop {
             Ok(ClientEvent::ResourceConnectionIntent {
                 preferred_gateways,
                 resource,
-                ip,
             }) => {
-                let (ipv4, ipv6) = match ip {
-                    None => (None, None),
-                    Some(IpAddr::V4(v4)) => (Some(v4), None),
-                    Some(IpAddr::V6(v6)) => (None, Some(v6)),
-                };
-
                 self.portal_cmd_tx
                     .send(PortalCommand::Send(EgressMessages::RequestAuthorization {
                         resource_id: resource,
                         preferred_gateways,
+                    }))
+                    .await
+                    .context("Failed to send message to portal")?;
+            }
+            Ok(ClientEvent::DeviceAccessRequested { ip, flow }) => {
+                let (ipv4, ipv6) = match ip {
+                    IpAddr::V4(v4) => (Some(v4), None),
+                    IpAddr::V6(v6) => (None, Some(v6)),
+                };
+
+                self.portal_cmd_tx
+                    .send(PortalCommand::Send(EgressMessages::RequestDeviceAccess {
                         ipv4,
                         ipv6,
+                        flow,
                     }))
                     .await
                     .context("Failed to send message to portal")?;
@@ -712,6 +716,7 @@ impl Eventloop {
                 remote_ice_credentials,
                 ice_role,
                 use_iceless,
+                resource_id,
                 resource,
                 expires_at,
                 flow_logs_ingest_token,
@@ -740,6 +745,7 @@ impl Eventloop {
                     ice_role,
                     use_iceless,
                     client_name,
+                    resource_id,
                     authorization,
                     flow_logs_ingest_token,
                     now,
@@ -780,7 +786,7 @@ impl Eventloop {
             }) => {
                 tunnel
                     .state_mut()
-                    .handle_client_device_access_denied(ipv4, ipv6, reason, now);
+                    .handle_client_device_access_denied(ipv4, ipv6, reason);
             }
             IngressMessages::ClientIceCandidateError(ClientIceCandidateError {
                 client_id,
@@ -802,25 +808,13 @@ impl Eventloop {
                     | FailReason::Unknown => {}
                 }
             }
-            IngressMessages::DeviceDomainResolved(DeviceDomainResolved {
-                domain,
-                client_id,
-                ipv4,
-                ipv6,
-                resource_ids,
-            }) => {
+            IngressMessages::DeviceDomainResolved(DeviceDomainResolved { domain, ipv4, ipv6 }) => {
                 let Some(domain) = parse_portal_domain(&domain) else {
                     return Ok(());
                 };
-                tunnel.state_mut().handle_device_domain_resolved(
-                    domain,
-                    Ok(ResolvedDevice {
-                        id: client_id,
-                        ipv4,
-                        ipv6,
-                        pools: resource_ids,
-                    }),
-                );
+                tunnel
+                    .state_mut()
+                    .handle_device_domain_resolved(domain, Ok((ipv4, ipv6)));
             }
             IngressMessages::DeviceDomainResolutionFailed(DeviceDomainResolutionFailed {
                 domain,
