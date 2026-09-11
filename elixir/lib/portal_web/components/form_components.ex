@@ -194,13 +194,14 @@ defmodule PortalWeb.FormComponents do
         class={[
           "text-sm py-2 pl-3 pr-8 rounded",
           "bg-raised text-body",
-          "border border-border",
+          "border",
           "outline-none transition-colors cursor-pointer",
           "hover:border-border-emphasis hover:text-heading",
-          "focus:border-border-focus focus:ring-1 focus:ring-border-focus/30",
+          "focus:ring-1",
           "block",
           !@inline_errors && "w-full",
-          @errors != [] && "border-error focus:border-error",
+          @errors == [] && "border-border focus:border-border-focus focus:ring-border-focus/30",
+          @errors != [] && "border-error focus:border-error focus:ring-error/30",
           @class
         ]}
         multiple={@multiple}
@@ -244,13 +245,14 @@ defmodule PortalWeb.FormComponents do
           class={[
             "text-sm py-2 pl-3 pr-8 rounded",
             "bg-raised text-body",
-            "border border-border",
+            "border",
             "outline-none transition-colors cursor-pointer",
             "hover:border-border-emphasis hover:text-heading",
-            "focus:border-border-focus focus:ring-1 focus:ring-border-focus/30",
+            "focus:ring-1",
             "block",
             field_width_class(assigns),
-            @errors != [] && "border-error focus:border-error",
+            @errors == [] && "border-border focus:border-border-focus focus:ring-border-focus/30",
+            @errors != [] && "border-error focus:border-error focus:ring-error/30",
             @class
           ]}
           multiple={@multiple}
@@ -275,12 +277,13 @@ defmodule PortalWeb.FormComponents do
         class={[
           "block rounded-md text-sm px-3 py-2",
           "bg-input text-heading placeholder:text-muted",
-          "border border-input-border",
+          "border",
           "outline-none transition-colors",
-          "focus:border-border-focus focus:ring-1 focus:ring-border-focus/30",
+          "focus:ring-1",
           "min-h-[6rem]",
           !@inline_errors && "w-full",
-          @errors != [] && "border-error focus:border-error",
+          @errors == [] && "border-input-border focus:border-border-focus focus:ring-border-focus/30",
+          @errors != [] && "border-error focus:border-error focus:ring-error/30",
           @class
         ]}
         {@rest}
@@ -341,11 +344,12 @@ defmodule PortalWeb.FormComponents do
             field_width_class(assigns),
             "px-3 py-2 rounded text-sm",
             "bg-input text-heading placeholder:text-muted",
-            "border border-input-border",
+            "border",
             "outline-none transition-colors",
-            "focus:border-border-focus focus:ring-1 focus:ring-border-focus/30",
+            "focus:ring-1",
             "disabled:opacity-40 disabled:cursor-not-allowed",
-            @errors != [] && "border-error focus:border-error",
+            @errors == [] && "border-input-border focus:border-border-focus focus:ring-border-focus/30",
+            @errors != [] && "border-error focus:border-error focus:ring-error/30",
             @class
           ]}
           {@rest}
