@@ -264,7 +264,7 @@ impl ReferenceState {
                 state.clients.get_mut(client_id).unwrap().exec_mut(|c| {
                     c.on_dns_query(query, upstream_do53, global_dns_records, icmp_error_hosts);
 
-                    if let Some((ipv4, ipv6)) = resolved_device {
+                    if let Some((_, ipv4, ipv6)) = resolved_device {
                         c.note_device_resolution(ipv4, ipv6);
                     }
                 });

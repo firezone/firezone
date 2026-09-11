@@ -27,7 +27,9 @@ use tunnel::messages::client::{
     ResourceFiltersUpdated,
 };
 use tunnel::messages::{IngestToken, RelaysPresence, SnownetCapabilities};
-use tunnel::{ClientEvent, ClientTunnel, DnsResourceRecord, IpConfig, TunConfig, TunnelError};
+use tunnel::{
+    ClientEvent, ClientTunnel, DnsResourceRecord, IpConfig, ResolvedDevice, TunConfig, TunnelError,
+};
 
 /// In-memory cache for DNS resource records.
 ///
@@ -426,21 +428,6 @@ impl Eventloop {
                     .await
                     .context("Failed to send message to portal")?;
             }
-            Ok(ClientEvent::DeviceAccessIntent { ip, protocol }) => {
-                let (ipv4, ipv6) = match ip {
-                    IpAddr::V4(v4) => (Some(v4), None),
-                    IpAddr::V6(v6) => (None, Some(v6)),
-                };
-
-                self.portal_cmd_tx
-                    .send(PortalCommand::Send(EgressMessages::RequestDeviceAccess {
-                        ipv4,
-                        ipv6,
-                        protocol: protocol.into(),
-                    }))
-                    .await
-                    .context("Failed to send message to portal")?;
-            }
             Ok(ClientEvent::ResourcesChanged { resources }) => {
                 self.resource_list_sender
                     .send(resources)
@@ -731,9 +718,9 @@ impl Eventloop {
             }) => {
                 persist_ingest_token(self.flow_logs_dir.as_deref(), &flow_logs_ingest_token);
 
-                // The target device gets the resource as its inbound grant. The
-                // initiating side gets it only for `request_device_access`, as the pool
-                // its outbound route goes through; for static pools it gets `None`.
+                // The portal only sends a resource to the target device; the
+                // initiating side receives `None` and relies on conntrack to
+                // admit return traffic.
                 let authorization = resource.map(|resource| ResourceAuthorization {
                     resource_id: resource.id,
                     filters: resource.filters,
@@ -815,13 +802,25 @@ impl Eventloop {
                     | FailReason::Unknown => {}
                 }
             }
-            IngressMessages::DeviceDomainResolved(DeviceDomainResolved { domain, ipv4, ipv6 }) => {
+            IngressMessages::DeviceDomainResolved(DeviceDomainResolved {
+                domain,
+                client_id,
+                ipv4,
+                ipv6,
+                resource_ids,
+            }) => {
                 let Some(domain) = parse_portal_domain(&domain) else {
                     return Ok(());
                 };
-                tunnel
-                    .state_mut()
-                    .handle_device_domain_resolved(domain, Ok((ipv4, ipv6)));
+                tunnel.state_mut().handle_device_domain_resolved(
+                    domain,
+                    Ok(ResolvedDevice {
+                        id: client_id,
+                        ipv4,
+                        ipv6,
+                        pools: resource_ids,
+                    }),
+                );
             }
             IngressMessages::DeviceDomainResolutionFailed(DeviceDomainResolutionFailed {
                 domain,
