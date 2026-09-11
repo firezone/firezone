@@ -64,8 +64,8 @@ MOCK
     [ "$status" -eq 0 ]
     run env usage_cmd=lock bash "$script"
     [ "$status" -eq 0 ]
-    jq -e --arg sha "$EXPECTED_SOURCE_SHA" '
-        .source_sha == $sha and .submission_run == "https://github.com/firezone/firezone/actions/runs/123"
+    jq -e '
+        .submission_run == "https://github.com/firezone/firezone/actions/runs/123"
         and .assets == [{name: "client.ipa", digest: "sha256:abc", size: 42}]' "$UPLOADED"
 }
 

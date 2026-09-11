@@ -40,7 +40,7 @@ fi
 lock_dir=$(mktemp -d)
 trap 'rm -rf "$lock_dir"' EXIT
 jq --arg run "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" '
-    {source_sha: .target_commitish, submission_run: $run,
+    {submission_run: $run,
      assets: [.assets[] | {name, digest, size}]}' <<<"$release" >"$lock_dir/review-submission.json"
 
 # Lock before contacting the store: a failed request may still have submitted.
