@@ -379,21 +379,21 @@ defmodule PortalWeb.FormComponents do
         </:footer>
       </.modal>
 
-      <.modal id="wizard-modal" on_back="prev-step" on_confirm="next-step">
-        <:title>Step 1</:title>
+      <.modal id="confirm-modal" on_cancel="dismiss" on_confirm="proceed">
+        <:title>Are you sure?</:title>
         <:body>
-          Complete this step.
+          This cannot be undone.
         </:body>
-        <:back_button>Previous</:back_button>
-        <:confirm_button>Next</:confirm_button>
+        <:cancel_button>Cancel</:cancel_button>
+        <:confirm_button>Continue</:confirm_button>
       </.modal>
   """
   attr :id, :string, required: true, doc: "The id of the modal"
   attr :class, :string, default: "", doc: "Custom classes to be added to the modal"
 
-  attr :on_back, :string,
+  attr :on_cancel, :string,
     default: nil,
-    doc: "The phx event to broadcast when back button is clicked"
+    doc: "The phx event to broadcast when cancel button is clicked"
 
   attr :on_confirm, :string,
     default: nil,
@@ -418,8 +418,8 @@ defmodule PortalWeb.FormComponents do
   end
 
   slot :body, required: true, doc: "The content of the modal"
-  slot :footer, doc: "The footer of the modal (overrides back/confirm buttons if provided)"
-  slot :back_button, doc: "The content of the back button"
+  slot :footer, doc: "The footer of the modal (overrides cancel/confirm buttons if provided)"
+  slot :cancel_button, doc: "The content of the cancel button"
 
   slot :confirm_button do
     attr :form, :string, doc: "The form id to associate with the button"
@@ -441,14 +441,14 @@ defmodule PortalWeb.FormComponents do
     >
       <div class="flex items-center justify-center min-h-screen p-4">
         <div
-          class="relative bg-white rounded-md shadow-sm w-full max-w-2xl"
+          class="relative bg-elevated border border-border rounded-md shadow-sm w-full max-w-2xl"
           phx-click-away={@on_close}
         >
           <div
             :if={@title != []}
-            class="flex items-center justify-between p-4 md:p-5 border-b border-neutral-200 rounded-t"
+            class="flex items-center justify-between p-4 md:p-5 border-b border-border rounded-t"
           >
-            <h3 class="text-xl font-semibold text-neutral-900 flex items-center gap-3">
+            <h3 class="text-xl font-semibold text-heading flex items-center gap-3">
               <.provider_icon
                 :for={title_slot <- @title}
                 :if={Map.get(title_slot, :provider)}
@@ -458,7 +458,7 @@ defmodule PortalWeb.FormComponents do
               {render_slot(@title)}
             </h3>
             <button
-              class="text-neutral-400 bg-transparent hover:text-accent-900 ml-2"
+              class="text-subtle bg-transparent hover:text-heading ml-2"
               type="button"
               phx-click={@on_close}
             >
@@ -466,29 +466,31 @@ defmodule PortalWeb.FormComponents do
               <span class="sr-only">Close modal</span>
             </button>
           </div>
-          <div class="p-4 md:p-5 text-neutral-500 text-base">
+          <div class="p-4 md:p-5 text-body text-base">
             {render_slot(@body)}
           </div>
           <div
-            :if={@footer != [] or @back_button != [] or @confirm_button != []}
-            class="flex items-center justify-between p-4 md:p-5 border-t border-neutral-200 rounded-b gap-3"
+            :if={@footer != [] or @cancel_button != [] or @confirm_button != []}
+            class="flex items-center justify-between p-4 md:p-5 border-t border-border rounded-b gap-3"
           >
             <%= if @footer != [] do %>
               {render_slot(@footer)}
             <% else %>
               <.button
-                :if={@back_button != []}
-                phx-click={@on_back}
+                :if={@cancel_button != []}
+                data-dialog-action="cancel"
+                phx-click={@on_cancel}
                 type="button"
                 style="info"
                 class="px-5 py-2.5"
               >
-                {render_slot(@back_button)}
+                {render_slot(@cancel_button)}
               </.button>
-              <div :if={@back_button == []}></div>
+              <div :if={@cancel_button == []}></div>
               <.button
                 :for={confirm_slot <- @confirm_button}
                 :if={@confirm_button != []}
+                data-dialog-action="confirm"
                 phx-click={@on_confirm}
                 type={Map.get(confirm_slot, :type, "button")}
                 form={Map.get(confirm_slot, :form)}

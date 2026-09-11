@@ -164,7 +164,7 @@ defmodule PortalWeb.Settings.Account do
             :if={@deletion_feedback_form}
             id="deletion-feedback-modal"
             on_close="skip_deletion_feedback"
-            on_back="skip_deletion_feedback"
+            on_cancel="skip_deletion_feedback"
           >
             <:title>Sorry Firezone didn't work out</:title>
             <:body>
@@ -186,7 +186,7 @@ defmodule PortalWeb.Settings.Account do
                 </.inputs_for>
               </.form>
             </:body>
-            <:back_button>Skip</:back_button>
+            <:cancel_button>Skip</:cancel_button>
             <:confirm_button form="deletion-feedback-form" type="submit">
               Send feedback
             </:confirm_button>
