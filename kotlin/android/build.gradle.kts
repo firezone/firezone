@@ -22,7 +22,7 @@ plugins {
     id("io.github.takahirom.roborazzi") version "1.72.0" apply false
     // `:app` and `:dpc` both apply this, and the build service spotless registers is shared
     // between them, so the plugin has to be loaded once here rather than once per project.
-    id("com.diffplug.spotless") version "8.10.0" apply false
+    id("com.diffplug.spotless") version "8.10.1" apply false
 }
 
 tasks.register("clean", Delete::class) {
