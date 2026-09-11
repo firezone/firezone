@@ -504,6 +504,26 @@ defmodule PortalAPI.ResourceControllerTest do
     end
   end
 
+  describe "create/2 device pools" do
+    test "rejects creating a dynamic device pool", %{conn: conn, actor: actor} do
+      attrs = %{
+        "name" => "Pool",
+        "type" => "dynamic_device_pool",
+        "address" => "*.devices.example.com"
+      }
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> post("/resources", resource: attrs)
+
+      assert resp = json_response(conn, 422)
+      assert resp["validation_errors"]["type"] == ["is invalid"]
+      assert Portal.Repo.aggregate(Resource, :count) == 0
+    end
+  end
+
   describe "update/2" do
     test "returns error when not authorized", %{conn: conn, account: account} do
       resource = resource_fixture(account: account)

@@ -71,7 +71,6 @@ defmodule PortalAPI.Client.Views.Resource do
       id: resource.id,
       type: :dynamic_device_pool,
       name: resource.name,
-      address: resource.address,
       filters: Enum.flat_map(resource.filters, &render_filter/1)
     }
   end

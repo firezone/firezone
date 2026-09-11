@@ -160,6 +160,7 @@ defmodule Portal.Repo.Seeds do
       |> Ecto.Changeset.put_change(:type, :gateway)
       |> Ecto.Changeset.put_change(:account_id, site.account_id)
       |> Ecto.Changeset.put_change(:site_id, site_id)
+      |> Portal.Devices.put_free_slug(site.account_id, nil)
       |> Device.changeset()
       |> Safe.unscoped()
       |> Safe.insert()
@@ -230,6 +231,7 @@ defmodule Portal.Repo.Seeds do
       |> Ecto.Changeset.put_change(:type, :client)
       |> Ecto.Changeset.put_change(:account_id, subject.account.id)
       |> Ecto.Changeset.put_change(:actor_id, subject.actor.id)
+      |> Portal.Devices.put_free_slug(subject.account.id, Portal.Devices.owner_name(subject.actor))
       |> Device.changeset()
       |> Safe.unscoped()
       |> Safe.insert()
@@ -1876,13 +1878,36 @@ defmodule Portal.Repo.Seeds do
       }
       |> Repo.insert!()
 
-    _everyone_group =
+    other_everyone_group =
       %Group{
         account_id: other_account.id,
         name: "Everyone",
         type: :managed
       }
       |> Repo.insert!()
+
+    for {seed_account, seed_everyone_group} <- [
+          {account, everyone_group},
+          {other_account, other_everyone_group}
+        ] do
+      self_device_pool =
+        %Resource{account_id: seed_account.id}
+        |> cast(Resource.self_device_pool_attrs(), [:type, :device_membership_criteria, :name])
+        |> Resource.changeset()
+        |> Repo.insert!()
+
+      %Policy{
+        account_id: seed_account.id,
+        group_id: seed_everyone_group.id,
+        resource_id: self_device_pool.id,
+        description: "Lets every actor reach their own devices."
+      }
+      |> Repo.insert!()
+
+      IO.puts("Created #{self_device_pool.name} pool for #{seed_account.name}:")
+      IO.puts("  <slug>.#{Portal.Device.domain()} - Dynamic Device Pool - policy: Everyone")
+      IO.puts("")
+    end
 
     # Create auth providers for main account
     system_subject = %Authentication.Subject{
@@ -2150,6 +2175,7 @@ defmodule Portal.Repo.Seeds do
           |> Ecto.Changeset.put_change(:type, :client)
           |> Ecto.Changeset.put_change(:account_id, subject.account.id)
           |> Ecto.Changeset.put_change(:actor_id, subject.actor.id)
+          |> Portal.Devices.put_free_slug(subject.account.id, Portal.Devices.owner_name(subject.actor))
           |> Device.changeset()
           |> Safe.unscoped()
           |> Safe.insert()
@@ -2837,26 +2863,26 @@ defmodule Portal.Repo.Seeds do
         admin_subject
       )
 
-    {:ok, firez_one} =
+    {:ok, wikipedia} =
       create_resource(
         %{
           type: :dns,
-          name: "**.firez.one",
-          address: "**.firez.one",
-          address_description: "https://firez.one/",
+          name: "**.wikipedia.org",
+          address: "**.wikipedia.org",
+          address_description: "https://www.wikipedia.org/",
           site_id: site.id,
           filters: []
         },
         admin_subject
       )
 
-    {:ok, firezone_dev} =
+    {:ok, github} =
       create_resource(
         %{
           type: :dns,
-          name: "*.firezone.dev",
-          address: "*.firezone.dev",
-          address_description: "https://www.firezone.dev/",
+          name: "*.github.com",
+          address: "*.github.com",
+          address_description: "https://github.com/",
           site_id: site.id,
           filters: []
         },
@@ -3036,8 +3062,8 @@ defmodule Portal.Repo.Seeds do
     IO.puts("  #{dns_google_resource.address} - DNS - gateways: #{gateway_name}")
     IO.puts("  #{address_description_null_resource.address} - DNS - gateways: #{gateway_name}")
     IO.puts("  #{dns_gitlab_resource.address} - DNS - gateways: #{gateway_name}")
-    IO.puts("  #{firez_one.address} - DNS - gateways: #{gateway_name}")
-    IO.puts("  #{firezone_dev.address} - DNS - gateways: #{gateway_name}")
+    IO.puts("  #{wikipedia.address} - DNS - gateways: #{gateway_name}")
+    IO.puts("  #{github.address} - DNS - gateways: #{gateway_name}")
     IO.puts("  #{example_dns.address} - DNS - gateways: #{gateway_name}")
     IO.puts("  #{ip_resource.address} - IP - gateways: #{gateway_name}")
     IO.puts("  #{cidr_resource.address} - CIDR - gateways: #{gateway_name}")
@@ -3075,9 +3101,9 @@ defmodule Portal.Repo.Seeds do
     {:ok, _} =
       create_policy.(
         %{
-          description: "All Access To firez.one",
+          description: "All Access To wikipedia.org",
           group_id: synced_group.id,
-          resource_id: firez_one.id
+          resource_id: wikipedia.id
         },
         admin_subject
       )
@@ -3085,7 +3111,7 @@ defmodule Portal.Repo.Seeds do
     {:ok, _} =
       create_policy.(
         %{
-          description: "All Access To firez.one",
+          description: "All Access To wikipedia.org",
           group_id: everyone_group.id,
           resource_id: example_dns.id
         },
@@ -3095,9 +3121,9 @@ defmodule Portal.Repo.Seeds do
     {:ok, _} =
       create_policy.(
         %{
-          description: "All Access To firezone.dev",
+          description: "All Access To github.com",
           group_id: everyone_group.id,
-          resource_id: firezone_dev.id
+          resource_id: github.id
         },
         admin_subject
       )

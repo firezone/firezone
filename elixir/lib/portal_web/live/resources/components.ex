@@ -23,7 +23,8 @@ defmodule PortalWeb.Resources.Components do
     dns: %{index: 2, label: "DNS"},
     ip: %{index: 3, label: "IP"},
     cidr: %{index: 4, label: "CIDR"},
-    static_device_pool: %{index: 5, label: "Device Pools"}
+    static_device_pool: %{index: 5, label: "Device Pools"},
+    dynamic_device_pool: %{index: 6, label: "Dynamic Device Pools"}
   }
 
   def fetch_resource_option(id, subject) do
@@ -69,7 +70,8 @@ defmodule PortalWeb.Resources.Components do
     {resource.id, resource.name, resource}
   end
 
-  def nil_site_label(%{type: :static_device_pool}), do: "No Site Needed"
+  def nil_site_label(%{type: type}) when type in [:static_device_pool, :dynamic_device_pool],
+    do: "No Site Needed"
   def nil_site_label(_resource), do: "No Site Associated"
 
   def map_filters_form_attrs(attrs) do
@@ -408,7 +410,9 @@ defmodule PortalWeb.Resources.Components do
             type="radio_button_group"
             field={@form[:type]}
             value="static_device_pool"
-            checked={to_string(@form[:type].value) == "static_device_pool"}
+            checked={
+              to_string(@form[:type].value) in ["static_device_pool", "dynamic_device_pool"]
+            }
             required
           />
           <label
@@ -423,7 +427,7 @@ defmodule PortalWeb.Resources.Components do
                 </span>
               </div>
               <div class="w-full text-[10px]">
-                Peer-to-peer, no Site
+                Access other devices directly
               </div>
             </div>
           </label>
@@ -431,6 +435,80 @@ defmodule PortalWeb.Resources.Components do
       </ul>
     </div>
     """
+  end
+
+  attr :form, :any, required: true
+
+  def resource_pool_members_section(assigns) do
+    assigns = assign(assigns, :members, pool_members(assigns.form))
+
+    ~H"""
+    <div>
+      <span class="block text-xs font-medium text-body mb-1.5">
+        Device pool members <span class="text-error">*</span>
+      </span>
+      <ul class="grid w-full max-w-md gap-3 grid-cols-2">
+        <li>
+          <.input
+            id="resource-form-members--static"
+            type="radio_button_group"
+            field={@form[:members]}
+            value="static"
+            checked={@members == :static}
+            required
+          />
+          <label
+            for="resource-form-members--static"
+            class="inline-flex items-center justify-between w-full p-3 text-body bg-surface border border-border rounded cursor-pointer peer-checked:border-brand peer-checked:text-brand hover:text-heading hover:bg-raised transition-colors"
+          >
+            <div class="block">
+              <div class="w-full font-semibold mb-1 text-xs">
+                <.icon name="ri-list-check" class="w-4 h-4 mr-1" /> Selected devices
+              </div>
+              <div class="w-full text-[10px]">
+                A fixed list you pick
+              </div>
+            </div>
+          </label>
+        </li>
+        <li>
+          <.input
+            id="resource-form-members--own-devices"
+            type="radio_button_group"
+            field={@form[:members]}
+            value="own_devices"
+            checked={@members == :own_devices}
+            required
+          />
+          <label
+            for="resource-form-members--own-devices"
+            class="inline-flex items-center justify-between w-full p-3 text-body bg-surface border border-border rounded cursor-pointer peer-checked:border-brand peer-checked:text-brand hover:text-heading hover:bg-raised transition-colors"
+          >
+            <div class="block">
+              <div class="w-full font-semibold mb-1 text-xs">
+                <.icon name="ri-user-line" class="w-4 h-4 mr-1" /> Each actor's own devices
+              </div>
+              <div class="w-full text-[10px]">
+                Allows each actor to reach their own devices via
+                <span class="font-mono">&lt;slug&gt;.{Portal.Device.domain()}</span>
+              </div>
+            </div>
+          </label>
+        </li>
+      </ul>
+    </div>
+    """
+  end
+
+  @doc "Which kind of members a pool form describes, from the members choice or the pool type."
+  @spec pool_members(Phoenix.HTML.Form.t()) :: :static | :own_devices
+  def pool_members(form) do
+    case {to_string(form[:members].value), to_string(form[:type].value)} do
+      {"own_devices", _type} -> :own_devices
+      {"static", _type} -> :static
+      {_choice, "dynamic_device_pool"} -> :own_devices
+      _ -> :static
+    end
   end
 
   attr :form, :any, required: true
@@ -456,7 +534,7 @@ defmodule PortalWeb.Resources.Components do
 
     <div :if={
       (is_nil(@resource) || @resource.type != :internet) &&
-        to_string(@form[:type].value) != "static_device_pool"
+        to_string(@form[:type].value) not in ["static_device_pool", "dynamic_device_pool"]
     }>
       <label
         for={@form[:address].id}
@@ -484,7 +562,7 @@ defmodule PortalWeb.Resources.Components do
 
     <div :if={
       (is_nil(@resource) || @resource.type != :internet) &&
-        to_string(@form[:type].value) != "static_device_pool"
+        to_string(@form[:type].value) not in ["static_device_pool", "dynamic_device_pool"]
     }>
       <label
         for={@form[:address_description].id}
@@ -753,7 +831,7 @@ defmodule PortalWeb.Resources.Components do
 
   def resource_site_selector(assigns) do
     ~H"""
-    <div :if={to_string(@form[:type].value) != "static_device_pool"}>
+    <div :if={to_string(@form[:type].value) not in ["static_device_pool", "dynamic_device_pool"]}>
       <label
         for={@form[:site_id].id}
         class="block text-xs font-medium text-body mb-1.5"
@@ -937,6 +1015,16 @@ defmodule PortalWeb.Resources.Components do
 
           <.resource_core_fields form={@resource_form} resource={@resource} />
 
+          <.resource_pool_members_section
+            :if={
+              to_string(@resource_form[:type].value) in [
+                "static_device_pool",
+                "dynamic_device_pool"
+              ]
+            }
+            form={@resource_form}
+          />
+
           <.resource_device_pool_section
             :if={to_string(@resource_form[:type].value) == "static_device_pool"}
             selected_devices={@resource_form_selected_devices}
@@ -1012,10 +1100,16 @@ defmodule PortalWeb.Resources.Components do
               />
             </div>
             <p
-              :if={@resource.type != :internet}
+              :if={@resource.type not in [:internet, :dynamic_device_pool]}
               class="font-mono text-xs text-subtle mt-0.5 truncate"
             >
               {@resource.address}
+            </p>
+            <p
+              :if={@resource.type == :dynamic_device_pool}
+              class="font-mono text-xs text-subtle mt-0.5 truncate"
+            >
+              &lt;slug&gt;.{Portal.Device.domain()}
             </p>
           </div>
           <%!-- Right: actions --%>
@@ -1882,10 +1976,16 @@ defmodule PortalWeb.Resources.Components do
               end}
             </dd>
           </div>
-          <div :if={@resource.type not in [:internet, :static_device_pool]}>
+          <div :if={@resource.type not in [:internet, :static_device_pool, :dynamic_device_pool]}>
             <dt class="text-[10px] text-subtle mb-0.5">Address</dt>
             <dd class="font-mono text-xs text-heading font-medium break-all">
               {@resource.address}
+            </dd>
+          </div>
+          <div :if={@resource.type == :dynamic_device_pool}>
+            <dt class="text-[10px] text-subtle mb-0.5">Address</dt>
+            <dd class="font-mono text-xs text-heading font-medium break-all">
+              &lt;slug&gt;.{Portal.Device.domain()}
             </dd>
           </div>
           <div :if={@resource.type == :static_device_pool}>
@@ -2035,6 +2135,14 @@ defmodule PortalWeb.Resources.Components do
     """
   end
 
+  def resource_status_badge(%{resource: %{type: :dynamic_device_pool}} = assigns) do
+    ~H"""
+    <.status_badge style={:neutral}>
+      Dynamic
+    </.status_badge>
+    """
+  end
+
   def resource_status_badge(assigns) do
     assigns = assign(assigns, :online?, resource_online?(assigns.resource, assigns.online_site_ids))
 
@@ -2051,6 +2159,7 @@ defmodule PortalWeb.Resources.Components do
   def resource_type_label(:cidr), do: "CIDR"
   def resource_type_label(:internet), do: "Internet"
   def resource_type_label(:static_device_pool), do: "Device Pool"
+  def resource_type_label(:dynamic_device_pool), do: "Dynamic Pool"
   def resource_type_label(type), do: to_string(type)
 
   @spec type_badge_class(atom()) :: String.t()
@@ -2070,7 +2179,7 @@ defmodule PortalWeb.Resources.Components do
     do:
       "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-medium trcking-wider uppercase bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300"
 
-  def type_badge_class(:static_device_pool),
+  def type_badge_class(type) when type in [:static_device_pool, :dynamic_device_pool],
     do:
       "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-medium tracking-wider uppercase bg-badge-device-pool text-badge-device-pool-text"
 

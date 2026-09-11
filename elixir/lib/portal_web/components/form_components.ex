@@ -63,6 +63,7 @@ defmodule PortalWeb.FormComponents do
                 pattern placeholder readonly required rows size step)
 
   attr :class, :string, default: "", doc: "the custom classes to be added to the input"
+  attr :suffix, :string, default: nil, doc: "static text shown after the input, e.g. a domain"
 
   slot :inner_block
 
@@ -326,25 +327,34 @@ defmodule PortalWeb.FormComponents do
     ~H"""
     <div class={@inline_errors && "flex flex-row items-center"}>
       <.label :if={@label} for={@id}>{@label}</.label>
-      <input
-        type={@type}
-        name={@name}
-        id={@id}
-        value={Phoenix.HTML.Form.normalize_value(@type, @value)}
-        class={[
-          "block",
-          !@inline_errors && "w-full",
-          "px-3 py-2 rounded text-sm",
-          "bg-input text-heading placeholder:text-muted",
-          "border border-input-border",
-          "outline-none transition-colors",
-          "focus:border-border-focus focus:ring-1 focus:ring-border-focus/30",
-          "disabled:opacity-40 disabled:cursor-not-allowed",
-          @errors != [] && "border-error focus:border-error",
-          @class
-        ]}
-        {@rest}
-      />
+      <div class={@suffix && "flex items-stretch"}>
+        <input
+          type={@type}
+          name={@name}
+          id={@id}
+          value={Phoenix.HTML.Form.normalize_value(@type, @value)}
+          class={[
+            "block",
+            !@inline_errors && "w-full",
+            "px-3 py-2 rounded text-sm",
+            "bg-input text-heading placeholder:text-muted",
+            "border border-input-border",
+            "outline-none transition-colors",
+            "focus:border-border-focus focus:ring-1 focus:ring-border-focus/30",
+            "disabled:opacity-40 disabled:cursor-not-allowed",
+            @errors != [] && "border-error focus:border-error",
+            @suffix && "rounded-r-none",
+            @class
+          ]}
+          {@rest}
+        />
+        <span
+          :if={@suffix}
+          class="inline-flex items-center px-3 rounded-r border border-l-0 border-input-border bg-raised text-sm text-subtle font-mono whitespace-nowrap"
+        >
+          {@suffix}
+        </span>
+      </div>
       <.error :for={msg <- @errors} inline={@inline_errors} data-validation-error-for={@name}>
         {msg}
       </.error>

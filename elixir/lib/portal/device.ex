@@ -36,6 +36,7 @@ defmodule Portal.Device do
           # nil for pre-created gateways until they first connect and report one
           firezone_id: String.t() | nil,
           name: String.t(),
+          slug: String.t(),
           psk_base: binary(),
           ipv4: Postgrex.INET.t(),
           ipv6: Postgrex.INET.t(),
@@ -81,6 +82,7 @@ defmodule Portal.Device do
 
     field :firezone_id, :string
     field :name, :string
+    field :slug, :string
     field :psk_base, :binary, read_after_writes: true, redact: true
 
     field :ipv4, Portal.Types.IP, read_after_writes: true
@@ -167,11 +169,14 @@ defmodule Portal.Device do
 
   def changeset(%Ecto.Changeset{} = changeset) do
     changeset
-    |> trim_change(~w[name firezone_id hostname]a)
+    |> trim_change(~w[name slug firezone_id hostname]a)
     |> normalize_hostname()
     |> validate_required([:type, :name])
     |> validate_inclusion(:type, [:client, :gateway])
     |> validate_length(:name, min: 1, max: 255)
+    |> validate_format(:slug, ~r/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/,
+      message: "must be 1 to 63 lowercase letters, digits or hyphens"
+    )
     |> validate_length(:firezone_id, max: 255)
     |> validate_length(:hostname, min: 3, max: 255)
     |> assoc_constraint(:account)
@@ -185,8 +190,26 @@ defmodule Portal.Device do
     |> unique_constraint(:ipv4, name: :devices_account_id_ipv4_index)
     |> unique_constraint(:ipv6, name: :devices_account_id_ipv6_index)
     |> unique_constraint(:hostname, name: :devices_account_id_hostname_index)
+    |> unique_constraint(:slug,
+      name: :devices_account_id_slug_index,
+      message: "is already used by another device in this account"
+    )
     |> check_constraint(:hostname, name: :devices_hostname_length)
   end
+
+  @domain "firezone.network"
+
+  @doc "The domain every client device is reached under, the same in every deployment."
+  @spec domain() :: String.t()
+  def domain, do: @domain
+
+  @doc "The name other clients reach this device at, `nil` until it has a slug."
+  @spec fqdn(t()) :: String.t() | nil
+  def fqdn(%__MODULE__{slug: nil}), do: nil
+  def fqdn(%__MODULE__{slug: slug}), do: fqdn_for_slug(slug)
+
+  @spec fqdn_for_slug(String.t()) :: String.t()
+  def fqdn_for_slug(slug) when is_binary(slug), do: "#{slug}.#{@domain}"
 
   @doc """
     Folds a device update broadcast from the WAL onto the copy a socket holds.

@@ -295,6 +295,25 @@ defmodule PortalWeb.Devices.Components do
           required
         />
       </div>
+      <div :if={@device_edit_form.data.type == :client}>
+        <label
+          for={@device_edit_form[:slug].id}
+          class="block text-xs font-medium text-body mb-1.5"
+        >
+          DNS Name
+        </label>
+        <.input
+          field={@device_edit_form[:slug]}
+          type="text"
+          placeholder="my-laptop"
+          phx-debounce="300"
+          class="font-mono"
+          suffix={".#{Portal.Device.domain()}"}
+        />
+        <p class="mt-1 text-xs text-subtle">
+          Other devices reach this one at this name. Unique in this account.
+        </p>
+      </div>
     </div>
     """
   end
@@ -1038,6 +1057,11 @@ defmodule PortalWeb.Devices.Components do
         <.device_detail_row label="Device ID">
           <span class="font-mono text-[11px] text-body break-all">
             {@device.id}
+          </span>
+        </.device_detail_row>
+        <.device_detail_row :if={@device.slug} label="DNS Name">
+          <span class="font-mono text-[11px] text-body break-all">
+            {Portal.Device.fqdn(@device)}
           </span>
         </.device_detail_row>
         <.device_detail_row :if={@device.firezone_id} label="Firezone ID">

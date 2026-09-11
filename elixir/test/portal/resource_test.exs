@@ -99,15 +99,17 @@ defmodule Portal.ResourceTest do
     "a.#{String.duplicate("a", 64)}.com"
   ]
 
+  @cast_fields ~w[address address_description name type device_membership_criteria ip_stack site_id]a
+
   defp build_changeset(attrs) do
     %Resource{}
-    |> cast(attrs, [:address, :address_description, :name, :type, :ip_stack, :site_id])
+    |> cast(attrs, @cast_fields)
     |> Resource.changeset()
   end
 
   defp build_changeset_on_existing(existing, attrs) do
     existing
-    |> cast(attrs, [:address, :address_description, :name, :type, :ip_stack, :site_id])
+    |> cast(attrs, @cast_fields)
     |> Resource.changeset()
   end
 
@@ -259,37 +261,80 @@ defmodule Portal.ResourceTest do
   end
 
   describe "changeset/1 dynamic device pool type" do
-    test "accepts a valid wildcard pattern as address" do
-      changeset =
-        build_changeset(%{
-          type: :dynamic_device_pool,
-          address: "*.devices.example.com"
-        })
-
-      assert changeset.valid?
-      assert get_change(changeset, :address) == "*.devices.example.com"
-    end
-
-    test "rejects an invalid pattern (IP address)" do
-      changeset =
-        build_changeset(%{
-          type: :dynamic_device_pool,
-          address: "192.168.1.1"
-        })
+    test "requires a membership rule" do
+      changeset = build_changeset(%{type: :dynamic_device_pool, name: "Pool"})
 
       refute changeset.valid?
-      assert Map.has_key?(errors_on(changeset), :address)
+      assert "can't be blank" in errors_on(changeset)[:device_membership_criteria]
     end
 
-    test "clears site_id" do
+    test "accepts the own devices rule as a struct or as its wire shape" do
+      for criteria <- [
+            Portal.Resource.DeviceMembershipCriteria.own_devices(),
+            %{"device" => %{"field" => "actor_id", "op" => "eq", "value" => %{"subject" => "actor_id"}}}
+          ] do
+        changeset = build_changeset(%{type: :dynamic_device_pool, name: "Pool", device_membership_criteria: criteria})
+
+        assert changeset.valid?
+        assert get_change(changeset, :device_membership_criteria) == Portal.Resource.DeviceMembershipCriteria.own_devices()
+      end
+    end
+
+    test "rejects a rule outside the grammar" do
+      for criteria <- [
+            %{},
+            %{"device" => %{"field" => "hostname", "op" => "eq", "value" => %{"subject" => "actor_id"}}},
+            %{"device" => %{"field" => "actor_id", "op" => "in", "value" => %{"subject" => "actor_id"}}},
+            %{"device" => %{"field" => "actor_id", "op" => "eq", "value" => "literal"}},
+            %{"intune" => %{"field" => "actor_id", "op" => "eq", "value" => %{"subject" => "actor_id"}}},
+            "own_devices"
+          ] do
+        changeset = build_changeset(%{type: :dynamic_device_pool, name: "Pool", device_membership_criteria: criteria})
+
+        refute changeset.valid?, "Expected #{inspect(criteria)} to be rejected"
+        assert "is invalid" in errors_on(changeset)[:device_membership_criteria]
+      end
+    end
+
+    test "clears the address and site" do
       changeset =
         build_changeset(%{
           type: :dynamic_device_pool,
+          device_membership_criteria: Portal.Resource.DeviceMembershipCriteria.own_devices(),
           address: "*.devices.example.com",
           site_id: Ecto.UUID.generate()
         })
 
+      assert changeset.valid?
+      assert get_change(changeset, :address) == nil
       assert get_change(changeset, :site_id) == nil
+    end
+
+    test "clears the membership rule of other types" do
+      changeset =
+        build_changeset(%{
+          type: :dns,
+          address: "example.com",
+          device_membership_criteria: Portal.Resource.DeviceMembershipCriteria.own_devices()
+        })
+
+      assert get_change(changeset, :device_membership_criteria) == nil
+    end
+  end
+
+  describe "self_device_pool_attrs/0" do
+    test "is the Your devices pool" do
+      assert Portal.Resource.self_device_pool_attrs() == %{
+               type: :dynamic_device_pool,
+               device_membership_criteria: Portal.Resource.DeviceMembershipCriteria.own_devices(),
+               name: "Your devices"
+             }
+    end
+
+    test "produces a valid resource changeset" do
+      changeset = build_changeset(Portal.Resource.self_device_pool_attrs())
+
+      assert changeset.valid?
     end
   end
 
@@ -377,6 +422,43 @@ defmodule Portal.ResourceTest do
       changeset = build_changeset(%{type: :dns, address: "example.com:8080"})
       assert "cannot contain a port number" in errors_on(changeset)[:address]
     end
+
+    test "rejects DNS addresses under the reserved Firezone domains" do
+      for {reserved, suffix} <- [
+            {"firezone.dev", "firezone.dev"},
+            {"www.firezone.dev", "firezone.dev"},
+            {"*.firezone.dev", "firezone.dev"},
+            {"my.firezone.dev", "firezone.dev"},
+            {"*.my.firezone.dev", "firezone.dev"},
+            {"laptop.pool.acme.firezone.dev", "firezone.dev"},
+            {"FOO.FIREZONE.DEV", "firezone.dev"},
+            {"app.firezone.dev", "firezone.dev"},
+            {"firez.one", "firez.one"},
+            {"*.my.firez.one", "firez.one"},
+            {"firezone.network", "firezone.network"},
+            {"laptop.firezone.network", "firezone.network"}
+          ] do
+        changeset = build_changeset(%{type: :dns, address: reserved})
+
+        assert "#{suffix} is reserved for Firezone" in errors_on(changeset)[:address],
+               "Expected '#{reserved}' to be rejected"
+      end
+    end
+
+    test "accepts DNS addresses that only look like the reserved domains" do
+      for address <- [
+            "firezone.dev.example.com",
+            "myfirezone.dev",
+            "firez.one.example.com",
+            "firezone.network.example.com"
+          ] do
+        changeset = build_changeset(%{type: :dns, address: address})
+
+        refute Map.has_key?(errors_on(changeset), :address),
+               "Expected '#{address}' to be valid, got: #{inspect(errors_on(changeset)[:address])}"
+      end
+    end
+
   end
 
   describe "changeset/1 CIDR address validation" do

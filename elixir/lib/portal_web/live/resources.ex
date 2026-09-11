@@ -505,7 +505,7 @@ defmodule PortalWeb.Resources do
             class="hidden lg:table-cell"
           >
             <span
-              :if={resource.type not in [:internet, :static_device_pool]}
+              :if={resource.type not in [:internet, :static_device_pool, :dynamic_device_pool]}
               class="font-mono text-xs text-heading"
             >
               {resource.address}
@@ -515,6 +515,12 @@ defmodule PortalWeb.Resources do
               class="font-mono text-xs text-heading"
             >
               0.0.0.0/0, ::/0
+            </span>
+            <span
+              :if={resource.type == :dynamic_device_pool}
+              class="font-mono text-xs text-heading"
+            >
+              &lt;slug&gt;.{Portal.Device.domain()}
             </span>
             <span
               :if={resource.type == :static_device_pool}
@@ -1396,6 +1402,9 @@ defmodule PortalWeb.Resources do
     alias Portal.Directory
     alias PortalWeb.Resources.Components
 
+    @update_fields ~w[address address_description name type device_membership_criteria ip_stack site_id]a
+    @pool_types ~w[static_device_pool dynamic_device_pool]
+
     defdelegate get_device(device_id, subject), to: Components.Database
     defdelegate search_devices(search_term, subject, selected_devices), to: Components.Database
 
@@ -1409,15 +1418,17 @@ defmodule PortalWeb.Resources do
     def new_resource(subject, attrs \\ %{}) do
       changeset =
         %Resource{}
-        |> cast(attrs, [:name, :address, :address_description, :type, :ip_stack, :site_id])
+        |> cast(normalize_pool_attrs(attrs), @update_fields)
         |> put_change(:account_id, subject.account.id)
         |> Resource.changeset()
         |> Resource.validate_site_matches_type(subject)
 
-      if get_field(changeset, :type) == :static_device_pool do
-        validate_required(changeset, [:name])
-      else
-        validate_required(changeset, [:name, :address])
+      case get_field(changeset, :type) do
+        type when type in [:static_device_pool, :dynamic_device_pool] ->
+          validate_required(changeset, [:name])
+
+        _ ->
+          validate_required(changeset, [:name, :address])
       end
     end
 
@@ -1445,26 +1456,47 @@ defmodule PortalWeb.Resources do
     end
 
     defp maybe_validate_required_fields(changeset) do
-      if get_field(changeset, :type) == :static_device_pool do
-        validate_required(changeset, [:name])
-      else
-        validate_required(changeset, [:site_id])
+      case get_field(changeset, :type) do
+        type when type in [:static_device_pool, :dynamic_device_pool] ->
+          validate_required(changeset, [:name])
+
+        _ ->
+          validate_required(changeset, [:site_id])
       end
     end
 
     def change_resource(resource, subject, attrs \\ %{}) do
-      update_fields = ~w[address address_description name type ip_stack site_id]a
-
       changeset =
         resource
-        |> cast(attrs, update_fields)
+        |> cast(normalize_pool_attrs(attrs), @update_fields)
         |> Resource.changeset()
         |> Resource.validate_site_matches_type(subject)
 
-      if get_field(changeset, :type) == :static_device_pool do
-        validate_required(changeset, [:name, :type])
-      else
-        validate_required(changeset, [:name, :type, :site_id])
+      case get_field(changeset, :type) do
+        type when type in [:static_device_pool, :dynamic_device_pool] ->
+          validate_required(changeset, [:name, :type])
+
+        _ ->
+          validate_required(changeset, [:name, :type, :site_id])
+      end
+    end
+
+    # The form's "Members" choice decides between the two pool types and the
+    # membership criteria; the type picker only knows "Device Pool".
+    defp normalize_pool_attrs(attrs) do
+      case {Map.get(attrs, "type"), Map.get(attrs, "members")} do
+        {type, "own_devices"} when type in @pool_types ->
+          attrs
+          |> Map.put("type", "dynamic_device_pool")
+          |> Map.put("device_membership_criteria", Resource.DeviceMembershipCriteria.to_map(Resource.DeviceMembershipCriteria.own_devices()))
+
+        {type, "static"} when type in @pool_types ->
+          attrs
+          |> Map.put("type", "static_device_pool")
+          |> Map.put("device_membership_criteria", nil)
+
+        _ ->
+          attrs
       end
     end
 

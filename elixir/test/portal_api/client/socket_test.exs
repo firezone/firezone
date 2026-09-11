@@ -1091,7 +1091,7 @@ defmodule PortalAPI.Client.SocketTest do
       actor: actor,
       pki: pki
     } do
-      for socket_module <- [Socket, PortalAPI.Client.V2.Socket] do
+      for socket_module <- [Socket, PortalAPI.Client.V2.Socket, PortalAPI.Client.V3.Socket] do
         token = client_token_fixture(account: account, actor: actor)
         attrs = connect_attrs([])
 
@@ -1185,6 +1185,81 @@ defmodule PortalAPI.Client.SocketTest do
       assert is_nil(client.last_attested_at)
     end
 
+    test "a new device gets a slug from its name and owner", %{account: account, subject: subject} do
+      subject = %{subject | actor: %{subject.actor | name: "Jamil Bou Kheir"}}
+      actor = subject.actor
+
+      changeset =
+        device_trust_changeset(account, actor, %{
+          "name" => "iPhone",
+          "firezone_id" => "fz-slug"
+        })
+
+      assert {:ok, client, false} = Socket.Database.resolve_client(changeset, nil, subject)
+      assert client.slug == "jamils-iphone"
+
+      changeset =
+        device_trust_changeset(account, actor, %{
+          "name" => "Jamil's MacBook Pro.local",
+          "firezone_id" => "fz-slug-2"
+        })
+
+      assert {:ok, client, false} = Socket.Database.resolve_client(changeset, nil, subject)
+      assert client.slug == "jamils-macbook-pro"
+    end
+
+    test "a same-named device in the account gets a numbered slug", %{account: account, subject: subject} do
+      subject = %{subject | actor: %{subject.actor | name: "Jamil Bou Kheir"}}
+      actor = subject.actor
+      client_fixture(account: account, actor: actor, name: "Pixel 8")
+      client_fixture(account: account, actor: actor, name: "Pixel 8", slug: "jamils-pixel-8-2")
+
+      changeset =
+        device_trust_changeset(account, actor, %{"name" => "Pixel 8", "firezone_id" => "fz-px"})
+
+      assert {:ok, client, false} = Socket.Database.resolve_client(changeset, nil, subject)
+      assert client.slug == "jamils-pixel-8-3"
+    end
+
+    test "the same name under a namesake in the account gets a numbered slug", %{account: account, subject: subject} do
+      subject = %{subject | actor: %{subject.actor | name: "Jamil Bou Kheir"}}
+      actor = subject.actor
+      namesake = actor_fixture(account: account, name: "Jamil Other")
+      client_fixture(account: account, actor: namesake, name: "Pixel 8")
+
+      changeset =
+        device_trust_changeset(account, actor, %{"name" => "Pixel 8", "firezone_id" => "fz-px"})
+
+      assert {:ok, client, false} = Socket.Database.resolve_client(changeset, nil, subject)
+      assert client.slug == "jamils-pixel-8-2"
+    end
+
+    test "the same name in another account keeps the plain slug", %{account: account, subject: subject} do
+      subject = %{subject | actor: %{subject.actor | name: "Jamil Bou Kheir"}}
+      actor = subject.actor
+
+      other_account = account_fixture()
+      other_actor = actor_fixture(account: other_account, name: "Jamil Bou Kheir")
+      client_fixture(account: other_account, actor: other_actor, name: "Pixel 8")
+
+      changeset =
+        device_trust_changeset(account, actor, %{"name" => "Pixel 8", "firezone_id" => "fz-px"})
+
+      assert {:ok, client, false} = Socket.Database.resolve_client(changeset, nil, subject)
+      assert client.slug == "jamils-pixel-8"
+    end
+
+    test "a service account's device keeps its plain name", %{account: account, subject: subject} do
+      subject = %{subject | actor: %{subject.actor | type: :service_account, name: "CI runner"}}
+      actor = subject.actor
+
+      changeset =
+        device_trust_changeset(account, actor, %{"name" => "build-01", "firezone_id" => "fz-ci"})
+
+      assert {:ok, client, false} = Socket.Database.resolve_client(changeset, nil, subject)
+      assert client.slug == "build-01"
+    end
+
     test "an unattested connect never reaches an attested row", %{
       account: account,
       actor: actor,
@@ -1221,6 +1296,7 @@ defmodule PortalAPI.Client.SocketTest do
                  "firezone_id" => "fz-b",
                  "last_attested_mdm_device_id" => "mdm-dup"
                })
+               |> Portal.Devices.put_free_slug(account.id, Portal.Devices.owner_name(actor))
                |> Portal.Safe.unscoped()
                |> Portal.Safe.insert()
 
@@ -1244,6 +1320,7 @@ defmodule PortalAPI.Client.SocketTest do
                  "last_attested_mdm_device_id" => "mdm-second",
                  "last_attested_cert_fingerprint" => "fp-second"
                })
+               |> Portal.Devices.put_free_slug(account.id, Portal.Devices.owner_name(actor))
                |> Portal.Safe.unscoped()
                |> Portal.Safe.insert()
     end

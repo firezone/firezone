@@ -1,5 +1,6 @@
 defmodule PortalWeb.SignUp do
   use PortalWeb, {:live_view, layout: {PortalWeb.Layouts, :auth}}
+  import Ecto.Changeset
   alias __MODULE__.Database
   require Logger
 
@@ -1154,7 +1155,9 @@ defmodule PortalWeb.SignUp do
           everyone_group: &create_everyone_group_changeset/1,
           site: &create_site_changeset/2,
           internet_site: &create_internet_site_changeset/1,
-          internet_resource: &create_internet_resource_changeset/2
+          internet_resource: &create_internet_resource_changeset/2,
+          self_device_pool: &create_self_device_pool_changeset/1,
+          self_device_pool_policy: &create_self_device_pool_policy_changeset/2
         }
 
         Database.register_account(
@@ -1295,6 +1298,27 @@ defmodule PortalWeb.SignUp do
     |> validate_required([:name, :type])
   end
 
+  defp create_self_device_pool_changeset(account) do
+    %Portal.Resource{account_id: account.id}
+    |> cast(Portal.Resource.self_device_pool_attrs(), [:type, :device_membership_criteria, :name])
+    |> validate_required([:type, :device_membership_criteria, :name])
+    |> Portal.Resource.changeset()
+  end
+
+  defp create_self_device_pool_policy_changeset(everyone_group, self_device_pool) do
+    %Portal.Policy{account_id: everyone_group.account_id}
+    |> cast(
+      %{
+        group_id: everyone_group.id,
+        resource_id: self_device_pool.id,
+        description: "Lets every actor reach their own devices."
+      },
+      [:group_id, :resource_id, :description]
+    )
+    |> validate_required([:group_id, :resource_id])
+    |> Portal.Policy.changeset()
+  end
+
   # ── Database ─────────────────────────────────────────────────────────────────
 
   defmodule Database do
@@ -1409,6 +1433,18 @@ defmodule PortalWeb.SignUp do
       |> Ecto.Multi.run(:internet_resource, fn _repo,
                                                %{account: account, internet_site: internet_site} ->
         changeset_fns.internet_resource.(account, internet_site)
+        |> insert()
+      end)
+      |> Ecto.Multi.run(:self_device_pool, fn _repo, %{account: account} ->
+        changeset_fns.self_device_pool.(account)
+        |> insert()
+      end)
+      |> Ecto.Multi.run(:self_device_pool_policy, fn _repo,
+                                                     %{
+                                                       everyone_group: everyone_group,
+                                                       self_device_pool: self_device_pool
+                                                     } ->
+        changeset_fns.self_device_pool_policy.(everyone_group, self_device_pool)
         |> insert()
       end)
       |> Ecto.Multi.run(:send_email, fn _repo, %{account: account, actor: actor} ->

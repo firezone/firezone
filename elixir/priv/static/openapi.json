@@ -4275,7 +4275,7 @@
             "type": "string"
           },
           "site_id": {
-            "description": "Site to connect the Resource to. Required for all types except `static_device_pool`.",
+            "description": "Site to connect the Resource to. Required for all types except device pools.",
             "example": "0642e09d-b3a2-47e4-9cd1-c2195faeeb67",
             "format": "uuid",
             "title": "SiteID",
@@ -4699,6 +4699,12 @@
             "nullable": true,
             "type": "string"
           },
+          "slug": {
+            "description": "DNS label the Client is reached at under `firezone.network`, unique within the Account. Null until the Client connects once.",
+            "example": "johns-macbook-air",
+            "nullable": true,
+            "type": "string"
+          },
           "updated_at": {
             "description": "Client update timestamp",
             "example": "2025-01-01T00:00:00Z",
@@ -4723,6 +4729,7 @@
           "hostname",
           "id",
           "identifier_for_vendor",
+          "slug",
           "ipv4",
           "ipv6",
           "last_attested_at",

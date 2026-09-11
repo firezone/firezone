@@ -200,6 +200,7 @@ defmodule Portal.GatewayTokenTest do
           site_id: site.id,
           type: :gateway,
           name: "pre-created",
+          slug: "pre-created",
           firezone_id: nil
         })
 

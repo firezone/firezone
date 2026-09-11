@@ -412,7 +412,10 @@ defmodule PortalAPI.ResourceController do
     # static_device_pool in its type validator - it will start getting 422s
     # until it is updated to match.
     def reject_device_pool_type(changeset) do
-      Ecto.Changeset.validate_exclusion(changeset, :type, [:static_device_pool],
+      Ecto.Changeset.validate_exclusion(
+        changeset,
+        :type,
+        [:static_device_pool, :dynamic_device_pool],
         message: "device pools cannot be created via the API"
       )
     end

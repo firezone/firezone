@@ -20,6 +20,7 @@ defmodule PortalAPI.Schemas.Gateway do
                :gateway_token_rotated_at,
                :hostname,
                :identifier_for_vendor,
+               :slug,
                :inserted_at,
                :last_attested_at,
                :last_attested_cert_fingerprint,

@@ -554,6 +554,38 @@ defmodule PortalWeb.DevicesTest do
       assert html =~ client.name
     end
 
+    test "shows the DNS name and lets an admin change the slug", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      client = client_fixture(account: account, actor: actor, name: "Old Client Name")
+
+      {:ok, lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/devices/#{client.id}")
+
+      assert html =~ "old-client-name.firezone.network"
+
+      render_click(lv, "open_device_edit_form")
+
+      html =
+        lv
+        |> form("[phx-submit='submit_device_edit_form']", device: %{slug: "Bad Slug"})
+        |> render_change()
+
+      assert html =~ "must be 1 to 63 lowercase letters, digits or hyphens"
+
+      html =
+        lv
+        |> form("[phx-submit='submit_device_edit_form']", device: %{slug: "laptop"})
+        |> render_submit()
+
+      assert html =~ "Device updated successfully."
+      assert html =~ "laptop.firezone.network"
+    end
+
     test "opens edit form from show panel, validates, cancels, and updates client", %{
       conn: conn,
       account: account,

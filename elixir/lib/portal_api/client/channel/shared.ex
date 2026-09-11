@@ -90,7 +90,8 @@ defmodule PortalAPI.Client.Channel.Shared do
       Cache.Client.recompute_connectable_resources(
         nil,
         socket.assigns.client,
-        socket.assigns.subject
+        socket.assigns.subject,
+        protocol_version: socket.assigns.channel_protocol.protocol_version()
       )
 
     # Hydrate inbound policy_authorizations cache so the channel can react to filter
@@ -805,35 +806,23 @@ defmodule PortalAPI.Client.Channel.Shared do
     end
   end
 
-  # Connlib intercepts DNS queries that match a registered dynamic_device_pool pattern
-  # (e.g. `*.devices.example.com`) and asks the portal to resolve the FQDN to a tunnel
-  # IP. We answer by looking the device up by hostname (case-insensitive) within the
-  # client's account, then verifying the device's hostname still matches the pool's
-  # pattern as defense in depth.
-  def handle_in(
-        "resolve_device_pool_domain",
-        %{"resource_id" => resource_id, "domain" => domain},
-        socket
-      )
-      when is_binary(resource_id) and is_binary(domain) do
-    with {:ok, %Cache.Cacheable.Resource{type: :dynamic_device_pool, address: pattern}} <-
-           fetch_connectable_dynamic_pool(socket.assigns.cache, resource_id),
-         {:ok, %Portal.Device{} = device} <-
-           Database.get_device_by_hostname(domain, socket.assigns.subject),
-         true <- Portal.Resource.matches_dns_pattern?(pattern, device.hostname) do
-      push(socket, "device_pool_domain_resolved", %{
-        resource_id: resource_id,
+  # Connlib intercepts DNS queries for `<slug>.firezone.network`. A name resolves only
+  # when a connectable pool admits the device. The answer names those pools so connlib
+  # routes the first packet through one of them by its filters and only then asks for
+  # access, like it does for a static pool member.
+  def handle_in("resolve_device_domain", %{"domain" => domain}, socket) when is_binary(domain) do
+    with {:ok, %Portal.Device{} = device} <- resolve_device_domain(domain, socket),
+         {:ok, resource_ids} <- admitting_device_pools(device, socket) do
+      push(socket, "device_domain_resolved", %{
         domain: domain,
+        client_id: device.id,
         ipv4: %Postgrex.INET{address: device.ipv4.address, netmask: 32},
-        ipv6: %Postgrex.INET{address: device.ipv6.address, netmask: 128}
+        ipv6: %Postgrex.INET{address: device.ipv6.address, netmask: 128},
+        resource_ids: resource_ids
       })
     else
-      _ ->
-        push(socket, "device_pool_domain_resolution_failed", %{
-          resource_id: resource_id,
-          domain: domain,
-          reason: :not_found
-        })
+      {:error, reason} ->
+        push(socket, "device_domain_resolution_failed", %{domain: domain, reason: reason})
     end
 
     {:noreply, socket}
@@ -1234,20 +1223,67 @@ defmodule PortalAPI.Client.Channel.Shared do
 
   defp parse_target_address(_), do: {:error, :missing_address}
 
-  defp fetch_connectable_dynamic_pool(cache, resource_id) do
-    rid_bytes = Ecto.UUID.dump!(resource_id)
+  defp resolve_device_domain(domain, socket) do
+    domain = String.downcase(domain)
+    slug = domain |> String.split(".") |> hd()
 
-    case Enum.find(cache.connectable_resources, &(&1.id == rid_bytes)) do
-      %Cache.Cacheable.Resource{type: :dynamic_device_pool} = resource -> {:ok, resource}
-      _ -> {:error, :not_found}
+    with true <- domain == Portal.Device.fqdn_for_slug(slug) || {:error, :not_found},
+         {:ok, %Portal.Device{} = device} <-
+           Database.get_device_by_slug(slug, socket.assigns.subject) do
+      if device.id == socket.assigns.client.id do
+        {:error, :forbidden}
+      else
+        {:ok, device}
+      end
     end
-  rescue
-    ArgumentError -> {:error, :not_found}
   end
+
+  defp admitting_device_pools(device, socket) do
+    cache = socket.assigns.cache
+    subject = socket.assigns.subject
+
+    cache.connectable_resources
+    |> Enum.filter(&pool_admits?(&1, cache, device, subject))
+    |> Enum.map(&Ecto.UUID.load!(&1.id))
+    |> Enum.sort()
+    |> case do
+      [] -> {:error, :forbidden}
+      resource_ids -> {:ok, resource_ids}
+    end
+  end
+
+  defp pool_admits?(
+         %Cache.Cacheable.Resource{type: :static_device_pool} = pool,
+         cache,
+         device,
+         _subject
+       ) do
+    target = {:ipv4, device.ipv4.address}
+
+    match?(
+      {:ok, _device_id},
+      Cache.Client.authorize_device_access(cache, Ecto.UUID.load!(pool.id), target)
+    )
+  end
+
+  defp pool_admits?(
+         %Cache.Cacheable.Resource{type: :dynamic_device_pool} = pool,
+         _cache,
+         device,
+         subject
+       ) do
+    Portal.Resource.DeviceMembershipCriteria.member?(
+      pool.device_membership_criteria,
+      device,
+      subject
+    )
+  end
+
+  defp pool_admits?(%Cache.Cacheable.Resource{}, _cache, _device, _subject), do: false
 
   # Dispatches the pool authorization check by resource type. Static pools have
   # their member set pre-loaded in the cache; dynamic pools resolve the target IP
-  # to a device at request-time and verify its hostname against the pool pattern.
+  # to a device at request-time and check the pool's membership criteria on it.
   defp authorize_pool_target(
          %Cache.Cacheable.Resource{type: :static_device_pool},
          cache,
@@ -1259,7 +1295,7 @@ defmodule PortalAPI.Client.Channel.Shared do
   end
 
   defp authorize_pool_target(
-         %Cache.Cacheable.Resource{type: :dynamic_device_pool, address: pattern},
+         %Cache.Cacheable.Resource{type: :dynamic_device_pool, device_membership_criteria: criteria},
          _cache,
          _resource_id,
          target,
@@ -1267,7 +1303,7 @@ defmodule PortalAPI.Client.Channel.Shared do
        ) do
     with {:ok, %Portal.Device{} = device} <-
            Database.get_device_by_address(target, subject),
-         true <- Portal.Resource.matches_dns_pattern?(pattern, device.hostname) do
+         true <- Portal.Resource.DeviceMembershipCriteria.member?(criteria, device, subject) do
       {:ok, device.id}
     else
       _ -> {:error, :forbidden}
@@ -2148,6 +2184,29 @@ defmodule PortalAPI.Client.Channel.Shared do
     revoke_policy_authorization(socket, policy_authorization)
   end
 
+  # On the v3 protocol the initiating side keeps the pool as its route to the peer, so
+  # it gets the same reject_access when the authorization goes away and asks the portal
+  # again on the next flow. Authorizations cascade on device and policy deletes, so a
+  # deleted target or a revoked policy both end up here.
+  defp handle_change(
+         %Change{
+           op: :delete,
+           old_struct:
+             %Portal.PolicyAuthorization{initiating_device_id: client_id} = policy_authorization
+         },
+         %{assigns: %{client: %{id: client_id}}} = socket
+       ) do
+    if socket.assigns.channel_protocol.protocol_version() >= 3 and
+         not expired?(policy_authorization) do
+      push(socket, "reject_access", %{
+        client_id: policy_authorization.receiving_device_id,
+        resource_id: policy_authorization.resource_id
+      })
+    end
+
+    {:noreply, socket}
+  end
+
   # RESOURCES
 
   defp handle_change(
@@ -2224,6 +2283,12 @@ defmodule PortalAPI.Client.Channel.Shared do
   end
 
   defp handle_change(%Change{}, socket), do: {:noreply, socket}
+
+  defp expired?(%Portal.PolicyAuthorization{expires_at: nil}), do: false
+
+  defp expired?(%Portal.PolicyAuthorization{expires_at: expires_at}) do
+    DateTime.compare(expires_at, DateTime.utc_now()) != :gt
+  end
 
   # A channel stop alone can leave the transport available for a reactive rejoin,
   # which would bypass Socket.connect/3 and its account-enabled check. Drain the
@@ -2809,17 +2874,13 @@ defmodule PortalAPI.Client.Channel.Shared do
     end
 
     @doc """
-      Fetches a client device by hostname within the subject's account. The hostname
-      column is `citext`, so equality is case-insensitive at the DB layer.
-
-      Used by the dynamic device pool DNS resolution path. Returns `{:error, :not_found}`
-      for a miss or unauthorized read; the caller is expected to also verify the device's
-      hostname matches the pool's address pattern before returning IPs to the client.
+      Fetches the client device in the subject's account that answers at `slug`.
+      Returns `{:error, :not_found}` for a miss or unauthorized read.
     """
-    def get_device_by_hostname(hostname, subject) when is_binary(hostname) do
+    def get_device_by_slug(slug, subject) when is_binary(slug) do
       from(d in Portal.Device,
         where: d.type == :client,
-        where: d.hostname == ^hostname
+        where: d.slug == ^slug
       )
       |> Portal.Safe.scoped(subject)
       |> Portal.Safe.one()
@@ -2832,8 +2893,7 @@ defmodule PortalAPI.Client.Channel.Shared do
     @doc """
       Fetches a client device by its tunnel IPv4 or IPv6 within the subject's account.
       Used to create an authorization against a dynamic device pool: we resolve the
-      target IP to a device and let the caller verify the device's hostname matches
-      the pool's address pattern.
+      target IP to a device and let the caller run the pool's rule on it.
     """
     def get_device_by_address({:ipv4, ipv4_tuple}, subject) do
       fetch_device_by_inet(:ipv4, %Postgrex.INET{address: ipv4_tuple}, subject)
@@ -2849,13 +2909,13 @@ defmodule PortalAPI.Client.Channel.Shared do
           :ipv4 ->
             from(d in Portal.Device,
               where: d.type == :client,
-              where: fragment("host(?) = host(?)", d.ipv4, ^inet)
+              where: d.ipv4 == ^inet
             )
 
           :ipv6 ->
             from(d in Portal.Device,
               where: d.type == :client,
-              where: fragment("host(?) = host(?)", d.ipv6, ^inet)
+              where: d.ipv6 == ^inet
             )
         end
 

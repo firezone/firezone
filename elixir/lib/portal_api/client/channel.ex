@@ -31,6 +31,9 @@ defmodule PortalAPI.Client.Channel do
   end
 
   @doc false
+  def protocol_version, do: 1
+
+  @doc false
   def authorization_created_event, do: "flow_created"
 
   @doc false
