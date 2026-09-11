@@ -248,11 +248,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         if: github.event_name == 'workflow_dispatch' && github.ref_name == 'main'
       - name: Check the release can be rebuilt
-        if: github.event_name == 'workflow_dispatch' && github.ref_name == 'main'
+        if: github.event_name == 'workflow_dispatch' && github.ref_name == 'main' && !inputs.force_rebuild
         uses: ./.github/actions/check-release-review-lock
         with:
           release-name: ${{ env.RELEASE_NAME }}
-          force-rebuild: ${{ inputs.force_rebuild }}
       - uses: release-drafter/release-drafter@34d80673e067bdc0c24568d3af899c216adcfaa9 # v7.7.0
         if: "${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}"
         id: update-release-draft

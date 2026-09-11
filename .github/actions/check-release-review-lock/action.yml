@@ -4,9 +4,6 @@ inputs:
   release-name:
     description: Name of the release draft to check
     required: true
-  force-rebuild:
-    description: Allow rebuilding a release locked for store review
-    default: "false"
 
 runs:
   using: composite
@@ -16,7 +13,6 @@ runs:
       env:
         GH_TOKEN: ${{ github.token }}
         RELEASE_NAME: ${{ inputs.release-name }}
-        FORCE_REBUILD: ${{ inputs.force-rebuild }}
       run: |
         set -euo pipefail
 
@@ -29,9 +25,6 @@ runs:
             exit 0
         fi
         jq -e '.draft == true' <<<"$release" >/dev/null
-        if [[ "$FORCE_REBUILD" == true ]]; then
-            exit 0
-        fi
 
         artifact="release-review-$RELEASE_NAME"
         run_id=$(gh api --method GET --paginate --slurp "repos/$GITHUB_REPOSITORY/actions/artifacts" -f name="$artifact" -F per_page=100 |
