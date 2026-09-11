@@ -169,16 +169,22 @@ defmodule Portal.Account.Metadata do
   use Ecto.Schema
   import Ecto.Changeset
 
+  @deletion_feedback_max_length 2000
+
   @primary_key false
   embedded_schema do
     field :marketing_attribution, :map
+    field :deletion_feedback, :string
     embeds_one :stripe, Portal.Account.Metadata.Stripe, on_replace: :update
     embeds_one :sign_up_survey, Portal.Account.Metadata.SignUpSurvey, on_replace: :update
   end
 
+  def deletion_feedback_max_length, do: @deletion_feedback_max_length
+
   def changeset(metadata \\ %__MODULE__{}, attrs) do
     metadata
-    |> cast(attrs, [:marketing_attribution])
+    |> cast(attrs, [:marketing_attribution, :deletion_feedback])
+    |> validate_length(:deletion_feedback, max: @deletion_feedback_max_length)
     |> cast_embed(:stripe, with: &Portal.Account.Metadata.Stripe.changeset/2)
     |> cast_embed(:sign_up_survey, with: &Portal.Account.Metadata.SignUpSurvey.changeset/2)
   end
