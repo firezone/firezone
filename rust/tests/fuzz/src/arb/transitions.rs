@@ -16,7 +16,7 @@ use super::values::{
 use super::{dns_queries, packets};
 use crate::probe::FlowId;
 use crate::reference::ReferenceState;
-use crate::resource::{CidrResource, DnsResource, Resource, StaticDevicePoolResource};
+use crate::resource::{CidrResource, DevicePoolResource, DnsResource, Resource};
 use crate::sim_net::{EdgeConfig, Host};
 use crate::transition::{Seq, Transition};
 
@@ -47,8 +47,7 @@ enum TransitionKind {
     SendPacket,
     SendPacketOnExistingFlow,
     SendDnsQuery,
-    // Static device pool membership update.
-    UpdateStaticDevicePool,
+    UpdateDevicePoolMembers,
 }
 
 #[derive(Clone, Copy)]
@@ -78,7 +77,7 @@ pub(super) fn generate(g: &mut Generator, state: &ReferenceState) -> Option<Tran
         )
         .collect::<Vec<_>>();
     let dns_query_targets = dns_queries::targets(state);
-    let static_device_pools = state.static_device_pools_on_any_client();
+    let listed_device_pools = state.listed_device_pools_on_any_client();
 
     // Build the legal action list. Data-plane actions stay more frequent because
     // they drive most of the tunnel state machine; libFuzzer chooses the concrete
@@ -110,7 +109,7 @@ pub(super) fn generate(g: &mut Generator, state: &ReferenceState) -> Option<Tran
         (!packet_targets.is_empty()).then_some((K::SendPacket, 50)),
         (!existing_flows.is_empty()).then_some((K::SendPacketOnExistingFlow, 25)),
         (!dns_query_targets.is_empty()).then_some((K::SendDnsQuery, 10)),
-        (!static_device_pools.is_empty()).then_some((K::UpdateStaticDevicePool, 2)),
+        (!listed_device_pools.is_empty()).then_some((K::UpdateDevicePoolMembers, 2)),
     ]
     .into_iter()
     .flatten()
@@ -278,11 +277,16 @@ pub(super) fn generate(g: &mut Generator, state: &ReferenceState) -> Option<Tran
             let target = dns_query_targets[g.choose_index(dns_query_targets.len())].clone();
             dns_queries::generate(g, target, state)
         }
-        K::UpdateStaticDevicePool => {
-            let pool = static_device_pools[g.choose_index(static_device_pools.len())].clone();
-            Transition::UpdateStaticDevicePool {
-                pool_id: pool.id,
-                new_devices: packets::arb_static_pool_members(g, state, &pool),
+        K::UpdateDevicePoolMembers => {
+            let (pool_id, old_members) =
+                listed_device_pools[g.choose_index(listed_device_pools.len())].clone();
+            let members = packets::arb_pool_members(g, state);
+            let removed = old_members.difference(&members).copied().collect();
+
+            Transition::UpdateDevicePoolMembers {
+                pool_id,
+                members,
+                removed,
             }
         }
     };
@@ -315,17 +319,14 @@ fn arb_resource_with_different_type(
     enum ResourceType {
         Cidr,
         Dns,
-        StaticDevicePool,
+        DevicePool,
     }
 
     let resource_type = match resource {
-        Resource::Cidr(_) => [ResourceType::Dns, ResourceType::StaticDevicePool][g.choose_index(2)],
-        Resource::Dns(_) => [ResourceType::Cidr, ResourceType::StaticDevicePool][g.choose_index(2)],
-        Resource::StaticDevicePool(_) => [ResourceType::Cidr, ResourceType::Dns][g.choose_index(2)],
+        Resource::Cidr(_) => [ResourceType::Dns, ResourceType::DevicePool][g.choose_index(2)],
+        Resource::Dns(_) => [ResourceType::Cidr, ResourceType::DevicePool][g.choose_index(2)],
+        Resource::DevicePool(_) => [ResourceType::Cidr, ResourceType::Dns][g.choose_index(2)],
         Resource::Internet(_) => {
-            unreachable!("only user-editable resource types can replace one another")
-        }
-        Resource::DynamicDevicePool(_) => {
             unreachable!("only user-editable resource types can replace one another")
         }
     };
@@ -366,12 +367,7 @@ fn arb_resource_with_different_type(
                 filters,
             })
         }
-        ResourceType::StaticDevicePool => Resource::StaticDevicePool(StaticDevicePoolResource {
-            id,
-            name,
-            devices: packets::arb_online_static_pool_members(g, state),
-            filters,
-        }),
+        ResourceType::DevicePool => Resource::DevicePool(DevicePoolResource { id, name, filters }),
     }
 }
 

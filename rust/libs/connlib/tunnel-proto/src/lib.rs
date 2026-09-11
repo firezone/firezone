@@ -75,12 +75,15 @@ pub enum ClientEvent {
     ResourceConnectionIntent {
         resource: ResourceId,
         preferred_gateways: Vec<GatewayId>,
-        /// Set for connection intents to a specific device pool member;
-        /// `None` for intents to a gateway-routed resource.
-        ip: Option<IpAddr>,
     },
-    DevicePoolDomainQueried {
-        resource_id: ResourceId,
+    /// A packet to a tunnel address that no pool we hold permits asks the portal for
+    /// access to the device for that flow.
+    DeviceAccessRequested {
+        ip: IpAddr,
+        flow: messages::client::Flow,
+    },
+    /// A DNS query for a device name asks the portal to resolve it.
+    DeviceDomainQueried {
         domain: DomainName,
     },
     /// The list of resources or connected device peers has changed; UI clients

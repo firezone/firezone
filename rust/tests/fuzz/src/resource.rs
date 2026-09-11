@@ -11,18 +11,14 @@ use connlib_model::{
 use ip_network::IpNetwork;
 use itertools::Itertools as _;
 use serde_json::{Value, json};
-use tunnel_proto::messages::{
-    Filter,
-    client::{DevicePoolMember, ResourceDescription},
-};
+use tunnel_proto::messages::{Filter, client::ResourceDescription};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) enum Resource {
     Dns(DnsResource),
     Cidr(CidrResource),
     Internet(InternetResource),
-    StaticDevicePool(StaticDevicePoolResource),
-    DynamicDevicePool(DynamicDevicePoolResource),
+    DevicePool(DevicePoolResource),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -54,18 +50,9 @@ pub(crate) struct InternetResource {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub(crate) struct StaticDevicePoolResource {
+pub(crate) struct DevicePoolResource {
     pub(crate) id: ResourceId,
     pub(crate) name: String,
-    pub(crate) devices: Vec<DevicePoolMember>,
-    pub(crate) filters: Vec<Filter>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub(crate) struct DynamicDevicePoolResource {
-    pub(crate) id: ResourceId,
-    pub(crate) name: String,
-    pub(crate) address: String,
     pub(crate) filters: Vec<Filter>,
 }
 
@@ -75,8 +62,7 @@ impl Resource {
             Resource::Dns(resource) => Some(resource),
             Resource::Cidr(_) => None,
             Resource::Internet(_) => None,
-            Resource::StaticDevicePool(_) => None,
-            Resource::DynamicDevicePool(_) => None,
+            Resource::DevicePool(_) => None,
         }
     }
 
@@ -85,8 +71,7 @@ impl Resource {
             Resource::Cidr(resource) => Some(resource),
             Resource::Dns(_) => None,
             Resource::Internet(_) => None,
-            Resource::StaticDevicePool(_) => None,
-            Resource::DynamicDevicePool(_) => None,
+            Resource::DevicePool(_) => None,
         }
     }
 
@@ -95,8 +80,7 @@ impl Resource {
             Resource::Dns(r) => r.id,
             Resource::Cidr(r) => r.id,
             Resource::Internet(r) => r.id,
-            Resource::StaticDevicePool(r) => r.id,
-            Resource::DynamicDevicePool(r) => r.id,
+            Resource::DevicePool(r) => r.id,
         }
     }
 
@@ -105,8 +89,7 @@ impl Resource {
             Resource::Dns(r) => &r.name,
             Resource::Cidr(r) => &r.name,
             Resource::Internet(r) => &r.name,
-            Resource::StaticDevicePool(r) => &r.name,
-            Resource::DynamicDevicePool(r) => &r.name,
+            Resource::DevicePool(r) => &r.name,
         }
     }
 
@@ -115,8 +98,7 @@ impl Resource {
             Resource::Dns(r) => &r.sites,
             Resource::Cidr(r) => &r.sites,
             Resource::Internet(r) => &r.sites,
-            Resource::StaticDevicePool(_) => &[],
-            Resource::DynamicDevicePool(_) => &[],
+            Resource::DevicePool(_) => &[],
         }
     }
 
@@ -128,9 +110,8 @@ impl Resource {
         match self {
             Resource::Dns(r) => &r.filters,
             Resource::Cidr(r) => &r.filters,
-            Resource::StaticDevicePool(r) => &r.filters,
+            Resource::DevicePool(r) => &r.filters,
             Resource::Internet(_) => &[],
-            Resource::DynamicDevicePool(r) => &r.filters,
         }
     }
 
@@ -148,12 +129,7 @@ impl Resource {
             (Resource::Dns(a), Resource::Dns(b)) => a.address != b.address,
             (Resource::Cidr(a), Resource::Cidr(b)) => a.address != b.address,
             (Resource::Internet(_), Resource::Internet(_)) => false,
-            (Resource::StaticDevicePool(a), Resource::StaticDevicePool(b)) => {
-                a.devices != b.devices
-            }
-            (Resource::DynamicDevicePool(a), Resource::DynamicDevicePool(b)) => {
-                a.address != b.address
-            }
+            (Resource::DevicePool(_), Resource::DevicePool(_)) => false,
             _ => true,
         }
     }
@@ -187,8 +163,7 @@ impl Resource {
                 sites: vec![site],
                 ..r
             }),
-            Resource::StaticDevicePool(r) => Self::StaticDevicePool(r),
-            Resource::DynamicDevicePool(r) => Self::DynamicDevicePool(r),
+            Resource::DevicePool(r) => Self::DevicePool(r),
         }
     }
 
@@ -196,13 +171,8 @@ impl Resource {
         match self {
             Resource::Dns(r) => Self::Dns(DnsResource { filters, ..r }),
             Resource::Cidr(r) => Self::Cidr(CidrResource { filters, ..r }),
-            Resource::StaticDevicePool(r) => {
-                Self::StaticDevicePool(StaticDevicePoolResource { filters, ..r })
-            }
+            Resource::DevicePool(r) => Self::DevicePool(DevicePoolResource { filters, ..r }),
             Resource::Internet(_) => self,
-            Resource::DynamicDevicePool(r) => {
-                Self::DynamicDevicePool(DynamicDevicePoolResource { filters, ..r })
-            }
         }
     }
 
@@ -231,16 +201,9 @@ impl Resource {
                 "name": r.name,
                 "gateway_groups": sites_json(r.sites),
             })),
-            Resource::StaticDevicePool(r) => ResourceDescription::StaticDevicePool(json!({
+            Resource::DevicePool(r) => ResourceDescription::DevicePool(json!({
                 "id": r.id,
                 "name": r.name,
-                "devices": r.devices.into_iter().map(device_json).collect::<Vec<_>>(),
-                "filters": filters_json(r.filters),
-            })),
-            Resource::DynamicDevicePool(r) => ResourceDescription::DynamicDevicePool(json!({
-                "id": r.id,
-                "name": r.name,
-                "address": r.address,
                 "filters": filters_json(r.filters),
             })),
         }
@@ -270,8 +233,7 @@ impl Resource {
                 sites: r.sites,
                 status,
             })),
-            Resource::StaticDevicePool(_) => None,
-            Resource::DynamicDevicePool(_) => None,
+            Resource::DevicePool(_) => None,
         }
     }
 }
@@ -281,14 +243,6 @@ fn sites_json(sites: Vec<Site>) -> Vec<Value> {
         .into_iter()
         .map(|site| json!({ "id": site.id, "name": site.name }))
         .collect()
-}
-
-fn device_json(device: DevicePoolMember) -> Value {
-    json!({
-        "client_id": device.id,
-        "ipv4": device.ipv4.to_string(),
-        "ipv6": device.ipv6.to_string(),
-    })
 }
 
 fn ip_stack_json(ip_stack: IpStack) -> &'static str {
