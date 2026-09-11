@@ -240,16 +240,12 @@ defmodule Portal.Policies.PosturesTest do
       assert cast_error(leaf("intune.last_sync_at", "within_last", 24)) == "value: must be a string"
     end
 
-    test "dates" do
-      assert %Postures{expr: %Leaf{type: :date, parsed: ~D[2026-01-01]}} =
-               cast!(leaf("intune.android_security_patch_level", "after", "2026-01-01"))
+    test "date columns take datetimes, so a calendar date is converted before it gets here" do
+      assert %Postures{expr: %Leaf{type: :datetime, parsed: ~U[2026-01-01 00:00:00Z]}} =
+               cast!(leaf("intune.android_security_patch_level", "after", "2026-01-01T00:00:00Z"))
 
-      assert %Postures{} = cast!(leaf("intune.android_security_patch_level", "before", "2026-01-01"))
-
-      assert cast_error(leaf("intune.android_security_patch_level", "after", "yesterday")) ==
-               "value: must be an ISO 8601 date"
-
-      assert cast_error(leaf("intune.android_security_patch_level", "after", 1)) == "value: must be a string"
+      assert cast_error(leaf("intune.android_security_patch_level", "after", "2026-01-01")) ==
+               "value: must be an ISO 8601 datetime"
     end
 
     test "cidrs parse with a default netmask" do

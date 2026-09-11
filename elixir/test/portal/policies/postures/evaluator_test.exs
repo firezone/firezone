@@ -312,12 +312,12 @@ defmodule Portal.Policies.Postures.EvaluatorTest do
     end
   end
 
-  describe "evaluate/3 dates" do
-    test "before and after" do
-      assert pass?("android_security_patch_level", "after", "2026-01-01", android_security_patch_level: ~D[2026-01-02])
-      refute pass?("android_security_patch_level", "after", "2026-01-01", android_security_patch_level: ~D[2026-01-01])
-      assert pass?("android_security_patch_level", "before", "2026-01-01", android_security_patch_level: ~D[2025-12-31])
-      refute pass?("android_security_patch_level", "before", "2026-01-01", android_security_patch_level: ~D[2026-01-01])
+  describe "evaluate/3 date columns" do
+    test "are the start of that day in UTC" do
+      assert pass?("android_security_patch_level", "after", "2025-12-31T23:59:59Z", android_security_patch_level: ~D[2026-01-01])
+      refute pass?("android_security_patch_level", "after", "2026-01-01T00:00:00Z", android_security_patch_level: ~D[2026-01-01])
+      assert pass?("android_security_patch_level", "before", "2026-01-01T00:00:01Z", android_security_patch_level: ~D[2026-01-01])
+      refute pass?("android_security_patch_level", "before", "2026-01-01T00:00:00Z", android_security_patch_level: ~D[2026-01-01])
     end
 
     test "within_last treats the date as midnight UTC" do

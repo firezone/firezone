@@ -313,7 +313,7 @@ defmodule Portal.Policies.Postures do
     end
   end
 
-  defp parse_scalar(type, op, value, at) when type in [:datetime, :date] and op in @duration_operators do
+  defp parse_scalar(:datetime, op, value, at) when op in @duration_operators do
     with {:ok, string} <- bounded_string(value, @max_string_bytes, at),
          {:ok, duration} <- Duration.from_iso8601(string),
          true <- positive_duration?(duration) do
@@ -331,16 +331,6 @@ defmodule Portal.Policies.Postures do
     else
       {:error, message} when is_binary(message) -> {:error, message}
       _ -> error(at, "must be an ISO 8601 datetime")
-    end
-  end
-
-  defp parse_scalar(:date, _op, value, at) do
-    with {:ok, string} <- bounded_string(value, @max_string_bytes, at),
-         {:ok, date} <- Date.from_iso8601(string) do
-      {:ok, date}
-    else
-      {:error, message} when is_binary(message) -> {:error, message}
-      _ -> error(at, "must be an ISO 8601 date")
     end
   end
 

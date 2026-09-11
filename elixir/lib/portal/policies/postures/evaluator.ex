@@ -167,17 +167,8 @@ defmodule Portal.Policies.Postures.Evaluator do
 
   defp compare(:datetime, op, %DateTime{} = value, parsed, now), do: compare_moment(op, value, parsed, now)
 
-  defp compare(:date, op, %Date{} = value, %Date{} = parsed, _now) do
-    passed? =
-      case op do
-        :before -> Date.compare(value, parsed) == :lt
-        :after -> Date.compare(value, parsed) == :gt
-      end
-
-    {passed?, nil}
-  end
-
-  defp compare(:date, op, %Date{} = value, %Duration{} = parsed, now) do
+  # A date column is the start of that day.
+  defp compare(:datetime, op, %Date{} = value, parsed, now) do
     compare_moment(op, DateTime.new!(value, ~T[00:00:00]), parsed, now)
   end
 
