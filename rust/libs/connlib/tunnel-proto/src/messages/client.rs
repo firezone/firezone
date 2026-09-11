@@ -97,8 +97,8 @@ impl DevicePoolMember {
 
 /// A pool whose members the portal decides by a membership rule.
 ///
-/// Devices are reached by name under the device domain; the portal picks the
-/// pool on the first packet, see [`EgressMessages::RequestDeviceAccess`].
+/// Devices are reached by name under the device domain; the portal answers a name
+/// with the pools that admit the device, see [`EgressMessages::ResolveDeviceDomain`].
 #[serde_as]
 #[derive(Debug, Deserialize)]
 pub struct ResourceDescriptionDynamicDevicePool {
@@ -203,14 +203,13 @@ pub struct ClientDeviceAccessAuthorized {
     #[serde(default)]
     pub use_iceless: bool,
 
-    /// The pool authorising this connection, as the portal's minimal `{id, filters}`
-    /// view. The receiving side always gets it as its inbound grant; the initiating
-    /// side gets it only in reply to `request_device_access`, as its outbound route.
+    /// The resource authorising this connection on the receiving side, as the
+    /// portal's minimal `{id, filters}` view. `None` on the initiating side.
     #[serde(default)]
     pub resource: Option<AuthorizedResource>,
 
     /// When the authorization expires, as a unix timestamp. `None` when it
-    /// never expires; only the receiving side enforces it.
+    /// never expires or on the initiating side.
     #[serde_as(as = "Option<DurationSeconds<u64>>")]
     #[serde(default)]
     pub expires_at: Option<Duration>,
@@ -296,12 +295,15 @@ pub struct ClientIceCandidateError {
     pub reason: FailReason,
 }
 
-/// Portal's response when a device name is resolved.
+/// Portal's response when a device name is resolved: the device and the pools that
+/// admit it, so the client can route to it and ask for access through one of them.
 #[derive(Debug, Deserialize, Clone)]
 pub struct DeviceDomainResolved {
     pub domain: String,
+    pub client_id: ClientId,
     pub ipv4: Ipv4Addr,
     pub ipv6: Ipv6Addr,
+    pub resource_ids: Vec<ResourceId>,
 }
 
 /// Portal's response when a device name cannot be resolved.
@@ -309,25 +311,6 @@ pub struct DeviceDomainResolved {
 pub struct DeviceDomainResolutionFailed {
     pub domain: String,
     pub reason: FailReason,
-}
-
-/// The protocol and port of the packet that asks for access to a device.
-#[derive(Debug, Serialize, PartialEq, Eq, Clone, Copy)]
-#[serde(tag = "protocol", rename_all = "snake_case")]
-pub enum DeviceAccessProtocol {
-    Tcp { port: u16 },
-    Udp { port: u16 },
-    Icmp,
-}
-
-impl From<ip_packet::Protocol> for DeviceAccessProtocol {
-    fn from(protocol: ip_packet::Protocol) -> Self {
-        match protocol {
-            ip_packet::Protocol::Tcp(port) => Self::Tcp { port },
-            ip_packet::Protocol::Udp(port) => Self::Udp { port },
-            ip_packet::Protocol::IcmpEcho(_) => Self::Icmp,
-        }
-    }
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -439,14 +422,6 @@ pub enum EgressMessages {
     },
     ResolveDeviceDomain {
         domain: String,
-    },
-    RequestDeviceAccess {
-        #[serde(skip_serializing_if = "Option::is_none")]
-        ipv4: Option<Ipv4Addr>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        ipv6: Option<Ipv6Addr>,
-        #[serde(flatten)]
-        protocol: DeviceAccessProtocol,
     },
     NoRelays {},
     NewGatewayIceCandidates(GatewayIceCandidates),
@@ -1090,49 +1065,15 @@ mod tests {
     }
 
     #[test]
-    fn request_device_access_serialises_correctly() {
-        let tcp = EgressMessages::RequestDeviceAccess {
-            ipv4: Some("100.64.0.42".parse().unwrap()),
-            ipv6: None,
-            protocol: DeviceAccessProtocol::Tcp { port: 22 },
-        };
-        let icmp = EgressMessages::RequestDeviceAccess {
-            ipv4: None,
-            ipv6: Some("fd00:2021:1111::42".parse().unwrap()),
-            protocol: DeviceAccessProtocol::Icmp,
-        };
-
-        assert_eq!(
-            serde_json::to_value(&tcp).unwrap(),
-            serde_json::json!({
-                "event": "request_device_access",
-                "payload": {
-                    "ipv4": "100.64.0.42",
-                    "protocol": "tcp",
-                    "port": 22,
-                }
-            })
-        );
-        assert_eq!(
-            serde_json::to_value(&icmp).unwrap(),
-            serde_json::json!({
-                "event": "request_device_access",
-                "payload": {
-                    "ipv6": "fd00:2021:1111::42",
-                    "protocol": "icmp",
-                }
-            })
-        );
-    }
-
-    #[test]
     fn can_deserialize_device_domain_resolved() {
         let json = serde_json::json!({
             "event": "device_domain_resolved",
             "payload": {
                 "domain": "device-42.firezone.network",
+                "client_id": "c3d4e5f6-a7b8-9012-cdef-123456789012",
                 "ipv4": "100.64.0.42",
-                "ipv6": "fd00:2021:1111::42"
+                "ipv6": "fd00:2021:1111::42",
+                "resource_ids": ["b2c3d4e5-f6a7-8901-bcde-f12345678901"]
             }
         });
 

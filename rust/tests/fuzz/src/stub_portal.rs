@@ -1,7 +1,6 @@
 use connlib_model::{ClientId, GatewayId, ResourceId, Site, SiteId};
 use dns_types::DomainName;
 use ip_network::IpNetwork;
-use ip_packet::Protocol;
 use itertools::Itertools;
 use smallvec::SmallVec;
 use std::{
@@ -12,7 +11,6 @@ use std::{
 use tunnel_proto::dns;
 use tunnel_proto::messages::{UpstreamDo53, UpstreamDoH, client::DevicePoolMember, gateway};
 
-use crate::ref_client::protocol_filter_allows;
 use crate::resource::{self as client, DynamicDevicePoolResource, StaticDevicePoolResource};
 
 /// Stub implementation of the portal.
@@ -194,30 +192,17 @@ impl StubPortal {
             .collect()
     }
 
-    /// Resolves a device name (e.g. `device0.firezone.network`) to the tunnel IPv4 +
-    /// IPv6 of the matching client, if the slug corresponds to a known device.
+    /// Resolves a device name (e.g. `device0.firezone.network`) to the matching client
+    /// and its tunnel IPv4 + IPv6, if the slug corresponds to a known device.
     pub(crate) fn resolve_device_domain(
         &self,
         domain: &DomainName,
-    ) -> Option<(Ipv4Addr, Ipv6Addr)> {
+    ) -> Option<(ClientId, Ipv4Addr, Ipv6Addr)> {
         let slug = dns::device_slug(domain)?;
 
-        let client = self.clients.values().find(|c| c.device_label == slug)?;
+        let (id, client) = self.clients.iter().find(|(_, c)| c.device_label == slug)?;
 
-        Some((client.ipv4, client.ipv6))
-    }
-
-    /// Picks the dynamic pool a device access request goes through: the highest one
-    /// whose filters permit the packet. Every pool admits every device here.
-    pub(crate) fn authorize_device_access(
-        &self,
-        protocol: Protocol,
-    ) -> Option<(ResourceId, Vec<tunnel_proto::messages::Filter>)> {
-        self.device_pool_resources
-            .values()
-            .rev()
-            .find(|pool| protocol_filter_allows(&pool.filters, protocol))
-            .map(|pool| (pool.id, pool.filters.clone()))
+        Some((*id, client.ipv4, client.ipv6))
     }
 
     pub(crate) fn all_resources(&self) -> Vec<client::Resource> {

@@ -118,11 +118,10 @@ pub struct RefClient {
     #[debug(skip)]
     client_send_times: BTreeMap<ClientId, BTreeSet<Instant>>,
 
-    /// The peer addresses this client resolved from device names.
-    ///
-    /// Only these are requested from the portal; any other tunnel address is unroutable.
+    /// Per peer address resolved from a device name, the dynamic pools the portal
+    /// named as admitting the device.
     #[debug(skip)]
-    resolved_devices: BTreeSet<IpAddr>,
+    resolved_devices: BTreeMap<IpAddr, BTreeSet<ResourceId>>,
 }
 
 impl RefClient {
@@ -275,6 +274,10 @@ impl RefClient {
         }
 
         self.resources.retain(|r| r.id() != *resource);
+        self.resolved_devices.retain(|_, pools| {
+            pools.remove(resource);
+            !pools.is_empty()
+        });
     }
 
     pub(crate) fn connected_resources(&self) -> impl Iterator<Item = ResourceId> + '_ {
@@ -707,7 +710,7 @@ impl RefClient {
         // Peer tunnel IPs first mean client-to-client device-pool routing. A
         // tunnel IP without a matching pool may still belong to a gateway.
         if let Some(ip) = dst.ip_addr().filter(|ip| tunnel_proto::is_peer(*ip)) {
-            let pools = self.static_pools_by_tun_ip(ip);
+            let pools = self.device_pools_by_tun_ip(ip);
 
             if !pools.is_empty() {
                 let allowed = pools
@@ -725,21 +728,6 @@ impl RefClient {
                 return client_by_ip(ip)
                     .map(PacketRoute::PeerRejectedByPeer)
                     .unwrap_or(PacketRoute::Drop);
-            }
-
-            // A resolved device is reached through the dynamic pool the portal picks for the
-            // packet; when none permits it, the portal denies the request and the packet is lost.
-            if self.resolved_devices.contains(&ip) {
-                let allowed = self
-                    .dynamic_device_pools()
-                    .iter()
-                    .any(|(_, filters)| protocol_filter_allows(filters, protocol));
-
-                if allowed {
-                    return client_by_ip(ip).map_or(PacketRoute::Drop, PacketRoute::Peer);
-                }
-
-                return PacketRoute::Drop;
             }
 
             return gateway_by_ip(ip).map_or(PacketRoute::Drop, PacketRoute::Gateway);
@@ -1060,11 +1048,18 @@ impl RefClient {
         protocol_filter_allows(filters, proto)
     }
 
-    /// Every static device pool that names the peer at `ip`, with its filter set.
-    fn static_pools_by_tun_ip(
+    /// Every device pool that routes to the peer at `ip`, with its filter set: the static
+    /// pools naming it and the dynamic pools its name resolved into.
+    fn device_pools_by_tun_ip(
         &self,
         ip: IpAddr,
     ) -> Vec<(ResourceId, Vec<tunnel_proto::messages::Filter>)> {
+        let resolved = self.dynamic_device_pools().into_iter().filter(|(id, _)| {
+            self.resolved_devices
+                .get(&ip)
+                .is_some_and(|pools| pools.contains(id))
+        });
+
         self.resources
             .iter()
             .filter_map(|r| {
@@ -1079,25 +1074,61 @@ impl RefClient {
 
                 matches.then(|| (pool.id, pool.filters.clone()))
             })
+            .chain(resolved)
             .collect()
     }
 
-    /// Records that a device name resolved to the peer at `ipv4` / `ipv6`.
-    pub(crate) fn note_device_resolution(&mut self, ipv4: Ipv4Addr, ipv6: Ipv6Addr) {
-        self.resolved_devices.insert(IpAddr::V4(ipv4));
-        self.resolved_devices.insert(IpAddr::V6(ipv6));
+    /// The pools the portal names when `target` is resolved: every dynamic pool admits
+    /// every device, a static pool the members it names.
+    pub(crate) fn device_pools_admitting(&self, target: ClientId) -> Vec<ResourceId> {
+        self.resources
+            .iter()
+            .filter_map(|resource| match resource {
+                Resource::DynamicDevicePool(pool) => Some(pool.id),
+                Resource::StaticDevicePool(pool) => pool
+                    .devices
+                    .iter()
+                    .any(|d| d.id == target)
+                    .then_some(pool.id),
+                Resource::Dns(_) => None,
+                Resource::Cidr(_) => None,
+                Resource::Internet(_) => None,
+            })
+            .sorted()
+            .collect()
     }
 
-    /// Every resolved peer address paired with each dynamic pool's filter set.
+    /// Records that a device name resolved to the peer at `ipv4` / `ipv6`, which joins
+    /// every dynamic pool.
+    pub(crate) fn note_device_resolution(&mut self, ipv4: Ipv4Addr, ipv6: Ipv6Addr) {
+        let pools = self
+            .dynamic_device_pools()
+            .into_iter()
+            .map(|(id, _)| id)
+            .collect::<BTreeSet<_>>();
+
+        if pools.is_empty() {
+            return;
+        }
+
+        self.resolved_devices
+            .insert(IpAddr::V4(ipv4), pools.clone());
+        self.resolved_devices.insert(IpAddr::V6(ipv6), pools);
+    }
+
+    /// Every resolved peer address with the filter set of each pool it resolved into.
     pub(crate) fn resolved_devices_with_pools(
         &self,
     ) -> Vec<(IpAddr, Vec<tunnel_proto::messages::Filter>)> {
-        self.dynamic_device_pools()
-            .into_iter()
-            .flat_map(|(_, filters)| {
-                self.resolved_devices
+        let pools = self.dynamic_device_pools();
+
+        self.resolved_devices
+            .iter()
+            .flat_map(|(ip, resolved)| {
+                pools
                     .iter()
-                    .map(move |ip| (*ip, filters.clone()))
+                    .filter(|(id, _)| resolved.contains(id))
+                    .map(|(_, filters)| (*ip, filters.clone()))
             })
             .collect()
     }

@@ -27,7 +27,8 @@ use crate::dns::{
 use crate::filter_engine::FilterEngine;
 use crate::messages::IngestToken;
 use crate::messages::{
-    Filter, IceCredentials, IceRole, Interface as InterfaceConfig, SecretKey, client::FailReason,
+    Filter, IceCredentials, IceRole, Interface as InterfaceConfig, SecretKey,
+    client::{DevicePoolMember, FailReason},
 };
 use crate::peer_store::{Peer, PeerStore};
 use crate::portal_connection::PortalConnection;
@@ -186,6 +187,25 @@ pub struct ClientState {
     dns_lookup_duration: opentelemetry::metrics::Histogram<f64>,
 }
 
+/// The portal's answer to a device name: the device and the pools that admit it.
+#[derive(Debug, Clone)]
+pub struct ResolvedDevice {
+    pub id: ClientId,
+    pub ipv4: Ipv4Addr,
+    pub ipv6: Ipv6Addr,
+    pub pools: Vec<ResourceId>,
+}
+
+impl ResolvedDevice {
+    fn member(&self) -> DevicePoolMember {
+        DevicePoolMember {
+            id: self.id,
+            ipv4: self.ipv4.into(),
+            ipv6: self.ipv6.into(),
+        }
+    }
+}
+
 impl ClientState {
     pub fn new(
         seed: [u8; 32],
@@ -256,7 +276,7 @@ impl ClientState {
     /// IPs are taken from the live connection state; static-pool resources are
     /// joined in only to label which pool(s) each device belongs to.
     pub(crate) fn connected_devices(&self) -> Vec<ConnectedDeviceView> {
-        let pools = self.static_device_pools().collect_vec();
+        let pools = self.device_pools().collect_vec();
 
         self.clients
             .iter()
@@ -276,8 +296,8 @@ impl ClientState {
 
                 let pool_names = pools
                     .iter()
-                    .filter(|pool| pool.devices.iter().any(|d| d.id == client_id))
-                    .map(|pool| pool.name.clone())
+                    .filter(|(_, _, devices)| devices.iter().any(|d| d.id == client_id))
+                    .map(|(_, name, _)| name.to_string())
                     .sorted()
                     .collect_vec();
 
@@ -296,13 +316,15 @@ impl ClientState {
             .collect_vec()
     }
 
-    fn static_device_pools(&self) -> impl Iterator<Item = &StaticDevicePoolResource> + '_ {
+    /// Every device pool with its members: static ones and the dynamic ones with the
+    /// devices resolved into them.
+    fn device_pools(&self) -> impl Iterator<Item = (ResourceId, &str, &[DevicePoolMember])> + '_ {
         self.resources_by_id.values().filter_map(|r| match r {
-            Resource::StaticDevicePool(p) => Some(p),
+            Resource::StaticDevicePool(p) => Some((p.id, p.name.as_str(), p.devices.as_slice())),
+            Resource::DynamicDevicePool(p) => Some((p.id, p.name.as_str(), p.devices.as_slice())),
             Resource::Dns(_) => None,
             Resource::Cidr(_) => None,
             Resource::Internet(_) => None,
-            Resource::DynamicDevicePool(_) => None,
         })
     }
 
@@ -367,20 +389,20 @@ impl ClientState {
     ) {
         tracing::debug!(?ipv4, ?ipv6, "Device access denied: {reason:?}");
 
-        let is_denied =
-            |addr: IpAddr| ipv4.map(IpAddr::V4) == Some(addr) || ipv6.map(IpAddr::V6) == Some(addr);
-
         for _ in self
             .pending_authorizations
-            .remove_device_authorizations(|_, addr| is_denied(addr))
-        {}
-        for _ in self
-            .pending_authorizations
-            .remove_device_access_authorizations(is_denied)
+            .remove_device_authorizations(|_, addr| {
+                ipv4.map(IpAddr::V4) == Some(addr) || ipv6.map(IpAddr::V6) == Some(addr)
+            })
         {}
 
-        for ip in ipv4.map(IpAddr::V4).into_iter().chain(ipv6.map(IpAddr::V6)) {
-            self.routing_tables.remove_granted(ip.into());
+        // The portal no longer admits the device to the pool, so its name must be looked
+        // up again before the next flow.
+        if matches!(reason, FailReason::Forbidden) {
+            self.forget_dynamic_pool_members(|member| {
+                ipv4.is_some_and(|ip| member.contains(IpAddr::V4(ip)))
+                    || ipv6.is_some_and(|ip| member.contains(IpAddr::V6(ip)))
+            });
         }
 
         let Some((cid, _)) = ipv4
@@ -402,10 +424,9 @@ impl ClientState {
     /// Abandons the pending authorizations and any connection to an offline device.
     pub fn set_device_offline(&mut self, cid: ClientId, now: Instant) {
         let memberships = self
-            .static_device_pools()
-            .flat_map(|pool| {
-                let pool_id = pool.id;
-                pool.devices
+            .device_pools()
+            .flat_map(|(pool_id, _, devices)| {
+                devices
                     .iter()
                     .filter(|d| d.id == cid)
                     .map(move |d| (pool_id, d.clone()))
@@ -421,13 +442,6 @@ impl ClientState {
             })
         {}
 
-        if let Some(tun) = self.clients.peer_by_id(&cid).map(|peer| peer.remote_tun()) {
-            for _ in self
-                .pending_authorizations
-                .remove_device_access_authorizations(move |addr| tun.is_ip(addr))
-            {}
-        }
-
         self.forget_outbound_grants(cid);
 
         if self.clients.remove(&cid).is_some() {
@@ -436,13 +450,24 @@ impl ClientState {
         }
     }
 
+    /// Handles the portal's answer to a device name.
+    ///
+    /// The device becomes a member of every dynamic pool that admits it, so a packet to
+    /// it routes through one of them by its filters and asks for access like it would
+    /// for a static pool member.
     pub fn handle_device_domain_resolved(
         &mut self,
         domain: DomainName,
-        result: Result<(Ipv4Addr, Ipv6Addr), FailReason>,
+        result: Result<ResolvedDevice, FailReason>,
     ) {
+        if let Ok(device) = &result {
+            for pool_id in &device.pools {
+                self.add_dynamic_pool_member(*pool_id, device.member());
+            }
+        }
+
         self.device_stub_resolver
-            .handle_device_domain_resolved(domain, result);
+            .handle_device_domain_resolved(domain, result.map(|d| (d.ipv4, d.ipv6)));
         self.drain_device_stub_resolver_events();
     }
 
@@ -755,11 +780,6 @@ impl ClientState {
 
                 (packet, gid.into())
             }
-            (None, None, Some(Route::Device)) => {
-                // The portal picks the pool for this packet's protocol, or denies it.
-                pending_authorizations.on_not_authorized_device_access(dst, dst_proto, packet, now);
-                return Ok(());
-            }
             (None, None, None) => {
                 return Err(anyhow::Error::new(UnroutablePacket::unknown_resource(
                     &packet,
@@ -920,7 +940,7 @@ impl ClientState {
                             failed_packet.dst_proto(),
                             internet_resource,
                         )
-                        .and_then(|route| route.resource_id())
+                        .map(|route| route.resource_id())
                 {
                     telemetry::analytics::feature_flag_called(
                         "icmp-error-unreachable-prohibited-create-new-flow",
@@ -1205,16 +1225,9 @@ impl ClientState {
             return Ok(());
         };
 
-        // The target side gets the pool as an inbound grant; the initiating side gets it
-        // back from `RequestDeviceAccess` as its outbound route to the peer.
-        let (inbound, outbound) = match ice_role {
-            IceRole::Controlled => (authorization, None),
-            IceRole::Controlling => (None, authorization),
-        };
-
         // A peer connecting to us anew may have reset since we were granted access to it,
         // taking our inbound grant with it, so our next flow to it asks the portal again.
-        if inbound.is_some() {
+        if authorization.is_some() {
             self.forget_outbound_grants(cid);
         }
 
@@ -1231,7 +1244,7 @@ impl ClientState {
             now,
         )?;
 
-        let inbound = inbound.map(|auth| {
+        let authorization = authorization.map(|auth| {
             let expires_at = auth
                 .expires_at
                 .map(|d| self.unix_ts_clock.instant_at(d, now));
@@ -1247,24 +1260,12 @@ impl ClientState {
             peer.set_remote_name(client_name);
         }
 
-        if let Some((resource_id, filters, expires_at)) = inbound {
+        // We only add the inbound resource and filters on the *target* side of the connection.
+        // The initiating side does not request connections if the filters don't allow it.
+        if let Some((resource_id, filters, expires_at)) = authorization {
             // The token logs the peer's flows for this resource.
             peer.set_ingest_token(resource_id, flow_logs_ingest_token.clone());
             peer.add_resource(resource_id, filters, expires_at, now);
-        }
-
-        if let Some(grant) = &outbound {
-            let filter = FilterEngine::new(&grant.filters);
-
-            // The token logs our flows for the pool the portal picked.
-            peer.set_ingest_token(grant.resource_id, flow_logs_ingest_token.clone());
-            self.routing_tables.upsert_granted(
-                client_tun.v4.into(),
-                grant.resource_id,
-                filter.clone(),
-            );
-            self.routing_tables
-                .upsert_granted(client_tun.v6.into(), grant.resource_id, filter);
         }
 
         let pending_authorizations = self
@@ -1273,23 +1274,27 @@ impl ClientState {
             .collect::<Vec<_>>();
         let mut buffered_packets = Vec::new();
 
-        if let Some(grant) = &outbound {
-            self.mark_authorized_via(grant.resource_id, cid);
-
-            for pending in self
-                .pending_authorizations
-                .remove_device_access_authorizations(|addr| client_tun.is_ip(addr))
-            {
-                let (packets, _) = pending.into_buffered_packets();
-                buffered_packets.extend(packets);
-            }
-        }
-
         // We initiated this connection — record each (resource, peer) pair
         // as authorised so future sends in the same direction skip
         // `pending_authorizations` and route directly via the peer.
         for (resource_id, pending_authorization) in pending_authorizations {
-            self.mark_authorized_via(resource_id, cid);
+            match self
+                .authorized_resources
+                .entry(resource_id)
+                .or_insert_with(|| AccessPath::Direct(BTreeSet::new()))
+            {
+                AccessPath::Direct(set) => {
+                    set.insert(cid);
+                }
+                AccessPath::Gateway(_) => {
+                    tracing::warn!(
+                        %resource_id,
+                        "Device pool clobbering existing gateway authorisation"
+                    );
+                    self.authorized_resources
+                        .insert(resource_id, AccessPath::Direct(BTreeSet::from([cid])));
+                }
+            }
 
             let (packets, _) = pending_authorization.into_buffered_packets();
 
@@ -1571,31 +1576,45 @@ impl ClientState {
 
             clients.remove(&cid);
         }
-
-        if let Some(tun) = self.clients.peer_by_id(&cid).map(|peer| peer.remote_tun()) {
-            self.routing_tables.remove_granted(tun.v4.into());
-            self.routing_tables.remove_granted(tun.v6.into());
-        }
     }
 
-    /// Records that the portal authorised us towards `cid` through `resource_id`.
-    fn mark_authorized_via(&mut self, resource_id: ResourceId, cid: ClientId) {
-        match self
-            .authorized_resources
-            .entry(resource_id)
-            .or_insert_with(|| AccessPath::Direct(BTreeSet::new()))
-        {
-            AccessPath::Direct(set) => {
-                set.insert(cid);
+    /// Makes `member` a member of the dynamic pool `pool_id`, routed like a static pool
+    /// member. Static pools the portal names already carry the member.
+    fn add_dynamic_pool_member(&mut self, pool_id: ResourceId, member: DevicePoolMember) {
+        let Some(Resource::DynamicDevicePool(pool)) = self.resources_by_id.get(&pool_id) else {
+            return;
+        };
+        let mut pool = pool.clone();
+
+        pool.devices.retain(|d| d.id != member.id);
+        pool.devices.push(member);
+        self.set_dynamic_device_pool(pool);
+    }
+
+    /// Drops every dynamic pool membership `f` matches, and the resolutions that came
+    /// with them, so the next lookup of the device asks the portal again.
+    fn forget_dynamic_pool_members(&mut self, f: impl Fn(&DevicePoolMember) -> bool) {
+        let pools = self
+            .resources_by_id
+            .values()
+            .filter_map(|r| match r {
+                Resource::DynamicDevicePool(p) if p.devices.iter().any(&f) => Some(p.clone()),
+                Resource::DynamicDevicePool(_) => None,
+                Resource::Dns(_) => None,
+                Resource::Cidr(_) => None,
+                Resource::Internet(_) => None,
+                Resource::StaticDevicePool(_) => None,
+            })
+            .collect_vec();
+
+        for mut pool in pools {
+            for member in pool.devices.iter().filter(|d| f(d)) {
+                self.device_stub_resolver
+                    .forget_device(member.ipv4.network_address(), member.ipv6.network_address());
             }
-            AccessPath::Gateway(_) => {
-                tracing::warn!(
-                    %resource_id,
-                    "Device pool clobbering existing gateway authorisation"
-                );
-                self.authorized_resources
-                    .insert(resource_id, AccessPath::Direct(BTreeSet::from([cid])));
-            }
+
+            pool.devices.retain(|d| !f(d));
+            self.set_dynamic_device_pool(pool);
         }
     }
 
@@ -2320,10 +2339,6 @@ impl ClientState {
                     self.buffered_events
                         .push_back(ClientEvent::DeviceDomainQueried { domain });
                 }
-                device_stub_resolver::Event::ResolvedDevice { ipv4, ipv6 } => {
-                    self.routing_tables.upsert_device(ipv4.into());
-                    self.routing_tables.upsert_device(ipv6.into());
-                }
                 device_stub_resolver::Event::SendResponse {
                     local,
                     remote,
@@ -2384,13 +2399,6 @@ impl ClientState {
                 resource: request.resource_id,
                 preferred_gateways,
                 ip: request.ip,
-            });
-        }
-
-        if let Some(request) = self.pending_authorizations.poll_device_access_requests() {
-            return Some(ClientEvent::DeviceAccessIntent {
-                ip: request.ip,
-                protocol: request.protocol,
             });
         }
 
@@ -2600,24 +2608,46 @@ impl ClientState {
             Resource::DynamicDevicePool(_) => None,
         });
 
-        let old_members = old_pool
-            .as_ref()
-            .map(|p| {
-                p.devices
-                    .iter()
-                    .map(|d| (d.id, d))
-                    .collect::<HashMap<_, _>>()
-            })
+        let any_inserted = self.sync_device_pool_members(
+            pool_id,
+            old_pool
+                .as_ref()
+                .map(|p| (p.devices.as_slice(), p.filters.as_slice())),
+            (&new_pool.devices, &new_pool.filters),
+        );
+
+        let is_new = old_pool.is_none();
+        let resource = Resource::StaticDevicePool(new_pool);
+        self.resources_by_id.insert(pool_id, resource.clone());
+
+        if is_new || any_inserted {
+            self.log_activating_resource(&resource);
+        }
+
+        self.maybe_update_tun_routes();
+        self.resource_list.update(self.resource_list_snapshot());
+        self.dns_cache.flush("Resource added");
+    }
+
+    /// Brings the routes and grants for a pool's members in line with `new`, scoped to
+    /// `pool_id` since a client can be a member of several pools. Returns whether any
+    /// route was added.
+    fn sync_device_pool_members(
+        &mut self,
+        pool_id: ResourceId,
+        old: Option<(&[DevicePoolMember], &[Filter])>,
+        new: (&[DevicePoolMember], &[Filter]),
+    ) -> bool {
+        let (new_devices, new_filters) = new;
+        let old_members = old
+            .map(|(devices, _)| devices.iter().map(|d| (d.id, d)).collect::<HashMap<_, _>>())
             .unwrap_or_default();
-        let new_members = new_pool
-            .devices
+        let new_members = new_devices
             .iter()
             .map(|d| (d.id, d))
             .collect::<HashMap<_, _>>();
 
-        let filter_changed = old_pool
-            .as_ref()
-            .is_some_and(|p| p.filters != new_pool.filters);
+        let filter_changed = old.is_some_and(|(_, old_filters)| old_filters != new_filters);
 
         // Drop entries for members that are gone or whose IPs changed.
         // If the filter changed, every old entry must be replaced too.
@@ -2653,10 +2683,10 @@ impl ClientState {
         }
 
         // Insert entries for new and updated members.
-        let filter = FilterEngine::new(&new_pool.filters);
+        let filter = FilterEngine::new(new_filters);
         let mut any_inserted = false;
 
-        for new_member in &new_pool.devices {
+        for new_member in new_devices {
             any_inserted |=
                 self.routing_tables
                     .upsert_peer(new_member.ipv4.into(), pool_id, filter.clone());
@@ -2670,23 +2700,25 @@ impl ClientState {
         // receiving side (we can't trust a packet's origin), so without this the
         // tightened filter would never take effect on an established connection.
         if filter_changed {
-            self.handle_resource_filters_updated(pool_id, new_pool.filters.clone());
+            self.handle_resource_filters_updated(pool_id, new_filters.to_vec());
         }
 
-        let is_new = old_pool.is_none();
-        let resource = Resource::StaticDevicePool(new_pool);
-        self.resources_by_id.insert(pool_id, resource.clone());
-
-        if is_new || any_inserted {
-            self.log_activating_resource(&resource);
-        }
-
-        self.maybe_update_tun_routes();
-        self.resource_list.update(self.resource_list_snapshot());
-        self.dns_cache.flush("Resource added");
+        any_inserted
     }
 
-    fn upsert_dynamic_device_pool(&mut self, new_pool: DynamicDevicePoolResource) {
+    /// Stores a dynamic pool sent by the portal. The portal never sends members, so
+    /// the members resolved so far are kept.
+    fn upsert_dynamic_device_pool(&mut self, mut new_pool: DynamicDevicePoolResource) {
+        if let Some(Resource::DynamicDevicePool(old_pool)) = self.resources_by_id.get(&new_pool.id)
+        {
+            new_pool.devices = old_pool.devices.clone();
+        }
+
+        self.set_dynamic_device_pool(new_pool);
+    }
+
+    /// Stores a dynamic pool with its members as given, routing the members.
+    fn set_dynamic_device_pool(&mut self, new_pool: DynamicDevicePoolResource) {
         let pool_id = new_pool.id;
 
         let old_pool = self.resources_by_id.get(&pool_id).and_then(|r| match r {
@@ -2697,16 +2729,13 @@ impl ClientState {
             Resource::StaticDevicePool(_) => None,
         });
 
-        let filter_changed = old_pool
-            .as_ref()
-            .is_some_and(|p| p.filters != new_pool.filters);
-
-        if filter_changed {
-            // A grant carries the filters it was made with, so the next flow asks the
-            // portal again; the inbound side takes the new filters directly.
-            self.routing_tables.remove_granted_by_id(pool_id);
-            self.handle_resource_filters_updated(pool_id, new_pool.filters.clone());
-        }
+        self.sync_device_pool_members(
+            pool_id,
+            old_pool
+                .as_ref()
+                .map(|p| (p.devices.as_slice(), p.filters.as_slice())),
+            (&new_pool.devices, &new_pool.filters),
+        );
 
         let resource = Resource::DynamicDevicePool(new_pool);
         self.resources_by_id.insert(pool_id, resource.clone());
@@ -2750,7 +2779,14 @@ impl ClientState {
             Resource::Cidr(_) => {}
             Resource::Internet(_) => self.is_internet_resource_active = false,
             Resource::StaticDevicePool(_) => {}
-            Resource::DynamicDevicePool(_) => {}
+            Resource::DynamicDevicePool(pool) => {
+                for member in &pool.devices {
+                    self.device_stub_resolver.forget_device(
+                        member.ipv4.network_address(),
+                        member.ipv6.network_address(),
+                    );
+                }
+            }
         }
 
         let name = resource.name();
@@ -3111,11 +3147,26 @@ mod tests {
     }
 
     #[test]
-    fn resolved_device_packet_asks_for_access_with_its_protocol() {
+    fn resolved_device_in_a_pool_asks_for_access() {
         let mut state = ClientState::for_test();
         let now = Instant::now();
+        let pool_id = ResourceId::from_u128(1);
         state.update_interface_config(interface(own_tun_ipv4(), own_tun_ipv6()));
-        resolve_device(&mut state, now);
+        state.set_resources(
+            vec![
+                crate::messages::client::ResourceDescription::DynamicDevicePool(
+                    serde_json::json!({
+                        "id": pool_id,
+                        "type": "dynamic_device_pool",
+                        "name": "Your devices",
+                        "filters": [],
+                    }),
+                ),
+            ],
+            now,
+        );
+        while state.poll_event().is_some() {}
+        resolve_device(&mut state, now, vec![pool_id]);
 
         let packet =
             ip_packet::make::udp_packet(own_tun_ipv4(), device_tun_ipv4(), 1234, 53, &[1]).unwrap();
@@ -3123,17 +3174,25 @@ mod tests {
             .handle_tun_input(packet, now, &mut snownet::TransmitBuffer::new())
             .unwrap();
 
-        assert_eq!(
-            device_access_intents(&mut state),
-            vec![(IpAddr::V4(device_tun_ipv4()), Protocol::Udp(53))]
+        let intent = iter::from_fn(|| state.poll_event()).find(|event| {
+            matches!(
+                event,
+                ClientEvent::ResourceConnectionIntent { resource, ip: Some(ip), .. }
+                    if *resource == pool_id && *ip == IpAddr::V4(device_tun_ipv4())
+            )
+        });
+        assert!(
+            intent.is_some(),
+            "expected an access request through the pool"
         );
     }
 
     #[test]
-    fn unresolved_peer_packet_is_unroutable() {
+    fn resolved_device_without_a_pool_is_unroutable() {
         let mut state = ClientState::for_test();
         let now = Instant::now();
         state.update_interface_config(interface(own_tun_ipv4(), own_tun_ipv6()));
+        resolve_device(&mut state, now, vec![]);
 
         let packet =
             ip_packet::make::udp_packet(own_tun_ipv4(), device_tun_ipv4(), 1234, 53, &[1]).unwrap();
@@ -3145,50 +3204,7 @@ mod tests {
             error.to_string().starts_with("Unroutable packet"),
             "{error}"
         );
-        assert_eq!(device_access_intents(&mut state), vec![]);
-    }
-
-    #[test]
-    fn denied_access_drops_the_pending_request() {
-        let mut state = ClientState::for_test();
-        let mut now = Instant::now();
-        state.update_interface_config(interface(own_tun_ipv4(), own_tun_ipv6()));
-        resolve_device(&mut state, now);
-
-        let packet = ip_packet::make::tcp_packet(
-            own_tun_ipv4(),
-            device_tun_ipv4(),
-            1234,
-            22,
-            ip_packet::make::TcpFlags {
-                syn: true,
-                ack: false,
-                rst: false,
-            },
-            &[1],
-        )
-        .unwrap();
-        state
-            .handle_tun_input(packet.clone(), now, &mut snownet::TransmitBuffer::new())
-            .unwrap();
-        assert_eq!(device_access_intents(&mut state).len(), 1);
-
-        state.handle_client_device_access_denied(
-            Some(device_tun_ipv4()),
-            None,
-            FailReason::Forbidden,
-            now,
-        );
-
-        // The device stays resolved, so the next flow asks again.
-        now += Duration::from_secs(3);
-        state
-            .handle_tun_input(packet, now, &mut snownet::TransmitBuffer::new())
-            .unwrap();
-        assert_eq!(
-            device_access_intents(&mut state),
-            vec![(IpAddr::V4(device_tun_ipv4()), Protocol::Tcp(22))]
-        );
+        assert_no_device_connection_intent(&mut state);
     }
 
     #[test]
@@ -3331,7 +3347,7 @@ mod tests {
     }
 
     /// Drives a DNS query for `laptop.firezone.network` and answers it from the portal.
-    fn resolve_device(state: &mut ClientState, now: Instant) {
+    fn resolve_device(state: &mut ClientState, now: Instant, pools: Vec<ResourceId>) {
         let domain = "laptop.firezone.network".parse::<DomainName>().unwrap();
         let local = SocketAddr::new(IpAddr::V4(own_tun_ipv4()), 5353);
         let remote = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(100, 100, 111, 1)), 53);
@@ -3352,24 +3368,16 @@ mod tests {
         });
         assert!(queried, "expected the device name to be queried");
 
-        state.handle_device_domain_resolved(domain, Ok((device_tun_ipv4(), device_tun_ipv6())));
+        state.handle_device_domain_resolved(
+            domain,
+            Ok(ResolvedDevice {
+                id: ClientId::from_u128(2),
+                ipv4: device_tun_ipv4(),
+                ipv6: device_tun_ipv6(),
+                pools,
+            }),
+        );
         while state.poll_packets().is_some() {}
-    }
-
-    fn device_access_intents(state: &mut ClientState) -> Vec<(IpAddr, Protocol)> {
-        iter::from_fn(|| state.poll_event())
-            .filter_map(|event| match event {
-                ClientEvent::DeviceAccessIntent { ip, protocol } => Some((ip, protocol)),
-                ClientEvent::AddedIceCandidates { .. }
-                | ClientEvent::RemovedIceCandidates { .. }
-                | ClientEvent::ResourceConnectionIntent { .. }
-                | ClientEvent::DeviceDomainQueried { .. }
-                | ClientEvent::ResourcesChanged { .. }
-                | ClientEvent::DnsRecordsChanged { .. }
-                | ClientEvent::TunInterfaceUpdated(_)
-                | ClientEvent::NoRelays => None,
-            })
-            .collect()
     }
 
     fn own_tun_ipv4() -> Ipv4Addr {
