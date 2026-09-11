@@ -823,6 +823,40 @@ defmodule PortalAPI.Client.Channel.Shared do
     {:noreply, socket}
   end
 
+  # The v2 protocol resolves a device name through the dynamic pool whose pattern matched
+  # the query, so the answer also checks that the pool admits the device.
+  def handle_in(
+        "resolve_device_pool_domain",
+        %{"resource_id" => resource_id, "domain" => domain},
+        socket
+      )
+      when is_binary(resource_id) and is_binary(domain) do
+    with {:ok, pool} <- fetch_connectable_device_pool(socket.assigns.cache, resource_id),
+         {:ok, %Portal.Device{} = device} <- resolve_device_domain(domain, socket),
+         true <-
+           Portal.Resource.DeviceMembershipCriteria.member?(
+             pool.device_membership_criteria,
+             device,
+             socket.assigns.subject
+           ) do
+      push(socket, "device_pool_domain_resolved", %{
+        resource_id: resource_id,
+        domain: domain,
+        ipv4: %Postgrex.INET{address: device.ipv4.address, netmask: 32},
+        ipv6: %Postgrex.INET{address: device.ipv6.address, netmask: 128}
+      })
+    else
+      _ ->
+        push(socket, "device_pool_domain_resolution_failed", %{
+          resource_id: resource_id,
+          domain: domain,
+          reason: :not_found
+        })
+    end
+
+    {:noreply, socket}
+  end
+
   # Connlib asks for access when it sees a packet for a tunnel address that no pool it
   # already holds permits. The portal finds the device behind the address, picks the pool
   # by the flow and tells both sides which pool authorized the connection.
@@ -1246,6 +1280,39 @@ defmodule PortalAPI.Client.Channel.Shared do
     end
   end
 
+  defp fetch_connectable_device_pool(cache, resource_id) do
+    rid_bytes = Ecto.UUID.dump!(resource_id)
+
+    case Enum.find(cache.connectable_resources, &(&1.id == rid_bytes)) do
+      %Cache.Cacheable.Resource{type: :device_pool} = pool -> {:ok, pool}
+      _ -> {:error, :not_found}
+    end
+  rescue
+    ArgumentError -> {:error, :not_found}
+  end
+
+  # A listed pool has its members in the cache; an own-devices pool checks the device
+  # behind the address against the criteria.
+  defp authorize_pool_target(
+         %Cache.Cacheable.Resource{id: rid_bytes, device_membership_criteria: criteria},
+         cache,
+         target,
+         subject
+       ) do
+    case Portal.Resource.DeviceMembershipCriteria.device_ids(criteria) do
+      {:ok, _device_ids} ->
+        Cache.Client.authorize_device_access(cache, Ecto.UUID.load!(rid_bytes), target)
+
+      :error ->
+        with {:ok, %Portal.Device{} = device} <- Database.get_device_by_address(target, subject),
+             true <- Portal.Resource.DeviceMembershipCriteria.member?(criteria, device, subject) do
+          {:ok, device.id}
+        else
+          _ -> {:error, :forbidden}
+        end
+    end
+  end
+
   defp resolve_device_domain(domain, socket) do
     domain = String.downcase(domain)
     slug = domain |> String.split(".") |> hd()
@@ -1448,7 +1515,7 @@ defmodule PortalAPI.Client.Channel.Shared do
 
     with {:ok, target} <- parse_target_address(payload),
          {:ok, target_device_id} <-
-           Cache.Client.authorize_device_access(socket.assigns.cache, resource_id, target) do
+           authorize_pool_target(resource, socket.assigns.cache, target, socket.assigns.subject) do
       # Once the target IP is authorized for the pool we know the device id, so even
       # offline-target denials can carry it back to the initiator.
       case find_online_client_by_address(account_id, target) do

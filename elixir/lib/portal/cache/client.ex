@@ -289,7 +289,7 @@ defmodule Portal.Cache.Client do
     raw_connectable =
       cache.policies
       |> conforming_resource_ids(client, Credential.auth_provider_id(subject.credential))
-      |> adapted_resources(cache.resources, client, cache.protocol_version)
+      |> adapted_resources(cache.resources, client)
 
     {pool_members, device_addresses} =
       load_pool_state(raw_connectable, subject, cache.protocol_version)
@@ -724,10 +724,9 @@ defmodule Portal.Cache.Client do
     end
   end
 
-  defp adapted_resources(conforming_resource_ids, resources, client, protocol_version) do
+  defp adapted_resources(conforming_resource_ids, resources, client) do
     for id <- conforming_resource_ids,
         resource = Map.get(resources, id),
-        pool_visible?(resource, protocol_version),
         adapted_resource = adapt(resource, client),
         not is_nil(adapted_resource),
         resource_connectable_without_gateway?(adapted_resource) or
@@ -735,14 +734,6 @@ defmodule Portal.Cache.Client do
       adapted_resource
     end
   end
-
-  # The v2 protocol sends pool members to the client, so it only sees pools that list them.
-  defp pool_visible?(%Cache.Cacheable.Resource{type: :device_pool} = pool, protocol_version) do
-    protocol_version >= 3 or
-      match?({:ok, _}, DeviceMembershipCriteria.device_ids(pool.device_membership_criteria))
-  end
-
-  defp pool_visible?(%Cache.Cacheable.Resource{}, _protocol_version), do: true
 
   defp resource_connectable_without_gateway?(%Cache.Cacheable.Resource{type: :device_pool}),
     do: true

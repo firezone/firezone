@@ -32,10 +32,15 @@ defmodule PortalAPI.Client.Views.Resource do
     |> render_resource(site_key)
   end
 
-  # The v2 protocol knows device pools as `static_device_pool` with their members inline.
+  # The v2 protocol knows a listed pool as `static_device_pool` with its members inline
+  # and an own-devices pool as `dynamic_device_pool` with the device domain as its pattern.
   defp put_wire_pool_type(%{type: :device_pool} = resource, protocol_version)
-       when protocol_version < 3,
-       do: %{resource | type: :static_device_pool}
+       when protocol_version < 3 do
+    case Portal.Resource.DeviceMembershipCriteria.device_ids(resource.device_membership_criteria) do
+      {:ok, _device_ids} -> %{resource | type: :static_device_pool}
+      :error -> %{resource | type: :dynamic_device_pool}
+    end
+  end
 
   defp put_wire_pool_type(resource, _protocol_version), do: resource
 
@@ -70,6 +75,16 @@ defmodule PortalAPI.Client.Views.Resource do
       type: :static_device_pool,
       name: resource.name,
       devices: render_devices(resource.devices),
+      filters: Enum.flat_map(resource.filters, &render_filter/1)
+    }
+  end
+
+  defp render_resource(%{type: :dynamic_device_pool} = resource, _site_key) do
+    %{
+      id: resource.id,
+      type: :dynamic_device_pool,
+      name: resource.name,
+      address: "*.#{Portal.Device.domain()}",
       filters: Enum.flat_map(resource.filters, &render_filter/1)
     }
   end
