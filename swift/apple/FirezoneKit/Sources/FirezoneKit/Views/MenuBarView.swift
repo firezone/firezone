@@ -229,14 +229,21 @@
     }
 
     func installCommandLineTool() {
-      Task {
-        do {
-          let scriptURL = try CLIInstaller.writeInstallScript()
-          await NSWorkspace.shared.openAsync(scriptURL)
-        } catch {
-          Log.error(error)
-          MacOSAlert.show(for: error)
-        }
+      let command = CLIInstaller.installCommand
+
+      let alert = NSAlert()
+      alert.messageText = "Install Firezone CLI"
+      alert.informativeText = """
+        Run this in a terminal to put `firezone` on your PATH.
+        It needs administrator privileges, so Firezone cannot run it for you.
+
+        \(command)
+        """
+      alert.addButton(withTitle: "Copy Command")
+      alert.addButton(withTitle: "Cancel")
+
+      if alert.runModal() == .alertFirstButtonReturn {
+        Clipboard.copy(command)
       }
     }
   }

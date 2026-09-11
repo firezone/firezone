@@ -172,15 +172,18 @@ second bundle could not do. That also rules out a symlink to the binary from
 outside the bundle, which is why the app ships `Contents/Resources/firezone`, a
 wrapper that `exec`s the binary at its real path. The standalone `.pkg` symlinks
 it into `/usr/local/bin`. The `.dmg` and App Store builds are sandboxed and
-cannot, so they offer `Install Firezone CLI` in the menu bar: it opens Terminal
-on a script that makes the same symlink with `sudo`. That entry is hidden once
+cannot, so they offer `Install Firezone CLI` in the menu bar, which shows the
+`sudo` command that makes the same symlink and copies it to the clipboard. It
+cannot run the command for us: a sandboxed app can neither write there nor hand
+Terminal a script that would, because Gatekeeper refuses the quarantine flag the
+sandbox stamps on everything we write. That entry is hidden once
 `/usr/local/bin/firezone` exists, and the symlink can always be made by hand
 with
 `sudo ln -sf /Applications/Firezone.app/Contents/Resources/firezone /usr/local/bin/firezone`.
 `Contents/Resources/firezone-cli` is the previous name, kept as a deprecated
 alias that prints a warning.
 
-The `.pkg` and that script also write shell completions, to
+The `.pkg` also writes shell completions, to
 `/usr/local/share/zsh/site-functions/_firezone`,
 `/usr/local/etc/bash_completion.d/firezone` and
 `/usr/local/share/fish/vendor_completions.d/firezone.fish`. `ArgumentParser`
