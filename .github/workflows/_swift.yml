@@ -2,6 +2,11 @@ name: Build macOS/iOS app
 on:
   workflow_call:
   workflow_dispatch:
+    inputs:
+      force_rebuild:
+        description: Rebuild even if this release is locked for store review
+        type: boolean
+        default: false
 
 concurrency:
   group: ${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' && 'apple-release-main' || format('apple-ci-{0}', github.run_id) }}
@@ -14,7 +19,7 @@ jobs:
     outputs:
       build_number: ${{ steps.release-metadata.outputs.build_number }}
     permissions:
-      actions: read # inspect store submission runs
+      actions: read # inspect store submission artifacts
       contents: write # release-drafter needs to create/update releases
     env:
       # mark:next-apple-version
@@ -35,7 +40,7 @@ jobs:
         working-directory: .
         env:
           GH_TOKEN: ${{ github.token }}
-        run: mise run //:release:review-lock check submit-apple-release.yml
+        run: mise run //:release:review-lock check ${{ inputs.force_rebuild && '--force' || '' }}
       - uses: release-drafter/release-drafter@34d80673e067bdc0c24568d3af899c216adcfaa9 # v7.7.0
         if: "${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}"
         id: update-release-draft

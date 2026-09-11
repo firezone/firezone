@@ -357,6 +357,7 @@ jobs:
   submit:
     needs: [prepare, review]
     permissions:
+      actions: read # find an existing review lock when retrying
       contents: write # Revalidating the draft also requires push access.
       security-events: write
     environment:
@@ -386,6 +387,26 @@ jobs:
           install_args: --cd swift/apple github:rorkai/App-Store-Connect-CLI
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Prepare the review lock
+        id: review-lock
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          touch "$RUNNER_TEMP/review-lock"
+          exists=$(gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts" | \
+            jq --arg name "release-review-$RELEASE_NAME" 'any(.[].artifacts[]; .name == $name)')
+          echo "exists=$exists" >> "$GITHUB_OUTPUT"
+
+      # Record the lock before contacting the store, even if submission later fails.
+      - name: Lock the release for review
+        if: steps.review-lock.outputs.exists != 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-review-${{ env.RELEASE_NAME }}
+          path: ${{ runner.temp }}/review-lock
+          if-no-files-found: error
+          retention-days: 90
 
       - name: Submit the version
         working-directory: swift/apple
