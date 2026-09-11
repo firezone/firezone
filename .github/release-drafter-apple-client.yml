@@ -1,8 +1,10 @@
 tag-prefix: "apple-client-"
-template: >
+template: |
   README: HAVE YOU SENT THE CLIENTS FOR REVIEW AND HAVE THEY BEEN ACCEPTED?
   DO NOT PUBLISH THIS RELEASE UNTIL THAT IS DONE.
 
   Please see our
   [changelog](https://www.firezone.dev/changelog?utm_source=github-releases)
   for more details.
+
+  - [ ] Allow rebuilding this release

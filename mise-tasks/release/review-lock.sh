@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
-#MISE description="Check or lock a release draft for store review"
-#USAGE cmd "check" help="Fail if the release draft is locked for store review"
-#USAGE cmd "lock" help="Lock the release draft before submitting it for store review"
+#MISE description="Check whether a release draft can be rebuilt"
+#USAGE cmd "check" help="Fail if this release has a successful store submission" {
+#USAGE     arg "<workflow>" help="Submission workflow filename"
+#USAGE }
 
 # Build and submission workflows must hold the same concurrency group.
 set -euo pipefail
 
-mode=${usage_cmd:?Expected check or lock}
+: "${usage_cmd:?Expected check}"
+workflow=${usage_workflow:?Expected submission workflow filename}
 
 # Listing distinguishes a missing release from an API or authentication failure.
 release=$(gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/releases?per_page=100" | jq -c --arg name "$RELEASE_NAME" '
@@ -14,34 +16,38 @@ release=$(gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/releases?per_page=
     if length > 1 then error("multiple matching releases") else .[0] end')
 
 if [[ "$release" == null ]]; then
-    if [[ "$mode" == check ]]; then
-        exit 0
-    fi
-    echo "Cannot lock missing release $RELEASE_NAME" >&2
-    exit 1
+    exit 0
+fi
+jq -e '.draft == true' <<<"$release" >/dev/null
+
+checkbox='- [x] Allow rebuilding this release'
+if jq -e --arg checkbox "$checkbox" '(.body // "" | split("\n") | map(rtrimstr("\r"))) | any(. == $checkbox or . == ($checkbox | sub("\\[x\\]"; "[X]")))' <<<"$release" >/dev/null; then
+    # Consume the override before updating the draft or starting any builds.
+    jq --arg checkbox "$checkbox" '{tag_name, body: (.body | split("\n") | map(rtrimstr("\r")) | map(
+        if . == $checkbox or . == ($checkbox | sub("\\[x\\]"; "[X]"))
+        then "- [ ] Allow rebuilding this release" else . end) | join("\n"))}' <<<"$release" |
+        gh api --method PATCH "repos/$GITHUB_REPOSITORY/releases/$(jq -r .id <<<"$release")" --input - >/dev/null
+    exit 0
 fi
 
-jq -e '.draft == true' <<<"$release" >/dev/null
-locked=$(jq 'any(.assets[]; .name == "review-submission.json")' <<<"$release")
+created_at=$(jq -er .created_at <<<"$release")
+runs=$(gh api --method GET --paginate --slurp "repos/$GITHUB_REPOSITORY/actions/workflows/$workflow/runs" \
+    -f branch=main -f event=workflow_dispatch -f status=success -f "created=>=$created_at" -F per_page=100 |
+    jq -r 'if type == "array" then .[].workflow_runs[] else error("Expected paginated workflow runs") end | [.head_sha, .html_url] | @tsv')
+if [[ -z "$runs" ]]; then
+    exit 0
+fi
 
-if [[ "$mode" == check ]]; then
-    if [[ "$locked" == true ]]; then
-        echo "::error::$RELEASE_NAME is locked for store review. Cancel the store submissions before manually removing review-submission.json to rebuild."
+while IFS=$'\t' read -r sha url; do
+    # Submission workflows run from main, which may differ from the draft's source.
+    workflow_release=$(gh api "repos/$GITHUB_REPOSITORY/contents/.github/workflows/$workflow?ref=$sha" \
+        -H 'Accept: application/vnd.github.raw+json' | sed -n 's/^  RELEASE_NAME: //p')
+    if [[ -z "$workflow_release" ]]; then
+        echo "::error::Cannot determine the release submitted by $url" >&2
         exit 1
     fi
-    exit 0
-fi
-
-jq -e --arg sha "$EXPECTED_SOURCE_SHA" '.target_commitish == $sha' <<<"$release" >/dev/null
-if [[ "$locked" == true ]]; then
-    exit 0
-fi
-
-lock_dir=$(mktemp -d)
-trap 'rm -rf "$lock_dir"' EXIT
-jq --arg run "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" '
-    {submission_run: $run,
-     assets: [.assets[] | {name, digest, size}]}' <<<"$release" >"$lock_dir/review-submission.json"
-
-# Lock before contacting the store: a failed request may still have submitted.
-gh release upload "$RELEASE_NAME" "$lock_dir/review-submission.json" --repo "$GITHUB_REPOSITORY"
+    if [[ "$workflow_release" == "$RELEASE_NAME" ]]; then
+        echo "::error::$RELEASE_NAME was submitted successfully: $url. To rebuild intentionally, check 'Allow rebuilding this release' in the draft release notes."
+        exit 1
+    fi
+done <<<"$runs"

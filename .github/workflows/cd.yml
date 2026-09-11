@@ -141,6 +141,7 @@ jobs:
     uses: ./.github/workflows/_swift.yml
     secrets: inherit
     permissions:
+      actions: read # inspect store submission runs
       contents: write # release draft and build artifact uploads
       id-token: write # OIDC auth
       security-events: write # trivy SARIF upload from setup-mise
@@ -151,6 +152,7 @@ jobs:
     uses: ./.github/workflows/_kotlin.yml
     secrets: inherit
     permissions:
+      actions: read # inspect store submission runs
       contents: write # release draft
       id-token: write # OIDC auth
       security-events: write # trivy SARIF upload from setup-mise

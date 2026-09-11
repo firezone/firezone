@@ -14,6 +14,7 @@ jobs:
     outputs:
       build_number: ${{ steps.release-metadata.outputs.build_number }}
     permissions:
+      actions: read # inspect store submission runs
       contents: write # release-drafter needs to create/update releases
     env:
       # mark:next-apple-version
@@ -29,12 +30,12 @@ jobs:
         if: github.event_name == 'workflow_dispatch' && github.ref_name == 'main'
         with:
           install: false
-      - name: Check the release is not locked for review
+      - name: Check the release can be rebuilt
         if: github.event_name == 'workflow_dispatch' && github.ref_name == 'main'
         working-directory: .
         env:
           GH_TOKEN: ${{ github.token }}
-        run: mise run //:release:review-lock check
+        run: mise run //:release:review-lock check submit-apple-release.yml
       - uses: release-drafter/release-drafter@34d80673e067bdc0c24568d3af899c216adcfaa9 # v7.7.0
         if: "${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}"
         id: update-release-draft

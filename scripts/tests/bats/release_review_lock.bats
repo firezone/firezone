@@ -3,85 +3,132 @@
 setup() {
     export GITHUB_REPOSITORY=firezone/firezone
     export RELEASE_NAME=apple-client-1.5.20
-    export EXPECTED_SOURCE_SHA=1234567890123456789012345678901234567890
-    export GITHUB_SERVER_URL=https://github.com
-    export GITHUB_RUN_ID=123
+    export usage_cmd=check
+    export usage_workflow=submit-apple-release.yml
     export RESPONSE="$BATS_TEST_TMPDIR/releases.json"
-    export UPLOADED="$BATS_TEST_TMPDIR/uploaded.json"
-    export GH_FAIL=false
+    export RUNS="$BATS_TEST_TMPDIR/runs.json"
+    export PATCH="$BATS_TEST_TMPDIR/patch.json"
+    export GH_FAIL=""
     mkdir -p "$BATS_TEST_TMPDIR/bin"
     export PATH="$BATS_TEST_TMPDIR/bin:$PATH"
     cat >"$BATS_TEST_TMPDIR/bin/gh" <<'MOCK'
 #!/usr/bin/env bash
 set -euo pipefail
-case "$1 $2" in
-    'api --paginate')
-        [[ "$GH_FAIL" != true ]] || exit 1
+case "$*" in
+    *'/releases?per_page=100')
+        [[ "$GH_FAIL" != releases ]] || exit 1
         cat "$RESPONSE"
         ;;
-    'release upload') cp "$4" "$UPLOADED" ;;
+    *'--method PATCH '*)
+        [[ "$GH_FAIL" != patch ]] || exit 1
+        cat > "$PATCH"
+        jq --slurpfile patch "$PATCH" '.[0][0].body = $patch[0].body' "$RESPONSE" > "$RESPONSE.tmp"
+        mv "$RESPONSE.tmp" "$RESPONSE"
+        ;;
+    *'/runs '*)
+        [[ "$GH_FAIL" != runs ]] || exit 1
+        [[ "$*" == *'branch=main'* && "$*" == *'event=workflow_dispatch'* && "$*" == *'status=success'* ]]
+        [[ "$*" == *'created=>=2026-09-01T00:00:00Z'* ]]
+        cat "$RUNS"
+        ;;
+    *'/contents/'*)
+        [[ "$GH_FAIL" != workflow ]] || exit 1
+        if [[ "$*" == *'ref=other-release'* ]]; then
+            echo '  RELEASE_NAME: apple-client-1.5.19'
+        else
+            printf '  RELEASE_NAME: %s\n' "$RELEASE_NAME"
+        fi
+        ;;
     *) exit 1 ;;
 esac
 MOCK
     chmod +x "$BATS_TEST_TMPDIR/bin/gh"
-    jq -n --arg name "$RELEASE_NAME" --arg sha "$EXPECTED_SOURCE_SHA" \
-        '[[{tag_name: $name, draft: true, target_commitish: $sha,
-            assets: [{name: "client.ipa", digest: "sha256:abc", size: 42}]}]]' >"$RESPONSE"
+    jq -n --arg name "$RELEASE_NAME" \
+        '[[{id: 123, tag_name: $name, draft: true, target_commitish: "draft-sha",
+            created_at: "2026-09-01T00:00:00Z", body: "Release notes\n\n- [ ] Allow rebuilding this release"}]]' >"$RESPONSE"
+    echo '[{"workflow_runs": []}]' >"$RUNS"
     script="$BATS_TEST_DIRNAME/../../../mise-tasks/release/review-lock.sh"
 }
 
-@test "a new release can be built but cannot be locked" {
-    echo '[[]]' >"$RESPONSE"
-    run env usage_cmd=check bash "$script"
-    [ "$status" -eq 0 ]
-    run env usage_cmd=lock bash "$script"
-    [ "$status" -ne 0 ]
-    [ ! -f "$UPLOADED" ]
+successful_submission() {
+    echo '[{"workflow_runs": [{"head_sha": "submission-sha", "html_url": "https://github.com/firezone/firezone/actions/runs/123"}]}]' >"$RUNS"
 }
 
-@test "API failure blocks building and submission" {
-    export GH_FAIL=true
-    run env usage_cmd=check bash "$script"
-    [ "$status" -ne 0 ]
-    run env usage_cmd=lock bash "$script"
-    [ "$status" -ne 0 ]
-    [ ! -f "$UPLOADED" ]
-}
-
-@test "a review lock on a later page prevents rebuilding and supports submission retries" {
-    jq '[[{tag_name: "unrelated"}], [.[0][0] | .assets += [{name: "review-submission.json"}]]]' "$RESPONSE" >"$RESPONSE.tmp"
+check_override() {
+    jq '.[0][0].body = "Release notes\r\n\r\n- [X] Allow rebuilding this release"' "$RESPONSE" >"$RESPONSE.tmp"
     mv "$RESPONSE.tmp" "$RESPONSE"
-    run env usage_cmd=check bash "$script"
+}
+
+@test "a new release can be built" {
+    echo '[[]]' >"$RESPONSE"
+    run bash "$script"
+    [ "$status" -eq 0 ]
+}
+
+@test "a draft without a successful submission can be rebuilt" {
+    run bash "$script"
+    [ "$status" -eq 0 ]
+    [ ! -f "$PATCH" ]
+}
+
+@test "successful submission blocks rebuilding even from a different workflow commit" {
+    successful_submission
+    run bash "$script"
     [ "$status" -ne 0 ]
-    [[ "$output" == *"locked for store review"* ]]
-    run env usage_cmd=lock bash "$script"
-    [ "$status" -eq 0 ]
-    [ ! -f "$UPLOADED" ]
+    [[ "$output" == *"was submitted successfully"* ]]
 }
 
-@test "an editable draft can be built and locked with its asset manifest" {
-    run env usage_cmd=check bash "$script"
+@test "successful submissions for other releases do not block rebuilding" {
+    echo '[{"workflow_runs": [{"head_sha": "other-release", "html_url": "https://github.com/firezone/firezone/actions/runs/1"}]}]' >"$RUNS"
+    run bash "$script"
     [ "$status" -eq 0 ]
-    run env usage_cmd=lock bash "$script"
-    [ "$status" -eq 0 ]
-    jq -e '
-        .submission_run == "https://github.com/firezone/firezone/actions/runs/123"
-        and .assets == [{name: "client.ipa", digest: "sha256:abc", size: 42}]' "$UPLOADED"
 }
 
-@test "a changed source cannot be locked" {
-    export EXPECTED_SOURCE_SHA=other
-    run env usage_cmd=lock bash "$script"
+@test "a matching submission on a later page blocks rebuilding" {
+    successful_submission
+    jq '[{workflow_runs: [{head_sha: "other-release", html_url: "https://github.com/firezone/firezone/actions/runs/1"}]}] + .' "$RUNS" >"$RUNS.tmp"
+    mv "$RUNS.tmp" "$RUNS"
+    run bash "$script"
     [ "$status" -ne 0 ]
-    [ ! -f "$UPLOADED" ]
+    [[ "$output" == *"was submitted successfully"* ]]
 }
 
-@test "published releases cannot be rebuilt or locked" {
+@test "the checkbox overrides a successful submission exactly once" {
+    successful_submission
+    check_override
+    run bash "$script"
+    [ "$status" -eq 0 ]
+    jq -e --arg name "$RELEASE_NAME" '. == {tag_name: $name, body: "Release notes\n\n- [ ] Allow rebuilding this release"}' "$PATCH"
+    run bash "$script"
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"was submitted successfully"* ]]
+}
+
+@test "API failures block rebuilding" {
+    successful_submission
+    for endpoint in releases runs workflow; do
+        run env GH_FAIL="$endpoint" bash "$script"
+        [ "$status" -ne 0 ]
+    done
+}
+
+@test "failure to consume the override blocks rebuilding" {
+    check_override
+    run env GH_FAIL=patch bash "$script"
+    [ "$status" -ne 0 ]
+}
+
+@test "an unreadable run response blocks rebuilding" {
+    echo '{}' >"$RUNS"
+    run bash "$script"
+    [ "$status" -ne 0 ]
+}
+
+@test "published releases cannot be rebuilt even with the override checked" {
+    check_override
     jq '.[0][0].draft = false' "$RESPONSE" >"$RESPONSE.tmp"
     mv "$RESPONSE.tmp" "$RESPONSE"
-    run env usage_cmd=check bash "$script"
+    run bash "$script"
     [ "$status" -ne 0 ]
-    run env usage_cmd=lock bash "$script"
-    [ "$status" -ne 0 ]
-    [ ! -f "$UPLOADED" ]
+    [ ! -f "$PATCH" ]
 }
