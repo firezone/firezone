@@ -154,6 +154,7 @@ defmodule PortalWeb.SignUpTest do
 
     test "submitting creates the account with Google and email providers", %{conn: conn} do
       Portal.Config.put_env_override(:portal, Portal.Analytics.OpenAI, api_key: "test-key")
+      enable_follow_up_email()
       attribution = %{"marketing_allowed" => true, "captured_at" => System.os_time(:second)}
       conn = init_test_session(conn, website_attribution: %{"marketing" => attribution})
       Stripe.stub(
@@ -191,6 +192,7 @@ defmodule PortalWeb.SignUpTest do
       assert [%{args: %{"event" => event}}] = all_enqueued(worker: Portal.Analytics.OpenAI)
       assert event["type"] == "registration_completed"
       assert event["user"]["emails_sha256"] == [Portal.Analytics.hash_email("ada@example.com")]
+      assert_follow_up_scheduled(account, "ada@example.com")
 
       google_provider = Portal.Repo.get_by!(Portal.Google.AuthProvider, account_id: account.id)
       assert google_provider.issuer == "https://accounts.google.com"
@@ -804,6 +806,7 @@ defmodule PortalWeb.SignUpTest do
   describe "verify action (handle_params with token)" do
     test "valid token for new email creates account and shows welcome step", %{conn: conn} do
       Portal.Config.put_env_override(:portal, Portal.Analytics.OpenAI, api_key: "test-key")
+      enable_follow_up_email()
       attribution = %{"marketing_allowed" => true, "captured_at" => System.os_time(:second)}
       Stripe.stub(
         [
@@ -835,6 +838,7 @@ defmodule PortalWeb.SignUpTest do
       # Reopening the verification link must not emit another conversion.
       assert {:error, {:redirect, _}} = live(conn, ~p"/verify_sign_up?token=#{token}")
       assert [_] = all_enqueued(worker: Portal.Analytics.OpenAI)
+      assert_follow_up_scheduled(account, "newuser@example.com")
       provider = Portal.Repo.get_by!(Portal.X509.AuthProvider, account_id: account.id)
       assert provider.name == "X.509"
       assert provider.context == :clients_only
@@ -902,5 +906,18 @@ defmodule PortalWeb.SignUpTest do
     }
 
     Plug.Test.init_test_session(conn, %{"google_sign_up" => identity})
+  end
+  defp enable_follow_up_email do
+    Portal.Config.put_env_override(:portal, Portal.Workers.SignUpFollowUp,
+      from_email: "jamil@firezone.dev"
+    )
+  end
+
+  defp assert_follow_up_scheduled(account, email) do
+    actor = Portal.Repo.get_by!(Portal.Actor, account_id: account.id, email: email)
+    assert [job] = all_enqueued(worker: Portal.Workers.SignUpFollowUp)
+    assert job.args == %{"account_id" => account.id, "actor_id" => actor.id}
+    delay = DateTime.diff(job.scheduled_at, DateTime.utc_now(), :second)
+    assert_in_delta delay, 15 * 60, 60
   end
 end

@@ -1236,6 +1236,7 @@ defmodule PortalWeb.SignUp do
        ) do
     Portal.Analytics.PostHog.identify_actor(actor, account, website_attribution)
     Portal.Analytics.registration_completed(account, actor)
+    Portal.Workers.SignUpFollowUp.schedule(account, actor)
 
     assign(socket,
       step: :account_created,
