@@ -569,7 +569,7 @@ defmodule Portal.Okta.ReqDPoP do
       429 ->
         {:delay, delay_from_rate_limit_headers(resp.headers)}
 
-      408 when method_safe? ->
+      status when status in [403, 408] and method_safe? ->
         true
 
       status when status in [500, 502, 503, 504] and method_safe? ->
