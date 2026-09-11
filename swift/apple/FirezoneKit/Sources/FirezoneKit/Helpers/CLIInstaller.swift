@@ -23,6 +23,10 @@
       try script().write(to: scriptURL, atomically: true, encoding: .utf8)
       try fileManager.setAttributes([.posixPermissions: 0o755], ofItemAtPath: scriptURL.path)
 
+      // Everything a sandboxed app writes is quarantined, and Gatekeeper reports a
+      // quarantined unsigned script as damaged rather than as blocked.
+      try (scriptURL as NSURL).setResourceValue(kCFNull, forKey: .quarantinePropertiesKey)
+
       return scriptURL
     }
 
