@@ -40,7 +40,7 @@ defmodule Portal.Policies.Postures.Fields.Classifier do
       :integer -> :integer
       :float -> :float
       :utc_datetime_usec -> :datetime
-      :date -> :date
+      :date -> :datetime
       Portal.Types.IP -> :ip
       {:array, :string} -> :string_array
       :map -> :json
@@ -64,7 +64,7 @@ defmodule Portal.Policies.Postures.Fields do
 
   @providers ~w[firezone intune iru defender santa sentinelone]a
 
-  @types ~w[string enum_string boolean integer float version datetime date ip string_array json]a
+  @types ~w[string enum_string boolean integer float version datetime ip string_array json]a
 
   @string_operators ~w[
     is is_not is_in is_not_in contains does_not_contain starts_with ends_with matches does_not_match
@@ -78,7 +78,6 @@ defmodule Portal.Policies.Postures.Fields do
     float: ~w[eq ne gt gte lt lte]a,
     version: ~w[is is_not gt gte lt lte]a,
     datetime: ~w[before after within_last not_within_last]a,
-    date: ~w[before after within_last not_within_last]a,
     ip: ~w[is_in_cidr is_not_in_cidr]a,
     string_array: ~w[contains does_not_contain contains_any_of contains_all_of is_empty is_not_empty]a,
     json: ~w[is_empty is_not_empty]a

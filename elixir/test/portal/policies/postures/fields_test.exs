@@ -48,7 +48,7 @@ defmodule Portal.Policies.Postures.FieldsTest do
 
   test "types/0 lists every semantic type and each has operators" do
     assert Fields.types() ==
-             ~w[string enum_string boolean integer float version datetime date ip string_array json]a
+             ~w[string enum_string boolean integer float version datetime ip string_array json]a
 
     for type <- Fields.types() do
       operators = Fields.operators(type)
@@ -112,7 +112,7 @@ defmodule Portal.Policies.Postures.FieldsTest do
     assert registry.intune.compliance_state == :enum_string
     assert registry.intune.os_version == :version
     assert registry.intune.jail_broken == :boolean
-    assert registry.intune.android_security_patch_level == :date
+    assert registry.intune.android_security_patch_level == :datetime
     assert registry.intune.device_action_results == :json
     assert registry.iru.device_capacity_gb == :float
     assert registry.iru.tags == :string_array
@@ -152,7 +152,6 @@ defmodule Portal.Policies.Postures.FieldsTest do
     assert :matches in Fields.operators(:enum_string)
     assert Fields.operators(:integer) == Fields.operators(:float)
     assert :within_last in Fields.operators(:datetime)
-    assert :within_last in Fields.operators(:date)
     assert Fields.operators(:ip) == [:is_in_cidr, :is_not_in_cidr, :exists, :does_not_exist]
     assert :contains_all_of in Fields.operators(:string_array)
     assert Fields.operators(:json) == [:is_empty, :is_not_empty, :exists, :does_not_exist]
@@ -179,7 +178,7 @@ defmodule Portal.Policies.Postures.FieldsTest do
                count: :integer,
                ratio: :float,
                at: :datetime,
-               on: :date,
+               on: :datetime,
                ip: :ip,
                tags: :string_array,
                blob: :json,
