@@ -16,7 +16,7 @@
   enum CLIInstaller {
     static func writeInstallScript() throws -> URL {
       let fileManager = FileManager.default
-      let scriptURL = fileManager
+      var scriptURL = fileManager
         .temporaryDirectory
         .appendingPathComponent("install-firezone-cli.command")
 
@@ -25,7 +25,9 @@
 
       // Everything a sandboxed app writes is quarantined, and Gatekeeper reports a
       // quarantined unsigned script as damaged rather than as blocked.
-      try (scriptURL as NSURL).setResourceValue(kCFNull, forKey: .quarantinePropertiesKey)
+      var withoutQuarantine = URLResourceValues()
+      withoutQuarantine.quarantineProperties = nil
+      try scriptURL.setResourceValues(withoutQuarantine)
 
       return scriptURL
     }
