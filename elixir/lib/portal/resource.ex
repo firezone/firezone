@@ -14,7 +14,6 @@ defmodule Portal.Resource do
           ports: [Portal.Types.Int4Range.t()]
         }
 
-  @reserved_dns_suffixes ~w[firezone.dev firez.one firezone.network]
   @self_device_pool_name "Your devices"
 
   @type t :: %__MODULE__{
@@ -287,12 +286,12 @@ defmodule Portal.Resource do
   defp validate_not_reserved_domain(changeset) do
     validate_change(changeset, :address, fn field, address ->
       address = String.downcase(address)
+      domain = Portal.Device.domain()
 
-      @reserved_dns_suffixes
-      |> Enum.find(&(address == &1 or String.ends_with?(address, "." <> &1)))
-      |> case do
-        nil -> []
-        suffix -> [{field, "#{suffix} is reserved for Firezone"}]
+      if address == domain or String.ends_with?(address, "." <> domain) do
+        [{field, "#{domain} is reserved for Firezone"}]
+      else
+        []
       end
     end)
   end
