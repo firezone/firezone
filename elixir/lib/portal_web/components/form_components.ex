@@ -48,6 +48,10 @@ defmodule PortalWeb.FormComponents do
     default: false,
     doc: "whether to display errors inline instead of below the input"
 
+  attr :beside_errors, :boolean,
+    default: false,
+    doc: "whether to display errors to the right of the input so the form height does not change"
+
   attr :checked, :boolean, doc: "the checked flag for checkbox and radio inputs"
 
   attr :unchecked_value, :any,
@@ -190,13 +194,14 @@ defmodule PortalWeb.FormComponents do
         class={[
           "text-sm py-2 pl-3 pr-8 rounded",
           "bg-raised text-body",
-          "border border-border",
+          "border",
           "outline-none transition-colors cursor-pointer",
           "hover:border-border-emphasis hover:text-heading",
-          "focus:border-border-focus focus:ring-1 focus:ring-border-focus/30",
+          "focus:ring-1",
           "block",
           !@inline_errors && "w-full",
-          @errors != [] && "border-error focus:border-error",
+          @errors == [] && "border-border focus:border-border-focus focus:ring-border-focus/30",
+          @errors != [] && "border-error focus:border-error focus:ring-error/30",
           @class
         ]}
         multiple={@multiple}
@@ -233,30 +238,31 @@ defmodule PortalWeb.FormComponents do
         name={@name}
         value={@value}
       />
-      <select
-        id={@id}
-        name={@name}
-        class={[
-          "text-sm py-2 pl-3 pr-8 rounded",
-          "bg-raised text-body",
-          "border border-border",
-          "outline-none transition-colors cursor-pointer",
-          "hover:border-border-emphasis hover:text-heading",
-          "focus:border-border-focus focus:ring-1 focus:ring-border-focus/30",
-          "block",
-          !@inline_errors && "w-full",
-          @errors != [] && "border-error focus:border-error",
-          @class
-        ]}
-        multiple={@multiple}
-        {@rest}
-      >
-        <option :if={@prompt} value="" selected={is_nil(@value)}>{@prompt}</option>
-        {Phoenix.HTML.Form.options_for_select(@options, @value)}
-      </select>
-      <.error :for={msg <- @errors} inline={@inline_errors} data-validation-error-for={@name}>
-        {msg}
-      </.error>
+      <div class={field_row_class(assigns)}>
+        <select
+          id={@id}
+          name={@name}
+          class={[
+            "text-sm py-2 pl-3 pr-8 rounded",
+            "bg-raised text-body",
+            "border",
+            "outline-none transition-colors cursor-pointer",
+            "hover:border-border-emphasis hover:text-heading",
+            "focus:ring-1",
+            "block",
+            field_width_class(assigns),
+            @errors == [] && "border-border focus:border-border-focus focus:ring-border-focus/30",
+            @errors != [] && "border-error focus:border-error focus:ring-error/30",
+            @class
+          ]}
+          multiple={@multiple}
+          {@rest}
+        >
+          <option :if={@prompt} value="" selected={is_nil(@value)}>{@prompt}</option>
+          {Phoenix.HTML.Form.options_for_select(@options, @value)}
+        </select>
+        <.field_errors errors={@errors} name={@name} inline={@inline_errors} beside={@beside_errors} />
+      </div>
     </div>
     """
   end
@@ -271,12 +277,13 @@ defmodule PortalWeb.FormComponents do
         class={[
           "block rounded-md text-sm px-3 py-2",
           "bg-input text-heading placeholder:text-muted",
-          "border border-input-border",
+          "border",
           "outline-none transition-colors",
-          "focus:border-border-focus focus:ring-1 focus:ring-border-focus/30",
+          "focus:ring-1",
           "min-h-[6rem]",
           !@inline_errors && "w-full",
-          @errors != [] && "border-error focus:border-error",
+          @errors == [] && "border-input-border focus:border-border-focus focus:ring-border-focus/30",
+          @errors != [] && "border-error focus:border-error focus:ring-error/30",
           @class
         ]}
         {@rest}
@@ -326,31 +333,73 @@ defmodule PortalWeb.FormComponents do
     ~H"""
     <div class={@inline_errors && "flex flex-row items-center"}>
       <.label :if={@label} for={@id}>{@label}</.label>
-      <input
-        type={@type}
-        name={@name}
-        id={@id}
-        value={Phoenix.HTML.Form.normalize_value(@type, @value)}
-        class={[
-          "block",
-          !@inline_errors && "w-full",
-          "px-3 py-2 rounded text-sm",
-          "bg-input text-heading placeholder:text-muted",
-          "border border-input-border",
-          "outline-none transition-colors",
-          "focus:border-border-focus focus:ring-1 focus:ring-border-focus/30",
-          "disabled:opacity-40 disabled:cursor-not-allowed",
-          @errors != [] && "border-error focus:border-error",
-          @class
-        ]}
-        {@rest}
-      />
-      <.error :for={msg <- @errors} inline={@inline_errors} data-validation-error-for={@name}>
+      <div class={field_row_class(assigns)}>
+        <input
+          type={@type}
+          name={@name}
+          id={@id}
+          value={Phoenix.HTML.Form.normalize_value(@type, @value)}
+          class={[
+            "block",
+            field_width_class(assigns),
+            "px-3 py-2 rounded text-sm",
+            "bg-input text-heading placeholder:text-muted",
+            "border",
+            "outline-none transition-colors",
+            "focus:ring-1",
+            "disabled:opacity-40 disabled:cursor-not-allowed",
+            @errors == [] && "border-input-border focus:border-border-focus focus:ring-border-focus/30",
+            @errors != [] && "border-error focus:border-error focus:ring-error/30",
+            @class
+          ]}
+          {@rest}
+        />
+        <.field_errors errors={@errors} name={@name} inline={@inline_errors} beside={@beside_errors} />
+      </div>
+    </div>
+    """
+  end
+
+  attr :errors, :list, required: true
+  attr :name, :string, required: true
+  attr :inline, :boolean, required: true
+  attr :beside, :boolean, required: true
+
+  # The auth layout's left panel appears at lg and takes the gutter the error
+  # overflows into, so the input shrinks again at lg and stops shrinking at xl.
+  defp field_errors(%{beside: true} = assigns) do
+    ~H"""
+    <div
+      :if={@errors != []}
+      class={[
+        "shrink-0 whitespace-nowrap",
+        "md:absolute md:left-full md:top-1/2 md:-translate-y-1/2",
+        "lg:static lg:translate-y-0",
+        "xl:absolute xl:left-full xl:top-1/2 xl:-translate-y-1/2"
+      ]}
+    >
+      <.error :for={msg <- @errors} inline data-validation-error-for={@name}>
         {msg}
       </.error>
     </div>
     """
   end
+
+  defp field_errors(assigns) do
+    ~H"""
+    <.error :for={msg <- @errors} inline={@inline} data-validation-error-for={@name}>
+      {msg}
+    </.error>
+    """
+  end
+
+  defp field_row_class(%{beside_errors: true}), do: "relative flex flex-row items-center"
+  defp field_row_class(%{inline_errors: true}), do: "flex flex-row items-center"
+  defp field_row_class(_assigns), do: nil
+
+  defp field_width_class(%{beside_errors: true}), do: "min-w-0 flex-1"
+  defp field_width_class(%{inline_errors: true}), do: nil
+  defp field_width_class(_assigns), do: "w-full"
 
   defp resolve_field_value(field, value_id) do
     Enum.map(field.value, fn
