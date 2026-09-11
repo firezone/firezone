@@ -176,6 +176,14 @@ impl RoutingTables {
         self.peer
             .remove(network, |entry| entry.resource_id == resource_id);
     }
+
+    /// Applies a pool's new filters to every peer routed through it.
+    pub(super) fn replace_peer_filter(&mut self, resource_id: ResourceId, filter: FilterEngine) {
+        self.peer.update_by_id(resource_id, |entry| PeerEntry {
+            filter: filter.clone(),
+            resource_id: entry.resource_id,
+        });
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]

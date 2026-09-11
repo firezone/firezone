@@ -4,10 +4,7 @@ use super::{
     icmp_error_hosts::IcmpErrorHosts,
     probe::{ExpectedOutcome, PacketRoute, RejectionRemote, RejectionResponse, Remote},
     reference::PrivateKey,
-    resource::{
-        CidrResource, DnsResource, DynamicDevicePoolResource, InternetResource, Resource,
-        StaticDevicePoolResource,
-    },
+    resource::{CidrResource, DevicePoolResource, DnsResource, InternetResource, Resource},
     sim_client::SimClient,
     sim_net::ExecMutScope,
     transition::{DPort, Destination, DnsQuery, DnsTransport, SPort},
@@ -118,10 +115,9 @@ pub struct RefClient {
     #[debug(skip)]
     client_send_times: BTreeMap<ClientId, BTreeSet<Instant>>,
 
-    /// Per peer address resolved from a device name, the dynamic pools the portal
-    /// named as admitting the device.
+    /// Per peer, the pools the portal authorised us to reach it through.
     #[debug(skip)]
-    resolved_devices: BTreeMap<IpAddr, BTreeSet<ResourceId>>,
+    peer_pools: BTreeMap<ClientId, BTreeSet<ResourceId>>,
 }
 
 impl RefClient {
@@ -163,7 +159,7 @@ impl RefClient {
             connection_resets: Default::default(),
             gateway_send_times: Default::default(),
             client_send_times: Default::default(),
-            resolved_devices: Default::default(),
+            peer_pools: Default::default(),
         }
     }
 
@@ -274,10 +270,51 @@ impl RefClient {
         }
 
         self.resources.retain(|r| r.id() != *resource);
-        self.resolved_devices.retain(|_, pools| {
-            pools.remove(resource);
+        self.forget_pool_grants(*resource, None);
+    }
+
+    /// Drops the grants through `pool` towards `peers`, or towards everyone.
+    pub(crate) fn forget_pool_grants(
+        &mut self,
+        pool: ResourceId,
+        peers: Option<&BTreeSet<ClientId>>,
+    ) {
+        self.peer_pools.retain(|peer, pools| {
+            if peers.is_none_or(|peers| peers.contains(peer)) {
+                pools.remove(&pool);
+            }
+
             !pools.is_empty()
         });
+    }
+
+    /// Drops every grant towards `peer`, as the connection to it is gone.
+    pub(crate) fn forget_peer_grants(&mut self, peer: ClientId) {
+        self.peer_pools.remove(&peer);
+    }
+
+    /// The device pools this client holds, by id.
+    pub(crate) fn device_pool_ids(&self) -> Vec<ResourceId> {
+        self.resources
+            .iter()
+            .filter_map(|r| match r {
+                Resource::DevicePool(pool) => Some(pool.id),
+                Resource::Dns(_) => None,
+                Resource::Cidr(_) => None,
+                Resource::Internet(_) => None,
+            })
+            .sorted()
+            .collect()
+    }
+
+    fn pool_filters(&self, pool: ResourceId) -> Option<&[Filter]> {
+        self.resources.iter().find_map(|r| match r {
+            Resource::DevicePool(p) if p.id == pool => Some(p.filters.as_slice()),
+            Resource::DevicePool(_) => None,
+            Resource::Dns(_) => None,
+            Resource::Cidr(_) => None,
+            Resource::Internet(_) => None,
+        })
     }
 
     pub(crate) fn connected_resources(&self) -> impl Iterator<Item = ResourceId> + '_ {
@@ -293,7 +330,7 @@ impl RefClient {
 
     pub(crate) fn restart(&mut self, key: PrivateKey, now: Instant) {
         self.routes.clear();
-        self.resolved_devices.clear();
+        self.peer_pools.clear();
 
         self.key = key;
 
@@ -427,8 +464,8 @@ impl RefClient {
         }
     }
 
-    pub(crate) fn add_dynamic_device_pool_resource(&mut self, r: DynamicDevicePoolResource) {
-        let r = Resource::DynamicDevicePool(r);
+    pub(crate) fn add_device_pool_resource(&mut self, r: DevicePoolResource) {
+        let r = Resource::DevicePool(r);
         let rid = r.id();
 
         match self
@@ -436,27 +473,10 @@ impl RefClient {
             .iter()
             .position(|existing| existing.id() == rid)
         {
-            Some(index) if self.resources[index].has_different_address(&r) => {
-                self.remove_resource(&rid);
-                self.resources.push(r);
-            }
-            // A filter change keeps the pool's resolutions: the client updates its routes in place.
+            // A filter change keeps the pool's grants: the client updates its routes in place.
             Some(index) => self.resources[index] = r,
             None => self.resources.push(r),
         }
-    }
-
-    pub(crate) fn add_static_device_pool_resource(&mut self, r: StaticDevicePoolResource) {
-        let r = Resource::StaticDevicePool(r);
-        let rid = r.id();
-
-        if let Some(existing) = self.resources.iter().find(|existing| existing.id() == rid)
-            && (existing.has_different_address(&r) || existing.has_different_filters(&r))
-        {
-            self.remove_resource(&existing.id());
-        }
-
-        self.resources.push(r);
     }
 
     /// Re-adds all resources in the order they have been initially added.
@@ -466,12 +486,7 @@ impl RefClient {
                 Resource::Dns(d) => self.add_dns_resource(d),
                 Resource::Cidr(c) => self.add_cidr_resource(c),
                 Resource::Internet(i) => self.add_internet_resource(i),
-                Resource::DynamicDevicePool(d) => {
-                    self.add_dynamic_device_pool_resource(d);
-                }
-                Resource::StaticDevicePool(s) => {
-                    self.add_static_device_pool_resource(s);
-                }
+                Resource::DevicePool(d) => self.add_device_pool_resource(d),
             }
         }
     }
@@ -695,44 +710,45 @@ impl RefClient {
     }
 
     pub(crate) fn route_for_packet(
-        &self,
+        &mut self,
         src: IpAddr,
         dst: &Destination,
         protocol: Protocol,
         gateway_by_resource: impl Fn(ResourceId) -> Option<GatewayId>,
         gateway_by_ip: impl Fn(IpAddr) -> Option<GatewayId>,
         client_by_ip: impl Fn(IpAddr) -> Option<ClientId>,
-    ) -> PacketRoute {
+        pick_pool: impl Fn(&[ResourceId], ClientId, Protocol) -> Option<ResourceId>,
+    ) -> (PacketRoute, Option<ClientId>) {
         if dst.ip_addr().is_some_and(|ip| ip.is_multicast()) {
-            return PacketRoute::Drop;
+            return (PacketRoute::Drop, None);
         }
 
-        // Peer tunnel IPs first mean client-to-client device-pool routing. A
-        // tunnel IP without a matching pool may still belong to a gateway.
+        // A tunnel IP is a peer client or a gateway. Anything else in the range makes
+        // the client ask the portal, which denies it.
         if let Some(ip) = dst.ip_addr().filter(|ip| tunnel_proto::is_peer(*ip)) {
-            let pools = self.device_pools_by_tun_ip(ip);
-
-            if !pools.is_empty() {
-                let allowed = pools
-                    .iter()
-                    .any(|(_, filters)| protocol_filter_allows(filters, protocol));
-
-                if allowed {
-                    return client_by_ip(ip).map_or(PacketRoute::Drop, PacketRoute::Peer);
-                }
-
-                if !self.malicious_behaviour.ignore_resource_filters {
-                    return PacketRoute::RejectedByClient;
-                }
-
-                return client_by_ip(ip)
-                    .map(PacketRoute::PeerRejectedByPeer)
-                    .unwrap_or(PacketRoute::Drop);
+            if let Some(peer) = client_by_ip(ip) {
+                return self.route_to_peer(peer, protocol, pick_pool);
             }
 
-            return gateway_by_ip(ip).map_or(PacketRoute::Drop, PacketRoute::Gateway);
+            return (
+                gateway_by_ip(ip).map_or(PacketRoute::RejectedByClient, PacketRoute::Gateway),
+                None,
+            );
         }
 
+        (
+            self.route_to_resource(src, dst, protocol, gateway_by_resource),
+            None,
+        )
+    }
+
+    fn route_to_resource(
+        &self,
+        src: IpAddr,
+        dst: &Destination,
+        protocol: Protocol,
+        gateway_by_resource: impl Fn(ResourceId) -> Option<GatewayId>,
+    ) -> PacketRoute {
         // Resource selection is the one deliberate classifier in the oracle.
         // `resource_by_dst` has small, independently tested precedence rules for
         // overlapping resources; applying a transition does not classify again.
@@ -766,6 +782,42 @@ impl RefClient {
         }
 
         PacketRoute::ResourceRejectedByGateway { resource, gateway }
+    }
+
+    /// A flow to a peer goes through a pool we already hold a grant for if one permits
+    /// it, otherwise the client asks the portal for one. A malicious client sends
+    /// through a granted pool regardless and the peer rejects the flow.
+    ///
+    /// Also returns the peer when the portal granted the flow, since the peer then
+    /// forgets its own grants towards us.
+    fn route_to_peer(
+        &mut self,
+        peer: ClientId,
+        protocol: Protocol,
+        pick_pool: impl Fn(&[ResourceId], ClientId, Protocol) -> Option<ResourceId>,
+    ) -> (PacketRoute, Option<ClientId>) {
+        let granted = self.peer_pools.get(&peer).cloned().unwrap_or_default();
+        let granted_permits = granted.iter().any(|pool| {
+            self.pool_filters(*pool)
+                .is_some_and(|filters| protocol_filter_allows(filters, protocol))
+        });
+
+        if granted_permits {
+            return (PacketRoute::Peer(peer), None);
+        }
+
+        if self.malicious_behaviour.ignore_resource_filters && !granted.is_empty() {
+            return (PacketRoute::PeerRejectedByPeer(peer), None);
+        }
+
+        match pick_pool(&self.device_pool_ids(), peer, protocol) {
+            Some(pool) => {
+                self.peer_pools.entry(peer).or_default().insert(pool);
+
+                (PacketRoute::Peer(peer), Some(peer))
+            }
+            None => (PacketRoute::RejectedByClient, None),
+        }
     }
 
     fn connect_to_resource(&mut self, resource: ResourceId, destination: Destination) {
@@ -1046,109 +1098,6 @@ impl RefClient {
         }
 
         protocol_filter_allows(filters, proto)
-    }
-
-    /// Every device pool that routes to the peer at `ip`, with its filter set: the static
-    /// pools naming it and the dynamic pools its name resolved into.
-    fn device_pools_by_tun_ip(
-        &self,
-        ip: IpAddr,
-    ) -> Vec<(ResourceId, Vec<tunnel_proto::messages::Filter>)> {
-        let resolved = self.dynamic_device_pools().into_iter().filter(|(id, _)| {
-            self.resolved_devices
-                .get(&ip)
-                .is_some_and(|pools| pools.contains(id))
-        });
-
-        self.resources
-            .iter()
-            .filter_map(|r| {
-                let Resource::StaticDevicePool(pool) = r else {
-                    return None;
-                };
-
-                let matches = pool.devices.iter().any(|d| match ip {
-                    IpAddr::V4(v4) => d.ipv4.contains(v4),
-                    IpAddr::V6(v6) => d.ipv6.contains(v6),
-                });
-
-                matches.then(|| (pool.id, pool.filters.clone()))
-            })
-            .chain(resolved)
-            .collect()
-    }
-
-    /// The pools the portal names when `target` is resolved: every dynamic pool admits
-    /// every device, a static pool the members it names.
-    pub(crate) fn device_pools_admitting(&self, target: ClientId) -> Vec<ResourceId> {
-        self.resources
-            .iter()
-            .filter_map(|resource| match resource {
-                Resource::DynamicDevicePool(pool) => Some(pool.id),
-                Resource::StaticDevicePool(pool) => pool
-                    .devices
-                    .iter()
-                    .any(|d| d.id == target)
-                    .then_some(pool.id),
-                Resource::Dns(_) => None,
-                Resource::Cidr(_) => None,
-                Resource::Internet(_) => None,
-            })
-            .sorted()
-            .collect()
-    }
-
-    /// Records that a device name resolved to the peer at `ipv4` / `ipv6`, which joins
-    /// every dynamic pool.
-    pub(crate) fn note_device_resolution(&mut self, ipv4: Ipv4Addr, ipv6: Ipv6Addr) {
-        let pools = self
-            .dynamic_device_pools()
-            .into_iter()
-            .map(|(id, _)| id)
-            .collect::<BTreeSet<_>>();
-
-        if pools.is_empty() {
-            return;
-        }
-
-        self.resolved_devices
-            .insert(IpAddr::V4(ipv4), pools.clone());
-        self.resolved_devices.insert(IpAddr::V6(ipv6), pools);
-    }
-
-    /// Every resolved peer address with the filter set of each pool it resolved into.
-    pub(crate) fn resolved_devices_with_pools(
-        &self,
-    ) -> Vec<(IpAddr, Vec<tunnel_proto::messages::Filter>)> {
-        let pools = self.dynamic_device_pools();
-
-        self.resolved_devices
-            .iter()
-            .flat_map(|(ip, resolved)| {
-                pools
-                    .iter()
-                    .filter(|(id, _)| resolved.contains(id))
-                    .map(|(_, filters)| (*ip, filters.clone()))
-            })
-            .collect()
-    }
-
-    /// Every dynamic device pool with its filter set.
-    fn dynamic_device_pools(&self) -> Vec<(ResourceId, Vec<tunnel_proto::messages::Filter>)> {
-        let mut pools = self
-            .resources
-            .iter()
-            .filter_map(|r| match r {
-                Resource::DynamicDevicePool(pool) => Some((pool.id, pool.filters.clone())),
-                Resource::Dns(_) => None,
-                Resource::Cidr(_) => None,
-                Resource::Internet(_) => None,
-                Resource::StaticDevicePool(_) => None,
-            })
-            .collect::<Vec<_>>();
-        pools.sort_by_key(|(id, _)| *id);
-
-        pools
     }
 
     pub(crate) fn dns_resource_by_domain_and_proto(
@@ -1465,8 +1414,7 @@ impl RefClient {
                 Resource::Dns(_) => None,
                 Resource::Cidr(_) => None,
                 Resource::Internet(_) => None,
-                Resource::StaticDevicePool(_) => None,
-                Resource::DynamicDevicePool(_) => None,
+                Resource::DevicePool(_) => None,
             })
             .any(|dns| {
                 dns::is_subdomain(domain, &dns.address)
@@ -1559,8 +1507,7 @@ impl RefClient {
         self.resources.iter().find_map(|r| match r {
             Resource::Dns(_) => None,
             Resource::Cidr(_) => None,
-            Resource::StaticDevicePool(_) => None,
-            Resource::DynamicDevicePool(_) => None,
+            Resource::DevicePool(_) => None,
             Resource::Internet(internet_resource) => Some(internet_resource.id),
         })
     }
@@ -1789,7 +1736,7 @@ mod tests {
         });
 
         let dst = Destination::IpAddr("10.0.0.1".parse().unwrap());
-        let route = |client: &RefClient, protocol| {
+        let route = |client: &mut RefClient, protocol| {
             client.route_for_packet(
                 "100.96.0.1".parse().unwrap(),
                 &dst,
@@ -1801,31 +1748,32 @@ mod tests {
                 },
                 |_| None,
                 |_| None,
+                |_, _, _| None,
             )
         };
 
         assert_eq!(
-            route(&client, Protocol::IcmpEcho(1)),
+            route(&mut client, Protocol::IcmpEcho(1)).0,
             PacketRoute::Resource {
                 resource: broad_id,
                 gateway: broad_gateway,
             }
         );
         assert_eq!(
-            route(&client, Protocol::Udp(80)),
+            route(&mut client, Protocol::Udp(80)).0,
             PacketRoute::Resource {
                 resource: specific_id,
                 gateway: specific_gateway,
             }
         );
         assert_eq!(
-            route(&client, Protocol::Udp(81)),
+            route(&mut client, Protocol::Udp(81)).0,
             PacketRoute::RejectedByClient
         );
 
         client.malicious_behaviour.ignore_resource_filters = true;
         assert_eq!(
-            route(&client, Protocol::Udp(81)),
+            route(&mut client, Protocol::Udp(81)).0,
             PacketRoute::ResourceRejectedByGateway {
                 resource: specific_id,
                 gateway: specific_gateway,

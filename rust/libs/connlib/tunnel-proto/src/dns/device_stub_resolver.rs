@@ -183,11 +183,6 @@ impl DeviceStubResolver {
     ///
     /// A resolution stands for the grant that came with it; when the grant goes, so
     /// does the answer.
-    pub(crate) fn forget_device(&mut self, ipv4: Ipv4Addr, ipv6: Ipv6Addr) {
-        self.resolved
-            .retain(|_, (v4, v6)| *v4 != ipv4 && *v6 != ipv6);
-    }
-
     pub(crate) fn poll_event(&mut self) -> Option<Event> {
         self.events.pop_front()
     }
@@ -329,26 +324,6 @@ mod tests {
             aaaa.records()
                 .any(|r| r.data() == &dns_types::records::aaaa(TEST_IPV6))
         );
-    }
-
-    #[test]
-    fn forgetting_the_device_asks_the_portal_again() {
-        let mut resolver = DeviceStubResolver::default();
-        handle(&mut resolver, DEVICE, dns_types::RecordType::A);
-        drain(&mut resolver);
-        resolver.handle_device_domain_resolved(domain(DEVICE), Ok((TEST_IPV4, TEST_IPV6)));
-        drain(&mut resolver);
-
-        resolver.forget_device(TEST_IPV4, TEST_IPV6);
-
-        assert!(matches!(
-            handle(&mut resolver, DEVICE, dns_types::RecordType::A),
-            ResolveStrategy::Pending
-        ));
-        assert!(matches!(
-            resolver.poll_event(),
-            Some(Event::QueryDomain { domain: queried }) if queried.to_string() == DEVICE
-        ));
     }
 
     #[test]
