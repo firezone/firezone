@@ -877,6 +877,31 @@ defmodule Portal.Config.Definitions do
   )
 
   @doc """
+  Sender address of the founder follow-up email sent 15 minutes after a web sign-up.
+
+  The follow-up email is disabled when this is unset or blank. The address must be
+  allowed as a sender on the outbound email adapter.
+  """
+  defconfig(:sign_up_follow_up_from_email, :string,
+    default: nil,
+    dump: fn
+      value when is_binary(value) -> if String.trim(value) == "", do: nil, else: String.trim(value)
+      value -> value
+    end
+  )
+
+  @doc """
+  BCC address for the founder follow-up email, such as the HubSpot BCC logging address.
+  """
+  defconfig(:sign_up_follow_up_bcc_email, :string,
+    default: nil,
+    dump: fn
+      value when is_binary(value) -> if String.trim(value) == "", do: nil, else: String.trim(value)
+      value -> value
+    end
+  )
+
+  @doc """
   Enable or disable the Firezone telemetry collection.
   """
   defconfig(:instrumentation_client_logs_enabled, :boolean, default: true)

@@ -733,6 +733,10 @@ if config_env() == :prod do
     endpoint: "https://bzr.openai.com/v1/events",
     req_opts: [receive_timeout: 5_000, retry: false]
 
+  config :portal, Portal.Workers.SignUpFollowUp,
+    from_email: env_var_to_config(:sign_up_follow_up_from_email),
+    bcc_email: env_var_to_config(:sign_up_follow_up_bcc_email)
+
   posthog_project_api_key = env_var_to_config(:posthog_project_api_key)
 
   config :portal, Portal.Analytics.PostHog,
