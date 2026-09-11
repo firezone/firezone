@@ -154,15 +154,15 @@ defmodule PortalAPI.ResourceControllerTest do
       assert data["id"] == resource.id
     end
 
-    test "filters by type static_device_pool", %{conn: conn, account: account, actor: actor} do
-      resource = static_device_pool_resource_fixture(account: account)
+    test "filters by type device_pool", %{conn: conn, account: account, actor: actor} do
+      resource = device_pool_resource_fixture(account: account)
       _other = resource_fixture(account: account, type: :dns, address: "app.example.com")
 
       conn =
         conn
         |> authorize_conn(actor)
         |> put_req_header("content-type", "application/json")
-        |> get("/resources", type: "static_device_pool")
+        |> get("/resources", type: "device_pool")
 
       assert %{"data" => [data]} = json_response(conn, 200)
       assert data["id"] == resource.id
@@ -397,13 +397,13 @@ defmodule PortalAPI.ResourceControllerTest do
                json_response(conn, 422)
     end
 
-    test "rejects creating a static device pool", %{
+    test "rejects creating a device pool", %{
       conn: conn,
       actor: actor
     } do
       attrs = %{
         "name" => "Shared Devices",
-        "type" => "static_device_pool"
+        "type" => "device_pool"
       }
 
       conn =
@@ -500,26 +500,6 @@ defmodule PortalAPI.ResourceControllerTest do
                }
              } = json_response(conn, 422)
 
-      assert Portal.Repo.aggregate(Resource, :count) == 0
-    end
-  end
-
-  describe "create/2 device pools" do
-    test "rejects creating a dynamic device pool", %{conn: conn, actor: actor} do
-      attrs = %{
-        "name" => "Pool",
-        "type" => "dynamic_device_pool",
-        "address" => "*.devices.example.com"
-      }
-
-      conn =
-        conn
-        |> authorize_conn(actor)
-        |> put_req_header("content-type", "application/json")
-        |> post("/resources", resource: attrs)
-
-      assert resp = json_response(conn, 422)
-      assert resp["validation_errors"]["type"] == ["is invalid"]
       assert Portal.Repo.aggregate(Resource, :count) == 0
     end
   end
@@ -743,7 +723,7 @@ defmodule PortalAPI.ResourceControllerTest do
 
     # Converting an existing Resource to a pool is creation by another
     # name, so the same guard covers update.
-    test "rejects converting a resource to the static_device_pool type", %{
+    test "rejects converting a resource to the device_pool type", %{
       conn: conn,
       account: account,
       actor: actor
@@ -755,7 +735,7 @@ defmodule PortalAPI.ResourceControllerTest do
         conn
         |> authorize_conn(actor)
         |> put_req_header("content-type", "application/json")
-        |> put("/resources/#{resource.id}", resource: %{"type" => "static_device_pool"})
+        |> put("/resources/#{resource.id}", resource: %{"type" => "device_pool"})
 
       assert resp = json_response(conn, 422)
       assert resp["validation_errors"]["type"] == ["device pools cannot be created via the API"]
@@ -765,12 +745,12 @@ defmodule PortalAPI.ResourceControllerTest do
 
     # An existing pool - created in the admin portal - stays fully
     # manageable; only creating one is blocked.
-    test "allows updating an existing static device pool", %{
+    test "allows updating an existing device pool", %{
       conn: conn,
       account: account,
       actor: actor
     } do
-      pool = static_device_pool_resource_fixture(account: account)
+      pool = device_pool_resource_fixture(account: account)
 
       conn =
         conn
@@ -780,7 +760,7 @@ defmodule PortalAPI.ResourceControllerTest do
 
       assert resp = json_response(conn, 200)
       assert resp["data"]["name"] == "Renamed Pool"
-      assert resp["data"]["type"] == "static_device_pool"
+      assert resp["data"]["type"] == "device_pool"
     end
 
     # The guard keys off the type *changing*, not off its value, so a PUT
@@ -791,19 +771,19 @@ defmodule PortalAPI.ResourceControllerTest do
       account: account,
       actor: actor
     } do
-      pool = static_device_pool_resource_fixture(account: account)
+      pool = device_pool_resource_fixture(account: account)
 
       conn =
         conn
         |> authorize_conn(actor)
         |> put_req_header("content-type", "application/json")
         |> put("/resources/#{pool.id}",
-          resource: %{"name" => "Restated Pool", "type" => "static_device_pool"}
+          resource: %{"name" => "Restated Pool", "type" => "device_pool"}
         )
 
       assert resp = json_response(conn, 200)
       assert resp["data"]["name"] == "Restated Pool"
-      assert resp["data"]["type"] == "static_device_pool"
+      assert resp["data"]["type"] == "device_pool"
     end
   end
 

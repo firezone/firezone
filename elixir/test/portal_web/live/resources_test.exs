@@ -94,7 +94,7 @@ defmodule PortalWeb.ResourcesTest do
       account: account,
       actor: actor
     } do
-      resource = static_device_pool_resource_fixture(account: account)
+      resource = device_pool_resource_fixture(account: account)
 
       {:ok, _lv, html} =
         conn
@@ -111,7 +111,7 @@ defmodule PortalWeb.ResourcesTest do
       account: account,
       actor: actor
     } do
-      dynamic_device_pool_resource_fixture(account: account, name: "Your devices")
+      own_devices_pool_resource_fixture(account: account, name: "Your devices")
 
       {:ok, _lv, html} =
         conn
@@ -119,7 +119,7 @@ defmodule PortalWeb.ResourcesTest do
         |> live(~p"/#{account}/resources")
 
       assert html =~ "Your devices"
-      assert html =~ "Dynamic Pool"
+      assert html =~ "Own devices"
       assert html =~ "&lt;slug&gt;.firezone.network"
       assert html =~ "No Site Needed"
     end
@@ -133,7 +133,7 @@ defmodule PortalWeb.ResourcesTest do
       device_two = client_fixture(account: account, actor: actor)
 
       _resource =
-        static_device_pool_resource_fixture(account: account, devices: [device_one, device_two])
+        device_pool_resource_fixture(account: account, devices: [device_one, device_two])
 
       {:ok, _lv, html} =
         conn
@@ -150,7 +150,7 @@ defmodule PortalWeb.ResourcesTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/resources")
 
-      assert has_element?(lv, "#resources-type-static_device_pool")
+      assert has_element?(lv, "#resources-type-device_pool")
       assert has_element?(lv, "#resources-type-dns")
     end
 
@@ -161,7 +161,7 @@ defmodule PortalWeb.ResourcesTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/resources/new")
 
-      assert has_element?(lv, "#resource-form-type--static-device-pool")
+      assert has_element?(lv, "#resource-form-type--device-pool")
       assert has_element?(lv, "#resource-form-type--dns")
     end
 
@@ -290,14 +290,14 @@ defmodule PortalWeb.ResourcesTest do
 
       lv
       |> form("[phx-submit='submit_resource_form']",
-        resource: %{type: "static_device_pool", name: "My Device Pool"}
+        resource: %{type: "device_pool", name: "My Device Pool"}
       )
       |> render_change()
 
       html =
         lv
         |> form("[phx-submit='submit_resource_form']",
-          resource: %{type: "static_device_pool", name: "My Device Pool"}
+          resource: %{type: "device_pool", name: "My Device Pool"}
         )
         |> render_submit()
 
@@ -421,7 +421,7 @@ defmodule PortalWeb.ResourcesTest do
         |> live(~p"/#{account}/resources/new")
 
       lv
-      |> form("[phx-submit='submit_resource_form']", resource: %{type: "static_device_pool"})
+      |> form("[phx-submit='submit_resource_form']", resource: %{type: "device_pool"})
       |> render_change()
 
       render_click(lv, "toggle_resource_filters_dropdown")
@@ -438,7 +438,7 @@ defmodule PortalWeb.ResourcesTest do
         lv
         |> form("[phx-submit='submit_resource_form']",
           resource: %{
-            type: "static_device_pool",
+            type: "device_pool",
             name: "Filtered Device Pool",
             filters: %{
               tcp: %{enabled: "true", protocol: "tcp", ports: "443, 8443"},
@@ -472,7 +472,7 @@ defmodule PortalWeb.ResourcesTest do
         |> live(~p"/#{account}/resources/new")
 
       lv
-      |> form("[phx-submit='submit_resource_form']", resource: %{type: "static_device_pool"})
+      |> form("[phx-submit='submit_resource_form']", resource: %{type: "device_pool"})
       |> render_change()
 
       assert render_focus(element(lv, "input[name='device_search']")) =~ "Search devices to add"
@@ -559,7 +559,7 @@ defmodule PortalWeb.ResourcesTest do
       account: account,
       actor: actor
     } do
-      resource = static_device_pool_resource_fixture(account: account)
+      resource = device_pool_resource_fixture(account: account)
 
       {:ok, _lv, html} =
         conn
@@ -1006,7 +1006,7 @@ defmodule PortalWeb.ResourcesTest do
         |> live(~p"/#{account}/resources/new")
 
       lv
-      |> form("[phx-submit='submit_resource_form']", resource: %{type: "static_device_pool"})
+      |> form("[phx-submit='submit_resource_form']", resource: %{type: "device_pool"})
       |> render_change()
 
       assert has_element?(lv, "#resource-form-members--own-devices")
@@ -1014,14 +1014,14 @@ defmodule PortalWeb.ResourcesTest do
       html =
         lv
         |> form("[phx-submit='submit_resource_form']",
-          resource: %{type: "static_device_pool", members: "own_devices", name: "Laptops"}
+          resource: %{type: "device_pool", members: "own_devices", name: "Laptops"}
         )
         |> render_submit()
 
       assert html =~ "created successfully"
 
       resource = Repo.get_by!(Portal.Resource, account_id: account.id, name: "Laptops")
-      assert resource.type == :dynamic_device_pool
+      assert resource.type == :device_pool
       assert resource.device_membership_criteria == Portal.Resource.DeviceMembershipCriteria.own_devices()
       assert is_nil(resource.address)
       assert is_nil(resource.site_id)
@@ -1032,7 +1032,7 @@ defmodule PortalWeb.ResourcesTest do
       account: account,
       actor: actor
     } do
-      resource = dynamic_device_pool_resource_fixture(account: account, name: "Your devices")
+      resource = own_devices_pool_resource_fixture(account: account, name: "Your devices")
 
       {:ok, lv, html} =
         conn
@@ -1052,7 +1052,7 @@ defmodule PortalWeb.ResourcesTest do
 
       updated = Repo.get_by!(Portal.Resource, account_id: account.id, id: resource.id)
       assert updated.name == "Own Devices"
-      assert updated.type == :dynamic_device_pool
+      assert updated.type == :device_pool
       assert updated.device_membership_criteria == Portal.Resource.DeviceMembershipCriteria.own_devices()
       assert is_nil(updated.address)
     end
@@ -1408,7 +1408,7 @@ defmodule PortalWeb.ResourcesTest do
       device = client_fixture(account: account, actor: actor)
 
       resource =
-        static_device_pool_resource_fixture(account: account, devices: [device])
+        device_pool_resource_fixture(account: account, devices: [device])
 
       {:ok, lv, _html} =
         conn
@@ -1426,7 +1426,7 @@ defmodule PortalWeb.ResourcesTest do
       device = client_fixture(account: account, actor: actor)
 
       resource =
-        static_device_pool_resource_fixture(account: account, devices: [device])
+        device_pool_resource_fixture(account: account, devices: [device])
 
       {:ok, _lv, html} =
         conn
@@ -1446,7 +1446,7 @@ defmodule PortalWeb.ResourcesTest do
       device = client_fixture(account: account, actor: actor)
 
       resource =
-        static_device_pool_resource_fixture(account: account, devices: [device])
+        device_pool_resource_fixture(account: account, devices: [device])
 
       {:ok, _lv, html} =
         conn
@@ -1465,7 +1465,7 @@ defmodule PortalWeb.ResourcesTest do
       device = client_fixture(account: account, actor: actor)
 
       resource =
-        static_device_pool_resource_fixture(account: account, devices: [device])
+        device_pool_resource_fixture(account: account, devices: [device])
 
       :ok = Portal.Presence.Devices.Account.track(device)
 
@@ -1483,7 +1483,7 @@ defmodule PortalWeb.ResourcesTest do
       account: account,
       actor: actor
     } do
-      resource = static_device_pool_resource_fixture(account: account)
+      resource = device_pool_resource_fixture(account: account)
 
       {:ok, _lv, html} =
         conn
@@ -1499,7 +1499,7 @@ defmodule PortalWeb.ResourcesTest do
       account: account,
       actor: actor
     } do
-      static_device_pool_resource_fixture(account: account)
+      device_pool_resource_fixture(account: account)
 
       {:ok, _lv, html} =
         conn
@@ -1519,7 +1519,7 @@ defmodule PortalWeb.ResourcesTest do
         client_fixture(account: account, actor: actor, device_serial: "SERIAL-1234")
 
       resource =
-        static_device_pool_resource_fixture(account: account, devices: [device])
+        device_pool_resource_fixture(account: account, devices: [device])
 
       {:ok, lv, html} =
         conn
@@ -1554,7 +1554,7 @@ defmodule PortalWeb.ResourcesTest do
         )
 
       resource =
-        static_device_pool_resource_fixture(account: account, devices: [device])
+        device_pool_resource_fixture(account: account, devices: [device])
 
       {:ok, lv, _html} =
         conn
@@ -1576,7 +1576,7 @@ defmodule PortalWeb.ResourcesTest do
       device = client_fixture(account: account, actor: actor)
 
       resource =
-        static_device_pool_resource_fixture(account: account, devices: [device])
+        device_pool_resource_fixture(account: account, devices: [device])
 
       {:ok, lv, _html} =
         conn

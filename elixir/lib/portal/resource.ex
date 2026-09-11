@@ -22,7 +22,7 @@ defmodule Portal.Resource do
           address: String.t(),
           address_description: String.t() | nil,
           name: String.t(),
-          type: :cidr | :ip | :dns | :internet | :static_device_pool | :dynamic_device_pool,
+          type: :cidr | :ip | :dns | :internet | :device_pool,
           device_membership_criteria: Portal.Resource.DeviceMembershipCriteria.t() | nil,
           ip_stack: :ipv4_only | :ipv6_only | :dual,
           filters: [filter()],
@@ -40,8 +40,7 @@ defmodule Portal.Resource do
     field :address_description, :string
     field :name, :string
 
-    field :type, Ecto.Enum,
-      values: [:cidr, :ip, :dns, :internet, :static_device_pool, :dynamic_device_pool]
+    field :type, Ecto.Enum, values: [:cidr, :ip, :dns, :internet, :device_pool]
 
     field :device_membership_criteria, Portal.Resource.DeviceMembershipCriteria
 
@@ -56,7 +55,6 @@ defmodule Portal.Resource do
 
     has_many :policies, Portal.Policy, references: :id
     has_many :groups, through: [:policies, :group]
-    has_many :static_pool_members, Portal.StaticDevicePoolMember, references: :id
 
     timestamps()
   end
@@ -74,7 +72,7 @@ defmodule Portal.Resource do
     |> validate_address_format()
     |> check_constraint(:device_membership_criteria,
       name: :resources_device_membership_criteria_matches_type,
-      message: "must be set for dynamic device pools and empty for other types"
+      message: "must be set for device pools and empty for other types"
     )
     |> check_constraint(:ip_stack,
       name: :resources_ip_stack_not_null,
@@ -101,14 +99,14 @@ defmodule Portal.Resource do
   end
 
   @doc """
-  Attributes of the `Your devices` pool every account gets at creation: a dynamic
-  device pool holding each actor's own devices, reached at `<slug>.firezone.network`,
+  Attributes of the `Your devices` pool every account gets at creation: a device
+  pool holding each actor's own devices, reached at `<slug>.firezone.network`,
   see `Portal.Device.fqdn/1`.
   """
   @spec self_device_pool_attrs() :: map()
   def self_device_pool_attrs do
     %{
-      type: :dynamic_device_pool,
+      type: :device_pool,
       device_membership_criteria: Portal.Resource.DeviceMembershipCriteria.own_devices(),
       name: @self_device_pool_name
     }
@@ -186,8 +184,7 @@ defmodule Portal.Resource do
       {_, :cidr} -> validate_cidr_address(changeset)
       {_, :ip} -> validate_ip_address(changeset)
       {_, :internet} -> put_change(changeset, :address, nil)
-      {_, :static_device_pool} -> put_change(changeset, :address, nil)
-      {_, :dynamic_device_pool} -> put_change(changeset, :address, nil)
+      {_, :device_pool} -> put_change(changeset, :address, nil)
       _ -> changeset
     end
   end
@@ -397,7 +394,7 @@ defmodule Portal.Resource do
 
   defp validate_device_pool_site_id(changeset) do
     case fetch_field(changeset, :type) do
-      {_, type} when type in [:static_device_pool, :dynamic_device_pool] ->
+      {_, :device_pool} ->
         put_change(changeset, :site_id, nil)
 
       _ ->
@@ -407,7 +404,7 @@ defmodule Portal.Resource do
 
   defp validate_device_membership_criteria(changeset) do
     case fetch_field(changeset, :type) do
-      {_, :dynamic_device_pool} -> validate_required(changeset, [:device_membership_criteria])
+      {_, :device_pool} -> validate_required(changeset, [:device_membership_criteria])
       _ -> put_change(changeset, :device_membership_criteria, nil)
     end
   end
@@ -501,8 +498,8 @@ defmodule Portal.Resource do
   @doc """
     Matches a fully-qualified domain name against a DNS-style wildcard pattern.
 
-    Supports the same wildcard tokens that `:dns` and `:dynamic_device_pool` resource
-    addresses are validated against:
+    Supports the same wildcard tokens that `:dns` resource addresses are validated
+    against:
 
       * `**` — zero or more labels (with dots)
       * `*`  — zero or more characters within a single label (no dots)
@@ -524,10 +521,10 @@ defmodule Portal.Resource do
   def adapt_resource_for_version(resource, nil), do: resource
 
   def adapt_resource_for_version(
-        %{type: :static_device_pool} = resource,
+        %{type: :device_pool} = resource,
         %Portal.Device{type: :client} = client
       ) do
-    if Portal.Version.client_supports_static_device_pools?(client) do
+    if Portal.Version.client_supports_device_pools?(client) do
       adapt_resource_for_version(resource, client.last_seen_version)
     else
       nil

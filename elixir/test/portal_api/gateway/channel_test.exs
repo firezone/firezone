@@ -2759,7 +2759,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
              }
     end
 
-    test "does not send resource_updated for static_device_pool filter changes", %{
+    test "does not send resource_updated for device_pool filter changes", %{
       gateway: gateway,
       site: site,
       token: token,
@@ -2768,13 +2768,13 @@ defmodule PortalAPI.Gateway.ChannelTest do
       socket = join_channel(gateway, site, token)
       assert_push "init", _init_payload
 
-      resource = static_device_pool_resource_fixture(account: account)
+      resource = device_pool_resource_fixture(account: account)
 
       old_data = %{
         "id" => resource.id,
         "account_id" => resource.account_id,
         "name" => resource.name,
-        "type" => "static_device_pool",
+        "type" => "device_pool",
         "filters" => [],
         "ip_stack" => nil
       }

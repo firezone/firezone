@@ -2,14 +2,14 @@ defmodule PortalAPI.Client.Views.Resource do
   alias PortalAPI.Client.Views
   alias Portal.Cache.Cacheable
 
-  def render_many(resources, client_session \\ nil) do
+  def render_many(resources, client_session, protocol_version) do
     site_key = site_key(client_session)
 
-    Enum.map(resources, &render_cacheable(&1, site_key))
+    Enum.map(resources, &render_cacheable(&1, site_key, protocol_version))
   end
 
-  def render(%Cacheable.Resource{} = resource, client_session \\ nil) do
-    render_cacheable(resource, site_key(client_session))
+  def render(%Cacheable.Resource{} = resource, client_session, protocol_version) do
+    render_cacheable(resource, site_key(client_session), protocol_version)
   end
 
   @doc """
@@ -24,12 +24,20 @@ defmodule PortalAPI.Client.Views.Resource do
     }
   end
 
-  defp render_cacheable(%Cacheable.Resource{} = resource, site_key) do
+  defp render_cacheable(%Cacheable.Resource{} = resource, site_key, protocol_version) do
     resource
     |> Map.from_struct()
     |> Map.put(:id, Ecto.UUID.load!(resource.id))
+    |> put_wire_pool_type(protocol_version)
     |> render_resource(site_key)
   end
+
+  # The v2 protocol knows device pools as `static_device_pool` with their members inline.
+  defp put_wire_pool_type(%{type: :device_pool} = resource, protocol_version)
+       when protocol_version < 3,
+       do: %{resource | type: :static_device_pool}
+
+  defp put_wire_pool_type(resource, _protocol_version), do: resource
 
   defp render_resource(%{type: :internet} = resource, site_key) do
     %{
@@ -66,10 +74,10 @@ defmodule PortalAPI.Client.Views.Resource do
     }
   end
 
-  defp render_resource(%{type: :dynamic_device_pool} = resource, _site_key) do
+  defp render_resource(%{type: :device_pool} = resource, _site_key) do
     %{
       id: resource.id,
-      type: :dynamic_device_pool,
+      type: :device_pool,
       name: resource.name,
       filters: Enum.flat_map(resource.filters, &render_filter/1)
     }

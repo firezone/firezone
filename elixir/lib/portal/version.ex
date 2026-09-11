@@ -70,25 +70,25 @@ defmodule Portal.Version do
     end
   end
 
-  # Static device pool resources require:
+  # Device pool resources require:
   #   apple    >= 1.5.16
   #   gui      >= 1.5.13 (windows / linux gui)
   #   headless >= 1.5.9  (windows / linux headless)
   #   android  >= 1.5.11
-  def client_supports_static_device_pools?(%Device{type: :client, last_seen_version: nil}),
+  def client_supports_device_pools?(%Device{type: :client, last_seen_version: nil}),
     do: false
 
-  def client_supports_static_device_pools?(%Device{
+  def client_supports_device_pools?(%Device{
         type: :client,
         actor: %Portal.Actor{type: :service_account},
         last_seen_version: version
       }),
       do: Version.compare(version, "1.5.9") != :lt
 
-  def client_supports_static_device_pools?(%Device{type: :client, last_seen_user_agent: nil}),
+  def client_supports_device_pools?(%Device{type: :client, last_seen_user_agent: nil}),
     do: false
 
-  def client_supports_static_device_pools?(%Device{type: :client} = client) do
+  def client_supports_device_pools?(%Device{type: :client} = client) do
     if String.contains?(client.last_seen_user_agent, "headless-client/") do
       Version.compare(client.last_seen_version, "1.5.9") != :lt
     else
@@ -99,12 +99,6 @@ defmodule Portal.Version do
       end
     end
   end
-
-  # Dynamic device pools need the device domain messages (`resolve_device_domain` and
-  # `request_device_access`), which are the v3 client control protocol. The argument is
-  # the protocol version of the channel the client joined, see `PortalAPI.Client.V3.Channel`.
-  def client_supports_dynamic_device_pools?(protocol_version) when is_integer(protocol_version),
-    do: protocol_version >= 3
 
   # Receiving `client_device_access_authorized` / `client_device_access_denied` messages
   # for client-to-client connections requires:

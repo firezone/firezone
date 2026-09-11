@@ -117,5 +117,23 @@ defmodule Portal.Changes.Hooks.ClientsTest do
       assert_receive %Change{op: :delete, old_struct: %Device{} = deleted_client, lsn: 0}
       assert deleted_client.id == client.id
     end
+
+    test "removes the client from the pools that list it" do
+      account = account_fixture()
+      client = client_fixture(account: account)
+      other = client_fixture(account: account)
+
+      pool =
+        Portal.ResourceFixtures.device_pool_resource_fixture(account: account, devices: [client, other])
+
+      old_data = %{"id" => client.id, "type" => "client", "account_id" => client.account_id}
+
+      assert :ok == on_delete(0, old_data)
+
+      pool = Repo.get_by!(Portal.Resource, id: pool.id)
+
+      assert Portal.Resource.DeviceMembershipCriteria.device_ids(pool.device_membership_criteria) ==
+               {:ok, [other.id]}
+    end
   end
 end

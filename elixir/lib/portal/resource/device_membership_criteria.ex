@@ -1,16 +1,17 @@
 defmodule Portal.Resource.DeviceMembershipCriteria do
   @moduledoc """
-  The criteria a dynamic device pool uses to decide which devices it holds, stored as
-  JSON in `resources.device_membership_criteria`.
+  The criteria a device pool uses to decide which devices it holds, stored as JSON in
+  `resources.device_membership_criteria`.
 
-  It is one leaf that compares a device column against an attribute of the
-  subject asking for access. Wire shape:
+  It is one leaf that compares a device column against a literal or an attribute of
+  the subject asking for access. Wire shapes:
 
+      {"device": {"field": "id", "op": "in", "value": ["<device id>", ...]}}
       {"device": {"field": "actor_id", "op": "eq", "value": {"subject": "actor_id"}}}
 
   The top-level key names where the field lives (`device` is the devices table), so
-  other sources, combinators and literal values can be added later without changing
-  stored criteria.
+  other sources, combinators and values can be added later without changing stored
+  criteria.
   """
   use Ecto.Type
 
@@ -18,15 +19,13 @@ defmodule Portal.Resource.DeviceMembershipCriteria do
 
   @type t :: %__MODULE__{
           provider: :device,
-          field: :actor_id,
-          op: :eq,
-          value: {:subject, :actor_id}
+          field: :id | :actor_id,
+          op: :in | :eq,
+          value: {:literal, [Ecto.UUID.t()]} | {:subject, :actor_id}
         }
 
   defstruct [:provider, :field, :op, :value]
 
-  @fields %{"device" => %{"actor_id" => :actor_id}}
-  @ops %{"eq" => :eq}
   @subject_attrs %{"actor_id" => :actor_id}
 
   @doc "The criteria that hold the devices of the actor asking."
@@ -35,8 +34,23 @@ defmodule Portal.Resource.DeviceMembershipCriteria do
     %__MODULE__{provider: :device, field: :actor_id, op: :eq, value: {:subject, :actor_id}}
   end
 
+  @doc "The criteria that hold exactly the given devices."
+  @spec devices([Ecto.UUID.t()]) :: t()
+  def devices(device_ids) when is_list(device_ids) do
+    %__MODULE__{provider: :device, field: :id, op: :in, value: {:literal, normalize_ids(device_ids)}}
+  end
+
+  @doc "The device ids of criteria that list their devices, `:error` for any other criteria."
+  @spec device_ids(t() | nil) :: {:ok, [Ecto.UUID.t()]} | :error
+  def device_ids(%__MODULE__{field: :id, op: :in, value: {:literal, device_ids}}), do: {:ok, device_ids}
+  def device_ids(_criteria), do: :error
+
   @doc "Whether `device` is in a pool with these criteria when `subject` asks."
   @spec member?(t(), Portal.Device.t(), Subject.t()) :: boolean()
+  def member?(%__MODULE__{provider: :device, field: field, op: :in, value: {:literal, values}}, device, _subject) do
+    Map.fetch!(device, field) in values
+  end
+
   def member?(%__MODULE__{provider: :device, field: field, op: :eq, value: value}, device, subject) do
     Map.fetch!(device, field) == resolve_value(value, subject)
   end
@@ -61,36 +75,52 @@ defmodule Portal.Resource.DeviceMembershipCriteria do
 
   @doc "The wire shape of the criteria."
   @spec to_map(t()) :: map()
-  def to_map(%__MODULE__{provider: provider, field: field, op: op, value: {:subject, attr}}) do
+  def to_map(%__MODULE__{provider: provider, field: field, op: op, value: value}) do
     %{
       Atom.to_string(provider) => %{
         "field" => Atom.to_string(field),
         "op" => Atom.to_string(op),
-        "value" => %{"subject" => Atom.to_string(attr)}
+        "value" => value_to_map(value)
       }
     }
   end
 
-  defp parse(%{"device" => %{"field" => field, "op" => op, "value" => value} = leaf} = map)
-       when map_size(map) == 1 and map_size(leaf) == 3 do
-    with {:ok, field} <- Map.fetch(@fields["device"], field),
-         {:ok, op} <- Map.fetch(@ops, op),
-         {:ok, value} <- parse_value(value) do
-      {:ok, %__MODULE__{provider: :device, field: field, op: op, value: value}}
-    else
+  defp value_to_map({:literal, values}), do: values
+  defp value_to_map({:subject, attr}), do: %{"subject" => Atom.to_string(attr)}
+
+  defp parse(%{"device" => %{"field" => "id", "op" => "in", "value" => values} = leaf} = map)
+       when map_size(map) == 1 and map_size(leaf) == 3 and is_list(values) do
+    values
+    |> Enum.reduce_while({:ok, []}, fn value, {:ok, acc} ->
+      case Ecto.UUID.cast(value) do
+        {:ok, id} -> {:cont, {:ok, [id | acc]}}
+        :error -> {:halt, :error}
+      end
+    end)
+    |> case do
+      {:ok, ids} -> {:ok, devices(ids)}
       :error -> :error
+    end
+  end
+
+  defp parse(%{"device" => %{"field" => "actor_id", "op" => "eq", "value" => value} = leaf} = map)
+       when map_size(map) == 1 and map_size(leaf) == 3 do
+    with {:ok, value} <- parse_subject_value(value) do
+      {:ok, %__MODULE__{provider: :device, field: :actor_id, op: :eq, value: value}}
     end
   end
 
   defp parse(_map), do: :error
 
-  defp parse_value(%{"subject" => attr} = value) when map_size(value) == 1 do
+  defp parse_subject_value(%{"subject" => attr} = value) when map_size(value) == 1 do
     with {:ok, attr} <- Map.fetch(@subject_attrs, attr) do
       {:ok, {:subject, attr}}
     end
   end
 
-  defp parse_value(_value), do: :error
+  defp parse_subject_value(_value), do: :error
 
   defp resolve_value({:subject, :actor_id}, %Subject{actor: %{id: actor_id}}), do: actor_id
+
+  defp normalize_ids(device_ids), do: device_ids |> Enum.uniq() |> Enum.sort()
 end

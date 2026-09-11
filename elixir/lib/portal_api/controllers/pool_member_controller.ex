@@ -14,9 +14,10 @@ defmodule PortalAPI.PoolMemberController do
   operation :index,
     summary: "List Pool Members",
     description: """
-    Lists the Clients belonging to a `static_device_pool` Resource.
+    Lists the Clients a `device_pool` Resource names as its members.
 
-    Returns 400 for any other Resource type - only device pools have members.
+    Returns 400 for any other Resource type, and for a device pool whose members are
+    each actor's own devices rather than a list.
     """,
     parameters: [
       resource_id: [
@@ -166,14 +167,23 @@ defmodule PortalAPI.PoolMemberController do
     Error.handle(conn, {:error, :bad_request})
   end
 
-  # Only static_device_pool Resources have members. Every other type is
-  # rejected rather than returning an empty list, so a request against
-  # the wrong Resource fails loudly instead of looking like an empty pool.
-  defp validate_device_pool(%Resource{type: :static_device_pool}), do: :ok
+  # Only device pools that list their members have a member list. Everything else is
+  # rejected rather than returning an empty list, so a request against the wrong
+  # Resource fails loudly instead of looking like an empty pool.
+  defp validate_device_pool(%Resource{type: :device_pool} = resource) do
+    case Resource.DeviceMembershipCriteria.device_ids(resource.device_membership_criteria) do
+      {:ok, _device_ids} ->
+        :ok
+
+      :error ->
+        {:error, :bad_request,
+         reason: "Resource has no member list; its members are each actor's own devices"}
+    end
+  end
 
   defp validate_device_pool(%Resource{type: type}) do
     {:error, :bad_request,
-     reason: "Resource type #{type} has no pool members; only static_device_pool does"}
+     reason: "Resource type #{type} has no pool members; only device_pool does"}
   end
 
   # Both PATCH lists are plain arrays of Client IDs. Only "add" is checked
@@ -232,7 +242,7 @@ defmodule PortalAPI.PoolMemberController do
     import Ecto.Query
     alias Portal.Device
     alias Portal.Safe
-    alias Portal.StaticDevicePoolMember
+    alias Portal.Resource.DeviceMembershipCriteria
 
     def fetch_resource(id, subject) do
       from(r in Portal.Resource, where: r.id == ^id)
@@ -265,12 +275,18 @@ defmodule PortalAPI.PoolMemberController do
 
     defp filter_by_resource_id(queryable, resource_id) do
       queryable =
-        join(queryable, :inner, [devices: d], m in StaticDevicePoolMember,
-          on: m.device_id == d.id and m.account_id == d.account_id,
-          as: :members
+        join(queryable, :inner, [devices: d], r in Portal.Resource,
+          on:
+            r.account_id == d.account_id and r.id == ^resource_id and
+              fragment(
+                "jsonb_exists(? #> '{device,value}', ?::text)",
+                r.device_membership_criteria,
+                d.id
+              ),
+          as: :pool
         )
 
-      {queryable, dynamic([members: m], m.resource_id == ^resource_id)}
+      {queryable, dynamic(true)}
     end
 
     def cursor_fields do
@@ -281,13 +297,9 @@ defmodule PortalAPI.PoolMemberController do
     end
 
     @doc """
-    Verifies every given ID names a Client device in the subject's account.
-
-    The `static_device_pool_members_device_id_device_type_fkey` constraint
-    would reject a Gateway anyway, but only as an opaque constraint error
-    at insert time - and a nonexistent or cross-account ID would surface
-    as a plain foreign-key violation. Checking up front turns all three
-    into one 422 that names the offending IDs.
+    Verifies every given ID names a Client device in the subject's account, so a
+    Gateway, a nonexistent or a cross-account ID answers with one 422 that names
+    the offending IDs.
     """
     def validate_client_devices([], _subject), do: :ok
 
@@ -321,23 +333,15 @@ defmodule PortalAPI.PoolMemberController do
     end
 
     @doc """
-    Replaces the pool's membership with `device_ids`.
-
-    Mirrors `PortalWeb.Live.Resources.Components.Database.sync_static_pool_members/3`:
-    diff against what's stored and apply only the difference, so members
-    that aren't changing keep their rows - and their IDs - rather than
-    being deleted and reinserted, which would churn the replication
-    stream the data plane consumes.
+    Replaces the pool's member list with `device_ids`.
     """
     def replace_members(resource, device_ids, subject) do
       device_ids = Enum.uniq(device_ids)
 
       Safe.transact(fn ->
-        existing = existing_member_ids(resource, subject)
-
-        with :ok <- delete_members(resource, existing -- device_ids, subject),
-             :ok <- insert_members(resource, device_ids -- existing, subject) do
-          {:ok, Enum.sort(device_ids)}
+        with {:ok, _resource} <- lock_resource(resource, subject),
+             {:ok, resource} <- put_members(resource, device_ids, subject) do
+          {:ok, member_ids(resource)}
         end
       end)
     end
@@ -354,67 +358,44 @@ defmodule PortalAPI.PoolMemberController do
       remove = Enum.uniq(remove) -- add
 
       Safe.transact(fn ->
-        existing = existing_member_ids(resource, subject)
-
-        # Deleting an ID that isn't a member matches no rows, so remove
-        # needs no intersection with existing first.
-        with :ok <- delete_members(resource, remove, subject),
-             :ok <- insert_members(resource, add -- existing, subject) do
-          {:ok, Enum.sort(Enum.uniq((existing -- remove) ++ add))}
+        with {:ok, resource} <- lock_resource(resource, subject),
+             existing = member_ids(resource),
+             {:ok, resource} <-
+               put_members(resource, Enum.uniq((existing -- remove) ++ add), subject) do
+          {:ok, member_ids(resource)}
         end
       end)
     end
 
-    defp existing_member_ids(resource, subject) do
-      from(m in StaticDevicePoolMember,
-        where: m.resource_id == ^resource.id,
-        select: m.device_id
-      )
+    # Both writes read the list before rewriting it, so concurrent patches queue up
+    # on the row instead of overwriting each other.
+    defp lock_resource(resource, subject) do
+      from(r in Portal.Resource, where: r.id == ^resource.id, lock: "FOR UPDATE")
       |> Safe.scoped(subject)
-      |> Safe.all()
+      |> Safe.one()
       |> case do
-        {:error, _reason} -> []
-        ids -> ids
+        %Portal.Resource{} = resource -> {:ok, resource}
+        nil -> {:error, :not_found}
+        {:error, reason} -> {:error, reason}
       end
     end
 
-    defp delete_members(_resource, [], _subject), do: :ok
-
-    defp delete_members(resource, device_ids, subject) do
-      from(m in StaticDevicePoolMember,
-        where: m.resource_id == ^resource.id and m.device_id in ^device_ids
+    defp put_members(resource, device_ids, subject) do
+      resource
+      |> Ecto.Changeset.cast(
+        %{device_membership_criteria: DeviceMembershipCriteria.devices(device_ids)},
+        [:device_membership_criteria]
       )
+      |> Portal.Resource.changeset()
       |> Safe.scoped(subject)
-      |> Safe.delete_all()
-      |> case do
-        {:error, reason} -> {:error, reason}
-        {_count, _} -> :ok
-      end
+      |> Safe.update()
     end
 
-    defp insert_members(_resource, [], _subject), do: :ok
+    defp member_ids(resource) do
+      {:ok, device_ids} =
+        DeviceMembershipCriteria.device_ids(resource.device_membership_criteria)
 
-    defp insert_members(resource, device_ids, subject) do
-      entries =
-        Enum.map(device_ids, fn device_id ->
-          %{
-            id: Ecto.UUID.generate(),
-            account_id: resource.account_id,
-            resource_id: resource.id,
-            device_id: device_id,
-            device_type: :client
-          }
-        end)
-
-      Safe.scoped(subject)
-      |> Safe.insert_all(StaticDevicePoolMember, entries,
-        on_conflict: :nothing,
-        conflict_target: [:account_id, :resource_id, :device_id]
-      )
-      |> case do
-        {:error, reason} -> {:error, reason}
-        {_count, _} -> :ok
-      end
+      device_ids
     end
   end
 end
