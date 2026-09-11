@@ -44,11 +44,16 @@
         # identity when started at its real path.
         firezone='\(bundlePath)/Contents/Resources/firezone'
 
-        echo "This symlinks"
-        echo "  $firezone"
-        echo "to /usr/local/bin/firezone and writes shell completions alongside it."
-        echo "Both need administrator privileges."
+        # Terminal opens on the previous session and echoes the path it just ran,
+        # neither of which the reader needs.
+        clear
+
+        echo "Installing the Firezone CLI into /usr/local/bin, with completions for"
+        echo "zsh, bash and fish. This needs administrator privileges."
         echo
+
+        # Ask once, up front, rather than at whichever command needs it first.
+        sudo -v -p "Password for %u: "
 
         sudo mkdir -p /usr/local/bin
         sudo ln -sf "$firezone" /usr/local/bin/firezone
