@@ -12,7 +12,6 @@ defmodule Portal.Repo.Migrations.AddSlugToDevices do
   use Ecto.Migration
 
   @disable_ddl_transaction true
-  @disable_migration_lock true
 
   def up do
     alter table(:devices) do
