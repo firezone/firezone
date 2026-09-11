@@ -7,7 +7,13 @@ defmodule PortalWeb.SignUpTest do
   alias Portal.Mocks.Stripe
 
   @sign_up_token_salt "sign_up_email_v1"
-  @survey %{motivation: "security", switching: "false", referral_source: "github"}
+  @survey %{
+    referral_source: "github",
+    motivation: "security",
+    use_case: "servers",
+    role: "devops",
+    switching: "false"
+  }
 
   describe "direct signup conversions" do
     for {country, allowed} <- [{"US", true}, {"DE", false}] do
@@ -148,7 +154,7 @@ defmodule PortalWeb.SignUpTest do
         )
         |> render_submit()
 
-      assert html =~ "at least 3 character"
+      assert html =~ "too short"
       refute html =~ "Your account has been created!"
     end
 
@@ -301,9 +307,11 @@ defmodule PortalWeb.SignUpTest do
             "account" => %{"name" => "Honest Corp"},
             "actor" => %{"name" => "Ada Lovelace"},
             "sign_up_survey" => %{
+              "referral_source" => "github",
               "motivation" => "security",
-              "switching" => "false",
-              "referral_source" => "github"
+              "use_case" => "servers",
+              "role" => "devops",
+              "switching" => "false"
             }
           }
         })
@@ -394,7 +402,7 @@ defmodule PortalWeb.SignUpTest do
         )
         |> render_submit()
 
-      assert html =~ "at least 3 character"
+      assert html =~ "too short"
       refute html =~ "Check your email"
     end
 
@@ -451,7 +459,7 @@ defmodule PortalWeb.SignUpTest do
         |> form("form", registration: %{email: "not-an-email"})
         |> render_change()
 
-      assert html =~ "is an invalid email address"
+      assert html =~ "invalid email"
     end
   end
 
@@ -538,14 +546,16 @@ defmodule PortalWeb.SignUpTest do
   describe "sign-up survey" do
     test "renders the survey questions on both forms", %{conn: conn} do
       {:ok, _lv, html} = live(conn, ~p"/sign_up/email")
-      assert html =~ "What prompted you to try Firezone?"
-      assert html =~ "Are you switching from another VPN or ZTNA solution?"
-      assert html =~ "How did you first hear about Firezone?"
+      assert html =~ "How did you hear about Firezone?"
+      assert html =~ "Why are you trying Firezone?"
+      assert html =~ "What are you planning to use Firezone for?"
+      assert html =~ "What best describes your role?"
+      assert html =~ "Are you replacing another VPN or ZTNA tool?"
       refute html =~ "Which one?"
 
       {:ok, _lv, html} = live(with_google_identity(conn), ~p"/sign_up/google")
-      assert html =~ "What prompted you to try Firezone?"
-      assert html =~ "How did you first hear about Firezone?"
+      assert html =~ "How did you hear about Firezone?"
+      assert html =~ "What best describes your role?"
     end
 
     test "unanswered questions keep the form with errors", %{conn: conn} do
@@ -558,7 +568,7 @@ defmodule PortalWeb.SignUpTest do
             email: "survey@example.com",
             account: %{name: "Survey Corp"},
             actor: %{name: "Survey User"},
-            sign_up_survey: %{motivation: "", switching: "", referral_source: ""}
+            sign_up_survey: %{referral_source: "", motivation: "", use_case: "", role: "", switching: ""}
           }
         )
         |> render_submit()
@@ -586,7 +596,7 @@ defmodule PortalWeb.SignUpTest do
             email: "switcher@example.com",
             account: %{name: "Switcher Corp"},
             actor: %{name: "Switcher"},
-            sign_up_survey: %{motivation: "cost", switching: "true", referral_source: "reddit"}
+            sign_up_survey: %{@survey | switching: "true"}
           }
         )
         |> render_submit()
@@ -613,19 +623,14 @@ defmodule PortalWeb.SignUpTest do
             email: "other@example.com",
             account: %{name: "Other Corp"},
             actor: %{name: "Other User"},
-            sign_up_survey: %{
-              motivation: "other",
-              motivation_other: other,
-              switching: "false",
-              referral_source: "github"
-            }
+            sign_up_survey: Map.merge(@survey, %{motivation: "other", motivation_other: other})
           }
         )
         |> render_submit()
       end
 
       assert submit.("   ") =~ "can&#39;t be blank"
-      assert submit.(String.duplicate("a", 256)) =~ "should be at most 255 character"
+      assert submit.(String.duplicate("a", 256)) =~ "too long"
       refute_email_sent()
       assert submit.("Needed IPv6 support") =~ "Check your email"
       assert_email_sent()
@@ -643,7 +648,9 @@ defmodule PortalWeb.SignUpTest do
 
       lv
       |> form("#google-sign-up-form",
-        registration: %{sign_up_survey: %{switching: "true", referral_source: "other"}}
+        registration: %{
+          sign_up_survey: %{referral_source: "other", use_case: "other", role: "other", switching: "true"}
+        }
       )
       |> render_change()
 
@@ -663,12 +670,16 @@ defmodule PortalWeb.SignUpTest do
             account: %{name: "Survey Corp"},
             actor: %{name: "Ada Lovelace"},
             sign_up_survey: %{
+              referral_source: "other",
+              referral_source_other: "A podcast",
               motivation: "open_source",
+              use_case: "other",
+              use_case_other: "Lab network",
+              role: "other",
+              role_other: "Hobbyist",
               switching: "true",
               previous_solution: "other",
-              previous_solution_other: "  Homegrown WireGuard  ",
-              referral_source: "other",
-              referral_source_other: "A podcast"
+              previous_solution_other: "  Homegrown WireGuard  "
             }
           }
         )
@@ -679,13 +690,17 @@ defmodule PortalWeb.SignUpTest do
       account = Portal.Repo.get_by!(Portal.Account, name: "Survey Corp")
 
       assert %Portal.Account.Metadata.SignUpSurvey{
+               referral_source: "other",
+               referral_source_other: "A podcast",
                motivation: "open_source",
                motivation_other: nil,
+               use_case: "other",
+               use_case_other: "Lab network",
+               role: "other",
+               role_other: "Hobbyist",
                switching: true,
                previous_solution: "other",
-               previous_solution_other: "Homegrown WireGuard",
-               referral_source: "other",
-               referral_source_other: "A podcast"
+               previous_solution_other: "Homegrown WireGuard"
              } = account.metadata.sign_up_survey
     end
 
@@ -707,9 +722,11 @@ defmodule PortalWeb.SignUpTest do
           account: %{name: "Token Corp"},
           actor: %{name: "Token User"},
           sign_up_survey: %{
+            referral_source: "hacker_news",
             motivation: "simplicity",
-            switching: "false",
-            referral_source: "hacker_news"
+            use_case: "personal",
+            role: "software_engineer",
+            switching: "false"
           }
         }
       )

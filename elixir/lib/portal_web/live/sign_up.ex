@@ -38,7 +38,7 @@ defmodule PortalWeb.SignUp do
       |> validate_required([:email])
       |> trim_change(:email)
       |> trim_change(:phone)
-      |> validate_email(:email)
+      |> validate_email(:email, message: "invalid email")
       |> validate_email_allowed()
       |> cast_embed(:account, with: fn _account, a -> create_account_changeset(a) end)
       |> cast_embed(:actor, with: fn _actor, a -> create_actor_changeset(a) end)
@@ -56,7 +56,7 @@ defmodule PortalWeb.SignUp do
       validate_change(changeset, :email, fn :email, email ->
         if email_allowed?(email, whitelisted_domains),
           do: [],
-          else: [email: "this email domain is not allowed at this time"]
+          else: [email: "domain not allowed"]
       end)
     end
 
@@ -79,7 +79,7 @@ defmodule PortalWeb.SignUp do
       %Actor{}
       |> cast(attrs, [:name])
       |> validate_required([:name])
-      |> validate_length(:name, min: 1, max: 255)
+      |> validate_length(:name, max: 255, message: "too long")
     end
   end
 
@@ -257,21 +257,23 @@ defmodule PortalWeb.SignUp do
       <.input
         field={@form[:email]}
         type="email"
+        beside_errors
         label="Work Email"
         placeholder="E.g. foo@example.com"
         required
         autofocus
-        phx-debounce="300"
+        phx-debounce="blur"
       />
 
       <.inputs_for :let={account} field={@form[:account]}>
         <.input
           field={account[:name]}
           type="text"
+          beside_errors
           label="Organization Name"
           placeholder="E.g. Example Corp"
           required
-          phx-debounce="300"
+          phx-debounce="blur"
         />
       </.inputs_for>
 
@@ -279,10 +281,11 @@ defmodule PortalWeb.SignUp do
         <.input
           field={actor[:name]}
           type="text"
+          beside_errors
           label="Your Name"
           placeholder="E.g. John Smith"
           required
-          phx-debounce="300"
+          phx-debounce="blur"
         />
         <.input field={actor[:type]} type="hidden" />
       </.inputs_for>
@@ -293,6 +296,7 @@ defmodule PortalWeb.SignUp do
         <.input
           field={@form[:phone]}
           type="text"
+          beside_errors
           label="Phone"
           placeholder="123-456-7890"
           tabindex="-1"
@@ -382,11 +386,12 @@ defmodule PortalWeb.SignUp do
         <.input
           field={account[:name]}
           type="text"
+          beside_errors
           label="Organization Name"
           placeholder="E.g. Example Corp"
           required
           autofocus
-          phx-debounce="300"
+          phx-debounce="blur"
         />
       </.inputs_for>
 
@@ -394,10 +399,11 @@ defmodule PortalWeb.SignUp do
         <.input
           field={actor[:name]}
           type="text"
+          beside_errors
           label="Your Name"
           placeholder="E.g. John Smith"
           required
-          phx-debounce="300"
+          phx-debounce="blur"
         />
       </.inputs_for>
 
@@ -423,14 +429,46 @@ defmodule PortalWeb.SignUp do
     """
   end
 
+  @referral_source_options [
+    {"Google / web search", "search"},
+    {"GitHub", "github"},
+    {"Reddit", "reddit"},
+    {"Hacker News", "hacker_news"},
+    {"Friend or colleague", "word_of_mouth"},
+    {"Blog or article", "blog"},
+    {"Social media", "social_media"},
+    {"Conference or event", "event"},
+    {"Other", "other"}
+  ]
+
   @motivation_options [
     {"Better speed / performance", "performance"},
-    {"More granular access controls", "access_controls"},
-    {"Simpler to set up and manage", "simplicity"},
+    {"More control over who can access what", "access_controls"},
+    {"Easier to set up and manage", "simplicity"},
     {"Better security", "security"},
     {"Open source", "open_source"},
     {"Lower cost", "cost"},
-    {"Something else", "other"}
+    {"Other", "other"}
+  ]
+
+  @use_case_options [
+    {"Personal use / homelab", "personal"},
+    {"Access to servers or infrastructure", "servers"},
+    {"Access to internal apps", "internal_apps"},
+    {"Remote access for employees", "employees"},
+    {"Access for contractors or partners", "contractors"},
+    {"Other", "other"}
+  ]
+
+  @role_options [
+    {"IT / Infrastructure", "it"},
+    {"Security", "security"},
+    {"DevOps / SRE", "devops"},
+    {"Software Engineer", "software_engineer"},
+    {"Network Engineer", "network_engineer"},
+    {"Founder / Executive", "founder"},
+    {"Consultant / MSP", "consultant"},
+    {"Other", "other"}
   ]
 
   @previous_solution_options [
@@ -445,97 +483,110 @@ defmodule PortalWeb.SignUp do
     {"Other", "other"}
   ]
 
-  @referral_source_options [
-    {"Google / web search", "search"},
-    {"GitHub", "github"},
-    {"Reddit", "reddit"},
-    {"Hacker News", "hacker_news"},
-    {"Word of mouth", "word_of_mouth"},
-    {"Blog / article", "blog"},
-    {"Social media", "social_media"},
-    {"Conference / event", "event"},
-    {"Other", "other"}
-  ]
-
   attr :form, :any, required: true
 
   defp survey_fields(assigns) do
     assigns =
       assign(assigns,
-        motivation_options: @motivation_options,
-        previous_solution_options: @previous_solution_options,
         referral_source_options: @referral_source_options,
+        motivation_options: @motivation_options,
+        use_case_options: @use_case_options,
+        role_options: @role_options,
+        previous_solution_options: @previous_solution_options,
         other_max_length: Portal.Account.Metadata.SignUpSurvey.other_max_length()
       )
 
     ~H"""
     <.inputs_for :let={survey} field={@form[:sign_up_survey]}>
-      <.input
+      <.survey_question
+        field={survey[:referral_source]}
+        other_field={survey[:referral_source_other]}
+        label="How did you hear about Firezone?"
+        options={@referral_source_options}
+        other_label="Where did you hear about us?"
+        other_placeholder="Tell us in a few words"
+        other_max_length={@other_max_length}
+      />
+      <.survey_question
         field={survey[:motivation]}
-        type="select"
-        label="What prompted you to try Firezone?"
-        prompt="Select one"
+        other_field={survey[:motivation_other]}
+        label="Why are you trying Firezone?"
         options={@motivation_options}
-        required
+        other_label="What are you hoping to get?"
+        other_placeholder="Tell us in a few words"
+        other_max_length={@other_max_length}
       />
-      <.input
-        :if={survey[:motivation].value == "other"}
-        field={survey[:motivation_other]}
-        type="text"
-        label="What prompted you?"
-        placeholder="Tell us in a few words"
-        maxlength={@other_max_length}
-        required
-        phx-debounce="300"
+      <.survey_question
+        field={survey[:use_case]}
+        other_field={survey[:use_case_other]}
+        label="What are you planning to use Firezone for?"
+        options={@use_case_options}
+        other_label="What will you use it for?"
+        other_placeholder="Tell us in a few words"
+        other_max_length={@other_max_length}
       />
-
+      <.survey_question
+        field={survey[:role]}
+        other_field={survey[:role_other]}
+        label="What best describes your role?"
+        options={@role_options}
+        other_label="What is your role?"
+        other_placeholder="E.g. Product Manager"
+        other_max_length={@other_max_length}
+      />
       <.input
         field={survey[:switching]}
         type="select"
-        label="Are you switching from another VPN or ZTNA solution?"
+        beside_errors
+        label="Are you replacing another VPN or ZTNA tool?"
         prompt="Select one"
         options={[{"Yes", "true"}, {"No", "false"}]}
         required
       />
-      <.input
+      <.survey_question
         :if={survey[:switching].value in [true, "true"]}
         field={survey[:previous_solution]}
-        type="select"
+        other_field={survey[:previous_solution_other]}
         label="Which one?"
-        prompt="Select one"
         options={@previous_solution_options}
-        required
-      />
-      <.input
-        :if={survey[:switching].value in [true, "true"] and survey[:previous_solution].value == "other"}
-        field={survey[:previous_solution_other]}
-        type="text"
-        label="Which solution?"
-        placeholder="E.g. Example VPN"
-        maxlength={@other_max_length}
-        required
-        phx-debounce="300"
-      />
-
-      <.input
-        field={survey[:referral_source]}
-        type="select"
-        label="How did you first hear about Firezone?"
-        prompt="Select one"
-        options={@referral_source_options}
-        required
-      />
-      <.input
-        :if={survey[:referral_source].value == "other"}
-        field={survey[:referral_source_other]}
-        type="text"
-        label="Where did you hear about us?"
-        placeholder="Tell us in a few words"
-        maxlength={@other_max_length}
-        required
-        phx-debounce="300"
+        other_label="Which tool?"
+        other_placeholder="E.g. Example VPN"
+        other_max_length={@other_max_length}
       />
     </.inputs_for>
+    """
+  end
+
+  attr :field, Phoenix.HTML.FormField, required: true
+  attr :other_field, Phoenix.HTML.FormField, required: true
+  attr :label, :string, required: true
+  attr :options, :list, required: true
+  attr :other_label, :string, required: true
+  attr :other_placeholder, :string, required: true
+  attr :other_max_length, :integer, required: true
+
+  defp survey_question(assigns) do
+    ~H"""
+    <.input
+      field={@field}
+      type="select"
+      beside_errors
+      label={@label}
+      prompt="Select one"
+      options={@options}
+      required
+    />
+    <.input
+      :if={@field.value == "other"}
+      field={@other_field}
+      type="text"
+      beside_errors
+      label={@other_label}
+      placeholder={@other_placeholder}
+      maxlength={@other_max_length}
+      required
+      phx-debounce="blur"
+    />
     """
   end
 

@@ -23,7 +23,7 @@ defmodule Portal.AccountTest do
 
     test "rejects name exceeding maximum length" do
       changeset = build_changeset(%{name: String.duplicate("a", 65)})
-      assert %{name: ["should be at most 64 character(s)"]} = errors_on(changeset)
+      assert %{name: ["too long"]} = errors_on(changeset)
     end
 
     test "inserts slug at maximum length" do

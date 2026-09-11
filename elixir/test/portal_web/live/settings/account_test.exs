@@ -152,7 +152,7 @@ defmodule PortalWeb.Settings.AccountTest do
         |> form("form[phx-submit='submit_account_name']", %{account: %{name: "ab"}})
         |> render_change()
 
-      assert html =~ "should be at least 3 character(s)"
+      assert html =~ "too short"
     end
 
     test "saves updated account name", %{conn: conn, account: account, actor: actor} do
