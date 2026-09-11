@@ -120,11 +120,8 @@ impl ReferenceState {
                         }
                         client::Resource::Cidr(r) => client.add_cidr_resource(r.clone()),
                         client::Resource::Internet(r) => client.add_internet_resource(r.clone()),
-                        client::Resource::StaticDevicePool(r) => {
-                            client.add_static_device_pool_resource(r.clone());
-                        }
-                        client::Resource::DynamicDevicePool(r) => {
-                            client.add_dynamic_device_pool_resource(r.clone());
+                        client::Resource::DevicePool(r) => {
+                            client.add_device_pool_resource(r.clone());
                         }
                     });
                 }
@@ -165,8 +162,7 @@ impl ReferenceState {
                         client::Resource::Internet(_) => {
                             tracing::error!("Internet Resource cannot move site");
                         }
-                        client::Resource::StaticDevicePool(_)
-                        | client::Resource::DynamicDevicePool(_) => {}
+                        client::Resource::DevicePool(_) => {}
                     })
                 }
             }
@@ -184,12 +180,7 @@ impl ReferenceState {
                     client.exec_mut(|c| match &new_resource {
                         client::Resource::Dns(r) => c.add_dns_resource(r.clone()),
                         client::Resource::Cidr(r) => c.add_cidr_resource(r.clone()),
-                        client::Resource::StaticDevicePool(r) => {
-                            c.add_static_device_pool_resource(r.clone());
-                        }
-                        client::Resource::DynamicDevicePool(r) => {
-                            c.add_dynamic_device_pool_resource(r.clone());
-                        }
+                        client::Resource::DevicePool(r) => c.add_device_pool_resource(r.clone()),
                         client::Resource::Internet(_) => unreachable!(),
                     })
                 }
@@ -214,15 +205,10 @@ impl ReferenceState {
                             client::Resource::Cidr(resource) => {
                                 client.add_cidr_resource(resource.clone())
                             }
-                            client::Resource::StaticDevicePool(resource) => {
-                                client.add_static_device_pool_resource(resource.clone())
+                            client::Resource::DevicePool(resource) => {
+                                client.add_device_pool_resource(resource.clone())
                             }
                             client::Resource::Internet(_) => {
-                                unreachable!(
-                                    "only user-editable resource types can replace one another"
-                                )
-                            }
-                            client::Resource::DynamicDevicePool(_) => {
                                 unreachable!(
                                     "only user-editable resource types can replace one another"
                                 )
@@ -231,20 +217,19 @@ impl ReferenceState {
                     });
                 }
             }
-            Transition::UpdateStaticDevicePool {
+            Transition::UpdateDevicePoolMembers {
                 pool_id,
-                new_devices,
+                members,
+                removed,
             } => {
-                let Some(new_pool) = state
-                    .portal
-                    .update_static_device_pool_members(*pool_id, new_devices.clone())
-                else {
-                    tracing::error!(%pool_id, "Unknown static device pool");
-                    return state;
-                };
+                state.portal.set_pool_members(*pool_id, members.clone());
 
-                for client in state.clients.values_mut() {
-                    client.exec_mut(|c| c.add_static_device_pool_resource(new_pool.clone()));
+                // The portal revokes every grant towards a device that left, which also
+                // drops that device's own grants through the pool.
+                for (client_id, client) in &mut state.clients {
+                    let peers = (!removed.contains(client_id)).then_some(removed);
+
+                    client.exec_mut(|c| c.forget_pool_grants(*pool_id, peers));
                 }
             }
             Transition::SetInternetResourceState {
@@ -257,16 +242,9 @@ impl ReferenceState {
                 let upstream_do53 = state.portal.upstream_do53();
                 let global_dns_records = &state.global_dns_records;
                 let icmp_error_hosts = &state.icmp_error_hosts;
-                let resolved_device = matches!(query.r_type, RecordType::A | RecordType::AAAA)
-                    .then(|| state.portal.resolve_device_domain(&query.domain))
-                    .flatten();
 
                 state.clients.get_mut(client_id).unwrap().exec_mut(|c| {
                     c.on_dns_query(query, upstream_do53, global_dns_records, icmp_error_hosts);
-
-                    if let Some((_, ipv4, ipv6)) = resolved_device {
-                        c.note_device_resolution(ipv4, ipv6);
-                    }
                 });
             }
             Transition::SendDnsResourcePtrQuery {
@@ -528,9 +506,13 @@ impl ReferenceState {
                 }
             }
             Transition::RestartClient { client_id, key } => {
-                state.clients.get_mut(client_id).unwrap().exec_mut(|c| {
-                    c.restart(*key, now);
-                })
+                for (id, client) in &mut state.clients {
+                    if id == client_id {
+                        client.exec_mut(|c| c.restart(*key, now));
+                    } else {
+                        client.exec_mut(|c| c.forget_peer_grants(*client_id));
+                    }
+                }
             }
             Transition::UpdateDnsRecords { domain, records } => {
                 state
@@ -800,40 +782,54 @@ impl ReferenceState {
     }
 
     pub(crate) fn route_for_packet(
-        &self,
+        &mut self,
         client_id: ClientId,
         src: IpAddr,
         dst: &Destination,
         protocol: Protocol,
     ) -> PacketRoute {
-        let Some(client) = self.clients.get(&client_id) else {
+        let clients_by_ip = self.client_ip_to_id();
+        let portal = &self.portal;
+        let gateways = &self.gateways;
+        let Some(client) = self.clients.get_mut(&client_id) else {
             return PacketRoute::Drop;
         };
-        let clients_by_ip = self.client_ip_to_id();
         let connected_gateways = client
             .inner()
             .connected_resources()
-            .filter_map(|resource| self.portal.gateway_for_resource(resource).copied())
-            .filter(|gateway| self.gateways.contains_key(gateway))
+            .filter_map(|resource| portal.gateway_for_resource(resource).copied())
+            .filter(|gateway| gateways.contains_key(gateway))
             .collect::<BTreeSet<_>>();
 
-        client.inner().route_for_packet(
-            src,
-            dst,
-            protocol,
-            |resource| {
-                self.portal
-                    .gateway_for_resource(resource)
-                    .copied()
-                    .filter(|gateway| self.gateways.contains_key(gateway))
-            },
-            |ip| {
-                self.portal
-                    .gateway_by_ip(ip)
-                    .filter(|gateway| connected_gateways.contains(gateway))
-            },
-            |ip| clients_by_ip.get(&ip).copied(),
-        )
+        let (route, granted_peer) = client.exec_mut(|client| {
+            client.route_for_packet(
+                src,
+                dst,
+                protocol,
+                |resource| {
+                    portal
+                        .gateway_for_resource(resource)
+                        .copied()
+                        .filter(|gateway| gateways.contains_key(gateway))
+                },
+                |ip| {
+                    portal
+                        .gateway_by_ip(ip)
+                        .filter(|gateway| connected_gateways.contains(gateway))
+                },
+                |ip| clients_by_ip.get(&ip).copied(),
+                |held, target, protocol| portal.pick_device_pool(held, target, protocol),
+            )
+        });
+
+        // A peer we connect to anew drops its grants towards us, as we may have reset.
+        if let Some(peer) = granted_peer
+            && let Some(peer) = self.clients.get_mut(&peer)
+        {
+            peer.exec_mut(|peer| peer.forget_peer_grants(client_id));
+        }
+
+        route
     }
 
     pub(crate) fn icmp_flows(&self) -> Vec<(FlowId, Seq)> {
@@ -1043,9 +1039,8 @@ impl ReferenceState {
                 let has_filters = match resource {
                     client::Resource::Cidr(_) => true,
                     client::Resource::Dns(_) => true,
-                    client::Resource::StaticDevicePool(_) => true,
+                    client::Resource::DevicePool(_) => true,
                     client::Resource::Internet(_) => false,
-                    client::Resource::DynamicDevicePool(_) => true,
                 };
 
                 has_filters
@@ -1063,9 +1058,8 @@ impl ReferenceState {
             .filter(|resource| match resource {
                 client::Resource::Cidr(_) => true,
                 client::Resource::Dns(_) => true,
-                client::Resource::StaticDevicePool(_) => true,
+                client::Resource::DevicePool(_) => true,
                 client::Resource::Internet(_) => false,
-                client::Resource::DynamicDevicePool(_) => false,
             })
             .collect()
     }
@@ -1079,8 +1073,7 @@ impl ReferenceState {
                     client::Resource::Cidr(_) => true,
                     client::Resource::Dns(_) => true,
                     client::Resource::Internet(_) => false,
-                    client::Resource::StaticDevicePool(_) => false,
-                    client::Resource::DynamicDevicePool(_) => false,
+                    client::Resource::DevicePool(_) => false,
                 };
 
                 is_cidr_or_dns
@@ -1100,8 +1093,7 @@ impl ReferenceState {
                 client::Resource::Cidr(r) => Some(r),
                 client::Resource::Dns(_) => None,
                 client::Resource::Internet(_) => None,
-                client::Resource::StaticDevicePool(_) => None,
-                client::Resource::DynamicDevicePool(_) => None,
+                client::Resource::DevicePool(_) => None,
             })
             .filter(|resource| {
                 self.clients
@@ -1121,8 +1113,7 @@ impl ReferenceState {
                 client::Resource::Dns(_) => None,
                 client::Resource::Cidr(_) => None,
                 client::Resource::Internet(_) => None,
-                client::Resource::StaticDevicePool(_) => None,
-                client::Resource::DynamicDevicePool(_) => None,
+                client::Resource::DevicePool(_) => None,
             })
             .collect::<Vec<_>>();
 
@@ -1181,31 +1172,20 @@ impl ReferenceState {
         self.clients.keys().copied().collect()
     }
 
-    pub(crate) fn static_device_pools_on_any_client(
+    /// Every pool that lists its members and some client holds, with its current list.
+    pub(crate) fn listed_device_pools_on_any_client(
         &self,
-    ) -> Vec<client::StaticDevicePoolResource> {
-        let pools = self
-            .portal
-            .all_resources()
+    ) -> Vec<(ResourceId, BTreeSet<ClientId>)> {
+        self.portal
+            .listed_pools()
             .into_iter()
-            .filter_map(|r| match r {
-                client::Resource::StaticDevicePool(p) => Some(p),
-                client::Resource::Dns(_) => None,
-                client::Resource::Cidr(_) => None,
-                client::Resource::Internet(_) => None,
-                client::Resource::DynamicDevicePool(_) => None,
-            });
-
-        pools
-            .filter(|p| self.clients.values().any(|c| c.inner().has_resource(p.id)))
+            .filter(|(pool, _)| self.clients.values().any(|c| c.inner().has_resource(*pool)))
             .collect()
     }
 
     /// Generates `(src_client_id, dst_ip)` tuples for both tunnel IP families of every online
-    /// client reachable from `src_client_id` via a device pool, paired with the pool
-    /// filters that authorize the route.
-    ///
-    /// A static pool reaches its members; a dynamic pool reaches the peers resolved through it.
+    /// client `src_client_id` may reach through a device pool it holds, paired with the
+    /// pool filters that authorize the route.
     pub(crate) fn pool_routed_other_client_tun_ips(&self) -> Vec<(ClientId, IpAddr, Vec<Filter>)> {
         let online_ips_by_id = self
             .clients
@@ -1223,41 +1203,28 @@ impl ReferenceState {
             .iter()
             .flat_map(|(src_id, src_client)| {
                 let src_id = *src_id;
-                let (own_v4, own_v6) = online_ips_by_id[&src_id];
-                let static_targets = src_client
+                let online_ips_by_id = &online_ips_by_id;
+
+                src_client
                     .inner()
                     .all_resources()
                     .into_iter()
                     .filter_map(|r| match r {
-                        client::Resource::StaticDevicePool(p) => {
-                            let ips = p
-                                .devices
-                                .iter()
-                                .filter_map(|d| online_ips_by_id.get(&d.id).copied())
-                                .flat_map(|(v4, v6)| [v4, v6])
-                                .collect::<Vec<_>>();
-
-                            Some((p.filters, ips))
-                        }
-                        client::Resource::DynamicDevicePool(_) => None,
+                        client::Resource::DevicePool(p) => Some((p.id, p.filters)),
                         client::Resource::Dns(_) => None,
                         client::Resource::Cidr(_) => None,
                         client::Resource::Internet(_) => None,
                     })
-                    .collect::<Vec<_>>();
-                let dynamic_targets = src_client
-                    .inner()
-                    .resolved_devices_with_pools()
-                    .into_iter()
-                    .map(|(ip, filters)| (filters, vec![ip]));
-
-                static_targets
-                    .into_iter()
-                    .chain(dynamic_targets)
-                    .filter(|(filters, _)| pool_filters_allow_icmp_or_udp(filters))
-                    .flat_map(|(filters, ips)| ips.into_iter().map(move |ip| (ip, filters.clone())))
-                    .filter(move |(ip, _)| *ip != own_v4 && *ip != own_v6)
-                    .map(move |(ip, filters)| (src_id, ip, filters))
+                    .filter(|(_, filters)| pool_filters_allow_icmp_or_udp(filters))
+                    .flat_map(move |(pool, filters)| {
+                        self.portal
+                            .pool_members(pool)
+                            .into_iter()
+                            .filter(move |member| *member != src_id)
+                            .filter_map(move |member| online_ips_by_id.get(&member).copied())
+                            .flat_map(|(v4, v6)| [v4, v6])
+                            .map(move |ip| (src_id, ip, filters.clone()))
+                    })
             })
             .collect()
     }

@@ -90,6 +90,11 @@ impl ClientOnClient {
         self.remote_tun
     }
 
+    /// The resources through which the remote peer may reach us.
+    pub(crate) fn inbound_resource_ids(&self) -> impl Iterator<Item = ResourceId> + '_ {
+        self.resources.iter().map(|(id, _)| *id)
+    }
+
     pub(crate) fn remote_name(&self) -> &str {
         &self.remote_name
     }
