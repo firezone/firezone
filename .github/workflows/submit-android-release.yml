@@ -23,7 +23,7 @@ concurrency:
 env:
   TARGET_TRACK: ${{ inputs.track == 'Intune (closed testing)' && 'Intune' || inputs.track }}
   # mark:next-android-version
-  RELEASE_NAME: android-client-1.5.14
+  RELEASE_NAME: android-client-1.5.15
 
 jobs:
   prepare:

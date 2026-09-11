@@ -18,8 +18,8 @@ fi
 # the bump (`version`).
 current_apple_client_version="1.5.19"
 next_apple_client_version="1.5.20"
-current_android_client_version="1.5.13"
-next_android_client_version="1.5.14"
+current_android_client_version="1.5.14"
+next_android_client_version="1.5.15"
 current_gui_client_version="1.5.16"
 next_gui_client_version="1.5.17"
 current_headless_client_version="1.5.11"
