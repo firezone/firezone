@@ -389,6 +389,7 @@ impl ReferenceState {
                     *src,
                     dst,
                     Protocol::Tcp(dport.0),
+                    now,
                 );
 
                 state
@@ -603,6 +604,7 @@ impl ReferenceState {
             request.source(),
             request.destination(),
             request.protocol(),
+            sent_at,
         );
         let outcome = self
             .clients
@@ -645,8 +647,9 @@ impl ReferenceState {
         source: IpAddr,
         destination: &Destination,
         protocol: Protocol,
+        now: Instant,
     ) -> PacketRoute {
-        let route = self.route_for_packet(origin, source, destination, protocol);
+        let route = self.route_for_packet(origin, source, destination, protocol, now);
         let Destination::DomainName { name, .. } = destination else {
             return route;
         };
@@ -787,6 +790,7 @@ impl ReferenceState {
         src: IpAddr,
         dst: &Destination,
         protocol: Protocol,
+        now: Instant,
     ) -> PacketRoute {
         let clients_by_ip = self.client_ip_to_id();
         let portal = &self.portal;
@@ -819,14 +823,25 @@ impl ReferenceState {
                 },
                 |ip| clients_by_ip.get(&ip).copied(),
                 |held, target, protocol| portal.pick_device_pool(held, target, protocol),
+                now,
             )
         });
 
         // A peer we connect to anew drops its grants towards us, as we may have reset.
-        if let Some(peer) = granted_peer
-            && let Some(peer) = self.clients.get_mut(&peer)
-        {
-            peer.exec_mut(|peer| peer.forget_peer_grants(client_id));
+        if let Some(peer) = granted_peer {
+            let peer_ips = clients_by_ip
+                .iter()
+                .filter(|(_, id)| **id == peer)
+                .map(|(ip, _)| *ip)
+                .collect::<Vec<_>>();
+
+            if let Some(client) = self.clients.get_mut(&client_id) {
+                client.exec_mut(|client| client.forget_device_denials(&peer_ips));
+            }
+
+            if let Some(peer) = self.clients.get_mut(&peer) {
+                peer.exec_mut(|peer| peer.forget_peer_grants(client_id));
+            }
         }
 
         route
