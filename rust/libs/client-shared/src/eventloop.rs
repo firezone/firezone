@@ -681,6 +681,10 @@ impl Eventloop {
             }) => {
                 tracing::debug!("Failed to create authorization: {reason:?}");
 
+                tunnel
+                    .state_mut()
+                    .handle_resource_access_denied(resource_id, reason.clone(), now);
+
                 match reason {
                     FailReason::Offline => {
                         tunnel.state_mut().set_resource_offline(resource_id, now);
@@ -786,7 +790,7 @@ impl Eventloop {
             }) => {
                 tunnel
                     .state_mut()
-                    .handle_client_device_access_denied(ipv4, ipv6, reason);
+                    .handle_client_device_access_denied(ipv4, ipv6, reason, now);
             }
             IngressMessages::ClientIceCandidateError(ClientIceCandidateError {
                 client_id,
@@ -814,7 +818,7 @@ impl Eventloop {
                 };
                 tunnel
                     .state_mut()
-                    .handle_device_domain_resolved(domain, Ok((ipv4, ipv6)));
+                    .handle_device_domain_resolved(domain, Ok((ipv4, ipv6)), now);
             }
             IngressMessages::DeviceDomainResolutionFailed(DeviceDomainResolutionFailed {
                 domain,
@@ -825,7 +829,7 @@ impl Eventloop {
                 };
                 tunnel
                     .state_mut()
-                    .handle_device_domain_resolved(domain, Err(reason));
+                    .handle_device_domain_resolved(domain, Err(reason), now);
             }
         }
 

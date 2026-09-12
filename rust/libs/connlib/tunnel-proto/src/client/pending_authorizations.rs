@@ -9,7 +9,11 @@ use ip_packet::IpPacket;
 use ringbuffer::{AllocRingBuffer, RingBuffer as _};
 
 use crate::{
-    client::Resource, dns, filter_engine::FilterEngine, messages::client::Flow,
+    client::{NEGATIVE_CACHE_TTL, Resource},
+    dns,
+    expiring_map::ExpiringMap,
+    filter_engine::FilterEngine,
+    messages::client::Flow,
     unique_packet_buffer::UniquePacketBuffer,
 };
 
@@ -20,8 +24,21 @@ use crate::{
 #[derive(Default)]
 pub struct PendingAuthorizations {
     inner: BTreeMap<AuthorizationTarget, PendingAuthorization>,
+    /// Requests the portal denied recently; the same request is answered locally until it expires.
+    denied: ExpiringMap<Denied, ()>,
 
     authorization_requests: VecDeque<AuthorizationRequest>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum Denied {
+    Resource(ResourceId),
+    /// No device answers at the address, so every flow to it is denied.
+    Device(IpAddr),
+    Flow {
+        addr: IpAddr,
+        flow: Flow,
+    },
 }
 
 /// What we are requesting authorization for.
@@ -48,6 +65,10 @@ pub enum AuthorizationRequest {
 }
 
 impl PendingAuthorizations {
+    /// Buffers the trigger and asks the portal for access to the resource.
+    ///
+    /// Returns the trigger when the portal denied the resource recently, so the caller can
+    /// answer it without asking again.
     #[tracing::instrument(level = "debug", skip_all, fields(%rid))]
     pub fn on_not_authorized_resource(
         &mut self,
@@ -55,17 +76,21 @@ impl PendingAuthorizations {
         trigger: impl Into<Trigger>,
         resources_by_id: &BTreeMap<ResourceId, Resource>,
         now: Instant,
-    ) {
+    ) -> Option<Trigger> {
         let trigger = trigger.into();
+
+        if self.denied.contains_key(&Denied::Resource(rid)) {
+            return Some(trigger);
+        }
 
         let Some(resource) = resources_by_id.get(&rid) else {
             tracing::debug!("Resource not found, skipping authorization request");
-            return;
+            return None;
         };
 
         if !is_trigger_allowed(&trigger, &FilterEngine::new(resource.filters())) {
             tracing::debug!("Trigger filtered by resource filters, dropping");
-            return;
+            return None;
         }
 
         self.upsert(
@@ -74,29 +99,105 @@ impl PendingAuthorizations {
             trigger,
             now,
         );
+
+        None
     }
 
+    /// Buffers the packet and asks the portal for access to the device for its flow.
+    ///
+    /// Returns the packet when the portal denied the address or the flow recently, so the
+    /// caller can answer it without asking again.
     #[tracing::instrument(level = "debug", skip_all, fields(%ip, ?flow))]
     pub fn on_not_authorized_device(
         &mut self,
         ip: IpAddr,
         flow: Flow,
-        trigger: impl Into<Trigger>,
+        packet: IpPacket,
         now: Instant,
-    ) {
+    ) -> Option<IpPacket> {
+        if self.denied.contains_key(&Denied::Device(ip))
+            || self.denied.contains_key(&Denied::Flow { addr: ip, flow })
+        {
+            return Some(packet);
+        }
+
         self.upsert(
             AuthorizationTarget::Device { addr: ip },
             AuthorizationRequest::Device { addr: ip, flow },
-            trigger.into(),
+            packet.into(),
             now,
         );
+
+        None
     }
 
+    /// Records the portal's denial for the address and returns what was waiting on it.
+    ///
+    /// A `whole_address` denial covers every flow to the address; otherwise only the flow
+    /// the request was sent for is remembered.
+    pub fn deny_device(
+        &mut self,
+        addr: IpAddr,
+        whole_address: bool,
+        now: Instant,
+    ) -> Option<PendingAuthorization> {
+        let pending = self.inner.remove(&AuthorizationTarget::Device { addr });
+
+        let denied = if whole_address {
+            Some(Denied::Device(addr))
+        } else {
+            pending
+                .as_ref()
+                .and_then(|p| p.requested_flow)
+                .map(|flow| Denied::Flow { addr, flow })
+        };
+
+        if let Some(denied) = denied {
+            self.denied.insert(denied, (), now, NEGATIVE_CACHE_TTL);
+        }
+
+        pending
+    }
+
+    /// Records the portal's denial for the resource and returns what was waiting on it.
+    pub fn deny_resource(&mut self, rid: ResourceId, now: Instant) -> Option<PendingAuthorization> {
+        self.denied
+            .insert(Denied::Resource(rid), (), now, NEGATIVE_CACHE_TTL);
+
+        self.inner.remove(&AuthorizationTarget::Resource(rid))
+    }
+
+    /// Drops the remembered denials for every address `f` matches, e.g. once the portal
+    /// granted access after all.
+    pub fn forget_device_denials(&mut self, f: impl Fn(IpAddr) -> bool) {
+        for _ in self.denied.extract_if(|denied, _| match denied {
+            Denied::Device(addr) | Denied::Flow { addr, .. } => f(*addr),
+            Denied::Resource(_) => false,
+        }) {}
+    }
+
+    pub fn handle_timeout(&mut self, now: Instant) {
+        self.denied.handle_timeout(now);
+        while self.denied.poll_event().is_some() {}
+    }
+
+    pub fn poll_timeout(&self) -> Option<Instant> {
+        self.denied.poll_timeout()
+    }
+
+    /// Forgets the request and any denial for the target, e.g. when access was granted or
+    /// the resource went away.
     pub fn remove(
         &mut self,
         target: impl Into<AuthorizationTarget>,
     ) -> Option<PendingAuthorization> {
-        self.inner.remove(&target.into())
+        let target = target.into();
+
+        if let AuthorizationTarget::Resource(rid) = target {
+            self.denied.remove(&Denied::Resource(rid));
+        }
+
+        self.inner.remove(&target)
     }
 
     /// Removes and returns every device entry whose address matches the predicate.
@@ -144,12 +245,19 @@ impl PendingAuthorizations {
         tracing::debug!(trigger = %trigger_name, "Requesting authorization");
 
         pending.last_request_sent_at = now;
+
+        if let AuthorizationRequest::Device { flow, .. } = request {
+            pending.requested_flow = Some(flow);
+        }
+
         self.authorization_requests.push_back(request);
     }
 }
 
 pub struct PendingAuthorization {
     last_request_sent_at: Instant,
+    /// The flow the last device access request was sent for.
+    requested_flow: Option<Flow>,
     resource_packets: UniquePacketBuffer,
     dns_queries: AllocRingBuffer<DnsQueryForSite>,
 }
@@ -165,6 +273,7 @@ impl PendingAuthorization {
     fn new(now: Instant) -> Self {
         Self {
             last_request_sent_at: now,
+            requested_flow: None,
             resource_packets: UniquePacketBuffer::with_capacity_power_of_2(
                 Self::CAPACITY_POW_2,
                 "pending-authorization",
@@ -420,6 +529,100 @@ mod tests {
     }
 
     #[test]
+    fn denied_flow_is_answered_locally_until_the_denial_expires() {
+        let mut pending = PendingAuthorizations::default();
+        let mut now = Instant::now();
+        let ip = device_ip();
+
+        assert!(
+            pending
+                .on_not_authorized_device(ip, udp_flow(), udp_trigger(1), now)
+                .is_none()
+        );
+        assert!(pending.poll_authorization_requests().is_some());
+
+        let denied = pending.deny_device(ip, false, now);
+        assert!(denied.is_some());
+
+        // The same flow is denied without a request; another flow still asks.
+        assert!(
+            pending
+                .on_not_authorized_device(ip, udp_flow(), udp_trigger(2), now)
+                .is_some()
+        );
+        assert!(pending.poll_authorization_requests().is_none());
+        assert!(
+            pending
+                .on_not_authorized_device(ip, tcp_flow(), udp_trigger(3), now)
+                .is_none()
+        );
+        assert!(pending.poll_authorization_requests().is_some());
+
+        now += NEGATIVE_CACHE_TTL + Duration::from_secs(1);
+        pending.handle_timeout(now);
+
+        assert!(
+            pending
+                .on_not_authorized_device(ip, udp_flow(), udp_trigger(4), now)
+                .is_none()
+        );
+        assert!(pending.poll_authorization_requests().is_some());
+    }
+
+    #[test]
+    fn whole_address_denial_covers_every_flow() {
+        let mut pending = PendingAuthorizations::default();
+        let now = Instant::now();
+        let ip = device_ip();
+
+        pending.on_not_authorized_device(ip, udp_flow(), udp_trigger(1), now);
+        pending.poll_authorization_requests();
+        pending.deny_device(ip, true, now);
+
+        assert!(
+            pending
+                .on_not_authorized_device(ip, tcp_flow(), udp_trigger(2), now)
+                .is_some()
+        );
+        assert!(pending.poll_authorization_requests().is_none());
+        assert!(
+            pending
+                .on_not_authorized_device(other_device_ip(), tcp_flow(), udp_trigger(3), now)
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn denied_resource_returns_the_trigger_and_a_grant_forgets_the_denial() {
+        let mut pending = PendingAuthorizations::default();
+        let now = Instant::now();
+        let (rid, resources) = single_resource();
+
+        assert!(
+            pending
+                .on_not_authorized_resource(rid, udp_trigger(1), &resources, now)
+                .is_none()
+        );
+        pending.poll_authorization_requests();
+        assert!(pending.deny_resource(rid, now).is_some());
+
+        assert!(matches!(
+            pending.on_not_authorized_resource(rid, udp_trigger(2), &resources, now),
+            Some(Trigger::PacketForResource(_))
+        ));
+        assert!(pending.poll_authorization_requests().is_none());
+
+        pending.remove(rid);
+
+        assert!(
+            pending
+                .on_not_authorized_resource(rid, udp_trigger(3), &resources, now)
+                .is_none()
+        );
+        assert!(pending.poll_authorization_requests().is_some());
+    }
+
+    #[test]
     fn remove_device_authorizations_leaves_resource_entries() {
         let mut pending = PendingAuthorizations::default();
         let mut now = Instant::now();
@@ -481,6 +684,10 @@ mod tests {
 
     fn udp_flow() -> Flow {
         ip_packet::Protocol::Udp(1).into()
+    }
+
+    fn tcp_flow() -> Flow {
+        ip_packet::Protocol::Tcp(22).into()
     }
 
     fn device_ip() -> IpAddr {

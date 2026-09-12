@@ -410,14 +410,14 @@ pub enum EgressMessages {
 }
 
 /// The flow a device access request is for.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
 pub struct Flow {
     pub protocol: FlowProtocol,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub port: Option<u16>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum FlowProtocol {
     Tcp,
