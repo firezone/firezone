@@ -37,74 +37,103 @@
 
     var body: some View {
       Group {
+        // Information: the description or address, and the connection status.
+        // The parent menu item already shows the name, so it isn't repeated
+        // here.
         if resource.isInternetResource() {
           Text("All network traffic")
             .foregroundStyle(.secondary)
+        } else if let link = descriptionLink {
+          Link(destination: link.url) {
+            Text(link.text)
+              .foregroundColor(.blue)
+              .underline()
+          }
+        } else if let detail = displayDetail {
+          Text(detail)
+            .foregroundStyle(.secondary)
+        }
 
+        if let site = resource.sites.first {
+          siteStatus(site)
+        }
+
+        // Actions, separated from the information above.
+        if hasInfo {
           Divider()
+        }
 
+        if resource.isInternetResource() {
           Button(internetResourceToggleTitle) {
             store.configuration.internetResourceEnabled.toggle()
           }
         } else {
-          // Show address - clickable if it's a valid URL
-          if let displayAddress = resource.addressDescription ?? resource.address {
-            if let url = URL(string: displayAddress), url.scheme != nil {
-              Link(destination: url) {
-                Text(displayAddress)
-                  .foregroundColor(.blue)
-                  .underline()
-              }
-            } else {
-              Button(displayAddress) {
-                Clipboard.copy(displayAddress)
-              }
-            }
-          }
-
-          Divider()
-
-          Text("Resource")
-            .foregroundStyle(.secondary)
-
-          Button(resource.name) {
-            Clipboard.copy(resource.name)
-          }
-
-          if let address = resource.address {
+          if let address = resource.address, !address.isEmpty {
             Button("Copy address") {
               Clipboard.copy(address)
             }
           }
 
-          Button(favoriteToggleTitle) {
-            toggleFavorite()
-          }
+          // A checkable item, ticked while the Resource is a favorite, like
+          // on Windows and Linux.
+          Toggle(favoriteToggleTitle, isOn: isFavorite)
         }
+      }
+    }
 
-        // Site information (if available)
-        if let site = resource.sites.first {
-          Divider()
+    /// The description as a clickable link. Always shown — even when equal to
+    /// the name — because the parent menu item is not clickable, making this
+    /// link the only way to open it.
+    private var descriptionLink: (text: String, url: URL)? {
+      guard let description = resource.addressDescription,
+        let url = URL(string: description),
+        url.scheme != nil
+      else { return nil }
 
-          Text("Site")
-            .foregroundStyle(.secondary)
+      return (description, url)
+    }
 
-          Button(site.name) {
-            Clipboard.copy(site.name)
-          }
+    /// The single non-link detail line: the description if present, otherwise
+    /// the address. Hidden when empty or identical to the name shown by the
+    /// parent.
+    private var displayDetail: String? {
+      let description = resource.addressDescription.flatMap { $0.isEmpty ? nil : $0 }
+      guard let detail = description ?? resource.address,
+        !detail.isEmpty,
+        detail != resource.name
+      else { return nil }
 
-          Button {
-            Clipboard.copy(resource.status.toSiteStatus())
-          } label: {
-            HStack {
-              if let icon = resource.status.statusIcon {
-                Image(nsImage: icon)
-              }
-              Text(resource.status.toSiteStatus())
-            }
-          }
-          .help(resource.status.toSiteStatusTooltip())
+      return detail
+    }
+
+    private var hasInfo: Bool {
+      resource.isInternetResource() || descriptionLink != nil || displayDetail != nil
+        || resource.sites.first != nil
+    }
+
+    /// The connection status as a single line: a colored dot plus a short
+    /// label, with the Site name included when connected. The longer textual
+    /// explanation is kept in the tooltip so the menu stays compact.
+    @ViewBuilder
+    private func siteStatus(_ site: Site) -> some View {
+      HStack {
+        if let icon = resource.status.statusIcon {
+          Image(nsImage: icon)
         }
+        Text(statusTitle(site))
+          .foregroundStyle(.secondary)
+      }
+      .help(resource.status.toSiteStatusTooltip())
+    }
+
+    private func statusTitle(_ site: Site) -> String {
+      switch resource.status {
+      case .online:
+        return "Connected: \(site.name)"
+      case .unknown:
+        return "Unknown"
+      case .offline:
+        return "Offline"
       }
     }
 
@@ -116,12 +145,17 @@
       store.favorites.contains(resource.id) ? "Remove from favorites" : "Add to favorites"
     }
 
-    func toggleFavorite() {
-      if store.favorites.contains(resource.id) {
-        store.favorites.remove(resource.id)
-      } else {
-        store.favorites.add(resource.id)
-      }
+    private var isFavorite: Binding<Bool> {
+      Binding(
+        get: { store.favorites.contains(resource.id) },
+        set: { isFavorite in
+          if isFavorite {
+            store.favorites.add(resource.id)
+          } else {
+            store.favorites.remove(resource.id)
+          }
+        }
+      )
     }
   }
 
@@ -129,14 +163,15 @@
   struct ResourcesSection: View {
     @EnvironmentObject var store: Store
 
-    /// Partitioned resources for display.
+    /// Partitioned resources for display, in the order they were received.
     /// If no resources are favorited, all resources show directly in the menu.
-    /// Otherwise, favorites show directly and others go in the "Other Resources" submenu.
+    /// Otherwise, favorites and the Internet Resource show directly and the
+    /// rest move to the "Other Resources" submenu.
     private var partitionedResources:
       (
-        internetResource: Resource?,
         directlyShown: [Resource],
-        others: [Resource]
+        others: [Resource],
+        hasAnyFavorites: Bool
       )
     {
       let allResources = store.resourceList.asArray()
@@ -146,22 +181,16 @@
         !$0.isInternetResource() && store.favorites.contains($0.id)
       }
 
-      return allResources.reduce(
-        into: (internetResource: nil, directlyShown: [], others: [])
-      ) { result, resource in
-        if resource.isInternetResource() {
-          result.internetResource = resource
-        } else if !hasAnyFavorites {
-          // No favorites: show all resources directly
-          result.directlyShown.append(resource)
-        } else if store.favorites.contains(resource.id) {
-          // Has favorites: show only favorites directly
-          result.directlyShown.append(resource)
-        } else {
-          // Has favorites: non-favorites go to submenu
-          result.others.append(resource)
-        }
+      guard hasAnyFavorites else {
+        // No favorites: show all resources directly
+        return (allResources, [], false)
       }
+
+      return (
+        allResources.filter { $0.isInternetResource() || store.favorites.contains($0.id) },
+        allResources.filter { !$0.isInternetResource() && !store.favorites.contains($0.id) },
+        true
+      )
     }
 
     var body: some View {
@@ -169,21 +198,18 @@
 
       Group {
         // Header text
-        Text(resourcesHeaderText)
+        Text(resourcesHeaderText(hasAnyFavorites: resources.hasAnyFavorites))
           .foregroundStyle(.secondary)
-
-        // Internet resource (always first if present)
-        if let internet = resources.internetResource {
-          ResourceMenuItem(resource: internet)
-        }
 
         // Directly shown resources (favorites, or all if no favorites)
         ForEach(resources.directlyShown) { resource in
           ResourceMenuItem(resource: resource)
         }
 
-        // Other Resources submenu (only when favorites exist and there are non-favorites)
+        // Other Resources submenu (only when there are non-favorites to list)
         if !resources.others.isEmpty {
+          Divider()
+
           Menu("Other Resources") {
             ForEach(resources.others) { resource in
               ResourceMenuItem(resource: resource)
@@ -193,12 +219,16 @@
       }
     }
 
-    var resourcesHeaderText: String {
+    func resourcesHeaderText(hasAnyFavorites: Bool) -> String {
       switch store.resourceList {
       case .loading:
         return "Loading Resources..."
       case .loaded(let list):
-        return list.isEmpty ? "No Resources" : "Resources"
+        if list.isEmpty {
+          return "No Resources"
+        }
+
+        return hasAnyFavorites ? "Favorite Resources" : "Resources"
       }
     }
   }
