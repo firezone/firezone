@@ -216,6 +216,15 @@ defmodule Portal.Cache.Client do
     end
   end
 
+  @doc "The IDs of the cached policies the client conforms to right now."
+  @spec conforming_policy_ids(t(), Portal.Device.t(), Ecto.UUID.t() | nil) :: [Ecto.UUID.t()]
+  def conforming_policy_ids(cache, client, auth_provider_id) do
+    cache.policies
+    |> Map.values()
+    |> filter_by_conforming_policies_for_client(client, auth_provider_id)
+    |> Enum.map(&load!(&1.id))
+  end
+
   @doc """
     The addresses of the devices that were in a connectable pool of `old_cache` and are in
     no connectable pool of `cache`, so the channel can deny access to them.
