@@ -24,7 +24,7 @@ const DNS_TTL: u32 = 1;
 /// Answers queries for `<slug>.firezone.network` from the portal.
 ///
 /// Every client may resolve every device in its account; whether it may reach the
-/// device is decided on the first packet, see `RequestDeviceAccess`.
+/// device is decided on the first packet, see `RequestAccess`.
 #[derive(Default)]
 pub struct DeviceStubResolver {
     resolved: BTreeMap<DomainName, (Ipv4Addr, Ipv6Addr)>,

@@ -1,4 +1,4 @@
-use std::{cmp::Ordering, net::IpAddr};
+use std::{cmp::Ordering, collections::BTreeMap, net::IpAddr};
 
 use connlib_model::ResourceId;
 use dns_types::DomainName;
@@ -8,6 +8,7 @@ use ip_packet::{Protocol, UnsupportedProtocol};
 use crate::{
     dns,
     filter_engine::FilterEngine,
+    messages::client::Flow,
     routing_table::{RouteEntry, RoutingTable},
 };
 
@@ -33,21 +34,40 @@ impl Route {
     }
 }
 
+/// What the portal's rule picks for an address among the client's own resources.
+pub(super) enum LocalPick {
+    Resource {
+        filter: FilterEngine,
+        resource_id: ResourceId,
+    },
+    /// Resources cover the address but none permits the flow.
+    Refused,
+    /// No resource covers the address.
+    None,
+}
+
 /// The client's routing tables, one for each kind of destination.
 #[derive(Default)]
 pub(super) struct RoutingTables {
     cidr: RoutingTable<CidrEntry>,
     dns: RoutingTable<DnsEntry>,
     peer: RoutingTable<PeerEntry>,
+    /// The Gateway resource the portal picked per address and flow.
+    learned: BTreeMap<(IpAddr, Flow), PeerEntry>,
 }
 
 impl RoutingTables {
     /// Resolve an outbound packet, preferring direct Clients over Gateway resources.
+    ///
+    /// `is_authorized` says whether we hold a grant for a resource, `filter_allows` whether
+    /// a filter permits the packet.
     pub(super) fn resolve(
         &mut self,
         destination: IpAddr,
         protocol: Protocol,
         internet_resource: Option<ResourceId>,
+        is_authorized: impl Fn(ResourceId) -> bool,
+        filter_allows: impl Fn(&FilterEngine) -> bool,
     ) -> Option<Route> {
         if let Some(entry) = self.peer.matches(destination, Ok(protocol)).cloned() {
             return Some(Route::Client {
@@ -56,15 +76,28 @@ impl RoutingTables {
             });
         }
 
-        self.resolve_resource(destination, protocol, internet_resource)
+        self.resolve_resource(
+            destination,
+            protocol,
+            internet_resource,
+            is_authorized,
+            filter_allows,
+        )
     }
 
     /// Resolve only resources routed through a Gateway.
+    ///
+    /// DNS resources route by the proxy address the client handed out. Any other flow
+    /// routes through the resource the portal picked for it, see [`RoutingTables::learn`],
+    /// else through the one the portal's rule picks among our own resources, see
+    /// [`RoutingTables::local_pick`], each only while we hold a grant for it.
     pub(super) fn resolve_resource(
         &mut self,
         destination: IpAddr,
         protocol: Protocol,
         internet_resource: Option<ResourceId>,
+        is_authorized: impl Fn(ResourceId) -> bool,
+        filter_allows: impl Fn(&FilterEngine) -> bool,
     ) -> Option<Route> {
         if let Some(entry) = self.dns.matches(destination, Ok(protocol)).cloned() {
             return Some(Route::Gateway {
@@ -74,29 +107,77 @@ impl RoutingTables {
             });
         }
 
-        if let Some(entry) = self.cidr.matches(destination, Ok(protocol)).cloned() {
+        if let Some(entry) = self.learned.get(&(destination, Flow::from(protocol)))
+            && filter_allows(&entry.filter)
+            && is_authorized(entry.resource_id)
+        {
             return Some(Route::Gateway {
-                filter: entry.filter,
+                filter: entry.filter.clone(),
                 resource_id: entry.resource_id,
                 domain: None,
             });
         }
 
-        // Firezone's tunnel range holds Clients and Gateways, so the Internet Resource must
-        // not claim it: only the Client table consulted by `resolve` routes there. Letting
-        // the catch-all below match would send Client-to-Client traffic to a Gateway, which
-        // hair-pins it back out of its TUN device.
+        match self.local_pick(destination, protocol, internet_resource, &filter_allows) {
+            LocalPick::Resource {
+                resource_id,
+                filter,
+            } if is_authorized(resource_id) => Some(Route::Gateway {
+                filter,
+                resource_id,
+                domain: None,
+            }),
+            LocalPick::Resource { .. } | LocalPick::Refused | LocalPick::None => None,
+        }
+    }
+
+    /// The resource the portal's rule picks for `destination` among our own resources: the
+    /// most specific CIDR resource permitting the flow, else the Internet Resource.
+    ///
+    /// Firezone's tunnel range holds Clients and Gateways, so the Internet Resource must
+    /// not claim it: letting it would send Client-to-Client traffic to a Gateway, which
+    /// hair-pins it back out of its TUN device.
+    pub(super) fn local_pick(
+        &mut self,
+        destination: IpAddr,
+        protocol: Protocol,
+        internet_resource: Option<ResourceId>,
+        filter_allows: impl Fn(&FilterEngine) -> bool,
+    ) -> LocalPick {
         if crate::is_peer(destination) {
-            return None;
+            return LocalPick::None;
         }
 
-        let resource_id = internet_resource?;
-
-        Some(Route::Gateway {
-            filter: FilterEngine::PermitAll,
+        let internet = |resource_id| LocalPick::Resource {
             resource_id,
-            domain: None,
-        })
+            filter: FilterEngine::PermitAll,
+        };
+
+        match self.cidr.matches(destination, Ok(protocol)).cloned() {
+            Some(entry) if filter_allows(&entry.filter) => LocalPick::Resource {
+                resource_id: entry.resource_id,
+                filter: entry.filter,
+            },
+            Some(_) => internet_resource.map_or(LocalPick::Refused, internet),
+            None => internet_resource.map_or(LocalPick::None, internet),
+        }
+    }
+
+    /// Records the portal's pick of `resource_id` for `flow` to `destination`.
+    pub(super) fn learn(
+        &mut self,
+        destination: IpAddr,
+        flow: Flow,
+        resource_id: ResourceId,
+        filter: FilterEngine,
+    ) {
+        self.learned.insert(
+            (destination, flow),
+            PeerEntry {
+                filter,
+                resource_id,
+            },
+        );
     }
 
     pub(super) fn cidr_networks(&self) -> impl Iterator<Item = IpNetwork> + '_ {
@@ -170,6 +251,8 @@ impl RoutingTables {
         self.cidr.remove_by_id(resource_id);
         self.dns.remove_by_id(resource_id);
         self.peer.remove_by_id(resource_id);
+        self.learned
+            .retain(|_, entry| entry.resource_id != resource_id);
     }
 
     pub(super) fn remove_peer(&mut self, network: IpNetwork, resource_id: ResourceId) {
@@ -259,9 +342,74 @@ mod tests {
             other_client_tun_ip(),
             Protocol::Tcp(80),
             Some(internet_resource_id()),
+            |_| true,
+            |_| true,
         );
 
         assert!(route.is_none());
+    }
+
+    #[test]
+    fn cidr_resources_route_while_granted() {
+        let mut tables = RoutingTables::default();
+        let rid = ResourceId::from_u128(3);
+        let dst = IpAddr::from(Ipv4Addr::new(10, 1, 2, 3));
+        tables.upsert_cidr("10.0.0.0/8".parse().unwrap(), rid, FilterEngine::PermitAll);
+
+        assert!(
+            tables
+                .resolve(dst, Protocol::Udp(53), None, |_| false, |_| true)
+                .is_none()
+        );
+        assert!(matches!(
+            tables.local_pick(dst, Protocol::Udp(53), None, |_| true),
+            LocalPick::Resource { resource_id, .. } if resource_id == rid
+        ));
+        assert!(matches!(
+            tables.local_pick(
+                IpAddr::from(Ipv4Addr::new(11, 0, 0, 1)),
+                Protocol::Udp(53),
+                None,
+                |_| true
+            ),
+            LocalPick::None
+        ));
+        assert!(matches!(
+            tables.resolve(dst, Protocol::Udp(53), None, |_| true, |_| true),
+            Some(Route::Gateway { resource_id, domain: None, .. }) if resource_id == rid
+        ));
+    }
+
+    #[test]
+    fn learned_pick_routes_its_flow_while_granted() {
+        let mut tables = RoutingTables::default();
+        let cidr = ResourceId::from_u128(3);
+        let picked = ResourceId::from_u128(4);
+        let dst = IpAddr::from(Ipv4Addr::new(10, 1, 2, 3));
+        tables.upsert_cidr("10.0.0.0/8".parse().unwrap(), cidr, FilterEngine::PermitAll);
+        tables.learn(
+            dst,
+            Flow::from(Protocol::Udp(53)),
+            picked,
+            FilterEngine::PermitAll,
+        );
+
+        assert!(matches!(
+            tables.resolve(dst, Protocol::Udp(53), None, |rid| rid == picked, |_| true),
+            Some(Route::Gateway { resource_id, domain: None, .. }) if resource_id == picked
+        ));
+        assert!(
+            tables
+                .resolve(dst, Protocol::Udp(54), None, |rid| rid == picked, |_| true)
+                .is_none()
+        );
+
+        tables.remove_by_id(picked);
+        assert!(
+            tables
+                .resolve(dst, Protocol::Udp(53), None, |rid| rid == picked, |_| true)
+                .is_none()
+        );
     }
 
     #[test]
@@ -273,6 +421,8 @@ mod tests {
             IpAddr::V4(Ipv4Addr::new(100, 64, 0, 4)),
             Protocol::Tcp(80),
             Some(internet_resource_id()),
+            |_| true,
+            |_| true,
         );
 
         assert!(route.is_none());

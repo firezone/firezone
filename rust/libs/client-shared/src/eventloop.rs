@@ -409,17 +409,22 @@ impl Eventloop {
                     .await
                     .context("Failed to send message to portal")?;
             }
-            Ok(ClientEvent::DeviceAccessRequested { ip, flow }) => {
+            Ok(ClientEvent::AccessRequested {
+                ip,
+                flow,
+                preferred_gateways,
+            }) => {
                 let (ipv4, ipv6) = match ip {
                     IpAddr::V4(v4) => (Some(v4), None),
                     IpAddr::V6(v6) => (None, Some(v6)),
                 };
 
                 self.portal_cmd_tx
-                    .send(PortalCommand::Send(EgressMessages::RequestDeviceAccess {
+                    .send(PortalCommand::Send(EgressMessages::RequestAccess {
                         ipv4,
                         ipv6,
                         flow,
+                        preferred_gateways,
                     }))
                     .await
                     .context("Failed to send message to portal")?;
@@ -641,8 +646,12 @@ impl Eventloop {
                 gateway_ice_credentials,
                 use_iceless,
                 flow_logs_ingest_token,
+                ipv4,
+                ipv6,
             }) => {
                 persist_ingest_token(self.flow_logs_dir.as_deref(), &flow_logs_ingest_token);
+
+                let address = ipv4.map(IpAddr::V4).or(ipv6.map(IpAddr::V6));
 
                 match tunnel.state_mut().handle_resource_access_authorized(
                     resource_id,
@@ -658,6 +667,7 @@ impl Eventloop {
                     gateway_ice_credentials,
                     use_iceless,
                     flow_logs_ingest_token,
+                    address,
                     now,
                 ) {
                     Ok(Ok(())) => {}
@@ -677,16 +687,23 @@ impl Eventloop {
             IngressMessages::AuthorizationCreationFailed(AuthorizationCreationFailed {
                 reason,
                 resource_id,
+                ipv4,
+                ipv6,
                 ..
             }) => {
                 tracing::debug!("Failed to create authorization: {reason:?}");
 
-                tunnel
-                    .state_mut()
-                    .handle_resource_access_denied(resource_id, reason.clone(), now);
+                let address = ipv4.map(IpAddr::V4).or(ipv6.map(IpAddr::V6));
 
-                match reason {
-                    FailReason::Offline => {
+                tunnel.state_mut().handle_resource_access_denied(
+                    resource_id,
+                    address,
+                    reason.clone(),
+                    now,
+                );
+
+                match (reason, resource_id) {
+                    (FailReason::Offline, Some(resource_id)) => {
                         tunnel.state_mut().set_resource_offline(resource_id, now);
 
                         let _ = self
@@ -694,19 +711,23 @@ impl Eventloop {
                             .send(UserNotification::AllGatewaysOffline { resource_id })
                             .await;
                     }
-                    FailReason::VersionMismatch => {
+                    (FailReason::VersionMismatch, Some(resource_id)) => {
                         let _ = self
                             .user_notification_sender
                             .send(UserNotification::GatewayVersionMismatch { resource_id })
                             .await;
                     }
-                    FailReason::NotFound
-                    | FailReason::Forbidden
-                    | FailReason::Disabled
-                    | FailReason::AmbiguousAddress
-                    | FailReason::MissingAddress
-                    | FailReason::InvalidAddress
-                    | FailReason::Unknown => {}
+                    (
+                        FailReason::NotFound
+                        | FailReason::Forbidden
+                        | FailReason::Disabled
+                        | FailReason::AmbiguousAddress
+                        | FailReason::MissingAddress
+                        | FailReason::InvalidAddress
+                        | FailReason::Unknown,
+                        _,
+                    )
+                    | (_, None) => {}
                 }
             }
             IngressMessages::ClientDeviceAccessAuthorized(ClientDeviceAccessAuthorized {

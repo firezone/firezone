@@ -33,8 +33,8 @@ pub struct PendingAuthorizations {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum Denied {
     Resource(ResourceId),
-    /// No device answers at the address, so every flow to it is denied.
-    Device(IpAddr),
+    /// Nothing answers at the address, so every flow to it is denied.
+    Address(IpAddr),
     Flow {
         addr: IpAddr,
         flow: Flow,
@@ -45,7 +45,7 @@ enum Denied {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum AuthorizationTarget {
     Resource(ResourceId),
-    Device { addr: IpAddr },
+    Address { addr: IpAddr },
 }
 
 impl From<ResourceId> for AuthorizationTarget {
@@ -57,8 +57,9 @@ impl From<ResourceId> for AuthorizationTarget {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AuthorizationRequest {
     Resource(ResourceId),
-    /// Access to the device at `addr` for `flow`; the portal picks the pool.
-    Device {
+    /// Access to whatever is behind `addr` for `flow`; the portal picks the pool or the
+    /// resource.
+    Address {
         addr: IpAddr,
         flow: Flow,
     },
@@ -108,22 +109,22 @@ impl PendingAuthorizations {
     /// Returns the packet when the portal denied the address or the flow recently, so the
     /// caller can answer it without asking again.
     #[tracing::instrument(level = "debug", skip_all, fields(%ip, ?flow))]
-    pub fn on_not_authorized_device(
+    pub fn on_not_authorized_address(
         &mut self,
         ip: IpAddr,
         flow: Flow,
         packet: IpPacket,
         now: Instant,
     ) -> Option<IpPacket> {
-        if self.denied.contains_key(&Denied::Device(ip))
+        if self.denied.contains_key(&Denied::Address(ip))
             || self.denied.contains_key(&Denied::Flow { addr: ip, flow })
         {
             return Some(packet);
         }
 
         self.upsert(
-            AuthorizationTarget::Device { addr: ip },
-            AuthorizationRequest::Device { addr: ip, flow },
+            AuthorizationTarget::Address { addr: ip },
+            AuthorizationRequest::Address { addr: ip, flow },
             packet.into(),
             now,
         );
@@ -135,16 +136,16 @@ impl PendingAuthorizations {
     ///
     /// A `whole_address` denial covers every flow to the address; otherwise only the flow
     /// the request was sent for is remembered.
-    pub fn deny_device(
+    pub fn deny_address(
         &mut self,
         addr: IpAddr,
         whole_address: bool,
         now: Instant,
     ) -> Option<PendingAuthorization> {
-        let pending = self.inner.remove(&AuthorizationTarget::Device { addr });
+        let pending = self.inner.remove(&AuthorizationTarget::Address { addr });
 
         let denied = if whole_address {
-            Some(Denied::Device(addr))
+            Some(Denied::Address(addr))
         } else {
             pending
                 .as_ref()
@@ -169,9 +170,9 @@ impl PendingAuthorizations {
 
     /// Drops the remembered denials for every address `f` matches, e.g. once the portal
     /// granted access after all.
-    pub fn forget_device_denials(&mut self, f: impl Fn(IpAddr) -> bool) {
+    pub fn forget_address_denials(&mut self, f: impl Fn(IpAddr) -> bool) {
         for _ in self.denied.extract_if(|denied, _| match denied {
-            Denied::Device(addr) | Denied::Flow { addr, .. } => f(*addr),
+            Denied::Address(addr) | Denied::Flow { addr, .. } => f(*addr),
             Denied::Resource(_) => false,
         }) {}
     }
@@ -203,14 +204,14 @@ impl PendingAuthorizations {
     /// Removes and returns every device entry whose address matches the predicate.
     ///
     /// The iterator must be consumed for the entries to be removed.
-    pub fn remove_device_authorizations<'a>(
+    pub fn remove_address_authorizations<'a>(
         &'a mut self,
         mut f: impl FnMut(IpAddr) -> bool + 'a,
     ) -> impl Iterator<Item = PendingAuthorization> + 'a {
         self.inner
             .extract_if(.., move |target, _| match target {
                 AuthorizationTarget::Resource(_) => false,
-                AuthorizationTarget::Device { addr } => f(*addr),
+                AuthorizationTarget::Address { addr } => f(*addr),
             })
             .map(|(_, pending)| pending)
     }
@@ -246,7 +247,7 @@ impl PendingAuthorizations {
 
         pending.last_request_sent_at = now;
 
-        if let AuthorizationRequest::Device { flow, .. } = request {
+        if let AuthorizationRequest::Address { flow, .. } = request {
             pending.requested_flow = Some(flow);
         }
 
@@ -290,6 +291,11 @@ impl PendingAuthorization {
             }
             Trigger::IcmpDestinationUnreachableProhibited => {}
         }
+    }
+
+    /// The flow the last request for this address was sent for.
+    pub fn requested_flow(&self) -> Option<Flow> {
+        self.requested_flow
     }
 
     pub fn into_buffered_packets(self) -> (UniquePacketBuffer, AllocRingBuffer<DnsQueryForSite>) {
@@ -483,12 +489,12 @@ mod tests {
         let mut now = Instant::now();
         let ip = device_ip();
 
-        pending.on_not_authorized_device(ip, udp_flow(), udp_trigger(1), now);
+        pending.on_not_authorized_address(ip, udp_flow(), udp_trigger(1), now);
         assert!(pending.poll_authorization_requests().is_some());
 
         now += Duration::from_secs(1);
 
-        pending.on_not_authorized_device(ip, udp_flow(), udp_trigger(2), now);
+        pending.on_not_authorized_address(ip, udp_flow(), udp_trigger(2), now);
         assert!(pending.poll_authorization_requests().is_none());
     }
 
@@ -498,12 +504,12 @@ mod tests {
         let mut now = Instant::now();
         let ip = device_ip();
 
-        pending.on_not_authorized_device(ip, udp_flow(), udp_trigger(1), now);
+        pending.on_not_authorized_address(ip, udp_flow(), udp_trigger(1), now);
         assert!(pending.poll_authorization_requests().is_some());
 
         now += Duration::from_secs(3);
 
-        pending.on_not_authorized_device(ip, udp_flow(), udp_trigger(2), now);
+        pending.on_not_authorized_address(ip, udp_flow(), udp_trigger(2), now);
         assert!(pending.poll_authorization_requests().is_some());
     }
 
@@ -516,12 +522,12 @@ mod tests {
         let ip_foo = device_ip();
         let ip_bar = other_device_ip();
 
-        pending.on_not_authorized_device(ip_foo, udp_flow(), udp_trigger(1), now);
+        pending.on_not_authorized_address(ip_foo, udp_flow(), udp_trigger(1), now);
         assert_eq!(
             pending.poll_authorization_requests(),
             Some(device_request(ip_foo))
         );
-        pending.on_not_authorized_device(ip_bar, udp_flow(), udp_trigger(2), now);
+        pending.on_not_authorized_address(ip_bar, udp_flow(), udp_trigger(2), now);
         assert_eq!(
             pending.poll_authorization_requests(),
             Some(device_request(ip_bar))
@@ -536,24 +542,24 @@ mod tests {
 
         assert!(
             pending
-                .on_not_authorized_device(ip, udp_flow(), udp_trigger(1), now)
+                .on_not_authorized_address(ip, udp_flow(), udp_trigger(1), now)
                 .is_none()
         );
         assert!(pending.poll_authorization_requests().is_some());
 
-        let denied = pending.deny_device(ip, false, now);
+        let denied = pending.deny_address(ip, false, now);
         assert!(denied.is_some());
 
         // The same flow is denied without a request; another flow still asks.
         assert!(
             pending
-                .on_not_authorized_device(ip, udp_flow(), udp_trigger(2), now)
+                .on_not_authorized_address(ip, udp_flow(), udp_trigger(2), now)
                 .is_some()
         );
         assert!(pending.poll_authorization_requests().is_none());
         assert!(
             pending
-                .on_not_authorized_device(ip, tcp_flow(), udp_trigger(3), now)
+                .on_not_authorized_address(ip, tcp_flow(), udp_trigger(3), now)
                 .is_none()
         );
         assert!(pending.poll_authorization_requests().is_some());
@@ -563,7 +569,7 @@ mod tests {
 
         assert!(
             pending
-                .on_not_authorized_device(ip, udp_flow(), udp_trigger(4), now)
+                .on_not_authorized_address(ip, udp_flow(), udp_trigger(4), now)
                 .is_none()
         );
         assert!(pending.poll_authorization_requests().is_some());
@@ -575,19 +581,19 @@ mod tests {
         let now = Instant::now();
         let ip = device_ip();
 
-        pending.on_not_authorized_device(ip, udp_flow(), udp_trigger(1), now);
+        pending.on_not_authorized_address(ip, udp_flow(), udp_trigger(1), now);
         pending.poll_authorization_requests();
-        pending.deny_device(ip, true, now);
+        pending.deny_address(ip, true, now);
 
         assert!(
             pending
-                .on_not_authorized_device(ip, tcp_flow(), udp_trigger(2), now)
+                .on_not_authorized_address(ip, tcp_flow(), udp_trigger(2), now)
                 .is_some()
         );
         assert!(pending.poll_authorization_requests().is_none());
         assert!(
             pending
-                .on_not_authorized_device(other_device_ip(), tcp_flow(), udp_trigger(3), now)
+                .on_not_authorized_address(other_device_ip(), tcp_flow(), udp_trigger(3), now)
                 .is_none()
         );
     }
@@ -623,14 +629,14 @@ mod tests {
     }
 
     #[test]
-    fn remove_device_authorizations_leaves_resource_entries() {
+    fn remove_address_authorizations_leaves_resource_entries() {
         let mut pending = PendingAuthorizations::default();
         let mut now = Instant::now();
         let (rid, resources) = single_resource();
         let ip = device_ip();
 
         pending.on_not_authorized_resource(rid, udp_trigger(1), &resources, now);
-        pending.on_not_authorized_device(ip, udp_flow(), udp_trigger(2), now);
+        pending.on_not_authorized_address(ip, udp_flow(), udp_trigger(2), now);
         assert_eq!(
             pending.poll_authorization_requests(),
             Some(resource_request(rid))
@@ -640,7 +646,7 @@ mod tests {
             Some(device_request(ip))
         );
 
-        assert_eq!(pending.remove_device_authorizations(|_| true).count(), 1);
+        assert_eq!(pending.remove_address_authorizations(|_| true).count(), 1);
 
         now += Duration::from_millis(500);
 
@@ -649,7 +655,7 @@ mod tests {
         assert_eq!(pending.poll_authorization_requests(), None);
 
         // The device entry was removed: a new trigger requests again immediately.
-        pending.on_not_authorized_device(ip, udp_flow(), udp_trigger(4), now);
+        pending.on_not_authorized_address(ip, udp_flow(), udp_trigger(4), now);
         assert_eq!(
             pending.poll_authorization_requests(),
             Some(device_request(ip))
@@ -676,7 +682,7 @@ mod tests {
     }
 
     fn device_request(addr: IpAddr) -> AuthorizationRequest {
-        AuthorizationRequest::Device {
+        AuthorizationRequest::Address {
             addr,
             flow: udp_flow(),
         }

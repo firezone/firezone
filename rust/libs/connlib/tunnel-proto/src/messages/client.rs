@@ -68,7 +68,7 @@ fn internet_resource_name() -> String {
 /// A pool of devices the portal admits by its membership criteria.
 ///
 /// Members are never sent: a packet to a tunnel address asks the portal for access with
-/// [`EgressMessages::RequestDeviceAccess`], and the portal answers with the pool it picked.
+/// [`EgressMessages::RequestAccess`], and the portal answers with the pool it picked.
 #[serde_as]
 #[derive(Debug, Deserialize)]
 pub struct ResourceDescriptionDevicePool {
@@ -143,14 +143,27 @@ pub struct AuthorizationCreated {
 
     /// The initiator-side ingest token for this flow's logs.
     pub flow_logs_ingest_token: IngestToken,
+
+    /// The address we asked about, when the portal picked the resource for it.
+    #[serde(default)]
+    pub ipv4: Option<Ipv4Addr>,
+    #[serde(default)]
+    pub ipv6: Option<Ipv6Addr>,
 }
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct AuthorizationCreationFailed {
-    pub resource_id: ResourceId,
+    /// Absent when the portal found no resource for the address we asked about.
+    #[serde(default)]
+    pub resource_id: Option<ResourceId>,
     pub reason: FailReason,
     #[serde(default)]
     pub violated_properties: Vec<ViolatedProperty>,
+    /// The address we asked about, when the request named one.
+    #[serde(default)]
+    pub ipv4: Option<Ipv4Addr>,
+    #[serde(default)]
+    pub ipv6: Option<Ipv6Addr>,
 }
 
 /// Sent by the portal once both peers in a device pool flow agree to connect.
@@ -387,16 +400,20 @@ pub enum EgressMessages {
         #[serde(rename = "connected_gateway_ids")]
         preferred_gateways: Vec<GatewayId>,
     },
-    /// Asks for access to the device at a tunnel address for one flow. The portal picks
-    /// the pool and answers with [`ClientDeviceAccessAuthorized`] or
-    /// [`ClientDeviceAccessDenied`].
-    RequestDeviceAccess {
+    /// Asks for access to whatever is behind an address for one flow. The portal picks
+    /// the pool for a device in the tunnel range and answers with
+    /// [`ClientDeviceAccessAuthorized`] or [`ClientDeviceAccessDenied`]; for any other
+    /// address it picks the resource and answers with [`AuthorizationCreated`] or
+    /// [`AuthorizationCreationFailed`], both naming the address.
+    RequestAccess {
         #[serde(skip_serializing_if = "Option::is_none")]
         ipv4: Option<Ipv4Addr>,
         #[serde(skip_serializing_if = "Option::is_none")]
         ipv6: Option<Ipv6Addr>,
         #[serde(flatten)]
         flow: Flow,
+        #[serde(rename = "connected_gateway_ids")]
+        preferred_gateways: Vec<GatewayId>,
     },
     ResolveDeviceDomain {
         domain: String,
@@ -926,26 +943,28 @@ mod tests {
     }
 
     #[test]
-    fn serialize_request_device_access_message_with_ipv4() {
-        let message = EgressMessages::RequestDeviceAccess {
+    fn serialize_request_access_message_with_ipv4() {
+        let message = EgressMessages::RequestAccess {
             ipv4: Some(Ipv4Addr::new(100, 65, 0, 1)),
             ipv6: None,
             flow: ip_packet::Protocol::Tcp(22).into(),
+            preferred_gateways: vec!["f16ecfa0-a94f-4bfd-a2ef-1cc1f2ef3da3".parse().unwrap()],
         };
-        let expected_json = r#"{"event":"request_device_access","payload":{"ipv4":"100.65.0.1","protocol":"tcp","port":22}}"#;
+        let expected_json = r#"{"event":"request_access","payload":{"ipv4":"100.65.0.1","protocol":"tcp","port":22,"connected_gateway_ids":["f16ecfa0-a94f-4bfd-a2ef-1cc1f2ef3da3"]}}"#;
         let actual_json = serde_json::to_string(&message).unwrap();
 
         assert_eq!(actual_json, expected_json);
     }
 
     #[test]
-    fn serialize_request_device_access_message_with_ipv6() {
-        let message = EgressMessages::RequestDeviceAccess {
+    fn serialize_request_access_message_with_ipv6() {
+        let message = EgressMessages::RequestAccess {
             ipv4: None,
             ipv6: Some("fd00:2021:1111::1".parse().unwrap()),
             flow: ip_packet::Protocol::IcmpEcho(7).into(),
+            preferred_gateways: Vec::new(),
         };
-        let expected_json = r#"{"event":"request_device_access","payload":{"ipv6":"fd00:2021:1111::1","protocol":"icmp"}}"#;
+        let expected_json = r#"{"event":"request_access","payload":{"ipv6":"fd00:2021:1111::1","protocol":"icmp","connected_gateway_ids":[]}}"#;
         let actual_json = serde_json::to_string(&message).unwrap();
 
         assert_eq!(actual_json, expected_json);

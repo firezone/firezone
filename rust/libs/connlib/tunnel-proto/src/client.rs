@@ -19,7 +19,7 @@ use crate::client::dns_config::DnsConfig;
 use crate::client::pending_authorizations::{
     AuthorizationRequest, DnsQueryForSite, PendingAuthorization, PendingAuthorizations,
 };
-use crate::client::routing::{Route, RoutingTables};
+use crate::client::routing::{LocalPick, Route, RoutingTables};
 use crate::client::tracked_state::TrackedState;
 use crate::conn_track::Originator;
 use crate::dns::{
@@ -380,7 +380,7 @@ impl ClientState {
         for addr in ipv4.map(IpAddr::V4).into_iter().chain(ipv6.map(IpAddr::V6)) {
             let Some(pending) = self
                 .pending_authorizations
-                .deny_device(addr, whole_address, now)
+                .deny_address(addr, whole_address, now)
             else {
                 continue;
             };
@@ -389,16 +389,33 @@ impl ClientState {
         }
     }
 
-    /// The portal denied the resource we asked about: same handling as a denied device.
+    /// The portal denied the resource we asked about, by id or by address: same handling
+    /// as a denied device.
     pub fn handle_resource_access_denied(
         &mut self,
-        resource_id: ResourceId,
+        resource_id: Option<ResourceId>,
+        address: Option<IpAddr>,
         reason: FailReason,
         now: Instant,
     ) {
-        tracing::debug!(%resource_id, "Resource access denied: {reason:?}");
+        tracing::debug!(?resource_id, ?address, "Resource access denied: {reason:?}");
 
-        if let Some(pending) = self.pending_authorizations.deny_resource(resource_id, now) {
+        if let Some(addr) = address {
+            let whole_address = matches!(reason, FailReason::NotFound);
+
+            if let Some(pending) =
+                self.pending_authorizations
+                    .deny_address(addr, whole_address, now)
+            {
+                self.reply_prohibited_to_buffered(pending);
+            }
+
+            return;
+        }
+
+        if let Some(pending) =
+            resource_id.and_then(|rid| self.pending_authorizations.deny_resource(rid, now))
+        {
             self.reply_prohibited_to_buffered(pending);
         }
     }
@@ -418,7 +435,7 @@ impl ClientState {
 
             for _ in self
                 .pending_authorizations
-                .remove_device_authorizations(|addr| tun.is_ip(addr))
+                .remove_address_authorizations(|addr| tun.is_ip(addr))
             {}
         }
 
@@ -637,9 +654,18 @@ impl ClientState {
         let pending_authorizations = &mut self.pending_authorizations;
         let resources = &self.resources_by_id;
 
-        let route = self
-            .routing_tables
-            .resolve(dst, dst_proto, internet_resource);
+        let authorized_resources = &self.authorized_resources;
+        let route = self.routing_tables.resolve(
+            dst,
+            dst_proto,
+            internet_resource,
+            |rid| {
+                authorized_resources
+                    .get(&rid)
+                    .is_some_and(|p| p.as_gateway().is_some())
+            },
+            |filter| filter_allows(filter, dst_proto),
+        );
 
         let direct_gateway = self.gateways.peer_by_ip(dst).map(|(gid, _)| gid);
         let peer_originated_client_flow = self.clients.peer_by_ip(dst).and_then(|(cid, peer)| {
@@ -671,7 +697,7 @@ impl ClientState {
                 // The pool we hold for the peer does not permit this flow: another pool may,
                 // so ask the portal.
                 if !filter_allows(&filter, dst_proto) {
-                    if let Some(packet) = pending_authorizations.on_not_authorized_device(
+                    if let Some(packet) = pending_authorizations.on_not_authorized_address(
                         dst,
                         Flow::from(dst_proto),
                         packet,
@@ -694,7 +720,7 @@ impl ClientState {
 
                 let Some(cid) = authorized else {
                     // Not yet authorized: Buffer + send request.
-                    if let Some(packet) = pending_authorizations.on_not_authorized_device(
+                    if let Some(packet) = pending_authorizations.on_not_authorized_address(
                         dst,
                         Flow::from(dst_proto),
                         packet,
@@ -725,17 +751,18 @@ impl ClientState {
                     domain,
                 }),
             ) => {
+                let authorized = self
+                    .authorized_resources
+                    .get(&rid)
+                    .and_then(|p| p.as_gateway())
+                    .copied();
+
                 if !filter_allows(&filter, dst_proto) {
                     reply_with_icmp_prohibited(&mut self.buffered_packets, packet);
                     return Ok(());
                 }
 
-                let Some(gid) = self
-                    .authorized_resources
-                    .get(&rid)
-                    .and_then(|p| p.as_gateway())
-                    .copied()
-                else {
+                let Some(gid) = authorized else {
                     // Not yet authorized: Buffer + send intent.
                     if let Some(pending_authorizations::Trigger::PacketForResource(packet)) =
                         pending_authorizations
@@ -772,22 +799,35 @@ impl ClientState {
             }
             (None, None, None) => {
                 // A tunnel address we hold no pool for may still be a device the portal
-                // lets us reach, so ask before giving up.
-                if crate::is_peer(dst) {
-                    if let Some(packet) = pending_authorizations.on_not_authorized_device(
-                        dst,
-                        Flow::from(dst_proto),
-                        packet,
-                        now,
-                    ) {
+                // lets us reach, and any other address one of our resources permits the
+                // flow to is the portal's to pick the resource for, so ask before giving up.
+                match self
+                    .routing_tables
+                    .local_pick(dst, dst_proto, internet_resource, |filter| {
+                        filter_allows(filter, dst_proto)
+                    }) {
+                    LocalPick::Resource { .. } => {}
+                    LocalPick::None if crate::is_peer(dst) => {}
+                    LocalPick::Refused => {
                         reply_with_icmp_prohibited(&mut self.buffered_packets, packet);
+                        return Ok(());
                     }
-                    return Ok(());
+                    LocalPick::None => {
+                        return Err(anyhow::Error::new(UnroutablePacket::unknown_resource(
+                            &packet,
+                        )));
+                    }
                 }
 
-                return Err(anyhow::Error::new(UnroutablePacket::unknown_resource(
-                    &packet,
-                )));
+                if let Some(packet) = pending_authorizations.on_not_authorized_address(
+                    dst,
+                    Flow::from(dst_proto),
+                    packet,
+                    now,
+                ) {
+                    reply_with_icmp_prohibited(&mut self.buffered_packets, packet);
+                }
+                return Ok(());
             }
         };
 
@@ -943,6 +983,8 @@ impl ClientState {
                             failed_packet.dst(),
                             failed_packet.dst_proto(),
                             internet_resource,
+                            |_| true,
+                            |filter| filter_allows(filter, failed_packet.dst_proto()),
                         )
                         .map(|route| route.resource_id())
                 {
@@ -1105,13 +1147,49 @@ impl ClientState {
         gateway_ice: IceCredentials,
         use_iceless: bool,
         flow_logs_ingest_token: IngestToken,
+        address: Option<IpAddr>,
         now: Instant,
     ) -> anyhow::Result<Result<(), NoTurnServers>> {
-        tracing::debug!(%gid, "New resource access authorized");
+        tracing::debug!(%gid, ?address, "New resource access authorized");
 
         let resource = self.resources_by_id.get(&rid).context("Unknown resource")?;
 
-        let Some(pending_authorization) = self.pending_authorizations.remove(rid) else {
+        // The portal picked this resource for the address: route it there from now on.
+        let pending_authorization = match address {
+            Some(addr) => {
+                // The portal does not know the user disabled the Internet Resource here.
+                if matches!(resource, Resource::Internet(_)) && !self.is_internet_resource_active {
+                    if let Some(pending) =
+                        self.pending_authorizations.deny_address(addr, false, now)
+                    {
+                        self.reply_prohibited_to_buffered(pending);
+                    }
+
+                    return Ok(Ok(()));
+                }
+
+                let pending = self
+                    .pending_authorizations
+                    .remove_address_authorizations(|pending| pending == addr)
+                    .next();
+
+                if let Some(flow) = pending.as_ref().and_then(|p| p.requested_flow()) {
+                    self.routing_tables.learn(
+                        addr,
+                        flow,
+                        rid,
+                        FilterEngine::new(resource.filters()),
+                    );
+                }
+                self.pending_authorizations
+                    .forget_address_denials(|denied| denied == addr);
+
+                pending
+            }
+            None => self.pending_authorizations.remove(rid),
+        };
+
+        let Some(pending_authorization) = pending_authorization else {
             tracing::debug!("No pending authorization");
 
             return Ok(Ok(()));
@@ -1277,14 +1355,14 @@ impl ClientState {
 
         for pending in self
             .pending_authorizations
-            .remove_device_authorizations(|addr| client_tun.is_ip(addr))
+            .remove_address_authorizations(|addr| client_tun.is_ip(addr))
         {
             let (packets, _) = pending.into_buffered_packets();
             buffered_packets.extend(packets);
         }
 
         self.pending_authorizations
-            .forget_device_denials(|addr| client_tun.is_ip(addr));
+            .forget_address_denials(|addr| client_tun.is_ip(addr));
 
         // We asked for this connection: from now on the pool the portal picked routes
         // flows to the peer, so later sends skip `pending_authorizations`.
@@ -1475,6 +1553,18 @@ impl ClientState {
 
         self.authorized_resources.remove(&resource);
         self.cleanup_connected_gateway(&disconnected_gateway, now);
+    }
+
+    fn connected_gateways(&self) -> Vec<GatewayId> {
+        #[expect(clippy::disallowed_methods, reason = "We are sorting anyway")]
+        self.gateways_by_site
+            .values()
+            .flatten()
+            .copied()
+            .filter(|gid| self.node.is_connected(&ClientOrGatewayId::Gateway(*gid)))
+            .unique()
+            .sorted()
+            .collect_vec()
     }
 
     fn preferred_gateways(&self, resource: ResourceId) -> Vec<GatewayId> {
@@ -2408,9 +2498,11 @@ impl ClientState {
                     preferred_gateways: self.preferred_gateways(resource),
                     resource,
                 },
-                AuthorizationRequest::Device { addr, flow } => {
-                    ClientEvent::DeviceAccessRequested { ip: addr, flow }
-                }
+                AuthorizationRequest::Address { addr, flow } => ClientEvent::AccessRequested {
+                    ip: addr,
+                    flow,
+                    preferred_gateways: self.connected_gateways(),
+                },
             });
         }
 
@@ -3018,7 +3110,7 @@ mod tests {
         let request = iter::from_fn(|| state.poll_event()).find(|event| {
             matches!(
                 event,
-                ClientEvent::DeviceAccessRequested { ip, flow }
+                ClientEvent::AccessRequested { ip, flow, .. }
                     if *ip == IpAddr::V4(device_tun_ipv4()) && *flow == Flow::from(Protocol::Udp(53))
             )
         });
@@ -3282,7 +3374,7 @@ mod tests {
     fn assert_no_device_connection_intent(state: &mut ClientState) {
         while let Some(event) = state.poll_event() {
             assert!(
-                !matches!(event, ClientEvent::DeviceAccessRequested { .. }),
+                !matches!(event, ClientEvent::AccessRequested { .. }),
                 "unexpected device access request"
             );
         }
