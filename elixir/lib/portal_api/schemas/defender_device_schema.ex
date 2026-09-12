@@ -90,6 +90,8 @@ defmodule PortalAPI.Schemas.DefenderDevice do
                   {field, schema}
                 end)
 
+    # Left off the API and out of the posture grammar:
+    # - merged_into_machine_id: the record that survived when Defender merged a duplicate
     @derive {PortalAPI.JSON.Encoder,
              for: Portal.Defender.Device,
              internal: ~w[

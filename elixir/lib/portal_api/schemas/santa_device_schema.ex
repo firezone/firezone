@@ -75,6 +75,10 @@ defmodule PortalAPI.Schemas.SantaDevice do
                   {field, schema}
                 end)
 
+    # Left off the API and out of the posture grammar:
+    # - primary_user_locked: whether Workshop locks the primary user against edits
+    # - tags_locked: whether Workshop locks the tags against edits
+    # - tags_truncated: whether Workshop cut the tag list short
     @derive {PortalAPI.JSON.Encoder,
              for: Portal.Santa.Device,
              internal: ~w[
