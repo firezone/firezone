@@ -51,7 +51,10 @@ pub const IPV6_TUNNEL: Ipv6Network =
     };
 
 pub use client::dns_config::DnsMapping;
-pub use client::{ClientState, DNS_SENTINELS_V4, DNS_SENTINELS_V6, IPV4_RESOURCES, IPV6_RESOURCES};
+pub use client::{
+    ClientState, DNS_SENTINELS_V4, DNS_SENTINELS_V6, IPV4_RESOURCES, IPV6_RESOURCES,
+    NEGATIVE_CACHE_TTL,
+};
 pub use dns::DnsResourceRecord;
 pub use gateway::{DnsResourceNatEntry, GatewayState, ResolveDnsRequest};
 #[cfg(feature = "malicious-behaviour")]

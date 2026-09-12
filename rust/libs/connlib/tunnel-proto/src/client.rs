@@ -201,7 +201,7 @@ pub struct ClientState {
 }
 
 /// How long a denial from the portal is remembered before the same request may be sent again.
-pub(crate) const NEGATIVE_CACHE_TTL: Duration = Duration::from_secs(30);
+pub const NEGATIVE_CACHE_TTL: Duration = Duration::from_secs(30);
 
 impl ClientState {
     pub fn new(
@@ -1578,17 +1578,28 @@ impl ClientState {
             .remove(&ClientOrGatewayId::Client(*disconnected_client));
         self.portal
             .forget(&ClientOrGatewayId::Client(*disconnected_client));
+        self.forget_outbound_grants(*disconnected_client);
+
         if self.clients.remove(disconnected_client).is_some() {
             self.resource_list.update(self.resource_list_snapshot());
         }
-
-        self.forget_outbound_grants(*disconnected_client);
     }
 
     /// Drops every grant the portal gave us towards `cid`, so the next flow asks again.
+    /// A peer's routes exist only together with its grants: a route without a grant
+    /// would make the router pick a pool the portal may not, and the two would ask each
+    /// other forever.
     fn forget_outbound_grants(&mut self, cid: ClientId) {
         for resource in self.authorized_resources.values_mut() {
             resource.remove_client(&cid);
+        }
+
+        if let Some(peer) = self.clients.peer_by_id(&cid) {
+            let tun = peer.remote_tun();
+            self.routing_tables
+                .remove_peer_routes(IpNetwork::from(Ipv4Network::from(tun.v4)));
+            self.routing_tables
+                .remove_peer_routes(IpNetwork::from(Ipv6Network::from(tun.v6)));
         }
     }
 

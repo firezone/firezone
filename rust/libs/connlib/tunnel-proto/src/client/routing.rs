@@ -177,6 +177,11 @@ impl RoutingTables {
             .remove(network, |entry| entry.resource_id == resource_id);
     }
 
+    /// Drops every pool route to the peer at `network`.
+    pub(super) fn remove_peer_routes(&mut self, network: IpNetwork) {
+        self.peer.remove(network, |_| true);
+    }
+
     /// Applies a pool's new filters to every peer routed through it.
     pub(super) fn replace_peer_filter(&mut self, resource_id: ResourceId, filter: FilterEngine) {
         self.peer.update_by_id(resource_id, |entry| PeerEntry {
