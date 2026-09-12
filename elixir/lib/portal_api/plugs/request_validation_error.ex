@@ -21,7 +21,7 @@ defmodule PortalAPI.Plugs.RequestValidationError do
 
     if request_errors == [] do
       PortalAPI.ProblemDetails.send(conn, 422, "The request body failed validation.", %{
-        validation_errors: Enum.reduce(field_errors, %{}, &put_field_error/2)
+        validation_errors: field_errors |> Enum.reduce(%{}, &put_field_error/2) |> render()
       })
     else
       PortalAPI.ProblemDetails.send(
@@ -32,12 +32,30 @@ defmodule PortalAPI.Plugs.RequestValidationError do
     end
   end
 
-  defp put_field_error(%Error{} = error, acc) do
+  # Errors are collected in a tree first because a schema built with allOf or
+  # oneOf reports a failure on the property as a whole as well as on the field
+  # inside it that caused it, so one path can be both a leaf and a parent.
+  defp put_field_error(%Error{} = error, tree) do
     [_wrapper | path] = path(error)
-    {parents, [leaf]} = Enum.split(path, -1)
-    keys = Enum.map(parents, &Access.key(&1, %{})) ++ [Access.key(leaf, [])]
-    update_in(acc, keys, &[message(error) | &1])
+    put_message(tree, path, message(error))
   end
+
+  defp put_message(node, [], message) do
+    Map.update(node, :messages, [message], &[message | &1])
+  end
+
+  defp put_message(node, [key | rest], message) do
+    child = node |> Map.get(:children, %{}) |> Map.get(key, %{}) |> put_message(rest, message)
+    Map.update(node, :children, %{key => child}, &Map.put(&1, key, child))
+  end
+
+  # The message on the property as a whole says less than the ones on the
+  # fields inside it, so a node with children renders the children alone.
+  defp render(%{children: children}) do
+    Map.new(children, fn {key, child} -> {key, render(child)} end)
+  end
+
+  defp render(node), do: Map.get(node, :messages, [])
 
   defp path(%Error{path: path}), do: Enum.map(path, &to_string/1)
 
