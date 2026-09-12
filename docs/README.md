@@ -57,6 +57,8 @@ is available for inspection in this repository.
 the [Quickstart](https://www.firezone.dev/kb/quickstart) to:
 
 1. Deploy a Gateway in the network containing your Resources.
+   See the [Gateway sizing documentation](https://www.firezone.dev/kb/deploy/sizing)
+   for sizing and configuration guidance.
 2. Define Resources and policies that grant access to the appropriate groups.
 3. Install a Client, sign in, and connect to an authorized Resource.
 
@@ -108,14 +110,53 @@ for details on the control plane, data plane, and connection lifecycle.
 
 ## Performance
 
-- **Latency:** Direct Client-to-Gateway connections avoid a central traffic hub.
-  Relays provide connectivity when a direct path is unavailable.
-- **Scaling:** Add Gateways to distribute connections and increase aggregate
-  capacity. Deploy them near Resources to keep traffic paths short.
+Firezone is committed to achieving the fastest possible speeds on every platform.
+Its shared Rust data plane combines WireGuard encryption with platform-specific
+I/O optimizations to reduce system calls, task wake-ups, and per-packet overhead.
 
-Throughput and memory usage depend on hardware, network conditions, and workload.
-See the [Gateway sizing documentation](https://www.firezone.dev/kb/deploy/sizing)
-for sizing and configuration guidance.
+### Throughput
+
+| Platform | Throughput (as tested)                                |
+| -------- | ----------------------------------------------------- |
+| iOS      | 2+ Gbps                                               |
+| Android  | 2+ Gbps                                               |
+| Windows  | 3+ Gbps                                               |
+| macOS    | 4+ Gbps                                               |
+| Linux    | 5+ Gbps on commodity VMs / 10+ Gbps on tuned hardware |
+
+Throughput varies with round-trip latency, packet loss, hardware, network capacity,
+and workload.
+
+### Platform-specific optimizations
+
+Firezone combines packet batching with each platform's available offloads to
+process more packets with fewer system calls and wake-ups.
+
+- **macOS and iOS:** kqueue-backed readiness through Tokio/Mio, with batched
+  `sendmsg_x` / `recvmsg_x` calls for both UDP sockets and the `utun` interface.
+  A cache of connected UDP sockets enables Darwin's fast send path and flow
+  advisories for active peers.
+- **Windows:** Batched packet transfer to and from WinTUN, with support for TCP
+  coalescing before injection into its ring buffer. UDP sockets use segmentation
+  offload (USO) and receive coalescing (URO) where supported.
+- **Android:** UDP GSO/GRO where supported by the device's kernel.
+- **Linux:** UDP GSO/GRO plus TCP and UDP segmentation and checksum offloads on
+  the TUN interface.
+
+### Network path optimizations
+
+The [bandwidth-delay product](https://en.wikipedia.org/wiki/Bandwidth-delay_product)
+means throughtput is a function of round-trip latency. Firezone keeps network
+paths short to minimize that latency.
+
+Direct peer connections form on demand through a custom NAT traversal system
+optimized for time to first byte. By piggybacking connection
+establishment on the WireGuard handshake, connections to new peers are typically
+ready in 200 ms or less.
+
+When a direct connection is unavailable, encrypted traffic flows through one of
+our 34 relay clusters worldwide. Relays combine eBPF/XDP and SR-IOV to process
+packets at line rate for most workloads.
 
 ## Repository structure
 
