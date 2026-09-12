@@ -1,4 +1,5 @@
 use crate::{
+    client::NEGATIVE_CACHE_TTL,
     dns::{self, device_slug},
     expiring_map::{self, ExpiringMap},
     messages::client::FailReason,
@@ -27,6 +28,8 @@ const DNS_TTL: u32 = 1;
 #[derive(Default)]
 pub struct DeviceStubResolver {
     resolved: BTreeMap<DomainName, (Ipv4Addr, Ipv6Addr)>,
+    /// Names the portal did not know recently; answered with NXDOMAIN until they expire.
+    negative: ExpiringMap<DomainName, ()>,
     pending: ExpiringMap<(DomainName, dns_types::RecordType), PendingQuery>,
 
     events: VecDeque<Event>,
@@ -98,6 +101,10 @@ impl DeviceStubResolver {
             ));
         }
 
+        if self.negative.contains_key(&domain) {
+            return ResolveStrategy::LocalResponse(dns_types::Response::nxdomain(query));
+        }
+
         // If a portal query for this domain is already in flight under either A or
         // AAAA, don't fire another: the response populates the cache for both, and
         // `handle_device_domain_resolved` drains all waiters for the domain regardless
@@ -134,6 +141,7 @@ impl DeviceStubResolver {
         &mut self,
         domain: DomainName,
         result: Result<(Ipv4Addr, Ipv6Addr), FailReason>,
+        now: Instant,
     ) {
         let pending = self
             .pending
@@ -148,8 +156,14 @@ impl DeviceStubResolver {
 
         tracing::debug!(%domain, ?result, "Device name resolved");
 
-        if let Ok((ipv4, ipv6)) = result {
-            self.resolved.insert(domain, (ipv4, ipv6));
+        match result {
+            Ok((ipv4, ipv6)) => {
+                self.resolved.insert(domain, (ipv4, ipv6));
+            }
+            Err(FailReason::NotFound) => {
+                self.negative.insert(domain, (), now, NEGATIVE_CACHE_TTL);
+            }
+            Err(_) => {}
         }
 
         for pending in pending {
@@ -188,6 +202,9 @@ impl DeviceStubResolver {
     }
 
     pub(crate) fn handle_timeout(&mut self, now: Instant) {
+        self.negative.handle_timeout(now);
+        while self.negative.poll_event().is_some() {}
+
         self.pending.handle_timeout(now);
         while let Some(expiring_map::Event::EntryExpired {
             key: (domain, _),
@@ -207,7 +224,10 @@ impl DeviceStubResolver {
     }
 
     pub(crate) fn poll_timeout(&self) -> Option<Instant> {
-        self.pending.poll_timeout()
+        [self.pending.poll_timeout(), self.negative.poll_timeout()]
+            .into_iter()
+            .flatten()
+            .min()
     }
 }
 
@@ -306,7 +326,11 @@ mod tests {
         handle(&mut resolver, DEVICE, dns_types::RecordType::AAAA);
         drain(&mut resolver);
 
-        resolver.handle_device_domain_resolved(domain(DEVICE), Ok((TEST_IPV4, TEST_IPV6)));
+        resolver.handle_device_domain_resolved(
+            domain(DEVICE),
+            Ok((TEST_IPV4, TEST_IPV6)),
+            Instant::now(),
+        );
 
         let events = drain(&mut resolver);
         let [
@@ -331,7 +355,11 @@ mod tests {
         let mut resolver = DeviceStubResolver::default();
         handle(&mut resolver, DEVICE, dns_types::RecordType::A);
         drain(&mut resolver);
-        resolver.handle_device_domain_resolved(domain(DEVICE), Ok((TEST_IPV4, TEST_IPV6)));
+        resolver.handle_device_domain_resolved(
+            domain(DEVICE),
+            Ok((TEST_IPV4, TEST_IPV6)),
+            Instant::now(),
+        );
         drain(&mut resolver);
 
         let ResolveStrategy::LocalResponse(resp) =
@@ -348,6 +376,35 @@ mod tests {
     }
 
     #[test]
+    fn not_found_is_answered_locally_until_the_denial_expires() {
+        let mut resolver = DeviceStubResolver::default();
+        let mut now = Instant::now();
+        handle(&mut resolver, DEVICE, dns_types::RecordType::A);
+        drain(&mut resolver);
+        resolver.handle_device_domain_resolved(domain(DEVICE), Err(FailReason::NotFound), now);
+        drain(&mut resolver);
+
+        assert!(matches!(
+            handle(&mut resolver, DEVICE, dns_types::RecordType::A),
+            ResolveStrategy::LocalResponse(response)
+                if response.response_code() == dns_types::ResponseCode::NXDOMAIN
+        ));
+        assert!(resolver.poll_event().is_none());
+
+        now += NEGATIVE_CACHE_TTL + Duration::from_secs(1);
+        resolver.handle_timeout(now);
+
+        assert!(matches!(
+            handle(&mut resolver, DEVICE, dns_types::RecordType::A),
+            ResolveStrategy::Pending
+        ));
+        assert!(matches!(
+            resolver.poll_event(),
+            Some(Event::QueryDomain { domain: queried }) if queried.to_string() == DEVICE
+        ));
+    }
+
+    #[test]
     fn not_found_is_nxdomain_and_other_failures_are_servfail() {
         for (reason, code) in [
             (FailReason::NotFound, dns_types::ResponseCode::NXDOMAIN),
@@ -357,7 +414,7 @@ mod tests {
             handle(&mut resolver, DEVICE, dns_types::RecordType::A);
             drain(&mut resolver);
 
-            resolver.handle_device_domain_resolved(domain(DEVICE), Err(reason));
+            resolver.handle_device_domain_resolved(domain(DEVICE), Err(reason), Instant::now());
 
             let events = drain(&mut resolver);
             let [Event::SendResponse { response, .. }] = events.as_slice() else {
@@ -388,7 +445,11 @@ mod tests {
         };
         assert_eq!(response.response_code(), dns_types::ResponseCode::SERVFAIL);
 
-        resolver.handle_device_domain_resolved(domain(DEVICE), Ok((TEST_IPV4, TEST_IPV6)));
+        resolver.handle_device_domain_resolved(
+            domain(DEVICE),
+            Ok((TEST_IPV4, TEST_IPV6)),
+            Instant::now(),
+        );
 
         assert!(resolver.poll_event().is_none());
     }
