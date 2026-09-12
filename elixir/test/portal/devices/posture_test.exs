@@ -135,3 +135,70 @@ defmodule Portal.Devices.PostureTest do
     end
   end
 end
+
+defmodule Portal.Devices.PostureKeysTest do
+  use ExUnit.Case, async: true
+
+  alias Portal.Devices.Posture
+
+  test "types/0 and schemas/0 list every provider that syncs rows" do
+    assert Posture.types() == [:intune, :iru, :defender, :santa, :sentinelone]
+    assert Posture.schemas() == Enum.map(Posture.types(), &Posture.schema/1)
+
+    for type <- Posture.types() do
+      assert Posture.type(Posture.schema(type)) == type
+    end
+  end
+
+  test "row_keys/1 names the identifiers a row can be matched on" do
+    assert Posture.row_keys(%Portal.Intune.Device{intune_id: "mdm-1", serial_number: "SER-1"}) ==
+             [mdm_device_id: "mdm-1", serial: "SER-1"]
+
+    assert Posture.row_keys(%Portal.Intune.Device{intune_id: "mdm-1", serial_number: nil}) ==
+             [mdm_device_id: "mdm-1"]
+
+    assert Posture.row_keys(%Portal.Iru.Device{iru_id: "mdm-2", serial_number: "SER-2"}) ==
+             [mdm_device_id: "mdm-2", serial: "SER-2"]
+
+    assert Posture.row_keys(%Portal.Santa.Device{santa_id: "x", serial_number: "SER-3"}) == [serial: "SER-3"]
+    assert Posture.row_keys(%Portal.Santa.Device{santa_id: "x", serial_number: nil}) == []
+    assert Posture.row_keys(%Portal.SentinelOne.Device{uuid: "u", serial_number: "SER-4"}) == [serial: "SER-4"]
+  end
+
+  test "row_keys/1 keys a Defender row by its Entra device id alone" do
+    assert Posture.row_keys(%Portal.Defender.Device{defender_id: "d", entra_device_id: "entra-1"}) ==
+             [entra_device_id: "entra-1"]
+
+    assert Posture.row_keys(%Portal.Defender.Device{defender_id: "d", entra_device_id: nil}) == []
+  end
+
+  test "device_keys/1 names the identifiers a client is matched on, without repeats" do
+    device = %Portal.Device{
+      type: :client,
+      last_attested_mdm_device_id: "mdm-1",
+      last_attested_device_serial: "SER-1",
+      device_serial: "SER-1"
+    }
+
+    assert Posture.device_keys(device) == [mdm_device_id: "mdm-1", serial: "SER-1"]
+
+    assert Posture.device_keys(%{device | last_attested_device_serial: "ATTESTED", last_attested_mdm_device_id: nil}) ==
+             [serial: "ATTESTED", serial: "SER-1"]
+
+    assert Posture.device_keys(%Portal.Device{type: :client}) == []
+  end
+
+  test "entra_keys/1 follows the matched Intune rows" do
+    rows = %{
+      intune: [
+        %Portal.Intune.Device{entra_device_id: "entra-1"},
+        %Portal.Intune.Device{entra_device_id: nil},
+        %Portal.Intune.Device{entra_device_id: "entra-1"}
+      ],
+      defender: [%Portal.Defender.Device{entra_device_id: "entra-2"}]
+    }
+
+    assert Posture.entra_keys(rows) == [entra_device_id: "entra-1"]
+    assert Posture.entra_keys(%{}) == []
+  end
+end

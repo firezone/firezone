@@ -173,6 +173,10 @@ defmodule Portal.Policies.Postures.Fields do
   @spec registry() :: %{atom() => %{atom() => atom()}}
   def registry, do: @registry
 
+  @doc "Every operator, whatever the type."
+  @spec operators() :: [atom()]
+  def operators, do: @all_operators
+
   @spec operators(atom()) :: [atom()]
   def operators(type) when type in @types, do: Map.fetch!(@operators, type) ++ @universal_operators
 

@@ -2,9 +2,9 @@ defmodule Portal.Changes.Hooks.SentinelOnePostureProviders do
   @moduledoc """
   Hooks for changes to a SentinelOne posture provider.
 
-  Device rows are deliberately absent from the publication because every sync
-  rewrites every endpoint it sees. The provider row is enough to refresh the UI
-  when a run completes or its state changes.
+  Device rows have hooks of their own that publish a row only under the
+  identifiers a client device can match it on. The provider row is enough to
+  refresh the UI when a run completes or its state changes.
   """
 
   @behaviour Portal.Changes.Hooks

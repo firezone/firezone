@@ -1005,16 +1005,24 @@ defmodule Portal.Cache.ClientTest do
       membership_fixture(account: account, actor: actor, group: group)
       resource = dns_resource_fixture(account: account, site: site_fixture(account: account))
 
-      policy_fixture(
-        account: account,
-        group: group,
-        resource: resource,
-        postures: %{"field" => "intune.compliance_state", "op" => "is", "value" => "compliant"}
-      )
+      policy =
+        policy_fixture(
+          account: account,
+          group: group,
+          resource: resource,
+          postures: %{"field" => "intune.compliance_state", "op" => "is", "value" => "compliant"}
+        )
 
       compliant = %Portal.Intune.Device{compliance_state: "compliant"}
       noncompliant = %Portal.Intune.Device{compliance_state: "noncompliant"}
-      %{subject: subject, client: client, resource: resource, compliant: compliant, noncompliant: noncompliant}
+      %{
+        subject: subject,
+        client: client,
+        resource: resource,
+        policy: policy,
+        compliant: compliant,
+        noncompliant: noncompliant
+      }
     end
 
     test "a passing posture makes the resource connectable and authorizes it", ctx do
@@ -1030,6 +1038,15 @@ defmodule Portal.Cache.ClientTest do
 
       client = %{ctx.client | posture: %{}}
       {:ok, [], [], _cache} = Cache.recompute_connectable_resources(nil, client, ctx.subject)
+    end
+
+    test "conforming_policy_ids/3 names the policies that hold for the client", ctx do
+      passing = %{ctx.client | posture: %{intune: [ctx.compliant]}}
+      {:ok, _added, [], cache} = Cache.recompute_connectable_resources(nil, passing, ctx.subject)
+      assert Cache.conforming_policy_ids(cache, passing, nil) == [ctx.policy.id]
+
+      failing = %{ctx.client | posture: %{intune: [ctx.noncompliant]}}
+      assert Cache.conforming_policy_ids(cache, failing, nil) == []
     end
 
     test "a posture that stops passing forbids a connectable resource", ctx do
