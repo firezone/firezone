@@ -6,6 +6,7 @@ use super::sim_client::SimClient;
 use super::sim_gateway::SimGateway;
 use super::sim_net::{Host, HostId, RoutingTable};
 use super::sim_relay::SimRelay;
+use super::stub_portal::pick_resource_for_address;
 use super::transition::{DPort, Destination, DnsQuery, Identifier, SPort, Seq};
 use crate::assertions::*;
 use crate::flux_capacitor::FluxCapacitor;
@@ -1382,125 +1383,52 @@ impl TunnelTest {
                 Ok(())
             }
             ClientEvent::ResourceConnectionIntent {
-                resource: resource_id,
+                resource,
                 preferred_gateways,
             } => {
-                let (gateway_id, site_id) =
-                    portal.handle_connection_intent(resource_id, preferred_gateways);
-                let gateway = self.gateways.get_mut(&gateway_id).expect("unknown gateway");
-                let resource = portal.map_client_resource_to_gateway_resource(resource_id);
-
-                let client = self.clients.get_mut(&src).unwrap();
-                let client_key = client.inner().sut.public_key();
-                let client_tun = client.inner().sut.tunnel_ip_config().unwrap();
-                let gateway_key = gateway.inner().sut.public_key();
-                let (preshared_key, client_ice, gateway_ice) =
-                    make_preshared_key_and_ice(client_key, gateway_key);
-                let use_iceless = portal.iceless();
-
-                gateway
-                    .exec_mut(|g| {
-                        g.sut.create_authorization(
-                            Client {
-                                id: src,
-                                public_key: client_key.into(),
-                                preshared_key: preshared_key.clone(),
-                                ipv4: client_tun.v4,
-                                ipv6: client_tun.v6,
-                            },
-                            client_ice.clone(),
-                            gateway_ice.clone(),
-                            None,
-                            resource,
-                            use_iceless,
-                            now,
-                            test_ingest_token(),
-                        )?;
-                        g.record_authorization(
-                            src,
-                            resource_id,
-                            [client_tun.v4.into(), client_tun.v6.into()],
-                        );
-
-                        Ok(())
-                    })
-                    .map_err(|error| ClientEventError::Gateway {
-                        id: gateway_id,
-                        error,
-                    })?;
-
-                // The gateway's candidates and the portal's `flow_created` reply travel
-                // independently, so the client may receive them before it knows about
-                // the connection.
-                while let Some(event) = gateway.exec_mut(|g| g.sut.poll_event()) {
-                    on_gateway_event(
-                        gateway_id,
-                        event,
-                        &mut self.clients,
-                        gateway,
-                        &self.relays,
-                        &ref_state.global_dns_records,
-                        now,
-                    );
-                }
-
-                let client = self.clients.get_mut(&src).unwrap();
-                client
-                    .exec_mut(|c| {
-                        c.sut.handle_resource_access_authorized(
-                            resource_id,
-                            gateway_id,
-                            gateway_key,
-                            gateway.inner().sut.tunnel_ip_config().unwrap(),
-                            site_id,
-                            preshared_key,
-                            client_ice,
-                            gateway_ice,
-                            use_iceless,
-                            test_ingest_token(),
-                            now,
-                        )
-                    })
-                    .unwrap_or_else(|e| {
-                        tracing::error!("{e:#}");
-
-                        Ok(())
-                    })
-                    .map_err(|error| ClientEventError::Client { id: src, error })?;
-
-                Ok(())
+                self.authorize_gateway_resource(src, resource, preferred_gateways, None, ref_state)
             }
-            ClientEvent::DeviceAccessRequested { ip, flow } => {
-                let (ipv4, ipv6) = match ip {
-                    std::net::IpAddr::V4(v4) => (Some(v4), None),
-                    std::net::IpAddr::V6(v6) => (None, Some(v6)),
-                };
+            ClientEvent::AccessRequested {
+                ip,
+                flow,
+                preferred_gateways,
+            } if !tunnel_proto::is_peer(ip) => {
+                // Mimic the portal: pick among the resources the client holds that cover
+                // the address, then authorize it like a connection intent.
+                let candidates = ref_state
+                    .clients
+                    .get(&src)
+                    .expect("unknown source client")
+                    .inner()
+                    .address_candidates(ip);
 
+                match pick_resource_for_address(&candidates, flow_protocol(flow)) {
+                    Ok(resource) => self.authorize_gateway_resource(
+                        src,
+                        resource,
+                        preferred_gateways,
+                        Some(ip),
+                        ref_state,
+                    ),
+                    Err(reason) => {
+                        deny_address_access(&mut self.clients, src, ip, reason, now);
+
+                        Ok(())
+                    }
+                }
+            }
+            ClientEvent::AccessRequested { ip, flow, .. } => {
                 // Mimic the portal: the address must be another client's, and one of the
                 // pools the initiator holds must admit it and permit the flow.
                 let Some(remote_id) = portal
                     .client_by_ip(ip)
                     .filter(|id| self.clients.contains_key(id))
                 else {
-                    deny_device_access(
-                        &mut self.clients,
-                        src,
-                        ipv4,
-                        ipv6,
-                        FailReason::NotFound,
-                        now,
-                    );
+                    deny_address_access(&mut self.clients, src, ip, FailReason::NotFound, now);
                     return Ok(());
                 };
                 if remote_id == src {
-                    deny_device_access(
-                        &mut self.clients,
-                        src,
-                        ipv4,
-                        ipv6,
-                        FailReason::Forbidden,
-                        now,
-                    );
+                    deny_address_access(&mut self.clients, src, ip, FailReason::Forbidden, now);
                     return Ok(());
                 }
                 let held = ref_state
@@ -1511,14 +1439,7 @@ impl TunnelTest {
                     .device_pool_ids();
                 let Some(pool) = portal.pick_device_pool(&held, remote_id, flow_protocol(flow))
                 else {
-                    deny_device_access(
-                        &mut self.clients,
-                        src,
-                        ipv4,
-                        ipv6,
-                        FailReason::Forbidden,
-                        now,
-                    );
+                    deny_address_access(&mut self.clients, src, ip, FailReason::Forbidden, now);
                     return Ok(());
                 };
                 let filters = portal.device_pool_filters(pool).unwrap_or_default();
@@ -1649,6 +1570,106 @@ impl TunnelTest {
                 Ok(())
             }
         }
+    }
+
+    /// Mimics the portal authorizing `resource` for `src` on a gateway; `address` names the
+    /// address the portal picked the resource for.
+    fn authorize_gateway_resource(
+        &mut self,
+        src: ClientId,
+        resource_id: ResourceId,
+        preferred_gateways: Vec<GatewayId>,
+        address: Option<IpAddr>,
+        ref_state: &ReferenceState,
+    ) -> Result<(), ClientEventError> {
+        let portal = &ref_state.portal;
+        let now = self.flux_capacitor.now();
+
+        let (gateway_id, site_id) =
+            portal.handle_connection_intent(resource_id, preferred_gateways);
+        let gateway = self.gateways.get_mut(&gateway_id).expect("unknown gateway");
+        let resource = portal.map_client_resource_to_gateway_resource(resource_id);
+
+        let client = self.clients.get_mut(&src).unwrap();
+        let client_key = client.inner().sut.public_key();
+        let client_tun = client.inner().sut.tunnel_ip_config().unwrap();
+        let gateway_key = gateway.inner().sut.public_key();
+        let (preshared_key, client_ice, gateway_ice) =
+            make_preshared_key_and_ice(client_key, gateway_key);
+        let use_iceless = portal.iceless();
+
+        gateway
+            .exec_mut(|g| {
+                g.sut.create_authorization(
+                    Client {
+                        id: src,
+                        public_key: client_key.into(),
+                        preshared_key: preshared_key.clone(),
+                        ipv4: client_tun.v4,
+                        ipv6: client_tun.v6,
+                    },
+                    client_ice.clone(),
+                    gateway_ice.clone(),
+                    None,
+                    resource,
+                    use_iceless,
+                    now,
+                    test_ingest_token(),
+                )?;
+                g.record_authorization(
+                    src,
+                    resource_id,
+                    [client_tun.v4.into(), client_tun.v6.into()],
+                );
+
+                Ok(())
+            })
+            .map_err(|error| ClientEventError::Gateway {
+                id: gateway_id,
+                error,
+            })?;
+
+        // The gateway's candidates and the portal's `flow_created` reply travel
+        // independently, so the client may receive them before it knows about
+        // the connection.
+        while let Some(event) = gateway.exec_mut(|g| g.sut.poll_event()) {
+            on_gateway_event(
+                gateway_id,
+                event,
+                &mut self.clients,
+                gateway,
+                &self.relays,
+                &ref_state.global_dns_records,
+                now,
+            );
+        }
+
+        let client = self.clients.get_mut(&src).unwrap();
+        client
+            .exec_mut(|c| {
+                c.sut.handle_resource_access_authorized(
+                    resource_id,
+                    gateway_id,
+                    gateway_key,
+                    gateway.inner().sut.tunnel_ip_config().unwrap(),
+                    site_id,
+                    preshared_key,
+                    client_ice,
+                    gateway_ice,
+                    use_iceless,
+                    test_ingest_token(),
+                    address,
+                    now,
+                )
+            })
+            .unwrap_or_else(|e| {
+                tracing::error!("{e:#}");
+
+                Ok(())
+            })
+            .map_err(|error| ClientEventError::Client { id: src, error })?;
+
+        Ok(())
     }
 
     fn on_recursive_dns_query(
@@ -1789,11 +1810,10 @@ fn address_from_destination(
     }
 }
 
-fn deny_device_access(
+fn deny_address_access(
     clients: &mut BTreeMap<ClientId, Host<SimClient>>,
     src: ClientId,
-    ipv4: Option<std::net::Ipv4Addr>,
-    ipv6: Option<std::net::Ipv6Addr>,
+    ip: IpAddr,
     reason: FailReason,
     now: Instant,
 ) {
@@ -1802,7 +1822,7 @@ fn deny_device_access(
         .expect("unknown source client")
         .exec_mut(|c| {
             c.sut
-                .handle_client_device_access_denied(ipv4, ipv6, reason, now)
+                .handle_resource_access_denied(None, Some(ip), reason, now)
         });
 }
 
@@ -1911,7 +1931,7 @@ fn is_portal_bound_event(event: &ClientEvent) -> bool {
         ClientEvent::AddedIceCandidates { .. } => true,
         ClientEvent::RemovedIceCandidates { .. } => true,
         ClientEvent::ResourceConnectionIntent { .. } => true,
-        ClientEvent::DeviceAccessRequested { .. } => true,
+        ClientEvent::AccessRequested { .. } => true,
         ClientEvent::DeviceDomainQueried { .. } => true,
         ClientEvent::ResourcesChanged { .. } => false,
         ClientEvent::DnsRecordsChanged { .. } => false,

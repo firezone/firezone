@@ -10,7 +10,7 @@ use std::{
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
 };
 use tunnel_proto::dns;
-use tunnel_proto::messages::{UpstreamDo53, UpstreamDoH, gateway};
+use tunnel_proto::messages::{Filter, UpstreamDo53, UpstreamDoH, client::FailReason, gateway};
 
 use crate::ref_client::protocol_filter_allows;
 use crate::resource::{self as client, DevicePoolResource};
@@ -45,6 +45,14 @@ pub(crate) struct StubPortal {
     /// and applied to every connection, modelling a portal-wide rollout toggle
     /// rather than a per-peer capability.
     iceless: bool,
+}
+
+/// A resource of a client that covers an address, as the portal sees it.
+#[derive(Clone, Debug)]
+pub(crate) struct AddressCandidate {
+    pub(crate) id: ResourceId,
+    pub(crate) network: IpNetwork,
+    pub(crate) filters: Vec<Filter>,
 }
 
 /// Which clients a device pool admits.
@@ -514,6 +522,25 @@ impl StubPortal {
             tracing::error!("Internet Resource cannot change site");
         }
     }
+}
+
+/// The resource the portal picks for a flow to an address among the client's resources
+/// covering it: the most specific one permitting the flow, the highest id among equals.
+/// Nothing covering the address is not found, nothing permitting the flow is forbidden.
+pub(crate) fn pick_resource_for_address(
+    candidates: &[AddressCandidate],
+    protocol: Protocol,
+) -> Result<ResourceId, FailReason> {
+    if candidates.is_empty() {
+        return Err(FailReason::NotFound);
+    }
+
+    candidates
+        .iter()
+        .filter(|candidate| protocol_filter_allows(&candidate.filters, protocol))
+        .max_by_key(|candidate| (candidate.network.netmask(), candidate.id))
+        .map(|candidate| candidate.id)
+        .ok_or(FailReason::Forbidden)
 }
 
 /// Picks an element from a slice by index (`index % len`), or `None` if empty.

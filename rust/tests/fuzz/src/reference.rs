@@ -4,7 +4,13 @@ use super::probe::{
     ExpectedOutcome, ExpectedProbe, FlowId, FlowRoute, IcmpFlow, KnownLoss, PacketRoute, ProbeId,
     ProbeRequest, RejectionRemote, Remote, TraceRequirement, UdpFlow,
 };
-use super::{ref_client::*, ref_gateway::*, sim_net::*, stub_portal::StubPortal, transition::*};
+use super::{
+    ref_client::*,
+    ref_gateway::*,
+    sim_net::*,
+    stub_portal::{StubPortal, pick_resource_for_address},
+    transition::*,
+};
 use connlib_model::{ClientId, GatewayId, RelayId, ResourceId, Site, StaticSecret};
 use dns_types::{DomainName, RecordType};
 use ip_network::{Ipv4Network, Ipv6Network};
@@ -444,6 +450,16 @@ impl ReferenceState {
                     }
                     client.readd_all_resources();
                 });
+
+                // The peers lose their connections to the roaming client, and their grants
+                // towards it with them.
+                if !all_iceless {
+                    for (id, peer) in &mut state.clients {
+                        if id != client_id {
+                            peer.exec_mut(|peer| peer.forget_peer_grants(*client_id));
+                        }
+                    }
+                }
             }
             Transition::ReconnectPortal { client_id } => {
                 // Reconnecting to the portal should have no noticeable impact on the data plane.
@@ -542,26 +558,14 @@ impl ReferenceState {
         seq: Seq,
         sent_at: Instant,
     ) -> ExpectedOutcome {
-        let outcome = self
-            .clients
-            .get_mut(&flow.client_id)
-            .unwrap()
-            .exec_mut(|client| {
-                client.on_packet(flow.dst.clone(), flow.route.packet_route(), sent_at)
-            });
+        let request = ProbeRequest::Icmp {
+            src: flow.src,
+            dst: flow.dst.clone(),
+            seq,
+            identifier: flow.identifier,
+        };
 
-        self.record_expected_probe(
-            id,
-            flow.client_id,
-            ProbeRequest::Icmp {
-                src: flow.src,
-                dst: flow.dst.clone(),
-                seq,
-                identifier: flow.identifier,
-            },
-            sent_at,
-            outcome,
-        )
+        self.record_flow_probe(id, flow.client_id, flow.route, request, sent_at)
     }
 
     fn record_udp_probe(
@@ -570,26 +574,61 @@ impl ReferenceState {
         flow: &UdpFlow,
         sent_at: Instant,
     ) -> ExpectedOutcome {
-        let outcome = self
-            .clients
-            .get_mut(&flow.client_id)
-            .unwrap()
-            .exec_mut(|client| {
-                client.on_packet(flow.dst.clone(), flow.route.packet_route(), sent_at)
-            });
+        let request = ProbeRequest::Udp {
+            src: flow.src,
+            dst: flow.dst.clone(),
+            sport: flow.sport,
+            dport: flow.dport,
+        };
 
-        self.record_expected_probe(
-            id,
-            flow.client_id,
-            ProbeRequest::Udp {
-                src: flow.src,
-                dst: flow.dst.clone(),
-                sport: flow.sport,
-                dport: flow.dport,
-            },
-            sent_at,
-            outcome,
-        )
+        self.record_flow_probe(id, flow.client_id, flow.route, request, sent_at)
+    }
+
+    fn record_flow_probe(
+        &mut self,
+        id: ProbeId,
+        origin: ClientId,
+        route: FlowRoute,
+        request: ProbeRequest,
+        sent_at: Instant,
+    ) -> ExpectedOutcome {
+        if route.is_peer() {
+            self.refresh_peer_grant(origin, &request, sent_at);
+        }
+
+        let outcome = self.clients.get_mut(&origin).unwrap().exec_mut(|client| {
+            client.on_packet(request.destination().clone(), route.packet_route(), sent_at)
+        });
+
+        self.record_expected_probe(id, origin, request, sent_at, outcome)
+    }
+
+    /// A packet on an existing flow to a peer asks the portal anew when the peer connected
+    /// to us since, as that took our grants towards it; the peer then drops its own.
+    fn refresh_peer_grant(&mut self, origin: ClientId, request: &ProbeRequest, now: Instant) {
+        let Destination::IpAddr(ip) = request.destination() else {
+            return;
+        };
+        let Some(peer) = self.client_ip_to_id().get(ip).copied() else {
+            return;
+        };
+        let portal = &self.portal;
+
+        let granted_peer = self.clients.get_mut(&origin).unwrap().exec_mut(|client| {
+            client
+                .route_to_peer(
+                    *ip,
+                    peer,
+                    request.protocol(),
+                    |held, target, protocol| portal.pick_device_pool(held, target, protocol),
+                    now,
+                )
+                .1
+        });
+
+        if let Some(peer) = granted_peer {
+            self.apply_peer_grant(origin, peer);
+        }
     }
 
     fn record_probe(
@@ -823,28 +862,34 @@ impl ReferenceState {
                 },
                 |ip| clients_by_ip.get(&ip).copied(),
                 |held, target, protocol| portal.pick_device_pool(held, target, protocol),
+                pick_resource_for_address,
                 now,
             )
         });
 
-        // A peer we connect to anew drops its grants towards us, as we may have reset.
         if let Some(peer) = granted_peer {
-            let peer_ips = clients_by_ip
-                .iter()
-                .filter(|(_, id)| **id == peer)
-                .map(|(ip, _)| *ip)
-                .collect::<Vec<_>>();
-
-            if let Some(client) = self.clients.get_mut(&client_id) {
-                client.exec_mut(|client| client.forget_device_denials(&peer_ips));
-            }
-
-            if let Some(peer) = self.clients.get_mut(&peer) {
-                peer.exec_mut(|peer| peer.forget_peer_grants(client_id));
-            }
+            self.apply_peer_grant(client_id, peer);
         }
 
         route
+    }
+
+    /// A peer we connect to anew drops its grants towards us, as we may have reset.
+    fn apply_peer_grant(&mut self, client_id: ClientId, peer: ClientId) {
+        let peer_ips = self
+            .client_ip_to_id()
+            .into_iter()
+            .filter(|(_, id)| *id == peer)
+            .map(|(ip, _)| ip)
+            .collect::<Vec<_>>();
+
+        if let Some(client) = self.clients.get_mut(&client_id) {
+            client.exec_mut(|client| client.forget_address_denials(&peer_ips));
+        }
+
+        if let Some(peer) = self.clients.get_mut(&peer) {
+            peer.exec_mut(|peer| peer.forget_peer_grants(client_id));
+        }
     }
 
     pub(crate) fn icmp_flows(&self) -> Vec<(FlowId, Seq)> {

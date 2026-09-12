@@ -7,11 +7,15 @@ use super::{
     resource::{CidrResource, DevicePoolResource, DnsResource, InternetResource, Resource},
     sim_client::SimClient,
     sim_net::ExecMutScope,
+    stub_portal::AddressCandidate,
     transition::{DPort, Destination, DnsQuery, DnsTransport, SPort},
 };
 use tunnel_proto::{
     ClientState, MaliciousBehaviour, NEGATIVE_CACHE_TTL, dns,
-    messages::{Filter, Interface, UpstreamDo53, UpstreamDoH, client::Flow},
+    messages::{
+        Filter, Interface, UpstreamDo53, UpstreamDoH,
+        client::{FailReason, Flow},
+    },
 };
 
 use chrono::{DateTime, Utc};
@@ -124,6 +128,10 @@ pub struct RefClient {
     denied_flows: BTreeMap<(IpAddr, Flow), Instant>,
     #[debug(skip)]
     denied_addresses: BTreeMap<IpAddr, Instant>,
+
+    /// The resource the portal picked per address outside the tunnel range and flow.
+    #[debug(skip)]
+    learned_resources: BTreeMap<(IpAddr, Flow), ResourceId>,
 }
 
 impl RefClient {
@@ -168,6 +176,7 @@ impl RefClient {
             peer_pools: Default::default(),
             denied_flows: Default::default(),
             denied_addresses: Default::default(),
+            learned_resources: Default::default(),
         }
     }
 
@@ -279,6 +288,8 @@ impl RefClient {
 
         self.resources.retain(|r| r.id() != *resource);
         self.forget_pool_grants(*resource, None);
+        self.learned_resources
+            .retain(|_, picked| picked != resource);
     }
 
     /// Drops the grants through `pool` towards `peers`, or towards everyone.
@@ -301,8 +312,8 @@ impl RefClient {
         self.peer_pools.remove(&peer);
     }
 
-    /// A grant from the portal supersedes the denials remembered for the peer's addresses.
-    pub(crate) fn forget_device_denials(&mut self, ips: &[IpAddr]) {
+    /// A grant from the portal supersedes the denials remembered for the addresses.
+    pub(crate) fn forget_address_denials(&mut self, ips: &[IpAddr]) {
         self.denied_flows.retain(|(ip, _), _| !ips.contains(ip));
         self.denied_addresses.retain(|ip, _| !ips.contains(ip));
     }
@@ -357,6 +368,7 @@ impl RefClient {
         self.peer_pools.clear();
         self.denied_flows.clear();
         self.denied_addresses.clear();
+        self.learned_resources.clear();
 
         self.key = key;
 
@@ -432,6 +444,8 @@ impl RefClient {
         self.connected_dns_resources.clear();
         self.dns_resource_resolutions.clear();
         self.connected_internet_resource = false;
+        // Grants towards peers go with their connections.
+        self.peer_pools.clear();
 
         for status in self.site_status.values_mut() {
             *status = ResourceStatus::Unknown;
@@ -744,6 +758,7 @@ impl RefClient {
         gateway_by_ip: impl Fn(IpAddr) -> Option<GatewayId>,
         client_by_ip: impl Fn(IpAddr) -> Option<ClientId>,
         pick_pool: impl Fn(&[ResourceId], ClientId, Protocol) -> Option<ResourceId>,
+        pick_resource: impl Fn(&[AddressCandidate], Protocol) -> Result<ResourceId, FailReason>,
         now: Instant,
     ) -> (PacketRoute, Option<ClientId>) {
         if dst.ip_addr().is_some_and(|ip| ip.is_multicast()) {
@@ -768,10 +783,160 @@ impl RefClient {
             return (PacketRoute::RejectedByClient, None);
         }
 
+        if let Destination::IpAddr(ip) = dst {
+            return (
+                self.route_to_address(*ip, protocol, gateway_by_resource, pick_resource, now),
+                None,
+            );
+        }
+
         (
             self.route_to_resource(src, dst, protocol, gateway_by_resource),
             None,
         )
+    }
+
+    /// A flow to an address outside the tunnel range goes through the resource the portal
+    /// picked for it, else through the one the portal's rule picks among our own resources,
+    /// while we hold a grant for it; otherwise the client asks the portal.
+    fn route_to_address(
+        &mut self,
+        ip: IpAddr,
+        protocol: Protocol,
+        gateway_by_resource: impl Fn(ResourceId) -> Option<GatewayId>,
+        pick_resource: impl Fn(&[AddressCandidate], Protocol) -> Result<ResourceId, FailReason>,
+        now: Instant,
+    ) -> PacketRoute {
+        let local = self.local_pick(ip, protocol);
+
+        let learned = self
+            .learned_resources
+            .get(&(ip, Flow::from(protocol)))
+            .copied()
+            .filter(|resource| {
+                self.resource_filter_allows(*resource, protocol)
+                    && self.is_connected_to_resource(*resource)
+            });
+        let granted = learned.or(match local {
+            LocalPick::Resource(resource) if self.is_connected_to_resource(resource) => {
+                Some(resource)
+            }
+            LocalPick::Resource(_) | LocalPick::Refused | LocalPick::None => None,
+        });
+
+        if let Some(resource) = granted {
+            return self.route_via_resource(resource, ip, protocol, gateway_by_resource);
+        }
+
+        match local {
+            LocalPick::Resource(_) => {}
+            LocalPick::Refused => return PacketRoute::RejectedByClient,
+            LocalPick::None => return PacketRoute::Drop,
+        }
+
+        if self.is_denied(ip, protocol, now) {
+            return PacketRoute::RejectedByClient;
+        }
+
+        let resource = match pick_resource(&self.address_candidates(ip), protocol) {
+            Ok(resource) => resource,
+            Err(FailReason::NotFound) => {
+                self.denied_addresses.insert(ip, now);
+
+                return PacketRoute::RejectedByClient;
+            }
+            Err(_) => {
+                self.denied_flows.insert((ip, Flow::from(protocol)), now);
+
+                return PacketRoute::RejectedByClient;
+            }
+        };
+
+        // The portal does not know the user disabled the Internet Resource here.
+        if self.internet_resource() == Some(resource) && !self.internet_resource_active {
+            self.denied_flows.insert((ip, Flow::from(protocol)), now);
+
+            return PacketRoute::RejectedByClient;
+        }
+
+        self.learned_resources
+            .insert((ip, Flow::from(protocol)), resource);
+        self.forget_address_denials(&[ip]);
+
+        self.route_via_resource(resource, ip, protocol, gateway_by_resource)
+    }
+
+    fn route_via_resource(
+        &self,
+        resource: ResourceId,
+        ip: IpAddr,
+        protocol: Protocol,
+        gateway_by_resource: impl Fn(ResourceId) -> Option<GatewayId>,
+    ) -> PacketRoute {
+        let Some(gateway) = gateway_by_resource(resource) else {
+            return PacketRoute::Drop;
+        };
+
+        if self.internet_resource().is_some_and(|id| id == resource) {
+            if is_resource_proxy(ip) {
+                return PacketRoute::ResourceRejectedByGateway { resource, gateway };
+            }
+
+            if internet_resource_rejects(ip) {
+                return PacketRoute::ResourceUnreachableByGateway { resource, gateway };
+            }
+        }
+
+        if self.strict_resource_filter_allows(resource, protocol) {
+            return PacketRoute::Resource { resource, gateway };
+        }
+
+        PacketRoute::ResourceRejectedByGateway { resource, gateway }
+    }
+
+    /// The resource the portal's rule picks for an address among our own resources: the
+    /// most specific CIDR resource permitting the flow, else the active Internet Resource.
+    /// A malicious client takes the best CIDR resource whatever its filters.
+    fn local_pick(&self, ip: IpAddr, protocol: Protocol) -> LocalPick {
+        match self.cidr_resource_by_ip_and_proto(ip, protocol) {
+            Some(resource) if self.resource_filter_allows(resource, protocol) => {
+                LocalPick::Resource(resource)
+            }
+            Some(_) => self
+                .active_internet_resource()
+                .map_or(LocalPick::Refused, LocalPick::Resource),
+            None => self
+                .active_internet_resource()
+                .map_or(LocalPick::None, LocalPick::Resource),
+        }
+    }
+
+    fn is_connected_to_resource(&self, resource: ResourceId) -> bool {
+        self.connected_cidr_resources.contains(&resource)
+            || (self.connected_internet_resource && self.internet_resource() == Some(resource))
+    }
+
+    /// Our resources covering `ip`, for the portal to pick from.
+    pub(crate) fn address_candidates(&self, ip: IpAddr) -> Vec<AddressCandidate> {
+        self.resources
+            .iter()
+            .filter_map(|resource| match resource {
+                Resource::Cidr(cidr) if cidr.address.contains(ip) => Some(AddressCandidate {
+                    id: cidr.id,
+                    network: cidr.address,
+                    filters: cidr.filters.clone(),
+                }),
+                Resource::Internet(internet) => Some(AddressCandidate {
+                    id: internet.id,
+                    network: match ip {
+                        IpAddr::V4(_) => Ipv4Network::DEFAULT_ROUTE.into(),
+                        IpAddr::V6(_) => Ipv6Network::DEFAULT_ROUTE.into(),
+                    },
+                    filters: Vec::new(),
+                }),
+                Resource::Cidr(_) | Resource::Dns(_) | Resource::DevicePool(_) => None,
+            })
+            .collect()
     }
 
     fn route_to_resource(
@@ -822,7 +987,7 @@ impl RefClient {
     ///
     /// Also returns the peer when the portal granted the flow, since the peer then
     /// forgets its own grants towards us.
-    fn route_to_peer(
+    pub(crate) fn route_to_peer(
         &mut self,
         ip: IpAddr,
         peer: ClientId,
@@ -1622,6 +1787,16 @@ fn is_device_domain(domain: &DomainName) -> bool {
     dns::device_slug(domain).is_some()
 }
 
+/// What the portal's rule picks for an address among the client's own resources.
+#[derive(Debug, Clone, Copy)]
+enum LocalPick {
+    Resource(ResourceId),
+    /// Resources cover the address but none permits the flow.
+    Refused,
+    /// No resource covers the address.
+    None,
+}
+
 pub(crate) fn protocol_filter_allows(filters: &[Filter], protocol: Protocol) -> bool {
     match protocol {
         Protocol::Tcp(port) => tcp_filter_allows(filters, port),
@@ -1791,6 +1966,7 @@ mod tests {
                 |_| None,
                 |_| None,
                 |_, _, _| None,
+                crate::stub_portal::pick_resource_for_address,
                 Instant::now(),
             )
         };
@@ -1814,7 +1990,15 @@ mod tests {
             PacketRoute::RejectedByClient
         );
 
+        // Without a grant, a malicious client can only ask the portal, which forbids the flow.
         client.malicious_behaviour.ignore_resource_filters = true;
+        assert_eq!(
+            route(&mut client, Protocol::Udp(81)).0,
+            PacketRoute::RejectedByClient
+        );
+
+        // Through a grant it sends anyway and the gateway rejects the flow.
+        client.connected_cidr_resources.insert(specific_id);
         assert_eq!(
             route(&mut client, Protocol::Udp(81)).0,
             PacketRoute::ResourceRejectedByGateway {
