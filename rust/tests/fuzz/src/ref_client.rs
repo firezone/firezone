@@ -10,8 +10,8 @@ use super::{
     transition::{DPort, Destination, DnsQuery, DnsTransport, SPort},
 };
 use tunnel_proto::{
-    ClientState, MaliciousBehaviour, dns,
-    messages::{Filter, Interface, UpstreamDo53, UpstreamDoH},
+    ClientState, MaliciousBehaviour, NEGATIVE_CACHE_TTL, dns,
+    messages::{Filter, Interface, UpstreamDo53, UpstreamDoH, client::Flow},
 };
 
 use chrono::{DateTime, Utc};
@@ -118,6 +118,12 @@ pub struct RefClient {
     /// Per peer, the pools the portal authorised us to reach it through.
     #[debug(skip)]
     peer_pools: BTreeMap<ClientId, BTreeSet<ResourceId>>,
+
+    /// Portal denials the client answers locally until they expire, keyed like connlib keys them.
+    #[debug(skip)]
+    denied_flows: BTreeMap<(IpAddr, Flow), Instant>,
+    #[debug(skip)]
+    denied_addresses: BTreeMap<IpAddr, Instant>,
 }
 
 impl RefClient {
@@ -160,6 +166,8 @@ impl RefClient {
             gateway_send_times: Default::default(),
             client_send_times: Default::default(),
             peer_pools: Default::default(),
+            denied_flows: Default::default(),
+            denied_addresses: Default::default(),
         }
     }
 
@@ -293,6 +301,22 @@ impl RefClient {
         self.peer_pools.remove(&peer);
     }
 
+    /// A grant from the portal supersedes the denials remembered for the peer's addresses.
+    pub(crate) fn forget_device_denials(&mut self, ips: &[IpAddr]) {
+        self.denied_flows.retain(|(ip, _), _| !ips.contains(ip));
+        self.denied_addresses.retain(|ip, _| !ips.contains(ip));
+    }
+
+    fn is_denied(&self, ip: IpAddr, protocol: Protocol, now: Instant) -> bool {
+        let live = |at: &Instant| now.duration_since(*at) < NEGATIVE_CACHE_TTL;
+
+        self.denied_addresses.get(&ip).is_some_and(live)
+            || self
+                .denied_flows
+                .get(&(ip, Flow::from(protocol)))
+                .is_some_and(live)
+    }
+
     /// The device pools this client holds, by id.
     pub(crate) fn device_pool_ids(&self) -> Vec<ResourceId> {
         self.resources
@@ -331,6 +355,8 @@ impl RefClient {
     pub(crate) fn restart(&mut self, key: PrivateKey, now: Instant) {
         self.routes.clear();
         self.peer_pools.clear();
+        self.denied_flows.clear();
+        self.denied_addresses.clear();
 
         self.key = key;
 
@@ -718,22 +744,28 @@ impl RefClient {
         gateway_by_ip: impl Fn(IpAddr) -> Option<GatewayId>,
         client_by_ip: impl Fn(IpAddr) -> Option<ClientId>,
         pick_pool: impl Fn(&[ResourceId], ClientId, Protocol) -> Option<ResourceId>,
+        now: Instant,
     ) -> (PacketRoute, Option<ClientId>) {
         if dst.ip_addr().is_some_and(|ip| ip.is_multicast()) {
             return (PacketRoute::Drop, None);
         }
 
         // A tunnel IP is a peer client or a gateway. Anything else in the range makes
-        // the client ask the portal, which denies it.
+        // the client ask the portal, which denies the whole address.
         if let Some(ip) = dst.ip_addr().filter(|ip| tunnel_proto::is_peer(*ip)) {
-            if let Some(peer) = client_by_ip(ip) {
-                return self.route_to_peer(peer, protocol, pick_pool);
+            if let Some(gateway) = gateway_by_ip(ip) {
+                return (PacketRoute::Gateway(gateway), None);
             }
 
-            return (
-                gateway_by_ip(ip).map_or(PacketRoute::RejectedByClient, PacketRoute::Gateway),
-                None,
-            );
+            if let Some(peer) = client_by_ip(ip) {
+                return self.route_to_peer(ip, peer, protocol, pick_pool, now);
+            }
+
+            if !self.is_denied(ip, protocol, now) {
+                self.denied_addresses.insert(ip, now);
+            }
+
+            return (PacketRoute::RejectedByClient, None);
         }
 
         (
@@ -792,9 +824,11 @@ impl RefClient {
     /// forgets its own grants towards us.
     fn route_to_peer(
         &mut self,
+        ip: IpAddr,
         peer: ClientId,
         protocol: Protocol,
         pick_pool: impl Fn(&[ResourceId], ClientId, Protocol) -> Option<ResourceId>,
+        now: Instant,
     ) -> (PacketRoute, Option<ClientId>) {
         let granted = self.peer_pools.get(&peer).cloned().unwrap_or_default();
         let granted_permits = granted.iter().any(|pool| {
@@ -810,13 +844,21 @@ impl RefClient {
             return (PacketRoute::PeerRejectedByPeer(peer), None);
         }
 
+        if self.is_denied(ip, protocol, now) {
+            return (PacketRoute::RejectedByClient, None);
+        }
+
         match pick_pool(&self.device_pool_ids(), peer, protocol) {
             Some(pool) => {
                 self.peer_pools.entry(peer).or_default().insert(pool);
 
                 (PacketRoute::Peer(peer), Some(peer))
             }
-            None => (PacketRoute::RejectedByClient, None),
+            None => {
+                self.denied_flows.insert((ip, Flow::from(protocol)), now);
+
+                (PacketRoute::RejectedByClient, None)
+            }
         }
     }
 
@@ -1749,6 +1791,7 @@ mod tests {
                 |_| None,
                 |_| None,
                 |_, _, _| None,
+                Instant::now(),
             )
         };
 
