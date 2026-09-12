@@ -317,6 +317,17 @@ pub struct ResourceAuthorization {
     pub expires_at: Option<Duration>,
 }
 
+/// Sent by the portal when a device pool's members changed: the addresses that joined
+/// and left since the pool was last sent.
+#[derive(Debug, Deserialize, Clone)]
+pub struct DevicePoolMembersUpdated {
+    pub id: ResourceId,
+    #[serde(default)]
+    pub added: DevicePoolMembers,
+    #[serde(default)]
+    pub removed: DevicePoolMembers,
+}
+
 /// Sent by the portal when a resource's filters change while access remains
 /// authorized. Receivers must update the inbound filter for any peer the
 /// resource currently authorizes.
@@ -446,6 +457,9 @@ pub enum IngressMessages {
     /// A resource's filters have changed while at least one authorization
     /// referencing it remains active.
     ResourceFiltersUpdated(ResourceFiltersUpdated),
+
+    /// A device pool's members changed.
+    DevicePoolMembersUpdated(DevicePoolMembersUpdated),
 
     /// A previously-authorized peer-to-peer access has been revoked.
     RejectAccess(ClientRejectAccess),
@@ -1068,6 +1082,25 @@ pub(crate) mod tests {
         );
         assert!(!desc.members.contains("100.64.1.3".parse().unwrap()));
         assert!(!desc.members.contains("10.0.0.1".parse().unwrap()));
+    }
+
+    #[test]
+    fn can_deserialize_device_pool_members_updated() {
+        let json = serde_json::json!({
+            "event": "device_pool_members_updated",
+            "payload": {
+                "id": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
+                "added": { "ipv4": roaring_base64([7]), "ipv6": roaring_base64([]) },
+                "removed": { "ipv4": roaring_base64([]), "ipv6": roaring_base64([9]) }
+            }
+        });
+
+        let msg: IngressMessages = serde_json::from_value(json).unwrap();
+        let IngressMessages::DevicePoolMembersUpdated(update) = msg else {
+            panic!("expected DevicePoolMembersUpdated")
+        };
+        assert!(update.added.contains(address_at_offset_v4(7).into()));
+        assert!(update.removed.contains(address_at_offset_v6(9).into()));
     }
 
     #[test]

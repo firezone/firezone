@@ -29,7 +29,8 @@ use crate::dns::{
 use crate::filter_engine::FilterEngine;
 use crate::messages::IngestToken;
 use crate::messages::{
-    Filter, IceCredentials, IceRole, Interface as InterfaceConfig, SecretKey, client::FailReason,
+    Filter, IceCredentials, IceRole, Interface as InterfaceConfig, SecretKey,
+    client::{DevicePoolMembers, FailReason},
 };
 use crate::peer_store::{Peer, PeerStore};
 use crate::portal_connection::PortalConnection;
@@ -1283,6 +1284,27 @@ impl ClientState {
                     .insert(resource_id, AccessPath::Direct(BTreeSet::from([cid])));
             }
         }
+    }
+
+    /// Applies the addresses that joined and left a pool since the portal last sent it.
+    pub fn handle_device_pool_members_updated(
+        &mut self,
+        id: ResourceId,
+        added: DevicePoolMembers,
+        removed: DevicePoolMembers,
+    ) {
+        let Some(Resource::DevicePool(pool)) = self.resources_by_id.get(&id) else {
+            tracing::debug!(%id, "Members update for a pool we do not hold");
+            return;
+        };
+        let mut pool = pool.clone();
+
+        pool.members.ipv4 -= &removed.ipv4;
+        pool.members.ipv6 -= &removed.ipv6;
+        pool.members.ipv4 |= &added.ipv4;
+        pool.members.ipv6 |= &added.ipv6;
+
+        self.upsert_device_pool(pool);
     }
 
     /// Update the inbound filter for any peer whose authorization references
@@ -2981,6 +3003,48 @@ mod tests {
     }
 
     #[test]
+    fn members_update_adds_and_removes_pool_members() {
+        let mut state = ClientState::for_test();
+        let now = Instant::now();
+        let pool_id = ResourceId::from_u128(1);
+        let newcomer = Ipv4Addr::new(100, 64, 0, 99);
+        state.update_interface_config(interface(own_tun_ipv4(), own_tun_ipv6()));
+        state.set_resources(vec![pool_with_member(pool_id, device_tun_ipv4())], now);
+        while state.poll_event().is_some() {}
+
+        state.handle_device_pool_members_updated(
+            pool_id,
+            members_of([newcomer]),
+            members_of([device_tun_ipv4()]),
+        );
+
+        let packet =
+            ip_packet::make::udp_packet(own_tun_ipv4(), device_tun_ipv4(), 1234, 53, &[1]).unwrap();
+        assert!(
+            state
+                .handle_tun_input(packet, now, &mut snownet::TransmitBuffer::new())
+                .is_err(),
+            "removed member must be unroutable"
+        );
+
+        let packet = ip_packet::make::udp_packet(own_tun_ipv4(), newcomer, 1234, 53, &[1]).unwrap();
+        state
+            .handle_tun_input(packet, now, &mut snownet::TransmitBuffer::new())
+            .unwrap();
+        let intent = iter::from_fn(|| state.poll_event()).find(|event| {
+            matches!(
+                event,
+                ClientEvent::ResourceConnectionIntent { resource, ip: Some(ip), .. }
+                    if *resource == pool_id && *ip == IpAddr::V4(newcomer)
+            )
+        });
+        assert!(
+            intent.is_some(),
+            "added member must ask for access through the pool"
+        );
+    }
+
+    #[test]
     fn packet_to_a_tunnel_address_no_pool_lists_is_unroutable() {
         let mut state = ClientState::for_test();
         let now = Instant::now();
@@ -3273,6 +3337,18 @@ mod tests {
                 "unexpected device connection intent"
             );
         }
+    }
+
+    fn members_of(ipv4: impl IntoIterator<Item = Ipv4Addr>) -> DevicePoolMembers {
+        let mut members = DevicePoolMembers::default();
+
+        for ip in ipv4 {
+            members
+                .ipv4
+                .insert(crate::messages::client::tunnel_offset_v4(ip).unwrap());
+        }
+
+        members
     }
 
     fn pool_with_member(

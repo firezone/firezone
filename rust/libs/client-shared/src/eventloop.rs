@@ -22,8 +22,8 @@ use tun::Tun;
 use tunnel::messages::client::{
     Authorization, AuthorizationCreated, AuthorizationCreationFailed, ClientDeviceAccessAuthorized,
     ClientDeviceAccessDenied, ClientIceCandidateError, ClientIceCandidates, ClientRejectAccess,
-    DeviceDomainResolutionFailed, DeviceDomainResolved, EgressMessages, FailReason,
-    GatewayIceCandidates, IngressMessages, InitClient, ResourceAuthorization,
+    DeviceDomainResolutionFailed, DeviceDomainResolved, DevicePoolMembersUpdated, EgressMessages,
+    FailReason, GatewayIceCandidates, IngressMessages, InitClient, ResourceAuthorization,
     ResourceFiltersUpdated,
 };
 use tunnel::messages::{IngestToken, RelaysPresence, SnownetCapabilities};
@@ -764,6 +764,15 @@ impl Eventloop {
                 tunnel
                     .state_mut()
                     .handle_resource_filters_updated(id, filters);
+            }
+            IngressMessages::DevicePoolMembersUpdated(DevicePoolMembersUpdated {
+                id,
+                added,
+                removed,
+            }) => {
+                tunnel
+                    .state_mut()
+                    .handle_device_pool_members_updated(id, added, removed);
             }
             IngressMessages::RejectAccess(ClientRejectAccess {
                 client_id,
