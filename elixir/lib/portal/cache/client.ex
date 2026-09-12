@@ -250,7 +250,8 @@ defmodule Portal.Cache.Client do
   @doc """
     Picks the connectable resource the client reaches `address` through for `flow`: among
     the CIDR, IP and Internet resources that cover the address and permit the flow, the one
-    with the longest prefix, then the lowest id, that passes the policy check.
+    with the longest prefix, then the highest id, that passes the policy check. This is the
+    order connlib's own routing tables use, so a client only asks for what it would pick.
   """
   @spec authorize_address(
           t(),
@@ -265,18 +266,27 @@ defmodule Portal.Cache.Client do
   def authorize_address(cache, client, {_family, address_tuple}, flow, subject) do
     address = %Postgrex.INET{address: address_tuple, netmask: nil}
 
-    cache.connectable_resources
-    |> Enum.flat_map(fn resource ->
-      case network_of(resource, tuple_size(address_tuple)) do
-        {:ok, network} -> [{network, resource}]
-        :error -> []
+    covering =
+      cache.connectable_resources
+      |> Enum.flat_map(fn resource ->
+        case network_of(resource, tuple_size(address_tuple)) do
+          {:ok, network} -> [{network, resource}]
+          :error -> []
+        end
+      end)
+      |> Enum.filter(fn {network, _resource} -> Portal.Types.CIDR.contains?(network, address) end)
+
+    refused =
+      if covering == [] do
+        :not_found
+      else
+        :forbidden
       end
-    end)
-    |> Enum.filter(fn {network, resource} ->
-      Portal.Types.CIDR.contains?(network, address) and filters_permit?(resource.filters, flow)
-    end)
-    |> Enum.sort_by(fn {network, resource} -> {-network.netmask, resource.id} end)
-    |> Enum.reduce_while({:error, :not_found}, fn {_network, resource}, _acc ->
+
+    covering
+    |> Enum.filter(fn {_network, resource} -> filters_permit?(resource.filters, flow) end)
+    |> Enum.sort_by(fn {network, resource} -> {network.netmask, resource.id} end, :desc)
+    |> Enum.reduce_while({:error, refused}, fn {_network, resource}, _acc ->
       case authorize_resource(cache, client, load!(resource.id), subject) do
         {:ok, _resource, _membership_id, _policy_id, _expires_at} = authorized ->
           {:halt, authorized}

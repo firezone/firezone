@@ -769,7 +769,7 @@ defmodule Portal.Cache.ClientTest do
                Cache.authorize_address(cache, client, {:ipv4, {10, 1, 2, 3}}, {:tcp, 22}, subject)
     end
 
-    test "picks the lowest id on an exact tie", %{
+    test "picks the highest id on an exact tie", %{
       account: account,
       subject: subject,
       client: client,
@@ -783,9 +783,9 @@ defmodule Portal.Cache.ClientTest do
           Ecto.UUID.dump!(resource.id)
         end
 
-      first_id = Enum.min(ids)
+      last_id = Enum.max(ids)
 
-      assert {:ok, %{id: ^first_id}, _, _, _} =
+      assert {:ok, %{id: ^last_id}, _, _, _} =
                Cache.authorize_address(v3_cache(client, subject), client, {:ipv4, {10, 2, 0, 1}}, :icmp, subject)
     end
 
@@ -842,7 +842,7 @@ defmodule Portal.Cache.ClientTest do
                )
     end
 
-    test "is not found when nothing covers the address or permits the flow", %{
+    test "is not found when nothing covers the address, forbidden when nothing permits the flow", %{
       account: account,
       subject: subject,
       client: client,
@@ -863,7 +863,7 @@ defmodule Portal.Cache.ClientTest do
       assert {:error, :not_found} =
                Cache.authorize_address(cache, client, {:ipv4, {172, 16, 0, 1}}, {:tcp, 22}, subject)
 
-      assert {:error, :not_found} =
+      assert {:error, :forbidden} =
                Cache.authorize_address(cache, client, {:ipv4, {10, 5, 0, 1}}, {:udp, 53}, subject)
     end
 
