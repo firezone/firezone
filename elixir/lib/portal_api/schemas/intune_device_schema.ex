@@ -64,8 +64,6 @@ defmodule PortalAPI.Schemas.IntuneDevice do
       :config_manager_device_configuration,
       :config_manager_compliance_policy,
       :config_manager_windows_update_for_business,
-      :attestation_last_update_date_time,
-      :attestation_content_namespace_url,
       :attestation_status,
       :attestation_content_version,
       :attestation_issued_at,
@@ -96,7 +94,6 @@ defmodule PortalAPI.Schemas.IntuneDevice do
       :attestation_operating_system_rev_list_info,
       :attestation_health_status_mismatch_info,
       :attestation_supported,
-      :device_action_results,
       :enrolled_at,
       :last_sync_at,
       :compliance_grace_period_expiration_at,
@@ -124,7 +121,9 @@ defmodule PortalAPI.Schemas.IntuneDevice do
                   {field, schema}
                 end)
 
-    @derive {PortalAPI.JSON.Encoder, for: Portal.Intune.Device}
+    @derive {PortalAPI.JSON.Encoder,
+             for: Portal.Intune.Device,
+             internal: ~w[device_action_results attestation_content_namespace_url attestation_last_update_date_time]a}
     OpenApiSpex.schema(%{
       title: "IntuneDevice",
       description: "Device synced from Microsoft Intune",

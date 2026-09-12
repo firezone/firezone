@@ -13,10 +13,6 @@ defmodule PortalAPI.Schemas.SentinelOneDevice do
       :account_id,
       :uuid,
       :posture_provider_id,
-      :source_created_at,
-      :source_updated_at,
-      :group_updated_at,
-      :policy_updated_at,
       :sentinelone_account_id,
       :account_name,
       :site_id,
@@ -96,14 +92,11 @@ defmodule PortalAPI.Schemas.SentinelOneDevice do
       :detection_state,
       :first_full_mode_at,
       :tags,
-      :show_alert_icon,
       :last_successful_scan_at,
       :proxy_console,
       :proxy_deep_visibility,
       :proxy_pac_file_usage,
       :proxy_method,
-      :proxy_console_address,
-      :proxy_deep_visibility_address,
       :protected_pods_count,
       :protected_containers_count,
       :protected_tasks_count,
@@ -160,7 +153,12 @@ defmodule PortalAPI.Schemas.SentinelOneDevice do
                   {field, schema}
                 end)
 
-    @derive {PortalAPI.JSON.Encoder, for: Portal.SentinelOne.Device}
+    @derive {PortalAPI.JSON.Encoder,
+             for: Portal.SentinelOne.Device,
+             internal: ~w[
+               show_alert_icon proxy_console_address proxy_deep_visibility_address
+               group_updated_at policy_updated_at source_created_at source_updated_at
+             ]a}
     OpenApiSpex.schema(%{
       title: "SentinelOneDevice",
       description: "Endpoint agent synced from SentinelOne",
