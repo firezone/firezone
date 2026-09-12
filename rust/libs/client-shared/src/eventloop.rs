@@ -400,26 +400,20 @@ impl Eventloop {
             Ok(ClientEvent::ResourceConnectionIntent {
                 preferred_gateways,
                 resource,
+                ip,
             }) => {
+                let (ipv4, ipv6) = match ip {
+                    None => (None, None),
+                    Some(IpAddr::V4(v4)) => (Some(v4), None),
+                    Some(IpAddr::V6(v6)) => (None, Some(v6)),
+                };
+
                 self.portal_cmd_tx
                     .send(PortalCommand::Send(EgressMessages::RequestAuthorization {
                         resource_id: resource,
                         preferred_gateways,
-                    }))
-                    .await
-                    .context("Failed to send message to portal")?;
-            }
-            Ok(ClientEvent::DeviceAccessRequested { ip, flow }) => {
-                let (ipv4, ipv6) = match ip {
-                    IpAddr::V4(v4) => (Some(v4), None),
-                    IpAddr::V6(v6) => (None, Some(v6)),
-                };
-
-                self.portal_cmd_tx
-                    .send(PortalCommand::Send(EgressMessages::RequestDeviceAccess {
                         ipv4,
                         ipv6,
-                        flow,
                     }))
                     .await
                     .context("Failed to send message to portal")?;
@@ -720,7 +714,6 @@ impl Eventloop {
                 remote_ice_credentials,
                 ice_role,
                 use_iceless,
-                resource_id,
                 resource,
                 expires_at,
                 flow_logs_ingest_token,
@@ -749,7 +742,6 @@ impl Eventloop {
                     ice_role,
                     use_iceless,
                     client_name,
-                    resource_id,
                     authorization,
                     flow_logs_ingest_token,
                     now,

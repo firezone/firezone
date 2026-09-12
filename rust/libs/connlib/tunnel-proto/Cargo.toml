@@ -39,6 +39,7 @@ otel-instruments = { workspace = true }
 rand = { workspace = true }
 rangemap = { workspace = true }
 ringbuffer = { workspace = true }
+roaring = { workspace = true }
 secrecy = { workspace = true, features = ["serde"] }
 serde = { workspace = true, features = ["derive", "std"] }
 serde_json = { workspace = true }

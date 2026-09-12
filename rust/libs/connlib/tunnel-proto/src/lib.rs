@@ -75,12 +75,9 @@ pub enum ClientEvent {
     ResourceConnectionIntent {
         resource: ResourceId,
         preferred_gateways: Vec<GatewayId>,
-    },
-    /// A packet to a tunnel address that no pool we hold permits asks the portal for
-    /// access to the device for that flow.
-    DeviceAccessRequested {
-        ip: IpAddr,
-        flow: messages::client::Flow,
+        /// Set for connection intents to a specific device pool member;
+        /// `None` for intents to a gateway-routed resource.
+        ip: Option<IpAddr>,
     },
     /// A DNS query for a device name asks the portal to resolve it.
     DeviceDomainQueried {

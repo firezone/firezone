@@ -13,8 +13,8 @@ use serde::Deserialize;
 use crate::messages::{
     Filter,
     client::{
-        ResourceDescription, ResourceDescriptionCidr, ResourceDescriptionDevicePool,
-        ResourceDescriptionDns, ResourceDescriptionInternet,
+        DevicePoolMembers, ResourceDescription, ResourceDescriptionCidr,
+        ResourceDescriptionDevicePool, ResourceDescriptionDns, ResourceDescriptionInternet,
     },
 };
 
@@ -76,15 +76,13 @@ pub struct InternetResource {
     pub sites: Vec<Site>,
 }
 
-/// A device pool resource.
-///
-/// Members are decided by the portal per flow: a packet to a tunnel address asks the
-/// portal for access, and the pool the portal names routes flows to that device.
+/// A device pool resource with the bitmaps of its members.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct DevicePoolResource {
     pub id: ResourceId,
     pub name: String,
     pub filters: Vec<Filter>,
+    pub members: DevicePoolMembers,
 }
 
 impl Resource {
@@ -285,6 +283,7 @@ impl DevicePoolResource {
             id: resource.id,
             name: resource.name,
             filters: resource.filters,
+            members: resource.members,
         }
     }
 }

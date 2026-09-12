@@ -4,11 +4,14 @@ use crate::messages::{
     Filter, FlowLogsConfig, IceCredentials, IceRole, IngestToken, Interface, Key, Relay,
     RelaysPresence, SecretKey, SnownetCapabilities, WarnOnInvalidFilter,
 };
+use base64::Engine as _;
 use connlib_model::{ClientId, GatewayId, IceCandidate, IpStack, ResourceId, Site, SiteId};
 use ip_network::IpNetwork;
+use roaring::RoaringBitmap;
 use serde::{Deserialize, Serialize};
-use serde_with::{DurationSeconds, VecSkipError, serde_as};
-use std::net::{Ipv4Addr, Ipv6Addr};
+use serde_with::{DeserializeAs, DurationSeconds, VecSkipError, serde_as};
+use std::hash::{Hash, Hasher};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::time::Duration;
 
 pub use crate::messages::Authorization;
@@ -65,10 +68,7 @@ fn internet_resource_name() -> String {
     "Internet Resource".to_string()
 }
 
-/// A pool of devices the portal admits by its membership criteria.
-///
-/// Members are never sent: a packet to a tunnel address asks the portal for access with
-/// [`EgressMessages::RequestDeviceAccess`], and the portal answers with the pool it picked.
+/// A pool of devices the portal admits by its membership criteria, with its members.
 #[serde_as]
 #[derive(Debug, Deserialize)]
 pub struct ResourceDescriptionDevicePool {
@@ -77,6 +77,108 @@ pub struct ResourceDescriptionDevicePool {
     #[serde_as(as = "VecSkipError<_, WarnOnInvalidFilter>")]
     #[serde(default)]
     pub filters: Vec<Filter>,
+    #[serde(default)]
+    pub members: DevicePoolMembers,
+}
+
+/// The members of a device pool as roaring bitmaps of tunnel address offsets.
+///
+/// Both tunnel ranges leave 21 host bits, so a device is its offset from `100.64.0.0` in
+/// one bitmap and from `fd00:2021:1111::` in the other. The portal serializes them in the
+/// portable roaring format, base64 on the wire.
+#[serde_as]
+#[derive(Debug, Clone, Default, Deserialize, PartialEq, Eq)]
+pub struct DevicePoolMembers {
+    #[serde_as(as = "RoaringBase64")]
+    #[serde(default)]
+    pub ipv4: RoaringBitmap,
+    #[serde_as(as = "RoaringBase64")]
+    #[serde(default)]
+    pub ipv6: RoaringBitmap,
+}
+
+impl DevicePoolMembers {
+    /// Returns `true` if the device at `ip` is a member.
+    pub fn contains(&self, ip: IpAddr) -> bool {
+        match ip {
+            IpAddr::V4(ip) => tunnel_offset_v4(ip).is_some_and(|offset| self.ipv4.contains(offset)),
+            IpAddr::V6(ip) => tunnel_offset_v6(ip).is_some_and(|offset| self.ipv6.contains(offset)),
+        }
+    }
+
+    /// The addresses in `self` that are not in `other`.
+    pub fn addresses_not_in(&self, other: &Self) -> impl Iterator<Item = IpAddr> + '_ {
+        let ipv4 = (&self.ipv4 - &other.ipv4)
+            .into_iter()
+            .map(|offset| IpAddr::V4(address_at_offset_v4(offset)));
+        let ipv6 = (&self.ipv6 - &other.ipv6)
+            .into_iter()
+            .map(|offset| IpAddr::V6(address_at_offset_v6(offset)));
+
+        ipv4.chain(ipv6)
+    }
+}
+
+impl Hash for DevicePoolMembers {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        for offset in self.ipv4.iter().chain(self.ipv6.iter()) {
+            offset.hash(state);
+        }
+    }
+}
+
+impl PartialOrd for DevicePoolMembers {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for DevicePoolMembers {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.ipv4
+            .iter()
+            .cmp(other.ipv4.iter())
+            .then_with(|| self.ipv6.iter().cmp(other.ipv6.iter()))
+    }
+}
+
+/// The offset of a tunnel IPv4 address from the start of the tunnel range.
+pub fn tunnel_offset_v4(ip: Ipv4Addr) -> Option<u32> {
+    crate::IPV4_TUNNEL
+        .contains(ip)
+        .then(|| u32::from(ip) - u32::from(crate::IPV4_TUNNEL.network_address()))
+}
+
+/// The offset of a tunnel IPv6 address from the start of the tunnel range.
+pub fn tunnel_offset_v6(ip: Ipv6Addr) -> Option<u32> {
+    crate::IPV6_TUNNEL
+        .contains(ip)
+        .then(|| (u128::from(ip) - u128::from(crate::IPV6_TUNNEL.network_address())) as u32)
+}
+
+pub fn address_at_offset_v4(offset: u32) -> Ipv4Addr {
+    Ipv4Addr::from(u32::from(crate::IPV4_TUNNEL.network_address()) + offset)
+}
+
+pub fn address_at_offset_v6(offset: u32) -> Ipv6Addr {
+    Ipv6Addr::from(u128::from(crate::IPV6_TUNNEL.network_address()) + u128::from(offset))
+}
+
+/// Deserializes a base64 string holding a roaring bitmap in the portable format.
+struct RoaringBase64;
+
+impl<'de> DeserializeAs<'de, RoaringBitmap> for RoaringBase64 {
+    fn deserialize_as<D>(deserializer: D) -> Result<RoaringBitmap, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let encoded = String::deserialize(deserializer)?;
+        let bytes = base64::engine::general_purpose::STANDARD
+            .decode(encoded)
+            .map_err(serde::de::Error::custom)?;
+
+        RoaringBitmap::deserialize_from(&bytes[..]).map_err(serde::de::Error::custom)
+    }
 }
 
 /// Description of an internet resource.
@@ -156,7 +258,7 @@ pub struct AuthorizationCreationFailed {
 /// Sent by the portal once both peers in a device pool flow agree to connect.
 /// The recipient is the target device when `resource` is `Some` (and must apply
 /// the filters / expiry to its inbound authorization) and the initiating device
-/// when `resource_id` is `Some`.
+/// when it is `None`.
 #[serde_as]
 #[derive(Debug, Deserialize, Clone)]
 pub struct ClientDeviceAccessAuthorized {
@@ -171,11 +273,6 @@ pub struct ClientDeviceAccessAuthorized {
     pub ice_role: IceRole,
     #[serde(default)]
     pub use_iceless: bool,
-
-    /// The pool the portal picked for the flow we asked about. `None` on the
-    /// receiving side.
-    #[serde(default)]
-    pub resource_id: Option<ResourceId>,
 
     /// The resource authorising this connection on the receiving side, as the
     /// portal's minimal `{id, filters}` view. `None` on the initiating side.
@@ -386,17 +483,10 @@ pub enum EgressMessages {
         resource_id: ResourceId,
         #[serde(rename = "connected_gateway_ids")]
         preferred_gateways: Vec<GatewayId>,
-    },
-    /// Asks for access to the device at a tunnel address for one flow. The portal picks
-    /// the pool and answers with [`ClientDeviceAccessAuthorized`] or
-    /// [`ClientDeviceAccessDenied`].
-    RequestDeviceAccess {
         #[serde(skip_serializing_if = "Option::is_none")]
         ipv4: Option<Ipv4Addr>,
         #[serde(skip_serializing_if = "Option::is_none")]
         ipv6: Option<Ipv6Addr>,
-        #[serde(flatten)]
-        flow: Flow,
     },
     ResolveDeviceDomain {
         domain: String,
@@ -409,43 +499,8 @@ pub enum EgressMessages {
     SetSnownetCapabilities(SnownetCapabilities),
 }
 
-/// The flow a device access request is for.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
-pub struct Flow {
-    pub protocol: FlowProtocol,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub port: Option<u16>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum FlowProtocol {
-    Tcp,
-    Udp,
-    Icmp,
-}
-
-impl From<ip_packet::Protocol> for Flow {
-    fn from(protocol: ip_packet::Protocol) -> Self {
-        match protocol {
-            ip_packet::Protocol::Tcp(port) => Flow {
-                protocol: FlowProtocol::Tcp,
-                port: Some(port),
-            },
-            ip_packet::Protocol::Udp(port) => Flow {
-                protocol: FlowProtocol::Udp,
-                port: Some(port),
-            },
-            ip_packet::Protocol::IcmpEcho(_) => Flow {
-                protocol: FlowProtocol::Icmp,
-                port: None,
-            },
-        }
-    }
-}
-
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     #[test]
@@ -918,6 +973,8 @@ mod tests {
         let message = EgressMessages::RequestAuthorization {
             resource_id: "f16ecfa0-a94f-4bfd-a2ef-1cc1f2ef3da3".parse().unwrap(),
             preferred_gateways: Vec::new(),
+            ipv4: None,
+            ipv6: None,
         };
         let expected_json = r#"{"event":"request_authorization","payload":{"resource_id":"f16ecfa0-a94f-4bfd-a2ef-1cc1f2ef3da3","connected_gateway_ids":[]}}"#;
         let actual_json = serde_json::to_string(&message).unwrap();
@@ -926,26 +983,28 @@ mod tests {
     }
 
     #[test]
-    fn serialize_request_device_access_message_with_ipv4() {
-        let message = EgressMessages::RequestDeviceAccess {
+    fn serialize_request_authorization_message_with_ipv4() {
+        let message = EgressMessages::RequestAuthorization {
+            resource_id: "f16ecfa0-a94f-4bfd-a2ef-1cc1f2ef3da3".parse().unwrap(),
+            preferred_gateways: Vec::new(),
             ipv4: Some(Ipv4Addr::new(100, 65, 0, 1)),
             ipv6: None,
-            flow: ip_packet::Protocol::Tcp(22).into(),
         };
-        let expected_json = r#"{"event":"request_device_access","payload":{"ipv4":"100.65.0.1","protocol":"tcp","port":22}}"#;
+        let expected_json = r#"{"event":"request_authorization","payload":{"resource_id":"f16ecfa0-a94f-4bfd-a2ef-1cc1f2ef3da3","connected_gateway_ids":[],"ipv4":"100.65.0.1"}}"#;
         let actual_json = serde_json::to_string(&message).unwrap();
 
         assert_eq!(actual_json, expected_json);
     }
 
     #[test]
-    fn serialize_request_device_access_message_with_ipv6() {
-        let message = EgressMessages::RequestDeviceAccess {
+    fn serialize_request_authorization_message_with_ipv6() {
+        let message = EgressMessages::RequestAuthorization {
+            resource_id: "f16ecfa0-a94f-4bfd-a2ef-1cc1f2ef3da3".parse().unwrap(),
+            preferred_gateways: Vec::new(),
             ipv4: None,
             ipv6: Some("fd00:2021:1111::1".parse().unwrap()),
-            flow: ip_packet::Protocol::IcmpEcho(7).into(),
         };
-        let expected_json = r#"{"event":"request_device_access","payload":{"ipv6":"fd00:2021:1111::1","protocol":"icmp"}}"#;
+        let expected_json = r#"{"event":"request_authorization","payload":{"resource_id":"f16ecfa0-a94f-4bfd-a2ef-1cc1f2ef3da3","connected_gateway_ids":[],"ipv6":"fd00:2021:1111::1"}}"#;
         let actual_json = serde_json::to_string(&message).unwrap();
 
         assert_eq!(actual_json, expected_json);
@@ -971,7 +1030,11 @@ mod tests {
 
     #[test]
     fn can_deserialize_device_pool_resource() {
-        let resources = r#"[
+        let members = serde_json::json!({
+            "ipv4": roaring_base64([258]),
+            "ipv6": roaring_base64([65_538]),
+        });
+        let resources = serde_json::json!([
             {
                 "id": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
                 "type": "device_pool",
@@ -982,11 +1045,12 @@ mod tests {
                         "port_range_start": 22,
                         "port_range_end": 22
                     }
-                ]
+                ],
+                "members": members
             }
-        ]"#;
+        ]);
 
-        let parsed = serde_json::from_str::<Vec<ResourceDescription>>(resources).unwrap();
+        let parsed = serde_json::from_value::<Vec<ResourceDescription>>(resources).unwrap();
 
         let ResourceDescription::DevicePool(json) = &parsed[0] else {
             panic!("Expected DevicePool");
@@ -997,6 +1061,55 @@ mod tests {
             desc.filters,
             vec![Filter::Tcp(crate::messages::PortRange::single(22))]
         );
+        assert!(desc.members.contains("100.64.1.2".parse().unwrap()));
+        assert!(
+            desc.members
+                .contains("fd00:2021:1111::1:2".parse().unwrap())
+        );
+        assert!(!desc.members.contains("100.64.1.3".parse().unwrap()));
+        assert!(!desc.members.contains("10.0.0.1".parse().unwrap()));
+    }
+
+    #[test]
+    fn device_pool_without_members_is_empty() {
+        let json = serde_json::json!({
+            "id": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
+            "name": "Empty",
+            "filters": []
+        });
+
+        let desc = ResourceDescriptionDevicePool::deserialize(json).unwrap();
+        assert_eq!(desc.members, DevicePoolMembers::default());
+    }
+
+    #[test]
+    fn tunnel_offsets_round_trip() {
+        for ip in ["100.64.0.0", "100.64.1.2", "100.95.255.255"] {
+            let ip = ip.parse::<Ipv4Addr>().unwrap();
+            assert_eq!(address_at_offset_v4(tunnel_offset_v4(ip).unwrap()), ip);
+        }
+        assert_eq!(tunnel_offset_v4(Ipv4Addr::new(100, 96, 0, 0)), None);
+
+        for ip in [
+            "fd00:2021:1111::",
+            "fd00:2021:1111::1:2",
+            "fd00:2021:1111::1f:ffff",
+        ] {
+            let ip = ip.parse::<Ipv6Addr>().unwrap();
+            assert_eq!(address_at_offset_v6(tunnel_offset_v6(ip).unwrap()), ip);
+        }
+        assert_eq!(
+            tunnel_offset_v6("fd00:2021:1111::20:0".parse().unwrap()),
+            None
+        );
+    }
+
+    pub(crate) fn roaring_base64(offsets: impl IntoIterator<Item = u32>) -> String {
+        let bitmap = RoaringBitmap::from_iter(offsets);
+        let mut bytes = Vec::new();
+        bitmap.serialize_into(&mut bytes).unwrap();
+
+        base64::engine::general_purpose::STANDARD.encode(bytes)
     }
 
     #[test]
