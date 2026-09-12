@@ -66,14 +66,25 @@ defmodule Portal.Policies.Postures.FieldsTest do
     assert Map.keys(Fields.registry()) |> Enum.sort() == Enum.sort(Fields.providers())
   end
 
+  @dropped %{
+    intune: ~w[device_action_results attestation_content_namespace_url attestation_last_update_date_time]a,
+    iru: [],
+    defender: ~w[merged_into_machine_id]a,
+    santa: ~w[id tags_locked tags_truncated primary_user_locked]a,
+    sentinelone: ~w[
+      license_key show_alert_icon proxy_console_address proxy_deep_visibility_address
+      group_updated_at policy_updated_at source_created_at source_updated_at
+    ]a
+  }
+
   for {provider, schema} <- @mirrors do
     test "registry/0 classifies every telemetry column of #{provider}" do
       registry = Fields.registry()[unquote(provider)]
       columns = unquote(schema).__schema__(:fields)
 
       excluded =
-        ~w[account_id posture_provider_id inserted_at updated_at]a ++
-          ~w[intune_id iru_id defender_id id santa_id uuid license_key]a
+        ~w[account_id posture_provider_id synced_at inserted_at updated_at]a ++
+          @dropped[unquote(provider)]
 
       for column <- columns -- excluded do
         assert {:ok, type} = Map.fetch(registry, column)
@@ -106,6 +117,20 @@ defmodule Portal.Policies.Postures.FieldsTest do
     end
   end
 
+  test "registry/0 keeps the provider's device id but not our own keys" do
+    registry = Fields.registry()
+
+    assert registry.intune.intune_id == :string
+    assert registry.iru.iru_id == :string
+    assert registry.defender.defender_id == :string
+    assert registry.santa.santa_id == :string
+    assert registry.sentinelone.uuid == :string
+
+    refute Map.has_key?(registry.santa, :id)
+    refute Map.has_key?(registry.sentinelone, :license_key)
+    refute Map.has_key?(registry.intune, :posture_provider_id)
+  end
+
   test "registry/0 applies the semantic overrides" do
     registry = Fields.registry()
 
@@ -113,7 +138,7 @@ defmodule Portal.Policies.Postures.FieldsTest do
     assert registry.intune.os_version == :version
     assert registry.intune.jail_broken == :boolean
     assert registry.intune.android_security_patch_level == :datetime
-    assert registry.intune.device_action_results == :json
+    refute Map.has_key?(registry.intune, :device_action_results)
     assert registry.iru.device_capacity_gb == :float
     assert registry.iru.tags == :string_array
     assert registry.defender.last_ip_address == :ip
@@ -134,6 +159,7 @@ defmodule Portal.Policies.Postures.FieldsTest do
 
   test "fetch_field/2 resolves a field with its type" do
     assert Fields.fetch_field(:intune, "compliance_state") == {:ok, :compliance_state, :enum_string}
+    assert Fields.fetch_field(:intune, "intune_id") == {:ok, :intune_id, :string}
     assert Fields.fetch_field(:firezone, "attested") == {:ok, :attested, :boolean}
     assert Fields.fetch_field(:intune, "account_id") == :error
     assert Fields.fetch_field(:intune, "nope") == :error
@@ -192,9 +218,16 @@ defmodule Portal.Policies.Postures.FieldsTest do
     test "excludes bookkeeping and the given columns" do
       classified = Classifier.classify!(Portal.Santa.Device, excluded: [:id, :santa_id])
       refute Map.has_key?(classified, :account_id)
+      refute Map.has_key?(classified, :synced_at)
       refute Map.has_key?(classified, :santa_id)
       assert classified.hostname == :string
       assert classified.enrolled == :boolean
+    end
+
+    test "excludes redacted columns without being told" do
+      classified = Classifier.classify!(Portal.SentinelOne.Device, excluded: [])
+      refute Map.has_key?(classified, :license_key)
+      assert classified.uuid == :string
     end
   end
 end

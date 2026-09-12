@@ -1,7 +1,7 @@
 defmodule Portal.Policies.Postures.Fields.Classifier do
   @moduledoc false
 
-  @bookkeeping ~w[account_id posture_provider_id inserted_at updated_at]a
+  @bookkeeping ~w[account_id posture_provider_id synced_at inserted_at updated_at]a
 
   @doc """
   Classifies every column of a mirror schema, raising on one that has no
@@ -10,7 +10,7 @@ defmodule Portal.Policies.Postures.Fields.Classifier do
   """
   @spec classify!(module(), keyword()) :: %{atom() => atom()}
   def classify!(schema, opts) do
-    excluded = @bookkeeping ++ Keyword.fetch!(opts, :excluded)
+    excluded = @bookkeeping ++ schema.__schema__(:redact_fields) ++ Keyword.fetch!(opts, :excluded)
 
     overridden =
       for {type, fields} <- Keyword.take(opts, [:enum_string, :version]),
@@ -107,9 +107,13 @@ defmodule Portal.Policies.Postures.Fields do
     attested: :boolean
   }
 
+  # Left out: values with no security meaning such as UI flags, dedup pointers
+  # and provider bookkeeping. Attestation evidence stays, since a measurement
+  # can be pinned. A provider's device id stays too, so an admin can pin or
+  # except a device. Santa's id is our own row key.
   @mirrors [
     {:intune, Portal.Intune.Device,
-     excluded: [:intune_id],
+     excluded: ~w[device_action_results attestation_content_namespace_url attestation_last_update_date_time]a,
      enum_string: ~w[
        compliance_state management_state management_agent managed_device_owner_type
        device_enrollment_type device_registration_state partner_reported_threat_state
@@ -121,7 +125,7 @@ defmodule Portal.Policies.Postures.Fields do
        attestation_boot_manager_security_version attestation_tpm_version
      ]a},
     {:iru, Portal.Iru.Device,
-     excluded: [:iru_id],
+     excluded: [],
      enum_string: ~w[
        platform lost_mode_status external_boot_level secure_boot_level filevault_key_type
        firewall_logging_option cellular_technology device_family
@@ -132,18 +136,21 @@ defmodule Portal.Policies.Postures.Fields do
        malware_removal_tool_version
      ]a},
     {:defender, Portal.Defender.Device,
-     excluded: [:defender_id],
+     excluded: ~w[merged_into_machine_id]a,
      enum_string: ~w[
        os_platform os_architecture health_status onboarding_status managed_by
        managed_by_status risk_score exposure_level device_value exclusion_reason
      ]a,
      version: ~w[agent_version]a},
     {:santa, Portal.Santa.Device,
-     excluded: [:id, :santa_id],
+     excluded: ~w[id tags_locked tags_truncated primary_user_locked]a,
      enum_string: ~w[os_type last_seen_client_mode configured_client_mode]a,
      version: ~w[os_version santa_version santanetd_version]a},
     {:sentinelone, Portal.SentinelOne.Device,
-     excluded: [:uuid, :license_key],
+     excluded: ~w[
+       show_alert_icon proxy_console_address proxy_deep_visibility_address
+       group_updated_at policy_updated_at source_created_at source_updated_at
+     ]a,
      enum_string: ~w[
        os_arch os_type machine_type network_status scan_status mitigation_mode
        mitigation_mode_suspicious console_migration_status apps_vulnerability_status
