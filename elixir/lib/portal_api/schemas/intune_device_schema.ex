@@ -121,6 +121,11 @@ defmodule PortalAPI.Schemas.IntuneDevice do
                   {field, schema}
                 end)
 
+    # Left off the API and out of the posture grammar:
+    # - device_action_results: outcomes of remote actions Intune ran, not device state
+    # - attestation_content_namespace_url: the report schema namespace, a constant
+    # - attestation_last_update_date_time: Graph sends it as an opaque string;
+    #   attestation_issued_at is the parsed evaluation time freshness checks use
     @derive {PortalAPI.JSON.Encoder,
              for: Portal.Intune.Device,
              internal: ~w[device_action_results attestation_content_namespace_url attestation_last_update_date_time]a}

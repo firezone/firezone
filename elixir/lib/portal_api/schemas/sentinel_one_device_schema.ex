@@ -153,6 +153,14 @@ defmodule PortalAPI.Schemas.SentinelOneDevice do
                   {field, schema}
                 end)
 
+    # Left off the API and out of the posture grammar:
+    # - show_alert_icon: whether the agent shows its tray icon, a UI setting
+    # - proxy_console_address, proxy_deep_visibility_address: the proxies the agent
+    #   reaches SentinelOne through; proxy_method and the proxy booleans stay
+    # - group_updated_at, policy_updated_at: when the group and policy assignments
+    #   last changed, which says nothing about the device
+    # - source_created_at, source_updated_at: SentinelOne record stamps;
+    #   last_active_at is the device freshness signal
     @derive {PortalAPI.JSON.Encoder,
              for: Portal.SentinelOne.Device,
              internal: ~w[
