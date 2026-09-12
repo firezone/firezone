@@ -27,7 +27,8 @@ ls -la "$TARGET_DIR" 2>&1 | head -n 60 || true
 
 "$SCRIPT_DIR/sign.sh" \
     "$TARGET_DIR/firezone-client-tunnel.exe" \
-    "$TARGET_DIR/register-sparse.exe"
+    "$TARGET_DIR/register-sparse.exe" \
+    "$TARGET_DIR/firezone-cli.exe"
 # Do not enable this, Tauri already signs it for us after patching the binary.
 #    "$TARGET_DIR/Firezone.exe"
 

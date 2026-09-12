@@ -19,7 +19,6 @@ pub mod deep_link;
 pub mod dialog;
 pub mod elevation;
 pub mod gui;
-pub mod ipc;
 pub mod launch_lock;
 pub mod logging;
 #[cfg(debug_assertions)]
@@ -56,13 +55,7 @@ pub const NO_TELEMETRY: bool = cfg!(no_telemetry);
 
 pub const FIREZONE_CLIENT_GROUP: &str = "firezone-client";
 
-/// `Name_publisherId` for the sparse MSIX. Derived at build time
-/// from the manifest's `Name` + Publisher DN in `build.rs`. Used by
-/// `register-sparse.exe` to stage / provision / deprovision the
-/// package against the AppX deployment service, and to derive the
-/// package AUMID (`<PACKAGE_FAMILY_NAME>!Firezone`) that Windows uses to
-/// label toast notifications (see `gui::os::notification_app_id`).
-pub const PACKAGE_FAMILY_NAME: &str = env!("FIREZONE_PACKAGE_FAMILY_NAME");
+pub use windows_package_identity::PACKAGE_FAMILY_NAME;
 
 #[cfg(target_os = "linux")]
 pub fn firezone_client_group() -> anyhow::Result<nix::unistd::Group> {

@@ -50,7 +50,7 @@ pub type ClientStream = UnixStream;
 /// Alias for the server's half of a platform-specific IPC stream
 ///
 /// On Windows `ClientStream` and `ServerStream` differ
-pub(crate) type ServerStream = UnixStream;
+pub type ServerStream = UnixStream;
 
 /// Connect to the Tunnel service
 #[expect(clippy::wildcard_enum_match_arm)]
@@ -77,7 +77,7 @@ pub async fn connect_to_socket(id: SocketId) -> Result<ClientStream> {
 
 impl Server {
     /// Platform-specific setup
-    pub(crate) fn new(id: SocketId) -> Result<Self> {
+    pub fn new(id: SocketId) -> Result<Self> {
         let sock_path = ipc_path(id)?;
 
         tracing::debug!(socket = %sock_path.display(), "Creating new IPC server");
@@ -101,20 +101,14 @@ impl Server {
             sd_notify::notify(&[sd_notify::NotifyState::Ready])?;
         }
 
-        let allowed_peer = cfg_select! {
-            all(target_os = "linux", test) => peer_check::AllowedPeer::for_current_exe(),
-            target_os = "linux" => peer_check::AllowedPeer::firezone_gui_client(),
-            target_os = "macos" => peer_check::AllowedPeer::stub(),
-        };
-
         Ok(Self {
             listener,
             id,
-            allowed_peer,
+            allowed_peer: allowed_peer(id),
         })
     }
 
-    pub(crate) async fn next_client(&mut self) -> Result<(ServerStream, u32)> {
+    pub async fn next_client(&mut self) -> Result<(ServerStream, u32)> {
         loop {
             let (stream, _) = self.listener.accept().await?;
             let cred = stream.peer_cred()?;
@@ -157,6 +151,28 @@ impl Server {
     }
 }
 
+/// Returns the peers allowed to connect to `id`.
+///
+/// The allowlist is keyed off the socket, never off `feature = "test"`: Cargo
+/// unifies that feature into every build of this crate as soon as a single
+/// dev-dependency asks for it, which would relax the production sockets too.
+fn allowed_peer(id: SocketId) -> peer_check::AllowedPeer {
+    cfg_select! {
+        target_os = "linux" => match id {
+            // The CLI only ever talks to the GUI, so the tunnel socket stays
+            // pinned to the GUI binary alone.
+            SocketId::Tunnel => peer_check::AllowedPeer::firezone_gui_client(),
+            SocketId::Gui => peer_check::AllowedPeer::firezone_gui_client_or_cli(),
+            #[cfg(any(test, feature = "test"))]
+            SocketId::Test(_) => peer_check::AllowedPeer::for_current_exe(),
+        },
+        target_os = "macos" => {
+            let _ = id;
+            peer_check::AllowedPeer::stub()
+        },
+    }
+}
+
 /// The path for our Unix Domain Socket
 ///
 /// Docker keeps theirs in `/run` and also appears to use filesystem permissions
@@ -174,9 +190,26 @@ fn ipc_path(id: SocketId) -> Result<PathBuf> {
         SocketId::Gui => known_dirs::user_runtime()
             .context("Failed to get user runtime directory")?
             .join("gui.sock"),
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test"))]
         SocketId::Test(id) => known_dirs::user_runtime()
             .context("Failed to get user runtime directory")?
             .join(format!("ipc_test_{id}.sock")),
     })
+}
+
+#[cfg(all(test, target_os = "linux"))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_feature_does_not_relax_production_sockets() {
+        assert_eq!(
+            allowed_peer(SocketId::Tunnel),
+            peer_check::AllowedPeer::firezone_gui_client()
+        );
+        assert_eq!(
+            allowed_peer(SocketId::Gui),
+            peer_check::AllowedPeer::firezone_gui_client_or_cli()
+        );
+    }
 }

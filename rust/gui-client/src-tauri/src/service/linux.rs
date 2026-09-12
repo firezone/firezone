@@ -3,7 +3,7 @@ use std::{path::PathBuf, time::Duration};
 use anyhow::{Context as _, Result, bail};
 use bin_shared::{DnsControlMethod, signals};
 
-use crate::ipc::SocketId;
+use client_ipc::SocketId;
 
 /// Cross-platform entry point for systemd / Windows services
 ///

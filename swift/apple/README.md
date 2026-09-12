@@ -163,52 +163,89 @@ mise run //swift/apple:<task>   # e.g. mise run //swift/apple:build
 
 ### Headless client
 
-`firezone-cli` is the macOS Client run from a terminal. It is not a separate
+`firezone` is the macOS Client run from a terminal. It is not a separate
 program: it is the app's own binary, reached through a symlink beside it at
 `Firezone.app/Contents/MacOS/firezone-cli`, and it picks the command line path
-when started under that name. Being the same bundle is what lets it use the VPN
-configuration and system extension the app set up, which a second bundle could
-not do. `mise run cli` finds it for you:
+when started under that name or as `firezone`. Being the same bundle is what
+lets it use the VPN configuration and system extension the app set up, which a
+second bundle could not do. That also rules out a symlink to the binary from
+outside the bundle, which is why the app ships `Contents/Resources/firezone`, a
+wrapper that `exec`s the binary at its real path. The standalone `.pkg` symlinks
+it into `/usr/local/bin`. The `.dmg` and App Store builds are sandboxed and
+cannot, so they offer `Install Firezone CLI` in the menu bar, which shows the
+`sudo` command that makes the same symlink and copies it to the clipboard. It
+cannot run the command for us: a sandboxed app can neither write there nor hand
+Terminal a script that would, because Gatekeeper refuses the quarantine flag the
+sandbox stamps on everything we write. That entry is hidden once
+`/usr/local/bin/firezone` exists, and the symlink can always be made by hand
+with
+`sudo ln -sf /Applications/Firezone.app/Contents/Resources/firezone /usr/local/bin/firezone`.
+`Contents/Resources/firezone-cli` is the previous name, kept as a deprecated
+alias that prints a warning.
+
+The `.pkg` also writes shell completions, to
+`/usr/local/share/zsh/site-functions/_firezone`,
+`/usr/local/etc/bash_completion.d/firezone` and
+`/usr/local/share/fish/vendor_completions.d/firezone.fish`. `ArgumentParser`
+generates them, so `firezone --generate-completion-script <bash|zsh|fish>`
+produces the same thing for an install that came from somewhere else.
+
+For a development build, `mise run cli` finds the binary for you:
 
 ```sh
 mise run cli -- --help
 mise run cli -- extension status
-mise run cli -- connect --account-slug my-account
+mise run cli -- connect
 ```
 
-`connect` is the default, so plain `firezone-cli` brings the tunnel up and stays
-in the foreground until you stop it. `sign-out` drops the stored token.
+`connect` brings the tunnel up. It returns once the portal has named the
+session, so a `status` straight afterwards has something definite to say, and
+leaves the tunnel running in the system extension, since it lives there rather
+than in this process. `connect --foreground` instead supervises the tunnel and
+stops it on exit, which is what a launchd service wants. `disconnect` takes the
+tunnel down again, and `sign-out` also drops the stored token. `status`, which
+is what plain `firezone` runs, asks the extension where things stand, waking it
+briefly if the tunnel is down, and repeats what it said: not connected,
+connecting, or signed in to an account as a user. Nothing is inferred from the
+extension failing to answer, and nothing is claimed about a stored token, since
+whether one still works is only known once it is tried. `resources list`, which
+is what plain `resources` runs, prints what the running tunnel can reach.
+`internet-resource enable` and `internet-resource disable` switch the Internet
+Resource, writing the choice to the shared VPN profile the way the app's own
+toggle does.
 
 It talks to the same system extension as the GUI and will not start without it.
 `extension status` reports whether that extension is installed and matches the
 build, and exits non-zero when it does not, so a setup script can check before
-going further. It cannot install the extension, since installing one needs a
-user to approve it. Launch the app once to do that.
+going further. `extension install` brings it up to the build, and `connect` does
+the same by itself when it finds a version mismatch: macOS replaces an extension
+the user has already approved without asking again, and the CLI runs with the
+app's bundle identity, so it can ask for that replacement. Neither can do the
+first install, which needs a user to approve the extension in System Settings.
+Launch the app once to do that.
 
 These environment variables are read when the matching flag is absent:
 
-| Variable                              | Flag                           |
-| ------------------------------------- | ------------------------------ |
-| `FIREZONE_TOKEN`                      | none, taken from the Keychain  |
-| `FIREZONE_ACCOUNT_SLUG`               | `--account-slug`               |
-| `FIREZONE_API_URL`                    | `--api-url`                    |
-| `FIREZONE_AUTH_BASE_URL`              | `--auth-base-url`              |
-| `FIREZONE_ACTIVATE_INTERNET_RESOURCE` | `--activate-internet-resource` |
-| `FIREZONE_LOG_FILTER`                 | none                           |
+| Variable                 | Flag                          |
+| ------------------------ | ----------------------------- |
+| `FIREZONE_TOKEN`         | none, taken from the Keychain |
+| `FIREZONE_AUTH_BASE_URL` | `--auth-base-url`             |
+| `FIREZONE_LOG_FILTER`    | none                          |
 
 It never asks for a token at a prompt. The app is sandboxed, so it cannot turn
 terminal echo off, and a token typed at a prompt would stay in the scrollback.
 Pipe one in instead, which is what it tells you to do when it hasn't got one:
 
 ```sh
-pbpaste | firezone-cli
+pbpaste | firezone connect
 ```
 
 Anything you don't set keeps whatever the app stored, since both share one VPN
-profile. Logs go to stderr as well as to the log folder the app shares.
+profile. Logs go to the log folder the app shares, and only warnings and errors
+reach the terminal as well; `--debug` mirrors all of them there.
 
-`connect` stops the menu bar app being kept alive, so quitting the headless
-client doesn't reopen it. Launching the app puts that back.
+`connect --foreground` stops the menu bar app being kept alive, so quitting the
+headless client doesn't reopen it. Launching the app puts that back.
 
 ### Instruments
 

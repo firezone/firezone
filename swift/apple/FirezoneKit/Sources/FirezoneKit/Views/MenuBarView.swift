@@ -5,6 +5,7 @@
 //
 
 #if os(macOS)
+  import Foundation
   import NetworkExtension
   import SwiftUI
 
@@ -185,6 +186,14 @@
       Button("Settings") {
         AppView.WindowDefinition.settings.openWindow()
       }
+
+      // Stands in for the CLI already being on the PATH, which the `.pkg`
+      // arranges for us and the other installs cannot.
+      if !FileManager.default.fileExists(atPath: "/usr/local/bin/firezone") {
+        Button("Install Firezone CLI") {
+          installCommandLineTool()
+        }
+      }
     }
 
     func openAdminPortal() {
@@ -217,6 +226,25 @@
           ?? URL(string: ConfigurationDefaults.supportURL)
       else { return }
       Task { await NSWorkspace.shared.openAsync(url) }
+    }
+
+    func installCommandLineTool() {
+      let command = CLIInstaller.installCommand
+
+      let alert = NSAlert()
+      alert.messageText = "Install Firezone CLI"
+      alert.informativeText = """
+        Run this in a terminal to put `firezone` on your PATH.
+        It needs administrator privileges, so Firezone cannot run it for you.
+
+        \(command)
+        """
+      alert.addButton(withTitle: "Copy Command")
+      alert.addButton(withTitle: "Cancel")
+
+      if alert.runModal() == .alertFirstButtonReturn {
+        Clipboard.copy(command)
+      }
     }
   }
 

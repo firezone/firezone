@@ -8,17 +8,27 @@
   import NetworkExtension
   import SystemExtensions
 
-  enum SystemExtensionError: Error, CustomStringConvertible, LocalizedError {
+  public enum SystemExtensionError: Error, CustomStringConvertible, LocalizedError {
     case unknownResult(OSSystemExtensionRequest.Result)
 
-    var description: String {
+    /// macOS wants a human to approve the request in System Settings, and the caller
+    /// said nobody is there to do it.
+    case needsUserApproval
+
+    case timedOut(seconds: Int)
+
+    public var description: String {
       switch self {
       case .unknownResult(let result):
         return "Unknown result: \(result)"
+      case .needsUserApproval:
+        return "System extension needs approval in System Settings"
+      case .timedOut(let seconds):
+        return "System extension request did not finish within \(seconds) seconds"
       }
     }
 
-    var errorDescription: String? { description }
+    public var errorDescription: String? { description }
   }
 
   public enum SystemExtensionStatus: Equatable, Sendable {
@@ -82,10 +92,28 @@
   public class SystemExtensionManager: NSObject, OSSystemExtensionRequestDelegate, ObservableObject,
     SystemExtensionManagerProtocol
   {
+    /// How long a request may take before we give up on it.
+    ///
+    /// Generous, because activating an extension makes macOS copy and validate it. It
+    /// is here to turn a request that never reports anything into an error, not to
+    /// police a slow one. The clock stops once macOS says it is waiting on the user,
+    /// since from then on a human at System Settings sets the pace.
+    static let timeoutSeconds = 60
+
     // Delegate methods complete with either a true or false outcome or an Error
     private var continuation: CheckedContinuation<SystemExtensionStatus, Error>?
+    private var timeoutTask: Task<Void, Never>?
 
-    override public init() {
+    /// Whether nobody is around to answer a System Settings prompt.
+    ///
+    /// The app leaves this alone, since the user is looking at the prompt macOS
+    /// raised. A terminal sets it, so a request that needs approval fails instead of
+    /// waiting on a prompt nobody is going to see.
+    private let unattended: Bool
+
+    public init(unattended: Bool = false) {
+      self.unattended = unattended
+
       super.init()
     }
 
@@ -169,7 +197,16 @@
     }
 
     nonisolated public func requestNeedsUserApproval(_ request: OSSystemExtensionRequest) {
-      // We assume this state until we receive a success response.
+      Task { @MainActor in
+        guard self.unattended else {
+          Log.info("Waiting for the system extension to be approved in System Settings")
+          self.cancelTimeout()
+
+          return
+        }
+
+        self.resumeErr(throwing: SystemExtensionError.needsUserApproval)
+      }
     }
 
     nonisolated public func request(
@@ -224,14 +261,40 @@
       request.delegate = self
 
       OSSystemExtensionManager.shared.submitRequest(request)
+
+      startTimeout()
+    }
+
+    private func startTimeout() {
+      cancelTimeout()
+      timeoutTask = Task { @MainActor in
+        do {
+          try await Task.sleep(for: .seconds(Self.timeoutSeconds))
+        } catch {
+          // Cancelled: the request either finished or is now waiting on the user.
+          return
+        }
+
+        // Resuming a continuation twice crashes. Going through the same helper on the
+        // same actor as the delegate callbacks is what makes a timeout racing a
+        // callback a no-op rather than a second resume.
+        self.resumeErr(throwing: SystemExtensionError.timedOut(seconds: Self.timeoutSeconds))
+      }
+    }
+
+    private func cancelTimeout() {
+      timeoutTask?.cancel()
+      timeoutTask = nil
     }
 
     private func resumeErr(throwing error: Error) {
+      self.cancelTimeout()
       self.continuation?.resume(throwing: error)
       self.continuation = nil
     }
 
     private func resumeOk(returning val: SystemExtensionStatus) {
+      self.cancelTimeout()
       self.continuation?.resume(returning: val)
       self.continuation = nil
     }

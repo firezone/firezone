@@ -3,6 +3,10 @@ members = [
     "client-ffi",
     "gateway",
     "gui-client/src-admx-macro",
+    "gui-client/src-cli",
+    "gui-client/src-gui-ipc",
+    "gui-client/src-ipc",
+    "gui-client/src-package-identity",
     "gui-client/src-tauri",
     "headless-client",
     "libs/anyhow-ext",
@@ -93,6 +97,8 @@ bytes = { version = "1.11.1", default-features = false }
 caps = "0.5.6"
 chrono = { version = "0.4.45", default-features = false, features = ["std", "clock", "oldtime", "serde"] }
 clap = "4.6.1"
+clap_complete = "4.6.9"
+client-ipc = { path = "gui-client/src-ipc" }
 client-shared = { path = "libs/client-shared" }
 clock = { path = "libs/clock" }
 connlib-model = { path = "libs/connlib/model" }
@@ -120,6 +126,7 @@ flow-tracker = { path = "libs/connlib/flow-tracker" }
 futures = { version = "0.3.32" }
 futures-bounded = "0.3.0"
 glob = "0.3.3"
+gui-ipc = { path = "gui-client/src-gui-ipc" }
 hex = "0.4.3"
 hex-display = "0.4.0"
 hex-literal = "1.1.0"
@@ -262,6 +269,7 @@ windows = "0.61.3"
 windows-core = "0.61.1"
 windows-implement = "0.60.0"
 windows-native-keyring-store = "1.1.0"
+windows-package-identity = { path = "gui-client/src-package-identity" }
 windows-security = { path = "libs/windows-security" }
 windows-service = "0.8.1"
 winreg = "0.56.0"

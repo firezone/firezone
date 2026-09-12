@@ -1,0 +1,28 @@
+#!/bin/bash
+
+# Puts the headless client on the PATH. The installer passes the install location as $2.
+
+set -euo pipefail
+
+mkdir -p /usr/local/bin
+ln -sf "$2/Firezone.app/Contents/Resources/firezone" /usr/local/bin/firezone
+ln -sf "$2/Firezone.app/Contents/Resources/firezone-cli" /usr/local/bin/firezone-cli
+
+# The wrapper, not the binary beside it: the client only has the app's bundle
+# identity when started at its real path.
+firezone="$2/Firezone.app/Contents/Resources/firezone"
+
+install_completion() {
+    local shell="$1"
+    local path="$2"
+
+    mkdir -p "$(dirname "$path")"
+    "$firezone" --generate-completion-script "$shell" >"$path"
+}
+
+# Each of these is where the shell picks completions up on its own. Best-effort,
+# because putting the client on the PATH is what this install is for and a shell
+# nobody uses must not fail it.
+install_completion zsh /usr/local/share/zsh/site-functions/_firezone || true
+install_completion bash /usr/local/etc/bash_completion.d/firezone || true
+install_completion fish /usr/local/share/fish/vendor_completions.d/firezone.fish || true

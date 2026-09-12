@@ -21,15 +21,15 @@ pub type ClientStream = Box<dyn IpcStream>;
 
 pub type ClientRead<M> = FramedRead<ReadHalf<ClientStream>, Decoder<M>>;
 pub type ClientWrite<M> = FramedWrite<WriteHalf<ClientStream>, Encoder<M>>;
-pub(crate) type ServerRead<M> = FramedRead<ReadHalf<ServerStream>, Decoder<M>>;
-pub(crate) type ServerWrite<M> = FramedWrite<WriteHalf<ServerStream>, Encoder<M>>;
+pub type ServerRead<M> = FramedRead<ReadHalf<ServerStream>, Decoder<M>>;
+pub type ServerWrite<M> = FramedWrite<WriteHalf<ServerStream>, Encoder<M>>;
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
-#[path = "ipc/unix.rs"]
+#[path = "unix.rs"]
 pub(crate) mod platform;
 
 #[cfg(target_os = "windows")]
-#[path = "ipc/windows.rs"]
+#[path = "windows.rs"]
 pub(crate) mod platform;
 
 #[derive(Debug, thiserror::Error)]
@@ -81,7 +81,7 @@ pub enum SocketId {
     ///
     /// Includes an ID so that multiple tests can
     /// run in parallel.
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test"))]
     Test(u32),
 }
 
@@ -162,31 +162,13 @@ where
         "Connecting to IPC socket"
     );
 
-    // When the GUI is launched with `--mock-tunnel`, hand the controller an in-memory
-    // channel served by an in-process mock instead of connecting to the real
-    // (root-only) Tunnel service. Debug builds only; Tunnel socket only, so the
-    // deep-link `SocketId::Gui` path is unaffected.
-    #[cfg(debug_assertions)]
-    if id == SocketId::Tunnel && crate::mock_tunnel::enabled() {
-        let (rx, tx) = tokio::io::split(crate::mock_tunnel::spawn());
-        return Ok((
-            FramedRead::new(rx, Decoder::default()),
-            FramedWrite::new(tx, Encoder::default()),
-        ));
-    }
-
     // This is how ChatGPT recommended, and I couldn't think of any more clever
     // way before I asked it.
     let mut last_err = None;
 
     for _ in 0..options.num_attempts {
         match platform::connect_to_socket(id).await {
-            Ok(stream) => {
-                let (rx, tx) = tokio::io::split(Box::new(stream) as ClientStream);
-                let rx = FramedRead::new(rx, Decoder::default());
-                let tx = FramedWrite::new(tx, Encoder::default());
-                return Ok((rx, tx));
-            }
+            Ok(stream) => return Ok(framed(Box::new(stream) as ClientStream)),
             Err(error) => {
                 tracing::debug!("Couldn't connect to IPC socket: {error}");
                 last_err = Some(error);
@@ -200,10 +182,22 @@ where
     Err(last_err.expect("Impossible - Exhausted all retries but didn't get any errors"))
 }
 
+/// Applies our JSON framing to an already-connected stream.
+pub fn framed<R, W>(stream: ClientStream) -> (ClientRead<R>, ClientWrite<W>)
+where
+    R: DeserializeOwned,
+    W: Serialize,
+{
+    let (rx, tx) = tokio::io::split(stream);
+
+    (
+        FramedRead::new(rx, Decoder::default()),
+        FramedWrite::new(tx, Encoder::default()),
+    )
+}
+
 impl platform::Server {
-    pub(crate) async fn next_client_split<R, W>(
-        &mut self,
-    ) -> Result<(ServerRead<R>, ServerWrite<W>, u32)>
+    pub async fn next_client_split<R, W>(&mut self) -> Result<(ServerRead<R>, ServerWrite<W>, u32)>
     where
         R: DeserializeOwned,
         W: Serialize,

@@ -8,125 +8,182 @@ import FirezoneKit
 import Foundation
 import NetworkExtension
 
-/// Keeps the tunnel running until a signal or an unrecoverable disconnect stops it.
+/// Follows a tunnel that was just started, and says why when it doesn't come up.
 ///
-/// SIGINT/SIGTERM shut down, SIGHUP restarts. A tunnel that stops for want of a token
-/// ends the run saying how to supply one, since there is no way to ask for it here.
-///
-/// Anything other than a signal is a failure and is rethrown, so a service manager
-/// watching the exit status can tell a tunnel that stopped from one that was stopped.
+/// A tunnel that stops for want of a token ends the wait saying how to supply one,
+/// since there is no way to ask for it here.
 @MainActor
-final class TunnelSupervisor {
-  private enum Action {
-    case shutdown
-    case restart
+struct TunnelWatcher {
+  /// A tunnel that is not up, ahead of working out what to say about it.
+  enum Stop {
+    case timedOut
+    case invalidConfiguration
+    case disconnected
   }
 
   private static let connectTimeout = Duration.seconds(30)
+  private static let portalTimeout: Duration = .seconds(30)
+  private static let portalPollInterval: Duration = .milliseconds(250)
 
-  private let session: any TunnelSessionProtocol
-  private let noTokenAdvice: String
+  let session: any TunnelSessionProtocol
+  let noTokenAdvice: String
 
-  private var isRestarting = false
-  private var failure: (any Error)?
-  private var timeoutTask: Task<Void, Never>?
+  /// Returns once the tunnel is connected, throws with the reason it never got there.
+  func waitUntilConnected() async throws {
+    guard let stop = await waitForConnect() else { return }
 
-  init(session: any TunnelSessionProtocol, noTokenAdvice: String) {
-    self.session = session
-    self.noTokenAdvice = noTokenAdvice
+    let error = await report(stop)
+
+    throw error
   }
 
-  func run() async throws {
-    let (actions, emit) = AsyncStream.makeStream(of: Action.self)
+  /// Returns `nil` once the tunnel is connected, or how it stopped instead.
+  func waitForConnect() async -> Stop? {
+    let (outcomes, emit) = AsyncStream.makeStream(of: Stop?.self)
 
-    let statusTask = Task { await watchStatus(emit: emit) }
-    let signalSources = installSignalHandlers(emit: emit)
-    startConnectTimeout(emit: emit)
+    let statusTask = Task {
+      // The stream only carries what happens from here on, and the tunnel was started
+      // before we got to look at it.
+      guard session.status != .connected else {
+        emit.yield(nil)
+        return
+      }
+
+      for await status in session.statusUpdates() {
+        announce(status: status)
+
+        if status == .connected {
+          emit.yield(nil)
+        } else if let stop = Self.stop(for: status) {
+          emit.yield(stop)
+        }
+      }
+    }
+
+    let timeoutTask = Task {
+      try? await Task.sleep(for: Self.connectTimeout)
+      guard !Task.isCancelled else { return }
+      guard session.status != .connected else {
+        emit.yield(nil)
+        return
+      }
+
+      emit.yield(.timedOut)
+    }
 
     defer {
-      timeoutTask?.cancel()
       statusTask.cancel()
-      for source in signalSources { source.cancel() }
+      timeoutTask.cancel()
     }
 
-    for await action in actions {
-      switch action {
-      case .shutdown:
-        Log.info("Shutting down...")
-        session.stopTunnel()
-        if let failure {
-          throw failure
+    for await outcome in outcomes {
+      guard let stop = outcome else {
+        if await portalNamedSession() {
+          say("Tunnel connected")
+        } else {
+          say("Tunnel connected, but the portal has not answered yet")
         }
-        return
 
-      case .restart:
-        Log.info("Restarting tunnel...")
-        isRestarting = true
-        // Starting again has to wait for the tunnel to actually be down, or the start
-        // races the stop and is dropped. `handle(status:)` picks it up from there.
-        session.stopTunnel()
+        return nil
       }
+
+      return stop
     }
+
+    return .timedOut
   }
 
-  private func fail(with error: any Error, emit: AsyncStream<Action>.Continuation) {
-    failure = error
-    emit.yield(.shutdown)
+  /// Waits for the portal to say who this session is.
+  ///
+  /// The system reports the tunnel connected as soon as its interface is up, before
+  /// connlib has reached the portal. Returning then leaves a `status` run straight
+  /// afterwards with nothing definite to say, so this holds until the extension can
+  /// name the account, or until it is clear the portal is not answering.
+  private func portalNamedSession() async -> Bool {
+    let deadline = ContinuousClock.now + Self.portalTimeout
+
+    while ContinuousClock.now < deadline {
+      // A tunnel that went down meanwhile is the watcher's to report, not something
+      // to wake up for the sake of asking.
+      guard [.connected, .connecting, .reasserting].contains(session.status) else {
+        return false
+      }
+
+      if case .connected? = try? await IPCClient.status(session: session, wakeIfStopped: false) {
+        return true
+      }
+
+      try? await Task.sleep(for: Self.portalPollInterval)
+    }
+
+    return false
   }
 
-  // MARK: - Status
+  /// Returns when a connected tunnel is down again, with how it went down.
+  func waitUntilDown() async -> Stop {
+    if let stop = Self.stop(for: session.status) {
+      return stop
+    }
 
-  private func watchStatus(emit: AsyncStream<Action>.Continuation) async {
     for await status in session.statusUpdates() {
-      await handle(status: status, emit: emit)
-    }
-  }
+      announce(status: status)
 
-  private func handle(status: NEVPNStatus, emit: AsyncStream<Action>.Continuation) async {
-    switch status {
-    case .connected:
-      Log.info("Tunnel connected")
-    case .connecting:
-      Log.info("Tunnel connecting...")
-    case .reasserting:
-      Log.info("Tunnel reasserting...")
-    case .disconnecting:
-      Log.info("Tunnel disconnecting...")
-    case .invalid:
-      // The profile or the system extension went away. Nothing is going to bring it
-      // back on its own, and without this the process would sit here doing nothing.
-      fail(
-        with: CLIError("VPN configuration is no longer usable, it may have been removed."),
-        emit: emit)
-    case .disconnected:
-      await handleDisconnect(emit: emit)
-    @unknown default:
-      Log.warning("Unknown tunnel status: \(status.rawValue)")
-    }
-  }
-
-  private func handleDisconnect(emit: AsyncStream<Action>.Continuation) async {
-    if isRestarting {
-      isRestarting = false
-      Log.info("Tunnel disconnected, starting it again")
-      do {
-        try IPCClient.start(session: session)
-        startConnectTimeout(emit: emit)
-      } catch {
-        fail(with: error, emit: emit)
+      if let stop = Self.stop(for: status) {
+        return stop
       }
-      return
     }
 
-    let error = await lastDisconnectError()
+    return .disconnected
+  }
 
-    if let error, Self.isMissingCredential(error) {
-      fail(with: CLIError(noTokenAdvice), emit: emit)
-      return
+  /// Says what happened, and hands back the error to fail with.
+  func report(_ stop: Stop) async -> any Error {
+    switch stop {
+    case .timedOut:
+      // The tunnel is started before this is watching it, so a provider that gave up
+      // for want of a token can do so unobserved. Timing out would be an unhelpful way
+      // to say that a token is all it needed.
+      guard let error = await lastDisconnectError(), Self.isMissingCredential(error) else {
+        return CLIError("Timed out waiting for the tunnel to connect.")
+      }
+
+      return CLIError(noTokenAdvice)
+
+    case .invalidConfiguration:
+      // The profile or the system extension went away. Nothing is going to bring it
+      // back on its own.
+      return CLIError("VPN configuration is no longer usable, it may have been removed.")
+
+    case .disconnected:
+      let error = await lastDisconnectError()
+
+      if let error, Self.isMissingCredential(error) {
+        return CLIError(noTokenAdvice)
+      }
+
+      announce(disconnect: error)
+
+      return error ?? CLIError("Tunnel disconnected")
     }
+  }
 
-    log(disconnect: error)
-    fail(with: error ?? CLIError("Tunnel disconnected"), emit: emit)
+  private static func stop(for status: NEVPNStatus) -> Stop? {
+    switch status {
+    case .invalid: return .invalidConfiguration
+    case .disconnected: return .disconnected
+    case .connected, .connecting, .reasserting, .disconnecting: return nil
+    @unknown default: return nil
+    }
+  }
+
+  private func announce(status: NEVPNStatus) {
+    switch status {
+    case .connecting: say("Tunnel connecting...")
+    case .reasserting: say("Tunnel reasserting...")
+    case .disconnecting: say("Tunnel disconnecting...")
+    case .connected, .disconnected, .invalid: break
+    @unknown default: Log.warning("Unknown tunnel status: \(status.rawValue)")
+    }
   }
 
   private func lastDisconnectError() async -> (any Error)? {
@@ -141,9 +198,9 @@ final class TunnelSupervisor {
     return actual.domain == expected.domain && actual.code == expected.code
   }
 
-  private func log(disconnect error: (any Error)?) {
+  private func announce(disconnect error: (any Error)?) {
     guard let error else {
-      Log.info("Tunnel disconnected externally, shutting down...")
+      say("Tunnel disconnected externally, shutting down...")
       return
     }
 
@@ -152,34 +209,107 @@ final class TunnelSupervisor {
       let code = ConnlibError.Code(rawValue: nsError.code),
       let reason = nsError.userInfo["reason"] as? String
     else {
-      Log.error("Tunnel disconnected: \(error)")
+      say("Tunnel disconnected: \(error)")
       return
     }
 
     switch code {
-    case .sessionExpired: Log.error("Authentication failed: \(reason)")
-    case .disconnected: Log.error("Tunnel disconnected: \(reason)")
+    case .sessionExpired: say("Authentication failed: \(reason)")
+    case .disconnected: say("Tunnel disconnected: \(reason)")
+    }
+  }
+}
+
+/// Keeps the tunnel running until a signal or an unrecoverable disconnect stops it.
+///
+/// SIGINT/SIGTERM shut down, SIGHUP restarts. The tunnel is stopped on the way out,
+/// which is what a service manager supervising this process expects of it.
+///
+/// Anything other than a signal is a failure and is rethrown, so a service manager
+/// watching the exit status can tell a tunnel that stopped from one that was stopped.
+@MainActor
+final class TunnelSupervisor {
+  private enum Action {
+    case shutdown
+    case restart
+  }
+
+  private let watcher: TunnelWatcher
+  private var session: any TunnelSessionProtocol { watcher.session }
+
+  private var isRestarting = false
+  private var failure: (any Error)?
+
+  init(watcher: TunnelWatcher) {
+    self.watcher = watcher
+  }
+
+  func run() async throws {
+    let (actions, emit) = AsyncStream.makeStream(of: Action.self)
+
+    let tunnelTask = Task { await follow(emit: emit) }
+    let signalSources = installSignalHandlers(emit: emit)
+
+    defer {
+      tunnelTask.cancel()
+      for source in signalSources { source.cancel() }
+    }
+
+    for await action in actions {
+      switch action {
+      case .shutdown:
+        say("Shutting down...")
+        session.stopTunnel()
+        if let failure {
+          throw failure
+        }
+        return
+
+      case .restart:
+        say("Restarting tunnel...")
+        isRestarting = true
+        // Starting again has to wait for the tunnel to actually be down, or the start
+        // races the stop and is dropped. `follow` picks it up from there.
+        session.stopTunnel()
+      }
     }
   }
 
-  // MARK: - Timers and signals
+  /// Follows the tunnel up and down again for as long as it keeps being restarted.
+  private func follow(emit: AsyncStream<Action>.Continuation) async {
+    while !Task.isCancelled {
+      let stop = await waitForTunnelToStop()
 
-  private func startConnectTimeout(emit: AsyncStream<Action>.Continuation) {
-    timeoutTask?.cancel()
-    timeoutTask = Task {
-      try? await Task.sleep(for: Self.connectTimeout)
-      guard !Task.isCancelled, session.status != .connected else { return }
-
-      // The tunnel is started before this is watching it, so a provider that gave up
-      // for want of a token can do so unobserved. Timing out would be an unhelpful way
-      // to say that a token is all it needed.
-      if let error = await lastDisconnectError(), Self.isMissingCredential(error) {
-        fail(with: CLIError(noTokenAdvice), emit: emit)
+      // A stop of our own says nothing about the tunnel, so it isn't reported.
+      guard isRestarting else {
+        fail(with: await watcher.report(stop), emit: emit)
         return
       }
 
-      fail(with: CLIError("Timed out waiting for the tunnel to connect."), emit: emit)
+      isRestarting = false
+      say("Tunnel disconnected, starting it again")
+
+      do {
+        try IPCClient.start(session: session)
+      } catch {
+        fail(with: error, emit: emit)
+        return
+      }
     }
+  }
+
+  /// One run of the tunnel, from the start it was given to the next time it is down.
+  private func waitForTunnelToStop() async -> TunnelWatcher.Stop {
+    if let stop = await watcher.waitForConnect() {
+      return stop
+    }
+
+    return await watcher.waitUntilDown()
+  }
+
+  private func fail(with error: any Error, emit: AsyncStream<Action>.Continuation) {
+    failure = error
+    emit.yield(.shutdown)
   }
 
   private func installSignalHandlers(

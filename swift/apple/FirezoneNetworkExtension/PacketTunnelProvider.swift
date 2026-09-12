@@ -292,6 +292,20 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
           let updates = await adapter.pollUpdates(request)
           completionHandler?(updates)
         }
+      case .getStatus:
+        let adapter = self.adapter
+        Task { @Sendable in
+          // A cycle start never sets `adapter`, and a real start sets it before it
+          // reports anything, so its absence means no tunnel rather than a young one.
+          let status = await adapter?.tunnelStatus() ?? .disconnected
+          do {
+            completionHandler?(try PropertyListEncoder().encode(status))
+          } catch {
+            // No answer beats a guessed one: the client reports the failure as such.
+            Log.error(error)
+            completionHandler?(nil)
+          }
+        }
       case .getEncodedFirezoneId:
         guard let rawId = defaults.string(forKey: "firezoneId") else {
           Log.error(PacketTunnelProviderError.firezoneIdIsInvalid)

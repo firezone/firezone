@@ -72,7 +72,7 @@ public enum IPCClient {
   /// that need it gone rather than going have to wait for the status to follow. Reports
   /// whether there was a running tunnel, so the caller can put back what it took down.
   @MainActor
-  static func stopIfRunning(session: any TunnelSessionProtocol) async -> Bool {
+  public static func stopIfRunning(session: any TunnelSessionProtocol) async -> Bool {
     let wasRunning = runningStatuses.contains(session.status)
 
     if wasRunning {
@@ -97,7 +97,7 @@ public enum IPCClient {
   }
 
   @MainActor
-  static func pollUpdates(
+  public static func pollUpdates(
     session: any TunnelSessionProtocol, currentHash: Data
   ) async throws -> StatePollResponse {
     let message = ProviderMessage.pollUpdates(StatePollRequest(stateHash: currentHash))
@@ -119,8 +119,32 @@ public enum IPCClient {
     return response
   }
 
+  /// Asks the extension what it knows about the session.
+  ///
+  /// By default a stopped tunnel is woken for the answer and stopped again, so the
+  /// caller gets a statement from the extension either way rather than guessing from
+  /// its silence. A caller that only wants to hear from a running tunnel opts out.
   @MainActor
-  static func setInternetResourceEnabled(
+  public static func status(
+    session: any TunnelSessionProtocol, wakeIfStopped: Bool = true
+  ) async throws -> TunnelStatus {
+    guard
+      let data = try await sendProviderMessage(
+        session: session, message: .getStatus, cycleStartIfStopped: wakeIfStopped
+      )
+    else {
+      throw Error.noIPCData
+    }
+
+    guard let status = try? decoder.decode(TunnelStatus.self, from: data) else {
+      throw Error.decodeIPCDataFailed
+    }
+
+    return status
+  }
+
+  @MainActor
+  public static func setInternetResourceEnabled(
     session: any TunnelSessionProtocol,
     _ enabled: Bool
   ) async throws {

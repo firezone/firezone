@@ -25,13 +25,14 @@ import Foundation
   }
 
   // The headless client is this same binary, reached through a symlink sitting next to
-  // it in Contents/MacOS. Running it that way means it keeps the app's bundle identity,
-  // and so can see the VPN configuration and system extension that belong to the app. A
-  // separate bundle could not: NETunnelProviderManager only hands an app the
-  // configurations that app itself created.
-  if URL(fileURLWithPath: CommandLine.arguments.first ?? "").lastPathComponent
-    == "firezone-cli"
-  {
+  // it in Contents/MacOS or through the wrapper scripts in Contents/Resources. Running
+  // it that way means it keeps the app's bundle identity, and so can see the VPN
+  // configuration and system extension that belong to the app. A separate bundle could
+  // not: NETunnelProviderManager only hands an app the configurations that app itself
+  // created. The comparison is case-sensitive on purpose: the app's own executable is
+  // `Firezone`.
+  let invokedAs = URL(fileURLWithPath: CommandLine.arguments.first ?? "").lastPathComponent
+  if invokedAs == "firezone" || invokedAs == "firezone-cli" {
     // Reached through a symlink from outside the bundle, macOS gives us no bundle at
     // all, and with it no identity, no VPN configuration and no system extension. Say
     // so, rather than failing later on something that reads as unrelated.
@@ -39,14 +40,26 @@ import Foundation
       FileHandle.standardError.write(
         Data(
           """
-          Run firezone-cli from inside Firezone.app, for example
-          /Applications/Firezone.app/Contents/MacOS/firezone-cli.
+          Run firezone through the wrapper script inside Firezone.app, for example
+          /Applications/Firezone.app/Contents/Resources/firezone.
 
-          Putting that directory on your PATH works. A symlink to it from somewhere
-          else does not, because it leaves the client without the app's identity.
+          A symlink to the binary in Contents/MacOS does not work, because it leaves the
+          client without the app's identity. To have it on your PATH, symlink the
+          wrapper script instead:
+
+            sudo ln -sf /Applications/Firezone.app/Contents/Resources/firezone /usr/local/bin/firezone
 
           """.utf8))
       exit(1)
+    }
+
+    if invokedAs == "firezone-cli" {
+      FileHandle.standardError.write(
+        Data(
+          """
+          warning: firezone-cli is deprecated and will be removed in a future release; use firezone instead
+
+          """.utf8))
     }
 
     await runHeadlessClient(FirezoneCLI.self)

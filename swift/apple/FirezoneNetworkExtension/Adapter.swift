@@ -379,6 +379,13 @@ actor Adapter {
     pendingUnreachableResources.removeAll()
   }
 
+  /// Whether the portal has named this session yet.
+  func tunnelStatus() -> TunnelStatus {
+    guard accountSlug != nil || actorName != nil else { return .connecting }
+
+    return .connected(accountSlug: accountSlug, actorName: actorName)
+  }
+
   /// Returns state changes and consumes fresh notifications in one UI polling operation.
   func pollUpdates(_ request: StatePollRequest) -> Data? {
     do {

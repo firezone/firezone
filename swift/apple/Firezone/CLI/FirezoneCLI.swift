@@ -11,12 +11,31 @@ import NetworkExtension
 
 struct FirezoneCLI: AsyncParsableCommand {
   static let configuration = CommandConfiguration(
-    commandName: "firezone-cli",
-    abstract: "Firezone headless Client",
+    commandName: "firezone",
+    abstract: "Firezone CLI",
     version: versionString,
-    subcommands: [Connect.self, SignOut.self, Extension.self],
-    defaultSubcommand: Connect.self
+    subcommands: [
+      Connect.self,
+      Disconnect.self,
+      SignOut.self,
+      Status.self,
+      Resources.self,
+      InternetResource.self,
+      Extension.self,
+    ]
   )
+
+  @OptionGroup var global: GlobalOptions
+
+  /// `status` is what a bare `firezone` reports, but it is not `defaultSubcommand`.
+  /// That routes an unrecognised first argument into `status`, so the error and the
+  /// usage line it prints name a command the user never typed.
+  @MainActor
+  mutating func run() async throws {
+    Log.useCLIOutput(debug: global.debug)
+
+    try await Status.report()
+  }
 
   static var versionString: String {
     let version =
@@ -25,6 +44,24 @@ struct FirezoneCLI: AsyncParsableCommand {
     let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "unknown"
     return "\(version) (\(build))"
   }
+}
+
+/// The options every subcommand takes.
+///
+/// `ArgumentParser` has no global arguments, so each subcommand has to declare this
+/// for the flag to reach it.
+struct GlobalOptions: ParsableArguments {
+  @Flag(name: .long, help: "Mirror the internal log to stderr.")
+  var debug = false
+}
+
+/// Says something to the user, as opposed to logging it.
+///
+/// The log is the app talking to itself and stays off the terminal unless `--debug`
+/// asks for it, so the handful of lines a command runs in order to say go here
+/// instead. Stderr, leaving stdout to the data a command was asked for.
+func say(_ message: String) {
+  try? FileHandle.standardError.write(contentsOf: Data("\(message)\n".utf8))
 }
 
 /// Something went wrong at runtime, as opposed to `ValidationError`, which is for a
@@ -41,6 +78,16 @@ struct CLIError: Error, LocalizedError {
 /// Shared plumbing for the commands that talk to the VPN profile.
 enum VPNProfile {
   @MainActor
+  static func load() async throws -> VPNConfigurationManager {
+    let factory = NETunnelProviderManagerFactory()
+    guard let vpnManager = try await VPNConfigurationManager.load(using: factory) else {
+      throw CLIError("No VPN configuration found")
+    }
+
+    return vpnManager
+  }
+
+  @MainActor
   static func session(
     for vpnManager: VPNConfigurationManager
   ) throws -> any TunnelSessionProtocol {
@@ -49,5 +96,20 @@ enum VPNProfile {
     }
 
     return session
+  }
+
+  /// What the tunnel knows about the session, or `nil` when it isn't up to answer.
+  ///
+  /// An empty hash never matches the snapshot's, so the provider always sends the whole
+  /// thing rather than reporting it unchanged.
+  @MainActor
+  static func state(from session: any TunnelSessionProtocol) async -> ConnlibState? {
+    do {
+      return try await IPCClient.pollUpdates(session: session, currentHash: Data()).state
+    } catch {
+      Log.debug("Tunnel did not answer the state poll: \(error)")
+
+      return nil
+    }
   }
 }

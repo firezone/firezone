@@ -47,13 +47,18 @@ public final class Log {
   }
 
   nonisolated(unsafe) private static var isCLI = false
+  nonisolated(unsafe) private static var mirrorsDiagnostics = false
 
   /// Tags logs as coming from the CLI and mirrors them to stderr.
   ///
   /// The CLI is the app's own binary under another name, so nothing about the bundle
   /// tells them apart. Call once at startup, before logging anything.
-  public static func useCLIOutput() {
+  ///
+  /// A terminal only gets warnings and errors, since the rest is the app talking to
+  /// itself. `debug` mirrors all of it, which is what to ask someone for.
+  public static func useCLIOutput(debug: Bool = false) {
     isCLI = true
+    mirrorsDiagnostics = debug
   }
 
   private static var processName: String {
@@ -196,6 +201,14 @@ public final class Log {
 
   private static func writeToStderr(_ severity: LogWriter.Severity, _ message: String) {
     guard isCLI else { return }
+
+    switch severity {
+    case .trace, .debug, .info:
+      guard mirrorsDiagnostics else { return }
+    case .warning, .error:
+      break
+    }
+
     var line = "\(severity.rawValue) \(message)\n"
     line.withUTF8 { buffer in
       _ = fwrite(buffer.baseAddress, 1, buffer.count, stderr)
