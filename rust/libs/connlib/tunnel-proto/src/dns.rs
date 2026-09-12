@@ -9,6 +9,17 @@ pub(crate) use resource_stub_resolver::ResourceStubResolver;
 pub use pattern::Pattern;
 pub use resource_stub_resolver::DnsResourceRecord;
 
+/// The domain every client device is reached under, as `<slug>.firezone.network`.
+pub const DEVICE_DOMAIN: &str = "firezone.network";
+
+/// The slug of a device name, or `None` if `domain` is not one.
+pub fn device_slug(domain: &dns_types::DomainName) -> Option<String> {
+    let name = domain.to_string().to_lowercase();
+    let slug = name.strip_suffix(&format!(".{DEVICE_DOMAIN}"))?;
+
+    (!slug.is_empty() && !slug.contains('.')).then(|| slug.to_owned())
+}
+
 use crate::dns::pattern::Candidate;
 use anyhow::Result;
 use dns_types::DoHUrl;

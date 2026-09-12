@@ -1,14 +1,16 @@
-use std::{cmp::Ordering, net::IpAddr};
+use std::{cmp::Ordering, collections::BTreeMap, net::IpAddr, num::NonZeroUsize};
 
 use connlib_model::ResourceId;
 use dns_types::DomainName;
 use ip_network::IpNetwork;
 use ip_packet::{Protocol, UnsupportedProtocol};
+use lru::LruCache;
 
 use crate::{
     dns,
     filter_engine::FilterEngine,
-    routing_table::{RouteEntry, RoutingTable},
+    messages::client::DevicePoolMembers,
+    routing_table::{RouteEntry, RoutingTable, by_filter},
 };
 
 /// The result of applying all Client routing tables to an outbound packet.
@@ -38,7 +40,7 @@ impl Route {
 pub(super) struct RoutingTables {
     cidr: RoutingTable<CidrEntry>,
     dns: RoutingTable<DnsEntry>,
-    peer: RoutingTable<PeerEntry>,
+    pools: PoolTable,
 }
 
 impl RoutingTables {
@@ -49,10 +51,10 @@ impl RoutingTables {
         protocol: Protocol,
         internet_resource: Option<ResourceId>,
     ) -> Option<Route> {
-        if let Some(entry) = self.peer.matches(destination, Ok(protocol)).cloned() {
+        if let Some((resource_id, filter)) = self.pools.matches(destination, protocol) {
             return Some(Route::Client {
-                filter: entry.filter,
-                resource_id: entry.resource_id,
+                filter,
+                resource_id,
             });
         }
 
@@ -151,30 +153,82 @@ impl RoutingTables {
         )
     }
 
-    pub(super) fn upsert_peer(
+    /// Stores a pool's members and filters; the members route to the pool from now on.
+    pub(super) fn upsert_pool(
         &mut self,
-        network: IpNetwork,
         resource_id: ResourceId,
+        members: DevicePoolMembers,
         filter: FilterEngine,
-    ) -> bool {
-        self.peer.upsert(
-            network,
-            PeerEntry {
-                filter,
-                resource_id,
-            },
-        )
+    ) {
+        self.pools.upsert(resource_id, members, filter);
+    }
+
+    /// The pools whose members include `ip`.
+    pub(super) fn pools_admitting(&self, ip: IpAddr) -> impl Iterator<Item = ResourceId> + '_ {
+        self.pools.admitting(ip)
     }
 
     pub(super) fn remove_by_id(&mut self, resource_id: ResourceId) {
         self.cidr.remove_by_id(resource_id);
         self.dns.remove_by_id(resource_id);
-        self.peer.remove_by_id(resource_id);
+        self.pools.remove(resource_id);
+    }
+}
+
+/// The device pools, matched by bitmap membership instead of per-address entries.
+///
+/// A lookup picks, among the pools whose members include the address, the one whose
+/// filter permits the protocol, then the greatest id, the same order the address tables
+/// use. Results are cached per address and protocol like the address tables do.
+struct PoolTable {
+    pools: BTreeMap<ResourceId, PoolEntry>,
+    match_cache: LruCache<(IpAddr, Option<Protocol>), Option<(ResourceId, FilterEngine)>>,
+}
+
+struct PoolEntry {
+    members: DevicePoolMembers,
+    filter: FilterEngine,
+}
+
+impl Default for PoolTable {
+    fn default() -> Self {
+        Self {
+            pools: BTreeMap::new(),
+            match_cache: LruCache::new(NonZeroUsize::new(1024).expect("1024 > 0")),
+        }
+    }
+}
+
+impl PoolTable {
+    fn matches(&mut self, ip: IpAddr, protocol: Protocol) -> Option<(ResourceId, FilterEngine)> {
+        self.match_cache
+            .get_or_insert((ip, Some(protocol)), || {
+                self.pools
+                    .iter()
+                    .filter(|(_, entry)| entry.members.contains(ip))
+                    .max_by(|(l_id, l), (r_id, r)| {
+                        by_filter(Ok(protocol), &l.filter, &r.filter).then(l_id.cmp(r_id))
+                    })
+                    .map(|(id, entry)| (*id, entry.filter.clone()))
+            })
+            .clone()
     }
 
-    pub(super) fn remove_peer(&mut self, network: IpNetwork, resource_id: ResourceId) {
-        self.peer
-            .remove(network, |entry| entry.resource_id == resource_id);
+    fn admitting(&self, ip: IpAddr) -> impl Iterator<Item = ResourceId> + '_ {
+        self.pools
+            .iter()
+            .filter(move |(_, entry)| entry.members.contains(ip))
+            .map(|(id, _)| *id)
+    }
+
+    fn upsert(&mut self, id: ResourceId, members: DevicePoolMembers, filter: FilterEngine) {
+        self.match_cache.clear();
+        self.pools.insert(id, PoolEntry { members, filter });
+    }
+
+    fn remove(&mut self, id: ResourceId) {
+        self.match_cache.clear();
+        self.pools.remove(&id);
     }
 }
 
@@ -185,22 +239,6 @@ struct CidrEntry {
 }
 
 impl RouteEntry for CidrEntry {
-    fn filter(&self) -> &FilterEngine {
-        &self.filter
-    }
-
-    fn resource_id(&self) -> ResourceId {
-        self.resource_id
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-struct PeerEntry {
-    filter: FilterEngine,
-    resource_id: ResourceId,
-}
-
-impl RouteEntry for PeerEntry {
     fn filter(&self) -> &FilterEngine {
         &self.filter
     }
@@ -236,48 +274,106 @@ impl RouteEntry for DnsEntry {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use roaring::RoaringBitmap;
     use std::net::Ipv4Addr;
 
     #[test]
     fn internet_resource_does_not_route_to_another_client() {
         let mut tables = RoutingTables::default();
 
-        let route = tables.resolve(
-            other_client_tun_ip(),
-            Protocol::Tcp(80),
-            Some(internet_resource_id()),
+        assert!(
+            tables
+                .resolve(
+                    other_client_tun_ip(),
+                    Protocol::Udp(53),
+                    Some(internet_resource_id())
+                )
+                .is_none()
         );
-
-        assert!(route.is_none());
     }
 
     #[test]
-    fn dynamic_pool_does_not_claim_unresolved_peer() {
+    fn pool_routes_its_members_by_filter_then_id() {
         let mut tables = RoutingTables::default();
-        resolve_through_pool(&mut tables, dynamic_pool_id(), FilterEngine::PermitAll);
-
-        let route = tables.resolve(
-            IpAddr::V4(Ipv4Addr::new(100, 64, 0, 4)),
-            Protocol::Tcp(80),
-            Some(internet_resource_id()),
+        let ssh = ResourceId::from_u128(1);
+        let all = ResourceId::from_u128(2);
+        tables.upsert_pool(
+            ssh,
+            members([other_client_tun_ip()]),
+            FilterEngine::new(&[crate::messages::Filter::Tcp(
+                crate::messages::PortRange::single(22),
+            )]),
+        );
+        tables.upsert_pool(
+            all,
+            members([other_client_tun_ip()]),
+            FilterEngine::PermitAll,
         );
 
-        assert!(route.is_none());
+        assert!(matches!(
+            tables.resolve(other_client_tun_ip(), Protocol::Udp(53), None),
+            Some(Route::Client { resource_id, .. }) if resource_id == all
+        ));
+        assert!(matches!(
+            tables.resolve(other_client_tun_ip(), Protocol::Tcp(22), None),
+            Some(Route::Client { resource_id, .. }) if resource_id == all
+        ));
+        assert!(
+            tables
+                .resolve(
+                    Ipv4Addr::new(100, 64, 0, 99).into(),
+                    Protocol::Tcp(22),
+                    None
+                )
+                .is_none()
+        );
     }
 
-    fn resolve_through_pool(tables: &mut RoutingTables, pool: ResourceId, filter: FilterEngine) {
-        tables.upsert_peer(IpNetwork::from(other_client_tun_ip()), pool, filter);
+    #[test]
+    fn removing_a_pool_forgets_its_members() {
+        let mut tables = RoutingTables::default();
+        let pool = ResourceId::from_u128(1);
+        tables.upsert_pool(
+            pool,
+            members([other_client_tun_ip()]),
+            FilterEngine::PermitAll,
+        );
+        tables.remove_by_id(pool);
+
+        assert!(
+            tables
+                .resolve(other_client_tun_ip(), Protocol::Udp(53), None)
+                .is_none()
+        );
+    }
+
+    fn members(ips: impl IntoIterator<Item = IpAddr>) -> DevicePoolMembers {
+        let mut members = DevicePoolMembers::default();
+
+        for ip in ips {
+            match ip {
+                IpAddr::V4(ip) => {
+                    members
+                        .ipv4
+                        .insert(crate::messages::client::tunnel_offset_v4(ip).unwrap());
+                }
+                IpAddr::V6(ip) => {
+                    members
+                        .ipv6
+                        .insert(crate::messages::client::tunnel_offset_v6(ip).unwrap());
+                }
+            }
+        }
+
+        let _ = RoaringBitmap::new();
+        members
     }
 
     fn other_client_tun_ip() -> IpAddr {
-        IpAddr::V4(Ipv4Addr::new(100, 64, 0, 3))
+        Ipv4Addr::new(100, 64, 0, 2).into()
     }
 
     fn internet_resource_id() -> ResourceId {
-        ResourceId::from_u128(1)
-    }
-
-    fn dynamic_pool_id() -> ResourceId {
-        ResourceId::from_u128(10)
+        ResourceId::from_u128(9)
     }
 }

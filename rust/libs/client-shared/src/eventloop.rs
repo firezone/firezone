@@ -22,8 +22,8 @@ use tun::Tun;
 use tunnel::messages::client::{
     Authorization, AuthorizationCreated, AuthorizationCreationFailed, ClientDeviceAccessAuthorized,
     ClientDeviceAccessDenied, ClientIceCandidateError, ClientIceCandidates, ClientRejectAccess,
-    DevicePoolDomainResolutionFailed, DevicePoolDomainResolved, EgressMessages, FailReason,
-    GatewayIceCandidates, IngressMessages, InitClient, ResourceAuthorization,
+    DeviceDomainResolutionFailed, DeviceDomainResolved, DevicePoolMembersUpdated, EgressMessages,
+    FailReason, GatewayIceCandidates, IngressMessages, InitClient, ResourceAuthorization,
     ResourceFiltersUpdated,
 };
 use tunnel::messages::{IngestToken, RelaysPresence, SnownetCapabilities};
@@ -418,17 +418,11 @@ impl Eventloop {
                     .await
                     .context("Failed to send message to portal")?;
             }
-            Ok(ClientEvent::DevicePoolDomainQueried {
-                resource_id,
-                domain,
-            }) => {
+            Ok(ClientEvent::DeviceDomainQueried { domain }) => {
                 self.portal_cmd_tx
-                    .send(PortalCommand::Send(
-                        EgressMessages::ResolveDevicePoolDomain {
-                            resource_id,
-                            domain: domain.to_string(),
-                        },
-                    ))
+                    .send(PortalCommand::Send(EgressMessages::ResolveDeviceDomain {
+                        domain: domain.to_string(),
+                    }))
                     .await
                     .context("Failed to send message to portal")?;
             }
@@ -681,6 +675,10 @@ impl Eventloop {
             }) => {
                 tracing::debug!("Failed to create authorization: {reason:?}");
 
+                tunnel
+                    .state_mut()
+                    .handle_resource_access_denied(resource_id, reason.clone(), now);
+
                 match reason {
                     FailReason::Offline => {
                         tunnel.state_mut().set_resource_offline(resource_id, now);
@@ -767,6 +765,15 @@ impl Eventloop {
                     .state_mut()
                     .handle_resource_filters_updated(id, filters);
             }
+            IngressMessages::DevicePoolMembersUpdated(DevicePoolMembersUpdated {
+                id,
+                added,
+                removed,
+            }) => {
+                tunnel
+                    .state_mut()
+                    .handle_device_pool_members_updated(id, added, removed);
+            }
             IngressMessages::RejectAccess(ClientRejectAccess {
                 client_id,
                 resource_id,
@@ -806,36 +813,24 @@ impl Eventloop {
                     | FailReason::Unknown => {}
                 }
             }
-            IngressMessages::DevicePoolDomainResolved(DevicePoolDomainResolved {
-                resource_id,
+            IngressMessages::DeviceDomainResolved(DeviceDomainResolved { domain, ipv4, ipv6 }) => {
+                let Some(domain) = parse_portal_domain(&domain) else {
+                    return Ok(());
+                };
+                tunnel
+                    .state_mut()
+                    .handle_device_domain_resolved(domain, Ok((ipv4, ipv6)), now);
+            }
+            IngressMessages::DeviceDomainResolutionFailed(DeviceDomainResolutionFailed {
                 domain,
-                ipv4,
-                ipv6,
+                reason,
             }) => {
                 let Some(domain) = parse_portal_domain(&domain) else {
                     return Ok(());
                 };
-                tunnel.state_mut().handle_device_pool_domain_resolved(
-                    resource_id,
-                    domain,
-                    Ok((ipv4, ipv6)),
-                );
-            }
-            IngressMessages::DevicePoolDomainResolutionFailed(
-                DevicePoolDomainResolutionFailed {
-                    resource_id,
-                    domain,
-                    reason,
-                },
-            ) => {
-                let Some(domain) = parse_portal_domain(&domain) else {
-                    return Ok(());
-                };
-                tunnel.state_mut().handle_device_pool_domain_resolved(
-                    resource_id,
-                    domain,
-                    Err(reason),
-                );
+                tunnel
+                    .state_mut()
+                    .handle_device_domain_resolved(domain, Err(reason), now);
             }
         }
 

@@ -9,7 +9,11 @@ use ip_packet::IpPacket;
 use ringbuffer::{AllocRingBuffer, RingBuffer as _};
 
 use crate::{
-    client::Resource, dns, filter_engine::FilterEngine, unique_packet_buffer::UniquePacketBuffer,
+    client::{NEGATIVE_CACHE_TTL, Resource},
+    dns,
+    expiring_map::ExpiringMap,
+    filter_engine::FilterEngine,
+    unique_packet_buffer::UniquePacketBuffer,
 };
 
 /// Tracks authorizations we have requested from the portal but have not yet been granted.
@@ -19,8 +23,16 @@ use crate::{
 #[derive(Default)]
 pub struct PendingAuthorizations {
     inner: BTreeMap<AuthorizationTarget, PendingAuthorization>,
+    /// Requests the portal denied recently; the same request is answered locally until it expires.
+    denied: ExpiringMap<Denied, ()>,
 
     authorization_requests: VecDeque<AuthorizationRequest>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum Denied {
+    Resource(ResourceId),
+    Device(IpAddr),
 }
 
 /// What we are requesting authorization for.
@@ -37,15 +49,20 @@ impl From<ResourceId> for AuthorizationTarget {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct AuthorizationRequest {
-    pub resource_id: ResourceId,
-    /// The address of the device we want to reach.
-    ///
-    /// `None` for gateway-routed resources where the portal picks the gateway.
-    pub ip: Option<IpAddr>,
+pub enum AuthorizationRequest {
+    Resource(ResourceId),
+    /// Access to the device at `addr` through `pool`.
+    Device {
+        pool: ResourceId,
+        addr: IpAddr,
+    },
 }
 
 impl PendingAuthorizations {
+    /// Buffers the trigger and asks the portal for access to the resource.
+    ///
+    /// Returns the trigger when the portal denied the resource recently, so the caller can
+    /// answer it without asking again.
     #[tracing::instrument(level = "debug", skip_all, fields(%rid))]
     pub fn on_not_authorized_resource(
         &mut self,
@@ -53,58 +70,122 @@ impl PendingAuthorizations {
         trigger: impl Into<Trigger>,
         resources_by_id: &BTreeMap<ResourceId, Resource>,
         now: Instant,
-    ) {
+    ) -> Option<Trigger> {
         let trigger = trigger.into();
+
+        if self.denied.contains_key(&Denied::Resource(rid)) {
+            return Some(trigger);
+        }
 
         let Some(resource) = resources_by_id.get(&rid) else {
             tracing::debug!("Resource not found, skipping authorization request");
-            return;
+            return None;
         };
 
         if !is_trigger_allowed(&trigger, &FilterEngine::new(resource.filters())) {
             tracing::debug!("Trigger filtered by resource filters, dropping");
-            return;
-        }
-
-        self.upsert(AuthorizationTarget::Resource(rid), trigger, now);
-    }
-
-    #[tracing::instrument(level = "debug", skip_all, fields(%resource_id, %ip))]
-    pub fn on_not_authorized_device(
-        &mut self,
-        resource_id: ResourceId,
-        ip: IpAddr,
-        trigger: impl Into<Trigger>,
-        resources_by_id: &BTreeMap<ResourceId, Resource>,
-        now: Instant,
-    ) {
-        let trigger = trigger.into();
-
-        let Some(resource) = resources_by_id.get(&resource_id) else {
-            tracing::debug!("Resource not found, skipping authorization request");
-            return;
-        };
-
-        if !is_trigger_allowed(&trigger, &FilterEngine::new(resource.filters())) {
-            tracing::debug!("Trigger filtered by resource filters, dropping");
-            return;
+            return None;
         }
 
         self.upsert(
-            AuthorizationTarget::Device {
-                pool: resource_id,
-                addr: ip,
-            },
+            AuthorizationTarget::Resource(rid),
+            AuthorizationRequest::Resource(rid),
             trigger,
             now,
         );
+
+        None
     }
 
+    /// Buffers the packet and asks the portal for access to the device through the pool.
+    ///
+    /// Returns the packet when the portal denied the address recently, so the caller can
+    /// answer it without asking again.
+    #[tracing::instrument(level = "debug", skip_all, fields(%pool, %ip))]
+    pub fn on_not_authorized_device(
+        &mut self,
+        pool: ResourceId,
+        ip: IpAddr,
+        packet: IpPacket,
+        resources_by_id: &BTreeMap<ResourceId, Resource>,
+        now: Instant,
+    ) -> Option<IpPacket> {
+        if self.denied.contains_key(&Denied::Device(ip)) {
+            return Some(packet);
+        }
+
+        let Some(resource) = resources_by_id.get(&pool) else {
+            tracing::debug!("Resource not found, skipping authorization request");
+            return None;
+        };
+
+        let trigger = Trigger::PacketForResource(packet);
+
+        if !is_trigger_allowed(&trigger, &FilterEngine::new(resource.filters())) {
+            tracing::debug!("Trigger filtered by resource filters, dropping");
+            return None;
+        }
+
+        self.upsert(
+            AuthorizationTarget::Device { pool, addr: ip },
+            AuthorizationRequest::Device { pool, addr: ip },
+            trigger,
+            now,
+        );
+
+        None
+    }
+
+    /// Records the portal's denial for the address and returns what was waiting on it
+    /// through any pool.
+    pub fn deny_device(&mut self, addr: IpAddr, now: Instant) -> Vec<PendingAuthorization> {
+        self.denied
+            .insert(Denied::Device(addr), (), now, NEGATIVE_CACHE_TTL);
+
+        self.remove_device_authorizations(|_, pending_addr| pending_addr == addr)
+            .map(|(_, pending)| pending)
+            .collect()
+    }
+
+    /// Records the portal's denial for the resource and returns what was waiting on it.
+    pub fn deny_resource(&mut self, rid: ResourceId, now: Instant) -> Option<PendingAuthorization> {
+        self.denied
+            .insert(Denied::Resource(rid), (), now, NEGATIVE_CACHE_TTL);
+
+        self.inner.remove(&AuthorizationTarget::Resource(rid))
+    }
+
+    /// Drops the remembered denials for every address `f` matches, e.g. once the portal
+    /// granted access after all.
+    pub fn forget_device_denials(&mut self, f: impl Fn(IpAddr) -> bool) {
+        for _ in self.denied.extract_if(|denied, _| match denied {
+            Denied::Device(addr) => f(*addr),
+            Denied::Resource(_) => false,
+        }) {}
+    }
+
+    pub fn handle_timeout(&mut self, now: Instant) {
+        self.denied.handle_timeout(now);
+        while self.denied.poll_event().is_some() {}
+    }
+
+    pub fn poll_timeout(&self) -> Option<Instant> {
+        self.denied.poll_timeout()
+    }
+
+    /// Forgets the request and any denial for the target, e.g. when access was granted or
+    /// the resource went away.
     pub fn remove(
         &mut self,
         target: impl Into<AuthorizationTarget>,
     ) -> Option<PendingAuthorization> {
-        self.inner.remove(&target.into())
+        let target = target.into();
+
+        if let AuthorizationTarget::Resource(rid) = target {
+            self.denied.remove(&Denied::Resource(rid));
+        }
+
+        self.inner.remove(&target)
     }
 
     /// Removes and returns every device entry whose (pool, address) matches the predicate.
@@ -129,7 +210,13 @@ impl PendingAuthorizations {
         self.authorization_requests.pop_front()
     }
 
-    fn upsert(&mut self, target: AuthorizationTarget, trigger: Trigger, now: Instant) {
+    fn upsert(
+        &mut self,
+        target: AuthorizationTarget,
+        request: AuthorizationRequest,
+        trigger: Trigger,
+        now: Instant,
+    ) {
         let trigger_name = trigger.name();
 
         let pending = self.inner.entry(target).or_insert_with(|| {
@@ -149,17 +236,6 @@ impl PendingAuthorizations {
         tracing::debug!(trigger = %trigger_name, "Requesting authorization");
 
         pending.last_request_sent_at = now;
-
-        let request = match target {
-            AuthorizationTarget::Resource(rid) => AuthorizationRequest {
-                resource_id: rid,
-                ip: None,
-            },
-            AuthorizationTarget::Device { pool, addr } => AuthorizationRequest {
-                resource_id: pool,
-                ip: Some(addr),
-            },
-        };
         self.authorization_requests.push_back(request);
     }
 }
@@ -427,11 +503,15 @@ mod tests {
         let ip_bar = other_device_ip();
 
         pending.on_not_authorized_device(rid, ip_foo, udp_trigger(1), &resources, now);
-        let request = pending.poll_authorization_requests().unwrap();
-        assert_eq!(request.ip, Some(ip_foo));
+        assert_eq!(
+            pending.poll_authorization_requests(),
+            Some(device_request(rid, ip_foo))
+        );
         pending.on_not_authorized_device(rid, ip_bar, udp_trigger(2), &resources, now);
-        let request = pending.poll_authorization_requests().unwrap();
-        assert_eq!(request.ip, Some(ip_bar));
+        assert_eq!(
+            pending.poll_authorization_requests(),
+            Some(device_request(rid, ip_bar))
+        );
     }
 
     #[test]
@@ -447,7 +527,6 @@ mod tests {
             Some(device_request(rid_one, ip))
         );
 
-        // The other pool's throttle window must not suppress this request.
         now += Duration::from_millis(500);
 
         pending.on_not_authorized_device(rid_two, ip, udp_trigger(2), &resources, now);
@@ -455,6 +534,72 @@ mod tests {
             pending.poll_authorization_requests(),
             Some(device_request(rid_two, ip))
         );
+    }
+
+    #[test]
+    fn denied_address_is_answered_locally_until_the_denial_expires() {
+        let mut pending = PendingAuthorizations::default();
+        let mut now = Instant::now();
+        let (rid, resources) = single_resource();
+        let ip = device_ip();
+
+        pending.on_not_authorized_device(rid, ip, udp_trigger(1), &resources, now);
+        assert!(pending.poll_authorization_requests().is_some());
+
+        assert_eq!(pending.deny_device(ip, now).len(), 1);
+
+        assert!(
+            pending
+                .on_not_authorized_device(rid, ip, udp_trigger(2), &resources, now)
+                .is_some()
+        );
+        assert!(pending.poll_authorization_requests().is_none());
+        assert!(
+            pending
+                .on_not_authorized_device(rid, other_device_ip(), udp_trigger(3), &resources, now)
+                .is_none()
+        );
+        assert!(pending.poll_authorization_requests().is_some());
+
+        now += NEGATIVE_CACHE_TTL + Duration::from_secs(1);
+        pending.handle_timeout(now);
+
+        assert!(
+            pending
+                .on_not_authorized_device(rid, ip, udp_trigger(4), &resources, now)
+                .is_none()
+        );
+        assert!(pending.poll_authorization_requests().is_some());
+    }
+
+    #[test]
+    fn denied_resource_returns_the_trigger_and_a_grant_forgets_the_denial() {
+        let mut pending = PendingAuthorizations::default();
+        let now = Instant::now();
+        let (rid, resources) = single_resource();
+
+        assert!(
+            pending
+                .on_not_authorized_resource(rid, udp_trigger(1), &resources, now)
+                .is_none()
+        );
+        pending.poll_authorization_requests();
+        assert!(pending.deny_resource(rid, now).is_some());
+
+        assert!(matches!(
+            pending.on_not_authorized_resource(rid, udp_trigger(2), &resources, now),
+            Some(Trigger::PacketForResource(_))
+        ));
+        assert!(pending.poll_authorization_requests().is_none());
+
+        pending.remove(rid);
+
+        assert!(
+            pending
+                .on_not_authorized_resource(rid, udp_trigger(3), &resources, now)
+                .is_none()
+        );
+        assert!(pending.poll_authorization_requests().is_some());
     }
 
     #[test]
@@ -510,11 +655,8 @@ mod tests {
         )
     }
 
-    fn device_request(resource_id: ResourceId, ip: IpAddr) -> AuthorizationRequest {
-        AuthorizationRequest {
-            resource_id,
-            ip: Some(ip),
-        }
+    fn device_request(pool: ResourceId, addr: IpAddr) -> AuthorizationRequest {
+        AuthorizationRequest::Device { pool, addr }
     }
 
     fn device_ip() -> IpAddr {
@@ -537,10 +679,7 @@ mod tests {
     }
 
     fn resource_request(resource_id: ResourceId) -> AuthorizationRequest {
-        AuthorizationRequest {
-            resource_id,
-            ip: None,
-        }
+        AuthorizationRequest::Resource(resource_id)
     }
 
     fn ipv4_localhost_resource() -> Resource {
