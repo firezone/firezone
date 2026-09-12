@@ -281,7 +281,12 @@ defmodule Portal.Changes.ConsumerTest do
         "sites" => Portal.Changes.Hooks.Sites,
         "policies" => Portal.Changes.Hooks.Policies,
         "resources" => Portal.Changes.Hooks.Resources,
-        "client_tokens" => Portal.Changes.Hooks.ClientTokens
+        "client_tokens" => Portal.Changes.Hooks.ClientTokens,
+        "intune_devices" => Portal.Changes.Hooks.IntuneDevices,
+        "iru_devices" => Portal.Changes.Hooks.IruDevices,
+        "defender_devices" => Portal.Changes.Hooks.DefenderDevices,
+        "santa_devices" => Portal.Changes.Hooks.SantaDevices,
+        "sentinelone_devices" => Portal.Changes.Hooks.SentinelOneDevices
       }
 
       # Verify the mapping includes all expected tables
@@ -294,7 +299,12 @@ defmodule Portal.Changes.ConsumerTest do
                  "policy_authorizations",
                  "sites",
                  "policies",
-                 "resources"
+                 "resources",
+                 "intune_devices",
+                 "iru_devices",
+                 "defender_devices",
+                 "santa_devices",
+                 "sentinelone_devices"
                ]
                |> Enum.sort()
     end

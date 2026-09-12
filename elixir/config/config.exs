@@ -177,6 +177,11 @@ config :portal, Portal.Changes.Consumer,
     defender_posture_providers
     santa_posture_providers
     sentinelone_posture_providers
+    intune_devices
+    iru_devices
+    defender_devices
+    santa_devices
+    sentinelone_devices
     relay_tokens
     portal_sessions
   ],

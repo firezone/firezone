@@ -255,6 +255,15 @@
             "example": false,
             "type": "boolean"
           },
+          "postures": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PolicyPostureNode"
+              }
+            ],
+            "description": "Device posture the connecting device must satisfy, or null when none is required. Requires the device posture feature.",
+            "nullable": true
+          },
           "resource_id": {
             "description": "Resource ID",
             "example": "a9f60587-793c-46ae-8525-597f43ab2fb1",
@@ -2487,6 +2496,107 @@
         "title": "Membership",
         "type": "object"
       },
+      "PolicyPostureNode": {
+        "additionalProperties": false,
+        "description": "One node of a Policy's device posture expression. A node has exactly one\nof these shapes:\n\n* `and`: a non-empty list of nodes that must all hold.\n* `or`: a non-empty list of nodes of which at least one must hold.\n* `not`: a node that must not hold.\n* a leaf: a `field`, an `op`, and for most operators a `value`.\n\nA leaf's `field` is `<provider>.<attribute>`, such as\n`intune.compliance_state` or `firezone.last_seen_version`. The provider\nis one of `firezone` (the connecting device's own record), `intune`,\n`iru`, `defender`, `santa` or `sentinelone`. The attribute is one of that\nprovider's synced device attributes. Every provider also has a boolean\n`enrolled` that is true when the provider knows the device.\n\nThe attribute's type decides which operators apply and what `value`\nmust be:\n\n* strings: `is`, `is_not`, `is_in`, `is_not_in`, `contains`,\n  `does_not_contain`, `starts_with`, `ends_with`, `matches`,\n  `does_not_match`. Comparisons ignore case. `is_in` and `is_not_in`\n  take a list of strings. `matches` and `does_not_match` take a regular\n  expression.\n* booleans: `is` with `true` or `false`.\n* numbers: `eq`, `ne`, `gt`, `gte`, `lt`, `lte`.\n* versions: `is`, `is_not`, `gt`, `gte`, `lt`, `lte`, compared segment\n  by segment, so `14.4` equals `14.4.0`.\n* timestamps: `before` and `after` with an ISO 8601 datetime such as\n  `2026-01-01T00:00:00Z`; `within_last` and `not_within_last` with an\n  ISO 8601 duration such as `PT24H` or `P30D`. A date-only attribute\n  counts as the start of that day in UTC.\n* IP addresses: `is_in_cidr` and `is_not_in_cidr` with a list of CIDRs.\n* lists of strings: `contains`, `does_not_contain`, `contains_any_of`,\n  `contains_all_of`, `is_empty`, `is_not_empty`.\n* JSON attributes: `is_empty`, `is_not_empty`.\n\nEvery attribute also accepts `exists` and `does_not_exist`, which take\nno value. An attribute the provider did not report fails every other\noperator, so a device the provider does not know never passes.\n\nWhen a device matches more than one record of a provider, a leaf holds\nwhen any record satisfies it. Set `rows` to `all` to require every\nrecord. An expression may nest 10 levels deep and hold 100 leaves.\n",
+        "example": {
+          "and": [
+            {
+              "field": "intune.compliance_state",
+              "op": "is",
+              "value": "compliant"
+            },
+            {
+              "field": "intune.last_sync_date_time",
+              "op": "within_last",
+              "value": "PT24H"
+            },
+            {
+              "not": {
+                "field": "firezone.attested",
+                "op": "is",
+                "value": false
+              }
+            }
+          ]
+        },
+        "properties": {
+          "and": {
+            "description": "Nodes that must all hold",
+            "items": {
+              "$ref": "#/components/schemas/PolicyPostureNode"
+            },
+            "minItems": 1,
+            "type": "array"
+          },
+          "field": {
+            "description": "The provider attribute a leaf tests, as `<provider>.<attribute>`",
+            "example": "intune.compliance_state",
+            "type": "string"
+          },
+          "not": {
+            "$ref": "#/components/schemas/PolicyPostureNode"
+          },
+          "op": {
+            "description": "How the attribute is compared to the value",
+            "enum": [
+              "eq",
+              "ne",
+              "gt",
+              "gte",
+              "lt",
+              "lte",
+              "is",
+              "is_not",
+              "is_in",
+              "is_not_in",
+              "contains",
+              "does_not_contain",
+              "starts_with",
+              "ends_with",
+              "matches",
+              "does_not_match",
+              "is_in_cidr",
+              "is_not_in_cidr",
+              "is_empty",
+              "is_not_empty",
+              "before",
+              "after",
+              "within_last",
+              "not_within_last",
+              "contains_any_of",
+              "contains_all_of",
+              "exists",
+              "does_not_exist"
+            ],
+            "example": "is",
+            "type": "string"
+          },
+          "or": {
+            "description": "Nodes of which at least one must hold",
+            "items": {
+              "$ref": "#/components/schemas/PolicyPostureNode"
+            },
+            "minItems": 1,
+            "type": "array"
+          },
+          "rows": {
+            "default": "any",
+            "description": "Whether any or every record of the provider must satisfy the leaf when several match the device",
+            "enum": [
+              "any",
+              "all"
+            ],
+            "type": "string"
+          },
+          "value": {
+            "description": "What the attribute is compared to: a string, number, boolean or list, as the operator requires",
+            "example": "compliant"
+          }
+        },
+        "title": "PolicyPostureNode",
+        "type": "object"
+      },
       "OIDCAuthProvider": {
         "description": "OIDC Auth Provider",
         "properties": {
@@ -3353,6 +3463,15 @@
             "description": "Whether the Policy is disabled. A disabled Policy grants no access but is otherwise retained.",
             "example": false,
             "type": "boolean"
+          },
+          "postures": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PolicyPostureNode"
+              }
+            ],
+            "description": "Device posture the connecting device must satisfy, or null when none is required. Requires the device posture feature.",
+            "nullable": true
           },
           "resource_id": {
             "description": "Resource ID",
@@ -5492,6 +5611,15 @@
             "example": false,
             "type": "boolean"
           },
+          "postures": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PolicyPostureNode"
+              }
+            ],
+            "description": "Device posture the connecting device must satisfy, or null when none is required. Requires the device posture feature.",
+            "nullable": true
+          },
           "resource_id": {
             "description": "Resource ID",
             "example": "a9f60587-793c-46ae-8525-597f43ab2fb1",
@@ -5506,6 +5634,7 @@
           "group_id",
           "id",
           "is_disabled",
+          "postures",
           "resource_id"
         ],
         "title": "Policy",

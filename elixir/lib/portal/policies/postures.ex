@@ -426,3 +426,7 @@ defmodule Portal.Policies.Postures do
     |> String.trim_leading(".")
   end
 end
+
+defimpl JSON.Encoder, for: Portal.Policies.Postures do
+  def encode(postures, encoder), do: encoder.(Portal.Policies.Postures.to_map(postures), encoder)
+end

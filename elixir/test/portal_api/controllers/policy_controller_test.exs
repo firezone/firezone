@@ -183,6 +183,7 @@ defmodule PortalAPI.PolicyControllerTest do
                  "description" => policy.description,
                  "flow_log_uploads_enabled" => true,
                  "is_disabled" => false,
+                 "postures" => nil,
                  "conditions" => []
                }
              }
@@ -1102,6 +1103,7 @@ defmodule PortalAPI.PolicyControllerTest do
                  "description" => policy.description,
                  "flow_log_uploads_enabled" => true,
                  "is_disabled" => false,
+                 "postures" => nil,
                  "conditions" => []
                }
              }
@@ -1161,6 +1163,100 @@ defmodule PortalAPI.PolicyControllerTest do
 
       assert %Policy{is_disabled: false} =
                Repo.get_by(Policy, id: policy.id, account_id: policy.account_id)
+    end
+  end
+  @postures %{
+    "and" => [
+      %{"field" => "intune.compliance_state", "op" => "is", "value" => "compliant"},
+      %{"not" => %{"field" => "firezone.attested", "op" => "is", "value" => false}}
+    ]
+  }
+
+  describe "postures" do
+    import Portal.DevicePostureFixtures
+
+    setup do
+      enable_device_posture()
+      account = device_posture_account_fixture()
+      actor = api_client_fixture(account: account)
+      resource = resource_fixture(account: account)
+      group = group_fixture(account: account)
+      %{account: account, actor: actor, resource: resource, group: group}
+    end
+
+    defp post_policy(conn, actor, attrs) do
+      conn
+      |> authorize_conn(actor)
+      |> put_req_header("content-type", "application/json")
+      |> post("/policies", policy: attrs)
+    end
+
+    defp put_policy(conn, actor, policy, attrs) do
+      conn
+      |> authorize_conn(actor)
+      |> put_req_header("content-type", "application/json")
+      |> put("/policies/#{policy.id}", policy: attrs)
+    end
+
+    test "creates a policy with postures", %{conn: conn, account: account, actor: actor, resource: resource, group: group} do
+      attrs = %{"group_id" => group.id, "resource_id" => resource.id, "postures" => @postures}
+
+      assert %{"data" => %{"id" => id, "postures" => postures}} = json_response(post_policy(conn, actor, attrs), 201)
+      assert postures == @postures
+      assert %Policy{postures: %Portal.Policies.Postures{}} = Repo.get_by(Policy, id: id, account_id: account.id)
+    end
+
+    test "rejects postures the parser refuses", %{conn: conn, actor: actor, resource: resource, group: group} do
+      postures = %{"and" => [%{"field" => "jamf.serial", "op" => "is", "value" => "x"}]}
+      attrs = %{"group_id" => group.id, "resource_id" => resource.id, "postures" => postures}
+
+      assert %{"status" => 422, "validation_errors" => %{"postures" => ["and[0].field: unknown provider jamf"]}} =
+               json_response(post_policy(conn, actor, attrs), 422)
+    end
+
+    test "reports a malformed posture node under its path", %{conn: conn, actor: actor, resource: resource, group: group} do
+      leaf = %{"field" => "intune.compliance_state", "op" => "is", "value" => "compliant", "rows" => %{}}
+      attrs = %{"group_id" => group.id, "resource_id" => resource.id, "postures" => %{"and" => [leaf]}}
+
+      assert %{"status" => 422, "validation_errors" => %{"postures" => %{"and" => %{"0" => %{"rows" => ["is invalid"]}}}}} =
+               json_response(post_policy(conn, actor, attrs), 422)
+    end
+
+    test "refuses postures while device posture is off for the account", %{conn: conn} do
+      account = account_fixture()
+      actor = api_client_fixture(account: account)
+      attrs = %{"group_id" => group_fixture(account: account).id, "resource_id" => resource_fixture(account: account).id}
+
+      assert %{"status" => 403, "detail" => "Device posture is not enabled for this account"} =
+               json_response(post_policy(conn, actor, Map.put(attrs, "postures", @postures)), 403)
+
+      assert %{"data" => %{"postures" => nil}} = json_response(post_policy(conn, actor, attrs), 201)
+
+      policy = policy_fixture(account: account)
+
+      assert %{"status" => 403} = json_response(put_policy(conn, actor, policy, %{"postures" => @postures}), 403)
+      assert %{"data" => %{"postures" => nil}} = json_response(put_policy(conn, actor, policy, %{"postures" => nil}), 200)
+    end
+
+    test "updates and clears postures", %{conn: conn, account: account, actor: actor, resource: resource, group: group} do
+      policy = policy_fixture(account: account, group: group, resource: resource)
+
+      assert %{"data" => %{"postures" => postures}} = json_response(put_policy(conn, actor, policy, %{"postures" => @postures}), 200)
+      assert postures == @postures
+      assert %Policy{postures: %Portal.Policies.Postures{}} = Repo.get_by(Policy, id: policy.id, account_id: account.id)
+
+      assert %{"data" => %{"postures" => nil}} = json_response(put_policy(conn, actor, policy, %{"postures" => nil}), 200)
+      assert %Policy{postures: nil} = Repo.get_by(Policy, id: policy.id, account_id: account.id)
+    end
+
+    test "renders postures on show and list", %{conn: conn, account: account, actor: actor, resource: resource, group: group} do
+      policy = policy_fixture(account: account, group: group, resource: resource, postures: @postures)
+
+      conn = conn |> authorize_conn(actor) |> put_req_header("content-type", "application/json")
+      assert %{"data" => %{"postures" => postures}} = json_response(get(conn, "/policies/#{policy.id}"), 200)
+      assert postures == @postures
+      assert %{"data" => [%{"postures" => listed}]} = json_response(get(conn, "/policies"), 200)
+      assert listed == @postures
     end
   end
 end

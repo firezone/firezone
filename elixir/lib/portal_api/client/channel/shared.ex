@@ -6,6 +6,7 @@ defmodule PortalAPI.Client.Channel.Shared do
   alias Portal.{
     Cache,
     Device,
+    Devices,
     FlowLogToken,
     PG,
     Changes.Change,
@@ -116,6 +117,7 @@ defmodule PortalAPI.Client.Channel.Shared do
       |> track_presence()
 
     :ok = PubSub.Changes.subscribe(socket.assigns.client.account_id)
+    socket = subscribe_posture_rows(socket)
 
     {:noreply, socket} = register(socket)
 
@@ -2225,7 +2227,91 @@ defmodule PortalAPI.Client.Channel.Shared do
     push_resource_updates({:ok, added, removed_ids, cache}, socket)
   end
 
-  defp handle_change(%Change{}, socket), do: {:noreply, socket}
+  # POSTURE ROWS
+  #
+  # Provider rows arrive only under this device's own identifiers, so any one
+  # of them may change which rows describe the device. The rows are read back
+  # from the database rather than patched in memory, which also picks up a
+  # Defender row newly linked through an Intune row.
+  defp handle_change(%Change{} = change, socket) do
+    if posture_row_change?(change) do
+      refresh_posture_rows(socket)
+    else
+      {:noreply, socket}
+    end
+  end
+
+  defp posture_row_change?(%Change{struct: %module{}}), do: module in Devices.Posture.schemas()
+  defp posture_row_change?(%Change{old_struct: %module{}}), do: module in Devices.Posture.schemas()
+  defp posture_row_change?(%Change{}), do: false
+
+  defp subscribe_posture_rows(socket) do
+    if Portal.Account.device_posture_enabled?(socket.assigns.subject.account) do
+      account_id = socket.assigns.client.account_id
+
+      for key <- Devices.Posture.device_keys(socket.assigns.client) do
+        :ok = PubSub.Changes.subscribe_posture_rows(account_id, key)
+      end
+
+      subscribe_entra_keys(socket, Devices.Posture.entra_keys(socket.assigns.client.posture))
+    else
+      assign(socket, :posture_entra_keys, [])
+    end
+  end
+
+  # Defender rows are keyed by the Entra id of the Intune row that leads to
+  # them, so these subscriptions follow the matched Intune rows.
+  defp subscribe_entra_keys(socket, keys) do
+    account_id = socket.assigns.client.account_id
+    current = Map.get(socket.assigns, :posture_entra_keys, [])
+
+    for key <- current -- keys do
+      :ok = PubSub.Changes.unsubscribe_posture_rows(account_id, key)
+    end
+
+    for key <- keys -- current do
+      :ok = PubSub.Changes.subscribe_posture_rows(account_id, key)
+    end
+
+    assign(socket, :posture_entra_keys, keys)
+  end
+
+  defp refresh_posture_rows(socket) do
+    client = socket.assigns.client
+    rows = load_posture_rows(socket)
+
+    if rows == client.posture do
+      {:noreply, socket}
+    else
+      auth_provider_id = Credential.auth_provider_id(socket.assigns.subject.credential)
+      held = Cache.Client.conforming_policy_ids(socket.assigns.cache, client, auth_provider_id)
+      client = %{client | posture: rows}
+      holding = Cache.Client.conforming_policy_ids(socket.assigns.cache, client, auth_provider_id)
+      stopped = held -- holding
+
+      # A policy that stopped holding must not keep its flows alive on the
+      # gateway until they expire, the same as unverifying a device.
+      if stopped != [] do
+        Database.delete_policy_authorizations_for_policies(client, stopped)
+      end
+
+      socket =
+        socket
+        |> assign(:client, client)
+        |> subscribe_entra_keys(Devices.Posture.entra_keys(rows))
+
+      Cache.Client.recompute_connectable_resources(socket.assigns.cache, client, socket.assigns.subject)
+      |> push_resource_updates(socket)
+    end
+  end
+
+  defp load_posture_rows(socket) do
+    if Portal.Account.device_posture_enabled?(socket.assigns.subject.account) do
+      Devices.Posture.rows_by_type(socket.assigns.client)
+    else
+      %{}
+    end
+  end
 
   # A channel stop alone can leave the transport available for a reactive rejoin,
   # which would bypass Socket.connect/3 and its account-enabled check. Drain the
@@ -2759,6 +2845,18 @@ defmodule PortalAPI.Client.Channel.Shared do
 
   defmodule Database do
     import Ecto.Query, only: [from: 2]
+
+    # Unscoped like the device hook's revocation: the channel acts for the
+    # policy, not for what the connecting actor may read.
+    def delete_policy_authorizations_for_policies(%Portal.Device{} = client, policy_ids) do
+      from(pa in Portal.PolicyAuthorization,
+        where: pa.account_id == ^client.account_id,
+        where: pa.initiating_device_id == ^client.id,
+        where: pa.policy_id in ^policy_ids
+      )
+      |> Portal.Safe.unscoped()
+      |> Portal.Safe.delete_all()
+    end
 
     def x509_session_enabled?(auth_provider_id, actor_id) do
       from(auth_provider in Portal.X509.AuthProvider,

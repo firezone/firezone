@@ -103,6 +103,7 @@ defmodule PortalAPI.PolicyController do
     subject = conn.assigns.subject
 
     with :ok <- Database.validate_internet_resource_policy(params, subject),
+         :ok <- validate_postures(params, subject),
          {:ok, policy} <- Database.create_policy(params, subject) do
       conn
       |> put_status(:created)
@@ -156,6 +157,7 @@ defmodule PortalAPI.PolicyController do
 
     with {:ok, policy} <- Database.fetch_policy(id, subject),
          :ok <- Database.validate_internet_resource_policy(params, subject),
+         :ok <- validate_postures(params, subject),
          {:ok, policy} <- Database.update_policy(policy, params, subject) do
       json(conn, JSON.encode(policy))
     else
@@ -195,6 +197,16 @@ defmodule PortalAPI.PolicyController do
       error -> Error.handle(conn, error)
     end
   end
+
+  defp validate_postures(%{"postures" => postures}, subject) when not is_nil(postures) do
+    if Portal.Account.device_posture_enabled?(subject.account) do
+      :ok
+    else
+      {:error, :forbidden, reason: "Device posture is not enabled for this account"}
+    end
+  end
+
+  defp validate_postures(_params, _subject), do: :ok
 
   defmodule Database do
     import Ecto.Query
@@ -322,7 +334,7 @@ defmodule PortalAPI.PolicyController do
     # so we only do the request-specific casting here.
     defp create_changeset(attrs, %Authentication.Subject{} = subject) do
       %Policy{}
-      |> cast(attrs, ~w[description group_id resource_id flow_log_uploads_enabled is_disabled]a)
+      |> cast(attrs, ~w[description group_id resource_id flow_log_uploads_enabled is_disabled postures]a)
       |> validate_required(~w[group_id resource_id]a)
       |> cast_embed(:conditions, with: &Portal.Policies.Condition.changeset/3)
       |> put_change(:account_id, subject.account.id)
@@ -330,7 +342,7 @@ defmodule PortalAPI.PolicyController do
 
     defp changeset(%Policy{} = policy, attrs) do
       policy
-      |> cast(attrs, ~w[description group_id resource_id flow_log_uploads_enabled is_disabled]a)
+      |> cast(attrs, ~w[description group_id resource_id flow_log_uploads_enabled is_disabled postures]a)
       |> validate_required(~w[group_id resource_id]a)
       |> cast_embed(:conditions, with: &Portal.Policies.Condition.changeset/3)
     end

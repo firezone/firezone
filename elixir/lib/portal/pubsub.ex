@@ -102,8 +102,39 @@ defmodule Portal.PubSub do
       :ok
     end
 
+    @type posture_key :: {:mdm_device_id | :serial | :entra_device_id, String.t()}
+
+    @doc "Listens for changes to posture provider rows that carry this identifier."
+    @spec subscribe_posture_rows(String.t(), posture_key()) :: :ok | {:error, term()}
+    def subscribe_posture_rows(account_id, key) do
+      Portal.PubSub.subscribe(posture_rows_topic(account_id, key))
+    end
+
+    @spec unsubscribe_posture_rows(String.t(), posture_key()) :: :ok
+    def unsubscribe_posture_rows(account_id, key) do
+      Portal.PubSub.unsubscribe(posture_rows_topic(account_id, key))
+    end
+
+    # Published per identifier, never account-wide: a sync rewrites every row
+    # it reports, and only the channel of the device a row describes needs it.
+    @spec broadcast_posture_rows(String.t(), [posture_key()], term()) :: :ok
+    def broadcast_posture_rows(account_id, keys, payload) do
+      region = Portal.Config.get_env(:portal, :region, "")
+
+      for key <- keys, node <- target_nodes(region) do
+        topic = posture_rows_topic(account_id, key)
+        Phoenix.PubSub.direct_broadcast!(node, Portal.PubSub, topic, payload)
+      end
+
+      :ok
+    end
+
     defp account_topic(account_id), do: "account:#{account_id}"
     defp entity_topic(account_id, entity), do: "account:#{account_id}:#{entity}"
+
+    defp posture_rows_topic(account_id, {kind, value}) do
+      "account:#{account_id}:posture_rows:#{kind}:#{value}"
+    end
     defp accounts_topic do
       Portal.Config.get_env(:portal, :account_changes_topic, "accounts")
     end
