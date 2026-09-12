@@ -690,6 +690,230 @@ defmodule Portal.Cache.ClientTest do
     end
   end
 
+  describe "authorize_address/5" do
+    setup do
+      account = account_fixture()
+      actor = actor_fixture(type: :account_admin_user, account: account)
+
+      subject =
+        subject_fixture(
+          account: account,
+          actor: actor,
+          type: :client,
+          user_agent: "Mac OS/14 apple-client/1.5.16"
+        )
+
+      client = client_fixture(account: account, actor: actor)
+      group = group_fixture(account: account)
+      membership_fixture(account: account, actor: actor, group: group)
+      site = site_fixture(account: account)
+
+      client = %{
+        client
+        | last_seen_user_agent: "Mac OS/14 apple-client/1.5.16",
+          last_seen_version: "1.5.16"
+      }
+
+      %{account: account, subject: subject, client: client, group: group, site: site}
+    end
+
+    test "picks the longest prefix among overlapping resources", %{
+      account: account,
+      subject: subject,
+      client: client,
+      group: group,
+      site: site
+    } do
+      wide = cidr_resource_fixture(account: account, site: site, address: "10.0.0.0/8")
+      narrow = cidr_resource_fixture(account: account, site: site, address: "10.1.0.0/16")
+      policy_fixture(account: account, group: group, resource: wide)
+      policy_fixture(account: account, group: group, resource: narrow)
+      wide_id = Ecto.UUID.dump!(wide.id)
+      narrow_id = Ecto.UUID.dump!(narrow.id)
+      cache = v3_cache(client, subject)
+
+      assert {:ok, %{id: ^narrow_id}, _, _, _} =
+               Cache.authorize_address(cache, client, {:ipv4, {10, 1, 2, 3}}, {:tcp, 80}, subject)
+
+      assert {:ok, %{id: ^wide_id}, _, _, _} =
+               Cache.authorize_address(cache, client, {:ipv4, {10, 2, 2, 3}}, {:tcp, 80}, subject)
+    end
+
+    test "a permitting filter beats a longer prefix that refuses the flow", %{
+      account: account,
+      subject: subject,
+      client: client,
+      group: group,
+      site: site
+    } do
+      wide = cidr_resource_fixture(account: account, site: site, address: "10.0.0.0/8", filters: [])
+
+      ssh_only =
+        cidr_resource_fixture(
+          account: account,
+          site: site,
+          address: "10.1.0.0/16",
+          filters: [%{protocol: :tcp, ports: ["22"]}]
+        )
+
+      policy_fixture(account: account, group: group, resource: wide)
+      policy_fixture(account: account, group: group, resource: ssh_only)
+      wide_id = Ecto.UUID.dump!(wide.id)
+      ssh_id = Ecto.UUID.dump!(ssh_only.id)
+      cache = v3_cache(client, subject)
+
+      assert {:ok, %{id: ^wide_id}, _, _, _} =
+               Cache.authorize_address(cache, client, {:ipv4, {10, 1, 2, 3}}, {:tcp, 80}, subject)
+
+      assert {:ok, %{id: ^ssh_id}, _, _, _} =
+               Cache.authorize_address(cache, client, {:ipv4, {10, 1, 2, 3}}, {:tcp, 22}, subject)
+    end
+
+    test "picks the lowest id on an exact tie", %{
+      account: account,
+      subject: subject,
+      client: client,
+      group: group,
+      site: site
+    } do
+      ids =
+        for _ <- 1..2 do
+          resource = cidr_resource_fixture(account: account, site: site, address: "10.2.0.0/16")
+          policy_fixture(account: account, group: group, resource: resource)
+          Ecto.UUID.dump!(resource.id)
+        end
+
+      first_id = Enum.min(ids)
+
+      assert {:ok, %{id: ^first_id}, _, _, _} =
+               Cache.authorize_address(v3_cache(client, subject), client, {:ipv4, {10, 2, 0, 1}}, :icmp, subject)
+    end
+
+    test "an ip resource is a host prefix", %{
+      account: account,
+      subject: subject,
+      client: client,
+      group: group,
+      site: site
+    } do
+      network = cidr_resource_fixture(account: account, site: site, address: "10.3.0.0/24")
+      host = ip_resource_fixture(account: account, site: site, address: "10.3.0.7")
+      policy_fixture(account: account, group: group, resource: network)
+      policy_fixture(account: account, group: group, resource: host)
+      network_id = Ecto.UUID.dump!(network.id)
+      host_id = Ecto.UUID.dump!(host.id)
+      cache = v3_cache(client, subject)
+
+      assert {:ok, %{id: ^host_id}, _, _, _} =
+               Cache.authorize_address(cache, client, {:ipv4, {10, 3, 0, 7}}, {:udp, 53}, subject)
+
+      assert {:ok, %{id: ^network_id}, _, _, _} =
+               Cache.authorize_address(cache, client, {:ipv4, {10, 3, 0, 8}}, {:udp, 53}, subject)
+    end
+
+    test "falls back to the internet resource", %{
+      account: account,
+      subject: subject,
+      client: client,
+      group: group,
+      site: site
+    } do
+      network = cidr_resource_fixture(account: account, site: site, address: "10.4.0.0/16")
+      internet = internet_resource_fixture(account: account, site: internet_site_fixture(account: account))
+      policy_fixture(account: account, group: group, resource: network)
+      policy_fixture(account: account, group: group, resource: internet)
+      network_id = Ecto.UUID.dump!(network.id)
+      internet_id = Ecto.UUID.dump!(internet.id)
+      cache = v3_cache(client, subject)
+
+      assert {:ok, %{id: ^network_id}, _, _, _} =
+               Cache.authorize_address(cache, client, {:ipv4, {10, 4, 0, 1}}, {:tcp, 443}, subject)
+
+      assert {:ok, %{id: ^internet_id}, _, _, _} =
+               Cache.authorize_address(cache, client, {:ipv4, {8, 8, 8, 8}}, {:tcp, 443}, subject)
+
+      assert {:ok, %{id: ^internet_id}, _, _, _} =
+               Cache.authorize_address(
+                 cache,
+                 client,
+                 {:ipv6, {0x2001, 0x4860, 0x4860, 0, 0, 0, 0, 0x8888}},
+                 {:tcp, 443},
+                 subject
+               )
+    end
+
+    test "is not found when nothing covers the address or permits the flow", %{
+      account: account,
+      subject: subject,
+      client: client,
+      group: group,
+      site: site
+    } do
+      ssh_only =
+        cidr_resource_fixture(
+          account: account,
+          site: site,
+          address: "10.5.0.0/16",
+          filters: [%{protocol: :tcp, ports: ["22"]}]
+        )
+
+      policy_fixture(account: account, group: group, resource: ssh_only)
+      cache = v3_cache(client, subject)
+
+      assert {:error, :not_found} =
+               Cache.authorize_address(cache, client, {:ipv4, {172, 16, 0, 1}}, {:tcp, 22}, subject)
+
+      assert {:error, :not_found} =
+               Cache.authorize_address(cache, client, {:ipv4, {10, 5, 0, 1}}, {:udp, 53}, subject)
+    end
+
+    test "a resource whose policy refuses the client is not a candidate", %{
+      account: account,
+      subject: subject,
+      client: client,
+      group: group,
+      site: site
+    } do
+      verified_only = cidr_resource_fixture(account: account, site: site, address: "10.6.0.0/16")
+
+      policy_fixture(
+        account: account,
+        group: group,
+        resource: verified_only,
+        conditions: [%{property: :client_verified, operator: :is, values: ["true"]}]
+      )
+
+      assert {:error, :not_found} =
+               Cache.authorize_address(v3_cache(client, subject), client, {:ipv4, {10, 6, 0, 1}}, :icmp, subject)
+
+      open = cidr_resource_fixture(account: account, site: site, address: "10.0.0.0/8")
+      policy_fixture(account: account, group: group, resource: open)
+      open_id = Ecto.UUID.dump!(open.id)
+
+      assert {:ok, %{id: ^open_id}, _, _, _} =
+               Cache.authorize_address(v3_cache(client, subject), client, {:ipv4, {10, 6, 0, 1}}, :icmp, subject)
+    end
+
+    test "matches addresses only within their family", %{
+      account: account,
+      subject: subject,
+      client: client,
+      group: group,
+      site: site
+    } do
+      six = cidr_resource_fixture(account: account, site: site, address: "fd00:1::/64")
+      policy_fixture(account: account, group: group, resource: six)
+      six_id = Ecto.UUID.dump!(six.id)
+      cache = v3_cache(client, subject)
+
+      assert {:ok, %{id: ^six_id}, _, _, _} =
+               Cache.authorize_address(cache, client, {:ipv6, {0xFD00, 1, 0, 0, 0, 0, 0, 1}}, :icmp, subject)
+
+      assert {:error, :not_found} =
+               Cache.authorize_address(cache, client, {:ipv4, {10, 7, 0, 1}}, :icmp, subject)
+    end
+  end
+
   describe "removed_member_addresses/2" do
     setup do
       account = account_fixture()

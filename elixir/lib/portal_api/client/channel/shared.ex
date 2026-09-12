@@ -365,7 +365,7 @@ defmodule PortalAPI.Client.Channel.Shared do
         # Authorization creation already timed out; ignore the late gateway response.
         {:noreply, socket}
 
-      {{_generation, timer_ref, initiator_token}, remaining} ->
+      {{_generation, timer_ref, initiator_token, address}, remaining} ->
         Process.cancel_timer(timer_ref)
 
         reply_payload =
@@ -382,6 +382,7 @@ defmodule PortalAPI.Client.Channel.Shared do
             flow_logs_ingest_token: initiator_token
           }
           |> put_site_id(site_id, socket.assigns.client)
+          |> Map.merge(address_fields(address))
 
         push(socket, authorization_created_event(socket), reply_payload)
         {:noreply, assign(socket, :pending_authorizations, remaining)}
@@ -392,8 +393,8 @@ defmodule PortalAPI.Client.Channel.Shared do
   # newer request_authorization for the same resource_id (its message may already be queued).
   def handle_info({:authorization_creation_timeout, resource_id, generation}, socket) do
     case Map.get(socket.assigns.pending_authorizations, resource_id) do
-      {^generation, _timer_ref, _initiator_token} ->
-        push(socket, authorization_creation_failed_event(socket), %{resource_id: resource_id, reason: :offline})
+      {^generation, _timer_ref, _initiator_token, address} ->
+        push_authorization_creation_failed(socket, resource_id, :offline, address)
 
         {:noreply,
          assign(
@@ -783,7 +784,8 @@ defmodule PortalAPI.Client.Channel.Shared do
           policy_id,
           expires_at,
           connected_gateway_ids,
-          socket
+          socket,
+          nil
         )
 
       {:error, :not_found} ->
@@ -857,18 +859,23 @@ defmodule PortalAPI.Client.Channel.Shared do
     {:noreply, socket}
   end
 
-  # Connlib asks for access when it sees a packet for a tunnel address that no pool it
-  # already holds permits. The portal finds the device behind the address, picks the pool
-  # by the flow and tells both sides which pool authorized the connection.
-  #
-  # Older clients send this message by accident for any packet into 100.64.0.0/10, a
-  # leftover of the client-to-client PoC, so it only means something on the v3 protocol.
-  def handle_in("request_device_access", payload, socket) do
+  # Connlib asks for access when it sees a packet for an address it holds no permitting
+  # route for. The portal finds what is behind the address and picks by the flow: a device
+  # in the tunnel range through the first pool that admits it, any other address through
+  # the longest matching CIDR, IP or Internet resource, and names the pick in the answer.
+  def handle_in("request_access", payload, socket) do
     if protocol_version(socket) >= 3 do
-      handle_request_device_access(payload, socket)
+      handle_request_access(payload, socket)
     else
       {:noreply, socket}
     end
+  end
+
+  # Some clients send these sporadically by accident since any packet with a destination in
+  # 100.64.0.0/10 will trigger it in certain older clients. Message was introduced for the PoC
+  # of client-to-client, but was replaced with the standard create-authorization message. We no-op it.
+  def handle_in("request_device_access", _payload, socket) do
+    {:noreply, socket}
   end
 
   # DEPRECATED IN 1.4
@@ -1259,6 +1266,24 @@ defmodule PortalAPI.Client.Channel.Shared do
 
   defp parse_target_address(_), do: {:error, :missing_address}
 
+  defp tunnel_address?({:ipv4, tuple}) do
+    Portal.Types.CIDR.contains?(
+      Portal.Device.reserved_ipv4_cidr(),
+      %Postgrex.INET{address: tuple, netmask: nil}
+    )
+  end
+
+  defp tunnel_address?({:ipv6, tuple}) do
+    Portal.Types.CIDR.contains?(
+      Portal.Device.reserved_ipv6_cidr(),
+      %Postgrex.INET{address: tuple, netmask: nil}
+    )
+  end
+
+  defp address_fields(nil), do: %{}
+  defp address_fields({:ipv4, tuple}), do: %{ipv4: to_string(:inet.ntoa(tuple))}
+  defp address_fields({:ipv6, tuple}), do: %{ipv6: to_string(:inet.ntoa(tuple))}
+
   defp parse_flow(%{"protocol" => "icmp"}), do: {:ok, :icmp}
 
   defp parse_flow(%{"protocol" => "tcp", "port" => port}) when is_integer(port) and port in 0..65_535,
@@ -1343,7 +1368,8 @@ defmodule PortalAPI.Client.Channel.Shared do
          policy_id,
          expires_at,
          connected_gateway_ids,
-         socket
+         socket,
+         address
        ) do
     case Database.all_compatible_gateways_for_client_and_resource(
            socket.assigns.client_version,
@@ -1434,31 +1460,85 @@ defmodule PortalAPI.Client.Channel.Shared do
                end
              ) do
           :ok ->
-            {:noreply, arm_gateway_authorization_timer(socket, resource_id, initiator_token)}
+            {:noreply,
+             arm_gateway_authorization_timer(socket, resource_id, initiator_token, address)}
 
           {:error, _reason} ->
-            push(socket, authorization_creation_failed_event(socket), %{resource_id: resource_id, reason: :offline})
+            push_authorization_creation_failed(socket, resource_id, :offline, address)
             {:noreply, socket}
         end
 
       {:ok, []} ->
-        push(socket, authorization_creation_failed_event(socket), %{resource_id: resource_id, reason: :offline})
+        push_authorization_creation_failed(socket, resource_id, :offline, address)
         {:noreply, socket}
 
       {:error, :version_mismatch} ->
-        push(socket, authorization_creation_failed_event(socket), %{
-          resource_id: resource_id,
-          reason: :version_mismatch
+        push_authorization_creation_failed(socket, resource_id, :version_mismatch, address)
+        {:noreply, socket}
+    end
+  end
+
+  defp push_authorization_creation_failed(socket, resource_id, reason, address) do
+    push(
+      socket,
+      authorization_creation_failed_event(socket),
+      Map.merge(%{resource_id: resource_id, reason: reason}, address_fields(address))
+    )
+  end
+
+  defp handle_request_access(payload, socket) do
+    with {:ok, target} <- parse_target_address(payload),
+         {:ok, flow} <- parse_flow(payload) do
+      if tunnel_address?(target) do
+        handle_request_device_access(target, flow, payload, socket)
+      else
+        handle_request_resource_access(target, flow, payload, socket)
+      end
+    else
+      {:error, reason} ->
+        push(socket, "client_device_access_denied", %{
+          ipv4: payload["ipv4"],
+          ipv6: payload["ipv6"],
+          reason: reason
         })
 
         {:noreply, socket}
     end
   end
 
-  defp handle_request_device_access(payload, socket) do
-    with {:ok, target} <- parse_target_address(payload),
-         {:ok, flow} <- parse_flow(payload),
-         {:ok, %Portal.Device{} = device} <- fetch_target_device(target, socket),
+  defp handle_request_resource_access(target, flow, payload, socket) do
+    case Cache.Client.authorize_address(
+           socket.assigns.cache,
+           socket.assigns.client,
+           target,
+           flow,
+           socket.assigns.subject
+         ) do
+      {:ok, resource, membership_id, policy_id, expires_at} ->
+        handle_request_gateway_authorization(
+          Ecto.UUID.load!(resource.id),
+          resource,
+          membership_id,
+          policy_id,
+          expires_at,
+          Map.get(payload, "connected_gateway_ids", []),
+          socket,
+          target
+        )
+
+      {:error, reason} ->
+        push(
+          socket,
+          authorization_creation_failed_event(socket),
+          Map.merge(%{reason: reason}, address_fields(target))
+        )
+
+        {:noreply, socket}
+    end
+  end
+
+  defp handle_request_device_access(target, flow, payload, socket) do
+    with {:ok, %Portal.Device{} = device} <- fetch_target_device(target, socket),
          {:ok, resource, membership_id, policy_id, expires_at} <-
            Cache.Client.authorize_device_pool(
              socket.assigns.cache,
@@ -2668,10 +2748,10 @@ defmodule PortalAPI.Client.Channel.Shared do
     {tag, ref_tuple, Map.put(payload, :policy_authorization, pa)}
   end
 
-  defp arm_gateway_authorization_timer(socket, resource_id, initiator_token) do
+  defp arm_gateway_authorization_timer(socket, resource_id, initiator_token, address) do
     # Cancel any timer a prior in-flight request_authorization armed under this key.
     case Map.get(socket.assigns.pending_authorizations, resource_id) do
-      {_old_generation, old_timer_ref, _old_initiator_token} ->
+      {_old_generation, old_timer_ref, _old_initiator_token, _old_address} ->
         Process.cancel_timer(old_timer_ref)
 
       nil ->
@@ -2693,7 +2773,7 @@ defmodule PortalAPI.Client.Channel.Shared do
       Map.put(
         socket.assigns.pending_authorizations,
         resource_id,
-        {generation, timer_ref, initiator_token}
+        {generation, timer_ref, initiator_token, address}
       )
     )
   end

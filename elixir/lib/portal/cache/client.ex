@@ -248,6 +248,46 @@ defmodule Portal.Cache.Client do
   end
 
   @doc """
+    Picks the connectable resource the client reaches `address` through for `flow`: among
+    the CIDR, IP and Internet resources that cover the address and permit the flow, the one
+    with the longest prefix, then the lowest id, that passes the policy check.
+  """
+  @spec authorize_address(
+          t(),
+          Portal.Device.t(),
+          {:ipv4, ipv4_tuple()} | {:ipv6, ipv6_tuple()},
+          flow(),
+          Authentication.Subject.t()
+        ) ::
+          {:ok, Cache.Cacheable.Resource.t(), Ecto.UUID.t() | nil, Ecto.UUID.t(),
+           DateTime.t() | nil}
+          | {:error, :not_found | :forbidden}
+  def authorize_address(cache, client, {_family, address_tuple}, flow, subject) do
+    address = %Postgrex.INET{address: address_tuple, netmask: nil}
+
+    cache.connectable_resources
+    |> Enum.flat_map(fn resource ->
+      case network_of(resource, tuple_size(address_tuple)) do
+        {:ok, network} -> [{network, resource}]
+        :error -> []
+      end
+    end)
+    |> Enum.filter(fn {network, resource} ->
+      Portal.Types.CIDR.contains?(network, address) and filters_permit?(resource.filters, flow)
+    end)
+    |> Enum.sort_by(fn {network, resource} -> {-network.netmask, resource.id} end)
+    |> Enum.reduce_while({:error, :not_found}, fn {_network, resource}, _acc ->
+      case authorize_resource(cache, client, load!(resource.id), subject) do
+        {:ok, _resource, _membership_id, _policy_id, _expires_at} = authorized ->
+          {:halt, authorized}
+
+        {:error, _reason} ->
+          {:cont, {:error, :forbidden}}
+      end
+    end)
+  end
+
+  @doc """
     The addresses of the devices that were in a connectable pool of `old_cache` and are in
     no connectable pool of `cache`, so the channel can deny access to them.
   """
@@ -775,6 +815,32 @@ defmodule Portal.Cache.Client do
 
     {pool_members, device_addresses}
   end
+
+  defp network_of(%Cache.Cacheable.Resource{type: :internet}, 4),
+    do: {:ok, %Postgrex.INET{address: {0, 0, 0, 0}, netmask: 0}}
+
+  defp network_of(%Cache.Cacheable.Resource{type: :internet}, 8),
+    do: {:ok, %Postgrex.INET{address: {0, 0, 0, 0, 0, 0, 0, 0}, netmask: 0}}
+
+  defp network_of(%Cache.Cacheable.Resource{type: :cidr, address: address}, family) do
+    with {:ok, %Postgrex.INET{address: tuple} = network} when tuple_size(tuple) == family <-
+           Portal.Types.CIDR.cast(address) do
+      {:ok, network}
+    else
+      _ -> :error
+    end
+  end
+
+  defp network_of(%Cache.Cacheable.Resource{type: :ip, address: address}, family) do
+    with {:ok, %Postgrex.INET{address: tuple} = inet} when tuple_size(tuple) == family <-
+           Portal.Types.IP.cast(address) do
+      {:ok, %{inet | netmask: Portal.Types.CIDR.max_netmask(inet)}}
+    else
+      _ -> :error
+    end
+  end
+
+  defp network_of(%Cache.Cacheable.Resource{}, _family), do: :error
 
   defp filters_permit?([], _flow), do: true
   defp filters_permit?(filters, flow), do: Enum.any?(filters, &filter_permits?(&1, flow))

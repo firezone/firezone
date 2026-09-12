@@ -154,7 +154,7 @@ defmodule PortalAPI.Client.ChannelTest do
   end
 
   defp gateway_authorization_generation(channel_pid, resource_id) do
-    {generation, _timer_ref, _initiator_token} =
+    {generation, _timer_ref, _initiator_token, _address} =
       :sys.get_state(channel_pid).assigns.pending_authorizations |> Map.fetch!(resource_id)
 
     generation
@@ -3868,7 +3868,7 @@ defmodule PortalAPI.Client.ChannelTest do
       :sys.replace_state(socket.channel_pid, fn state ->
         put_in(
           state.assigns.pending_authorizations,
-          %{resource.id => {make_ref(), timer_ref, "ingest-token"}}
+          %{resource.id => {make_ref(), timer_ref, "ingest-token", nil}}
         )
       end)
 
@@ -6106,7 +6106,7 @@ defmodule PortalAPI.Client.ChannelTest do
     end
   end
 
-  describe "handle_in/3 request_device_access" do
+  describe "handle_in/3 request_access for a device" do
     setup %{account: account, actor: actor, group: group, subject: subject} do
       subject = put_user_agent(subject, "Mac OS/14 apple-client/1.5.16")
 
@@ -6153,7 +6153,7 @@ defmodule PortalAPI.Client.ChannelTest do
       target_client_name = target_client.name
       pool_id = pool_resource.id
 
-      push(initiating_socket, "request_device_access", %{
+      push(initiating_socket, "request_access", %{
         "ipv4" => target_ip,
         "protocol" => "tcp",
         "port" => 22
@@ -6199,7 +6199,7 @@ defmodule PortalAPI.Client.ChannelTest do
       [first_pool_id, _] = Enum.sort([all_pool.id, ssh_pool.id])
       all_pool_id = all_pool.id
 
-      push(initiating_socket, "request_device_access", %{
+      push(initiating_socket, "request_access", %{
         "ipv4" => target_ip,
         "protocol" => "tcp",
         "port" => 22
@@ -6210,7 +6210,7 @@ defmodule PortalAPI.Client.ChannelTest do
         ice_role: :controlling
       }
 
-      push(initiating_socket, "request_device_access", %{
+      push(initiating_socket, "request_access", %{
         "ipv4" => target_ip,
         "protocol" => "udp",
         "port" => 53
@@ -6249,7 +6249,7 @@ defmodule PortalAPI.Client.ChannelTest do
 
       target_ip = Portal.Types.INET.to_string(target_client.ipv4)
 
-      push(initiating_socket, "request_device_access", %{
+      push(initiating_socket, "request_access", %{
         "ipv4" => target_ip,
         "protocol" => "udp",
         "port" => 53
@@ -6268,7 +6268,7 @@ defmodule PortalAPI.Client.ChannelTest do
 
       own_ip = Portal.Types.INET.to_string(client.ipv4)
 
-      push(initiating_socket, "request_device_access", %{
+      push(initiating_socket, "request_access", %{
         "ipv4" => own_ip,
         "protocol" => "tcp",
         "port" => 22
@@ -6293,7 +6293,7 @@ defmodule PortalAPI.Client.ChannelTest do
             %{"protocol" => "udp", "port" => 70_000},
             %{"protocol" => "tcp", "port" => "22"}
           ] do
-        push(initiating_socket, "request_device_access", Map.put(flow, "ipv4", target_ip))
+        push(initiating_socket, "request_access", Map.put(flow, "ipv4", target_ip))
 
         assert_push "client_device_access_denied", %{ipv4: ^target_ip, reason: :invalid_flow}
       end
@@ -6328,7 +6328,7 @@ defmodule PortalAPI.Client.ChannelTest do
 
       stranger_ip = Portal.Types.INET.to_string(stranger.ipv4)
 
-      push(initiating_socket, "request_device_access", %{
+      push(initiating_socket, "request_access", %{
         "ipv4" => stranger_ip,
         "protocol" => "tcp",
         "port" => 22
@@ -6354,7 +6354,7 @@ defmodule PortalAPI.Client.ChannelTest do
       target_ipv6 = Portal.Types.INET.to_string(target_client.ipv6)
       target_client_id = target_client.id
 
-      push(initiating_socket, "request_device_access", %{
+      push(initiating_socket, "request_access", %{
         "ipv6" => target_ipv6,
         "protocol" => "tcp",
         "port" => 22
@@ -6376,7 +6376,7 @@ defmodule PortalAPI.Client.ChannelTest do
 
       orphan_ip = "100.64.255.99"
 
-      push(initiating_socket, "request_device_access", %{
+      push(initiating_socket, "request_access", %{
         "ipv4" => orphan_ip,
         "protocol" => "tcp",
         "port" => 22
@@ -6400,7 +6400,7 @@ defmodule PortalAPI.Client.ChannelTest do
 
       target_ip = Portal.Types.INET.to_string(target_client.ipv4)
 
-      push(initiating_socket, "request_device_access", %{
+      push(initiating_socket, "request_access", %{
         "ipv4" => target_ip,
         "protocol" => "tcp",
         "port" => 22
@@ -6468,7 +6468,7 @@ defmodule PortalAPI.Client.ChannelTest do
 
       target_ip = Portal.Types.INET.to_string(target_client.ipv4)
 
-      push(initiating_socket, "request_device_access", %{
+      push(initiating_socket, "request_access", %{
         "ipv4" => target_ip,
         "protocol" => "tcp",
         "port" => 22
@@ -6523,7 +6523,7 @@ defmodule PortalAPI.Client.ChannelTest do
 
       target_ip = Portal.Types.INET.to_string(target_client.ipv4)
 
-      push(initiating_socket, "request_device_access", %{
+      push(initiating_socket, "request_access", %{
         "ipv4" => target_ip,
         "protocol" => "tcp",
         "port" => 22
@@ -6573,7 +6573,7 @@ defmodule PortalAPI.Client.ChannelTest do
 
       target_ip = Portal.Types.INET.to_string(target_client.ipv4)
 
-      push(initiating_socket, "request_device_access", %{
+      push(initiating_socket, "request_access", %{
         "ipv4" => target_ip,
         "protocol" => "tcp",
         "port" => 22
@@ -7068,18 +7068,142 @@ defmodule PortalAPI.Client.ChannelTest do
 
   describe "handle_in/3 for request_device_access" do
     test "it does not log an error and no-ops", %{client: client, subject: subject} do
-      socket = join_channel(client, subject)
-      assert_push "init", %{resources: _, relays: _, interface: _}
+      for channel <- [PortalAPI.Client.Channel, PortalAPI.Client.V3.Channel] do
+        socket = join_channel(client, subject, channel: channel)
+        assert_push "init", %{resources: _, relays: _, interface: _}
 
-      log =
-        capture_log(fn ->
-          ref = push(socket, "request_device_access", %{})
-          :sys.get_state(socket.channel_pid)
-          refute_reply ref, :error, _, 0
-        end)
+        log =
+          capture_log(fn ->
+            ref = push(socket, "request_device_access", %{})
+            :sys.get_state(socket.channel_pid)
+            refute_reply ref, :error, _, 0
+          end)
 
-      refute log =~ "Unknown client message"
-      assert Process.alive?(socket.channel_pid)
+        refute log =~ "Unknown client message"
+        assert Process.alive?(socket.channel_pid)
+        Process.unlink(socket.channel_pid)
+        close(socket)
+      end
+    end
+  end
+
+  describe "handle_in/3 request_access for a resource" do
+    setup %{gateway: gateway, gateway_token: gateway_token, global_relay: global_relay} do
+      :ok = Portal.Presence.Relays.connect(global_relay)
+      :ok = PG.register(gateway.id)
+      PubSub.subscribe(Portal.Sockets.socket_id(gateway_token.id))
+      :ok
+    end
+
+    test "picks the resource behind the address and names it in the answer", %{
+      client: client,
+      subject: subject,
+      cidr_resource: cidr_resource,
+      gateway: gateway,
+      gateway_token: gateway_token
+    } do
+      socket = join_channel(client, subject, channel: PortalAPI.Client.V3.Channel)
+      assert_push "init", _
+      :ok = connect_gateway_presence(gateway, gateway_token.id)
+
+      push(socket, "request_access", %{"ipv4" => "192.168.1.5", "protocol" => "tcp", "port" => 80})
+
+      assert_receive {:create_authorization, {channel_pid, socket_ref}, payload}
+
+      assert %{
+               resource: %{id: resource_id},
+               ice_credentials: ice_credentials,
+               preshared_key: preshared_key
+             } = payload
+
+      assert resource_id == cidr_resource.id
+
+      send(
+        channel_pid,
+        {:connect, socket_ref, Ecto.UUID.dump!(resource_id), gateway.site_id, gateway.id,
+         gateway.public_key, gateway.ipv4, gateway.ipv6, preshared_key, ice_credentials}
+      )
+
+      gateway_id = gateway.id
+
+      assert_push "authorization_created", %{
+        resource_id: ^resource_id,
+        gateway_id: ^gateway_id,
+        ipv4: "192.168.1.5"
+      }
+    end
+
+    test "picks the longer prefix among overlapping resources", %{
+      account: account,
+      group: group,
+      site: site,
+      client: client,
+      subject: subject,
+      cidr_resource: cidr_resource,
+      gateway: gateway,
+      gateway_token: gateway_token
+    } do
+      wide = cidr_resource_fixture(account: account, site: site, address: "192.168.0.0/16", filters: [])
+      policy_fixture(account: account, group: group, resource: wide)
+
+      socket = join_channel(client, subject, channel: PortalAPI.Client.V3.Channel)
+      assert_push "init", _
+      :ok = connect_gateway_presence(gateway, gateway_token.id)
+
+      push(socket, "request_access", %{"ipv4" => "192.168.1.5", "protocol" => "tcp", "port" => 80})
+      assert_receive {:create_authorization, {_channel_pid, _socket_ref}, %{resource: %{id: narrow_id}}}
+      assert narrow_id == cidr_resource.id
+
+      push(socket, "request_access", %{"ipv4" => "192.168.2.5", "protocol" => "tcp", "port" => 80})
+      assert_receive {:create_authorization, {_channel_pid, _socket_ref}, %{resource: %{id: wide_id}}}
+      assert wide_id == wide.id
+    end
+
+    test "fails with :not_found when nothing covers the address", %{
+      client: client,
+      subject: subject,
+      internet_resource_policy: internet_resource_policy
+    } do
+      Repo.delete!(internet_resource_policy)
+
+      socket = join_channel(client, subject, channel: PortalAPI.Client.V3.Channel)
+      assert_push "init", _
+
+      push(socket, "request_access", %{"ipv4" => "172.16.0.1", "protocol" => "tcp", "port" => 80})
+
+      assert_push "authorization_creation_failed", %{reason: :not_found, ipv4: "172.16.0.1"} = failed
+      refute Map.has_key?(failed, :resource_id)
+    end
+
+    test "fails with :offline when no gateway serves the resource", %{
+      client: client,
+      subject: subject,
+      cidr_resource: cidr_resource
+    } do
+      socket = join_channel(client, subject, channel: PortalAPI.Client.V3.Channel)
+      assert_push "init", _
+
+      push(socket, "request_access", %{"ipv4" => "192.168.1.5", "protocol" => "tcp", "port" => 80})
+
+      resource_id = cidr_resource.id
+
+      assert_push "authorization_creation_failed", %{
+        reason: :offline,
+        resource_id: ^resource_id,
+        ipv4: "192.168.1.5"
+      }
+    end
+
+    test "is ignored on the v2 channel", %{client: client, subject: subject} do
+      socket = join_channel(client, subject, channel: PortalAPI.Client.V2.Channel)
+      assert_push "init", _
+
+      push(socket, "request_access", %{"ipv4" => "192.168.1.5", "protocol" => "tcp", "port" => 80})
+      :sys.get_state(socket.channel_pid)
+
+      refute_push "authorization_creation_failed", _
+      refute_push "authorization_created", _
+      refute_receive {:create_authorization, _, _}
     end
   end
 
