@@ -81,6 +81,7 @@ defmodule Portal.Application do
     # 3) Endpoints drain and terminate channels while Presence/PubSub/Repo are alive.
     # 4) Portal{API,Web}.RateLimit stops after endpoint traffic has ceased.
     base_children ++
+      device_pool_cache() ++
       client_session_queue() ++
       gateway_session_queue() ++
       policy_authorization_queue() ++
@@ -153,6 +154,17 @@ defmodule Portal.Application do
       :revocation_endpoint_queue,
       PortalAPI.Client.DeviceTrust.revocation_endpoint_queue_opts()
     )
+  end
+
+  # Tests start the cache themselves so it inherits their database sandbox.
+  defp device_pool_cache do
+    config = Application.get_env(:portal, Portal.DevicePool.Cache, [])
+
+    if Keyword.get(config, :enabled, true) do
+      [Portal.DevicePool.Cache]
+    else
+      []
+    end
   end
 
   defp queue_child(config_key, opts) do

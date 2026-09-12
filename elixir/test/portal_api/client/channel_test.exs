@@ -168,6 +168,8 @@ defmodule PortalAPI.Client.ChannelTest do
   end
 
   setup do
+    start_supervised!({Portal.DevicePool.Cache, callers: [self()]})
+
     start_supervised!(
       {Portal.Queue,
        Keyword.merge(PortalAPI.Client.Channel.policy_authorization_queue_opts(),
@@ -6106,7 +6108,7 @@ defmodule PortalAPI.Client.ChannelTest do
     end
   end
 
-  describe "handle_in/3 request_device_access" do
+  describe "handle_in/3 request_authorization for an own devices pool on v3" do
     setup %{account: account, actor: actor, group: group, subject: subject} do
       subject = put_user_agent(subject, "Mac OS/14 apple-client/1.5.16")
 
@@ -6123,7 +6125,6 @@ defmodule PortalAPI.Client.ChannelTest do
         )
 
       pool_resource = own_devices_pool_resource_fixture(account: account)
-
       policy_fixture(account: account, group: group, resource: pool_resource)
 
       %{
@@ -6134,14 +6135,13 @@ defmodule PortalAPI.Client.ChannelTest do
       }
     end
 
-    test "authorizes when the target IP belongs to one of the actor's own devices",
-         %{
-           client: client,
-           subject: subject,
-           target_client: target_client,
-           target_subject: target_subject,
-           pool_resource: pool_resource
-         } do
+    test "authorizes the actor's own device through the pool", %{
+      client: client,
+      subject: subject,
+      target_client: target_client,
+      target_subject: target_subject,
+      pool_resource: pool_resource
+    } do
       initiating_socket = join_channel(client, subject, channel: PortalAPI.Client.V3.Channel)
       assert_push "init", _
 
@@ -6153,10 +6153,9 @@ defmodule PortalAPI.Client.ChannelTest do
       target_client_name = target_client.name
       pool_id = pool_resource.id
 
-      push(initiating_socket, "request_device_access", %{
-        "ipv4" => target_ip,
-        "protocol" => "tcp",
-        "port" => 22
+      push(initiating_socket, "request_authorization", %{
+        "resource_id" => pool_id,
+        "ipv4" => target_ip
       })
 
       assert_push "client_device_access_authorized", %{
@@ -6172,145 +6171,14 @@ defmodule PortalAPI.Client.ChannelTest do
       }
     end
 
-    test "picks the pool by the flow", %{
+    test "denies another actor's device with :forbidden", %{
       account: account,
-      group: group,
       client: client,
       subject: subject,
-      target_client: target_client,
-      target_subject: target_subject,
-      pool_resource: all_pool
-    } do
-      ssh_pool =
-        own_devices_pool_resource_fixture(
-          account: account,
-          filters: [%{protocol: :tcp, ports: ["22"]}]
-        )
-
-      policy_fixture(account: account, group: group, resource: ssh_pool)
-
-      initiating_socket = join_channel(client, subject, channel: PortalAPI.Client.V3.Channel)
-      assert_push "init", _
-
-      join_channel(target_client, target_subject)
-      assert_push "init", _
-
-      target_ip = Portal.Types.INET.to_string(target_client.ipv4)
-      [first_pool_id, _] = Enum.sort([all_pool.id, ssh_pool.id])
-      all_pool_id = all_pool.id
-
-      push(initiating_socket, "request_device_access", %{
-        "ipv4" => target_ip,
-        "protocol" => "tcp",
-        "port" => 22
-      })
-
-      assert_push "client_device_access_authorized", %{
-        resource_id: ^first_pool_id,
-        ice_role: :controlling
-      }
-
-      push(initiating_socket, "request_device_access", %{
-        "ipv4" => target_ip,
-        "protocol" => "udp",
-        "port" => 53
-      })
-
-      assert_push "client_device_access_authorized", %{
-        resource_id: ^all_pool_id,
-        ice_role: :controlling
-      }
-    end
-
-    test "denies with :forbidden when no pool permits the flow", %{
-      account: account,
-      group: group,
-      client: client,
-      subject: subject,
-      target_client: target_client,
-      target_subject: target_subject,
       pool_resource: pool_resource
     } do
-      Portal.Repo.delete_all(from(p in Portal.Policy, where: p.resource_id == ^pool_resource.id))
-
-      ssh_pool =
-        own_devices_pool_resource_fixture(
-          account: account,
-          filters: [%{protocol: :tcp, ports: ["22"]}]
-        )
-
-      policy_fixture(account: account, group: group, resource: ssh_pool)
-
-      initiating_socket = join_channel(client, subject, channel: PortalAPI.Client.V3.Channel)
-      assert_push "init", _
-
-      join_channel(target_client, target_subject)
-      assert_push "init", _
-
-      target_ip = Portal.Types.INET.to_string(target_client.ipv4)
-
-      push(initiating_socket, "request_device_access", %{
-        "ipv4" => target_ip,
-        "protocol" => "udp",
-        "port" => 53
-      })
-
-      assert_push "client_device_access_denied", %{ipv4: ^target_ip, reason: :forbidden}
-      refute_push "client_device_access_authorized", _
-    end
-
-    test "denies with :forbidden for the requesting device itself", %{
-      client: client,
-      subject: subject
-    } do
-      initiating_socket = join_channel(client, subject, channel: PortalAPI.Client.V3.Channel)
-      assert_push "init", _
-
-      own_ip = Portal.Types.INET.to_string(client.ipv4)
-
-      push(initiating_socket, "request_device_access", %{
-        "ipv4" => own_ip,
-        "protocol" => "tcp",
-        "port" => 22
-      })
-
-      assert_push "client_device_access_denied", %{ipv4: ^own_ip, reason: :forbidden}
-    end
-
-    test "denies with :invalid_flow when the flow is malformed", %{
-      client: client,
-      subject: subject,
-      target_client: target_client
-    } do
-      initiating_socket = join_channel(client, subject, channel: PortalAPI.Client.V3.Channel)
-      assert_push "init", _
-
-      target_ip = Portal.Types.INET.to_string(target_client.ipv4)
-
-      for flow <- [
-            %{"protocol" => "gre"},
-            %{"protocol" => "tcp"},
-            %{"protocol" => "udp", "port" => 70_000},
-            %{"protocol" => "tcp", "port" => "22"}
-          ] do
-        push(initiating_socket, "request_device_access", Map.put(flow, "ipv4", target_ip))
-
-        assert_push "client_device_access_denied", %{ipv4: ^target_ip, reason: :invalid_flow}
-      end
-    end
-
-    test "denies when the target IP belongs to another actor's device",
-         %{
-           account: account,
-           client: client,
-           subject: subject,
-           pool_resource: pool_resource
-         } do
       stranger_actor = actor_fixture(account: account)
-
-      stranger =
-        client_fixture(account: account, actor: stranger_actor, name: "Stranger 42")
-        |> fetch_device!()
+      stranger = client_fixture(account: account, actor: stranger_actor) |> fetch_device!()
 
       stranger_subject =
         subject_fixture(
@@ -6328,268 +6196,12 @@ defmodule PortalAPI.Client.ChannelTest do
 
       stranger_ip = Portal.Types.INET.to_string(stranger.ipv4)
 
-      push(initiating_socket, "request_device_access", %{
-        "ipv4" => stranger_ip,
-        "protocol" => "tcp",
-        "port" => 22
+      push(initiating_socket, "request_authorization", %{
+        "resource_id" => pool_resource.id,
+        "ipv4" => stranger_ip
       })
 
       assert_push "client_device_access_denied", %{ipv4: ^stranger_ip, reason: :forbidden}
-    end
-
-    test "authorizes when the target IPv6 belongs to one of the actor's own devices",
-         %{
-           client: client,
-           subject: subject,
-           target_client: target_client,
-           target_subject: target_subject,
-           pool_resource: pool_resource
-         } do
-      initiating_socket = join_channel(client, subject, channel: PortalAPI.Client.V3.Channel)
-      assert_push "init", _
-
-      join_channel(target_client, target_subject)
-      assert_push "init", _
-
-      target_ipv6 = Portal.Types.INET.to_string(target_client.ipv6)
-      target_client_id = target_client.id
-
-      push(initiating_socket, "request_device_access", %{
-        "ipv6" => target_ipv6,
-        "protocol" => "tcp",
-        "port" => 22
-      })
-
-      assert_push "client_device_access_authorized", %{
-        client_id: ^target_client_id,
-        ice_role: :controlling
-      }
-    end
-
-    test "denies when target IP belongs to no device in the account", %{
-      client: client,
-      subject: subject,
-      pool_resource: pool_resource
-    } do
-      initiating_socket = join_channel(client, subject, channel: PortalAPI.Client.V3.Channel)
-      assert_push "init", _
-
-      orphan_ip = "100.64.255.99"
-
-      push(initiating_socket, "request_device_access", %{
-        "ipv4" => orphan_ip,
-        "protocol" => "tcp",
-        "port" => 22
-      })
-
-      assert_push "client_device_access_denied", %{ipv4: ^orphan_ip, reason: :not_found}
-    end
-
-    test "persists a policy_authorization on success", %{
-      client: client,
-      subject: subject,
-      target_client: target_client,
-      target_subject: target_subject,
-      pool_resource: pool_resource
-    } do
-      initiating_socket = join_channel(client, subject, channel: PortalAPI.Client.V3.Channel)
-      assert_push "init", _
-
-      join_channel(target_client, target_subject)
-      assert_push "init", _
-
-      target_ip = Portal.Types.INET.to_string(target_client.ipv4)
-
-      push(initiating_socket, "request_device_access", %{
-        "ipv4" => target_ip,
-        "protocol" => "tcp",
-        "port" => 22
-      })
-
-      assert_push "client_device_access_authorized", _
-
-      :sys.get_state(initiating_socket.channel_pid)
-      Portal.Queue.flush(:policy_authorization_queue)
-
-      pa =
-        Portal.Repo.one(
-          from(p in Portal.PolicyAuthorization,
-            where: p.resource_id == ^pool_resource.id,
-            where: p.initiating_device_id == ^client.id,
-            where: p.receiving_device_id == ^target_client.id
-          )
-        )
-
-      assert %Portal.PolicyAuthorization{} = pa
-    end
-
-    # End-to-end ordering test for the c2c path. Same shape as the
-    # `delivers :create_authorization before :reject_access` test for gateway
-    # flows. We register the test pid as the c2c receiver in `:pg` (instead
-    # of joining a real target channel) so we can directly observe the order
-    # of `:client_device_access_authorized` and `:reject_access` at the
-    # receiver. The Queue-level test in `Portal.QueueTest` already asserts
-    # both sends originate from the same Queue pid.
-    test "delivers :client_device_access_authorized before :reject_access on FK violation",
-         %{
-           client: client,
-           subject: subject,
-           target_client: target_client,
-           target_subject: target_subject,
-           pool_resource: pool_resource
-         } do
-      target_client_id = target_client.id
-
-      # Manually place the target in presence (so the initiator's flow finds
-      # it as online) and register the test pid as the `:pg` receiver for
-      # target_client_id so we capture both messages at the same process.
-      session_meta = %{
-        ipv4: target_client.ipv4.address,
-        ipv6: target_client.ipv6.address,
-        name: target_client.name,
-        public_key: Portal.DeviceFixtures.generate_public_key(),
-        psk_base: target_client.psk_base,
-        remote_ip: %Postgrex.INET{address: {100, 64, 0, 99}},
-        version: "1.5.16",
-        user_agent: "Mac OS/14 apple-client/1.5.16"
-      }
-
-      :ok =
-        Presence.Devices.connect(
-          target_client,
-          target_subject.credential.id,
-          session_meta
-        )
-
-      :ok = PG.register(target_client_id)
-
-      initiating_socket = join_channel(client, subject, channel: PortalAPI.Client.V3.Channel)
-      assert_push "init", _
-
-      target_ip = Portal.Types.INET.to_string(target_client.ipv4)
-
-      push(initiating_socket, "request_device_access", %{
-        "ipv4" => target_ip,
-        "protocol" => "tcp",
-        "port" => 22
-      })
-
-      assert_receive {:client_device_access_authorized, {_ack_to, _ref}, _allow_payload}, 500
-
-      # Force the queued insert to fail by deleting the policy that grants this
-      # authorization. After flush, on_failed must fire reject_access for the
-      # orphaned entry — if the channel ever bypasses Queue.enqueue for this
-      # call site, the row would not be buffered and no reject would arrive.
-      policy =
-        Portal.Repo.one!(from(p in Portal.Policy, where: p.resource_id == ^pool_resource.id))
-
-      Portal.Repo.delete!(policy)
-      Portal.Queue.flush(:policy_authorization_queue)
-
-      client_id = client.id
-      pool_resource_id = pool_resource.id
-      assert_receive {:reject_access, %Portal.PolicyAuthorization{} = pa}, 500
-      assert pa.initiating_device_id == client_id
-      assert pa.resource_id == pool_resource_id
-    end
-
-    test "does not release the initiator until the target channel acks", %{
-      client: client,
-      subject: subject,
-      target_client: target_client,
-      target_subject: target_subject,
-      pool_resource: pool_resource
-    } do
-      target_client_id = target_client.id
-
-      session_meta = %{
-        ipv4: target_client.ipv4.address,
-        ipv6: target_client.ipv6.address,
-        name: target_client.name,
-        public_key: Portal.DeviceFixtures.generate_public_key(),
-        psk_base: target_client.psk_base,
-        remote_ip: %Postgrex.INET{address: {100, 64, 0, 99}},
-        version: "1.5.16",
-        user_agent: "Mac OS/14 apple-client/1.5.16"
-      }
-
-      :ok = Presence.Devices.connect(target_client, target_subject.credential.id, session_meta)
-      # Test pid stands in for the target's channel so we can capture (and
-      # withhold) the ack.
-      :ok = PG.register(target_client_id)
-
-      initiating_socket = join_channel(client, subject, channel: PortalAPI.Client.V3.Channel)
-      assert_push "init", _
-
-      target_ip = Portal.Types.INET.to_string(target_client.ipv4)
-
-      push(initiating_socket, "request_device_access", %{
-        "ipv4" => target_ip,
-        "protocol" => "tcp",
-        "port" => 22
-      })
-
-      assert_receive {:client_device_access_authorized, {ack_to, ref}, _payload}, 500
-
-      # The initiator must not be released before the target acks.
-      refute_push "client_device_access_authorized", _, 200
-
-      target_client_name = target_client.name
-
-      send(ack_to, {:device_access_acked, ref, false, target_client_name})
-
-      assert_push "client_device_access_authorized", %{
-        client_id: ^target_client_id,
-        client_name: ^target_client_name,
-        ice_role: :controlling
-      }
-    end
-
-    test "denies the initiator with :offline when the target never acks", %{
-      client: client,
-      subject: subject,
-      target_client: target_client,
-      target_subject: target_subject,
-      pool_resource: pool_resource
-    } do
-      target_client_id = target_client.id
-
-      session_meta = %{
-        ipv4: target_client.ipv4.address,
-        ipv6: target_client.ipv6.address,
-        name: target_client.name,
-        public_key: Portal.DeviceFixtures.generate_public_key(),
-        psk_base: target_client.psk_base,
-        remote_ip: %Postgrex.INET{address: {100, 64, 0, 99}},
-        version: "1.5.16",
-        user_agent: "Mac OS/14 apple-client/1.5.16"
-      }
-
-      :ok = Presence.Devices.connect(target_client, target_subject.credential.id, session_meta)
-      :ok = PG.register(target_client_id)
-
-      initiating_socket = join_channel(client, subject, channel: PortalAPI.Client.V3.Channel)
-      assert_push "init", _
-
-      target_ip = Portal.Types.INET.to_string(target_client.ipv4)
-
-      push(initiating_socket, "request_device_access", %{
-        "ipv4" => target_ip,
-        "protocol" => "tcp",
-        "port" => 22
-      })
-
-      assert_receive {:client_device_access_authorized, {_ack_to, ref}, _payload}, 500
-
-      # Simulate the ack-wait timeout firing before any ack arrives.
-      send(initiating_socket.channel_pid, {:authorization_creation_timeout, ref})
-
-      assert_push "client_device_access_denied", %{
-        client_id: ^target_client_id,
-        reason: :offline
-      }
-
-      refute_push "client_device_access_authorized", _, 100
     end
   end
 
@@ -6601,7 +6213,7 @@ defmodule PortalAPI.Client.ChannelTest do
       %{subject: put_user_agent(subject, "Mac OS/14 apple-client/1.5.16"), pool_resource: pool_resource}
     end
 
-    test "reach clients on the v3 channel without their members", %{
+    test "reach clients on the v3 channel with the bitmaps of their members", %{
       account: account,
       group: group,
       client: client,
@@ -6617,16 +6229,109 @@ defmodule PortalAPI.Client.ChannelTest do
       assert_push "init", %{resources: resources}
       pool_id = pool_resource.id
       listed_pool_id = listed_pool.id
+      own_members = Portal.DevicePool.Bitmap.encode_devices([fetch_device!(client)])
+      listed_members = Portal.DevicePool.Bitmap.encode_devices([member])
 
-      assert [%{id: ^pool_id, type: :device_pool, name: _, filters: []} = pool] =
+      assert [%{id: ^pool_id, type: :device_pool, name: _, filters: [], members: ^own_members} = pool] =
                Enum.filter(resources, &(&1.id == pool_id))
 
       refute Map.has_key?(pool, :address)
 
-      assert [%{id: ^listed_pool_id, type: :device_pool} = listed] =
+      assert [%{id: ^listed_pool_id, type: :device_pool, members: ^listed_members} = listed] =
                Enum.filter(resources, &(&1.id == listed_pool_id))
 
       refute Map.has_key?(listed, :devices)
+    end
+
+    test "push the members that joined and left when a device of the actor appears", %{
+      account: account,
+      actor: actor,
+      client: client,
+      subject: subject,
+      pool_resource: pool_resource
+    } do
+      join_channel(client, subject, channel: PortalAPI.Client.V3.Channel)
+      assert_push "init", _
+
+      added = client_fixture(account: account, actor: actor) |> fetch_device!()
+
+      :ok = PubSub.Changes.broadcast(account.id, :devices, %Changes.Change{lsn: 100, op: :insert, struct: added})
+
+      pool_id = pool_resource.id
+      added_members = Portal.DevicePool.Bitmap.encode_devices([added])
+      nothing = Portal.DevicePool.Bitmap.encode_devices([])
+
+      assert_push "device_pool_members_updated", %{
+        id: ^pool_id,
+        added: ^added_members,
+        removed: ^nothing
+      }
+
+      refute_push "resource_created_or_updated", %{id: ^pool_id}
+
+      stranger =
+        client_fixture(account: account, actor: actor_fixture(account: account)) |> fetch_device!()
+
+      :ok = PubSub.Changes.broadcast(account.id, :devices, %Changes.Change{lsn: 101, op: :insert, struct: stranger})
+
+      refute_push "device_pool_members_updated", %{id: ^pool_id}
+      refute_push "resource_created_or_updated", %{id: ^pool_id}
+    end
+
+    test "push the whole pool again when the change does not follow the version it sent", %{
+      account: account,
+      actor: actor,
+      client: client,
+      subject: subject,
+      pool_resource: pool_resource
+    } do
+      join_channel(client, subject, channel: PortalAPI.Client.V3.Channel)
+      assert_push "init", _
+
+      pool_id = pool_resource.id
+      members = Portal.DevicePool.Bitmap.encode_devices([fetch_device!(client)])
+      nothing = Portal.DevicePool.Bitmap.encode_devices([])
+
+      :ok =
+        Portal.PubSub.local_broadcast(
+          "device_pool_members:#{account.id}",
+          {:device_pool_members_updated, pool_id, {:actor, actor.id},
+           %{version: 9, previous: 7, members: members, added: nothing, removed: nothing}}
+        )
+
+      assert_push "resource_created_or_updated", %{
+        id: ^pool_id,
+        type: :device_pool,
+        members: ^members
+      }
+
+      refute_push "device_pool_members_updated", %{id: ^pool_id}
+    end
+
+    for {name, opts} <- [{"v2", [channel: PortalAPI.Client.V2.Channel]}, {"legacy", []}] do
+      test "leave #{name} clients out of member changes", %{
+        account: account,
+        actor: actor,
+        client: client,
+        subject: subject,
+        pool_resource: pool_resource
+      } do
+        join_channel(client, subject, unquote(opts))
+        assert_push "init", _
+
+        pool_id = pool_resource.id
+        nothing = Portal.DevicePool.Bitmap.encode_devices([])
+
+        :ok =
+          Portal.PubSub.local_broadcast(
+            "device_pool_members:#{account.id}",
+            {:device_pool_members_updated, pool_id, {:actor, actor.id},
+             %{version: 2, previous: 1, members: nothing, added: nothing, removed: nothing}}
+          )
+
+        refute_push "device_pool_members_updated", %{id: ^pool_id}
+        refute_push "resource_created_or_updated", %{id: ^pool_id}
+      end
     end
 
     test "reach clients on the v2 channel in the old wire format", %{
@@ -6651,6 +6356,7 @@ defmodule PortalAPI.Client.ChannelTest do
                Enum.filter(resources, &(&1.id == pool_id))
 
       refute Map.has_key?(pool, :devices)
+      refute Map.has_key?(pool, :members)
 
       assert [%{id: ^listed_pool_id, type: :static_device_pool, devices: [%{client_id: ^member_id}]}] =
                Enum.filter(resources, &(&1.id == listed_pool_id))
@@ -6666,8 +6372,10 @@ defmodule PortalAPI.Client.ChannelTest do
       assert_push "init", %{resources: resources}
       pool_id = pool_resource.id
 
-      assert [%{id: ^pool_id, type: :dynamic_device_pool, address: "*.firezone.network"}] =
+      assert [%{id: ^pool_id, type: :dynamic_device_pool, address: "*.firezone.network"} = pool] =
                Enum.filter(resources, &(&1.id == pool_id))
+
+      refute Map.has_key?(pool, :members)
     end
   end
 

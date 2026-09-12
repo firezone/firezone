@@ -219,6 +219,7 @@ config :portal, :client_session_queue, enabled: false
 config :portal, :gateway_session_queue, enabled: false
 config :portal, :policy_authorization_queue, enabled: false
 config :portal, :revocation_endpoint_queue, enabled: false
+config :portal, Portal.DevicePool.Cache, enabled: false
 
 config :portal, Portal.ComponentVersions,
   fetch_from_url: false,

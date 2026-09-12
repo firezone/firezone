@@ -111,6 +111,7 @@ defmodule PortalAPI.Client.Channel.Shared do
         cache: cache,
         authorizations_cache: authorizations_cache,
         pending_authorizations: %{},
+        pool_member_versions: %{},
         iceless_capable: false
       )
       # Track client's presence and monitor tracker shard processes for crash recovery
@@ -118,8 +119,13 @@ defmodule PortalAPI.Client.Channel.Shared do
 
     :ok = PubSub.Changes.subscribe(socket.assigns.client.account_id)
 
+    if protocol_version(socket) >= 3 do
+      :ok = Portal.DevicePool.Cache.subscribe(socket.assigns.client.account_id)
+    end
+
     {:noreply, socket} = register(socket)
 
+    {resources, socket} = with_pool_members(resources, socket)
     init(socket, resources, relays)
 
     {:noreply, socket}
@@ -169,6 +175,8 @@ defmodule PortalAPI.Client.Channel.Shared do
     for resource_id <- removed_ids do
       push(socket, "resource_deleted", resource_id)
     end
+
+    {added_resources, socket} = with_pool_members(added_resources, socket)
 
     for resource <- added_resources do
       push(
@@ -519,6 +527,39 @@ defmodule PortalAPI.Client.Channel.Shared do
   # was already told it could accept the connection. Mirrors the gateway's
   # reject_access handler: drop the cached authorization and push `reject_access`
   # via the same eviction path used for CDC deletes.
+  # A channel that sent the previous version forwards the diff; any other sends the
+  # whole set again, since the client's copy is not the one the diff applies to.
+  def handle_info({:device_pool_members_updated, pool_id, scope, update}, socket) do
+    pool_id_bytes = Ecto.UUID.dump!(pool_id)
+    versions = socket.assigns.pool_member_versions
+
+    with true <- Portal.DevicePool.Cache.for_subject?(scope, socket.assigns.subject),
+         %Cache.Cacheable.Resource{} = pool <-
+           Enum.find(socket.assigns.cache.connectable_resources, &(&1.id == pool_id_bytes)) do
+      if Map.get(versions, pool_id) == update.previous do
+        push(socket, "device_pool_members_updated", %{
+          id: pool_id,
+          added: update.added,
+          removed: update.removed
+        })
+      else
+        push(
+          socket,
+          "resource_created_or_updated",
+          Views.Resource.render(
+            %{pool | members: update.members},
+            socket.assigns.client,
+            protocol_version(socket)
+          )
+        )
+      end
+
+      {:noreply, assign(socket, pool_member_versions: Map.put(versions, pool_id, update.version))}
+    else
+      _ -> {:noreply, socket}
+    end
+  end
+
   def handle_info({:reject_access, %Portal.PolicyAuthorization{} = policy_authorization}, socket) do
     socket = cancel_authz_durability_timer(socket, policy_authorization.id)
     revoke_policy_authorization(socket, policy_authorization)
@@ -857,18 +898,11 @@ defmodule PortalAPI.Client.Channel.Shared do
     {:noreply, socket}
   end
 
-  # Connlib asks for access when it sees a packet for a tunnel address that no pool it
-  # already holds permits. The portal finds the device behind the address, picks the pool
-  # by the flow and tells both sides which pool authorized the connection.
-  #
-  # Older clients send this message by accident for any packet into 100.64.0.0/10, a
-  # leftover of the client-to-client PoC, so it only means something on the v3 protocol.
-  def handle_in("request_device_access", payload, socket) do
-    if protocol_version(socket) >= 3 do
-      handle_request_device_access(payload, socket)
-    else
-      {:noreply, socket}
-    end
+  # Some clients send these sporadically by accident since any packet with a destination in
+  # 100.64.0.0/10 will trigger it in certain older clients. Message was introduced for the PoC
+  # of client-to-client, but was replaced with the standard create-authorization message. We no-op it.
+  def handle_in("request_device_access", _payload, socket) do
+    {:noreply, socket}
   end
 
   # DEPRECATED IN 1.4
@@ -1259,27 +1293,6 @@ defmodule PortalAPI.Client.Channel.Shared do
 
   defp parse_target_address(_), do: {:error, :missing_address}
 
-  defp parse_flow(%{"protocol" => "icmp"}), do: {:ok, :icmp}
-
-  defp parse_flow(%{"protocol" => "tcp", "port" => port}) when is_integer(port) and port in 0..65_535,
-    do: {:ok, {:tcp, port}}
-
-  defp parse_flow(%{"protocol" => "udp", "port" => port}) when is_integer(port) and port in 0..65_535,
-    do: {:ok, {:udp, port}}
-
-  defp parse_flow(_payload), do: {:error, :invalid_flow}
-
-  defp fetch_target_device(target, socket) do
-    with {:ok, %Portal.Device{} = device} <-
-           Database.get_device_by_address(target, socket.assigns.subject) do
-      if device.id == socket.assigns.client.id do
-        {:error, :forbidden}
-      else
-        {:ok, device}
-      end
-    end
-  end
-
   defp fetch_connectable_device_pool(cache, resource_id) do
     rid_bytes = Ecto.UUID.dump!(resource_id)
 
@@ -1449,53 +1462,6 @@ defmodule PortalAPI.Client.Channel.Shared do
         push(socket, authorization_creation_failed_event(socket), %{
           resource_id: resource_id,
           reason: :version_mismatch
-        })
-
-        {:noreply, socket}
-    end
-  end
-
-  defp handle_request_device_access(payload, socket) do
-    with {:ok, target} <- parse_target_address(payload),
-         {:ok, flow} <- parse_flow(payload),
-         {:ok, %Portal.Device{} = device} <- fetch_target_device(target, socket),
-         {:ok, resource, membership_id, policy_id, expires_at} <-
-           Cache.Client.authorize_device_pool(
-             socket.assigns.cache,
-             socket.assigns.client,
-             device,
-             flow,
-             socket.assigns.subject
-           ) do
-      case find_online_client_by_address(socket.assigns.client.account_id, target) do
-        {:ok, target_client_id, target_meta} ->
-          handle_authorized_pool_target(
-            target_client_id,
-            target_meta,
-            resource,
-            membership_id,
-            policy_id,
-            expires_at,
-            payload,
-            socket
-          )
-
-        :offline ->
-          push(socket, "client_device_access_denied", %{
-            client_id: device.id,
-            ipv4: payload["ipv4"],
-            ipv6: payload["ipv6"],
-            reason: :offline
-          })
-
-          {:noreply, socket}
-      end
-    else
-      {:error, reason} ->
-        push(socket, "client_device_access_denied", %{
-          ipv4: payload["ipv4"],
-          ipv6: payload["ipv6"],
-          reason: reason
         })
 
         {:noreply, socket}
@@ -2483,6 +2449,8 @@ defmodule PortalAPI.Client.Channel.Shared do
       push(socket, "resource_deleted", resource_id)
     end
 
+    {added_resources, socket} = with_pool_members(added_resources, socket)
+
     for resource <- added_resources do
       push(
         socket,
@@ -2491,7 +2459,31 @@ defmodule PortalAPI.Client.Channel.Shared do
       )
     end
 
-    {:noreply, assign(socket, cache: cache)}
+    versions = Map.drop(socket.assigns.pool_member_versions, removed_ids)
+
+    {:noreply, assign(socket, cache: cache, pool_member_versions: versions)}
+  end
+
+  # The v3 protocol receives a pool with the bitmaps of its members, so connlib routes to
+  # them and asks for access through the pool like it does for any other resource. The
+  # channel remembers the version it sent so a later change can go out as a diff.
+  defp with_pool_members(resources, socket) do
+    if protocol_version(socket) >= 3 do
+      Enum.map_reduce(resources, socket, fn
+        %Cache.Cacheable.Resource{type: :device_pool} = pool, socket ->
+          %{version: version, members: members} =
+            Portal.DevicePool.Cache.members(pool, socket.assigns.subject)
+
+          versions = Map.put(socket.assigns.pool_member_versions, Ecto.UUID.load!(pool.id), version)
+
+          {%{pool | members: members}, assign(socket, pool_member_versions: versions)}
+
+        resource, socket ->
+          {resource, socket}
+      end)
+    else
+      {resources, socket}
+    end
   end
 
   defp load_balance_relays({lat, lon}, relays) when is_nil(lat) or is_nil(lon) do

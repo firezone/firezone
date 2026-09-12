@@ -101,7 +101,6 @@ defmodule Portal.Cache.Client do
   @type ipv6_tuple ::
           {char(), char(), char(), char(), char(), char(), char(), char()}
   @type denied_addresses :: {ipv4_tuple(), ipv6_tuple()} | nil
-  @type flow :: {:tcp | :udp, :inet.port_number()} | :icmp
   @type pool_device :: %{
           id: Ecto.UUID.t(),
           ipv4: Postgrex.INET.t(),
@@ -215,36 +214,6 @@ defmodule Portal.Cache.Client do
       nil -> {:error, :forbidden}
       device_id -> {:ok, device_id}
     end
-  end
-
-  @doc """
-    Picks the connectable device pool the client reaches `device` through for `flow`: the
-    first pool by id that admits the device, permits the flow and passes the policy check.
-  """
-  @spec authorize_device_pool(
-          t(),
-          Portal.Device.t(),
-          Portal.Device.t(),
-          flow(),
-          Authentication.Subject.t()
-        ) ::
-          {:ok, Cache.Cacheable.Resource.t(), Ecto.UUID.t() | nil, Ecto.UUID.t(),
-           DateTime.t() | nil}
-          | {:error, :forbidden}
-  def authorize_device_pool(cache, client, device, flow, subject) do
-    cache.connectable_resources
-    |> Enum.filter(&(&1.type == :device_pool))
-    |> Enum.sort_by(& &1.id)
-    |> Enum.find_value({:error, :forbidden}, fn pool ->
-      with true <- DeviceMembershipCriteria.member?(pool.device_membership_criteria, device, subject),
-           true <- filters_permit?(pool.filters, flow),
-           {:ok, _resource, _membership_id, _policy_id, _expires_at} = authorized <-
-             authorize_resource(cache, client, load!(pool.id), subject) do
-        authorized
-      else
-        _ -> nil
-      end
-    end)
   end
 
   @doc """
@@ -774,24 +743,6 @@ defmodule Portal.Cache.Client do
       end)
 
     {pool_members, device_addresses}
-  end
-
-  defp filters_permit?([], _flow), do: true
-  defp filters_permit?(filters, flow), do: Enum.any?(filters, &filter_permits?(&1, flow))
-
-  defp filter_permits?(%{protocol: :icmp}, :icmp), do: true
-
-  defp filter_permits?(%{protocol: protocol, ports: ports}, {protocol, port}) do
-    ports == [] or Enum.any?(ports, &port_in_range?(&1, port))
-  end
-
-  defp filter_permits?(_filter, _flow), do: false
-
-  defp port_in_range?(range, port) do
-    case range |> String.split("-") |> Enum.map(&String.to_integer(String.trim(&1))) do
-      [single] -> single == port
-      [first, last] -> first <= port and port <= last
-    end
   end
 
   defp render_pool_devices(rid_bytes, pool_members, device_addresses) do

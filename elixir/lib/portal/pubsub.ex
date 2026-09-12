@@ -29,6 +29,13 @@ defmodule Portal.PubSub do
   end
 
   @doc """
+  See `Phoenix.PubSub.local_broadcast/3`.
+  """
+  def local_broadcast(topic, payload) do
+    Phoenix.PubSub.local_broadcast(__MODULE__, topic, payload)
+  end
+
+  @doc """
   See `Phoenix.PubSub.subscribe/2`.
   """
   def subscribe(topic) do

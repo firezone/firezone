@@ -127,6 +127,7 @@ defmodule PortalAPI.Client.Views.ResourceTest do
             ipv6: %Postgrex.INET{address: {64_768, 0, 0, 0, 0, 0, 0, 1}, netmask: 128}
           }
         ],
+        members: %{ipv4: "OjAAAAAAAAA=", ipv6: "OjAAAAAAAAA="},
         filters: [%{protocol: :tcp, ports: ["22"]}]
       }
 
@@ -135,6 +136,7 @@ defmodule PortalAPI.Client.Views.ResourceTest do
       assert rendered.id == id_string
       assert rendered.type == :device_pool
       assert rendered.name == "Laptops"
+      assert rendered.members == %{ipv4: "OjAAAAAAAAA=", ipv6: "OjAAAAAAAAA="}
       assert [%{protocol: :tcp, port_range_start: 22, port_range_end: 22}] = rendered.filters
 
       refute Map.has_key?(rendered, :address)

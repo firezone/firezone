@@ -9,6 +9,7 @@ defmodule Portal.Cache.Cacheable.Resource do
     :ip_stack,
     :filters,
     :devices,
+    :members,
     :site
   ]
 
@@ -33,6 +34,7 @@ defmodule Portal.Cache.Cacheable.Resource do
           ip_stack: atom(),
           filters: [filter()],
           devices: [pool_device()] | nil,
+          members: Portal.DevicePool.Bitmap.t() | nil,
           site: Portal.Cache.Cacheable.Site.t() | nil
         }
 end

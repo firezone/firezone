@@ -94,6 +94,7 @@ defmodule PortalAPI.Client.Views.Resource do
       id: resource.id,
       type: :device_pool,
       name: resource.name,
+      members: resource.members,
       filters: Enum.flat_map(resource.filters, &render_filter/1)
     }
   end
