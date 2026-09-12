@@ -281,12 +281,16 @@ pub(super) fn generate(g: &mut Generator, state: &ReferenceState) -> Option<Tran
             let (pool_id, old_members) =
                 listed_device_pools[g.choose_index(listed_device_pools.len())].clone();
             let members = packets::arb_pool_members(g, state);
+            let added = members.difference(&old_members).copied().collect();
             let removed = old_members.difference(&members).copied().collect();
+            let as_diff = g.bool();
 
             Transition::UpdateDevicePoolMembers {
                 pool_id,
                 members,
+                added,
                 removed,
+                as_diff,
             }
         }
     };
@@ -367,7 +371,13 @@ fn arb_resource_with_different_type(
                 filters,
             })
         }
-        ResourceType::DevicePool => Resource::DevicePool(DevicePoolResource { id, name, filters }),
+        // A resource turned into a pool admits everyone until its members change.
+        ResourceType::DevicePool => Resource::DevicePool(DevicePoolResource {
+            id,
+            name,
+            filters,
+            members: state.portal.client_addresses(state.all_client_ids()),
+        }),
     }
 }
 

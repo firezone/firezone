@@ -221,15 +221,22 @@ impl ReferenceState {
                 pool_id,
                 members,
                 removed,
+                ..
             } => {
                 state.portal.set_pool_members(*pool_id, members.clone());
+                let pool = state.portal.device_pool(*pool_id).expect("known pool");
 
                 // The portal revokes every grant towards a device that left, which also
                 // drops that device's own grants through the pool.
                 for (client_id, client) in &mut state.clients {
                     let peers = (!removed.contains(client_id)).then_some(removed);
 
-                    client.exec_mut(|c| c.forget_pool_grants(*pool_id, peers));
+                    client.exec_mut(|c| {
+                        if c.has_resource(*pool_id) {
+                            c.add_device_pool_resource(pool.clone());
+                        }
+                        c.forget_pool_grants(*pool_id, peers);
+                    });
                 }
             }
             Transition::SetInternetResourceState {
@@ -818,7 +825,6 @@ impl ReferenceState {
                         .filter(|gateway| connected_gateways.contains(gateway))
                 },
                 |ip| clients_by_ip.get(&ip).copied(),
-                |held, target, protocol| portal.pick_device_pool(held, target, protocol),
             )
         });
 

@@ -717,21 +717,20 @@ impl RefClient {
         gateway_by_resource: impl Fn(ResourceId) -> Option<GatewayId>,
         gateway_by_ip: impl Fn(IpAddr) -> Option<GatewayId>,
         client_by_ip: impl Fn(IpAddr) -> Option<ClientId>,
-        pick_pool: impl Fn(&[ResourceId], ClientId, Protocol) -> Option<ResourceId>,
     ) -> (PacketRoute, Option<ClientId>) {
         if dst.ip_addr().is_some_and(|ip| ip.is_multicast()) {
             return (PacketRoute::Drop, None);
         }
 
-        // A tunnel IP is a peer client or a gateway. Anything else in the range makes
-        // the client ask the portal, which denies it.
+        // A tunnel IP is a peer client listed by a pool we hold, or a gateway we are
+        // connected to. Anything else in the range is unroutable.
         if let Some(ip) = dst.ip_addr().filter(|ip| tunnel_proto::is_peer(*ip)) {
             if let Some(peer) = client_by_ip(ip) {
-                return self.route_to_peer(peer, protocol, pick_pool);
+                return self.route_to_peer(peer, ip, protocol);
             }
 
             return (
-                gateway_by_ip(ip).map_or(PacketRoute::RejectedByClient, PacketRoute::Gateway),
+                gateway_by_ip(ip).map_or(PacketRoute::Drop, PacketRoute::Gateway),
                 None,
             );
         }
@@ -785,16 +784,18 @@ impl RefClient {
     }
 
     /// A flow to a peer goes through a pool we already hold a grant for if one permits
-    /// it, otherwise the client asks the portal for one. A malicious client sends
-    /// through a granted pool regardless and the peer rejects the flow.
+    /// it, otherwise through the pool listing the peer that permits it, greatest id first,
+    /// after asking the portal. With no permitting pool the flow is rejected locally, and
+    /// with no pool listing the peer at all it is unroutable. A malicious client sends
+    /// through a non-permitting pool regardless and the peer rejects the flow.
     ///
     /// Also returns the peer when the portal granted the flow, since the peer then
     /// forgets its own grants towards us.
     fn route_to_peer(
         &mut self,
         peer: ClientId,
+        ip: IpAddr,
         protocol: Protocol,
-        pick_pool: impl Fn(&[ResourceId], ClientId, Protocol) -> Option<ResourceId>,
     ) -> (PacketRoute, Option<ClientId>) {
         let granted = self.peer_pools.get(&peer).cloned().unwrap_or_default();
         let granted_permits = granted.iter().any(|pool| {
@@ -806,18 +807,52 @@ impl RefClient {
             return (PacketRoute::Peer(peer), None);
         }
 
-        if self.malicious_behaviour.ignore_resource_filters && !granted.is_empty() {
-            return (PacketRoute::PeerRejectedByPeer(peer), None);
+        let listing = self.pools_listing(ip);
+
+        if listing.is_empty() {
+            return (PacketRoute::Drop, None);
         }
 
-        match pick_pool(&self.device_pool_ids(), peer, protocol) {
+        let permitting = listing
+            .iter()
+            .filter(|(_, filters)| protocol_filter_allows(filters, protocol))
+            .map(|(pool, _)| *pool)
+            .max();
+
+        match permitting {
             Some(pool) => {
                 self.peer_pools.entry(peer).or_default().insert(pool);
 
                 (PacketRoute::Peer(peer), Some(peer))
             }
+            None if self.malicious_behaviour.ignore_resource_filters => {
+                let pool = listing
+                    .iter()
+                    .map(|(pool, _)| *pool)
+                    .max()
+                    .expect("non-empty");
+                self.peer_pools.entry(peer).or_default().insert(pool);
+
+                (PacketRoute::PeerRejectedByPeer(peer), Some(peer))
+            }
             None => (PacketRoute::RejectedByClient, None),
         }
+    }
+
+    /// The pools we hold that list `ip`, with their filters.
+    fn pools_listing(&self, ip: IpAddr) -> Vec<(ResourceId, &[Filter])> {
+        self.resources
+            .iter()
+            .filter_map(|r| match r {
+                Resource::DevicePool(p) if p.members.contains(&ip) => {
+                    Some((p.id, p.filters.as_slice()))
+                }
+                Resource::DevicePool(_) => None,
+                Resource::Dns(_) => None,
+                Resource::Cidr(_) => None,
+                Resource::Internet(_) => None,
+            })
+            .collect()
     }
 
     fn connect_to_resource(&mut self, resource: ResourceId, destination: Destination) {
@@ -1748,7 +1783,6 @@ mod tests {
                 },
                 |_| None,
                 |_| None,
-                |_, _, _| None,
             )
         };
 

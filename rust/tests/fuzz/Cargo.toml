@@ -39,6 +39,7 @@ bench = false
 [dependencies]
 anyhow = { workspace = true }
 arbitrary = { workspace = true, features = ["derive"] }
+base64 = { workspace = true, features = ["std"] }
 bufferpool = { workspace = true }
 bytecodec = { workspace = true }
 chrono = { workspace = true }
@@ -56,6 +57,7 @@ l3-tcp = { workspace = true }
 libfuzzer-sys = { workspace = true }
 rand = { workspace = true }
 relay-proto = { workspace = true }
+roaring = { workspace = true }
 secrecy = { workspace = true, features = ["serde"] }
 serde_json = { workspace = true }
 sha2 = { workspace = true }

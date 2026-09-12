@@ -39,12 +39,15 @@ pub enum Transition {
         old_resource: Resource,
         new_resource: Resource,
     },
-    /// Replaces the member list of a pool that lists its members; `removed` are the
-    /// clients that were listed before and are not any more.
+    /// Replaces the member list of a pool that lists its members; `added` and `removed`
+    /// are the clients that joined and left. The portal sends the pool again with the
+    /// new members, or, `as_diff`, only the addresses that joined and left.
     UpdateDevicePoolMembers {
         pool_id: ResourceId,
         members: BTreeSet<ClientId>,
+        added: BTreeSet<ClientId>,
         removed: BTreeSet<ClientId>,
+        as_diff: bool,
     },
     SetInternetResourceState {
         client_id: ClientId,

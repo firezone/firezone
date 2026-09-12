@@ -2992,6 +2992,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow-ext",
  "arbitrary",
+ "base64 0.23.1",
  "bufferpool",
  "bytecodec",
  "chrono",
@@ -3009,6 +3010,7 @@ dependencies = [
  "libfuzzer-sys",
  "rand 0.10.2",
  "relay-proto",
+ "roaring",
  "secrecy",
  "serde_json",
  "sha2 0.11.0",

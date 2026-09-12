@@ -4,14 +4,21 @@
 //! model. The SUT only receives portal-facing [`ResourceDescription`] values,
 //! matching the production event loop and keeping the internal model private.
 
+use base64::Engine as _;
 use connlib_model::{
     CidrResourceView, DnsResourceView, InternetResourceView, IpStack, ResourceId, ResourceStatus,
     ResourceView, Site,
 };
 use ip_network::IpNetwork;
 use itertools::Itertools as _;
+use roaring::RoaringBitmap;
 use serde_json::{Value, json};
-use tunnel_proto::messages::{Filter, client::ResourceDescription};
+use std::collections::BTreeSet;
+use std::net::IpAddr;
+use tunnel_proto::messages::{
+    Filter,
+    client::{DevicePoolMembers, ResourceDescription, tunnel_offset_v4, tunnel_offset_v6},
+};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) enum Resource {
@@ -54,6 +61,8 @@ pub(crate) struct DevicePoolResource {
     pub(crate) id: ResourceId,
     pub(crate) name: String,
     pub(crate) filters: Vec<Filter>,
+    /// The tunnel addresses of the pool's members, as the portal sends them.
+    pub(crate) members: BTreeSet<IpAddr>,
 }
 
 impl Resource {
@@ -205,6 +214,7 @@ impl Resource {
                 "id": r.id,
                 "name": r.name,
                 "filters": filters_json(r.filters),
+                "members": members_json(&r.members),
             })),
         }
     }
@@ -236,6 +246,41 @@ impl Resource {
             Resource::DevicePool(_) => None,
         }
     }
+}
+
+/// The wire form of pool members: one base64 roaring bitmap of offsets per family.
+fn members_json(members: &BTreeSet<IpAddr>) -> Value {
+    let bitmaps = pool_members(members);
+    let encode = |bitmap: &RoaringBitmap| {
+        let mut bytes = Vec::new();
+        bitmap.serialize_into(&mut bytes).expect("in-memory write");
+
+        base64::engine::general_purpose::STANDARD.encode(bytes)
+    };
+
+    json!({ "ipv4": encode(&bitmaps.ipv4), "ipv6": encode(&bitmaps.ipv6) })
+}
+
+/// The bitmaps connlib holds for the given member addresses.
+pub(crate) fn pool_members(members: &BTreeSet<IpAddr>) -> DevicePoolMembers {
+    let mut bitmaps = DevicePoolMembers::default();
+
+    for member in members {
+        match member {
+            IpAddr::V4(ip) => {
+                bitmaps
+                    .ipv4
+                    .insert(tunnel_offset_v4(*ip).expect("member inside the tunnel range"));
+            }
+            IpAddr::V6(ip) => {
+                bitmaps
+                    .ipv6
+                    .insert(tunnel_offset_v6(*ip).expect("member inside the tunnel range"));
+            }
+        }
+    }
+
+    bitmaps
 }
 
 fn sites_json(sites: Vec<Site>) -> Vec<Value> {

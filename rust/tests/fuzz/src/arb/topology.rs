@@ -225,6 +225,7 @@ fn arb_device_pool_resource(
         id: g.fresh_resource_id(),
         name: g.lower_ascii(4, 10),
         filters: arb_filters(g),
+        members: BTreeSet::new(),
     };
     let members = if g.bool() {
         PoolMembers::AllClients

@@ -1,7 +1,6 @@
 use connlib_model::{ClientId, GatewayId, ResourceId, Site, SiteId};
 use dns_types::DomainName;
 use ip_network::IpNetwork;
-use ip_packet::Protocol;
 use itertools::Itertools;
 use smallvec::SmallVec;
 use std::{
@@ -12,7 +11,6 @@ use std::{
 use tunnel_proto::dns;
 use tunnel_proto::messages::{UpstreamDo53, UpstreamDoH, gateway};
 
-use crate::ref_client::protocol_filter_allows;
 use crate::resource::{self as client, DevicePoolResource};
 
 /// Stub implementation of the portal.
@@ -217,25 +215,8 @@ impl StubPortal {
             .map(|(id, _)| *id)
     }
 
-    /// The pool the portal picks for a flow from a client holding `held` to `target`:
-    /// the first by id that admits the target and permits the protocol.
-    pub(crate) fn pick_device_pool(
-        &self,
-        held: &[ResourceId],
-        target: ClientId,
-        protocol: Protocol,
-    ) -> Option<ResourceId> {
-        held.iter().copied().sorted().find(|pool| {
-            self.device_pool_resources
-                .get(pool)
-                .is_some_and(|resource| {
-                    self.is_pool_member(*pool, target)
-                        && protocol_filter_allows(&resource.filters, protocol)
-                })
-        })
-    }
-
-    fn is_pool_member(&self, pool: ResourceId, client: ClientId) -> bool {
+    /// Whether the portal authorises access to `target` through `pool`.
+    pub(crate) fn is_pool_member(&self, pool: ResourceId, client: ClientId) -> bool {
         match self.pool_members.get(&pool) {
             Some(PoolMembers::AllClients) => self.clients.contains_key(&client),
             Some(PoolMembers::Listed(members)) => members.contains(&client),
@@ -250,6 +231,32 @@ impl StubPortal {
             .copied()
             .filter(|client| self.is_pool_member(pool, *client))
             .collect()
+    }
+
+    /// The tunnel addresses of the given clients.
+    pub(crate) fn client_addresses(
+        &self,
+        clients: impl IntoIterator<Item = ClientId>,
+    ) -> BTreeSet<IpAddr> {
+        clients
+            .into_iter()
+            .filter_map(|id| self.clients.get(&id))
+            .flat_map(|c| [IpAddr::V4(c.ipv4), IpAddr::V6(c.ipv6)])
+            .collect()
+    }
+
+    /// The pool as the portal sends it, with its current members.
+    pub(crate) fn device_pool(&self, pool: ResourceId) -> Option<DevicePoolResource> {
+        let resource = self.device_pool_resources.get(&pool)?;
+
+        Some(self.with_members(resource))
+    }
+
+    fn with_members(&self, resource: &DevicePoolResource) -> DevicePoolResource {
+        DevicePoolResource {
+            members: self.client_addresses(self.pool_members(resource.id)),
+            ..resource.clone()
+        }
     }
 
     /// Every pool that lists its members, with its current list.
@@ -286,8 +293,7 @@ impl StubPortal {
             .chain(
                 self.device_pool_resources
                     .values()
-                    .cloned()
-                    .map(client::Resource::DevicePool),
+                    .map(|r| client::Resource::DevicePool(self.with_members(r))),
             )
             .chain(iter::once(client::Resource::Internet(
                 self.internet_resource.clone(),
