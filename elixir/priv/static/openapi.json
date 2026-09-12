@@ -350,10 +350,6 @@
             "nullable": true,
             "type": "array"
           },
-          "primary_user_locked": {
-            "nullable": true,
-            "type": "boolean"
-          },
           "rule_sync_at": {
             "format": "date-time",
             "nullable": true,
@@ -391,14 +387,6 @@
             "nullable": true,
             "type": "array"
           },
-          "tags_locked": {
-            "nullable": true,
-            "type": "boolean"
-          },
-          "tags_truncated": {
-            "nullable": true,
-            "type": "boolean"
-          },
           "temporary_admin_mode_ends_at": {
             "format": "date-time",
             "nullable": true,
@@ -432,7 +420,6 @@
           "os_type",
           "sip_status",
           "primary_user",
-          "primary_user_locked",
           "primary_user_groups",
           "santa_version",
           "santanetd_version",
@@ -442,8 +429,6 @@
           "last_preflight_at",
           "last_preflight_ip",
           "tags",
-          "tags_locked",
-          "tags_truncated",
           "configured_client_mode",
           "temporary_monitor_mode_ends_at",
           "first_seen_at",
@@ -3479,10 +3464,6 @@
             "nullable": false,
             "type": "string"
           },
-          "merged_into_machine_id": {
-            "nullable": true,
-            "type": "string"
-          },
           "entra_device_id": {
             "nullable": true,
             "type": "string"
@@ -3583,7 +3564,6 @@
           "rbac_group_id",
           "rbac_group_name",
           "is_potential_duplication",
-          "merged_into_machine_id",
           "is_excluded",
           "exclusion_reason",
           "vm_id",
@@ -3784,11 +3764,6 @@
             "nullable": true,
             "type": "string"
           },
-          "source_created_at": {
-            "format": "date-time",
-            "nullable": true,
-            "type": "string"
-          },
           "machine_sid": {
             "nullable": true,
             "type": "string"
@@ -3881,10 +3856,6 @@
             "nullable": false,
             "type": "string"
           },
-          "proxy_console_address": {
-            "nullable": true,
-            "type": "string"
-          },
           "cpu_count": {
             "nullable": true,
             "type": "integer"
@@ -3896,10 +3867,6 @@
           "protected_tasks_count": {
             "nullable": true,
             "type": "integer"
-          },
-          "proxy_deep_visibility_address": {
-            "nullable": true,
-            "type": "string"
           },
           "storage_type": {
             "nullable": true,
@@ -3920,11 +3887,6 @@
           "total_memory": {
             "nullable": true,
             "type": "integer"
-          },
-          "policy_updated_at": {
-            "format": "date-time",
-            "nullable": true,
-            "type": "string"
           },
           "encrypted_applications": {
             "nullable": true,
@@ -3970,18 +3932,9 @@
             "nullable": true,
             "type": "array"
           },
-          "source_updated_at": {
-            "format": "date-time",
-            "nullable": true,
-            "type": "string"
-          },
           "ad_mail": {
             "nullable": true,
             "type": "string"
-          },
-          "show_alert_icon": {
-            "nullable": true,
-            "type": "boolean"
           },
           "external_ip": {
             "nullable": true,
@@ -4000,11 +3953,6 @@
             "type": "string"
           },
           "proxy_method": {
-            "nullable": true,
-            "type": "string"
-          },
-          "group_updated_at": {
-            "format": "date-time",
             "nullable": true,
             "type": "string"
           },
@@ -4119,10 +4067,6 @@
           "account_id",
           "uuid",
           "posture_provider_id",
-          "source_created_at",
-          "source_updated_at",
-          "group_updated_at",
-          "policy_updated_at",
           "sentinelone_account_id",
           "account_name",
           "site_id",
@@ -4202,14 +4146,11 @@
           "detection_state",
           "first_full_mode_at",
           "tags",
-          "show_alert_icon",
           "last_successful_scan_at",
           "proxy_console",
           "proxy_deep_visibility",
           "proxy_pac_file_usage",
           "proxy_method",
-          "proxy_console_address",
-          "proxy_deep_visibility_address",
           "protected_pods_count",
           "protected_containers_count",
           "protected_tasks_count",
@@ -6659,13 +6600,6 @@
             "nullable": true,
             "type": "integer"
           },
-          "device_action_results": {
-            "items": {
-              "type": "object"
-            },
-            "nullable": true,
-            "type": "array"
-          },
           "attestation_operating_system_kernel_debugging": {
             "nullable": true,
             "type": "boolean"
@@ -6783,10 +6717,6 @@
           "attestation_early_launch_anti_malware_driver_protection": {
             "nullable": true,
             "type": "boolean"
-          },
-          "attestation_last_update_date_time": {
-            "nullable": true,
-            "type": "string"
           },
           "management_agent": {
             "nullable": true,
@@ -6971,10 +6901,6 @@
             "nullable": true,
             "type": "string"
           },
-          "attestation_content_namespace_url": {
-            "nullable": true,
-            "type": "string"
-          },
           "posture_provider_id": {
             "format": "uuid",
             "nullable": false,
@@ -7040,8 +6966,6 @@
           "config_manager_device_configuration",
           "config_manager_compliance_policy",
           "config_manager_windows_update_for_business",
-          "attestation_last_update_date_time",
-          "attestation_content_namespace_url",
           "attestation_status",
           "attestation_content_version",
           "attestation_issued_at",
@@ -7072,7 +6996,6 @@
           "attestation_operating_system_rev_list_info",
           "attestation_health_status_mismatch_info",
           "attestation_supported",
-          "device_action_results",
           "enrolled_at",
           "last_sync_at",
           "compliance_grace_period_expiration_at",

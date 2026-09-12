@@ -22,7 +22,6 @@ defmodule PortalAPI.Schemas.SantaDevice do
       :os_type,
       :sip_status,
       :primary_user,
-      :primary_user_locked,
       :primary_user_groups,
       :santa_version,
       :santanetd_version,
@@ -32,8 +31,6 @@ defmodule PortalAPI.Schemas.SantaDevice do
       :last_preflight_at,
       :last_preflight_ip,
       :tags,
-      :tags_locked,
-      :tags_truncated,
       :configured_client_mode,
       :temporary_monitor_mode_ends_at,
       :first_seen_at,
@@ -78,7 +75,15 @@ defmodule PortalAPI.Schemas.SantaDevice do
                   {field, schema}
                 end)
 
-    @derive {PortalAPI.JSON.Encoder, for: Portal.Santa.Device}
+    # Left off the API and out of the posture grammar:
+    # - primary_user_locked: whether Workshop locks the primary user against edits
+    # - tags_locked: whether Workshop locks the tags against edits
+    # - tags_truncated: whether Workshop cut the tag list short
+    @derive {PortalAPI.JSON.Encoder,
+             for: Portal.Santa.Device,
+             internal: ~w[
+               tags_locked tags_truncated primary_user_locked
+             ]a}
     OpenApiSpex.schema(%{
       title: "SantaDevice",
       description: "Santa host synced from North Pole Security Workshop",

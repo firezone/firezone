@@ -229,4 +229,38 @@ defmodule Portal.PolicyTest do
       assert %{resource: ["does not exist"]} = errors_on(changeset)
     end
   end
+  describe "changeset/1 postures" do
+    test "stores a valid tree" do
+      changeset =
+        %Policy{}
+        |> cast(%{postures: %{"field" => "intune.compliance_state", "op" => "is", "value" => "compliant"}}, [:postures])
+        |> Policy.changeset()
+
+      assert %Portal.Policies.Postures{expr: %Portal.Policies.Postures.Leaf{provider: :intune}} = get_change(changeset, :postures)
+      assert changeset.valid?
+    end
+
+    test "reports an invalid tree on postures" do
+      changeset =
+        %Policy{}
+        |> cast(%{postures: %{"field" => "intune.nope", "op" => "is", "value" => "x"}}, [:postures])
+        |> Policy.changeset()
+
+      assert %{postures: ["field: intune has no field nope"]} = errors_on(changeset)
+    end
+
+    test "round trips through the database" do
+      map = %{
+        "and" => [
+          %{"field" => "firezone.attested", "op" => "is", "value" => true},
+          %{"field" => "intune.last_sync_at", "op" => "within_last", "value" => "PT24H", "rows" => "all"}
+        ]
+      }
+
+      policy = policy_fixture(postures: map)
+      assert Portal.Policies.Postures.to_map(policy.postures) == map
+      assert Repo.get_by!(Policy, id: policy.id).postures == policy.postures
+      assert Repo.get_by!(Policy, id: policy_fixture().id).postures == nil
+    end
+  end
 end
