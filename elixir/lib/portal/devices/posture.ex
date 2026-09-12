@@ -25,6 +25,7 @@ defmodule Portal.Devices.Posture do
   alias __MODULE__.Database
 
   @type rung :: :mdm_device_id | :attested_serial | :device_serial
+  @type key :: {:mdm_device_id | :serial | :entra_device_id, String.t()}
   @type match :: {atom(), struct(), rung(), :intune | nil}
 
   @doc "Every provider row matched to the device, one entry per row."
@@ -63,6 +64,60 @@ defmodule Portal.Devices.Posture do
   def schema(:defender), do: Defender.Device
   def schema(:santa), do: Santa.Device
   def schema(:sentinelone), do: SentinelOne.Device
+
+  @types ~w[intune iru defender santa sentinelone]a
+
+  @spec types() :: [atom()]
+  def types, do: @types
+
+  @doc "The mirror schemas, so a change can be recognised as a provider row."
+  @spec schemas() :: [module()]
+  def schemas, do: Enum.map(@types, &schema/1)
+
+  @doc "The provider type of a mirror schema."
+  @spec type(module()) :: atom()
+  def type(Intune.Device), do: :intune
+  def type(Iru.Device), do: :iru
+  def type(Defender.Device), do: :defender
+  def type(Santa.Device), do: :santa
+  def type(SentinelOne.Device), do: :sentinelone
+
+  @doc """
+  The identifiers a provider row can be matched on, which are the keys its
+  changes are published under. A Defender row is reached through an Intune
+  row, so it is keyed by its Entra device id instead.
+  """
+  @spec row_keys(struct()) :: [key()]
+  def row_keys(%Defender.Device{entra_device_id: entra_id}), do: keys(entra_device_id: entra_id)
+
+  def row_keys(%schema{} = row) do
+    type = type(schema)
+
+    keys(
+      for {kind, rung} <- [mdm_device_id: :mdm_device_id, serial: :device_serial],
+          field <- rung_fields(type, rung),
+          do: {kind, Map.fetch!(row, field)}
+    )
+  end
+
+  @doc "The identifiers a client device is matched on, which are the keys its channel listens under."
+  @spec device_keys(Device.t()) :: [key()]
+  def device_keys(%Device{} = device) do
+    keys(
+      mdm_device_id: device.last_attested_mdm_device_id,
+      serial: device.last_attested_device_serial,
+      serial: device.device_serial
+    )
+  end
+
+  @doc "The Entra device ids of the matched Intune rows, which are the keys Defender rows arrive under."
+  @spec entra_keys(%{atom() => [struct()]}) :: [key()]
+  def entra_keys(rows_by_type) do
+    rows_by_type
+    |> Map.get(:intune, [])
+    |> Enum.map(&{:entra_device_id, &1.entra_device_id})
+    |> keys()
+  end
 
   # Which columns of a provider's row each rung is compared against. Both the
   # query and the credit given to a row it returns are built from this, so they
@@ -138,6 +193,12 @@ defmodule Portal.Devices.Posture do
     Enum.find_value(keys, fn {rung, value} ->
       if Enum.any?(rung_fields(type, rung), &(Map.fetch!(row, &1) == value)), do: rung
     end)
+  end
+
+  defp keys(pairs) do
+    pairs
+    |> Enum.reject(fn {_kind, value} -> is_nil(value) end)
+    |> Enum.uniq()
   end
   defmodule Database do
     import Ecto.Query
