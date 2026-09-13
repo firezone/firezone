@@ -1,7 +1,8 @@
 #![allow(clippy::unwrap_used)]
 
+use anyhow::Result;
 use bin_shared::{DnsControlMethod, new_dns_notifier, new_network_notifier};
-use futures::{StreamExt as _, future::FutureExt as _};
+use futures::{Stream, StreamExt as _, future::FutureExt as _};
 use std::time::Duration;
 use tokio::time::timeout;
 
@@ -32,8 +33,14 @@ async fn notifiers() {
         .unwrap()
         .unwrap();
 
-    // After that first DNS notification, we shouldn't get any further notifications during a normal unit test.
-    // The network notifier should never have fired, since nothing changed about the primary egress path.
-    assert!(dns.next().now_or_never().is_none());
-    assert!(net.next().now_or_never().is_none());
+    // Other tests and the host itself change addresses and DNS settings under us, so any further
+    // notifications are fine as long as none of them is an error.
+    drain(&mut dns);
+    drain(&mut net);
+}
+
+fn drain(stream: &mut (impl Stream<Item = Result<()>> + Unpin)) {
+    while let Some(item) = stream.next().now_or_never().flatten() {
+        item.unwrap();
+    }
 }

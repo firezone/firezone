@@ -67,6 +67,7 @@ use anyhow::{Context as _, Result, anyhow};
 use futures::{Stream, StreamExt as _, stream};
 use std::collections::HashMap;
 use std::ffi::c_void;
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::ops::Deref as _;
 use std::sync::Mutex;
 use std::thread;
@@ -85,7 +86,7 @@ use windows::{
             INetworkEvents, INetworkEvents_Impl, INetworkListManager, NLM_CONNECTIVITY,
             NLM_NETWORK_PROPERTY_CHANGE, NetworkListManager,
         },
-        Networking::WinSock::AF_UNSPEC,
+        Networking::WinSock::{AF_INET, AF_INET6, AF_UNSPEC, SOCKADDR_INET},
         System::Com,
     },
     core::{GUID, Interface, Result as WinResult},
@@ -173,27 +174,59 @@ impl Drop for AddressChangeListener {
     }
 }
 
-/// Runs on a Windows-managed thread-pool thread, so keep it minimal: just wake the notifier.
+/// Runs on a Windows-managed thread-pool thread, so keep it minimal: log and wake the notifier.
 ///
 /// This is a safe `extern "system" fn` (it coerces to the unsafe callback pointer the OS
-/// expects), keeping the only `unsafe` to the single pointer dereference below.
+/// expects), keeping `unsafe` to the pointer dereferences below.
 extern "system" fn address_change_callback(
     ctx: *const c_void,
-    _row: *const MIB_UNICASTIPADDRESS_ROW,
+    row: *const MIB_UNICASTIPADDRESS_ROW,
     notification_type: MIB_NOTIFICATION_TYPE,
 ) {
     // Only react to addresses being added or removed (i.e. an interface coming up or going
     // away). Parameter-only changes (e.g. address-lifetime updates on a DHCP renew) don't
     // change which source IP we should use.
-    if notification_type != MibAddInstance && notification_type != MibDeleteInstance {
+    let change = if notification_type == MibAddInstance {
+        "added"
+    } else if notification_type == MibDeleteInstance {
+        "removed"
+    } else {
         return;
-    }
+    };
+
+    // SAFETY: `row` is non-null for add and delete notifications and stays valid until we return.
+    let row = unsafe { row.as_ref() };
+    let iface_idx = row.map(|row| row.InterfaceIndex);
+    let address = row.and_then(|row| unicast_address(&row.Address));
+
+    tracing::debug!(change, ?iface_idx, ?address, "Unicast IP address changed");
 
     // SAFETY: `ctx` is the pointer we passed to `NotifyUnicastIpAddressChange`: a valid
     // `&NotifySender` for the lifetime of the registration (see `AddressChangeListener`).
     let tx = unsafe { &*(ctx as *const NotifySender) };
     // A failed send just means a notification is already queued or we're shutting down.
     tx.notify().ok();
+}
+
+fn unicast_address(addr: &SOCKADDR_INET) -> Option<IpAddr> {
+    // SAFETY: `si_family` is always set for a valid `SOCKADDR_INET`.
+    let family = unsafe { addr.si_family };
+
+    match family {
+        AF_INET => {
+            // SAFETY: We checked the family.
+            let ipv4 = unsafe { addr.Ipv4 };
+
+            Some(Ipv4Addr::from(ipv4.sin_addr).into())
+        }
+        AF_INET6 => {
+            // SAFETY: We checked the family.
+            let ipv6 = unsafe { addr.Ipv6 };
+
+            Some(Ipv6Addr::from(ipv6.sin6_addr).into())
+        }
+        _ => None,
+    }
 }
 
 fn worker_into_stream(worker: Worker) -> impl Stream<Item = Result<()>> + Unpin + Send + 'static {
