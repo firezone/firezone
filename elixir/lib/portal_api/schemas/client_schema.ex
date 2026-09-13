@@ -10,6 +10,7 @@ defmodule PortalAPI.Schemas.Client do
              internal: [
                :account_id,
                :attested?,
+               :posture,
                :client_token_id,
                :firezone_id_merged?,
                :gateway_token_id,
