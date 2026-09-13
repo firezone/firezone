@@ -1042,4 +1042,45 @@ defmodule Portal.Cache.ClientTest do
                {:error, {:forbidden, violated_properties: [:postures]}}
     end
   end
+  describe "attestation" do
+    setup do
+      account = account_fixture()
+      actor = actor_fixture(type: :account_admin_user, account: account)
+      subject = subject_fixture(account: account, actor: actor, type: :client)
+      client = client_fixture(account: account, actor: actor)
+      group = group_fixture(account: account)
+      membership_fixture(account: account, actor: actor, group: group)
+      site = site_fixture(account: account)
+
+      attested =
+        policy_fixture(
+          account: account,
+          group: group,
+          resource: dns_resource_fixture(account: account, site: site),
+          conditions: [%{property: :device_attested, operator: :is, values: ["true"]}]
+        )
+
+      plain = policy_fixture(account: account, group: group, resource: dns_resource_fixture(account: account, site: site))
+      %{subject: subject, client: client, attested: attested, plain: plain}
+    end
+
+    test "requires_attestation?/2 and attested_policy_ids/1 follow the attested condition", ctx do
+      {:ok, _added, [], cache} = Cache.recompute_connectable_resources(nil, ctx.client, ctx.subject)
+
+      assert Cache.requires_attestation?(cache, ctx.attested.id)
+      refute Cache.requires_attestation?(cache, ctx.plain.id)
+      refute Cache.requires_attestation?(cache, Ecto.UUID.generate())
+      assert Cache.attested_policy_ids(cache) == [ctx.attested.id]
+    end
+
+    test "policy_expiry/4 re-evaluates the policy for the client", ctx do
+      attested_client = %{ctx.client | attested?: true}
+      {:ok, _added, [], cache} = Cache.recompute_connectable_resources(nil, attested_client, ctx.subject)
+
+      assert Cache.policy_expiry(cache, ctx.attested.id, attested_client, ctx.subject) == {:ok, ctx.subject.expires_at}
+      assert Cache.policy_expiry(cache, ctx.plain.id, ctx.client, ctx.subject) == {:ok, ctx.subject.expires_at}
+      assert Cache.policy_expiry(cache, ctx.attested.id, ctx.client, ctx.subject) == :error
+      assert Cache.policy_expiry(cache, Ecto.UUID.generate(), ctx.client, ctx.subject) == :error
+    end
+  end
 end

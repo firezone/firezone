@@ -210,6 +210,38 @@ defmodule Portal.Cache.Client do
     end
   end
 
+  @doc "Whether the cached policy grants access only to an attested connection."
+  @spec requires_attestation?(t(), Ecto.UUID.t()) :: boolean()
+  def requires_attestation?(cache, policy_id) do
+    case Map.fetch(cache.policies, dump!(policy_id)) do
+      {:ok, policy} -> attested_policy?(policy)
+      :error -> false
+    end
+  end
+
+  @doc "The IDs of the cached policies that grant access only to an attested connection."
+  @spec attested_policy_ids(t()) :: [Ecto.UUID.t()]
+  def attested_policy_ids(cache) do
+    for {id, policy} <- cache.policies, attested_policy?(policy), do: load!(id)
+  end
+
+  @doc """
+    The expiry a fresh authorization under this policy would carry right now, or
+    :error when the policy no longer holds for the client.
+  """
+  @spec policy_expiry(t(), Ecto.UUID.t(), Portal.Device.t(), Authentication.Subject.t()) ::
+          {:ok, DateTime.t() | nil} | :error
+  def policy_expiry(cache, policy_id, client, subject) do
+    auth_provider_id = Credential.auth_provider_id(subject.credential)
+
+    with {:ok, policy} <- Map.fetch(cache.policies, dump!(policy_id)),
+         {:ok, expires_at} <- ensure_client_conforms_policy_conditions(policy, client, auth_provider_id) do
+      {:ok, min_expires_at(expires_at, subject.expires_at)}
+    else
+      _ -> :error
+    end
+  end
+
   @doc """
     Recomputes the list of connectable resources, returning the newly connectable resources
     and the IDs of resources that are no longer connectable so that the client may update its
@@ -933,6 +965,10 @@ defmodule Portal.Cache.Client do
       {:error, violated_properties} ->
         {:error, {:forbidden, violated_properties: violated_properties}}
     end
+  end
+
+  defp attested_policy?(%Cache.Cacheable.Policy{conditions: conditions}) do
+    Enum.any?(conditions, &match?(%{property: :device_attested, operator: :is, values: ["true"]}, &1))
   end
 
   # When both are nil, there is no expiration

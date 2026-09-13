@@ -23,6 +23,8 @@ defmodule PortalAPI.Client.Channel.Shared do
   # If not, we need to send resource_deleted so that if it's added back later, the client's
   # connlib state will be cleaned up so it can request a new connection.
   @recompute_authorized_resources_every :timer.minutes(1)
+  @attestation_lease :timer.minutes(15)
+  @renew_attested_authorizations_every :timer.minutes(5)
 
   # The interval at which the inbound policy_authorizations cache is pruned.
   @prune_authorizations_cache_every :timer.minutes(1)
@@ -82,6 +84,8 @@ defmodule PortalAPI.Client.Channel.Shared do
       :prune_authorizations_cache,
       @prune_authorizations_cache_every
     )
+
+    Process.send_after(self(), :renew_attested_authorizations, 0)
 
     schedule_session_expiry(socket.assigns.subject.expires_at)
 
@@ -193,6 +197,16 @@ defmodule PortalAPI.Client.Channel.Shared do
        authorizations_cache:
          Cache.Client.Authorizations.prune(socket.assigns.authorizations_cache)
      )}
+  end
+
+  # Attested access is a lease that lives only as long as this connection. A
+  # renewal re-sends the authorization the peer already holds with a later
+  # expiry, so the flow is untouched; a client that has gone stops renewing and
+  # its access ends when the lease runs out.
+  def handle_info(:renew_attested_authorizations, socket) do
+    Process.send_after(self(), :renew_attested_authorizations, @renew_attested_authorizations_every)
+    renew_attested_authorizations(socket)
+    {:noreply, socket}
   end
 
   ####################################
@@ -315,6 +329,12 @@ defmodule PortalAPI.Client.Channel.Shared do
       candidates: candidates
     })
 
+    {:noreply, socket}
+  end
+
+  # A renewal re-sends an authorization the client already holds, so the
+  # gateway's reply carries nothing new for it.
+  def handle_info(reply, socket) when elem(reply, 0) == :connect and elem(reply, 1) == :renewal do
     {:noreply, socket}
   end
 
@@ -1341,6 +1361,8 @@ defmodule PortalAPI.Client.Channel.Shared do
             expires_at
           )
 
+        lease_expires_at = lease_expires_at(socket.assigns.cache, policy_id, expires_at)
+
         message =
           {:create_authorization, {self(), socket_ref(socket)},
            %{
@@ -1356,7 +1378,7 @@ defmodule PortalAPI.Client.Channel.Shared do
              subject: PortalAPI.Gateway.Views.Subject.render(socket.assigns.subject),
              resource: PortalAPI.Gateway.Views.Resource.render(resource),
              policy_authorization_id: policy_authorization_id,
-             authorization_expires_at: expires_at,
+             authorization_expires_at: lease_expires_at,
              ice_credentials: ice_credentials,
              preshared_key: preshared_key,
              initiator_iceless_capable: socket.assigns.iceless_capable,
@@ -1372,7 +1394,7 @@ defmodule PortalAPI.Client.Channel.Shared do
             policy_id,
             membership_id,
             socket.assigns.subject,
-            expires_at
+            lease_expires_at
           )
 
         policy_authorization = struct(Portal.PolicyAuthorization, attrs)
@@ -1552,6 +1574,19 @@ defmodule PortalAPI.Client.Channel.Shared do
        ) do
     resource_id = Ecto.UUID.load!(resource.id)
     policy_authorization_id = Ecto.UUID.generate()
+    lease_expires_at = lease_expires_at(socket.assigns.cache, policy_id, expires_at)
+
+    tokens =
+      mint_ingest_tokens(
+        socket.assigns.subject,
+        {resource_id, resource.name, resource.address},
+        policy_authorization_id,
+        policy_id,
+        flow_log_uploads_enabled?(socket.assigns.cache, policy_id),
+        socket.assigns.client,
+        target_client_id,
+        expires_at
+      )
 
     target_device = %Portal.Device{
       id: target_client_id,
@@ -1569,7 +1604,7 @@ defmodule PortalAPI.Client.Channel.Shared do
         policy_id,
         membership_id,
         socket.assigns.subject,
-        expires_at
+        lease_expires_at
       )
 
     # Precompute the receiver-side and initiator-side messages BEFORE entering
@@ -1593,8 +1628,8 @@ defmodule PortalAPI.Client.Channel.Shared do
         target_meta,
         resource,
         policy_authorization_id,
-        policy_id,
-        expires_at,
+        tokens,
+        lease_expires_at,
         ref,
         socket
       )
@@ -1654,7 +1689,7 @@ defmodule PortalAPI.Client.Channel.Shared do
          target_meta,
          resource,
          policy_authorization_id,
-         policy_id,
+         {initiator_token, responder_token},
          expires_at,
          ref,
          socket
@@ -1693,18 +1728,6 @@ defmodule PortalAPI.Client.Channel.Shared do
     rendered_resource = Views.Resource.render(resource, socket.assigns.client)
 
     rendered_subject = PortalAPI.Gateway.Views.Subject.render(socket.assigns.subject)
-
-    {initiator_token, responder_token} =
-      mint_ingest_tokens(
-        socket.assigns.subject,
-        {Ecto.UUID.load!(resource.id), resource.name, resource.address},
-        policy_authorization_id,
-        policy_id,
-        flow_log_uploads_enabled?(socket.assigns.cache, policy_id),
-        client,
-        target_client_id,
-        expires_at
-      )
 
     receiver_message =
       {:client_device_access_authorized, {self(), ref},
@@ -2757,8 +2780,156 @@ defmodule PortalAPI.Client.Channel.Shared do
   defp abnormal_exit?({:shutdown, _reason}), do: false
   defp abnormal_exit?(_reason), do: true
 
+  defp lease_expires_at(cache, policy_id, expires_at) do
+    if Cache.Client.requires_attestation?(cache, policy_id) do
+      earliest(expires_at, DateTime.add(DateTime.utc_now(), @attestation_lease, :millisecond))
+    else
+      expires_at
+    end
+  end
+
+  defp earliest(nil, other), do: other
+  defp earliest(left, right), do: Enum.min([left, right], DateTime)
+
+  defp renew_attested_authorizations(socket) do
+    case Cache.Client.attested_policy_ids(socket.assigns.cache) do
+      [] ->
+        :ok
+
+      policy_ids ->
+        socket.assigns.client
+        |> Database.list_live_authorizations(policy_ids)
+        |> Enum.each(&renew_authorization(&1, socket))
+    end
+  end
+
+  defp renew_authorization(authorization, socket) do
+    %{cache: cache, client: client, subject: subject} = socket.assigns
+
+    with {:ok, expires_at} <- Cache.Client.policy_expiry(cache, authorization.policy_id, client, subject),
+         lease_expires_at = lease_expires_at(cache, authorization.policy_id, expires_at),
+         :gt <- DateTime.compare(lease_expires_at, authorization.expires_at),
+         {:ok, resource} <- fetch_connectable_resource(cache, authorization.resource_id),
+         {:ok, _authorization} <- Database.extend_authorization(authorization, lease_expires_at) do
+      deliver_renewal(authorization, resource, expires_at, lease_expires_at, socket)
+    else
+      _ -> :ok
+    end
+  end
+
+  defp fetch_connectable_resource(cache, resource_id) do
+    rid_bytes = Ecto.UUID.dump!(resource_id)
+
+    case Enum.find(cache.connectable_resources, &(&1.id == rid_bytes)) do
+      nil -> :error
+      resource -> {:ok, resource}
+    end
+  end
+
+  defp deliver_renewal(authorization, %{type: type} = resource, expires_at, lease_expires_at, socket)
+       when type in [:static_device_pool, :dynamic_device_pool] do
+    target_client_id = authorization.receiving_device_id
+
+    case Presence.Devices.Account.get(socket.assigns.client.account_id, target_client_id) do
+      %{metas: [target_meta | _]} ->
+        tokens = mint_renewal_tokens(authorization, resource, target_client_id, expires_at, socket)
+
+        {receiver_message, _initiator_payload} =
+          build_client_device_access_authorized_messages(
+            target_client_id,
+            target_meta,
+            resource,
+            authorization.id,
+            tokens,
+            lease_expires_at,
+            make_ref(),
+            socket
+          )
+
+        PG.deliver(target_client_id, receiver_message)
+
+      _offline ->
+        :ok
+    end
+  end
+
+  defp deliver_renewal(authorization, resource, expires_at, lease_expires_at, socket) do
+    client = socket.assigns.client
+
+    case online_gateway(authorization.receiving_device_id, client.account_id) do
+      nil ->
+        :ok
+
+      gateway ->
+        {_initiator_token, responder_token} =
+          mint_renewal_tokens(authorization, resource, gateway.id, expires_at, socket)
+
+        preshared_key = generate_preshared_key(client, client.public_key, gateway, gateway.public_key)
+        ice_credentials = generate_ice_credentials(client.public_key, client, gateway, gateway.public_key)
+
+        PG.deliver(
+          gateway.id,
+          {:create_authorization, {self(), :renewal},
+           %{
+             client:
+               PortalAPI.Gateway.Views.Client.render(
+                 client,
+                 client.public_key,
+                 preshared_key,
+                 socket.assigns.subject.context.user_agent
+               ),
+             subject: PortalAPI.Gateway.Views.Subject.render(socket.assigns.subject),
+             resource: PortalAPI.Gateway.Views.Resource.render(resource),
+             policy_authorization_id: authorization.id,
+             authorization_expires_at: lease_expires_at,
+             ice_credentials: ice_credentials,
+             preshared_key: preshared_key,
+             initiator_iceless_capable: socket.assigns.iceless_capable,
+             flow_logs_ingest_token: responder_token
+           }}
+        )
+    end
+  end
+
+  defp mint_renewal_tokens(authorization, resource, responder_device_id, expires_at, socket) do
+    mint_ingest_tokens(
+      socket.assigns.subject,
+      {Ecto.UUID.load!(resource.id), resource.name, resource.address},
+      authorization.id,
+      authorization.policy_id,
+      flow_log_uploads_enabled?(socket.assigns.cache, authorization.policy_id),
+      socket.assigns.client,
+      responder_device_id,
+      expires_at
+    )
+  end
+
+  defp online_gateway(gateway_id, account_id) do
+    account_id
+    |> Presence.Devices.all_connected_gateways()
+    |> Enum.find(&(&1.id == gateway_id))
+  end
+
   defmodule Database do
     import Ecto.Query, only: [from: 2]
+
+    def list_live_authorizations(%Portal.Device{} = client, policy_ids) do
+      from(pa in Portal.PolicyAuthorization,
+        where: pa.account_id == ^client.account_id,
+        where: pa.initiating_device_id == ^client.id,
+        where: pa.policy_id in ^policy_ids,
+        where: pa.expires_at > ^DateTime.utc_now()
+      )
+      |> Portal.Safe.unscoped()
+      |> Portal.Safe.all()
+    end
+
+    def extend_authorization(%Portal.PolicyAuthorization{} = authorization, expires_at) do
+      authorization
+      |> Ecto.Changeset.change(expires_at: expires_at)
+      |> Portal.Safe.unscoped()
+      |> Portal.Safe.update()
+    end
 
     def x509_session_enabled?(auth_provider_id, actor_id) do
       from(auth_provider in Portal.X509.AuthProvider,

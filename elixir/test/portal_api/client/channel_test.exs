@@ -7860,4 +7860,164 @@ defmodule PortalAPI.Client.ChannelTest do
       refute Process.alive?(channel_pid)
     end
   end
+  describe "attested authorizations" do
+    @attested [%{property: :device_attested, operator: :is, values: ["true"]}]
+
+    setup %{
+      account: account,
+      actor: actor,
+      group: group,
+      site: site,
+      gateway: gateway,
+      gateway_token: gateway_token,
+      global_relay: global_relay
+    } do
+      # The default test session is as long as the lease, which would hide the cap.
+      subject =
+        subject_fixture(
+          account: account,
+          actor: actor,
+          type: :client,
+          user_agent: "Linux/24.04 connlib/1.3.0",
+          expires_at: DateTime.add(DateTime.utc_now(), 2, :hour)
+        )
+
+      resource = dns_resource_fixture(account: account, site: site)
+      policy_fixture(account: account, group: group, resource: resource, conditions: @attested)
+      :ok = Portal.Presence.Relays.connect(global_relay)
+      :ok = PG.register(gateway.id)
+      :ok = connect_gateway_presence(gateway, gateway_token.id)
+      %{subject: subject, attested_resource: resource}
+    end
+
+    defp create_gateway_flow(socket, resource) do
+      push(socket, "create_flow", %{"resource_id" => resource.id, "connected_gateway_ids" => []})
+      assert_receive {:create_authorization, {_pid, _ref}, payload}
+      Portal.Queue.flush(:policy_authorization_queue)
+      payload
+    end
+
+    defp within_lease?(%DateTime{} = expires_at) do
+      lease_end = DateTime.add(DateTime.utc_now(), 15, :minute)
+
+      DateTime.compare(expires_at, lease_end) != :gt and
+        DateTime.compare(expires_at, DateTime.add(lease_end, -1, :minute)) == :gt
+    end
+
+    test "caps a new authorization at the lease instead of the session", ctx do
+      socket = join_channel(ctx.client, ctx.subject, attested?: true)
+      assert_push "init", _
+
+      payload = create_gateway_flow(socket, ctx.attested_resource)
+
+      assert within_lease?(payload.authorization_expires_at)
+      assert DateTime.compare(payload.authorization_expires_at, ctx.subject.expires_at) == :lt
+
+      authorization = Repo.get_by!(Portal.PolicyAuthorization, id: payload.policy_authorization_id)
+      assert authorization.expires_at == payload.authorization_expires_at
+    end
+
+    test "leaves authorizations of other policies at the session expiry", ctx do
+      socket = join_channel(ctx.client, ctx.subject, attested?: true)
+      assert_push "init", _
+
+      payload = create_gateway_flow(socket, ctx.dns_resource)
+      assert payload.authorization_expires_at == ctx.subject.expires_at
+
+      send(socket.channel_pid, :renew_attested_authorizations)
+      refute_receive {:create_authorization, {_pid, :renewal}, _payload}, 200
+    end
+
+    test "renews the lease in place while the connection lives", ctx do
+      socket = join_channel(ctx.client, ctx.subject, attested?: true)
+      assert_push "init", _
+
+      payload = create_gateway_flow(socket, ctx.attested_resource)
+      id = payload.policy_authorization_id
+      soon = DateTime.add(DateTime.utc_now(), 5, :minute)
+      Repo.get_by!(Portal.PolicyAuthorization, id: id) |> Ecto.Changeset.change(expires_at: soon) |> Repo.update!()
+
+      send(socket.channel_pid, :renew_attested_authorizations)
+
+      assert_receive {:create_authorization, {_pid, :renewal}, renewal}
+      assert renewal.policy_authorization_id == id
+      assert renewal.resource.id == ctx.attested_resource.id
+      assert within_lease?(renewal.authorization_expires_at)
+      assert Repo.get_by!(Portal.PolicyAuthorization, id: id).expires_at == renewal.authorization_expires_at
+      refute_push "flow_created", _
+    end
+
+    test "stops renewing once the policy no longer holds", ctx do
+      socket = join_channel(ctx.client, ctx.subject, attested?: true)
+      assert_push "init", _
+
+      payload = create_gateway_flow(socket, ctx.attested_resource)
+      id = payload.policy_authorization_id
+
+      :sys.replace_state(socket.channel_pid, fn state ->
+        %{state | assigns: %{state.assigns | client: %{state.assigns.client | attested?: false}}}
+      end)
+
+      send(socket.channel_pid, :renew_attested_authorizations)
+
+      refute_receive {:create_authorization, {_pid, :renewal}, _payload}, 200
+      assert Repo.get_by!(Portal.PolicyAuthorization, id: id).expires_at == payload.authorization_expires_at
+    end
+
+    test "ignores the gateway reply to a renewal, old and new shape", ctx do
+      socket = join_channel(ctx.client, ctx.subject, attested?: true)
+      assert_push "init", _
+      rid = Ecto.UUID.dump!(ctx.attested_resource.id)
+
+      send(socket.channel_pid, {:connect, :renewal, rid, "key", %{}})
+      send(socket.channel_pid, {:connect, :renewal, rid, nil, ctx.gateway.id, "key", nil, nil, "psk", %{}, false})
+
+      assert %{assigns: %{}} = :sys.get_state(socket.channel_pid)
+      refute_push "flow_created", _
+    end
+
+    test "renews a connected client peer through its channel", ctx do
+      subject = %{ctx.subject | context: %{ctx.subject.context | user_agent: "Mac OS/14 apple-client/1.5.16"}}
+      target_actor = actor_fixture(account: ctx.account)
+      target_client = client_fixture(account: ctx.account, actor: target_actor) |> fetch_device!()
+
+      target_subject =
+        subject_fixture(account: ctx.account, actor: target_actor, type: :client, user_agent: "Mac OS/14 apple-client/1.5.16")
+
+      pool = static_device_pool_resource_fixture(account: ctx.account, devices: [target_client])
+      policy_fixture(account: ctx.account, group: ctx.group, resource: pool, conditions: @attested)
+
+      initiating_socket = join_channel(ctx.client, subject, attested?: true)
+      assert_push "init", _
+      join_channel(target_client, target_subject)
+      assert_push "init", _
+
+      target_client_id = target_client.id
+      initiating_client_id = ctx.client.id
+
+      push(initiating_socket, "create_flow", %{
+        "resource_id" => pool.id,
+        "ipv4" => Portal.Types.INET.to_string(target_client.ipv4)
+      })
+
+      assert_push "client_device_access_authorized", %{client_id: ^initiating_client_id, expires_at: first_expiry}
+      assert_push "client_device_access_authorized", %{client_id: ^target_client_id}
+      Portal.Queue.flush(:policy_authorization_queue)
+
+      assert within_lease?(DateTime.from_unix!(first_expiry))
+
+      authorization = Repo.get_by!(Portal.PolicyAuthorization, initiating_device_id: initiating_client_id, resource_id: pool.id)
+      assert DateTime.to_unix(authorization.expires_at) == first_expiry
+
+      authorization |> Ecto.Changeset.change(expires_at: DateTime.add(DateTime.utc_now(), 5, :minute)) |> Repo.update!()
+
+      send(initiating_socket.channel_pid, :renew_attested_authorizations)
+
+      assert_push "client_device_access_authorized", %{client_id: ^initiating_client_id, expires_at: renewed_expiry}
+      assert renewed_expiry > first_expiry - 60
+      assert within_lease?(DateTime.from_unix!(renewed_expiry))
+      assert DateTime.to_unix(Repo.get_by!(Portal.PolicyAuthorization, id: authorization.id).expires_at) == renewed_expiry
+      refute_push "client_device_access_authorized", %{client_id: ^target_client_id}
+    end
+  end
 end
