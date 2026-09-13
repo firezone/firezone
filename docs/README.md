@@ -146,7 +146,7 @@ process more packets with fewer system calls and wake-ups.
 ### Network path optimizations
 
 The [bandwidth-delay product](https://en.wikipedia.org/wiki/Bandwidth-delay_product)
-means throughtput is a function of round-trip latency. Firezone keeps network
+means throughput is a function of round-trip latency. Firezone keeps network
 paths short to minimize that latency.
 
 Direct peer connections form on demand through a custom NAT traversal system
