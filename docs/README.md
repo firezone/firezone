@@ -174,13 +174,9 @@ This monorepo contains the Firezone product:
 | [kotlin/android](../kotlin/android)             | Android and ChromeOS clients                    |
 | [policy-templates](../policy-templates)         | MDM policy templates for Windows and macOS      |
 
-The marketing website and product documentation live in
-[firezone/website](https://github.com/firezone/website).
-
 ## Documentation and support
 
 - [Documentation](https://www.firezone.dev/kb): Deployment, configuration, and troubleshooting.
-- [GitHub Discussions](https://github.com/firezone/firezone/discussions): Community questions and support.
 - [GitHub Issues](https://github.com/firezone/firezone/issues): Bug reports and feature requests.
 - [Support](https://www.firezone.dev/support): Support options for your deployment.
 - [Contact sales](https://www.firezone.dev/contact/sales?utm_source=readme): Enterprise requirements and deployment planning.
