@@ -250,6 +250,9 @@ if config_env() == :prod do
     # Delete expired policy_authorizations every minute
     {"* * * * *", Portal.Workers.DeleteExpiredPolicyAuthorizations},
 
+    # Revoke attested access of clients that are no longer connected
+    {"*/15 * * * *", Portal.Workers.DeleteUnattestedPolicyAuthorizations},
+
     # Refresh cached certificate revocation lists hourly
     {"15 */2 * * *", Portal.Crl.Scheduler},
 
