@@ -12,6 +12,11 @@ defmodule Portal.EmailTest do
     test "trims input without an at sign for validation by the caller" do
       assert Email.normalize("  invalid  ") == {:ok, "invalid"}
     end
+
+    test "rejects a domain IDNA cannot encode" do
+      assert Email.normalize("Ï@ú1å?") == :error
+      assert Email.normalize_for_match("Ï@ú1å?") == :error
+    end
   end
 
   describe "normalize_for_match/1" do
