@@ -410,9 +410,6 @@ defmodule Portal.Policies.Evaluator do
 
       [hours, minutes, seconds] ->
         Time.from_iso8601(pad2(hours) <> ":" <> pad2(minutes) <> ":" <> pad2(seconds))
-
-      _ ->
-        {:error, "invalid time: #{time}"}
     end
   end
 

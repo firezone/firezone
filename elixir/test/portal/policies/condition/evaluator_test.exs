@@ -969,6 +969,10 @@ defmodule Portal.Policies.EvaluatorTest do
   end
 
   describe "parse_time_ranges/1" do
+    test "treats a missing value as no ranges" do
+      assert parse_time_ranges(nil) == {:ok, []}
+    end
+
     test "parses time ranges" do
       assert parse_time_ranges("true") ==
                {:ok, [{~T[00:00:00], ~T[23:59:59]}]}
@@ -1018,6 +1022,11 @@ defmodule Portal.Policies.EvaluatorTest do
   end
 
   describe "parse_time_range/1" do
+    test "pads single-digit hours, minutes and seconds" do
+      assert parse_time_range("8-17") == {:ok, {~T[08:00:00], ~T[17:00:00]}}
+      assert parse_time_range("8:5:3-9:7") == {:ok, {~T[08:05:03], ~T[09:07:00]}}
+    end
+
     test "parses time range" do
       assert parse_time_range("08:00:00-17:00:00") ==
                {:ok, {~T[08:00:00], ~T[17:00:00]}}
