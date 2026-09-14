@@ -115,6 +115,21 @@ defmodule PortalWeb.Policies.Postures do
 
   def handle_event(_event, _params, state), do: state
 
+  @doc "Whether one more rule under this group stays inside the parser's depth and leaf limits."
+  @spec can_add_rule?(t(), node_id()) :: boolean()
+  def can_add_rule?(state, id) do
+    {leaf, _next_id} = new_leaf(state.next_id)
+    fits?(append_child(state.tree, id, leaf))
+  end
+
+  @doc "Whether one more group, holding one rule, under this group stays inside the limits."
+  @spec can_add_group?(t(), node_id()) :: boolean()
+  def can_add_group?(state, id) do
+    {leaf, next_id} = new_leaf(state.next_id)
+    {group, _next_id} = new_group(next_id, [leaf])
+    fits?(append_child(state.tree, id, group))
+  end
+
   @doc "The wire map for the builder tree, or nil when the tree has no rules."
   @spec to_wire(tree_node()) :: map() | nil
   def to_wire(%{kind: :group, children: []}), do: nil
@@ -170,6 +185,24 @@ defmodule PortalWeb.Policies.Postures do
       :error -> false
     end
   end
+
+  # Mirrors the parser: a node's depth is the number of and/or/not wrappers above it.
+  defp fits?(tree) do
+    wire = to_wire(tree)
+    wire_depth(wire) <= Postures.max_depth() and wire_leaves(wire) <= Postures.max_leaves()
+  end
+
+  defp wire_depth(nil), do: 0
+  defp wire_depth(%{"not" => inner}), do: 1 + wire_depth(inner)
+  defp wire_depth(%{"and" => nodes}), do: 1 + Enum.reduce(nodes, 0, &max(wire_depth(&1), &2))
+  defp wire_depth(%{"or" => nodes}), do: 1 + Enum.reduce(nodes, 0, &max(wire_depth(&1), &2))
+  defp wire_depth(_leaf), do: 0
+
+  defp wire_leaves(nil), do: 0
+  defp wire_leaves(%{"not" => inner}), do: wire_leaves(inner)
+  defp wire_leaves(%{"and" => nodes}), do: nodes |> Enum.map(&wire_leaves/1) |> Enum.sum()
+  defp wire_leaves(%{"or" => nodes}), do: nodes |> Enum.map(&wire_leaves/1) |> Enum.sum()
+  defp wire_leaves(_leaf), do: 1
 
   defp switch_to_json(%{source: :tree} = state) do
     validate(%{state | tab: :json, json_text: pretty(to_wire(state.tree)), json_notice: nil})
