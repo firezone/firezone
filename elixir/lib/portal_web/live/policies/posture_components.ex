@@ -178,6 +178,7 @@ defmodule PortalWeb.Policies.PostureComponents do
       assigns
       |> assign(:error, Map.get(assigns.errors, node.id))
       |> assign(:input_class, @input_class)
+      |> assign(:select_class, [@input_class, "pr-8"])
       |> assign(:type, type)
       |> assign(:providers, with_current(Postures.providers(), node.provider))
       |> assign(:fields, with_current(Postures.fields(node.provider), node.field))
@@ -191,17 +192,17 @@ defmodule PortalWeb.Policies.PostureComponents do
     >
       <div class="flex items-center gap-1.5 flex-wrap">
         <.postures_not_toggle node={@node} />
-        <select name={"_postures[#{@node.id}][provider]"} phx-change="postures_change" class={@input_class}>
+        <select name={"_postures[#{@node.id}][provider]"} phx-change="postures_change" class={@select_class}>
           <option :for={provider <- @providers} value={provider} selected={provider == @node.provider}>
             {provider_label(provider)}
           </option>
         </select>
-        <select name={"_postures[#{@node.id}][field]"} phx-change="postures_change" class={[@input_class, "font-mono"]}>
+        <select name={"_postures[#{@node.id}][field]"} phx-change="postures_change" class={[@select_class, "font-mono"]}>
           <option :for={field <- @fields} value={field} selected={field == @node.field}>
             {field}
           </option>
         </select>
-        <select name={"_postures[#{@node.id}][op]"} phx-change="postures_change" class={@input_class}>
+        <select name={"_postures[#{@node.id}][op]"} phx-change="postures_change" class={@select_class}>
           <option :for={op <- @operators} value={op} selected={op == @node.op}>
             {operator_label(op)}
           </option>
@@ -211,7 +212,7 @@ defmodule PortalWeb.Policies.PostureComponents do
             :if={@boolean_value?}
             name={"_postures[#{@node.id}][value]"}
             phx-change="postures_change"
-            class={@input_class}
+            class={@select_class}
           >
             <option value="true" selected={@node.value == "true"}>true</option>
             <option value="false" selected={@node.value == "false"}>false</option>
