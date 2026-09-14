@@ -15,6 +15,7 @@ defmodule PortalWeb.Policies do
   alias Portal.{Changes.Change, Policy, Authentication, PubSub}
   alias Phoenix.LiveView.AsyncResult
   alias __MODULE__.Database
+  alias PortalWeb.Policies.Postures
 
   @tod_pending_empty %{"on" => "", "off" => "", "days" => []}
   import Ecto.Changeset
@@ -309,7 +310,7 @@ defmodule PortalWeb.Policies do
             </div>
           </:col>
           <:col :let={policy} label="Conditions" class="w-28 lg:w-72">
-            <%= if length(policy.conditions) > 0 do %>
+            <%= if policy.conditions != [] or policy.postures do %>
               <span class="lg:hidden text-xs text-body">
                 {length(policy.conditions)} condition{if length(policy.conditions) != 1, do: "s"}
               </span>
@@ -319,6 +320,12 @@ defmodule PortalWeb.Policies do
                     {condition_short_label(condition.property)}
                   </span>
                 <% end %>
+                <span
+                  :if={policy.postures}
+                  class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-raised text-body border border-border"
+                >
+                  Posture
+                </span>
               </div>
             <% else %>
               <span class="text-xs text-muted">—</span>
@@ -355,6 +362,7 @@ defmodule PortalWeb.Policies do
         subject={@subject}
         panel={policy_panel_state(assigns)}
         conditions_state={policy_conditions_state(assigns)}
+        postures={@policy_postures}
         confirm_state={policy_confirm_state(assigns)}
         policy_authorizations={@policy_authorizations}
         policy_authorizations_page={@policy_authorizations_page}
@@ -429,7 +437,8 @@ defmodule PortalWeb.Policies do
       policy_confirm: %{
         disable?: false,
         delete?: false
-      }
+      },
+      policy_postures: Postures.for_account(socket.assigns.account)
     ]
   end
 
@@ -455,7 +464,9 @@ defmodule PortalWeb.Policies do
       form: form,
       selected_resource: policy.resource,
       tab: :overview
-    }) ++ init_condition_assigns(policy, socket)
+    }) ++
+      init_condition_assigns(policy, socket) ++
+      [policy_postures: Postures.for_account(socket.assigns.account, policy.postures)]
   end
 
   defp merge_state(socket, key, attrs) do
@@ -595,11 +606,16 @@ defmodule PortalWeb.Policies do
     {:noreply, push_patch(socket, to: live_table_path(socket, ~p"/#{socket.assigns.account}/policies/new"))}
   end
 
+  def handle_event("postures_" <> _rest = event, params, socket) do
+    {:noreply, update(socket, :policy_postures, &Postures.handle_event(event, params, &1))}
+  end
+
   def handle_event("change_policy_form", %{"policy" => params}, socket) do
     params =
       params
       |> map_condition_params(empty_values: :drop)
       |> maybe_drop_unsupported_conditions(socket)
+      |> Postures.maybe_drop_unsupported(socket.assigns.policy_postures)
 
     changeset =
       if socket.assigns.live_action == :new do
@@ -617,6 +633,7 @@ defmodule PortalWeb.Policies do
       params
       |> map_condition_params(empty_values: :drop)
       |> maybe_drop_unsupported_conditions(socket)
+      |> Postures.maybe_drop_unsupported(socket.assigns.policy_postures)
 
     if socket.assigns.live_action == :new do
       case create_policy(params, socket.assigns.subject) do
@@ -887,7 +904,7 @@ defmodule PortalWeb.Policies do
 
   defp new_policy(attrs, %Authentication.Subject{} = subject) do
     %Policy{}
-    |> cast(attrs, ~w[description group_id resource_id flow_log_uploads_enabled]a)
+    |> cast(attrs, ~w[description group_id resource_id flow_log_uploads_enabled postures]a)
     |> validate_required(~w[group_id resource_id]a)
     |> cast_embed(:conditions, with: &Portal.Policies.Condition.changeset/3)
     |> Policy.changeset()
@@ -904,7 +921,7 @@ defmodule PortalWeb.Policies do
 
   defp change_policy(%Policy{} = policy, attrs \\ %{}) do
     policy
-    |> cast(attrs, ~w[description group_id resource_id flow_log_uploads_enabled]a)
+    |> cast(attrs, ~w[description group_id resource_id flow_log_uploads_enabled postures]a)
     |> validate_required(~w[group_id resource_id]a)
     |> cast_embed(:conditions, with: &Portal.Policies.Condition.changeset/3)
     |> Policy.changeset()

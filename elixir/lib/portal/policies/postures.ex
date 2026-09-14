@@ -55,6 +55,8 @@ defmodule Portal.Policies.Postures do
 
   def max_depth, do: @max_depth
   def max_leaves, do: @max_leaves
+  def no_value_operators, do: @no_value_operators
+  def list_operators, do: @list_operators
 
   @impl Ecto.Type
   def type, do: :map
@@ -68,6 +70,15 @@ defmodule Portal.Policies.Postures do
   @impl Ecto.Type
   def cast(nil), do: {:ok, nil}
   def cast(%__MODULE__{} = postures), do: {:ok, postures}
+
+  def cast(json) when is_binary(json) do
+    case JSON.decode(json) do
+      {:ok, nil} -> {:ok, nil}
+      {:ok, decoded} when is_map(decoded) -> cast(decoded)
+      {:ok, _other} -> {:error, message: "must be an object"}
+      {:error, _reason} -> {:error, message: "is not valid JSON"}
+    end
+  end
 
   def cast(map) when is_map(map) do
     case parse(map) do
