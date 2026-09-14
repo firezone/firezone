@@ -30,13 +30,9 @@ defmodule Portal.Changes.Hooks.Resources do
     if old_resource.site_id != resource.site_id or
          old_resource.ip_stack != resource.ip_stack or
          old_resource.type != resource.type or
-         old_resource.address != resource.address do
-      Database.delete_policy_authorizations_for(resource)
-    end
-
-    if resource.type == :device_pool and
+         old_resource.address != resource.address or
          old_resource.device_membership_criteria != resource.device_membership_criteria do
-      Database.delete_policy_authorizations_for_non_members(resource)
+      Database.delete_policy_authorizations_for(resource)
     end
 
     PubSub.Changes.broadcast(resource.account_id, :resources, change)
@@ -53,95 +49,11 @@ defmodule Portal.Changes.Hooks.Resources do
   defmodule Database do
     import Ecto.Query
     alias Portal.Safe
-    alias Portal.Resource.DeviceMembershipCriteria
 
     # Inline function from Portal.PolicyAuthorizations
     def delete_policy_authorizations_for(%Portal.Resource{} = resource) do
       resource
       |> policy_authorizations()
-      |> Safe.unscoped()
-      |> Safe.delete_all()
-    end
-
-    def delete_policy_authorizations_for_non_members(
-          %Portal.Resource{
-            device_membership_criteria: %DeviceMembershipCriteria{
-              field: :id,
-              op: :in,
-              value: {:literal, device_ids}
-            }
-          } = resource
-        ) do
-      resource
-      |> policy_authorizations()
-      |> where([policy_authorizations: f], f.receiving_device_id not in ^device_ids)
-      |> Safe.unscoped()
-      |> Safe.delete_all()
-    end
-
-    def delete_policy_authorizations_for_non_members(
-          %Portal.Resource{
-            device_membership_criteria: %DeviceMembershipCriteria{
-              field: :actor_id,
-              op: :eq,
-              value: {:subject, :actor_id}
-            }
-          } = resource
-        ) do
-      resource
-      |> policy_authorizations()
-      |> join(:inner, [policy_authorizations: f], r in Portal.Device,
-        on: r.account_id == f.account_id and r.id == f.receiving_device_id,
-        as: :receiver
-      )
-      |> join(:inner, [policy_authorizations: f], i in Portal.Device,
-        on: i.account_id == f.account_id and i.id == f.initiating_device_id,
-        as: :initiator
-      )
-      |> where([receiver: r, initiator: i], r.actor_id != i.actor_id)
-      |> Safe.unscoped()
-      |> Safe.delete_all()
-    end
-
-    def delete_policy_authorizations_for_non_members(
-          %Portal.Resource{
-            device_membership_criteria: %DeviceMembershipCriteria{
-              field: :account_id,
-              op: :eq,
-              value: {:subject, :account_id}
-            }
-          }
-        ) do
-      {0, nil}
-    end
-
-    def delete_policy_authorizations_for_non_members(
-          %Portal.Resource{
-            device_membership_criteria: %DeviceMembershipCriteria{
-              provider: :actor_group,
-              field: :id,
-              op: :eq,
-              value: {:literal, group_id}
-            }
-          } = resource
-        ) do
-      resource
-      |> policy_authorizations()
-      |> join(:inner, [policy_authorizations: f], r in Portal.Device,
-        on: r.account_id == f.account_id and r.id == f.receiving_device_id,
-        as: :receiver
-      )
-      |> where(
-        [receiver: r],
-        not exists(
-          from(m in Portal.Membership,
-            where:
-              m.account_id == parent_as(:receiver).account_id and
-                m.actor_id == parent_as(:receiver).actor_id and
-                m.group_id == ^group_id
-          )
-        )
-      )
       |> Safe.unscoped()
       |> Safe.delete_all()
     end

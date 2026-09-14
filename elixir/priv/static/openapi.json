@@ -16061,7 +16061,7 @@
       },
       "patch": {
         "callbacks": {},
-        "description": "Adds and/or removes individual Clients, leaving every other member of the\npool untouched.\n\nBoth operations are idempotent: adding a Client already in the pool and\nremoving one that isn't are both no-ops. `remove` is applied before `add`,\nso a Client named in both ends up in the pool.\n",
+        "description": "Adds and/or removes individual Clients, leaving every other member of the\npool untouched.\n\nBoth operations are idempotent: adding a Client already in the pool and\nremoving one that isn't are both no-ops. `remove` is applied before `add`,\nso a Client named in both ends up in the pool.\n\nChanging the members is a breaking update: every active connection through\nthe pool is dropped, and Clients reconnect to the members they may still reach.\n",
         "operationId": "PortalAPI.PoolMemberController.update_patch",
         "parameters": [
           {
@@ -16206,7 +16206,7 @@
       },
       "put": {
         "callbacks": {},
-        "description": "Replaces the Resource's entire membership list with the given Clients.\n\nAny Client not named in the request is removed from the pool. To add or\nremove individual Clients without disturbing the rest, use `PATCH`.\n",
+        "description": "Replaces the Resource's entire membership list with the given Clients.\n\nAny Client not named in the request is removed from the pool. To add or\nremove individual Clients without disturbing the rest, use `PATCH`.\n\nChanging the members is a breaking update: every active connection through\nthe pool is dropped, and Clients reconnect to the members they may still reach.\n",
         "operationId": "PortalAPI.PoolMemberController.update_put",
         "parameters": [
           {

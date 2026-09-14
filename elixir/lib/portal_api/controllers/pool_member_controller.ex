@@ -62,6 +62,9 @@ defmodule PortalAPI.PoolMemberController do
 
     Any Client not named in the request is removed from the pool. To add or
     remove individual Clients without disturbing the rest, use `PATCH`.
+
+    Changing the members is a breaking update: every active connection through
+    the pool is dropped, and Clients reconnect to the members they may still reach.
     """,
     parameters: [
       resource_id: [
@@ -119,6 +122,9 @@ defmodule PortalAPI.PoolMemberController do
     Both operations are idempotent: adding a Client already in the pool and
     removing one that isn't are both no-ops. `remove` is applied before `add`,
     so a Client named in both ends up in the pool.
+
+    Changing the members is a breaking update: every active connection through
+    the pool is dropped, and Clients reconnect to the members they may still reach.
     """,
     parameters: [
       resource_id: [

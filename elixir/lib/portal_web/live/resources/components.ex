@@ -435,9 +435,15 @@ defmodule PortalWeb.Resources.Components do
 
   attr :form, :any, required: true
   attr :subject, :any, required: true
+  attr :selected_devices, :list, default: []
 
   def resource_pool_members_section(assigns) do
-    assigns = assign(assigns, members: pool_members(assigns.form), group_id: pool_group_id(assigns.form))
+    assigns =
+      assign(assigns,
+        members: pool_members(assigns.form),
+        group_id: pool_group_id(assigns.form),
+        members_changed?: pool_members_changed?(assigns.form, assigns.selected_devices)
+      )
 
     ~H"""
     <div class="space-y-3">
@@ -473,6 +479,10 @@ defmodule PortalWeb.Resources.Components do
         <:options_group :let={options_group}>{options_group}</:options_group>
         <:option :let={row}>{row.group.name}</:option>
       </.live_component>
+      <p :if={@members_changed?} class="text-xs text-warning">
+        Changing who is in this pool expires every active connection through it;
+        devices may experience a few seconds of interrupted connectivity.
+      </p>
     </div>
     """
   end
@@ -556,6 +566,26 @@ defmodule PortalWeb.Resources.Components do
   end
 
   defp stored_group_id(_resource), do: nil
+
+  # Warn only on an existing pool: a criteria change drops its active authorizations.
+  defp pool_members_changed?(form, selected_devices) do
+    case form.data do
+      %{id: id, type: :device_pool, device_membership_criteria: criteria} when not is_nil(id) ->
+        pool_members(form) != Portal.Resource.DeviceMembershipCriteria.kind(criteria) or
+          selected_ids_changed?(criteria, selected_devices) or
+          pool_group_id(form) != stored_group_id(form.data)
+
+      _resource ->
+        false
+    end
+  end
+
+  defp selected_ids_changed?(criteria, selected_devices) do
+    case Portal.Resource.DeviceMembershipCriteria.device_ids(criteria) do
+      {:ok, device_ids} -> Enum.sort(Enum.map(selected_devices, & &1.id)) != device_ids
+      :error -> false
+    end
+  end
 
   @doc "Whether a device pool lists its devices instead of picking them by a rule."
   @spec lists_devices?(map()) :: boolean()
@@ -1076,6 +1106,7 @@ defmodule PortalWeb.Resources.Components do
             :if={to_string(@resource_form[:type].value) == "device_pool"}
             form={@resource_form}
             subject={@subject}
+            selected_devices={@resource_form_selected_devices}
           />
 
           <.resource_device_pool_section

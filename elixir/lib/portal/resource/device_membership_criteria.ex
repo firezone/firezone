@@ -90,8 +90,13 @@ defmodule Portal.Resource.DeviceMembershipCriteria do
   def per_actor?(%__MODULE__{value: {:subject, :actor_id}}), do: true
   def per_actor?(%__MODULE__{}), do: false
 
-  @doc "Whether `device` is in a pool with these criteria when `subject` asks."
-  @spec member?(t(), Portal.Device.t(), Subject.t()) :: boolean()
+  @doc """
+  Whether `device` is in a pool with these criteria when `subject` asks.
+
+  `device` is a row, or a map with the same `id`, `actor_id` and `account_id` plus the
+  actor's `group_ids`, as a client's presence carries them, so the answer needs no query.
+  """
+  @spec member?(t(), Portal.Device.t() | map(), Subject.t()) :: boolean()
   def member?(%__MODULE__{provider: :device, field: field, op: :in, value: {:literal, values}}, device, _subject) do
     Map.fetch!(device, field) in values
   end
@@ -100,7 +105,12 @@ defmodule Portal.Resource.DeviceMembershipCriteria do
     Map.fetch!(device, field) == resolve_value(value, subject)
   end
 
-  def member?(%__MODULE__{provider: :actor_group} = criteria, device, subject) do
+  def member?(%__MODULE__{provider: :actor_group, value: {:literal, group_id}}, %{group_ids: group_ids}, _subject)
+      when is_list(group_ids) do
+    group_id in group_ids
+  end
+
+  def member?(%__MODULE__{provider: :actor_group} = criteria, %Portal.Device{} = device, subject) do
     Database.member?(criteria, device, subject)
   end
 

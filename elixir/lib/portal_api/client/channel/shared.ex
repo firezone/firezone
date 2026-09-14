@@ -774,36 +774,13 @@ defmodule PortalAPI.Client.Channel.Shared do
           socket
         )
 
-      {:ok, resource, membership_id, policy_id, expires_at} ->
-        connected_gateway_ids = Map.get(payload, "connected_gateway_ids", [])
-
-        handle_request_gateway_authorization(
+      result ->
+        handle_authorized_gateway_resource(
+          result,
           resource_id,
-          resource,
-          membership_id,
-          policy_id,
-          expires_at,
-          connected_gateway_ids,
-          socket,
-          nil
+          Map.get(payload, "connected_gateway_ids", []),
+          socket
         )
-
-      {:error, :not_found} ->
-        push(socket, authorization_creation_failed_event(socket), %{
-          resource_id: resource_id,
-          reason: :not_found
-        })
-
-        {:noreply, socket}
-
-      {:error, {:forbidden, violated_properties: violated_properties}} ->
-        push(socket, authorization_creation_failed_event(socket), %{
-          resource_id: resource_id,
-          reason: :forbidden,
-          violated_properties: violated_properties
-        })
-
-        {:noreply, socket}
     end
   end
 
@@ -859,10 +836,10 @@ defmodule PortalAPI.Client.Channel.Shared do
     {:noreply, socket}
   end
 
-  # Connlib asks for access when it sees a packet for an address it holds no permitting
-  # route for. The portal finds what is behind the address and picks by the flow: a device
-  # in the tunnel range through the first pool that admits it, any other address through
-  # the longest matching CIDR, IP or Internet resource, and names the pick in the answer.
+  # Connlib matched a packet against its resources and asks for access through them, most
+  # preferred first. A packet for a device in the tunnel range names the pools whose filters
+  # permit it and carries the address; the portal grants the first pool that holds the
+  # device. Any other packet names the one resource connlib routes it through.
   def handle_in("request_access", payload, socket) do
     if protocol_version(socket) >= 3 do
       handle_request_access(payload, socket)
@@ -1266,33 +1243,9 @@ defmodule PortalAPI.Client.Channel.Shared do
 
   defp parse_target_address(_), do: {:error, :missing_address}
 
-  defp tunnel_address?({:ipv4, tuple}) do
-    Portal.Types.CIDR.contains?(
-      Portal.Device.reserved_ipv4_cidr(),
-      %Postgrex.INET{address: tuple, netmask: nil}
-    )
-  end
-
-  defp tunnel_address?({:ipv6, tuple}) do
-    Portal.Types.CIDR.contains?(
-      Portal.Device.reserved_ipv6_cidr(),
-      %Postgrex.INET{address: tuple, netmask: nil}
-    )
-  end
-
   defp address_fields(nil), do: %{}
   defp address_fields({:ipv4, tuple}), do: %{ipv4: to_string(:inet.ntoa(tuple))}
   defp address_fields({:ipv6, tuple}), do: %{ipv6: to_string(:inet.ntoa(tuple))}
-
-  defp parse_flow(%{"protocol" => "icmp"}), do: {:ok, :icmp}
-
-  defp parse_flow(%{"protocol" => "tcp", "port" => port}) when is_integer(port) and port in 0..65_535,
-    do: {:ok, {:tcp, port}}
-
-  defp parse_flow(%{"protocol" => "udp", "port" => port}) when is_integer(port) and port in 0..65_535,
-    do: {:ok, {:udp, port}}
-
-  defp parse_flow(_payload), do: {:error, :invalid_flow}
 
   defp fetch_target_device(target, socket) do
     with {:ok, %Portal.Device{} = device} <-
@@ -1486,101 +1439,183 @@ defmodule PortalAPI.Client.Channel.Shared do
     )
   end
 
-  defp handle_request_access(payload, socket) do
-    with {:ok, target} <- parse_target_address(payload),
-         {:ok, flow} <- parse_flow(payload) do
-      if tunnel_address?(target) do
-        handle_request_device_access(target, flow, payload, socket)
-      else
-        handle_request_resource_access(target, flow, payload, socket)
+  defp handle_request_access(%{"resource_ids" => resource_ids} = payload, socket)
+       when is_list(resource_ids) and resource_ids != [] do
+    with {:ok, resource_ids} <- parse_resource_ids(resource_ids) do
+      case parse_target_address(payload) do
+        {:ok, target} ->
+          handle_request_device_access(resource_ids, target, payload, socket)
+
+        {:error, :missing_address} ->
+          handle_request_resource_access(hd(resource_ids), payload, socket)
+
+        {:error, reason} ->
+          push_device_access_denied(socket, payload, reason)
       end
     else
-      {:error, reason} ->
-        push(socket, "client_device_access_denied", %{
-          ipv4: payload["ipv4"],
-          ipv6: payload["ipv6"],
-          reason: reason
-        })
-
-        {:noreply, socket}
+      :error -> push_device_access_denied(socket, payload, :invalid_resource_ids)
     end
   end
 
-  defp handle_request_resource_access(target, flow, payload, socket) do
-    case Cache.Client.authorize_address(
+  defp handle_request_access(payload, socket) do
+    push_device_access_denied(socket, payload, :missing_resource_ids)
+  end
+
+  defp parse_resource_ids(resource_ids) do
+    Enum.reduce_while(resource_ids, {:ok, []}, fn resource_id, {:ok, acc} ->
+      case Ecto.UUID.cast(resource_id) do
+        {:ok, resource_id} -> {:cont, {:ok, [resource_id | acc]}}
+        :error -> {:halt, :error}
+      end
+    end)
+    |> case do
+      {:ok, resource_ids} -> {:ok, Enum.reverse(resource_ids)}
+      :error -> :error
+    end
+  end
+
+  defp handle_request_resource_access(resource_id, payload, socket) do
+    case Cache.Client.authorize_resource(
            socket.assigns.cache,
            socket.assigns.client,
-           target,
-           flow,
+           resource_id,
            socket.assigns.subject
          ) do
+      {:ok, %Cache.Cacheable.Resource{type: :device_pool}, _membership_id, _policy_id, _expires_at} ->
+        push(socket, authorization_creation_failed_event(socket), %{
+          resource_id: resource_id,
+          reason: :missing_address
+        })
+
+        {:noreply, socket}
+
+      result ->
+        handle_authorized_gateway_resource(
+          result,
+          resource_id,
+          Map.get(payload, "connected_gateway_ids", []),
+          socket
+        )
+    end
+  end
+
+  defp handle_authorized_gateway_resource(result, resource_id, connected_gateway_ids, socket) do
+    case result do
       {:ok, resource, membership_id, policy_id, expires_at} ->
         handle_request_gateway_authorization(
-          Ecto.UUID.load!(resource.id),
+          resource_id,
           resource,
           membership_id,
           policy_id,
           expires_at,
-          Map.get(payload, "connected_gateway_ids", []),
+          connected_gateway_ids,
           socket,
-          target
+          nil
         )
 
-      {:error, reason} ->
-        push(
-          socket,
-          authorization_creation_failed_event(socket),
-          Map.merge(%{reason: reason}, address_fields(target))
-        )
+      {:error, :not_found} ->
+        push(socket, authorization_creation_failed_event(socket), %{
+          resource_id: resource_id,
+          reason: :not_found
+        })
 
         {:noreply, socket}
-    end
-  end
 
-  defp handle_request_device_access(target, flow, payload, socket) do
-    with {:ok, %Portal.Device{} = device} <- fetch_target_device(target, socket),
-         {:ok, resource, membership_id, policy_id, expires_at} <-
-           Cache.Client.authorize_device_pool(
-             socket.assigns.cache,
-             socket.assigns.client,
-             device,
-             flow,
-             socket.assigns.subject
-           ) do
-      case find_online_client_by_address(socket.assigns.client.account_id, target) do
-        {:ok, target_client_id, target_meta} ->
-          handle_authorized_pool_target(
-            target_client_id,
-            target_meta,
-            resource,
-            membership_id,
-            policy_id,
-            expires_at,
-            payload,
-            socket
-          )
-
-        :offline ->
-          push(socket, "client_device_access_denied", %{
-            client_id: device.id,
-            ipv4: payload["ipv4"],
-            ipv6: payload["ipv6"],
-            reason: :offline
-          })
-
-          {:noreply, socket}
-      end
-    else
-      {:error, reason} ->
-        push(socket, "client_device_access_denied", %{
-          ipv4: payload["ipv4"],
-          ipv6: payload["ipv6"],
-          reason: reason
+      {:error, {:forbidden, violated_properties: violated_properties}} ->
+        push(socket, authorization_creation_failed_event(socket), %{
+          resource_id: resource_id,
+          reason: :forbidden,
+          violated_properties: violated_properties
         })
 
         {:noreply, socket}
     end
   end
+
+  # The target's presence carries everything the criteria compare against, so an online
+  # device is authorized without a query. An offline device is read once to tell "offline"
+  # from "not in any of these pools".
+  defp handle_request_device_access(resource_ids, target, payload, socket) do
+    account_id = socket.assigns.client.account_id
+
+    case find_online_client_by_address(account_id, target) do
+      {:ok, target_client_id, target_meta} when target_client_id != socket.assigns.client.id ->
+        member = %{
+          id: target_client_id,
+          account_id: account_id,
+          actor_id: target_meta.actor_id,
+          group_ids: Map.get(target_meta, :group_ids, [])
+        }
+
+        case pick_device_pool(resource_ids, member, socket) do
+          {:ok, resource, membership_id, policy_id, expires_at} ->
+            handle_authorized_pool_target(
+              target_client_id,
+              target_meta,
+              resource,
+              membership_id,
+              policy_id,
+              expires_at,
+              payload,
+              socket
+            )
+
+          {:error, :forbidden} ->
+            push_device_access_denied(socket, payload, :forbidden)
+        end
+
+      {:ok, _self_id, _meta} ->
+        push_device_access_denied(socket, payload, :forbidden)
+
+      :offline ->
+        with {:ok, %Portal.Device{} = device} <- fetch_target_device(target, socket),
+             {:ok, _resource, _membership_id, _policy_id, _expires_at} <-
+               pick_device_pool(resource_ids, device, socket) do
+          push_device_access_denied(socket, Map.put(payload, "client_id", device.id), :offline)
+        else
+          {:error, reason} -> push_device_access_denied(socket, payload, reason)
+        end
+    end
+  end
+
+  # Walks the pools connlib named, in its order, and grants the first the client may use
+  # that holds the target.
+  defp pick_device_pool(resource_ids, target, socket) do
+    Enum.find_value(resource_ids, {:error, :forbidden}, fn resource_id ->
+      with {:ok, pool} <- fetch_connectable_device_pool(socket.assigns.cache, resource_id),
+           true <-
+             Portal.Resource.DeviceMembershipCriteria.member?(
+               pool.device_membership_criteria,
+               target,
+               socket.assigns.subject
+             ),
+           {:ok, _resource, _membership_id, _policy_id, _expires_at} = authorized <-
+             Cache.Client.authorize_resource(
+               socket.assigns.cache,
+               socket.assigns.client,
+               resource_id,
+               socket.assigns.subject
+             ) do
+        authorized
+      else
+        _ -> nil
+      end
+    end)
+  end
+
+  defp push_device_access_denied(socket, payload, reason) do
+    push(
+      socket,
+      "client_device_access_denied",
+      %{ipv4: payload["ipv4"], ipv6: payload["ipv6"], reason: reason}
+      |> maybe_put_client_id(payload["client_id"])
+    )
+
+    {:noreply, socket}
+  end
+
+  defp maybe_put_client_id(payload, nil), do: payload
+  defp maybe_put_client_id(payload, client_id), do: Map.put(payload, :client_id, client_id)
 
   defp handle_request_pool_authorization(
          resource_id,
@@ -2130,12 +2165,15 @@ defmodule PortalAPI.Client.Channel.Shared do
          %{assigns: %{client: %{actor_id: id}}} = socket
        )
        when id == actor_id do
-    Cache.Client.add_membership(
-      socket.assigns.cache,
-      socket.assigns.client,
-      socket.assigns.subject
-    )
-    |> push_resource_updates(socket)
+    {:noreply, socket} =
+      Cache.Client.add_membership(
+        socket.assigns.cache,
+        socket.assigns.client,
+        socket.assigns.subject
+      )
+      |> push_resource_updates(socket)
+
+    {:noreply, track_presence(socket)}
   end
 
   defp handle_change(
@@ -2146,13 +2184,16 @@ defmodule PortalAPI.Client.Channel.Shared do
          %{assigns: %{client: %{actor_id: id}}} = socket
        )
        when id == actor_id do
-    Cache.Client.delete_membership(
-      socket.assigns.cache,
-      membership,
-      socket.assigns.client,
-      socket.assigns.subject
-    )
-    |> push_resource_updates(socket)
+    {:noreply, socket} =
+      Cache.Client.delete_membership(
+        socket.assigns.cache,
+        membership,
+        socket.assigns.client,
+        socket.assigns.subject
+      )
+      |> push_resource_updates(socket)
+
+    {:noreply, track_presence(socket)}
   end
 
   # CLIENTS
@@ -2871,7 +2912,8 @@ defmodule PortalAPI.Client.Channel.Shared do
         :ok =
           Presence.Devices.connect(
             socket.assigns.client,
-            socket.assigns.subject.credential.id
+            socket.assigns.subject.credential.id,
+            %{group_ids: group_ids(socket.assigns.cache)}
           )
 
         for {_pid, ref} <- socket.assigns[:presence_monitors] || [] do
@@ -2885,6 +2927,12 @@ defmodule PortalAPI.Client.Channel.Shared do
 
         assign(socket, presence_monitors: monitors)
     end
+  end
+
+  # Pool authorization reads the target's groups off its presence, so they must follow
+  # its memberships.
+  defp group_ids(%{memberships: memberships}) do
+    for {gid_bytes, _mid_bytes} <- memberships, do: Ecto.UUID.load!(gid_bytes)
   end
 
   defp session_attrs(%Portal.Device{} = client, session_ref, attested?) do

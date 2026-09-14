@@ -1141,6 +1141,53 @@ defmodule PortalWeb.ResourcesTest do
       assert updated.device_membership_criteria == Portal.Resource.DeviceMembershipCriteria.actor_group(group.id)
     end
 
+    test "warns that changing a pool's members drops its connections", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      resource = own_devices_pool_resource_fixture(account: account, name: "Your devices")
+      warning = "expires every active connection through it"
+      conn = authorize_conn(conn, actor)
+
+      {:ok, lv, html} = live(conn, ~p"/#{account}/resources/#{resource.id}/edit")
+
+      refute html =~ warning
+
+      html =
+        lv
+        |> form("[phx-submit='submit_resource_form']", resource: %{name: "Renamed"})
+        |> render_change()
+
+      refute html =~ warning
+
+      html =
+        lv
+        |> form("[phx-submit='submit_resource_form']",
+          resource: %{type: "device_pool", members: "all_devices"}
+        )
+        |> render_change()
+
+      assert html =~ warning
+
+      {:ok, lv, html} = live(conn, ~p"/#{account}/resources/new")
+
+      refute html =~ warning
+
+      lv
+      |> form("[phx-submit='submit_resource_form']", resource: %{type: "device_pool"})
+      |> render_change()
+
+      html =
+        lv
+        |> form("[phx-submit='submit_resource_form']",
+          resource: %{type: "device_pool", members: "all_devices"}
+        )
+        |> render_change()
+
+      refute html =~ warning
+    end
+
     test "updates the Your devices pool without a site and keeps its type and rule", %{
       conn: conn,
       account: account,
