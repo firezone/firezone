@@ -160,6 +160,34 @@ defmodule PortalWeb.Policies.PosturesTest do
       assert state.errors == %{}
     end
 
+    test "stops offering groups and rules at the parser limits" do
+      state = Postures.new(:enabled)
+      assert Postures.can_add_rule?(state, 0)
+      assert Postures.can_add_group?(state, 0)
+
+      # The root collapses onto its single child, so ten nested groups put the innermost at depth 9;
+      # one more group would push its rule past the limit of 10.
+      {state, innermost} =
+        Enum.reduce(1..10, {state, 0}, fn _level, {state, parent} ->
+          state = event(state, "postures_add_group", %{"id" => to_string(parent)})
+          {state, state.next_id - 1}
+        end)
+
+      refute Enum.any?(state.errors, fn {_id, {_sub, message}} -> message =~ "nests deeper" end)
+      assert Postures.can_add_rule?(state, innermost)
+      refute Postures.can_add_group?(state, innermost)
+
+      # A second child at the root un-collapses it and pushes the whole chain one level deeper.
+      refute Postures.can_add_rule?(state, 0)
+      refute Postures.can_add_group?(state, 0)
+
+      wide = Enum.reduce(1..99, Postures.new(:enabled), fn _index, state -> event(state, "postures_add_rule", %{"id" => "0"}) end)
+      assert Postures.can_add_rule?(wide, 0)
+      wide = event(wide, "postures_add_rule", %{"id" => "0"})
+      refute Postures.can_add_rule?(wide, 0)
+      refute Postures.can_add_group?(wide, 0)
+    end
+
     test "ignores unknown ids and events" do
       state = state()
       assert event(state, "postures_remove", %{"id" => "nope"}) == state

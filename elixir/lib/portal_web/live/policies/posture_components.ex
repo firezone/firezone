@@ -72,7 +72,7 @@ defmodule PortalWeb.Policies.PostureComponents do
       <% else %>
         <input type="hidden" name="policy[postures]" value={Postures.hidden_value(@state)} />
         <div :if={@state.tab == :builder}>
-          <.postures_group node={@state.tree} root?={true} errors={@state.errors} />
+          <.postures_group node={@state.tree} root?={true} state={@state} />
           <p :if={@state.root_error} class="mt-2 text-xs text-error">{error_message({nil, @state.root_error})}</p>
           <p :if={@state.json_notice} class="mt-2 text-xs text-warning">{@state.json_notice}</p>
         </div>
@@ -92,12 +92,14 @@ defmodule PortalWeb.Policies.PostureComponents do
 
   attr :node, :map, required: true
   attr :root?, :boolean, default: false
-  attr :errors, :map, required: true
+  attr :state, :map, required: true
 
   def postures_group(assigns) do
     assigns =
       assigns
-      |> assign(:error, Map.get(assigns.errors, assigns.node.id))
+      |> assign(:error, Map.get(assigns.state.errors, assigns.node.id))
+      |> assign(:can_add_rule?, Postures.can_add_rule?(assigns.state, assigns.node.id))
+      |> assign(:can_add_group?, Postures.can_add_group?(assigns.state, assigns.node.id))
       |> assign(:small_button_class, @small_button_class)
 
     ~H"""
@@ -135,10 +137,25 @@ defmodule PortalWeb.Policies.PostureComponents do
           {if @node.op == "and", do: "every rule must hold", else: "one rule is enough"}
         </span>
         <div class="ml-auto flex items-center gap-1">
-          <button type="button" phx-click="postures_add_rule" phx-value-id={@node.id} class={@small_button_class}>
+          <span :if={not @can_add_group?} class="text-[10px] text-muted">
+            {if @can_add_rule?, do: "Nesting limit reached", else: "Rule limit reached"}
+          </span>
+          <button
+            :if={@can_add_rule?}
+            type="button"
+            phx-click="postures_add_rule"
+            phx-value-id={@node.id}
+            class={@small_button_class}
+          >
             <.icon name="ri-add-line" class="w-2.5 h-2.5" /> Rule
           </button>
-          <button type="button" phx-click="postures_add_group" phx-value-id={@node.id} class={@small_button_class}>
+          <button
+            :if={@can_add_group?}
+            type="button"
+            phx-click="postures_add_group"
+            phx-value-id={@node.id}
+            class={@small_button_class}
+          >
             <.icon name="ri-node-tree" class="w-2.5 h-2.5" /> Group
           </button>
           <button
@@ -158,8 +175,8 @@ defmodule PortalWeb.Policies.PostureComponents do
       </div>
       <div :if={@node.children != []} class="px-2 pb-2 space-y-2">
         <%= for child <- @node.children do %>
-          <.postures_group :if={child.kind == :group} node={child} errors={@errors} />
-          <.postures_leaf :if={child.kind == :leaf} node={child} errors={@errors} />
+          <.postures_group :if={child.kind == :group} node={child} state={@state} />
+          <.postures_leaf :if={child.kind == :leaf} node={child} errors={@state.errors} />
         <% end %>
       </div>
       <p :if={@error} class="px-2 pb-2 text-xs text-error">{error_message(@error)}</p>
