@@ -2499,6 +2499,7 @@ dependencies = [
  "secrecy",
  "tokio",
  "tracing-subscriber",
+ "windows",
 ]
 
 [[package]]

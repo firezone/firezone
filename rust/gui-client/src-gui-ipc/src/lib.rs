@@ -54,8 +54,11 @@ pub enum ServerMsg {
 pub enum ServerError {
     #[error("Not connected.")]
     NotConnected,
-    #[error("Not signed in. Sign in from the tray menu, or pipe a token: firezone connect < token")]
-    NotSignedIn,
+    #[error("Not signed in.")]
+    NotSignedIn {
+        /// Where to sign in through a browser to be shown a token to copy.
+        sign_in_url: String,
+    },
     #[error("{0}")]
     Other(String),
 }

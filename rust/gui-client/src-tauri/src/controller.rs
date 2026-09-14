@@ -924,7 +924,9 @@ impl<I: GuiIntegration> Controller<I> {
             None => {
                 let Some(token) = self.auth.token() else {
                     return Ok(GuiIpcReply::Now(gui_ipc::ServerMsg::Error(
-                        gui_ipc::ServerError::NotSignedIn,
+                        gui_ipc::ServerError::NotSignedIn {
+                            sign_in_url: self.headless_sign_in_url(),
+                        },
                     )));
                 };
 
@@ -1202,6 +1204,22 @@ impl<I: GuiIntegration> Controller<I> {
             .account_slug
             .as_deref()
             .or(self.general_settings.account_slug.as_deref())
+    }
+
+    /// Where the CLI user signs in to be shown a token to copy.
+    ///
+    /// `as=headless-client` makes the portal display the token instead of
+    /// handing it back through a deep link, which only the GUI can receive.
+    fn headless_sign_in_url(&self) -> String {
+        let mut url = self.auth_url().clone();
+
+        if let Some(account_slug) = self.account_slug() {
+            url.set_path(account_slug);
+        }
+
+        url.query_pairs_mut().append_pair("as", "headless-client");
+
+        url.to_string()
     }
 
     fn connect_on_start(&self) -> Option<bool> {
@@ -1562,7 +1580,12 @@ mod tests {
 
         assert_eq!(
             response,
-            gui_ipc::ServerMsg::Error(gui_ipc::ServerError::NotSignedIn)
+            gui_ipc::ServerMsg::Error(gui_ipc::ServerError::NotSignedIn {
+                sign_in_url: format!(
+                    "{}?as=headless-client",
+                    AdvancedSettings::default().auth_url
+                ),
+            })
         );
     }
 

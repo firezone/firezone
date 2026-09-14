@@ -14,6 +14,8 @@ use tokio::runtime::Runtime;
 use tracing_subscriber::filter::LevelFilter;
 
 mod cli;
+#[cfg(target_os = "windows")]
+mod shell;
 
 #[allow(
     clippy::print_stderr,
@@ -46,7 +48,7 @@ fn main() -> ExitCode {
     ExitCode::FAILURE
 }
 
-/// The single line to print for a failure the user is expected to run into.
+/// The message to print for a failure the user is expected to run into.
 ///
 /// Anything else keeps its cause chain, which is what makes a bug report useful.
 fn expected(error: &anyhow::Error) -> Option<String> {
@@ -58,8 +60,104 @@ fn expected(error: &anyhow::Error) -> Option<String> {
 
     match server_error {
         ServerError::NotConnected => Some(server_error.to_string()),
-        ServerError::NotSignedIn => Some(server_error.to_string()),
+        ServerError::NotSignedIn { sign_in_url } => Some(sign_in_instructions(sign_in_url)),
         ServerError::Other(_) => None,
+    }
+}
+
+/// What to do about not having a token, written out so it can be followed as-is.
+#[cfg(target_os = "windows")]
+fn sign_in_instructions(sign_in_url: &str) -> String {
+    windows_instructions(shell::Shell::detect()).render(sign_in_url)
+}
+
+/// What to do about not having a token, written out so it can be followed as-is.
+#[cfg(not(target_os = "windows"))]
+fn sign_in_instructions(sign_in_url: &str) -> String {
+    let bin = cli::BIN_NAME;
+
+    Instructions {
+        copy_step: "Copy the token.",
+        run: vec![
+            format!("wl-paste | {bin} connect"),
+            format!("xclip -selection clipboard -o | {bin} connect  # on X11"),
+        ],
+        env_var: "FIREZONE_TOKEN",
+        from_file: Some(format!("{bin} connect < token")),
+        store: "keyring",
+    }
+    .render(sign_in_url)
+}
+
+#[cfg(target_os = "windows")]
+fn windows_instructions(shell: shell::Shell) -> Instructions {
+    let bin = cli::BIN_NAME;
+
+    match shell {
+        shell::Shell::PowerShell => Instructions {
+            copy_step: "Copy the token.",
+            run: vec![format!("Get-Clipboard | {bin} connect")],
+            env_var: "$env:FIREZONE_TOKEN",
+            from_file: Some(format!("Get-Content token | {bin} connect")),
+            store: "Credential Manager",
+        },
+        // cmd.exe has no command that reads the clipboard.
+        shell::Shell::Cmd => Instructions {
+            copy_step: "Copy the token and save it to a file named token.",
+            run: vec![format!("{bin} connect < token")],
+            env_var: "FIREZONE_TOKEN",
+            from_file: None,
+            store: "Credential Manager",
+        },
+    }
+}
+
+/// The parts of the sign-in instructions that differ by platform and shell.
+struct Instructions {
+    copy_step: &'static str,
+    /// The commands that connect with the copied token, one per line.
+    run: Vec<String>,
+    env_var: &'static str,
+    /// The command that connects with a token saved to the file `token`.
+    from_file: Option<String>,
+    store: &'static str,
+}
+
+impl Instructions {
+    fn render(&self, sign_in_url: &str) -> String {
+        let Self {
+            copy_step,
+            run,
+            env_var,
+            from_file,
+            store,
+        } = self;
+        let run = run.join("\n     ");
+        let other_sources = match from_file {
+            Some(command) => format!(
+                "A token can also be set in {env_var}, or read from a file:\n\n     {command}"
+            ),
+            None => format!("A token can also be set in {env_var}."),
+        };
+
+        format!(
+            "No token found. To sign in:
+
+  1. Open this in a browser and sign in:
+
+     {sign_in_url}
+
+  2. {copy_step}
+
+  3. Run:
+
+     {run}
+
+{other_sources}
+
+The token is saved in the {store}, so later runs don't need one.
+Signing in from the Firezone tray menu stores a token too."
+        )
     }
 }
 
@@ -112,7 +210,7 @@ fn connect(rt: &Runtime) -> Result<()> {
 /// The token piped on stdin, else the one in `FIREZONE_TOKEN`, else nothing.
 fn supplied_token() -> Result<Option<SecretString>> {
     let piped = piped_token().context("Failed to read stdin")?;
-    let token = piped.or_else(|| non_empty(std::env::var("FIREZONE_TOKEN").ok()?));
+    let token = piped.or_else(|| non_empty(&std::env::var("FIREZONE_TOKEN").ok()?));
 
     Ok(token.map(SecretString::from))
 }
@@ -131,11 +229,15 @@ fn piped_token() -> Result<Option<String>> {
     let mut line = String::new();
     stdin.lock().read_line(&mut line)?;
 
-    Ok(non_empty(line))
+    Ok(non_empty(&line))
 }
 
-fn non_empty(value: String) -> Option<String> {
-    let value = value.trim();
+/// The trimmed value, unless nothing is left of it.
+///
+/// A leading BOM goes too: PowerShell 5.1's `Set-Content -Encoding utf8` writes
+/// one, and it is not whitespace.
+fn non_empty(value: &str) -> Option<String> {
+    let value = value.trim_start_matches('\u{FEFF}').trim();
 
     (!value.is_empty()).then(|| value.to_owned())
 }
@@ -261,6 +363,53 @@ mod tests {
     #[test]
     fn status_of_a_disconnected_client() {
         assert_eq!(status_line(&TunnelStatus::Disconnected), "Not connected.");
+    }
+
+    #[test]
+    fn token_is_trimmed_of_whitespace_and_bom() {
+        assert_eq!(non_empty("\u{FEFF}abc\r\n"), Some("abc".to_owned()));
+        assert_eq!(non_empty("\u{FEFF}\n"), None);
+        assert_eq!(non_empty("   "), None);
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    #[test]
+    fn sign_in_instructions_name_the_url_and_the_commands() {
+        let text = sign_in_instructions("https://example.com/acme?as=headless-client");
+
+        assert!(text.contains("     https://example.com/acme?as=headless-client\n"));
+        assert!(text.contains("wl-paste | firezone connect"));
+        assert!(text.contains("xclip -selection clipboard -o | firezone connect"));
+        assert!(text.contains("FIREZONE_TOKEN"));
+        assert!(text.contains("firezone connect < token"));
+        assert!(text.contains("keyring"));
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn powershell_instructions_name_the_url_and_the_commands() {
+        let text = windows_instructions(shell::Shell::PowerShell)
+            .render("https://example.com/acme?as=headless-client");
+
+        assert!(text.contains("     https://example.com/acme?as=headless-client\n"));
+        assert!(text.contains("Get-Clipboard | firezone connect"));
+        assert!(text.contains("$env:FIREZONE_TOKEN"));
+        assert!(text.contains("Get-Content token | firezone connect"));
+        assert!(text.contains("Credential Manager"));
+        assert!(!text.contains("< token"));
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn cmd_instructions_name_the_url_and_the_commands() {
+        let text = windows_instructions(shell::Shell::Cmd)
+            .render("https://example.com/acme?as=headless-client");
+
+        assert!(text.contains("     https://example.com/acme?as=headless-client\n"));
+        assert!(text.contains("firezone connect < token"));
+        assert!(text.contains("A token can also be set in FIREZONE_TOKEN."));
+        assert!(text.contains("Credential Manager"));
+        assert!(!text.contains("Get-Clipboard"));
     }
 
     #[test]
