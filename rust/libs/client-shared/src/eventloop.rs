@@ -211,6 +211,8 @@ enum CombinedEvent {
     Command(Option<Command>),
     Tunnel(Result<ClientEvent, TunnelError>),
     Portal(Option<Result<PortalEvent, phoenix_channel::Error>>),
+    /// We were polled this long after the deadline we asked to be woken at.
+    RanLate(Duration),
 }
 
 impl Eventloop {
@@ -249,6 +251,15 @@ impl Eventloop {
                 self.handle_tunnel_event(event).await?;
 
                 Ok(ControlFlow::Continue(()))
+            }
+            CombinedEvent::RanLate(by) => {
+                let cf = self
+                    .handle_eventloop_command(Command::Reset(format!(
+                        "event loop ran {by:.0?} late"
+                    )))
+                    .await?;
+
+                Ok(cf)
             }
             CombinedEvent::Portal(Some(Ok(PortalEvent::Message(msg)))) => {
                 self.handle_portal_message(msg).await?;
@@ -852,9 +863,23 @@ impl Eventloop {
         }
 
         let now = self.clock.now();
+
+        if let Some(by) = self.clock.poll_lateness() {
+            return Poll::Ready(CombinedEvent::RanLate(by));
+        }
+
         if let Some(Poll::Ready(event)) = self.tunnel.as_mut().map(|t| t.poll_next_event(cx, now)) {
             return Poll::Ready(CombinedEvent::Tunnel(event));
         }
+
+        // The tunnel has just armed its timer for this deadline, so being sampled well past it
+        // means we were not running, not that we had nothing to do.
+        self.clock.expect_sample_by(
+            self.tunnel
+                .as_mut()
+                .and_then(|tunnel| tunnel.state_mut().poll_timeout())
+                .map(|(deadline, _)| deadline),
+        );
 
         Poll::Pending
     }
