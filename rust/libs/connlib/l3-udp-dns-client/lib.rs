@@ -37,7 +37,7 @@ struct PendingQuery {
     expires_at: Instant,
     server: SocketAddr,
     local: SocketAddr,
-    token: u64,
+    token: QueryToken,
     timed_out: bool,
 }
 
@@ -47,10 +47,16 @@ const _: () = assert!(
     "tracked DNS queries must not exceed 256 KiB"
 );
 
+/// Identifies a query issued through a [`Client`].
+///
+/// Unlike the ID of a DNS message, this is unique among all queries the client ever issues.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct QueryToken(u64);
+
 #[derive(Debug)]
 pub struct QueryResult {
     /// The token returned by [`Client::send_query`] for this query.
-    pub token: u64,
+    pub token: QueryToken,
     pub query: dns_types::Query,
     pub server: SocketAddr,
     pub result: Result<dns_types::Response>,
@@ -82,14 +88,13 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
     /// This only queues the message. You need to call [`Client::poll_outbound`] to retrieve
     /// the resulting IP packet and send it to the server.
     ///
-    /// Returns a token that identifies this query for the lifetime of the client.
-    /// It is echoed back in the corresponding [`QueryResult`].
+    /// Returns a [`QueryToken`] which is echoed back in the corresponding [`QueryResult`].
     pub fn send_query(
         &mut self,
         server: SocketAddr,
         message: dns_types::Query,
         now: Instant,
-    ) -> Result<u64> {
+    ) -> Result<QueryToken> {
         self.make_room_for_new_query()?;
 
         let local_port = self.sample_new_unique_port()?;
@@ -103,7 +108,7 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
             SocketAddr::V6(_) => IpAddr::V6(ipv6_source),
         };
         let local_socket = SocketAddr::new(local_ip, local_port);
-        let token = self.next_token;
+        let token = QueryToken(self.next_token);
         self.next_token += 1;
 
         self.pending_queries_by_local_port.insert(

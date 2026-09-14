@@ -101,6 +101,13 @@ const OFFLINE_SITE_STATUS_TIMEOUT: Duration = Duration::from_secs(5 * 60);
 /// Our DNS clients time out queries much earlier, so this only ever triggers if one of them drops a query without a result.
 const DNS_STREAM_TIMEOUT: Duration = Duration::from_secs(60);
 
+/// Identifies a recursive DNS query we issued to an upstream resolver.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum UpstreamQuery {
+    Udp(l3_udp_dns_client::QueryToken),
+    Tcp(dns_over_tcp::QueryToken),
+}
+
 /// A sans-IO implementation of a Client's functionality.
 ///
 /// Internally, this composes a [`snownet::Node`] with firezone's policy engine around resources.
@@ -176,8 +183,7 @@ pub struct ClientState {
     tcp_dns_client: dns_over_tcp::Client,
     tcp_dns_server: dns_over_tcp::Server,
     /// Tracks the UDP/TCP stream (i.e. socket-pair) on which we received a DNS query by the token of the recursive DNS query we issued.
-    dns_streams_by_upstream_query:
-        HashMap<(dns::Transport, u64), (SocketAddr, SocketAddr, Instant)>,
+    dns_streams_by_upstream_query: HashMap<UpstreamQuery, (SocketAddr, SocketAddr, Instant)>,
 
     buffered_events: VecDeque<ClientEvent>,
     buffered_packets: VecDeque<IpPacket>,
@@ -1774,7 +1780,7 @@ impl ClientState {
 
                 let Some((local, remote, started_at)) = self
                     .dns_streams_by_upstream_query
-                    .remove(&(dns::Transport::Udp, query_result.token))
+                    .remove(&UpstreamQuery::Udp(query_result.token))
                 else {
                     tracing::debug!(%server, %qid, "Failed to find UDP socket handle for query result");
 
@@ -1804,7 +1810,7 @@ impl ClientState {
 
                 let Some((local, remote, started_at)) = self
                     .dns_streams_by_upstream_query
-                    .remove(&(dns::Transport::Tcp, query_result.token))
+                    .remove(&UpstreamQuery::Tcp(query_result.token))
                 else {
                     tracing::debug!(%server, %qid, "Failed to find TCP socket handle for query result");
 
@@ -1832,13 +1838,13 @@ impl ClientState {
     }
 
     fn discard_stale_dns_streams(&mut self, now: Instant) {
-        for ((transport, _), (local, remote, _)) in
+        for (query, (local, remote, _)) in
             self.dns_streams_by_upstream_query
                 .extract_if(|_, (_, _, started_at)| {
                     now.saturating_duration_since(*started_at) >= DNS_STREAM_TIMEOUT
                 })
         {
-            tracing::debug!(%local, %remote, "Discarding stale DNS stream for {transport} query");
+            tracing::debug!(?query, %local, %remote, "Discarding stale DNS stream");
         }
     }
 
@@ -2080,12 +2086,18 @@ impl ClientState {
         let query_id = query.id();
 
         let result = match transport {
-            dns::Transport::Udp => self.udp_dns_client.send_query(server, query.clone(), now),
-            dns::Transport::Tcp => self.tcp_dns_client.send_query(server, query.clone()),
+            dns::Transport::Udp => self
+                .udp_dns_client
+                .send_query(server, query.clone(), now)
+                .map(UpstreamQuery::Udp),
+            dns::Transport::Tcp => self
+                .tcp_dns_client
+                .send_query(server, query.clone())
+                .map(UpstreamQuery::Tcp),
         };
 
-        let token = match result {
-            Ok(token) => token,
+        let upstream_query = match result {
+            Ok(upstream_query) => upstream_query,
             Err(e) => {
                 tracing::warn!(
                     ?query,
@@ -2119,7 +2131,7 @@ impl ClientState {
 
         let existing = self
             .dns_streams_by_upstream_query
-            .insert((transport, token), (local, remote, now));
+            .insert(upstream_query, (local, remote, now));
 
         debug_assert!(existing.is_none(), "Query tokens should be unique");
     }

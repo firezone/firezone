@@ -66,14 +66,20 @@ struct PendingQuery {
     ///
     /// Unique per connection, unlike the ID of the original query.
     wire_id: u16,
-    token: u64,
+    token: QueryToken,
     deadline: Instant,
 }
+
+/// Identifies a query issued through a [`Client`].
+///
+/// Unlike the ID of a DNS message, this is unique among all queries the client ever issues.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct QueryToken(u64);
 
 #[derive(Debug)]
 pub struct QueryResult {
     /// The token returned by [`Client::send_query`] for this query.
-    pub token: u64,
+    pub token: QueryToken,
     pub query: dns_types::Query,
     pub server: SocketAddr,
     pub result: Result<dns_types::Response>,
@@ -115,15 +121,18 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
     ///
     /// This only queues the message. You need to call [`Client::handle_timeout`] to actually send them.
     ///
-    /// Returns a token that identifies this query for the lifetime of the client.
-    /// It is echoed back in the corresponding [`QueryResult`].
-    pub fn send_query(&mut self, server: SocketAddr, message: dns_types::Query) -> Result<u64> {
+    /// Returns a [`QueryToken`] which is echoed back in the corresponding [`QueryResult`].
+    pub fn send_query(
+        &mut self,
+        server: SocketAddr,
+        message: dns_types::Query,
+    ) -> Result<QueryToken> {
         let (ipv4_source, ipv6_source) = self
             .source_ips
             .ok_or_else(|| anyhow!("No source interface set"))?;
 
         let deadline = self.last_now + self.query_timeout;
-        let token = self.next_token;
+        let token = QueryToken(self.next_token);
         self.next_token += 1;
 
         if let Some(Some(s)) = self.sockets_by_remote.get(&server)
