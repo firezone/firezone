@@ -103,6 +103,49 @@ defmodule Portal.Changes.Hooks.Resources do
       |> Safe.delete_all()
     end
 
+    def delete_policy_authorizations_for_non_members(
+          %Portal.Resource{
+            device_membership_criteria: %DeviceMembershipCriteria{
+              field: :account_id,
+              op: :eq,
+              value: {:subject, :account_id}
+            }
+          }
+        ) do
+      {0, nil}
+    end
+
+    def delete_policy_authorizations_for_non_members(
+          %Portal.Resource{
+            device_membership_criteria: %DeviceMembershipCriteria{
+              provider: :actor_group,
+              field: :id,
+              op: :eq,
+              value: {:literal, group_id}
+            }
+          } = resource
+        ) do
+      resource
+      |> policy_authorizations()
+      |> join(:inner, [policy_authorizations: f], r in Portal.Device,
+        on: r.account_id == f.account_id and r.id == f.receiving_device_id,
+        as: :receiver
+      )
+      |> where(
+        [receiver: r],
+        not exists(
+          from(m in Portal.Membership,
+            where:
+              m.account_id == parent_as(:receiver).account_id and
+                m.actor_id == parent_as(:receiver).actor_id and
+                m.group_id == ^group_id
+          )
+        )
+      )
+      |> Safe.unscoped()
+      |> Safe.delete_all()
+    end
+
     defp policy_authorizations(%Portal.Resource{} = resource) do
       from(f in Portal.PolicyAuthorization, as: :policy_authorizations)
       |> where([policy_authorizations: f], f.account_id == ^resource.account_id)

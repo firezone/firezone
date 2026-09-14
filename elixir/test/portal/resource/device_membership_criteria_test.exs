@@ -4,6 +4,8 @@ defmodule Portal.Resource.DeviceMembershipCriteriaTest do
   import Portal.AccountFixtures
   import Portal.ActorFixtures
   import Portal.DeviceFixtures
+  import Portal.GroupFixtures
+  import Portal.MembershipFixtures
   import Portal.SubjectFixtures
 
   alias Portal.Resource.DeviceMembershipCriteria
@@ -14,6 +16,13 @@ defmodule Portal.Resource.DeviceMembershipCriteriaTest do
 
   @device_ids Enum.sort(["7b0ac0b5-5c8e-4b6e-9a2f-4f5a7a3e0b11", "0e5c1f8a-2d3b-4c6d-8e9f-1a2b3c4d5e6f"])
   @devices %{"device" => %{"field" => "id", "op" => "in", "value" => @device_ids}}
+
+  @all_devices %{
+    "device" => %{"field" => "account_id", "op" => "eq", "value" => %{"subject" => "account_id"}}
+  }
+
+  @group_id "3f9d2c1b-8a7e-4f60-b5c4-2d1e0f9a8b7c"
+  @actor_group %{"actor_group" => %{"field" => "id", "op" => "eq", "value" => @group_id}}
 
   describe "cast/1" do
     test "parses the own devices rule" do
@@ -29,6 +38,20 @@ defmodule Portal.Resource.DeviceMembershipCriteriaTest do
 
       assert DeviceMembershipCriteria.cast(put_in(@devices, ["device", "value"], [])) ==
                {:ok, DeviceMembershipCriteria.devices([])}
+    end
+
+    test "parses the all devices rule" do
+      assert DeviceMembershipCriteria.cast(@all_devices) == {:ok, DeviceMembershipCriteria.all_devices()}
+      assert DeviceMembershipCriteria.cast(put_in(@all_devices, ["device", "value"], %{"subject" => "actor_id"})) == :error
+      assert DeviceMembershipCriteria.cast(put_in(@own_devices, ["device", "value"], %{"subject" => "account_id"})) == :error
+    end
+
+    test "parses the actor group rule" do
+      assert DeviceMembershipCriteria.cast(@actor_group) == {:ok, DeviceMembershipCriteria.actor_group(@group_id)}
+      assert DeviceMembershipCriteria.cast(put_in(@actor_group, ["actor_group", "value"], "nope")) == :error
+      assert DeviceMembershipCriteria.cast(put_in(@actor_group, ["actor_group", "value"], [@group_id])) == :error
+      assert DeviceMembershipCriteria.cast(put_in(@actor_group, ["actor_group", "op"], "in")) == :error
+      assert DeviceMembershipCriteria.cast(put_in(@actor_group, ["actor_group", "field"], "name")) == :error
     end
 
     test "rejects a device list with anything but device ids" do
@@ -63,6 +86,12 @@ defmodule Portal.Resource.DeviceMembershipCriteriaTest do
 
       assert DeviceMembershipCriteria.dump(DeviceMembershipCriteria.devices(@device_ids)) == {:ok, @devices}
       assert DeviceMembershipCriteria.load(@devices) == {:ok, DeviceMembershipCriteria.devices(@device_ids)}
+
+      assert DeviceMembershipCriteria.dump(DeviceMembershipCriteria.all_devices()) == {:ok, @all_devices}
+      assert DeviceMembershipCriteria.load(@all_devices) == {:ok, DeviceMembershipCriteria.all_devices()}
+
+      assert DeviceMembershipCriteria.dump(DeviceMembershipCriteria.actor_group(@group_id)) == {:ok, @actor_group}
+      assert DeviceMembershipCriteria.load(@actor_group) == {:ok, DeviceMembershipCriteria.actor_group(@group_id)}
     end
 
     test "dump rejects anything but a rule" do
@@ -79,6 +108,33 @@ defmodule Portal.Resource.DeviceMembershipCriteriaTest do
     test "is :error for other criteria" do
       assert DeviceMembershipCriteria.device_ids(DeviceMembershipCriteria.own_devices()) == :error
       assert DeviceMembershipCriteria.device_ids(nil) == :error
+    end
+  end
+
+  describe "kind/1, group_id/1 and scope/2" do
+    test "classify every rule" do
+      assert DeviceMembershipCriteria.kind(DeviceMembershipCriteria.devices(@device_ids)) == :listed
+      assert DeviceMembershipCriteria.kind(DeviceMembershipCriteria.own_devices()) == :own_devices
+      assert DeviceMembershipCriteria.kind(DeviceMembershipCriteria.all_devices()) == :all_devices
+      assert DeviceMembershipCriteria.kind(DeviceMembershipCriteria.actor_group(@group_id)) == :actor_group
+    end
+
+    test "group_id/1 returns the group of a group rule" do
+      assert DeviceMembershipCriteria.group_id(DeviceMembershipCriteria.actor_group(@group_id)) == {:ok, @group_id}
+      assert DeviceMembershipCriteria.group_id(DeviceMembershipCriteria.all_devices()) == :error
+      assert DeviceMembershipCriteria.group_id(nil) == :error
+    end
+
+    test "only the own devices rule depends on who asks" do
+      subject = subject_fixture(type: :client)
+
+      assert DeviceMembershipCriteria.scope(DeviceMembershipCriteria.own_devices(), subject) == {:actor, subject.actor.id}
+      assert DeviceMembershipCriteria.scope(DeviceMembershipCriteria.all_devices(), subject) == :all
+      assert DeviceMembershipCriteria.scope(DeviceMembershipCriteria.devices([]), subject) == :all
+      assert DeviceMembershipCriteria.scope(DeviceMembershipCriteria.actor_group(@group_id), subject) == :all
+
+      assert DeviceMembershipCriteria.per_actor?(DeviceMembershipCriteria.own_devices())
+      refute DeviceMembershipCriteria.per_actor?(DeviceMembershipCriteria.actor_group(@group_id))
     end
   end
 
@@ -101,6 +157,27 @@ defmodule Portal.Resource.DeviceMembershipCriteriaTest do
       device = client_fixture(account: account, actor: actor_fixture(account: account))
 
       refute DeviceMembershipCriteria.member?(DeviceMembershipCriteria.own_devices(), device, subject)
+    end
+
+    test "admits every device in the account", %{account: account, subject: subject} do
+      device = client_fixture(account: account, actor: actor_fixture(account: account))
+      elsewhere = client_fixture(account: account_fixture())
+
+      assert DeviceMembershipCriteria.member?(DeviceMembershipCriteria.all_devices(), device, subject)
+      refute DeviceMembershipCriteria.member?(DeviceMembershipCriteria.all_devices(), elsewhere, subject)
+    end
+
+    test "admits the devices of the group's members", %{account: account, subject: subject} do
+      group = group_fixture(account: account)
+      member = actor_fixture(account: account)
+      membership_fixture(account: account, actor: member, group: group)
+      in_group = client_fixture(account: account, actor: member)
+      outside = client_fixture(account: account, actor: actor_fixture(account: account))
+      criteria = DeviceMembershipCriteria.actor_group(group.id)
+
+      assert DeviceMembershipCriteria.member?(criteria, in_group, subject)
+      refute DeviceMembershipCriteria.member?(criteria, outside, subject)
+      refute DeviceMembershipCriteria.member?(DeviceMembershipCriteria.actor_group(Ecto.UUID.generate()), in_group, subject)
     end
 
     test "admits exactly the listed devices", %{account: account, subject: subject} do

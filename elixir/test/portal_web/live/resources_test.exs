@@ -1027,6 +1027,120 @@ defmodule PortalWeb.ResourcesTest do
       assert is_nil(resource.site_id)
     end
 
+    test "creates an all devices pool from the members choice", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources/new")
+
+      lv
+      |> form("[phx-submit='submit_resource_form']", resource: %{type: "device_pool"})
+      |> render_change()
+
+      assert has_element?(lv, "#resource-form-members--all-devices")
+
+      html =
+        lv
+        |> form("[phx-submit='submit_resource_form']",
+          resource: %{type: "device_pool", members: "all_devices", name: "Everything"}
+        )
+        |> render_submit()
+
+      assert html =~ "created successfully"
+
+      resource = Repo.get_by!(Portal.Resource, account_id: account.id, name: "Everything")
+      assert resource.device_membership_criteria == Portal.Resource.DeviceMembershipCriteria.all_devices()
+    end
+
+    test "creates a group pool from the members choice and the picked group", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      group = group_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources/new")
+
+      lv
+      |> form("[phx-submit='submit_resource_form']", resource: %{type: "device_pool"})
+      |> render_change()
+
+      lv
+      |> form("[phx-submit='submit_resource_form']",
+        resource: %{type: "device_pool", members: "actor_group"}
+      )
+      |> render_change()
+
+      assert has_element?(lv, "#resource-form-members--actor-group[checked]")
+      assert has_element?(lv, "#resource-form-group-id")
+
+      html =
+        lv
+        |> form("[phx-submit='submit_resource_form']",
+          resource: %{type: "device_pool", members: "actor_group", name: "Engineering laptops"}
+        )
+        |> render_submit(%{resource: %{group_id: group.id}})
+
+      assert html =~ "created successfully"
+
+      resource = Repo.get_by!(Portal.Resource, account_id: account.id, name: "Engineering laptops")
+
+      assert resource.device_membership_criteria ==
+               Portal.Resource.DeviceMembershipCriteria.actor_group(group.id)
+    end
+
+    test "refuses a group pool without a group", %{conn: conn, account: account, actor: actor} do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources/new")
+
+      lv
+      |> form("[phx-submit='submit_resource_form']", resource: %{type: "device_pool"})
+      |> render_change()
+
+      html =
+        lv
+        |> form("[phx-submit='submit_resource_form']",
+          resource: %{type: "device_pool", members: "actor_group", name: "Nobody"}
+        )
+        |> render_submit()
+
+      refute html =~ "created successfully"
+      refute Repo.get_by(Portal.Resource, account_id: account.id, name: "Nobody")
+    end
+
+    test "edits a group pool with its group preselected", %{conn: conn, account: account, actor: actor} do
+      group = group_fixture(account: account, name: "Engineering")
+      resource = actor_group_pool_resource_fixture(account: account, group: group, name: "Group pool")
+
+      {:ok, lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources/#{resource.id}/edit")
+
+      assert has_element?(lv, "#resource-form-members--actor-group[checked]")
+      assert html =~ "Engineering"
+
+      html =
+        lv
+        |> form("[phx-submit='submit_resource_form']", resource: %{name: "Renamed"})
+        |> render_submit()
+
+      assert html =~ "updated successfully"
+
+      updated = Repo.get_by!(Portal.Resource, account_id: account.id, id: resource.id)
+      assert updated.name == "Renamed"
+      assert updated.device_membership_criteria == Portal.Resource.DeviceMembershipCriteria.actor_group(group.id)
+    end
+
     test "updates the Your devices pool without a site and keeps its type and rule", %{
       conn: conn,
       account: account,

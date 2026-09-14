@@ -434,87 +434,138 @@ defmodule PortalWeb.Resources.Components do
   end
 
   attr :form, :any, required: true
+  attr :subject, :any, required: true
 
   def resource_pool_members_section(assigns) do
-    assigns = assign(assigns, :members, pool_members(assigns.form))
+    assigns = assign(assigns, members: pool_members(assigns.form), group_id: pool_group_id(assigns.form))
 
     ~H"""
-    <div>
-      <span class="block text-xs font-medium text-body mb-1.5">
-        Device pool members <span class="text-error">*</span>
-      </span>
-      <ul class="grid w-full max-w-md gap-3 grid-cols-2">
-        <li>
-          <.input
-            id="resource-form-members--listed"
-            type="radio_button_group"
-            field={@form[:members]}
-            value="listed"
-            checked={@members == :listed}
-            required
-          />
-          <label
-            for="resource-form-members--listed"
-            class="inline-flex items-center justify-between w-full p-3 text-body bg-surface border border-border rounded cursor-pointer peer-checked:border-brand peer-checked:text-brand hover:text-heading hover:bg-raised transition-colors"
+    <div class="space-y-3">
+      <div>
+        <span class="block text-xs font-medium text-body mb-1.5">
+          Device pool members <span class="text-error">*</span>
+        </span>
+        <ul class="grid w-full max-w-md gap-3 grid-cols-2">
+          <.pool_members_choice
+            :for={{value, icon, title, hint} <- pool_members_choices()}
+            form={@form}
+            value={value}
+            checked={@members == value}
+            icon={icon}
+            title={title}
           >
-            <div class="block">
-              <div class="w-full font-semibold mb-1 text-xs">
-                <.icon name="ri-list-check" class="w-4 h-4 mr-1" /> Selected devices
-              </div>
-              <div class="w-full text-[10px]">
-                A fixed list you pick
-              </div>
-            </div>
-          </label>
-        </li>
-        <li>
-          <.input
-            id="resource-form-members--own-devices"
-            type="radio_button_group"
-            field={@form[:members]}
-            value="own_devices"
-            checked={@members == :own_devices}
-            required
-          />
-          <label
-            for="resource-form-members--own-devices"
-            class="inline-flex items-center justify-between w-full p-3 text-body bg-surface border border-border rounded cursor-pointer peer-checked:border-brand peer-checked:text-brand hover:text-heading hover:bg-raised transition-colors"
-          >
-            <div class="block">
-              <div class="w-full font-semibold mb-1 text-xs">
-                <.icon name="ri-user-line" class="w-4 h-4 mr-1" /> Each actor's own devices
-              </div>
-              <div class="w-full text-[10px]">
-                Allows each actor to reach their own devices via
-                <span class="font-mono">&lt;slug&gt;.{Portal.Device.domain()}</span>
-              </div>
-            </div>
-          </label>
-        </li>
-      </ul>
+            {hint}
+          </.pool_members_choice>
+        </ul>
+      </div>
+      <.live_component
+        :if={@members == :actor_group}
+        module={PortalWeb.Components.FormComponents.SelectWithGroups}
+        id="resource-form-group-id"
+        label="Group"
+        placeholder="Select Group"
+        field={@form[:group_id]}
+        fetch_option_callback={&PortalWeb.Policies.Components.Database.fetch_group_option(&1, @subject)}
+        list_options_callback={&PortalWeb.Policies.Components.Database.list_group_options(&1, @subject)}
+        value={@group_id}
+        required
+      >
+        <:options_group :let={options_group}>{options_group}</:options_group>
+        <:option :let={row}>{row.group.name}</:option>
+      </.live_component>
     </div>
     """
   end
 
+  attr :form, :any, required: true
+  attr :value, :atom, required: true
+  attr :checked, :boolean, required: true
+  attr :icon, :string, required: true
+  attr :title, :string, required: true
+  slot :inner_block, required: true
+
+  defp pool_members_choice(assigns) do
+    assigns = assign(assigns, id: "resource-form-members--#{String.replace(to_string(assigns.value), "_", "-")}")
+
+    ~H"""
+    <li>
+      <.input
+        id={@id}
+        type="radio_button_group"
+        field={@form[:members]}
+        value={to_string(@value)}
+        checked={@checked}
+        required
+      />
+      <label
+        for={@id}
+        class="inline-flex items-center justify-between w-full p-3 text-body bg-surface border border-border rounded cursor-pointer peer-checked:border-brand peer-checked:text-brand hover:text-heading hover:bg-raised transition-colors"
+      >
+        <div class="block">
+          <div class="w-full font-semibold mb-1 text-xs">
+            <.icon name={@icon} class="w-4 h-4 mr-1" /> {@title}
+          </div>
+          <div class="w-full text-[10px]">
+            {render_slot(@inner_block)}
+          </div>
+        </div>
+      </label>
+    </li>
+    """
+  end
+
+  defp pool_members_choices do
+    [
+      {:listed, "ri-list-check", "Selected devices", "A fixed list you pick"},
+      {:all_devices, "ri-device-line", "All devices", "Every device in the account"},
+      {:own_devices, "ri-user-line", "Each actor's own devices", "Each actor reaches only their own devices"},
+      {:actor_group, "ri-group-line", "A group's devices", "The devices of every actor in a group"}
+    ]
+  end
+
+  @members_kinds %{
+    "listed" => :listed,
+    "all_devices" => :all_devices,
+    "own_devices" => :own_devices,
+    "actor_group" => :actor_group
+  }
+
   @doc "Which kind of members a pool form describes, from the members choice or the resource."
-  @spec pool_members(Phoenix.HTML.Form.t()) :: :listed | :own_devices
+  @spec pool_members(Phoenix.HTML.Form.t()) :: Portal.Resource.DeviceMembershipCriteria.kind()
   def pool_members(form) do
-    case to_string(form[:members].value) do
-      "own_devices" -> :own_devices
-      "listed" -> :listed
-      _ -> if own_devices_pool?(form.data), do: :own_devices, else: :listed
+    case Map.fetch(@members_kinds, to_string(form[:members].value)) do
+      {:ok, kind} -> kind
+      :error -> pool_kind(form.data)
     end
   end
 
-  @doc "Whether a device pool lists its devices instead of holding each actor's own devices."
-  @spec lists_devices?(map()) :: boolean()
-  def lists_devices?(%{type: :device_pool, device_membership_criteria: criteria}),
-    do: match?({:ok, _}, Portal.Resource.DeviceMembershipCriteria.device_ids(criteria))
+  @doc "The group a pool form picks, from the form or the resource."
+  @spec pool_group_id(Phoenix.HTML.Form.t()) :: Ecto.UUID.t() | nil
+  def pool_group_id(form) do
+    case form[:group_id].value do
+      value when is_binary(value) and value != "" -> value
+      _other -> stored_group_id(form.data)
+    end
+  end
 
+  defp stored_group_id(%{type: :device_pool, device_membership_criteria: criteria}) do
+    case Portal.Resource.DeviceMembershipCriteria.group_id(criteria) do
+      {:ok, group_id} -> group_id
+      :error -> nil
+    end
+  end
+
+  defp stored_group_id(_resource), do: nil
+
+  @doc "Whether a device pool lists its devices instead of picking them by a rule."
+  @spec lists_devices?(map()) :: boolean()
+  def lists_devices?(%{type: :device_pool} = resource), do: pool_kind(resource) == :listed
   def lists_devices?(_resource), do: false
 
-  defp own_devices_pool?(%{type: :device_pool} = resource), do: not lists_devices?(resource)
-  defp own_devices_pool?(_resource), do: false
+  defp pool_kind(%{type: :device_pool, device_membership_criteria: %Portal.Resource.DeviceMembershipCriteria{} = criteria}),
+    do: Portal.Resource.DeviceMembershipCriteria.kind(criteria)
+
+  defp pool_kind(_resource), do: :listed
 
   attr :form, :any, required: true
   attr :resource, :any, default: nil
@@ -991,6 +1042,7 @@ defmodule PortalWeb.Resources.Components do
   end
 
   attr :account, :any, required: true
+  attr :subject, :any, required: true
   attr :resource, :any, default: nil
   attr :panel_view, :atom, required: true
   attr :form_state, :map, required: true
@@ -1023,6 +1075,7 @@ defmodule PortalWeb.Resources.Components do
           <.resource_pool_members_section
             :if={to_string(@resource_form[:type].value) == "device_pool"}
             form={@resource_form}
+            subject={@subject}
           />
 
           <.resource_device_pool_section
@@ -2146,9 +2199,11 @@ defmodule PortalWeb.Resources.Components do
   end
 
   def resource_status_badge(%{resource: %{type: :device_pool}} = assigns) do
+    assigns = assign(assigns, :kind, pool_kind(assigns.resource))
+
     ~H"""
     <.status_badge style={:neutral}>
-      Own devices
+      {pool_kind_label(@kind)}
     </.status_badge>
     """
   end
@@ -2162,6 +2217,11 @@ defmodule PortalWeb.Resources.Components do
     </.status_badge>
     """
   end
+
+  defp pool_kind_label(:all_devices), do: "All devices"
+  defp pool_kind_label(:own_devices), do: "Own devices"
+  defp pool_kind_label(:actor_group), do: "Group's devices"
+  defp pool_kind_label(:listed), do: "Selected devices"
 
   @spec resource_type_label(atom()) :: String.t()
   def resource_type_label(:dns), do: "DNS"

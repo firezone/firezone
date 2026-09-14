@@ -590,6 +590,7 @@ defmodule PortalWeb.Resources do
         <%= if @resource_panel.view in [:new_form, :edit_form] do %>
           <.resource_form_panel
             account={@account}
+            subject={@subject}
             resource={@selected_resource}
             panel_view={@resource_panel.view}
             form_state={resource_form_panel_state(assigns)}
@@ -1481,6 +1482,17 @@ defmodule PortalWeb.Resources do
 
     defp normalize_pool_attrs(%{"type" => "device_pool", "members" => "listed"} = attrs, ids) do
       put_criteria(attrs, Resource.DeviceMembershipCriteria.devices(ids))
+    end
+
+    defp normalize_pool_attrs(%{"type" => "device_pool", "members" => "all_devices"} = attrs, _ids) do
+      put_criteria(attrs, Resource.DeviceMembershipCriteria.all_devices())
+    end
+
+    defp normalize_pool_attrs(%{"type" => "device_pool", "members" => "actor_group"} = attrs, _ids) do
+      case Ecto.UUID.cast(attrs["group_id"]) do
+        {:ok, group_id} -> put_criteria(attrs, Resource.DeviceMembershipCriteria.actor_group(group_id))
+        :error -> Map.put(attrs, "device_membership_criteria", nil)
+      end
     end
 
     defp normalize_pool_attrs(attrs, _device_ids), do: attrs
