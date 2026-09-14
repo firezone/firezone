@@ -5,11 +5,19 @@ use anyhow::{Context as _, ErrorExt as _, Result, bail};
 use clap::Parser as _;
 use connlib_model::ResourceView;
 use gui_ipc::{ClientMsg, NotRunning, ServerError, ServerMsg, TunnelStatus};
-use std::process::ExitCode;
-use tokio::runtime::Runtime;
+use secrecy::SecretString;
+use std::{
+    io::{BufRead as _, IsTerminal as _},
+    process::ExitCode,
+    time::Duration,
+};
+use tokio::{runtime::Runtime, time::Instant};
 use tracing_subscriber::filter::LevelFilter;
 
 mod cli;
+
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(60);
+const CONNECT_POLL_INTERVAL: Duration = Duration::from_millis(250);
 
 #[allow(
     clippy::print_stderr,
@@ -50,12 +58,26 @@ fn expected(error: &anyhow::Error) -> Option<String> {
         return Some(NotRunning.to_string());
     }
 
+    if let Some(connect_error) = error.any_downcast_ref::<ConnectError>() {
+        return Some(connect_error.to_string());
+    }
+
     let server_error = error.any_downcast_ref::<ServerError>()?;
 
     match server_error {
         ServerError::NotConnected => Some(server_error.to_string()),
+        ServerError::NotSignedIn => Some(server_error.to_string()),
         ServerError::Other(_) => None,
     }
+}
+
+/// The tunnel did not come up after the GUI accepted `connect`.
+#[derive(Debug, thiserror::Error)]
+enum ConnectError {
+    #[error("Connecting failed. Check the GUI's logs.")]
+    Failed,
+    #[error("Timed out waiting for the tunnel to come up.")]
+    Timeout,
 }
 
 fn run(cli: Cli) -> Result<()> {
@@ -75,6 +97,10 @@ fn run(cli: Cli) -> Result<()> {
 
             print_status(&status);
         }
+        Cmd::Connect => connect(&rt)?,
+        Cmd::Disconnect => {
+            expect_ack(&rt, ClientMsg::Disconnect).context("Failed to disconnect")?
+        }
         Cmd::SignOut => expect_ack(&rt, ClientMsg::SignOut).context("Failed to sign out")?,
         Cmd::Resources {
             command: None | Some(ResourcesCmd::List),
@@ -90,6 +116,71 @@ fn run(cli: Cli) -> Result<()> {
     }
 
     Ok(())
+}
+
+fn connect(rt: &Runtime) -> Result<()> {
+    let token = supplied_token().context("Failed to read token")?;
+
+    expect_ack(rt, ClientMsg::Connect { token }).context("Failed to connect")?;
+    rt.block_on(wait_until_connected())?;
+
+    Ok(())
+}
+
+/// The token piped on stdin, else the one in `FIREZONE_TOKEN`, else nothing.
+fn supplied_token() -> Result<Option<SecretString>> {
+    let piped = piped_token().context("Failed to read stdin")?;
+    let token = piped.or_else(|| non_empty(std::env::var("FIREZONE_TOKEN").ok()?));
+
+    Ok(token.map(SecretString::from))
+}
+
+/// The first line piped on stdin.
+///
+/// Nothing is read from a terminal: with no pipe there is nothing waiting, and
+/// asking would just block.
+fn piped_token() -> Result<Option<String>> {
+    let stdin = std::io::stdin();
+
+    if stdin.is_terminal() {
+        return Ok(None);
+    }
+
+    let mut line = String::new();
+    stdin.lock().read_line(&mut line)?;
+
+    Ok(non_empty(line))
+}
+
+fn non_empty(value: String) -> Option<String> {
+    let value = value.trim();
+
+    (!value.is_empty()).then(|| value.to_owned())
+}
+
+async fn wait_until_connected() -> Result<()> {
+    let deadline = Instant::now() + CONNECT_TIMEOUT;
+
+    loop {
+        let reply = gui_ipc::request(ClientMsg::Status)
+            .await
+            .context("Failed to query status")?;
+        let ServerMsg::Status(status) = reply else {
+            bail!("Unexpected reply: {reply:?}");
+        };
+
+        match status {
+            TunnelStatus::Connected { .. } => return Ok(()),
+            TunnelStatus::Disconnected => return Err(ConnectError::Failed.into()),
+            TunnelStatus::Connecting => {}
+        }
+
+        if Instant::now() >= deadline {
+            return Err(ConnectError::Timeout.into());
+        }
+
+        tokio::time::sleep(CONNECT_POLL_INTERVAL).await;
+    }
 }
 
 fn list_resources(rt: &Runtime) -> Result<()> {
@@ -223,6 +314,11 @@ mod tests {
     #[test]
     fn subcommands() {
         assert!(matches!(command(&["firezone", "status"]), Cmd::Status));
+        assert!(matches!(command(&["firezone", "connect"]), Cmd::Connect));
+        assert!(matches!(
+            command(&["firezone", "disconnect"]),
+            Cmd::Disconnect
+        ));
         assert!(matches!(command(&["firezone", "sign-out"]), Cmd::SignOut));
         assert!(matches!(
             command(&["firezone", "resources"]),

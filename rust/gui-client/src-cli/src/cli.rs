@@ -33,6 +33,15 @@ impl Cli {
 pub enum Cmd {
     #[command(about = "Report the current status.")]
     Status,
+    // The token is never a command-line argument, which would land it in the
+    // shell history.
+    #[command(
+        about = "Bring the tunnel up.",
+        long_about = "Bring the tunnel up.\n\nReturns once the tunnel is up and leaves it running, since the tunnel lives in the GUI rather than in this process. Use `disconnect` to stop it.\n\nA token piped on stdin or set in FIREZONE_TOKEN is saved and used; otherwise the stored one is."
+    )]
+    Connect,
+    #[command(about = "Disconnect, keeping the stored token.")]
+    Disconnect,
     #[command(about = "Sign out and remove the stored token.")]
     SignOut,
     #[command(about = "Inspect the Resources this Client can reach.")]

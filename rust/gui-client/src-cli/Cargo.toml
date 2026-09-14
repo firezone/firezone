@@ -12,6 +12,8 @@ anyhow = { workspace = true }
 clap = { workspace = true, features = ["derive"] }
 connlib-model = { workspace = true }
 gui-ipc = { workspace = true }
+secrecy = { workspace = true }
+thiserror = { workspace = true }
 tokio = { workspace = true, features = ["net", "rt", "time"] }
 tracing-subscriber = { workspace = true }
 

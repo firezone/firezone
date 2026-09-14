@@ -2496,6 +2496,8 @@ dependencies = [
  "connlib-model",
  "embed-resource",
  "gui-ipc",
+ "secrecy",
+ "thiserror 2.0.20",
  "tokio",
  "tracing-subscriber",
 ]
@@ -3406,6 +3408,7 @@ dependencies = [
  "client-ipc",
  "connlib-model",
  "futures",
+ "secrecy",
  "serde",
  "thiserror 2.0.20",
  "url",

@@ -3,10 +3,11 @@
 use anyhow::{Context as _, ErrorExt as _, Result};
 use client_ipc::{ConnectOptions, SocketId};
 use futures::{SinkExt as _, StreamExt as _};
+use secrecy::{ExposeSecret as _, SecretString};
 
 /// IPC messages that a newly launched process (a second instance, a deep-link
 /// handler or a CLI subcommand) may send to the running instance of Firezone.
-#[derive(Debug, PartialEq, serde::Deserialize, serde::Serialize)]
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
 pub enum ClientMsg {
     Deeplink(url::Url),
     NewInstance,
@@ -16,6 +17,23 @@ pub enum ClientMsg {
     SetInternetResourceEnabled(bool),
     Status,
     SignOut,
+    /// Bring the tunnel up, signing in with `token` or else with the stored one.
+    Connect {
+        #[serde(serialize_with = "serialize_token")]
+        token: Option<SecretString>,
+    },
+    /// End the session, keeping the stored token.
+    Disconnect,
+}
+
+fn serialize_token<S>(token: &Option<SecretString>, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    match token {
+        Some(token) => serializer.serialize_some(token.expose_secret()),
+        None => serializer.serialize_none(),
+    }
 }
 
 /// IPC messages that the running instance sends back in reply to a [`ClientMsg`].
@@ -29,12 +47,15 @@ pub enum ServerMsg {
 
 /// Why the running instance could not carry out a [`ClientMsg`].
 ///
-/// [`ServerError::NotConnected`] is called out on its own because the CLI reports
-/// it as a plain fact rather than as a failure with a cause chain.
+/// [`ServerError::NotConnected`] and [`ServerError::NotSignedIn`] are called out
+/// on their own because the CLI reports them as a plain fact rather than as a
+/// failure with a cause chain.
 #[derive(Debug, PartialEq, thiserror::Error, serde::Deserialize, serde::Serialize)]
 pub enum ServerError {
     #[error("Not connected.")]
     NotConnected,
+    #[error("Not signed in. Sign in from the tray menu, or pipe a token: firezone connect < token")]
+    NotSignedIn,
     #[error("{0}")]
     Other(String),
 }

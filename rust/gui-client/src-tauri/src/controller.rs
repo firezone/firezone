@@ -873,9 +873,51 @@ impl<I: GuiIntegration> Controller<I> {
 
                 gui_ipc::ServerMsg::Ack
             }
+            gui_ipc::ClientMsg::Connect { token } => self.connect_over_gui_ipc(token).await?,
+            gui_ipc::ClientMsg::Disconnect => {
+                self.disconnect().await?;
+
+                gui_ipc::ServerMsg::Ack
+            }
         };
 
         Ok(reply)
+    }
+
+    /// Starts a session for the CLI, with `token` or else with the stored one.
+    ///
+    /// A running or starting session is left alone, even if a token was supplied:
+    /// a script re-running `connect` must not tear down the tunnel.
+    async fn connect_over_gui_ipc(
+        &mut self,
+        token: Option<SecretString>,
+    ) -> Result<gui_ipc::ServerMsg> {
+        match self.status {
+            Status::TunnelReady { .. } => return Ok(gui_ipc::ServerMsg::Ack),
+            Status::WaitingForPortal => return Ok(gui_ipc::ServerMsg::Ack),
+            Status::WaitingForTunnel => return Ok(gui_ipc::ServerMsg::Ack),
+            Status::Disconnected => {}
+            Status::Quitting => {}
+        }
+
+        let token = match token {
+            Some(token) => {
+                self.auth.sign_in_with_token(&token);
+
+                token
+            }
+            None => {
+                let Some(token) = self.auth.token() else {
+                    return Ok(gui_ipc::ServerMsg::Error(gui_ipc::ServerError::NotSignedIn));
+                };
+
+                token
+            }
+        };
+
+        self.start_session(token).await?;
+
+        Ok(gui_ipc::ServerMsg::Ack)
     }
 
     async fn handle_connect_result(&mut self, result: Result<(), String>) -> Result<()> {
@@ -1466,6 +1508,74 @@ mod tests {
             matches!(msg, service::ClientMsg::SetInternetResourceState(true)),
             "expected `SetInternetResourceState(true)` but got {msg:?}"
         );
+    }
+
+    #[tokio::test]
+    async fn connect_over_gui_ipc_needs_a_token() {
+        let _guard = logging::test("debug");
+        let mut test_controller = Controller::start_for_test();
+        let mut mock_tunnel = test_controller.tunnel_service_ipc_accept().await;
+        mock_tunnel.send_hello().await;
+
+        let response = test_controller
+            .gui_ipc_request(gui_ipc::ClientMsg::Connect { token: None })
+            .await;
+
+        assert_eq!(
+            response,
+            gui_ipc::ServerMsg::Error(gui_ipc::ServerError::NotSignedIn)
+        );
+    }
+
+    #[tokio::test]
+    async fn connects_with_the_supplied_token_over_gui_ipc() {
+        let _guard = logging::test("debug");
+        let mut test_controller = Controller::start_for_test();
+        let mut mock_tunnel = test_controller.tunnel_service_ipc_accept().await;
+        mock_tunnel.send_hello().await;
+
+        let response = test_controller
+            .gui_ipc_request(gui_ipc::ClientMsg::Connect {
+                token: Some(SecretString::from("cli-token")),
+            })
+            .await;
+
+        assert_eq!(response, gui_ipc::ServerMsg::Ack);
+        let token = mock_tunnel.rx_connect().await;
+        assert_eq!(token.expose_secret(), "cli-token");
+        let response = test_controller
+            .gui_ipc_request(gui_ipc::ClientMsg::Status)
+            .await;
+        assert_eq!(
+            response,
+            gui_ipc::ServerMsg::Status(gui_ipc::TunnelStatus::Connecting)
+        );
+    }
+
+    #[tokio::test]
+    async fn disconnect_over_gui_ipc_keeps_the_token() {
+        let _guard = logging::test("debug");
+        let mut test_controller = Controller::start_for_test();
+        let mut mock_tunnel = test_controller.tunnel_service_ipc_accept().await;
+        mock_tunnel.send_hello().await;
+        test_controller.sign_in().await;
+        mock_tunnel.start_ok().await;
+
+        let response = test_controller
+            .gui_ipc_request(gui_ipc::ClientMsg::Disconnect)
+            .await;
+
+        assert_eq!(response, gui_ipc::ServerMsg::Ack);
+        let msg = mock_tunnel.next_msg().await;
+        assert!(
+            matches!(msg, service::ClientMsg::Disconnect),
+            "expected `Disconnect` but got {msg:?}"
+        );
+        let response = test_controller
+            .gui_ipc_request(gui_ipc::ClientMsg::Connect { token: None })
+            .await;
+        assert_eq!(response, gui_ipc::ServerMsg::Ack);
+        let _stored_token = mock_tunnel.rx_connect().await;
     }
 
     #[tokio::test]
