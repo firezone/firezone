@@ -111,6 +111,7 @@ class TunnelService : VpnService() {
 
     var startedByUser: Boolean = false
     private var commandChannel: Channel<TunnelCommand>? = null
+    private var sessionJob: Job? = null
 
     // A `SupervisorJob` keeps one failed child from cancelling its siblings, but an exception it
     // does not handle still reaches the thread's default handler and takes the process with it.
@@ -391,6 +392,11 @@ class TunnelService : VpnService() {
     }
 
     private fun connect() {
+        // Repeated service starts must not replace a session that is still running or cleaning up.
+        if (sessionJob?.isCompleted == false) {
+            return
+        }
+
         val token =
             (appRestrictions.getString("token") ?: tokenStore.get())
                 ?.takeUnless(String::isBlank)
@@ -407,102 +413,103 @@ class TunnelService : VpnService() {
 
             val context = this
 
-            serviceScope.launch {
-                try {
-                    // Set telemetry environment and user context
-                    val deviceIdValue = deviceId()
-                    Telemetry.setEnvironmentOrClose(config.apiUrl)
-                    Telemetry.setFirezoneId(deviceIdValue)
-                    // The portal names the account in `init`; until then this session has none.
-                    Telemetry.setAccountSlug(null)
+            sessionJob =
+                serviceScope.launch {
+                    try {
+                        // Set telemetry environment and user context
+                        val deviceIdValue = deviceId()
+                        Telemetry.setEnvironmentOrClose(config.apiUrl)
+                        Telemetry.setFirezoneId(deviceIdValue)
+                        // The portal names the account in `init`; until then this session has none.
+                        Telemetry.setAccountSlug(null)
 
-                    configureLogger(
-                        logDir(this@TunnelService),
-                        config.logFilter,
-                        flowLogsDir(this@TunnelService),
-                    )
-
-                    val deviceInfo =
-                        DeviceInfo(
-                            firebaseInstallationId = firebaseInstallationId(),
-                            deviceUuid = null,
-                            deviceSerial = null,
-                            identifierForVendor = null,
+                        configureLogger(
+                            logDir(this@TunnelService),
+                            config.logFilter,
+                            flowLogsDir(this@TunnelService),
                         )
 
-                    // An administrator who requires a certificate wants no session without one.
-                    if (certificateAlias == null && repo.isX509CertificateRequired(appRestrictions)) {
-                        throw X509IdentityException(
-                            "Your administrator requires a device certificate, and none has been released to Firezone yet.",
-                        )
-                    }
+                        val deviceInfo =
+                            DeviceInfo(
+                                firebaseInstallationId = firebaseInstallationId(),
+                                deviceUuid = null,
+                                deviceSerial = null,
+                                identifierForVendor = null,
+                            )
 
-                    // The KeyChain blocks on a system service and connlib reads the identity while
-                    // it constructs the session, so load it before we get there.
-                    val certificate =
-                        withContext(Dispatchers.IO) { x509Identity.load(certificateAlias) }
-
-                    sessionFactory
-                        .open(
-                            AndroidSessionConfig(
-                                apiUrl = config.apiUrl,
-                                token = token,
-                                deviceId = deviceIdValue,
-                                deviceName = getDeviceName(),
-                                isInternetResourceActive = resourceState.isEnabled(),
-                                deviceInfo = deviceInfo,
-                            ),
-                            // The token authenticates the user. A configured certificate attests
-                            // the device, and the portal decides whether to accept it.
-                            tlsIdentity = certificate?.tlsIdentity,
-                        ).use { session ->
-                            startNetworkMonitoring()
-                            startLogCleanup()
-                            startFeatureFlagPoll()
-
-                            val stopReason = eventLoop(session, commandChannel!!)
-
-                            Log.i(TAG, "Event-loop finished: $stopReason")
-
-                            val message =
-                                when (stopReason) {
-                                    is StopReason.Disconnected -> stopReason.message
-
-                                    StopReason.Error -> UNRECOVERABLE_ERROR
-
-                                    StopReason.ExplicitDisconnect,
-                                    StopReason.EventChannelClosed,
-                                    StopReason.CommandChannelClosed,
-                                    -> null
-                                }
-
-                            if (startedByUser && message != null) {
-                                TunnelNotification.showDisconnectedNotification(context, message)
-                            }
+                        // An administrator who requires a certificate wants no session without one.
+                        if (certificateAlias == null && repo.isX509CertificateRequired(appRestrictions)) {
+                            throw X509IdentityException(
+                                "Your administrator requires a device certificate, and none has been released to Firezone yet.",
+                            )
                         }
-                } catch (e: ConnlibException) {
-                    Log.e(TAG, "Failed to start session", e)
-                    e.close()
-                } catch (e: X509IdentityException) {
-                    Log.e(TAG, "Failed to load the client certificate", e)
-                    val advice = "Contact your administrator for support."
-                    showErrorNotification(
-                        "Client certificate unavailable",
-                        e.message?.takeUnless(String::isBlank)?.let { "$it $advice" } ?: advice,
-                    )
-                } finally {
-                    commandChannel = null
-                    tunnelState = State.DOWN
 
-                    stopNetworkMonitoring()
-                    stopFeatureFlagPoll()
+                        // The KeyChain blocks on a system service and connlib reads the identity while
+                        // it constructs the session, so load it before we get there.
+                        val certificate =
+                            withContext(Dispatchers.IO) { x509Identity.load(certificateAlias) }
 
-                    // Stop the foreground notification
-                    stopForeground(STOP_FOREGROUND_REMOVE)
-                    stopLogCleanup()
-                    stopSelf()
+                        sessionFactory
+                            .open(
+                                AndroidSessionConfig(
+                                    apiUrl = config.apiUrl,
+                                    token = token,
+                                    deviceId = deviceIdValue,
+                                    deviceName = getDeviceName(),
+                                    isInternetResourceActive = resourceState.isEnabled(),
+                                    deviceInfo = deviceInfo,
+                                ),
+                                // The token authenticates the user. A configured certificate attests
+                                // the device, and the portal decides whether to accept it.
+                                tlsIdentity = certificate?.tlsIdentity,
+                            ).use { session ->
+                                startNetworkMonitoring()
+                                startLogCleanup()
+                                startFeatureFlagPoll()
+
+                                val stopReason = eventLoop(session, commandChannel!!)
+
+                                Log.i(TAG, "Event-loop finished: $stopReason")
+
+                                val message =
+                                    when (stopReason) {
+                                        is StopReason.Disconnected -> stopReason.message
+
+                                        StopReason.Error -> UNRECOVERABLE_ERROR
+
+                                        StopReason.ExplicitDisconnect,
+                                        StopReason.EventChannelClosed,
+                                        StopReason.CommandChannelClosed,
+                                        -> null
+                                    }
+
+                                if (startedByUser && message != null) {
+                                    TunnelNotification.showDisconnectedNotification(context, message)
+                                }
+                            }
+                    } catch (e: ConnlibException) {
+                        Log.e(TAG, "Failed to start session", e)
+                        e.close()
+                    } catch (e: X509IdentityException) {
+                        Log.e(TAG, "Failed to load the client certificate", e)
+                        val advice = "Contact your administrator for support."
+                        showErrorNotification(
+                            "Client certificate unavailable",
+                            e.message?.takeUnless(String::isBlank)?.let { "$it $advice" } ?: advice,
+                        )
+                    } finally {
+                        commandChannel = null
+                        tunnelState = State.DOWN
+
+                        stopNetworkMonitoring()
+                        stopFeatureFlagPoll()
+
+                        // Stop the foreground notification
+                        stopForeground(STOP_FOREGROUND_REMOVE)
+                        stopLogCleanup()
+                        stopSelf()
+                    }
                 }
-            }
         }
     }
 
