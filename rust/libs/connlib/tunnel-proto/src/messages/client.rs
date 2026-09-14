@@ -68,7 +68,7 @@ fn internet_resource_name() -> String {
 /// A pool of devices the portal admits by its membership criteria.
 ///
 /// Members are never sent: a packet to a tunnel address asks the portal for access with
-/// [`EgressMessages::RequestDeviceAccess`], and the portal answers with the pool it picked.
+/// [`EgressMessages::RequestAccess`], and the portal answers with the pool it granted.
 #[serde_as]
 #[derive(Debug, Deserialize)]
 pub struct ResourceDescriptionDevicePool {
@@ -382,21 +382,22 @@ pub struct ClientIceCandidates {
 #[serde(rename_all = "snake_case", tag = "event", content = "payload")]
 // enum_variant_names: These are the names in the portal!
 pub enum EgressMessages {
-    RequestAuthorization {
-        resource_id: ResourceId,
-        #[serde(rename = "connected_gateway_ids")]
-        preferred_gateways: Vec<GatewayId>,
-    },
-    /// Asks for access to the device at a tunnel address for one flow. The portal picks
-    /// the pool and answers with [`ClientDeviceAccessAuthorized`] or
-    /// [`ClientDeviceAccessDenied`].
-    RequestDeviceAccess {
+    /// Asks for access through the named resources, most preferred first.
+    ///
+    /// A packet for a device in the tunnel range names every pool whose filters permit
+    /// it and carries the device's address; the portal grants the first pool that holds
+    /// the device and answers with [`ClientDeviceAccessAuthorized`] or
+    /// [`ClientDeviceAccessDenied`]. Any other packet names the one resource we route it
+    /// through and the portal answers with [`AuthorizationCreated`] or
+    /// [`AuthorizationCreationFailed`].
+    RequestAccess {
+        resource_ids: Vec<ResourceId>,
         #[serde(skip_serializing_if = "Option::is_none")]
         ipv4: Option<Ipv4Addr>,
         #[serde(skip_serializing_if = "Option::is_none")]
         ipv6: Option<Ipv6Addr>,
-        #[serde(flatten)]
-        flow: Flow,
+        #[serde(rename = "connected_gateway_ids")]
+        preferred_gateways: Vec<GatewayId>,
     },
     ResolveDeviceDomain {
         domain: String,
@@ -407,41 +408,6 @@ pub enum EgressMessages {
     NewClientIceCandidates(ClientIceCandidates),
     InvalidateClientIceCandidates(ClientIceCandidates),
     SetSnownetCapabilities(SnownetCapabilities),
-}
-
-/// The flow a device access request is for.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
-pub struct Flow {
-    pub protocol: FlowProtocol,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub port: Option<u16>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum FlowProtocol {
-    Tcp,
-    Udp,
-    Icmp,
-}
-
-impl From<ip_packet::Protocol> for Flow {
-    fn from(protocol: ip_packet::Protocol) -> Self {
-        match protocol {
-            ip_packet::Protocol::Tcp(port) => Flow {
-                protocol: FlowProtocol::Tcp,
-                port: Some(port),
-            },
-            ip_packet::Protocol::Udp(port) => Flow {
-                protocol: FlowProtocol::Udp,
-                port: Some(port),
-            },
-            ip_packet::Protocol::IcmpEcho(_) => Flow {
-                protocol: FlowProtocol::Icmp,
-                port: None,
-            },
-        }
-    }
 }
 
 #[cfg(test)]
@@ -914,38 +880,31 @@ mod tests {
     }
 
     #[test]
-    fn serialize_request_authorization_message() {
-        let message = EgressMessages::RequestAuthorization {
-            resource_id: "f16ecfa0-a94f-4bfd-a2ef-1cc1f2ef3da3".parse().unwrap(),
+    fn serialize_request_access_message_for_a_resource() {
+        let message = EgressMessages::RequestAccess {
+            resource_ids: vec!["f16ecfa0-a94f-4bfd-a2ef-1cc1f2ef3da3".parse().unwrap()],
+            ipv4: None,
+            ipv6: None,
             preferred_gateways: Vec::new(),
         };
-        let expected_json = r#"{"event":"request_authorization","payload":{"resource_id":"f16ecfa0-a94f-4bfd-a2ef-1cc1f2ef3da3","connected_gateway_ids":[]}}"#;
+        let expected_json = r#"{"event":"request_access","payload":{"resource_ids":["f16ecfa0-a94f-4bfd-a2ef-1cc1f2ef3da3"],"connected_gateway_ids":[]}}"#;
         let actual_json = serde_json::to_string(&message).unwrap();
 
         assert_eq!(actual_json, expected_json);
     }
 
     #[test]
-    fn serialize_request_device_access_message_with_ipv4() {
-        let message = EgressMessages::RequestDeviceAccess {
+    fn serialize_request_access_message_for_a_device() {
+        let message = EgressMessages::RequestAccess {
+            resource_ids: vec![
+                "f16ecfa0-a94f-4bfd-a2ef-1cc1f2ef3da3".parse().unwrap(),
+                "73037362-715d-4a83-a749-f18eadd970e6".parse().unwrap(),
+            ],
             ipv4: Some(Ipv4Addr::new(100, 65, 0, 1)),
             ipv6: None,
-            flow: ip_packet::Protocol::Tcp(22).into(),
+            preferred_gateways: Vec::new(),
         };
-        let expected_json = r#"{"event":"request_device_access","payload":{"ipv4":"100.65.0.1","protocol":"tcp","port":22}}"#;
-        let actual_json = serde_json::to_string(&message).unwrap();
-
-        assert_eq!(actual_json, expected_json);
-    }
-
-    #[test]
-    fn serialize_request_device_access_message_with_ipv6() {
-        let message = EgressMessages::RequestDeviceAccess {
-            ipv4: None,
-            ipv6: Some("fd00:2021:1111::1".parse().unwrap()),
-            flow: ip_packet::Protocol::IcmpEcho(7).into(),
-        };
-        let expected_json = r#"{"event":"request_device_access","payload":{"ipv6":"fd00:2021:1111::1","protocol":"icmp"}}"#;
+        let expected_json = r#"{"event":"request_access","payload":{"resource_ids":["f16ecfa0-a94f-4bfd-a2ef-1cc1f2ef3da3","73037362-715d-4a83-a749-f18eadd970e6"],"ipv4":"100.65.0.1","connected_gateway_ids":[]}}"#;
         let actual_json = serde_json::to_string(&message).unwrap();
 
         assert_eq!(actual_json, expected_json);

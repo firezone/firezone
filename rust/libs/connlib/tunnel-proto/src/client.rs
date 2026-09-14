@@ -29,8 +29,7 @@ use crate::dns::{
 use crate::filter_engine::FilterEngine;
 use crate::messages::IngestToken;
 use crate::messages::{
-    Filter, IceCredentials, IceRole, Interface as InterfaceConfig, SecretKey,
-    client::{FailReason, Flow},
+    Filter, IceCredentials, IceRole, Interface as InterfaceConfig, SecretKey, client::FailReason,
 };
 use crate::peer_store::{Peer, PeerStore};
 use crate::portal_connection::PortalConnection;
@@ -372,9 +371,9 @@ impl ClientState {
 
     /// Handles cases where access to a device is denied.
     ///
-    /// The portal denied the flow we asked about: answer the buffered packets with an
-    /// ICMP error so the application fails fast, and remember the denial so the same
-    /// flow is answered locally for a while. No device at the address denies every flow.
+    /// The portal denied the address we asked about: answer the buffered packets with an
+    /// ICMP error so the application fails fast, and remember the denial so the address
+    /// is answered locally for a while.
     pub fn handle_client_device_access_denied(
         &mut self,
         ipv4: Option<Ipv4Addr>,
@@ -384,13 +383,8 @@ impl ClientState {
     ) {
         tracing::debug!(?ipv4, ?ipv6, "Device access denied: {reason:?}");
 
-        let whole_address = matches!(reason, FailReason::NotFound);
-
         for addr in ipv4.map(IpAddr::V4).into_iter().chain(ipv6.map(IpAddr::V6)) {
-            let Some(pending) = self
-                .pending_authorizations
-                .deny_device(addr, whole_address, now)
-            else {
+            let Some(pending) = self.pending_authorizations.deny_device(addr, now) else {
                 continue;
             };
 
@@ -678,14 +672,18 @@ impl ClientState {
                 }),
             ) => {
                 // The pool we hold for the peer does not permit this flow: another pool may,
-                // so ask the portal.
+                // so ask the portal through the ones that do.
                 if !filter_allows(&filter, dst_proto) {
-                    if let Some(packet) = pending_authorizations.on_not_authorized_device(
-                        dst,
-                        Flow::from(dst_proto),
-                        packet,
-                        now,
-                    ) {
+                    let pools = permitting_pools(resources, dst_proto);
+
+                    if pools.is_empty() {
+                        reply_with_icmp_prohibited(&mut self.buffered_packets, packet);
+                        return Ok(());
+                    }
+
+                    if let Some(packet) =
+                        pending_authorizations.on_not_authorized_device(dst, pools, packet, now)
+                    {
                         reply_with_icmp_prohibited(&mut self.buffered_packets, packet);
                     }
                     return Ok(());
@@ -703,12 +701,11 @@ impl ClientState {
 
                 let Some((cid, ingest_token)) = authorized else {
                     // Not yet authorized: Buffer + send request.
-                    if let Some(packet) = pending_authorizations.on_not_authorized_device(
-                        dst,
-                        Flow::from(dst_proto),
-                        packet,
-                        now,
-                    ) {
+                    let pools = permitting_pools(resources, dst_proto);
+
+                    if let Some(packet) =
+                        pending_authorizations.on_not_authorized_device(dst, pools, packet, now)
+                    {
                         reply_with_icmp_prohibited(&mut self.buffered_packets, packet);
                     }
                     return Ok(());
@@ -775,15 +772,19 @@ impl ClientState {
                 (packet, gid.into())
             }
             (None, None, None) => {
-                // A tunnel address we hold no pool for may still be a device the portal
-                // lets us reach, so ask before giving up.
-                if crate::is_peer(dst) {
-                    if let Some(packet) = pending_authorizations.on_not_authorized_device(
-                        dst,
-                        Flow::from(dst_proto),
-                        packet,
-                        now,
-                    ) {
+                // A tunnel address is a device the portal may let us reach through one of
+                // our pools; without pools it is nothing we can route.
+                if crate::is_peer(dst) && has_device_pool(resources) {
+                    let pools = permitting_pools(resources, dst_proto);
+
+                    if pools.is_empty() {
+                        reply_with_icmp_prohibited(&mut self.buffered_packets, packet);
+                        return Ok(());
+                    }
+
+                    if let Some(packet) =
+                        pending_authorizations.on_not_authorized_device(dst, pools, packet, now)
+                    {
                         reply_with_icmp_prohibited(&mut self.buffered_packets, packet);
                     }
                     return Ok(());
@@ -2398,8 +2399,8 @@ impl ClientState {
                     preferred_gateways: self.preferred_gateways(resource),
                     resource,
                 },
-                AuthorizationRequest::Device { addr, flow } => {
-                    ClientEvent::DeviceAccessRequested { ip: addr, flow }
+                AuthorizationRequest::Device { addr, pools } => {
+                    ClientEvent::DeviceAccessRequested { ip: addr, pools }
                 }
             });
         }
@@ -2852,6 +2853,31 @@ fn filter_allows(filter: &FilterEngine, protocol: Protocol) -> bool {
 
 /// Like [`encapsulate_or_buffer`], but encapsulates into `buffered_transmits` and drops (with a
 /// log) any error instead of returning it.
+/// The pools whose filters permit `protocol`, most preferred first.
+///
+/// The order is the one the routing tables use to break ties: the highest id wins.
+fn permitting_pools(
+    resources: &BTreeMap<ResourceId, Resource>,
+    protocol: Protocol,
+) -> Vec<ResourceId> {
+    resources
+        .values()
+        .rev()
+        .filter_map(|resource| match resource {
+            Resource::DevicePool(pool) => Some(pool),
+            Resource::Cidr(_) | Resource::Dns(_) | Resource::Internet(_) => None,
+        })
+        .filter(|pool| FilterEngine::new(&pool.filters).apply(Ok(protocol)).is_ok())
+        .map(|pool| pool.id)
+        .collect()
+}
+
+fn has_device_pool(resources: &BTreeMap<ResourceId, Resource>) -> bool {
+    resources
+        .values()
+        .any(|resource| matches!(resource, Resource::DevicePool(_)))
+}
+
 fn encapsulate_and_queue(
     packet: IpPacket,
     pid: ClientOrGatewayId,
@@ -3008,6 +3034,7 @@ fn test_ingest_token() -> IngestToken {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::messages::PortRange;
 
     #[test]
     fn does_not_queue_device_access_intent_for_packet_to_own_tun_ipv4() {
@@ -3046,10 +3073,16 @@ mod tests {
     }
 
     #[test]
-    fn packet_to_a_tunnel_address_asks_for_device_access() {
+    fn packet_to_a_tunnel_address_asks_for_device_access_through_permitting_pools() {
         let mut state = ClientState::for_test();
         let now = Instant::now();
         state.update_interface_config(interface(own_tun_ipv4(), own_tun_ipv6()));
+        state.upsert_resource(device_pool(1, vec![]), now);
+        state.upsert_resource(device_pool(2, vec![Filter::Icmp]), now);
+        state.upsert_resource(
+            device_pool(3, vec![Filter::Udp(PortRange::new(53, 53).unwrap())]),
+            now,
+        );
         while state.poll_event().is_some() {}
 
         let packet =
@@ -3058,14 +3091,62 @@ mod tests {
             .handle_tun_input(packet, now, &mut snownet::TransmitBuffer::new())
             .unwrap();
 
-        let request = iter::from_fn(|| state.poll_event()).find(|event| {
-            matches!(
-                event,
-                ClientEvent::DeviceAccessRequested { ip, flow }
-                    if *ip == IpAddr::V4(device_tun_ipv4()) && *flow == Flow::from(Protocol::Udp(53))
-            )
+        let request = iter::from_fn(|| state.poll_event()).find_map(|event| {
+            if let ClientEvent::DeviceAccessRequested { ip, pools } = event
+                && ip == IpAddr::V4(device_tun_ipv4())
+            {
+                return Some(pools);
+            }
+
+            None
         });
-        assert!(request.is_some(), "expected a device access request");
+        assert_eq!(
+            request,
+            Some(vec![ResourceId::from_u128(3), ResourceId::from_u128(1)]),
+            "expected the permitting pools, highest id first"
+        );
+    }
+
+    #[test]
+    fn packet_to_a_tunnel_address_without_pools_is_unroutable() {
+        let mut state = ClientState::for_test();
+        let now = Instant::now();
+        state.update_interface_config(interface(own_tun_ipv4(), own_tun_ipv6()));
+        while state.poll_event().is_some() {}
+
+        let packet =
+            ip_packet::make::udp_packet(own_tun_ipv4(), device_tun_ipv4(), 1234, 53, &[1]).unwrap();
+        let error = state
+            .handle_tun_input(packet, now, &mut snownet::TransmitBuffer::new())
+            .unwrap_err();
+
+        assert!(
+            error.to_string().starts_with("Unroutable packet"),
+            "{error}"
+        );
+        assert_no_device_connection_intent(&mut state);
+    }
+
+    #[test]
+    fn packet_to_a_tunnel_address_no_pool_permits_is_prohibited_locally() {
+        let mut state = ClientState::for_test();
+        let now = Instant::now();
+        state.update_interface_config(interface(own_tun_ipv4(), own_tun_ipv6()));
+        state.upsert_resource(device_pool(2, vec![Filter::Icmp]), now);
+        while state.poll_event().is_some() {}
+        while state.poll_packets().is_some() {}
+
+        let packet =
+            ip_packet::make::udp_packet(own_tun_ipv4(), device_tun_ipv4(), 1234, 53, &[1]).unwrap();
+        state
+            .handle_tun_input(packet, now, &mut snownet::TransmitBuffer::new())
+            .unwrap();
+
+        assert_no_device_connection_intent(&mut state);
+        assert!(
+            state.poll_packets().is_some(),
+            "expected an ICMP error without a request"
+        );
     }
 
     #[test]
@@ -3073,6 +3154,7 @@ mod tests {
         let mut state = ClientState::for_test();
         let now = Instant::now();
         state.update_interface_config(interface(own_tun_ipv4(), own_tun_ipv6()));
+        state.upsert_resource(device_pool(1, vec![]), now);
         while state.poll_event().is_some() {}
         while state.poll_packets().is_some() {}
 
@@ -3320,6 +3402,14 @@ mod tests {
 
     fn device_tun_ipv6() -> Ipv6Addr {
         Ipv6Addr::new(0xfd00, 0x2021, 0x1111, 0, 0, 0, 0, 2)
+    }
+
+    fn device_pool(id: u128, filters: Vec<Filter>) -> Resource {
+        Resource::DevicePool(DevicePoolResource {
+            id: ResourceId::from_u128(id),
+            name: format!("pool-{id}"),
+            filters,
+        })
     }
 
     fn assert_no_device_connection_intent(state: &mut ClientState) {

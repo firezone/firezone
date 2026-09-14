@@ -79,11 +79,11 @@ pub enum ClientEvent {
         resource: ResourceId,
         preferred_gateways: Vec<GatewayId>,
     },
-    /// A packet to a tunnel address that no pool we hold permits asks the portal for
-    /// access to the device for that flow.
+    /// A packet to a tunnel address we hold no grant for asks the portal for access to
+    /// the device through the pools that permit the flow, most preferred first.
     DeviceAccessRequested {
         ip: IpAddr,
-        flow: messages::client::Flow,
+        pools: Vec<ResourceId>,
     },
     /// A DNS query for a device name asks the portal to resolve it.
     DeviceDomainQueried {
