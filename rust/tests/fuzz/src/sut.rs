@@ -31,7 +31,7 @@ use std::{
 };
 use tracing::debug_span;
 use tunnel_proto::dns::is_subdomain;
-use tunnel_proto::messages::client::{FailReason, Flow, FlowProtocol, ResourceAuthorization};
+use tunnel_proto::messages::client::{FailReason, ResourceAuthorization};
 use tunnel_proto::messages::gateway::Client;
 use tunnel_proto::messages::{IceCredentials, Key, SecretKey};
 use tunnel_proto::{ClientEvent, GatewayEvent, dns, messages::Interface};
@@ -1470,14 +1470,14 @@ impl TunnelTest {
 
                 Ok(())
             }
-            ClientEvent::DeviceAccessRequested { ip, flow } => {
+            ClientEvent::DeviceAccessRequested { ip, pools } => {
                 let (ipv4, ipv6) = match ip {
                     std::net::IpAddr::V4(v4) => (Some(v4), None),
                     std::net::IpAddr::V6(v6) => (None, Some(v6)),
                 };
 
-                // Mimic the portal: the address must be another client's, and one of the
-                // pools the initiator holds must admit it and permit the flow.
+                // Mimic the portal: the address must be another client's, and the first of
+                // the named pools the initiator holds that admits it is granted.
                 let Some(remote_id) = portal
                     .client_by_ip(ip)
                     .filter(|id| self.clients.contains_key(id))
@@ -1509,8 +1509,12 @@ impl TunnelTest {
                     .expect("unknown source client")
                     .inner()
                     .device_pool_ids();
-                let Some(pool) = portal.pick_device_pool(&held, remote_id, flow_protocol(flow))
-                else {
+                let candidates = pools
+                    .iter()
+                    .copied()
+                    .filter(|pool| held.contains(pool))
+                    .collect::<Vec<_>>();
+                let Some(pool) = portal.pick_device_pool(&candidates, remote_id) else {
                     deny_device_access(
                         &mut self.clients,
                         src,
@@ -1804,17 +1808,6 @@ fn deny_device_access(
             c.sut
                 .handle_client_device_access_denied(ipv4, ipv6, reason, now)
         });
-}
-
-fn flow_protocol(flow: Flow) -> ip_packet::Protocol {
-    match (flow.protocol, flow.port) {
-        (FlowProtocol::Tcp, Some(port)) => ip_packet::Protocol::Tcp(port),
-        (FlowProtocol::Udp, Some(port)) => ip_packet::Protocol::Udp(port),
-        (FlowProtocol::Icmp, _) => ip_packet::Protocol::IcmpEcho(0),
-        (FlowProtocol::Tcp | FlowProtocol::Udp, None) => {
-            unreachable!("tcp and udp flows carry a port")
-        }
-    }
 }
 
 fn test_ingest_token() -> tunnel_proto::messages::IngestToken {

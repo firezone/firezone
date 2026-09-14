@@ -1,7 +1,6 @@
 use connlib_model::{ClientId, GatewayId, ResourceId, Site, SiteId};
 use dns_types::DomainName;
 use ip_network::IpNetwork;
-use ip_packet::Protocol;
 use itertools::Itertools;
 use smallvec::SmallVec;
 use std::{
@@ -12,7 +11,6 @@ use std::{
 use tunnel_proto::dns;
 use tunnel_proto::messages::{UpstreamDo53, UpstreamDoH, gateway};
 
-use crate::ref_client::protocol_filter_allows;
 use crate::resource::{self as client, DevicePoolResource};
 
 /// Stub implementation of the portal.
@@ -219,19 +217,14 @@ impl StubPortal {
 
     /// The pool the portal picks for a flow from a client holding `held` to `target`:
     /// the first by id that admits the target and permits the protocol.
+    /// The first of the pools the client named, in its order, that holds the target.
     pub(crate) fn pick_device_pool(
         &self,
-        held: &[ResourceId],
+        candidates: &[ResourceId],
         target: ClientId,
-        protocol: Protocol,
     ) -> Option<ResourceId> {
-        held.iter().copied().sorted().find(|pool| {
-            self.device_pool_resources
-                .get(pool)
-                .is_some_and(|resource| {
-                    self.is_pool_member(*pool, target)
-                        && protocol_filter_allows(&resource.filters, protocol)
-                })
+        candidates.iter().copied().find(|pool| {
+            self.device_pool_resources.contains_key(pool) && self.is_pool_member(*pool, target)
         })
     }
 
