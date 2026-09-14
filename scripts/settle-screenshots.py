@@ -18,6 +18,11 @@ A render is judged against the commit the clients built, which on a pull request
 is its merge commit rather than the branch. A screen that main re-rendered after
 the branch was cut looks different from the branch's copy and the same as main's,
 and the branch's copy is what stays.
+
+A branch that re-rendered a screen and then changed the UI back is the other way
+around: the render differs from the picture the clients built and matches the one
+the branch will merge into, whose copy is what stays, leaving nothing of the
+screen in the diff at all.
 """
 
 import argparse
@@ -75,7 +80,7 @@ def listed(*arguments: str) -> list[str]:
     ).stdout.split()
 
 
-def main(baseline: str, directories: list[str]) -> int:
+def main(baseline: str, merge_target: str | None, directories: list[str]) -> int:
     # A screen that main added after the branch was cut arrives as a file HEAD
     # does not track, and would otherwise be committed as the branch's own.
     changed = listed("diff", "--name-only", "--", *directories) + listed(
@@ -88,18 +93,25 @@ def main(baseline: str, directories: list[str]) -> int:
             continue
 
         before = committed(baseline, path)
-        if before is None or not looks_the_same(path, before):
+        if before is not None and looks_the_same(path, before):
+            ours = committed("HEAD", path)
+            if ours is None:
+                Path(path).unlink()
+            else:
+                Path(path).write_bytes(ours)
+            restored.append(path)
             continue
 
-        ours = committed("HEAD", path)
-        if ours is None:
-            Path(path).unlink()
-        else:
-            Path(path).write_bytes(ours)
-        restored.append(path)
+        # Judged once more against what the branch merges into, which a screen it
+        # re-rendered and then changed back matches while the picture the clients
+        # built no longer does.
+        started_with = committed(merge_target, path) if merge_target else None
+        if started_with is not None and looks_the_same(path, started_with):
+            Path(path).write_bytes(started_with)
+            restored.append(path)
 
     for path in restored:
-        print(f"Unchanged to the eye, kept as committed: {path}")
+        print(f"Unchanged to the eye, put back: {path}")
 
     print(f"{len(restored)} of {len(changed)} re-rendered images were put back.")
 
@@ -113,7 +125,11 @@ if __name__ == "__main__":
         default="HEAD",
         help="the commit whose pictures a render is judged against",
     )
+    parser.add_argument(
+        "--merge-target",
+        help="the commit the branch will merge into",
+    )
     parser.add_argument("directories", nargs="+")
     arguments = parser.parse_args()
 
-    sys.exit(main(arguments.baseline, arguments.directories))
+    sys.exit(main(arguments.baseline, arguments.merge_target, arguments.directories))
