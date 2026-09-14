@@ -10,15 +10,6 @@ bin="$2/Firezone.app/Contents/Resources/bin"
 echo "$bin" >/etc/paths.d/firezone
 chmod 0644 /etc/paths.d/firezone
 
-# Earlier builds symlinked into /usr/local/bin, which comes first on the PATH and
-# would shadow the entry above once the link dangles. Anything else there is the
-# user's own and stays.
-for link in /usr/local/bin/firezone /usr/local/bin/firezone-cli; do
-    case "$(readlink "$link" || true)" in
-    *Firezone.app/*) rm -f "$link" ;;
-    esac
-done
-
 install_completion() {
     local shell="$1"
     local path="$2"
