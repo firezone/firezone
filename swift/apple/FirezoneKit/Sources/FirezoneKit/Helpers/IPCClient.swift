@@ -11,17 +11,17 @@ import SystemPackage
 // TODO: Use a more abstract IPC protocol to make this less terse
 
 public enum IPCClient {
-  enum Error: Swift.Error {
+  enum Error: LocalizedError {
     case decodeIPCDataFailed
     case noIPCData
     case invalidStatus(NEVPNStatus)
 
-    var localizedDescription: String {
+    var errorDescription: String? {
       switch self {
       case .decodeIPCDataFailed:
-        return "Decoding IPC data failed."
+        return "The tunnel's answer could not be read."
       case .noIPCData:
-        return "No IPC data returned from the XPC connection!"
+        return "The tunnel did not answer."
       case .invalidStatus(let status):
         return "The IPC operation couldn't complete because the VPN status is \(status)."
       }
@@ -36,6 +36,8 @@ public enum IPCClient {
   private static let settlingStatuses: [NEVPNStatus] = runningStatuses + [.disconnecting]
   private static let stopTimeout: Duration = .seconds(5)
   private static let stopPollInterval: Duration = .milliseconds(100)
+  private static let statusAttempts = 5
+  private static let statusRetryInterval: Duration = .milliseconds(200)
 
   // The GUI must save providerConfiguration before calling this so any MDM forced
   // overrides are available to the provider.
@@ -128,11 +130,21 @@ public enum IPCClient {
   public static func status(
     session: any TunnelSessionProtocol, wakeIfStopped: Bool = true
   ) async throws -> TunnelStatus {
-    guard
-      let data = try await sendProviderMessage(
-        session: session, message: .getStatus, cycleStartIfStopped: wakeIfStopped
-      )
-    else {
+    let isCycleStart = wakeIfStopped ? try await maybeCycleStart(session) : false
+
+    defer {
+      if isCycleStart { session.stopTunnel() }
+    }
+
+    var answer = try await send(.getStatus, to: session)
+
+    // The extension answers empty for a moment after it has started or been replaced.
+    for _ in 1..<statusAttempts where answer == nil {
+      try await Task.sleep(for: statusRetryInterval)
+      answer = try await send(.getStatus, to: session)
+    }
+
+    guard let data = answer else {
       throw Error.noIPCData
     }
 
@@ -240,7 +252,14 @@ public enum IPCClient {
       if isCycleStart { session.stopTunnel() }
     }
 
-    return try await withCheckedThrowingContinuation { continuation in
+    return try await send(message, to: session)
+  }
+
+  @MainActor
+  private static func send(
+    _ message: ProviderMessage, to session: any TunnelSessionProtocol
+  ) async throws -> Data? {
+    try await withCheckedThrowingContinuation { continuation in
       do {
         try session.sendProviderMessage(encoder.encode(message)) { data in
           continuation.resume(returning: data)
