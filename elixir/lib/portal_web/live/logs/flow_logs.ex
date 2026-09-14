@@ -959,7 +959,7 @@ defmodule PortalWeb.Logs.FlowLogs do
       result =
         query
         |> Safe.scoped(subject)
-        |> Safe.list_offset(__MODULE__, Keyword.put(opts, :order_by_nulls, :natural))
+        |> Safe.list_offset(__MODULE__, Keyword.merge(opts, order_by_nulls: :natural, count_limit: 10_000))
 
       case result do
         {:ok, logs, metadata} -> {:ok, enrich(logs, subject), metadata}
