@@ -2497,7 +2497,6 @@ dependencies = [
  "embed-resource",
  "gui-ipc",
  "secrecy",
- "thiserror 2.0.20",
  "tokio",
  "tracing-subscriber",
 ]

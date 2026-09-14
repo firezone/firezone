@@ -9,15 +9,11 @@ use secrecy::SecretString;
 use std::{
     io::{BufRead as _, IsTerminal as _},
     process::ExitCode,
-    time::Duration,
 };
-use tokio::{runtime::Runtime, time::Instant};
+use tokio::runtime::Runtime;
 use tracing_subscriber::filter::LevelFilter;
 
 mod cli;
-
-const CONNECT_TIMEOUT: Duration = Duration::from_secs(60);
-const CONNECT_POLL_INTERVAL: Duration = Duration::from_millis(250);
 
 #[allow(
     clippy::print_stderr,
@@ -58,10 +54,6 @@ fn expected(error: &anyhow::Error) -> Option<String> {
         return Some(NotRunning.to_string());
     }
 
-    if let Some(connect_error) = error.any_downcast_ref::<ConnectError>() {
-        return Some(connect_error.to_string());
-    }
-
     let server_error = error.any_downcast_ref::<ServerError>()?;
 
     match server_error {
@@ -69,15 +61,6 @@ fn expected(error: &anyhow::Error) -> Option<String> {
         ServerError::NotSignedIn => Some(server_error.to_string()),
         ServerError::Other(_) => None,
     }
-}
-
-/// The tunnel did not come up after the GUI accepted `connect`.
-#[derive(Debug, thiserror::Error)]
-enum ConnectError {
-    #[error("Connecting failed. Check the GUI's logs.")]
-    Failed,
-    #[error("Timed out waiting for the tunnel to come up.")]
-    Timeout,
 }
 
 fn run(cli: Cli) -> Result<()> {
@@ -122,7 +105,6 @@ fn connect(rt: &Runtime) -> Result<()> {
     let token = supplied_token().context("Failed to read token")?;
 
     expect_ack(rt, ClientMsg::Connect { token }).context("Failed to connect")?;
-    rt.block_on(wait_until_connected())?;
 
     Ok(())
 }
@@ -156,31 +138,6 @@ fn non_empty(value: String) -> Option<String> {
     let value = value.trim();
 
     (!value.is_empty()).then(|| value.to_owned())
-}
-
-async fn wait_until_connected() -> Result<()> {
-    let deadline = Instant::now() + CONNECT_TIMEOUT;
-
-    loop {
-        let reply = gui_ipc::request(ClientMsg::Status)
-            .await
-            .context("Failed to query status")?;
-        let ServerMsg::Status(status) = reply else {
-            bail!("Unexpected reply: {reply:?}");
-        };
-
-        match status {
-            TunnelStatus::Connected { .. } => return Ok(()),
-            TunnelStatus::Disconnected => return Err(ConnectError::Failed.into()),
-            TunnelStatus::Connecting => {}
-        }
-
-        if Instant::now() >= deadline {
-            return Err(ConnectError::Timeout.into());
-        }
-
-        tokio::time::sleep(CONNECT_POLL_INTERVAL).await;
-    }
 }
 
 fn list_resources(rt: &Runtime) -> Result<()> {

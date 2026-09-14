@@ -68,6 +68,8 @@ pub struct Controller<I: GuiIntegration> {
             ipc::ServerWrite<gui_ipc::ServerMsg>,
         )>,
     >,
+    /// CLIs whose `Connect` is answered once the session is up or has failed.
+    pending_connect_replies: Vec<ipc::ServerWrite<gui_ipc::ServerMsg>>,
 }
 
 pub trait GuiIntegration {
@@ -185,6 +187,13 @@ enum EventloopTick {
     QuitTimeoutElapsed,
 }
 
+/// When the reply to a GUI IPC message is sent.
+enum GuiIpcReply {
+    Now(gui_ipc::ServerMsg),
+    /// Once the session reaches [`Status::TunnelReady`] or gives up.
+    WhenConnected,
+}
+
 #[derive(Debug, thiserror::Error)]
 #[error("Failed to receive hello: {0:#}")]
 pub struct FailedToReceiveHello(anyhow::Error);
@@ -264,6 +273,7 @@ impl<I: GuiIntegration> Controller<I> {
                 Some((result, gui_ipc))
             })
             .boxed(),
+            pending_connect_replies: Vec::new(),
         };
 
         controller.main_loop().await?;
@@ -315,7 +325,12 @@ impl<I: GuiIntegration> Controller<I> {
                     let client_msg = read.next().await;
 
                     let reply = match self.handle_gui_ipc_msg(client_msg).await {
-                        Ok(reply) => reply,
+                        Ok(GuiIpcReply::Now(reply)) => reply,
+                        Ok(GuiIpcReply::WhenConnected) => {
+                            self.pending_connect_replies.push(write);
+
+                            continue;
+                        }
                         Err(e) => {
                             tracing::debug!("Failed to handle GUI IPC message: {e:#}");
 
@@ -728,6 +743,7 @@ impl<I: GuiIntegration> Controller<I> {
                 );
 
                 self.status = Status::TunnelReady { resources };
+                self.resolve_connect_replies(gui_ipc::ServerMsg::Ack).await;
 
                 self.refresh_ui_state();
                 self.update_disabled_resources().await?;
@@ -796,7 +812,7 @@ impl<I: GuiIntegration> Controller<I> {
     async fn handle_gui_ipc_msg(
         &mut self,
         maybe_msg: Option<Result<gui_ipc::ClientMsg>>,
-    ) -> Result<gui_ipc::ServerMsg> {
+    ) -> Result<GuiIpcReply> {
         let client_msg = maybe_msg
             .context("No message received")?
             .context("Failed to read message")?;
@@ -840,9 +856,9 @@ impl<I: GuiIntegration> Controller<I> {
             }
             gui_ipc::ClientMsg::ListResources => {
                 let Status::TunnelReady { resources } = &self.status else {
-                    return Ok(gui_ipc::ServerMsg::Error(
+                    return Ok(GuiIpcReply::Now(gui_ipc::ServerMsg::Error(
                         gui_ipc::ServerError::NotConnected,
-                    ));
+                    )));
                 };
 
                 gui_ipc::ServerMsg::Resources(resources.resources.clone())
@@ -873,7 +889,9 @@ impl<I: GuiIntegration> Controller<I> {
 
                 gui_ipc::ServerMsg::Ack
             }
-            gui_ipc::ClientMsg::Connect { token } => self.connect_over_gui_ipc(token).await?,
+            gui_ipc::ClientMsg::Connect { token } => {
+                return self.connect_over_gui_ipc(token).await;
+            }
             gui_ipc::ClientMsg::Disconnect => {
                 self.disconnect().await?;
 
@@ -881,21 +899,18 @@ impl<I: GuiIntegration> Controller<I> {
             }
         };
 
-        Ok(reply)
+        Ok(GuiIpcReply::Now(reply))
     }
 
     /// Starts a session for the CLI, with `token` or else with the stored one.
     ///
     /// A running or starting session is left alone, even if a token was supplied:
     /// a script re-running `connect` must not tear down the tunnel.
-    async fn connect_over_gui_ipc(
-        &mut self,
-        token: Option<SecretString>,
-    ) -> Result<gui_ipc::ServerMsg> {
+    async fn connect_over_gui_ipc(&mut self, token: Option<SecretString>) -> Result<GuiIpcReply> {
         match self.status {
-            Status::TunnelReady { .. } => return Ok(gui_ipc::ServerMsg::Ack),
-            Status::WaitingForPortal => return Ok(gui_ipc::ServerMsg::Ack),
-            Status::WaitingForTunnel => return Ok(gui_ipc::ServerMsg::Ack),
+            Status::TunnelReady { .. } => return Ok(GuiIpcReply::Now(gui_ipc::ServerMsg::Ack)),
+            Status::WaitingForPortal => return Ok(GuiIpcReply::WhenConnected),
+            Status::WaitingForTunnel => return Ok(GuiIpcReply::WhenConnected),
             Status::Disconnected => {}
             Status::Quitting => {}
         }
@@ -908,7 +923,9 @@ impl<I: GuiIntegration> Controller<I> {
             }
             None => {
                 let Some(token) = self.auth.token() else {
-                    return Ok(gui_ipc::ServerMsg::Error(gui_ipc::ServerError::NotSignedIn));
+                    return Ok(GuiIpcReply::Now(gui_ipc::ServerMsg::Error(
+                        gui_ipc::ServerError::NotSignedIn,
+                    )));
                 };
 
                 token
@@ -917,7 +934,7 @@ impl<I: GuiIntegration> Controller<I> {
 
         self.start_session(token).await?;
 
-        Ok(gui_ipc::ServerMsg::Ack)
+        Ok(GuiIpcReply::WhenConnected)
     }
 
     async fn handle_connect_result(&mut self, result: Result<(), String>) -> Result<()> {
@@ -938,9 +955,27 @@ impl<I: GuiIntegration> Controller<I> {
                 // We log this here directly instead of forwarding it because errors hard-abort the event-loop and we still want to be able to export logs and stuff.
                 // See <https://github.com/firezone/firezone/issues/6547>.
                 tracing::error!("Failed to connect to Firezone: {error}");
+
+                // `disconnect` answers whatever is still pending with `NotConnected`;
+                // the portal's reason is the more useful one, so it goes out first.
+                self.resolve_connect_replies(gui_ipc::ServerMsg::Error(
+                    gui_ipc::ServerError::Other(error),
+                ))
+                .await;
                 self.sign_out().await?;
 
                 Ok(())
+            }
+        }
+    }
+
+    /// Sends `reply` to every CLI waiting on `Connect`.
+    ///
+    /// A CLI that gave up waiting has closed its end, which is not our failure.
+    async fn resolve_connect_replies(&mut self, reply: gui_ipc::ServerMsg) {
+        for mut write in self.pending_connect_replies.drain(..) {
+            if let Err(e) = write.send(&reply).await {
+                tracing::debug!("Failed to reply to GUI IPC `Connect`: {e:#}");
             }
         }
     }
@@ -1069,6 +1104,10 @@ impl<I: GuiIntegration> Controller<I> {
         }
         self.status = Status::Disconnected;
         self.connected_as = None;
+        self.resolve_connect_replies(gui_ipc::ServerMsg::Error(
+            gui_ipc::ServerError::NotConnected,
+        ))
+        .await;
         telemetry::set_account_slug(None);
         tracing::debug!("disconnecting connlib");
         // This is redundant if the token is expired, in that case
@@ -1534,21 +1573,48 @@ mod tests {
         let mut mock_tunnel = test_controller.tunnel_service_ipc_accept().await;
         mock_tunnel.send_hello().await;
 
-        let response = test_controller
-            .gui_ipc_request(gui_ipc::ClientMsg::Connect {
-                token: Some(SecretString::from("cli-token")),
-            })
-            .await;
+        let (mut rx, mut tx) = test_controller.gui_ipc_connect().await;
+        tx.send(&gui_ipc::ClientMsg::Connect {
+            token: Some(SecretString::from("cli-token")),
+        })
+        .await
+        .unwrap();
 
-        assert_eq!(response, gui_ipc::ServerMsg::Ack);
         let token = mock_tunnel.rx_connect().await;
         assert_eq!(token.expose_secret(), "cli-token");
-        let response = test_controller
-            .gui_ipc_request(gui_ipc::ClientMsg::Status)
-            .await;
+        assert!(
+            rx.next().now_or_never().is_none(),
+            "the reply must wait for the tunnel"
+        );
+
+        mock_tunnel.send_connect_ok().await;
+        mock_tunnel.send_resources(vec![dns_resource_foo()]).await;
+
+        let response = rx.next().await.unwrap().unwrap();
+        assert_eq!(response, gui_ipc::ServerMsg::Ack);
+    }
+
+    #[tokio::test]
+    async fn connect_over_gui_ipc_relays_the_portals_rejection() {
+        let _guard = logging::test("debug");
+        let mut test_controller = Controller::start_for_test();
+        let mut mock_tunnel = test_controller.tunnel_service_ipc_accept().await;
+        mock_tunnel.send_hello().await;
+
+        let (mut rx, mut tx) = test_controller.gui_ipc_connect().await;
+        tx.send(&gui_ipc::ClientMsg::Connect {
+            token: Some(SecretString::from("cli-token")),
+        })
+        .await
+        .unwrap();
+        let _token = mock_tunnel.rx_connect().await;
+
+        mock_tunnel.send_connect_err("invalid token").await;
+
+        let response = rx.next().await.unwrap().unwrap();
         assert_eq!(
             response,
-            gui_ipc::ServerMsg::Status(gui_ipc::TunnelStatus::Connecting)
+            gui_ipc::ServerMsg::Error(gui_ipc::ServerError::Other("invalid token".to_owned()))
         );
     }
 
@@ -1571,10 +1637,10 @@ mod tests {
             matches!(msg, service::ClientMsg::Disconnect),
             "expected `Disconnect` but got {msg:?}"
         );
-        let response = test_controller
-            .gui_ipc_request(gui_ipc::ClientMsg::Connect { token: None })
-            .await;
-        assert_eq!(response, gui_ipc::ServerMsg::Ack);
+        let (_rx, mut tx) = test_controller.gui_ipc_connect().await;
+        tx.send(&gui_ipc::ClientMsg::Connect { token: None })
+            .await
+            .unwrap();
         let _stored_token = mock_tunnel.rx_connect().await;
     }
 
@@ -2237,6 +2303,13 @@ mod tests {
         async fn send_connect_ok(&mut self) {
             self.tx
                 .send(&service::ServerMsg::ConnectResult(Ok(())))
+                .await
+                .unwrap();
+        }
+
+        async fn send_connect_err(&mut self, error: &str) {
+            self.tx
+                .send(&service::ServerMsg::ConnectResult(Err(error.to_owned())))
                 .await
                 .unwrap();
         }
