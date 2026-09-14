@@ -22,7 +22,7 @@ enum SystemExtension {
   static func requireInstalled() async throws {
     switch try await SystemExtensionManager(unattended: true).check() {
     case .installed:
-      say("System extension is up to date")
+      Log.debug("System extension is up to date")
     case .needsInstall:
       throw CLIError(
         "System extension is not installed. Launch Firezone.app to install it.")
@@ -33,7 +33,7 @@ enum SystemExtension {
         // Every build stamps a new CURRENT_PROJECT_VERSION, so a freshly built CLI
         // always disagrees with whatever the system still has running. Replacing it
         // would swap out the extension the app just installed on every connect.
-        Log.warning("System extension is a different version, continuing anyway")
+        Log.debug("System extension is a different version, continuing anyway")
       #else
         try await replace()
       #endif
@@ -46,7 +46,7 @@ enum SystemExtension {
   /// something to send the user to the app for.
   @MainActor
   private static func replace() async throws {
-    say("System extension is a different version, replacing it...")
+    Log.info("System extension is a different version, replacing it")
 
     let status: SystemExtensionStatus
     do {
@@ -58,7 +58,7 @@ enum SystemExtension {
 
     switch status {
     case .installed:
-      say("System extension replaced")
+      Log.info("System extension replaced")
     case .needsReboot:
       throw CLIError(restartAdvice)
     case .needsInstall, .needsReplacement:
@@ -87,7 +87,7 @@ extension FirezoneCLI {
 
       @MainActor
       func run() async throws {
-        configureOutput(debug: global.debug)
+        Log.useCLIOutput(debug: global.debug)
 
         switch try await SystemExtensionManager(unattended: true).check() {
         case .installed:
@@ -121,7 +121,7 @@ extension FirezoneCLI {
 
       @MainActor
       func run() async throws {
-        configureOutput(debug: global.debug)
+        Log.useCLIOutput(debug: global.debug)
 
         let status: SystemExtensionStatus
         do {

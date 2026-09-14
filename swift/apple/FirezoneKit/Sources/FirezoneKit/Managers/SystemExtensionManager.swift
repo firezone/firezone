@@ -176,8 +176,8 @@
         )
 
         if case .needsReplacement = status, let ext = enabledExtensions.first {
-          Log.warning(
-            "Extension version mismatch - Installed: \(ext.bundleShortVersion) (\(ext.bundleVersion)), Expected: \(ourBundleShortVersion) (\(ourBundleVersion))"
+          Log.info(
+            "Installed system extension is \(ext.bundleShortVersion) (\(ext.bundleVersion)), this build is \(ourBundleShortVersion) (\(ourBundleVersion))"
           )
         } else if case .needsInstall = status {
           Log.info("No system extension found - needs install")

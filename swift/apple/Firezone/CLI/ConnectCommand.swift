@@ -30,7 +30,7 @@ extension FirezoneCLI {
 
     @MainActor
     mutating func run() async throws {
-      configureOutput(debug: global.debug)
+      Log.useCLIOutput(debug: global.debug)
 
       if foreground {
         // Supervising ties the tunnel's lifetime to ours, so the menu bar app should stay
@@ -86,7 +86,7 @@ extension FirezoneCLI {
       if let existing = try await VPNConfigurationManager.load(using: factory) {
         vpnManager = existing
       } else {
-        say("Creating VPN configuration...")
+        Log.info("Creating VPN configuration")
         vpnManager = try await VPNConfigurationManager.create(using: factory)
       }
 

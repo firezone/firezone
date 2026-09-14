@@ -32,7 +32,7 @@ struct FirezoneCLI: AsyncParsableCommand {
   /// usage line it prints name a command the user never typed.
   @MainActor
   mutating func run() async throws {
-    configureOutput(debug: global.debug)
+    Log.useCLIOutput(debug: global.debug)
 
     try await Status.report()
   }
@@ -51,27 +51,8 @@ struct FirezoneCLI: AsyncParsableCommand {
 /// `ArgumentParser` has no global arguments, so each subcommand has to declare this
 /// for the flag to reach it.
 struct GlobalOptions: ParsableArguments {
-  @Flag(name: .long, help: "Report progress and mirror the internal log to stderr.")
+  @Flag(name: .long, help: "Mirror the internal log to stderr.")
   var debug = false
-}
-
-nonisolated(unsafe) private var reportsProgress = false
-
-/// Applies `--debug` to everything a command might print besides its answer.
-func configureOutput(debug: Bool) {
-  Log.useCLIOutput(debug: debug)
-  reportsProgress = debug
-}
-
-/// Says how a command is getting on, when `--debug` asks for it.
-///
-/// A command that succeeds prints nothing but its answer, as the Linux and Windows
-/// clients do, so these lines stay off the terminal by default. Stderr, leaving stdout
-/// to the data a command was asked for.
-func say(_ message: String) {
-  guard reportsProgress else { return }
-
-  try? FileHandle.standardError.write(contentsOf: Data("\(message)\n".utf8))
 }
 
 /// Something went wrong at runtime, as opposed to `ValidationError`, which is for a

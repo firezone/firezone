@@ -79,9 +79,9 @@ struct TunnelWatcher {
     for await outcome in outcomes {
       guard let stop = outcome else {
         if await portalNamedSession() {
-          say("Tunnel connected")
+          Log.info("Tunnel connected")
         } else {
-          say("Tunnel connected, but the portal has not answered yet")
+          Log.info("Tunnel connected, but the portal has not answered yet")
         }
 
         return nil
@@ -178,9 +178,9 @@ struct TunnelWatcher {
 
   private func announce(status: NEVPNStatus) {
     switch status {
-    case .connecting: say("Tunnel connecting...")
-    case .reasserting: say("Tunnel reasserting...")
-    case .disconnecting: say("Tunnel disconnecting...")
+    case .connecting: Log.info("Tunnel connecting")
+    case .reasserting: Log.info("Tunnel reasserting")
+    case .disconnecting: Log.info("Tunnel disconnecting")
     case .connected, .disconnected, .invalid: break
     @unknown default: Log.warning("Unknown tunnel status: \(status.rawValue)")
     }
@@ -200,7 +200,7 @@ struct TunnelWatcher {
 
   private func announce(disconnect error: (any Error)?) {
     guard let error else {
-      say("Tunnel disconnected externally, shutting down...")
+      Log.info("Tunnel disconnected externally, shutting down")
       return
     }
 
@@ -209,13 +209,13 @@ struct TunnelWatcher {
       let code = ConnlibError.Code(rawValue: nsError.code),
       let reason = nsError.userInfo["reason"] as? String
     else {
-      say("Tunnel disconnected: \(error)")
+      Log.warning("Tunnel disconnected: \(error)")
       return
     }
 
     switch code {
-    case .sessionExpired: say("Authentication failed: \(reason)")
-    case .disconnected: say("Tunnel disconnected: \(reason)")
+    case .sessionExpired: Log.warning("Authentication failed: \(reason)")
+    case .disconnected: Log.warning("Tunnel disconnected: \(reason)")
     }
   }
 }
@@ -258,7 +258,7 @@ final class TunnelSupervisor {
     for await action in actions {
       switch action {
       case .shutdown:
-        say("Shutting down...")
+        Log.info("Shutting down")
         session.stopTunnel()
         if let failure {
           throw failure
@@ -266,7 +266,7 @@ final class TunnelSupervisor {
         return
 
       case .restart:
-        say("Restarting tunnel...")
+        Log.info("Restarting tunnel")
         isRestarting = true
         // Starting again has to wait for the tunnel to actually be down, or the start
         // races the stop and is dropped. `follow` picks it up from there.
@@ -287,7 +287,7 @@ final class TunnelSupervisor {
       }
 
       isRestarting = false
-      say("Tunnel disconnected, starting it again")
+      Log.info("Tunnel disconnected, starting it again")
 
       do {
         try IPCClient.start(session: session)
