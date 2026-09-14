@@ -96,6 +96,11 @@ const NUM_CONCURRENT_TCP_DNS_CLIENTS: usize = 10;
 /// How long after we reset a site status from "Offline" back to "Unknown".
 const OFFLINE_SITE_STATUS_TIMEOUT: Duration = Duration::from_secs(5 * 60);
 
+/// How long we track the DNS stream of a recursive query before we discard it.
+///
+/// Our DNS clients time out queries much earlier, so this only ever triggers if one of them drops a query without a result.
+const DNS_STREAM_TIMEOUT: Duration = Duration::from_secs(60);
+
 /// A sans-IO implementation of a Client's functionality.
 ///
 /// Internally, this composes a [`snownet::Node`] with firezone's policy engine around resources.
@@ -170,9 +175,9 @@ pub struct ClientState {
     udp_dns_client: l3_udp_dns_client::Client,
     tcp_dns_client: dns_over_tcp::Client,
     tcp_dns_server: dns_over_tcp::Server,
-    /// Tracks the UDP/TCP stream (i.e. socket-pair) on which we received a DNS query by the ID of the recursive DNS query we issued.
-    dns_streams_by_local_upstream_and_query_id:
-        HashMap<(dns::Transport, SocketAddr, SocketAddr, u16), (SocketAddr, SocketAddr, Instant)>,
+    /// Tracks the UDP/TCP stream (i.e. socket-pair) on which we received a DNS query by the token of the recursive DNS query we issued.
+    dns_streams_by_upstream_query:
+        HashMap<(dns::Transport, u64), (SocketAddr, SocketAddr, Instant)>,
 
     buffered_events: VecDeque<ClientEvent>,
     buffered_packets: VecDeque<IpPacket>,
@@ -218,7 +223,7 @@ impl ClientState {
             udp_dns_client: l3_udp_dns_client::Client::new(seed),
             tcp_dns_client: dns_over_tcp::Client::new(now, Duration::from_secs(10), seed),
             tcp_dns_server: dns_over_tcp::Server::new(now),
-            dns_streams_by_local_upstream_and_query_id: Default::default(),
+            dns_streams_by_upstream_query: Default::default(),
             pending_authorizations: Default::default(),
             pending_routed_packets: Default::default(),
             pending_peer_packets: Default::default(),
@@ -1708,6 +1713,7 @@ impl ClientState {
         self.advance_dns_clients_and_servers(now);
         self.send_dns_resource_nat_packets(now);
         self.reset_offline_site_status(now);
+        self.discard_stale_dns_streams(now);
     }
 
     /// Advance the DNS server and client state machines.
@@ -1765,12 +1771,12 @@ impl ClientState {
             if let Some(query_result) = self.udp_dns_client.poll_query_result() {
                 let server = query_result.server;
                 let qid = query_result.query.id();
-                let known_sockets = &mut self.dns_streams_by_local_upstream_and_query_id;
 
-                let Some((local, remote, started_at)) =
-                    known_sockets.remove(&(dns::Transport::Udp, query_result.local, server, qid))
+                let Some((local, remote, started_at)) = self
+                    .dns_streams_by_upstream_query
+                    .remove(&(dns::Transport::Udp, query_result.token))
                 else {
-                    tracing::warn!(?known_sockets, %server, %qid, "Failed to find UDP socket handle for query result");
+                    tracing::debug!(%server, %qid, "Failed to find UDP socket handle for query result");
 
                     continue;
                 };
@@ -1795,12 +1801,12 @@ impl ClientState {
             if let Some(query_result) = self.tcp_dns_client.poll_query_result() {
                 let server = query_result.server;
                 let qid = query_result.query.id();
-                let known_sockets = &mut self.dns_streams_by_local_upstream_and_query_id;
 
-                let Some((local, remote, started_at)) =
-                    known_sockets.remove(&(dns::Transport::Tcp, query_result.local, server, qid))
+                let Some((local, remote, started_at)) = self
+                    .dns_streams_by_upstream_query
+                    .remove(&(dns::Transport::Tcp, query_result.token))
                 else {
-                    tracing::warn!(?known_sockets, %server, %qid, "Failed to find TCP socket handle for query result");
+                    tracing::debug!(%server, %qid, "Failed to find TCP socket handle for query result");
 
                     continue;
                 };
@@ -1822,6 +1828,17 @@ impl ClientState {
             }
 
             break;
+        }
+    }
+
+    fn discard_stale_dns_streams(&mut self, now: Instant) {
+        for ((transport, _), (local, remote, _)) in
+            self.dns_streams_by_upstream_query
+                .extract_if(|_, (_, _, started_at)| {
+                    now.saturating_duration_since(*started_at) >= DNS_STREAM_TIMEOUT
+                })
+        {
+            tracing::debug!(%local, %remote, "Discarding stale DNS stream for {transport} query");
         }
     }
 
@@ -2067,8 +2084,8 @@ impl ClientState {
             dns::Transport::Tcp => self.tcp_dns_client.send_query(server, query.clone()),
         };
 
-        let local_socket = match result {
-            Ok(local_socket) => local_socket,
+        let token = match result {
+            Ok(token) => token,
             Err(e) => {
                 tracing::warn!(
                     ?query,
@@ -2098,18 +2115,13 @@ impl ClientState {
             }
         };
 
-        tracing::trace!(%local_socket, %server, %local, %query_id, "Forwarded {transport} DNS query via tunnel");
+        tracing::trace!(%server, %local, %query_id, "Forwarded {transport} DNS query via tunnel");
 
-        let existing = self.dns_streams_by_local_upstream_and_query_id.insert(
-            (transport, local_socket, server, query_id),
-            (local, remote, now),
-        );
+        let existing = self
+            .dns_streams_by_upstream_query
+            .insert((transport, token), (local, remote, now));
 
-        if let Some((existing_local, existing_remote, _)) = existing
-            && (existing_local != local || existing_remote != remote)
-        {
-            debug_assert!(false, "Query IDs should be unique");
-        }
+        debug_assert!(existing.is_none(), "Query tokens should be unique");
     }
 
     fn maybe_update_tun_routes(&mut self) {
