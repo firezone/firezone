@@ -1187,13 +1187,6 @@ defmodule Portal.Repo.Seeds do
     seed_santa_devices(account, santa, now, admin)
     seed_sentinelone_devices(account, sentinelone, now, admin, rendering)
 
-    fleet =
-      seed_posture_fleet(
-        account,
-        %{intune: intune, iru: iru, defender: defender, santa: santa, sentinelone: sentinelone},
-        now
-      )
-
     IO.puts("Device posture providers created")
     IO.puts("  Contoso Intune, Iru Apple Fleet, Defender for Endpoint, Santa Workshop, SentinelOne Production")
     IO.puts("  #{admin.name}: attested, matched by MDM device id")
@@ -1203,10 +1196,8 @@ defmodule Portal.Repo.Seeds do
     IO.puts("  #{kiosk.name}: attested a device id only, serial comes from Intune")
     IO.puts("  #{macbook_air.name}: attested a device id only, serial comes from Iru")
     IO.puts("")
-    IO.puts("Device posture fleet seeded (#{fleet.members} devices, SEED_FLEET_SIZE to change)")
-    IO.puts("  Intune #{fleet.intune}, Iru #{fleet.iru}, Defender #{fleet.defender}, Santa #{fleet.santa}, SentinelOne #{fleet.sentinelone}")
-    IO.puts("  #{fleet.clients} Firezone Clients across #{fleet.people} people")
-    IO.puts("")
+
+    %{intune: intune, iru: iru, defender: defender, santa: santa, sentinelone: sentinelone}
   end
 
   # Seeded providers are disabled on purpose. Their credentials are made up, so
@@ -3264,7 +3255,8 @@ defmodule Portal.Repo.Seeds do
     IO.puts("Clients created")
     IO.puts("")
 
-    seed_device_posture(account, %{
+    posture_providers =
+      seed_device_posture(account, %{
       admin_laptop: admin_laptop,
       user_surface: user_windows_laptop,
       user_iphone: user_iphone,
@@ -4114,6 +4106,14 @@ defmodule Portal.Repo.Seeds do
     }
 
     seed_audit_logs(account, subjects, service_account_actor, api_token_id)
+
+    # Last, so the fleet's auto-assigned tunnel addresses cannot collide with
+    # the hand-picked ones the Clients and Gateways above are seeded with.
+    fleet = seed_posture_fleet(account, posture_providers, DateTime.utc_now() |> DateTime.truncate(:microsecond))
+
+    IO.puts("Device posture fleet seeded (#{fleet.members} devices, SEED_FLEET_SIZE to change)")
+    IO.puts("  Intune #{fleet.intune}, Iru #{fleet.iru}, Defender #{fleet.defender}, Santa #{fleet.santa}, SentinelOne #{fleet.sentinelone}")
+    IO.puts("  #{fleet.clients} Firezone Clients across #{fleet.people} people")
   end
 end
 
