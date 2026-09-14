@@ -45,7 +45,7 @@ defmodule PortalAPI.Endpoint do
     drainer: []
 
   # Client sockets take `:uri` so device trust can tell a connect on the
-  # mutual-TLS host from one on the plain API host.
+  # mutual-TLS origin from one on the plain API origin.
   socket "/client", PortalAPI.Client.Socket,
     websocket: [
       check_origin: :conn,
@@ -79,13 +79,7 @@ defmodule PortalAPI.Endpoint do
   plug :fetch_user_agent
   plug :redirect_to_rest_api_url
 
-  plug Plug.Static,
-    at: "/",
-    from: :portal,
-    gzip: true,
-    only: ["openapi.json"]
-
-  plug PortalAPI.Router
+  plug PortalAPI.Plugs.RescueRouterErrors
 
   plug Sentry.PlugContext
 

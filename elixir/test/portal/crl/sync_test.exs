@@ -4,7 +4,6 @@ defmodule Portal.Crl.SyncTest do
 
   import Portal.AccountFixtures
   import Portal.TrustAnchorFixtures
-  import Portal.FeaturesFixtures
   import Portal.DeviceTrustFixtures
   import ExUnit.CaptureLog
 
@@ -17,7 +16,6 @@ defmodule Portal.Crl.SyncTest do
 
   setup do
     account = account_fixture()
-    enable_feature(:trust_anchors)
     pki = pki()
     trust_anchor_fixture(account: account, certs: [pki.ca_der])
 

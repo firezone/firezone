@@ -1,0 +1,149 @@
+// Licensed under Apache 2.0 (C) 2026 Firezone, Inc.
+package dev.firezone.android.core.x509
+
+import dev.firezone.android.core.Log
+import uniffi.connlib.ClientTlsIdentity
+import uniffi.x509claims.ParsedCertificate
+import uniffi.x509claims.parseClientCertificate
+import java.security.GeneralSecurityException
+import java.security.PrivateKey
+import java.security.cert.X509Certificate
+import javax.inject.Inject
+import javax.inject.Singleton
+
+/** The system KeyChain holds no usable client identity under the configured alias. */
+class X509IdentityException(
+    message: String,
+    cause: Throwable? = null,
+) : Exception(message, cause)
+
+/** The TLS identity Firezone presents to the portal, together with its parsed leaf certificate. */
+data class LoadedX509Identity(
+    val alias: String,
+    val tlsIdentity: ClientTlsIdentity,
+    val certificate: ParsedCertificate,
+)
+
+/**
+ * Reads client TLS identities out of the system KeyChain.
+ *
+ * Every call reaches the KeyChain system service and blocks, so callers must stay off the main
+ * thread.
+ */
+@Singleton
+class X509Identity
+    @Inject
+    constructor(
+        private val keyChain: KeyChain,
+    ) {
+        /**
+         * Loads the identity stored under [alias], or `null` when no alias is known.
+         *
+         * @throws X509IdentityException if an alias is known but yields no device certificate.
+         */
+        fun load(alias: String?): LoadedX509Identity? {
+            if (alias == null) {
+                Log.d(TAG, "No KeyChain alias is configured for mutual TLS")
+
+                return null
+            }
+
+            val chain = certificateChain(alias)
+            val privateKey = privateKey(alias)
+            val leaf = chain.first()
+
+            if (privateKey.algorithm != leaf.publicKey.algorithm) {
+                throw X509IdentityException(
+                    "Alias '$alias' pairs a ${privateKey.algorithm} key with a ${leaf.publicKey.algorithm} certificate.",
+                )
+            }
+
+            val tlsIdentity =
+                try {
+                    KeyChainTlsIdentity(alias, chain, privateKey)
+                } catch (exception: GeneralSecurityException) {
+                    throw X509IdentityException(
+                        "The certificate chain of alias '$alias' could not be encoded.",
+                        exception,
+                    )
+                }
+            val certificate =
+                parseClientCertificate(tlsIdentity.certificateChain().first())
+                    ?: throw X509IdentityException("The certificate of alias '$alias' could not be parsed.")
+
+            // The desktop clients only ever pick up a certificate by this name, so one under any
+            // other is not the device certificate whatever the alias says.
+            if (!certificate.isDeviceCertificate) {
+                throw X509IdentityException(
+                    "Alias '$alias' holds a certificate for '${certificate.subjectCn ?: "nobody"}', not a device certificate.",
+                )
+            }
+
+            Log.i(
+                TAG,
+                "Loaded the client identity of alias '$alias' " +
+                    "(certificates=${chain.size}, fingerprint=${certificate.fingerprint})",
+            )
+
+            return LoadedX509Identity(
+                alias = alias,
+                tlsIdentity = tlsIdentity,
+                certificate = certificate,
+            )
+        }
+
+        private fun certificateChain(alias: String): List<X509Certificate> {
+            val chain =
+                try {
+                    keyChain.certificateChain(alias)
+                } catch (exception: InterruptedException) {
+                    Thread.currentThread().interrupt()
+
+                    throw X509IdentityException(
+                        "Reading the certificate chain of alias '$alias' was interrupted.",
+                        exception,
+                    )
+                } catch (exception: Exception) {
+                    throw X509IdentityException(
+                        "The certificate chain of alias '$alias' could not be read.",
+                        exception,
+                    )
+                }
+
+            if (chain == null || chain.isEmpty()) {
+                throw X509IdentityException(
+                    "Alias '$alias' holds no certificate, or Firezone has not been granted access to it.",
+                )
+            }
+
+            return chain
+        }
+
+        private fun privateKey(alias: String): PrivateKey {
+            val privateKey =
+                try {
+                    keyChain.privateKey(alias)
+                } catch (exception: InterruptedException) {
+                    Thread.currentThread().interrupt()
+
+                    throw X509IdentityException(
+                        "Opening the private key of alias '$alias' was interrupted.",
+                        exception,
+                    )
+                } catch (exception: Exception) {
+                    throw X509IdentityException(
+                        "The private key of alias '$alias' could not be opened.",
+                        exception,
+                    )
+                }
+
+            return privateKey
+                ?: throw X509IdentityException(
+                    "Alias '$alias' holds no private key, or Firezone has not been granted access to it.",
+                )
+        }
+
+        private companion object {
+            private const val TAG = "X509Identity"
+        }
+    }

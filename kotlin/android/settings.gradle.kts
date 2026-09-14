@@ -65,10 +65,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "Firezone App"
 include(":app")
-
-buildCache {
-    local {
-        isEnabled = true
-        directory = file("$rootDir/.gradle/build-cache")
-    }
-}
+include(":dpc")

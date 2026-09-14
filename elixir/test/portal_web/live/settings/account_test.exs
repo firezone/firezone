@@ -152,7 +152,7 @@ defmodule PortalWeb.Settings.AccountTest do
         |> form("form[phx-submit='submit_account_name']", %{account: %{name: "ab"}})
         |> render_change()
 
-      assert html =~ "should be at least 3 character(s)"
+      assert html =~ "too short"
     end
 
     test "saves updated account name", %{conn: conn, account: account, actor: actor} do
@@ -244,6 +244,118 @@ defmodule PortalWeb.Settings.AccountTest do
       assert length(recipients) == 2
       assert email.subject == "Firezone Account Scheduled for Deletion"
       assert email.text_body =~ Calendar.strftime(account.scheduled_deletion_at, "%B %-d, %Y")
+    end
+
+    test "prompts for feedback after scheduling deletion", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/account")
+
+      render_click(lv, "confirm_delete_account")
+      render_click(lv, "update_slug_confirmation", %{"slug_confirmation" => account.slug})
+
+      html =
+        lv
+        |> form("form[phx-submit='delete_account']", %{slug_confirmation: account.slug})
+        |> render_submit()
+
+      assert html =~ "Sorry Firezone didn&#39;t work out"
+      assert html =~ "Anything you&#39;d like to share about your experience?"
+
+      html =
+        lv
+        |> form("#deletion-feedback-form", %{
+          account: %{metadata: %{deletion_feedback: "  Too hard to set up  "}}
+        })
+        |> render_submit()
+
+      refute html =~ "Sorry Firezone didn&#39;t work out"
+      assert fetch_account!(account.id).metadata.deletion_feedback == "Too hard to set up"
+    end
+
+    test "skipping the feedback prompt stores nothing", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/account")
+
+      render_click(lv, "confirm_delete_account")
+      render_click(lv, "update_slug_confirmation", %{"slug_confirmation" => account.slug})
+
+      lv
+      |> form("form[phx-submit='delete_account']", %{slug_confirmation: account.slug})
+      |> render_submit()
+
+      html = render_click(lv, "skip_deletion_feedback")
+
+      refute html =~ "Sorry Firezone didn&#39;t work out"
+      refute fetch_account!(account.id).metadata.deletion_feedback
+    end
+
+    test "submitting empty feedback closes the prompt without storing", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/account")
+
+      render_click(lv, "confirm_delete_account")
+      render_click(lv, "update_slug_confirmation", %{"slug_confirmation" => account.slug})
+
+      lv
+      |> form("form[phx-submit='delete_account']", %{slug_confirmation: account.slug})
+      |> render_submit()
+
+      html =
+        lv
+        |> form("#deletion-feedback-form", %{
+          account: %{metadata: %{deletion_feedback: "   "}}
+        })
+        |> render_submit()
+
+      refute html =~ "Sorry Firezone didn&#39;t work out"
+      refute fetch_account!(account.id).metadata.deletion_feedback
+    end
+
+    test "shows an error when feedback is longer than 2000 characters", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/account")
+
+      render_click(lv, "confirm_delete_account")
+      render_click(lv, "update_slug_confirmation", %{"slug_confirmation" => account.slug})
+
+      lv
+      |> form("form[phx-submit='delete_account']", %{slug_confirmation: account.slug})
+      |> render_submit()
+
+      html =
+        lv
+        |> form("#deletion-feedback-form", %{
+          account: %{metadata: %{deletion_feedback: String.duplicate("a", 2001)}}
+        })
+        |> render_submit()
+
+      assert html =~ "Sorry Firezone didn&#39;t work out"
+      assert html =~ "should be at most 2000 character(s)"
+      refute fetch_account!(account.id).metadata.deletion_feedback
     end
 
     test "sends aborted deletion email when cancellation restores the account", %{

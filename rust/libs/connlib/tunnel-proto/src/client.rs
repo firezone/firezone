@@ -11,7 +11,7 @@ mod tracked_state;
 
 pub(crate) use crate::client::client_on_client::ClientOnClient;
 pub(crate) use crate::client::gateway_on_client::GatewayOnClient;
-use resource::{InternetResource, Resource, StaticDevicePoolResource};
+use resource::{DynamicDevicePoolResource, InternetResource, Resource, StaticDevicePoolResource};
 
 use crate::client::client_on_client::InboundResult;
 use crate::client::dns_cache::DnsCache;
@@ -374,19 +374,18 @@ impl ClientState {
             })
         {}
 
-        let Some(cid) = ipv4
-            .and_then(|ip| self.routing_tables.client_id_by_ip(IpAddr::V4(ip)))
-            .or_else(|| ipv6.and_then(|ip| self.routing_tables.client_id_by_ip(IpAddr::V6(ip))))
+        let Some((cid, _)) = ipv4
+            .and_then(|ip| self.clients.peer_by_ip(IpAddr::V4(ip)))
+            .or_else(|| ipv6.and_then(|ip| self.clients.peer_by_ip(IpAddr::V6(ip))))
         else {
             return;
         };
 
+        self.forget_outbound_grants(cid);
+
         // TODO: Update resource list with offline client.
 
-        let Some(_) = self.clients.remove(&cid) else {
-            return;
-        };
-
+        self.clients.remove(&cid);
         self.node
             .close_connection(ClientOrGatewayId::Client(cid), p2p_control::goodbye(), now);
     }
@@ -412,6 +411,8 @@ impl ClientState {
                     .any(|(pool_id, member)| *pool_id == pool && member.contains(addr))
             })
         {}
+
+        self.forget_outbound_grants(cid);
 
         if self.clients.remove(&cid).is_some() {
             self.node
@@ -654,7 +655,6 @@ impl ClientState {
                 Some(Route::Client {
                     filter,
                     resource_id: rid,
-                    client_id: cid,
                 }),
             ) => {
                 // A new direct-client flow must be permitted and authorized before it is sent.
@@ -663,17 +663,22 @@ impl ClientState {
                     return Ok(());
                 }
 
-                let already_authorised = self
-                    .authorized_resources
-                    .get(&rid)
-                    .is_some_and(|p| p.has_client(cid));
+                let authorized = self
+                    .clients
+                    .peer_by_ip(dst)
+                    .map(|(cid, _)| cid)
+                    .filter(|cid| {
+                        self.authorized_resources
+                            .get(&rid)
+                            .is_some_and(|p| p.has_client(*cid))
+                    });
 
-                if !already_authorised {
+                let Some(cid) = authorized else {
                     // Not yet authorized: Buffer + send request.
                     pending_authorizations
                         .on_not_authorized_device(rid, dst, packet, resources, now);
                     return Ok(());
-                }
+                };
 
                 let peer = self
                     .clients
@@ -1180,6 +1185,12 @@ impl ClientState {
             return Ok(());
         };
 
+        // A peer connecting to us anew may have reset since we were granted access to it,
+        // taking our inbound grant with it, so our next flow to it asks the portal again.
+        if authorization.is_some() {
+            self.forget_outbound_grants(cid);
+        }
+
         self.node.upsert_connection(
             ClientOrGatewayId::Client(cid),
             client_key,
@@ -1238,7 +1249,7 @@ impl ClientState {
                 AccessPath::Gateway(_) => {
                     tracing::warn!(
                         %resource_id,
-                        "Static device pool clobbering existing gateway authorisation"
+                        "Device pool clobbering existing gateway authorisation"
                     );
                     self.authorized_resources
                         .insert(resource_id, AccessPath::Direct(BTreeSet::from([cid])));
@@ -1279,6 +1290,10 @@ impl ClientState {
 
     /// Drop a previously-active inbound authorization for the given peer.
     pub fn handle_reject_client_device_access(&mut self, cid: ClientId, resource_id: ResourceId) {
+        if let Some(AccessPath::Direct(clients)) = self.authorized_resources.get_mut(&resource_id) {
+            clients.remove(&cid);
+        }
+
         let Some(peer) = self.clients.peer_by_id_mut(&cid) else {
             return;
         };
@@ -1509,12 +1524,17 @@ impl ClientState {
             self.resource_list.update(self.resource_list_snapshot());
         }
 
+        self.forget_outbound_grants(*disconnected_client);
+    }
+
+    /// Drops every grant the portal gave us towards `cid`, so the next flow asks again.
+    fn forget_outbound_grants(&mut self, cid: ClientId) {
         for path in self.authorized_resources.values_mut() {
             let AccessPath::Direct(clients) = path else {
                 continue;
             };
 
-            clients.remove(disconnected_client);
+            clients.remove(&cid);
         }
     }
 
@@ -2246,6 +2266,23 @@ impl ClientState {
                             domain,
                         });
                 }
+                device_stub_resolver::Event::ResolvedDevice {
+                    resource_id,
+                    ipv4,
+                    ipv6,
+                } => {
+                    let Some(Resource::DynamicDevicePool(pool)) =
+                        self.resources_by_id.get(&resource_id)
+                    else {
+                        continue;
+                    };
+                    let filter = FilterEngine::new(&pool.filters);
+
+                    self.routing_tables
+                        .upsert_peer(ipv4.into(), resource_id, filter.clone());
+                    self.routing_tables
+                        .upsert_peer(ipv6.into(), resource_id, filter);
+                }
                 device_stub_resolver::Event::SendResponse {
                     local,
                     remote,
@@ -2438,6 +2475,19 @@ impl ClientState {
             return;
         }
 
+        if let Resource::DynamicDevicePool(new_pool) = new_resource {
+            if self
+                .resources_by_id
+                .get(&new_pool.id)
+                .is_some_and(|resource| !matches!(resource, Resource::DynamicDevicePool(_)))
+            {
+                self.remove_resource(new_pool.id, now);
+            }
+
+            self.upsert_dynamic_device_pool(new_pool, now);
+            return;
+        }
+
         if let Some(resource) = self.resources_by_id.get(&new_resource.id()) {
             let resource_addressability_changed = resource.has_different_address(&new_resource)
                 || resource.has_different_ip_stack(&new_resource)
@@ -2473,9 +2523,7 @@ impl ClientState {
             ),
             Resource::Internet(_) => self.is_internet_resource_active,
             Resource::StaticDevicePool(_) => unreachable!("handled above"),
-            Resource::DynamicDevicePool(pool) => self
-                .device_stub_resolver
-                .add_resource(pool.id, pool.address.clone()),
+            Resource::DynamicDevicePool(_) => unreachable!("handled above"),
         };
 
         if activated {
@@ -2537,9 +2585,9 @@ impl ClientState {
             // Scope removal to this pool's entries — a client can be a member of
             // multiple pools, and we must not touch entries owned by other pools.
             self.routing_tables
-                .remove_client(old_member.ipv4.into(), *cid, pool_id);
+                .remove_peer(old_member.ipv4.into(), pool_id);
             self.routing_tables
-                .remove_client(old_member.ipv6.into(), *cid, pool_id);
+                .remove_peer(old_member.ipv6.into(), pool_id);
             for _ in self
                 .pending_authorizations
                 .remove_device_authorizations(|pool, addr| {
@@ -2561,18 +2609,12 @@ impl ClientState {
         let mut any_inserted = false;
 
         for new_member in &new_pool.devices {
-            any_inserted |= self.routing_tables.upsert_client(
-                new_member.ipv4.into(),
-                pool_id,
-                new_member.id,
-                filter.clone(),
-            );
-            any_inserted |= self.routing_tables.upsert_client(
-                new_member.ipv6.into(),
-                pool_id,
-                new_member.id,
-                filter.clone(),
-            );
+            any_inserted |=
+                self.routing_tables
+                    .upsert_peer(new_member.ipv4.into(), pool_id, filter.clone());
+            any_inserted |=
+                self.routing_tables
+                    .upsert_peer(new_member.ipv6.into(), pool_id, filter.clone());
         }
 
         // When the filters change, refresh the inbound authorization on every
@@ -2588,6 +2630,59 @@ impl ClientState {
         self.resources_by_id.insert(pool_id, resource.clone());
 
         if is_new || any_inserted {
+            self.log_activating_resource(&resource);
+        }
+
+        self.maybe_update_tun_routes();
+        self.resource_list.update(self.resource_list_snapshot());
+        self.dns_cache.flush("Resource added");
+    }
+
+    fn upsert_dynamic_device_pool(&mut self, new_pool: DynamicDevicePoolResource, now: Instant) {
+        let pool_id = new_pool.id;
+
+        let old_pool = self.resources_by_id.get(&pool_id).and_then(|r| match r {
+            Resource::DynamicDevicePool(p) => Some(p.clone()),
+            Resource::Dns(_) => None,
+            Resource::Cidr(_) => None,
+            Resource::Internet(_) => None,
+            Resource::StaticDevicePool(_) => None,
+        });
+
+        let address_changed = old_pool
+            .as_ref()
+            .is_some_and(|p| p.address != new_pool.address);
+        let filter_changed = old_pool
+            .as_ref()
+            .is_some_and(|p| p.filters != new_pool.filters);
+
+        if address_changed {
+            self.remove_resource(pool_id, now);
+        } else if filter_changed {
+            let filter = FilterEngine::new(&new_pool.filters);
+
+            // Established flows never re-resolve their peer, so the route to a resolved
+            // device is replaced rather than dropped.
+            for (ipv4, ipv6) in self.device_stub_resolver.resolved_devices(pool_id) {
+                self.routing_tables.remove_peer(ipv4.into(), pool_id);
+                self.routing_tables.remove_peer(ipv6.into(), pool_id);
+                self.routing_tables
+                    .upsert_peer(ipv4.into(), pool_id, filter.clone());
+                self.routing_tables
+                    .upsert_peer(ipv6.into(), pool_id, filter.clone());
+            }
+
+            self.handle_resource_filters_updated(pool_id, new_pool.filters.clone());
+        }
+
+        let activated = self
+            .device_stub_resolver
+            .add_resource(pool_id, new_pool.address.clone());
+
+        let resource = Resource::DynamicDevicePool(new_pool);
+        self.resources_by_id.insert(pool_id, resource.clone());
+
+        if activated && (old_pool.is_none() || address_changed) {
             self.log_activating_resource(&resource);
         }
 
@@ -2641,6 +2736,10 @@ impl ClientState {
             .pending_authorizations
             .remove_device_authorizations(|pool, _| pool == id)
         {}
+
+        for peer in self.clients.iter_mut() {
+            peer.remove_resource(&id);
+        }
 
         let Some((_, peer)) =
             gateway_by_resource_mut(&self.authorized_resources, &mut self.gateways, id)

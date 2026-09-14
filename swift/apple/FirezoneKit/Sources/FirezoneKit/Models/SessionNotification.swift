@@ -13,6 +13,7 @@ import UserNotifications
 
 public enum NotificationIndentifier: String {
   case sessionEndedNotificationCategory
+  case sessionEndedWithoutSignInNotificationCategory
   case signInNotificationAction
   case dismissNotificationAction
 }
@@ -38,14 +39,25 @@ public class SessionNotification: NSObject, SessionNotificationProtocol {
         title: "Dismiss",
         options: [])
 
-      let certificateExpiryCategory = UNNotificationCategory(
+      let sessionEndedCategory = UNNotificationCategory(
         identifier: NotificationIndentifier.sessionEndedNotificationCategory.rawValue,
         actions: [signInAction, dismissAction],
         intentIdentifiers: [],
         hiddenPreviewsBodyPlaceholder: "",
         options: [])
 
-      notificationCenter.setNotificationCategories([certificateExpiryCategory])
+      // Signing in again cannot restore these sessions, so this category only dismisses.
+      let sessionEndedWithoutSignInCategory = UNNotificationCategory(
+        identifier: NotificationIndentifier.sessionEndedWithoutSignInNotificationCategory
+          .rawValue,
+        actions: [dismissAction],
+        intentIdentifiers: [],
+        hiddenPreviewsBodyPlaceholder: "",
+        options: [])
+
+      notificationCenter.setNotificationCategories([
+        sessionEndedCategory, sessionEndedWithoutSignInCategory,
+      ])
     #endif
   }
 
@@ -98,7 +110,7 @@ public class SessionNotification: NSObject, SessionNotificationProtocol {
   #if os(iOS)
     // In iOS, use User Notifications.
     // This gets called from the tunnel side.
-    nonisolated public static func showSignedOutNotificationiOS() {
+    nonisolated public static func showDisconnectedNotificationiOS(_ message: String) {
       UNUserNotificationCenter.current().getNotificationSettings { notificationSettings in
         if notificationSettings.authorizationStatus == .authorized {
           Log.log(
@@ -106,7 +118,7 @@ public class SessionNotification: NSObject, SessionNotificationProtocol {
           )
           let content = UNMutableNotificationContent()
           content.title = "Your Firezone session has ended"
-          content.body = "Please sign in again to reconnect"
+          content.body = message
           content.categoryIdentifier =
             NotificationIndentifier.sessionEndedNotificationCategory.rawValue
           let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
@@ -119,6 +131,36 @@ public class SessionNotification: NSObject, SessionNotificationProtocol {
             } else {
               Log.debug("\(#function): Successfully requested notification")
             }
+          }
+        }
+      }
+    }
+
+    /// Tells the user the session ended, in the words it ended with, when signing in
+    /// again cannot restore it.
+    nonisolated public static func showDisconnectedNotificationWithoutSignIniOS(_ message: String) {
+      UNUserNotificationCenter.current().getNotificationSettings { notificationSettings in
+        guard notificationSettings.authorizationStatus == .authorized else {
+          Log.warning("Cannot show the disconnected notification: notifications denied")
+          return
+        }
+
+        let content = UNMutableNotificationContent()
+        content.title = "Your Firezone session has ended"
+        content.body = message
+        content.sound = .default
+        content.categoryIdentifier =
+          NotificationIndentifier.sessionEndedWithoutSignInNotificationCategory.rawValue
+        let request = UNNotificationRequest(
+          identifier: "FirezoneTunnelShutdownWithoutSignIn",
+          content: content,
+          trigger: nil
+        )
+        UNUserNotificationCenter.current().add(request) { error in
+          if let error {
+            Log.error(error)
+          } else {
+            Log.debug("Disconnected notification without sign-in requested")
           }
         }
       }

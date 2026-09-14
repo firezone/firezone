@@ -213,7 +213,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       join_channel(gateway, site, token)
       assert_push "init", _init_payload
 
-      presence = Portal.Presence.Gateways.Account.list(account.id)
+      presence = Portal.Presence.Devices.Account.list(account.id)
 
       assert %{metas: [%{online_at: online_at, phx_ref: _ref}]} = Map.fetch!(presence, gateway.id)
       assert is_number(online_at)
@@ -1034,7 +1034,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       socket = join_channel(gateway, site, token)
       assert_push "init", _init_payload
 
-      assert Portal.Presence.Gateways.Account.list(gateway.account_id)
+      assert Portal.Presence.Devices.Account.list(gateway.account_id)
              |> Map.has_key?(gateway.id)
 
       # Simulate a Presence shard crash by sending a :DOWN for one of the
@@ -1045,7 +1045,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       send(socket.channel_pid, {:DOWN, make_ref(), :process, shard_pid, :killed})
       :sys.get_state(socket.channel_pid)
 
-      assert Portal.Presence.Gateways.Account.list(gateway.account_id)
+      assert Portal.Presence.Devices.Account.list(gateway.account_id)
              |> Map.has_key?(gateway.id)
     end
 
@@ -1070,7 +1070,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       wait_for(fn ->
         :sys.get_state(socket.channel_pid)
 
-        assert Portal.Presence.Gateways.Account.list(gateway.account_id)
+        assert Portal.Presence.Devices.Account.list(gateway.account_id)
                |> Map.has_key?(gateway.id)
       end)
     end
@@ -1087,7 +1087,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       send(socket.channel_pid, :track_presence)
       :sys.get_state(socket.channel_pid)
 
-      assert Portal.Presence.Gateways.Account.list(gateway.account_id)
+      assert Portal.Presence.Devices.Account.list(gateway.account_id)
              |> Map.has_key?(gateway.id)
     end
   end

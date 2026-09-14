@@ -230,8 +230,7 @@ defmodule PortalAPI.MembershipControllerTest do
 
       resp = json_response(conn, 422)
       assert %{"type" => "about:blank", "status" => 422} = resp
-      assert %{"validation_errors" => %{"memberships" => memberships}} = resp
-      assert memberships == ["<no value> is not a valid Actor ID"]
+      assert %{"validation_errors" => %{"add" => %{"0" => ["is invalid"]}}} = resp
     end
 
     test "removes actor from group", %{conn: conn, account: account, actor: api_actor} do
@@ -342,8 +341,7 @@ defmodule PortalAPI.MembershipControllerTest do
 
       resp = json_response(conn, 422)
       assert %{"type" => "about:blank", "status" => 422} = resp
-      assert %{"validation_errors" => %{"memberships" => memberships}} = resp
-      assert memberships == ["<no value> is not a valid Actor ID"]
+      assert %{"validation_errors" => %{"0" => %{"actor_id" => ["is invalid"]}}} = resp
     end
 
     test "removes actor from group", %{conn: conn, account: account, actor: api_actor} do
@@ -631,6 +629,41 @@ defmodule PortalAPI.MembershipControllerTest do
   end
 
   describe "input validation" do
+    test "rejects 16-byte actor IDs in PUT and both PATCH lists", %{
+      conn: conn,
+      account: account,
+      actor: api_actor
+    } do
+      group = group_fixture(account: account)
+      actor = actor_fixture(account: account)
+      membership = membership_fixture(account: account, actor: actor, group: group)
+
+      conn =
+        conn
+        |> authorize_conn(api_actor)
+        |> put_req_header("content-type", "application/json")
+
+      response =
+        put(conn, "/groups/#{group.id}/memberships",
+          memberships: [%{"actor_id" => "warehouse worker"}]
+        )
+
+      assert %{"validation_errors" => %{"0" => %{"actor_id" => ["is invalid"]}}} =
+               json_response(response, 422)
+
+      for field <- ["add", "remove"] do
+        response =
+          patch(conn, "/groups/#{group.id}/memberships",
+            memberships: %{field => ["warehouse worker"]}
+          )
+
+        assert %{"validation_errors" => %{^field => %{"0" => ["is invalid"]}}} =
+                 json_response(response, 422)
+      end
+
+      assert Repo.get_by!(Portal.Membership, account_id: account.id, id: membership.id).actor_id == actor.id
+    end
+
     test "PATCH rejects a malformed uuid in remove", %{
       conn: conn,
       account: account,
@@ -645,8 +678,7 @@ defmodule PortalAPI.MembershipControllerTest do
         |> patch("/groups/#{group.id}/memberships", memberships: %{"remove" => ["not-a-uuid"]})
 
       resp = json_response(conn, 422)
-      assert %{"validation_errors" => %{"memberships" => memberships}} = resp
-      assert memberships == ["not-a-uuid is not a valid Actor ID"]
+      assert %{"validation_errors" => %{"remove" => %{"0" => ["is invalid"]}}} = resp
     end
 
     test "PUT rejects an entry with no actor_id", %{

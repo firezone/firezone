@@ -59,7 +59,7 @@ defmodule PortalWeb.CoreComponents do
   def device_name(%Portal.Device{name: name}) when not is_nil(name), do: name
 
   defp device_path(account, %Portal.Device{type: :client, id: id}),
-    do: ~p"/#{account}/clients/#{id}"
+    do: ~p"/#{account}/devices/#{id}"
 
   defp device_path(account, %Portal.Device{type: :gateway}),
     do: ~p"/#{account}"
@@ -784,6 +784,7 @@ defmodule PortalWeb.CoreComponents do
   """
   attr :placement, :string, default: "top"
   attr :trigger, :string, default: "hover"
+  attr :class, :string, default: nil, doc: "Classes for the element wrapping the target"
   slot :target, required: true
   slot :content, required: true
 
@@ -801,6 +802,7 @@ defmodule PortalWeb.CoreComponents do
     <span
       phx-hook="Popover"
       id={@target_id <> "-trigger"}
+      class={@class}
       data-popover-target-id={@target_id}
       data-popover-placement={@placement}
       data-popover-trigger={@trigger}
@@ -815,9 +817,9 @@ defmodule PortalWeb.CoreComponents do
       id={@target_id}
       role={if @menu?, do: "menu", else: "tooltip"}
       class={~w[
-        fixed z-10 invisible inline-block
-        text-xs text-body transition-opacity
-        duration-50 bg-elevated border border-border
+        fixed z-10 invisible inline-block max-w-xs
+        text-xs font-normal normal-case tracking-normal text-body
+        transition-opacity duration-50 bg-elevated border border-border
         rounded-md shadow-xs opacity-0
       ]}
     >
@@ -900,14 +902,26 @@ defmodule PortalWeb.CoreComponents do
   attr :navigate, :string, required: true
   attr :connected?, :boolean, required: true
   attr :type, :string, required: true
+  attr :waiting, :string, default: "Waiting for connection..."
+  attr :done, :string, default: "Connected, click to continue"
+  attr :skip_confirm, :string, default: nil
+  attr :size, :string, default: "md"
 
   def initial_connection_status(assigns) do
+    assigns =
+      assign(
+        assigns,
+        :skip_confirm,
+        assigns.skip_confirm ||
+          "Do you want to skip waiting for #{assigns.type} to be connected?"
+      )
+
     ~H"""
     <.link
       class={[
-        "px-4 py-2",
+        connection_status_size(@size),
         "flex items-center",
-        "text-sm text-white",
+        "text-white",
         "rounded",
         "transition-colors",
         (@connected? && "bg-accent-450 hover:bg-accent-700") || "bg-primary-500 cursor-progress"
@@ -917,20 +931,23 @@ defmodule PortalWeb.CoreComponents do
         if @connected? do
           %{}
         else
-          %{"data-confirm" => "Do you want to skip waiting for #{@type} to be connected?"}
+          %{"data-confirm" => @skip_confirm}
         end
       }
     >
       <span :if={not @connected?}>
-        <.icon name="icon-spinner" class="animate-spin h-3.5 w-3.5 mr-1" /> Waiting for connection...
+        <.icon name="icon-spinner" class="animate-spin h-3.5 w-3.5 mr-1" /> {@waiting}
       </span>
 
       <span :if={@connected?}>
-        <.icon name="ri-check-line" class="h-3.5 w-3.5 mr-1" /> Connected, click to continue
+        <.icon name="ri-check-line" class="h-3.5 w-3.5 mr-1" /> {@done}
       </span>
     </.link>
     """
   end
+
+  defp connection_status_size("sm"), do: "px-3 py-1.5 text-xs"
+  defp connection_status_size(_size), do: "px-4 py-2 text-sm"
 
   @doc """
   Renders verification timestamp
@@ -1438,6 +1455,78 @@ defmodule PortalWeb.CoreComponents do
     }
   end
 
+  defp provider_icon_spec("defender") do
+    %{
+      type: :image,
+      src: ~p"/images/logo-defender.svg",
+      alt: "Microsoft Defender for Endpoint"
+    }
+  end
+
+  defp provider_icon_spec("santa") do
+    %{
+      type: :image,
+      src: ~p"/images/logo-santa.png",
+      alt: "Santa by North Pole Security"
+    }
+  end
+
+  defp provider_icon_spec("sentinelone") do
+    %{
+      type: :image,
+      src: ~p"/images/logo-sentinelone.svg",
+      alt: "SentinelOne"
+    }
+  end
+
+  defp provider_icon_spec("crowdstrike") do
+    %{
+      type: :image,
+      src: ~p"/images/logo-crowdstrike.svg",
+      alt: "CrowdStrike Falcon"
+    }
+  end
+
+  defp provider_icon_spec("sophos") do
+    %{
+      type: :image,
+      src: ~p"/images/logo-sophos.svg",
+      alt: "Sophos XDR"
+    }
+  end
+
+  defp provider_icon_spec("jamf") do
+    %{
+      type: :image,
+      src: ~p"/images/logo-jamf.svg",
+      dark_src: ~p"/images/logo-jamf-dark.svg",
+      alt: "Jamf Pro"
+    }
+  end
+
+  defp provider_icon_spec("workspace_one") do
+    %{
+      type: :image,
+      src: ~p"/images/logo-workspace-one-uem.png",
+      alt: "Workspace ONE UEM"
+    }
+  end
+
+  defp provider_icon_spec("mosyle") do
+    %{
+      type: :image,
+      src: ~p"/images/logo-mosyle.svg",
+      alt: "Mosyle"
+    }
+  end
+
+  defp provider_icon_spec("other") do
+    %{
+      type: :icon,
+      name: "ri-apps-2-add-line"
+    }
+  end
+
   defp provider_icon_spec("okta") do
     %{
       type: :image,
@@ -1466,6 +1555,13 @@ defmodule PortalWeb.CoreComponents do
     %{
       type: :icon,
       name: "ri-key-line"
+    }
+  end
+
+  defp provider_icon_spec("x509") do
+    %{
+      type: :icon,
+      name: "ri-shield-keyhole-line"
     }
   end
 
@@ -1708,9 +1804,12 @@ defmodule PortalWeb.CoreComponents do
     <.status_badge style={:warning}>Degraded</.status_badge>
     <.status_badge style={:danger}>Disabled</.status_badge>
     <.status_badge style={:success} dot={false}>Active</.status_badge>
+    <.status_badge style={:success} icon="ri-shield-keyhole-line">Online</.status_badge>
   """
   attr :style, :atom, required: true, values: [:success, :warning, :danger, :neutral]
   attr :dot, :boolean, default: true
+  attr :icon, :string, default: nil, doc: "replaces the dot"
+  attr :icon_title, :string, default: nil
   slot :inner_block, required: true
 
   def status_badge(assigns) do
@@ -1719,7 +1818,12 @@ defmodule PortalWeb.CoreComponents do
       "inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium",
       badge_pill_class(@style)
     ]}>
-      <span :if={@dot} class={["w-1.5 h-1.5 rounded-full shrink-0", badge_dot_class(@style)]}></span>
+      <.icon :if={@icon} name={@icon} title={@icon_title} class="w-3 h-3 shrink-0" />
+      <span
+        :if={@dot and is_nil(@icon)}
+        class={["w-1.5 h-1.5 rounded-full shrink-0", badge_dot_class(@style)]}
+      >
+      </span>
       {render_slot(@inner_block)}
     </span>
     """

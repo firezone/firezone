@@ -1,5 +1,6 @@
 defmodule Portal.Cache.Client do
   alias __MODULE__.Database
+  alias Portal.Authentication.Credential
 
   @moduledoc """
     This cache is used in the client channel to maintain a materialized view of the client access state.
@@ -139,7 +140,7 @@ defmodule Portal.Cache.Client do
       for({_id, %{resource_id: ^rid_bytes} = p} <- cache.policies, do: p)
       |> longest_conforming_policy_for_client(
         client,
-        subject.credential.auth_provider_id,
+        Credential.auth_provider_id(subject.credential),
         subject.expires_at
       )
 
@@ -235,7 +236,7 @@ defmodule Portal.Cache.Client do
 
     raw_connectable =
       cache.policies
-      |> conforming_resource_ids(client, subject.credential.auth_provider_id)
+      |> conforming_resource_ids(client, Credential.auth_provider_id(subject.credential))
       |> adapted_resources(cache.resources, client)
 
     {pool_members, device_addresses} = load_pool_state(raw_connectable, subject)
@@ -869,8 +870,8 @@ defmodule Portal.Cache.Client do
          auth_provider_id
        ) do
     Enum.filter(policies, fn policy ->
-      policy.conditions
-      |> Portal.Policies.Evaluator.ensure_conforms(client, auth_provider_id)
+      policy
+      |> Portal.Policies.Evaluator.ensure_policy_conforms(client, auth_provider_id)
       |> case do
         {:ok, _expires_at} -> true
         {:error, _violated_properties} -> false
@@ -925,11 +926,7 @@ defmodule Portal.Cache.Client do
          client,
          auth_provider_id
        ) do
-    case Portal.Policies.Evaluator.ensure_conforms(
-           policy.conditions,
-           client,
-           auth_provider_id
-         ) do
+    case Portal.Policies.Evaluator.ensure_policy_conforms(policy, client, auth_provider_id) do
       {:ok, expires_at} ->
         {:ok, expires_at}
 
@@ -1066,14 +1063,14 @@ defmodule Portal.Cache.Client do
         on: m.account_id == r.account_id,
         as: :members
       )
-      |> join(:inner, [members: m], c in assoc(m, :client),
-        on: c.account_id == m.account_id,
-        as: :clients
+      |> join(:inner, [members: m], d in assoc(m, :client),
+        on: d.account_id == m.account_id,
+        as: :devices
       )
-      |> where([clients: c], c.type == :client)
+      |> where([devices: d], d.type == :client)
       |> select(
-        [resources: r, members: m, clients: c],
-        {r.id, m.device_id, c.ipv4, c.ipv6}
+        [resources: r, members: m, devices: d],
+        {r.id, m.device_id, d.ipv4, d.ipv6}
       )
       |> Safe.scoped(subject)
       |> Safe.all()

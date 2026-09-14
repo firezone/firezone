@@ -1,0 +1,8 @@
+welcome-light.png
+session-light.png
+resource-details-light.png
+resource-details-internet-light.png
+device-details-light.png
+settings-general-light.png
+settings-advanced-light.png
+x509-filled-light.png

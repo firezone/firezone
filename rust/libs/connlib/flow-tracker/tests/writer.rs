@@ -532,7 +532,7 @@ impl SpoolObserver {
         let subscriber = tracing_subscriber::registry().with(layer);
 
         tracing::subscriber::with_default(subscriber, f);
-        drop(guard); // joins the writer thread, so the reports are on disk
+        guard.join(); // every emitted report is on disk once this returns
     }
 
     fn completed_flows(&self) -> Vec<serde_json::Value> {

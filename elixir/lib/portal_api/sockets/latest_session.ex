@@ -5,7 +5,7 @@ defmodule PortalAPI.Sockets.LatestSession do
   Each queue entry carries the session attrs plus connect-time metadata. The
   newest entry per device wins within a batch, and the update is guarded on
   `last_seen_at` so a flush from another node can never roll a device back to
-  an older session. Entries whose token or device row no longer exists are
+  an older session. Entries whose non-nil token or device row no longer exists are
   returned as failed, separately per cause, so the caller can disconnect a
   deleted token's session without touching the device's other sessions.
   """
@@ -204,6 +204,7 @@ defmodule PortalAPI.Sockets.LatestSession do
         |> Enum.map(fn {attrs, _metadata} ->
           %{account_id: attrs.account_id, token_id: Map.fetch!(attrs, token_field)}
         end)
+        |> Enum.reject(&is_nil(&1.token_id))
         |> Enum.uniq()
 
       schema = Map.fetch!(@token_schemas, token_field)
@@ -214,6 +215,8 @@ defmodule PortalAPI.Sockets.LatestSession do
       |> Enum.reject(&MapSet.member?(existing, &1))
       |> MapSet.new()
     end
+
+    defp existing_token_ids(_schema, []), do: MapSet.new()
 
     defp existing_token_ids(schema, probe_rows) do
       from(t in schema,

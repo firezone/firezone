@@ -153,6 +153,7 @@ defmodule PortalWeb do
       import PortalWeb.FormComponents
       import PortalWeb.TableComponents
       import PortalWeb.PageComponents
+      import PortalWeb.JSONComponents
     end
   end
 

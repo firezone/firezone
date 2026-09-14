@@ -20,10 +20,21 @@ import UserNotifications
 @MainActor
 // TODO: Move some state logic to view models
 public final class Store: ObservableObject {
-  @Published private(set) var actorName: String
+  /// The actor the portal named in `init`, `nil` until it arrives.
+  @Published private(set) var actorName: String?
+
+  /// The client certificate the settings screen can display.
+  @Published private(set) var deviceTrustCertificateSummary: DeviceTrustCertificateSummary?
   @Published private(set) var favorites: Favorites
   @Published private(set) var resourceList: ResourceList = .loading
   @Published private(set) var connectedDevices: [ConnectedDevice] = []
+
+  /// How a running session reads once the portal has named the actor.
+  var sessionHeading: String {
+    guard let actorName else { return "Signed in" }
+
+    return "Signed in as \(actorName)"
+  }
 
   // Encapsulate Tunnel status here to make it easier for other components to observe
   @Published public private(set) var vpnStatus: NEVPNStatus?
@@ -77,6 +88,9 @@ public final class Store: ObservableObject {
   private var cancellables: Set<AnyCancellable> = []
   private let tunnelManagerFactory: TunnelProviderManagerFactory
 
+  /// Where the certificate screen reads the certificate from; `nil` reads the keychain.
+  let x509CertificateSource: X509CertificateSource?
+
   private struct ConfigurationSnapshot: Equatable {
     var providerConfiguration: [String: String]
     var internetResourceEnabled: Bool
@@ -102,6 +116,7 @@ public final class Store: ObservableObject {
       systemExtensionManager: (any SystemExtensionManagerProtocol)? = nil,
       updateChecker: (any UpdateCheckerProtocol)? = nil,
       tunnelManagerFactory: TunnelProviderManagerFactory = NETunnelProviderManagerFactory(),
+      x509CertificateSource: X509CertificateSource? = nil,
       logDirectory: URL? = SharedAccess.logFolderURL,
       // swiftlint:disable:next no_userdefaults_standard
       userDefaults: UserDefaults = .standard
@@ -112,10 +127,10 @@ public final class Store: ObservableObject {
       self.sessionNotification = sessionNotification
       self.systemExtensionManager = systemExtensionManager ?? SystemExtensionManager()
       self.tunnelManagerFactory = tunnelManagerFactory
+      self.x509CertificateSource = x509CertificateSource
       self.logDirectory = logDirectory
       self.userDefaults = userDefaults
       self.favorites = Favorites(userDefaults: userDefaults)
-      self.actorName = self.configuration.actorName
       self.shownAlertIds = Set(userDefaults.stringArray(forKey: "shownAlertIds") ?? [])
       self.postInit()
     }
@@ -124,6 +139,7 @@ public final class Store: ObservableObject {
       configuration: Configuration? = nil,
       sessionNotification: SessionNotificationProtocol = SessionNotification(),
       tunnelManagerFactory: TunnelProviderManagerFactory = NETunnelProviderManagerFactory(),
+      x509CertificateSource: X509CertificateSource? = nil,
       logDirectory: URL? = SharedAccess.logFolderURL,
       // swiftlint:disable:next no_userdefaults_standard
       userDefaults: UserDefaults = .standard
@@ -131,10 +147,10 @@ public final class Store: ObservableObject {
       self.configuration = configuration ?? Configuration.shared
       self.sessionNotification = sessionNotification
       self.tunnelManagerFactory = tunnelManagerFactory
+      self.x509CertificateSource = x509CertificateSource
       self.logDirectory = logDirectory
       self.userDefaults = userDefaults
       self.favorites = Favorites(userDefaults: userDefaults)
-      self.actorName = self.configuration.actorName
       self.shownAlertIds = Set(userDefaults.stringArray(forKey: "shownAlertIds") ?? [])
       self.postInit()
     }
@@ -191,10 +207,14 @@ public final class Store: ObservableObject {
   /// `async` so the caller decides how to run it; the app fires and forgets, but that is
   /// its call to make, not this function's.
   public func start() async {
-    do {
-      try await LaunchAgentManager.syncKeepAppRunning()
-    } catch {
-      Log.error(error)
+    // A mocked run leaves launchd alone: the keep-app-running agent resurrects every
+    // instance a UI test ends, and the revived copy races the next test's launch.
+    if !MockRun.isActive {
+      do {
+        try await LaunchAgentManager.syncKeepAppRunning()
+      } catch {
+        Log.error(error)
+      }
     }
 
     await startupSequence()
@@ -215,10 +235,8 @@ public final class Store: ObservableObject {
 
     public func quitApp() {
       SharedAccess.clearAppRunning()
-      Task {
-        do { try await stop() } catch { Log.error(error) }
-        NSApp.terminate(nil)
-      }
+      requestStop()
+      NSApp.terminate(nil)
     }
 
     /// Returns the appropriate icon name from asset catalog for the given state
@@ -269,7 +287,7 @@ public final class Store: ObservableObject {
       throw VPNConfigurationManagerError.managerNotInitialized
     }
 
-    let statusStream = IPCClient.vpnStatusUpdates(session: session)
+    let statusStream = session.statusUpdates()
 
     vpnStatusTask = CancellableTask { [weak self] in
       for await status in statusStream {
@@ -307,23 +325,43 @@ public final class Store: ObservableObject {
       if vpnStatus == .disconnected {
         do {
           try manager().session()?.fetchLastDisconnectError { error in
-            if let nsError = error as NSError?,
-              nsError.domain == ConnlibError.errorDomain,
+            guard let error else { return }
+
+            // Logged before it is classified: every early return in the provider's
+            // `startTunnel` reports a `PacketTunnelProviderError`, which carries
+            // neither a reason nor an id and would otherwise be dropped silently.
+            Log.error(error)
+
+            let nsError = error as NSError
+
+            guard nsError.domain == ConnlibError.errorDomain,
               let code = ConnlibError.Code(rawValue: nsError.code),
               let reason = nsError.userInfo["reason"] as? String,
               let id = nsError.userInfo["id"] as? String
-            {
-              // Only show the alert if we haven't shown this specific error before
+            else {
+              // Deduplicated on the error itself, since only connlib mints an id.
+              let id = "\(nsError.domain):\(nsError.code)"
+              let message = error.localizedDescription
+
               Task { @MainActor in
                 guard !self.shownAlertIds.contains(id) else { return }
-                switch code {
-                case .sessionExpired:
-                  await self.sessionNotification.showSignedOutAlertMacOS(reason)
-                case .disconnected:
-                  await self.sessionNotification.showDisconnectedAlertMacOS(reason)
-                }
+                await self.sessionNotification.showDisconnectedAlertMacOS(message)
                 self.markAlertAsShown(id)
               }
+
+              return
+            }
+
+            // Only show the alert if we haven't shown this specific error before
+            Task { @MainActor in
+              guard !self.shownAlertIds.contains(id) else { return }
+              switch code {
+              case .sessionExpired:
+                await self.sessionNotification.showSignedOutAlertMacOS(reason)
+              case .disconnected:
+                await self.sessionNotification.showDisconnectedAlertMacOS(reason)
+              }
+              self.markAlertAsShown(id)
             }
           }
         } catch {
@@ -353,6 +391,8 @@ public final class Store: ObservableObject {
         try await initSystemExtension()
         Log.debug("Startup: initVPNConfiguration")
         try await initVPNConfiguration()
+        Log.debug("Startup: loadDeviceTrustCertificateSummary")
+        await loadDeviceTrustCertificateSummary()
         Telemetry.setEnvironmentOrClose(configuration.apiURL)
         #if os(macOS)
           Log.debug("Startup: drainFlowLogsOnLaunch")
@@ -433,7 +473,13 @@ public final class Store: ObservableObject {
 
       defer {
         if stoppedTunnel, let session {
-          do { try IPCClient.start(session: session) } catch { Log.error(error) }
+          do {
+            try IPCClient.start(
+              session: session,
+              token: nil,
+              identityReference: identityReference()
+            )
+          } catch { Log.error(error) }
         }
       }
 
@@ -445,12 +491,37 @@ public final class Store: ObservableObject {
     // Try to load existing configuration
     if let manager = try await VPNConfigurationManager.load(using: tunnelManagerFactory) {
       try await manager.loadConfiguration(into: configuration, userDefaults: userDefaults)
-      actorName = configuration.actorName
       await seedInitialSyncedSnapshot()
       self.vpnConfigurationManager = manager
       SharedAccess.markAppRunning()
     } else {
       self.vpnStatus = .invalid
+    }
+  }
+
+  private func loadDeviceTrustCertificateSummary() async {
+    let keychain = X509CertificateSource.keychain { try self.manager().identityReference() }
+    let source = x509CertificateSource ?? keychain
+
+    do {
+      guard let certificate = try await source.read() else {
+        deviceTrustCertificateSummary = nil
+
+        return
+      }
+
+      guard let summary = X509CertificateParser.summary(of: certificate) else {
+        Log.debug("The configured client certificate is not a valid X.509 certificate")
+        deviceTrustCertificateSummary = nil
+
+        return
+      }
+
+      deviceTrustCertificateSummary = summary
+    } catch {
+      Log.debug("Failed to read the client certificate: \(error.localizedDescription)")
+
+      deviceTrustCertificateSummary = nil
     }
   }
 
@@ -465,7 +536,11 @@ public final class Store: ObservableObject {
       // Replacing the system extension puts a running tunnel back up itself.
       guard ![.connected, .connecting, .reasserting].contains(session.status) else { return }
 
-      try IPCClient.start(session: session)
+      try IPCClient.start(
+        session: session,
+        token: nil,
+        identityReference: identityReference()
+      )
     }
   }
   func installVPNConfiguration() async throws {
@@ -475,7 +550,6 @@ public final class Store: ObservableObject {
     )
 
     try await manager().loadConfiguration(into: configuration, userDefaults: userDefaults)
-    actorName = configuration.actorName
     await seedInitialSyncedSnapshot()
 
     try await setupTunnelObservers()
@@ -590,24 +664,14 @@ public final class Store: ObservableObject {
     self.decision = try await sessionNotification.askUserForNotificationPermissions()
   }
 
-  public func stop() async throws {
-    guard let session = try manager().session() else {
-      throw VPNConfigurationManagerError.managerNotInitialized
-    }
+  public func requestStop() {
+    // No manager or no session is no tunnel, which is where stopping was headed anyway.
+    guard let session = try? manager().session() else { return }
 
     session.stopTunnel()
   }
 
-  func signIn(authResponse: AuthResponse) async throws {
-    let actorName = authResponse.actorName
-    let accountSlug = authResponse.accountSlug
-
-    // This is only shown in the GUI.
-    configuration.actorName = actorName
-    self.actorName = actorName
-
-    configuration.accountSlug = accountSlug
-
+  func signIn(token: String) async throws {
     try await manager().save(configuration: configuration)
     try await manager().enable()
 
@@ -619,7 +683,16 @@ public final class Store: ObservableObject {
     guard let session = try manager().session() else {
       throw VPNConfigurationManagerError.managerNotInitialized
     }
-    try IPCClient.start(session: session, token: authResponse.token)
+    try IPCClient.start(
+      session: session,
+      token: token,
+      identityReference: identityReference()
+    )
+  }
+
+  /// The keychain reference of the certificate the app displayed, [`nil`] when none is loadable.
+  private func identityReference() -> Data? {
+    try? manager().identityReference()
   }
 
   func signOut() async throws {
@@ -807,6 +880,7 @@ public final class Store: ObservableObject {
     resourceList = ResourceList.loading
     tunnelStateHash = Data()
     connectedDevices.removeAll()
+    actorName = nil
     Log.setStreamingActive(false)
   }
 
@@ -866,6 +940,18 @@ public final class Store: ObservableObject {
       }
 
       connectedDevices = state.connectedDevices
+
+      if state.actorName == nil, actorName != nil {
+        Log.warning("Portal did not name the actor on `init`")
+      }
+
+      actorName = state.actorName
+
+      // Caching the account we reached keeps the next sign-in URL and the admin portal
+      // link pointing at it, but an MDM profile forcing one is the admin's answer.
+      if let accountSlug = state.accountSlug, !configuration.isAccountSlugForced {
+        configuration.accountSlug = accountSlug
+      }
     }
 
     await showNotificationsForUnreachableResources(

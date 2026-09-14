@@ -120,11 +120,15 @@ pub fn udp(std_addr: SocketAddr) -> io::Result<UdpSocket> {
         socket.set_reuse_port(true)?;
     }
 
+    // Darwin attaches the destination-address control message when it enqueues a datagram,
+    // not when we read it, so the option must be on before the socket can receive anything.
+    let state = quinn_udp::UdpSocketState::new(UdpSockRef::from(&socket))?;
+
     socket.bind(&addr)?;
 
     let socket = std::net::UdpSocket::from(socket);
     let socket = tokio::net::UdpSocket::try_from(socket)?;
-    let socket = UdpSocket::new(socket)?;
+    let socket = UdpSocket::new(socket, state)?;
 
     Ok(socket)
 }
@@ -261,6 +265,7 @@ impl std::os::fd::AsFd for TcpSocket {
 
 pub struct UdpSocket {
     inner: tokio::net::UdpSocket,
+    state: quinn_udp::UdpSocketState,
     source_ip_resolver:
         Option<Box<dyn Fn(IpAddr) -> std::io::Result<IpAddr> + Send + Sync + 'static>>,
     port: u16,
@@ -282,13 +287,14 @@ pub struct PerfUdpSocket {
 }
 
 impl UdpSocket {
-    fn new(inner: tokio::net::UdpSocket) -> io::Result<Self> {
+    fn new(inner: tokio::net::UdpSocket, state: quinn_udp::UdpSocketState) -> io::Result<Self> {
         let socket_addr = inner.local_addr()?;
         let port = socket_addr.port();
 
         Ok(UdpSocket {
             port,
             inner,
+            state,
             source_ip_resolver: None,
         })
     }
@@ -296,9 +302,7 @@ impl UdpSocket {
     /// Upgrade this [`UdpSocket`] to a [`PerfUdpSocket`] for optimized IO.
     pub fn into_perf(self) -> io::Result<PerfUdpSocket> {
         let socket_addr = self.inner.local_addr()?;
-
-        let quinn_ref = quinn_udp::UdpSockRef::from(&self.inner);
-        let quinn_state = quinn_udp::UdpSocketState::new(quinn_ref)?;
+        let quinn_state = self.state;
 
         #[cfg(apple)]
         // SAFETY: All versions of MacOS / iOS that we tested support these APIs.
@@ -736,7 +740,30 @@ impl UdpSocket {
         dst: SocketAddr,
         payload: &[u8],
     ) -> io::Result<Vec<u8>> {
-        self.inner.send_to(payload, dst).await?;
+        let src_ip = self
+            .source_ip_resolver
+            .as_ref()
+            .map(|resolve| resolve(dst.ip()))
+            .transpose()?;
+
+        // A plain `send_to` cannot carry a source IP; sending via [`quinn_udp`] pins the
+        // resolved source through a control message, like all other sends on our sockets.
+        let state = &self.state;
+        let transmit = Transmit {
+            destination: dst,
+            ecn: None,
+            contents: payload,
+            segment_size: None,
+            src_ip,
+        };
+
+        // A `Transmit` without a `segment_size` is a single datagram, so a successful send is complete.
+        let _ = self
+            .inner
+            .async_io(Interest::WRITABLE, || {
+                state.try_send(UdpSockRef::from(&self.inner), &transmit)
+            })
+            .await?;
 
         let mut buffer = vec![0u8; BUF_SIZE];
 

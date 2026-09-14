@@ -30,6 +30,7 @@ defmodule PortalWeb.UserpassController do
          %Portal.Actor{} = actor <- fetch_actor(account, email),
          :ok <- check_admin(actor, context_type),
          {:ok, actor, _expires_at} <- verify_password(actor, password, conn),
+         :ok <- Portal.AuthProvider.validate_context(provider, context_type),
          {:ok, session_or_token} <- create_session_or_token(conn, actor, provider, params) do
       signed_in(conn, context_type, account, actor, session_or_token, params)
     else
@@ -93,12 +94,18 @@ defmodule PortalWeb.UserpassController do
 
         :portal ->
           provider.portal_session_lifetime_secs || schema.default_portal_session_lifetime_secs()
+
+        :oauth ->
+          PortalWeb.Cookie.OAuthSession.lifetime_secs()
       end
 
     expires_at = DateTime.add(DateTime.utc_now(), session_lifetime_secs, :second)
 
     case type do
-      :portal ->
+      # Approving an app connection gets a session of its own, kept in its own
+      # cookie and expiring quickly, so it neither grants portal access nor is
+      # satisfied by portal access.
+      t when t in [:portal, :oauth] ->
         Portal.Authentication.create_portal_session(
           actor,
           provider.id,
@@ -140,6 +147,18 @@ defmodule PortalWeb.UserpassController do
     conn
     |> PortalWeb.Cookie.Session.put(account.id, %PortalWeb.Cookie.Session{session_id: session.id})
     |> Redirector.portal_signed_in(account, params, actor)
+  end
+
+  # Context: :oauth
+  # Store the approval-flow cookie only, and go back to the pending request.
+  defp signed_in(conn, :oauth, account, actor, session, params) do
+    conn
+    |> PortalWeb.Cookie.OAuthSession.put(account.id, %PortalWeb.Cookie.OAuthSession{
+      session_id: session.id
+    })
+    |> Phoenix.Controller.redirect(
+      to: Redirector.sanitize_redirect_to(account, params["redirect_to"], actor)
+    )
   end
 
   # Context: :gui_client
@@ -187,6 +206,12 @@ defmodule PortalWeb.UserpassController do
     redirect_for_error(conn, error, path)
   end
 
+  defp handle_error(conn, {:error, :invalid_context}, params) do
+    error = "This authentication method is not available for your sign-in context."
+    path = ~p"/#{params["account_id_or_slug"]}"
+    redirect_for_error(conn, error, path)
+  end
+
   defp handle_error(conn, true, params) do
     error =
       "This account is temporarily suspended from client authentication " <>
@@ -216,6 +241,7 @@ defmodule PortalWeb.UserpassController do
     |> halt()
   end
 
+  defp context_type(%{"as" => "oauth"}), do: :oauth
   defp context_type(%{"as" => "client"}), do: :gui_client
   defp context_type(%{"as" => "gui-client"}), do: :gui_client
   defp context_type(%{"as" => "headless-client"}), do: :headless_client

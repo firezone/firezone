@@ -33,6 +33,10 @@ config :portal, generators: [binary_id: true]
 config :req,
   default_options: [plugins: [Portal.Req.SSRFProtection]]
 
+config :portal, Portal.OAuth.ClientMetadata,
+  req_opts: [],
+  ssrf_protection_opts: []
+
 config :portal, sql_sandbox: false
 
 config :portal, flow_logs_upload_batch_size: 1000
@@ -94,6 +98,7 @@ config :portal, Portal.ChangeLogs.Consumer,
     oidc_auth_providers
     email_otp_auth_providers
     userpass_auth_providers
+    x509_auth_providers
     entra_directories
     okta_directories
     google_directories
@@ -110,6 +115,9 @@ config :portal, Portal.ChangeLogs.Consumer,
     trust_anchor_certificates
     intune_posture_providers
     iru_posture_providers
+    defender_posture_providers
+    santa_posture_providers
+    sentinelone_posture_providers
     splunk_log_sinks
     datadog_log_sinks
     newrelic_log_sinks
@@ -160,11 +168,15 @@ config :portal, Portal.Changes.Consumer,
     oidc_auth_providers
     email_otp_auth_providers
     userpass_auth_providers
+    x509_auth_providers
     entra_directories
     okta_directories
     google_directories
     intune_posture_providers
     iru_posture_providers
+    defender_posture_providers
+    santa_posture_providers
+    sentinelone_posture_providers
     relay_tokens
     portal_sessions
   ],
@@ -223,10 +235,42 @@ config :portal, Portal.Microsoft.Graph.APIClient,
     retry: :transient
   ]
 
+# Defender for Endpoint is reached at api.security.microsoft.com, but tokens
+# still have to be minted for the legacy api.securitycenter.microsoft.com
+# audience or the API answers 403.
+config :portal, Portal.Defender.APIClient,
+  endpoint: "https://api.security.microsoft.com",
+  token_base_url: "https://login.microsoftonline.com",
+  token_scope: "https://api.securitycenter.microsoft.com/.default",
+  client_id: System.get_env("DEFENDER_SYNC_CLIENT_ID"),
+  client_secret: System.get_env("DEFENDER_SYNC_CLIENT_SECRET"),
+  req_opts: [
+    # 15 minutes
+    receive_timeout: 900_000,
+    # Fixes `pool_not_available` errors on a cold Finch pool right after a deploy,
+    # since the token request is a POST and the default `:safe_transient` retry
+    # strategy only retries HEADS and GETs.
+    retry: :transient
+  ]
+
 # Iru still serves its API from the Kandji hosts it used before the rename, so
 # the domains are configuration rather than a constant.
 config :portal, Portal.Iru.APIClient,
   api_domains: [us: "api.kandji.io", eu: "api.eu.kandji.io"],
+  req_opts: [
+    # 15 minutes
+    receive_timeout: 900_000,
+    retry: :safe_transient
+  ]
+
+config :portal, Portal.Santa.APIClient,
+  req_opts: [
+    # 15 minutes
+    receive_timeout: 900_000,
+    retry: :safe_transient
+  ]
+
+config :portal, Portal.SentinelOne.APIClient,
   req_opts: [
     # 15 minutes
     receive_timeout: 900_000,
@@ -280,6 +324,8 @@ config :portal, Portal.Analytics.PostHog,
   project_api_key: nil,
   req_opts: [receive_timeout: 5_000, retry: :transient]
 
+config :portal, Portal.Workers.SignUpFollowUp, from_email: nil, bcc_email: nil
+
 config :portal, Portal.Splunk.APIClient, req_opts: []
 
 config :portal, Portal.Datadog.APIClient, req_opts: []
@@ -292,6 +338,8 @@ config :portal, Portal.Sentinel.APIClient,
   client_id: System.get_env("SENTINEL_SYNC_CLIENT_ID"),
   client_secret: System.get_env("SENTINEL_SYNC_CLIENT_SECRET"),
   token_base_url: "https://login.microsoftonline.com",
+  discovery_document_uri:
+    "https://login.microsoftonline.com/organizations/v2.0/.well-known/openid-configuration",
   req_opts: []
 
 config :portal, Portal.S3.APIClient,
@@ -364,7 +412,7 @@ config :portal, docker_registry: "ghcr.io/firezone"
 
 config :portal, outbound_email_adapter_configured?: false
 
-config :portal, relay_presence_topic: "presences:global_relays"
+config :portal, relay_presence_topic: "presences:relays"
 
 config :portal, region: ""
 
@@ -499,6 +547,13 @@ config :portal,
 config :portal, relays_presence_debounce_timeout_ms: 1_000
 
 config :portal, PortalAPI.RateLimit,
+  refill_rate: 10,
+  capacity: 200
+
+# MCP has an additional pre-authentication IP bucket. Its cost is one token,
+# versus ten for the authenticated per-account API bucket, allowing a modest
+# connection burst without permitting unbounded token verification or parsing.
+config :portal, PortalAPI.Plugs.MCPRateLimit,
   refill_rate: 10,
   capacity: 200
 

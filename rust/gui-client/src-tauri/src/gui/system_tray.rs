@@ -270,7 +270,7 @@ fn signed_in(signed_in: &SignedIn) -> Menu {
         .any(|res| favorite_resources.contains(&res.id()));
 
     let mut menu = Menu::default()
-        .disabled(format!("Signed in as {actor_name}"))
+        .disabled(session_heading(actor_name))
         .item(Event::SignOut, SIGN_OUT)
         .separator();
 
@@ -375,6 +375,14 @@ fn device_submenu(device: &ConnectedDeviceView) -> Menu {
     }
 
     menu
+}
+
+fn session_heading(actor_name: &str) -> String {
+    if actor_name.is_empty() {
+        "Signed in".to_owned()
+    } else {
+        format!("Signed in as {actor_name}")
+    }
 }
 
 fn signing_in(waiting_message: &str) -> Menu {

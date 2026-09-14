@@ -10,6 +10,7 @@ defmodule Portal.APIRequestLog do
           api_token_id: Ecto.UUID.t(),
           method: String.t(),
           path: String.t(),
+          mcp: map() | nil,
           content_length: integer() | nil,
           request_id: String.t(),
           user_agent: String.t() | nil,
@@ -34,6 +35,7 @@ defmodule Portal.APIRequestLog do
 
     field :method, :string
     field :path, :string
+    field :mcp, :map
     field :content_length, :integer
     field :request_id, :string
 

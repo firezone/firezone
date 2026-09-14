@@ -165,12 +165,27 @@ if config_env() == :prod do
       intune: [client_id: env_var_to_config!(:intune_sync_client_id), client_secret: nil]
     ]
 
+  # Defender for Endpoint uses its own app registration, granted Machine.Read.All
+  # on the WindowsDefenderATP API rather than on Microsoft Graph. It follows the
+  # same rules as the two above: no client secret in production, and the
+  # delegated Graph `openid` and `profile` permissions plus groupMembershipClaims
+  # set to DirectoryRole so one admin-consent grant also covers the signed user
+  # identity proof.
+  config :portal, Portal.Defender.APIClient,
+    client_id: env_var_to_config!(:defender_sync_client_id),
+    client_secret: nil,
+    token_base_url: "https://login.microsoftonline.com",
+    endpoint: "https://api.security.microsoft.com",
+    token_scope: "https://api.securitycenter.microsoft.com/.default"
+
   # No client secret: production authenticates the app with workload identity
   # federation, minting a token-exchange assertion from the portal's managed
   # identity (Portal.Azure.ManagedIdentity).
   config :portal, Portal.Sentinel.APIClient,
     client_id: env_var_to_config!(:sentinel_sync_client_id),
-    token_base_url: "https://login.microsoftonline.com"
+    token_base_url: "https://login.microsoftonline.com",
+    discovery_document_uri:
+      "https://login.microsoftonline.com/organizations/v2.0/.well-known/openid-configuration"
 
   config :portal, Portal.Billing.Stripe.APIClient, endpoint: "https://api.stripe.com"
 
@@ -241,8 +256,9 @@ if config_env() == :prod do
     # Refresh cached OCSP statuses hourly, for CAs that publish no list
     {"45 3 * * *", Portal.Ocsp.Scheduler},
 
-    # Schedule Entra directory sync every 2 hours
-    {"0 */2 * * *", Portal.Entra.Scheduler},
+    # Schedule Entra directory sync daily; Graph change notifications cover
+    # the hours in between
+    {"0 3 * * *", Portal.Entra.Scheduler},
 
     # Schedule Intune device inventory sync every 2 hours
     {"10 */2 * * *", Portal.Intune.Scheduler},
@@ -250,8 +266,18 @@ if config_env() == :prod do
     # Schedule Iru device inventory sync every 2 hours
     {"50 */2 * * *", Portal.Iru.Scheduler},
 
-    # Schedule Google directory sync every 2 hours
-    {"20 */2 * * *", Portal.Google.Scheduler},
+    # Schedule Defender device inventory sync every 2 hours
+    {"30 */2 * * *", Portal.Defender.Scheduler},
+
+    # Schedule Santa device inventory sync every 2 hours
+    {"40 */2 * * *", Portal.Santa.Scheduler},
+
+    # Schedule SentinelOne device inventory sync every 2 hours
+    {"35 */2 * * *", Portal.SentinelOne.Scheduler},
+
+    # Group membership changes do not produce user push notifications, so run
+    # a full Google directory sync every four hours.
+    {"20 */4 * * *", Portal.Google.Scheduler},
 
     # Schedule Okta directory sync every 2 hours
     {"40 */2 * * *", Portal.Okta.Scheduler},
@@ -277,6 +303,12 @@ if config_env() == :prod do
      args: %{provider: "intune", frequency: "daily"}},
     {"0 9 * * *", Portal.Workers.SyncErrorNotification,
      args: %{provider: "iru", frequency: "daily"}},
+    {"0 9 * * *", Portal.Workers.SyncErrorNotification,
+     args: %{provider: "defender", frequency: "daily"}},
+    {"0 9 * * *", Portal.Workers.SyncErrorNotification,
+     args: %{provider: "santa", frequency: "daily"}},
+    {"0 9 * * *", Portal.Workers.SyncErrorNotification,
+     args: %{provider: "sentinelone", frequency: "daily"}},
 
     # Directory sync error notifications - every 3 days for medium error count
     {"0 9 */3 * *", Portal.Workers.SyncErrorNotification,
@@ -289,6 +321,12 @@ if config_env() == :prod do
      args: %{provider: "intune", frequency: "three_days"}},
     {"0 9 */3 * *", Portal.Workers.SyncErrorNotification,
      args: %{provider: "iru", frequency: "three_days"}},
+    {"0 9 */3 * *", Portal.Workers.SyncErrorNotification,
+     args: %{provider: "defender", frequency: "three_days"}},
+    {"0 9 */3 * *", Portal.Workers.SyncErrorNotification,
+     args: %{provider: "santa", frequency: "three_days"}},
+    {"0 9 */3 * *", Portal.Workers.SyncErrorNotification,
+     args: %{provider: "sentinelone", frequency: "three_days"}},
 
     # Directory sync error notifications - weekly for high error count
     {"0 9 * * 1", Portal.Workers.SyncErrorNotification,
@@ -301,6 +339,12 @@ if config_env() == :prod do
      args: %{provider: "intune", frequency: "weekly"}},
     {"0 9 * * 1", Portal.Workers.SyncErrorNotification,
      args: %{provider: "iru", frequency: "weekly"}},
+    {"0 9 * * 1", Portal.Workers.SyncErrorNotification,
+     args: %{provider: "defender", frequency: "weekly"}},
+    {"0 9 * * 1", Portal.Workers.SyncErrorNotification,
+     args: %{provider: "santa", frequency: "weekly"}},
+    {"0 9 * * 1", Portal.Workers.SyncErrorNotification,
+     args: %{provider: "sentinelone", frequency: "weekly"}},
 
     # Log sink delivery error notifications
     {"0 9 * * *", Portal.Workers.LogSinkErrorNotification},
@@ -316,6 +360,15 @@ if config_env() == :prod do
 
     # Delete expired API tokens every 5 minutes
     {"*/5 * * * *", Portal.Workers.DeleteExpiredAPITokens},
+
+    # Delete spent OAuth authorization codes every 5 minutes
+    {"*/5 * * * *", Portal.Workers.DeleteExpiredOAuthAuthorizationCodes},
+
+    # Delete OAuth tokens past their refresh window every 5 minutes
+    {"*/5 * * * *", Portal.Workers.DeleteExpiredOAuthTokens},
+
+    # Evict stale OAuth client metadata nothing points at, hourly
+    {"0 * * * *", Portal.Workers.DeleteExpiredOAuthClients},
 
     # Delete rotated gateway tokens past their grace period every 5 minutes
     {"*/5 * * * *", Portal.Workers.DeleteRotatedGatewayTokens},
@@ -358,14 +411,25 @@ if config_env() == :prod do
       ocsp_sync: 5,
       entra_scheduler: 1,
       entra_sync: 5,
+    entra_subscriptions: 1,
+    entra_webhook: 5,
       intune_scheduler: 1,
       intune_sync: 5,
       iru_scheduler: 1,
       iru_sync: 5,
+      defender_scheduler: 1,
+      defender_sync: 5,
+      santa_scheduler: 1,
+      santa_sync: 5,
+      sentinelone_scheduler: 1,
+      sentinelone_sync: 5,
       google_scheduler: 1,
       google_sync: 5,
+      google_subscriptions: 1,
+      google_webhook: 5,
       okta_scheduler: 1,
       okta_sync: 5,
+      okta_webhook: 5,
       splunk_scheduler: 1,
       splunk_sync: 5,
       datadog_scheduler: 1,
@@ -550,6 +614,10 @@ if config_env() == :prod do
       refill_rate: env_var_to_config!(:api_refill_rate),
       capacity: env_var_to_config!(:api_capacity)
 
+    config :portal, PortalAPI.Plugs.MCPRateLimit,
+      refill_rate: env_var_to_config!(:api_refill_rate),
+      capacity: env_var_to_config!(:api_capacity)
+
     config :portal, PortalAPI.Sockets.RateLimit,
       refill_rate: env_var_to_config!(:api_socket_refill_rate),
       capacity: env_var_to_config!(:api_socket_capacity)
@@ -647,6 +715,27 @@ if config_env() == :prod do
 
   config :portal, Portal.Telemetry,
     metrics_reporter: env_var_to_config!(:telemetry_metrics_reporter)
+
+  config :portal, Portal.Analytics.GoogleAds,
+    customer_id: env_var_to_config(:google_ads_customer_id),
+    login_customer_id: env_var_to_config(:google_ads_login_customer_id),
+    registration_conversion_action_id: env_var_to_config(:google_ads_registration_conversion_action_id),
+    subscription_conversion_action_id: env_var_to_config(:google_ads_subscription_conversion_action_id),
+    service_account_email: env_var_to_config(:google_ads_service_account_email),
+    workload_identity_provider: env_var_to_config(:google_ads_workload_identity_provider),
+    workload_identity_audience: env_var_to_config(:google_ads_workload_identity_audience),
+    endpoint: "https://datamanager.googleapis.com/v1/events:ingest",
+    req_opts: [receive_timeout: 5_000, retry: false]
+
+  config :portal, Portal.Analytics.OpenAI,
+    api_key: env_var_to_config(:openai_conversions_api_key),
+    pixel_id: env_var_to_config(:openai_conversions_pixel_id),
+    endpoint: "https://bzr.openai.com/v1/events",
+    req_opts: [receive_timeout: 5_000, retry: false]
+
+  config :portal, Portal.Workers.SignUpFollowUp,
+    from_email: env_var_to_config(:sign_up_follow_up_from_email),
+    bcc_email: env_var_to_config(:sign_up_follow_up_bcc_email)
 
   posthog_project_api_key = env_var_to_config(:posthog_project_api_key)
 

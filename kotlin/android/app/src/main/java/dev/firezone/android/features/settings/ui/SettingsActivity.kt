@@ -16,23 +16,44 @@ import androidx.viewpager2.adapter.FragmentStateAdapter
 import androidx.viewpager2.widget.ViewPager2
 import dagger.hilt.android.AndroidEntryPoint
 import dev.firezone.android.R
+import dev.firezone.android.core.data.Repository
 import dev.firezone.android.databinding.ActivitySettingsBinding
 import kotlinx.coroutines.launch
+import javax.inject.Inject
+
+/** The navigation item and the page it shows, in order. */
+internal fun settingsPages(showDeviceTrust: Boolean): List<Pair<Int, () -> Fragment>> =
+    buildList {
+        add(R.id.settingsGeneral to { GeneralSettingsFragment() })
+        add(R.id.settingsAdvanced to { AdvancedSettingsFragment() })
+
+        if (showDeviceTrust) {
+            add(R.id.settingsDeviceTrust to { DeviceTrustSettingsFragment() })
+        }
+
+        add(R.id.settingsLogs to { LogSettingsFragment() })
+    }
 
 @AndroidEntryPoint
 internal class SettingsActivity : AppCompatActivity() {
     private lateinit var binding: ActivitySettingsBinding
     private val viewModel: SettingsViewModel by viewModels()
+    private val pages: List<Pair<Int, () -> Fragment>> by lazy {
+        // The tab exists where a certificate is required or one was found, and nowhere else.
+        settingsPages(
+            showDeviceTrust =
+                repository.isX509CertificateRequired(applicationRestrictions) ||
+                    repository.getX509CertificateAliasSync(applicationRestrictions) != null,
+        )
+    }
     private var lastFocusedView: View? = null
     private var lastSelectedPage = -1
 
-    /** The navigation item and the page it shows, in order. */
-    private val pages: List<Pair<Int, () -> Fragment>> =
-        listOf(
-            R.id.settingsGeneral to { GeneralSettingsFragment() },
-            R.id.settingsAdvanced to { AdvancedSettingsFragment() },
-            R.id.settingsLogs to { LogSettingsFragment() },
-        )
+    @Inject
+    lateinit var repository: Repository
+
+    @Inject
+    lateinit var applicationRestrictions: Bundle
 
     private val navigationSelectionSync =
         object : ViewPager2.OnPageChangeCallback() {
@@ -81,6 +102,9 @@ internal class SettingsActivity : AppCompatActivity() {
         val adapter = SettingsPagerAdapter(this)
 
         with(binding) {
+            bottomNavigation.menu
+                .findItem(R.id.settingsDeviceTrust)
+                .isVisible = pages.any { it.first == R.id.settingsDeviceTrust }
             viewPager.adapter = adapter
 
             // ViewPager2 clears focus whenever onPageSelected is dispatched, and its

@@ -6,6 +6,10 @@
 
 import Foundation
 
+#if os(macOS) && DEBUG
+  import FirezoneKit
+#endif
+
 #if os(macOS)
   import ArgumentParser
 
@@ -46,6 +50,20 @@ import Foundation
     }
 
     await runHeadlessClient(FirezoneCLI.self)
+  }
+#endif
+
+#if os(macOS) && DEBUG
+  // A screenshot run wants exactly one window on the screen, and which one is
+  // an argument. Each choice is its own app (see FirezoneApp.swift), picked
+  // here because an app's scene list is fixed once its `main` runs.
+  switch FirezoneKit.AppView.WindowDefinition.mockFromCommandLine() {
+  case .main:
+    UITestMainApp.main()
+  case .settings:
+    UITestSettingsApp.main()
+  case nil:
+    break
   }
 #endif
 

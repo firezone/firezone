@@ -1,7 +1,7 @@
 [package]
 name = "firezone-gateway"
 # mark:next-gateway-version
-version = "1.6.1"
+version = "1.6.2"
 edition = { workspace = true }
 license = { workspace = true }
 description = "Gateway for the Firezone zero-trust access product."
@@ -16,7 +16,7 @@ revision = ""
 section = "Network"
 assets = [
     ["target/release/firezone-gateway", "usr/bin/", "755"],
-    ["target/release/firezone-cli", "usr/bin/firezone", "755"],
+    ["debian/firezone", "usr/bin/firezone", "755"],
     ["debian/firezone-gateway-init.sh", "usr/bin/firezone-gateway-init", "755"],
     ["debian/firezone-gateway.sysusers", "usr/lib/sysusers.d/firezone-gateway.conf", "644"],
     ["debian/firezone-gateway.tmpfiles", "usr/lib/tmpfiles.d/firezone-gateway.conf", "644"],
@@ -25,6 +25,7 @@ depends = 'iptables,systemd'
 
 [dependencies]
 anyhow = { workspace = true }
+atomicfs = { workspace = true }
 backoff = { workspace = true }
 bin-shared = { workspace = true }
 clap = { workspace = true }
@@ -34,6 +35,7 @@ flow-log-upload = { workspace = true }
 flow-log-writer = { workspace = true }
 futures = { workspace = true }
 futures-bounded = { workspace = true }
+hex = { workspace = true }
 hickory-resolver = { workspace = true }
 humantime = { workspace = true }
 ip-packet = { workspace = true }
@@ -47,8 +49,12 @@ otel-attributes = { workspace = true }
 otel-instruments = { workspace = true }
 phoenix-channel = { workspace = true }
 resolv-conf = { workspace = true }
+rpassword = { workspace = true }
 rustls = { workspace = true }
 secrecy = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
 snownet = { workspace = true }
 socket-factory = { workspace = true }
 telemetry = { workspace = true }

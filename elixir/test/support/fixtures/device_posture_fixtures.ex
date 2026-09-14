@@ -2,8 +2,8 @@ defmodule Portal.DevicePostureFixtures do
   @moduledoc """
   Test helpers shared by every posture provider.
 
-  For provider-specific structs use `Portal.IntuneFixtures` or
-  `Portal.IruFixtures`.
+  For provider-specific structs use `Portal.IntuneFixtures`,
+  `Portal.IruFixtures`, `Portal.DefenderFixtures`, or `Portal.SantaFixtures`.
   """
 
   import Portal.AccountFixtures

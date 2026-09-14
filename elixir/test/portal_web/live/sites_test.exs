@@ -319,7 +319,7 @@ defmodule PortalWeb.SitesTest do
 
       html = render_click(lv, "deploy_tab_selected", %{"tab" => "docker-instructions"})
       assert html =~ "docker run"
-      # The portal ignores FIREZONE_NAME for single-owner gateways
+      # Gateway names are configured remotely.
       refute html =~ "FIREZONE_NAME"
 
       html = render_click(lv, "deploy_tab_selected", %{"tab" => "terraform-instructions"})
@@ -533,6 +533,13 @@ defmodule PortalWeb.SitesTest do
       html = render_click(lv, "deploy_gateway")
       assert html =~ "Deploy a Gateway"
 
+      encoded_token =
+        html
+        |> Floki.parse_fragment!()
+        |> Floki.find("#deploy-code-debian-token-code")
+        |> Floki.text()
+        |> String.trim()
+
       gateway =
         Repo.get_by!(Device, account_id: account.id, site_id: site.id, type: :gateway)
 
@@ -541,6 +548,34 @@ defmodule PortalWeb.SitesTest do
       token = Repo.get_by!(GatewayToken, account_id: account.id, device_id: gateway.id)
       assert is_nil(token.site_id)
       assert is_nil(token.rotated_at)
+      assert {:ok, verified_token} = Portal.Authentication.verify_gateway_token(encoded_token)
+      assert verified_token.id == token.id
+    end
+
+    test "deploy flips to connected when its gateway joins the account presence", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      site = site_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/sites/#{site.id}")
+
+      assert render_click(lv, "deploy_gateway") =~ "Waiting for connection..."
+
+      gateway = Repo.get_by!(Device, account_id: account.id, site_id: site.id, type: :gateway)
+      token = Repo.get_by!(GatewayToken, account_id: account.id, device_id: gateway.id)
+
+      send(lv.pid, %Phoenix.Socket.Broadcast{
+        topic: "presences:account_devices:#{account.id}",
+        event: "presence_diff",
+        payload: %{joins: %{gateway.id => %{metas: [%{token_id: token.id}]}}, leaves: %{}}
+      })
+
+      assert render(lv) =~ "Connected, click to continue"
     end
 
     test "deploy no longer creates multi-owner site tokens", %{
@@ -638,10 +673,10 @@ defmodule PortalWeb.SitesTest do
       |> Repo.delete!()
 
       :ok = Portal.PG.join(new_token.id)
-      :ok = Portal.Presence.Gateways.Account.track(account.id, gateway.id)
+      :ok = Portal.Presence.Devices.Account.track(gateway)
 
       send(lv.pid, %Phoenix.Socket.Broadcast{
-        topic: "presences:account_gateways:#{account.id}",
+        topic: "presences:account_devices:#{account.id}",
         event: "presence_diff",
         payload: %{joins: %{}, leaves: %{}}
       })
@@ -677,7 +712,7 @@ defmodule PortalWeb.SitesTest do
       |> Repo.delete!()
 
       send(lv.pid, %Phoenix.Socket.Broadcast{
-        topic: "presences:account_gateways:#{account.id}",
+        topic: "presences:account_devices:#{account.id}",
         event: "presence_diff",
         payload: %{joins: %{}, leaves: %{}}
       })

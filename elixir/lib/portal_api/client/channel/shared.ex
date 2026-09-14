@@ -1,5 +1,6 @@
 defmodule PortalAPI.Client.Channel.Shared do
   use PortalAPI, :channel
+  alias Portal.Authentication.Credential
   alias PortalAPI.Client.Views
 
   alias Portal.{
@@ -99,7 +100,7 @@ defmodule PortalAPI.Client.Channel.Shared do
 
     # Initialize relays and subscribe to global relay presence
     {:ok, relays} = select_relays(socket)
-    :ok = Presence.Relays.Global.subscribe()
+    :ok = Presence.Relays.subscribe()
 
     socket =
       socket
@@ -204,7 +205,7 @@ defmodule PortalAPI.Client.Channel.Shared do
   def handle_info(
         %Phoenix.Socket.Broadcast{
           event: "presence_diff",
-          topic: "presences:global_relays" <> _
+          topic: "presences:relays" <> _
         },
         socket
       ) do
@@ -282,7 +283,8 @@ defmodule PortalAPI.Client.Channel.Shared do
             Views.Relay.render_many(
               relays,
               socket.assigns.client.public_key,
-              socket.assigns.subject.expires_at
+              socket.assigns.subject.expires_at,
+              socket.assigns.client.account_id
             )
         })
 
@@ -913,7 +915,7 @@ defmodule PortalAPI.Client.Channel.Shared do
              socket.assigns.subject
            ),
          {:ok, gateway} <-
-           Presence.Gateways.fetch_gateway(socket.assigns.subject.account.id, gateway_id),
+           Presence.Devices.fetch_gateway(socket.assigns.subject.account.id, gateway_id),
          true <- resource.site != nil and resource.site.id == Ecto.UUID.dump!(gateway.site_id) do
       policy_authorization_id = Ecto.UUID.generate()
 
@@ -995,7 +997,7 @@ defmodule PortalAPI.Client.Channel.Shared do
              socket.assigns.subject
            ),
          {:ok, gateway} <-
-           Presence.Gateways.fetch_gateway(socket.assigns.subject.account.id, gateway_id),
+           Presence.Devices.fetch_gateway(socket.assigns.subject.account.id, gateway_id),
          true <- resource.site != nil and resource.site.id == Ecto.UUID.dump!(gateway.site_id) do
       policy_authorization_id = Ecto.UUID.generate()
 
@@ -1161,7 +1163,8 @@ defmodule PortalAPI.Client.Channel.Shared do
         Views.Relay.render_many(
           relays,
           socket.assigns.client.public_key,
-          socket.assigns.subject.expires_at
+          socket.assigns.subject.expires_at,
+          socket.assigns.client.account_id
         )
     })
 
@@ -1272,14 +1275,14 @@ defmodule PortalAPI.Client.Channel.Shared do
   end
 
   defp find_online_client_by_address(account_id, {:ipv4, ipv4_tuple}) do
-    case Presence.Clients.Account.find_by_ipv4(account_id, ipv4_tuple) do
+    case Presence.Devices.Account.find_by_ipv4(account_id, ipv4_tuple) do
       {target_client_id, target_meta} -> {:ok, target_client_id, target_meta}
       nil -> :offline
     end
   end
 
   defp find_online_client_by_address(account_id, {:ipv6, ipv6_tuple}) do
-    case Presence.Clients.Account.find_by_ipv6(account_id, ipv6_tuple) do
+    case Presence.Devices.Account.find_by_ipv6(account_id, ipv6_tuple) do
       {target_client_id, target_meta} -> {:ok, target_client_id, target_meta}
       nil -> :offline
     end
@@ -1759,13 +1762,16 @@ defmodule PortalAPI.Client.Channel.Shared do
   defp init(socket, resources, relays) do
     push(socket, "init", %{
       flow_logs: flow_logs_config(),
+      account_slug: socket.assigns.subject.account.slug,
+      actor_name: socket.assigns.subject.actor.name,
       resources: Views.Resource.render_many(resources, socket.assigns.client),
       authorizations: Views.PolicyAuthorization.render_many(socket.assigns.authorizations_cache),
       relays:
         Views.Relay.render_many(
           relays,
           socket.assigns.client.public_key,
-          socket.assigns.subject.expires_at
+          socket.assigns.subject.expires_at,
+          socket.assigns.client.account_id
         ),
       interface:
         Views.Interface.render(%{
@@ -1840,7 +1846,91 @@ defmodule PortalAPI.Client.Channel.Shared do
   #### Handling changes from the domain ####
   ##########################################
 
+  # ACTORS
+
+  defp handle_change(
+         %Change{
+           op: :update,
+           old_struct: %Portal.Actor{id: actor_id, is_disabled: false},
+           struct: %Portal.Actor{id: actor_id, is_disabled: true}
+         },
+         %{assigns: %{subject: %{actor: %{id: actor_id}}}} = socket
+       ) do
+    handle_info(:disconnect, socket)
+  end
+
+  defp handle_change(
+         %Change{op: :delete, old_struct: %Portal.Actor{id: actor_id}},
+         %{assigns: %{subject: %{actor: %{id: actor_id}}}} = socket
+       ) do
+    handle_info(:disconnect, socket)
+  end
+
+  # X.509 AUTH PROVIDERS
+
+  defp handle_change(
+         %Change{
+           op: :update,
+           old_struct: %Portal.X509.AuthProvider{
+             id: auth_provider_id,
+             is_disabled: false
+           },
+           struct: %Portal.X509.AuthProvider{
+             id: auth_provider_id,
+             is_disabled: true
+           }
+         },
+         %{
+           assigns: %{
+             subject: %{
+               credential: %Credential.X509{auth_provider_id: auth_provider_id}
+             }
+           }
+         } = socket
+       ) do
+    handle_info(:disconnect, socket)
+  end
+
+  defp handle_change(
+         %Change{
+           op: :delete,
+           old_struct: %Portal.X509.AuthProvider{id: auth_provider_id}
+         },
+         %{
+           assigns: %{
+             subject: %{
+               credential: %Credential.X509{auth_provider_id: auth_provider_id}
+             }
+           }
+         } = socket
+       ) do
+    handle_info(:disconnect, socket)
+  end
+
   # ACCOUNTS
+
+  # Disabling an account is broadcast as an account deletion. Unlike token-backed
+  # credentials, X.509 credentials have no ClientToken row for the account hook
+  # to delete, so every client channel for the account must be explicitly cut.
+  defp handle_change(
+         %Change{op: :delete, old_struct: %Portal.Account{id: account_id}},
+         %{assigns: %{client: %{account_id: account_id}}} = socket
+       ) do
+    disconnect_account(socket)
+  end
+
+  # Keep the channel fail-closed if an account-disabled update is ever broadcast
+  # directly instead of being normalized to the delete event above.
+  defp handle_change(
+         %Change{
+           op: :update,
+           old_struct: %Portal.Account{is_disabled: false},
+           struct: %Portal.Account{is_disabled: true}
+         },
+         socket
+       ) do
+    disconnect_account(socket)
+  end
 
   defp handle_change(
          %Change{
@@ -1982,19 +2072,21 @@ defmodule PortalAPI.Client.Channel.Shared do
            old_struct: %Portal.Policy{
              resource_id: old_resource_id,
              group_id: old_group_id,
-             conditions: old_conditions
+             conditions: old_conditions,
+             postures: old_postures
            },
            struct: %Portal.Policy{
              resource_id: resource_id,
              group_id: group_id,
              conditions: conditions,
+             postures: postures,
              is_disabled: is_disabled
            }
          } = change,
          socket
        )
        when old_resource_id != resource_id or old_group_id != group_id or
-              old_conditions != conditions do
+              old_conditions != conditions or old_postures != postures do
     # TODO: Optimization
     # Breaking update - process this as a delete and then create to make our lives easier.
     # We could be smarter here and process the individual side effects more cleverly to avoid
@@ -2134,6 +2226,14 @@ defmodule PortalAPI.Client.Channel.Shared do
   end
 
   defp handle_change(%Change{}, socket), do: {:noreply, socket}
+
+  # A channel stop alone can leave the transport available for a reactive rejoin,
+  # which would bypass Socket.connect/3 and its account-enabled check. Drain the
+  # transport so the next attempt must authenticate again.
+  defp disconnect_account(socket) do
+    send(socket.transport_pid, :socket_drain)
+    handle_info(:disconnect, socket)
+  end
 
   # Shared eviction path for the CDC delete handler, the direct `:reject_access`
   # from `Portal.Queue`'s on_failed callback, and the authz durability timeout.
@@ -2420,7 +2520,7 @@ defmodule PortalAPI.Client.Channel.Shared do
       "initiator_actor_id" => actor.id,
       "initiator_actor_email" => actor.email,
       "initiator_actor_name" => actor.name,
-      "initiator_auth_provider_id" => credential.auth_provider_id,
+      "initiator_auth_provider_id" => Credential.auth_provider_id(credential),
       # The authorization happens now; both tokens share the same authorized_at
       # so the two sides of the flow agree on the trusted flow_start floor.
       "authorized_at" => DateTime.to_iso8601(DateTime.utc_now()),
@@ -2526,26 +2626,50 @@ defmodule PortalAPI.Client.Channel.Shared do
         :ok = PG.join(socket.assigns.subject.credential.id)
         socket = assign(socket, :pg_scope_pid, new_pid)
 
-        # Only enqueue + arm on the first successful registration; re-registrations
-        # after a PG scope crash share the same channel and session row.
-        if is_nil(current_pid) do
-          Portal.Queue.enqueue(
-            :client_session_queue,
-            session_attrs(
-              socket.assigns.client,
-              socket.assigns.session_ref,
-              socket.assigns.client.attested?
-            ),
-            metadata: %{
-              subject: Authentication.Subject.to_map(socket.assigns.subject),
-              timestamp: DateTime.utc_now()
-            }
-          )
-
-          {:noreply, arm_session_durability_timer(socket)}
+        # The account CDC subscription is already active. Checking current state
+        # after subscribing closes the connect race: an earlier disable is seen
+        # here, while a later one arrives through the CDC-derived broadcast.
+        if x509_session_enabled?(socket) do
+          register_session(socket, current_pid)
         else
-          {:noreply, socket}
+          handle_info(:disconnect, socket)
         end
+    end
+  end
+
+  defp x509_session_enabled?(%{
+         assigns: %{
+           subject: %{
+             actor: %{id: actor_id},
+             credential: %Credential.X509{auth_provider_id: auth_provider_id}
+           }
+         }
+       }) do
+    Database.x509_session_enabled?(auth_provider_id, actor_id)
+  end
+
+  defp x509_session_enabled?(_socket), do: true
+
+  # Only enqueue + arm on the first successful registration; re-registrations
+  # after a PG scope crash share the same channel and session row.
+  defp register_session(socket, current_pid) do
+    if is_nil(current_pid) do
+      Portal.Queue.enqueue(
+        :client_session_queue,
+        session_attrs(
+          socket.assigns.client,
+          socket.assigns.session_ref,
+          socket.assigns.client.attested?
+        ),
+        metadata: %{
+          subject: Authentication.Subject.to_map(socket.assigns.subject),
+          timestamp: DateTime.utc_now()
+        }
+      )
+
+      {:noreply, arm_session_durability_timer(socket)}
+    else
+      {:noreply, socket}
     end
   end
 
@@ -2559,25 +2683,13 @@ defmodule PortalAPI.Client.Channel.Shared do
         socket
 
       sup_pid ->
-        session_meta = %{
-          ipv4: socket.assigns.client.ipv4.address,
-          ipv6: socket.assigns.client.ipv6.address,
-          name: socket.assigns.client.name,
-          public_key: socket.assigns.client.public_key,
-          psk_base: socket.assigns.client.psk_base,
-          remote_ip: socket.assigns.client.last_seen_remote_ip,
-          version: socket.assigns.client.last_seen_version,
-          user_agent: socket.assigns.client.last_seen_user_agent,
-          # Whether THIS session presented a trusted MDM-provisioned
-          # certificate at connect and the device row adopted its identity.
-          attested?: socket.assigns.client.attested?
-        }
-
+        # Everything a device puts in its presence comes off the row itself,
+        # so both kinds carry the same shape. `attested?` is the exception,
+        # because it describes THIS session rather than the row's history.
         :ok =
-          Presence.Clients.connect(
+          Presence.Devices.connect(
             socket.assigns.client,
-            socket.assigns.subject.credential.id,
-            session_meta
+            socket.assigns.subject.credential.id
           )
 
         for {_pid, ref} <- socket.assigns[:presence_monitors] || [] do
@@ -2648,6 +2760,19 @@ defmodule PortalAPI.Client.Channel.Shared do
   defmodule Database do
     import Ecto.Query, only: [from: 2]
 
+    def x509_session_enabled?(auth_provider_id, actor_id) do
+      from(auth_provider in Portal.X509.AuthProvider,
+        join: actor in Portal.Actor,
+        on: actor.account_id == auth_provider.account_id,
+        where: auth_provider.id == ^auth_provider_id,
+        where: auth_provider.is_disabled == false,
+        where: actor.id == ^actor_id,
+        where: actor.is_disabled == false
+      )
+      |> Portal.Safe.unscoped()
+      |> Portal.Safe.exists?()
+    end
+
     # Nothing else clears these when a channel stops, so a cut session would
     # otherwise leave its grants behind.
     def delete_policy_authorizations(client) do
@@ -2667,7 +2792,7 @@ defmodule PortalAPI.Client.Channel.Shared do
       resource_site_id = site_id_from_resource(resource)
 
       site_gateways =
-        Portal.Presence.Gateways.all_connected_gateways(account_id)
+        Portal.Presence.Devices.all_connected_gateways(account_id)
         |> Enum.filter(&(&1.site_id == resource_site_id))
 
       compatible_gateways =

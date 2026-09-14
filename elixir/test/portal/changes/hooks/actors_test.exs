@@ -86,6 +86,7 @@ defmodule Portal.Changes.Hooks.ActorsTest do
       refute Repo.get_by(Portal.PortalSession, account_id: account.id, id: portal_session.id)
       assert_receive %Change{op: :update, lsn: 0}
     end
+
   end
 
   describe "on_delete/2" do

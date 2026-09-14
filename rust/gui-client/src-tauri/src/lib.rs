@@ -10,6 +10,8 @@ pub mod updates;
 mod uptime;
 mod view;
 
+pub use view::export_bindings;
+
 // TODO: See how many of these we can make private.
 pub mod auth;
 pub mod controller;
@@ -44,6 +46,13 @@ pub const BUNDLE_ID: &str = "dev.firezone.client";
 /// Tunnel service and GUI client are always bundled into a single release.
 /// Hence, we have a single constant for Tunnel service and GUI client.
 pub const RELEASE: &str = concat!("gui-client@", env!("CARGO_PKG_VERSION"));
+
+/// Whether `FIREZONE_NO_TELEMETRY` was set when this binary was built.
+///
+/// CI stamps it into every build that is not a release, so the smoke test, the
+/// install test and any artifact from a pull request stay silent even where nothing
+/// sets the variable at run time.
+pub const NO_TELEMETRY: bool = cfg!(no_telemetry);
 
 pub const FIREZONE_CLIENT_GROUP: &str = "firezone-client";
 

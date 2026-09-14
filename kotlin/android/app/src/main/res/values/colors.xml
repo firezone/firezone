@@ -43,4 +43,7 @@
 
     <!-- Status Colors -->
     <color name="live_green">#22a559</color>
+
+    <!-- Painted behind the system bars; must match `PortalCanvas` in `FirezoneTheme.kt`. -->
+    <color name="portal_canvas">#eef1f6</color>
 </resources>

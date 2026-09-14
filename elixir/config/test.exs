@@ -11,12 +11,14 @@ partition_suffix =
     ""
   end
 
+database = "#{System.get_env("DATABASE_NAME", "firezone")}_test#{partition_suffix}"
+
 config :portal, sql_sandbox: true
 
 config :portal, run_manual_migrations: true
 
 config :portal, Portal.Repo,
-  database: "firezone_test#{partition_suffix}",
+  database: database,
   pool: Ecto.Adapters.SQL.Sandbox,
   pool_size: 5,
   queue_target: 1000
@@ -28,7 +30,7 @@ for repo <- [
       Portal.Repo.Poller
     ] do
   config :portal, repo,
-    database: "firezone_test#{partition_suffix}",
+    database: database,
     pool: Ecto.Adapters.SQL.Sandbox,
     pool_size: 5,
     queue_target: 1000
@@ -173,10 +175,33 @@ config :portal, Portal.Microsoft.Graph.APIClient,
     retry: false
   ]
 
+config :portal, Portal.Defender.APIClient,
+  endpoint: "https://api.security.microsoft.com",
+  token_base_url: "https://login.microsoftonline.com",
+  token_scope: "https://api.securitycenter.microsoft.com/.default",
+  client_id: "test_defender_client_id",
+  client_secret: "test_defender_client_secret",
+  req_opts: [
+    plug: {Req.Test, Portal.Defender.APIClient},
+    retry: false
+  ]
+
 config :portal, Portal.Iru.APIClient,
   api_domains: [us: "api.kandji.io", eu: "api.eu.kandji.io"],
   req_opts: [
     plug: {Req.Test, Portal.Iru.APIClient},
+    retry: false
+  ]
+
+config :portal, Portal.Santa.APIClient,
+  req_opts: [
+    plug: {Req.Test, Portal.Santa.APIClient},
+    retry: false
+  ]
+
+config :portal, Portal.SentinelOne.APIClient,
+  req_opts: [
+    plug: {Req.Test, Portal.SentinelOne.APIClient},
     retry: false
   ]
 
@@ -226,6 +251,21 @@ config :portal, Portal.Crl.Sync,
   req_opts: [
     retry: false,
     plug: {Req.Test, Portal.Crl.Sync}
+  ]
+
+config :portal, Portal.OAuth.ClientMetadata,
+  req_opts: [
+    retry: false,
+    plug: {Req.Test, Portal.OAuth.ClientMetadata}
+  ],
+  # Req.Test never connects, but the mandatory protection still resolves before
+  # handing a request to its adapter. Use a known-public answer so metadata
+  # tests can keep descriptive fake hostnames (and localhost origin fixtures).
+  ssrf_protection_opts: [
+    resolver: fn
+      _host, :inet -> {:ok, [{8, 8, 8, 8}]}
+      _host, :inet6 -> {:error, :nxdomain}
+    end
   ]
 
 config :portal, Portal.Ocsp.Sync,
@@ -293,6 +333,13 @@ config :portal, PortalWeb.RateLimit,
   refill_rate: 100_000,
   capacity: 1_000_000
 
+# MCP controller tests share the loopback source IP, so dedicated limiter tests
+# pass strict values directly while the general suite uses a practically
+# unbounded bucket.
+config :portal, PortalAPI.Plugs.MCPRateLimit,
+  refill_rate: 100_000,
+  capacity: 1_000_000
+
 # The ingestion endpoint defaults to a strict 1 req/s per IP; keep it effectively
 # disabled in general tests (which share localhost) to avoid cross-test 429s.
 # Dedicated rate-limit tests pass strict opts directly to the plug instead.
@@ -348,7 +395,7 @@ config :argon2_elixir, t_cost: 1, m_cost: 8
 
 config :geolix,
   databases: [
-    %{id: :city, adapter: Geolix.Adapter.Fake, data: %{}}
+    %{id: :city, adapter: Portal.Test.GeoAdapter, data: %{}}
   ]
 
 default_assert_receive_timeout = 1_000
@@ -372,3 +419,14 @@ config :phoenix, :plug_init_mode, :runtime
 
 config :sentry,
   environment_name: :test
+
+# Test-only destinations; production ad configuration comes from runtime env vars.
+config :portal, Portal.Analytics.OpenAI,
+  api_key: nil,
+  pixel_id: "test-openai-pixel",
+  endpoint: "https://bzr.openai.com/v1/events",
+  req_opts: [retry: false]
+
+config :portal, Portal.Analytics.GoogleAds,
+  endpoint: "https://datamanager.googleapis.com/v1/events:ingest",
+  req_opts: [retry: false]

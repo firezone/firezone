@@ -79,7 +79,6 @@ echo "    mise run //:x509:print-ca | pbcopy"
 echo
 echo "Then issue certificates from it:"
 echo
-echo "    mise run //:x509:gen-certificate user --email <email> --account-id <account-id>"
 echo "    mise run //:x509:gen-certificate device"
 echo
 echo "Give other test devices the same CA, so one trust anchor in the portal covers them all:"

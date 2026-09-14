@@ -156,12 +156,12 @@ defmodule Portal.Workers.OutdatedGatewaysTest do
         )
 
       assert :ok =
-               Portal.Presence.Gateways.connect(
+               Portal.Presence.Devices.connect(
                  gateway,
                  gateway.gateway_token_id
                )
 
-      assert Map.has_key?(Portal.Presence.Gateways.Site.list(site.id), gateway.id)
+      assert gateway.id in Portal.Presence.Devices.online_ids(account.id, :gateway)
 
       assert :ok = perform_job(OutdatedGateways, %{})
 
@@ -193,7 +193,7 @@ defmodule Portal.Workers.OutdatedGatewaysTest do
           last_seen_version: "0.9.0"
         )
 
-      assert :ok = Portal.Presence.Gateways.connect(gateway, gateway.gateway_token_id)
+      assert :ok = Portal.Presence.Devices.connect(gateway, gateway.gateway_token_id)
 
       assert :ok = perform_job(OutdatedGateways, %{})
 
@@ -224,7 +224,7 @@ defmodule Portal.Workers.OutdatedGatewaysTest do
           last_seen_version: "0.9.0"
         )
 
-      assert :ok = Portal.Presence.Gateways.connect(gateway, gateway.gateway_token_id)
+      assert :ok = Portal.Presence.Devices.connect(gateway, gateway.gateway_token_id)
 
       assert :ok = perform_job(OutdatedGateways, %{})
 

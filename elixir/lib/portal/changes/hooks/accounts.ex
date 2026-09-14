@@ -5,6 +5,13 @@ defmodule Portal.Changes.Hooks.Accounts do
   import Portal.SchemaHelpers
 
   @impl true
+  def on_insert(lsn, %{"is_disabled" => false} = data) do
+    account = struct_from_params(Portal.Account, data)
+    change = %Change{lsn: lsn, op: :insert, struct: account}
+
+    PubSub.Changes.broadcast_account(change)
+  end
+
   def on_insert(_lsn, _data), do: :ok
 
   # Account slug changed - disconnect gateways for updated init
@@ -22,6 +29,18 @@ defmodule Portal.Changes.Hooks.Accounts do
     Database.delete_client_tokens_for_account(account)
 
     on_delete(lsn, old_data)
+  end
+
+  # Account enabled - make its TURN credentials valid again.
+  def on_update(
+        lsn,
+        %{"is_disabled" => true},
+        %{"is_disabled" => false} = data
+      ) do
+    account = struct_from_params(Portal.Account, data)
+    change = %Change{lsn: lsn, op: :insert, struct: account}
+
+    PubSub.Changes.broadcast_account(change)
   end
 
   def on_update(lsn, old_data, data) do
@@ -46,6 +65,7 @@ defmodule Portal.Changes.Hooks.Accounts do
     change = %Change{lsn: lsn, op: :delete, old_struct: account}
 
     PubSub.Changes.broadcast(account.id, :accounts, change)
+    PubSub.Changes.broadcast_account(change)
   end
 
   defmodule Database do

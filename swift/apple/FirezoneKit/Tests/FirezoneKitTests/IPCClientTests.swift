@@ -25,9 +25,17 @@ private final class RecordingTunnelSession: TunnelSessionProtocol, @unchecked Se
   }
 
   // swiftlint:disable:next discouraged_optional_collection
+  private(set) var startTunnelOptions: [String: Any]?
+
+  // swiftlint:disable:next discouraged_optional_collection
   func startTunnel(options: [String: Any]?) throws {
     startTunnelCallCount += 1
+    startTunnelOptions = options
     status = .connected
+  }
+
+  func statusUpdates() -> AsyncStream<NEVPNStatus> {
+    AsyncStream { $0.finish() }
   }
 
   func stopTunnel() {
@@ -48,6 +56,22 @@ private final class RecordingTunnelSession: TunnelSessionProtocol, @unchecked Se
 @Suite("IPCClient")
 @MainActor
 struct IPCClientTests {
+  @Test("A token start carries the token and optional certificate")
+  func tokenStartPayload() throws {
+    let session = RecordingTunnelSession(status: .disconnected)
+    let reference = Data([0xAA, 0xBB])
+
+    try IPCClient.start(
+      session: session,
+      token: "the-token",
+      identityReference: reference
+    )
+
+    #expect(session.startTunnelOptions?["authentication"] as? String == "tokenAndCertificate")
+    #expect(session.startTunnelOptions?["token"] as? String == "the-token")
+    #expect(session.startTunnelOptions?["identityReference"] as? Data == reference)
+  }
+
   @Test("Polling decodes state and notifications from one response")
   func pollUpdates() async throws {
     let previousHash = Data([0x01, 0x02])

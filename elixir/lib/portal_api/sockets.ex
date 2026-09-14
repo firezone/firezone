@@ -7,6 +7,38 @@ defmodule PortalAPI.Sockets do
 
   alias PortalAPI.ProblemDetails
 
+  @x509_rejection_details %{
+    invalid_certificate:
+      "The client certificate is malformed or exceeds the supported size limit.",
+    invalid_x509_identity:
+      "The client certificate contains invalid or incomplete X.509 user identity claims.",
+    malformed_cert_issuer: "The client certificate contains a malformed issuer.",
+    malformed_cert_serial: "The client certificate contains a malformed serial number.",
+    missing_client_auth_eku:
+      "The client certificate is not valid for TLS client authentication.",
+    missing_digital_signature_key_usage:
+      "The client certificate does not permit digital signatures.",
+    no_device_identifiers:
+      "The client certificate does not contain a supported device identifier.",
+    no_trust_anchors:
+      "The Firezone account identified by the client certificate has no trust anchors configured.",
+    outside_validity_window: "The client certificate is expired or not yet valid.",
+    untrusted_chain:
+      "The client certificate was not issued by a certificate authority trusted by this Firezone account.",
+    x509_account_disabled: "The Firezone account identified by the client certificate is disabled.",
+    x509_account_not_found:
+      "The client certificate identifies a Firezone account that does not exist.",
+    x509_authentication_disabled:
+      "X.509 user authentication is disabled for the Firezone account identified by the client certificate.",
+    x509_authentication_not_found:
+      "X.509 user authentication is not configured for the Firezone account identified by the client certificate.",
+    x509_user_disabled: "The user identified by the client certificate is disabled.",
+    x509_user_not_found:
+      "The client certificate identifies a user that does not exist in the identified Firezone account.",
+    x509_user_type_not_allowed:
+      "The user identified by the client certificate cannot authenticate using X.509."
+  }
+
   @doc """
   Extracts the token from connection parameters or headers.
 
@@ -63,6 +95,20 @@ defmodule PortalAPI.Sockets do
           "authority. Please contact your administrator."
       )
 
+  def handle_error(conn, :x509_user_not_authorized),
+    do:
+      ProblemDetails.send_with_code(
+        conn,
+        403,
+        :x509_user_not_authorized,
+        "This device's certificate does not identify an active user authorized to access " <>
+          "this Firezone account. Please contact your administrator."
+      )
+
+  def handle_error(conn, reason) when is_map_key(@x509_rejection_details, reason) do
+    ProblemDetails.send_with_code(conn, 403, reason, Map.fetch!(@x509_rejection_details, reason))
+  end
+
   def handle_error(conn, :device_identity_conflict),
     do:
       ProblemDetails.send_with_code(
@@ -116,18 +162,9 @@ defmodule PortalAPI.Sockets do
     )
   end
 
-  def auth_context(%{user_agent: user_agent, x_headers: x_headers, peer_data: peer_data}, type) do
-    remote_ip = real_ip(x_headers, peer_data)
+  def auth_context(%{user_agent: user_agent, x_headers: x_headers} = connect_info, type) do
+    remote_ip = Portal.Sockets.remote_ip(connect_info)
     Portal.Authentication.Context.build(remote_ip, user_agent, x_headers, type)
-  end
-
-  defp real_ip(x_headers, peer_data) do
-    real_ip =
-      if is_list(x_headers) and x_headers != [] do
-        RemoteIp.from(x_headers, Portal.Endpoint.real_ip_opts())
-      end
-
-    real_ip || peer_data.address
   end
 
   @session_field_limits %{

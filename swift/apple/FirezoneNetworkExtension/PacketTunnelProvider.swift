@@ -34,6 +34,18 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
     startTelemetry()
 
+    // A cycle start wakes this process only to drain flow logs, so it never
+    // reaches `connect`. Configure the logger here so that work is not silent.
+    do {
+      try configureLogger(
+        logDir: SharedAccess.connlibLogFolderURL?.path ?? "/tmp/firezone",
+        logFilter: ConfigurationDefaults.logFilter,
+        flowLogsDir: SharedAccess.flowLogsFolderURL?.path
+      )
+    } catch {
+      Log.error(error)
+    }
+
     super.init()
 
     // Log version information immediately on startup
@@ -72,12 +84,24 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     // Extract token from options before any async work
     let passedToken = options?["token"] as? String
 
-    // Load token synchronously - Keychain access is thread-safe
-    guard let token = loadToken(passedToken: passedToken)
-    else {
-      completionHandler(PacketTunnelProviderError.tokenNotFoundInKeychain)
+    // The profile's own identity reference, the fallback when the app pinned none.
+    let profileIdentityReference =
+      (protocolConfiguration as? NETunnelProviderProtocol)?.identityReference
+
+    // Keychain access is thread-safe, so the token loads synchronously. Every
+    // session requires one, including starts initiated by the system or an older app.
+    guard let token = loadToken(passedToken: passedToken) else {
+      completionHandler(PacketTunnelProviderError.credentialNotConfigured)
       return
     }
+
+    let identityReference =
+      options?["identityReference"] as? Data ?? profileIdentityReference
+
+    Log.info(
+      "VPN client certificate "
+        + (identityReference.map { "will be presented (\($0.count) bytes)" }
+          ?? "will not be presented"))
 
     // Try to save the token back to the Keychain but continue if we can't
     handleTokenSave(token)
@@ -104,16 +128,12 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     let logFilter =
       providerConfiguration.withMDMOverride(forKey: Configuration.Keys.logFilter)
       ?? ConfigurationDefaults.logFilter
-    let accountSlug =
-      providerConfiguration.withMDMOverride(forKey: Configuration.Keys.accountSlug)
-      ?? ConfigurationDefaults.accountSlug
     let internetResourceEnabled = Configuration.parseBool(
       providerConfiguration[Configuration.Keys.internetResourceEnabled],
       default: ConfigurationDefaults.internetResourceEnabled
     )
 
     Telemetry.setEnvironmentOrClose(apiURL)
-    Telemetry.setUser(firezoneId: firezoneId.encoded, accountSlug: accountSlug)
 
     // Create command channel for Adapter -> Provider communication
     let (commandSender, commandReceiver): (Sender<ProviderCommand>, Receiver<ProviderCommand>) =
@@ -124,8 +144,8 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       token: token,
       deviceId: firezoneId.uuid,
       logFilter: logFilter,
-      accountSlug: accountSlug,
       internetResourceEnabled: internetResourceEnabled,
+      identityReference: identityReference,
       providerCommandSender: commandSender
     )
 
@@ -190,7 +210,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
   override func stopTunnel(
     with reason: NEProviderStopReason, completionHandler: @escaping @Sendable () -> Void
   ) {
-    Log.log("stopTunnel: Reason: \(reason)")
+    Log.log("stopTunnel: Reason: \(Self.describe(reason))")
 
     logCleanupTask = nil
 
@@ -203,6 +223,37 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       await adapter?.stop()
       completionHandler()
     }
+  }
+
+  /// Names a stop reason, which otherwise logs as `NEProviderStopReason(rawValue: 1)`.
+  ///
+  /// `userInitiated` is the one worth recognising on sight: it means something asked the
+  /// session to stop rather than the tunnel failing, so the cause is in the app, not here.
+  private static func describe(_ reason: NEProviderStopReason) -> String {
+    let name =
+      switch reason {
+      case .none: "none"
+      case .userInitiated: "userInitiated"
+      case .providerFailed: "providerFailed"
+      case .noNetworkAvailable: "noNetworkAvailable"
+      case .unrecoverableNetworkChange: "unrecoverableNetworkChange"
+      case .providerDisabled: "providerDisabled"
+      case .authenticationCanceled: "authenticationCanceled"
+      case .configurationFailed: "configurationFailed"
+      case .idleTimeout: "idleTimeout"
+      case .configurationDisabled: "configurationDisabled"
+      case .configurationRemoved: "configurationRemoved"
+      case .superceded: "superceded"
+      case .userLogout: "userLogout"
+      case .userSwitch: "userSwitch"
+      case .connectionFailed: "connectionFailed"
+      case .sleep: "sleep"
+      case .appUpdate: "appUpdate"
+      case .internalError: "internalError"
+      @unknown default: "unknown"
+      }
+
+    return "\(name) (\(reason.rawValue))"
   }
 
   // It would be helpful to be able to encapsulate Errors here. To do that

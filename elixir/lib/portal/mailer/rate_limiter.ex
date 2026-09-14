@@ -62,17 +62,7 @@ defmodule Portal.Mailer.RateLimiter do
     now = :erlang.system_time(:millisecond)
     expires_at = now + interval
 
-    counter =
-      case :ets.lookup(ets_table_name, key) do
-        [] ->
-          create_counter(ets_table_name, key, expires_at)
-
-        [{^key, _counter, currently_expires_at}] when currently_expires_at <= now ->
-          delete_counter(ets_table_name, key)
-
-        [{^key, _counter, _expires_at}] ->
-          update_counter(ets_table_name, key, expires_at)
-      end
+    counter = increment_counter(ets_table_name, key, now, expires_at)
 
     if counter > limit do
       {:error, :rate_limited}
@@ -91,9 +81,30 @@ defmodule Portal.Mailer.RateLimiter do
     1
   end
 
-  defp create_counter(ets_table_name, key, expires_at) do
-    :ets.insert(ets_table_name, {key, 1, expires_at})
-    1
+  defp increment_counter(ets_table_name, key, now, expires_at) do
+    case :ets.lookup(ets_table_name, key) do
+      [{^key, _counter, currently_expires_at}] when currently_expires_at <= now ->
+        replace_expired_counter(ets_table_name, key, now, expires_at)
+
+      _ ->
+        update_counter(ets_table_name, key, expires_at)
+    end
+  end
+
+  # `select_replace/2` only replaces an object if it is still expired, so one
+  # concurrent caller starts the new interval. Callers that lose that race use
+  # the atomic counter update below and receive a distinct counter value.
+  defp replace_expired_counter(ets_table_name, key, now, expires_at) do
+    match_spec = [
+      {{:"$1", :_, :"$2"},
+       [{:==, :"$1", {:const, key}}, {:"=<", :"$2", now}],
+       [{{:"$1", 1, expires_at}}]}
+    ]
+
+    case :ets.select_replace(ets_table_name, match_spec) do
+      1 -> 1
+      0 -> update_counter(ets_table_name, key, expires_at)
+    end
   end
 
   defp update_counter(ets_table_name, key, expires_at) do
@@ -105,7 +116,7 @@ defmodule Portal.Mailer.RateLimiter do
           {2, 1},
           {3, 1, 0, expires_at}
         ],
-        {nil, 0, expires_at}
+        {key, 0, expires_at}
       )
 
     counter

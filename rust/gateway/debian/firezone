@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [ "${1:-}" != "gateway" ]; then
+    echo "usage: firezone gateway <command>" >&2
+    echo "The \`firezone\` command is deprecated; see \`firezone-gateway --help\`." >&2
+    exit 2
+fi
+shift
+
+echo "warning: the \`firezone\` command is deprecated and will be removed in a future release; use \`firezone-gateway ${*}\` instead" >&2
+exec firezone-gateway "$@"

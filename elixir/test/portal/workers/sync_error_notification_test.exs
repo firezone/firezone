@@ -287,6 +287,68 @@ defmodule Portal.Workers.SyncErrorNotificationTest do
       assert email.text_body =~ "Iru API token"
     end
 
+    test "notifies admins when a Defender provider is disabled by a sync error" do
+      enable_device_posture()
+      account = device_posture_account_fixture()
+      session_log_fixture(account: account)
+      admin = admin_actor_fixture(account: account)
+
+      provider = Portal.DefenderFixtures.defender_posture_provider_fixture(account: account)
+
+      Portal.Defender.ErrorHandler.handle(
+        Portal.Defender.SyncError.exception(
+          provider_id: provider.id,
+          step: :list_machines,
+          error: %Req.Response{status: 403, body: %{}}
+        ),
+        provider.id
+      )
+
+      assert :ok = perform_job(SyncErrorNotification, notification_args("defender", "daily"))
+
+      assert Repo.get_by!(Portal.Defender.PostureProvider,
+               account_id: provider.account_id,
+               id: provider.id
+             ).error_email_count == 1
+
+      [email] = collect_queued_emails(account.id)
+      assert email.subject == "Posture Provider Error - #{provider.name}"
+      assert {"", admin.email} in email.bcc
+      assert email.text_body =~ "settings/device_posture"
+      assert email.text_body =~ provider.tenant_id
+      assert email.text_body =~ "admin consent in Microsoft Entra"
+    end
+
+    test "notifies admins when a Santa provider is disabled by a sync error" do
+      enable_device_posture()
+      account = device_posture_account_fixture()
+      session_log_fixture(account: account)
+      admin = admin_actor_fixture(account: account)
+      provider = Portal.SantaFixtures.santa_posture_provider_fixture(account: account)
+
+      Portal.Santa.ErrorHandler.handle(
+        Portal.Santa.SyncError.exception(
+          provider_id: provider.id,
+          step: :list_hosts,
+          error: %Req.Response{status: 403, body: ""}
+        ),
+        provider.id
+      )
+
+      assert :ok = perform_job(SyncErrorNotification, notification_args("santa", "daily"))
+
+      assert Repo.get_by!(Portal.Santa.PostureProvider,
+               account_id: provider.account_id,
+               id: provider.id
+             ).error_email_count == 1
+
+      [email] = collect_queued_emails(account.id)
+      assert email.subject == "Posture Provider Error - #{provider.name}"
+      assert {"", admin.email} in email.bcc
+      assert email.text_body =~ provider.api_url
+      assert email.text_body =~ "Workshop API key"
+    end
+
     test "does not email when the global device_posture flag is off" do
       enable_device_posture()
       account = device_posture_account_fixture()

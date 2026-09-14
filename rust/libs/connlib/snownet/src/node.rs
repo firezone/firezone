@@ -1,4 +1,5 @@
 mod allocations;
+mod buffered_candidates;
 mod connection_state;
 mod connections;
 mod inflight_stun_requests;
@@ -11,6 +12,7 @@ use crate::allocation::{self, Allocation, RelaySocket, Socket};
 use crate::buffer::{BufferProvider, Reservation, TransmitBuffer};
 use crate::index::IndexLfsr;
 use crate::node::allocations::Allocations;
+use crate::node::buffered_candidates::BufferedCandidates;
 use crate::node::connection_state::{ConnectionState, PeerSocket};
 use crate::node::connections::Connections;
 use crate::node::inflight_stun_requests::InflightStunRequests;
@@ -96,6 +98,7 @@ pub struct Node<TId, RId> {
     allocations: Allocations<RId>,
 
     connections: Connections<TId, RId>,
+    buffered_candidates: BufferedCandidates<TId>,
     inflight_stun_requests: InflightStunRequests<TId>,
 
     pending_events: VecDeque<Event<TId>>,
@@ -206,6 +209,7 @@ where
             allocations,
             inflight_stun_requests: Default::default(),
             connections: Default::default(),
+            buffered_candidates: Default::default(),
             buffer_pool: BufferPool::new(ip_packet::MAX_FZ_PAYLOAD, "snownet"),
             connection_count: otel_instruments::connection_count(),
             unix_now: now,
@@ -231,6 +235,7 @@ where
         self.buffered_transmits.clear();
         self.pending_events.clear();
         self.inflight_stun_requests.clear();
+        self.buffered_candidates.clear();
 
         if self.connections.all_iceless() {
             let num_iceless = self.connections.reset_for_roam(now);
@@ -399,6 +404,10 @@ where
 
         self.connections.insert_established(cid, index, connection);
 
+        for candidate in self.buffered_candidates.drain(&cid).collect::<Vec<_>>() {
+            self.add_remote_candidate(cid, candidate, now);
+        }
+
         Ok(())
     }
 
@@ -485,7 +494,8 @@ where
         self.last_now = now;
 
         let Ok(c) = self.connections.get_mut(&cid, now) else {
-            tracing::warn!(%candidate, "Received candidate for unknown connection");
+            tracing::debug!(%candidate, "Buffering candidate for unknown connection");
+            self.buffered_candidates.push(cid, candidate, now);
             return;
         };
 
@@ -521,7 +531,11 @@ where
         self.last_now = now;
 
         let Ok(c) = self.connections.get_mut(&cid, now) else {
-            tracing::debug!(ignored_candidate = %candidate, "Unknown connection");
+            if self.buffered_candidates.remove(&cid, &candidate) {
+                tracing::debug!(%candidate, "Removed buffered candidate for unknown connection");
+            } else {
+                tracing::debug!(ignored_candidate = %candidate, "Unknown connection");
+            }
             return;
         };
 
@@ -631,6 +645,7 @@ where
         iter::empty()
             .chain(queued_io)
             .chain(self.connections.poll_timeout())
+            .chain(self.buffered_candidates.poll_timeout())
             .chain(self.allocations.poll_timeout())
             .min_by_key(|(instant, _)| *instant)
     }
@@ -699,6 +714,7 @@ where
         );
         self.connections
             .handle_timeout(&mut self.pending_events, now);
+        self.buffered_candidates.handle_timeout(now);
         self.inflight_stun_requests.handle_timeout(now);
     }
 

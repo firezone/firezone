@@ -3,6 +3,9 @@ defmodule PortalWeb.Settings.ApiClients.Components do
 
   attr :form, :any, required: true
 
+  attr :scopes, :list, required: true
+  attr :error, :string, default: nil
+
   def api_token_creation_form(assigns) do
     ~H"""
     <div>
@@ -28,9 +31,23 @@ defmodule PortalWeb.Settings.ApiClients.Components do
         required
       />
     </div>
+
+    <.api_token_scopes scopes={@scopes} error={@error} />
     """
   end
 
+  attr :scopes, :list, required: true
+  attr :error, :string, default: nil
+
+  def api_token_scopes(assigns) do
+    ~H"""
+    <div class="mt-6">
+      <.scope_picker scopes={@scopes} field_name="api_token[scopes][]" error={@error} />
+    </div>
+    """
+  end
+
+  # A locked box submits nothing, which is why scopes are expanded on read-back.
   attr :encoded_token, :string, required: true
 
   def api_token_reveal(assigns) do

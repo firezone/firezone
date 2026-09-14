@@ -256,8 +256,9 @@ defmodule Portal.Repo.Filter do
   defp value_type_valid?({:string, :websearch_wide}, value), do: is_binary(value)
   defp value_type_valid?({:string, :protocol_port}, value), do: is_binary(value)
   defp value_type_valid?({:string, :select}, value), do: is_binary(value)
+  # UUID filters must be textual: cast/1 also accepts arbitrary 16-byte binaries.
   defp value_type_valid?({:string, :uuid}, value) when is_binary(value) do
-    match?({:ok, _}, Ecto.UUID.cast(value))
+    match?({:ok, _}, Ecto.UUID.dump(value))
   end
 
   defp value_type_valid?({:string, :uuid}, _value), do: false
@@ -267,7 +268,7 @@ defmodule Portal.Repo.Filter do
   defp value_type_valid?({:string, :uuid_or_blank}, ""), do: true
 
   defp value_type_valid?({:string, :uuid_or_blank}, value) when is_binary(value) do
-    match?({:ok, _}, Ecto.UUID.cast(value))
+    match?({:ok, _}, Ecto.UUID.dump(value))
   end
 
   defp value_type_valid?({:string, :uuid_or_blank}, _value), do: false

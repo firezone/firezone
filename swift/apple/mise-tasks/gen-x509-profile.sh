@@ -214,6 +214,6 @@ echo "Profiles on Ventura and Sonoma). Open it there and approve it, which asks 
 echo "administrator password because the identity goes into the System keychain. Do it promptly:"
 echo "macOS discards a downloaded profile that is left sitting."
 echo
-echo "Then launch Firezone and open Settings. The Client Certificate section reports what the"
+echo "Then launch Firezone and open Settings. The Certificate section reports what the"
 echo "app made of the identity. Removing the profile in Device Management takes the certificate"
 echo "and the VPN configuration back out with it."

@@ -7,25 +7,21 @@ defmodule PortalAPI.Schemas.PaginationMetadata do
     description: "Pagination metadata for paginated responses.",
     type: :object,
     properties: %{
-      count: %Schema{type: :integer, description: "Total number of matching records"},
-      limit: %Schema{type: :integer, description: "Page size"},
+      count: %Schema{example: 1, type: :integer, description: "Total number of matching records"},
+      limit: %Schema{example: 10, type: :integer, description: "Page size"},
       next_page: %Schema{
+        example: nil,
         type: :string,
         nullable: true,
         description: "Cursor to fetch the next page"
       },
       prev_page: %Schema{
+        example: nil,
         type: :string,
         nullable: true,
         description: "Cursor to fetch the previous page"
       }
     },
-    required: [:count, :limit, :next_page, :prev_page],
-    example: %{
-      "limit" => 10,
-      "count" => 1,
-      "prev_page" => nil,
-      "next_page" => nil
-    }
+    required: [:count, :limit, :next_page, :prev_page]
   })
 end

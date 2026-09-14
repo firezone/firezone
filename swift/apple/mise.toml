@@ -16,6 +16,9 @@ CONFIGURATION = "Debug"
 # Set consistent environment to prevent Rust rebuilds (must match Xcode project setting)
 MACOSX_DEPLOYMENT_TARGET = "13.0"
 
+[tools]
+"github:rorkai/App-Store-Connect-CLI" = { version = "4.11.0", version_prefix = "", bin = "asc", os = ["linux"] }
+
 # =============================================================================
 # Composite Tasks (can't be auto-discovered)
 # =============================================================================

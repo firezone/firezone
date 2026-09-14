@@ -124,6 +124,40 @@ defmodule PortalWeb.ConnCase do
     |> Plug.Conn.assign(:subject, subject)
   end
 
+  @doc """
+  Signs in for the app-approval flow only.
+
+  Sets just the short lived `oauth_sess_<account_id>` cookie and no assigns, so
+  the request goes through the real plugs. A portal session will not do here,
+  and this one will not do for the portal.
+  """
+  def authorize_oauth_conn(conn, %Portal.Actor{} = actor) do
+    account = Portal.Repo.get!(Portal.Account, actor.account_id)
+    provider = Portal.AuthProviderFixtures.email_otp_provider_fixture(account: account)
+
+    context = %Portal.Authentication.Context{
+      type: :portal,
+      user_agent: "FooBar 1.1",
+      remote_ip_location_region: "UA",
+      remote_ip_location_city: "Kyiv",
+      remote_ip_location_lat: 50.4501,
+      remote_ip_location_lon: 30.5234,
+      remote_ip: conn.remote_ip
+    }
+
+    expires_at =
+      DateTime.add(DateTime.utc_now(), PortalWeb.Cookie.OAuthSession.lifetime_secs(), :second)
+
+    {:ok, session} =
+      Portal.Authentication.create_portal_session(actor, provider.id, context, expires_at)
+
+    cookie = %PortalWeb.Cookie.OAuthSession{session_id: session.id}
+    conn = PortalWeb.Cookie.OAuthSession.put(conn, account.id, cookie)
+    cookie_name = "oauth_sess_#{account.id}"
+
+    put_req_cookie(conn, cookie_name, conn.resp_cookies[cookie_name].value)
+  end
+
   def authorize_api_conn(conn, %Portal.Actor{account: account} = actor) do
     expires_at = DateTime.utc_now() |> DateTime.add(300, :second)
     api_token = api_token_fixture(actor: actor, account: account, expires_at: expires_at)

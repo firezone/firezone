@@ -10,7 +10,6 @@ defmodule PortalWeb.Settings.DNS do
       socket
       |> assign(page_title: "DNS")
       |> assign(dns_account: account)
-      |> assign(trust_anchors_enabled?: PortalWeb.NavigationComponents.trust_anchors_enabled?())
       |> assign(device_posture_enabled?: PortalWeb.NavigationComponents.device_posture_enabled?())
 
     {:ok, socket}
@@ -39,7 +38,6 @@ defmodule PortalWeb.Settings.DNS do
       <.settings_nav
         account={@account}
         current_path={@current_path}
-        trust_anchors_enabled?={@trust_anchors_enabled?}
         device_posture_enabled?={@device_posture_enabled?}
       />
 
@@ -325,7 +323,7 @@ defmodule PortalWeb.Settings.DNS do
                   :if={not Enum.empty?(dns_form[:addresses].value || [])}
                   class="text-xs text-body"
                 >
-                  Upstream resolvers will be used by Client devices in the order listed below.
+                  Upstream resolvers will be used by devices when the Firezone Client is signed in, in the order listed below.
                 </p>
                 <p
                   :if={Enum.empty?(dns_form[:addresses].value || [])}

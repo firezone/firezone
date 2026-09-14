@@ -292,18 +292,18 @@ defmodule Portal.Workers.CheckAccountLimits do
     end
 
     defp count_1m_active_users_by_account(account_ids) do
-      from(c in Device, as: :clients)
-      |> where([clients: c], c.type == :client)
-      |> where([clients: c], c.account_id in ^account_ids)
-      |> join(:inner, [clients: c], a in Actor,
-        on: c.actor_id == a.id and c.account_id == a.account_id,
+      from(d in Device, as: :devices)
+      |> where([devices: d], d.type == :client)
+      |> where([devices: d], d.account_id in ^account_ids)
+      |> join(:inner, [devices: d], a in Actor,
+        on: d.actor_id == a.id and d.account_id == a.account_id,
         as: :actor
       )
       |> where([actor: a], a.is_disabled == false)
       |> where([actor: a], a.type in [:account_user, :account_admin_user])
-      |> where([clients: c], c.last_seen_at > ago(1, "month"))
-      |> group_by([clients: c], c.account_id)
-      |> select([clients: c], {c.account_id, count(c.actor_id, :distinct)})
+      |> where([devices: d], d.last_seen_at > ago(1, "month"))
+      |> group_by([devices: d], d.account_id)
+      |> select([devices: d], {d.account_id, count(d.actor_id, :distinct)})
       |> Safe.unscoped()
       |> Safe.all()
       |> Map.new()

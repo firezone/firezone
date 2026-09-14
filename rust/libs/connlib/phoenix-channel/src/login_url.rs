@@ -2,7 +2,6 @@ use base64::{Engine, engine::general_purpose::STANDARD};
 use serde::Deserialize;
 use sha2::Digest as _;
 use std::{
-    borrow::Cow,
     iter,
     marker::PhantomData,
     net::{Ipv4Addr, Ipv6Addr},
@@ -87,8 +86,9 @@ impl LoginUrl<PublicKeyParam> {
             Some(certificate) => {
                 require_tls(&url)?;
 
-                let mtls_host = mtls_host(&url, std::env::var(MTLS_HOST_ENV_VAR).ok())?;
-                set_host(&mut url, &mtls_host)?;
+                if let Some(mtls_host) = mtls_host(&url)? {
+                    set_host(&mut url, mtls_host)?;
+                }
 
                 Some(crate::tls::client_config(certificate).map_err(LoginUrlError::Tls)?)
             }
@@ -131,27 +131,29 @@ impl LoginUrl<PublicKeyParam> {
     pub fn gateway<E>(
         url: impl TryInto<Url, Error = E>,
         device_id: String,
-        device_name: Option<String>,
+        device_serial: Option<String>,
+        device_uuid: Option<String>,
     ) -> Result<Self, LoginUrlError<E>> {
         let external_id = if uuid::Uuid::from_str(&device_id).is_ok() {
             hex::encode(sha2::Sha256::digest(device_id))
         } else {
             device_id
         };
-        let device_name = device_name
-            .or(get_host_name())
-            .unwrap_or_else(|| Uuid::new_v4().to_string());
 
         let url = get_websocket_path(
             url.try_into().map_err(LoginUrlError::InvalidUrl)?,
             "gateway",
             Some("v2"),
             Some(external_id),
-            Some(device_name),
             None,
             None,
             None,
-            Default::default(),
+            None,
+            DeviceInfo {
+                device_serial,
+                device_uuid,
+                ..Default::default()
+            },
         )?;
 
         let (host, port) = parse_host(&url)?;
@@ -230,26 +232,17 @@ impl<TFinish> LoginUrl<TFinish> {
     }
 }
 
-/// The environment variable naming the mTLS host of a portal we do not know.
-pub const MTLS_HOST_ENV_VAR: &str = "FIREZONE_MTLS_HOST";
-
-/// Returns the mTLS counterpart of an API host.
+/// Returns the mTLS counterpart of a managed API host, if there is one.
 ///
 /// The portal requests a client certificate based on the host we dial, so presenting a certificate implies dialing the mTLS host.
-/// The SaaS portals have a known counterpart. Any other portal has to name its own through [`MTLS_HOST_ENV_VAR`], because dialing one that never asks for a certificate would sign us in without the identity the caller asked for.
-fn mtls_host<E>(
-    url: &Url,
-    override_host: Option<String>,
-) -> Result<Cow<'static, str>, LoginUrlError<E>> {
+/// Only the managed API hosts have a separate counterpart; any other URL is authoritative and a self-hosted portal points it at its own mTLS endpoint.
+fn mtls_host<E>(url: &Url) -> Result<Option<&'static str>, LoginUrlError<E>> {
     let host = url.host_str().ok_or(LoginUrlError::MissingHost)?;
 
     match host {
-        "api.firez.one" => Ok(Cow::Borrowed("mtls.firez.one")),
-        "api.firezone.dev" => Ok(Cow::Borrowed("mtls.firezone.dev")),
-        other => override_host
-            .filter(|host| !host.trim().is_empty())
-            .map(Cow::Owned)
-            .ok_or_else(|| LoginUrlError::CertificateNotSupported(other.to_owned())),
+        "api.firez.one" => Ok(Some("mtls.firez.one")),
+        "api.firezone.dev" => Ok(Some("mtls.firezone.dev")),
+        _ => Ok(None),
     }
 }
 
@@ -275,8 +268,6 @@ pub enum LoginUrlError<E> {
     InvalidUrlScheme(String),
     #[error("scheme `{0}` cannot present a client certificate; use https or wss")]
     InsecureUrlWithCertificate(String),
-    #[error("`{0}` does not support signing in with a client certificate")]
-    CertificateNotSupported(String),
     #[error("`{0}` is not a valid hostname")]
     InvalidMtlsHost(String),
     #[error("failed to parse URL: {0}")]
@@ -390,6 +381,7 @@ fn set_ws_scheme<E>(url: &mut Url) -> Result<(), LoginUrlError<E>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::borrow::Cow;
 
     #[test]
     fn base_url_removes_params_and_path() {
@@ -457,44 +449,6 @@ mod tests {
     }
 
     #[test]
-    fn an_unknown_host_can_name_its_mtls_counterpart() {
-        let url = Url::parse("wss://api.example.com:444").unwrap();
-
-        let host = mtls_host::<url::ParseError>(&url, Some("mtls.example.com".to_owned())).unwrap();
-
-        assert_eq!(host, "mtls.example.com");
-    }
-
-    #[test]
-    fn an_unknown_host_without_an_override_is_refused() {
-        let url = Url::parse("wss://api.example.com:444").unwrap();
-
-        let error = mtls_host::<url::ParseError>(&url, None).unwrap_err();
-
-        assert!(
-            matches!(error, LoginUrlError::CertificateNotSupported(host) if host == "api.example.com")
-        );
-    }
-
-    #[test]
-    fn a_blank_override_counts_as_unset() {
-        let url = Url::parse("wss://api.example.com:444").unwrap();
-
-        let error = mtls_host::<url::ParseError>(&url, Some("  ".to_owned())).unwrap_err();
-
-        assert!(matches!(error, LoginUrlError::CertificateNotSupported(_)));
-    }
-
-    #[test]
-    fn an_override_does_not_displace_a_known_saas_host() {
-        let url = Url::parse("wss://api.firez.one:444").unwrap();
-
-        let host = mtls_host::<url::ParseError>(&url, Some("mtls.example.com".to_owned())).unwrap();
-
-        assert_eq!(host, "mtls.firez.one");
-    }
-
-    #[test]
     fn client_with_certificate_uses_mtls_api_host() {
         let login_url = LoginUrl::client(
             "wss://api.firez.one:444",
@@ -524,19 +478,18 @@ mod tests {
     }
 
     #[test]
-    fn client_with_certificate_rejects_self_hosted_portal() {
-        let result = LoginUrl::client(
+    fn client_with_certificate_keeps_self_hosted_portal() {
+        let login_url = LoginUrl::client(
             "wss://portal.example.com",
             "some-id".to_owned(),
             Some("some-name".to_owned()),
             DeviceInfo::default(),
             Some(certificate()),
-        );
+        )
+        .unwrap();
 
-        assert!(matches!(
-            result,
-            Err(LoginUrlError::CertificateNotSupported(host)) if host == "portal.example.com"
-        ));
+        assert_eq!(login_url.host_and_port(), ("portal.example.com", 443));
+        assert!(login_url.tls_client_config().is_some());
     }
 
     #[test]
@@ -570,18 +523,30 @@ mod tests {
     }
 
     #[test]
-    fn gateway_uses_v2_endpoint() {
+    fn gateway_uses_v2_endpoint_without_reporting_a_name() {
         let login_url = LoginUrl::gateway(
             "wss://api.firez.one",
             "some-id".to_owned(),
-            Some("some-name".to_owned()),
+            Some("serial".to_owned()),
+            Some("uuid".to_owned()),
         )
         .unwrap();
+        let url = login_url.to_url(PublicKeyParam([0; 32]));
 
+        assert_eq!(url.path(), "/gateway/v2/websocket");
         assert_eq!(
-            login_url.to_url(PublicKeyParam([0; 32])).path(),
-            "/gateway/v2/websocket"
-        )
+            url.query_pairs()
+                .collect::<std::collections::HashMap<_, _>>(),
+            std::collections::HashMap::from([
+                (Cow::Borrowed("external_id"), Cow::Borrowed("some-id")),
+                (Cow::Borrowed("device_serial"), Cow::Borrowed("serial")),
+                (Cow::Borrowed("device_uuid"), Cow::Borrowed("uuid")),
+                (
+                    Cow::Borrowed("public_key"),
+                    Cow::Borrowed("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=")
+                ),
+            ])
+        );
     }
 
     #[test]

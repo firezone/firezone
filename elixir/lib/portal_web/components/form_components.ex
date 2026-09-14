@@ -48,6 +48,10 @@ defmodule PortalWeb.FormComponents do
     default: false,
     doc: "whether to display errors inline instead of below the input"
 
+  attr :beside_errors, :boolean,
+    default: false,
+    doc: "whether to display errors to the right of the input so the form height does not change"
+
   attr :checked, :boolean, doc: "the checked flag for checkbox and radio inputs"
 
   attr :unchecked_value, :any,
@@ -173,6 +177,8 @@ defmodule PortalWeb.FormComponents do
   end
 
   def input(%{type: "group_select"} = assigns) do
+    assigns = assign(assigns, :value, select_value(assigns))
+
     ~H"""
     <div>
       <.label :if={@label} for={@id}>{@label}</.label>
@@ -188,19 +194,20 @@ defmodule PortalWeb.FormComponents do
         class={[
           "text-sm py-2 pl-3 pr-8 rounded",
           "bg-raised text-body",
-          "border border-border",
+          "border",
           "outline-none transition-colors cursor-pointer",
           "hover:border-border-emphasis hover:text-heading",
-          "focus:border-border-focus focus:ring-1 focus:ring-border-focus/30",
+          "focus:ring-1",
           "block",
           !@inline_errors && "w-full",
-          @errors != [] && "border-error focus:border-error",
+          @errors == [] && "border-border focus:border-border-focus focus:ring-border-focus/30",
+          @errors != [] && "border-error focus:border-error focus:ring-error/30",
           @class
         ]}
         multiple={@multiple}
         {@rest}
       >
-        <option :if={@prompt} value="">{@prompt}</option>
+        <option :if={@prompt} value="" selected={is_nil(@value)}>{@prompt}</option>
 
         <%= for {label, options} <- @options do %>
           <%= if label == nil do %>
@@ -220,6 +227,8 @@ defmodule PortalWeb.FormComponents do
   end
 
   def input(%{type: "select"} = assigns) do
+    assigns = assign(assigns, :value, select_value(assigns))
+
     ~H"""
     <div>
       <.label :if={@label} for={@id}>{@label}</.label>
@@ -229,30 +238,31 @@ defmodule PortalWeb.FormComponents do
         name={@name}
         value={@value}
       />
-      <select
-        id={@id}
-        name={@name}
-        class={[
-          "text-sm py-2 pl-3 pr-8 rounded",
-          "bg-raised text-body",
-          "border border-border",
-          "outline-none transition-colors cursor-pointer",
-          "hover:border-border-emphasis hover:text-heading",
-          "focus:border-border-focus focus:ring-1 focus:ring-border-focus/30",
-          "block",
-          !@inline_errors && "w-full",
-          @errors != [] && "border-error focus:border-error",
-          @class
-        ]}
-        multiple={@multiple}
-        {@rest}
-      >
-        <option :if={@prompt} value="">{@prompt}</option>
-        {Phoenix.HTML.Form.options_for_select(@options, @value)}
-      </select>
-      <.error :for={msg <- @errors} inline={@inline_errors} data-validation-error-for={@name}>
-        {msg}
-      </.error>
+      <div class={field_row_class(assigns)}>
+        <select
+          id={@id}
+          name={@name}
+          class={[
+            "text-sm py-2 pl-3 pr-8 rounded",
+            "bg-raised text-body",
+            "border",
+            "outline-none transition-colors cursor-pointer",
+            "hover:border-border-emphasis hover:text-heading",
+            "focus:ring-1",
+            "block",
+            field_width_class(assigns),
+            @errors == [] && "border-border focus:border-border-focus focus:ring-border-focus/30",
+            @errors != [] && "border-error focus:border-error focus:ring-error/30",
+            @class
+          ]}
+          multiple={@multiple}
+          {@rest}
+        >
+          <option :if={@prompt} value="" selected={is_nil(@value)}>{@prompt}</option>
+          {Phoenix.HTML.Form.options_for_select(@options, @value)}
+        </select>
+        <.field_errors errors={@errors} name={@name} inline={@inline_errors} beside={@beside_errors} />
+      </div>
     </div>
     """
   end
@@ -267,12 +277,13 @@ defmodule PortalWeb.FormComponents do
         class={[
           "block rounded-md text-sm px-3 py-2",
           "bg-input text-heading placeholder:text-muted",
-          "border border-input-border",
+          "border",
           "outline-none transition-colors",
-          "focus:border-border-focus focus:ring-1 focus:ring-border-focus/30",
+          "focus:ring-1",
           "min-h-[6rem]",
           !@inline_errors && "w-full",
-          @errors != [] && "border-error focus:border-error",
+          @errors == [] && "border-input-border focus:border-border-focus focus:ring-border-focus/30",
+          @errors != [] && "border-error focus:border-error focus:ring-error/30",
           @class
         ]}
         {@rest}
@@ -322,31 +333,73 @@ defmodule PortalWeb.FormComponents do
     ~H"""
     <div class={@inline_errors && "flex flex-row items-center"}>
       <.label :if={@label} for={@id}>{@label}</.label>
-      <input
-        type={@type}
-        name={@name}
-        id={@id}
-        value={Phoenix.HTML.Form.normalize_value(@type, @value)}
-        class={[
-          "block",
-          !@inline_errors && "w-full",
-          "px-3 py-2 rounded text-sm",
-          "bg-input text-heading placeholder:text-muted",
-          "border border-input-border",
-          "outline-none transition-colors",
-          "focus:border-border-focus focus:ring-1 focus:ring-border-focus/30",
-          "disabled:opacity-40 disabled:cursor-not-allowed",
-          @errors != [] && "border-error focus:border-error",
-          @class
-        ]}
-        {@rest}
-      />
-      <.error :for={msg <- @errors} inline={@inline_errors} data-validation-error-for={@name}>
+      <div class={field_row_class(assigns)}>
+        <input
+          type={@type}
+          name={@name}
+          id={@id}
+          value={Phoenix.HTML.Form.normalize_value(@type, @value)}
+          class={[
+            "block",
+            field_width_class(assigns),
+            "px-3 py-2 rounded text-sm",
+            "bg-input text-heading placeholder:text-muted",
+            "border",
+            "outline-none transition-colors",
+            "focus:ring-1",
+            "disabled:opacity-40 disabled:cursor-not-allowed",
+            @errors == [] && "border-input-border focus:border-border-focus focus:ring-border-focus/30",
+            @errors != [] && "border-error focus:border-error focus:ring-error/30",
+            @class
+          ]}
+          {@rest}
+        />
+        <.field_errors errors={@errors} name={@name} inline={@inline_errors} beside={@beside_errors} />
+      </div>
+    </div>
+    """
+  end
+
+  attr :errors, :list, required: true
+  attr :name, :string, required: true
+  attr :inline, :boolean, required: true
+  attr :beside, :boolean, required: true
+
+  # The auth layout's left panel appears at lg and takes the gutter the error
+  # overflows into, so the input shrinks again at lg and stops shrinking at xl.
+  defp field_errors(%{beside: true} = assigns) do
+    ~H"""
+    <div
+      :if={@errors != []}
+      class={[
+        "shrink-0 whitespace-nowrap",
+        "md:absolute md:left-full md:top-1/2 md:-translate-y-1/2",
+        "lg:static lg:translate-y-0",
+        "xl:absolute xl:left-full xl:top-1/2 xl:-translate-y-1/2"
+      ]}
+    >
+      <.error :for={msg <- @errors} inline data-validation-error-for={@name}>
         {msg}
       </.error>
     </div>
     """
   end
+
+  defp field_errors(assigns) do
+    ~H"""
+    <.error :for={msg <- @errors} inline={@inline} data-validation-error-for={@name}>
+      {msg}
+    </.error>
+    """
+  end
+
+  defp field_row_class(%{beside_errors: true}), do: "relative flex flex-row items-center"
+  defp field_row_class(%{inline_errors: true}), do: "flex flex-row items-center"
+  defp field_row_class(_assigns), do: nil
+
+  defp field_width_class(%{beside_errors: true}), do: "min-w-0 flex-1"
+  defp field_width_class(%{inline_errors: true}), do: nil
+  defp field_width_class(_assigns), do: "w-full"
 
   defp resolve_field_value(field, value_id) do
     Enum.map(field.value, fn
@@ -375,21 +428,21 @@ defmodule PortalWeb.FormComponents do
         </:footer>
       </.modal>
 
-      <.modal id="wizard-modal" on_back="prev-step" on_confirm="next-step">
-        <:title>Step 1</:title>
+      <.modal id="confirm-modal" on_cancel="dismiss" on_confirm="proceed">
+        <:title>Are you sure?</:title>
         <:body>
-          Complete this step.
+          This cannot be undone.
         </:body>
-        <:back_button>Previous</:back_button>
-        <:confirm_button>Next</:confirm_button>
+        <:cancel_button>Cancel</:cancel_button>
+        <:confirm_button>Continue</:confirm_button>
       </.modal>
   """
   attr :id, :string, required: true, doc: "The id of the modal"
   attr :class, :string, default: "", doc: "Custom classes to be added to the modal"
 
-  attr :on_back, :string,
+  attr :on_cancel, :string,
     default: nil,
-    doc: "The phx event to broadcast when back button is clicked"
+    doc: "The phx event to broadcast when cancel button is clicked"
 
   attr :on_confirm, :string,
     default: nil,
@@ -414,8 +467,8 @@ defmodule PortalWeb.FormComponents do
   end
 
   slot :body, required: true, doc: "The content of the modal"
-  slot :footer, doc: "The footer of the modal (overrides back/confirm buttons if provided)"
-  slot :back_button, doc: "The content of the back button"
+  slot :footer, doc: "The footer of the modal (overrides cancel/confirm buttons if provided)"
+  slot :cancel_button, doc: "The content of the cancel button"
 
   slot :confirm_button do
     attr :form, :string, doc: "The form id to associate with the button"
@@ -437,14 +490,14 @@ defmodule PortalWeb.FormComponents do
     >
       <div class="flex items-center justify-center min-h-screen p-4">
         <div
-          class="relative bg-white rounded-md shadow-sm w-full max-w-2xl"
+          class="relative bg-elevated border border-border rounded-md shadow-sm w-full max-w-2xl"
           phx-click-away={@on_close}
         >
           <div
             :if={@title != []}
-            class="flex items-center justify-between p-4 md:p-5 border-b border-neutral-200 rounded-t"
+            class="flex items-center justify-between p-4 md:p-5 border-b border-border rounded-t"
           >
-            <h3 class="text-xl font-semibold text-neutral-900 flex items-center gap-3">
+            <h3 class="text-xl font-semibold text-heading flex items-center gap-3">
               <.provider_icon
                 :for={title_slot <- @title}
                 :if={Map.get(title_slot, :provider)}
@@ -454,7 +507,7 @@ defmodule PortalWeb.FormComponents do
               {render_slot(@title)}
             </h3>
             <button
-              class="text-neutral-400 bg-transparent hover:text-accent-900 ml-2"
+              class="text-subtle bg-transparent hover:text-heading ml-2"
               type="button"
               phx-click={@on_close}
             >
@@ -462,29 +515,31 @@ defmodule PortalWeb.FormComponents do
               <span class="sr-only">Close modal</span>
             </button>
           </div>
-          <div class="p-4 md:p-5 text-neutral-500 text-base">
+          <div class="p-4 md:p-5 text-body text-base">
             {render_slot(@body)}
           </div>
           <div
-            :if={@footer != [] or @back_button != [] or @confirm_button != []}
-            class="flex items-center justify-between p-4 md:p-5 border-t border-neutral-200 rounded-b gap-3"
+            :if={@footer != [] or @cancel_button != [] or @confirm_button != []}
+            class="flex items-center justify-between p-4 md:p-5 border-t border-border rounded-b gap-3"
           >
             <%= if @footer != [] do %>
               {render_slot(@footer)}
             <% else %>
               <.button
-                :if={@back_button != []}
-                phx-click={@on_back}
+                :if={@cancel_button != []}
+                data-dialog-action="cancel"
+                phx-click={@on_cancel}
                 type="button"
                 style="info"
                 class="px-5 py-2.5"
               >
-                {render_slot(@back_button)}
+                {render_slot(@cancel_button)}
               </.button>
-              <div :if={@back_button == []}></div>
+              <div :if={@cancel_button == []}></div>
               <.button
                 :for={confirm_slot <- @confirm_button}
                 :if={@confirm_button != []}
+                data-dialog-action="confirm"
                 phx-click={@on_confirm}
                 type={Map.get(confirm_slot, :type, "button")}
                 form={Map.get(confirm_slot, :form)}
@@ -1159,5 +1214,51 @@ defmodule PortalWeb.FormComponents do
     }
 
     [icon_size[size]]
+  end
+
+  # morphdom stamps `selected` on the option the browser picks; render it on the same
+  # option or LiveView sees a focused select as changed on every patch and blurs it.
+  defp select_value(%{multiple: true} = assigns), do: assigns[:value]
+
+  defp select_value(assigns) do
+    value = assigns[:value]
+    options = assigns[:options] || []
+
+    cond do
+      option_value?(options, value) -> value
+      assigns[:prompt] -> nil
+      true -> first_option_value(options)
+    end
+  end
+
+  defp option_value?(_options, nil), do: false
+
+  defp option_value?(options, value) do
+    escaped = escape_option_value(value)
+    options |> option_values() |> Enum.any?(&(escape_option_value(&1) == escaped))
+  end
+
+  defp escape_option_value(value) do
+    value |> Phoenix.HTML.html_escape() |> Phoenix.HTML.safe_to_string()
+  end
+
+  defp first_option_value(options) do
+    case option_values(options) do
+      [nil | _] -> ""
+      [value | _] -> value
+      [] -> nil
+    end
+  end
+
+  defp option_values(options) do
+    Enum.flat_map(options, fn
+      {:hr, nil} -> []
+      :hr -> []
+      {_key, group} when is_list(group) -> option_values(group)
+      {_key, group} when is_map(group) and not is_struct(group) -> option_values(group)
+      {_key, value} -> [value]
+      option when is_list(option) -> [Keyword.get(option, :value)]
+      option -> [option]
+    end)
   end
 end

@@ -14,6 +14,9 @@ defmodule Portal.Okta.Directory do
           private_key_jwk: map(),
           kid: String.t(),
           okta_domain: String.t(),
+          webhook_secret: String.t(),
+          webhook_verified_at: DateTime.t() | nil,
+          webhook_received_at: DateTime.t() | nil,
           name: String.t(),
           errored_at: DateTime.t() | nil,
           is_disabled: boolean(),
@@ -37,6 +40,9 @@ defmodule Portal.Okta.Directory do
     field :private_key_jwk, :map, redact: true
     field :kid, :string
     field :okta_domain, :string
+    field :webhook_secret, :string, redact: true, read_after_writes: true
+    field :webhook_verified_at, :utc_datetime_usec
+    field :webhook_received_at, :utc_datetime_usec
 
     field :name, :string, default: "Okta"
     field :errored_at, :utc_datetime_usec

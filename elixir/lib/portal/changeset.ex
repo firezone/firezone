@@ -3,7 +3,6 @@ defmodule Portal.Changeset do
   This module extend `Ecto.Changeset`'s with custom validations and polymorphic embeds.
   """
   import Ecto.Changeset
-  import Bitwise
   alias Ecto.Changeset
 
   @special_use_ipv4_cidrs [
@@ -236,13 +235,14 @@ defmodule Portal.Changeset do
     end
   end
 
+  # idna reports a disallowed character with an exit, not an exception.
   def try_encode_domain(domain) do
     charlist = String.to_charlist(domain)
 
     try do
       {:ok, :idna.encode(charlist, [{:uts46, true}]) |> to_string()}
     catch
-      error -> error
+      _kind, _reason -> :error
     end
   end
 
@@ -334,17 +334,13 @@ defmodule Portal.Changeset do
   end
 
   # IPv4-mapped IPv6 addresses (::ffff:w.x.y.z)
-  def private_ip?({0, 0, 0, 0, 0, 0xFFFF, w, x}), do: private_ip?(to_ipv4_tuple(w, x))
+  def private_ip?({0, 0, 0, 0, 0, 0xFFFF, _, _} = ip), do: private_ip?(Portal.Types.IP.unmap(ip))
   def private_ip?({_, _, _, _} = ip), do: private_ip_in_cidrs?(ip, @special_use_ipv4_cidrs)
 
   def private_ip?({_, _, _, _, _, _, _, _} = ip),
     do: private_ip_in_cidrs?(ip, @special_use_ipv6_cidrs)
 
   def private_ip?(_), do: false
-
-  defp to_ipv4_tuple(w, x) do
-    {w >>> 8, band(w, 0x00FF), x >>> 8, band(x, 0x00FF)}
-  end
 
   defp private_ip_in_cidrs?(ip, cidrs) do
     inet = %Postgrex.INET{address: ip}
@@ -359,9 +355,11 @@ defmodule Portal.Changeset do
 
   def valid_email?(_), do: false
 
-  def validate_email(%Ecto.Changeset{} = changeset, field) do
+  def validate_email(%Ecto.Changeset{} = changeset, field, opts \\ []) do
+    message = Keyword.get(opts, :message, "is an invalid email address")
+
     changeset
-    |> validate_format(field, @email_regex, message: "is an invalid email address")
+    |> validate_format(field, @email_regex, message: message)
     |> validate_length(field, max: @email_max_length)
   end
 

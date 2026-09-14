@@ -51,8 +51,23 @@ defmodule Portal.Telemetry.Reporter.Oban do
     build_sentry_context(job)
   end
 
+  defp handle_error(%{reason: reason, job: %{worker: "Portal.Defender.Sync"} = job}) do
+    Portal.Defender.ErrorHandler.handle(reason, job.args["posture_provider_id"])
+    build_sentry_context(job)
+  end
+
   defp handle_error(%{reason: reason, job: %{worker: "Portal.Iru.Sync"} = job}) do
     Portal.Iru.ErrorHandler.handle(reason, job.args["posture_provider_id"])
+    build_sentry_context(job)
+  end
+
+  defp handle_error(%{reason: reason, job: %{worker: "Portal.Santa.Sync"} = job}) do
+    Portal.Santa.ErrorHandler.handle(reason, job.args["posture_provider_id"])
+    build_sentry_context(job)
+  end
+
+  defp handle_error(%{reason: reason, job: %{worker: "Portal.SentinelOne.Sync"} = job}) do
+    Portal.SentinelOne.ErrorHandler.handle(reason, job.args["posture_provider_id"])
     build_sentry_context(job)
   end
 

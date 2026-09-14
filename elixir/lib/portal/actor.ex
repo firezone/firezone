@@ -2,6 +2,7 @@ defmodule Portal.Actor do
   use Ecto.Schema
   import Ecto.Changeset
   import Portal.Changeset
+  alias Portal.Email
 
   @primary_key false
   @foreign_key_type :binary_id
@@ -95,8 +96,12 @@ defmodule Portal.Actor do
 
   defp normalize_for_compare(nil), do: ""
 
-  defp normalize_for_compare(value) when is_binary(value),
-    do: value |> String.trim() |> String.downcase()
+  defp normalize_for_compare(value) when is_binary(value) do
+    case Email.normalize_for_match(value) do
+      {:ok, email} -> email
+      :error -> value |> String.trim() |> String.downcase()
+    end
+  end
 
   defp normalize_email(changeset, field) do
     update_change(changeset, field, fn
@@ -104,7 +109,7 @@ defmodule Portal.Actor do
         nil
 
       email when is_binary(email) ->
-        case encode_email(email) do
+        case Email.normalize(email) do
           {:ok, encoded} ->
             encoded
 
@@ -116,22 +121,5 @@ defmodule Portal.Actor do
       other ->
         other
     end)
-  end
-
-  defp encode_email(email) do
-    case String.split(email, "@", parts: 2) do
-      [local, domain] ->
-        local = String.trim(local)
-        domain = String.trim(domain) |> String.downcase()
-
-        case try_encode_domain(domain) do
-          {:ok, punycode_domain} -> {:ok, local <> "@" <> to_string(punycode_domain)}
-          _error -> :error
-        end
-
-      # No @ sign, return as-is (will be caught by validate_email)
-      _ ->
-        {:ok, email}
-    end
   end
 end

@@ -16,7 +16,7 @@ else
     set -- -max_total_time=60
 fi
 
-if [ "$target" = "tunnel-proto" ]; then
+if [ "$target" = "tunnel-proto" ] || [ "$target" = "relay-proto" ]; then
     set -- -max_len=8192 -len_control=0 "$@"
 fi
 

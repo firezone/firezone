@@ -75,7 +75,11 @@ defmodule Portal.EntraDirectoryFixtures do
         :error_message,
         :error_email_count,
         :sync_all_groups,
-        :email_field
+        :email_field,
+        :webhook_secret,
+        :users_subscription_id,
+        :groups_subscription_id,
+        :subscriptions_expire_at
       ])
       |> Portal.Entra.Directory.changeset()
       |> Portal.Repo.insert()

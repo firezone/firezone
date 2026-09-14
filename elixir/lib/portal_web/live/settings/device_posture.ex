@@ -3,14 +3,51 @@ defmodule PortalWeb.Settings.DevicePosture do
 
   import Ecto.Changeset
 
-  alias Portal.{Changes.Change, PostureProvider, Intune, Iru, PubSub}
+  alias Portal.{Changes.Change, Defender, PostureProvider, Intune, Iru, Santa, SentinelOne, PubSub}
+  alias Portal.Mailer.PostureProviderInterestEmail
   alias __MODULE__.Database
 
   require Logger
 
   @feature_disabled "Device posture is not enabled for your account."
 
-  @types ~w[intune iru]
+  @types ~w[intune iru defender santa sentinelone]
+
+  @coming_soon_providers [
+    %{
+      type: "crowdstrike",
+      title: "CrowdStrike Falcon",
+      description: "Register interest in CrowdStrike Falcon endpoint posture support."
+    },
+    %{
+      type: "sophos",
+      title: "Sophos XDR",
+      description: "Register interest in Sophos XDR endpoint posture support."
+    },
+    %{
+      type: "jamf",
+      title: "Jamf Pro",
+      description: "Register interest in Jamf Pro device posture support."
+    },
+    %{
+      type: "workspace_one",
+      title: "Workspace ONE",
+      description: "Register interest in Workspace ONE device posture support."
+    },
+    %{
+      type: "mosyle",
+      title: "Mosyle",
+      description: "Register interest in Mosyle device posture support."
+    },
+    %{
+      type: "other",
+      title: "Other",
+      description: "Tell us about another posture provider you would like Firezone to support."
+    }
+  ]
+
+  @coming_soon_types Enum.map(@coming_soon_providers, & &1.type)
+  @feedback_max_length 5_000
 
   @select_type_classes [
     "flex items-center w-full p-4 rounded border transition-colors cursor-pointer",
@@ -20,19 +57,27 @@ defmodule PortalWeb.Settings.DevicePosture do
 
   @form_fields %{
     "intune" => ~w[name]a,
-    "iru" => ~w[name region subdomain api_token]a
+    "iru" => ~w[name region subdomain api_token]a,
+    "defender" => ~w[name]a,
+    "santa" => ~w[name api_url api_key]a,
+    "sentinelone" => ~w[name management_url api_token]a
   }
 
   # Set by the verification flow rather than by an input, so they have to be
   # carried across every validate event or a keystroke would drop them.
   @programmatic_fields %{
     "intune" => ~w[tenant_id is_verified]a,
-    "iru" => ~w[is_verified]a
+    "iru" => ~w[is_verified]a,
+    "defender" => ~w[tenant_id is_verified]a,
+    "santa" => ~w[is_verified]a,
+    "sentinelone" => ~w[is_verified]a
   }
 
   # What the Iru test call used, so a change to any of them means the tenant
   # behind the verification is no longer the tenant in the form.
   @iru_verification_fields ~w[region subdomain api_token]a
+  @santa_verification_fields ~w[api_url api_key]a
+  @sentinelone_verification_fields ~w[management_url api_token]a
 
   def mount(_params, _session, socket) do
     if PortalWeb.NavigationComponents.device_posture_enabled?() do
@@ -54,7 +99,6 @@ defmodule PortalWeb.Settings.DevicePosture do
      socket
      |> assign(
        page_title: "Device Posture",
-       trust_anchors_enabled?: PortalWeb.NavigationComponents.trust_anchors_enabled?(),
        device_posture_enabled?: true,
        type: nil,
        provider: nil,
@@ -63,7 +107,12 @@ defmodule PortalWeb.Settings.DevicePosture do
        active_verification: nil,
        pending_verification: nil,
        verifying: false,
-       open_provider_actions_id: nil
+       open_provider_actions_id: nil,
+       coming_soon_providers: @coming_soon_providers,
+       feedback_max_length: @feedback_max_length,
+       interest_provider: nil,
+       feedback_sent?: false,
+       feedback_error: nil
      )
      |> init()}
   end
@@ -137,6 +186,104 @@ defmodule PortalWeb.Settings.DevicePosture do
 
   def handle_event("handle_keydown", _params, socket), do: {:noreply, socket}
 
+  def handle_event("register_interest", %{"provider" => type}, socket)
+      when type in @coming_soon_types do
+    if account_feature_enabled?(socket) do
+      provider = coming_soon_provider(type)
+      email = PostureProviderInterestEmail.interest_email(socket.assigns.subject, provider.title)
+
+      case deliver_interest_email(email, socket, type, :interest) do
+        {:ok, _result} ->
+          {:noreply,
+           assign(socket,
+             interest_provider: provider,
+             feedback_sent?: false,
+             feedback_error: nil
+           )}
+
+        {:error, reason} ->
+          Logger.warning("Failed to register posture provider interest",
+            account_id: socket.assigns.subject.account.id,
+            actor_id: socket.assigns.subject.actor.id,
+            provider: type,
+            reason: inspect(reason)
+          )
+
+          {:noreply,
+           put_flash(socket, :error, "We couldn't register your interest. Please try again.")}
+      end
+    else
+      {:noreply, put_flash(socket, :error, @feature_disabled)}
+    end
+  end
+
+  def handle_event("register_interest", _params, socket), do: {:noreply, socket}
+
+  def handle_event("clear_interest", _params, socket) do
+    {:noreply,
+     assign(socket, interest_provider: nil, feedback_sent?: false, feedback_error: nil)}
+  end
+
+  def handle_event(
+        "submit_interest_feedback",
+        %{"feedback" => %{"message" => feedback}},
+        %{assigns: %{interest_provider: %{type: type} = provider}} = socket
+      )
+      when type in @coming_soon_types and is_binary(feedback) do
+    feedback = String.trim(feedback)
+
+    cond do
+      not account_feature_enabled?(socket) ->
+        {:noreply, put_flash(socket, :error, @feature_disabled)}
+
+      feedback == "" ->
+        {:noreply, assign(socket, feedback_error: "Please enter your feedback.")}
+
+      String.length(feedback) > @feedback_max_length ->
+        {:noreply,
+         assign(socket, feedback_error: "Feedback must be 5,000 characters or fewer.")}
+
+      true ->
+        email =
+          PostureProviderInterestEmail.feedback_email(
+            socket.assigns.subject,
+            provider.title,
+            feedback
+          )
+
+        case deliver_interest_email(email, socket, type, :feedback) do
+          {:ok, _result} ->
+            {:noreply, assign(socket, feedback_sent?: true, feedback_error: nil)}
+
+          {:error, reason} ->
+            Logger.warning("Failed to send posture provider interest feedback",
+              account_id: socket.assigns.subject.account.id,
+              actor_id: socket.assigns.subject.actor.id,
+              provider: type,
+              reason: inspect(reason)
+            )
+
+            {:noreply,
+             assign(socket, feedback_error: "We couldn't send your feedback. Please try again.")}
+        end
+    end
+  end
+
+  def handle_event(
+        "submit_interest_feedback",
+        _params,
+        %{assigns: %{interest_provider: %{type: type}}} = socket
+      )
+      when type in @coming_soon_types do
+    if account_feature_enabled?(socket) do
+      {:noreply, assign(socket, feedback_error: "Please enter your feedback.")}
+    else
+      {:noreply, put_flash(socket, :error, @feature_disabled)}
+    end
+  end
+
+  def handle_event("submit_interest_feedback", _params, socket), do: {:noreply, socket}
+
   def handle_event("validate", %{"provider" => attrs}, socket) do
     changeset = socket.assigns.form.source
     type = socket.assigns.type
@@ -165,21 +312,37 @@ defmodule PortalWeb.Settings.DevicePosture do
     {:noreply, assign(socket, verification_error: nil, verifying: true)}
   end
 
+  def handle_event("start_verification", _params, %{assigns: %{type: "santa"}} = socket) do
+    send(self(), :verify_santa)
+    {:noreply, assign(socket, verification_error: nil, verifying: true)}
+  end
+
+  def handle_event(
+        "start_verification",
+        _params,
+        %{assigns: %{type: "sentinelone"}} = socket
+      ) do
+    send(self(), :verify_sentinelone)
+    {:noreply, assign(socket, verification_error: nil, verifying: true)}
+  end
+
   def handle_event("start_verification", _params, socket) do
+    verification_type = entra_verification_type(socket.assigns.type)
+
     with {:ok, %{config: config}} <-
-           PortalWeb.OIDC.setup_verification("intune_posture_provider", []),
+           PortalWeb.OIDC.setup_verification(verification_type, []),
          verifier = :crypto.strong_rand_bytes(32) |> Base.url_encode64(padding: false),
          verification_ref = Ecto.UUID.generate(),
          lv_pid_string = PortalWeb.OIDC.serialize_pid(self()),
          state_token <-
            PortalWeb.OIDC.sign_verification_state(
              lv_pid_string,
-             PortalWeb.OIDC.verification_state_type("intune_posture_provider"),
+             PortalWeb.OIDC.verification_state_type(verification_type),
              %{verification_ref: verification_ref}
            ),
          {:ok, uri} <-
            PortalWeb.OIDC.build_verification_uri(
-             "intune_posture_provider",
+             verification_type,
              config,
              verifier,
              state_token
@@ -201,7 +364,10 @@ defmodule PortalWeb.Settings.DevicePosture do
        |> push_event("open_url", %{url: uri})}
     else
       {:error, reason} ->
-        Logger.info("Failed to start Intune verification", reason: inspect(reason))
+        Logger.info("Failed to start Microsoft admin consent",
+          type: socket.assigns.type,
+          reason: inspect(reason)
+        )
 
         {:noreply,
          assign(socket,
@@ -256,7 +422,7 @@ defmodule PortalWeb.Settings.DevicePosture do
     # a sync error has been stale for as long as it was disabled, so either way
     # waiting for the next scheduled run would show the wrong inventory.
     resync? =
-      Enum.any?(@iru_verification_fields ++ [:tenant_id], &Map.has_key?(changeset.changes, &1)) or
+      Enum.any?(verification_fields(socket.assigns.type), &Map.has_key?(changeset.changes, &1)) or
         get_change(changeset, :is_disabled) == false
 
     changeset
@@ -349,6 +515,65 @@ defmodule PortalWeb.Settings.DevicePosture do
     end
   end
 
+  def handle_info(:verify_santa, socket) do
+    changeset = socket.assigns.form.source
+
+    client =
+      Santa.APIClient.new(
+        get_field(changeset, :api_url),
+        get_field(changeset, :api_key)
+      )
+
+    case Santa.APIClient.test_connection(client) do
+      :ok ->
+        attrs = Map.put(changeset.changes, :is_verified, true)
+
+        {:noreply,
+         assign(socket,
+           form: to_form(provider_changeset(changeset.data, "santa", attrs), as: :provider),
+           verification_error: nil,
+           verifying: false
+         )}
+
+      {:error, reason} ->
+        Logger.info("Failed to verify Santa provider", reason: inspect(reason))
+
+        {:noreply,
+         assign(socket, verifying: false, verification_error: santa_verification_error(reason))}
+    end
+  end
+
+  def handle_info(:verify_sentinelone, socket) do
+    changeset = socket.assigns.form.source
+
+    client =
+      SentinelOne.APIClient.new(
+        get_field(changeset, :management_url),
+        get_field(changeset, :api_token)
+      )
+
+    case SentinelOne.APIClient.test_connection(client) do
+      :ok ->
+        attrs = Map.put(changeset.changes, :is_verified, true)
+
+        {:noreply,
+         assign(socket,
+           form: to_form(provider_changeset(changeset.data, "sentinelone", attrs), as: :provider),
+           verification_error: nil,
+           verifying: false
+         )}
+
+      {:error, reason} ->
+        Logger.info("Failed to verify SentinelOne provider", reason: inspect(reason))
+
+        {:noreply,
+         assign(socket,
+           verifying: false,
+           verification_error: sentinelone_verification_error(reason)
+         )}
+    end
+  end
+
   def handle_info({:peek_pending_verification, from}, socket) do
     send(from, {:pending_verification, socket.assigns[:pending_verification]})
     {:noreply, socket}
@@ -387,27 +612,14 @@ defmodule PortalWeb.Settings.DevicePosture do
         {:intune_posture_provider_complete, tenant_id, verification_ref, ack_to},
         socket
       ) do
-    if active_verification?(socket, verification_ref) and socket.assigns.form do
-      changeset = socket.assigns.form.source
+    complete_tenant_verification(socket, "intune", tenant_id, verification_ref, ack_to)
+  end
 
-      attrs =
-        changeset.changes
-        |> Map.put(:tenant_id, tenant_id)
-        |> Map.put(:is_verified, true)
-
-      maybe_send_verification_ack(ack_to)
-
-      {:noreply,
-       assign(socket,
-         form: to_form(provider_changeset(changeset.data, "intune", attrs), as: :provider),
-         active_verification: nil,
-         verification_error: nil,
-         verifying: false
-       )}
-    else
-      maybe_send_verification_ack(ack_to)
-      {:noreply, socket}
-    end
+  def handle_info(
+        {:defender_posture_provider_complete, tenant_id, verification_ref, ack_to},
+        socket
+      ) do
+    complete_tenant_verification(socket, "defender", tenant_id, verification_ref, ack_to)
   end
 
   def handle_info({:verification_failed, reason, verification_ref}, socket) do
@@ -434,7 +646,6 @@ defmodule PortalWeb.Settings.DevicePosture do
       <.settings_nav
         account={@account}
         current_path={@current_path}
-        trust_anchors_enabled?={@trust_anchors_enabled?}
         device_posture_enabled?={@device_posture_enabled?}
       />
 
@@ -481,6 +692,33 @@ defmodule PortalWeb.Settings.DevicePosture do
             <.dual_badge :if={@has_iru?} type="danger">
               <:left>{@unencrypted_count}</:left>
               <:right>FileVault off</:right>
+            </.dual_badge>
+            <.dual_badge :if={@has_defender?} type="success">
+              <:left>{@sensor_active_count}</:left>
+              <:right>Sensor active</:right>
+            </.dual_badge>
+            <.dual_badge :if={@has_defender? and @sensor_inactive_count > 0} type="danger">
+              <:left>{@sensor_inactive_count}</:left>
+              <:right>Sensor inactive</:right>
+            </.dual_badge>
+            <.dual_badge :if={@has_santa?} type="success">
+              <:left>{@lockdown_count}</:left>
+              <:right>Santa Lockdown</:right>
+            </.dual_badge>
+            <.dual_badge :if={@has_santa?} type="warning">
+              <:left>{@monitor_count}</:left>
+              <:right>Santa Monitor</:right>
+            </.dual_badge>
+            <.dual_badge :if={@has_sentinelone?} type="success">
+              <:left>{@sentinelone_active_count}</:left>
+              <:right>S1 agent active</:right>
+            </.dual_badge>
+            <.dual_badge
+              :if={@has_sentinelone? and @sentinelone_inactive_count > 0}
+              type="danger"
+            >
+              <:left>{@sentinelone_inactive_count}</:left>
+              <:right>S1 agent inactive</:right>
             </.dual_badge>
           </div>
 
@@ -544,7 +782,10 @@ defmodule PortalWeb.Settings.DevicePosture do
         phx-window-keydown="handle_keydown"
         phx-key="Escape"
       >
-        <div :if={@live_action == :select_type} class="flex flex-col h-full overflow-hidden">
+        <div
+          :if={@live_action == :select_type and is_nil(@interest_provider)}
+          class="flex flex-col h-full overflow-hidden"
+        >
           <.panel_header title="Select Provider Type" variant="plain" />
           <div class="flex-1 overflow-y-auto px-5 py-4">
             <p class="mb-4 text-xs text-subtle">
@@ -579,7 +820,132 @@ defmodule PortalWeb.Settings.DevicePosture do
                   </span>
                 </.link>
               </li>
+              <li>
+                <.link
+                  patch={~p"/#{@account}/settings/device_posture/defender/new"}
+                  class={select_type_classes()}
+                >
+                  <span class="flex items-center gap-3 w-2/5 shrink-0">
+                    <.provider_icon provider="defender" size="xl" />
+                    <span class="text-sm font-medium text-heading">
+                      Microsoft Defender for Endpoint
+                    </span>
+                  </span>
+                  <span class="text-xs text-body">
+                    Sync onboarded machines from a Microsoft Defender for Endpoint tenant.
+                  </span>
+                </.link>
+              </li>
+              <li>
+                <.link
+                  patch={~p"/#{@account}/settings/device_posture/santa/new"}
+                  class={select_type_classes()}
+                >
+                  <span class="flex items-center gap-3 w-2/5 shrink-0">
+                    <.provider_icon provider="santa" size="xl" />
+                    <span class="text-sm font-medium text-heading">Santa</span>
+                  </span>
+                  <span class="text-xs text-body">
+                    Sync Santa hosts from North Pole Security Workshop.
+                  </span>
+                </.link>
+              </li>
+              <li>
+                <.link
+                  patch={~p"/#{@account}/settings/device_posture/sentinelone/new"}
+                  class={select_type_classes()}
+                >
+                  <span class="flex items-center gap-3 w-2/5 shrink-0">
+                    <.provider_icon provider="sentinelone" size="xl" />
+                    <span class="text-sm font-medium text-heading">SentinelOne</span>
+                  </span>
+                  <span class="text-xs text-body">
+                    Sync endpoint agents and posture from a SentinelOne tenant.
+                  </span>
+                </.link>
+              </li>
+              <li :for={provider <- @coming_soon_providers}>
+                <button
+                  id={"register-interest-#{provider.type}"}
+                  type="button"
+                  phx-click="register_interest"
+                  phx-value-provider={provider.type}
+                  class={select_type_classes()}
+                >
+                  <span class="flex items-center gap-3 w-2/5 shrink-0">
+                    <.provider_icon provider={provider.type} size="xl" />
+                    <span class="text-sm font-medium text-heading">{provider.title}</span>
+                  </span>
+                  <span class="text-xs text-body text-left">{provider.description}</span>
+                </button>
+              </li>
             </ul>
+          </div>
+        </div>
+
+        <div
+          :if={@live_action == :select_type and not is_nil(@interest_provider)}
+          id="posture-provider-interest"
+          class="flex flex-col h-full overflow-hidden"
+        >
+          <div class="shrink-0 flex items-center justify-between px-5 py-4 border-b border-border">
+            <div class="flex items-center gap-2">
+              <button
+                type="button"
+                phx-click="clear_interest"
+                class="flex items-center justify-center w-6 h-6 rounded text-subtle hover:text-heading hover:bg-raised transition-colors"
+                title="Back"
+              >
+                <.icon name="ri-arrow-left-line" class="w-4 h-4" />
+              </button>
+              <.provider_icon provider={@interest_provider.type} size="sm" />
+              <h2 class="text-sm font-semibold text-heading">{@interest_provider.title}</h2>
+            </div>
+            <.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
+          </div>
+
+          <div class="flex-1 overflow-y-auto px-5 py-6">
+            <div class="max-w-xl">
+              <h3 class="text-base font-semibold text-heading">
+                This provider is coming soon!
+              </h3>
+              <p class="mt-2 text-sm leading-6 text-body">
+                We've registered your interest in {@interest_provider.title} support in Firezone.
+                Feel free to provide feedback below to pass on to the team.
+              </p>
+
+              <div
+                :if={@feedback_sent?}
+                id="posture-provider-feedback-thanks"
+                class="mt-6 rounded border border-success/30 bg-success-light p-4 text-sm text-success"
+              >
+                <div class="flex items-center gap-2 font-medium">
+                  <.icon name="ri-checkbox-circle-line" class="size-4" />
+                  Thanks for your feedback!
+                </div>
+              </div>
+
+              <form
+                :if={not @feedback_sent?}
+                id="posture-provider-feedback-form"
+                phx-submit="submit_interest_feedback"
+                class="mt-6 space-y-3"
+              >
+                <.input
+                  id="posture-provider-feedback"
+                  name="feedback[message]"
+                  type="textarea"
+                  label="Feedback"
+                  value=""
+                  placeholder="Tell us what you'd like to see from this integration."
+                  maxlength={@feedback_max_length}
+                  errors={List.wrap(@feedback_error)}
+                />
+                <div class="flex justify-end">
+                  <.button type="submit" style="primary">Send feedback</.button>
+                </div>
+              </form>
+            </div>
           </div>
         </div>
 
@@ -894,6 +1260,84 @@ defmodule PortalWeb.Settings.DevicePosture do
         </p>
       </div>
 
+      <div :if={@type == "santa"}>
+        <.input
+          field={@form[:api_url]}
+          type="url"
+          label="Workshop URL"
+          autocomplete="off"
+          phx-debounce="300"
+          placeholder="https://acme.workshop.cloud"
+          required
+        />
+        <p class="mt-1 text-xs text-subtle">
+          The base URL of the Workshop tenant that manages your Santa hosts.
+        </p>
+      </div>
+
+      <div :if={@type == "santa"}>
+        <label for={@form[:api_key].id} class="block text-xs font-medium text-body mb-1.5">
+          API Key <span class="text-error">*</span>
+        </label>
+        <.input
+          field={@form[:api_key]}
+          value={typed_api_key(@form)}
+          type="password"
+          autocomplete="off"
+          phx-debounce="300"
+          data-1p-ignore
+          placeholder={if @editing?, do: "Leave blank to keep the current key"}
+          required={not @editing?}
+        />
+        <p class="mt-1 text-xs text-subtle">
+          Create a read-only key in Workshop under API Keys. It must be able to call
+          <code class="text-xs">{Santa.APIClient.list_hosts_path()}</code>.
+        </p>
+      </div>
+
+      <div :if={@type == "sentinelone"}>
+        <.input
+          field={@form[:management_url]}
+          type="text"
+          label="Management URL"
+          autocomplete="off"
+          phx-debounce="300"
+          placeholder="https://acme.sentinelone.net"
+          required
+        />
+        <p class="mt-1 text-xs text-subtle">
+          The origin shown in your SentinelOne Management Console URL. A pasted dashboard or
+          API URL is reduced to this origin.
+        </p>
+      </div>
+
+      <div :if={@type == "sentinelone"}>
+        <label for={@form[:api_token].id} class="block text-xs font-medium text-body mb-1.5">
+          API Token <span class="text-error">*</span>
+        </label>
+        <.input
+          field={@form[:api_token]}
+          value={typed_api_token(@form)}
+          type="password"
+          autocomplete="off"
+          phx-debounce="300"
+          data-1p-ignore
+          placeholder={if @editing?, do: "Leave blank to keep the current token"}
+          required={not @editing?}
+        />
+        <p class="mt-1 text-xs text-subtle">
+          Generate a token for a dedicated SentinelOne service user that can view endpoints.
+        </p>
+        <div class="mt-2 rounded border border-border bg-raised px-3 py-2">
+          <p class="text-[10px] font-semibold tracking-widest uppercase text-subtle">
+            Required
+          </p>
+          <p class="mt-1 text-xs font-mono text-body">
+            GET {SentinelOne.APIClient.agents_path()}
+          </p>
+        </div>
+      </div>
+
       <div :if={@type == "iru"}>
         <.input
           field={@form[:subdomain]}
@@ -970,11 +1414,14 @@ defmodule PortalWeb.Settings.DevicePosture do
           </div>
         </div>
 
-        <div :if={@type == "intune"} class="mt-4 pt-4 border-t border-border space-y-3">
+        <div
+          :if={@type in ~w[intune defender]}
+          class="mt-4 pt-4 border-t border-border space-y-3"
+        >
           <div class="flex justify-between items-center">
             <label class="text-xs font-medium text-body">Tenant ID</label>
             <div class="text-right">
-              <p id="intune-tenant-id" class="text-xs font-semibold text-heading">
+              <p id="provider-tenant-id" class="text-xs font-semibold text-heading">
                 {verification_tenant_id(@form)}
               </p>
             </div>
@@ -1008,7 +1455,9 @@ defmodule PortalWeb.Settings.DevicePosture do
         id="provider-verification-button"
         type="button"
         style="primary"
-        icon={if @type == "intune", do: "ri-external-link-line", else: "ri-plug-line"}
+        icon={
+          if @type in ~w[intune defender], do: "ri-external-link-line", else: "ri-plug-line"
+        }
         phx-click="start_verification"
       >
         Verify Now
@@ -1045,8 +1494,17 @@ defmodule PortalWeb.Settings.DevicePosture do
       type == "intune" ->
         "Grant Microsoft admin consent to verify the Intune provider."
 
-      true ->
+      type == "defender" ->
+        "Grant Microsoft admin consent to verify the Defender for Endpoint provider."
+
+      type == "iru" ->
         "Check that the API token can read devices in the Iru tenant."
+
+      type == "sentinelone" ->
+        "Check that the API token can view endpoints in the SentinelOne tenant."
+
+      true ->
+        "Check that the API key can read hosts in the Workshop tenant."
     end
   end
 
@@ -1062,12 +1520,34 @@ defmodule PortalWeb.Settings.DevicePosture do
   # an edit. Leaving it that way submits an empty string, which cast/3 reads as
   # no change and the stored token stays.
   defp typed_api_token(form), do: get_change(form.source, :api_token) || ""
+  defp typed_api_key(form), do: get_change(form.source, :api_key) || ""
 
   defp provider_title("intune"), do: "Microsoft Intune"
   defp provider_title("iru"), do: "Iru (formerly Kandji)"
+  defp provider_title("defender"), do: "Microsoft Defender for Endpoint"
+  defp provider_title("santa"), do: "Santa (Workshop)"
+  defp provider_title("sentinelone"), do: "SentinelOne"
+
+  defp coming_soon_provider(type) do
+    Enum.find(@coming_soon_providers, &(&1.type == type))
+  end
+
+  defp deliver_interest_email(email, socket, provider, kind) do
+    subject = socket.assigns.subject
+
+    Portal.Mailer.deliver_with_rate_limit(email,
+      rate_limit_key:
+        {:posture_provider_interest, subject.account.id, subject.actor.id, provider, kind},
+      rate_limit: 3,
+      rate_limit_interval: :timer.hours(1)
+    )
+  end
 
   defp new_provider("intune"), do: %Intune.PostureProvider{}
   defp new_provider("iru"), do: %Iru.PostureProvider{}
+  defp new_provider("defender"), do: %Defender.PostureProvider{}
+  defp new_provider("santa"), do: %Santa.PostureProvider{}
+  defp new_provider("sentinelone"), do: %SentinelOne.PostureProvider{}
 
   defp iru_region_options, do: [{"United States", "us"}, {"European Union", "eu"}]
 
@@ -1075,6 +1555,9 @@ defmodule PortalWeb.Settings.DevicePosture do
 
   defp reset_verification_attrs("intune"), do: %{tenant_id: nil, is_verified: false}
   defp reset_verification_attrs("iru"), do: %{is_verified: false}
+  defp reset_verification_attrs("defender"), do: %{tenant_id: nil, is_verified: false}
+  defp reset_verification_attrs("santa"), do: %{is_verified: false}
+  defp reset_verification_attrs("sentinelone"), do: %{is_verified: false}
 
   # Admin consent, or a successful call against the tenant, is what proves the
   # provider works, so the form refuses to save until one succeeded. The sync
@@ -1083,7 +1566,7 @@ defmodule PortalWeb.Settings.DevicePosture do
   defp provider_changeset(provider, type, attrs) do
     provider
     |> cast(
-      drop_blank_api_token(attrs),
+      drop_blank_secret(attrs),
       @form_fields[type] ++ @programmatic_fields[type] ++ ~w[is_disabled disabled_reason]a
     )
     |> base_changeset(type)
@@ -1096,11 +1579,14 @@ defmodule PortalWeb.Settings.DevicePosture do
   # "put the field back to its default", which would blank a working token.
   # Dropping it means the stored one stays; a new provider still has none and
   # still fails the required check.
-  defp drop_blank_api_token(%{"api_token" => token} = attrs) when is_binary(token) do
-    if String.trim(token) == "", do: Map.delete(attrs, "api_token"), else: attrs
+  defp drop_blank_secret(attrs) do
+    Enum.reduce(["api_token", "api_key"], attrs, fn field, attrs ->
+      if blank_secret?(attrs[field]), do: Map.delete(attrs, field), else: attrs
+    end)
   end
 
-  defp drop_blank_api_token(attrs), do: attrs
+  defp blank_secret?(value) when is_binary(value), do: String.trim(value) == ""
+  defp blank_secret?(_value), do: false
 
   # Debounced inputs are not always included when a different input triggers
   # validation. Keep values already received from the browser until that input
@@ -1114,9 +1600,29 @@ defmodule PortalWeb.Settings.DevicePosture do
 
   defp base_changeset(changeset, "intune"), do: Intune.PostureProvider.changeset(changeset)
   defp base_changeset(changeset, "iru"), do: Iru.PostureProvider.changeset(changeset)
+  defp base_changeset(changeset, "defender"), do: Defender.PostureProvider.changeset(changeset)
+  defp base_changeset(changeset, "santa"), do: Santa.PostureProvider.changeset(changeset)
+  defp base_changeset(changeset, "sentinelone"),
+    do: SentinelOne.PostureProvider.changeset(changeset)
 
   defp clear_verification_if_trigger_fields_changed(changeset, "iru") do
     if Enum.any?(@iru_verification_fields, &get_change(changeset, &1)) do
+      put_change(changeset, :is_verified, false)
+    else
+      changeset
+    end
+  end
+
+  defp clear_verification_if_trigger_fields_changed(changeset, "santa") do
+    if Enum.any?(@santa_verification_fields, &get_change(changeset, &1)) do
+      put_change(changeset, :is_verified, false)
+    else
+      changeset
+    end
+  end
+
+  defp clear_verification_if_trigger_fields_changed(changeset, "sentinelone") do
+    if Enum.any?(@sentinelone_verification_fields, &get_change(changeset, &1)) do
       put_change(changeset, :is_verified, false)
     else
       changeset
@@ -1134,7 +1640,25 @@ defmodule PortalWeb.Settings.DevicePosture do
         Map.put(attrs, Atom.to_string(field), get_field(source, field))
       end)
 
-    provider_changeset(source.data, type, attrs)
+    source.data
+    |> provider_changeset(type, attrs)
+    |> clear_verification_if_submitted_fields_changed(source, type)
+  end
+
+  # A submit cancels pending debounced change events, but its FormData contains
+  # the browser's current values. Compare that submitted candidate with the
+  # form state that was actually verified so a changed tenant or credential
+  # cannot inherit stale verification.
+  defp clear_verification_if_submitted_fields_changed(changeset, source, type) do
+    if Enum.any?(verification_fields(type), fn field ->
+         get_field(changeset, field) != get_field(source, field)
+       end) do
+      changeset
+      |> put_change(:is_verified, false)
+      |> add_error(:is_verified, "must be accepted", validation: :acceptance)
+    else
+      changeset
+    end
   end
 
   defp put_posture_provider_assoc(changeset, socket) do
@@ -1221,26 +1745,45 @@ defmodule PortalWeb.Settings.DevicePosture do
     subject = socket.assigns.subject
     intune_counts = Database.intune_device_counts(subject)
     iru_counts = Database.iru_device_counts(subject)
+    defender_counts = Database.defender_device_counts(subject)
+    santa_counts = Database.santa_device_counts(subject)
+    sentinelone_counts = Database.sentinelone_device_counts(subject)
 
     by_provider =
-      Enum.reduce(intune_counts ++ iru_counts, %{}, fn {id, _key, n}, acc ->
-        Map.update(acc, id, n, &(&1 + n))
-      end)
+      Enum.reduce(
+        intune_counts ++ iru_counts ++ defender_counts ++ santa_counts ++ sentinelone_counts,
+        %{},
+        fn {id, _key, n}, acc -> Map.update(acc, id, n, &(&1 + n)) end
+      )
 
     by_compliance = group_counts(intune_counts)
     by_filevault = group_counts(iru_counts)
+    by_health = group_counts(defender_counts)
+    by_santa_mode = group_counts(santa_counts)
+    by_sentinelone_activity = group_counts(sentinelone_counts)
     providers = Database.list_providers(subject, by_provider)
 
     assign(socket,
       providers: providers,
       has_intune?: Enum.any?(providers, &(&1.type == "intune")),
       has_iru?: Enum.any?(providers, &(&1.type == "iru")),
+      has_defender?: Enum.any?(providers, &(&1.type == "defender")),
+      has_santa?: Enum.any?(providers, &(&1.type == "santa")),
+      has_sentinelone?: Enum.any?(providers, &(&1.type == "sentinelone")),
       devices_count: by_provider |> Map.values() |> Enum.sum(),
       compliant_count: Map.get(by_compliance, "compliant", 0),
       noncompliant_count: Map.get(by_compliance, "noncompliant", 0),
       in_grace_period_count: Map.get(by_compliance, "inGracePeriod", 0),
       encrypted_count: Map.get(by_filevault, true, 0),
-      unencrypted_count: Map.get(by_filevault, false, 0)
+      unencrypted_count: Map.get(by_filevault, false, 0),
+      sensor_active_count: Map.get(by_health, "Active", 0),
+      # Defender has five ways of saying a sensor stopped reporting, so the
+      # badge counts everything that is not "Active" rather than one of them.
+      sensor_inactive_count: by_health |> Map.drop(["Active", nil]) |> Map.values() |> Enum.sum(),
+      lockdown_count: Map.get(by_santa_mode, "LOCKDOWN", 0),
+      monitor_count: Map.get(by_santa_mode, "MONITOR", 0),
+      sentinelone_active_count: Map.get(by_sentinelone_activity, true, 0),
+      sentinelone_inactive_count: Map.get(by_sentinelone_activity, false, 0)
     )
   end
 
@@ -1256,7 +1799,10 @@ defmodule PortalWeb.Settings.DevicePosture do
       verification_error: nil,
       active_verification: nil,
       pending_verification: nil,
-      verifying: false
+      verifying: false,
+      interest_provider: nil,
+      feedback_sent?: false,
+      feedback_error: nil
     )
   end
 
@@ -1265,6 +1811,32 @@ defmodule PortalWeb.Settings.DevicePosture do
       %{verification_ref: ^verification_ref} when is_binary(verification_ref),
       socket.assigns.active_verification
     )
+  end
+
+  # Admin consent proves the tenant rather than the form, so the tenant id the
+  # callback carries is what lands in the changeset.
+  defp complete_tenant_verification(socket, type, tenant_id, verification_ref, ack_to) do
+    if active_verification?(socket, verification_ref) and socket.assigns.form do
+      changeset = socket.assigns.form.source
+
+      attrs =
+        changeset.changes
+        |> Map.put(:tenant_id, tenant_id)
+        |> Map.put(:is_verified, true)
+
+      maybe_send_verification_ack(ack_to)
+
+      {:noreply,
+       assign(socket,
+         form: to_form(provider_changeset(changeset.data, type, attrs), as: :provider),
+         active_verification: nil,
+         verification_error: nil,
+         verifying: false
+       )}
+    else
+      maybe_send_verification_ack(ack_to)
+      {:noreply, socket}
+    end
   end
 
   defp maybe_send_verification_ack({pid, ref}) when is_pid(pid) do
@@ -1365,9 +1937,24 @@ defmodule PortalWeb.Settings.DevicePosture do
 
   defp sync_worker("intune"), do: Intune.Sync
   defp sync_worker("iru"), do: Iru.Sync
+  defp sync_worker("defender"), do: Defender.Sync
+  defp sync_worker("santa"), do: Santa.Sync
+  defp sync_worker("sentinelone"), do: SentinelOne.Sync
 
   defp provider_type_atom("intune"), do: :intune
   defp provider_type_atom("iru"), do: :iru
+  defp provider_type_atom("defender"), do: :defender
+  defp provider_type_atom("santa"), do: :santa
+  defp provider_type_atom("sentinelone"), do: :sentinelone
+
+  defp entra_verification_type("intune"), do: "intune_posture_provider"
+  defp entra_verification_type("defender"), do: "defender_posture_provider"
+
+  defp verification_fields("intune"), do: [:tenant_id]
+  defp verification_fields("iru"), do: @iru_verification_fields
+  defp verification_fields("defender"), do: [:tenant_id]
+  defp verification_fields("santa"), do: @santa_verification_fields
+  defp verification_fields("sentinelone"), do: @sentinelone_verification_fields
 
   # The worker resolves the provider by both ids, so the account has to ride
   # along with the row id rather than being trusted from the browser.
@@ -1389,6 +1976,39 @@ defmodule PortalWeb.Settings.DevicePosture do
   defp iru_verification_error(_reason),
     do: "Could not reach the Iru tenant. Check the subdomain and the region."
 
+  defp santa_verification_error(%Req.Response{status: 401}),
+    do: "Workshop rejected the API key. Check that it is correct and has not expired."
+
+  defp santa_verification_error(%Req.Response{status: 403}),
+    do: "The API key cannot list hosts. Use a read-only or superadmin Workshop key."
+
+  defp santa_verification_error(%Req.Response{status: 404}),
+    do: "No Workshop API answered at that URL. Check the tenant URL."
+
+  defp santa_verification_error(%Req.Response{status: status}),
+    do: "Workshop returned HTTP #{status}. Please try again."
+
+  defp santa_verification_error(_reason),
+    do: "Could not reach the Workshop tenant. Check its URL."
+
+  defp sentinelone_verification_error(%Req.Response{status: 401}),
+    do: "SentinelOne rejected the API token. Check that it is correct and still enabled."
+
+  defp sentinelone_verification_error(%Req.Response{status: 403}),
+    do: "The API token cannot view endpoints. Grant its service user endpoint view access."
+
+  defp sentinelone_verification_error(%Req.Response{status: 404}),
+    do: "No SentinelOne Management Console answered. Check the Management URL."
+
+  defp sentinelone_verification_error(%Req.Response{status: status}),
+    do: "SentinelOne returned HTTP #{status}. Please try again."
+
+  defp sentinelone_verification_error({:invalid_response, _message, _body}),
+    do: "SentinelOne returned an unexpected endpoint response."
+
+  defp sentinelone_verification_error(_reason),
+    do: "Could not reach the SentinelOne tenant. Check the Management URL."
+
   defp account_feature_enabled?(socket),
     do: Portal.Account.device_posture_enabled?(socket.assigns.subject.account)
 
@@ -1397,7 +2017,7 @@ defmodule PortalWeb.Settings.DevicePosture do
   defmodule Database do
     import Ecto.Query
 
-    alias Portal.{PostureProvider, Intune, Iru, Safe}
+    alias Portal.{Defender, PostureProvider, Intune, Iru, Santa, Safe, SentinelOne}
 
     def list_providers(subject, device_counts) do
       intune =
@@ -1418,7 +2038,37 @@ defmodule PortalWeb.Settings.DevicePosture do
           row(provider, "iru", name, provider.subdomain, device_counts)
         end)
 
-      Enum.sort_by(intune ++ iru, &{String.downcase(&1.name), &1.type})
+      defender =
+        Defender.PostureProvider
+        |> with_name()
+        |> Safe.scoped(subject)
+        |> Safe.all()
+        |> Enum.map(fn {provider, name} ->
+          row(provider, "defender", name, provider.tenant_id, device_counts)
+        end)
+
+      santa =
+        Santa.PostureProvider
+        |> with_name()
+        |> Safe.scoped(subject)
+        |> Safe.all()
+        |> Enum.map(fn {provider, name} ->
+          row(provider, "santa", name, provider.api_url, device_counts)
+        end)
+
+      sentinelone =
+        SentinelOne.PostureProvider
+        |> with_name()
+        |> Safe.scoped(subject)
+        |> Safe.all()
+        |> Enum.map(fn {provider, name} ->
+          row(provider, "sentinelone", name, provider.management_url, device_counts)
+        end)
+
+      Enum.sort_by(intune ++ iru ++ defender ++ santa ++ sentinelone, &{
+        String.downcase(&1.name),
+        &1.type
+      })
     end
 
     defp with_name(schema) do
@@ -1451,6 +2101,38 @@ defmodule PortalWeb.Settings.DevicePosture do
       from(d in Iru.Device,
         group_by: [d.posture_provider_id, d.filevault_enabled],
         select: {d.posture_provider_id, d.filevault_enabled, count(d.iru_id)}
+      )
+      |> Safe.scoped(subject)
+      |> Safe.all()
+    end
+
+    @doc """
+    Counts synced Defender devices by provider and sensor health.
+    """
+    def defender_device_counts(subject) do
+      from(d in Defender.Device,
+        group_by: [d.posture_provider_id, d.health_status],
+        select: {d.posture_provider_id, d.health_status, count(d.defender_id)}
+      )
+      |> Safe.scoped(subject)
+      |> Safe.all()
+    end
+
+    @doc "Counts synced Santa hosts by provider and client mode."
+    def santa_device_counts(subject) do
+      from(d in Santa.Device,
+        group_by: [d.posture_provider_id, d.last_seen_client_mode],
+        select: {d.posture_provider_id, d.last_seen_client_mode, count(d.santa_id)}
+      )
+      |> Safe.scoped(subject)
+      |> Safe.all()
+    end
+
+    @doc "Counts synced SentinelOne devices by provider and agent activity."
+    def sentinelone_device_counts(subject) do
+      from(d in SentinelOne.Device,
+        group_by: [d.posture_provider_id, d.is_active],
+        select: {d.posture_provider_id, d.is_active, count(d.uuid)}
       )
       |> Safe.scoped(subject)
       |> Safe.all()
@@ -1489,6 +2171,9 @@ defmodule PortalWeb.Settings.DevicePosture do
 
     defp schema("intune"), do: Intune.PostureProvider
     defp schema("iru"), do: Iru.PostureProvider
+    defp schema("defender"), do: Defender.PostureProvider
+    defp schema("santa"), do: Santa.PostureProvider
+    defp schema("sentinelone"), do: SentinelOne.PostureProvider
 
     defp row(provider, type, name, identifier, device_counts) do
       %{

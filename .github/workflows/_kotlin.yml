@@ -2,6 +2,11 @@ name: Build Android app
 on:
   workflow_call:
   workflow_dispatch:
+    inputs:
+      force_rebuild:
+        description: Rebuild even if this release is locked for store review
+        type: boolean
+        default: false
 
 defaults:
   run:
@@ -10,6 +15,16 @@ defaults:
 permissions:
   contents: "read"
   id-token: "write" # OIDC auth
+
+concurrency:
+  group: ${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' && 'android-release-main' || format('android-ci-{0}', github.run_id) }}
+  cancel-in-progress: false
+
+# Stamped into every build below, so neither the emulator running the instrumented
+# tests nor a debug artifact someone installs later reports to Sentry. The release
+# build overrides it.
+env:
+  FIREZONE_NO_TELEMETRY: "true"
 
 jobs:
   static-analysis:
@@ -27,24 +42,98 @@ jobs:
       # narrowing to one ABI keeps coverage identical while avoiding the 4-ABI build.
       - name: Run Android Lint
         run: ./gradlew lint -Pandroid.injected.build.abi=x86_64
-      # AGP 9 only creates unit test components for the tested build type
-      # (debug). Narrowing to one ABI reuses the cargo build from lint above.
-      - name: Run unit tests
-        run: ./gradlew testDebugUnitTest -Pandroid.injected.build.abi=x86_64
 
-  instrumented-tests:
+  unit-tests:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-android
+        with:
+          sccache-azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
+      # AGP 9 only creates unit test components for the tested build type (debug).
+      # The report task runs the tests, so it stands in for them rather than following them.
+      - name: Run unit tests and report coverage
+        run: ./gradlew createDebugUnitTestCoverageReport -Pandroid.injected.build.abi=x86_64
+      # AGP writes the report under a variant path this pins nothing to, so failing here names
+      # what it did write instead of leaving Coveralls to upload nothing.
+      - name: Find the coverage report
+        run: |
+          report=$(find app/build/reports/coverage -name '*.xml' | head -1)
+
+          if [ -z "$report" ]; then
+            echo "No coverage report was written. What is under app/build/reports:"
+            find app/build/reports -name '*.xml'
+            exit 1
+          fi
+
+          echo "COVERAGE_REPORT=kotlin/android/${report}" >> "$GITHUB_ENV"
+      - uses: coverallsapp/github-action@8d6379e14d29928660c4ba802d8e85393440b329 # v2.3.8
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          file: ${{ env.COVERAGE_REPORT }}
+          format: jacoco
+          # A JaCoCo report locates a file by its package, so without the source root in
+          # front of it nothing Coveralls is given resolves to a file in the repository.
+          base-path: kotlin/android/app/src/main/java
+          flag-name: kotlin-test
+          parallel: true
+
+  screenshots:
+    # Only a pull request has a diff to put the screens in. `unit-tests` compiles the
+    # same sources on `main`, so the Gradle cache it writes there stays warm.
+    if: github.ref_name != 'main' && !startsWith(github.head_ref, 'chore/publish-')
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-android
+        with:
+          sccache-azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
+      # Renders the app's screens to PNGs; nothing is compared against a reference.
+      - name: Record screenshots
+        run: ./gradlew recordRoborazziDebug -Pandroid.injected.build.abi=x86_64
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: android-screenshots
+          path: kotlin/android/screenshots
+
+  emulator-tests:
+    # The tests run against what `build-debug` already produced, so a suite costs an emulator
+    # rather than another Rust build. Adding one is a matrix entry.
+    needs: build_debug
     # The emulator needs KVM, which only the Linux runners provide.
     runs-on: ubuntu-24.04
     # An emulator that never boots would otherwise hold the run open for six hours.
     timeout-minutes: 30
+    strategy:
+      # One suite failing says nothing about the others.
+      fail-fast: false
+      matrix:
+        include:
+          # A suite is a device the tests need, since ownership is the one thing a test cannot
+          # set up for itself. Splitting them wants `--notAnnotation`/`--annotation` rather than
+          # a package, so that every test lands in exactly one suite by construction.
+          - suite: unmanaged
+            script: >-
+              ./kotlin/android/mise-tasks/emulator-tests.sh
+              --notAnnotation dev.firezone.android.RequiresManagedDevice
+          # Provisioning makes the test DPC the device owner, which is what lets these tests
+          # drive the KeyChain into every X.509 state.
+          - suite: managed
+            script: >-
+              ./kotlin/android/mise-tasks/managed-device/provision.sh &&
+              ./kotlin/android/mise-tasks/emulator-tests.sh
+              --annotation dev.firezone.android.RequiresManagedDevice
+    name: emulator-tests (${{ matrix.suite }})
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/free-disk-space
         with:
           keep-android: "true"
-      - uses: ./.github/actions/setup-android
+      # Where a local build leaves them, so the tasks below find them the same way here.
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          sccache-azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
+          name: Android debug APK
+          path: kotlin/android
       # The runner ships /dev/kvm but leaves it readable only by root.
       - name: Grant access to KVM
         run: |
@@ -52,32 +141,117 @@ jobs:
             | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
-      - name: Run instrumented tests
-        uses: reactivecircus/android-emulator-runner@c9c93e6ba9c4194322e114c40970d5983d9a07cc # v2.38.0
+      - name: Run the tests
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
         with:
           api-level: 34
           arch: x86_64
+          # 1080 by 1920 at xxhdpi, the size the rendered screenshots are drawn at, so a
+          # display capture can sit next to them.
+          profile: Nexus 5
           # An image without Play Services boots faster, and a device owner can only be
-          # set while a device carries no accounts, which a test DPC would need.
+          # set while a device carries no accounts, which the managed suite's DPC needs.
           target: default
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           # `script` is not a `run:` step, so it does not pick up the workflow's
           # `working-directory` default and starts at the repository root.
-          # Narrowing the ABI reuses the cargo build the other jobs already do.
-          script: >-
-            cd kotlin/android &&
-            ./gradlew connectedDebugAndroidTest
-            -Pandroid.injected.build.abi=x86_64
+          script: ${{ matrix.script }}
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: android-coverage-${{ matrix.suite }}
+          path: kotlin/android/coverage.ec
+      # System screens the tests photographed, such as the KeyChain chooser, which
+      # `commit-screenshots` puts next to the rendered ones.
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: ${{ !startsWith(github.head_ref, 'chore/publish-') }}
+        with:
+          name: android-emulator-screenshots-${{ matrix.suite }}
+          path: kotlin/android/emulator-screenshots
+          if-no-files-found: ignore
+
+  emulator-coverage:
+    needs: emulator-tests
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: android-debug-classes
+          path: kotlin/android/classes
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: android-jacoco-cli
+          path: kotlin/android/jacoco-cli
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: android-coverage-*
+          path: kotlin/android/execution-data
+      # The build hands over the JaCoCo that wrote the execution data, which is the only one that
+      # can read it, so no version is named here.
+      - name: Report on the execution data
+        run: |
+          jacoco_cli=$(find jacoco-cli -name '*.jar' | head -1)
+
+          mapfile -t execution_data < <(find execution-data -name '*.ec')
+
+          if [ ${#execution_data[@]} -eq 0 ]; then
+            echo "No suite recorded any execution data. What was downloaded:"
+            find execution-data
+            exit 1
+          fi
+
+          set -o pipefail
+          java -jar "$jacoco_cli" report "${execution_data[@]}" \
+            --classfiles classes \
+            --sourcefiles app/src/main/java \
+            --xml coverage.xml 2>&1 | tee report.log
+
+          # A class whose bytecode JaCoCo cannot match has its execution data dropped and is
+          # reported as uncovered, so a mismatch understates the result instead of failing.
+          if grep -q 'does not match' report.log; then
+            echo "The classes above were not the ones the tests ran against, so their coverage was dropped."
+            exit 1
+          fi
+
+          # A report that resolved no classes still writes valid XML, so it is worth saying so
+          # here rather than uploading an empty one.
+          if ! grep -q '<counter' coverage.xml; then
+            echo "The report counted nothing. The classes it was given:"
+            find classes -name '*.class' | head
+            exit 1
+          fi
+      - uses: coverallsapp/github-action@8d6379e14d29928660c4ba802d8e85393440b329 # v2.3.8
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          file: kotlin/android/coverage.xml
+          format: jacoco
+          base-path: kotlin/android/app/src/main/java
+          flag-name: kotlin-emulator
+          parallel: true
 
   update-release-draft:
     name: update-release-draft
     runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.release-metadata.outputs.version }}
     permissions:
+      actions: read # inspect store submission artifacts
       contents: write # for updating the release draft
     env:
       # mark:next-android-version
-      RELEASE_NAME: android-client-1.5.14
+      RELEASE_NAME: android-client-1.5.15
     steps:
+      - name: Set release metadata
+        id: release-metadata
+        working-directory: .
+        run: echo "version=${RELEASE_NAME#android-client-}" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: github.event_name == 'workflow_dispatch' && github.ref_name == 'main'
+      - name: Check the release can be rebuilt
+        if: github.event_name == 'workflow_dispatch' && github.ref_name == 'main' && !inputs.force_rebuild
+        uses: ./.github/actions/check-release-review-lock
+        with:
+          release-name: ${{ env.RELEASE_NAME }}
       - uses: release-drafter/release-drafter@34d80673e067bdc0c24568d3af899c216adcfaa9 # v7.7.0
         if: "${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}"
         id: update-release-draft
@@ -125,6 +299,7 @@ jobs:
           install_args: --cd kotlin/android
       - name: Build the release package
         env:
+          FIREZONE_NO_TELEMETRY: "false"
           KEYSTORE_BASE64: ${{ secrets.GOOGLE_UPLOAD_KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.GOOGLE_UPLOAD_KEYSTORE_PASSWORD }}
           KEYSTORE_KEY_PASSWORD: ${{ secrets.GOOGLE_UPLOAD_KEYSTORE_KEY_PASSWORD }}
@@ -135,7 +310,7 @@ jobs:
           rm "$KEYSTORE_PATH"
       - name: Setup sentry CLI
         if: "${{ github.event_name == 'workflow_dispatch' }}"
-        uses: matbour/setup-sentry-cli@3e938c54b3018bdd019973689ef984e033b0454b #v2.0.0
+        uses: matbour/setup-sentry-cli@ff4fff773f5e628fa214ebd19e46fb7289454ee2 #v3.0.0
         with:
           token: ${{ secrets.SENTRY_AUTH_TOKEN }}
           organization: firezone-inc
@@ -154,7 +329,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # mark:next-android-version
-          RELEASE_NAME: android-client-1.5.14
+          RELEASE_NAME: android-client-1.5.15
         run: |
           export ARTIFACT_PATH="$RUNNER_TEMP/firezone-${RELEASE_NAME}.${{ matrix.package-type }}"
           cp "${{ matrix.output-path }}" "$ARTIFACT_PATH"
@@ -196,21 +371,18 @@ jobs:
           service_account: play-store-publisher@firezone-55040.iam.gserviceaccount.com
           token_format: access_token
           access_token_scopes: https://www.googleapis.com/auth/androidpublisher
-          access_token_lifetime: 600s
-      # The play-store-publisher service account is intentionally granted only
-      # internal-track upload permission in the Play Console. Production-track
-      # permission would let it (or anyone who compromises CI) publish a release
-      # straight to end users. Promotion from internal -> production is a manual
-      # step in the Play Console.
-      - name: Upload AAB to Google Play Console (internal track)
+          access_token_lifetime: 3600s # Outlives the bounded upload and commit step.
+      # Keep this service account limited to testing tracks in the Play Console.
+      - name: Publish Google Play internal release
         if: ${{ matrix.package-type == 'aab' && github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}
+        timeout-minutes: 30
         env:
+          GPLAY_SERVICE_ACCOUNT_JSON: ${{ steps.gcp-auth.outputs.credentials_file_path }}
           ACCESS_TOKEN: ${{ steps.gcp-auth.outputs.access_token }}
-          PACKAGE_NAME: dev.firezone.android
           AAB_PATH: ${{ matrix.output-path }}
-          TRACK: internal
-          RELEASE_STATUS: draft
-        run: ../../scripts/upload/play-store.sh
+          SOURCE_SHA: ${{ github.sha }}
+          VERSION_NAME: ${{ needs.update-release-draft.outputs.version }}
+        run: ../../scripts/upload/play-store.sh internal
 
   build_debug:
     # Android SDK tools hardware accel is available only on Linux runners
@@ -224,12 +396,33 @@ jobs:
       - uses: ./.github/actions/setup-android
         with:
           sccache-azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
+      # The instrumented tests run against these, so building them here is what spares every
+      # test suite a Rust build of its own. The APK is universal, so it installs on the emulator.
       - name: Build debug APK
         run: |
-          ./gradlew assembleDebug
+          ./gradlew assembleDebug assembleDebugAndroidTest :dpc:assembleDebug copyJacocoCli collectDebugClasses
       - name: Upload debug APK
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: Android debug APK
+          # Two paths, so the artifact is rooted at kotlin/android rather than inside app/.
           path: |
             ./kotlin/android/app/build/outputs/apk/*
+            ./kotlin/android/dpc/build/outputs/apk/*
+      # Execution data records which probes ran, and says nothing about what they belong to, so
+      # reporting on it later needs the classes these tests were built from.
+      - name: Upload the compiled classes
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: android-debug-classes
+          # The default is to warn and upload nothing, which only surfaces much later as a
+          # missing artifact in the job that reports on it.
+          if-no-files-found: error
+          path: ./kotlin/android/app/build/debug-classes
+      # Kept apart from the classes: the report reads that directory as the code under test, and
+      # would happily measure JaCoCo itself if the tool sat in it.
+      - name: Upload the reporting tool
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: android-jacoco-cli
+          path: ./kotlin/android/app/build/jacoco-cli

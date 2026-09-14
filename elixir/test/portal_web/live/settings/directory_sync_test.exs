@@ -18,6 +18,157 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
     %{account: account, actor: actor}
   end
 
+  describe ":hook action" do
+    test "waits for Okta to verify the event hook and continues once it has", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      directory = okta_directory_fixture(%{account: account})
+
+      {:ok, lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/directory_sync/okta/#{directory.id}/hook")
+
+      assert html =~ "Waiting for Okta to verify"
+      assert html =~ "Continue without event hooks"
+      assert html =~ Portal.Okta.Webhooks.endpoint_url(directory.id)
+      assert html =~ "Authentication field"
+      assert html =~ directory.webhook_secret
+      assert html =~ "User assigned to app"
+      assert html =~ "Okta profile updated"
+      assert html =~ "application.user_membership.add"
+      assert html =~ "Choose a way to set up the event hook."
+      assert html =~ "Okta Admin Console"
+      assert html =~ "cURL"
+      assert html =~ "Terraform"
+      refute html =~ "https://#{directory.okta_domain}/api/v1/eventHooks"
+
+      html =
+        lv
+        |> element("button[phx-click='okta_setup_tab'][phx-value-tab='curl']")
+        |> render_click()
+
+      assert html =~ "https://#{directory.okta_domain}/api/v1/eventHooks"
+      assert html =~ "SSWS"
+      refute html =~ "Authentication field"
+
+      html =
+        lv
+        |> element("button[phx-click='okta_setup_tab'][phx-value-tab='terraform']")
+        |> render_click()
+
+      assert has_element?(lv, "#okta-hook-terraform")
+      assert html =~ "okta_event_hook"
+      assert html =~ "okta_event_hook_verification"
+      assert html =~ Portal.Okta.Webhooks.endpoint_url(directory.id)
+
+      directory
+      |> Ecto.Changeset.change(webhook_verified_at: DateTime.utc_now())
+      |> Portal.Repo.update!()
+
+      send(lv.pid, :directories_changed)
+
+      assert render(lv) =~ "Verified, click to continue"
+    end
+
+    test "queues the first sync and opens the panel after an okta directory is created", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/directory_sync/okta/new")
+
+      render_click(lv, "generate_keypair")
+
+      lv
+      |> form("#directory-form",
+        directory: %{name: "Okta", okta_domain: "acme.okta.com", client_id: "client-1"}
+      )
+      |> render_change()
+
+      Req.Test.stub(Portal.Okta.APIClient, fn conn ->
+        if String.ends_with?(conn.request_path, "/oauth2/v1/token") do
+          Req.Test.json(conn, %{"access_token" => "token", "token_type" => "DPoP"})
+        else
+          Req.Test.json(conn, [%{"id" => "one"}])
+        end
+      end)
+
+      Req.Test.allow(Portal.Okta.APIClient, self(), lv.pid)
+      lv |> element("button[phx-click='start_verification']") |> render_click()
+      render_hook(lv, "submit_directory", %{})
+
+      directory = Portal.Repo.get_by!(Portal.Okta.Directory, account_id: account.id, name: "Okta")
+      assert directory.is_verified
+      assert_patch(lv, ~p"/#{account}/settings/directory_sync/okta/#{directory.id}/hook")
+      assert render(lv) =~ "Waiting for Okta to verify"
+
+      assert_enqueued(
+        worker: Portal.Okta.Sync,
+        args: %{account_id: account.id, directory_id: directory.id}
+      )
+    end
+
+    test "re-verifies the event hook from the row menu", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      directory = okta_directory_fixture(%{account: account})
+
+      directory
+      |> Ecto.Changeset.change(webhook_verified_at: DateTime.utc_now())
+      |> Portal.Repo.update!()
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/directory_sync")
+
+      assert open_directory_actions(lv, directory.id) =~ "Re-verify event hook"
+
+      render_click(lv, "reverify_webhook", %{"id" => directory.id})
+
+      assert_patch(lv, ~p"/#{account}/settings/directory_sync/okta/#{directory.id}/hook")
+      assert render(lv) =~ "Waiting for Okta to verify"
+      assert is_nil(Portal.Repo.get!(Portal.Okta.Directory, directory.id).webhook_verified_at)
+    end
+
+    test "shows what each directory receives and when it last did", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      okta_directory_fixture(%{account: account, name: "Okta"})
+
+      okta_directory_fixture(%{account: account, name: "Okta live"})
+      |> Ecto.Changeset.change(
+        webhook_verified_at: DateTime.utc_now(),
+        webhook_received_at: DateTime.utc_now()
+      )
+      |> Portal.Repo.update!()
+
+      entra_directory_fixture(account: account)
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/directory_sync")
+
+      assert html =~ "Last Update"
+      assert html =~ "Not set up"
+      assert html =~ "ri-error-warning-line"
+      assert html =~ "Okta sends user and group changes as they happen."
+      assert html =~ "Microsoft Entra sends user and group changes as they happen."
+      assert html =~ "Nothing received yet."
+    end
+  end
+
   defp open_directory_actions(lv, directory_id) do
     lv
     |> element("button[phx-click='toggle_directory_actions'][phx-value-id='#{directory_id}']")
@@ -368,6 +519,9 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
       |> element("button[phx-click='start_verification']")
       |> render_click()
 
+      # Wait for the queued :do_verification message before checking its event.
+      render(lv)
+
       assert_push_event(lv, "open_url", %{url: url})
       params = url |> URI.parse() |> Map.fetch!(:query) |> URI.decode_query()
 
@@ -429,6 +583,189 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
                  account_id: account.id,
                  name: "Google Directory"
                )
+    end
+
+    test "queues the first sync after creating a verified google directory", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      configure_google_directory_workload_identity()
+      configure_google_sync_authorization()
+
+      Req.Test.stub(ManagedIdentity, fn req_conn ->
+        Req.Test.json(req_conn, %{"error" => "not mocked"})
+      end)
+
+      Req.Test.stub(APIClient, fn req_conn ->
+        Req.Test.json(req_conn, %{"error" => "not mocked"})
+      end)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/directory_sync/google/new")
+
+      Req.Test.allow(ManagedIdentity, self(), lv.pid)
+      Req.Test.allow(APIClient, self(), lv.pid)
+      Req.Test.allow(PortalWeb.OIDC, self(), lv.pid)
+
+      expect_google_directory_service_access("C0123", "verified.example.com")
+
+      lv
+      |> form("#directory-form",
+        directory: %{
+          name: "Google First Sync",
+          impersonation_email: "sync-admin@verified.example.com"
+        }
+      )
+      |> render_change()
+
+      lv |> element("button[phx-click='start_verification']") |> render_click()
+      verification_ref = verification_ref_from_open_url(lv)
+      ack_ref = make_ref()
+
+      send(
+        lv.pid,
+        {:google_directory_sync_complete, "verified.example.com", verification_ref,
+         {self(), ack_ref}}
+      )
+
+      assert_receive {:verification_ack, ^ack_ref}
+
+      lv |> element("form#directory-form") |> render_submit()
+
+      directory =
+        Portal.Repo.get_by!(Portal.Google.Directory,
+          account_id: account.id,
+          name: "Google First Sync"
+        )
+
+      assert directory.is_verified
+
+      assert_enqueued(
+        worker: Portal.Google.Sync,
+        args: %{account_id: account.id, directory_id: directory.id}
+      )
+    end
+
+    test "cleans up the watch channel when a google directory is disabled or deleted", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      directory =
+        google_directory_fixture(%{
+          account: account,
+          name: "Google Ops",
+          impersonation_email: "ops-admin@example.com",
+          webhook_secret: "secret",
+          users_channel_id: "channel-1",
+          users_resource_id: "resource-1",
+          channel_expires_at: DateTime.add(DateTime.utc_now(), 5, :hour)
+        })
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/directory_sync")
+
+      html = render_click(lv, "toggle_directory", %{"id" => directory.id})
+      assert html =~ "Directory disabled successfully."
+
+      assert_enqueued(
+        worker: Portal.Google.Subscriptions,
+        args: %{
+          action: "stop",
+          account_id: account.id,
+          directory_id: directory.id,
+          impersonation_email: "ops-admin@example.com",
+          channel_id: "channel-1",
+          resource_id: "resource-1"
+        }
+      )
+
+      html = render_click(lv, "toggle_directory", %{"id" => directory.id})
+      assert html =~ "Directory enabled successfully."
+
+      assert_enqueued(
+        worker: Portal.Google.Subscriptions,
+        args: %{account_id: account.id, directory_id: directory.id, action: "ensure"}
+      )
+
+      html = render_click(lv, "delete_directory", %{"id" => directory.id})
+      assert html =~ "Directory deleted successfully."
+    end
+
+    test "drops the watch channel when a google directory moves to another domain", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      configure_google_directory_workload_identity()
+      configure_google_sync_authorization()
+
+      Req.Test.stub(ManagedIdentity, fn req_conn ->
+        Req.Test.json(req_conn, %{"error" => "not mocked"})
+      end)
+
+      Req.Test.stub(APIClient, fn req_conn ->
+        Req.Test.json(req_conn, %{"error" => "not mocked"})
+      end)
+
+      directory =
+        google_directory_fixture(%{
+          account: account,
+          name: "Google Move",
+          domain: "old.example.com",
+          impersonation_email: "sync-admin@old.example.com",
+          webhook_secret: "secret",
+          users_channel_id: "channel-1",
+          users_resource_id: "resource-1",
+          channel_expires_at: DateTime.add(DateTime.utc_now(), 5, :hour)
+        })
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/directory_sync/google/#{directory.id}/edit")
+
+      Req.Test.allow(ManagedIdentity, self(), lv.pid)
+      Req.Test.allow(APIClient, self(), lv.pid)
+      Req.Test.allow(PortalWeb.OIDC, self(), lv.pid)
+
+      expect_google_directory_service_access("C0123", "new.example.com")
+
+      render_click(lv, "reset_verification")
+      lv |> element("button[phx-click='start_verification']") |> render_click()
+      verification_ref = verification_ref_from_open_url(lv)
+      ack_ref = make_ref()
+
+      send(
+        lv.pid,
+        {:google_directory_sync_complete, "new.example.com", verification_ref,
+         {self(), ack_ref}}
+      )
+
+      assert_receive {:verification_ack, ^ack_ref}
+      render_hook(lv, "submit_directory", %{})
+
+      directory = Portal.Repo.get_by!(Portal.Google.Directory, id: directory.id)
+      assert directory.domain == "new.example.com"
+      assert is_nil(directory.users_channel_id)
+      assert is_nil(directory.users_resource_id)
+      assert is_nil(directory.channel_expires_at)
+
+      assert_enqueued(
+        worker: Portal.Google.Subscriptions,
+        args: %{
+          action: "stop",
+          directory_id: directory.id,
+          impersonation_email: "sync-admin@old.example.com",
+          channel_id: "channel-1",
+          resource_id: "resource-1"
+        }
+      )
     end
 
     test "does not consume a Google directory verifier for a stale callback reference", %{
@@ -763,6 +1100,138 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
       assert html =~ "current-tenant"
     end
 
+    test "queues the first sync after creating a verified entra directory", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/directory_sync/entra/new")
+
+      lv |> element("button[phx-click='start_verification']") |> render_click()
+      verification_ref = verification_ref_from_open_url(lv)
+      ack_ref = make_ref()
+
+      send(
+        lv.pid,
+        {:entra_directory_sync_complete, "tenant-1", verification_ref, {self(), ack_ref}}
+      )
+
+      assert_receive {:verification_ack, ^ack_ref}
+
+      lv
+      |> form("#directory-form", directory: %{name: "Entra HQ"})
+      |> render_change()
+
+      render_hook(lv, "submit_directory", %{})
+
+      directory = Portal.Repo.get_by!(Portal.Entra.Directory, account_id: account.id, name: "Entra HQ")
+      assert directory.is_verified
+
+      assert_enqueued(
+        worker: Portal.Entra.Sync,
+        args: %{account_id: account.id, directory_id: directory.id}
+      )
+    end
+
+    test "cleans up webhook subscriptions when an entra directory is disabled or deleted", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      directory =
+        entra_directory_fixture(%{
+          account: account,
+          name: "Entra Ops",
+          tenant_id: "tenant-ops",
+          users_subscription_id: "sub-users",
+          groups_subscription_id: "sub-groups"
+        })
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/directory_sync")
+
+      html = render_click(lv, "toggle_directory", %{"id" => directory.id})
+      assert html =~ "Directory disabled successfully."
+
+      assert_enqueued(
+        worker: Portal.Entra.Subscriptions,
+        args: %{
+          action: "delete",
+          account_id: account.id,
+          directory_id: directory.id,
+          tenant_id: "tenant-ops",
+          subscription_ids: ["sub-users", "sub-groups"]
+        }
+      )
+
+      html = render_click(lv, "toggle_directory", %{"id" => directory.id})
+      assert html =~ "Directory enabled successfully."
+
+      assert_enqueued(
+        worker: Portal.Entra.Subscriptions,
+        args: %{account_id: account.id, directory_id: directory.id, action: "ensure"}
+      )
+
+      html = render_click(lv, "delete_directory", %{"id" => directory.id})
+      assert html =~ "Directory deleted successfully."
+    end
+
+    test "drops webhook subscriptions when an entra directory moves to another tenant", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      directory =
+        entra_directory_fixture(%{
+          account: account,
+          name: "Entra Move",
+          tenant_id: "tenant-old",
+          webhook_secret: "secret",
+          users_subscription_id: "sub-users",
+          groups_subscription_id: "sub-groups",
+          subscriptions_expire_at: DateTime.add(DateTime.utc_now(), 20, :day)
+        })
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/directory_sync/entra/#{directory.id}/edit")
+
+      render_click(lv, "reset_verification")
+      lv |> element("button[phx-click='start_verification']") |> render_click()
+      verification_ref = verification_ref_from_open_url(lv)
+      ack_ref = make_ref()
+
+      send(
+        lv.pid,
+        {:entra_directory_sync_complete, "tenant-new", verification_ref, {self(), ack_ref}}
+      )
+
+      assert_receive {:verification_ack, ^ack_ref}
+      render_hook(lv, "submit_directory", %{})
+
+      directory = Portal.Repo.get_by!(Portal.Entra.Directory, id: directory.id)
+      assert directory.tenant_id == "tenant-new"
+      assert is_nil(directory.users_subscription_id)
+      assert is_nil(directory.groups_subscription_id)
+      assert is_nil(directory.subscriptions_expire_at)
+
+      assert_enqueued(
+        worker: Portal.Entra.Subscriptions,
+        args: %{
+          action: "delete",
+          directory_id: directory.id,
+          tenant_id: "tenant-old",
+          subscription_ids: ["sub-users", "sub-groups"]
+        }
+      )
+    end
+
     test "ignores entra directory completion after navigating to another form", %{
       conn: conn,
       account: account,
@@ -816,6 +1285,37 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
 
       render_keydown(lv, "handle_keydown", %{"key" => "Escape"})
       assert_patch(lv, ~p"/#{account}/settings/directory_sync")
+    end
+
+    test "shows the event hook endpoint and secret of an okta directory", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      directory = okta_directory_fixture(%{account: account})
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/directory_sync/okta/#{directory.id}/edit")
+
+      assert html =~ "Event Hook"
+      assert html =~ Portal.Okta.Webhooks.endpoint_url(directory.id)
+      assert html =~ directory.webhook_secret
+      assert html =~ "application.user_membership.add"
+    end
+
+    test "shows no event hook before an okta directory exists", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/directory_sync/okta/new")
+
+      refute html =~ "Event Hook"
     end
 
     test "resets verification state for okta edit form", %{

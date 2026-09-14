@@ -5,14 +5,14 @@ defmodule PortalAPI.Client.DeviceTrustTest do
   import Portal.AccountFixtures
   import Portal.SubjectFixtures
   import Portal.TrustAnchorFixtures
-  import Portal.FeaturesFixtures
   import Portal.DeviceTrustFixtures
 
   alias PortalAPI.Client.DeviceTrust
   alias Portal.Crypto.X509
 
-  @attestation_url "https://mtls.firezone.test/"
+  @attestation_url "https://mtls.firezone.test:4443/"
   @attestation_host "mtls.firezone.test"
+  @attestation_port 4443
 
   describe "attest/2 when there is nothing to attest" do
     setup do
@@ -28,23 +28,10 @@ defmodule PortalAPI.Client.DeviceTrustTest do
       subject: subject,
       pki: pki
     } do
-      enable_feature(:trust_anchors)
       trust_anchor_fixture(account: account, certs: [pki.ca_der])
 
       assert DeviceTrust.attest(connect_info(leaf(pki, :rsa)), subject) ==
                {:error, :not_attestation_host}
-    end
-
-    test "does not attest when the feature is off", %{
-      account: account,
-      subject: subject,
-      pki: pki
-    } do
-      configure_attestation_host()
-      trust_anchor_fixture(account: account, certs: [pki.ca_der])
-
-      assert DeviceTrust.attest(connect_info(leaf(pki, :rsa)), subject) ==
-               {:error, :no_trust_anchors}
     end
 
     test "reports no anchors when the account has none uploaded", %{
@@ -52,43 +39,9 @@ defmodule PortalAPI.Client.DeviceTrustTest do
       pki: pki
     } do
       configure_attestation_host()
-      enable_feature(:trust_anchors)
 
       assert DeviceTrust.attest(connect_info(leaf(pki, :rsa)), subject) ==
                {:error, :no_trust_anchors}
-    end
-  end
-
-  describe "attest/2 when the trust_anchors feature is off" do
-    setup do
-      configure_attestation_host()
-      start_revocation_endpoint_queue()
-
-      account = account_fixture()
-      pki = pki()
-      trust_anchor_fixture(account: account, certs: [pki.ca_der])
-      subject = subject_fixture(account: account)
-
-      %{account: account, pki: pki, subject: subject}
-    end
-
-    test "the certificate is refused rather than trusted unchecked", %{
-      pki: pki,
-      subject: subject
-    } do
-      connect_info = connect_info(leaf(pki, :rsa))
-
-      assert DeviceTrust.attest(connect_info, subject) == {:error, :no_trust_anchors}
-    end
-
-    test "nothing is recorded about the certificate's CA", %{pki: pki, subject: subject} do
-      assert {:error, :no_trust_anchors} =
-               DeviceTrust.attest(connect_info(leaf(pki, :with_crl)), subject)
-
-      Portal.Queue.flush(:revocation_endpoint_queue)
-
-      assert Repo.all(Portal.RevocationEndpoint) == []
-      assert all_enqueued(worker: Portal.Ocsp.Sync) == []
     end
   end
 
@@ -98,7 +51,6 @@ defmodule PortalAPI.Client.DeviceTrustTest do
       start_revocation_endpoint_queue()
 
       account = account_fixture()
-      enable_feature(:trust_anchors)
       pki = pki()
       trust_anchor_fixture(account: account, certs: [pki.ca_der])
       subject = subject_fixture(account: account)
@@ -490,6 +442,15 @@ defmodule PortalAPI.Client.DeviceTrustTest do
       assert DeviceTrust.attest(connect_info, subject) == {:error, :not_attestation_host}
     end
 
+    test "does not attest on another port at the attestation host", %{
+      pki: pki,
+      subject: subject
+    } do
+      connect_info = connect_info(leaf(pki, :rsa), port: 443)
+
+      assert DeviceTrust.attest(connect_info, subject) == {:error, :not_attestation_host}
+    end
+
     test "does not attest a connect that carries no host", %{pki: pki, subject: subject} do
       connect_info = pki |> leaf(:rsa) |> connect_info() |> Map.delete(:uri)
 
@@ -513,6 +474,18 @@ defmodule PortalAPI.Client.DeviceTrustTest do
   end
 
   describe "extract_identifiers/1" do
+    test "accepts iru-id and kandji-id as MDM device identifiers" do
+      for idtype <- ["iru-id", "kandji-id"] do
+        uri = ~c"firezone://#{idtype}/5F2E7B7A-9D54-4BD2-9D4F-8F6C2A01F9D3"
+
+        assert DeviceTrust.extract_identifiers(
+                 otp(sans: [{:uniformResourceIdentifier, uri}])
+               ) == %{
+                 last_attested_mdm_device_id: "5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3"
+               }
+      end
+    end
+
     test "reads every typed URI SAN into its column" do
       identifiers = DeviceTrust.extract_identifiers(otp(:rsa))
       assert identifiers.last_attested_device_serial == "C02XK1ZGJGH5"
@@ -684,9 +657,10 @@ defmodule PortalAPI.Client.DeviceTrustTest do
 
   defp connect_info_with_cert(value, opts \\ []) do
     host = Keyword.get(opts, :host, @attestation_host)
+    port = Keyword.get(opts, :port, @attestation_port)
 
     %{
-      uri: %URI{scheme: "https", host: host, port: 443, path: "/"},
+      uri: %URI{scheme: "https", host: host, port: port, path: "/"},
       peer_data: %{ssl_cert: value}
     }
   end

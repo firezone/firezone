@@ -2,20 +2,26 @@ defmodule PortalAPI.Router do
   use PortalAPI, :router
 
   pipeline :api do
-    plug Plug.Parsers,
-      parsers: [:json],
-      pass: ["*/*"],
-      json_decoder: Phoenix.json_library()
-
     plug :accepts, ["json"]
     plug PortalAPI.Plugs.Auth
     plug PortalAPI.Plugs.RateLimit
     plug PortalAPI.Plugs.RequestLog
+    plug PortalAPI.Plugs.Scope
     plug PortalAPI.Plugs.ValidateUUIDParams
+    plug OpenApiSpex.Plug.PutApiSpec, module: PortalAPI.ApiSpec
+
+    # The plugs above use only request metadata, so a rejected request never
+    # buffers an attacker-controlled body. The parser is also last because
+    # Phoenix renders a pipeline error with the conn from before the body read.
+    plug PortalAPI.Plugs.ParseBody,
+      parsers: [Portal.Parsers.JSON],
+      pass: ["*/*"],
+      json_decoder: Phoenix.json_library()
   end
 
   pipeline :public do
     plug :accepts, ["html", "xml", "json"]
+    plug OpenApiSpex.Plug.PutApiSpec, module: PortalAPI.ApiSpec
   end
 
   scope "/openapi" do
@@ -24,24 +30,73 @@ defmodule PortalAPI.Router do
     get "/", PortalAPI.OpenAPIController, :index
   end
 
+  scope "/openapi.json" do
+    pipe_through :public
+
+    get "/", OpenApiSpex.Plug.RenderSpec, []
+  end
+
   scope "/swaggerui" do
     pipe_through :public
 
     get "/", OpenApiSpex.Plug.SwaggerUI, path: "/openapi.json"
   end
 
+  # The IP bucket precedes all attacker-controlled work. Once a
+  # token is authenticated, every request is charged to its account and logged
+  # before controller dispatch. Synthetic REST requests carry private skip
+  # markers so this outer metering is never duplicated.
+  pipeline :mcp do
+    plug PortalAPI.Plugs.MCPRateLimit
+    plug :accepts, ["json"]
+    plug PortalAPI.Plugs.MCPAuth
+    plug PortalAPI.Plugs.RateLimit, mcp: true
+    # Insert the load-bearing audit row before parsing. Tool attempts and
+    # dispatch outcomes are separate metadata on the original /mcp request.
+    plug PortalAPI.Plugs.RequestLog, mcp: true
+
+    plug PortalAPI.Plugs.MCPParseBody,
+      parsers: [Portal.Parsers.JSON],
+      pass: ["*/*"],
+      json_decoder: Phoenix.json_library(),
+      length: 1_000_000
+
+  end
+
+  # Read before the client holds any credential, so it cannot be authenticated.
+  # Both paths are served: a client tries the one scoped to the MCP endpoint's
+  # path first and falls back to the root.
+  scope "/.well-known", PortalAPI do
+    pipe_through :public
+
+    get "/oauth-protected-resource/mcp", OAuthMetadataController, :show
+    get "/oauth-protected-resource", OAuthMetadataController, :show
+  end
+
+  scope "/mcp", PortalAPI do
+    pipe_through :mcp
+
+    post "/", MCPController, :handle
+    get "/", MCPController, :method_not_allowed
+    delete "/", MCPController, :method_not_allowed
+  end
+
   pipeline :ingestion do
+    plug :accepts, ["json"]
+    # Rate limiting is keyed on the source IP and runs before token
+    # verification and parsing. The ingest token is entirely in the
+    # Authorization header, so it can also be authenticated before reading the
+    # body.
+    plug PortalAPI.Plugs.IngestionRateLimit
+    plug PortalAPI.Plugs.FlowLogAuth
+
+    # Preserve the post-read conn when malformed or oversized JSON raises so
+    # RescueRouterErrors can send the error without reusing stale adapter state.
     plug Plug.Parsers,
-      parsers: [:json],
+      parsers: [Portal.Parsers.JSON],
       pass: ["*/*"],
       json_decoder: Phoenix.json_library(),
       length: 10_000_000
-
-    plug :accepts, ["json"]
-    # Auth is the per-authorization ingest token in the Authorization header,
-    # verified in the controller (it needs the token's account_id to load the
-    # signing key). Rate limiting is keyed on the source IP.
-    plug PortalAPI.Plugs.IngestionRateLimit
   end
 
   scope "/ingestion", PortalAPI do
@@ -99,6 +154,7 @@ defmodule PortalAPI.Router do
     end
 
     resources "/email_otp_auth_providers", EmailOTPAuthProviderController, only: [:index, :show]
+    get "/x509_auth_provider", X509AuthProviderController, :show
     resources "/oidc_auth_providers", OIDCAuthProviderController, only: [:index, :show]
     resources "/google_auth_providers", GoogleAuthProviderController, only: [:index, :show]
     resources "/entra_auth_providers", EntraAuthProviderController, only: [:index, :show]
@@ -115,10 +171,39 @@ defmodule PortalAPI.Router do
       only: [:index, :show]
 
     resources "/iru_devices", IruDeviceController, only: [:index, :show]
+
+    resources "/defender_posture_providers", DefenderPostureProviderController,
+      only: [:index, :show]
+
+    resources "/defender_devices", DefenderDeviceController, only: [:index, :show]
+
+    resources "/santa_posture_providers", SantaPostureProviderController,
+      only: [:index, :show]
+
+    resources "/santa_devices", SantaDeviceController, only: [:index, :show]
+
+    resources "/sentinelone_posture_providers", SentinelOnePostureProviderController,
+      only: [:index, :show]
+
+    resources "/sentinelone_devices", SentinelOneDeviceController, only: [:index]
+    get "/sentinelone_devices/:sentinelone_agent", SentinelOneDeviceController, :show
   end
 
   scope "/integrations", PortalAPI.Integrations do
     scope "/azure_communication_services", AzureCommunicationServices do
+      post "/webhooks", WebhookController, :handle_webhook
+    end
+
+    scope "/entra", Entra do
+      post "/webhooks", WebhookController, :handle_webhook
+    end
+
+    scope "/google", Google do
+      post "/webhooks", WebhookController, :handle_webhook
+    end
+
+    scope "/okta", Okta do
+      get "/webhooks", WebhookController, :verify
       post "/webhooks", WebhookController, :handle_webhook
     end
 

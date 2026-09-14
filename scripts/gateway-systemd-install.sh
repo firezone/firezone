@@ -2,21 +2,19 @@
 
 set -euo pipefail
 
-hostname=$(hostname)
-FIREZONE_NAME=${FIREZONE_NAME:-$hostname}
 FIREZONE_ID=${FIREZONE_ID:-}
 FIREZONE_TOKEN=${FIREZONE_TOKEN:-}
 FIREZONE_API_URL=${FIREZONE_API_URL:-wss://api.firezone.dev}
 RUST_LOG=${RUST_LOG:-info}
 
 # mark:current-gateway-version
-GATEWAY_VERSION="1.6.0"
+GATEWAY_VERSION="1.6.1"
 # mark:gateway-x86_64-sha256
-GATEWAY_X86_64_SHA256="eb3f69a9c510da31b29ef3eca9c1f14bdfcab76665cf450ef1a453677414c521"
+GATEWAY_X86_64_SHA256="fa9972a38e0c49da5265759d8fe4b0ce7d168b03c1968d9bf432e49d18bc3ee2"
 # mark:gateway-aarch64-sha256
-GATEWAY_AARCH64_SHA256="3e47e7235ea347a2e05a2a9ab991a2ab5f52a21b8cc5be5bd88c0e7cbd91b63f"
+GATEWAY_AARCH64_SHA256="d16d35d4af6a3ac951befd939be4a629557ccb47abe5fe1915982c3a0008b01f"
 # mark:gateway-armv7-sha256
-GATEWAY_ARMV7_SHA256="99d7226daa5a23dc63a51562530b961a2f5e707ca9b9d19c1b62fdb67c21776e"
+GATEWAY_ARMV7_SHA256="f21ede3549989ad6757e3fde169009ad92683218e069c5989fe89c92aa17c15f"
 
 # Optional environment variables to configure logging and tracing
 FIREZONE_OTLP_GRPC_ENDPOINT=${OTLP_GRPC_ENDPOINT:-}
@@ -106,9 +104,14 @@ Group=firezone
 PermissionsStartOnly=true
 SyslogIdentifier=firezone-gateway
 
+# Creates /var/lib/firezone before the service starts, owned by the service
+# user, and fixes up ownership if it already exists. The Gateway stores its
+# device ID and the flow-log spool there.
+StateDirectory=firezone
+StateDirectoryMode=0700
+
 LoadCredential=FIREZONE_TOKEN:$TOKEN_FILE
 
-Environment="FIREZONE_NAME=$FIREZONE_NAME"
 Environment="FIREZONE_ID=$FIREZONE_ID"
 Environment="FIREZONE_API_URL=$FIREZONE_API_URL"
 Environment="RUST_LOG=$RUST_LOG"
@@ -128,6 +131,9 @@ TimeoutStartSec=15s
 TimeoutStopSec=15s
 Restart=always
 RestartSec=7
+# 78 is \`EX_CONFIG\` from \`sysexits.h\`: the portal refused the token, so restarting
+# cannot help until an operator installs a new one.
+RestartPreventExitStatus=78
 
 #####################
 # HARDENING OPTIONS #

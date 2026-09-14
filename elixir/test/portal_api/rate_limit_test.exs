@@ -27,6 +27,16 @@ defmodule PortalAPI.RateLimitTest do
   end
 
   describe "REST API rate limit" do
+    test "rejects an unauthenticated malformed JSON request before decoding it", %{conn: conn} do
+      conn =
+        conn
+        |> put_req_header("content-type", "application/json")
+        |> post("/resources", "{")
+
+      assert %{"status" => 401, "detail" => "Authentication credentials were missing or invalid."} =
+               json_response(conn, 401)
+    end
+
     test "allows a request when bucket has tokens", %{conn: conn, actor: actor} do
       resp_conn = call_api(conn, actor)
       assert %{"data" => _data, "metadata" => _metadata} = json_response(resp_conn, 200)
@@ -47,6 +57,29 @@ defmodule PortalAPI.RateLimitTest do
 
       [retry_after] = get_resp_header(resp_conn, "retry-after")
       assert String.to_integer(retry_after) >= 1
+      body = json_response(resp_conn, 429)
+      assert body == %{
+               "type" => "about:blank",
+               "status" => 429,
+               "title" => "Too Many Requests",
+               "detail" =>
+                 "Rate limit exceeded. Retry after the time indicated in the Retry-After header."
+             }
+    end
+
+    test "rejects a rate-limited malformed JSON request before decoding it", %{
+      conn: conn,
+      actor: actor
+    } do
+      assert %{"data" => _data, "metadata" => _metadata} = call_api(conn, actor) |> json_response(200)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> post("/resources", "{")
+
+      assert %{"status" => 429} = json_response(conn, 429)
     end
   end
 

@@ -2,7 +2,7 @@ defmodule Portal.AuthProviderFixtures do
   @moduledoc """
   Test helpers for creating auth providers and related data.
 
-  Note: Auth providers have multiple subtypes (email_otp, userpass, oidc, google, okta, entra).
+  Note: Auth providers have multiple subtypes (email_otp, userpass, x509, oidc, google, okta, entra).
   This module provides basic fixtures. For more complex provider setups,
   consider using the existing Portal.Fixtures.Auth module or creating
   provider-specific fixture modules.
@@ -93,6 +93,39 @@ defmodule Portal.AuthProviderFixtures do
       |> Portal.Repo.insert()
 
     email_otp_provider
+  end
+
+  @doc """
+  Generate the singleton X.509 auth provider for an account.
+
+  This creates both the base AuthProvider and the X509.AuthProvider records.
+  """
+  def x509_provider_fixture(attrs \\ %{}) do
+    attrs = Enum.into(attrs, %{})
+    account = Map.get(attrs, :account) || account_fixture()
+
+    auth_provider =
+      Map.get_lazy(attrs, :auth_provider, fn ->
+        auth_provider_fixture(type: :x509, account: account)
+      end)
+
+    x509_attrs =
+      attrs
+      |> Map.delete(:account)
+      |> Map.put_new(:name, "X.509")
+      |> Map.put_new(:context, :clients_only)
+      |> Map.put_new(:is_disabled, true)
+
+    {:ok, provider} =
+      %Portal.X509.AuthProvider{}
+      |> Ecto.Changeset.cast(x509_attrs, [:name, :context, :is_disabled])
+      |> Ecto.Changeset.put_change(:id, auth_provider.id)
+      |> Ecto.Changeset.put_assoc(:account, account)
+      |> Ecto.Changeset.put_assoc(:auth_provider, auth_provider)
+      |> Portal.X509.AuthProvider.changeset()
+      |> Portal.Repo.insert()
+
+    provider
   end
 
   @doc """

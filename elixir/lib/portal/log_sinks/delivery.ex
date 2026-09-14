@@ -635,7 +635,9 @@ defmodule Portal.LogSinks.Delivery do
           :disabled_reason
         ])
 
-      {:ok, _sink} = changeset |> Safe.unscoped() |> Safe.update()
+      # An admin can delete a sink while its run is in flight, and recording a
+      # delivery outcome on a row that is gone is moot rather than an error.
+      {:ok, _sink} = Safe.update(Portal.Repo, changeset, allow_stale: true)
     end
 
     defp cursor_rows(sink, stream) do

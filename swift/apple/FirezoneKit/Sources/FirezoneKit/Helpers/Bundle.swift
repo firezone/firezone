@@ -17,6 +17,12 @@ public enum BundleHelper {
     return false
   }
 
+  /// Whether telemetry was switched off when this bundle was built. Apple builds
+  /// default to no telemetry; official release scripts explicitly opt in.
+  static var noTelemetry: Bool {
+    Bundle.main.object(forInfoDictionaryKey: "NoTelemetry") as? String == "true"
+  }
+
   static var gitSha: String {
     guard let gitSha = Bundle.main.object(forInfoDictionaryKey: "GitSha") as? String,
       !gitSha.isEmpty

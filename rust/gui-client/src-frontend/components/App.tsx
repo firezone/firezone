@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from "react";
-import { Route, Routes } from "react-router";
+import { Navigate, Route, Routes } from "react-router";
 import About from "./AboutPage";
 import AdvancedSettingsPage from "./AdvancedSettingsPage";
 import ColorPalette from "./ColorPalettePage";
+import DeviceTrustPage from "./DeviceTrustPage";
 import Diagnostics from "./DiagnosticsPage";
 import GeneralSettingsPage from "./GeneralSettingsPage";
 import Overview from "./OverviewPage";
@@ -16,6 +17,7 @@ import {
   FileCount,
   GeneralSettingsViewModel,
   SessionViewModel,
+  X509Certificate,
 } from "../generated/bindings";
 
 export default function App() {
@@ -25,6 +27,8 @@ export default function App() {
     useState<GeneralSettingsViewModel | null>(null);
   const [advancedSettings, setAdvancedSettings] =
     useState<AdvancedSettingsViewModel | null>(null);
+  const [deviceTrustCertificate, setDeviceTrustCertificate] =
+    useState<X509Certificate | null>();
   const [settingsOpen, setSettingsOpen] = useState(true);
 
   useEffect(() => {
@@ -49,6 +53,11 @@ export default function App() {
       console.log("logs_recounted", { file_count: event.payload });
       setLogCount(event.payload);
     });
+    const deviceTrustCertificateChangedUnlisten =
+      events.x509CertificateChanged.listen((event) => {
+        console.log("x509_certificate_changed", { certificate: event.payload });
+        setDeviceTrustCertificate(event.payload);
+      });
 
     commands.updateState();
 
@@ -57,6 +66,7 @@ export default function App() {
       generalSettingsChangedUnlisten.then((unlisten) => unlisten());
       advancedSettingsChangedUnlisten.then((unlisten) => unlisten());
       logsRecountedUnlisten.then((unlisten) => unlisten());
+      deviceTrustCertificateChangedUnlisten.then((unlisten) => unlisten());
     };
   }, []);
 
@@ -73,6 +83,12 @@ export default function App() {
         <Route
           path="/advanced-settings"
           element={<Titlebar title="Advanced Settings" />}
+        />
+        <Route
+          path="/device-trust"
+          element={
+            deviceTrustCertificate ? <Titlebar title="Device Trust" /> : null
+          }
         />
         <Route path="/diagnostics" element={<Titlebar title="Diagnostics" />} />
         <Route path="/about" element={<Titlebar title="About" />} />
@@ -131,6 +147,16 @@ export default function App() {
                   </ul>
                 )}
               </li>
+              {deviceTrustCertificate && (
+                <li>
+                  <ReactRouterSidebarItem
+                    icon="certificate"
+                    href="/device-trust"
+                  >
+                    Device Trust
+                  </ReactRouterSidebarItem>
+                </li>
+              )}
               <li>
                 <ReactRouterSidebarItem icon="database" href="/diagnostics">
                   Diagnostics
@@ -182,6 +208,16 @@ export default function App() {
                   saveSettings={commands.applyAdvancedSettings}
                   resetSettings={commands.resetAdvancedSettings}
                 />
+              }
+            />
+            <Route
+              path="/device-trust"
+              element={
+                deviceTrustCertificate === null ? (
+                  <Navigate replace to="/overview" />
+                ) : deviceTrustCertificate === undefined ? null : (
+                  <DeviceTrustPage certificate={deviceTrustCertificate} />
+                )
               }
             />
             <Route

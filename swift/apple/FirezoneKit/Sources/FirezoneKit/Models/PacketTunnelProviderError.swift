@@ -6,10 +6,10 @@
 
 import Foundation
 
-public enum PacketTunnelProviderError: Error, CustomNSError {
+public enum PacketTunnelProviderError: Error, CustomNSError, LocalizedError {
   case providerConfigurationIsInvalid
   case firezoneIdIsInvalid
-  case tokenNotFoundInKeychain
+  case credentialNotConfigured
 
   public static var errorDomain: String {
     "FirezoneKit.PacketTunnelProviderError"
@@ -19,7 +19,28 @@ public enum PacketTunnelProviderError: Error, CustomNSError {
     switch self {
     case .providerConfigurationIsInvalid: 0
     case .firezoneIdIsInvalid: 1
-    case .tokenNotFoundInKeychain: 2
+    case .credentialNotConfigured: 2
+    }
+  }
+
+  public var errorDescription: String? { message }
+
+  /// `LocalizedError` is a Swift witness, so it is lost when the error crosses to
+  /// another process: the network extension hands one to its completion handler and
+  /// the app receives an `NSError` carrying only the domain and code, which Foundation
+  /// renders as "The operation couldn't be completed." User info survives the trip.
+  public var errorUserInfo: [String: Any] {
+    [NSLocalizedDescriptionKey: message]
+  }
+
+  private var message: String {
+    switch self {
+    case .providerConfigurationIsInvalid:
+      "The VPN profile is missing the settings the tunnel needs to start."
+    case .firezoneIdIsInvalid:
+      "The device identifier could not be read."
+    case .credentialNotConfigured:
+      "A sign-in token is not configured."
     }
   }
 }

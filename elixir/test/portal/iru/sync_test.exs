@@ -308,9 +308,9 @@ defmodule Portal.Iru.SyncTest do
     assert_raise Portal.Iru.SyncError, fn -> perform_job(Sync, sync_args(provider)) end
   end
 
-  test "deletes devices the tenant no longer reports" do
-    provider = iru_posture_provider_fixture()
-    stale = iru_device_fixture(provider: provider, iru_id: "stale-device")
+  test "deletes devices no run has seen for a day" do
+    provider = iru_posture_provider_fixture(synced_at: ago(2, :hour))
+    stale = iru_device_fixture(provider: provider, iru_id: "stale-device", synced_at: ago(2, :day))
 
     stub_api([device(%{"device_id" => "device-1"})])
 
@@ -318,6 +318,47 @@ defmodule Portal.Iru.SyncTest do
 
     refute Repo.get_by(Device, account_id: provider.account_id, iru_id: stale.iru_id)
     assert Repo.get_by(Device, account_id: provider.account_id, iru_id: "device-1")
+  end
+
+  # `offset` steps over a device whenever the tenant loses one mid-walk, so one
+  # run missing a device has to leave it alone. Deleting it here would drop the
+  # row on one run and write it back on the next, every couple of hours.
+  test "keeps a device a single run skipped over" do
+    provider = iru_posture_provider_fixture(synced_at: ago(2, :hour))
+
+    skipped =
+      iru_device_fixture(provider: provider, iru_id: "skipped-device", synced_at: ago(3, :hour))
+
+    stub_api([device(%{"device_id" => "device-1"})])
+
+    assert :ok = perform_job(Sync, sync_args(provider))
+
+    assert Repo.get_by(Device, account_id: provider.account_id, iru_id: skipped.iru_id)
+  end
+
+  # Once syncing has been broken for longer than the window, every row is past
+  # the clock, and measuring from it alone would let one walk empty the tenant.
+  test "keeps a device skipped by the first run after a long outage" do
+    outage = ago(30, :day)
+    provider = iru_posture_provider_fixture(synced_at: outage)
+    skipped = iru_device_fixture(provider: provider, iru_id: "skipped-device", synced_at: outage)
+
+    stub_api([device(%{"device_id" => "device-1"})])
+
+    assert :ok = perform_job(Sync, sync_args(provider))
+
+    assert Repo.get_by(Device, account_id: provider.account_id, iru_id: skipped.iru_id)
+  end
+
+  test "deletes nothing on the first run of a provider" do
+    provider = iru_posture_provider_fixture(synced_at: nil)
+    ancient = iru_device_fixture(provider: provider, iru_id: "old-device", synced_at: ago(30, :day))
+
+    stub_api([device(%{"device_id" => "device-1"})])
+
+    assert :ok = perform_job(Sync, sync_args(provider))
+
+    assert Repo.get_by(Device, account_id: provider.account_id, iru_id: ancient.iru_id)
   end
 
   test "records the sync and clears earlier errors on the provider" do
@@ -379,6 +420,10 @@ defmodule Portal.Iru.SyncTest do
 
     assert :ok = perform_job(Sync, sync_args(provider))
     assert Repo.aggregate(Device, :count) == 0
+  end
+
+  defp ago(amount, unit) do
+    DateTime.utc_now() |> DateTime.add(-amount, unit) |> DateTime.truncate(:microsecond)
   end
 
   defp sync_args(provider) do

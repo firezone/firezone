@@ -1,0 +1,12 @@
+{
+  "hasVPNConfiguration": true,
+  "vpnStatus": "connected",
+  "systemExtension": "installed",
+  "notifications": "authorized",
+  "clientCertificate": "unknown-attribute",
+  "actorName": "Jane Doe",
+  "resources": [],
+  "connectedDevices": [],
+  "favorites": [],
+  "providerLogFolderSize": 30000000
+}

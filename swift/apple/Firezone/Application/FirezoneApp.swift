@@ -11,6 +11,10 @@ import SwiftUI
 
 struct FirezoneApp: App {
   #if os(macOS)
+    /// Frames in the menu bar connecting / disconnecting animations, which run
+    /// from an empty "F" to a full one and back.
+    private static let animationFrameCount = 4
+
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @State private var connectingAnimationFrame: Int = 0
   #endif
@@ -20,11 +24,21 @@ struct FirezoneApp: App {
 
   init() {
     // Initialize Telemetry as early as possible
-    Telemetry.start()
+    Telemetry.start(enableMetricKit: true)
+
+    installCertificateParser()
 
     #if DEBUG
       // `--mock-tunnel` runs the real Store against a canned backend (see MockTunnel.swift).
-      let store = CommandLine.arguments.contains("--mock-tunnel") ? Store.mock() : Store()
+      let store = Store.mockFromCommandLine() ?? Store()
+
+      #if os(iOS)
+        // Before the scenes exist, so the bars are built from the appearance it
+        // sets rather than adopting it on their next update.
+        UIApplication.applyMockPresentation()
+      #else
+        NSApplication.applyMockPresentation()
+      #endif
     #else
       let store = Store()
     #endif
@@ -46,34 +60,25 @@ struct FirezoneApp: App {
         AppView()
           .environmentObject(errorHandler)
           .environmentObject(store)
+          // The status bar's clock and date would re-render every screenshot.
+          .statusBarHidden(MockRun.isActive)
       }
     #elseif os(macOS)
-      WindowGroup(
-        "Welcome to Firezone",
-        id: AppView.WindowDefinition.main.identifier
-      ) {
-        AppView()
-          .environmentObject(store)
-      }
-      .handlesExternalEvents(
-        matching: [AppView.WindowDefinition.main.externalEventMatchString]
-      )
+      mainWindowScene(store: store)
+        .handlesExternalEvents(
+          matching: [AppView.WindowDefinition.main.externalEventMatchString]
+        )
       // macOS doesn't have Sheets, need to use another Window group to show settings
-      WindowGroup(
-        "Settings",
-        id: AppView.WindowDefinition.settings.identifier
-      ) {
-        SettingsView(store: store)
-      }
-      .handlesExternalEvents(
-        matching: [AppView.WindowDefinition.settings.externalEventMatchString]
-      )
+      settingsWindowScene(store: store)
+        .handlesExternalEvents(
+          matching: [AppView.WindowDefinition.settings.externalEventMatchString]
+        )
 
       MenuBarExtra {
         MenuBarView()
           .environmentObject(store)
           .onReceive(connectingAnimationPublisher) { _ in
-            connectingAnimationFrame = (connectingAnimationFrame + 1) % 3
+            connectingAnimationFrame = (connectingAnimationFrame + 1) % Self.animationFrameCount
           }
           .onReceive(store.$menuBarOpenRequested) { requested in
             if requested {
@@ -104,8 +109,10 @@ struct FirezoneApp: App {
   #if os(macOS)
     var menuBarIconName: String {
       switch store.vpnStatus {
-      case .connecting, .disconnecting, .reasserting:
+      case .connecting, .reasserting:
         return "MenuBarIconConnecting\(connectingAnimationFrame + 1)"
+      case .disconnecting:
+        return "MenuBarIconDisconnecting\(connectingAnimationFrame + 1)"
       default:
         return store.menuBarIconName
       }
@@ -113,7 +120,7 @@ struct FirezoneApp: App {
 
     /// Publisher that emits timer ticks only when VPN is in a transitional state
     private var connectingAnimationPublisher: AnyPublisher<Date, Never> {
-      Timer.publish(every: 0.25, on: .main, in: .common)
+      Timer.publish(every: 0.125, on: .main, in: .common)
         .autoconnect()
         .filter { [store] _ in
           switch store.vpnStatus {
@@ -126,6 +133,45 @@ struct FirezoneApp: App {
         .eraseToAnyPublisher()
     }
   #endif
+}
+
+/// Hands FirezoneKit the certificate parser the settings screen calls back into.
+///
+/// Parsing lives in Rust. FirezoneKit is a Swift package and cannot import the
+/// UniFFI bindings, so every entry point has to install this before a screen
+/// asks for a certificate's details; without it they all report the same parse
+/// failure instead of the certificate they were given.
+@MainActor
+func installCertificateParser() {
+  X509CertificateParser.use { der in
+    guard let parsed = parseClientCertificate(der: der) else { return nil }
+
+    return DeviceTrustCertificateSummary(
+      fields: parsed.detailFields.map { field in
+        DeviceTrustCertificateField(
+          label: field.label,
+          value: field.value,
+          problem: field.problem.map { DeviceTrustValidationError($0) }
+        )
+      }
+    )
+  }
+}
+
+extension DeviceTrustValidationError {
+  init(_ error: ValidationError) {
+    switch error {
+    case .empty: self = .empty
+    case .tooLong: self = .tooLong
+    case .ambiguous: self = .ambiguous
+    case .placeholderIdentifier: self = .placeholderIdentifier
+    case .unknownAttribute: self = .unknownAttribute
+    case .notYetValid: self = .notYetValid
+    case .expired: self = .expired
+    case .missingClientAuthEku: self = .missingClientAuthEku
+    case .digitalSignatureNotAllowed: self = .digitalSignatureNotAllowed
+    }
+  }
 }
 
 #if os(macOS)
@@ -155,16 +201,11 @@ struct FirezoneApp: App {
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-      guard let store else {
-        return .terminateNow
-      }
+      // Stopping is a request rather than an operation to wait on, so there is
+      // nothing left for the app to defer its termination for once it is made.
+      store?.requestStop()
 
-      Task {
-        do { try await store.stop() } catch { Log.error(error) }
-        await MainActor.run { NSApp.reply(toApplicationShouldTerminate: true) }
-      }
-
-      return .terminateLater
+      return .terminateNow
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -230,5 +271,85 @@ struct FirezoneApp: App {
         }
       }
     }
+  }
+#endif
+
+#if os(macOS)
+  @MainActor
+  func mainWindowScene(store: Store) -> some Scene {
+    WindowGroup(
+      "Welcome to Firezone",
+      id: AppView.WindowDefinition.main.identifier
+    ) {
+      AppView()
+        .environmentObject(store)
+    }
+  }
+
+  @MainActor
+  func settingsWindowScene(store: Store) -> some Scene {
+    WindowGroup(
+      "Settings",
+      id: AppView.WindowDefinition.settings.identifier
+    ) {
+      SettingsView(store: store)
+    }
+  }
+#endif
+
+#if os(macOS) && DEBUG
+  // The apps a `--mock-window` run launches, one per window it can name.
+  struct UITestMainApp: App {
+    @StateObject var store = uiTestStore()
+
+    var body: some Scene {
+      mainWindowScene(store: store)
+      windowOpenerExtra(id: AppView.WindowDefinition.main.identifier)
+    }
+  }
+
+  struct UITestSettingsApp: App {
+    @StateObject var store = uiTestStore()
+
+    var body: some Scene {
+      settingsWindowScene(store: store)
+      windowOpenerExtra(id: AppView.WindowDefinition.settings.identifier)
+    }
+  }
+
+  /// A menu bar scene whose one job is presenting the window scene beside it.
+  ///
+  /// XCUITest's launch presents no scene at all, and `openWindow` lives in a
+  /// view's environment, so opening a window takes a view that exists without
+  /// one: a menu bar item's label is built for the status bar at launch.
+  @MainActor
+  func windowOpenerExtra(id windowID: String) -> some Scene {
+    MenuBarExtra {
+      EmptyView()
+    } label: {
+      WindowOpenerLabel(windowID: windowID)
+    }
+  }
+
+  private struct WindowOpenerLabel: View {
+    @Environment(\.openWindow) private var openWindow
+
+    let windowID: String
+
+    var body: some View {
+      Text("Firezone UI Test")
+        .onAppear { openWindow(id: windowID) }
+    }
+  }
+
+  @MainActor
+  private func uiTestStore() -> Store {
+    NSApplication.applyMockPresentation()
+    installCertificateParser()
+
+    let store = Store.mockFromCommandLine() ?? Store()
+    Task { await store.start() }
+
+    return store
   }
 #endif

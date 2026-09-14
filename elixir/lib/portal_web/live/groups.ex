@@ -137,8 +137,7 @@ defmodule PortalWeb.Groups do
       do: handle_live_table_event(event, params, socket)
 
   def handle_event("close_panel", _params, socket) do
-    params = Map.drop(socket.assigns.query_params, ["tab"])
-    {:noreply, push_patch(socket, to: ~p"/#{socket.assigns.account}/groups?#{params}")}
+    {:noreply, push_patch(socket, to: live_table_path(socket, ~p"/#{socket.assigns.account}/groups"))}
   end
 
   def handle_event("confirm_delete_group", _params, socket) do
@@ -152,21 +151,17 @@ defmodule PortalWeb.Groups do
   def handle_event("handle_keydown", %{"key" => "Escape"}, socket)
       when socket.assigns.group_panel.view == :edit_form do
     {:noreply,
-     push_patch(socket,
-       to: ~p"/#{socket.assigns.account}/groups/#{socket.assigns.selected_group.id}"
-     )}
+     push_patch(socket, to: live_table_path(socket, ~p"/#{socket.assigns.account}/groups/#{socket.assigns.selected_group.id}"))}
   end
 
   def handle_event("handle_keydown", %{"key" => "Escape"}, socket)
       when socket.assigns.group_panel.view == :new_form do
-    params = Map.drop(socket.assigns.query_params, ["tab"])
-    {:noreply, push_patch(socket, to: ~p"/#{socket.assigns.account}/groups?#{params}")}
+    {:noreply, push_patch(socket, to: live_table_path(socket, ~p"/#{socket.assigns.account}/groups"))}
   end
 
   def handle_event("handle_keydown", %{"key" => "Escape"}, socket)
       when not is_nil(socket.assigns.selected_group) do
-    params = Map.drop(socket.assigns.query_params, ["tab"])
-    {:noreply, push_patch(socket, to: ~p"/#{socket.assigns.account}/groups?#{params}")}
+    {:noreply, push_patch(socket, to: live_table_path(socket, ~p"/#{socket.assigns.account}/groups"))}
   end
 
   def handle_event("handle_keydown", _params, socket) do
@@ -283,12 +278,7 @@ defmodule PortalWeb.Groups do
         %{"tab" => tab},
         %{assigns: %{selected_group: %Group{} = group}} = socket
       ) do
-    params = Map.put(socket.assigns.query_params, "tab", tab)
-
-    {:noreply,
-     push_patch(socket,
-       to: ~p"/#{socket.assigns.account}/groups/#{group}?#{params}"
-     )}
+    {:noreply, push_patch(socket, to: live_table_path(socket, ~p"/#{socket.assigns.account}/groups/#{group}", tab: tab))}
   end
 
   def handle_event("switch_group_tab", _params, %{assigns: %{selected_group: nil}} = socket) do
@@ -653,7 +643,7 @@ defmodule PortalWeb.Groups do
             socket
             |> put_flash(:success, "Group deleted successfully")
             |> reload_live_table!("groups")
-            |> push_patch(to: ~p"/#{socket.assigns.account}/groups")
+            |> push_patch(to: live_table_path(socket, ~p"/#{socket.assigns.account}/groups"))
 
           {:noreply, socket}
 
@@ -682,7 +672,7 @@ defmodule PortalWeb.Groups do
           |> assign(selected_group: group)
           |> put_flash(:success, "Group created successfully")
           |> reload_live_table!("groups")
-          |> push_patch(to: ~p"/#{socket.assigns.account}/groups/#{group.id}")
+          |> push_patch(to: live_table_path(socket, ~p"/#{socket.assigns.account}/groups/#{group.id}"))
 
         {:noreply, socket}
 
@@ -718,7 +708,7 @@ defmodule PortalWeb.Groups do
             |> assign(selected_group: updated_group)
             |> put_flash(:success, "Group updated successfully")
             |> reload_live_table!("groups")
-            |> push_patch(to: ~p"/#{socket.assigns.account}/groups/#{group.id}")
+            |> push_patch(to: live_table_path(socket, ~p"/#{socket.assigns.account}/groups/#{group.id}"))
 
           {:noreply, socket}
 
@@ -741,7 +731,7 @@ defmodule PortalWeb.Groups do
     {:noreply,
      socket
      |> put_flash(:error, message)
-     |> push_patch(to: ~p"/#{socket.assigns.account}/groups?#{socket.assigns.query_params}")}
+     |> push_patch(to: live_table_path(socket, ~p"/#{socket.assigns.account}/groups"))}
   end
 
   defp edit_group_panel(socket, group, id) do
@@ -762,7 +752,7 @@ defmodule PortalWeb.Groups do
       {:noreply,
        socket
        |> put_flash(:error, "This group cannot be edited")
-       |> push_patch(to: ~p"/#{socket.assigns.account}/groups/#{id}")}
+       |> push_patch(to: live_table_path(socket, ~p"/#{socket.assigns.account}/groups/#{id}"))}
     end
   end
 
@@ -823,7 +813,7 @@ defmodule PortalWeb.Groups do
           <.button
             style="primary"
             icon="ri-add-line"
-            patch={~p"/#{@account}/groups/new"}
+            patch={live_table_path(assigns, ~p"/#{@account}/groups/new")}
           >
             New Group
           </.button>
@@ -902,7 +892,7 @@ defmodule PortalWeb.Groups do
                 </p>
               </div>
               <.link
-                patch={~p"/#{@account}/groups/new"}
+                patch={live_table_path(assigns, ~p"/#{@account}/groups/new")}
                 class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
               >
                 <.icon name="ri-add-line" class="w-3 h-3" /> Add a Group
@@ -914,7 +904,7 @@ defmodule PortalWeb.Groups do
       <.group_panel
         account={@account}
         group={@selected_group}
-        query_params={@query_params}
+        edit_path={@selected_group && live_table_path(assigns, ~p"/#{@account}/groups/#{@selected_group.id}/edit")}
         flash={@flash}
         panel={@group_panel}
         form_state={@group_form}
@@ -1145,8 +1135,7 @@ defmodule PortalWeb.Groups do
     if return_to = handle_return_to(socket) do
       push_navigate(socket, to: return_to)
     else
-      params = Map.drop(socket.assigns.query_params, ["tab"])
-      push_patch(socket, to: ~p"/#{socket.assigns.account}/groups?#{params}")
+      push_patch(socket, to: live_table_path(socket, ~p"/#{socket.assigns.account}/groups"))
     end
   end
 

@@ -18,6 +18,7 @@ defmodule PortalWeb.Policies.Components do
     :remote_ip,
     :auth_provider_id,
     :client_verified,
+    :device_attested,
     :current_utc_datetime
   ]
 
@@ -153,6 +154,8 @@ defmodule PortalWeb.Policies.Components do
   attr :account, :any, required: true
   attr :policy, :any, default: nil
   attr :providers, :list, default: []
+  attr :x509_auth_provider_id, :string, default: nil
+  attr :has_trust_anchors?, :boolean, default: false
   attr :subject, :any, required: true
   attr :panel, :map, required: true
   attr :conditions_state, :map, required: true
@@ -203,6 +206,8 @@ defmodule PortalWeb.Policies.Components do
         account={@account}
         subject={@subject}
         providers={@providers}
+        x509_auth_provider_id={@x509_auth_provider_id}
+        has_trust_anchors?={@has_trust_anchors?}
         panel_form={@panel.panel_form}
         panel_selected_resource={@panel.panel_selected_resource}
         panel_active_conditions={@conditions_state.panel_active_conditions}
@@ -216,6 +221,8 @@ defmodule PortalWeb.Policies.Components do
         account={@account}
         subject={@subject}
         providers={@providers}
+        x509_auth_provider_id={@x509_auth_provider_id}
+        has_trust_anchors?={@has_trust_anchors?}
         panel_form={@panel.panel_form}
         panel_selected_resource={@panel.panel_selected_resource}
         panel_active_conditions={@conditions_state.panel_active_conditions}
@@ -229,6 +236,8 @@ defmodule PortalWeb.Policies.Components do
         account={@account}
         policy={@policy}
         providers={@providers}
+        x509_auth_provider_id={@x509_auth_provider_id}
+        has_trust_anchors?={@has_trust_anchors?}
         tab={@panel.panel_tab}
         confirm_disable_policy={@confirm_state.confirm_disable_policy}
         confirm_delete_policy={@confirm_state.confirm_delete_policy}
@@ -244,6 +253,8 @@ defmodule PortalWeb.Policies.Components do
   attr :account, :any, required: true
   attr :subject, :any, required: true
   attr :providers, :list, default: []
+  attr :x509_auth_provider_id, :string, default: nil
+  attr :has_trust_anchors?, :boolean, default: false
   attr :panel_form, :any, default: nil
   attr :panel_selected_resource, :any, default: nil
   attr :panel_active_conditions, :list, default: []
@@ -267,6 +278,8 @@ defmodule PortalWeb.Policies.Components do
           mode={@mode}
           subject={@subject}
           providers={@providers}
+          x509_auth_provider_id={@x509_auth_provider_id}
+          has_trust_anchors?={@has_trust_anchors?}
           panel_form={@panel_form}
           panel_selected_resource={@panel_selected_resource}
           panel_active_conditions={@panel_active_conditions}
@@ -298,6 +311,8 @@ defmodule PortalWeb.Policies.Components do
   attr :account, :any, required: true
   attr :subject, :any, required: true
   attr :providers, :list, default: []
+  attr :x509_auth_provider_id, :string, default: nil
+  attr :has_trust_anchors?, :boolean, default: false
   attr :panel_form, :any, default: nil
   attr :panel_selected_resource, :any, default: nil
   attr :panel_active_conditions, :list, default: []
@@ -321,6 +336,8 @@ defmodule PortalWeb.Policies.Components do
         panel_active_conditions={@panel_active_conditions}
         panel_conditions_dropdown_open={@panel_conditions_dropdown_open}
         providers={@providers}
+        x509_auth_provider_id={@x509_auth_provider_id}
+        has_trust_anchors?={@has_trust_anchors?}
         conditions_state={@conditions_state}
       />
     </div>
@@ -581,6 +598,8 @@ defmodule PortalWeb.Policies.Components do
   attr :panel_active_conditions, :list, default: []
   attr :panel_conditions_dropdown_open, :boolean, default: false
   attr :providers, :list, default: []
+  attr :x509_auth_provider_id, :string, default: nil
+  attr :has_trust_anchors?, :boolean, default: false
   attr :conditions_state, :map, required: true
 
   def policy_conditions_section(assigns) do
@@ -618,6 +637,9 @@ defmodule PortalWeb.Policies.Components do
           <.policy_conditions_cards
             panel_active_conditions={@panel_active_conditions}
             providers={@providers}
+            account={@account}
+            x509_auth_provider_id={@x509_auth_provider_id}
+            has_trust_anchors?={@has_trust_anchors?}
             conditions_state={@conditions_state}
           />
       <% end %>
@@ -662,7 +684,10 @@ defmodule PortalWeb.Policies.Components do
   end
 
   attr :panel_active_conditions, :list, default: []
+  attr :account, :any, required: true
   attr :providers, :list, default: []
+  attr :x509_auth_provider_id, :string, default: nil
+  attr :has_trust_anchors?, :boolean, default: false
   attr :conditions_state, :map, required: true
 
   def policy_conditions_cards(assigns) do
@@ -677,7 +702,10 @@ defmodule PortalWeb.Policies.Components do
       <.grant_condition_card
         :for={type <- @panel_active_conditions}
         type={type}
+        account={@account}
         providers={@providers}
+        x509_auth_provider_id={@x509_auth_provider_id}
+        has_trust_anchors?={@has_trust_anchors?}
         conditions_state={@conditions_state}
       />
     </div>
@@ -734,6 +762,8 @@ defmodule PortalWeb.Policies.Components do
   attr :account, :any, required: true
   attr :policy, :any, required: true
   attr :providers, :list, default: []
+  attr :x509_auth_provider_id, :string, default: nil
+  attr :has_trust_anchors?, :boolean, default: false
   attr :tab, :atom, default: :overview
   attr :confirm_disable_policy, :boolean, default: false
   attr :confirm_delete_policy, :boolean, default: false
@@ -750,6 +780,8 @@ defmodule PortalWeb.Policies.Components do
         account={@account}
         policy={@policy}
         providers={@providers}
+        x509_auth_provider_id={@x509_auth_provider_id}
+        has_trust_anchors?={@has_trust_anchors?}
         tab={@tab}
         confirm_disable_policy={@confirm_disable_policy}
         confirm_delete_policy={@confirm_delete_policy}
@@ -765,6 +797,8 @@ defmodule PortalWeb.Policies.Components do
   attr :account, :any, required: true
   attr :policy, :any, required: true
   attr :providers, :list, default: []
+  attr :x509_auth_provider_id, :string, default: nil
+  attr :has_trust_anchors?, :boolean, default: false
   attr :tab, :atom, default: :overview
   attr :confirm_disable_policy, :boolean, default: false
   attr :confirm_delete_policy, :boolean, default: false
@@ -814,7 +848,13 @@ defmodule PortalWeb.Policies.Components do
         </div>
         <div :if={@tab == :overview} class="flex-1 overflow-y-auto">
           <.policy_access_mapping account={@account} policy={@policy} />
-          <.policy_conditions_list account={@account} policy={@policy} providers={@providers} />
+          <.policy_conditions_list
+            account={@account}
+            policy={@policy}
+            providers={@providers}
+            x509_auth_provider_id={@x509_auth_provider_id}
+            has_trust_anchors?={@has_trust_anchors?}
+          />
         </div>
         <.policy_authorizations_tab
           :if={@tab == :authorizations}
@@ -959,6 +999,8 @@ defmodule PortalWeb.Policies.Components do
   attr :account, :any, required: true
   attr :policy, :any, required: true
   attr :providers, :list, default: []
+  attr :x509_auth_provider_id, :string, default: nil
+  attr :has_trust_anchors?, :boolean, default: false
 
   def policy_conditions_list(assigns) do
     ~H"""
@@ -985,6 +1027,8 @@ defmodule PortalWeb.Policies.Components do
             account={@account}
             condition={condition}
             providers={@providers}
+            x509_auth_provider_id={@x509_auth_provider_id}
+            has_trust_anchors?={@has_trust_anchors?}
           />
         </ul>
       <% end %>
@@ -995,6 +1039,8 @@ defmodule PortalWeb.Policies.Components do
   attr :account, :any, required: true
   attr :condition, :map, required: true
   attr :providers, :list, default: []
+  attr :x509_auth_provider_id, :string, default: nil
+  attr :has_trust_anchors?, :boolean, default: false
 
   def policy_condition_row(assigns) do
     ~H"""
@@ -1005,9 +1051,17 @@ defmodule PortalWeb.Policies.Components do
       <%= if @condition.property == :current_utc_datetime do %>
         <.policy_tod_condition_values values={@condition.values} />
       <% else %>
-        <span class="text-xs text-body flex-1 min-w-0 mt-0.5">
-          {condition_values_display(@condition, @providers, @account)}
-        </span>
+        <div class="text-xs text-body flex-1 min-w-0 mt-0.5 space-y-2">
+          <span>{condition_values_display(@condition, @providers, @account)}</span>
+          <.x509_trust_anchor_warning
+            show?={
+              @condition.property == :auth_provider_id and not @has_trust_anchors? and
+                not is_nil(@x509_auth_provider_id) and
+                @x509_auth_provider_id in @condition.values
+            }
+            account={@account}
+          />
+        </div>
       <% end %>
     </li>
     """
@@ -1104,7 +1158,7 @@ defmodule PortalWeb.Policies.Components do
                         <p class="text-subtle font-medium mb-1">
                           {case row.initiating_device && row.initiating_device.type do
                             :gateway -> "Initiator (Gateway)"
-                            :client -> "Initiator (Client)"
+                            :client -> "Initiator (Device)"
                             _ -> "Initiator"
                           end}
                         </p>
@@ -1121,7 +1175,7 @@ defmodule PortalWeb.Policies.Components do
                         <p class="text-subtle font-medium mb-1">
                           {case row.receiving_device && row.receiving_device.type do
                             :gateway -> "Receiver (Gateway)"
-                            :client -> "Receiver (Client)"
+                            :client -> "Receiver (Device)"
                             _ -> "Receiver"
                           end}
                         </p>
@@ -1328,6 +1382,7 @@ defmodule PortalWeb.Policies.Components do
 
   @spec condition_short_label(atom()) :: String.t()
   def condition_short_label(:client_verified), do: "Verified"
+  def condition_short_label(:device_attested), do: "Attested"
   def condition_short_label(:auth_provider_id), do: "Auth"
   def condition_short_label(:remote_ip_location_region), do: "Location"
   def condition_short_label(:remote_ip), do: "IP Range"
@@ -1360,6 +1415,10 @@ defmodule PortalWeb.Policies.Components do
     do:
       "inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium shrink-0 text-success bg-success-light"
 
+  defp condition_type_badge_class(:device_attested),
+    do:
+      "inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium shrink-0 text-success bg-success-light"
+
   defp condition_type_badge_class(:auth_provider_id),
     do:
       "inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium shrink-0 text-badge-dns-text bg-badge-dns"
@@ -1382,7 +1441,10 @@ defmodule PortalWeb.Policies.Components do
 
   @spec condition_values_display(map(), list(), any()) :: String.t()
   defp condition_values_display(%{property: :client_verified}, _providers, _account),
-    do: "Client must be verified"
+    do: "Device must be verified"
+
+  defp condition_values_display(%{property: :device_attested}, _providers, _account),
+    do: "Devices must have a trusted X.509 certificate"
 
   defp condition_values_display(
          %{property: :auth_provider_id, values: values},
@@ -1557,6 +1619,16 @@ defmodule PortalWeb.Policies.Components do
       <span>by clients that are</span>
       <span :if={@values == ["true"]}>verified</span>
       <span :if={@values == ["false"]}>not verified</span>
+    </span>
+    """
+  end
+
+  defp condition(%{property: :device_attested} = assigns) do
+    ~H"""
+    <span :if={@values != []} class="mr-1">
+      <span>by clients that are</span>
+      <span :if={@values == ["true"]}>attested</span>
+      <span :if={@values == ["false"]}>not attested</span>
     </span>
     """
   end
@@ -1760,7 +1832,7 @@ defmodule PortalWeb.Policies.Components do
         ]}
       >
         <p class="text-sm text-neutral-500 mb-4">
-          Allow access when the location of the Client meets the criteria specified below.
+          Allow access when the location of the device meets the criteria specified below.
         </p>
         <div class="grid gap-2 sm:grid-cols-5 sm:gap-4">
           <.input
@@ -1847,7 +1919,7 @@ defmodule PortalWeb.Policies.Components do
         ]}
       >
         <p class="text-sm text-neutral-500 mb-4">
-          Allow access when the IP of the Client meets the criteria specified below.
+          Allow access when the IP of the device meets the criteria specified below.
         </p>
         <div class="grid gap-2 sm:grid-cols-5 sm:gap-4">
           <.input
@@ -2029,11 +2101,11 @@ defmodule PortalWeb.Policies.Components do
         ]}
       >
         <p class="text-sm text-neutral-500 mb-4">
-          Allow access when the Client is manually verified by the administrator.
+          Allow access when the device is manually verified by the administrator.
         </p>
         <div class="space-y-2" phx-update="ignore" id="conditions-client-verified-values">
           <.toggle
-            label="Require client verification"
+            label="Require device verification"
             name="policy[conditions][client_verified][values][]"
             id="policy_conditions_client_verified_value"
             value="true"
@@ -2189,7 +2261,13 @@ defmodule PortalWeb.Policies.Components do
 
   @spec available_conditions(map() | nil) :: [atom()]
   def available_conditions(%{type: :internet}),
-    do: [:remote_ip_location_region, :remote_ip, :auth_provider_id, :client_verified]
+    do: [
+      :remote_ip_location_region,
+      :remote_ip,
+      :auth_provider_id,
+      :client_verified,
+      :device_attested
+    ]
 
   def available_conditions(_resource),
     do: [
@@ -2197,13 +2275,15 @@ defmodule PortalWeb.Policies.Components do
       :remote_ip,
       :auth_provider_id,
       :client_verified,
+      :device_attested,
       :current_utc_datetime
     ]
 
   @spec condition_type_label(atom()) :: String.t()
-  def condition_type_label(:client_verified), do: "Require Verified Client"
+  def condition_type_label(:client_verified), do: "Require Verified Device"
+  def condition_type_label(:device_attested), do: "Require Attestation"
   def condition_type_label(:auth_provider_id), do: "Authentication Provider"
-  def condition_type_label(:remote_ip_location_region), do: "Client Location"
+  def condition_type_label(:remote_ip_location_region), do: "Device Location"
   def condition_type_label(:remote_ip), do: "IP Range"
   def condition_type_label(:current_utc_datetime), do: "Time of Day"
 
@@ -2216,12 +2296,16 @@ defmodule PortalWeb.Policies.Components do
   @condition_input_class "w-full text-xs rounded border border-border bg-raised text-heading px-2 py-1.5 outline-none focus:border-border-focus focus:ring-1 focus:ring-border-focus/30 transition-colors"
 
   attr :type, :atom, required: true
+  attr :account, :any, default: nil
   attr :providers, :list, default: []
+  attr :x509_auth_provider_id, :string, default: nil
+  attr :has_trust_anchors?, :boolean, default: false
   attr :conditions_state, :map, required: true
 
   def grant_condition_card(assigns) do
     ~H"""
     <.grant_client_verified_condition_card :if={@type == :client_verified} type={@type} />
+    <.grant_device_attested_condition_card :if={@type == :device_attested} type={@type} />
     <.grant_ip_range_condition_card
       :if={@type == :remote_ip}
       type={@type}
@@ -2239,7 +2323,10 @@ defmodule PortalWeb.Policies.Components do
     <.grant_auth_provider_condition_card
       :if={@type == :auth_provider_id}
       type={@type}
+      account={@account}
       providers={@providers}
+      x509_auth_provider_id={@x509_auth_provider_id}
+      has_trust_anchors?={@has_trust_anchors?}
       auth_provider_operator={@conditions_state.auth_provider_operator}
       auth_provider_values={@conditions_state.auth_provider_values}
     />
@@ -2295,6 +2382,31 @@ defmodule PortalWeb.Policies.Components do
       <input
         type="hidden"
         name="policy[conditions][client_verified][values][]"
+        value="true"
+      />
+    </div>
+    """
+  end
+
+  attr :type, :atom, required: true
+
+  defp grant_device_attested_condition_card(assigns) do
+    ~H"""
+    <div class="rounded-lg border border-border overflow-hidden">
+      <.grant_condition_card_header type={@type} />
+      <input
+        type="hidden"
+        name="policy[conditions][device_attested][property]"
+        value="device_attested"
+      />
+      <input
+        type="hidden"
+        name="policy[conditions][device_attested][operator]"
+        value="is"
+      />
+      <input
+        type="hidden"
+        name="policy[conditions][device_attested][values][]"
         value="true"
       />
     </div>
@@ -2514,7 +2626,10 @@ defmodule PortalWeb.Policies.Components do
   end
 
   attr :type, :atom, required: true
+  attr :account, :any, default: nil
   attr :providers, :list, default: []
+  attr :x509_auth_provider_id, :string, default: nil
+  attr :has_trust_anchors?, :boolean, default: false
   attr :auth_provider_operator, :string, default: "is_in"
   attr :auth_provider_values, :list, default: []
 
@@ -2569,6 +2684,13 @@ defmodule PortalWeb.Policies.Components do
           name="policy[conditions][auth_provider_id][values][]"
           value={id}
         />
+        <.x509_trust_anchor_warning
+          show?={
+            not @has_trust_anchors? and not is_nil(@x509_auth_provider_id) and
+              @x509_auth_provider_id in @auth_provider_values
+          }
+          account={@account}
+        />
         <div :if={@auth_provider_values != []} class="flex flex-wrap gap-1 mb-2">
           <span
             :for={p <- Enum.filter(@providers, &(&1.id in @auth_provider_values))}
@@ -2603,6 +2725,27 @@ defmodule PortalWeb.Policies.Components do
         </div>
       </div>
     </div>
+    """
+  end
+
+  attr :show?, :boolean, default: false
+  attr :account, :any, required: true
+
+  defp x509_trust_anchor_warning(assigns) do
+    ~H"""
+    <p
+      :if={@show?}
+      class="flex items-start gap-1.5 rounded border border-amber-200 bg-amber-50 px-2.5 py-2 text-xs text-amber-700 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-400"
+    >
+      <.icon name="ri-error-warning-line" class="w-3.5 h-3.5 shrink-0 mt-0.5" />
+      <span>
+        No devices will be able to use this authentication provider until you add one or more
+        <.link
+          navigate={~p"/#{@account}/settings/trust_anchors"}
+          class="font-medium underline hover:no-underline"
+        >Trust Anchors</.link>.
+      </span>
+    </p>
     """
   end
 

@@ -37,17 +37,33 @@ public enum IPCClient {
   private static let stopTimeout: Duration = .seconds(5)
   private static let stopPollInterval: Duration = .milliseconds(100)
 
-  // Auto-connect: the GUI must save providerConfiguration before calling this so
-  // any MDM forced overrides are available to the provider.
+  // The GUI must save providerConfiguration before calling this so any MDM forced
+  // overrides are available to the provider.
+  // A `nil` token asks the provider to load the saved token. The identity reference
+  // pins the optional device certificate the app displayed.
+  @MainActor
+  public static func start(
+    session: any TunnelSessionProtocol,
+    token: String?,
+    identityReference: Data?
+  ) throws {
+    var options: [String: NSObject] = ["authentication": "tokenAndCertificate" as NSObject]
+
+    if let token {
+      options["token"] = token as NSObject
+    }
+    if let identityReference {
+      options["identityReference"] = identityReference as NSObject
+    }
+
+    try session.startTunnel(options: options)
+  }
+
+  /// A start that states no intent, as the system's own starts do: the provider derives the
+  /// credentials from the keychain and the profile.
   @MainActor
   public static func start(session: any TunnelSessionProtocol) throws {
     try session.startTunnel(options: nil)
-  }
-
-  // Sign in
-  @MainActor
-  public static func start(session: any TunnelSessionProtocol, token: String) throws {
-    try session.startTunnel(options: ["token": token as NSObject])
   }
 
   /// Stops the tunnel if it is running, and waits for the provider to go away.
@@ -183,38 +199,12 @@ public enum IPCClient {
     }
   }
 
-  /// Returns a stream of VPN status updates for the given session.
-  ///
-  /// Filters `NEVPNStatusDidChange` notifications to only those matching `session`.
-  /// The caller is responsible for consuming the stream in a task they manage.
-  public static func vpnStatusUpdates(
-    session: any TunnelSessionProtocol
-  ) -> AsyncStream<NEVPNStatus> {
-    AsyncStream { continuation in
-      let task = Task {
-        for await notification in NotificationCenter.default.notifications(
-          named: .NEVPNStatusDidChange)
-        {
-          guard let notificationSession = notification.object as? NETunnelProviderSession
-          else {
-            return
-          }
-
-          if notificationSession === session {
-            continuation.yield(notificationSession.status)
-          }
-        }
-        continuation.finish()
-      }
-      continuation.onTermination = { _ in task.cancel() }
-    }
-  }
-
   /// Sends `message` to the provider, waking a stopped tunnel first if asked to.
   ///
   /// Polling opts out: cycle-starting from the poll loop would wake the extension
   /// without a tunnel behind it, and the stop that follows churns the VPN status,
   /// which starts the loop over again.
+  @MainActor
   private static func sendProviderMessage(
     session: any TunnelSessionProtocol,
     message: ProviderMessage,
@@ -240,6 +230,7 @@ public enum IPCClient {
   /// On macOS, the tunnel needs to be in a connected, connecting, or reasserting state for the utun to be removed
   /// upon stopTunnel. We do this by ensuring the tunnel is "started" prior to any IPC call. If so, we return true
   /// so that the caller may stop the tunnel afterwards.
+  @MainActor
   private static func maybeCycleStart(_ session: any TunnelSessionProtocol) async throws -> Bool {
     if session.status == .invalid {
       throw Error.invalidStatus(session.status)

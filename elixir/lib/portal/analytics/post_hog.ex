@@ -23,6 +23,9 @@ defmodule Portal.Analytics.PostHog do
   @spec identify_actor(Portal.Actor.t(), Portal.Account.t(), attribution() | nil) :: :ok
   def identify_actor(_actor, _account, nil), do: :ok
 
+  def identify_actor(_actor, _account, attribution) when not is_map_key(attribution, "distinct_id"),
+    do: :ok
+
   def identify_actor(actor, account, attribution) do
     {event, distinct_id, properties} = identify_event(actor, account, attribution)
     dispatch(event, distinct_id, properties)

@@ -1,3 +1,10 @@
+defmodule Portal.MailerTest.ReqAdapter do
+  def run(request) do
+    send(self(), :replace_req_adapter_plugin_called)
+    Req.Plug.run(request)
+  end
+end
+
 defmodule Portal.MailerTest do
   use Portal.DataCase, async: true
 
@@ -25,7 +32,7 @@ defmodule Portal.MailerTest do
     test "refreshes ACS HMAC auth headers on Req retries" do
       test_pid = self()
       access_key = Base.encode64("acs-secret")
-      adapter_plugin = replace_req_adapter_plugin(test_pid)
+      adapter_plugin = replace_req_adapter_plugin()
       {:ok, attempts} = Agent.start_link(fn -> 0 end)
 
       Req.Test.stub(Portal.AzureCommunicationServices, fn conn ->
@@ -77,14 +84,11 @@ defmodule Portal.MailerTest do
     end
   end
 
-  defp replace_req_adapter_plugin(test_pid) do
+  defp replace_req_adapter_plugin do
     fn req ->
       Req.Request.append_request_steps(req,
         replace_test_adapter: fn req ->
-          Map.put(req, :adapter, fn req ->
-            send(test_pid, :replace_req_adapter_plugin_called)
-            Req.Plug.run(req)
-          end)
+          Map.put(req, :adapter, Portal.MailerTest.ReqAdapter)
         end
       )
     end
@@ -374,7 +378,7 @@ defmodule Portal.MailerTest do
 
   describe "deliver_and_track/2" do
     test "inserts a tracked row when ACS returns a message id, with nil account_id" do
-      adapter_plugin = replace_req_adapter_plugin(self())
+      adapter_plugin = replace_req_adapter_plugin()
 
       Req.Test.stub(Portal.AzureCommunicationServices, fn conn ->
         conn
@@ -417,7 +421,7 @@ defmodule Portal.MailerTest do
 
     test "associates account_id when set via with_account_id/2" do
       account = account_fixture()
-      adapter_plugin = replace_req_adapter_plugin(self())
+      adapter_plugin = replace_req_adapter_plugin()
 
       Req.Test.stub(Portal.AzureCommunicationServices, fn conn ->
         conn
@@ -464,7 +468,7 @@ defmodule Portal.MailerTest do
     end
 
     test "does not send to or track suppressed recipients" do
-      adapter_plugin = replace_req_adapter_plugin(self())
+      adapter_plugin = replace_req_adapter_plugin()
 
       Repo.insert!(%Portal.EmailSuppression{
         email: Portal.EmailSuppression.normalize_email("suppressed@example.com")

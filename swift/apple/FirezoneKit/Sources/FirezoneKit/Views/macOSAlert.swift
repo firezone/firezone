@@ -312,11 +312,7 @@
     public static func showSignedOutAlert(_ message: String?) async -> Bool {
       let alert = NSAlert()
       alert.messageText = "Your Firezone session has ended"
-      alert.informativeText = """
-        Please sign in again to reconnect.
-
-        \(message ?? "")
-        """
+      alert.informativeText = message ?? "Please sign in again to reconnect."
       alert.addButton(withTitle: "Sign In")
       alert.addButton(withTitle: "Cancel")
       NSApp.activate(ignoringOtherApps: true)
@@ -343,11 +339,15 @@
     public static func showDisconnectedAlert(_ message: String?) async {
       let alert = NSAlert()
       alert.messageText = "Firezone disconnected"
-      alert.informativeText = message ?? "Firezone has been disconnected."
+      alert.informativeText = disconnectedText(message)
       alert.addButton(withTitle: "OK")
       NSApp.activate(ignoringOtherApps: true)
 
       _ = await show(alert)
+    }
+
+    static func disconnectedText(_ message: String?) -> String {
+      message ?? "Firezone has been disconnected."
     }
   }
 

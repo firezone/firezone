@@ -5,9 +5,6 @@ mod net_ext;
 mod server;
 
 pub mod auth;
-#[cfg(feature = "proptest")]
-#[allow(clippy::unwrap_used)]
-pub mod proptest;
 
 pub use net_ext::IpAddrExt;
 pub use server::{

@@ -2,9 +2,31 @@ defmodule Portal.Billing.EventHandlerTest do
   use Portal.DataCase, async: true
 
   alias Portal.Billing.EventHandler
+  alias Portal.Billing.EventHandler.Database
   alias Portal.Mocks.Stripe
 
   import Portal.AccountFixtures
+
+  describe "Database.create_x509_provider/1" do
+    test "rolls back the parent when the child insert fails" do
+      account = account_fixture()
+      id = Ecto.UUID.generate()
+
+      Repo.insert!(%Portal.AuthProvider{id: id, account_id: account.id, type: :email_otp})
+
+      Repo.insert!(%Portal.X509.AuthProvider{
+        id: id,
+        account_id: account.id,
+        name: "Existing child",
+        context: :clients_only,
+        is_disabled: true
+      })
+
+      assert {:error, %Ecto.Changeset{}} = Database.create_x509_provider(account)
+
+      refute Repo.get_by(Portal.AuthProvider, account_id: account.id, type: :x509)
+    end
+  end
 
   describe "handle_event/1 with customer.updated" do
     setup do
@@ -210,6 +232,12 @@ defmodule Portal.Billing.EventHandlerTest do
       email_provider = Portal.Repo.get_by(Portal.EmailOTP.AuthProvider, account_id: account.id)
       assert email_provider != nil
       assert email_provider.name == "Email (OTP)"
+
+      # X.509 provider should be created disabled by default
+      x509_provider = Portal.Repo.get_by(Portal.X509.AuthProvider, account_id: account.id)
+      assert x509_provider.name == "X.509"
+      assert x509_provider.context == :clients_only
+      assert x509_provider.is_disabled
 
       # Admin actor should be created
       admin = Portal.Repo.get_by(Portal.Actor, account_id: account.id, type: :account_admin_user)

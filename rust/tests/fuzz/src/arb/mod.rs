@@ -6,8 +6,6 @@
 //! construction; transition preconditions are encoded by the transition
 //! generator rather than checked after generation.
 
-use std::time::Instant;
-
 use crate::reference::ReferenceState;
 use crate::transition::Transition;
 
@@ -21,11 +19,11 @@ mod values;
 pub use context::Generator;
 
 impl Generator<'_> {
-    pub fn initial_state(&mut self, start: Instant) -> ReferenceState {
-        topology::generate(self, start)
+    pub fn initial_state(&mut self) -> ReferenceState {
+        topology::generate(self)
     }
 
-    pub fn transition(&mut self, state: &ReferenceState, now: Instant) -> Option<Transition> {
-        transitions::generate(self, state, now)
+    pub fn transition(&mut self, state: &ReferenceState) -> Option<Transition> {
+        transitions::generate(self, state)
     }
 }

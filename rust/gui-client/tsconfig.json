@@ -23,6 +23,6 @@
     "noFallthroughCasesInSwitch": true,
     "noUncheckedSideEffectImports": true
   },
-  "include": ["./src-frontend/**/*", "vite.config.ts"],
+  "include": ["./src-frontend/**/*", "vite.config.ts", "vitest.config.ts"],
   "exclude": ["node_modules"]
 }

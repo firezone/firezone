@@ -53,6 +53,18 @@ defmodule PortalAPI.Sockets.LatestSessionTest do
       device = Repo.get_by!(Portal.Device, account_id: client.account_id, id: client.id)
       assert device.firezone_id == "client-supplied"
     end
+
+    test "persists a tokenless X.509 session without treating it as revoked", %{
+      client: client,
+      token: token
+    } do
+      entry = client |> attested_entry(token) |> Map.put(:client_token_id, nil)
+
+      assert {1, [], []} = upsert(entry)
+
+      device = Repo.get_by!(Portal.Device, account_id: client.account_id, id: client.id)
+      assert is_nil(device.client_token_id)
+    end
   end
 
   defp upsert(attrs) do

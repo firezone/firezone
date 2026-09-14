@@ -81,7 +81,11 @@ defmodule Portal.GoogleDirectoryFixtures do
         :error_email_count,
         :group_sync_mode,
         :orgunit_sync_enabled,
-        :sync_all_domains
+        :sync_all_domains,
+        :webhook_secret,
+        :users_channel_id,
+        :users_resource_id,
+        :channel_expires_at
       ])
       |> Portal.Google.Directory.changeset()
       |> Portal.Repo.insert()

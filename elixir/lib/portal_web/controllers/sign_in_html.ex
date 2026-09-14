@@ -54,7 +54,7 @@ defmodule PortalWeb.SignInHTML do
             You're signed in to <span class="font-medium text-heading">{@account.name}</span>.
           </p>
           <p class="mt-4 text-xs text-muted">
-            You can now close this window and return to the Firezone client.
+            You can now close this window and return to what you were doing.
           </p>
         </div>
       </body>
@@ -188,7 +188,7 @@ defmodule PortalWeb.SignInHTML do
             has been disabled.
           </p>
           <p class="mt-4 text-xs text-muted">
-            Please contact your Firezone administrator to re-enable this account.
+            Please contact your Firezone administrator to enable this account.
           </p>
         </div>
       </body>

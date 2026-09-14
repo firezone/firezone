@@ -9,6 +9,7 @@ use std::{
 
 use anyhow::{Context, Result};
 use bytes::Bytes;
+use futures::{StreamExt as _, stream::FuturesUnordered};
 use http_body_util::{BodyExt, Full};
 use rustls::ClientConfig;
 use socket_factory::{SocketFactory, TcpSocket};
@@ -35,8 +36,8 @@ type ConnectionDriver = Pin<Box<dyn Future<Output = ()> + Send>>;
 ///
 /// One instance is tied to a given host. It negotiates HTTP/2 if the server
 /// supports it (ALPN `h2`) and falls back to HTTP/1.1 otherwise. The connection is
-/// maintained for the client's lifetime; if it fails, [`Closed`] is returned and
-/// the client becomes permanently unusable and should be discarded.
+/// maintained for the client's lifetime; once it fails, every request errors with
+/// [`Closed`] and the client should be discarded.
 #[derive(Clone)]
 pub struct HttpClient {
     host: String,
@@ -135,7 +136,8 @@ impl HttpClient {
                     client
                         .send_request(request)
                         .await
-                        .context("Failed to send HTTP/2 request")?
+                        .context("Failed to send HTTP/2 request")
+                        .context(Closed)?
                 }
                 Sender::H1(mutex) => {
                     // HTTP/1.1 carries the host in a `Host` header (HTTP/2 uses the
@@ -156,7 +158,8 @@ impl HttpClient {
                     client
                         .send_request(request)
                         .await
-                        .context("Failed to send HTTP/1.1 request")?
+                        .context("Failed to send HTTP/1.1 request")
+                        .context(Closed)?
                 }
             };
 
@@ -165,13 +168,19 @@ impl HttpClient {
             let body = incoming
                 .collect()
                 .await
-                .context("Failed to receive HTTP response body")?;
+                .context("Failed to receive HTTP response body")
+                .context(Closed)?;
 
             Ok(http::Response::from_parts(parts, body.to_bytes()))
         })
     }
 }
 
+/// The connection behind an [`HttpClient`] is closed or has failed.
+///
+/// A transport error on a persistent connection leaves it dead or dying, so
+/// every request that hits one carries this error, not only those sent after
+/// [`HttpClient::is_closed`] starts reporting `true`.
 #[derive(thiserror::Error, Debug)]
 #[error("The connection is closed")]
 pub struct Closed;
@@ -185,19 +194,31 @@ async fn connect(
 ) -> Result<(Sender, ConnectionDriver)> {
     tracing::debug!(?addresses, %domain, "Creating new HTTP connection");
 
-    for address in addresses {
-        let socket = SocketAddr::new(address, port);
+    // Race the addresses instead of walking them in order. A blackholed address
+    // fails only once the OS gives up on the TCP connect, over a minute later,
+    // so in order a working address behind one is not reached until then.
+    let mut attempts = addresses
+        .into_iter()
+        .map(|address| {
+            let socket = SocketAddr::new(address, port);
+            let domain = domain.clone();
+            let tls_config = tls_config.clone();
+            let sf = sf.clone();
 
-        match connect_one(socket, domain.clone(), tls_config.clone(), sf.clone()).await {
-            Ok((sender, driver)) => {
+            async move { (socket, connect_one(socket, domain, tls_config, sf).await) }
+        })
+        .collect::<FuturesUnordered<_>>();
+
+    // Ends once every attempt has resolved. Returning early drops the losing
+    // attempts, which cancels them.
+    while let Some((socket, attempt)) = attempts.next().await {
+        match attempt {
+            Ok(connection) => {
                 tracing::debug!(%socket, %domain, "Created new HTTP connection");
 
-                return Ok((sender, driver));
+                return Ok(connection);
             }
-            Err(e) => {
-                tracing::debug!(%socket, %domain, "Failed to create HTTP client: {e:#}");
-                continue;
-            }
+            Err(e) => tracing::debug!(%socket, %domain, "Failed to create HTTP client: {e:#}"),
         }
     }
 

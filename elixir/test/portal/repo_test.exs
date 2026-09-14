@@ -532,5 +532,45 @@ defmodule Portal.RepoTest do
       assert list(queryable, query_module, page: [cursor: 1]) ==
                {:error, :invalid_cursor}
     end
+
+    test "rejects compressed ETF cursors without decoding them", %{
+      query_module: query_module,
+      queryable: queryable
+    } do
+      compressed_etf =
+        :erlang.term_to_binary(
+          {:after,
+           [
+             {:t, String.duplicate("A", 1_000_000)}
+           ]},
+          compressed: 9
+        )
+
+      assert <<131, 80, _::binary>> = compressed_etf
+
+      cursor = Base.url_encode64(compressed_etf, padding: false)
+      assert byte_size(cursor) <= Portal.Repo.Paginator.max_encoded_cursor_bytes()
+
+      assert list(queryable, query_module, page: [cursor: cursor]) ==
+               {:error, :invalid_cursor}
+    end
+
+    test "rejects a cursor whose signature was modified", %{
+      query_module: query_module,
+      queryable: queryable
+    } do
+      cursor =
+        Portal.Repo.Paginator.encode_cursor(:after, query_module.cursor_fields(), %{
+          id: Ecto.UUID.generate(),
+          inserted_at: ~U[2000-01-01 00:00:00.000000Z]
+        })
+
+      [payload, signature] = String.split(cursor, ".", parts: 2)
+      replacement = if binary_part(signature, 0, 1) == "A", do: "B", else: "A"
+      modified_cursor = payload <> "." <> replacement <> binary_part(signature, 1, byte_size(signature) - 1)
+
+      assert list(queryable, query_module, page: [cursor: modified_cursor]) ==
+               {:error, :invalid_cursor}
+    end
   end
 end

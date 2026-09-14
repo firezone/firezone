@@ -439,7 +439,8 @@ defmodule PortalWeb.Logs.ChangeLogs do
       {"Resources", "resources"},
       {"Sites", "sites"},
       {"Static device pool members", "static_device_pool_members"},
-      {"Userpass auth providers", "userpass_auth_providers"}
+      {"Userpass auth providers", "userpass_auth_providers"},
+      {"X.509 auth providers", "x509_auth_providers"}
     ]
 
     def filters do

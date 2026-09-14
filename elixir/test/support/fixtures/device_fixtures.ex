@@ -232,10 +232,10 @@ defmodule Portal.DeviceFixtures do
   end
 
   @doc """
-  Verify a client (sets verified_at timestamp).
+  Verify a device (sets verified_at timestamp).
   """
-  def verify_client(client) do
-    client
+  def verify_device(device) do
+    device
     |> Ecto.Changeset.change(verified_at: DateTime.utc_now())
     |> Portal.Repo.update!()
   end
@@ -314,7 +314,9 @@ defmodule Portal.DeviceFixtures do
       %Portal.Device{}
       |> Ecto.Changeset.cast(device_attrs, [
         :name,
-        :firezone_id
+        :firezone_id,
+        :device_serial,
+        :device_uuid
       ])
       |> Ecto.Changeset.put_change(:type, :gateway)
       |> Ecto.Changeset.put_change(:account_id, account.id)

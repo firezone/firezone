@@ -1,0 +1,11 @@
+{
+  "hasVPNConfiguration": false,
+  "vpnStatus": "invalid",
+  "systemExtension": "needsInstall",
+  "notifications": "authorized",
+  "clientCertificate": "absent",
+  "resources": [],
+  "connectedDevices": [],
+  "favorites": [],
+  "providerLogFolderSize": 30000000
+}

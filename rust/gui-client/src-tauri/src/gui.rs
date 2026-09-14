@@ -16,7 +16,7 @@ use crate::{
     updates,
     view::{
         AdvancedSettingsChanged, GeneralSettingsChanged, LogsRecounted, SessionChanged,
-        SessionViewModel,
+        SessionViewModel, X509CertificateChanged,
     },
 };
 use anyhow::{Context, Result, bail};
@@ -144,6 +144,17 @@ impl GuiIntegration for TauriIntegration {
         Ok(())
     }
 
+    fn notify_device_trust_changed(
+        &self,
+        certificate: Option<&x509_keystore::ParsedCertificate>,
+    ) -> Result<()> {
+        X509CertificateChanged::from(certificate)
+            .emit(&self.app)
+            .context("Failed to emit `x509_certificate_changed` event")?;
+
+        Ok(())
+    }
+
     fn open_url<P: AsRef<str>>(&self, url: P) -> Result<()> {
         tauri_plugin_opener::open_url(url, Option::<&str>::None)?;
 
@@ -156,6 +167,14 @@ impl GuiIntegration for TauriIntegration {
 
     fn set_tray_menu(&mut self, app_state: system_tray::AppState) {
         self.tray.update(app_state)
+    }
+
+    fn open_tray_menu(&self) -> Result<()> {
+        self.tray.open_menu()
+    }
+
+    fn close_tray_menu(&self) -> Result<()> {
+        self.tray.close_menu()
     }
 
     fn show_notification(&self, title: impl Into<String>, body: impl Into<String>) -> Result<()> {
@@ -257,6 +276,8 @@ fn spawn_notification(title: String, body: String, open_url: Option<url::Url>) {
 pub enum ClientMsg {
     Deeplink(url::Url),
     NewInstance,
+    OpenTrayMenu,
+    CloseTrayMenu,
 }
 
 /// IPC messages that an already running instance may send back to a
@@ -390,44 +411,13 @@ pub fn run(rt: &Runtime, config: RunConfig, reloader: logging::FilterReloadHandl
         anyhow::Ok(ctrl_task)
     });
 
-    let tauri_specta_builder = tauri_specta::Builder::<tauri::Wry>::new()
-        .events(tauri_specta::collect_events![
-            crate::view::SessionChanged,
-            crate::view::GeneralSettingsChanged,
-            crate::view::AdvancedSettingsChanged,
-            crate::view::LogsRecounted,
-        ])
-        .commands(tauri_specta::collect_commands![
-            crate::view::clear_logs,
-            crate::view::export_logs,
-            crate::view::apply_advanced_settings,
-            crate::view::reset_advanced_settings,
-            crate::view::apply_general_settings,
-            crate::view::reset_general_settings,
-            crate::view::sign_in,
-            crate::view::sign_out,
-            crate::view::update_state,
-        ])
-        .typ::<crate::view::Error>();
+    let tauri_specta_builder = crate::view::specta_builder();
 
     #[cfg(debug_assertions)]
     {
-        let bindings_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../src-frontend/generated/bindings.ts")
-            .canonicalize()
-            .context("Failed to create absolute path to bindings file")?;
+        tracing::debug!(path = %crate::view::bindings_path().display(), "Exporting TypeScript bindings");
 
-        tracing::debug!(path = %bindings_path.display(), "Exporting TypeScript bindings");
-
-        tauri_specta_builder
-            .export(
-                specta_typescript::Typescript::default()
-                    .bigint(specta_typescript::BigIntExportBehavior::Number)
-                    .header("/* eslint-disable */\n// @ts-nocheck\n/* tslint:disable */\n")
-                    .formatter(specta_typescript::formatter::prettier),
-                bindings_path,
-            )
-            .context("Failed to export TypeScript bindings")?;
+        crate::view::export_bindings()?;
     }
 
     tauri::Builder::default()
@@ -606,9 +596,9 @@ pub enum SingleInstance {
     /// Another instance was already running. We connected to its GUI
     /// IPC pipe, sent `ClientMsg::NewInstance`, awaited the `Ack`,
     /// and closed our end. Production callers bail with
-    /// [`AlreadyRunning`] here; the `debug single-instance`
-    /// subcommand uses it as a successful end state for the
-    /// second-instance side of the smoke test.
+    /// [`AlreadyRunning`] here; the `single-instance` subcommand uses
+    /// it as a successful end state for the second-instance side of
+    /// the smoke test.
     SecondHandedOff,
 }
 
@@ -653,7 +643,7 @@ pub async fn establish_single_instance() -> Result<SingleInstance> {
 /// [`ClientMsg`], send a `ServerMsg::Ack`, and return the message
 /// so the caller can log / assert on it.
 ///
-/// Used by the `debug single-instance` subcommand to exercise the
+/// Used by the `single-instance` subcommand to exercise the
 /// pipe-server side of the launch-lock hand-off without standing up
 /// the controller or any other normal-runtime machinery. Production
 /// code uses the same `ipc::Server` + framed reader/writer types
@@ -688,6 +678,25 @@ async fn new_instance_handshake(
         .context("Failed to receive response")?;
 
     anyhow::ensure!(response == ServerMsg::Ack);
+
+    Ok(())
+}
+
+pub async fn send_and_await_ack(msg: ClientMsg) -> Result<()> {
+    let (mut read, mut write) =
+        ipc::connect::<ServerMsg, ClientMsg>(SocketId::Gui, ipc::ConnectOptions::default()).await?;
+
+    write.send(&msg).await.context("Failed to send request")?;
+
+    let response = read
+        .next()
+        .await
+        .context("No response received")?
+        .context("Failed to receive response")?;
+
+    anyhow::ensure!(response == ServerMsg::Ack);
+
+    tracing::info!("Running instance acknowledged the request, goodbye!");
 
     Ok(())
 }

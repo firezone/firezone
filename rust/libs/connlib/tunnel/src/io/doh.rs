@@ -3,12 +3,14 @@ use dns_types::DoHUrl;
 use http_client::HttpClient;
 
 pub async fn send(
-    client: HttpClient,
+    client: impl Future<Output = Result<HttpClient>> + Send,
     server: DoHUrl,
     query: dns_types::Query,
 ) -> Result<dns_types::Response> {
     let domain = query.domain();
     let qtype = query.qtype();
+
+    let client = client.await?;
 
     tracing::trace!(target: "wire::dns::recursive::qry", %server, "{qtype} {domain}");
 

@@ -107,6 +107,18 @@ defmodule PortalAPI.ActorControllerTest do
       assert %{"type" => "about:blank", "status" => 400} = json_response(conn, 400)
     end
 
+    test "returns error for a limit outside 1 to 100", %{conn: conn, actor: actor} do
+      for limit <- ["0", "-1", "101"] do
+        conn =
+          conn
+          |> authorize_conn(actor)
+          |> put_req_header("content-type", "application/json")
+          |> get("/actors", limit: limit)
+
+        assert %{"type" => "about:blank", "status" => 400} = json_response(conn, 400)
+      end
+    end
+
     test "filters by exact name match", %{conn: conn, account: account, actor: actor} do
       target = actor_fixture(account: account, name: "alice", type: :account_user)
       _other = actor_fixture(account: account, name: "bob", type: :account_user)
@@ -270,7 +282,7 @@ defmodule PortalAPI.ActorControllerTest do
       assert %{
                "status" => 422,
                "validation_errors" => %{
-                 "type" => ["API clients cannot be created via the API"]
+                 "type" => ["is invalid"]
                }
              } = json_response(conn, 422)
     end
@@ -371,6 +383,19 @@ defmodule PortalAPI.ActorControllerTest do
       assert resp["data"]["name"] == attrs["name"]
       assert resp["data"]["email"] == attrs["email"]
       assert resp["data"]["type"] == attrs["type"]
+    end
+
+    test "returns validation error when the email domain cannot be encoded", %{conn: conn, actor: api_actor} do
+      attrs = %{"name" => "Test User", "email" => "Ï@ú1å?", "type" => "account_user"}
+
+      conn =
+        conn
+        |> authorize_conn(api_actor)
+        |> put_req_header("content-type", "application/json")
+        |> post("/actors", actor: attrs)
+
+      assert %{"status" => 422, "validation_errors" => %{"email" => errors}} = json_response(conn, 422)
+      assert "is an invalid email address" in errors
     end
 
     test "returns validation error when email host has no dot", %{conn: conn, actor: api_actor} do
@@ -639,7 +664,7 @@ defmodule PortalAPI.ActorControllerTest do
 
       assert resp = json_response(conn, 422)
       assert resp["validation_errors"]["type"] ==
-               ["cannot change a user to a service account or API client"]
+               ["is invalid"]
 
       assert Repo.get_by!(Portal.Actor, account_id: account.id, id: actor.id).type ==
                :account_user
@@ -687,7 +712,7 @@ defmodule PortalAPI.ActorControllerTest do
 
       assert resp = json_response(conn, 422)
       assert resp["validation_errors"]["type"] ==
-               ["cannot change a user to a service account or API client"]
+               ["is invalid"]
 
       assert Repo.get_by!(Portal.Actor, account_id: account.id, id: actor.id).type ==
                :account_admin_user
@@ -733,8 +758,14 @@ defmodule PortalAPI.ActorControllerTest do
           |> put("/actors/#{target.id}", actor: %{"type" => type})
 
         assert resp = json_response(request_conn, 422)
-        assert resp["validation_errors"]["type"] ==
-                 ["cannot change the type of a service account"]
+
+        # api_client is not a type the request schema accepts at all.
+        expected =
+          if type == "api_client",
+            do: ["is invalid"],
+            else: ["cannot change the type of a service account"]
+
+        assert resp["validation_errors"]["type"] == expected
       end
 
       assert Repo.get_by!(Portal.Actor, account_id: account.id, id: target.id).type ==

@@ -128,34 +128,27 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
   end
 
   def mount(_params, _session, socket) do
-    trust_anchors_enabled? = PortalWeb.NavigationComponents.trust_anchors_enabled?()
+    trust_anchors = Database.list_trust_anchors(socket.assigns.subject)
 
-    if trust_anchors_enabled? do
-      trust_anchors = Database.list_trust_anchors(socket.assigns.subject)
+    socket =
+      socket
+      |> assign(page_title: "Trust Anchors")
+      |> assign(trust_anchors: trust_anchors)
+      |> assign_revocation_health(trust_anchors)
+      |> assign(selected_trust_anchor: nil)
+      |> assign(form: nil, input_mode: :paste)
+      |> assign(confirm_delete?: false)
+      |> assign(revocation: [])
+      |> assign(panel_tab: :overview, expanded_endpoint: nil)
+      |> assign(device_posture_enabled?: PortalWeb.NavigationComponents.device_posture_enabled?())
+      |> allow_upload(:cert_file,
+        accept: ~w(.pem .crt .cer .der .txt),
+        max_entries: @max_upload_entries,
+        max_file_size: @max_upload_size,
+        auto_upload: true
+      )
 
-      socket =
-        socket
-        |> assign(page_title: "Trust Anchors")
-        |> assign(trust_anchors: trust_anchors)
-        |> assign_revocation_health(trust_anchors)
-        |> assign(selected_trust_anchor: nil)
-        |> assign(form: nil, input_mode: :paste)
-        |> assign(confirm_delete?: false)
-        |> assign(revocation: [])
-        |> assign(panel_tab: :overview, expanded_endpoint: nil)
-        |> assign(trust_anchors_enabled?: trust_anchors_enabled?)
-        |> assign(device_posture_enabled?: PortalWeb.NavigationComponents.device_posture_enabled?())
-        |> allow_upload(:cert_file,
-          accept: ~w(.pem .crt .cer .der .txt),
-          max_entries: @max_upload_entries,
-          max_file_size: @max_upload_size,
-          auto_upload: true
-        )
-
-      {:ok, socket}
-    else
-      {:ok, push_navigate(socket, to: ~p"/#{socket.assigns.account}/settings/account")}
-    end
+    {:ok, socket}
   end
 
   def handle_params(_params, _uri, %{assigns: %{live_action: :new}} = socket) do
@@ -214,7 +207,6 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
       <.settings_nav
         account={@account}
         current_path={@current_path}
-        trust_anchors_enabled?={@trust_anchors_enabled?}
         device_posture_enabled?={@device_posture_enabled?}
       />
 
@@ -227,6 +219,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
             </span>
           </div>
           <div class="flex items-center gap-2">
+            <.docs_action path="/device-trust" />
             <.link
               patch={~p"/#{@account}/settings/trust_anchors/new"}
               class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
@@ -323,7 +316,10 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
         <div :if={@live_action == :new && @form} class="flex flex-col h-full overflow-hidden">
           <div class="shrink-0 px-5 pt-4 pb-3 border-b border-border bg-elevated">
             <div class="flex items-center justify-between gap-3">
-              <h2 class="text-sm font-semibold text-heading">New Trust Anchor</h2>
+              <div class="flex items-center gap-2">
+                <h2 class="text-sm font-semibold text-heading">New Trust Anchor</h2>
+                <.docs_action path="/device-trust" />
+              </div>
               <.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
             </div>
           </div>
@@ -1040,6 +1036,17 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
 
         {:noreply, socket}
 
+      # Another session deleted this trust anchor after it was loaded into the
+      # panel. The end state already matches the user's intent, so just
+      # refresh and close.
+      {:error, :not_found} ->
+        socket =
+          socket
+          |> assign(trust_anchors: Database.list_trust_anchors(socket.assigns.subject))
+          |> push_patch(to: ~p"/#{socket.assigns.account}/settings/trust_anchors")
+
+        {:noreply, socket}
+
       {:error, _reason} ->
         socket =
           socket
@@ -1048,17 +1055,6 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
 
         {:noreply, socket}
     end
-  rescue
-    # Another session deleted this trust anchor after it was loaded into the
-    # panel, so `Repo.delete` affected zero rows. The end state already
-    # matches the user's intent, so just refresh and close.
-    Ecto.StaleEntryError ->
-      socket =
-        socket
-        |> assign(trust_anchors: Database.list_trust_anchors(socket.assigns.subject))
-        |> push_patch(to: ~p"/#{socket.assigns.account}/settings/trust_anchors")
-
-      {:noreply, socket}
   end
 
   defp build_creation_changeset(attrs, subject) do

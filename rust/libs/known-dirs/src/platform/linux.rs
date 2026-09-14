@@ -3,7 +3,7 @@ use std::path::PathBuf;
 
 /// Path for Tunnel service config that the Tunnel service can write
 ///
-/// All writes should use `atomicwrites`.
+/// All writes should use `atomicfs`.
 ///
 /// On Linux, `/var/lib/$BUNDLE_ID/config/firezone-id`
 ///

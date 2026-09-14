@@ -1,11 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 
-<resources>
+<resources xmlns:tools="http://schemas.android.com/tools">
 
     <style name="AppTheme" parent="AppTheme.Base" />
 
     <style name="AppTheme.Base" parent="Theme.Material3.Light.NoActionBar">
         <item name="colorPrimary">@color/neutral_900</item>
+        <item name="android:colorBackground">@color/portal_canvas</item>
+        <item name="android:windowBackground">@color/portal_canvas</item>
+        <!-- The bars are transparent from API 35 on, so their icons have to be dark
+             against the light background showing through. -->
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightNavigationBar" tools:targetApi="27">true</item>
     </style>
 
     <style name="AppTheme.Base.HeaderText">

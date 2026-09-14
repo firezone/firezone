@@ -774,4 +774,110 @@ defmodule PortalWeb.GroupsTest do
       assert html =~ "Total"
     end
   end
+  describe "live table filters across panel operations" do
+    setup %{account: account} do
+      matching = group_fixture(account: account, name: "Engineering Team")
+      other = group_fixture(account: account, name: "Marketing Team")
+      filter = %{"groups_filter[name]" => "Engineering"}
+      %{matching: matching, other: other, filter: filter}
+    end
+
+    test "are kept when creating a group", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      other: other,
+      filter: filter
+    } do
+      {:ok, lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/groups?#{filter}")
+
+      refute html =~ other.name
+
+      new_link = "a[href='#{~p"/#{account}/groups/new?#{filter}"}']"
+
+      lv |> element(new_link) |> render_click()
+      assert_patch(lv, ~p"/#{account}/groups/new?#{filter}")
+
+      render_click(lv, "close_panel")
+      assert_patch(lv, ~p"/#{account}/groups?#{filter}")
+
+      lv |> element(new_link) |> render_click()
+
+      lv
+      |> form("#group-form", group: %{name: "Engineering Ops", member_search: ""})
+      |> render_submit()
+
+      group = Portal.Repo.get_by!(Group, account_id: account.id, name: "Engineering Ops")
+      assert_patch(lv, ~p"/#{account}/groups/#{group.id}?#{filter}")
+
+      html = render(lv)
+      assert html =~ "Engineering Ops"
+      refute html =~ other.name
+    end
+
+    test "are kept when editing a group", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      matching: matching,
+      other: other,
+      filter: filter
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/groups/#{matching}?#{filter}")
+
+      lv
+      |> element("a[href='#{~p"/#{account}/groups/#{matching}/edit?#{filter}"}']")
+      |> render_click()
+
+      assert_patch(lv, ~p"/#{account}/groups/#{matching}/edit?#{filter}")
+
+      lv
+      |> form("#group-form", group: %{name: "Engineering Renamed", member_search: ""})
+      |> render_submit()
+
+      assert_patch(lv, ~p"/#{account}/groups/#{matching}?#{filter}")
+
+      html = render(lv)
+      assert html =~ "Engineering Renamed"
+      refute html =~ other.name
+    end
+
+    test "are kept when granting access to a resource", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      matching: matching,
+      other: other,
+      filter: filter
+    } do
+      resource = resource_fixture(account: account, name: "Private API")
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/groups/#{matching}?#{filter}")
+
+      render_click(lv, "switch_group_tab", %{"tab" => "resources"})
+      assert_patch(lv, ~p"/#{account}/groups/#{matching}?#{Map.put(filter, "tab", "resources")}")
+
+      render_click(lv, "open_grant_resource_form")
+      render_click(lv, "toggle_grant_resource", %{"resource_id" => resource.id})
+
+      html =
+        lv
+        |> form("#grant-resource-form")
+        |> render_submit()
+
+      assert Portal.Repo.get_by!(Policy, group_id: matching.id, resource_id: resource.id)
+      assert html =~ resource.name
+      refute html =~ other.name
+      assert has_element?(lv, "input[name='groups[name]'][value='Engineering']")
+    end
+  end
 end

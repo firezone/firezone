@@ -13,6 +13,11 @@ object Telemetry {
     private var accountSlug: String? = null
 
     fun start(context: Context) {
+        if (BuildConfig.NO_TELEMETRY) {
+            Log.i("Telemetry", "Telemetry is switched off for this build")
+            return
+        }
+
         SentryAndroid.init(context) { options ->
             options.dsn =
                 "https://928a6ee1f6af9734100b8bc89b2dc87d@sentry.firezone.dev/4508175126233088"

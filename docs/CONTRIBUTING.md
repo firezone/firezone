@@ -134,7 +134,7 @@ openssl req -x509 -newkey rsa:2048 -nodes -sha256 -days 365 \
     -keyout priv/cert/selfsigned-key.pem \
     -out priv/cert/selfsigned.pem \
     -subj "/O=Firezone Development/CN=localhost" \
-    -addext "subjectAltName=DNS:localhost,IP:127.0.0.1" \
+    -addext "subjectAltName=DNS:localhost,DNS:host.docker.internal,IP:127.0.0.1" \
     -addext "basicConstraints=critical,CA:FALSE" \
     -addext "keyUsage=critical,digitalSignature,keyEncipherment" \
     -addext "extendedKeyUsage=critical,serverAuth"

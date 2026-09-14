@@ -165,7 +165,7 @@ async fn send_query_tcp(
     query: dns_types::Query,
 ) -> Result<dns_types::Response> {
     let socket = socket_factory
-        .bind(unspecified_bind_addr(server))
+        .bind(server)
         .context("Failed to create TCP socket")?;
 
     let response = tokio::time::timeout(BootstrapDnsClient::TIMEOUT, async move {

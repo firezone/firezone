@@ -56,6 +56,12 @@ defmodule PortalAPI.FlowLogControllerTest do
     post(conn, "/ingestion/flow_logs", %{"flow_logs" => records})
   end
 
+  defp unique_ip do
+    counter = System.unique_integer([:positive, :monotonic])
+
+    {10, rem(div(counter, 65_536), 256), rem(div(counter, 256), 256), rem(counter, 254) + 1}
+  end
+
   describe "create/2 request shape" do
     test "returns 400 when batch exceeds 10k records", %{conn: conn, account: account} do
       records = for _ <- 1..10_001, do: build_record()
@@ -91,6 +97,16 @@ defmodule PortalAPI.FlowLogControllerTest do
   end
 
   describe "create/2 request authentication" do
+    test "rejects an unauthenticated malformed JSON request before decoding it", %{conn: conn} do
+      conn =
+        conn
+        |> put_req_header("content-type", "application/json")
+        |> post("/ingestion/flow_logs", "{")
+
+      assert %{"status" => 401, "detail" => "Authentication credentials were missing or invalid."} =
+               json_response(conn, 401)
+    end
+
     test "returns 401 when the Authorization header is missing", %{conn: conn} do
       conn = post_logs(conn, [build_record()])
 
@@ -150,6 +166,35 @@ defmodule PortalAPI.FlowLogControllerTest do
              } = json_response(conn, 401)
 
       assert Repo.all(FlowLog) == []
+    end
+
+    test "rejects a rate-limited malformed JSON request before decoding it", %{
+      conn: conn,
+      account: account
+    } do
+      Portal.Config.put_env_override(:portal, PortalAPI.Plugs.IngestionRateLimit,
+        refill_rate: 0,
+        capacity: 1
+      )
+
+      remote_ip = unique_ip()
+
+      first_conn =
+        conn
+        |> Map.put(:remote_ip, remote_ip)
+        |> authorize(account)
+        |> post_logs([build_record()])
+
+      assert %{"data" => %{"status" => "ok"}} = json_response(first_conn, 200)
+
+      second_conn =
+        conn
+        |> Map.put(:remote_ip, remote_ip)
+        |> authorize(account)
+        |> put_req_header("content-type", "application/json")
+        |> post("/ingestion/flow_logs", "{")
+
+      assert %{"status" => 429} = json_response(second_conn, 429)
     end
 
     test "returns 401 when the token has no uploads_enabled claim", %{

@@ -86,12 +86,16 @@ defmodule Portal.Device do
     field :ipv4, Portal.Types.IP, read_after_writes: true
     field :ipv6, Portal.Types.IP, read_after_writes: true
 
-    # Client-only
-    belongs_to :actor, Portal.Actor
+    # Self-reported hardware metadata
     field :device_serial, :string
     field :device_uuid, :string
+
+    # Mobile client-only
     field :identifier_for_vendor, :string
     field :firebase_installation_id, :string
+
+    # Client-only
+    belongs_to :actor, Portal.Actor
     field :hostname, :string
 
     # Device trust. Enforced client-only today, but gateways may adopt
@@ -136,6 +140,8 @@ defmodule Portal.Device do
     field :gateway_token_id, :binary_id
 
     # Virtual fields
+    # The token minted with a Gateway, carried only on the provisioning response.
+    field :provisioned_token, :any, virtual: true
     field :online?, :boolean, virtual: true, default: false
 
     # Whether THIS connection proved possession of an MDM-issued certificate.
@@ -143,6 +149,10 @@ defmodule Portal.Device do
     # point-in-time history. Policy conditions read this, so it must describe
     # the session being evaluated and never the device's past.
     field :attested?, :boolean, virtual: true, default: false
+
+    # Posture provider rows matched to this device, by provider type. Live
+    # connection state loaded at connect, read by policy postures.
+    field :posture, :map, virtual: true, default: %{}
 
     # rotated_at of the gateway_token this device last connected with,
     # populated by queries that select_merge it (see
@@ -229,6 +239,8 @@ defmodule Portal.Device do
       :gateway ->
         changeset
         |> validate_required([:site_id])
+        |> validate_length(:device_serial, max: 255)
+        |> validate_length(:device_uuid, max: 255)
         |> validate_gateway_verification()
 
       _ ->

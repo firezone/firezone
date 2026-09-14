@@ -2,9 +2,8 @@ use telemetry::TESTING;
 
 #[tokio::test]
 async fn set_firezone_id_attaches_user_to_running_session() {
-    let _ = rustls::crypto::ring::default_provider().install_default();
-
-    telemetry::configure(std::sync::Arc::new(socket_factory::tcp));
+    // No socket factory is configured, so the ingest client can never connect and
+    // the tests report nothing to Sentry.
     telemetry::start("entrypoint", "1.0.0", TESTING);
 
     telemetry::set_firezone_id("device-abc".to_owned());

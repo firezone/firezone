@@ -1,7 +1,7 @@
 import Foundation
 
 public final class Favorites: ObservableObject {
-  private static let key = "favoriteResourceIDs"
+  static let key = "favoriteResourceIDs"
   private var ids: Set<String>
   private let userDefaults: UserDefaults
 

@@ -22,9 +22,11 @@ defmodule PortalWeb.EmailOTPController do
         } = params
       )
       when is_binary(email) do
+    context_type = context_type(params)
+
     with {:ok, account} <- Database.fetch_account_by_id_or_slug(account_id_or_slug),
          {:ok, _provider} <- Database.fetch_provider_by_id(account, auth_provider_id) do
-      conn = maybe_send_email_otp(conn, account, email, params, auth_provider_id)
+      conn = maybe_send_email_otp(conn, account, email, params, auth_provider_id, context_type)
 
       redirect_params = sanitize(params)
 
@@ -64,7 +66,8 @@ defmodule PortalWeb.EmailOTPController do
     %{"account_id_or_slug" => account_id_or_slug, "auth_provider_id" => auth_provider_id} = params
     context_type = context_type(params)
 
-    with {:ok, actor_id, passcode_id, email} <- fetch_state(conn),
+    with {:ok, actor_id, passcode_id, email, initiated_context_type} <- fetch_state(conn),
+         :ok <- validate_initiated_context(initiated_context_type, context_type),
          {:ok, account} <- Database.fetch_account_by_id_or_slug(account_id_or_slug),
          {:ok, provider} <- Database.fetch_provider_by_id(account, auth_provider_id),
          false <- client_sign_in_restricted?(account, context_type),
@@ -76,6 +79,7 @@ defmodule PortalWeb.EmailOTPController do
              entered_code
            ),
          :ok <- check_admin(passcode.actor, context_type),
+         :ok <- Portal.AuthProvider.validate_context(provider, context_type),
          {:ok, session_or_token} <-
            create_session_or_token(conn, passcode.actor, provider, params) do
       {:ok,
@@ -101,19 +105,27 @@ defmodule PortalWeb.EmailOTPController do
 
   defp fetch_state(conn) do
     case PortalWeb.Cookie.EmailOTP.fetch(conn) do
-      %PortalWeb.Cookie.EmailOTP{actor_id: actor_id, passcode_id: passcode_id, email: email} ->
-        {:ok, actor_id, passcode_id, email}
+      %PortalWeb.Cookie.EmailOTP{
+        actor_id: actor_id,
+        passcode_id: passcode_id,
+        email: email,
+        context_type: context_type
+      } ->
+        {:ok, actor_id, passcode_id, email, context_type}
 
       nil ->
         :error
     end
   end
 
-  defp maybe_send_email_otp(conn, account, email, params, auth_provider_id) do
+  defp maybe_send_email_otp(conn, account, email, params, auth_provider_id, context_type) do
     {actor_id, passcode_id, error} =
       Portal.Timing.execute_with_constant_time(
         fn ->
-          with {:ok, actor} <- Database.fetch_actor_by_email(account, email),
+          # Apply recipient throttling before the actor lookup so its public
+          # feedback cannot reveal whether the address belongs to an eligible actor.
+          with :ok <- rate_limit_email_otp(email),
+               {:ok, actor} <- Database.fetch_actor_by_email(account, email),
                {:ok, otp} <- Authentication.create_one_time_passcode(account, actor),
                {:ok, _} <- send_email_otp(conn, actor, otp.code, auth_provider_id, params) do
             {actor.id, otp.id, nil}
@@ -143,7 +155,8 @@ defmodule PortalWeb.EmailOTPController do
     cookie = %PortalWeb.Cookie.EmailOTP{
       actor_id: actor_id,
       passcode_id: passcode_id,
-      email: email
+      email: email,
+      context_type: context_type
     }
 
     conn = PortalWeb.Cookie.EmailOTP.put(conn, cookie)
@@ -161,6 +174,18 @@ defmodule PortalWeb.EmailOTPController do
     end
   end
 
+  defp rate_limit_email_otp(email) do
+    case Portal.Mailer.RateLimiter.rate_limit(
+           {:sign_in_link, email},
+           3,
+           :timer.minutes(5),
+           fn -> :ok end
+         ) do
+      {:ok, :ok} -> :ok
+      {:error, :rate_limited} -> {:error, :rate_limited}
+    end
+  end
+
   defp send_email_otp(conn, actor, code, auth_provider_id, params) do
     Portal.Mailer.AuthEmail.sign_in_link_email(
       actor,
@@ -171,11 +196,7 @@ defmodule PortalWeb.EmailOTPController do
       conn.remote_ip,
       sanitize(params)
     )
-    |> Portal.Mailer.deliver_with_rate_limit(
-      rate_limit_key: {:sign_in_link, actor.email},
-      rate_limit: 3,
-      rate_limit_interval: :timer.minutes(5)
-    )
+    |> Portal.Mailer.deliver()
   end
 
   defp check_admin(%Portal.Actor{type: :account_admin_user}, _context_type), do: :ok
@@ -214,12 +235,18 @@ defmodule PortalWeb.EmailOTPController do
 
         :portal ->
           provider.portal_session_lifetime_secs || schema.default_portal_session_lifetime_secs()
+
+        :oauth ->
+          PortalWeb.Cookie.OAuthSession.lifetime_secs()
       end
 
     expires_at = DateTime.add(DateTime.utc_now(), session_lifetime_secs, :second)
 
     case type do
-      :portal ->
+      t when t in [:portal, :oauth] ->
+      # Approving an app connection. A short lived session of its own, held in
+      # its own cookie, so it neither grants portal access nor is satisfied by
+      # portal access.
         Authentication.create_portal_session(
           actor,
           provider.id,
@@ -263,6 +290,18 @@ defmodule PortalWeb.EmailOTPController do
     |> Redirector.portal_signed_in(account, params, actor)
   end
 
+  # Context: :oauth
+  # Store the approval-flow cookie only, and go back to the pending request.
+  defp signed_in(conn, :oauth, account, actor, session, params) do
+    conn
+    |> PortalWeb.Cookie.OAuthSession.put(account.id, %PortalWeb.Cookie.OAuthSession{
+      session_id: session.id
+    })
+    |> Phoenix.Controller.redirect(
+      to: Redirector.sanitize_redirect_to(account, params["redirect_to"], actor)
+    )
+  end
+
   # Context: :gui_client
   # Store a cookie and redirect to client handler which redirects to the final URL based on platform
   defp signed_in(conn, :gui_client, account, actor, token, params) do
@@ -302,6 +341,12 @@ defmodule PortalWeb.EmailOTPController do
 
   defp handle_error(conn, {:error, :not_admin}, params) do
     error = "This action requires admin privileges."
+    path = ~p"/#{params["account_id_or_slug"]}"
+    redirect_for_error(conn, error, path)
+  end
+
+  defp handle_error(conn, {:error, :invalid_context}, params) do
+    error = "This authentication method is not available for your sign-in context."
     path = ~p"/#{params["account_id_or_slug"]}"
     redirect_for_error(conn, error, path)
   end
@@ -356,10 +401,14 @@ defmodule PortalWeb.EmailOTPController do
     Map.take(params, ["as", "redirect_to", "state", "nonce"])
   end
 
+  defp context_type(%{"as" => "oauth"}), do: :oauth
   defp context_type(%{"as" => "client"}), do: :gui_client
   defp context_type(%{"as" => "gui-client"}), do: :gui_client
   defp context_type(%{"as" => "headless-client"}), do: :headless_client
   defp context_type(_), do: :portal
+
+  defp validate_initiated_context(context_type, context_type), do: :ok
+  defp validate_initiated_context(_initiated_context_type, _context_type), do: {:error, :invalid_context}
 
   defmodule Database do
     import Ecto.Query

@@ -302,6 +302,11 @@ fn set_identity_attribute(
     value: Option<String>,
     store: fn(&mut state::State, Option<String>),
 ) {
+    match &value {
+        Some(_) => tracing::debug!(%key, "Setting identity attribute"),
+        None => tracing::debug!(%key, "Clearing identity attribute"),
+    }
+
     let _ = STATE.try_write(|state| store(state, value.clone()));
 
     update_user(|user| match value {
@@ -337,6 +342,8 @@ pub fn set_actor_email(actor_email: impl Into<Option<String>>) {
 /// Attaches the Firezone ID to the active Sentry session.
 pub fn set_firezone_id(firezone_id: String) {
     let new_user = compute_user(firezone_id);
+
+    tracing::debug!(user = %new_user.id.as_deref().unwrap_or("<none>"), "Setting user");
 
     let _ = STATE.try_write(|state| state.set_firezone_id(new_user.id.clone()));
 
@@ -465,8 +472,13 @@ fn append_tracing_fields_to_message(mut log: Log) -> Log {
     ];
 
     for (key, attribute) in mem::take(&mut log.attributes) {
-        let LogAttribute(serde_json::Value::String(attr_string)) = &attribute else {
-            continue;
+        let value = match &attribute.0 {
+            serde_json::Value::String(value) => value.clone(),
+            serde_json::Value::Number(value) => value.to_string(),
+            serde_json::Value::Bool(value) => value.to_string(),
+            serde_json::Value::Null => continue,
+            serde_json::Value::Array(_) => continue,
+            serde_json::Value::Object(_) => continue,
         };
 
         if IGNORED_ATTRS.iter().any(|attr| key.starts_with(attr)) {
@@ -484,7 +496,7 @@ fn append_tracing_fields_to_message(mut log: Log) -> Log {
             continue;
         }
 
-        log.body.push_str(&format!(" {key}={attr_string}"));
+        log.body.push_str(&format!(" {key}={value}"));
         log.attributes.insert(key.to_owned(), attribute);
     }
 
@@ -673,6 +685,61 @@ mod tests {
                 )
             ])
         )
+    }
+
+    #[test]
+    fn preserves_and_appends_non_string_attributes() {
+        let attributes = BTreeMap::from([
+            ("enabled".to_owned(), LogAttribute(serde_json::json!(true))),
+            ("flows".to_owned(), LogAttribute(serde_json::json!(3))),
+            (
+                "inner_src_port".to_owned(),
+                LogAttribute(serde_json::json!(52625)),
+            ),
+            ("ratio".to_owned(), LogAttribute(serde_json::json!(0.5))),
+            (
+                "sentry.sample_rate".to_owned(),
+                LogAttribute(serde_json::json!(1.0)),
+            ),
+            (
+                "user.verified".to_owned(),
+                LogAttribute(serde_json::json!(false)),
+            ),
+        ]);
+        let mut log = log("Foobar", &[]);
+        log.attributes = attributes.clone();
+        let flows = log
+            .attributes
+            .remove("flows")
+            .expect("test attribute exists");
+        log.attributes
+            .insert("handle_input:flows".to_owned(), flows);
+
+        let log = append_tracing_fields_to_message(log);
+
+        assert_eq!(log.attributes, attributes);
+        assert_eq!(
+            log.body,
+            "Foobar enabled=true flows=3 inner_src_port=52625 ratio=0.5"
+        );
+    }
+
+    #[test]
+    fn ignores_null_and_compound_attributes() {
+        let mut log = log("Foobar", &[]);
+        log.attributes = BTreeMap::from([
+            ("empty".to_owned(), LogAttribute(serde_json::json!(null))),
+            ("list".to_owned(), LogAttribute(serde_json::json!([1, 2]))),
+            (
+                "object".to_owned(),
+                LogAttribute(serde_json::json!({"enabled": true})),
+            ),
+        ]);
+
+        let log = append_tracing_fields_to_message(log);
+
+        assert_eq!(log.body, "Foobar");
+        assert!(log.attributes.is_empty());
     }
 
     #[test]

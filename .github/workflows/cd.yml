@@ -135,12 +135,25 @@ jobs:
     secrets: inherit
     permissions:
       checks: write # dorny/test-reporter
+      pull-requests: write # breaking OpenAPI changes comment
 
   swift:
     uses: ./.github/workflows/_swift.yml
     secrets: inherit
     permissions:
+      actions: read # inspect store submission artifacts
       contents: write # release draft and build artifact uploads
+      id-token: write # OIDC auth
+      security-events: write # trivy SARIF upload from setup-mise
+
+  # Gradle only writes its build cache from the default branch, so PR and merge-queue
+  # runs restore nothing unless `main` is built too.
+  kotlin:
+    uses: ./.github/workflows/_kotlin.yml
+    secrets: inherit
+    permissions:
+      actions: read # inspect store submission artifacts
+      contents: write # release draft
       id-token: write # OIDC auth
       security-events: write # trivy SARIF upload from setup-mise
 

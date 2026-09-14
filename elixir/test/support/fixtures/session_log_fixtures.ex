@@ -42,7 +42,10 @@ defmodule Portal.SessionLogFixtures do
   defp default_subject do
     %{
       "actor_id" => Ecto.UUID.generate(),
+      "actor_name" => "Example User",
       "actor_email" => "user@example.com",
+      "actor_type" => "account_user",
+      "auth_provider_id" => Ecto.UUID.generate(),
       "device_id" => Ecto.UUID.generate(),
       "token_id" => Ecto.UUID.generate(),
       "ip" => "189.172.73.1",

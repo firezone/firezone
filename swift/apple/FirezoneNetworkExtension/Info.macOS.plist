@@ -24,6 +24,8 @@
 	<string>$(MACOSX_DEPLOYMENT_TARGET)</string>
 	<key>AppGroupIdentifier</key>
 	<string>$(APP_GROUP_ID)</string>
+	<key>NoTelemetry</key>
+	<string>$(FIREZONE_NO_TELEMETRY)</string>
 	<key>NSHumanReadableCopyright</key>
 	<string>Copyright © 2025 Firezone, Inc. All rights reserved.</string>
 	<key>LSEnvironment</key>

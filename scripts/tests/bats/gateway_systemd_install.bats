@@ -152,6 +152,7 @@ refute_file_contains() {
 @test "gateway-systemd-install: stores token as a systemd credential" {
     run env \
         FIREZONE_ID="test-gateway-id" \
+        FIREZONE_NAME="ignored-gateway-name" \
         FIREZONE_TOKEN="test-secret-token" \
         "$SCRIPT"
 
@@ -161,10 +162,23 @@ refute_file_contains() {
 
     grep -q '^LoadCredential=FIREZONE_TOKEN:/etc/firezone/gateway-token$' "$(service_file)"
     grep -q '^Environment="FIREZONE_ID=test-gateway-id"$' "$(service_file)"
+    refute_file_contains 'FIREZONE_NAME=' "$(service_file)"
     refute_file_contains 'test-secret-token' "$(service_file)"
     refute_file_contains 'FIREZONE_TOKEN=' "$(service_file)"
     grep -q '^test-secret-token$' "$(token_file)"
     [ "$(file_mode "$(token_file)")" = "400" ]
+}
+
+@test "gateway-systemd-install: unit provisions the state directory" {
+    run env \
+        FIREZONE_ID="test-gateway-id" \
+        FIREZONE_TOKEN="test-secret-token" \
+        "$SCRIPT"
+
+    [ "$status" -eq 0 ]
+
+    grep -q '^StateDirectory=firezone$' "$(service_file)"
+    grep -q '^StateDirectoryMode=0700$' "$(service_file)"
 }
 
 @test "gateway-systemd-install: generated init script uses hardcoded artifact URL and verifies checksums" {
@@ -177,7 +191,8 @@ refute_file_contains() {
     [ -f "$(init_script)" ]
 
     grep -q '^ARTIFACT_BASE_URL="https://www.firezone.dev/dl/firezone-gateway"$' "$(init_script)"
-    grep -q '^GATEWAY_VERSION="1.6.0"$' "$(init_script)"
+    # mark:current-gateway-version
+    grep -q '^GATEWAY_VERSION="1.6.1"$' "$(init_script)"
     grep -q 'download_url="$ARTIFACT_BASE_URL/$GATEWAY_VERSION/$arch"' "$(init_script)"
     [ "$(grep -Ec 'expected_sha256="[0-9a-f]{64}"' "$(init_script)")" -eq 3 ]
     grep -q 'failed checksum verification' "$(init_script)"

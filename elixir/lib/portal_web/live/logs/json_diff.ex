@@ -516,11 +516,13 @@ defmodule PortalWeb.Logs.JSONDiff do
   defp textdiff_class(:add), do: "json-diff-textdiff-added"
   defp textdiff_class(:del), do: "json-diff-textdiff-deleted"
 
-  # Recursive JSON pretty-printer. Returns a string with sorted keys and
-  # 2-space indentation so the rendered diff has a stable, readable shape
-  # regardless of the order the source maps were built in. Returned as a
-  # plain string so HEEx's `{}` interpolation HTML-escapes it.
-  @doc false
+  @doc """
+  Pretty-prints a JSON-shaped value.
+
+  Keys are sorted and nesting is indented two spaces, so the rendered shape is
+  stable regardless of the order the source maps were built in. Returned as a
+  plain string so HEEx's `{}` interpolation HTML-escapes it.
+  """
   def pretty(value), do: value |> pretty_io(0) |> IO.iodata_to_binary()
 
   defp pretty_io(map, _indent) when is_map(map) and map_size(map) == 0, do: "{}"

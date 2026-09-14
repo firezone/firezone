@@ -86,6 +86,7 @@ public struct SettingsView: View {
   public enum Tab: Hashable {
     case general
     case advanced
+    case deviceTrust
     case logs
   }
 
@@ -118,6 +119,14 @@ public struct SettingsView: View {
                 }
                 .badge(viewModel.isValid() ? nil : "!")
                 .tag(Tab.advanced)
+              if store.deviceTrustCertificateSummary != nil {
+                deviceTrustTab
+                  .tabItem {
+                    Image(systemName: "rosette")
+                    Text("Device Trust")
+                  }
+                  .tag(Tab.deviceTrust)
+              }
               logsTab
                 .tabItem {
                   Image(systemName: "doc.text")
@@ -176,6 +185,13 @@ public struct SettingsView: View {
               Text("Advanced")
             }
             .tag(Tab.advanced)
+          if store.deviceTrustCertificateSummary != nil {
+            deviceTrustTab
+              .tabItem {
+                Text("Device Trust")
+              }
+              .tag(Tab.deviceTrust)
+          }
           logsTab
             .tabItem {
               Text("Diagnostic Logs")
@@ -308,68 +324,66 @@ public struct SettingsView: View {
 
   private var advancedTab: some View {
     #if os(macOS)
-      VStack {
-        Spacer()
-
-        // Note
-        HStack {
-          Spacer()
-          Text(FootnoteText.forAdvanced ?? "")
-            .foregroundStyle(.secondary)
-            .frame(width: 400, alignment: .trailing)
-          Spacer()
-        }
-
-        Spacer()
-
-        // Text fields
-        HStack {
-          Spacer()
-          Form {
-            // Auth Base URL
-            HStack {
-              Text("Auth Base URL")
-                .frame(width: 150, alignment: .trailing)
-              TextField(
-                "",
-                text: $viewModel.authURL,
-                prompt: Text(PlaceholderText.authURL)
-              )
-              .disabled(configuration.isAuthURLForced)
-              .frame(width: 250)
-            }
-
-            // API URL
-            HStack {
-              Text("API URL")
-                .frame(width: 150, alignment: .trailing)
-              TextField(
-                "",
-                text: $viewModel.apiURL,
-                prompt: Text(PlaceholderText.apiURL)
-              )
-              .disabled(configuration.isApiURLForced)
-              .frame(width: 250)
-            }
-
-            // Log Filter
-            HStack {
-              Text("Log Filter")
-                .frame(width: 150, alignment: .trailing)
-              TextField(
-                "",
-                text: $viewModel.logFilter,
-                prompt: Text(PlaceholderText.logFilter)
-              )
-              .disabled(configuration.isLogFilterForced)
-              .frame(width: 250)
-            }
+      ScrollView {
+        VStack(spacing: 24) {
+          // Note
+          HStack {
+            Spacer()
+            Text(FootnoteText.forAdvanced ?? "")
+              .foregroundStyle(.secondary)
+              .frame(width: 400, alignment: .trailing)
+            Spacer()
           }
-          .frame(width: 500)
-          Spacer()
-        }
 
-        Spacer()
+          // Text fields
+          HStack {
+            Spacer()
+            Form {
+              // Auth Base URL
+              HStack {
+                Text("Auth Base URL")
+                  .frame(width: 150, alignment: .trailing)
+                TextField(
+                  "",
+                  text: $viewModel.authURL,
+                  prompt: Text(PlaceholderText.authURL)
+                )
+                .disabled(configuration.isAuthURLForced)
+                .frame(width: 250)
+              }
+
+              // API URL
+              HStack {
+                Text("API URL")
+                  .frame(width: 150, alignment: .trailing)
+                TextField(
+                  "",
+                  text: $viewModel.apiURL,
+                  prompt: Text(PlaceholderText.apiURL)
+                )
+                .disabled(configuration.isApiURLForced)
+                .frame(width: 250)
+              }
+
+              // Log Filter
+              HStack {
+                Text("Log Filter")
+                  .frame(width: 150, alignment: .trailing)
+                TextField(
+                  "",
+                  text: $viewModel.logFilter,
+                  prompt: Text(PlaceholderText.logFilter)
+                )
+                .disabled(configuration.isLogFilterForced)
+                .frame(width: 250)
+              }
+            }
+            .frame(width: 500)
+            Spacer()
+          }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical)
       }
     #elseif os(iOS)
       VStack {
@@ -542,6 +556,30 @@ public struct SettingsView: View {
             )
           }
         }
+      }
+    #else
+      #error("Unsupported platform")
+    #endif
+  }
+
+  @ViewBuilder
+  private var deviceTrustTab: some View {
+    #if os(macOS)
+      ScrollView {
+        HStack {
+          Spacer()
+          if let summary = store.deviceTrustCertificateSummary {
+            DeviceTrustSettingsView(summary: summary)
+              .frame(maxWidth: 600)
+          }
+          Spacer()
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical)
+      }
+    #elseif os(iOS)
+      if let summary = store.deviceTrustCertificateSummary {
+        DeviceTrustSettingsView(summary: summary)
       }
     #else
       #error("Unsupported platform")

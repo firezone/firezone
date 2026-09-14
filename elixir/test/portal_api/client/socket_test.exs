@@ -5,6 +5,7 @@ defmodule PortalAPI.Client.SocketTest do
   import PortalAPI.Client.Socket, only: [id: 1]
   import Portal.AccountFixtures
   import Portal.ActorFixtures
+  import Portal.AuthProviderFixtures
   import Portal.TokenFixtures
   import Portal.DeviceFixtures
   import Portal.DeviceTrustFixtures
@@ -124,6 +125,22 @@ defmodule PortalAPI.Client.SocketTest do
       connect_info = build_connect_info()
 
       assert connect(Socket, attrs, connect_info: connect_info) == {:error, :invalid_token}
+    end
+
+    test "stores an IPv4-mapped IPv6 peer address as IPv4" do
+      token = client_token_fixture()
+      encoded_token = encode_token(token)
+      {a, b, c, d} = @client_remote_ip
+      mapped_ip = {0, 0, 0, 0, 0, 0xFFFF, a * 256 + b, c * 256 + d}
+
+      attrs = connect_attrs(token: encoded_token)
+      connect_info = build_connect_info(ip: mapped_ip, token: encoded_token)
+
+      assert {:ok, socket} = connect(Socket, attrs, connect_info: connect_info)
+      assert client = Map.fetch!(socket.assigns, :client)
+
+      assert client.last_seen_remote_ip == @client_remote_ip
+      assert client.last_seen_remote_ip_location_city == "Kyiv"
     end
 
     test "creates a new client for user identity" do
@@ -495,20 +512,8 @@ defmodule PortalAPI.Client.SocketTest do
     end
   end
 
-  describe "connect/3 device trust" do
-    setup do
-      Portal.Config.put_env_override(:portal, :mtls_external_url, "https://mtls.firezone.test/")
-
-      account = account_fixture()
-      enable_feature(:trust_anchors)
-      pki = pki()
-      trust_anchor_fixture(account: account, certs: [pki.ca_der])
-
-      actor = actor_fixture(account: account)
-      token = client_token_fixture(account: account, actor: actor)
-
-      %{account: account, actor: actor, pki: pki, token: encode_token(token)}
-    end
+  describe "connect/3 device attestation" do
+    setup :setup_device_trust
 
     test "attests the device from the presented certificate", %{pki: pki, token: token} do
       connect_info = attested_connect_info(pki, token)
@@ -517,6 +522,428 @@ defmodule PortalAPI.Client.SocketTest do
       assert socket.assigns.client.attested?
       assert socket.assigns.client.last_attested_device_serial == "C02XK1ZGJGH5"
       assert socket.assigns.client.last_attested_cert_fingerprint
+    end
+  end
+
+  describe "connect/3 X.509 authentication" do
+    setup :setup_device_trust
+
+    test "authenticates from X.509 identity claims without a client token", %{
+      account: account,
+      actor: actor,
+      pki: pki
+    } do
+      provider = x509_provider_fixture(account: account, is_disabled: false)
+
+      connect_info =
+        build_connect_info(
+          host: "mtls.firezone.test",
+          client_cert: x509_identity_cert(pki, account, actor)
+        )
+
+      assert {:ok, socket} = connect(Socket, connect_attrs([]), connect_info: connect_info)
+      assert socket.assigns.subject.actor.id == actor.id
+      assert %Portal.Authentication.Credential.X509{} = socket.assigns.subject.credential
+      assert socket.assigns.subject.credential.auth_provider_id == provider.id
+      assert socket.assigns.subject.expires_at.microsecond == {0, 6}
+      assert socket.assigns.client.attested?
+      assert is_nil(socket.assigns.client.client_token_id)
+    end
+
+    test "authenticates a service account from an X.509 actor ID claim", %{
+      account: account,
+      pki: pki
+    } do
+      actor = actor_fixture(account: account, type: :service_account)
+      provider = x509_provider_fixture(account: account, is_disabled: false)
+
+      connect_info =
+        build_connect_info(
+          host: "mtls.firezone.test",
+          client_cert: x509_actor_id_cert(pki, account, actor)
+        )
+
+      assert {:ok, socket} = connect(Socket, connect_attrs([]), connect_info: connect_info)
+      assert socket.assigns.subject.actor.id == actor.id
+      assert socket.assigns.subject.actor.type == :service_account
+      assert %Portal.Authentication.Credential.X509{} = socket.assigns.subject.credential
+      assert socket.assigns.subject.credential.auth_provider_id == provider.id
+      assert socket.assigns.client.attested?
+      assert is_nil(socket.assigns.client.client_token_id)
+    end
+
+    test "prefers an X.509 actor ID claim over an email claim", %{
+      account: account,
+      actor: email_actor,
+      pki: pki
+    } do
+      actor = actor_fixture(account: account, type: :service_account)
+      _provider = x509_provider_fixture(account: account, is_disabled: false)
+
+      connect_info =
+        build_connect_info(
+          host: "mtls.firezone.test",
+          client_cert: x509_actor_id_cert(pki, account, actor, email_actor.email)
+        )
+
+      assert {:ok, socket} = connect(Socket, connect_attrs([]), connect_info: connect_info)
+      assert socket.assigns.subject.actor.id == actor.id
+    end
+
+    test "does not fall back to email when an X.509 actor ID claim is invalid", %{
+      account: account,
+      actor: actor,
+      pki: pki
+    } do
+      _provider = x509_provider_fixture(account: account, is_disabled: false)
+
+      connect_info =
+        build_connect_info(
+          host: "mtls.firezone.test",
+          client_cert: x509_actor_id_cert(pki, account, %{id: "%ZZ"}, actor.email)
+        )
+
+      assert capture_log(fn ->
+               assert connect(Socket, connect_attrs([]), connect_info: connect_info) ==
+                        {:error, :invalid_x509_identity}
+             end) =~ "invalid_x509_identity"
+    end
+
+    test "does not fall back to a token when only one X.509 identity claim is present", %{
+      account: account,
+      actor: actor,
+      pki: pki,
+      token: token
+    } do
+      for identity_uris <- [
+            ["firezone://account-id/#{account.id}"],
+            ["firezone://email/#{actor.email}"]
+          ] do
+        certificate = x509_authentication_cert(pki, identity_uris)
+        assert_invalid_x509_identity(certificate, token)
+      end
+    end
+
+    test "does not fall back to a token when an X.509 identity claim is malformed", %{
+      account: account,
+      actor: actor,
+      pki: pki,
+      token: token
+    } do
+      for identity_uris <- [
+            ["firezone://account-id/not-a-uuid", "firezone://email/#{actor.email}"],
+            ["firezone://account-id", "firezone://email/#{actor.email}"],
+            ["firezone://account-id/#{account.id}", "firezone://email/"]
+          ] do
+        certificate = x509_authentication_cert(pki, identity_uris)
+        assert_invalid_x509_identity(certificate, token)
+      end
+    end
+
+    test "rejects two distinct X.509 account ID claims", %{
+      account: account,
+      actor: actor,
+      pki: pki
+    } do
+      other_account = account_fixture()
+      _provider = x509_provider_fixture(account: account, is_disabled: false)
+
+      certificate =
+        x509_authentication_cert(pki, [
+          "firezone://account-id/#{account.id}",
+          "firezone://account-id/#{other_account.id}",
+          "firezone://email/#{actor.email}"
+        ])
+
+      assert_invalid_x509_identity(certificate)
+    end
+
+    test "rejects two distinct X.509 email claims when authenticating by email", %{
+      account: account,
+      actor: actor,
+      pki: pki
+    } do
+      other_actor = actor_fixture(account: account)
+      _provider = x509_provider_fixture(account: account, is_disabled: false)
+
+      certificate =
+        x509_authentication_cert(pki, [
+          "firezone://account-id/#{account.id}",
+          "firezone://email/#{actor.email}",
+          "firezone://email/#{other_actor.email}"
+        ])
+
+      assert_invalid_x509_identity(certificate)
+    end
+
+    test "rejects two distinct X.509 actor ID claims", %{
+      account: account,
+      actor: actor,
+      pki: pki
+    } do
+      other_actor = actor_fixture(account: account, type: :service_account)
+      _provider = x509_provider_fixture(account: account, is_disabled: false)
+
+      certificate =
+        x509_authentication_cert(pki, [
+          "firezone://account-id/#{account.id}",
+          "firezone://actor-id/#{actor.id}",
+          "firezone://actor-id/#{other_actor.id}"
+        ])
+
+      assert_invalid_x509_identity(certificate)
+    end
+
+    test "scopes an X.509 actor ID claim to the claimed account", %{
+      account: account,
+      pki: pki
+    } do
+      other_account = account_fixture()
+      actor = actor_fixture(account: other_account, type: :service_account)
+      _provider = x509_provider_fixture(account: account, is_disabled: false)
+
+      connect_info =
+        build_connect_info(
+          host: "mtls.firezone.test",
+          client_cert: x509_actor_id_cert(pki, account, actor)
+        )
+
+      log =
+        capture_log(fn ->
+          assert connect(Socket, connect_attrs([]), connect_info: connect_info) ==
+                   {:error, :x509_user_not_found}
+        end)
+
+      assert log =~ "x509_user_not_found"
+      assert log =~ "account_id=#{account.id}"
+      assert log =~ "actor_id=#{actor.id}"
+    end
+
+    test "normalizes the certificate email before matching the actor", %{
+      account: account,
+      pki: pki
+    } do
+      actor = actor_fixture(account: account, email: "User@bücher.example")
+      _provider = x509_provider_fixture(account: account, is_disabled: false)
+
+      # URI SANs are IA5 strings, so the Unicode domain arrives percent-encoded.
+      certificate_actor = %{actor | email: "USER@b%C3%BCcher.example"}
+
+      connect_info =
+        build_connect_info(
+          host: "mtls.firezone.test",
+          client_cert: x509_identity_cert(pki, account, certificate_actor)
+        )
+
+      assert {:ok, socket} = connect(Socket, connect_attrs([]), connect_info: connect_info)
+      assert socket.assigns.subject.actor.id == actor.id
+    end
+
+    test "a certificate X.509 identity takes precedence over an invalid bearer token", %{
+      account: account,
+      actor: actor,
+      pki: pki
+    } do
+      provider = x509_provider_fixture(account: account, is_disabled: false)
+
+      connect_info =
+        build_connect_info(
+          token: "invalid",
+          host: "mtls.firezone.test",
+          client_cert: x509_identity_cert(pki, account, actor)
+        )
+
+      assert {:ok, socket} = connect(Socket, connect_attrs([]), connect_info: connect_info)
+      assert socket.assigns.subject.credential.auth_provider_id == provider.id
+      assert %Portal.Authentication.Credential.X509{} = socket.assigns.subject.credential
+    end
+
+    test "requires a client token when the certificate lacks X.509 identity claims", %{pki: pki} do
+      connect_info =
+        build_connect_info(
+          host: "mtls.firezone.test",
+          client_cert: client_cert(pki, :rsa)
+        )
+
+      assert connect(Socket, connect_attrs([]), connect_info: connect_info) ==
+               {:error, :missing_token}
+    end
+
+    test "returns a specific error when the X.509 provider is disabled", %{
+      account: account,
+      actor: actor,
+      pki: pki
+    } do
+      _provider = x509_provider_fixture(account: account, is_disabled: true)
+
+      connect_info =
+        build_connect_info(
+          host: "mtls.firezone.test",
+          client_cert: x509_identity_cert(pki, account, actor)
+        )
+
+      assert connect(Socket, connect_attrs([]), connect_info: connect_info) ==
+               {:error, :x509_authentication_disabled}
+    end
+
+    test "does not fall back to a token when the X.509 provider is disabled",
+         %{
+           account: account,
+           actor: actor,
+           pki: pki
+         } do
+      _provider = x509_provider_fixture(account: account, is_disabled: true)
+      client_token = client_token_fixture(account: account, actor: actor)
+
+      connect_info =
+        build_connect_info(
+          token: encode_token(client_token),
+          host: "mtls.firezone.test",
+          client_cert: x509_identity_cert(pki, account, actor)
+        )
+
+      assert connect(Socket, connect_attrs([]), connect_info: connect_info) ==
+               {:error, :x509_authentication_disabled}
+    end
+
+    test "does not fall back to a token when the X.509 provider is missing", %{
+      account: account,
+      actor: actor,
+      pki: pki,
+      token: token
+    } do
+      connect_info =
+        build_connect_info(
+          token: token,
+          host: "mtls.firezone.test",
+          client_cert: x509_identity_cert(pki, account, actor)
+        )
+
+      assert connect(Socket, connect_attrs([]), connect_info: connect_info) ==
+               {:error, :x509_authentication_not_found}
+    end
+
+    test "returns a specific error when the certificate account does not exist", %{
+      actor: actor,
+      pki: pki,
+      token: token
+    } do
+      unknown_account = %{id: Ecto.UUID.generate()}
+
+      connect_info =
+        build_connect_info(
+          token: token,
+          host: "mtls.firezone.test",
+          client_cert: x509_identity_cert(pki, unknown_account, actor)
+        )
+
+      assert connect(Socket, connect_attrs([]), connect_info: connect_info) ==
+               {:error, :x509_account_not_found}
+    end
+
+    test "returns a specific error when the certificate account is disabled", %{
+      account: account,
+      actor: actor,
+      pki: pki
+    } do
+      _provider = x509_provider_fixture(account: account, is_disabled: false)
+      account |> Ecto.Changeset.change(is_disabled: true) |> Repo.update!()
+
+      connect_info =
+        build_connect_info(
+          host: "mtls.firezone.test",
+          client_cert: x509_identity_cert(pki, account, actor)
+        )
+
+      assert connect(Socket, connect_attrs([]), connect_info: connect_info) ==
+               {:error, :x509_account_disabled}
+    end
+
+    test "returns a specific error when no active user matches the certificate", %{
+      account: account,
+      actor: actor,
+      pki: pki,
+      token: token
+    } do
+      _provider = x509_provider_fixture(account: account, is_disabled: false)
+      unknown_actor = %{actor | email: "unknown@example.com"}
+
+      connect_info =
+        build_connect_info(
+          token: token,
+          host: "mtls.firezone.test",
+          client_cert: x509_identity_cert(pki, account, unknown_actor)
+        )
+
+      log =
+        capture_log(fn ->
+          assert connect(Socket, connect_attrs([]), connect_info: connect_info) ==
+                   {:error, :x509_user_not_found}
+        end)
+
+      assert log =~ "x509_user_not_found"
+      assert log =~ "account_id=#{account.id}"
+      assert log =~ "email=#{unknown_actor.email}"
+    end
+
+    test "returns a specific error when the certificate user is disabled", %{
+      account: account,
+      actor: actor,
+      pki: pki
+    } do
+      _provider = x509_provider_fixture(account: account, is_disabled: false)
+      actor |> Ecto.Changeset.change(is_disabled: true) |> Repo.update!()
+
+      connect_info =
+        build_connect_info(
+          host: "mtls.firezone.test",
+          client_cert: x509_identity_cert(pki, account, actor)
+        )
+
+      log =
+        capture_log(fn ->
+          assert connect(Socket, connect_attrs([]), connect_info: connect_info) ==
+                   {:error, :x509_user_disabled}
+        end)
+
+      assert log =~ "x509_user_disabled"
+      assert log =~ "account_id=#{account.id}"
+      assert log =~ "email=#{actor.email}"
+    end
+
+    test "returns a specific error when the certificate actor type is not allowed", %{
+      account: account,
+      pki: pki
+    } do
+      actor = actor_fixture(account: account, type: :api_client)
+      _provider = x509_provider_fixture(account: account, is_disabled: false)
+
+      connect_info =
+        build_connect_info(
+          host: "mtls.firezone.test",
+          client_cert: x509_actor_id_cert(pki, account, actor)
+        )
+
+      assert connect(Socket, connect_attrs([]), connect_info: connect_info) ==
+               {:error, :x509_user_type_not_allowed}
+    end
+
+    test "refuses X.509 authentication when the feature is globally disabled", %{
+      account: account,
+      actor: actor,
+      pki: pki
+    } do
+      _provider = x509_provider_fixture(account: account, is_disabled: false)
+      disable_feature(:x509_auth)
+
+      connect_info =
+        build_connect_info(
+          host: "mtls.firezone.test",
+          client_cert: x509_identity_cert(pki, account, actor)
+        )
+
+      assert connect(Socket, connect_attrs([]), connect_info: connect_info) ==
+               {:error, :x509_authentication_not_found}
     end
 
     test "refuses a connect through the mutual-TLS host without a certificate", %{token: token} do
@@ -555,6 +982,96 @@ defmodule PortalAPI.Client.SocketTest do
                         {:error, :device_untrusted}
              end) =~ "no_trust_anchors"
     end
+
+    test "does not fall back to a valid token when an X.509 identity has no trust anchors", %{
+      pki: pki
+    } do
+      account = account_fixture()
+      actor = actor_fixture(account: account)
+      _provider = x509_provider_fixture(account: account, is_disabled: false)
+      token = client_token_fixture(account: account, actor: actor)
+
+      connect_info =
+        build_connect_info(
+          token: encode_token(token),
+          host: "mtls.firezone.test",
+          client_cert: x509_identity_cert(pki, account, actor)
+        )
+
+      assert capture_log(fn ->
+               assert connect(Socket, connect_attrs([]), connect_info: connect_info) ==
+                        {:error, :no_trust_anchors}
+             end) =~ "no_trust_anchors"
+    end
+
+    test "validates an X.509 certificate before looking up its claimed user", %{
+      account: account,
+      actor: actor,
+      token: token
+    } do
+      _provider = x509_provider_fixture(account: account, is_disabled: false)
+      unknown_actor = %{actor | email: "unknown@example.com"}
+      untrusted_pki = pki()
+
+      connect_info =
+        build_connect_info(
+          token: token,
+          host: "mtls.firezone.test",
+          client_cert: x509_identity_cert(untrusted_pki, account, unknown_actor)
+        )
+
+      log =
+        capture_log(fn ->
+          assert connect(Socket, connect_attrs([]), connect_info: connect_info) ==
+                   {:error, :untrusted_chain}
+        end)
+
+      assert log =~ "untrusted_chain"
+      refute log =~ "x509_user_not_found"
+    end
+
+    test "rate limits failed X.509 authentication before repeating validation", %{
+      account: account,
+      actor: actor
+    } do
+      _provider = x509_provider_fixture(account: account, is_disabled: false)
+      untrusted_pki = pki()
+      ip = unique_ip()
+
+      connect_info =
+        build_connect_info(
+          ip: ip,
+          host: "mtls.firezone.test",
+          client_cert: x509_identity_cert(untrusted_pki, account, actor)
+        )
+
+      assert capture_log(fn ->
+               assert connect(Socket, connect_attrs([]), connect_info: connect_info) ==
+                        {:error, :untrusted_chain}
+             end) =~ "untrusted_chain"
+
+      connect_info_with_bogus_token =
+        build_connect_info(
+          ip: ip,
+          token: "attacker-controlled-token",
+          host: "mtls.firezone.test",
+          client_cert: x509_identity_cert(untrusted_pki, account, actor)
+        )
+
+      # Use Enum.any? to avoid flakiness from crossing second boundaries with the
+      # slow (1/s) refill rate.
+      rate_limited =
+        Enum.any?(1..3, fn _ ->
+          connect(Socket, connect_attrs([]), connect_info: connect_info_with_bogus_token) ==
+            {:error, :rate_limit}
+        end)
+
+      assert rate_limited, "Expected the repeated X.509 failure to be rate limited"
+    end
+  end
+
+  describe "connect/3 device trust" do
+    setup :setup_device_trust
 
     test "connects unattested on the plain API host", %{pki: pki, token: token} do
       connect_info =
@@ -618,6 +1135,34 @@ defmodule PortalAPI.Client.SocketTest do
       assert {:ok, socket} = connect(Socket, attrs, connect_info: connect_info)
       assert socket.assigns.client.id == existing.id
       assert is_nil(socket.assigns.client.firezone_id)
+    end
+  end
+
+  describe "connect/3 posture rows" do
+    setup do
+      account = Portal.DevicePostureFixtures.device_posture_account_fixture()
+      actor = actor_fixture(account: account)
+      token = client_token_fixture(account: account, actor: actor)
+      provider = Portal.IntuneFixtures.intune_posture_provider_fixture(account: account)
+      row = Portal.IntuneFixtures.intune_device_fixture(provider: provider, serial_number: "POSTURE-SER")
+      %{account: account, actor: actor, token: encode_token(token), row: row}
+    end
+
+    test "loads the matched provider rows onto the client", %{token: token, row: row} do
+      Portal.DevicePostureFixtures.enable_device_posture()
+      attrs = connect_attrs(token: token, device_serial: "POSTURE-SER")
+
+      assert {:ok, socket} = connect(Socket, attrs, connect_info: build_connect_info())
+      assert %{intune: [%Portal.Intune.Device{intune_id: intune_id}]} = socket.assigns.client.posture
+      assert intune_id == row.intune_id
+    end
+
+    test "loads nothing while the feature is off", %{token: token} do
+      Portal.DevicePostureFixtures.enable_device_posture(false)
+      attrs = connect_attrs(token: token, device_serial: "POSTURE-SER")
+
+      assert {:ok, socket} = connect(Socket, attrs, connect_info: build_connect_info())
+      assert socket.assigns.client.posture == %{}
     end
   end
 
@@ -1219,11 +1764,64 @@ defmodule PortalAPI.Client.SocketTest do
     |> Enum.into(%{}, fn {k, v} -> {to_string(k), v} end)
   end
 
+  defp setup_device_trust(_context) do
+    Portal.Config.put_env_override(:portal, :mtls_external_url, "https://mtls.firezone.test/")
+
+    account = account_fixture()
+    enable_feature(:x509_auth)
+    pki = pki()
+    trust_anchor_fixture(account: account, certs: [pki.ca_der])
+
+    actor = actor_fixture(account: account)
+    token = client_token_fixture(account: account, actor: actor)
+
+    %{account: account, actor: actor, pki: pki, token: encode_token(token)}
+  end
+
+  defp assert_invalid_x509_identity(certificate, token \\ nil) do
+    connect_info =
+      build_connect_info(token: token, host: "mtls.firezone.test", client_cert: certificate)
+
+    assert capture_log(fn ->
+             assert connect(Socket, connect_attrs([]), connect_info: connect_info) ==
+                      {:error, :invalid_x509_identity}
+           end) =~ "invalid_x509_identity"
+  end
+
   defp attested_connect_info(pki, token) do
     build_connect_info(
       token: token,
       host: "mtls.firezone.test",
       client_cert: client_cert(pki, :rsa)
+    )
+  end
+
+  defp x509_identity_cert(pki, account, actor) do
+    x509_authentication_cert(pki, [
+      "firezone://account-id/#{account.id}",
+      "firezone://email/#{actor.email}"
+    ])
+  end
+
+  defp x509_actor_id_cert(pki, account, actor, email \\ nil) do
+    identity_uris = [
+      "firezone://account-id/#{account.id}",
+      "firezone://actor-id/#{actor.id}"
+    ]
+
+    identity_uris = if email, do: identity_uris ++ ["firezone://email/#{email}"], else: identity_uris
+
+    x509_authentication_cert(pki, identity_uris)
+  end
+
+  defp x509_authentication_cert(pki, identity_uris) do
+    identity_sans =
+      Enum.map(identity_uris, fn uri ->
+        {:uniformResourceIdentifier, String.to_charlist(uri)}
+      end)
+
+    leaf(pki,
+      sans: identity_sans ++ [{:uniformResourceIdentifier, ~c"firezone://serial/C02XK1ZGJGH5"}]
     )
   end
 end
