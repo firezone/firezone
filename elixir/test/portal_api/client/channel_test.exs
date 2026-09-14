@@ -8471,9 +8471,8 @@ defmodule PortalAPI.Client.ChannelTest do
           entra_device_id: "entra-1"
         )
 
-      socket = join_channel(ctx.client, ctx.subject, posture: %{intune: [intune_row]})
+      join_channel(ctx.client, ctx.subject, posture: %{intune: [intune_row]})
       assert_push "init", %{resources: []}
-      assert %{assigns: %{posture_entra_keys: [entra_device_id: "entra-1"]}} = :sys.get_state(socket.channel_pid)
 
       defender = Portal.DefenderFixtures.defender_posture_provider_fixture(account: ctx.account)
 
@@ -8490,7 +8489,7 @@ defmodule PortalAPI.Client.ChannelTest do
       assert resource_id == ctx.resource.id
     end
 
-    test "the Entra subscription follows the matched Intune rows", ctx do
+    test "a relinked Intune row is read back from the database", ctx do
       intune_row =
         Portal.IntuneFixtures.intune_device_fixture(
           provider: ctx.provider,
@@ -8504,7 +8503,20 @@ defmodule PortalAPI.Client.ChannelTest do
       relinked = intune_row |> Ecto.Changeset.change(entra_device_id: "entra-2") |> Portal.Repo.update!()
       send(socket.channel_pid, %Changes.Change{lsn: 4, op: :update, old_struct: intune_row, struct: relinked})
 
-      assert %{assigns: %{posture_entra_keys: [entra_device_id: "entra-2"]}} = :sys.get_state(socket.channel_pid)
+      assert %{assigns: %{client: %{posture: %{intune: [%{entra_device_id: "entra-2"}]}}}} =
+               :sys.get_state(socket.channel_pid)
+    end
+
+    test "a row about another device is ignored", ctx do
+      compliant_policy(ctx)
+      socket = join_channel(ctx.client, ctx.subject)
+      assert_push "init", %{resources: []}
+
+      row = Portal.IntuneFixtures.intune_device_fixture(provider: ctx.provider, serial_number: "SOMEONE-ELSE")
+      :ok = Hooks.IntuneDevices.on_insert(6, wal(row))
+
+      refute_push "resource_created_or_updated", _
+      assert %{assigns: %{client: %{posture: %{}}}} = :sys.get_state(socket.channel_pid)
     end
 
     test "rows are ignored while the feature is off", ctx do
@@ -8517,7 +8529,7 @@ defmodule PortalAPI.Client.ChannelTest do
       :ok = Hooks.IntuneDevices.on_insert(5, wal(row))
 
       refute_push "resource_created_or_updated", _
-      assert %{assigns: %{client: %{posture: posture}, posture_entra_keys: []}} = :sys.get_state(socket.channel_pid)
+      assert %{assigns: %{client: %{posture: posture}}} = :sys.get_state(socket.channel_pid)
       assert posture == %{}
     end
   end

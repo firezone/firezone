@@ -9,6 +9,7 @@ defmodule Portal.Changes.Hooks.IruDevicesTest do
 
   setup do
     account = device_posture_account_fixture()
+    :ok = PubSub.Changes.subscribe(account.id, :iru_devices)
     %{account: account, provider: iru_posture_provider_fixture(account: account)}
   end
 
@@ -20,59 +21,44 @@ defmodule Portal.Changes.Hooks.IruDevicesTest do
     |> Map.new(fn {key, value} -> {Atom.to_string(key), value} end)
   end
 
-  defp listen(account, key), do: :ok = PubSub.Changes.subscribe_posture_rows(account.id, key)
-
-  test "an insert is published under the MDM id and the serial", %{account: account, provider: provider} do
-    row = iru_device_fixture(provider: provider, iru_id: "mdm-2", serial_number: "SER-2")
-    listen(account, {:mdm_device_id, "mdm-2"})
-    listen(account, {:serial, "SER-2"})
+  test "an insert is broadcast to the account", %{provider: provider} do
+    row = iru_device_fixture(provider: provider, iru_id: "mdm-1")
 
     assert :ok == on_insert(7, wal(row))
 
-    assert_receive %Change{op: :insert, lsn: 7, struct: %Iru.Device{iru_id: "mdm-2"}}
-    assert_receive %Change{op: :insert, lsn: 7, struct: %Iru.Device{iru_id: "mdm-2"}}
-    refute_receive %Change{}
+    assert_receive %Change{op: :insert, lsn: 7, struct: %Iru.Device{iru_id: "mdm-1"}}
   end
 
-  test "an update is published under the old and the new identifiers", %{account: account, provider: provider} do
-    row = iru_device_fixture(provider: provider, serial_number: "OLD")
-    listen(account, {:serial, "OLD"})
-    listen(account, {:serial, "NEW"})
+  test "an update is broadcast with the old and the new row", %{provider: provider} do
+    row = iru_device_fixture(provider: provider, filevault_enabled: true)
 
-    assert :ok == on_update(8, wal(row), wal(%{row | serial_number: "NEW"}))
+    assert :ok == on_update(8, wal(row), wal(%{row | filevault_enabled: false}))
 
-    assert_receive %Change{op: :update, lsn: 8, old_struct: %Iru.Device{serial_number: "OLD"}, struct: %Iru.Device{serial_number: "NEW"}}
-    assert_receive %Change{op: :update, lsn: 8}
-    refute_receive %Change{}
+    assert_receive %Change{
+      op: :update,
+      lsn: 8,
+      old_struct: %Iru.Device{filevault_enabled: true},
+      struct: %Iru.Device{filevault_enabled: false}
+    }
   end
 
-  test "a rewrite that only touched the sync bookkeeping is not published", %{account: account, provider: provider} do
-    row = iru_device_fixture(provider: provider, serial_number: "SER-2", device_name: "laptop")
-    listen(account, {:serial, "SER-2"})
+  test "a rewrite that only touched the sync bookkeeping is not published", %{provider: provider} do
+    row = iru_device_fixture(provider: provider, filevault_enabled: true)
     later = DateTime.add(DateTime.utc_now(), 3600)
 
     assert :ok == on_update(9, wal(row), wal(%{row | synced_at: later, updated_at: later}))
     assert :ok == on_update(9, wal(row), wal(row))
     refute_receive %Change{}
 
-    assert :ok == on_update(10, wal(row), wal(%{row | device_name: "renamed", synced_at: later}))
-    assert_receive %Change{op: :update, lsn: 10, struct: %Iru.Device{device_name: "renamed"}}
+    assert :ok == on_update(10, wal(row), wal(%{row | filevault_enabled: false, synced_at: later}))
+    assert_receive %Change{op: :update, lsn: 10, struct: %Iru.Device{filevault_enabled: false}}
   end
 
-  test "a delete is published under the row's identifiers", %{account: account, provider: provider} do
-    row = iru_device_fixture(provider: provider, iru_id: "mdm-2")
-    listen(account, {:mdm_device_id, "mdm-2"})
+  test "a delete is broadcast to the account", %{provider: provider} do
+    row = iru_device_fixture(provider: provider, iru_id: "mdm-1")
 
     assert :ok == on_delete(11, wal(row))
 
-    assert_receive %Change{op: :delete, lsn: 11, old_struct: %Iru.Device{iru_id: "mdm-2"}, struct: nil}
-  end
-
-  test "nothing reaches the account-wide topic", %{account: account, provider: provider} do
-    :ok = PubSub.Changes.subscribe(account.id)
-
-    assert :ok == on_insert(1, wal(iru_device_fixture(provider: provider)))
-
-    refute_receive %Change{}
+    assert_receive %Change{op: :delete, lsn: 11, old_struct: %Iru.Device{iru_id: "mdm-1"}, struct: nil}
   end
 end

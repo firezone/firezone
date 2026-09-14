@@ -2,13 +2,12 @@ defmodule Portal.Changes.Hooks.IruDevices do
   @moduledoc """
   Hooks for the device rows an Iru sync writes.
 
-  A sync rewrites every row it reports, so a change is published only under
-  the identifiers a client device can match it on, and a rewrite that
-  touched nothing but the sync bookkeeping is not published at all.
+  A sync rewrites every row it reports, so a rewrite that touched nothing but
+  the sync bookkeeping is not published at all.
   """
 
   @behaviour Portal.Changes.Hooks
-  alias Portal.{Changes.Change, Devices.Posture, PubSub}
+  alias Portal.{Changes.Change, PubSub}
   import Portal.SchemaHelpers
 
   @bookkeeping ~w[synced_at updated_at]
@@ -18,7 +17,7 @@ defmodule Portal.Changes.Hooks.IruDevices do
     device = struct_from_params(Portal.Iru.Device, data)
     change = %Change{lsn: lsn, op: :insert, struct: device}
 
-    PubSub.Changes.broadcast_posture_rows(device.account_id, Posture.row_keys(device), change)
+    PubSub.Changes.broadcast(device.account_id, :iru_devices, change)
   end
 
   @impl true
@@ -29,9 +28,7 @@ defmodule Portal.Changes.Hooks.IruDevices do
       old_device = struct_from_params(Portal.Iru.Device, old_data)
       device = struct_from_params(Portal.Iru.Device, data)
       change = %Change{lsn: lsn, op: :update, old_struct: old_device, struct: device}
-      keys = Enum.uniq(Posture.row_keys(old_device) ++ Posture.row_keys(device))
-
-      PubSub.Changes.broadcast_posture_rows(device.account_id, keys, change)
+      PubSub.Changes.broadcast(device.account_id, :iru_devices, change)
     end
   end
 
@@ -40,7 +37,7 @@ defmodule Portal.Changes.Hooks.IruDevices do
     device = struct_from_params(Portal.Iru.Device, old_data)
     change = %Change{lsn: lsn, op: :delete, old_struct: device}
 
-    PubSub.Changes.broadcast_posture_rows(device.account_id, Posture.row_keys(device), change)
+    PubSub.Changes.broadcast(device.account_id, :iru_devices, change)
   end
 
   defp bookkeeping_only_change?(old_data, data) when is_map(old_data) and is_map(data) do

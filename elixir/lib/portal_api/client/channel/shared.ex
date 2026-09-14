@@ -118,7 +118,6 @@ defmodule PortalAPI.Client.Channel.Shared do
       |> track_presence()
 
     :ok = PubSub.Changes.subscribe(socket.assigns.client.account_id)
-    socket = subscribe_posture_rows(socket)
 
     {:noreply, socket} = register(socket)
 
@@ -2393,12 +2392,12 @@ defmodule PortalAPI.Client.Channel.Shared do
 
   # POSTURE ROWS
   #
-  # Provider rows arrive only under this device's own identifiers, so any one
-  # of them may change which rows describe the device. The rows are read back
-  # from the database rather than patched in memory, which also picks up a
-  # Defender row newly linked through an Intune row.
+  # Every provider row change in the account arrives here, so only one that
+  # carries an identifier of this device is acted on. The rows are then read
+  # back from the database rather than patched in memory, which also picks up
+  # a Defender row newly linked through an Intune row.
   defp handle_change(%Change{} = change, socket) do
-    if posture_row_change?(change) do
+    if posture_row_change?(change) and concerns_client?(change, socket.assigns.client) do
       refresh_posture_rows(socket)
     else
       {:noreply, socket}
@@ -2409,35 +2408,11 @@ defmodule PortalAPI.Client.Channel.Shared do
   defp posture_row_change?(%Change{old_struct: %module{}}), do: module in Devices.Posture.schemas()
   defp posture_row_change?(%Change{}), do: false
 
-  defp subscribe_posture_rows(socket) do
-    if Portal.Account.device_posture_enabled?(socket.assigns.subject.account) do
-      account_id = socket.assigns.client.account_id
+  defp concerns_client?(%Change{old_struct: old_row, struct: row}, client) do
+    row_keys = Enum.flat_map([old_row, row], &if(is_nil(&1), do: [], else: Devices.Posture.row_keys(&1)))
+    client_keys = Devices.Posture.device_keys(client) ++ Devices.Posture.entra_keys(client.posture)
 
-      for key <- Devices.Posture.device_keys(socket.assigns.client) do
-        :ok = PubSub.Changes.subscribe_posture_rows(account_id, key)
-      end
-
-      subscribe_entra_keys(socket, Devices.Posture.entra_keys(socket.assigns.client.posture))
-    else
-      assign(socket, :posture_entra_keys, [])
-    end
-  end
-
-  # Defender rows are keyed by the Entra id of the Intune row that leads to
-  # them, so these subscriptions follow the matched Intune rows.
-  defp subscribe_entra_keys(socket, keys) do
-    account_id = socket.assigns.client.account_id
-    current = Map.get(socket.assigns, :posture_entra_keys, [])
-
-    for key <- current -- keys do
-      :ok = PubSub.Changes.unsubscribe_posture_rows(account_id, key)
-    end
-
-    for key <- keys -- current do
-      :ok = PubSub.Changes.subscribe_posture_rows(account_id, key)
-    end
-
-    assign(socket, :posture_entra_keys, keys)
+    Enum.any?(row_keys, &(&1 in client_keys))
   end
 
   defp refresh_posture_rows(socket) do
@@ -2449,10 +2424,7 @@ defmodule PortalAPI.Client.Channel.Shared do
     else
       client = %{client | posture: rows}
 
-      socket =
-        socket
-        |> assign(:client, client)
-        |> subscribe_entra_keys(Devices.Posture.entra_keys(rows))
+      socket = assign(socket, :client, client)
 
       Cache.Client.recompute_connectable_resources(socket.assigns.cache, client, socket.assigns.subject)
       |> push_resource_updates(socket)
