@@ -209,10 +209,24 @@ fn connect(rt: &Runtime) -> Result<()> {
 
 /// The token piped on stdin, else the one in `FIREZONE_TOKEN`, else nothing.
 fn supplied_token() -> Result<Option<SecretString>> {
-    let piped = piped_token().context("Failed to read stdin")?;
-    let token = piped.or_else(|| non_empty(&std::env::var("FIREZONE_TOKEN").ok()?));
+    if let Some(token) = piped_token().context("Failed to read stdin")? {
+        tracing::debug!("Using token piped on stdin");
 
-    Ok(token.map(SecretString::from))
+        return Ok(Some(SecretString::from(token)));
+    }
+
+    if let Some(token) = std::env::var("FIREZONE_TOKEN")
+        .ok()
+        .and_then(|value| non_empty(&value))
+    {
+        tracing::debug!("Using token from FIREZONE_TOKEN");
+
+        return Ok(Some(SecretString::from(token)));
+    }
+
+    tracing::debug!("No token supplied, the GUI uses the stored one");
+
+    Ok(None)
 }
 
 /// The first line piped on stdin.

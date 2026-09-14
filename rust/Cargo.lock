@@ -2498,6 +2498,7 @@ dependencies = [
  "gui-ipc",
  "secrecy",
  "tokio",
+ "tracing",
  "tracing-subscriber",
  "windows",
 ]

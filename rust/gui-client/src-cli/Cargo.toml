@@ -14,6 +14,7 @@ connlib-model = { workspace = true }
 gui-ipc = { workspace = true }
 secrecy = { workspace = true }
 tokio = { workspace = true, features = ["net", "rt", "time"] }
+tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 
 [target.'cfg(target_os = "windows")'.dependencies.windows]

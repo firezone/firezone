@@ -70,6 +70,11 @@ pub struct Controller<I: GuiIntegration> {
     >,
     /// CLIs whose `Connect` is answered once the session is up or has failed.
     pending_connect_replies: Vec<ipc::ServerWrite<gui_ipc::ServerMsg>>,
+    /// A token supplied over `Connect` that is saved once the portal accepts it.
+    ///
+    /// Saving it earlier would replace the stored token with one that may be
+    /// stale, and a rejection would then delete the replacement.
+    unconfirmed_token: Option<SecretString>,
 }
 
 pub trait GuiIntegration {
@@ -274,6 +279,7 @@ impl<I: GuiIntegration> Controller<I> {
             })
             .boxed(),
             pending_connect_replies: Vec::new(),
+            unconfirmed_token: None,
         };
 
         controller.main_loop().await?;
@@ -917,7 +923,7 @@ impl<I: GuiIntegration> Controller<I> {
 
         let token = match token {
             Some(token) => {
-                self.auth.sign_in_with_token(&token);
+                self.unconfirmed_token = Some(token.clone());
 
                 token
             }
@@ -948,6 +954,9 @@ impl<I: GuiIntegration> Controller<I> {
 
         match result {
             Ok(()) => {
+                if let Some(token) = self.unconfirmed_token.take() {
+                    self.auth.sign_in_with_token(&token);
+                }
                 ran_before::set().await?;
                 self.status = Status::WaitingForTunnel;
                 self.refresh_ui_state();
@@ -964,7 +973,10 @@ impl<I: GuiIntegration> Controller<I> {
                     gui_ipc::ServerError::Other(error),
                 ))
                 .await;
-                self.sign_out().await?;
+                match self.unconfirmed_token.take() {
+                    Some(_) => self.disconnect().await?,
+                    None => self.sign_out().await?,
+                }
 
                 Ok(())
             }
@@ -1106,6 +1118,7 @@ impl<I: GuiIntegration> Controller<I> {
         }
         self.status = Status::Disconnected;
         self.connected_as = None;
+        self.unconfirmed_token = None;
         self.resolve_connect_replies(gui_ipc::ServerMsg::Error(
             gui_ipc::ServerError::NotConnected,
         ))
@@ -1615,6 +1628,28 @@ mod tests {
 
         let response = rx.next().await.unwrap().unwrap();
         assert_eq!(response, gui_ipc::ServerMsg::Ack);
+        // The first resource list also pushes the internet-resource state.
+        let msg = mock_tunnel.next_msg().await;
+        assert!(
+            matches!(msg, service::ClientMsg::SetInternetResourceState(false)),
+            "expected `SetInternetResourceState(false)` but got {msg:?}"
+        );
+
+        let response = test_controller
+            .gui_ipc_request(gui_ipc::ClientMsg::Disconnect)
+            .await;
+        assert_eq!(response, gui_ipc::ServerMsg::Ack);
+        let msg = mock_tunnel.next_msg().await;
+        assert!(
+            matches!(msg, service::ClientMsg::Disconnect),
+            "expected `Disconnect` but got {msg:?}"
+        );
+        let (_rx, mut tx) = test_controller.gui_ipc_connect().await;
+        tx.send(&gui_ipc::ClientMsg::Connect { token: None })
+            .await
+            .unwrap();
+        let stored_token = mock_tunnel.rx_connect().await;
+        assert_eq!(stored_token.expose_secret(), "cli-token");
     }
 
     #[tokio::test]
@@ -1623,6 +1658,29 @@ mod tests {
         let mut test_controller = Controller::start_for_test();
         let mut mock_tunnel = test_controller.tunnel_service_ipc_accept().await;
         mock_tunnel.send_hello().await;
+        test_controller.sign_in().await;
+        let browser_token = mock_tunnel.rx_connect().await;
+        mock_tunnel.send_connect_ok().await;
+        mock_tunnel.send_resources(vec![dns_resource_foo()]).await;
+        test_controller
+            .wait_integration(|i| i.nth_notification(0))
+            .await;
+        // The first resource list also pushes the internet-resource state.
+        let msg = mock_tunnel.next_msg().await;
+        assert!(
+            matches!(msg, service::ClientMsg::SetInternetResourceState(false)),
+            "expected `SetInternetResourceState(false)` but got {msg:?}"
+        );
+
+        let response = test_controller
+            .gui_ipc_request(gui_ipc::ClientMsg::Disconnect)
+            .await;
+        assert_eq!(response, gui_ipc::ServerMsg::Ack);
+        let msg = mock_tunnel.next_msg().await;
+        assert!(
+            matches!(msg, service::ClientMsg::Disconnect),
+            "expected `Disconnect` but got {msg:?}"
+        );
 
         let (mut rx, mut tx) = test_controller.gui_ipc_connect().await;
         tx.send(&gui_ipc::ClientMsg::Connect {
@@ -1639,6 +1697,18 @@ mod tests {
             response,
             gui_ipc::ServerMsg::Error(gui_ipc::ServerError::Other("invalid token".to_owned()))
         );
+        let msg = mock_tunnel.next_msg().await;
+        assert!(
+            matches!(msg, service::ClientMsg::Disconnect),
+            "expected `Disconnect` but got {msg:?}"
+        );
+
+        let (_rx, mut tx) = test_controller.gui_ipc_connect().await;
+        tx.send(&gui_ipc::ClientMsg::Connect { token: None })
+            .await
+            .unwrap();
+        let stored_token = mock_tunnel.rx_connect().await;
+        assert_eq!(stored_token.expose_secret(), browser_token.expose_secret());
     }
 
     #[tokio::test]

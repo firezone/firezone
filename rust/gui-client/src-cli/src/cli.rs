@@ -37,7 +37,7 @@ pub enum Cmd {
     // shell history.
     #[command(
         about = "Bring the tunnel up.",
-        long_about = "Bring the tunnel up.\n\nReturns once the tunnel is up and leaves it running, since the tunnel lives in the GUI rather than in this process. Use `disconnect` to stop it.\n\nA token piped on stdin or set in FIREZONE_TOKEN is saved and used; otherwise the stored one is."
+        long_about = "Bring the tunnel up.\n\nReturns once the tunnel is up and leaves it running, since the tunnel lives in the GUI rather than in this process. Use `disconnect` to stop it.\n\nA token piped on stdin or set in FIREZONE_TOKEN is used and saved once the portal accepts it; otherwise the stored one is used."
     )]
     Connect,
     #[command(about = "Disconnect, keeping the stored token.")]
