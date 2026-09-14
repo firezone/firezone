@@ -389,7 +389,6 @@ impl ReferenceState {
                     *src,
                     dst,
                     Protocol::Tcp(dport.0),
-                    now,
                 );
 
                 state
@@ -587,7 +586,7 @@ impl ReferenceState {
         sent_at: Instant,
     ) -> ExpectedOutcome {
         if route.is_peer() {
-            self.refresh_peer_grant(origin, &request, sent_at);
+            self.refresh_peer_grant(origin, &request);
         }
 
         let outcome = self.clients.get_mut(&origin).unwrap().exec_mut(|client| {
@@ -599,7 +598,7 @@ impl ReferenceState {
 
     /// A packet on an existing flow to a peer asks the portal anew when the peer connected
     /// to us since, as that took our grants towards it; the peer then drops its own.
-    fn refresh_peer_grant(&mut self, origin: ClientId, request: &ProbeRequest, now: Instant) {
+    fn refresh_peer_grant(&mut self, origin: ClientId, request: &ProbeRequest) {
         let Destination::IpAddr(ip) = request.destination() else {
             return;
         };
@@ -610,13 +609,9 @@ impl ReferenceState {
 
         let granted_peer = self.clients.get_mut(&origin).unwrap().exec_mut(|client| {
             client
-                .route_to_peer(
-                    *ip,
-                    peer,
-                    request.protocol(),
-                    |candidates, target| portal.pick_device_pool(candidates, target),
-                    now,
-                )
+                .route_to_peer(peer, request.protocol(), |candidates, target| {
+                    portal.pick_device_pool(candidates, target)
+                })
                 .1
         });
 
@@ -637,7 +632,6 @@ impl ReferenceState {
             request.source(),
             request.destination(),
             request.protocol(),
-            sent_at,
         );
         let outcome = self
             .clients
@@ -680,9 +674,8 @@ impl ReferenceState {
         source: IpAddr,
         destination: &Destination,
         protocol: Protocol,
-        now: Instant,
     ) -> PacketRoute {
-        let route = self.route_for_packet(origin, source, destination, protocol, now);
+        let route = self.route_for_packet(origin, source, destination, protocol);
         let Destination::DomainName { name, .. } = destination else {
             return route;
         };
@@ -823,7 +816,6 @@ impl ReferenceState {
         src: IpAddr,
         dst: &Destination,
         protocol: Protocol,
-        now: Instant,
     ) -> PacketRoute {
         let clients_by_ip = self.client_ip_to_id();
         let portal = &self.portal;
@@ -856,7 +848,6 @@ impl ReferenceState {
                 },
                 |ip| clients_by_ip.get(&ip).copied(),
                 |candidates, target| portal.pick_device_pool(candidates, target),
-                now,
             )
         });
 
@@ -869,17 +860,6 @@ impl ReferenceState {
 
     /// A peer we connect to anew drops its grants towards us, as we may have reset.
     fn apply_peer_grant(&mut self, client_id: ClientId, peer: ClientId) {
-        let peer_ips = self
-            .client_ip_to_id()
-            .into_iter()
-            .filter(|(_, id)| *id == peer)
-            .map(|(ip, _)| ip)
-            .collect::<Vec<_>>();
-
-        if let Some(client) = self.clients.get_mut(&client_id) {
-            client.exec_mut(|client| client.forget_device_denials(&peer_ips));
-        }
-
         if let Some(peer) = self.clients.get_mut(&peer) {
             peer.exec_mut(|peer| peer.forget_peer_grants(client_id));
         }

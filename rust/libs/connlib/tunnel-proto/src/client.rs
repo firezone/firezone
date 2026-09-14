@@ -17,7 +17,7 @@ use crate::client::client_on_client::InboundResult;
 use crate::client::dns_cache::DnsCache;
 use crate::client::dns_config::DnsConfig;
 use crate::client::pending_authorizations::{
-    AuthorizationRequest, DnsQueryForSite, PendingAuthorization, PendingAuthorizations,
+    AuthorizationRequest, DnsQueryForSite, PendingAuthorizations,
 };
 use crate::client::routing::{Route, RoutingTables};
 use crate::client::tracked_state::TrackedState;
@@ -199,9 +199,6 @@ pub struct ClientState {
     dns_lookup_duration: opentelemetry::metrics::Histogram<f64>,
 }
 
-/// How long a denial from the portal is remembered before the same request may be sent again.
-pub const NEGATIVE_CACHE_TTL: Duration = Duration::from_secs(30);
-
 impl ClientState {
     pub fn new(
         seed: [u8; 32],
@@ -372,45 +369,28 @@ impl ClientState {
     /// Handles cases where access to a device is denied.
     ///
     /// The portal denied the address we asked about: answer the buffered packets with an
-    /// ICMP error so the application fails fast, and remember the denial so the address
-    /// is answered locally for a while.
+    /// ICMP error so the application fails fast. The next packet asks again.
     pub fn handle_client_device_access_denied(
         &mut self,
         ipv4: Option<Ipv4Addr>,
         ipv6: Option<Ipv6Addr>,
         reason: FailReason,
-        now: Instant,
     ) {
         tracing::debug!(?ipv4, ?ipv6, "Device access denied: {reason:?}");
 
-        for addr in ipv4.map(IpAddr::V4).into_iter().chain(ipv6.map(IpAddr::V6)) {
-            let Some(pending) = self.pending_authorizations.deny_device(addr, now) else {
-                continue;
-            };
+        let pending = self
+            .pending_authorizations
+            .remove_device_authorizations(|addr| {
+                ipv4.map(IpAddr::V4) == Some(addr) || ipv6.map(IpAddr::V6) == Some(addr)
+            })
+            .collect_vec();
 
-            self.reply_prohibited_to_buffered(pending);
-        }
-    }
+        for pending in pending {
+            let (packets, _) = pending.into_buffered_packets();
 
-    /// The portal denied the resource we asked about: same handling as a denied device.
-    pub fn handle_resource_access_denied(
-        &mut self,
-        resource_id: ResourceId,
-        reason: FailReason,
-        now: Instant,
-    ) {
-        tracing::debug!(%resource_id, "Resource access denied: {reason:?}");
-
-        if let Some(pending) = self.pending_authorizations.deny_resource(resource_id, now) {
-            self.reply_prohibited_to_buffered(pending);
-        }
-    }
-
-    fn reply_prohibited_to_buffered(&mut self, pending: PendingAuthorization) {
-        let (packets, _) = pending.into_buffered_packets();
-
-        for packet in packets {
-            reply_with_icmp_prohibited(&mut self.buffered_packets, packet);
+            for packet in packets {
+                reply_with_icmp_prohibited(&mut self.buffered_packets, packet);
+            }
         }
     }
 
@@ -438,10 +418,9 @@ impl ClientState {
         &mut self,
         domain: DomainName,
         result: Result<(Ipv4Addr, Ipv6Addr), FailReason>,
-        now: Instant,
     ) {
         self.device_stub_resolver
-            .handle_device_domain_resolved(domain, result, now);
+            .handle_device_domain_resolved(domain, result);
         self.drain_device_stub_resolver_events();
     }
 
@@ -681,11 +660,7 @@ impl ClientState {
                         return Ok(());
                     }
 
-                    if let Some(packet) =
-                        pending_authorizations.on_not_authorized_device(dst, pools, packet, now)
-                    {
-                        reply_with_icmp_prohibited(&mut self.buffered_packets, packet);
-                    }
+                    pending_authorizations.on_not_authorized_device(dst, pools, packet, now);
                     return Ok(());
                 }
 
@@ -703,11 +678,7 @@ impl ClientState {
                     // Not yet authorized: Buffer + send request.
                     let pools = permitting_pools(resources, dst_proto);
 
-                    if let Some(packet) =
-                        pending_authorizations.on_not_authorized_device(dst, pools, packet, now)
-                    {
-                        reply_with_icmp_prohibited(&mut self.buffered_packets, packet);
-                    }
+                    pending_authorizations.on_not_authorized_device(dst, pools, packet, now);
                     return Ok(());
                 };
 
@@ -742,12 +713,7 @@ impl ClientState {
                     .and_then(|resource| resource.gateway_token())
                 else {
                     // Not yet authorized: Buffer + send intent.
-                    if let Some(pending_authorizations::Trigger::PacketForResource(packet)) =
-                        pending_authorizations
-                            .on_not_authorized_resource(rid, packet, resources, now)
-                    {
-                        reply_with_icmp_prohibited(&mut self.buffered_packets, packet);
-                    }
+                    pending_authorizations.on_not_authorized_resource(rid, packet, resources, now);
                     return Ok(());
                 };
 
@@ -782,11 +748,7 @@ impl ClientState {
                         return Ok(());
                     }
 
-                    if let Some(packet) =
-                        pending_authorizations.on_not_authorized_device(dst, pools, packet, now)
-                    {
-                        reply_with_icmp_prohibited(&mut self.buffered_packets, packet);
-                    }
+                    pending_authorizations.on_not_authorized_device(dst, pools, packet, now);
                     return Ok(());
                 }
 
@@ -1286,9 +1248,6 @@ impl ClientState {
             buffered_packets.extend(packets);
         }
 
-        self.pending_authorizations
-            .forget_device_denials(|addr| client_tun.is_ip(addr));
-
         // We asked for this connection: from now on the pool the portal picked routes
         // flows to the peer, so later sends skip `pending_authorizations`.
         if let Some(resource_id) = resource_id {
@@ -1737,11 +1696,6 @@ impl ClientState {
                     .map(|instant| (instant, "Device stub resolver")),
             )
             .chain(
-                self.pending_authorizations
-                    .poll_timeout()
-                    .map(|instant| (instant, "Pending authorizations")),
-            )
-            .chain(
                 self.clients
                     .iter_mut()
                     .filter_map(|peer| peer.poll_timeout())
@@ -1767,7 +1721,6 @@ impl ClientState {
         self.flow_tracker.handle_timeout(now);
         self.dns_cache.handle_timeout(now);
         self.device_stub_resolver.handle_timeout(now);
-        self.pending_authorizations.handle_timeout(now);
 
         for peer in self.clients.iter_mut() {
             peer.handle_timeout(now);
@@ -3150,7 +3103,7 @@ mod tests {
     }
 
     #[test]
-    fn denied_device_flow_is_answered_locally_without_a_new_request() {
+    fn denied_device_flow_is_answered_and_asked_again_on_the_next_packet() {
         let mut state = ClientState::for_test();
         let now = Instant::now();
         state.update_interface_config(interface(own_tun_ipv4(), own_tun_ipv6()));
@@ -3171,7 +3124,6 @@ mod tests {
             Some(device_tun_ipv4()),
             None,
             FailReason::Forbidden,
-            now,
         );
         assert!(
             state.poll_packets().is_some(),
@@ -3181,10 +3133,15 @@ mod tests {
         state
             .handle_tun_input(packet(), now, &mut snownet::TransmitBuffer::new())
             .unwrap();
-        assert_no_device_connection_intent(&mut state);
         assert!(
-            state.poll_packets().is_some(),
-            "expected an ICMP error without a request"
+            state.poll_packets().is_none(),
+            "expected the packet to be buffered for a new request"
+        );
+        assert!(
+            state
+                .poll_event()
+                .is_some_and(|event| matches!(event, ClientEvent::DeviceAccessRequested { .. })),
+            "expected a new device access request"
         );
     }
 
@@ -3381,11 +3338,7 @@ mod tests {
         });
         assert!(queried, "expected the device name to be queried");
 
-        state.handle_device_domain_resolved(
-            domain,
-            Ok((device_tun_ipv4(), device_tun_ipv6())),
-            now,
-        );
+        state.handle_device_domain_resolved(domain, Ok((device_tun_ipv4(), device_tun_ipv6())));
     }
 
     fn own_tun_ipv4() -> Ipv4Addr {

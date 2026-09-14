@@ -1482,25 +1482,11 @@ impl TunnelTest {
                     .client_by_ip(ip)
                     .filter(|id| self.clients.contains_key(id))
                 else {
-                    deny_device_access(
-                        &mut self.clients,
-                        src,
-                        ipv4,
-                        ipv6,
-                        FailReason::NotFound,
-                        now,
-                    );
+                    deny_device_access(&mut self.clients, src, ipv4, ipv6, FailReason::NotFound);
                     return Ok(());
                 };
                 if remote_id == src {
-                    deny_device_access(
-                        &mut self.clients,
-                        src,
-                        ipv4,
-                        ipv6,
-                        FailReason::Forbidden,
-                        now,
-                    );
+                    deny_device_access(&mut self.clients, src, ipv4, ipv6, FailReason::Forbidden);
                     return Ok(());
                 }
                 let held = ref_state
@@ -1515,14 +1501,7 @@ impl TunnelTest {
                     .filter(|pool| held.contains(pool))
                     .collect::<Vec<_>>();
                 let Some(pool) = portal.pick_device_pool(&candidates, remote_id) else {
-                    deny_device_access(
-                        &mut self.clients,
-                        src,
-                        ipv4,
-                        ipv6,
-                        FailReason::Forbidden,
-                        now,
-                    );
+                    deny_device_access(&mut self.clients, src, ipv4, ipv6, FailReason::Forbidden);
                     return Ok(());
                 };
                 let filters = portal.device_pool_filters(pool).unwrap_or_default();
@@ -1647,7 +1626,7 @@ impl TunnelTest {
 
                 let client = self.clients.get_mut(&src).expect("unknown source client");
                 client.exec_mut(|c| {
-                    c.sut.handle_device_domain_resolved(domain, result, now);
+                    c.sut.handle_device_domain_resolved(domain, result);
                 });
 
                 Ok(())
@@ -1799,15 +1778,11 @@ fn deny_device_access(
     ipv4: Option<std::net::Ipv4Addr>,
     ipv6: Option<std::net::Ipv6Addr>,
     reason: FailReason,
-    now: Instant,
 ) {
     clients
         .get_mut(&src)
         .expect("unknown source client")
-        .exec_mut(|c| {
-            c.sut
-                .handle_client_device_access_denied(ipv4, ipv6, reason, now)
-        });
+        .exec_mut(|c| c.sut.handle_client_device_access_denied(ipv4, ipv6, reason));
 }
 
 fn test_ingest_token() -> tunnel_proto::messages::IngestToken {

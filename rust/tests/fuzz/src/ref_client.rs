@@ -10,7 +10,7 @@ use super::{
     transition::{DPort, Destination, DnsQuery, DnsTransport, SPort},
 };
 use tunnel_proto::{
-    ClientState, MaliciousBehaviour, NEGATIVE_CACHE_TTL, dns,
+    ClientState, MaliciousBehaviour, dns,
     messages::{Filter, Interface, UpstreamDo53, UpstreamDoH},
 };
 
@@ -118,10 +118,6 @@ pub struct RefClient {
     /// Per peer, the pools the portal authorised us to reach it through.
     #[debug(skip)]
     peer_pools: BTreeMap<ClientId, BTreeSet<ResourceId>>,
-
-    /// Portal denials the client answers locally until they expire, keyed like connlib keys them.
-    #[debug(skip)]
-    denied_addresses: BTreeMap<IpAddr, Instant>,
 }
 
 impl RefClient {
@@ -164,7 +160,6 @@ impl RefClient {
             gateway_send_times: Default::default(),
             client_send_times: Default::default(),
             peer_pools: Default::default(),
-            denied_addresses: Default::default(),
         }
     }
 
@@ -298,17 +293,6 @@ impl RefClient {
         self.peer_pools.remove(&peer);
     }
 
-    /// A grant from the portal supersedes the denials remembered for the peer's addresses.
-    pub(crate) fn forget_device_denials(&mut self, ips: &[IpAddr]) {
-        self.denied_addresses.retain(|ip, _| !ips.contains(ip));
-    }
-
-    fn is_denied(&self, ip: IpAddr, now: Instant) -> bool {
-        self.denied_addresses
-            .get(&ip)
-            .is_some_and(|at| now.duration_since(*at) < NEGATIVE_CACHE_TTL)
-    }
-
     /// The pools whose filters permit `protocol`, in the order connlib names them: highest id first.
     fn permitting_pools(&self, protocol: Protocol) -> Vec<ResourceId> {
         self.device_pool_ids()
@@ -360,7 +344,6 @@ impl RefClient {
     pub(crate) fn restart(&mut self, key: PrivateKey, now: Instant) {
         self.routes.clear();
         self.peer_pools.clear();
-        self.denied_addresses.clear();
 
         self.key = key;
 
@@ -750,7 +733,6 @@ impl RefClient {
         gateway_by_ip: impl Fn(IpAddr) -> Option<GatewayId>,
         client_by_ip: impl Fn(IpAddr) -> Option<ClientId>,
         pick_pool: impl Fn(&[ResourceId], ClientId) -> Option<ResourceId>,
-        now: Instant,
     ) -> (PacketRoute, Option<ClientId>) {
         if dst.ip_addr().is_some_and(|ip| ip.is_multicast()) {
             return (PacketRoute::Drop, None);
@@ -764,15 +746,11 @@ impl RefClient {
             }
 
             if let Some(peer) = client_by_ip(ip) {
-                return self.route_to_peer(ip, peer, protocol, pick_pool, now);
+                return self.route_to_peer(peer, protocol, pick_pool);
             }
 
             if self.device_pool_ids().is_empty() {
                 return (PacketRoute::Drop, None);
-            }
-
-            if !self.permitting_pools(protocol).is_empty() && !self.is_denied(ip, now) {
-                self.denied_addresses.insert(ip, now);
             }
 
             return (PacketRoute::RejectedByClient, None);
@@ -835,11 +813,9 @@ impl RefClient {
     /// forgets its own grants towards us.
     pub(crate) fn route_to_peer(
         &mut self,
-        ip: IpAddr,
         peer: ClientId,
         protocol: Protocol,
         pick_pool: impl Fn(&[ResourceId], ClientId) -> Option<ResourceId>,
-        now: Instant,
     ) -> (PacketRoute, Option<ClientId>) {
         let granted = self.peer_pools.get(&peer).cloned().unwrap_or_default();
         let granted_permits = granted.iter().any(|pool| {
@@ -861,7 +837,7 @@ impl RefClient {
 
         let pools = self.permitting_pools(protocol);
 
-        if pools.is_empty() || self.is_denied(ip, now) {
+        if pools.is_empty() {
             return (PacketRoute::RejectedByClient, None);
         }
 
@@ -871,11 +847,7 @@ impl RefClient {
 
                 (PacketRoute::Peer(peer), Some(peer))
             }
-            None => {
-                self.denied_addresses.insert(ip, now);
-
-                (PacketRoute::RejectedByClient, None)
-            }
+            None => (PacketRoute::RejectedByClient, None),
         }
     }
 
@@ -1808,7 +1780,6 @@ mod tests {
                 |_| None,
                 |_| None,
                 |_, _| None,
-                Instant::now(),
             )
         };
 
