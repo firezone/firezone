@@ -222,8 +222,8 @@ socket2 = { version = "0.6.4" }
 specta = "=2.0.0-rc.22"
 specta-typescript = "0.0.9"
 str0m-proto = "0.7"
-strum = { version = "0.28.0", features = ["derive"] }
 struct-to-enum-macros = "1.1.2"
+strum = { version = "0.28.0", features = ["derive"] }
 stun_codec = "0.4.0"
 subprocess = "1.1.0"
 subtle = "2.5.0"
