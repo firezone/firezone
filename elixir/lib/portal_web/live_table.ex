@@ -680,13 +680,14 @@ defmodule PortalWeb.LiveTable do
 
   def paginator(assigns) do
     first_row = assigns.metadata.offset + 1
-    last_row = min(assigns.metadata.offset + assigns.rows_count, assigns.metadata.count)
+    last_row = assigns.metadata.offset + assigns.rows_count
 
     assigns =
       assign_new(assigns, :footer, fn -> [] end)
 
     assigns =
       assign(assigns,
+        count_label: count_label(assigns.metadata),
         first_row: first_row,
         last_row: last_row,
         previous_page: page_from_offset(assigns.metadata.previous_offset, assigns.metadata.limit),
@@ -762,11 +763,20 @@ defmodule PortalWeb.LiveTable do
       {render_slot(@footer)}
       <span class="flex-1 text-right">
         Showing <span class="font-medium tabular-nums text-heading mx-1">{@first_row}</span>&mdash;<span class="font-medium tabular-nums text-heading mx-1">{@last_row}</span>
-        of <span class="font-medium tabular-nums text-heading mx-1">{@metadata.count}</span>
+        of <span class="font-medium tabular-nums text-heading mx-1">{@count_label}</span>
       </span>
     </div>
     """
   end
+
+  defp count_label(%{count: count, count_limited: true}) do
+    count
+    |> Integer.to_string()
+    |> String.replace(~r/\B(?=(\d{3})+(?!\d))/, ",")
+    |> Kernel.<>("+")
+  end
+
+  defp count_label(%{count: count}), do: count
 
   defp page_from_offset(nil, _limit), do: nil
   defp page_from_offset(offset, limit), do: div(offset, limit) + 1
