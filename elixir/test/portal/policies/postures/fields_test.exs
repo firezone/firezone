@@ -102,17 +102,16 @@ defmodule Portal.Policies.Postures.FieldsTest do
   test "registry/0 for firezone is an allowlist that leaves conditions and secrets out" do
     firezone = Fields.registry().firezone
 
-    assert firezone.attested == :boolean
     assert firezone.last_seen_version == :version
     assert firezone.ipv4 == :ip
     assert firezone.last_attested_at == :datetime
 
     for column <- ~w[last_seen_remote_ip last_seen_remote_ip_location_region verified_at psk_base
-                     public_key last_attested_cert_issuer firebase_installation_id enrolled]a do
+                     public_key last_attested_cert_issuer firebase_installation_id enrolled attested]a do
       refute Map.has_key?(firezone, column)
     end
 
-    for {column, _type} <- firezone, column != :attested do
+    for {column, _type} <- firezone do
       assert column in Portal.Device.__schema__(:fields)
     end
   end
@@ -160,7 +159,7 @@ defmodule Portal.Policies.Postures.FieldsTest do
   test "fetch_field/2 resolves a field with its type" do
     assert Fields.fetch_field(:intune, "compliance_state") == {:ok, :compliance_state, :enum_string}
     assert Fields.fetch_field(:intune, "intune_id") == {:ok, :intune_id, :string}
-    assert Fields.fetch_field(:firezone, "attested") == {:ok, :attested, :boolean}
+    assert Fields.fetch_field(:firezone, "hostname") == {:ok, :hostname, :string}
     assert Fields.fetch_field(:intune, "account_id") == :error
     assert Fields.fetch_field(:intune, "nope") == :error
     assert Fields.fetch_field(:jamf, "serial_number") == :error

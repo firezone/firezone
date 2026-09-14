@@ -185,11 +185,10 @@ defmodule Portal.Policies.Postures.EvaluatorTest do
       assert evaluate(leaf("intune.enrolled", "is", true), device) == {:ok, nil}
     end
 
-    test "firezone reads the device itself, including the live attested flag" do
-      device = device(hostname: "Laptop", attested?: true)
+    test "firezone reads the device itself" do
+      device = device(hostname: "Laptop")
       assert evaluate(leaf("firezone.hostname", "is", "laptop"), device) == {:ok, nil}
-      assert evaluate(leaf("firezone.attested", "is", true), device) == {:ok, nil}
-      assert evaluate(leaf("firezone.attested", "is", false), device) == @failed
+      assert evaluate(leaf("firezone.hostname", "is", "desktop"), device) == @failed
     end
   end
 

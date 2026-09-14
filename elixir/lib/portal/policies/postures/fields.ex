@@ -103,8 +103,7 @@ defmodule Portal.Policies.Postures.Fields do
     last_seen_user_agent: :string,
     last_seen_remote_ip_location_city: :string,
     ipv4: :ip,
-    ipv6: :ip,
-    attested: :boolean
+    ipv6: :ip
   }
 
   # Left out: values with no security meaning such as UI flags, dedup pointers
