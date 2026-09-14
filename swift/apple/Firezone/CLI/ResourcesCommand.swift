@@ -27,7 +27,7 @@ extension FirezoneCLI {
 
       @MainActor
       func run() async throws {
-        Log.useCLIOutput(debug: global.debug)
+        configureOutput(debug: global.debug)
 
         let vpnManager = try await VPNProfile.load()
         let session = try VPNProfile.session(for: vpnManager)

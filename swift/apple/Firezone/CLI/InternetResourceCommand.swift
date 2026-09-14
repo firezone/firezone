@@ -50,7 +50,7 @@ extension FirezoneCLI {
     /// pushing alone would be forgotten at the next start.
     @MainActor
     fileprivate static func apply(enabled: Bool, debug: Bool) async throws {
-      Log.useCLIOutput(debug: debug)
+      configureOutput(debug: debug)
 
       let vpnManager = try await VPNProfile.load()
       try await vpnManager.save(overrides: ProviderOverrides(internetResourceEnabled: enabled))

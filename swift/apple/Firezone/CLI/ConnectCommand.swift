@@ -30,7 +30,7 @@ extension FirezoneCLI {
 
     @MainActor
     mutating func run() async throws {
-      Log.useCLIOutput(debug: global.debug)
+      configureOutput(debug: global.debug)
 
       if foreground {
         // Supervising ties the tunnel's lifetime to ours, so the menu bar app should stay

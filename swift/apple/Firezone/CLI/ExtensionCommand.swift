@@ -87,7 +87,7 @@ extension FirezoneCLI {
 
       @MainActor
       func run() async throws {
-        Log.useCLIOutput(debug: global.debug)
+        configureOutput(debug: global.debug)
 
         switch try await SystemExtensionManager(unattended: true).check() {
         case .installed:
@@ -121,7 +121,7 @@ extension FirezoneCLI {
 
       @MainActor
       func run() async throws {
-        Log.useCLIOutput(debug: global.debug)
+        configureOutput(debug: global.debug)
 
         let status: SystemExtensionStatus
         do {

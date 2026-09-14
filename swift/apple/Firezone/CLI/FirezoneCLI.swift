@@ -32,7 +32,7 @@ struct FirezoneCLI: AsyncParsableCommand {
   /// usage line it prints name a command the user never typed.
   @MainActor
   mutating func run() async throws {
-    Log.useCLIOutput(debug: global.debug)
+    configureOutput(debug: global.debug)
 
     try await Status.report()
   }
@@ -51,16 +51,26 @@ struct FirezoneCLI: AsyncParsableCommand {
 /// `ArgumentParser` has no global arguments, so each subcommand has to declare this
 /// for the flag to reach it.
 struct GlobalOptions: ParsableArguments {
-  @Flag(name: .long, help: "Mirror the internal log to stderr.")
+  @Flag(name: .long, help: "Report progress and mirror the internal log to stderr.")
   var debug = false
 }
 
-/// Says something to the user, as opposed to logging it.
+nonisolated(unsafe) private var reportsProgress = false
+
+/// Applies `--debug` to everything a command might print besides its answer.
+func configureOutput(debug: Bool) {
+  Log.useCLIOutput(debug: debug)
+  reportsProgress = debug
+}
+
+/// Says how a command is getting on, when `--debug` asks for it.
 ///
-/// The log is the app talking to itself and stays off the terminal unless `--debug`
-/// asks for it, so the handful of lines a command runs in order to say go here
-/// instead. Stderr, leaving stdout to the data a command was asked for.
+/// A command that succeeds prints nothing but its answer, as the Linux and Windows
+/// clients do, so these lines stay off the terminal by default. Stderr, leaving stdout
+/// to the data a command was asked for.
 func say(_ message: String) {
+  guard reportsProgress else { return }
+
   try? FileHandle.standardError.write(contentsOf: Data("\(message)\n".utf8))
 }
 

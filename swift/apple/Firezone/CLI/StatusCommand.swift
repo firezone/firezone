@@ -19,7 +19,7 @@ extension FirezoneCLI {
 
     @MainActor
     func run() async throws {
-      Log.useCLIOutput(debug: global.debug)
+      configureOutput(debug: global.debug)
 
       try await Self.report()
     }

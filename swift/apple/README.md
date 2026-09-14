@@ -242,8 +242,9 @@ pbpaste | firezone connect
 ```
 
 Anything you don't set keeps whatever the app stored, since both share one VPN
-profile. Logs go to the log folder the app shares, and only warnings and errors
-reach the terminal as well; `--debug` mirrors all of them there.
+profile. A command that succeeds prints nothing but its answer, as the Linux and
+Windows clients do. Logs go to the log folder the app shares; `--debug` mirrors
+them to the terminal, along with what the command is doing.
 
 `connect --foreground` stops the menu bar app being kept alive, so quitting the
 headless client doesn't reopen it. Launching the app puts that back.
