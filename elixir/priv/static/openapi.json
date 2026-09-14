@@ -277,7 +277,7 @@
                 "$ref": "#/components/schemas/PolicyPostureNode"
               }
             ],
-            "description": "Device posture the connecting device must satisfy, or null when none is required. Requires the device posture feature.",
+            "description": "Device posture the connecting device must satisfy, or null when none is required. Requires the device posture feature. Changing it revokes this policy's active authorizations, so sessions that rely on it are interrupted until the client reconnects.",
             "nullable": true
           },
           "resource_id": {
@@ -3495,7 +3495,7 @@
                 "$ref": "#/components/schemas/PolicyPostureNode"
               }
             ],
-            "description": "Device posture the connecting device must satisfy, or null when none is required. Requires the device posture feature.",
+            "description": "Device posture the connecting device must satisfy, or null when none is required. Requires the device posture feature. Changing it revokes this policy's active authorizations, so sessions that rely on it are interrupted until the client reconnects.",
             "nullable": true
           },
           "resource_id": {
@@ -5729,7 +5729,7 @@
                 "$ref": "#/components/schemas/PolicyPostureNode"
               }
             ],
-            "description": "Device posture the connecting device must satisfy, or null when none is required. Requires the device posture feature.",
+            "description": "Device posture the connecting device must satisfy, or null when none is required. Requires the device posture feature. Changing it revokes this policy's active authorizations, so sessions that rely on it are interrupted until the client reconnects.",
             "nullable": true
           },
           "resource_id": {

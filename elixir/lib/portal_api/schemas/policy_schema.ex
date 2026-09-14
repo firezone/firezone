@@ -226,7 +226,8 @@ defmodule PortalAPI.Schemas.Policy do
           nullable: true,
           description:
             "Device posture the connecting device must satisfy, or null when none is required. " <>
-              "Requires the device posture feature."
+              "Requires the device posture feature. Changing it revokes this policy's active " <>
+              "authorizations, so sessions that rely on it are interrupted until the client reconnects."
         },
         conditions: %Schema{
           example: [
@@ -284,7 +285,8 @@ defmodule PortalAPI.Schemas.Policy do
           nullable: true,
           description:
             "Device posture the connecting device must satisfy, or null when none is required. " <>
-              "Requires the device posture feature."
+              "Requires the device posture feature. Changing it revokes this policy's active " <>
+              "authorizations, so sessions that rely on it are interrupted until the client reconnects."
         },
         conditions: %Schema{
           example: [
@@ -358,7 +360,8 @@ defmodule PortalAPI.Schemas.Policy do
           nullable: true,
           description:
             "Device posture the connecting device must satisfy, or null when none is required. " <>
-              "Requires the device posture feature."
+              "Requires the device posture feature. Changing it revokes this policy's active " <>
+              "authorizations, so sessions that rely on it are interrupted until the client reconnects."
         },
         conditions: %Schema{
           example: [

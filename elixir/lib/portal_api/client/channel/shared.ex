@@ -2447,17 +2447,7 @@ defmodule PortalAPI.Client.Channel.Shared do
     if rows == client.posture do
       {:noreply, socket}
     else
-      auth_provider_id = Credential.auth_provider_id(socket.assigns.subject.credential)
-      held = Cache.Client.conforming_policy_ids(socket.assigns.cache, client, auth_provider_id)
       client = %{client | posture: rows}
-      holding = Cache.Client.conforming_policy_ids(socket.assigns.cache, client, auth_provider_id)
-      stopped = held -- holding
-
-      # A policy that stopped holding must not keep its flows alive on the
-      # gateway until they expire, the same as unverifying a device.
-      if stopped != [] do
-        Database.delete_policy_authorizations_for_policies(client, stopped)
-      end
 
       socket =
         socket
@@ -3024,18 +3014,6 @@ defmodule PortalAPI.Client.Channel.Shared do
 
   defmodule Database do
     import Ecto.Query, only: [from: 2]
-
-    # Unscoped like the device hook's revocation: the channel acts for the
-    # policy, not for what the connecting actor may read.
-    def delete_policy_authorizations_for_policies(%Portal.Device{} = client, policy_ids) do
-      from(pa in Portal.PolicyAuthorization,
-        where: pa.account_id == ^client.account_id,
-        where: pa.initiating_device_id == ^client.id,
-        where: pa.policy_id in ^policy_ids
-      )
-      |> Portal.Safe.unscoped()
-      |> Portal.Safe.delete_all()
-    end
 
     def x509_session_enabled?(auth_provider_id, actor_id) do
       from(auth_provider in Portal.X509.AuthProvider,

@@ -8443,21 +8443,17 @@ defmodule PortalAPI.Client.ChannelTest do
       assert intune_id == row.intune_id
     end
 
-    test "a row that stops satisfying a posture removes the resource and its authorization", ctx do
-      policy = compliant_policy(ctx)
+    test "a row that stops satisfying a posture removes the resource", ctx do
+      compliant_policy(ctx)
       row = Portal.IntuneFixtures.intune_device_fixture(provider: ctx.provider, serial_number: "POSTURE-SER")
       join_channel(ctx.client, ctx.subject, posture: %{intune: [row]})
       assert_push "init", %{resources: [%{id: resource_id}]}
       assert resource_id == ctx.resource.id
 
-      authorization =
-        policy_authorization_fixture(account: ctx.account, policy: policy, client: ctx.client, resource: ctx.resource)
-
       noncompliant = row |> Ecto.Changeset.change(compliance_state: "noncompliant") |> Portal.Repo.update!()
       :ok = Hooks.IntuneDevices.on_update(2, wal(row), wal(noncompliant))
 
       assert_push "resource_deleted", ^resource_id
-      refute Portal.Repo.get_by(Portal.PolicyAuthorization, id: authorization.id)
     end
 
     test "a Defender row is followed through the Intune row it is linked to", ctx do

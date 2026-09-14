@@ -978,15 +978,6 @@ defmodule Portal.Cache.ClientTest do
       {:ok, [], [], _cache} = Cache.recompute_connectable_resources(nil, client, ctx.subject)
     end
 
-    test "conforming_policy_ids/3 names the policies that hold for the client", ctx do
-      passing = %{ctx.client | posture: %{intune: [ctx.compliant]}}
-      {:ok, _added, [], cache} = Cache.recompute_connectable_resources(nil, passing, ctx.subject)
-      assert Cache.conforming_policy_ids(cache, passing, nil) == [ctx.policy.id]
-
-      failing = %{ctx.client | posture: %{intune: [ctx.noncompliant]}}
-      assert Cache.conforming_policy_ids(cache, failing, nil) == []
-    end
-
     test "a posture that stops passing forbids a connectable resource", ctx do
       passing = %{ctx.client | posture: %{intune: [ctx.compliant]}}
       {:ok, _added, [], cache} = Cache.recompute_connectable_resources(nil, passing, ctx.subject)
