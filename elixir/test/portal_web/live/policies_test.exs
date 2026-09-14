@@ -1480,6 +1480,8 @@ defmodule PortalWeb.PoliciesTest do
 
       assert html =~ "No posture rules"
 
+      refute html =~ "revokes this policy&#39;s active authorizations"
+
       html = render_click(lv, "postures_add_rule", %{"id" => "0"})
       assert html =~ ~s(name="_postures[1][provider]")
       refute html =~ "No posture rules"
@@ -1602,6 +1604,7 @@ defmodule PortalWeb.PoliciesTest do
 
       assert html =~ ~s(<option value="jail_broken" selected)
       assert html =~ ~s(<option value="true" selected)
+      assert html =~ "revokes this policy&#39;s active authorizations"
 
       html = render_click(lv, "postures_remove", %{"id" => "2"})
       assert html =~ "No posture rules"
