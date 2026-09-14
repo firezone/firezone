@@ -9,9 +9,7 @@ defmodule Portal.Policies.Postures.Revocation do
   expires, so the check is tied to the sync rather than to the connection.
   """
 
-  import Ecto.Query
-
-  alias Portal.{Device, Policy, PolicyAuthorization, Safe}
+  alias __MODULE__.Database
   alias Portal.Devices.Posture
   alias Portal.Policies.Postures
 
@@ -20,7 +18,7 @@ defmodule Portal.Policies.Postures.Revocation do
     now = DateTime.utc_now()
 
     account_id
-    |> list_authorized_posture_policies(now)
+    |> Database.list_authorized_posture_policies(now)
     |> Enum.group_by(fn {client, _policy} -> client end, fn {_client, policy} -> policy end)
     |> Enum.each(fn {client, policies} -> revoke_for_client(client, policies, now) end)
   end
@@ -34,31 +32,36 @@ defmodule Portal.Policies.Postures.Revocation do
           do: policy.id
 
     if stale != [] do
-      delete_policy_authorizations(client, stale)
+      Database.delete_policy_authorizations(client, stale)
     end
   end
 
-  defp list_authorized_posture_policies(account_id, now) do
-    from(a in PolicyAuthorization,
-      join: d in Device,
-      on: d.account_id == a.account_id and d.id == a.initiating_device_id,
-      join: p in Policy,
-      on: p.account_id == a.account_id and p.id == a.policy_id,
-      where: a.account_id == ^account_id and a.expires_at > ^now,
-      where: d.type == :client and not is_nil(p.postures),
-      distinct: true,
-      select: {d, p}
-    )
-    |> Safe.unscoped()
-    |> Safe.all()
-  end
+  defmodule Database do
+    import Ecto.Query
+    alias Portal.{Device, Policy, PolicyAuthorization, Safe}
 
-  defp delete_policy_authorizations(%Device{} = client, policy_ids) do
-    from(a in PolicyAuthorization,
-      where: a.account_id == ^client.account_id and a.initiating_device_id == ^client.id,
-      where: a.policy_id in ^policy_ids
-    )
-    |> Safe.unscoped()
-    |> Safe.delete_all()
+    def list_authorized_posture_policies(account_id, now) do
+      from(a in PolicyAuthorization,
+        join: d in Device,
+        on: d.account_id == a.account_id and d.id == a.initiating_device_id,
+        join: p in Policy,
+        on: p.account_id == a.account_id and p.id == a.policy_id,
+        where: a.account_id == ^account_id and a.expires_at > ^now,
+        where: d.type == :client and not is_nil(p.postures),
+        distinct: true,
+        select: {d, p}
+      )
+      |> Safe.unscoped()
+      |> Safe.all()
+    end
+
+    def delete_policy_authorizations(%Device{} = client, policy_ids) do
+      from(a in PolicyAuthorization,
+        where: a.account_id == ^client.account_id and a.initiating_device_id == ^client.id,
+        where: a.policy_id in ^policy_ids
+      )
+      |> Safe.unscoped()
+      |> Safe.delete_all()
+    end
   end
 end
