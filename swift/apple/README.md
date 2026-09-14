@@ -164,18 +164,25 @@ mise run //swift/apple:<task>   # e.g. mise run //swift/apple:build
 ### Headless client
 
 `firezone` is the macOS Client run from a terminal. It is not a separate
-program: it is the app's own binary, reached through a symlink beside it at
-`Firezone.app/Contents/MacOS/firezone-cli`, and it picks the command line path
-when started under that name or as `firezone`. Being the same bundle is what
-lets it use the VPN configuration and system extension the app set up, which a
-second bundle could not do. That also rules out a symlink to the binary from
-outside the bundle, which is why the app ships `Contents/Resources/firezone`, a
-wrapper that `exec`s the binary at its real path. The standalone `.pkg` symlinks
-it into `/usr/local/bin`. The `.dmg` and App Store builds are sandboxed and
-cannot, so make the symlink by hand:
-`sudo ln -sf /Applications/Firezone.app/Contents/Resources/firezone /usr/local/bin/firezone`.
-`Contents/Resources/firezone-cli` is the previous name, kept as a deprecated
-alias that prints a warning.
+program: it is the app's own binary, reached through a symlink at
+`Firezone.app/Contents/Resources/bin/firezone`, and it picks the command line
+path when started under that name. Being the same bundle is what lets it use the
+VPN configuration and system extension the app set up, which a second bundle
+could not do. macOS derives an app's bundle from the path its binary was
+launched through, so the symlink has to sit inside the bundle: one from outside,
+say in `/usr/local/bin`, would leave the client without the app's identity. So
+the CLI gets on the PATH by its directory being added to it, and that directory
+holds nothing else so that nothing else in the bundle becomes a command. The
+standalone `.pkg` adds it by writing `/etc/paths.d/firezone`. The `.dmg` and App
+Store builds are sandboxed and cannot write there, so add the directory
+yourself, either with
+
+```sh
+echo /Applications/Firezone.app/Contents/Resources/bin | sudo tee /etc/paths.d/firezone
+```
+
+or in your shell's rc file. `firezone-cli` in the same directory is the previous
+name, kept as a deprecated alias that prints a warning.
 
 The `.pkg` also writes shell completions, to
 `/usr/local/share/zsh/site-functions/_firezone`,
