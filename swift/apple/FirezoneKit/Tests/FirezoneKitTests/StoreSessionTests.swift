@@ -76,9 +76,12 @@
       try await waitUntil { app.store.connectedDevices == [Self.benchController] }
     }
 
-    @Test("the actor and account the portal names reach the store")
-    func actorAndAccountReachTheStore() async throws {
+    @Test(
+      "the portal account does not overwrite the configured slug",
+      arguments: ["", "configured-account"])
+    func portalAccountDoesNotOverwriteConfiguredSlug(configuredSlug: String) async throws {
       let app = try await signedOut()
+      app.store.configuration.accountSlug = configuredSlug
       app.tunnel.actorName = "Jane Doe"
       app.tunnel.accountSlug = "acme-corp"
 
@@ -86,7 +89,7 @@
 
       try await waitUntil { app.store.actorName == "Jane Doe" }
       #expect(app.store.sessionHeading == "Signed in as Jane Doe")
-      #expect(app.store.configuration.accountSlug == "acme-corp")
+      #expect(app.store.configuration.accountSlug == configuredSlug)
     }
 
     @Test("a resource update after the session is up reaches the store")

@@ -716,16 +716,6 @@ impl<I: GuiIntegration> Controller<I> {
 
                 telemetry::set_account_slug(connected.account_slug.clone());
 
-                // An MDM-forced slug is the admin's answer to the same question and wins
-                // every read of it, so it is left alone rather than cached over.
-                if self.mdm_settings.account_slug.is_none() {
-                    self.general_settings.account_slug = Some(connected.account_slug.clone());
-                    self.integration
-                        .save_general_settings(&self.general_settings)
-                        .await?;
-                    self.notify_settings_changed()?;
-                }
-
                 self.connected_as = Some(connected);
                 self.refresh_ui_state();
             }

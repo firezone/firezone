@@ -785,13 +785,6 @@ class TunnelService : VpnService() {
                                 is Event.ConnectedToPortal -> {
                                     Telemetry.setAccountSlug(event.accountSlug)
                                     tunnelActorName = event.actorName
-
-                                    // A slug forced through managed configuration already wins
-                                    // every read, so caching over it would only surface once the
-                                    // admin stops forcing one.
-                                    if (!repo.isAccountSlugManaged()) {
-                                        repo.saveAccountSlug(event.accountSlug).collect {}
-                                    }
                                 }
 
                                 is Event.Disconnected -> {
