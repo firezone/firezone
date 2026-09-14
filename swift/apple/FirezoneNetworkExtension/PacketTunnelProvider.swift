@@ -103,8 +103,9 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         + (identityReference.map { "will be presented (\($0.count) bytes)" }
           ?? "will not be presented"))
 
-    // Try to save the token back to the Keychain but continue if we can't
-    handleTokenSave(token)
+    // Only a passed token needs saving, and only once the portal has accepted it: saving
+    // it now would replace a working Keychain token with one that may turn out to be bad.
+    let unsavedToken = passedToken == nil ? nil : token
 
     // The firezone id should be initialized by now
     guard let rawId = defaults.string(forKey: "firezoneId")
@@ -164,9 +165,11 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     // Start the adapter asynchronously. The Task only captures Sendable values:
     // - adapter: actor (Sendable)
     // - completionHandler: @Sendable
+    // - unsavedToken: Token (Sendable)
     Task { @Sendable in
       do {
         try await adapter.start()
+        if let unsavedToken { PacketTunnelProvider.handleTokenSave(unsavedToken) }
         completionHandler(nil)
       } catch {
         Log.error(error)
@@ -470,7 +473,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
   }
 
   #if os(macOS)
-    private func handleTokenSave(_ token: Token) {
+    private static func handleTokenSave(_ token: Token) {
       do {
         try token.save()
       } catch let error as KeychainError {
@@ -488,7 +491,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
   #endif
 
   #if os(iOS)
-    private func handleTokenSave(_ token: Token) {
+    private static func handleTokenSave(_ token: Token) {
       do { try token.save() } catch { Log.error(error) }
     }
   #endif
