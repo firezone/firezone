@@ -270,12 +270,14 @@ jobs:
           set -euo pipefail
 
           # The clients built the merge commit, not the branch checked out here.
-          git fetch --depth=1 origin "$GITHUB_SHA"
+          # Two deep, so that its first parent, the branch's merge target, comes along.
+          git fetch --depth=2 origin "$GITHUB_SHA"
 
           # `mise exec` puts `uv` on PATH: the shims the mise action sets up are
           # regenerated before it installs, not after.
           mise exec -- uv run scripts/prepare-store-screenshots.py
-          mise exec -- uv run scripts/settle-screenshots.py --baseline "$GITHUB_SHA" \
+          mise exec -- uv run scripts/settle-screenshots.py \
+            --baseline "$GITHUB_SHA" --merge-target "$GITHUB_SHA^1" \
             rust/gui-client/screenshots kotlin/android/screenshots swift/apple/screenshots
       - name: Set up GnuPG for the screenshot commit
         uses: ./.github/actions/setup-gpg
@@ -295,7 +297,11 @@ jobs:
           git config --local user.signingkey "${{ steps.setup-gpg.outputs.key_id }}"
           git config --local commit.gpgsign true
 
-          git add -A rust/gui-client/screenshots kotlin/android/screenshots swift/apple/screenshots
+          # The images only: an artifact holds everything that sits in the directory
+          # it was uploaded from, as the merge commit has it, and the Play Store
+          # listing beside the Android screens is kept by hand on the branch.
+          git add -A -- 'rust/gui-client/screenshots/*.png' \
+            'kotlin/android/screenshots/*.png' 'swift/apple/screenshots/*.png'
           if git diff --cached --quiet; then
             echo "The screenshots are unchanged; nothing to push."
             exit 0
