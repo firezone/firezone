@@ -179,7 +179,7 @@ defmodule Portal.Policies.Postures.Evaluator do
     compare_moment(op, DateTime.new!(value, ~T[00:00:00]), parsed, now)
   end
 
-  defp compare(:ip, op, %Postgrex.INET{} = value, cidrs, _now) do
+  defp compare(type, op, %Postgrex.INET{} = value, cidrs, _now) when type in [:ip, :ipv4, :ipv6] do
     address = %Postgrex.INET{address: value.address, netmask: nil}
     inside? = Enum.any?(cidrs, &Portal.Types.CIDR.contains?(&1, address))
 

@@ -48,7 +48,7 @@ defmodule Portal.Policies.Postures.FieldsTest do
 
   test "types/0 lists every semantic type and each has operators" do
     assert Fields.types() ==
-             ~w[string enum_string boolean integer float version datetime ip string_array json]a
+             ~w[string enum_string boolean integer float version datetime ip ipv4 ipv6 string_array json]a
 
     for type <- Fields.types() do
       operators = Fields.operators(type)
@@ -103,7 +103,8 @@ defmodule Portal.Policies.Postures.FieldsTest do
     firezone = Fields.registry().firezone
 
     assert firezone.last_seen_version == :version
-    assert firezone.ipv4 == :ip
+    assert firezone.ipv4 == :ipv4
+    assert firezone.ipv6 == :ipv6
     assert firezone.last_attested_at == :datetime
 
     for column <- ~w[last_seen_remote_ip last_seen_remote_ip_location_region verified_at psk_base
@@ -178,6 +179,8 @@ defmodule Portal.Policies.Postures.FieldsTest do
     assert Fields.operators(:integer) == Fields.operators(:float)
     assert :within_last in Fields.operators(:datetime)
     assert Fields.operators(:ip) == [:is_in_cidr, :is_not_in_cidr, :exists, :does_not_exist]
+    assert Fields.operators(:ipv4) == Fields.operators(:ip)
+    assert Fields.operators(:ipv6) == Fields.operators(:ip)
     assert :contains_all_of in Fields.operators(:string_array)
     assert Fields.operators(:json) == [:is_empty, :is_not_empty, :exists, :does_not_exist]
     assert Fields.operators(:version) == [:is, :is_not, :gt, :gte, :lt, :lte, :exists, :does_not_exist]
