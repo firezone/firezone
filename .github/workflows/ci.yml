@@ -295,7 +295,11 @@ jobs:
           git config --local user.signingkey "${{ steps.setup-gpg.outputs.key_id }}"
           git config --local commit.gpgsign true
 
-          git add -A rust/gui-client/screenshots kotlin/android/screenshots swift/apple/screenshots
+          # The images only: an artifact holds everything that sits in the directory
+          # it was uploaded from, as the merge commit has it, and the Play Store
+          # listing beside the Android screens is kept by hand on the branch.
+          git add -A -- 'rust/gui-client/screenshots/*.png' \
+            'kotlin/android/screenshots/*.png' 'swift/apple/screenshots/*.png'
           if git diff --cached --quiet; then
             echo "The screenshots are unchanged; nothing to push."
             exit 0
