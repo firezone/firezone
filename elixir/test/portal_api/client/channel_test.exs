@@ -7941,6 +7941,8 @@ defmodule PortalAPI.Client.ChannelTest do
 
       assert_receive {:create_authorization, {_pid, :renewal}, renewal}
       assert renewal.policy_authorization_id == id
+      assert renewal.preshared_key == payload.preshared_key
+      assert renewal.ice_credentials == payload.ice_credentials
       assert renewal.resource.id == ctx.attested_resource.id
       assert within_lease?(renewal.authorization_expires_at)
       assert Repo.get_by!(Portal.PolicyAuthorization, id: id).expires_at == renewal.authorization_expires_at
@@ -8000,7 +8002,11 @@ defmodule PortalAPI.Client.ChannelTest do
         "ipv4" => Portal.Types.INET.to_string(target_client.ipv4)
       })
 
-      assert_push "client_device_access_authorized", %{client_id: ^initiating_client_id, expires_at: first_expiry}
+      assert_push "client_device_access_authorized", %{
+        client_id: ^initiating_client_id,
+        expires_at: first_expiry,
+        preshared_key: first_preshared_key
+      }
       assert_push "client_device_access_authorized", %{client_id: ^target_client_id}
       Portal.Queue.flush(:policy_authorization_queue)
 
@@ -8013,7 +8019,13 @@ defmodule PortalAPI.Client.ChannelTest do
 
       send(initiating_socket.channel_pid, :renew_attested_authorizations)
 
-      assert_push "client_device_access_authorized", %{client_id: ^initiating_client_id, expires_at: renewed_expiry}
+      assert_push "client_device_access_authorized", %{
+        client_id: ^initiating_client_id,
+        expires_at: renewed_expiry,
+        preshared_key: renewed_preshared_key
+      }
+
+      assert renewed_preshared_key == first_preshared_key
       assert renewed_expiry > first_expiry - 60
       assert within_lease?(DateTime.from_unix!(renewed_expiry))
       assert DateTime.to_unix(Repo.get_by!(Portal.PolicyAuthorization, id: authorization.id).expires_at) == renewed_expiry
