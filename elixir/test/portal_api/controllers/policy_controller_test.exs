@@ -1168,7 +1168,7 @@ defmodule PortalAPI.PolicyControllerTest do
   @postures %{
     "and" => [
       %{"field" => "intune.compliance_state", "op" => "is", "value" => "compliant"},
-      %{"not" => %{"field" => "firezone.attested", "op" => "is", "value" => false}}
+      %{"not" => %{"field" => "intune.jail_broken", "op" => "is", "value" => true}}
     ]
   }
 
