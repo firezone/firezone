@@ -252,7 +252,7 @@ defmodule Portal.PolicyTest do
     test "round trips through the database" do
       map = %{
         "and" => [
-          %{"field" => "firezone.attested", "op" => "is", "value" => true},
+          %{"field" => "firezone.hostname", "op" => "is", "value" => "laptop"},
           %{"field" => "intune.last_sync_at", "op" => "within_last", "value" => "PT24H", "rows" => "all"}
         ]
       }

@@ -75,7 +75,7 @@ defmodule Portal.Policies.PosturesTest do
       map = %{
         "and" => [
           leaf("intune.compliance_state", "is", "compliant"),
-          %{"or" => [leaf("iru.mdm_enabled", "is", true), %{"not" => leaf("firezone.attested", "is", true)}]}
+          %{"or" => [leaf("iru.mdm_enabled", "is", true), %{"not" => leaf("firezone.hostname", "is", "x")}]}
         ]
       }
 
@@ -138,7 +138,7 @@ defmodule Portal.Policies.PosturesTest do
       map = %{"or" => [%{"and" => intune}, %{"and" => iru}]}
       assert cast!(map) |> Postures.leaf_count() == 100
 
-      map = %{"or" => [%{"and" => intune}, %{"and" => [leaf("firezone.attested", "is", true) | iru]}]}
+      map = %{"or" => [%{"and" => intune}, %{"and" => [leaf("firezone.hostname", "is", "x") | iru]}]}
       assert cast_error(map) == "must have at most 100 leaves, has 101"
     end
   end
@@ -289,7 +289,6 @@ defmodule Portal.Policies.PosturesTest do
 
     test "synthetic fields" do
       assert %Postures{expr: %Leaf{field: :enrolled, parsed: false}} = cast!(leaf("intune.enrolled", "is", false))
-      assert %Postures{expr: %Leaf{field: :attested, parsed: true}} = cast!(leaf("firezone.attested", "is", true))
     end
   end
 
