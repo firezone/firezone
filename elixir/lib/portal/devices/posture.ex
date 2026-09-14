@@ -30,27 +30,46 @@ defmodule Portal.Devices.Posture do
 
   @doc "Every provider row matched to the device, one entry per row."
   @spec match(Device.t()) :: [match()]
-  def match(%Device{type: :client, account_id: account_id} = device) do
-    keys = match_keys(device)
-    types = Database.list_provider_types(account_id)
+  def match(%Device{type: :client} = device), do: device |> match_all() |> Map.get(device.id, [])
+  def match(_device), do: []
 
-    if keys == [] or types == [] do
-      []
-    else
-      matched = Enum.flat_map(types, &match_type(&1, keys, account_id))
-      matched ++ link_defender(types, matched, account_id)
+  @doc """
+  The matched rows of many client devices of one account, keyed by device id.
+
+  One statement joins the devices to every provider table on the identifiers
+  of the ladder, and to Defender through the Intune row, so a batch of a
+  thousand devices costs the same round trip as one.
+  """
+  @spec match_all([Device.t()] | Device.t()) :: %{Ecto.UUID.t() => [match()]}
+  def match_all(%Device{} = device), do: match_all([device])
+
+  def match_all(devices) when is_list(devices) do
+    keys_by_id =
+      for %Device{type: :client} = device <- devices, match_keys(device) != [], into: %{} do
+        {device.id, match_keys(device)}
+      end
+
+    case Map.keys(keys_by_id) do
+      [] ->
+        %{}
+
+      device_ids ->
+        account_id = devices |> hd() |> Map.fetch!(:account_id)
+
+        account_id
+        |> Database.list_matches(device_ids)
+        |> Enum.group_by(&elem(&1, 0), &Tuple.delete_at(&1, 0))
+        |> Map.new(fn {device_id, rows} -> {device_id, matches(rows, Map.fetch!(keys_by_id, device_id))} end)
     end
   end
 
-  def match(_device), do: []
-
   @doc "The matched rows grouped by provider type, the shape the posture evaluator reads."
   @spec rows_by_type(Device.t()) :: %{atom() => [struct()]}
-  def rows_by_type(device) do
-    device
-    |> match()
-    |> Enum.group_by(fn {type, _row, _rung, _via} -> type end, fn {_type, row, _rung, _via} -> row end)
-  end
+  def rows_by_type(device), do: device |> match() |> group_rows()
+
+  @doc "`rows_by_type/1` for a batch of devices of one account, keyed by device id."
+  @spec rows_by_type_all([Device.t()]) :: %{Ecto.UUID.t() => %{atom() => [struct()]}}
+  def rows_by_type_all(devices), do: devices |> match_all() |> Map.new(fn {id, rows} -> {id, group_rows(rows)} end)
 
   @spec rung_rank(rung()) :: 0 | 1 | 2
   def rung_rank(:mdm_device_id), do: 0
@@ -146,47 +165,30 @@ defmodule Portal.Devices.Posture do
     )
   end
 
-  defp match_type(type, keys, account_id) do
-    case rung_conditions(type, keys) do
-      [] ->
-        []
+  # One joined result row per combination of matched provider rows; the
+  # struct of a provider that matched nothing is nil. Defender rides on the
+  # Intune row it was joined through and inherits that row's rung.
+  defp matches(rows, keys) do
+    provider_matches =
+      for {type, index} <- [intune: 0, iru: 1, santa: 2, sentinelone: 3],
+          row <- rows |> Enum.map(&elem(&1, index)) |> Enum.reject(&is_nil/1) |> Enum.uniq_by(&Ecto.primary_key/1),
+          rung = matched_rung(type, keys, row),
+          not is_nil(rung),
+          do: {type, row, rung, nil}
 
-      conditions ->
-        schema(type)
-        |> Database.list_rows(account_id, Enum.reduce(conditions, &dynamic(^&1 or ^&2)))
-        |> Enum.map(&{type, &1, matched_rung(type, keys, &1), nil})
-    end
-  end
+    defender_matches =
+      for {intune, _iru, _santa, _sentinelone, defender} <- rows,
+          not is_nil(intune) and not is_nil(defender),
+          rung = matched_rung(:intune, keys, intune),
+          not is_nil(rung),
+          do: {:defender, defender, rung, :intune}
 
-  defp link_defender(types, matched, account_id) do
-    if :defender in types do
-      matched
-      |> Enum.flat_map(fn
-        {:intune, %{entra_device_id: entra_id}, rung, _via} when is_binary(entra_id) -> [{entra_id, rung}]
-        _other -> []
-      end)
-      |> Enum.sort_by(fn {_entra_id, rung} -> rung_rank(rung) end)
-      |> Enum.uniq_by(fn {entra_id, _rung} -> entra_id end)
-      |> match_defender_by_entra_id(account_id)
-    else
-      []
-    end
-  end
+    defender_matches =
+      defender_matches
+      |> Enum.sort_by(fn {_type, _row, rung, _via} -> rung_rank(rung) end)
+      |> Enum.uniq_by(fn {_type, row, _rung, _via} -> Ecto.primary_key(row) end)
 
-  defp match_defender_by_entra_id([], _account_id), do: []
-
-  defp match_defender_by_entra_id(entra_ids, account_id) do
-    rung_by_entra_id = Map.new(entra_ids)
-
-    Defender.Device
-    |> Database.list_rows(account_id, dynamic([d], d.entra_device_id in ^Map.keys(rung_by_entra_id)))
-    |> Enum.map(&{:defender, &1, Map.fetch!(rung_by_entra_id, &1.entra_device_id), :intune})
-  end
-
-  defp rung_conditions(type, keys) do
-    for {rung, value} <- keys,
-        field_name <- rung_fields(type, rung),
-        do: dynamic([d], field(d, ^field_name) == ^value)
+    provider_matches ++ defender_matches
   end
 
   defp matched_rung(type, keys, row) do
@@ -200,22 +202,75 @@ defmodule Portal.Devices.Posture do
     |> Enum.reject(fn {_kind, value} -> is_nil(value) end)
     |> Enum.uniq()
   end
+
+  defp group_rows(matches) do
+    Enum.group_by(matches, fn {type, _row, _rung, _via} -> type end, fn {_type, row, _rung, _via} -> row end)
+  end
   defmodule Database do
     import Ecto.Query
-    alias Portal.{PostureProvider, Safe}
+    alias Portal.{Defender, Device, Intune, Iru, Safe, Santa, SentinelOne}
 
-    # Reads run unscoped: a policy check must see the rows whatever the
-    # connecting actor may read, and the account filter keeps them in bounds.
-    def list_provider_types(account_id) do
-      from(p in PostureProvider, where: p.account_id == ^account_id, distinct: true, select: p.type)
+    # Runs unscoped: a policy check must see the rows whatever the connecting
+    # actor may read, and the account filter keeps them in bounds. The join
+    # conditions are the matching ladder; `rung_fields/2` names the same
+    # columns so the credit given to a returned row can never disagree.
+    def list_matches(account_id, device_ids) do
+      from(d in Device, as: :device, where: d.account_id == ^account_id and d.id in ^device_ids)
+      |> join_intune()
+      |> join_iru()
+      |> join_santa()
+      |> join_sentinelone()
+      |> join_defender()
+      |> select([device: d, intune: i, iru: r, santa: s, sentinelone: o, defender: f], {d.id, i, r, s, o, f})
       |> Safe.unscoped()
       |> Safe.all()
     end
 
-    def list_rows(schema, account_id, condition) do
-      from(d in schema, where: d.account_id == ^account_id, where: ^condition)
-      |> Safe.unscoped()
-      |> Safe.all()
+    defp join_intune(query) do
+      join(query, :left, [device: d], i in Intune.Device,
+        as: :intune,
+        on:
+          i.account_id == d.account_id and
+            (i.intune_id == d.last_attested_mdm_device_id or
+               i.serial_number == d.last_attested_device_serial or
+               i.serial_number == d.device_serial)
+      )
+    end
+
+    defp join_iru(query) do
+      join(query, :left, [device: d], r in Iru.Device,
+        as: :iru,
+        on:
+          r.account_id == d.account_id and
+            (r.iru_id == d.last_attested_mdm_device_id or
+               r.serial_number == d.last_attested_device_serial or
+               r.serial_number == d.device_serial)
+      )
+    end
+
+    defp join_santa(query) do
+      join(query, :left, [device: d], s in Santa.Device,
+        as: :santa,
+        on:
+          s.account_id == d.account_id and
+            (s.serial_number == d.last_attested_device_serial or s.serial_number == d.device_serial)
+      )
+    end
+
+    defp join_sentinelone(query) do
+      join(query, :left, [device: d], o in SentinelOne.Device,
+        as: :sentinelone,
+        on:
+          o.account_id == d.account_id and
+            (o.serial_number == d.last_attested_device_serial or o.serial_number == d.device_serial)
+      )
+    end
+
+    defp join_defender(query) do
+      join(query, :left, [device: d, intune: i], f in Defender.Device,
+        as: :defender,
+        on: f.account_id == d.account_id and f.entra_device_id == i.entra_device_id
+      )
     end
   end
 end

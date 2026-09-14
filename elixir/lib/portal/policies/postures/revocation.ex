@@ -17,23 +17,25 @@ defmodule Portal.Policies.Postures.Revocation do
   def revoke_stale_authorizations(account_id) do
     now = DateTime.utc_now()
 
-    account_id
-    |> Database.list_authorized_posture_policies(now)
-    |> Enum.group_by(fn {client, _policy} -> client end, fn {_client, policy} -> policy end)
-    |> Enum.each(fn {client, policies} -> revoke_for_client(client, policies, now) end)
-  end
+    policies_by_client =
+      account_id
+      |> Database.list_authorized_posture_policies(now)
+      |> Enum.group_by(fn {client, _policy} -> client end, fn {_client, policy} -> policy end)
 
-  defp revoke_for_client(client, policies, now) do
-    client = %{client | posture: Posture.rows_by_type(client)}
+    rows_by_client = policies_by_client |> Map.keys() |> Posture.rows_by_type_all()
 
     stale =
-      for policy <- policies,
+      for {client, policies} <- policies_by_client,
+          client = %{client | posture: Map.get(rows_by_client, client.id, %{})},
+          policy <- policies,
           {:error, _violations} <- [Postures.Evaluator.evaluate(policy.postures, client, now)],
-          do: policy.id
+          do: {client.id, policy.id}
 
     if stale != [] do
-      Database.delete_policy_authorizations(client, stale)
+      Database.delete_policy_authorizations(account_id, stale)
     end
+
+    :ok
   end
 
   defmodule Database do
@@ -55,11 +57,14 @@ defmodule Portal.Policies.Postures.Revocation do
       |> Safe.all()
     end
 
-    def delete_policy_authorizations(%Device{} = client, policy_ids) do
-      from(a in PolicyAuthorization,
-        where: a.account_id == ^client.account_id and a.initiating_device_id == ^client.id,
-        where: a.policy_id in ^policy_ids
-      )
+    def delete_policy_authorizations(account_id, client_and_policy_ids) do
+      pairs =
+        Enum.map(client_and_policy_ids, fn {client_id, policy_id} ->
+          dynamic([a], a.initiating_device_id == ^client_id and a.policy_id == ^policy_id)
+        end)
+
+      from(a in PolicyAuthorization, where: a.account_id == ^account_id)
+      |> where(^Enum.reduce(pairs, &dynamic(^&1 or ^&2)))
       |> Safe.unscoped()
       |> Safe.delete_all()
     end
