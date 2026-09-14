@@ -5,6 +5,7 @@ defmodule PortalWeb.PoliciesTest do
   alias Portal.Changes.Change
 
   import Portal.AccountFixtures
+  import Portal.DevicePostureFixtures
   import Portal.ActorFixtures
   import Portal.AuthProviderFixtures
   import Portal.FeaturesFixtures
@@ -1415,6 +1416,203 @@ defmodule PortalWeb.PoliciesTest do
         |> live(~p"/#{account}/policies/#{policy.id}/edit")
 
       assert html =~ "Require Attestation"
+    end
+  end
+
+  describe ":device postures" do
+    setup do
+      enable_device_posture()
+      account = device_posture_account_fixture()
+      actor = admin_actor_fixture(account: account)
+      group = group_fixture(account: account)
+      resource = resource_fixture(account: account)
+      %{account: account, actor: actor, group: group, resource: resource}
+    end
+
+    defp change_posture_leaf(lv, id, sub, value) do
+      lv
+      |> element("[name='_postures[#{id}][#{sub}]']")
+      |> render_change(%{"_postures" => %{to_string(id) => %{sub => value}}})
+    end
+
+    defp jail_broken_json, do: ~s({"field": "intune.jail_broken", "op": "is", "value": true})
+
+    defp saved_postures(group, resource) do
+      Policy
+      |> Repo.get_by!(group_id: group.id, resource_id: resource.id)
+      |> Map.fetch!(:postures)
+      |> Portal.Policies.Postures.to_map()
+    end
+
+    test "the section is hidden when the feature is off globally", %{conn: conn} do
+      enable_device_posture(false)
+      account = account_fixture()
+      actor = admin_actor_fixture(account: account)
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/policies/new")
+
+      refute html =~ "Device posture"
+    end
+
+    test "the section is locked when the account lacks the feature", %{conn: conn} do
+      account = account_fixture()
+      actor = admin_actor_fixture(account: account)
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/policies/new")
+
+      assert html =~ "Device posture"
+      assert html =~ "Upgrade your plan to unlock device posture checks."
+      assert html =~ ~s(data-locked-section="device-posture")
+      refute html =~ ~s(name="policy[postures]")
+    end
+
+    test "builds a rule and saves it", %{conn: conn, account: account, actor: actor, group: group, resource: resource} do
+      {:ok, lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/policies/new")
+
+      assert html =~ "No posture rules"
+
+      html = render_click(lv, "postures_add_rule", %{"id" => "0"})
+      assert html =~ ~s(name="_postures[1][provider]")
+      refute html =~ "No posture rules"
+
+      html = change_posture_leaf(lv, 1, "provider", "intune")
+      assert html =~ ~s(<option value="jail_broken")
+
+      html = change_posture_leaf(lv, 1, "field", "jail_broken")
+      assert html =~ ~s(<option value="true" selected)
+
+      html =
+        lv
+        |> form("[phx-submit='submit_policy_form']",
+          policy: %{group_id: group.id, resource_id: resource.id}
+        )
+        |> render_submit()
+
+      assert html =~ "created successfully"
+      assert saved_postures(group, resource) == %{"field" => "intune.jail_broken", "op" => "is", "value" => true}
+      assert html =~ "intune.jail_broken"
+    end
+
+    test "shows a leaf error under the input and refuses to save", %{conn: conn, account: account, actor: actor, group: group, resource: resource} do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/policies/new")
+
+      render_click(lv, "postures_add_rule", %{"id" => "0"})
+      change_posture_leaf(lv, 1, "provider", "intune")
+      change_posture_leaf(lv, 1, "field", "os_version")
+      html = change_posture_leaf(lv, 1, "value", "fourteen")
+      assert html =~ "Value must be a version such as 14.4.1"
+
+      html =
+        lv
+        |> form("[phx-submit='submit_policy_form']",
+          policy: %{group_id: group.id, resource_id: resource.id}
+        )
+        |> render_submit()
+
+      refute html =~ "created successfully"
+      assert html =~ "must be a version such as 14.4.1"
+      refute Repo.get_by(Policy, group_id: group.id, resource_id: resource.id)
+    end
+
+    test "the JSON tab saves postures and underlines errors", %{conn: conn, account: account, actor: actor, group: group, resource: resource} do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/policies/new")
+
+      html = render_click(lv, "postures_tab", %{"tab" => "json"})
+      assert html =~ ~s(name="_postures_json")
+      assert html =~ ~s(phx-hook="PostureJsonEditor")
+
+      html =
+        lv
+        |> element("textarea[name='_postures_json']")
+        |> render_change(%{"_postures_json" => ~s({"and": [})})
+
+      assert html =~ ~s(Unexpected character)
+      assert html =~ ~s(data-error-start="9")
+
+      html =
+        lv
+        |> element("textarea[name='_postures_json']")
+        |> render_change(%{"_postures_json" => ~s({"field": "intune.jail_broken", "op": "is", "value": 12})})
+
+      assert html =~ "Must be true or false"
+      assert html =~ ~s(data-error-start="53")
+      assert html =~ ~s(data-error-length="2")
+
+      html =
+        lv
+        |> form("[phx-submit='submit_policy_form']",
+          policy: %{group_id: group.id, resource_id: resource.id}
+        )
+        |> render_submit()
+
+      refute html =~ "created successfully"
+      refute Repo.get_by(Policy, group_id: group.id, resource_id: resource.id)
+
+      lv
+      |> element("textarea[name='_postures_json']")
+      |> render_change(%{"_postures_json" => jail_broken_json()})
+
+      html = render_click(lv, "postures_tab", %{"tab" => "builder"})
+      assert html =~ ~s(<option value="jail_broken" selected)
+
+      html =
+        lv
+        |> form("[phx-submit='submit_policy_form']",
+          policy: %{group_id: group.id, resource_id: resource.id}
+        )
+        |> render_submit()
+
+      assert html =~ "created successfully"
+      assert saved_postures(group, resource) == %{"field" => "intune.jail_broken", "op" => "is", "value" => true}
+    end
+
+    test "existing postures load into the editor, the overview and the list", %{conn: conn, account: account, actor: actor, group: group, resource: resource} do
+      {:ok, postures} = Portal.Policies.Postures.cast(%{"not" => JSON.decode!(jail_broken_json())})
+
+      policy =
+        policy_fixture(account: account, group: group, resource: resource)
+        |> Ecto.Changeset.change(postures: postures)
+        |> Repo.update!()
+
+      conn = authorize_conn(conn, actor)
+
+      {:ok, _lv, html} = live(conn, ~p"/#{account}/policies/#{policy.id}")
+
+      assert html =~ "Device posture"
+      assert html =~ "intune.jail_broken"
+      assert html =~ ">NOT<"
+      assert html =~ ~r/>\s*Posture\s*</
+
+      {:ok, lv, html} = live(conn, ~p"/#{account}/policies/#{policy.id}/edit")
+
+      assert html =~ ~s(<option value="jail_broken" selected)
+      assert html =~ ~s(<option value="true" selected)
+
+      html = render_click(lv, "postures_remove", %{"id" => "2"})
+      assert html =~ "No posture rules"
+
+      html =
+        lv
+        |> form("[phx-submit='submit_policy_form']", policy: %{description: "no postures"})
+        |> render_submit()
+
+      assert html =~ "updated successfully"
+      assert Repo.get_by!(Policy, id: policy.id).postures == nil
     end
   end
 

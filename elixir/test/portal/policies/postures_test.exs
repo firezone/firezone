@@ -45,8 +45,18 @@ defmodule Portal.Policies.PosturesTest do
     end
 
     test "anything but a map is rejected" do
-      assert Postures.cast("intune") == {:error, message: "must be an object"}
       assert Postures.cast([]) == {:error, message: "must be an object"}
+      assert Postures.cast(1) == {:error, message: "must be an object"}
+    end
+
+    test "a JSON string is decoded first" do
+      json = JSON.encode!(intune_leaf("is", "compliant"))
+      assert {:ok, %Postures{expr: %Leaf{provider: :intune}}} = Postures.cast(json)
+      assert Postures.cast("null") == {:ok, nil}
+      assert Postures.cast("[]") == {:error, message: "must be an object"}
+      assert Postures.cast("\"intune\"") == {:error, message: "must be an object"}
+      assert Postures.cast("{\"and\": [") == {:error, message: "is not valid JSON"}
+      assert Postures.cast("intune") == {:error, message: "is not valid JSON"}
     end
 
     test "the root is a node, so a bare leaf is a tree" do

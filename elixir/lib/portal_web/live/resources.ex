@@ -28,6 +28,7 @@ defmodule PortalWeb.Resources do
   alias Portal.Resource
   alias Phoenix.LiveView.AsyncResult
   alias __MODULE__.Database
+  alias PortalWeb.Policies.Postures
 
   def mount(_params, _session, socket) do
     subject = socket.assigns.subject
@@ -244,6 +245,7 @@ defmodule PortalWeb.Resources do
       %{
         available_groups: [],
         providers: [],
+        postures: Postures.for_account(socket.assigns.account),
         timezone: base_resource_panel(socket).timezone,
         grant_selected_group_ids: [],
         grant_form: nil,
@@ -1087,6 +1089,13 @@ defmodule PortalWeb.Resources do
     {:noreply, merge_state(socket, :resource_grant, grant_selected_group_ids: updated)}
   end
 
+  def handle_event("postures_" <> _rest = event, params, socket) do
+    {:noreply,
+     update(socket, :resource_grant, fn grant ->
+       Map.update!(grant, :postures, &Postures.handle_event(event, params, &1))
+     end)}
+  end
+
   def handle_event("submit_grant", params, socket) do
     resource = socket.assigns.selected_resource
     selected_group_ids = socket.assigns.resource_grant.grant_selected_group_ids
@@ -1096,6 +1105,7 @@ defmodule PortalWeb.Resources do
       policy_params
       |> map_condition_params(empty_values: :drop)
       |> maybe_drop_unsupported_conditions(socket)
+      |> Postures.maybe_drop_unsupported(socket.assigns.resource_grant.postures)
 
     result =
       Enum.reduce_while(selected_group_ids, :ok, fn group_id, :ok ->
@@ -1781,7 +1791,7 @@ defmodule PortalWeb.Resources do
     def insert_policy(attrs, subject) do
       changeset =
         %Portal.Policy{}
-        |> cast(attrs, ~w[description group_id resource_id flow_log_uploads_enabled]a)
+        |> cast(attrs, ~w[description group_id resource_id flow_log_uploads_enabled postures]a)
         |> validate_required(~w[group_id resource_id]a)
         |> cast_embed(:conditions, with: &Portal.Policies.Condition.changeset/3)
         |> Portal.Policy.changeset()

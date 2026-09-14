@@ -1,5 +1,6 @@
 defmodule PortalWeb.Groups.Components do
   use PortalWeb, :component_library
+  import PortalWeb.Policies.PostureComponents
 
   import PortalWeb.Policies.Components,
     only: [
@@ -512,6 +513,7 @@ defmodule PortalWeb.Groups.Components do
     <div class="flex-1 flex flex-col overflow-hidden">
       <.group_grant_resource_form
         :if={@tab_view == :grant_form}
+        account={@account}
         resources_state={@resources_state}
         conditions_state={@conditions_state}
       />
@@ -527,6 +529,7 @@ defmodule PortalWeb.Groups.Components do
     """
   end
 
+  attr :account, :any, required: true
   attr :resources_state, :map, required: true
   attr :conditions_state, :map, required: true
 
@@ -760,6 +763,7 @@ defmodule PortalWeb.Groups.Components do
               />
             </div>
           </div>
+          <.postures_section id="group-grant-postures" account={@account} state={@postures} />
           <div class="border-t border-border pt-4">
             <.flow_log_uploads_toggle
               form={@grant_resource_form}

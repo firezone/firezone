@@ -5,6 +5,7 @@ defmodule PortalWeb.GroupsTest do
   alias Portal.Changes.Change
 
   import Portal.AccountFixtures
+  import Portal.DevicePostureFixtures
   import Portal.ActorFixtures
   import Portal.GroupFixtures
   import Portal.MembershipFixtures
@@ -218,6 +219,46 @@ defmodule PortalWeb.GroupsTest do
       html = render_click(lv, "open_grant_resource_form")
       assert html =~ "Grant access"
       assert render_click(lv, "close_grant_resource_form") =~ resource.name
+    end
+
+    test "grants access with device postures", %{conn: conn} do
+      enable_device_posture()
+      account = device_posture_account_fixture()
+      actor = admin_actor_fixture(account: account)
+      group = group_fixture(account: account)
+      resource = resource_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/groups/#{group}")
+
+      render_click(lv, "switch_group_tab", %{"tab" => "resources"})
+      html = render_click(lv, "open_grant_resource_form")
+      assert html =~ "Device posture"
+
+      render_click(lv, "toggle_grant_resource", %{"resource_id" => resource.id})
+      render_click(lv, "postures_add_rule", %{"id" => "0"})
+
+      lv
+      |> element("[name='_postures[1][provider]']")
+      |> render_change(%{"_postures" => %{"1" => %{"provider" => "intune"}}})
+
+      html =
+        lv
+        |> element("[name='_postures[1][field]']")
+        |> render_change(%{"_postures" => %{"1" => %{"field" => "jail_broken"}}})
+
+      assert html =~ ~s(<option value="true" selected)
+
+      lv
+      |> form("#grant-resource-form")
+      |> render_submit()
+
+      policy = Repo.get_by!(Policy, group_id: group.id, resource_id: resource.id)
+
+      assert Portal.Policies.Postures.to_map(policy.postures) ==
+               %{"field" => "intune.jail_broken", "op" => "is", "value" => true}
     end
 
     test "grants access with flow log reporting disabled", %{
