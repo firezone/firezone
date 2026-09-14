@@ -442,6 +442,7 @@ defmodule PortalWeb.Policies.PostureComponents do
   defp operator_label(op), do: Map.get_lazy(@operator_labels, op, fn -> String.replace(op, "_", " ") end)
 
   defp value_placeholder(_type, op) when op in ~w[is_in is_not_in contains_any_of contains_all_of], do: "one, two, three"
+  defp value_placeholder(:ipv6, _op), do: "fd00::/8, 2001:db8::/32"
   defp value_placeholder(_type, op) when op in ~w[is_in_cidr is_not_in_cidr], do: "10.0.0.0/8, 192.168.0.0/16"
   defp value_placeholder(_type, op) when op in ~w[matches does_not_match], do: "^regex$"
   defp value_placeholder(:datetime, op) when op in ~w[within_last not_within_last], do: "PT24H"
