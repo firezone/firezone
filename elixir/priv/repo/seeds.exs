@@ -1187,6 +1187,13 @@ defmodule Portal.Repo.Seeds do
     seed_santa_devices(account, santa, now, admin)
     seed_sentinelone_devices(account, sentinelone, now, admin, rendering)
 
+    fleet =
+      seed_posture_fleet(
+        account,
+        %{intune: intune, iru: iru, defender: defender, santa: santa, sentinelone: sentinelone},
+        now
+      )
+
     IO.puts("Device posture providers created")
     IO.puts("  Contoso Intune, Iru Apple Fleet, Defender for Endpoint, Santa Workshop, SentinelOne Production")
     IO.puts("  #{admin.name}: attested, matched by MDM device id")
@@ -1195,6 +1202,10 @@ defmodule Portal.Repo.Seeds do
     IO.puts("  #{rendering.name}: unattested, matched by a self-reported serial")
     IO.puts("  #{kiosk.name}: attested a device id only, serial comes from Intune")
     IO.puts("  #{macbook_air.name}: attested a device id only, serial comes from Iru")
+    IO.puts("")
+    IO.puts("Device posture fleet seeded (#{fleet.members} devices, SEED_FLEET_SIZE to change)")
+    IO.puts("  Intune #{fleet.intune}, Iru #{fleet.iru}, Defender #{fleet.defender}, Santa #{fleet.santa}, SentinelOne #{fleet.sentinelone}")
+    IO.puts("  #{fleet.clients} Firezone Clients across #{fleet.people} people")
     IO.puts("")
   end
 
@@ -1845,6 +1856,656 @@ defmodule Portal.Repo.Seeds do
   defp sentinelone_prefix("windows"), do: "ENG-WIN"
   defp sentinelone_prefix("macos"), do: "ENG-MAC"
   defp sentinelone_prefix(_other), do: "ENG-LNX"
+
+  # ---------------------------------------------------------------------------
+  # Device posture fleet
+  # ---------------------------------------------------------------------------
+
+  # Thousands of synced rows with plausible spread, so posture rules have
+  # something to bite on. Each fleet device lands in the providers that would
+  # really know about it (a Windows laptop in Intune, Defender and SentinelOne;
+  # a Mac in Iru, Santa and SentinelOne; a phone in one MDM only), and some get
+  # a Firezone Client so every rung of the matching ladder is exercised.
+
+  @fleet_first_names ~w[Ava Bo Chen Dara Emil Freya Gus Hana Ivo Jade Kai Lena Milo Nia Omar Pia Quinn Rui Sana Tomas Uma Vik Wren Xia Yara Zed]
+  @fleet_last_names ~w[Adeyemi Baker Castillo Dubois Eriksen Fischer Garcia Haddad Ibarra Jansen Kowalski Larsen Moreau Nakamura Okoro Patel Quiroga Rossi Silva Tremblay Ueda Varga Walsh Xu Yilmaz Zhang]
+  @fleet_departments ~w[Engineering Sales Finance Support Executive Marketing]
+
+  @fleet_profiles [
+    {:windows_laptop, 38},
+    {:mac_laptop, 30},
+    {:iphone, 10},
+    {:ipad, 4},
+    {:android, 4},
+    {:linux_server, 7},
+    {:windows_server, 7}
+  ]
+
+  defp seed_posture_fleet(account, providers, now) do
+    size = "SEED_FLEET_SIZE" |> System.get_env("2500") |> String.to_integer()
+    people = fleet_people(account)
+    members = for index <- 1..size, do: fleet_member(index, people, now)
+
+    %{
+      members: size,
+      people: length(people),
+      intune: insert_fleet_rows(Intune.Device, members, &fleet_intune_row(&1, account, providers.intune, now)),
+      iru: insert_fleet_rows(Iru.Device, members, &fleet_iru_row(&1, account, providers.iru, now)),
+      defender: insert_fleet_rows(Defender.Device, members, &fleet_defender_row(&1, account, providers.defender, now)),
+      santa: insert_fleet_rows(Santa.Device, members, &fleet_santa_row(&1, account, providers.santa, now)),
+      sentinelone: insert_fleet_rows(SentinelOne.Device, members, &fleet_sentinelone_row(&1, account, providers.sentinelone, now)),
+      clients: members |> Enum.map(&fleet_client(&1, account, now)) |> Enum.count(& &1)
+    }
+  end
+
+  defp insert_fleet_rows(module, members, build) do
+    rows = Enum.flat_map(members, build)
+
+    rows
+    |> Enum.chunk_every(500)
+    |> Enum.each(&Repo.insert_all(module, &1))
+
+    length(rows)
+  end
+
+  defp fleet_people(account) do
+    for index <- 1..160 do
+      first = Enum.at(@fleet_first_names, rem(index, length(@fleet_first_names)))
+      last = Enum.at(@fleet_last_names, rem(div(index, 26) + index, length(@fleet_last_names)))
+      login = String.downcase("#{first}.#{last}")
+
+      {:ok, actor} =
+        Repo.insert(%Actor{
+          account_id: account.id,
+          type: :account_user,
+          name: "#{first} #{last}",
+          email: "#{login}@#{@posture_domain}"
+        })
+
+      %{actor: actor, display_name: "#{first} #{last}", login: login, department: Enum.random(@fleet_departments)}
+    end
+  end
+
+  defp fleet_member(index, people, now) do
+    profile = weighted(@fleet_profiles)
+    person = Enum.at(people, rem(index * 7, length(people)))
+    {os_name, os_version, model, manufacturer, model_identifier} = fleet_hardware(profile)
+    mobile? = profile in [:iphone, :ipad, :android]
+    server? = profile in [:linux_server, :windows_server]
+    apple? = profile in [:mac_laptop, :iphone, :ipad]
+
+    mdm =
+      case profile do
+        :windows_laptop -> if chance(96), do: :intune, else: :none
+        :mac_laptop -> weighted([{:iru, 60}, {:intune, 32}, {:none, 8}])
+        :android -> if chance(92), do: :intune, else: :none
+        _apple_mobile when apple? -> weighted([{:intune, 45}, {:iru, 45}, {:none, 10}])
+        _server -> :none
+      end
+
+    minutes_ago =
+      case weighted([{:fresh, 70}, {:days, 20}, {:stale, 10}]) do
+        :fresh -> :rand.uniform(1_440)
+        :days -> 1_440 + :rand.uniform(8_640)
+        :stale -> 10_080 + :rand.uniform(54_720)
+      end
+
+    %{
+      index: index,
+      profile: profile,
+      mobile?: mobile?,
+      server?: server?,
+      apple?: apple?,
+      person: person,
+      os_name: os_name,
+      os_version: os_version,
+      model: model,
+      manufacturer: manufacturer,
+      model_identifier: model_identifier,
+      serial: fleet_serial(profile, index),
+      hostname: fleet_hostname(profile, person, index),
+      intune_id: Ecto.UUID.generate(),
+      iru_id: Ecto.UUID.generate(),
+      entra_id: Ecto.UUID.generate(),
+      mdm: mdm,
+      defender?: fleet_in_defender?(profile, mdm),
+      santa?: profile == :mac_laptop and chance(60),
+      sentinelone?: fleet_in_sentinelone?(profile),
+      client: fleet_client_kind(profile, mdm),
+      last_active_at: DateTime.add(now, -minutes_ago, :minute),
+      enrolled_at: DateTime.add(now, -(20 + :rand.uniform(700)), :day),
+      encrypted?: chance(93),
+      compromised?: mobile? and chance(2)
+    }
+  end
+
+  defp fleet_in_defender?(:windows_laptop, mdm), do: mdm == :intune and chance(85)
+  defp fleet_in_defender?(:windows_server, _mdm), do: chance(70)
+  defp fleet_in_defender?(:mac_laptop, _mdm), do: chance(15)
+  defp fleet_in_defender?(:linux_server, _mdm), do: chance(40)
+  defp fleet_in_defender?(_profile, _mdm), do: false
+
+  defp fleet_in_sentinelone?(:windows_laptop), do: chance(60)
+  defp fleet_in_sentinelone?(:mac_laptop), do: chance(50)
+  defp fleet_in_sentinelone?(:linux_server), do: chance(90)
+  defp fleet_in_sentinelone?(:windows_server), do: chance(90)
+  defp fleet_in_sentinelone?(_profile), do: false
+
+  defp fleet_client_kind(profile, _mdm) when profile in [:linux_server, :windows_server], do: :none
+
+  defp fleet_client_kind(_profile, mdm) do
+    case weighted([{:none, 60}, {:attested, 22}, {:serial, 10}, {:bare, 8}]) do
+      :attested when mdm == :none -> :serial
+      kind -> kind
+    end
+  end
+
+  defp fleet_hardware(:windows_laptop) do
+    {model, manufacturer} =
+      Enum.random([
+        {"Latitude 7450", "Dell Inc."},
+        {"ThinkPad X1 Carbon Gen 12", "LENOVO"},
+        {"Surface Laptop 7", "Microsoft Corporation"},
+        {"EliteBook 840 G11", "HP"}
+      ])
+
+    version = weighted([{"10.0.26100.4652", 45}, {"10.0.26100.2894", 25}, {"10.0.22631.5472", 20}, {"10.0.19045.6093", 10}])
+    {"Windows", version, model, manufacturer, nil}
+  end
+
+  defp fleet_hardware(:mac_laptop) do
+    {model, identifier} =
+      Enum.random([
+        {"MacBook Pro 14-inch (M4, 2024)", "Mac16,1"},
+        {"MacBook Air 13-inch (M3, 2024)", "Mac15,12"},
+        {"MacBook Pro 16-inch (M3 Max, 2023)", "Mac15,9"},
+        {"MacBook Air 15-inch (M2, 2023)", "Mac14,15"}
+      ])
+
+    version = weighted([{"15.6.1", 50}, {"15.5", 20}, {"14.7.6", 20}, {"13.7.6", 10}])
+    {"macOS", version, model, "Apple", identifier}
+  end
+
+  defp fleet_hardware(:iphone) do
+    {model, identifier} =
+      Enum.random([{"iPhone 16 Pro", "iPhone17,1"}, {"iPhone 15", "iPhone15,4"}, {"iPhone 13", "iPhone14,5"}])
+
+    {"iOS", weighted([{"18.6", 55}, {"18.5", 25}, {"17.7.2", 15}, {"16.7.10", 5}]), model, "Apple", identifier}
+  end
+
+  defp fleet_hardware(:ipad) do
+    {model, identifier} = Enum.random([{"iPad Pro 11-inch (M4)", "iPad16,3"}, {"iPad Air 11-inch (M2)", "iPad14,8"}])
+    {"iPadOS", weighted([{"18.6", 70}, {"17.7.2", 30}]), model, "Apple", identifier}
+  end
+
+  defp fleet_hardware(:android) do
+    {model, manufacturer} = Enum.random([{"Pixel 9", "Google"}, {"Galaxy S24", "samsung"}, {"Pixel 8a", "Google"}])
+    {"Android", weighted([{"15", 60}, {"14", 30}, {"13", 10}]), model, manufacturer, nil}
+  end
+
+  defp fleet_hardware(:linux_server) do
+    {model, manufacturer} = Enum.random([{"PowerEdge R660", "Dell Inc."}, {"Standard_D4s_v5", "Microsoft Azure"}])
+    {"Ubuntu", weighted([{"24.04.2 LTS", 70}, {"22.04.5 LTS", 30}]), model, manufacturer, nil}
+  end
+
+  defp fleet_hardware(:windows_server) do
+    {model, manufacturer} = Enum.random([{"PowerEdge R750", "Dell Inc."}, {"Standard_D8s_v5", "Microsoft Azure"}])
+    {"Windows Server", weighted([{"10.0.20348.3807", 60}, {"10.0.26100.4652", 40}]), model, manufacturer, nil}
+  end
+
+  defp fleet_serial(profile, index) when profile in [:mac_laptop, :iphone, :ipad], do: apple_serial(10_000 + index * 7)
+  defp fleet_serial(:android, index), do: "R5CX" <> serial_chunk(index * 48_611, 7)
+  defp fleet_serial(:windows_laptop, index) when rem(index, 3) == 0, do: lenovo_serial(10_000 + index)
+  defp fleet_serial(_profile, index), do: dell_tag(50_000 + index)
+
+  defp fleet_hostname(profile, person, index) do
+    number = String.pad_leading(Integer.to_string(1_000 + index), 4, "0")
+
+    case profile do
+      :windows_laptop -> "CT-WIN-#{number}"
+      :mac_laptop -> "#{person.login}-mbp"
+      :iphone -> "#{person.login}-iphone"
+      :ipad -> "#{person.login}-ipad"
+      :android -> "#{person.login}-android"
+      :linux_server -> "srv-lnx-#{number}"
+      :windows_server -> "srv-win-#{number}"
+    end
+  end
+
+  defp fleet_intune_row(%{mdm: :intune} = member, account, provider, now) do
+    person = member.person
+    compliance_state = weighted([{"compliant", 78}, {"noncompliant", 10}, {"inGracePeriod", 6}, {"unknown", 3}, {"error", 2}, {"conflict", 1}])
+    personal? = chance(15)
+    windows? = member.profile == :windows_laptop
+    total_storage = Enum.random([256, 512, 1_024, 2_048]) * 1_073_741_824
+
+    [
+      %{
+        account_id: account.id,
+        posture_provider_id: provider.id,
+        intune_id: member.intune_id,
+        device_name: member.hostname,
+        managed_device_name: "#{person.login}_#{String.replace(member.os_name, " ", "")}_#{Calendar.strftime(member.enrolled_at, "%-m/%-d/%Y")}",
+        serial_number: member.serial,
+        entra_device_id: member.entra_id,
+        enrollment_profile_name: if(personal?, do: "BYOD", else: "Corporate Devices"),
+        device_category_display_name: person.department,
+        user_id: Ecto.UUID.generate(),
+        user_principal_name: "#{person.login}@#{@posture_domain}",
+        user_display_name: person.display_name,
+        email_address: "#{person.login}@#{@posture_domain}",
+        operating_system: if(member.profile == :ipad, do: "iOS", else: member.os_name),
+        os_version: member.os_version,
+        model: member.model,
+        manufacturer: member.manufacturer,
+        udid: Ecto.UUID.generate(),
+        wifi_mac_address: posture_mac(2_000 + member.index),
+        ethernet_mac_address: if(member.mobile?, do: nil, else: posture_mac(6_000 + member.index)),
+        total_storage_space_bytes: total_storage,
+        free_storage_space_bytes: div(total_storage * (5 + :rand.uniform(80)), 100),
+        physical_memory_bytes: Enum.random([8, 16, 32, 64]) * 1_073_741_824,
+        compliance_state: compliance_state,
+        compliance_grace_period_expiration_at:
+          if(compliance_state == "inGracePeriod", do: DateTime.add(now, :rand.uniform(10), :day), else: nil),
+        management_state: weighted([{"managed", 95}, {"retirePending", 3}, {"wipePending", 1}, {"unhealthy", 1}]),
+        management_agent: if(member.profile == :android, do: "googleCloudDevicePolicyController", else: "mdm"),
+        managed_device_owner_type: if(personal?, do: "personal", else: "company"),
+        device_enrollment_type: fleet_enrollment_type(member.profile, personal?),
+        device_registration_state: weighted([{"registered", 97}, {"notRegistered", 3}]),
+        partner_reported_threat_state:
+          weighted([{"secured", 55}, {"unknown", 30}, {"lowSeverity", 8}, {"mediumSeverity", 5}, {"highSeverity", 2}]),
+        jail_broken: member.compromised?,
+        is_encrypted: member.encrypted?,
+        is_supervised: member.apple? and not personal?,
+        entra_registered: chance(96),
+        enrolled_at: member.enrolled_at,
+        last_sync_at: member.last_active_at,
+        management_certificate_expires_at: DateTime.add(now, -5 + :rand.uniform(370), :day),
+        android_security_patch_level:
+          if(member.profile == :android, do: Enum.random([~D[2026-09-05], ~D[2026-08-05], ~D[2026-06-05], ~D[2026-02-05]]), else: nil),
+        attestation_supported: windows?,
+        attestation_secure_boot: windows? and chance(92),
+        attestation_bit_locker_enabled: windows? and member.encrypted?,
+        attestation_tpm_version: if(windows?, do: "2.0", else: nil),
+        attestation_code_integrity: windows? and chance(95),
+        attestation_boot_debugging: windows? and chance(1),
+        attestation_test_signing: windows? and chance(1),
+        attestation_safe_mode: windows? and chance(1),
+        attestation_virtual_secure_mode: windows? and chance(60),
+        attestation_issued_at: if(windows?, do: member.last_active_at, else: nil),
+        synced_at: provider.synced_at,
+        inserted_at: now,
+        updated_at: now
+      }
+    ]
+  end
+
+  defp fleet_intune_row(_member, _account, _provider, _now), do: []
+
+  defp fleet_enrollment_type(:windows_laptop, _personal?),
+    do: weighted([{"windowsAzureADJoin", 70}, {"windowsAutoEnrollment", 20}, {"windowsBulkAzureDomainJoin", 10}])
+
+  defp fleet_enrollment_type(:mac_laptop, personal?), do: if(personal?, do: "userEnrollment", else: "appleBulkWithUser")
+  defp fleet_enrollment_type(:android, personal?), do: if(personal?, do: "androidEnterpriseWorkProfile", else: "androidEnterpriseFullyManaged")
+  defp fleet_enrollment_type(_apple_mobile, personal?), do: if(personal?, do: "appleUserEnrollment", else: "appleBulkWithUser")
+
+  defp fleet_iru_row(%{mdm: :iru} = member, account, provider, now) do
+    person = member.person
+    mac? = member.profile == :mac_laptop
+    collected_at = DateTime.add(member.last_active_at, -:rand.uniform(30), :minute)
+    platform = %{mac_laptop: "Mac", iphone: "iPhone", ipad: "iPad"} |> Map.fetch!(member.profile)
+    filevault? = mac? and chance(90)
+
+    [
+      %{
+        account_id: account.id,
+        posture_provider_id: provider.id,
+        iru_id: member.iru_id,
+        device_name: member.hostname,
+        serial_number: member.serial,
+        platform: platform,
+        os_name: member.os_name,
+        os_version: member.os_version,
+        display_os_version: member.os_version,
+        os_build: "24G#{80 + rem(member.index, 20)}",
+        model: member.model,
+        model_name: member.model,
+        model_identifier: member.model_identifier,
+        device_family: platform,
+        device_capacity_gb: Enum.random([256.0, 512.0, 1_024.0]),
+        host_name: member.hostname,
+        local_hostname: member.hostname,
+        apple_silicon: true,
+        user_id: Ecto.UUID.generate(),
+        user_name: person.display_name,
+        user_email: "#{person.login}@#{@posture_domain}",
+        user_is_archived: chance(2),
+        asset_tag: "CT-#{String.pad_leading(Integer.to_string(10_000 + member.index), 5, "0")}",
+        blueprint_id: Ecto.UUID.generate(),
+        blueprint_name:
+          if(mac?,
+            do: weighted([{"Standard Laptop", 60}, {"Engineering Laptop", 30}, {"Executive Laptop", 10}]),
+            else: "Mobile Standard"
+          ),
+        mdm_enabled: chance(98),
+        agent_installed: mac? and chance(95),
+        agent_version: if(mac?, do: weighted([{"5.4.1", 60}, {"5.3.0", 30}, {"5.2.2", 10}]), else: nil),
+        is_missing: chance(1),
+        is_removed: chance(1),
+        first_enrolled_at: member.enrolled_at,
+        last_enrolled_at: member.enrolled_at,
+        last_check_in_at: member.last_active_at,
+        tags: Enum.take_random(~w[engineering remote contractor executive lab], :rand.uniform(3) - 1),
+        inventory_collected_at: collected_at,
+        filevault_enabled: filevault?,
+        filevault_key_type: if(filevault?, do: weighted([{"Personal", 80}, {"Institutional", 20}]), else: nil),
+        filevault_key_escrowed: filevault? and chance(90),
+        filevault_collected_at: if(mac?, do: collected_at, else: nil),
+        firewall_enabled: mac? and chance(80),
+        firewall_stealth_mode: mac? and chance(30),
+        firewall_collected_at: if(mac?, do: collected_at, else: nil),
+        gatekeeper_enabled: mac? and chance(96),
+        gatekeeper_trusted_developers: mac? and chance(90),
+        xprotect_version: if(mac?, do: weighted([{"5312", 70}, {"5308", 20}, {"5290", 10}]), else: nil),
+        gatekeeper_collected_at: if(mac?, do: collected_at, else: nil),
+        sip_enabled: mac? and chance(97),
+        ssv_enabled: mac? and chance(97),
+        bootstrap_token_escrowed: mac? and chance(85),
+        secure_boot_level: if(mac?, do: weighted([{"full", 85}, {"medium", 10}, {"off", 5}]), else: nil),
+        startup_settings_collected_at: if(mac?, do: collected_at, else: nil),
+        activation_lock_supported: true,
+        device_activation_lock_enabled: chance(25),
+        activation_lock_collected_at: collected_at,
+        synced_at: provider.synced_at,
+        inserted_at: now,
+        updated_at: now
+      }
+    ]
+  end
+
+  defp fleet_iru_row(_member, _account, _provider, _now), do: []
+
+  defp fleet_defender_row(%{defender?: true} = member, account, provider, now) do
+    {os_platform, version, build} = fleet_defender_os(member)
+    server? = member.server?
+    cloud? = member.manufacturer == "Microsoft Azure"
+    last_ip = fleet_ip(10, 20, rem(member.index, 250), 10 + rem(member.index * 7, 200))
+    health = weighted([{"Active", 85}, {"Inactive", 8}, {"ImpairedCommunication", 5}, {"NoSensorData", 2}])
+
+    [
+      %{
+        account_id: account.id,
+        posture_provider_id: provider.id,
+        defender_id: Base.encode16(:crypto.hash(:sha, "defender-fleet-#{member.index}"), case: :lower),
+        computer_dns_name: "#{String.downcase(member.hostname)}.#{@posture_domain}",
+        entra_device_id: if(member.mdm == :intune, do: member.entra_id, else: nil),
+        entra_joined: member.mdm == :intune,
+        machine_tags: Enum.take_random(~w[engineering corp-managed pci high-value lab], :rand.uniform(3) - 1),
+        os_platform: os_platform,
+        version: version,
+        os_build: build,
+        os_processor: if(member.apple?, do: "arm64", else: "x64"),
+        os_architecture: "64-bit",
+        last_ip_address: last_ip,
+        last_external_ip_address: fleet_ip(203, 0, 113, 1 + rem(member.index * 3, 250)),
+        agent_version: weighted([{"10.8760.26100.3212", 60}, {"10.8760.26100.2894", 30}, {"10.8750.22621.4602", 10}]),
+        health_status: health,
+        onboarding_status: weighted([{"Onboarded", 94}, {"InsufficientInfo", 4}, {"CanBeOnboarded", 2}]),
+        managed_by: if(member.mdm == :intune, do: "Intune", else: weighted([{"MDE", 70}, {"Unknown", 30}])),
+        managed_by_status: weighted([{"Success", 92}, {"Failed", 5}, {"NotApplicable", 3}]),
+        risk_score: weighted([{"None", 55}, {"Informational", 15}, {"Low", 15}, {"Medium", 10}, {"High", 5}]),
+        exposure_level: weighted([{"Low", 55}, {"Medium", 35}, {"High", 8}, {"None", 2}]),
+        device_value: if(server? or chance(8), do: "High", else: "Normal"),
+        rbac_group_id: if(server?, do: 141, else: 140),
+        rbac_group_name: if(server?, do: "Servers", else: member.person.department),
+        is_potential_duplication: chance(1),
+        is_excluded: chance(2),
+        vm_cloud_provider: if(cloud?, do: "Azure", else: nil),
+        vm_id: if(cloud?, do: Ecto.UUID.generate(), else: nil),
+        ip_addresses: [
+          %{
+            "ipAddress" => to_string(last_ip),
+            "macAddress" => String.replace(posture_mac(6_000 + member.index), ":", ""),
+            "operationalStatus" => if(health == "Active", do: "Up", else: "Down"),
+            "type" => if(member.server?, do: "Ethernet", else: "Wireless80211")
+          }
+        ],
+        first_seen_at: member.enrolled_at,
+        last_seen_at: member.last_active_at,
+        synced_at: provider.synced_at,
+        inserted_at: now,
+        updated_at: now
+      }
+    ]
+  end
+
+  defp fleet_defender_row(_member, _account, _provider, _now), do: []
+
+  defp fleet_defender_os(%{profile: :windows_laptop, os_version: version}) do
+    case version do
+      "10.0.26100." <> _rest -> {"Windows11", "24H2", 26_100}
+      "10.0.22631." <> _rest -> {"Windows11", "23H2", 22_631}
+      _other -> {"Windows10", "22H2", 19_045}
+    end
+  end
+
+  defp fleet_defender_os(%{profile: :windows_server, os_version: version}) do
+    if String.starts_with?(version, "10.0.26100."), do: {"WindowsServer2025", "24H2", 26_100}, else: {"WindowsServer2022", "21H2", 20_348}
+  end
+
+  defp fleet_defender_os(%{profile: :mac_laptop, os_version: version}), do: {"macOS", version, 0}
+  defp fleet_defender_os(%{os_version: version}), do: {"Linux", version, 0}
+
+  defp fleet_santa_row(%{santa?: true} = member, account, provider, now) do
+    client_mode = weighted([{"LOCKDOWN", 75}, {"MONITOR", 25}])
+    santa_version = weighted([{"2026.7", 60}, {"2026.5", 30}, {"2025.11", 10}])
+
+    [
+      %{
+        account_id: account.id,
+        id: Ecto.UUID.generate(),
+        posture_provider_id: provider.id,
+        santa_id: String.upcase(Ecto.UUID.generate()),
+        hostname: member.hostname,
+        serial_number: member.serial,
+        machine_model: member.model_identifier,
+        os_version: member.os_version,
+        os_build: "24G#{80 + rem(member.index, 20)}",
+        os_type: "OS_TYPE_MACOS",
+        sip_status: if(chance(97), do: 1, else: 0),
+        primary_user: "#{member.person.login}@#{@posture_domain}",
+        primary_user_locked: false,
+        primary_user_groups: [String.downcase(member.person.department)],
+        santa_version: santa_version,
+        santanetd_version: santa_version,
+        last_seen_client_mode: if(chance(95), do: client_mode, else: "MONITOR"),
+        configured_client_mode: client_mode,
+        last_sync_at: member.last_active_at,
+        rule_sync_at: member.last_active_at,
+        last_preflight_at: member.last_active_at,
+        last_preflight_ip: fleet_ip(10, 30, rem(member.index, 250), 20 + rem(member.index * 5, 200)),
+        temporary_monitor_mode_ends_at: if(chance(3), do: DateTime.add(now, :rand.uniform(240), :minute), else: nil),
+        tags: Enum.take_random(~w[engineering developer designer], :rand.uniform(2) - 1),
+        tags_locked: false,
+        tags_truncated: false,
+        first_seen_at: member.enrolled_at,
+        synced_at: provider.synced_at,
+        inserted_at: now,
+        updated_at: now
+      }
+    ]
+  end
+
+  defp fleet_santa_row(_member, _account, _provider, _now), do: []
+
+  defp fleet_sentinelone_row(%{sentinelone?: true} = member, account, provider, now) do
+    {os_type, os_name, machine_type} = fleet_sentinelone_os(member)
+    infected? = chance(2)
+    network_status = weighted([{"connected", 88}, {"disconnected", 10}, {"connecting", 2}])
+    scan_status = weighted([{"finished", 85}, {"started", 8}, {"aborted", 4}, {"none", 3}])
+    scanned_at = DateTime.add(member.last_active_at, -:rand.uniform(20), :day)
+
+    [
+      %{
+        account_id: account.id,
+        posture_provider_id: provider.id,
+        uuid: Ecto.UUID.generate(),
+        sentinelone_id: Integer.to_string(1_845_000_000_000_100_000 + member.index),
+        sentinelone_account_id: "1845000000000000001",
+        account_name: "Contoso",
+        site_id: "1845000000000000002",
+        site_name: "Default site",
+        group_id: if(member.server?, do: "1845000000000000004", else: "1845000000000000003"),
+        group_name: if(member.server?, do: "Servers", else: member.person.department),
+        computer_name: member.hostname,
+        serial_number: member.serial,
+        model_name: member.model_identifier || member.model,
+        machine_type: machine_type,
+        domain: @posture_domain,
+        os_name: os_name,
+        os_revision: member.os_version,
+        os_type: os_type,
+        os_arch: "64 bit",
+        os_username: member.person.login,
+        last_logged_in_user_name: member.person.login,
+        agent_version: weighted([{"24.2.3.471", 55}, {"24.1.5.277", 30}, {"23.4.2.214", 15}]),
+        total_memory: Enum.random([8_192, 16_384, 32_768, 65_536]),
+        cpu_count: if(member.server?, do: 2, else: 1),
+        core_count: Enum.random([8, 10, 12, 16, 32]),
+        cpu_id: if(member.apple?, do: "Apple M3", else: "Intel(R) Xeon(R) Platinum 8370C"),
+        external_ip: fleet_ip(203, 0, 113, 1 + rem(member.index * 5, 250)),
+        network_status: network_status,
+        is_active: network_status == "connected",
+        is_up_to_date: chance(85),
+        infected: infected?,
+        active_threats: if(infected?, do: :rand.uniform(3), else: 0),
+        threat_reboot_required: infected? and chance(50),
+        encrypted_applications: chance(90),
+        firewall_enabled: chance(88),
+        network_quarantine_enabled: infected? and chance(40),
+        apps_vulnerability_status: weighted([{"up_to_date", 70}, {"patch_required", 25}, {"not_applicable", 5}]),
+        scan_status: scan_status,
+        scan_started_at: scanned_at,
+        scan_finished_at: if(scan_status == "finished", do: DateTime.add(scanned_at, 41, :minute), else: nil),
+        last_successful_scan_at: scanned_at,
+        mitigation_mode: weighted([{"protect", 85}, {"detect", 15}]),
+        mitigation_mode_suspicious: weighted([{"detect", 70}, {"protect", 30}]),
+        is_pending_uninstall: chance(1),
+        is_uninstalled: false,
+        is_decommissioned: chance(2),
+        registered_at: member.enrolled_at,
+        last_active_at: member.last_active_at,
+        network_interfaces: [
+          %{
+            "id" => "1845000000#{String.pad_leading(Integer.to_string(member.index), 9, "0")}",
+            "name" => if(member.apple?, do: "en0", else: "eth0"),
+            "physical" => posture_mac(6_000 + member.index),
+            "inet" => ["10.40.#{rem(member.index, 250)}.#{30 + rem(member.index * 3, 200)}"]
+          }
+        ],
+        tags: [],
+        synced_at: provider.synced_at,
+        inserted_at: now,
+        updated_at: now
+      }
+    ]
+  end
+
+  defp fleet_sentinelone_row(_member, _account, _provider, _now), do: []
+
+  defp fleet_sentinelone_os(%{profile: :windows_laptop}), do: {"windows", "Windows 11 Pro", "laptop"}
+  defp fleet_sentinelone_os(%{profile: :windows_server, os_version: version}), do: {"windows", "Windows Server #{if(String.starts_with?(version, "10.0.26100."), do: "2025", else: "2022")}", "server"}
+  defp fleet_sentinelone_os(%{profile: :mac_laptop}), do: {"macos", "macOS", "laptop"}
+  defp fleet_sentinelone_os(_member), do: {"linux", "Ubuntu", "server"}
+
+  # A Firezone Client for a fleet device. `:attested` proves the MDM id and the
+  # serial through a client certificate, `:serial` only self-reports the serial,
+  # and `:bare` gives the matcher nothing at all.
+  defp fleet_client(%{client: :none}, _account, _now), do: nil
+
+  defp fleet_client(member, account, _now) do
+    {user_agent, version} = fleet_user_agent(member)
+    {location_region, location_city, location_lat, location_lon} = Enum.random(@locations)
+
+    client =
+      %Device{}
+      |> Ecto.Changeset.cast(
+        %{
+          name: "#{member.person.display_name}'s #{member.model}",
+          firezone_id: Ecto.UUID.generate(),
+          device_uuid: Ecto.UUID.generate(),
+          device_serial: if(member.client in [:attested, :serial], do: member.serial, else: nil)
+        },
+        [:name, :firezone_id, :device_uuid, :device_serial]
+      )
+      |> Ecto.Changeset.put_change(:type, :client)
+      |> Ecto.Changeset.put_change(:account_id, account.id)
+      |> Ecto.Changeset.put_change(:actor_id, member.person.actor.id)
+      |> Device.changeset()
+      |> Safe.unscoped()
+      |> Safe.insert()
+      |> case do
+        {:ok, client} -> client
+        {:error, changeset} -> raise Ecto.InvalidChangesetError, action: :insert, changeset: changeset
+      end
+
+    attested =
+      if member.client == :attested do
+        cert_serial = String.upcase(Integer.to_string(0x10000000 + member.index, 16))
+
+        [
+          last_attested_device_serial: member.serial,
+          last_attested_mdm_device_id: if(member.mdm == :intune, do: member.intune_id, else: member.iru_id),
+          last_attested_cert_serial: cert_serial,
+          last_attested_cert_fingerprint: posture_fingerprint(cert_serial),
+          last_attested_cert_issuer: posture_issuer_der("Contoso Device CA"),
+          last_attested_at: member.last_active_at
+        ]
+      else
+        []
+      end
+
+    client
+    |> change(
+      [
+        public_key: :crypto.strong_rand_bytes(32) |> Base.encode64(),
+        last_seen_user_agent: user_agent,
+        last_seen_remote_ip: %Postgrex.INET{address: {203, 0, 113, 1 + rem(member.index, 250)}},
+        last_seen_remote_ip_location_region: location_region,
+        last_seen_remote_ip_location_city: location_city,
+        last_seen_remote_ip_location_lat: location_lat,
+        last_seen_remote_ip_location_lon: location_lon,
+        last_seen_version: version,
+        last_seen_at: member.last_active_at
+      ] ++ attested
+    )
+    |> Repo.update!()
+  end
+
+  defp fleet_user_agent(member) do
+    version = weighted([{"1.5.20", 60}, {"1.5.19", 25}, {"1.5.16", 15}])
+
+    case member.profile do
+      :windows_laptop -> {"Windows/#{member.os_version} windows-client/#{version}", version}
+      :mac_laptop -> {"macOS/#{member.os_version} apple-client/#{version}", version}
+      :iphone -> {"iOS/#{member.os_version} apple-client/#{version}", version}
+      :ipad -> {"iPadOS/#{member.os_version} apple-client/#{version}", version}
+      :android -> {"Android/#{member.os_version} android-client/#{version}", version}
+    end
+  end
+
+  defp weighted(choices) do
+    total = choices |> Enum.map(&elem(&1, 1)) |> Enum.sum()
+
+    Enum.reduce_while(choices, :rand.uniform(total), fn {value, weight}, left ->
+      if left <= weight, do: {:halt, value}, else: {:cont, left - weight}
+    end)
+  end
+
+  defp chance(percent), do: :rand.uniform(100) <= percent
+
+  # insert_all does not cast, so IP columns need the struct the type dumps.
+  defp fleet_ip(a, b, c, d), do: %Postgrex.INET{address: {a, b, c, d}}
 
   def seed do
     # Seeds can be run both with MIX_ENV=prod and MIX_ENV=test, for test env we don't have
