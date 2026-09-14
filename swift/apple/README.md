@@ -164,18 +164,18 @@ mise run //swift/apple:<task>   # e.g. mise run //swift/apple:build
 ### Headless client
 
 `firezone` is the macOS Client run from a terminal. It is not a separate
-program: it is the app's own binary, reached through a symlink at
-`Firezone.app/Contents/Resources/bin/firezone`, and it picks the command line
-path when started under that name. Being the same bundle is what lets it use the
-VPN configuration and system extension the app set up, which a second bundle
-could not do. macOS derives an app's bundle from the path its binary was
-launched through, so the symlink has to sit inside the bundle: one from outside,
-say in `/usr/local/bin`, would leave the client without the app's identity. So
-the CLI gets on the PATH by its directory being added to it, and that directory
-holds nothing else so that nothing else in the bundle becomes a command. The
-standalone `.pkg` adds it by writing `/etc/paths.d/firezone`. The `.dmg` and App
-Store builds are sandboxed and cannot write there, so add the directory
-yourself, either with
+program: it is the app's own binary, reached through a symlink beside it at
+`Firezone.app/Contents/MacOS/firezone-cli`, and it picks the command line path
+when started under that name or as `firezone`. Being the same bundle is what
+lets it use the VPN configuration and system extension the app set up, which a
+second bundle could not do. macOS derives an app's bundle from the path its
+binary was launched through, and only `Contents/MacOS` counts, so any other
+symlink to the binary, inside the bundle or out, leaves the client without the
+app's identity. That is what `Contents/Resources/bin/firezone` is for: a wrapper
+that `exec`s the binary at its real path. It has a directory of its own so that
+only the CLI goes on the PATH, and the standalone `.pkg` adds that directory by
+writing `/etc/paths.d/firezone`. The `.dmg` and App Store builds are sandboxed
+and cannot write there, so add the directory yourself, either with
 
 ```sh
 echo /Applications/Firezone.app/Contents/Resources/bin | sudo tee /etc/paths.d/firezone

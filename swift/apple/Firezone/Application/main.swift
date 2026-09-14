@@ -24,28 +24,27 @@ import Foundation
     command.exit()
   }
 
-  // The headless client is this same binary, reached through a symlink inside the
-  // bundle: Contents/MacOS/firezone-cli or Contents/Resources/bin/firezone. Running it
-  // that way means it keeps the app's bundle identity, and so can see the VPN
-  // configuration and system extension that belong to the app. A separate bundle could
-  // not: NETunnelProviderManager only hands an app the configurations that app itself
-  // created. The comparison is case-sensitive on purpose: the app's own executable is
+  // The headless client is this same binary, reached through the symlink beside it at
+  // Contents/MacOS/firezone-cli, which the wrapper script Contents/Resources/bin/firezone
+  // starts at its real path. Run that way it keeps the app's bundle identity, and so can
+  // see the VPN configuration and system extension that belong to the app. A separate
+  // bundle could not: NETunnelProviderManager only hands an app the configurations that
+  // app itself created. The comparison is case-sensitive on purpose: the app's own executable is
   // `Firezone`.
   let invokedAs = URL(fileURLWithPath: CommandLine.arguments.first ?? "").lastPathComponent
   if invokedAs == "firezone" || invokedAs == "firezone-cli" {
-    // Reached through a symlink from outside the bundle, macOS gives us no bundle at
-    // all, and with it no identity, no VPN configuration and no system extension. Say
-    // so, rather than failing later on something that reads as unrelated.
+    // Reached through a symlink anywhere but Contents/MacOS, macOS gives us no bundle
+    // at all, and with it no identity, no VPN configuration and no system extension.
+    // Say so, rather than failing later on something that reads as unrelated.
     guard Bundle.main.bundleIdentifier != nil else {
       FileHandle.standardError.write(
         Data(
           """
-          Run firezone through the symlink inside Firezone.app, for example
+          Run firezone through the wrapper script inside Firezone.app, for example
           /Applications/Firezone.app/Contents/Resources/bin/firezone.
 
-          A symlink from outside the bundle does not work, because it leaves the client
-          without the app's identity. To have firezone on your PATH, add that directory
-          instead:
+          A symlink to the binary does not work, because it leaves the client without
+          the app's identity. To have firezone on your PATH, add that directory instead:
 
             echo /Applications/Firezone.app/Contents/Resources/bin | sudo tee /etc/paths.d/firezone
 
