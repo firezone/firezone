@@ -4,8 +4,6 @@ defmodule Portal.Changes.Hooks.ResourcesTest do
   import Portal.AccountFixtures
   import Portal.ActorFixtures
   import Portal.DeviceFixtures
-  import Portal.GroupFixtures
-  import Portal.MembershipFixtures
   import Portal.ResourceFixtures
   import Portal.PolicyAuthorizationFixtures
   alias Portal.Changes.Change

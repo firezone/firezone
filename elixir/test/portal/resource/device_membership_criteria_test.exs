@@ -190,4 +190,66 @@ defmodule Portal.Resource.DeviceMembershipCriteriaTest do
       refute DeviceMembershipCriteria.member?(DeviceMembershipCriteria.devices([]), listed, subject)
     end
   end
+
+  describe "member?/3 with a presence snapshot" do
+    setup do
+      account = account_fixture()
+      actor = actor_fixture(account: account)
+      subject = subject_fixture(account: account, actor: actor, type: :client)
+
+      %{account: account, actor: actor, subject: subject}
+    end
+
+    test "answers every rule off the snapshot", %{account: account, actor: actor, subject: subject} do
+      group_id = Ecto.UUID.generate()
+      device_id = Ecto.UUID.generate()
+
+      snapshot = %{id: device_id, account_id: account.id, actor_id: actor.id, group_ids: [group_id]}
+
+      assert DeviceMembershipCriteria.member?(DeviceMembershipCriteria.all_devices(), snapshot, subject)
+      assert DeviceMembershipCriteria.member?(DeviceMembershipCriteria.own_devices(), snapshot, subject)
+      assert DeviceMembershipCriteria.member?(DeviceMembershipCriteria.devices([device_id]), snapshot, subject)
+      assert DeviceMembershipCriteria.member?(DeviceMembershipCriteria.actor_group(group_id), snapshot, subject)
+    end
+
+    test "refuses a snapshot that matches none of the rules", %{account: account, subject: subject} do
+      snapshot = %{
+        id: Ecto.UUID.generate(),
+        account_id: Ecto.UUID.generate(),
+        actor_id: Ecto.UUID.generate(),
+        group_ids: [Ecto.UUID.generate()]
+      }
+
+      refute DeviceMembershipCriteria.member?(DeviceMembershipCriteria.all_devices(), snapshot, subject)
+      refute DeviceMembershipCriteria.member?(DeviceMembershipCriteria.own_devices(), snapshot, subject)
+      refute DeviceMembershipCriteria.member?(DeviceMembershipCriteria.devices([]), snapshot, subject)
+
+      refute DeviceMembershipCriteria.member?(
+               DeviceMembershipCriteria.actor_group(Ecto.UUID.generate()),
+               %{snapshot | account_id: account.id},
+               subject
+             )
+    end
+
+    test "reads the groups off the snapshot and never off the database", %{account: account, subject: subject} do
+      member = actor_fixture(account: account)
+      group = group_fixture(account: account)
+      membership_fixture(account: account, actor: member, group: group)
+      device = client_fixture(account: account, actor: member)
+      criteria = DeviceMembershipCriteria.actor_group(group.id)
+
+      stale = %{id: device.id, account_id: account.id, actor_id: member.id, group_ids: []}
+
+      refute DeviceMembershipCriteria.member?(criteria, stale, subject)
+
+      unwritten = %{
+        id: Ecto.UUID.generate(),
+        account_id: account.id,
+        actor_id: Ecto.UUID.generate(),
+        group_ids: [group.id]
+      }
+
+      assert DeviceMembershipCriteria.member?(criteria, unwritten, subject)
+    end
+  end
 end

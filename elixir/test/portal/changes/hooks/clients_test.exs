@@ -2,8 +2,11 @@ defmodule Portal.Changes.Hooks.ClientsTest do
   use Portal.DataCase, async: true
   import Portal.Changes.Hooks.Devices
   import Portal.AccountFixtures
+  import Portal.ActorFixtures
   import Portal.DeviceFixtures
+  import Portal.GroupFixtures
   import Portal.PolicyAuthorizationFixtures
+  import Portal.ResourceFixtures
   alias Portal.Changes.Change
   alias Portal.Device
   alias Portal.PubSub
@@ -134,6 +137,28 @@ defmodule Portal.Changes.Hooks.ClientsTest do
 
       assert Portal.Resource.DeviceMembershipCriteria.device_ids(pool.device_membership_criteria) ==
                {:ok, [other.id]}
+    end
+
+    test "leaves the pools that do not list their devices untouched" do
+      account = account_fixture()
+      actor = actor_fixture(account: account)
+      client = client_fixture(account: account, actor: actor)
+      group = group_fixture(account: account)
+
+      pools = [
+        own_devices_pool_resource_fixture(account: account),
+        all_devices_pool_resource_fixture(account: account),
+        actor_group_pool_resource_fixture(account: account, group: group)
+      ]
+
+      old_data = %{"id" => client.id, "type" => "client", "account_id" => client.account_id}
+
+      assert :ok == on_delete(0, old_data)
+
+      for pool <- pools do
+        assert Repo.get_by!(Portal.Resource, id: pool.id).device_membership_criteria ==
+                 pool.device_membership_criteria
+      end
     end
   end
 end

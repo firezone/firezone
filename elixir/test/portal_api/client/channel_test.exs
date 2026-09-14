@@ -6281,6 +6281,70 @@ defmodule PortalAPI.Client.ChannelTest do
       assert_push "client_device_access_authorized", %{resource_id: ^pool_id, ice_role: :controlling}
     end
 
+    test "denies once the target leaves the group", %{
+      account: account,
+      group: group,
+      client: client,
+      subject: subject
+    } do
+      engineering = group_fixture(account: account)
+      engineer = actor_fixture(account: account)
+      membership = membership_fixture(account: account, actor: engineer, group: engineering)
+      target_client = client_fixture(account: account, actor: engineer) |> fetch_device!()
+
+      target_subject =
+        subject_fixture(account: account, actor: engineer, type: :client, user_agent: "Mac OS/14 apple-client/1.5.16")
+
+      pool = actor_group_pool_resource_fixture(account: account, group: engineering)
+      policy_fixture(account: account, group: group, resource: pool)
+
+      initiating_socket = join_channel(client, subject, channel: PortalAPI.Client.V3.Channel)
+      assert_push "init", _
+
+      target_socket = join_channel(target_client, target_subject)
+      assert_push "init", _
+
+      target_ip = Portal.Types.INET.to_string(target_client.ipv4)
+      pool_id = pool.id
+
+      push(initiating_socket, "request_access", %{"resource_ids" => [pool_id], "ipv4" => target_ip})
+      assert_push "client_device_access_authorized", %{resource_id: ^pool_id, ice_role: :controlling}
+
+      send(target_socket.channel_pid, %Changes.Change{lsn: 101, op: :delete, old_struct: membership})
+      :sys.get_state(target_socket.channel_pid)
+
+      push(initiating_socket, "request_access", %{"resource_ids" => [pool_id], "ipv4" => target_ip})
+      assert_push "client_device_access_denied", %{ipv4: ^target_ip, reason: :forbidden}
+    end
+
+    test "authorizes a device that joined the account after the pool was created", %{
+      account: account,
+      group: group,
+      client: client,
+      subject: subject
+    } do
+      pool = all_devices_pool_resource_fixture(account: account)
+      policy_fixture(account: account, group: group, resource: pool)
+
+      initiating_socket = join_channel(client, subject, channel: PortalAPI.Client.V3.Channel)
+      assert_push "init", _
+
+      newcomer = actor_fixture(account: account)
+      newcomer_client = client_fixture(account: account, actor: newcomer) |> fetch_device!()
+
+      newcomer_subject =
+        subject_fixture(account: account, actor: newcomer, type: :client, user_agent: "Mac OS/14 apple-client/1.5.16")
+
+      join_channel(newcomer_client, newcomer_subject)
+      assert_push "init", _
+
+      target_ip = Portal.Types.INET.to_string(newcomer_client.ipv4)
+      pool_id = pool.id
+
+      push(initiating_socket, "request_access", %{"resource_ids" => [pool_id], "ipv4" => target_ip})
+      assert_push "client_device_access_authorized", %{resource_id: ^pool_id, ice_role: :controlling}
+    end
+
     test "denies with :offline when the device is in a named pool but not connected", %{
       client: client,
       subject: subject,
@@ -7623,7 +7687,6 @@ defmodule PortalAPI.Client.ChannelTest do
 
     test "Device delete arriving before the pool update still pushes denial",
          %{
-           account: account,
            client: client,
            subject: subject,
            target_client: target_client,

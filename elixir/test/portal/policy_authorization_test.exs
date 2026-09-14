@@ -7,6 +7,7 @@ defmodule Portal.PolicyAuthorizationTest do
   import Portal.DeviceFixtures
   import Portal.GroupFixtures
   import Portal.MembershipFixtures
+  import Portal.PolicyAuthorizationFixtures
   import Portal.PolicyFixtures
   import Portal.ResourceFixtures
   import Portal.SiteFixtures
@@ -441,6 +442,113 @@ defmodule Portal.PolicyAuthorizationTest do
       assert pa.resource_id == resource.id
       assert pa.token_id == token.id
       assert pa.membership_id == membership.id
+    end
+  end
+
+  describe "deletes cascading from the rows a pool authorization depends on" do
+    setup do
+      account = account_fixture()
+      group = group_fixture(account: account)
+      owner = actor_fixture(account: account)
+      membership_fixture(account: account, actor: owner, group: group)
+      member = client_fixture(account: account, actor: owner)
+      initiator = client_fixture(account: account)
+      pool = actor_group_pool_resource_fixture(account: account, group: group)
+
+      %{
+        account: account,
+        group: group,
+        owner: owner,
+        member: member,
+        initiator: initiator,
+        pool: pool
+      }
+    end
+
+    test "deleting the receiving device deletes the authorization", %{
+      account: account,
+      member: member,
+      initiator: initiator,
+      pool: pool
+    } do
+      authorization =
+        policy_authorization_fixture(account: account, resource: pool, client: initiator, gateway: member)
+
+      Repo.delete!(member)
+
+      refute Repo.get_by(PolicyAuthorization, id: authorization.id)
+    end
+
+    test "deleting the initiating device deletes the authorization", %{
+      account: account,
+      member: member,
+      initiator: initiator,
+      pool: pool
+    } do
+      authorization =
+        policy_authorization_fixture(account: account, resource: pool, client: initiator, gateway: member)
+
+      Repo.delete!(initiator)
+
+      refute Repo.get_by(PolicyAuthorization, id: authorization.id)
+    end
+
+    test "deleting the pool deletes the authorization", %{
+      account: account,
+      member: member,
+      initiator: initiator,
+      pool: pool
+    } do
+      authorization =
+        policy_authorization_fixture(account: account, resource: pool, client: initiator, gateway: member)
+
+      Repo.delete!(pool)
+
+      refute Repo.get_by(PolicyAuthorization, id: authorization.id)
+    end
+
+    test "deleting the actor deletes the authorizations of their devices", %{
+      account: account,
+      owner: owner,
+      member: member,
+      initiator: initiator,
+      pool: pool
+    } do
+      inbound =
+        policy_authorization_fixture(account: account, resource: pool, client: initiator, gateway: member)
+
+      outbound =
+        policy_authorization_fixture(account: account, resource: pool, client: member, gateway: initiator)
+
+      Repo.delete!(owner)
+
+      refute Repo.get_by(PolicyAuthorization, id: inbound.id)
+      refute Repo.get_by(PolicyAuthorization, id: outbound.id)
+    end
+
+    test "deleting the group deletes its memberships, and the authorizations they granted", %{
+      account: account,
+      group: group,
+      owner: owner,
+      member: member,
+      initiator: initiator,
+      pool: pool
+    } do
+      membership = Repo.get_by!(Portal.Membership, actor_id: owner.id, group_id: group.id)
+
+      authorization =
+        policy_authorization_fixture(
+          account: account,
+          resource: pool,
+          client: initiator,
+          gateway: member,
+          membership: membership
+        )
+
+      Repo.delete!(group)
+
+      refute Repo.get_by(Portal.Membership, id: membership.id)
+      refute Repo.get_by(PolicyAuthorization, id: authorization.id)
     end
   end
 end
