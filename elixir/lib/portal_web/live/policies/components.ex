@@ -349,7 +349,7 @@ defmodule PortalWeb.Policies.Components do
         has_trust_anchors?={@has_trust_anchors?}
         conditions_state={@conditions_state}
       />
-      <.postures_section id="policy-postures" account={@account} state={@postures} />
+      <.postures_section id="policy-postures" account={@account} state={@postures} mode={@mode} />
     </div>
     """
   end

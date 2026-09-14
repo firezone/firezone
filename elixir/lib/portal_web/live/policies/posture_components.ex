@@ -30,6 +30,7 @@ defmodule PortalWeb.Policies.PostureComponents do
   attr :id, :string, required: true
   attr :account, :any, required: true
   attr :state, :map, required: true
+  attr :mode, :atom, default: :new
 
   def postures_section(assigns) do
     ~H"""
@@ -60,6 +61,10 @@ defmodule PortalWeb.Policies.PostureComponents do
           </button>
         </div>
       </div>
+      <p :if={@mode == :edit and @state.availability == :enabled} class="mb-3 text-xs text-warning">
+        Saving a change here revokes this policy's active authorizations, so sessions that rely on it are
+        interrupted until the client reconnects.
+      </p>
       <%= if @state.availability == :locked do %>
         <.upgrade_locked_section
           account={@account}
