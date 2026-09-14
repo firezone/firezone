@@ -4,6 +4,8 @@ defmodule Portal.Changes.Hooks.ResourcesTest do
   import Portal.AccountFixtures
   import Portal.ActorFixtures
   import Portal.DeviceFixtures
+  import Portal.GroupFixtures
+  import Portal.MembershipFixtures
   import Portal.ResourceFixtures
   import Portal.PolicyAuthorizationFixtures
   alias Portal.Changes.Change
@@ -170,6 +172,67 @@ defmodule Portal.Changes.Hooks.ResourcesTest do
       assert :ok = on_update(0, old_data, data)
       assert Repo.get_by(PolicyAuthorization, id: own_pa.id)
       refute Repo.get_by(PolicyAuthorization, id: stranger_pa.id)
+    end
+
+    test "group criteria delete the authorizations toward devices of actors outside the group" do
+      account = account_fixture()
+      group = group_fixture(account: account)
+      member = actor_fixture(account: account)
+      membership_fixture(account: account, actor: member, group: group)
+      initiator = client_fixture(account: account)
+      in_group = client_fixture(account: account, actor: member)
+      outside = client_fixture(account: account)
+      pool = device_pool_resource_fixture(account: account, devices: [in_group, outside])
+
+      in_group_pa =
+        policy_authorization_fixture(account: account, resource: pool, client: initiator, gateway: in_group)
+
+      outside_pa =
+        policy_authorization_fixture(account: account, resource: pool, client: initiator, gateway: outside)
+
+      old_data = %{
+        "id" => pool.id,
+        "account_id" => account.id,
+        "type" => "device_pool",
+        "device_membership_criteria" => DeviceMembershipCriteria.to_map(pool.device_membership_criteria)
+      }
+
+      data =
+        Map.put(
+          old_data,
+          "device_membership_criteria",
+          DeviceMembershipCriteria.to_map(DeviceMembershipCriteria.actor_group(group.id))
+        )
+
+      assert :ok = on_update(0, old_data, data)
+      assert Repo.get_by(PolicyAuthorization, id: in_group_pa.id)
+      refute Repo.get_by(PolicyAuthorization, id: outside_pa.id)
+    end
+
+    test "all devices criteria keep every authorization" do
+      account = account_fixture()
+      initiator = client_fixture(account: account)
+      listed = client_fixture(account: account)
+      pool = device_pool_resource_fixture(account: account, devices: [listed])
+
+      pa = policy_authorization_fixture(account: account, resource: pool, client: initiator, gateway: listed)
+
+      old_data = %{
+        "id" => pool.id,
+        "account_id" => account.id,
+        "type" => "device_pool",
+        "device_membership_criteria" => DeviceMembershipCriteria.to_map(pool.device_membership_criteria)
+      }
+
+      data =
+        Map.put(
+          old_data,
+          "device_membership_criteria",
+          DeviceMembershipCriteria.to_map(DeviceMembershipCriteria.all_devices())
+        )
+
+      assert :ok = on_update(0, old_data, data)
+      assert Repo.get_by(PolicyAuthorization, id: pa.id)
     end
   end
 

@@ -1,8 +1,16 @@
 defmodule Portal.Changes.Hooks.MembershipsTest do
   use Portal.DataCase, async: true
   import Portal.Changes.Hooks.Memberships
+  import Portal.AccountFixtures
+  import Portal.ActorFixtures
+  import Portal.DeviceFixtures
+  import Portal.GroupFixtures
+  import Portal.MembershipFixtures
+  import Portal.PolicyAuthorizationFixtures
+  import Portal.ResourceFixtures
   alias Portal.Changes.Change
   alias Portal.Membership
+  alias Portal.PolicyAuthorization
   alias Portal.PubSub
 
   describe "insert/1" do
@@ -34,6 +42,41 @@ defmodule Portal.Changes.Hooks.MembershipsTest do
   end
 
   describe "delete/1" do
+    test "deletes the authorizations toward the actor's devices through the group's pools" do
+      account = account_fixture()
+      group = group_fixture(account: account)
+      leaver = actor_fixture(account: account)
+      stayer = actor_fixture(account: account)
+      membership = membership_fixture(account: account, actor: leaver, group: group)
+      membership_fixture(account: account, actor: stayer, group: group)
+      initiator = client_fixture(account: account)
+      leaving = client_fixture(account: account, actor: leaver)
+      staying = client_fixture(account: account, actor: stayer)
+      pool = actor_group_pool_resource_fixture(account: account, group: group)
+      other_pool = actor_group_pool_resource_fixture(account: account, group: group_fixture(account: account))
+
+      leaving_pa =
+        policy_authorization_fixture(account: account, resource: pool, client: initiator, gateway: leaving)
+
+      staying_pa =
+        policy_authorization_fixture(account: account, resource: pool, client: initiator, gateway: staying)
+
+      other_pa =
+        policy_authorization_fixture(account: account, resource: other_pool, client: initiator, gateway: leaving)
+
+      old_data = %{
+        "id" => membership.id,
+        "account_id" => account.id,
+        "actor_id" => leaver.id,
+        "group_id" => group.id
+      }
+
+      assert :ok == on_delete(0, old_data)
+      refute Repo.get_by(PolicyAuthorization, id: leaving_pa.id)
+      assert Repo.get_by(PolicyAuthorization, id: staying_pa.id)
+      assert Repo.get_by(PolicyAuthorization, id: other_pa.id)
+    end
+
     test "broadcasts deleted membership" do
       account_id = "00000000-0000-0000-0000-000000000001"
       :ok = PubSub.Changes.subscribe(account_id, :memberships)

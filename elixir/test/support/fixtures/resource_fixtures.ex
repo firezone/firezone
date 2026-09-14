@@ -235,6 +235,41 @@ defmodule Portal.ResourceFixtures do
     )
   end
 
+  def all_devices_pool_resource_fixture(attrs \\ %{}) do
+    attrs = Enum.into(attrs, %{})
+    unique_num = System.unique_integer([:positive, :monotonic])
+
+    resource_fixture(
+      attrs
+      |> Map.put(:type, :device_pool)
+      |> Map.put_new(
+        :device_membership_criteria,
+        Portal.Resource.DeviceMembershipCriteria.all_devices()
+      )
+      |> Map.put_new(:name, "All Devices Pool #{unique_num}")
+      |> Map.delete(:site)
+      |> Map.delete(:address)
+    )
+  end
+
+  def actor_group_pool_resource_fixture(attrs) do
+    attrs = Enum.into(attrs, %{})
+    {group, attrs} = Map.pop!(attrs, :group)
+    unique_num = System.unique_integer([:positive, :monotonic])
+
+    resource_fixture(
+      attrs
+      |> Map.put(:type, :device_pool)
+      |> Map.put_new(
+        :device_membership_criteria,
+        Portal.Resource.DeviceMembershipCriteria.actor_group(group.id)
+      )
+      |> Map.put_new(:name, "Group Pool #{unique_num}")
+      |> Map.delete(:site)
+      |> Map.delete(:address)
+    )
+  end
+
   @doc """
   Update a resource with the given attributes.
   """

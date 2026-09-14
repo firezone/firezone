@@ -3,13 +3,14 @@ defmodule Portal.DevicePool.Cache do
   The member bitmaps of device pools, computed on first use and kept current from the
   change stream.
 
-  A listed pool has one bitmap for everyone; an own-devices pool has one per actor. The
-  first channel that needs a pool computes it here, and every later channel reads the
-  ETS table. A device insert or delete recomputes the own-devices bitmaps of its actor
-  and a criteria change recomputes the pool. Every change bumps the entry's version and
-  is broadcast on this node's account topic with the members that joined and left, so a
-  channel that sent the previous version forwards the diff and any other channel sends
-  the whole set again.
+  A pool whose criteria pick the same devices for everyone has one bitmap; an
+  own-devices pool has one per actor. The first channel that needs a pool computes it
+  here, and every later channel reads the ETS table. A device insert or delete
+  recomputes the pools it can belong to, a membership change recomputes the pools of
+  its group and a criteria change recomputes the pool. Every change bumps the entry's
+  version and is broadcast on this node's account topic with the members that joined
+  and left, so a channel that sent the previous version forwards the diff and any
+  other channel sends the whole set again.
   """
   use GenServer
 
@@ -21,8 +22,6 @@ defmodule Portal.DevicePool.Cache do
   alias Portal.Resource.DeviceMembershipCriteria
 
   @table :device_pool_bitmaps
-
-  @type scope :: :all | {:actor, Ecto.UUID.t()}
 
   @typedoc "What a channel holds for a pool: the version it last sent and the wire form."
   @type entry :: %{version: pos_integer(), members: Bitmap.t()}
@@ -44,7 +43,8 @@ defmodule Portal.DevicePool.Cache do
   @doc "The member bitmaps of the pool for the subject and their version, computed on first use."
   @spec members(Cacheable.Resource.t(), Portal.Authentication.Subject.t()) :: entry()
   def members(%Cacheable.Resource{type: :device_pool} = pool, subject) do
-    key = {subject.account.id, Ecto.UUID.load!(pool.id), scope(pool.device_membership_criteria, subject)}
+    scope = DeviceMembershipCriteria.scope(pool.device_membership_criteria, subject)
+    key = {subject.account.id, Ecto.UUID.load!(pool.id), scope}
 
     case :ets.lookup(@table, key) do
       [{^key, %{version: version, members: members}}] -> %{version: version, members: members}
@@ -53,31 +53,13 @@ defmodule Portal.DevicePool.Cache do
   end
 
   @doc "Whether a broadcast for `scope` concerns the subject."
-  @spec for_subject?(scope(), Portal.Authentication.Subject.t()) :: boolean()
+  @spec for_subject?(DeviceMembershipCriteria.scope(), Portal.Authentication.Subject.t()) ::
+          boolean()
   def for_subject?(:all, _subject), do: true
   def for_subject?({:actor, actor_id}, subject), do: subject.actor.id == actor_id
 
   @spec subscribe(Ecto.UUID.t()) :: :ok | {:error, term()}
   def subscribe(account_id), do: PubSub.subscribe(topic(account_id))
-
-  defp topic(account_id), do: "device_pool_members:#{account_id}"
-
-  defp scope(%DeviceMembershipCriteria{} = criteria, subject) do
-    case kind(criteria) do
-      :all -> :all
-      :actor -> {:actor, subject.actor.id}
-    end
-  end
-
-  defp kind(%DeviceMembershipCriteria{} = criteria) do
-    case DeviceMembershipCriteria.device_ids(criteria) do
-      {:ok, _device_ids} -> :all
-      :error -> :actor
-    end
-  end
-
-  defp kind(:all), do: :all
-  defp kind({:actor, _actor_id}), do: :actor
 
   @impl true
   def init(opts) do
@@ -110,8 +92,8 @@ defmodule Portal.DevicePool.Cache do
   def handle_info(%Change{op: op, struct: %Portal.Device{type: :client} = device}, state)
       when op in [:insert, :delete] do
     keys =
-      for {{account_id, _pool_id, {:actor, actor_id}} = key, _members} <- entries(device.account_id),
-          account_id == device.account_id and actor_id == device.actor_id,
+      for {{_account_id, _pool_id, scope} = key, criteria} <- criteria(state, device.account_id),
+          holds_device?(criteria, scope, device),
           do: key
 
     {:noreply, recompute(state, keys)}
@@ -121,11 +103,25 @@ defmodule Portal.DevicePool.Cache do
     handle_info(%Change{op: :delete, struct: device}, state)
   end
 
+  def handle_info(%Change{op: op, struct: %Portal.Membership{} = membership}, state)
+      when op in [:insert, :delete] do
+    keys =
+      for {key, criteria} <- criteria(state, membership.account_id),
+          DeviceMembershipCriteria.group_id(criteria) == {:ok, membership.group_id},
+          do: key
+
+    {:noreply, recompute(state, keys)}
+  end
+
+  def handle_info(%Change{op: :delete, old_struct: %Portal.Membership{} = membership}, state) do
+    handle_info(%Change{op: :delete, struct: membership}, state)
+  end
+
   def handle_info(
         %Change{op: :update, old_struct: %Portal.Resource{} = old, struct: %Portal.Resource{} = resource},
         state
       ) do
-    keys = for {{_account_id, pool_id, _scope} = key, _} <- entries(resource.account_id), pool_id == resource.id, do: key
+    keys = pool_keys(resource)
 
     cond do
       keys == [] ->
@@ -137,7 +133,7 @@ defmodule Portal.DevicePool.Cache do
       old.device_membership_criteria != resource.device_membership_criteria ->
         {same_kind, other_kind} =
           Enum.split_with(keys, fn {_account_id, _pool_id, scope} ->
-            kind(scope) == kind(resource.device_membership_criteria)
+            per_actor?(scope) == DeviceMembershipCriteria.per_actor?(resource.device_membership_criteria)
           end)
 
         criteria = Map.new(same_kind, &{&1, resource.device_membership_criteria})
@@ -150,24 +146,42 @@ defmodule Portal.DevicePool.Cache do
   end
 
   def handle_info(%Change{op: :delete, old_struct: %Portal.Resource{} = resource}, state) do
-    keys = for {{_account_id, pool_id, _scope} = key, _} <- entries(resource.account_id), pool_id == resource.id, do: key
-    {:noreply, forget(state, keys)}
+    {:noreply, forget(state, pool_keys(resource))}
   end
 
   def handle_info(%Change{}, state), do: {:noreply, state}
+
+  defp topic(account_id), do: "device_pool_members:#{account_id}"
+
+  defp per_actor?(:all), do: false
+  defp per_actor?({:actor, _actor_id}), do: true
+
+  defp holds_device?(_criteria, {:actor, actor_id}, device), do: actor_id == device.actor_id
+
+  defp holds_device?(criteria, :all, device) do
+    case DeviceMembershipCriteria.device_ids(criteria) do
+      {:ok, device_ids} -> device.id in device_ids
+      :error -> true
+    end
+  end
 
   defp subscribe_to_changes(state, account_id) do
     if MapSet.member?(state.accounts, account_id) do
       state
     else
       :ok = PubSub.Changes.subscribe(account_id, :devices)
+      :ok = PubSub.Changes.subscribe(account_id, :memberships)
       :ok = PubSub.Changes.subscribe(account_id, :resources)
       %{state | accounts: MapSet.put(state.accounts, account_id)}
     end
   end
 
-  defp entries(account_id) do
-    :ets.match_object(@table, {{account_id, :_, :_}, :_})
+  defp criteria(state, account_id) do
+    for {{^account_id, _pool_id, _scope}, _criteria} = entry <- state.criteria, do: entry
+  end
+
+  defp pool_keys(%Portal.Resource{account_id: account_id, id: pool_id}) do
+    for {key, _entry} <- :ets.match_object(@table, {{account_id, pool_id, :_}, :_}), do: key
   end
 
   defp recompute(state, keys) do
@@ -215,19 +229,10 @@ defmodule Portal.DevicePool.Cache do
     def member_addresses(account_id, scope, criteria) do
       from(d in Portal.Device, as: :devices)
       |> where([devices: d], d.account_id == ^account_id and d.type == :client)
-      |> where_members(scope, criteria)
+      |> DeviceMembershipCriteria.where_members(criteria, scope)
       |> select([devices: d], %{ipv4: d.ipv4, ipv6: d.ipv6})
       |> Safe.unscoped()
       |> Safe.all()
-    end
-
-    defp where_members(query, :all, criteria) do
-      {:ok, device_ids} = DeviceMembershipCriteria.device_ids(criteria)
-      where(query, [devices: d], d.id in ^device_ids)
-    end
-
-    defp where_members(query, {:actor, actor_id}, _criteria) do
-      where(query, [devices: d], d.actor_id == ^actor_id)
     end
   end
 end

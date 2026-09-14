@@ -129,6 +129,102 @@ defmodule Portal.Repo.Seeds do
     {:ok, resource}
   end
 
+  @load_actors 1_000
+  @load_devices_per_actor 100
+
+  # Enough devices to make the pool bitmaps worth measuring, seeded before the clients
+  # below so the address trigger steers their random addresses around these. They sit
+  # at 100.80.0.0 and fd00:2021:1111::18:0 upwards, well above the pinned addresses.
+  defp seed_device_pool_load(account, admin_subject, everyone_group) do
+    now = DateTime.utc_now()
+
+    actors =
+      for i <- 1..@load_actors do
+        %{
+          id: Ecto.UUID.generate(),
+          account_id: account.id,
+          type: :account_user,
+          name: "Load user #{i}",
+          email: "load-user-#{i}@localhost.local",
+          inserted_at: now,
+          updated_at: now
+        }
+      end
+
+    actors |> Enum.chunk_every(1_000) |> Enum.each(&Repo.insert_all(Actor, &1))
+
+    group =
+      %Group{account_id: account.id, name: "Load test", type: :static}
+      |> Repo.insert!()
+
+    actors
+    |> Enum.take(div(@load_actors, 2))
+    |> Enum.map(&%{account_id: account.id, group_id: group.id, actor_id: &1.id})
+    |> Enum.chunk_every(1_000)
+    |> Enum.each(&Repo.insert_all(Membership, &1))
+
+    actors
+    |> Enum.with_index()
+    |> Enum.flat_map(fn {actor, index} ->
+      for d <- 1..@load_devices_per_actor do
+        n = index * @load_devices_per_actor + d
+
+        %{
+          account_id: account.id,
+          actor_id: actor.id,
+          type: :client,
+          name: "Load device #{n}",
+          firezone_id: "load-device-#{n}",
+          slug: "load-device-#{n}",
+          ipv4: {100, 80 + div(n, 65_536), rem(div(n, 256), 256), rem(n, 256)},
+          ipv6: {0xFD00, 0x2021, 0x1111, 0, 0, 0, 0x18 + div(n, 65_536), rem(n, 65_536)},
+          inserted_at: now,
+          updated_at: now
+        }
+      end
+    end)
+    |> Enum.chunk_every(5_000)
+    |> Enum.each(&Repo.insert_all(Device, &1))
+
+    {:ok, all_devices} =
+      create_resource(
+        %{
+          type: :device_pool,
+          name: "All devices",
+          address_description: "Every client device in the account",
+          device_membership_criteria: Portal.Resource.DeviceMembershipCriteria.all_devices()
+        },
+        admin_subject
+      )
+
+    {:ok, group_devices} =
+      create_resource(
+        %{
+          type: :device_pool,
+          name: "Load test group devices",
+          address_description: "The devices of the Load test group's members",
+          device_membership_criteria: Portal.Resource.DeviceMembershipCriteria.actor_group(group.id)
+        },
+        admin_subject
+      )
+
+    for resource <- [all_devices, group_devices] do
+      %Policy{
+        account_id: account.id,
+        group_id: everyone_group.id,
+        resource_id: resource.id,
+        description: "Everyone reaches the #{resource.name} pool"
+      }
+      |> Repo.insert!()
+    end
+
+    IO.puts("Created #{@load_actors * @load_devices_per_actor} load test devices:")
+    IO.puts("  #{@load_actors} actors, #{div(@load_actors, 2)} of them in the Load test group")
+    IO.puts("  #{all_devices.name} - Device Pool - policy: Everyone")
+    IO.puts("  #{group_devices.name} - Device Pool - policy: Everyone")
+    IO.puts("")
+  end
+
   # Helper function to create gateway directly without context module
   defp create_gateway(attrs, context) do
     # Extract version from user agent
@@ -2365,6 +2461,8 @@ defmodule Portal.Repo.Seeds do
 
     IO.puts("  #{service_account_actor.name} token: #{service_account_actor_encoded_token}")
     IO.puts("")
+
+    seed_device_pool_load(account, admin_subject, everyone_group)
 
     # Pinned so auto-assigned IPs never randomly collide with the pool member's 100.64.0.2.
     {:ok, user_iphone} =
