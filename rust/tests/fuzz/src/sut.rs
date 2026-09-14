@@ -227,73 +227,83 @@ impl TunnelTest {
                 }
 
                 let (gateway_action, forget_dns_records) = match &edit {
-                    client::ResourceEdit::Dns(edit) => match &edit.value {
-                        client::DnsResourceValue::Id(_) => {
-                            unreachable!("resource identity is not editable")
-                        }
-                        client::DnsResourceValue::Address(_) => {
-                            (GatewayAction::RemoveAllAccess, true)
-                        }
-                        client::DnsResourceValue::Name(_) => (GatewayAction::None, false),
-                        client::DnsResourceValue::AddressDescription(_) => {
-                            (GatewayAction::None, false)
-                        }
-                        client::DnsResourceValue::Sites(_) => {
-                            (GatewayAction::RemoveAllAccess, false)
-                        }
-                        client::DnsResourceValue::IpStack(_) => {
-                            (GatewayAction::RemoveAllAccess, false)
-                        }
-                        client::DnsResourceValue::Filters(_) => (GatewayAction::Update, false),
-                    },
-                    client::ResourceEdit::Cidr(edit) => match &edit.value {
-                        client::CidrResourceValue::Id(_) => {
-                            unreachable!("resource identity is not editable")
-                        }
-                        client::CidrResourceValue::Address(_) => {
-                            (GatewayAction::RemoveAllAccess, false)
-                        }
-                        client::CidrResourceValue::Name(_) => (GatewayAction::None, false),
-                        client::CidrResourceValue::AddressDescription(_) => {
-                            (GatewayAction::None, false)
-                        }
-                        client::CidrResourceValue::Sites(_) => {
-                            (GatewayAction::RemoveAllAccess, false)
-                        }
-                        client::CidrResourceValue::Filters(_) => (GatewayAction::Update, false),
-                    },
-                    client::ResourceEdit::StaticDevicePool(edit) => match &edit.value {
-                        client::StaticDevicePoolResourceValue::Id(_) => {
-                            unreachable!("resource identity is not editable")
-                        }
-                        client::StaticDevicePoolResourceValue::Name(_) => {
-                            (GatewayAction::None, false)
-                        }
-                        client::StaticDevicePoolResourceValue::Devices(_) => {
-                            (GatewayAction::None, false)
-                        }
-                        client::StaticDevicePoolResourceValue::Filters(_) => {
-                            (GatewayAction::None, false)
-                        }
-                    },
-                    client::ResourceEdit::DynamicDevicePool(edit) => match &edit.value {
-                        client::DynamicDevicePoolResourceValue::Id(_) => {
-                            unreachable!("resource identity is not editable")
-                        }
-                        client::DynamicDevicePoolResourceValue::Name(_) => {
-                            (GatewayAction::None, false)
-                        }
-                        client::DynamicDevicePoolResourceValue::Address(_) => {
-                            (GatewayAction::None, false)
-                        }
-                        client::DynamicDevicePoolResourceValue::Filters(_) => {
-                            (GatewayAction::None, false)
-                        }
-                    },
-                    client::ResourceEdit::Type(edit) => (
-                        GatewayAction::RemoveAllAccess,
-                        matches!(edit.new_resource, client::Resource::Dns(_)),
-                    ),
+                    client::ResourceEdit::Dns(client::DnsResourceEdit {
+                        value: client::DnsResourceValue::Address(_),
+                        ..
+                    })
+                    | client::ResourceEdit::Type(client::ResourceTypeEdit {
+                        new_resource: client::Resource::Dns(_),
+                        ..
+                    }) => (GatewayAction::RemoveAllAccess, true),
+                    client::ResourceEdit::Dns(client::DnsResourceEdit {
+                        value:
+                            client::DnsResourceValue::Sites(_) | client::DnsResourceValue::IpStack(_),
+                        ..
+                    })
+                    | client::ResourceEdit::Cidr(client::CidrResourceEdit {
+                        value:
+                            client::CidrResourceValue::Address(_) | client::CidrResourceValue::Sites(_),
+                        ..
+                    })
+                    | client::ResourceEdit::Type(_) => (GatewayAction::RemoveAllAccess, false),
+                    client::ResourceEdit::Dns(client::DnsResourceEdit {
+                        value: client::DnsResourceValue::Filters(_),
+                        ..
+                    })
+                    | client::ResourceEdit::Cidr(client::CidrResourceEdit {
+                        value: client::CidrResourceValue::Filters(_),
+                        ..
+                    }) => (GatewayAction::Update, false),
+                    client::ResourceEdit::Dns(client::DnsResourceEdit {
+                        value:
+                            client::DnsResourceValue::Name(_)
+                            | client::DnsResourceValue::AddressDescription(_),
+                        ..
+                    })
+                    | client::ResourceEdit::Cidr(client::CidrResourceEdit {
+                        value:
+                            client::CidrResourceValue::Name(_)
+                            | client::CidrResourceValue::AddressDescription(_),
+                        ..
+                    })
+                    | client::ResourceEdit::StaticDevicePool(
+                        client::StaticDevicePoolResourceEdit {
+                            value:
+                                client::StaticDevicePoolResourceValue::Name(_)
+                                | client::StaticDevicePoolResourceValue::Devices(_)
+                                | client::StaticDevicePoolResourceValue::Filters(_),
+                            ..
+                        },
+                    )
+                    | client::ResourceEdit::DynamicDevicePool(
+                        client::DynamicDevicePoolResourceEdit {
+                            value:
+                                client::DynamicDevicePoolResourceValue::Name(_)
+                                | client::DynamicDevicePoolResourceValue::Address(_)
+                                | client::DynamicDevicePoolResourceValue::Filters(_),
+                            ..
+                        },
+                    ) => (GatewayAction::None, false),
+                    client::ResourceEdit::Dns(client::DnsResourceEdit {
+                        value: client::DnsResourceValue::Id(_),
+                        ..
+                    })
+                    | client::ResourceEdit::Cidr(client::CidrResourceEdit {
+                        value: client::CidrResourceValue::Id(_),
+                        ..
+                    })
+                    | client::ResourceEdit::StaticDevicePool(
+                        client::StaticDevicePoolResourceEdit {
+                            value: client::StaticDevicePoolResourceValue::Id(_),
+                            ..
+                        },
+                    )
+                    | client::ResourceEdit::DynamicDevicePool(
+                        client::DynamicDevicePoolResourceEdit {
+                            value: client::DynamicDevicePoolResourceValue::Id(_),
+                            ..
+                        },
+                    ) => unreachable!("resource identity is not editable"),
                 };
                 let resource_id = edit.id();
                 let removed_static_pool_members = edit.removed_static_device_pool_members();

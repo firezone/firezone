@@ -439,6 +439,12 @@ impl ReferenceState {
     }
 
     fn apply_resource_edit(&mut self, edit: &client::ResourceEdit) {
+        use client::{
+            CidrResourceEdit, CidrResourceValue, DnsResourceEdit, DnsResourceValue,
+            DynamicDevicePoolResourceEdit, DynamicDevicePoolResourceValue, ResourceEdit,
+            StaticDevicePoolResourceEdit, StaticDevicePoolResourceValue,
+        };
+
         #[derive(Clone, Copy)]
         enum ApplyMode {
             Metadata,
@@ -447,163 +453,210 @@ impl ReferenceState {
         }
 
         let (updated, mode, forget_dns_records) = match edit {
-            client::ResourceEdit::Dns(edit) => match &edit.value {
-                client::DnsResourceValue::Id(_) => {
-                    unreachable!("resource identity is not editable")
-                }
-                client::DnsResourceValue::Address(address) => (
-                    client::Resource::Dns(client::DnsResource {
-                        address: address.clone(),
-                        ..edit.resource.clone()
-                    }),
-                    ApplyMode::Upsert,
-                    true,
-                ),
-                client::DnsResourceValue::Name(name) => (
-                    client::Resource::Dns(client::DnsResource {
-                        name: name.clone(),
-                        ..edit.resource.clone()
-                    }),
-                    ApplyMode::Metadata,
-                    false,
-                ),
-                client::DnsResourceValue::AddressDescription(address_description) => (
-                    client::Resource::Dns(client::DnsResource {
-                        address_description: address_description.clone(),
-                        ..edit.resource.clone()
-                    }),
-                    ApplyMode::Metadata,
-                    false,
-                ),
-                client::DnsResourceValue::Sites(sites) => (
-                    client::Resource::Dns(client::DnsResource {
-                        sites: sites.clone(),
-                        ..edit.resource.clone()
-                    }),
-                    ApplyMode::Upsert,
-                    false,
-                ),
-                client::DnsResourceValue::IpStack(ip_stack) => (
-                    client::Resource::Dns(client::DnsResource {
-                        ip_stack: *ip_stack,
-                        ..edit.resource.clone()
-                    }),
-                    ApplyMode::Upsert,
-                    false,
-                ),
-                client::DnsResourceValue::Filters(filters) => (
-                    client::Resource::Dns(client::DnsResource {
-                        filters: filters.clone(),
-                        ..edit.resource.clone()
-                    }),
-                    ApplyMode::Upsert,
-                    false,
-                ),
-            },
-            client::ResourceEdit::Cidr(edit) => match &edit.value {
-                client::CidrResourceValue::Id(_) => {
-                    unreachable!("resource identity is not editable")
-                }
-                client::CidrResourceValue::Address(address) => (
-                    client::Resource::Cidr(client::CidrResource {
-                        address: *address,
-                        ..edit.resource.clone()
-                    }),
-                    ApplyMode::Upsert,
-                    false,
-                ),
-                client::CidrResourceValue::Name(name) => (
-                    client::Resource::Cidr(client::CidrResource {
-                        name: name.clone(),
-                        ..edit.resource.clone()
-                    }),
-                    ApplyMode::Metadata,
-                    false,
-                ),
-                client::CidrResourceValue::AddressDescription(address_description) => (
-                    client::Resource::Cidr(client::CidrResource {
-                        address_description: address_description.clone(),
-                        ..edit.resource.clone()
-                    }),
-                    ApplyMode::Metadata,
-                    false,
-                ),
-                client::CidrResourceValue::Sites(sites) => (
-                    client::Resource::Cidr(client::CidrResource {
-                        sites: sites.clone(),
-                        ..edit.resource.clone()
-                    }),
-                    ApplyMode::Upsert,
-                    false,
-                ),
-                client::CidrResourceValue::Filters(filters) => (
-                    client::Resource::Cidr(client::CidrResource {
-                        filters: filters.clone(),
-                        ..edit.resource.clone()
-                    }),
-                    ApplyMode::Upsert,
-                    false,
-                ),
-            },
-            client::ResourceEdit::StaticDevicePool(edit) => match &edit.value {
-                client::StaticDevicePoolResourceValue::Id(_) => {
-                    unreachable!("resource identity is not editable")
-                }
-                client::StaticDevicePoolResourceValue::Name(name) => (
-                    client::Resource::StaticDevicePool(client::StaticDevicePoolResource {
-                        name: name.clone(),
-                        ..edit.resource.clone()
-                    }),
-                    ApplyMode::Metadata,
-                    false,
-                ),
-                client::StaticDevicePoolResourceValue::Devices(devices) => (
-                    client::Resource::StaticDevicePool(client::StaticDevicePoolResource {
-                        devices: devices.clone(),
-                        ..edit.resource.clone()
-                    }),
-                    ApplyMode::Upsert,
-                    false,
-                ),
-                client::StaticDevicePoolResourceValue::Filters(filters) => (
-                    client::Resource::StaticDevicePool(client::StaticDevicePoolResource {
-                        filters: filters.clone(),
-                        ..edit.resource.clone()
-                    }),
-                    ApplyMode::Upsert,
-                    false,
-                ),
-            },
-            client::ResourceEdit::DynamicDevicePool(edit) => match &edit.value {
-                client::DynamicDevicePoolResourceValue::Id(_) => {
-                    unreachable!("resource identity is not editable")
-                }
-                client::DynamicDevicePoolResourceValue::Name(name) => (
-                    client::Resource::DynamicDevicePool(client::DynamicDevicePoolResource {
-                        name: name.clone(),
-                        ..edit.resource.clone()
-                    }),
-                    ApplyMode::Metadata,
-                    false,
-                ),
-                client::DynamicDevicePoolResourceValue::Address(address) => (
-                    client::Resource::DynamicDevicePool(client::DynamicDevicePoolResource {
-                        address: address.clone(),
-                        ..edit.resource.clone()
-                    }),
-                    ApplyMode::Upsert,
-                    false,
-                ),
-                client::DynamicDevicePoolResourceValue::Filters(filters) => (
-                    client::Resource::DynamicDevicePool(client::DynamicDevicePoolResource {
-                        filters: filters.clone(),
-                        ..edit.resource.clone()
-                    }),
-                    ApplyMode::Upsert,
-                    false,
-                ),
-            },
-            client::ResourceEdit::Type(edit) => {
+            ResourceEdit::Dns(DnsResourceEdit {
+                value: DnsResourceValue::Id(_),
+                ..
+            })
+            | ResourceEdit::Cidr(CidrResourceEdit {
+                value: CidrResourceValue::Id(_),
+                ..
+            })
+            | ResourceEdit::StaticDevicePool(StaticDevicePoolResourceEdit {
+                value: StaticDevicePoolResourceValue::Id(_),
+                ..
+            })
+            | ResourceEdit::DynamicDevicePool(DynamicDevicePoolResourceEdit {
+                value: DynamicDevicePoolResourceValue::Id(_),
+                ..
+            }) => unreachable!("resource identity is not editable"),
+            ResourceEdit::Dns(DnsResourceEdit {
+                resource,
+                value: DnsResourceValue::Address(address),
+            }) => (
+                client::Resource::Dns(client::DnsResource {
+                    address: address.clone(),
+                    ..resource.clone()
+                }),
+                ApplyMode::Upsert,
+                true,
+            ),
+            ResourceEdit::Dns(DnsResourceEdit {
+                resource,
+                value: DnsResourceValue::Name(name),
+            }) => (
+                client::Resource::Dns(client::DnsResource {
+                    name: name.clone(),
+                    ..resource.clone()
+                }),
+                ApplyMode::Metadata,
+                false,
+            ),
+            ResourceEdit::Dns(DnsResourceEdit {
+                resource,
+                value: DnsResourceValue::AddressDescription(address_description),
+            }) => (
+                client::Resource::Dns(client::DnsResource {
+                    address_description: address_description.clone(),
+                    ..resource.clone()
+                }),
+                ApplyMode::Metadata,
+                false,
+            ),
+            ResourceEdit::Dns(DnsResourceEdit {
+                resource,
+                value: DnsResourceValue::Sites(sites),
+            }) => (
+                client::Resource::Dns(client::DnsResource {
+                    sites: sites.clone(),
+                    ..resource.clone()
+                }),
+                ApplyMode::Upsert,
+                false,
+            ),
+            ResourceEdit::Dns(DnsResourceEdit {
+                resource,
+                value: DnsResourceValue::IpStack(ip_stack),
+            }) => (
+                client::Resource::Dns(client::DnsResource {
+                    ip_stack: *ip_stack,
+                    ..resource.clone()
+                }),
+                ApplyMode::Upsert,
+                false,
+            ),
+            ResourceEdit::Dns(DnsResourceEdit {
+                resource,
+                value: DnsResourceValue::Filters(filters),
+            }) => (
+                client::Resource::Dns(client::DnsResource {
+                    filters: filters.clone(),
+                    ..resource.clone()
+                }),
+                ApplyMode::Upsert,
+                false,
+            ),
+            ResourceEdit::Cidr(CidrResourceEdit {
+                resource,
+                value: CidrResourceValue::Address(address),
+            }) => (
+                client::Resource::Cidr(client::CidrResource {
+                    address: *address,
+                    ..resource.clone()
+                }),
+                ApplyMode::Upsert,
+                false,
+            ),
+            ResourceEdit::Cidr(CidrResourceEdit {
+                resource,
+                value: CidrResourceValue::Name(name),
+            }) => (
+                client::Resource::Cidr(client::CidrResource {
+                    name: name.clone(),
+                    ..resource.clone()
+                }),
+                ApplyMode::Metadata,
+                false,
+            ),
+            ResourceEdit::Cidr(CidrResourceEdit {
+                resource,
+                value: CidrResourceValue::AddressDescription(address_description),
+            }) => (
+                client::Resource::Cidr(client::CidrResource {
+                    address_description: address_description.clone(),
+                    ..resource.clone()
+                }),
+                ApplyMode::Metadata,
+                false,
+            ),
+            ResourceEdit::Cidr(CidrResourceEdit {
+                resource,
+                value: CidrResourceValue::Sites(sites),
+            }) => (
+                client::Resource::Cidr(client::CidrResource {
+                    sites: sites.clone(),
+                    ..resource.clone()
+                }),
+                ApplyMode::Upsert,
+                false,
+            ),
+            ResourceEdit::Cidr(CidrResourceEdit {
+                resource,
+                value: CidrResourceValue::Filters(filters),
+            }) => (
+                client::Resource::Cidr(client::CidrResource {
+                    filters: filters.clone(),
+                    ..resource.clone()
+                }),
+                ApplyMode::Upsert,
+                false,
+            ),
+            ResourceEdit::StaticDevicePool(StaticDevicePoolResourceEdit {
+                resource,
+                value: StaticDevicePoolResourceValue::Name(name),
+            }) => (
+                client::Resource::StaticDevicePool(client::StaticDevicePoolResource {
+                    name: name.clone(),
+                    ..resource.clone()
+                }),
+                ApplyMode::Metadata,
+                false,
+            ),
+            ResourceEdit::StaticDevicePool(StaticDevicePoolResourceEdit {
+                resource,
+                value: StaticDevicePoolResourceValue::Devices(devices),
+            }) => (
+                client::Resource::StaticDevicePool(client::StaticDevicePoolResource {
+                    devices: devices.clone(),
+                    ..resource.clone()
+                }),
+                ApplyMode::Upsert,
+                false,
+            ),
+            ResourceEdit::StaticDevicePool(StaticDevicePoolResourceEdit {
+                resource,
+                value: StaticDevicePoolResourceValue::Filters(filters),
+            }) => (
+                client::Resource::StaticDevicePool(client::StaticDevicePoolResource {
+                    filters: filters.clone(),
+                    ..resource.clone()
+                }),
+                ApplyMode::Upsert,
+                false,
+            ),
+            ResourceEdit::DynamicDevicePool(DynamicDevicePoolResourceEdit {
+                resource,
+                value: DynamicDevicePoolResourceValue::Name(name),
+            }) => (
+                client::Resource::DynamicDevicePool(client::DynamicDevicePoolResource {
+                    name: name.clone(),
+                    ..resource.clone()
+                }),
+                ApplyMode::Metadata,
+                false,
+            ),
+            ResourceEdit::DynamicDevicePool(DynamicDevicePoolResourceEdit {
+                resource,
+                value: DynamicDevicePoolResourceValue::Address(address),
+            }) => (
+                client::Resource::DynamicDevicePool(client::DynamicDevicePoolResource {
+                    address: address.clone(),
+                    ..resource.clone()
+                }),
+                ApplyMode::Upsert,
+                false,
+            ),
+            ResourceEdit::DynamicDevicePool(DynamicDevicePoolResourceEdit {
+                resource,
+                value: DynamicDevicePoolResourceValue::Filters(filters),
+            }) => (
+                client::Resource::DynamicDevicePool(client::DynamicDevicePoolResource {
+                    filters: filters.clone(),
+                    ..resource.clone()
+                }),
+                ApplyMode::Upsert,
+                false,
+            ),
+            ResourceEdit::Type(edit) => {
                 debug_assert_eq!(edit.old_resource.id(), edit.new_resource.id());
 
                 (
@@ -645,27 +698,27 @@ impl ReferenceState {
                     }
                 }
 
-                match mode {
-                    ApplyMode::Metadata => client.update_resource_metadata(updated.clone()),
-                    ApplyMode::Upsert | ApplyMode::ReplaceType => match &updated {
-                        client::Resource::Dns(resource) => {
-                            client.add_dns_resource(resource.clone())
-                        }
-                        client::Resource::Cidr(resource) => {
-                            client.add_cidr_resource(resource.clone())
-                        }
-                        client::Resource::Internet(_) => {
-                            unreachable!(
-                                "the Portal API does not allow editing the Internet Resource"
-                            )
-                        }
-                        client::Resource::StaticDevicePool(resource) => {
-                            client.add_static_device_pool_resource(resource.clone())
-                        }
-                        client::Resource::DynamicDevicePool(resource) => {
-                            client.add_dynamic_device_pool_resource(resource.clone())
-                        }
-                    },
+                match (mode, &updated) {
+                    (ApplyMode::Metadata, _) => client.update_resource_metadata(updated.clone()),
+                    (
+                        ApplyMode::Upsert | ApplyMode::ReplaceType,
+                        client::Resource::Dns(resource),
+                    ) => client.add_dns_resource(resource.clone()),
+                    (
+                        ApplyMode::Upsert | ApplyMode::ReplaceType,
+                        client::Resource::Cidr(resource),
+                    ) => client.add_cidr_resource(resource.clone()),
+                    (ApplyMode::Upsert | ApplyMode::ReplaceType, client::Resource::Internet(_)) => {
+                        unreachable!("the Portal API does not allow editing the Internet Resource")
+                    }
+                    (
+                        ApplyMode::Upsert | ApplyMode::ReplaceType,
+                        client::Resource::StaticDevicePool(resource),
+                    ) => client.add_static_device_pool_resource(resource.clone()),
+                    (
+                        ApplyMode::Upsert | ApplyMode::ReplaceType,
+                        client::Resource::DynamicDevicePool(resource),
+                    ) => client.add_dynamic_device_pool_resource(resource.clone()),
                 }
             });
         }

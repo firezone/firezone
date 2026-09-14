@@ -367,38 +367,45 @@ impl ResourceEdit {
         match self {
             ResourceEdit::Dns(_) => Vec::new(),
             ResourceEdit::Cidr(_) => Vec::new(),
-            ResourceEdit::StaticDevicePool(edit) => match &edit.value {
-                StaticDevicePoolResourceValue::Id(_) => {
-                    unreachable!("resource identity is not editable")
-                }
-                StaticDevicePoolResourceValue::Name(_) => Vec::new(),
-                StaticDevicePoolResourceValue::Devices(updated) => edit
-                    .resource
-                    .devices
-                    .iter()
-                    .filter(|previous| updated.iter().all(|member| member.id != previous.id))
-                    .cloned()
-                    .collect(),
-                StaticDevicePoolResourceValue::Filters(_) => Vec::new(),
-            },
+            ResourceEdit::StaticDevicePool(StaticDevicePoolResourceEdit {
+                value: StaticDevicePoolResourceValue::Id(_),
+                ..
+            }) => unreachable!("resource identity is not editable"),
+            ResourceEdit::StaticDevicePool(StaticDevicePoolResourceEdit {
+                value:
+                    StaticDevicePoolResourceValue::Name(_) | StaticDevicePoolResourceValue::Filters(_),
+                ..
+            }) => Vec::new(),
+            ResourceEdit::StaticDevicePool(StaticDevicePoolResourceEdit {
+                resource,
+                value: StaticDevicePoolResourceValue::Devices(updated),
+            }) => resource
+                .devices
+                .iter()
+                .filter(|previous| updated.iter().all(|member| member.id != previous.id))
+                .cloned()
+                .collect(),
             ResourceEdit::DynamicDevicePool(_) => Vec::new(),
-            ResourceEdit::Type(edit) => match &edit.old_resource {
-                Resource::Dns(_) | Resource::Cidr(_) | Resource::DynamicDevicePool(_) => Vec::new(),
-                Resource::StaticDevicePool(previous) => match &edit.new_resource {
-                    Resource::Dns(_) | Resource::Cidr(_) | Resource::DynamicDevicePool(_) => {
-                        previous.devices.clone()
-                    }
-                    Resource::StaticDevicePool(_) => {
-                        unreachable!("resource type edits must change the resource type")
-                    }
-                    Resource::Internet(_) => {
-                        unreachable!("the Portal API does not allow editing the Internet Resource")
-                    }
-                },
-                Resource::Internet(_) => {
-                    unreachable!("the Portal API does not allow editing the Internet Resource")
-                }
-            },
+            ResourceEdit::Type(ResourceTypeEdit {
+                old_resource: Resource::Dns(_) | Resource::Cidr(_) | Resource::DynamicDevicePool(_),
+                ..
+            }) => Vec::new(),
+            ResourceEdit::Type(ResourceTypeEdit {
+                old_resource: Resource::StaticDevicePool(previous),
+                new_resource: Resource::Dns(_) | Resource::Cidr(_) | Resource::DynamicDevicePool(_),
+            }) => previous.devices.clone(),
+            ResourceEdit::Type(ResourceTypeEdit {
+                old_resource: Resource::StaticDevicePool(_),
+                new_resource: Resource::StaticDevicePool(_),
+            }) => unreachable!("resource type edits must change the resource type"),
+            ResourceEdit::Type(ResourceTypeEdit {
+                old_resource: Resource::Internet(_),
+                ..
+            })
+            | ResourceEdit::Type(ResourceTypeEdit {
+                new_resource: Resource::Internet(_),
+                ..
+            }) => unreachable!("the Portal API does not allow editing the Internet Resource"),
         }
     }
 }

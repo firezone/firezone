@@ -9,8 +9,9 @@ use super::{
     probe::{FlowId, FlowRoute, ProbeId},
     reference::PrivateKey,
     resource::{
-        CidrResourceValue, DnsResourceValue, DynamicDevicePoolResourceValue, Resource,
-        ResourceEdit, StaticDevicePoolResourceValue,
+        CidrResourceEdit, CidrResourceValue, DnsResourceEdit, DnsResourceValue,
+        DynamicDevicePoolResourceEdit, DynamicDevicePoolResourceValue, Resource, ResourceEdit,
+        ResourceTypeEdit, StaticDevicePoolResourceEdit, StaticDevicePoolResourceValue,
     },
     sim_net::Host,
 };
@@ -115,54 +116,7 @@ impl Transition {
         match self {
             Transition::AddResource(_) => true,
             Transition::RemoveResource(_) => true,
-            Transition::EditResource(edit) => match edit {
-                ResourceEdit::Dns(edit) => match &edit.value {
-                    DnsResourceValue::Id(_) => {
-                        unreachable!("resource identity is not editable")
-                    }
-                    DnsResourceValue::Address(_) => true,
-                    DnsResourceValue::Name(_) => false,
-                    DnsResourceValue::AddressDescription(_) => false,
-                    DnsResourceValue::Sites(_) => true,
-                    DnsResourceValue::IpStack(_) => true,
-                    DnsResourceValue::Filters(_) => true,
-                },
-                ResourceEdit::Cidr(edit) => match &edit.value {
-                    CidrResourceValue::Id(_) => {
-                        unreachable!("resource identity is not editable")
-                    }
-                    CidrResourceValue::Address(_) => false,
-                    CidrResourceValue::Name(_) => false,
-                    CidrResourceValue::AddressDescription(_) => false,
-                    CidrResourceValue::Sites(_) => false,
-                    CidrResourceValue::Filters(_) => false,
-                },
-                ResourceEdit::StaticDevicePool(edit) => match &edit.value {
-                    StaticDevicePoolResourceValue::Id(_) => {
-                        unreachable!("resource identity is not editable")
-                    }
-                    StaticDevicePoolResourceValue::Name(_) => false,
-                    StaticDevicePoolResourceValue::Devices(_) => false,
-                    StaticDevicePoolResourceValue::Filters(_) => false,
-                },
-                ResourceEdit::DynamicDevicePool(edit) => match &edit.value {
-                    DynamicDevicePoolResourceValue::Id(_) => {
-                        unreachable!("resource identity is not editable")
-                    }
-                    DynamicDevicePoolResourceValue::Name(_) => false,
-                    DynamicDevicePoolResourceValue::Address(_) => false,
-                    DynamicDevicePoolResourceValue::Filters(_) => false,
-                },
-                ResourceEdit::Type(edit) => match &edit.old_resource {
-                    Resource::Dns(_) => true,
-                    Resource::Cidr(_) => false,
-                    Resource::Internet(_) => {
-                        unreachable!("the Portal API does not allow editing the Internet Resource")
-                    }
-                    Resource::StaticDevicePool(_) => false,
-                    Resource::DynamicDevicePool(_) => false,
-                },
-            },
+            Transition::EditResource(edit) => resource_edit_effect(edit).should_clear_packets(),
             Transition::SetInternetResourceState { .. } => true,
             Transition::SendIcmpPacketOnNewFlow { .. } => false,
             Transition::SendIcmpPacketOnExistingFlow { .. } => false,
@@ -205,78 +159,7 @@ impl Transition {
                 FlowRoute::Gateway(_) => false,
                 FlowRoute::Peer(_) => false,
             },
-            Transition::EditResource(edit) => match edit {
-                ResourceEdit::Dns(edit) => match &edit.value {
-                    DnsResourceValue::Id(_) => {
-                        unreachable!("resource identity is not editable")
-                    }
-                    DnsResourceValue::Address(_) => {
-                        retains_after_gateway_resource_edit(route, edit.resource.id)
-                    }
-                    DnsResourceValue::Name(_) => true,
-                    DnsResourceValue::AddressDescription(_) => true,
-                    DnsResourceValue::Sites(_) => {
-                        retains_after_gateway_resource_edit(route, edit.resource.id)
-                    }
-                    DnsResourceValue::IpStack(_) => {
-                        retains_after_gateway_resource_edit(route, edit.resource.id)
-                    }
-                    DnsResourceValue::Filters(_) => {
-                        retains_after_gateway_resource_edit(route, edit.resource.id)
-                    }
-                },
-                ResourceEdit::Cidr(edit) => match &edit.value {
-                    CidrResourceValue::Id(_) => {
-                        unreachable!("resource identity is not editable")
-                    }
-                    CidrResourceValue::Address(_) => {
-                        retains_after_gateway_resource_edit(route, edit.resource.id)
-                    }
-                    CidrResourceValue::Name(_) => true,
-                    CidrResourceValue::AddressDescription(_) => true,
-                    CidrResourceValue::Sites(_) => {
-                        retains_after_gateway_resource_edit(route, edit.resource.id)
-                    }
-                    CidrResourceValue::Filters(_) => {
-                        retains_after_gateway_resource_edit(route, edit.resource.id)
-                    }
-                },
-                ResourceEdit::StaticDevicePool(edit) => match &edit.value {
-                    StaticDevicePoolResourceValue::Id(_) => {
-                        unreachable!("resource identity is not editable")
-                    }
-                    StaticDevicePoolResourceValue::Name(_) => true,
-                    StaticDevicePoolResourceValue::Devices(devices) => {
-                        retains_after_static_device_membership_edit(
-                            route,
-                            &edit.resource.devices,
-                            devices,
-                        )
-                    }
-                    StaticDevicePoolResourceValue::Filters(_) => {
-                        retains_after_device_membership_edit(route)
-                    }
-                },
-                ResourceEdit::DynamicDevicePool(edit) => match &edit.value {
-                    DynamicDevicePoolResourceValue::Id(_) => {
-                        unreachable!("resource identity is not editable")
-                    }
-                    DynamicDevicePoolResourceValue::Name(_) => true,
-                    DynamicDevicePoolResourceValue::Address(_) => {
-                        retains_after_device_membership_edit(route)
-                    }
-                    DynamicDevicePoolResourceValue::Filters(_) => {
-                        retains_after_device_membership_edit(route)
-                    }
-                },
-                ResourceEdit::Type(edit) => match route {
-                    FlowRoute::Resource { resource, .. } => resource != edit.old_resource.id(),
-                    FlowRoute::Gateway(_) => false,
-                    FlowRoute::Peer(_) => {
-                        !is_device_pool(&edit.old_resource) && !is_device_pool(&edit.new_resource)
-                    }
-                },
-            },
+            Transition::EditResource(edit) => resource_edit_effect(edit).retains_flow(route),
             Transition::SetInternetResourceState {
                 client_id: changed, ..
             } => client_id != *changed,
@@ -321,36 +204,156 @@ impl Transition {
     }
 }
 
-fn retains_after_gateway_resource_edit(route: FlowRoute, resource: ResourceId) -> bool {
-    match route {
-        FlowRoute::Resource { resource: used, .. } => used != resource,
-        FlowRoute::Gateway(_) => false,
-        FlowRoute::Peer(_) => true,
+enum ResourceEditEffect<'a> {
+    Metadata,
+    GatewayResource {
+        resource_id: ResourceId,
+        affects_tcp: bool,
+    },
+    StaticPoolMembers {
+        previous: &'a [DevicePoolMember],
+        updated: &'a [DevicePoolMember],
+    },
+    DevicePoolRouting,
+    Type {
+        old: &'a Resource,
+        new: &'a Resource,
+    },
+}
+
+impl ResourceEditEffect<'_> {
+    fn should_clear_packets(&self) -> bool {
+        match self {
+            ResourceEditEffect::Metadata => false,
+            ResourceEditEffect::GatewayResource { affects_tcp, .. } => *affects_tcp,
+            ResourceEditEffect::StaticPoolMembers { .. } => false,
+            ResourceEditEffect::DevicePoolRouting => false,
+            ResourceEditEffect::Type { old, .. } => match old {
+                Resource::Dns(_) => true,
+                Resource::Cidr(_) => false,
+                Resource::Internet(_) => {
+                    unreachable!("the Portal API does not allow editing the Internet Resource")
+                }
+                Resource::StaticDevicePool(_) => false,
+                Resource::DynamicDevicePool(_) => false,
+            },
+        }
+    }
+
+    fn retains_flow(&self, route: FlowRoute) -> bool {
+        match (self, route) {
+            (ResourceEditEffect::Metadata, _) => true,
+            (
+                ResourceEditEffect::GatewayResource { resource_id, .. },
+                FlowRoute::Resource { resource, .. },
+            ) => resource != *resource_id,
+            (ResourceEditEffect::GatewayResource { .. }, FlowRoute::Gateway(_)) => false,
+            (ResourceEditEffect::GatewayResource { .. }, FlowRoute::Peer(_)) => true,
+            (
+                ResourceEditEffect::StaticPoolMembers { previous, updated },
+                FlowRoute::Peer(peer),
+            ) => previous
+                .iter()
+                .find(|member| member.id == peer)
+                .is_none_or(|previous| {
+                    updated
+                        .iter()
+                        .any(|member| member.id == peer && member == previous)
+                }),
+            (ResourceEditEffect::StaticPoolMembers { .. }, FlowRoute::Resource { .. }) => true,
+            (ResourceEditEffect::StaticPoolMembers { .. }, FlowRoute::Gateway(_)) => true,
+            (ResourceEditEffect::DevicePoolRouting, FlowRoute::Resource { .. }) => true,
+            (ResourceEditEffect::DevicePoolRouting, FlowRoute::Gateway(_)) => true,
+            (ResourceEditEffect::DevicePoolRouting, FlowRoute::Peer(_)) => false,
+            (ResourceEditEffect::Type { old, .. }, FlowRoute::Resource { resource, .. }) => {
+                resource != old.id()
+            }
+            (ResourceEditEffect::Type { .. }, FlowRoute::Gateway(_)) => false,
+            (ResourceEditEffect::Type { old, new }, FlowRoute::Peer(_)) => {
+                !is_device_pool(old) && !is_device_pool(new)
+            }
+        }
     }
 }
 
-fn retains_after_static_device_membership_edit(
-    route: FlowRoute,
-    previous: &[DevicePoolMember],
-    updated: &[DevicePoolMember],
-) -> bool {
-    let FlowRoute::Peer(peer) = route else {
-        return true;
-    };
-    let Some(previous) = previous.iter().find(|member| member.id == peer) else {
-        return true;
-    };
-
-    updated
-        .iter()
-        .any(|member| member.id == peer && member == previous)
-}
-
-fn retains_after_device_membership_edit(route: FlowRoute) -> bool {
-    match route {
-        FlowRoute::Resource { .. } => true,
-        FlowRoute::Gateway(_) => true,
-        FlowRoute::Peer(_) => false,
+fn resource_edit_effect(edit: &ResourceEdit) -> ResourceEditEffect<'_> {
+    match edit {
+        ResourceEdit::Dns(DnsResourceEdit {
+            value: DnsResourceValue::Id(_),
+            ..
+        })
+        | ResourceEdit::Cidr(CidrResourceEdit {
+            value: CidrResourceValue::Id(_),
+            ..
+        })
+        | ResourceEdit::StaticDevicePool(StaticDevicePoolResourceEdit {
+            value: StaticDevicePoolResourceValue::Id(_),
+            ..
+        })
+        | ResourceEdit::DynamicDevicePool(DynamicDevicePoolResourceEdit {
+            value: DynamicDevicePoolResourceValue::Id(_),
+            ..
+        }) => unreachable!("resource identity is not editable"),
+        ResourceEdit::Dns(DnsResourceEdit {
+            value: DnsResourceValue::Name(_) | DnsResourceValue::AddressDescription(_),
+            ..
+        })
+        | ResourceEdit::Cidr(CidrResourceEdit {
+            value: CidrResourceValue::Name(_) | CidrResourceValue::AddressDescription(_),
+            ..
+        })
+        | ResourceEdit::StaticDevicePool(StaticDevicePoolResourceEdit {
+            value: StaticDevicePoolResourceValue::Name(_),
+            ..
+        })
+        | ResourceEdit::DynamicDevicePool(DynamicDevicePoolResourceEdit {
+            value: DynamicDevicePoolResourceValue::Name(_),
+            ..
+        }) => ResourceEditEffect::Metadata,
+        ResourceEdit::Dns(DnsResourceEdit {
+            resource,
+            value:
+                DnsResourceValue::Address(_)
+                | DnsResourceValue::Sites(_)
+                | DnsResourceValue::IpStack(_)
+                | DnsResourceValue::Filters(_),
+        }) => ResourceEditEffect::GatewayResource {
+            resource_id: resource.id,
+            affects_tcp: true,
+        },
+        ResourceEdit::Cidr(CidrResourceEdit {
+            resource,
+            value:
+                CidrResourceValue::Address(_)
+                | CidrResourceValue::Sites(_)
+                | CidrResourceValue::Filters(_),
+        }) => ResourceEditEffect::GatewayResource {
+            resource_id: resource.id,
+            affects_tcp: false,
+        },
+        ResourceEdit::StaticDevicePool(StaticDevicePoolResourceEdit {
+            resource,
+            value: StaticDevicePoolResourceValue::Devices(updated),
+        }) => ResourceEditEffect::StaticPoolMembers {
+            previous: &resource.devices,
+            updated,
+        },
+        ResourceEdit::StaticDevicePool(StaticDevicePoolResourceEdit {
+            value: StaticDevicePoolResourceValue::Filters(_),
+            ..
+        })
+        | ResourceEdit::DynamicDevicePool(DynamicDevicePoolResourceEdit {
+            value:
+                DynamicDevicePoolResourceValue::Address(_) | DynamicDevicePoolResourceValue::Filters(_),
+            ..
+        }) => ResourceEditEffect::DevicePoolRouting,
+        ResourceEdit::Type(ResourceTypeEdit {
+            old_resource,
+            new_resource,
+        }) => ResourceEditEffect::Type {
+            old: old_resource,
+            new: new_resource,
+        },
     }
 }
 
