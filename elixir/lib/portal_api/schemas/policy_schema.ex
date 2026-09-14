@@ -95,8 +95,8 @@ defmodule PortalAPI.Schemas.Policy do
       `intune.compliance_state` or `firezone.last_seen_version`. The provider
       is one of `firezone` (the connecting device's own record), `intune`,
       `iru`, `defender`, `santa` or `sentinelone`. The attribute is one of that
-      provider's synced device attributes. Every provider also has a boolean
-      `enrolled` that is true when the provider knows the device.
+      provider's synced device attributes. Every synced provider also has a
+      boolean `enrolled` that is true when the provider knows the device.
 
       The attribute's type decides which operators apply and what `value`
       must be:
@@ -132,7 +132,7 @@ defmodule PortalAPI.Schemas.Policy do
         "and" => [
           %{"field" => "intune.compliance_state", "op" => "is", "value" => "compliant"},
           %{"field" => "intune.last_sync_date_time", "op" => "within_last", "value" => "PT24H"},
-          %{"not" => %{"field" => "firezone.attested", "op" => "is", "value" => false}}
+          %{"not" => %{"field" => "intune.jail_broken", "op" => "is", "value" => true}}
         ]
       },
       properties: %{
