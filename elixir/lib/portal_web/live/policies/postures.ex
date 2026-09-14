@@ -345,12 +345,10 @@ defmodule PortalWeb.Policies.Postures do
   defp syntax_message({:unexpected_end, _offset}), do: "unexpected end of input"
   defp syntax_message({:invalid_byte, _offset, byte}), do: "unexpected character #{inspect(<<byte>>)}"
   defp syntax_message({:unexpected_sequence, _offset, bytes}), do: "invalid sequence #{inspect(bytes)}"
-  defp syntax_message(_reason), do: "is not valid JSON"
 
   defp syntax_span(text, {:unexpected_end, _offset}), do: char_span(text, max(byte_size(text) - 1, 0), 1)
   defp syntax_span(text, {:invalid_byte, offset, _byte}), do: char_span(text, offset, 1)
   defp syntax_span(text, {:unexpected_sequence, offset, bytes}), do: char_span(text, offset, byte_size(bytes))
-  defp syntax_span(_text, _reason), do: nil
 
   # The browser counts characters, the decoder counts bytes.
   defp char_span(text, start, length) do
