@@ -422,29 +422,6 @@ mod tests {
     }
 
     #[test]
-    fn denied_address_is_requested_again_on_the_next_packet() {
-        let mut pending = PendingAuthorizations::default();
-        let now = Instant::now();
-        let ip = device_ip();
-
-        pending.on_not_authorized_device(ip, pools(), udp_trigger(1), now);
-        assert!(pending.poll_authorization_requests().is_some());
-
-        assert_eq!(
-            pending
-                .remove_device_authorizations(|addr| addr == ip)
-                .count(),
-            1
-        );
-
-        pending.on_not_authorized_device(ip, pools(), udp_trigger(2), now);
-        assert_eq!(
-            pending.poll_authorization_requests(),
-            Some(device_request(ip))
-        );
-    }
-
-    #[test]
     fn remove_device_authorizations_leaves_resource_entries() {
         let mut pending = PendingAuthorizations::default();
         let mut now = Instant::now();

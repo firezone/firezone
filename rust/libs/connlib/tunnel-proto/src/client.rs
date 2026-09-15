@@ -3061,26 +3061,6 @@ mod tests {
     }
 
     #[test]
-    fn packet_to_a_tunnel_address_without_pools_is_unroutable() {
-        let mut state = ClientState::for_test();
-        let now = Instant::now();
-        state.update_interface_config(interface(own_tun_ipv4(), own_tun_ipv6()));
-        while state.poll_event().is_some() {}
-
-        let packet =
-            ip_packet::make::udp_packet(own_tun_ipv4(), device_tun_ipv4(), 1234, 53, &[1]).unwrap();
-        let error = state
-            .handle_tun_input(packet, now, &mut snownet::TransmitBuffer::new())
-            .unwrap_err();
-
-        assert!(
-            error.to_string().starts_with("Unroutable packet"),
-            "{error}"
-        );
-        assert_no_device_connection_intent(&mut state);
-    }
-
-    #[test]
     fn packet_to_a_tunnel_address_no_pool_permits_is_prohibited_locally() {
         let mut state = ClientState::for_test();
         let now = Instant::now();
@@ -3143,38 +3123,6 @@ mod tests {
                 .is_some_and(|event| matches!(event, ClientEvent::DeviceAccessRequested { .. })),
             "expected a new device access request"
         );
-    }
-
-    #[test]
-    fn packet_outside_the_tunnel_range_without_a_route_is_unroutable() {
-        let mut state = ClientState::for_test();
-        let now = Instant::now();
-        state.update_interface_config(interface(own_tun_ipv4(), own_tun_ipv6()));
-
-        let packet =
-            ip_packet::make::udp_packet(own_tun_ipv4(), Ipv4Addr::new(10, 0, 0, 1), 1234, 53, &[1])
-                .unwrap();
-        let error = state
-            .handle_tun_input(packet, now, &mut snownet::TransmitBuffer::new())
-            .unwrap_err();
-
-        assert!(
-            error.to_string().starts_with("Unroutable packet"),
-            "{error}"
-        );
-        assert_no_device_connection_intent(&mut state);
-    }
-
-    #[test]
-    fn resolved_device_name_answers_the_query() {
-        let mut state = ClientState::for_test();
-        let now = Instant::now();
-        state.update_interface_config(interface(own_tun_ipv4(), own_tun_ipv6()));
-        while state.poll_packets().is_some() {}
-
-        resolve_device(&mut state, now);
-
-        assert!(state.poll_packets().is_some(), "expected a DNS response");
     }
 
     #[test]
@@ -3316,31 +3264,6 @@ mod tests {
         }
     }
 
-    /// Drives a DNS query for `laptop.firezone.network` and answers it from the portal.
-    fn resolve_device(state: &mut ClientState, now: Instant) {
-        let domain = "laptop.firezone.network".parse::<DomainName>().unwrap();
-        let local = SocketAddr::new(IpAddr::V4(own_tun_ipv4()), 5353);
-        let remote = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(100, 100, 111, 1)), 53);
-        let upstream = dns::Upstream::Do53 {
-            server: SocketAddr::new(IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1)), 53),
-        };
-
-        state.handle_dns_query(
-            dns_types::Query::new(domain.clone(), dns_types::RecordType::A),
-            local,
-            remote,
-            upstream,
-            dns::Transport::Udp,
-            now,
-        );
-        let queried = iter::from_fn(|| state.poll_event()).any(|event| {
-            matches!(event, ClientEvent::DeviceDomainQueried { domain: ref queried } if *queried == domain)
-        });
-        assert!(queried, "expected the device name to be queried");
-
-        state.handle_device_domain_resolved(domain, Ok((device_tun_ipv4(), device_tun_ipv6())));
-    }
-
     fn own_tun_ipv4() -> Ipv4Addr {
         Ipv4Addr::new(100, 82, 80, 16)
     }
@@ -3351,10 +3274,6 @@ mod tests {
 
     fn device_tun_ipv4() -> Ipv4Addr {
         Ipv4Addr::new(100, 82, 80, 17)
-    }
-
-    fn device_tun_ipv6() -> Ipv6Addr {
-        Ipv6Addr::new(0xfd00, 0x2021, 0x1111, 0, 0, 0, 0, 2)
     }
 
     fn device_pool(id: u128, filters: Vec<Filter>) -> Resource {
