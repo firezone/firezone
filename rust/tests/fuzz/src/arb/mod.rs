@@ -23,7 +23,7 @@ impl Generator<'_> {
         topology::generate(self)
     }
 
-    pub fn transition(&mut self, state: &ReferenceState) -> Option<Transition> {
+    pub fn transition(&mut self, state: &ReferenceState) -> Transition {
         transitions::generate(self, state)
     }
 }
