@@ -12,6 +12,7 @@ use crate::{
 };
 
 /// The result of applying all Client routing tables to an outbound packet.
+#[derive(Clone)]
 pub(super) enum Route {
     Client {
         filter: FilterEngine,
@@ -25,7 +26,13 @@ pub(super) enum Route {
 }
 
 impl Route {
-    #[cfg_attr(not(feature = "telemetry"), expect(dead_code))]
+    pub(super) fn filter(&self) -> &FilterEngine {
+        match self {
+            Self::Client { filter, .. } => filter,
+            Self::Gateway { filter, .. } => filter,
+        }
+    }
+
     pub(super) fn resource_id(&self) -> ResourceId {
         match self {
             Self::Client { resource_id, .. } | Self::Gateway { resource_id, .. } => *resource_id,
@@ -42,61 +49,71 @@ pub(super) struct RoutingTables {
 }
 
 impl RoutingTables {
-    /// Resolve an outbound packet, preferring direct Clients over Gateway resources.
+    /// Resolves outbound traffic, preferring device pools over gateway resources.
     pub(super) fn resolve(
         &mut self,
         destination: IpAddr,
         protocol: Protocol,
         internet_resource: Option<ResourceId>,
-    ) -> Option<Route> {
-        if let Some(entry) = self.peer.matches(destination, Ok(protocol)).cloned() {
-            return Some(Route::Client {
-                filter: entry.filter,
-                resource_id: entry.resource_id,
-            });
+    ) -> Vec<Route> {
+        let peers = self.peer.matches(destination, Ok(protocol));
+        if !peers.is_empty() {
+            return peers
+                .iter()
+                .map(|entry| Route::Client {
+                    filter: entry.filter.clone(),
+                    resource_id: entry.resource_id,
+                })
+                .collect();
         }
 
         self.resolve_resource(destination, protocol, internet_resource)
     }
 
-    /// Resolve only resources routed through a Gateway.
+    /// Resolves resources routed through a gateway.
     pub(super) fn resolve_resource(
         &mut self,
         destination: IpAddr,
         protocol: Protocol,
         internet_resource: Option<ResourceId>,
-    ) -> Option<Route> {
-        if let Some(entry) = self.dns.matches(destination, Ok(protocol)).cloned() {
-            return Some(Route::Gateway {
-                filter: entry.filter,
-                resource_id: entry.resource_id,
-                domain: Some(entry.domain),
-            });
+    ) -> Vec<Route> {
+        let dns = self.dns.matches(destination, Ok(protocol));
+        if !dns.is_empty() {
+            return dns
+                .iter()
+                .map(|entry| Route::Gateway {
+                    filter: entry.filter.clone(),
+                    resource_id: entry.resource_id,
+                    domain: Some(entry.domain.clone()),
+                })
+                .collect();
         }
 
-        if let Some(entry) = self.cidr.matches(destination, Ok(protocol)).cloned() {
-            return Some(Route::Gateway {
-                filter: entry.filter,
-                resource_id: entry.resource_id,
-                domain: None,
-            });
+        let cidr = self.cidr.matches(destination, Ok(protocol));
+        if !cidr.is_empty() {
+            return cidr
+                .iter()
+                .map(|entry| Route::Gateway {
+                    filter: entry.filter.clone(),
+                    resource_id: entry.resource_id,
+                    domain: None,
+                })
+                .collect();
         }
 
-        // Firezone's tunnel range holds Clients and Gateways, so the Internet Resource must
-        // not claim it: only the Client table consulted by `resolve` routes there. Letting
-        // the catch-all below match would send Client-to-Client traffic to a Gateway, which
-        // hair-pins it back out of its TUN device.
+        // The Internet Resource must not send tunnel addresses to a gateway.
         if crate::is_peer(destination) {
-            return None;
+            return Vec::new();
         }
 
-        let resource_id = internet_resource?;
-
-        Some(Route::Gateway {
-            filter: FilterEngine::PermitAll,
-            resource_id,
-            domain: None,
-        })
+        internet_resource
+            .into_iter()
+            .map(|resource_id| Route::Gateway {
+                filter: FilterEngine::PermitAll,
+                resource_id,
+                domain: None,
+            })
+            .collect()
     }
 
     pub(super) fn cidr_networks(&self) -> impl Iterator<Item = IpNetwork> + '_ {
@@ -110,11 +127,12 @@ impl RoutingTables {
     ) -> Option<(ResourceId, DomainName)> {
         self.dns
             .matches(destination, protocol)
+            .first()
             .map(|entry| (entry.resource_id, entry.domain.clone()))
     }
 
     pub(super) fn has_cidr_route(&mut self, destination: IpAddr, protocol: Protocol) -> bool {
-        self.cidr.matches(destination, Ok(protocol)).is_some()
+        !self.cidr.matches(destination, Ok(protocol)).is_empty()
     }
 
     pub(super) fn upsert_cidr(
@@ -151,43 +169,23 @@ impl RoutingTables {
         )
     }
 
-    pub(super) fn upsert_peer(
-        &mut self,
-        network: IpNetwork,
-        resource_id: ResourceId,
-        filter: FilterEngine,
-    ) -> bool {
-        self.peer.upsert(
-            network,
-            PeerEntry {
-                filter,
-                resource_id,
-            },
-        )
+    pub(super) fn upsert_pool(&mut self, resource_id: ResourceId, filter: FilterEngine) {
+        self.peer.remove_by_id(resource_id);
+        for network in [crate::IPV4_TUNNEL.into(), crate::IPV6_TUNNEL.into()] {
+            self.peer.upsert(
+                network,
+                PeerEntry {
+                    resource_id,
+                    filter: filter.clone(),
+                },
+            );
+        }
     }
 
     pub(super) fn remove_by_id(&mut self, resource_id: ResourceId) {
         self.cidr.remove_by_id(resource_id);
         self.dns.remove_by_id(resource_id);
         self.peer.remove_by_id(resource_id);
-    }
-
-    pub(super) fn remove_peer(&mut self, network: IpNetwork, resource_id: ResourceId) {
-        self.peer
-            .remove(network, |entry| entry.resource_id == resource_id);
-    }
-
-    /// Drops every pool route to the peer at `network`.
-    pub(super) fn remove_peer_routes(&mut self, network: IpNetwork) {
-        self.peer.remove(network, |_| true);
-    }
-
-    /// Applies a pool's new filters to every peer routed through it.
-    pub(super) fn replace_peer_filter(&mut self, resource_id: ResourceId, filter: FilterEngine) {
-        self.peer.update_by_id(resource_id, |entry| PeerEntry {
-            filter: filter.clone(),
-            resource_id: entry.resource_id,
-        });
     }
 }
 
@@ -261,25 +259,26 @@ mod tests {
             Some(internet_resource_id()),
         );
 
-        assert!(route.is_none());
+        assert!(route.is_empty());
     }
 
     #[test]
-    fn dynamic_pool_does_not_claim_unresolved_peer() {
+    fn pool_routes_cover_both_tunnel_ranges() {
         let mut tables = RoutingTables::default();
-        resolve_through_pool(&mut tables, dynamic_pool_id(), FilterEngine::PermitAll);
+        tables.upsert_pool(pool_id(), FilterEngine::PermitAll);
 
-        let route = tables.resolve(
-            IpAddr::V4(Ipv4Addr::new(100, 64, 0, 4)),
-            Protocol::Tcp(80),
-            Some(internet_resource_id()),
+        for ip in ["100.64.0.4", "100.95.255.254", "fd00:2021:1111::4"] {
+            let routes = tables.resolve(ip.parse().unwrap(), Protocol::Tcp(80), None);
+            assert_eq!(
+                routes.iter().map(Route::resource_id).collect::<Vec<_>>(),
+                vec![pool_id()]
+            );
+        }
+        assert!(
+            tables
+                .resolve("100.96.0.4".parse().unwrap(), Protocol::Tcp(80), None)
+                .is_empty()
         );
-
-        assert!(route.is_none());
-    }
-
-    fn resolve_through_pool(tables: &mut RoutingTables, pool: ResourceId, filter: FilterEngine) {
-        tables.upsert_peer(IpNetwork::from(other_client_tun_ip()), pool, filter);
     }
 
     fn other_client_tun_ip() -> IpAddr {
@@ -290,7 +289,7 @@ mod tests {
         ResourceId::from_u128(1)
     }
 
-    fn dynamic_pool_id() -> ResourceId {
+    fn pool_id() -> ResourceId {
         ResourceId::from_u128(10)
     }
 }

@@ -416,11 +416,11 @@ impl Eventloop {
             }
             Ok(ClientEvent::ResourceConnectionIntent {
                 preferred_gateways,
-                resource,
+                resources,
             }) => {
                 self.portal_cmd_tx
                     .send(PortalCommand::Send(EgressMessages::RequestAccess {
-                        resource_ids: vec![resource],
+                        resource_ids: resources,
                         ipv4: None,
                         ipv6: None,
                         preferred_gateways,

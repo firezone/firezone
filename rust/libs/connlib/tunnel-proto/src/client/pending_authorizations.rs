@@ -38,7 +38,7 @@ impl From<ResourceId> for AuthorizationTarget {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AuthorizationRequest {
-    Resource(ResourceId),
+    Resources(Vec<ResourceId>),
     /// Access to the device at `addr` through `pools`, most preferred first; the portal
     /// grants the first that holds the device.
     Device {
@@ -48,14 +48,17 @@ pub enum AuthorizationRequest {
 }
 
 impl PendingAuthorizations {
-    #[tracing::instrument(level = "debug", skip_all, fields(%rid))]
+    #[tracing::instrument(level = "debug", skip_all, fields(?resource_ids))]
     pub fn on_not_authorized_resource(
         &mut self,
-        rid: ResourceId,
+        resource_ids: Vec<ResourceId>,
         trigger: impl Into<Trigger>,
         resources_by_id: &BTreeMap<ResourceId, Resource>,
         now: Instant,
     ) {
+        let Some(rid) = resource_ids.first().copied() else {
+            return;
+        };
         let trigger = trigger.into();
 
         let Some(resource) = resources_by_id.get(&rid) else {
@@ -70,7 +73,7 @@ impl PendingAuthorizations {
 
         self.upsert(
             AuthorizationTarget::Resource(rid),
-            AuthorizationRequest::Resource(rid),
+            AuthorizationRequest::Resources(resource_ids),
             trigger,
             now,
         );
@@ -280,7 +283,7 @@ mod tests {
         let mut now = Instant::now();
         let (rid, resources) = single_resource();
 
-        pending.on_not_authorized_resource(rid, udp_trigger(1), &resources, now);
+        pending.on_not_authorized_resource(vec![rid], udp_trigger(1), &resources, now);
         assert_eq!(
             pending.poll_authorization_requests(),
             Some(resource_request(rid))
@@ -288,7 +291,7 @@ mod tests {
 
         now += Duration::from_secs(1);
 
-        pending.on_not_authorized_resource(rid, udp_trigger(2), &resources, now);
+        pending.on_not_authorized_resource(vec![rid], udp_trigger(2), &resources, now);
         assert_eq!(pending.poll_authorization_requests(), None);
     }
 
@@ -298,7 +301,7 @@ mod tests {
         let mut now = Instant::now();
         let (rid, resources) = single_resource();
 
-        pending.on_not_authorized_resource(rid, udp_trigger(1), &resources, now);
+        pending.on_not_authorized_resource(vec![rid], udp_trigger(1), &resources, now);
         assert_eq!(
             pending.poll_authorization_requests(),
             Some(resource_request(rid))
@@ -306,11 +309,32 @@ mod tests {
 
         now += Duration::from_secs(3);
 
-        pending.on_not_authorized_resource(rid, udp_trigger(2), &resources, now);
+        pending.on_not_authorized_resource(vec![rid], udp_trigger(2), &resources, now);
         assert_eq!(
             pending.poll_authorization_requests(),
             Some(resource_request(rid))
         );
+    }
+
+    #[test]
+    fn requests_every_matching_resource_in_order() {
+        let mut pending = PendingAuthorizations::default();
+        let (first, second, resources) = two_resources();
+        let resource_ids = vec![second, first];
+
+        pending.on_not_authorized_resource(
+            resource_ids.clone(),
+            udp_trigger(1),
+            &resources,
+            Instant::now(),
+        );
+
+        assert_eq!(
+            pending.poll_authorization_requests(),
+            Some(AuthorizationRequest::Resources(resource_ids))
+        );
+        assert!(pending.remove(second).is_some());
+        assert!(pending.remove(first).is_none());
     }
 
     #[test]
@@ -321,12 +345,12 @@ mod tests {
         let now = Instant::now();
         let (rid1, rid2, resources) = two_resources();
 
-        pending.on_not_authorized_resource(rid1, udp_trigger(1), &resources, now);
+        pending.on_not_authorized_resource(vec![rid1], udp_trigger(1), &resources, now);
         assert_eq!(
             pending.poll_authorization_requests(),
             Some(resource_request(rid1))
         );
-        pending.on_not_authorized_resource(rid2, udp_trigger(2), &resources, now);
+        pending.on_not_authorized_resource(vec![rid2], udp_trigger(2), &resources, now);
         assert_eq!(
             pending.poll_authorization_requests(),
             Some(resource_request(rid2))
@@ -342,7 +366,7 @@ mod tests {
         let resources = BTreeMap::from([(rid, resource)]);
 
         // The trigger is a UDP packet, but the resource only permits ICMP.
-        pending.on_not_authorized_resource(rid, udp_trigger(1), &resources, now);
+        pending.on_not_authorized_resource(vec![rid], udp_trigger(1), &resources, now);
 
         assert_eq!(pending.poll_authorization_requests(), None);
     }
@@ -362,7 +386,7 @@ mod tests {
         .guard();
 
         // The trigger is a UDP packet that the resource's filter would normally reject.
-        pending.on_not_authorized_resource(rid, udp_trigger(1), &resources, now);
+        pending.on_not_authorized_resource(vec![rid], udp_trigger(1), &resources, now);
 
         assert_eq!(
             pending.poll_authorization_requests(),
@@ -428,7 +452,7 @@ mod tests {
         let (rid, resources) = single_resource();
         let ip = device_ip();
 
-        pending.on_not_authorized_resource(rid, udp_trigger(1), &resources, now);
+        pending.on_not_authorized_resource(vec![rid], udp_trigger(1), &resources, now);
         pending.on_not_authorized_device(ip, pools(), udp_trigger(2), now);
         assert_eq!(
             pending.poll_authorization_requests(),
@@ -444,7 +468,7 @@ mod tests {
         now += Duration::from_millis(500);
 
         // The resource entry survived: within its throttle window, no new request.
-        pending.on_not_authorized_resource(rid, udp_trigger(3), &resources, now);
+        pending.on_not_authorized_resource(vec![rid], udp_trigger(3), &resources, now);
         assert_eq!(pending.poll_authorization_requests(), None);
 
         // The device entry was removed: a new trigger requests again immediately.
@@ -505,7 +529,7 @@ mod tests {
     }
 
     fn resource_request(resource_id: ResourceId) -> AuthorizationRequest {
-        AuthorizationRequest::Resource(resource_id)
+        AuthorizationRequest::Resources(vec![resource_id])
     }
 
     fn ipv4_localhost_resource() -> Resource {

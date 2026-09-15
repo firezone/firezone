@@ -532,6 +532,7 @@ impl ClientOnGateway {
         let entry = self
             .routing_table
             .matches(resource_ip, protocol.clone())
+            .first()
             .context(NotAllowedResource(resource_ip))?;
 
         entry

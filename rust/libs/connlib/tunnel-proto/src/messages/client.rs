@@ -387,8 +387,8 @@ pub enum EgressMessages {
     /// A packet for a device in the tunnel range names every pool whose filters permit
     /// it and carries the device's address; the portal grants the first pool that holds
     /// the device and answers with [`ClientDeviceAccessAuthorized`] or
-    /// [`ClientDeviceAccessDenied`]. Any other packet names the one resource we route it
-    /// through and the portal answers with [`AuthorizationCreated`] or
+    /// [`ClientDeviceAccessDenied`]. Any other packet names the matching resources,
+    /// and the portal answers with [`AuthorizationCreated`] or
     /// [`AuthorizationCreationFailed`].
     RequestAccess {
         resource_ids: Vec<ResourceId>,
@@ -880,14 +880,17 @@ mod tests {
     }
 
     #[test]
-    fn serialize_request_access_message_for_a_resource() {
+    fn serialize_request_access_message_for_resources() {
         let message = EgressMessages::RequestAccess {
-            resource_ids: vec!["f16ecfa0-a94f-4bfd-a2ef-1cc1f2ef3da3".parse().unwrap()],
+            resource_ids: vec![
+                "f16ecfa0-a94f-4bfd-a2ef-1cc1f2ef3da3".parse().unwrap(),
+                "73037362-715d-4a83-a749-f18eadd970e6".parse().unwrap(),
+            ],
             ipv4: None,
             ipv6: None,
             preferred_gateways: Vec::new(),
         };
-        let expected_json = r#"{"event":"request_access","payload":{"resource_ids":["f16ecfa0-a94f-4bfd-a2ef-1cc1f2ef3da3"],"connected_gateway_ids":[]}}"#;
+        let expected_json = r#"{"event":"request_access","payload":{"resource_ids":["f16ecfa0-a94f-4bfd-a2ef-1cc1f2ef3da3","73037362-715d-4a83-a749-f18eadd970e6"],"connected_gateway_ids":[]}}"#;
         let actual_json = serde_json::to_string(&message).unwrap();
 
         assert_eq!(actual_json, expected_json);

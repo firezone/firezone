@@ -353,7 +353,8 @@ impl InboundResources {
     fn resource_for(&mut self, packet: &IpPacket) -> Option<ResourceId> {
         let entry = self
             .table
-            .matches(packet.destination(), packet.destination_protocol())?;
+            .matches(packet.destination(), packet.destination_protocol())
+            .first()?;
 
         // Only a resource whose filter admits the packet may claim it.
         entry.filter.apply(packet.destination_protocol()).ok()?;

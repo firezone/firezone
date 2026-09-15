@@ -73,7 +73,7 @@ pub enum ClientEvent {
         candidates: BTreeSet<IceCandidate>,
     },
     ResourceConnectionIntent {
-        resource: ResourceId,
+        resources: Vec<ResourceId>,
         preferred_gateways: Vec<GatewayId>,
     },
     /// A packet to a tunnel address we hold no grant for asks the portal for access to

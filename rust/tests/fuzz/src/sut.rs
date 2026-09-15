@@ -1382,9 +1382,10 @@ impl TunnelTest {
                 Ok(())
             }
             ClientEvent::ResourceConnectionIntent {
-                resource: resource_id,
+                resources,
                 preferred_gateways,
             } => {
+                let resource_id = *resources.first().expect("request must name resources");
                 let (gateway_id, site_id) =
                     portal.handle_connection_intent(resource_id, preferred_gateways);
                 let gateway = self.gateways.get_mut(&gateway_id).expect("unknown gateway");

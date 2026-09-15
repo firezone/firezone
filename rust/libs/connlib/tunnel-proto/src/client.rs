@@ -619,9 +619,37 @@ impl ClientState {
         let pending_authorizations = &mut self.pending_authorizations;
         let resources = &self.resources_by_id;
 
-        let route = self
+        let routes = self
             .routing_tables
             .resolve(dst, dst_proto, internet_resource);
+        let resource_ids = routes
+            .iter()
+            .filter(|route| match route {
+                Route::Client { .. } => route.filter().apply(Ok(dst_proto)).is_ok(),
+                Route::Gateway { .. } => filter_allows(route.filter(), dst_proto),
+            })
+            .map(Route::resource_id)
+            .unique()
+            .collect_vec();
+        let route = routes
+            .iter()
+            .find(|route| {
+                let Route::Client {
+                    resource_id,
+                    filter,
+                } = route
+                else {
+                    return false;
+                };
+                filter_allows(filter, dst_proto)
+                    && self.clients.peer_by_ip(dst).is_some_and(|(cid, _)| {
+                        self.authorized_resources
+                            .get(resource_id)
+                            .is_some_and(|resource| resource.client_token(cid).is_some())
+                    })
+            })
+            .or_else(|| routes.first())
+            .cloned();
 
         let direct_gateway = self.gateways.peer_by_ip(dst).map(|(gid, _)| gid);
         let peer_originated_client_flow = self.clients.peer_by_ip(dst).and_then(|(cid, peer)| {
@@ -646,24 +674,9 @@ impl ClientState {
                 None,
                 None,
                 Some(Route::Client {
-                    filter,
-                    resource_id: rid,
+                    resource_id: rid, ..
                 }),
             ) => {
-                // The pool we hold for the peer does not permit this flow: another pool may,
-                // so ask the portal through the ones that do.
-                if !filter_allows(&filter, dst_proto) {
-                    let pools = permitting_pools(resources, dst_proto);
-
-                    if pools.is_empty() {
-                        reply_with_icmp_prohibited(&mut self.buffered_packets, packet);
-                        return Ok(());
-                    }
-
-                    pending_authorizations.on_not_authorized_device(dst, pools, packet, now);
-                    return Ok(());
-                }
-
                 let authorized = self
                     .clients
                     .peer_by_ip(dst)
@@ -675,10 +688,13 @@ impl ClientState {
                     });
 
                 let Some((cid, ingest_token)) = authorized else {
-                    // Not yet authorized: Buffer + send request.
-                    let pools = permitting_pools(resources, dst_proto);
+                    if resource_ids.is_empty() {
+                        reply_with_icmp_prohibited(&mut self.buffered_packets, packet);
+                        return Ok(());
+                    }
 
-                    pending_authorizations.on_not_authorized_device(dst, pools, packet, now);
+                    // Not yet authorized: Buffer + send request.
+                    pending_authorizations.on_not_authorized_device(dst, resource_ids, packet, now);
                     return Ok(());
                 };
 
@@ -713,7 +729,12 @@ impl ClientState {
                     .and_then(|resource| resource.gateway_token())
                 else {
                     // Not yet authorized: Buffer + send intent.
-                    pending_authorizations.on_not_authorized_resource(rid, packet, resources, now);
+                    pending_authorizations.on_not_authorized_resource(
+                        resource_ids,
+                        packet,
+                        resources,
+                        now,
+                    );
                     return Ok(());
                 };
 
@@ -738,20 +759,6 @@ impl ClientState {
                 (packet, gid.into())
             }
             (None, None, None) => {
-                // A tunnel address is a device the portal may let us reach through one of
-                // our pools; without pools it is nothing we can route.
-                if crate::is_peer(dst) && has_device_pool(resources) {
-                    let pools = permitting_pools(resources, dst_proto);
-
-                    if pools.is_empty() {
-                        reply_with_icmp_prohibited(&mut self.buffered_packets, packet);
-                        return Ok(());
-                    }
-
-                    pending_authorizations.on_not_authorized_device(dst, pools, packet, now);
-                    return Ok(());
-                }
-
                 return Err(anyhow::Error::new(UnroutablePacket::unknown_resource(
                     &packet,
                 )));
@@ -904,21 +911,26 @@ impl ClientState {
                     && let Ok(Some((failed_packet, error))) = packet.icmp_error()
                     && error.is_unreachable_prohibited()
                     && let internet_resource = self.active_internet_resource().map(|r| r.id)
-                    && let Some(resource) = self
+                    && let resources = self
                         .routing_tables
                         .resolve_resource(
                             failed_packet.dst(),
                             failed_packet.dst_proto(),
                             internet_resource,
                         )
-                        .map(|route| route.resource_id())
+                        .iter()
+                        .filter(|route| filter_allows(route.filter(), failed_packet.dst_proto()))
+                        .map(Route::resource_id)
+                        .unique()
+                        .collect_vec()
+                    && !resources.is_empty()
                 {
                     telemetry::analytics::feature_flag_called(
                         "icmp-error-unreachable-prohibited-create-new-flow",
                     );
 
                     self.pending_authorizations.on_not_authorized_resource(
-                        resource,
+                        resources,
                         pending_authorizations::Trigger::IcmpDestinationUnreachableProhibited,
                         &self.resources_by_id,
                         now,
@@ -1251,7 +1263,7 @@ impl ClientState {
         // We asked for this connection: from now on the pool the portal picked routes
         // flows to the peer, so later sends skip `pending_authorizations`.
         if let Some(resource_id) = resource_id {
-            self.route_peer_through_pool(cid, client_tun, resource_id, flow_logs_ingest_token);
+            self.authorize_peer_through_pool(cid, resource_id, flow_logs_ingest_token);
         }
 
         for packet in buffered_packets {
@@ -1263,28 +1275,16 @@ impl ClientState {
         Ok(())
     }
 
-    fn route_peer_through_pool(
+    fn authorize_peer_through_pool(
         &mut self,
         cid: ClientId,
-        client_tun: IpConfig,
         resource_id: ResourceId,
         ingest_token: IngestToken,
     ) {
-        let Some(Resource::DevicePool(pool)) = self.resources_by_id.get(&resource_id) else {
+        let Some(Resource::DevicePool(_)) = self.resources_by_id.get(&resource_id) else {
             tracing::debug!(%resource_id, "Portal authorised access through a pool we do not hold");
             return;
         };
-        let filter = FilterEngine::new(&pool.filters);
-
-        for network in [
-            IpNetwork::from(Ipv4Network::from(client_tun.v4)),
-            IpNetwork::from(Ipv6Network::from(client_tun.v6)),
-        ] {
-            self.routing_tables.remove_peer(network, resource_id);
-            self.routing_tables
-                .upsert_peer(network, resource_id, filter.clone());
-        }
-
         self.authorized_resources
             .entry(resource_id)
             .or_insert_with(AuthorizedOutboundResource::direct)
@@ -1313,12 +1313,6 @@ impl ClientState {
             return;
         };
         peer.remove_resource(&resource_id);
-
-        let tun = peer.remote_tun();
-        self.routing_tables
-            .remove_peer(IpNetwork::from(Ipv4Network::from(tun.v4)), resource_id);
-        self.routing_tables
-            .remove_peer(IpNetwork::from(Ipv6Network::from(tun.v6)), resource_id);
     }
 
     /// Resyncs inbound client-to-client authorizations from the portal's `init`.
@@ -1546,20 +1540,9 @@ impl ClientState {
     }
 
     /// Drops every grant the portal gave us towards `cid`, so the next flow asks again.
-    /// A peer's routes exist only together with its grants: a route without a grant
-    /// would make the router pick a pool the portal may not, and the two would ask each
-    /// other forever.
     fn forget_outbound_grants(&mut self, cid: ClientId) {
         for resource in self.authorized_resources.values_mut() {
             resource.remove_client(&cid);
-        }
-
-        if let Some(peer) = self.clients.peer_by_id(&cid) {
-            let tun = peer.remote_tun();
-            self.routing_tables
-                .remove_peer_routes(IpNetwork::from(Ipv4Network::from(tun.v4)));
-            self.routing_tables
-                .remove_peer_routes(IpNetwork::from(Ipv6Network::from(tun.v6)));
         }
     }
 
@@ -2056,14 +2039,15 @@ impl ClientState {
                     transport,
                 });
             }
-            resource_stub_resolver::ResolveStrategy::RecurseSite(resource) => {
+            resource_stub_resolver::ResolveStrategy::RecurseSite(resources) => {
+                let resource = *resources.first()?;
                 let Some((_, gateway)) = gateway_by_resource_mut(
                     &self.authorized_resources,
                     &mut self.gateways,
                     resource,
                 ) else {
                     self.pending_authorizations.on_not_authorized_resource(
-                        resource,
+                        resources,
                         DnsQueryForSite {
                             local,
                             remote,
@@ -2348,10 +2332,16 @@ impl ClientState {
 
         if let Some(request) = self.pending_authorizations.poll_authorization_requests() {
             return Some(match request {
-                AuthorizationRequest::Resource(resource) => ClientEvent::ResourceConnectionIntent {
-                    preferred_gateways: self.preferred_gateways(resource),
-                    resource,
-                },
+                AuthorizationRequest::Resources(resources) => {
+                    ClientEvent::ResourceConnectionIntent {
+                        preferred_gateways: resources
+                            .iter()
+                            .flat_map(|resource| self.preferred_gateways(*resource))
+                            .unique()
+                            .collect(),
+                        resources,
+                    }
+                }
                 AuthorizationRequest::Device { addr, pools } => {
                     ClientEvent::DeviceAccessRequested { ip: addr, pools }
                 }
@@ -2532,8 +2522,7 @@ impl ClientState {
         self.dns_cache.flush("Resource added");
     }
 
-    /// Stores a device pool. Members are never sent: peers join the pool's routes as
-    /// the portal authorises flows through it, see `route_peer_through_pool`.
+    /// Stores a device pool and routes both tunnel ranges through its filters.
     fn upsert_device_pool(&mut self, new_pool: DevicePoolResource) {
         let pool_id = new_pool.id;
 
@@ -2548,10 +2537,11 @@ impl ClientState {
             .as_ref()
             .is_some_and(|filters| *filters != new_pool.filters)
         {
-            self.routing_tables
-                .replace_peer_filter(pool_id, FilterEngine::new(&new_pool.filters));
             self.handle_resource_filters_updated(pool_id, new_pool.filters.clone());
         }
+
+        self.routing_tables
+            .upsert_pool(pool_id, FilterEngine::new(&new_pool.filters));
 
         let resource = Resource::DevicePool(new_pool);
         self.resources_by_id.insert(pool_id, resource.clone());
@@ -2806,31 +2796,6 @@ fn filter_allows(filter: &FilterEngine, protocol: Protocol) -> bool {
 
 /// Like [`encapsulate_or_buffer`], but encapsulates into `buffered_transmits` and drops (with a
 /// log) any error instead of returning it.
-/// The pools whose filters permit `protocol`, most preferred first.
-///
-/// The order is the one the routing tables use to break ties: the highest id wins.
-fn permitting_pools(
-    resources: &BTreeMap<ResourceId, Resource>,
-    protocol: Protocol,
-) -> Vec<ResourceId> {
-    resources
-        .values()
-        .rev()
-        .filter_map(|resource| match resource {
-            Resource::DevicePool(pool) => Some(pool),
-            Resource::Cidr(_) | Resource::Dns(_) | Resource::Internet(_) => None,
-        })
-        .filter(|pool| FilterEngine::new(&pool.filters).apply(Ok(protocol)).is_ok())
-        .map(|pool| pool.id)
-        .collect()
-}
-
-fn has_device_pool(resources: &BTreeMap<ResourceId, Resource>) -> bool {
-    resources
-        .values()
-        .any(|resource| matches!(resource, Resource::DevicePool(_)))
-}
-
 fn encapsulate_and_queue(
     packet: IpPacket,
     pid: ClientOrGatewayId,
@@ -3056,7 +3021,7 @@ mod tests {
         assert_eq!(
             request,
             Some(vec![ResourceId::from_u128(3), ResourceId::from_u128(1)]),
-            "expected the permitting pools, highest id first"
+            "expected the permitting pools in routing table order"
         );
     }
 
