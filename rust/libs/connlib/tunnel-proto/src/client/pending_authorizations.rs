@@ -22,16 +22,10 @@ pub struct PendingAuthorizations {
 }
 
 /// What we are requesting authorization for.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum AuthorizationTarget {
-    Resource(ResourceId),
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+enum AuthorizationTarget {
+    Resources(Vec<ResourceId>),
     Device { addr: IpAddr },
-}
-
-impl From<ResourceId> for AuthorizationTarget {
-    fn from(v: ResourceId) -> Self {
-        Self::Resource(v)
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -53,12 +47,12 @@ impl PendingAuthorizations {
         trigger: impl Into<Trigger>,
         now: Instant,
     ) {
-        let Some(rid) = resource_ids.first().copied() else {
+        if resource_ids.is_empty() {
             return;
-        };
+        }
 
         self.upsert(
-            AuthorizationTarget::Resource(rid),
+            AuthorizationTarget::Resources(resource_ids.clone()),
             AuthorizationRequest::Resources(resource_ids),
             trigger.into(),
             now,
@@ -82,11 +76,18 @@ impl PendingAuthorizations {
         );
     }
 
-    pub fn remove(
+    /// Removes every pending request that includes `resource` among its candidates.
+    pub fn remove_resource_authorizations(
         &mut self,
-        target: impl Into<AuthorizationTarget>,
-    ) -> Option<PendingAuthorization> {
-        self.inner.remove(&target.into())
+        resource: ResourceId,
+    ) -> Vec<PendingAuthorization> {
+        self.inner
+            .extract_if(.., |target, _| match target {
+                AuthorizationTarget::Resources(resources) => resources.contains(&resource),
+                AuthorizationTarget::Device { .. } => false,
+            })
+            .map(|(_, pending)| pending)
+            .collect()
     }
 
     /// Removes and returns every device entry whose address matches the predicate.
@@ -98,7 +99,7 @@ impl PendingAuthorizations {
     ) -> impl Iterator<Item = PendingAuthorization> + 'a {
         self.inner
             .extract_if(.., move |target, _| match target {
-                AuthorizationTarget::Resource(_) => false,
+                AuthorizationTarget::Resources(_) => false,
                 AuthorizationTarget::Device { addr } => f(*addr),
             })
             .map(|(_, pending)| pending)
@@ -287,8 +288,57 @@ mod tests {
             pending.poll_authorization_requests(),
             Some(AuthorizationRequest::Resources(resource_ids))
         );
-        assert!(pending.remove(second).is_some());
-        assert!(pending.remove(first).is_none());
+        assert_eq!(pending.remove_resource_authorizations(first).len(), 1);
+        assert!(pending.remove_resource_authorizations(second).is_empty());
+    }
+
+    #[test]
+    fn throttles_only_identical_candidate_lists() {
+        let mut pending = PendingAuthorizations::default();
+        let now = Instant::now();
+        let a = ResourceId::from_u128(1);
+        let b = ResourceId::from_u128(2);
+        let c = ResourceId::from_u128(3);
+
+        for candidates in [vec![a, b], vec![a, c], vec![b, a]] {
+            pending.on_not_authorized_resource(candidates.clone(), udp_trigger(1), now);
+            assert_eq!(
+                pending.poll_authorization_requests(),
+                Some(AuthorizationRequest::Resources(candidates.clone()))
+            );
+
+            pending.on_not_authorized_resource(
+                candidates,
+                udp_trigger(2),
+                now + Duration::from_secs(1),
+            );
+            assert_eq!(pending.poll_authorization_requests(), None);
+        }
+    }
+
+    #[test]
+    fn authorization_drains_all_lists_containing_the_granted_resource() {
+        let mut pending = PendingAuthorizations::default();
+        let now = Instant::now();
+        let a = ResourceId::from_u128(1);
+        let b = ResourceId::from_u128(2);
+        let c = ResourceId::from_u128(3);
+        let first_packet = udp_trigger(1);
+        let second_packet = udp_trigger(2);
+        pending.on_not_authorized_resource(vec![a, b], first_packet.clone(), now);
+        pending.on_not_authorized_resource(vec![c, b], second_packet.clone(), now);
+        pending.on_not_authorized_resource(vec![a, c], udp_trigger(3), now);
+        pending.on_not_authorized_device(device_ip(), vec![b], udp_trigger(4), now);
+
+        let drained = pending.remove_resource_authorizations(b);
+        let packets = drained
+            .into_iter()
+            .flat_map(|entry| entry.into_buffered_packets().0)
+            .collect::<Vec<_>>();
+        assert_eq!(packets, vec![first_packet, second_packet]);
+        assert!(pending.remove_resource_authorizations(b).is_empty());
+        assert_eq!(pending.remove_resource_authorizations(a).len(), 1);
+        assert_eq!(pending.remove_device_authorizations(|_| true).count(), 1);
     }
 
     #[test]

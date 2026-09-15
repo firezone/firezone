@@ -1386,7 +1386,9 @@ impl TunnelTest {
                 ip: None,
                 preferred_gateways,
             } => {
-                let resource_id = *resource_ids.first().expect("request must name resources");
+                let resource_id = portal
+                    .pick_resource(&resource_ids)
+                    .expect("request must name resources");
                 let (gateway_id, site_id) =
                     portal.handle_connection_intent(resource_id, preferred_gateways);
                 let gateway = self.gateways.get_mut(&gateway_id).expect("unknown gateway");

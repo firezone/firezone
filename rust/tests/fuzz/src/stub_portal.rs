@@ -321,6 +321,11 @@ impl StubPortal {
     }
 
     /// Picks, which gateway and site we should connect to for the given resource.
+    /// Selects the last candidate so simulations exercise authorizations for a non-preferred resource.
+    pub(crate) fn pick_resource(&self, candidates: &[ResourceId]) -> Option<ResourceId> {
+        candidates.last().copied()
+    }
+
     pub(crate) fn handle_connection_intent(
         &self,
         resource: ResourceId,

@@ -51,7 +51,6 @@ use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_packet::{IpPacket, MAX_UDP_PAYLOAD, Protocol};
 use itertools::Itertools;
 use logging::{unwrap_or_debug, unwrap_or_warn};
-use ringbuffer::RingBuffer;
 use secrecy::ExposeSecret as _;
 use snownet::{NoTurnServers, Node, RelaySocket};
 use std::cmp::Ordering;
@@ -467,7 +466,11 @@ impl ClientState {
                 let proto = packet.destination_protocol();
                 let (resource, domain) = self
                     .routing_tables
-                    .dns_resource(packet.destination(), proto)
+                    .dns_resource(packet.destination(), proto, |resource| {
+                        self.authorized_resources
+                            .get(&resource)
+                            .is_some_and(|path| path.as_gateway().is_some())
+                    })
                     .context("IP is not associated with a DNS resource")?;
                 let gateway_id = self
                     .authorized_resources
@@ -637,7 +640,10 @@ impl ClientState {
                 .iter()
                 .find(|route| match route {
                     Route::Client { resource_id } => is_authorized(*resource_id),
-                    Route::Gateway { .. } => false,
+                    Route::Gateway { resource_id, .. } => self
+                        .authorized_resources
+                        .get(resource_id)
+                        .is_some_and(|path| path.as_gateway().is_some()),
                 })
                 .or_else(|| routes.first())
                 .cloned()
@@ -1057,11 +1063,14 @@ impl ClientState {
 
         let resource = self.resources_by_id.get(&rid).context("Unknown resource")?;
 
-        let Some(pending_authorization) = self.pending_authorizations.remove(rid) else {
+        let pending_authorizations = self
+            .pending_authorizations
+            .remove_resource_authorizations(rid);
+        if pending_authorizations.is_empty() {
             tracing::debug!("No pending authorization");
 
             return Ok(Ok(()));
-        };
+        }
 
         match self.node.upsert_connection(
             ClientOrGatewayId::Gateway(gid),
@@ -1093,8 +1102,12 @@ impl ClientState {
 
         // Deal with buffered packets
 
-        let (buffered_resource_packets, dns_queries) =
-            pending_authorization.into_buffered_packets();
+        let (packet_buffers, query_buffers) = pending_authorizations
+            .into_iter()
+            .map(|pending| pending.into_buffered_packets())
+            .unzip::<_, _, Vec<_>, Vec<_>>();
+        let buffered_resource_packets = packet_buffers.into_iter().flatten();
+        let dns_queries = query_buffers.into_iter().flatten().collect_vec();
 
         // If we are making this connection because we want to send a DNS query to the Gateway,
         // mark it as "used" through the DNS resource ID.
@@ -1127,9 +1140,7 @@ impl ClientState {
                     }
                 }
             }
-            Resource::Dns(_) => {
-                self.update_dns_resource_nat(now, buffered_resource_packets.into_iter())
-            }
+            Resource::Dns(_) => self.update_dns_resource_nat(now, buffered_resource_packets),
             Resource::DevicePool(_) => {}
         }
 
@@ -1369,7 +1380,8 @@ impl ClientState {
     }
 
     pub fn on_resource_connection_failed(&mut self, resource: ResourceId, now: Instant) {
-        self.pending_authorizations.remove(resource);
+        self.pending_authorizations
+            .remove_resource_authorizations(resource);
 
         // A pool's `Direct` authorizations must survive a single member's failure.
         let Some(disconnected_gateway) = self.gateway_by_resource(&resource) else {
@@ -2007,12 +2019,14 @@ impl ClientState {
                 });
             }
             resource_stub_resolver::ResolveStrategy::RecurseSite(resources) => {
-                let resource = *resources.first()?;
-                let Some((_, gateway)) = gateway_by_resource_mut(
-                    &self.authorized_resources,
-                    &mut self.gateways,
-                    resource,
-                ) else {
+                let gateway_id = resources.iter().find_map(|resource| {
+                    self.authorized_resources
+                        .get(resource)?
+                        .as_gateway()
+                        .copied()
+                });
+                let Some(gateway) = gateway_id.and_then(|id| self.gateways.peer_by_id_mut(&id))
+                else {
                     self.pending_authorizations.on_not_authorized_resource(
                         resources,
                         DnsQueryForSite {
@@ -2558,7 +2572,8 @@ impl ClientState {
 
         tracing::info!(%name, address, sites, "Deactivating resource");
 
-        self.pending_authorizations.remove(id);
+        self.pending_authorizations
+            .remove_resource_authorizations(id);
 
         for peer in self.clients.iter_mut() {
             peer.remove_resource(&id);

@@ -1137,11 +1137,20 @@ impl RefClient {
         src: IpAddr,
         proto: Protocol,
     ) -> Option<DnsResource> {
-        self.dns_resource_by_domain(
+        let candidates = self.dns_resources_by_domain(
             domain,
             |resource| resource.ip_stack.supports_ip(src),
             |resource| protocol_filter_allows(&resource.filters, proto),
-        )
+        );
+        let ids = candidates
+            .iter()
+            .filter(|resource| self.filter_allows(&resource.filters, proto))
+            .map(|resource| resource.id)
+            .collect_vec();
+        let selected = self
+            .select_gateway_resource(&ids)
+            .or_else(|| candidates.first().map(|r| r.id))?;
+        candidates.into_iter().find(|r| r.id == selected)
     }
 
     pub(crate) fn dns_resource_by_domain(
@@ -1150,13 +1159,24 @@ impl RefClient {
         eligible: impl Fn(&DnsResource) -> bool,
         preferred: impl Fn(&DnsResource) -> bool,
     ) -> Option<DnsResource> {
+        self.dns_resources_by_domain(domain, eligible, preferred)
+            .into_iter()
+            .next()
+    }
+
+    fn dns_resources_by_domain(
+        &self,
+        domain: &DomainName,
+        eligible: impl Fn(&DnsResource) -> bool,
+        preferred: impl Fn(&DnsResource) -> bool,
+    ) -> Vec<DnsResource> {
         self.resources
             .iter()
             .cloned()
             .filter_map(|r| r.into_dns())
             .filter(|r| dns::is_subdomain(domain, &r.address))
             .filter(|r| eligible(r))
-            .max_by(|r1, r2| {
+            .sorted_by(|r1, r2| {
                 let by_preference = match (preferred(r1), preferred(r2)) {
                     (true, true) => Ordering::Equal,
                     (false, false) => Ordering::Equal,
@@ -1169,8 +1189,18 @@ impl RefClient {
                     .reverse();
                 let by_id = r1.id.cmp(&r2.id);
 
-                by_preference.then(by_pattern).then(by_id)
+                by_preference.then(by_pattern).then(by_id).reverse()
             })
+            .collect()
+    }
+
+    /// Existing grants take precedence; otherwise the simulated portal selects the last candidate.
+    fn select_gateway_resource(&self, candidates: &[ResourceId]) -> Option<ResourceId> {
+        candidates
+            .iter()
+            .copied()
+            .find(|candidate| self.connected_resources().any(|id| id == *candidate))
+            .or_else(|| candidates.last().copied())
     }
 
     fn dns_resource_by_domain_for_records(
@@ -1286,7 +1316,15 @@ impl RefClient {
         ip: IpAddr,
         proto: Protocol,
     ) -> Option<ResourceId> {
-        self.cidr_resource_by_ip(ip, |r| protocol_filter_allows(&r.filters, proto))
+        let candidates =
+            self.cidr_resources_by_ip(ip, |r| protocol_filter_allows(&r.filters, proto));
+        let ids = candidates
+            .iter()
+            .filter(|resource| self.filter_allows(&resource.filters, proto))
+            .map(|resource| resource.id)
+            .collect_vec();
+        self.select_gateway_resource(&ids)
+            .or_else(|| candidates.first().map(|r| r.id))
     }
 
     pub(crate) fn cidr_resource_by_ip(
@@ -1294,8 +1332,17 @@ impl RefClient {
         ip: IpAddr,
         predicate: impl Fn(&CidrResource) -> bool,
     ) -> Option<ResourceId> {
-        let r = self
-            .resources
+        self.cidr_resources_by_ip(ip, predicate)
+            .first()
+            .map(|r| r.id)
+    }
+
+    fn cidr_resources_by_ip(
+        &self,
+        ip: IpAddr,
+        predicate: impl Fn(&CidrResource) -> bool,
+    ) -> Vec<CidrResource> {
+        self.resources
             .iter()
             .cloned()
             .filter_map(|r| r.into_cidr())
@@ -1310,11 +1357,9 @@ impl RefClient {
                 let by_netmask = r1.address.netmask().cmp(&r2.address.netmask());
                 let by_id = r1.id.cmp(&r2.id);
 
-                by_predicate.then(by_netmask).then(by_id)
+                by_predicate.then(by_netmask).then(by_id).reverse()
             })
-            .next_back()?;
-
-        Some(r.id)
+            .collect()
     }
 
     pub(crate) fn resolved_ip4_for_non_resources(
@@ -1368,7 +1413,16 @@ impl RefClient {
             return None;
         }
 
-        self.upstream_dns_server_via_resource(&query.dns_server)
+        self.upstream_dns_server_via_resource(&query.dns_server)?;
+        let dns::Upstream::Do53 { server } = query.dns_server else {
+            return None;
+        };
+        let protocol = match query.transport {
+            DnsTransport::Udp { .. } => Protocol::Udp(server.port()),
+            DnsTransport::Tcp => Protocol::Tcp(server.port()),
+        };
+        self.cidr_resource_by_ip_and_proto(server.ip(), protocol)
+            .or_else(|| self.active_internet_resource())
     }
 
     fn is_local_dns_resource_query(&self, query: &DnsQuery) -> bool {
@@ -1506,10 +1560,12 @@ impl RefClient {
             return None;
         }
 
-        Some(
-            self.dns_resource_by_domain(&query.domain, |_| true, |_| true)?
-                .id,
-        )
+        let candidates = self
+            .dns_resources_by_domain(&query.domain, |_| true, |_| true)
+            .into_iter()
+            .map(|r| r.id)
+            .collect_vec();
+        self.select_gateway_resource(&candidates)
     }
 
     pub(crate) fn all_resource_ids(&self) -> Vec<ResourceId> {
@@ -1803,6 +1859,15 @@ mod tests {
         );
 
         client.malicious_behaviour.ignore_resource_filters = true;
+        assert_eq!(
+            route(&mut client, Protocol::Udp(81)).0,
+            PacketRoute::ResourceRejectedByGateway {
+                resource: broad_id,
+                gateway: broad_gateway,
+            }
+        );
+
+        client.connected_cidr_resources.insert(specific_id);
         assert_eq!(
             route(&mut client, Protocol::Udp(81)).0,
             PacketRoute::ResourceRejectedByGateway {

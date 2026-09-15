@@ -117,6 +117,7 @@ impl RoutingTables {
         &mut self,
         destination: IpAddr,
         protocol: Result<Protocol, UnsupportedProtocol>,
+        is_authorized: impl Fn(ResourceId) -> bool,
     ) -> Option<(ResourceId, DomainName)> {
         let matches = self.dns.matches(destination, protocol)?;
         allowed_routes(
@@ -126,7 +127,7 @@ impl RoutingTables {
         )
         .ok()?
         .into_iter()
-        .next()
+        .find(|(resource, _)| is_authorized(*resource))
     }
 
     pub(super) fn has_cidr_route(&mut self, destination: IpAddr, protocol: Protocol) -> bool {
@@ -396,6 +397,42 @@ mod tests {
                 .unwrap()
                 .allowed
                 .is_empty()
+        );
+    }
+
+    #[test]
+    fn dns_nat_uses_an_authorized_candidate_that_permits_the_packet() {
+        let mut tables = RoutingTables::default();
+        let destination = "100.96.0.4".parse::<IpAddr>().unwrap();
+        let domain = "example.com".parse::<DomainName>().unwrap();
+        let a = ResourceId::from_u128(2);
+        let b = ResourceId::from_u128(1);
+        for resource in [a, b] {
+            tables.upsert_dns(
+                destination.into(),
+                resource,
+                domain.clone(),
+                dns::Pattern::new("example.com").unwrap(),
+                FilterEngine::PermitAll,
+            );
+        }
+
+        assert_eq!(
+            tables.dns_resource(destination, Ok(Protocol::Tcp(80)), |id| id == b),
+            Some((b, domain.clone()))
+        );
+
+        tables.remove_by_id(b);
+        tables.upsert_dns(
+            destination.into(),
+            b,
+            domain,
+            dns::Pattern::new("example.com").unwrap(),
+            FilterEngine::DenyAll,
+        );
+        assert_eq!(
+            tables.dns_resource(destination, Ok(Protocol::Tcp(80)), |id| id == b),
+            None
         );
     }
 
