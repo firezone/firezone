@@ -77,6 +77,13 @@ import kotlin.coroutines.cancellation.CancellationException
 @AndroidEntryPoint
 @OptIn(ExperimentalStdlibApi::class)
 class TunnelService : VpnService() {
+    enum class StartSource {
+        BOOT,
+        CONNECT_ON_START,
+        AUTH_TAB,
+        AUTH_CALLBACK,
+    }
+
     @Inject
     internal lateinit var repo: Repository
 
@@ -324,6 +331,18 @@ class TunnelService : VpnService() {
         flags: Int,
         startId: Int,
     ): Int {
+        val source =
+            StartSource.entries.firstOrNull { it.name == intent?.getStringExtra(START_SOURCE_EXTRA) }?.name
+                ?: when {
+                    intent == null -> "SERVICE_RESTART"
+                    intent.action == VpnService.SERVICE_INTERFACE -> "VPN_SERVICE"
+                    else -> "UNKNOWN"
+                }
+        Log.i(
+            TAG,
+            "Service start received: source=$source startId=$startId flags=$flags " +
+                "state=$tunnelState sessionLive=${sessionJob?.isCompleted == false}",
+        )
         if (intent?.getBooleanExtra("startedByUser", false) == true) {
             startedByUser = true
         }
@@ -936,6 +955,7 @@ class TunnelService : VpnService() {
         private const val SESSION_NAME: String = "Firezone Connection"
         private const val MTU: Int = 1280
         private const val TAG: String = "TunnelService"
+        private const val START_SOURCE_EXTRA = "startSource"
 
         // Whatever the event loop threw reads like a stack trace, so the user is told that the
         // session ended rather than what raised it.
@@ -980,9 +1000,13 @@ class TunnelService : VpnService() {
             return false
         }
 
-        fun start(context: Context) {
+        fun start(
+            context: Context,
+            source: StartSource,
+        ) {
             val intent = Intent(context, TunnelService::class.java)
-            intent.putExtra("startedByUser", true)
+            intent.putExtra(START_SOURCE_EXTRA, source.name)
+            intent.putExtra("startedByUser", source != StartSource.BOOT)
             context.startService(intent)
         }
     }
