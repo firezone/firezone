@@ -188,12 +188,12 @@ pub struct ClientState {
     buffered_events: VecDeque<ClientEvent>,
     buffered_packets: VecDeque<IpPacket>,
     buffered_transmits: snownet::TransmitBuffer,
-    /// When we queued work that only [`ClientState::handle_timeout`] acts on.
+    /// Set while a packet we handled has left work behind for [`ClientState::handle_timeout`].
     ///
-    /// Handling a packet can leave a DNS query or response in a sub-component that only
-    /// `handle_timeout` drains and that advertises no deadline of its own. Reported as already
-    /// due, so the event loop runs one `handle_timeout` before it suspends.
-    queued_work_at: Option<Instant>,
+    /// Handling a packet leaves work in sub-components that only `handle_timeout` drains and that
+    /// do not all advertise a deadline of their own, so every packet sets this. It is reported as
+    /// already due, so the event loop runs one `handle_timeout` before it suspends.
+    pending_work_at: Option<Instant>,
 
     /// Our connection to the portal, holding back ICE candidates while it is down.
     portal: PortalConnection<ClientOrGatewayId>,
@@ -230,7 +230,7 @@ impl ClientState {
             device_stub_resolver: Default::default(),
             dns_cache: Default::default(),
             buffered_transmits: Default::default(),
-            queued_work_at: None,
+            pending_work_at: None,
             is_internet_resource_active,
             buffered_dns_queries: Default::default(),
             udp_dns_client: l3_udp_dns_client::Client::new(seed),
@@ -576,6 +576,8 @@ impl ClientState {
         now: Instant,
         provider: &mut impl snownet::BufferProvider,
     ) -> Result<()> {
+        self.pending_work_at = Some(now);
+
         if packet.is_fz_p2p_control() {
             tracing::warn!("Packet matches heuristics of FZ p2p control protocol");
         }
@@ -600,11 +602,7 @@ impl ClientState {
 
         // DNS packets to our sentinel resolvers never become flows.
         let packet = match self.try_handle_dns(packet, now) {
-            ControlFlow::Break(()) => {
-                self.queued_work_at.get_or_insert(now);
-
-                return Ok(());
-            }
+            ControlFlow::Break(()) => return Ok(()),
             ControlFlow::Continue(non_dns_packet) => non_dns_packet,
         };
 
@@ -806,13 +804,9 @@ impl ClientState {
         packet: &[u8],
         now: Instant,
     ) -> Result<Option<IpPacket>> {
-        let packet = self.decapsulate(local, from, packet, now)?;
+        self.pending_work_at = Some(now);
 
-        if packet.is_none() {
-            self.queued_work_at.get_or_insert(now);
-        }
-
-        Ok(packet)
+        self.decapsulate(local, from, packet, now)
     }
 
     fn decapsulate(
@@ -958,7 +952,7 @@ impl ClientState {
     }
 
     pub fn handle_dns_response(&mut self, response: dns::RecursiveResponse, now: Instant) {
-        self.queued_work_at.get_or_insert(now);
+        self.pending_work_at = Some(now);
 
         let mut attributes = vec![
             match response.recursion {
@@ -1735,7 +1729,10 @@ impl ClientState {
                     .map(|instant| (instant, "Offline site status expiry")),
             )
             .chain(stale_dns_stream.map(|instant| (instant, "Stale DNS stream")))
-            .chain(self.queued_work_at.map(|instant| (instant, "Queued work")))
+            .chain(
+                self.pending_work_at
+                    .map(|instant| (instant, "Pending work")),
+            )
             .chain(
                 self.flow_tracker
                     .poll_timeout()
@@ -1769,7 +1766,7 @@ impl ClientState {
         self.reset_offline_site_status(now);
         self.discard_stale_dns_streams(now);
 
-        self.queued_work_at = None;
+        self.pending_work_at = None;
     }
 
     /// Advance the DNS server and client state machines.
