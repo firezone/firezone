@@ -220,6 +220,14 @@ config :portal, :gateway_session_queue, enabled: false
 config :portal, :policy_authorization_queue, enabled: false
 config :portal, :revocation_endpoint_queue, enabled: false
 
+config :portal, Portal.OSReleases, reload_every: false
+
+config :portal, Portal.OSReleases.Sync,
+  req_opts: [
+    plug: {Req.Test, Portal.OSReleases.Sync},
+    retry: false
+  ]
+
 config :portal, Portal.ComponentVersions,
   fetch_from_url: false,
   req_opts: [

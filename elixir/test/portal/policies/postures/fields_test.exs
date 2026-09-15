@@ -210,7 +210,8 @@ defmodule Portal.Policies.Postures.FieldsTest do
                blobs: :json,
                label: :enum_string,
                release: :version,
-               enrolled: :boolean
+               enrolled: :boolean,
+               os_up_to_date: :boolean
              }
     end
 

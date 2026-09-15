@@ -30,7 +30,9 @@ defmodule Portal.Policies.Postures.Fields.Classifier do
         {field, Map.get(overridden, field) || base_type!(schema, field)}
       end
 
-    Map.put(classified, :enrolled, :boolean)
+    classified
+    |> Map.put(:enrolled, :boolean)
+    |> Map.put(:os_up_to_date, :boolean)
   end
 
   defp base_type!(schema, field) do
