@@ -13,7 +13,6 @@ use super::{
         DynamicDevicePoolResourceEdit, DynamicDevicePoolResourceValue, Resource, ResourceEdit,
         ResourceTypeEdit, StaticDevicePoolResourceEdit, StaticDevicePoolResourceValue,
     },
-    resource_edit_path_coverage::ResourceEditPath,
     sim_net::Host,
 };
 use std::{
@@ -112,15 +111,6 @@ pub enum Transition {
 }
 
 impl Transition {
-    /// Returns the resource-edit path covered by this transition.
-    pub fn resource_edit_path(&self) -> Option<ResourceEditPath> {
-        let Transition::EditResource(edit) = self else {
-            return None;
-        };
-
-        Some(edit.path())
-    }
-
     /// Returns whether assertions should discard stale packets before applying this transition.
     pub fn should_clear_packets(&self) -> bool {
         match self {

@@ -4,8 +4,6 @@
 //! model. The SUT only receives portal-facing [`ResourceDescription`] values,
 //! matching the production event loop and keeping the internal model private.
 
-use crate::resource_edit_path_coverage::ResourceEditPath;
-
 use connlib_model::{
     CidrResourceView, DnsResourceView, InternetResourceView, IpStack, ResourceId, ResourceStatus,
     ResourceView, Site,
@@ -321,96 +319,6 @@ pub(crate) struct ResourceTypeEdit {
 }
 
 impl ResourceEdit {
-    pub(crate) fn path(&self) -> ResourceEditPath {
-        match self {
-            ResourceEdit::Dns(DnsResourceEdit {
-                value: DnsResourceValue::Id(_),
-                ..
-            }) => unreachable!("resource identity is not editable"),
-            ResourceEdit::Dns(DnsResourceEdit {
-                value: DnsResourceValue::Address(_),
-                ..
-            }) => ResourceEditPath::DnsAddress,
-            ResourceEdit::Dns(DnsResourceEdit {
-                value: DnsResourceValue::Name(_),
-                ..
-            }) => ResourceEditPath::DnsName,
-            ResourceEdit::Dns(DnsResourceEdit {
-                value: DnsResourceValue::AddressDescription(_),
-                ..
-            }) => ResourceEditPath::DnsAddressDescription,
-            ResourceEdit::Dns(DnsResourceEdit {
-                value: DnsResourceValue::Sites(_),
-                ..
-            }) => ResourceEditPath::DnsSites,
-            ResourceEdit::Dns(DnsResourceEdit {
-                value: DnsResourceValue::IpStack(_),
-                ..
-            }) => ResourceEditPath::DnsIpStack,
-            ResourceEdit::Dns(DnsResourceEdit {
-                value: DnsResourceValue::Filters(_),
-                ..
-            }) => ResourceEditPath::DnsFilters,
-            ResourceEdit::Cidr(CidrResourceEdit {
-                value: CidrResourceValue::Id(_),
-                ..
-            }) => unreachable!("resource identity is not editable"),
-            ResourceEdit::Cidr(CidrResourceEdit {
-                value: CidrResourceValue::Address(_),
-                ..
-            }) => ResourceEditPath::CidrAddress,
-            ResourceEdit::Cidr(CidrResourceEdit {
-                value: CidrResourceValue::Name(_),
-                ..
-            }) => ResourceEditPath::CidrName,
-            ResourceEdit::Cidr(CidrResourceEdit {
-                value: CidrResourceValue::AddressDescription(_),
-                ..
-            }) => ResourceEditPath::CidrAddressDescription,
-            ResourceEdit::Cidr(CidrResourceEdit {
-                value: CidrResourceValue::Sites(_),
-                ..
-            }) => ResourceEditPath::CidrSites,
-            ResourceEdit::Cidr(CidrResourceEdit {
-                value: CidrResourceValue::Filters(_),
-                ..
-            }) => ResourceEditPath::CidrFilters,
-            ResourceEdit::StaticDevicePool(StaticDevicePoolResourceEdit {
-                value: StaticDevicePoolResourceValue::Id(_),
-                ..
-            }) => unreachable!("resource identity is not editable"),
-            ResourceEdit::StaticDevicePool(StaticDevicePoolResourceEdit {
-                value: StaticDevicePoolResourceValue::Name(_),
-                ..
-            }) => ResourceEditPath::StaticDevicePoolName,
-            ResourceEdit::StaticDevicePool(StaticDevicePoolResourceEdit {
-                value: StaticDevicePoolResourceValue::Devices(_),
-                ..
-            }) => ResourceEditPath::StaticDevicePoolDevices,
-            ResourceEdit::StaticDevicePool(StaticDevicePoolResourceEdit {
-                value: StaticDevicePoolResourceValue::Filters(_),
-                ..
-            }) => ResourceEditPath::StaticDevicePoolFilters,
-            ResourceEdit::DynamicDevicePool(DynamicDevicePoolResourceEdit {
-                value: DynamicDevicePoolResourceValue::Id(_),
-                ..
-            }) => unreachable!("resource identity is not editable"),
-            ResourceEdit::DynamicDevicePool(DynamicDevicePoolResourceEdit {
-                value: DynamicDevicePoolResourceValue::Name(_),
-                ..
-            }) => ResourceEditPath::DynamicDevicePoolName,
-            ResourceEdit::DynamicDevicePool(DynamicDevicePoolResourceEdit {
-                value: DynamicDevicePoolResourceValue::Address(_),
-                ..
-            }) => ResourceEditPath::DynamicDevicePoolAddress,
-            ResourceEdit::DynamicDevicePool(DynamicDevicePoolResourceEdit {
-                value: DynamicDevicePoolResourceValue::Filters(_),
-                ..
-            }) => ResourceEditPath::DynamicDevicePoolFilters,
-            ResourceEdit::Type(edit) => edit.path(),
-        }
-    }
-
     pub(crate) fn id(&self) -> ResourceId {
         match self {
             ResourceEdit::Dns(edit) => edit.resource.id,
@@ -498,82 +406,6 @@ impl ResourceEdit {
                 new_resource: Resource::Internet(_),
                 ..
             }) => unreachable!("the Portal API does not allow editing the Internet Resource"),
-        }
-    }
-}
-
-impl ResourceTypeEdit {
-    fn path(&self) -> ResourceEditPath {
-        let old = EditableResourceType::from_resource(&self.old_resource);
-        let new = EditableResourceType::from_resource(&self.new_resource);
-
-        match (old, new) {
-            (EditableResourceType::Dns, EditableResourceType::Dns) => {
-                unreachable!("resource type edits must change the resource type")
-            }
-            (EditableResourceType::Dns, EditableResourceType::Cidr) => ResourceEditPath::DnsToCidr,
-            (EditableResourceType::Dns, EditableResourceType::StaticDevicePool) => {
-                ResourceEditPath::DnsToStaticDevicePool
-            }
-            (EditableResourceType::Dns, EditableResourceType::DynamicDevicePool) => {
-                ResourceEditPath::DnsToDynamicDevicePool
-            }
-            (EditableResourceType::Cidr, EditableResourceType::Dns) => ResourceEditPath::CidrToDns,
-            (EditableResourceType::Cidr, EditableResourceType::Cidr) => {
-                unreachable!("resource type edits must change the resource type")
-            }
-            (EditableResourceType::Cidr, EditableResourceType::StaticDevicePool) => {
-                ResourceEditPath::CidrToStaticDevicePool
-            }
-            (EditableResourceType::Cidr, EditableResourceType::DynamicDevicePool) => {
-                ResourceEditPath::CidrToDynamicDevicePool
-            }
-            (EditableResourceType::StaticDevicePool, EditableResourceType::Dns) => {
-                ResourceEditPath::StaticDevicePoolToDns
-            }
-            (EditableResourceType::StaticDevicePool, EditableResourceType::Cidr) => {
-                ResourceEditPath::StaticDevicePoolToCidr
-            }
-            (EditableResourceType::StaticDevicePool, EditableResourceType::StaticDevicePool) => {
-                unreachable!("resource type edits must change the resource type")
-            }
-            (EditableResourceType::StaticDevicePool, EditableResourceType::DynamicDevicePool) => {
-                ResourceEditPath::StaticDevicePoolToDynamicDevicePool
-            }
-            (EditableResourceType::DynamicDevicePool, EditableResourceType::Dns) => {
-                ResourceEditPath::DynamicDevicePoolToDns
-            }
-            (EditableResourceType::DynamicDevicePool, EditableResourceType::Cidr) => {
-                ResourceEditPath::DynamicDevicePoolToCidr
-            }
-            (EditableResourceType::DynamicDevicePool, EditableResourceType::StaticDevicePool) => {
-                ResourceEditPath::DynamicDevicePoolToStaticDevicePool
-            }
-            (EditableResourceType::DynamicDevicePool, EditableResourceType::DynamicDevicePool) => {
-                unreachable!("resource type edits must change the resource type")
-            }
-        }
-    }
-}
-
-#[derive(Clone, Copy)]
-enum EditableResourceType {
-    Dns,
-    Cidr,
-    StaticDevicePool,
-    DynamicDevicePool,
-}
-
-impl EditableResourceType {
-    fn from_resource(resource: &Resource) -> Self {
-        match resource {
-            Resource::Dns(_) => Self::Dns,
-            Resource::Cidr(_) => Self::Cidr,
-            Resource::Internet(_) => {
-                unreachable!("the Portal API does not allow editing the Internet Resource")
-            }
-            Resource::StaticDevicePool(_) => Self::StaticDevicePool,
-            Resource::DynamicDevicePool(_) => Self::DynamicDevicePool,
         }
     }
 }

@@ -66,8 +66,6 @@ mise run //rust/tests/fuzz:coverage-check ip-packet
 Coverage growth passes without requiring a baseline update.
 An increase in uncovered regions fails.
 
-The `tunnel-proto` check also requires every resource-edit field and directional type change to complete reference-model application, SUT application, and invariant checking at least once. This exact per-path check prevents unrelated coverage gains from hiding a resource-edit path that the corpus stopped exercising.
-
 The ceiling spans every workspace crate the target links, not just the one sharing its name.
 A fuzz build instruments the dependencies too, so a target that drives `tunnel-proto` reports what it reached in `snownet`, `dns-types` and the rest as one number.
 Which lines a crate contributes is visible in the HTML coverage report.
