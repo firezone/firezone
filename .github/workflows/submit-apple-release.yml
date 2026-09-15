@@ -28,7 +28,7 @@ env:
   ASC_TELEMETRY_DISABLED: "1"
   REVIEWER_SCREENSHOT: screenshots/macos/26/reviewer-sign-in-light.png
   # mark:next-apple-version
-  RELEASE_NAME: apple-client-1.5.20
+  RELEASE_NAME: apple-client-1.5.21
 
 jobs:
   prepare:
