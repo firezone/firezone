@@ -95,8 +95,9 @@ actor Adapter {
     let receivedAt: ContinuousClock.Instant
   }
 
-  /// Command sender for sending commands to the session
-  private var commandSender: Sender<SessionCommand>?
+  /// The session, held so commands reach connlib without a queue of our own in
+  /// front of its runtime. Cleared on stop so late callers become no-ops.
+  private var session: Session?
 
   /// Task handles wrapped in CancellableTask for automatic cleanup via RAII.
   private var eventLoopTask: CancellableTask?
@@ -165,7 +166,7 @@ actor Adapter {
         // out of a different interface even when 0.0.0.0 is used as the source.
         // If our primary interface changes, we can be certain the old socket shouldn't be
         // used anymore.
-        sendCommand(.reset("primary network path changed"))
+        session?.reset(reason: "primary network path changed")
       }
 
       await setSystemDefaultResolvers(path)
@@ -278,10 +279,7 @@ actor Adapter {
       throw AdapterError.connlibConnectError(String(describing: error))
     }
 
-    // Create channels - following Rust pattern with separate sender/receiver
-    let (commandSender, commandReceiver): (Sender<SessionCommand>, Receiver<SessionCommand>) =
-      Channel.create()
-    self.commandSender = commandSender
+    self.session = session
 
     let (eventSender, eventReceiver): (Sender<Event>, Receiver<Event>) = Channel.create()
 
@@ -291,11 +289,7 @@ actor Adapter {
         Log.log("Adapter: Event loop finished, session dropped")
       }
 
-      await runSessionEventLoop(
-        session: session,
-        commandReceiver: commandReceiver,
-        eventSender: eventSender
-      )
+      await runSessionEventLoop(session: session, eventSender: eventSender)
     }
 
     // Start event consumer - consumes events from receiver (Rust pattern: receiver outside)
@@ -357,10 +351,11 @@ actor Adapter {
     // Cancel any pending start continuation
     cancelStartContinuation()
 
-    sendCommand(.disconnect)
+    session?.disconnect()
 
-    // Close command channel immediately - ensures event loop sees channel close
-    commandSender = nil
+    // Release our reference now so the event loop's is the last one: connlib is
+    // dropped when that loop ends, as it was when a closing channel ended it.
+    session = nil
 
     // Cancel path monitoring - triggers CancellableTask.deinit -> Task cancellation
     // -> onTermination -> monitor.cancel()
@@ -421,7 +416,7 @@ actor Adapter {
   }
 
   func reset(reason: String, path: Network.NWPath? = nil) async {
-    sendCommand(.reset(reason))
+    session?.reset(reason: reason)
 
     if let path = (path ?? lastPath) {
       await setSystemDefaultResolvers(path)
@@ -442,7 +437,7 @@ actor Adapter {
       }
     }
 
-    sendCommand(.setInternetResourceState(enabled))
+    session?.setInternetResourceState(active: enabled)
   }
 
   // MARK: - Network settings
@@ -713,11 +708,7 @@ actor Adapter {
 
     // Step 4: Send to connlib
     Log.log("Sending resolvers to connlib: \(parsedResolvers)")
-    sendCommand(.setDns(parsedResolvers))
-  }
-
-  private func sendCommand(_ command: SessionCommand) {
-    commandSender?.send(command)
+    session?.setDns(dnsServers: parsedResolvers)
   }
 
   // MARK: - Provider command helpers
