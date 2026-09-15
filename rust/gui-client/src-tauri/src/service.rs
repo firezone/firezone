@@ -518,23 +518,20 @@ impl<'a> Handler<'a> {
         let ret = loop {
             match poll_fn(|cx| self.next_event(cx, signals)).await {
                 Event::Connlib(x) => {
-                    if let Err(error) = self.handle_connlib_event(x).await {
-                        // The GUI tears the pipe down as it exits, so sending to it can fail
-                        // through no fault of ours. `IpcDisconnected` arrives right after and
-                        // ends the session in an orderly way.
-                        match error.any_downcast_ref::<io::Error>().map(io::Error::kind) {
-                            Some(io::ErrorKind::BrokenPipe) => {
-                                tracing::debug!("Cannot handle connlib callback: {error:#}")
-                            }
-                            Some(io::ErrorKind::ConnectionReset) => {
-                                tracing::debug!("Cannot handle connlib callback: {error:#}")
-                            }
-                            _ => {
-                                tracing::error!("Error while handling connlib callback: {error:#}")
-                            }
+                    // The GUI tears the pipe down as it exits, so sending to it can fail
+                    // through no fault of ours. `IpcDisconnected` arrives right after and
+                    // ends the session in an orderly way.
+                    match self.handle_connlib_event(x).await {
+                        Ok(()) => {}
+                        Err(error) if is_io_error(&error, io::ErrorKind::BrokenPipe) => {
+                            tracing::debug!("Cannot handle connlib callback: {error:#}")
                         }
-
-                        continue;
+                        Err(error) if is_io_error(&error, io::ErrorKind::ConnectionReset) => {
+                            tracing::debug!("Cannot handle connlib callback: {error:#}")
+                        }
+                        Err(error) => {
+                            tracing::error!("Error while handling connlib callback: {error:#}")
+                        }
                     }
                 }
                 Event::CallbackChannelClosed => {
@@ -974,6 +971,10 @@ impl<'a> Handler<'a> {
 
         Ok(())
     }
+}
+
+fn is_io_error(error: &anyhow::Error, kind: io::ErrorKind) -> bool {
+    error.any_downcast_ref::<io::Error>().map(io::Error::kind) == Some(kind)
 }
 
 /// Run the Tunnel service in an interactive terminal rather than as a
