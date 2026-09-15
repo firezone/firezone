@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #MISE description="Replay the corpus of a fuzz target, producing coverage/<target>/coverage.profdata"
-#MISE depends=["install-toolchain", "unpack-corpus {{usage.target}}"]
+#MISE depends=["install-toolchain"]
 #MISE raw=true
 #USAGE arg "<target>"
 set -euo pipefail
