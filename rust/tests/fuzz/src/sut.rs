@@ -219,120 +219,191 @@ impl TunnelTest {
                     });
                 }
             }
-            Transition::ChangeCidrResourceAddress {
-                resource,
-                new_address,
-            } => {
-                let new_resource = client::Resource::Cidr(client::CidrResource {
-                    address: new_address,
-                    ..resource
-                });
-
-                for (client_id, client) in &mut state.clients {
-                    if let Some(gateway) = ref_state
-                        .portal
-                        .gateway_for_resource(new_resource.id())
-                        .and_then(|gid| state.gateways.get_mut(gid))
-                    {
-                        gateway.exec_mut(|g| g.remove_access(client_id, &new_resource.id(), now));
-                    }
-                    client.exec_mut(|c| {
-                        c.sut
-                            .add_resource(new_resource.clone().into_description(), now)
-                    });
+            Transition::EditResource(edit) => {
+                enum GatewayAction {
+                    None,
+                    Update,
+                    RemoveAllAccess,
                 }
-            }
-            Transition::MoveResourceToNewSite { resource, new_site } => {
-                let resource_id = resource.id();
-                let new_resource = resource.with_new_site(new_site);
 
-                for (client_id, client) in &mut state.clients {
-                    for gateway in state.gateways.values_mut() {
-                        gateway.exec_mut(|gateway| {
-                            gateway.record_resource_disabled(*client_id, resource_id)
+                let (gateway_action, forget_dns_records) = match &edit {
+                    client::ResourceEdit::Dns(client::DnsResourceEdit {
+                        value: client::DnsResourceValue::Address(_),
+                        ..
+                    })
+                    | client::ResourceEdit::Type(client::ResourceTypeEdit {
+                        new_resource: client::Resource::Dns(_),
+                        ..
+                    }) => (GatewayAction::RemoveAllAccess, true),
+                    client::ResourceEdit::Dns(client::DnsResourceEdit {
+                        value:
+                            client::DnsResourceValue::Sites(_) | client::DnsResourceValue::IpStack(_),
+                        ..
+                    })
+                    | client::ResourceEdit::Cidr(client::CidrResourceEdit {
+                        value:
+                            client::CidrResourceValue::Address(_) | client::CidrResourceValue::Sites(_),
+                        ..
+                    })
+                    | client::ResourceEdit::Type(_) => (GatewayAction::RemoveAllAccess, false),
+                    client::ResourceEdit::Dns(client::DnsResourceEdit {
+                        value: client::DnsResourceValue::Filters(_),
+                        ..
+                    })
+                    | client::ResourceEdit::Cidr(client::CidrResourceEdit {
+                        value: client::CidrResourceValue::Filters(_),
+                        ..
+                    }) => (GatewayAction::Update, false),
+                    client::ResourceEdit::Dns(client::DnsResourceEdit {
+                        value:
+                            client::DnsResourceValue::Name(_)
+                            | client::DnsResourceValue::AddressDescription(_),
+                        ..
+                    })
+                    | client::ResourceEdit::Cidr(client::CidrResourceEdit {
+                        value:
+                            client::CidrResourceValue::Name(_)
+                            | client::CidrResourceValue::AddressDescription(_),
+                        ..
+                    })
+                    | client::ResourceEdit::StaticDevicePool(
+                        client::StaticDevicePoolResourceEdit {
+                            value:
+                                client::StaticDevicePoolResourceValue::Name(_)
+                                | client::StaticDevicePoolResourceValue::Devices(_)
+                                | client::StaticDevicePoolResourceValue::Filters(_),
+                            ..
+                        },
+                    )
+                    | client::ResourceEdit::DynamicDevicePool(
+                        client::DynamicDevicePoolResourceEdit {
+                            value:
+                                client::DynamicDevicePoolResourceValue::Name(_)
+                                | client::DynamicDevicePoolResourceValue::Address(_)
+                                | client::DynamicDevicePoolResourceValue::Filters(_),
+                            ..
+                        },
+                    ) => (GatewayAction::None, false),
+                    client::ResourceEdit::Dns(client::DnsResourceEdit {
+                        value: client::DnsResourceValue::Id(_),
+                        ..
+                    })
+                    | client::ResourceEdit::Cidr(client::CidrResourceEdit {
+                        value: client::CidrResourceValue::Id(_),
+                        ..
+                    })
+                    | client::ResourceEdit::StaticDevicePool(
+                        client::StaticDevicePoolResourceEdit {
+                            value: client::StaticDevicePoolResourceValue::Id(_),
+                            ..
+                        },
+                    )
+                    | client::ResourceEdit::DynamicDevicePool(
+                        client::DynamicDevicePoolResourceEdit {
+                            value: client::DynamicDevicePoolResourceValue::Id(_),
+                            ..
+                        },
+                    ) => unreachable!("resource identity is not editable"),
+                };
+                let resource_id = edit.id();
+                let removed_static_pool_members = edit.removed_static_device_pool_members();
+                let updated = edit.updated_resource();
+                let dns_address = match (&updated, forget_dns_records) {
+                    (client::Resource::Dns(resource), true) => Some(&resource.address),
+                    (client::Resource::Dns(_), false) => None,
+                    (client::Resource::Cidr(_), false) => None,
+                    (client::Resource::Internet(_), false) => None,
+                    (client::Resource::StaticDevicePool(_), false) => None,
+                    (client::Resource::DynamicDevicePool(_), false) => None,
+                    (client::Resource::Cidr(_), true) => {
+                        unreachable!("only DNS resource edits flush DNS records")
+                    }
+                    (client::Resource::Internet(_), true) => {
+                        unreachable!("only DNS resource edits flush DNS records")
+                    }
+                    (client::Resource::StaticDevicePool(_), true) => {
+                        unreachable!("only DNS resource edits flush DNS records")
+                    }
+                    (client::Resource::DynamicDevicePool(_), true) => {
+                        unreachable!("only DNS resource edits flush DNS records")
+                    }
+                };
+
+                match gateway_action {
+                    GatewayAction::None => {}
+                    GatewayAction::Update => {
+                        let resource = ref_state
+                            .portal
+                            .map_client_resource_to_gateway_resource(resource_id);
+
+                        for gateway in state.gateways.values_mut() {
+                            gateway
+                                .exec_mut(|gateway| gateway.sut.update_resource(resource.clone()));
+                        }
+                    }
+                    GatewayAction::RemoveAllAccess => {
+                        for client_id in state.clients.keys() {
+                            for gateway in state.gateways.values_mut() {
+                                gateway.exec_mut(|gateway| {
+                                    gateway.remove_access(client_id, &resource_id, now)
+                                });
+                            }
+                        }
+                    }
+                }
+
+                for member in removed_static_pool_members {
+                    for (client_id, client) in &mut state.clients {
+                        let still_accessible =
+                            ref_state.clients.get(client_id).is_some_and(|client| {
+                                client.inner().has_static_device_pool_member(member.id)
+                            });
+                        if still_accessible {
+                            continue;
+                        }
+
+                        client.exec_mut(|client| {
+                            client.sut.handle_client_device_access_denied(
+                                Some(member.ipv4.network_address()),
+                                Some(member.ipv6.network_address()),
+                                tunnel_proto::messages::client::FailReason::Forbidden,
+                                now,
+                            )
                         });
                     }
-                    client.exec_mut(|c| {
-                        c.sut
-                            .add_resource(new_resource.clone().into_description(), now)
+
+                    let initiating_clients = state.clients.keys().copied().collect::<Vec<_>>();
+                    let Some(receiver) = state.clients.get_mut(&member.id) else {
+                        continue;
+                    };
+
+                    receiver.exec_mut(|receiver| {
+                        for initiator in initiating_clients {
+                            if initiator == member.id {
+                                continue;
+                            }
+
+                            receiver
+                                .sut
+                                .handle_reject_client_device_access(initiator, resource_id);
+                        }
                     });
                 }
-            }
-            Transition::ChangeFiltersOfResource {
-                resource,
-                new_filters,
-            } => {
-                let resource_id = resource.id();
-                let new_resource = resource.with_new_filters(new_filters);
 
-                for (client_id, client) in &mut state.clients {
-                    for gateway in state.gateways.values_mut() {
-                        gateway.exec_mut(|gateway| {
-                            gateway.record_resource_disabled(*client_id, resource_id)
-                        });
-                    }
-                    client.exec_mut(|c| {
-                        c.sut
-                            .add_resource(new_resource.clone().into_description(), now)
-                    });
-                }
-            }
-            Transition::ChangeResourceType {
-                old_resource,
-                new_resource,
-            } => {
-                debug_assert_eq!(old_resource.id(), new_resource.id());
-
-                for (client_id, client) in &mut state.clients {
-                    for gateway in state.gateways.values_mut() {
-                        gateway.exec_mut(|gateway| {
-                            gateway.remove_access(client_id, &old_resource.id(), now)
-                        });
-                    }
-
+                for client in state.clients.values_mut() {
                     client.exec_mut(|client| {
-                        if let client::Resource::Dns(resource) = &new_resource {
-                            client
+                        if let Some(address) = dns_address {
+                            for _ in client
                                 .dns_records
-                                .retain(|domain, _| !is_subdomain(domain, &resource.address));
+                                .extract_if(|domain, _| is_subdomain(domain, address))
+                            {
+                            }
                         }
 
                         client
                             .sut
-                            .add_resource(new_resource.clone().into_description(), now);
+                            .add_resource(updated.clone().into_description(), now);
                     });
-                }
-            }
-            Transition::UpdateStaticDevicePool {
-                pool_id,
-                new_devices,
-            } => {
-                let Some(existing) =
-                    ref_state
-                        .portal
-                        .all_resources()
-                        .into_iter()
-                        .find_map(|r| match r {
-                            client::Resource::StaticDevicePool(p) if p.id == pool_id => Some(p),
-                            client::Resource::Dns(_) => None,
-                            client::Resource::Cidr(_) => None,
-                            client::Resource::Internet(_) => None,
-                            client::Resource::DynamicDevicePool(_) => None,
-                            client::Resource::StaticDevicePool(_) => None,
-                        })
-                else {
-                    panic!("UpdateStaticDevicePool for unknown pool {pool_id}");
-                };
-
-                let resource =
-                    client::Resource::StaticDevicePool(client::StaticDevicePoolResource {
-                        devices: new_devices,
-                        ..existing
-                    });
-
-                for client in state.clients.values_mut() {
-                    client
-                        .exec_mut(|c| c.sut.add_resource(resource.clone().into_description(), now));
                 }
             }
             Transition::RemoveResource(rid) => {

@@ -1,15 +1,18 @@
-use connlib_model::{ClientId, RelayId, ResourceId, Site};
+use connlib_model::{ClientId, RelayId, ResourceId};
 use dns_types::{DomainName, OwnedRecordData, RecordType};
-use ip_network::IpNetwork;
 use tunnel_proto::{
     dns,
-    messages::{Filter, UpstreamDo53, UpstreamDoH, client::DevicePoolMember},
+    messages::{UpstreamDo53, UpstreamDoH, client::DevicePoolMember},
 };
 
 use super::{
     probe::{FlowId, FlowRoute, ProbeId},
     reference::PrivateKey,
-    resource::{CidrResource, Resource},
+    resource::{
+        CidrResourceEdit, CidrResourceValue, DnsResourceEdit, DnsResourceValue,
+        DynamicDevicePoolResourceEdit, DynamicDevicePoolResourceValue, Resource, ResourceEdit,
+        ResourceTypeEdit, StaticDevicePoolResourceEdit, StaticDevicePoolResourceValue,
+    },
     sim_net::Host,
 };
 use std::{
@@ -23,26 +26,7 @@ use std::{
 pub enum Transition {
     AddResource(Resource),
     RemoveResource(ResourceId),
-    ChangeCidrResourceAddress {
-        resource: CidrResource,
-        new_address: IpNetwork,
-    },
-    MoveResourceToNewSite {
-        resource: Resource,
-        new_site: Site,
-    },
-    ChangeFiltersOfResource {
-        resource: Resource,
-        new_filters: Vec<Filter>,
-    },
-    ChangeResourceType {
-        old_resource: Resource,
-        new_resource: Resource,
-    },
-    UpdateStaticDevicePool {
-        pool_id: ResourceId,
-        new_devices: Vec<DevicePoolMember>,
-    },
+    EditResource(ResourceEdit),
     SetInternetResourceState {
         client_id: ClientId,
         active: bool,
@@ -132,11 +116,7 @@ impl Transition {
         match self {
             Transition::AddResource(_) => true,
             Transition::RemoveResource(_) => true,
-            Transition::ChangeCidrResourceAddress { .. } => true,
-            Transition::MoveResourceToNewSite { .. } => true,
-            Transition::ChangeFiltersOfResource { .. } => true,
-            Transition::ChangeResourceType { .. } => true,
-            Transition::UpdateStaticDevicePool { .. } => true,
+            Transition::EditResource(edit) => resource_edit_effect(edit).should_clear_packets(),
             Transition::SetInternetResourceState { .. } => true,
             Transition::SendIcmpPacketOnNewFlow { .. } => false,
             Transition::SendIcmpPacketOnExistingFlow { .. } => false,
@@ -179,32 +159,7 @@ impl Transition {
                 FlowRoute::Gateway(_) => false,
                 FlowRoute::Peer(_) => false,
             },
-            Transition::ChangeCidrResourceAddress { .. } => match route {
-                FlowRoute::Resource { .. } => false,
-                FlowRoute::Gateway(_) => false,
-                FlowRoute::Peer(_) => true,
-            },
-            Transition::MoveResourceToNewSite { resource, .. } => match route {
-                FlowRoute::Resource { resource: used, .. } => used != resource.id(),
-                FlowRoute::Gateway(_) => false,
-                FlowRoute::Peer(_) => true,
-            },
-            Transition::ChangeFiltersOfResource { resource, .. } => match route {
-                FlowRoute::Resource { .. } => false,
-                FlowRoute::Gateway(_) => false,
-                FlowRoute::Peer(_) => !is_device_pool(resource),
-            },
-            Transition::ChangeResourceType {
-                old_resource,
-                new_resource,
-            } => match route {
-                FlowRoute::Resource { .. } => false,
-                FlowRoute::Gateway(_) => false,
-                FlowRoute::Peer(_) => {
-                    !is_device_pool(old_resource) && !is_device_pool(new_resource)
-                }
-            },
-            Transition::UpdateStaticDevicePool { .. } => !route.is_peer(),
+            Transition::EditResource(edit) => resource_edit_effect(edit).retains_flow(route),
             Transition::SetInternetResourceState {
                 client_id: changed, ..
             } => client_id != *changed,
@@ -246,6 +201,159 @@ impl Transition {
             },
             Transition::UpdateDnsRecords { .. } => true,
         }
+    }
+}
+
+enum ResourceEditEffect<'a> {
+    Metadata,
+    GatewayResource {
+        resource_id: ResourceId,
+        affects_tcp: bool,
+    },
+    StaticPoolMembers {
+        previous: &'a [DevicePoolMember],
+        updated: &'a [DevicePoolMember],
+    },
+    DevicePoolRouting,
+    Type {
+        old: &'a Resource,
+        new: &'a Resource,
+    },
+}
+
+impl ResourceEditEffect<'_> {
+    fn should_clear_packets(&self) -> bool {
+        match self {
+            ResourceEditEffect::Metadata => false,
+            ResourceEditEffect::GatewayResource { affects_tcp, .. } => *affects_tcp,
+            ResourceEditEffect::StaticPoolMembers { .. } => false,
+            ResourceEditEffect::DevicePoolRouting => false,
+            ResourceEditEffect::Type { old, .. } => match old {
+                Resource::Dns(_) => true,
+                Resource::Cidr(_) => false,
+                Resource::Internet(_) => {
+                    unreachable!("the Portal API does not allow editing the Internet Resource")
+                }
+                Resource::StaticDevicePool(_) => false,
+                Resource::DynamicDevicePool(_) => false,
+            },
+        }
+    }
+
+    fn retains_flow(&self, route: FlowRoute) -> bool {
+        match (self, route) {
+            (ResourceEditEffect::Metadata, _) => true,
+            (
+                ResourceEditEffect::GatewayResource { resource_id, .. },
+                FlowRoute::Resource { resource, .. },
+            ) => resource != *resource_id,
+            (ResourceEditEffect::GatewayResource { .. }, FlowRoute::Gateway(_)) => false,
+            (ResourceEditEffect::GatewayResource { .. }, FlowRoute::Peer(_)) => true,
+            (
+                ResourceEditEffect::StaticPoolMembers { previous, updated },
+                FlowRoute::Peer(peer),
+            ) => previous
+                .iter()
+                .find(|member| member.id == peer)
+                .is_none_or(|previous| {
+                    updated
+                        .iter()
+                        .any(|member| member.id == peer && member == previous)
+                }),
+            (ResourceEditEffect::StaticPoolMembers { .. }, FlowRoute::Resource { .. }) => true,
+            (ResourceEditEffect::StaticPoolMembers { .. }, FlowRoute::Gateway(_)) => true,
+            (ResourceEditEffect::DevicePoolRouting, FlowRoute::Resource { .. }) => true,
+            (ResourceEditEffect::DevicePoolRouting, FlowRoute::Gateway(_)) => true,
+            (ResourceEditEffect::DevicePoolRouting, FlowRoute::Peer(_)) => false,
+            (ResourceEditEffect::Type { old, .. }, FlowRoute::Resource { resource, .. }) => {
+                resource != old.id()
+            }
+            (ResourceEditEffect::Type { .. }, FlowRoute::Gateway(_)) => false,
+            (ResourceEditEffect::Type { old, new }, FlowRoute::Peer(_)) => {
+                !is_device_pool(old) && !is_device_pool(new)
+            }
+        }
+    }
+}
+
+fn resource_edit_effect(edit: &ResourceEdit) -> ResourceEditEffect<'_> {
+    match edit {
+        ResourceEdit::Dns(DnsResourceEdit {
+            value: DnsResourceValue::Id(_),
+            ..
+        })
+        | ResourceEdit::Cidr(CidrResourceEdit {
+            value: CidrResourceValue::Id(_),
+            ..
+        })
+        | ResourceEdit::StaticDevicePool(StaticDevicePoolResourceEdit {
+            value: StaticDevicePoolResourceValue::Id(_),
+            ..
+        })
+        | ResourceEdit::DynamicDevicePool(DynamicDevicePoolResourceEdit {
+            value: DynamicDevicePoolResourceValue::Id(_),
+            ..
+        }) => unreachable!("resource identity is not editable"),
+        ResourceEdit::Dns(DnsResourceEdit {
+            value: DnsResourceValue::Name(_) | DnsResourceValue::AddressDescription(_),
+            ..
+        })
+        | ResourceEdit::Cidr(CidrResourceEdit {
+            value: CidrResourceValue::Name(_) | CidrResourceValue::AddressDescription(_),
+            ..
+        })
+        | ResourceEdit::StaticDevicePool(StaticDevicePoolResourceEdit {
+            value: StaticDevicePoolResourceValue::Name(_),
+            ..
+        })
+        | ResourceEdit::DynamicDevicePool(DynamicDevicePoolResourceEdit {
+            value: DynamicDevicePoolResourceValue::Name(_),
+            ..
+        }) => ResourceEditEffect::Metadata,
+        ResourceEdit::Dns(DnsResourceEdit {
+            resource,
+            value:
+                DnsResourceValue::Address(_)
+                | DnsResourceValue::Sites(_)
+                | DnsResourceValue::IpStack(_)
+                | DnsResourceValue::Filters(_),
+        }) => ResourceEditEffect::GatewayResource {
+            resource_id: resource.id,
+            affects_tcp: true,
+        },
+        ResourceEdit::Cidr(CidrResourceEdit {
+            resource,
+            value:
+                CidrResourceValue::Address(_)
+                | CidrResourceValue::Sites(_)
+                | CidrResourceValue::Filters(_),
+        }) => ResourceEditEffect::GatewayResource {
+            resource_id: resource.id,
+            affects_tcp: false,
+        },
+        ResourceEdit::StaticDevicePool(StaticDevicePoolResourceEdit {
+            resource,
+            value: StaticDevicePoolResourceValue::Devices(updated),
+        }) => ResourceEditEffect::StaticPoolMembers {
+            previous: &resource.devices,
+            updated,
+        },
+        ResourceEdit::StaticDevicePool(StaticDevicePoolResourceEdit {
+            value: StaticDevicePoolResourceValue::Filters(_),
+            ..
+        })
+        | ResourceEdit::DynamicDevicePool(DynamicDevicePoolResourceEdit {
+            value:
+                DynamicDevicePoolResourceValue::Address(_) | DynamicDevicePoolResourceValue::Filters(_),
+            ..
+        }) => ResourceEditEffect::DevicePoolRouting,
+        ResourceEdit::Type(ResourceTypeEdit {
+            old_resource,
+            new_resource,
+        }) => ResourceEditEffect::Type {
+            old: old_resource,
+            new: new_resource,
+        },
     }
 }
 
