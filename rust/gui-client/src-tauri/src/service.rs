@@ -527,7 +527,7 @@ impl<'a> Handler<'a> {
                             if is_io_error(&error, io::ErrorKind::BrokenPipe)
                                 || is_io_error(&error, io::ErrorKind::ConnectionReset) =>
                         {
-                            tracing::debug!("Cannot handle connlib callback: {error:#}")
+                            tracing::debug!("Error while handling connlib callback: {error:#}")
                         }
                         Err(error) => {
                             tracing::error!("Error while handling connlib callback: {error:#}")
