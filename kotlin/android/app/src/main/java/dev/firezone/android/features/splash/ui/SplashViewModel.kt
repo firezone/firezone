@@ -210,8 +210,6 @@ internal class SplashViewModel
 
             object NavigateToCertificatePermission : ViewAction()
 
-            object NavigateToSettings : ViewAction()
-
             object NavigateToSignIn : ViewAction()
 
             object NavigateToSession : ViewAction()

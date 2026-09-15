@@ -9,6 +9,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import dev.firezone.android.core.data.Favorites
+import dev.firezone.android.ui.theme.FirezoneTheme
 
 // Debug-only harness that renders the real SessionScreen against the shared sample data, so the
 // connected-devices UI can be launched and poked on a device without a live tunnel. Registered as a

@@ -8,6 +8,11 @@
 	<!-- Settings -->
 	<string name="settings_title">Settings</string>
 	<string name="save">Save</string>
+	<string name="settings_save_warning_title">Warning</string>
+	<string name="settings_save_warning_message">
+		Some changed settings will not be applied until you sign out and sign back in.
+	</string>
+	<string name="settings_save_warning_confirm">Okay</string>
 	<!-- General Settings -->
 	<string name="general_settings_title">General</string>
 	<string name="account_slug">Account Slug</string>

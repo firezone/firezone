@@ -19,12 +19,12 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dagger.hilt.android.AndroidEntryPoint
 import dev.firezone.android.core.data.ResourceState
 import dev.firezone.android.core.data.toggle
-import dev.firezone.android.features.session.ui.compose.FirezoneTheme
 import dev.firezone.android.features.session.ui.compose.SessionScreen
 import dev.firezone.android.features.settings.ui.SettingsActivity
 import dev.firezone.android.tunnel.TunnelService
 import dev.firezone.android.tunnel.TunnelService.Companion.State
 import dev.firezone.android.tunnel.model.isInternetResource
+import dev.firezone.android.ui.theme.FirezoneTheme
 import kotlinx.collections.immutable.toImmutableList
 import kotlinx.coroutines.flow.emptyFlow
 
@@ -106,9 +106,7 @@ class SessionActivity : AppCompatActivity() {
                     onAddFavorite = { id -> viewModel.addFavoriteResource(id) },
                     onRemoveFavorite = { id -> viewModel.removeFavoriteResource(id) },
                     onSettings = {
-                        val settings = Intent(this@SessionActivity, SettingsActivity::class.java)
-                        settings.putExtra("isUserSignedIn", true)
-                        startActivity(settings)
+                        startActivity(SettingsActivity.createIntent(this@SessionActivity, isUserSignedIn = true))
                     },
                     onEndSession = {
                         viewModel.clearToken()

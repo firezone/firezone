@@ -3,24 +3,32 @@ package dev.firezone.android.features.customuri.ui
 
 import android.content.Intent
 import android.os.Bundle
+import androidx.activity.compose.setContent
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import dagger.hilt.android.AndroidEntryPoint
-import dev.firezone.android.R
 import dev.firezone.android.features.auth.ui.mainActivityHandoffIntent
 import dev.firezone.android.features.auth.ui.notifyAuthError
+import dev.firezone.android.features.customuri.ui.compose.CustomUriScreen
 import dev.firezone.android.tunnel.TunnelService
+import dev.firezone.android.ui.theme.FirezoneTheme
 import kotlinx.coroutines.launch
 
 @AndroidEntryPoint
-class CustomUriHandlerActivity : AppCompatActivity(R.layout.activity_custom_uri_handler) {
+class CustomUriHandlerActivity : AppCompatActivity() {
     private val viewModel: CustomUriViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        setContent {
+            FirezoneTheme {
+                CustomUriScreen()
+            }
+        }
 
         setupActionObservers()
         viewModel.parseCustomUri(intent)
