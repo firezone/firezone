@@ -2618,24 +2618,26 @@ fn select_authorized_route(
         let Some(path) = authorized_resources.get(&resource_id) else {
             continue;
         };
-        let (peer, domain, ingest_token) = match route {
-            Route::Client { .. } => {
+        let (peer, domain, ingest_token) = match (route, &path.access_path) {
+            (Route::Client { .. }, AccessPath::Direct(tokens)) => {
                 let Some((cid, _)) = destination_client else {
                     continue;
                 };
-                let Some(ingest_token) = path.client_token(cid) else {
+                let Some(ingest_token) = tokens.get(&cid) else {
                     continue;
                 };
 
                 (cid.into(), None, ingest_token.clone())
             }
-            Route::Gateway { domain, .. } => {
-                let Some((gid, ingest_token)) = path.gateway_token() else {
-                    continue;
-                };
-
-                (gid.into(), domain.clone(), ingest_token.clone())
-            }
+            (
+                Route::Gateway { domain, .. },
+                AccessPath::Gateway {
+                    gateway_id,
+                    ingest_token,
+                },
+            ) => ((*gateway_id).into(), domain.clone(), ingest_token.clone()),
+            (Route::Client { .. }, AccessPath::Gateway { .. }) => continue,
+            (Route::Gateway { .. }, AccessPath::Direct(_)) => continue,
         };
 
         return Some(AuthorizedRoute {
@@ -2701,16 +2703,6 @@ impl AuthorizedOutboundResource {
     fn as_gateway(&self) -> Option<&GatewayId> {
         match &self.access_path {
             AccessPath::Gateway { gateway_id, .. } => Some(gateway_id),
-            AccessPath::Direct(_) => None,
-        }
-    }
-
-    fn gateway_token(&self) -> Option<(GatewayId, &IngestToken)> {
-        match &self.access_path {
-            AccessPath::Gateway {
-                gateway_id,
-                ingest_token,
-            } => Some((*gateway_id, ingest_token)),
             AccessPath::Direct(_) => None,
         }
     }
