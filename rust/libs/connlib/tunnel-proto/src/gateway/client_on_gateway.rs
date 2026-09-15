@@ -531,13 +531,8 @@ impl ClientOnGateway {
     ) -> anyhow::Result<ResourceId> {
         let entry = self
             .routing_table
-            .matches(resource_ip, protocol.clone())
-            .first()
-            .context(NotAllowedResource(resource_ip))?;
-
-        entry
-            .filter
-            .apply(protocol)
+            .matches(resource_ip, protocol)
+            .and_then(|matches| matches.allowed.first())
             .context(NotAllowedResource(resource_ip))?;
 
         Ok(entry.resource_id)

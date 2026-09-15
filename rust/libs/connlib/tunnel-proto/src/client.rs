@@ -619,37 +619,30 @@ impl ClientState {
         let pending_authorizations = &mut self.pending_authorizations;
         let resources = &self.resources_by_id;
 
+        let is_authorized = |resource_id: ResourceId| {
+            self.clients.peer_by_ip(dst).is_some_and(|(cid, _)| {
+                self.authorized_resources
+                    .get(&resource_id)
+                    .is_some_and(|resource| resource.client_token(cid).is_some())
+            })
+        };
         let routes = self
             .routing_tables
-            .resolve(dst, dst_proto, internet_resource);
+            .resolve(dst, dst_proto, internet_resource, is_authorized);
         let resource_ids = routes
-            .iter()
-            .filter(|route| match route {
-                Route::Client { .. } => route.filter().apply(Ok(dst_proto)).is_ok(),
-                Route::Gateway { .. } => filter_allows(route.filter(), dst_proto),
-            })
-            .map(Route::resource_id)
-            .unique()
-            .collect_vec();
-        let route = routes
-            .iter()
-            .find(|route| {
-                let Route::Client {
-                    resource_id,
-                    filter,
-                } = route
-                else {
-                    return false;
-                };
-                filter_allows(filter, dst_proto)
-                    && self.clients.peer_by_ip(dst).is_some_and(|(cid, _)| {
-                        self.authorized_resources
-                            .get(resource_id)
-                            .is_some_and(|resource| resource.client_token(cid).is_some())
-                    })
-            })
-            .or_else(|| routes.first())
-            .cloned();
+            .as_ref()
+            .map(|routes| routes.iter().map(Route::resource_id).unique().collect_vec())
+            .unwrap_or_default();
+        let route = routes.map(|routes| {
+            routes
+                .iter()
+                .find(|route| match route {
+                    Route::Client { resource_id } => is_authorized(*resource_id),
+                    Route::Gateway { .. } => false,
+                })
+                .or_else(|| routes.first())
+                .cloned()
+        });
 
         let direct_gateway = self.gateways.peer_by_ip(dst).map(|(gid, _)| gid);
         let peer_originated_client_flow = self.clients.peer_by_ip(dst).and_then(|(cid, peer)| {
@@ -670,19 +663,7 @@ impl ClientState {
 
                 (packet, cid.into())
             }
-            (
-                None,
-                None,
-                Some(Route::Client {
-                    filter,
-                    resource_id: rid,
-                }),
-            ) => {
-                if !filter_allows(&filter, dst_proto) {
-                    reply_with_icmp_prohibited(&mut self.buffered_packets, packet);
-                    return Ok(());
-                }
-
+            (None, None, Ok(Some(Route::Client { resource_id: rid }))) => {
                 let authorized = self
                     .clients
                     .peer_by_ip(dst)
@@ -694,11 +675,6 @@ impl ClientState {
                     });
 
                 let Some((cid, ingest_token)) = authorized else {
-                    if resource_ids.is_empty() {
-                        reply_with_icmp_prohibited(&mut self.buffered_packets, packet);
-                        return Ok(());
-                    }
-
                     // Not yet authorized: Buffer + send request.
                     pending_authorizations.on_not_authorized_device(dst, resource_ids, packet, now);
                     return Ok(());
@@ -718,17 +694,11 @@ impl ClientState {
             (
                 None,
                 None,
-                Some(Route::Gateway {
-                    filter,
+                Ok(Some(Route::Gateway {
                     resource_id: rid,
                     domain,
-                }),
+                })),
             ) => {
-                if !filter_allows(&filter, dst_proto) {
-                    reply_with_icmp_prohibited(&mut self.buffered_packets, packet);
-                    return Ok(());
-                }
-
                 let Some((gid, ingest_token)) = self
                     .authorized_resources
                     .get(&rid)
@@ -764,7 +734,11 @@ impl ClientState {
 
                 (packet, gid.into())
             }
-            (None, None, None) => {
+            (None, None, Err(routing::Denied)) => {
+                reply_with_icmp_prohibited(&mut self.buffered_packets, packet);
+                return Ok(());
+            }
+            (None, None, Ok(None)) => {
                 return Err(anyhow::Error::new(UnroutablePacket::unknown_resource(
                     &packet,
                 )));
@@ -917,18 +891,12 @@ impl ClientState {
                     && let Ok(Some((failed_packet, error))) = packet.icmp_error()
                     && error.is_unreachable_prohibited()
                     && let internet_resource = self.active_internet_resource().map(|r| r.id)
-                    && let resources = self
-                        .routing_tables
-                        .resolve_resource(
-                            failed_packet.dst(),
-                            failed_packet.dst_proto(),
-                            internet_resource,
-                        )
-                        .iter()
-                        .filter(|route| filter_allows(route.filter(), failed_packet.dst_proto()))
-                        .map(Route::resource_id)
-                        .unique()
-                        .collect_vec()
+                    && let Ok(routes) = self.routing_tables.resolve_resource(
+                        failed_packet.dst(),
+                        failed_packet.dst_proto(),
+                        internet_resource,
+                    )
+                    && let resources = routes.iter().map(Route::resource_id).unique().collect_vec()
                     && !resources.is_empty()
                 {
                     telemetry::analytics::feature_flag_called(
@@ -2780,24 +2748,6 @@ fn client_for_icmp_error(
     }
 
     None
-}
-
-/// Whether `filter` permits a packet with the given protocol.
-///
-/// In tests, a malicious client can be configured to ignore its own filters,
-/// keeping the remote peer's filtering path (Gateway or target Client) exercised.
-fn filter_allows(filter: &FilterEngine, protocol: Protocol) -> bool {
-    if filter.apply(Ok(protocol)).is_ok() {
-        return true;
-    }
-
-    #[cfg(any(test, feature = "malicious-behaviour"))]
-    if crate::malicious_behaviour::ignore_resource_filter() {
-        tracing::debug!("Malicious client: ignoring resource filter");
-        return true;
-    }
-
-    false
 }
 
 /// Like [`encapsulate_or_buffer`], but encapsulates into `buffered_transmits` and drops (with a
