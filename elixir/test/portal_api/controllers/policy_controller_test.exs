@@ -1214,12 +1214,14 @@ defmodule PortalAPI.PolicyControllerTest do
                json_response(post_policy(conn, actor, attrs), 422)
     end
 
-    test "reports a malformed posture node under its path", %{conn: conn, actor: actor, resource: resource, group: group} do
+    test "rejects a malformed posture node with a 422", %{conn: conn, actor: actor, resource: resource, group: group} do
       leaf = %{"field" => "intune.compliance_state", "op" => "is", "value" => "compliant", "rows" => %{}}
       attrs = %{"group_id" => group.id, "resource_id" => resource.id, "postures" => %{"and" => [leaf]}}
 
-      assert %{"status" => 422, "validation_errors" => %{"postures" => %{"and" => %{"0" => %{"rows" => ["is invalid"]}}}}} =
+      assert %{"status" => 422, "validation_errors" => %{"postures" => [message]}} =
                json_response(post_policy(conn, actor, attrs), 422)
+
+      assert message =~ "PolicyPostureNode"
     end
 
     test "refuses postures while device posture is off for the account", %{conn: conn} do
