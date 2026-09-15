@@ -120,7 +120,7 @@ pub(super) fn generate(g: &mut Generator, state: &ReferenceState) -> Transition 
     let kind = weighted_choose(g, &legal);
 
     // Generate only the chosen arm's payload from the following bytes.
-    let transition = match kind {
+    match kind {
         K::UpdateSystemDnsServers => Transition::UpdateSystemDnsServers {
             servers: arb_system_dns_servers(g),
         },
@@ -285,9 +285,7 @@ pub(super) fn generate(g: &mut Generator, state: &ReferenceState) -> Transition 
                 new_devices: packets::arb_static_pool_members(g, state, &pool),
             }
         }
-    };
-
-    transition
+    }
 }
 
 fn move_resource_candidates(state: &ReferenceState) -> Vec<(Resource, Site)> {
