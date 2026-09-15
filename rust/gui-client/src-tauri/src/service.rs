@@ -521,17 +521,21 @@ impl<'a> Handler<'a> {
                     // The GUI tears the pipe down as it exits, so sending to it can fail
                     // through no fault of ours. `IpcDisconnected` arrives right after and
                     // ends the session in an orderly way.
-                    match self.handle_connlib_event(x).await {
+                    match self
+                        .handle_connlib_event(x)
+                        .await
+                        .context("Error while handling connlib callback")
+                    {
                         Ok(()) => {}
                         Err(error)
-                            if is_io_error(&error, io::ErrorKind::BrokenPipe)
-                                || is_io_error(&error, io::ErrorKind::ConnectionReset) =>
+                            if matches!(
+                                error.any_downcast_ref::<io::Error>().map(io::Error::kind),
+                                Some(io::ErrorKind::BrokenPipe | io::ErrorKind::ConnectionReset)
+                            ) =>
                         {
-                            tracing::debug!("Error while handling connlib callback: {error:#}")
+                            tracing::debug!("{error:#}")
                         }
-                        Err(error) => {
-                            tracing::error!("Error while handling connlib callback: {error:#}")
-                        }
+                        Err(error) => tracing::error!("{error:#}"),
                     }
                 }
                 Event::CallbackChannelClosed => {
@@ -971,10 +975,6 @@ impl<'a> Handler<'a> {
 
         Ok(())
     }
-}
-
-fn is_io_error(error: &anyhow::Error, kind: io::ErrorKind) -> bool {
-    error.any_downcast_ref::<io::Error>().map(io::Error::kind) == Some(kind)
 }
 
 /// Run the Tunnel service in an interactive terminal rather than as a
