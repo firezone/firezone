@@ -801,7 +801,23 @@ impl RefClient {
             }
         }
 
-        if strictly_allowed {
+        // The gateway evaluates every authorized route to the destination. A
+        // broader CIDR authorization can permit traffic that the selected route's
+        // filter rejects.
+        let allowed_by_another_cidr = dst.ip_addr().is_some_and(|ip| {
+            self.resources.iter().any(|resource| {
+                let Resource::Cidr(cidr) = resource else {
+                    return false;
+                };
+
+                self.connected_cidr_resources.contains(&cidr.id)
+                    && gateway_by_resource(cidr.id) == Some(gateway)
+                    && cidr.address.contains(ip)
+                    && protocol_filter_allows(&cidr.filters, protocol)
+            })
+        });
+
+        if strictly_allowed || allowed_by_another_cidr {
             return PacketRoute::Resource { resource, gateway };
         }
 
@@ -1990,6 +2006,25 @@ mod tests {
         assert_eq!(
             route(&mut client, Protocol::Udp(81)).0,
             PacketRoute::ResourceRejectedByGateway {
+                resource: specific_id,
+                gateway: specific_gateway,
+            }
+        );
+
+        client.connected_cidr_resources.insert(broad_id);
+        assert_eq!(
+            client
+                .route_for_packet(
+                    "100.96.0.1".parse().unwrap(),
+                    &dst,
+                    Protocol::IcmpEcho(1),
+                    |_| Some(specific_gateway),
+                    |_| None,
+                    |_| None,
+                    |_, _| None,
+                )
+                .0,
+            PacketRoute::Resource {
                 resource: specific_id,
                 gateway: specific_gateway,
             }
