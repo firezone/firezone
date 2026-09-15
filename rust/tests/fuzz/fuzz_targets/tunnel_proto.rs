@@ -29,9 +29,7 @@ fuzz_target!(|data: &[u8]| {
             break;
         }
 
-        let Some(transition) = generator.transition(&reference) else {
-            break;
-        };
+        let transition = generator.transition(&reference);
 
         tracing::debug!("Applying transition {applied}: {transition:?}");
 

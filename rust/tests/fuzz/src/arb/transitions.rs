@@ -57,7 +57,7 @@ enum ExistingFlow {
     Icmp(FlowId, Seq),
 }
 
-pub(super) fn generate(g: &mut Generator, state: &ReferenceState) -> Option<Transition> {
+pub(super) fn generate(g: &mut Generator, state: &ReferenceState) -> Transition {
     let addable_resources = state.resources_unknown_to_all_clients();
     let cidr_resources = state.cidr_resources_on_any_client();
     let move_resources = move_resource_candidates(state);
@@ -117,10 +117,10 @@ pub(super) fn generate(g: &mut Generator, state: &ReferenceState) -> Option<Tran
     .collect::<SmallVec<[_; 24]>>();
 
     // Weighted pick over the legal list.
-    let kind = weighted_choose(g, &legal)?;
+    let kind = weighted_choose(g, &legal);
 
     // Generate only the chosen arm's payload from the following bytes.
-    let transition = match kind {
+    match kind {
         K::UpdateSystemDnsServers => Transition::UpdateSystemDnsServers {
             servers: arb_system_dns_servers(g),
         },
@@ -285,9 +285,7 @@ pub(super) fn generate(g: &mut Generator, state: &ReferenceState) -> Option<Tran
                 new_devices: packets::arb_static_pool_members(g, state, &pool),
             }
         }
-    };
-
-    Some(transition)
+    }
 }
 
 fn move_resource_candidates(state: &ReferenceState) -> Vec<(Resource, Site)> {
@@ -377,11 +375,10 @@ fn arb_resource_with_different_type(
 
 /// Reproduces `Union::new_weighted`: partition `int_in_range` over the summed
 /// weight. Identical bytes always pick the same arm.
-fn weighted_choose(g: &mut Generator, opts: &[(TransitionKind, u32)]) -> Option<TransitionKind> {
-    if opts.is_empty() {
-        return None;
-    }
+fn weighted_choose(g: &mut Generator, opts: &[(TransitionKind, u32)]) -> TransitionKind {
     let total = opts.iter().map(|(_, weight)| *weight).sum::<u32>();
+    assert!(total > 0, "there is always at least one legal transition");
+
     let pick = g.u32_in(0..=total - 1);
 
     opts.iter()
@@ -390,4 +387,5 @@ fn weighted_choose(g: &mut Generator, opts: &[(TransitionKind, u32)]) -> Option<
             Some((*kind, *end))
         })
         .find_map(|(kind, end)| (pick < end).then_some(kind))
+        .expect("the selected transition must be within the total weight")
 }
