@@ -480,7 +480,7 @@ defmodule PortalWeb.Resources.Components do
         <:option :let={row}>{row.group.name}</:option>
       </.live_component>
       <p :if={@members_changed?} class="text-xs text-warning">
-        Changing who is in this pool expires every active connection through it;
+        Changing how this pool picks its devices expires every active connection through it;
         devices may experience a few seconds of interrupted connectivity.
       </p>
     </div>
@@ -567,23 +567,17 @@ defmodule PortalWeb.Resources.Components do
 
   defp stored_group_id(_resource), do: nil
 
-  # Warn only on an existing pool: a criteria change drops its active authorizations.
-  defp pool_members_changed?(form, selected_devices) do
+  # Warn only on an existing pool, and only for a change that expires the whole pool.
+  # Editing the devices a pool names drops the connections to the devices removed and
+  # leaves the rest alone, so it needs no warning.
+  defp pool_members_changed?(form, _selected_devices) do
     case form.data do
       %{id: id, type: :device_pool, device_membership_criteria: criteria} when not is_nil(id) ->
         pool_members(form) != Portal.Resource.DeviceMembershipCriteria.kind(criteria) or
-          selected_ids_changed?(criteria, selected_devices) or
           pool_group_id(form) != stored_group_id(form.data)
 
       _resource ->
         false
-    end
-  end
-
-  defp selected_ids_changed?(criteria, selected_devices) do
-    case Portal.Resource.DeviceMembershipCriteria.device_ids(criteria) do
-      {:ok, device_ids} -> Enum.sort(Enum.map(selected_devices, & &1.id)) != device_ids
-      :error -> false
     end
   end
 

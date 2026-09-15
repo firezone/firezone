@@ -1141,6 +1141,28 @@ defmodule PortalWeb.ResourcesTest do
       assert updated.device_membership_criteria == Portal.Resource.DeviceMembershipCriteria.actor_group(group.id)
     end
 
+    test "does not warn when only the devices a pool names change", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      listed = client_fixture(account: account)
+      joining = client_fixture(account: account)
+      resource = device_pool_resource_fixture(account: account, devices: [listed], name: "Lab")
+      warning = "expires every active connection through it"
+      conn = authorize_conn(conn, actor)
+
+      {:ok, lv, html} = live(conn, ~p"/#{account}/resources/#{resource.id}/edit")
+
+      refute html =~ warning
+
+      html = render_click(lv, "add_device", %{"device_id" => joining.id})
+      refute html =~ warning
+
+      html = render_click(lv, "remove_device", %{"device_id" => listed.id})
+      refute html =~ warning
+    end
+
     test "warns that changing a pool's members drops its connections", %{
       conn: conn,
       account: account,

@@ -31,9 +31,10 @@ defmodule Portal.Changes.Hooks.Resources do
     if old_resource.site_id != resource.site_id or
          old_resource.ip_stack != resource.ip_stack or
          old_resource.type != resource.type or
-         old_resource.address != resource.address or
-         breaking_criteria_change?(old_resource, resource) do
+         old_resource.address != resource.address do
       Database.delete_policy_authorizations_for(resource)
+    else
+      revoke_criteria_change(old_resource, resource)
     end
 
     PubSub.Changes.broadcast(resource.account_id, :resources, change)
@@ -47,21 +48,18 @@ defmodule Portal.Changes.Hooks.Resources do
     PubSub.Changes.broadcast(resource.account_id, :resources, change)
   end
 
-  # Who a pool holds decides who may reach whom, so a new rule expires the whole pool.
-  # Deleting a device is the exception: it only drops its own id from the pools that
-  # list it, and its authorizations went with the row.
-  defp breaking_criteria_change?(%{device_membership_criteria: criteria}, %{device_membership_criteria: criteria}) do
-    false
+  # Editing the devices a pool names concerns only the devices that left it. Every other
+  # change to who a pool holds can move any device in or out, so it expires the whole pool.
+  defp revoke_criteria_change(%{device_membership_criteria: criteria}, %{device_membership_criteria: criteria}) do
+    :ok
   end
 
-  defp breaking_criteria_change?(old_resource, resource) do
+  defp revoke_criteria_change(old_resource, resource) do
     with {:ok, old_ids} <- DeviceMembershipCriteria.device_ids(old_resource.device_membership_criteria),
-         {:ok, ids} <- DeviceMembershipCriteria.device_ids(resource.device_membership_criteria),
-         [] <- ids -- old_ids,
-         false <- Database.any_device_exists?(resource.account_id, old_ids -- ids) do
-      false
+         {:ok, ids} <- DeviceMembershipCriteria.device_ids(resource.device_membership_criteria) do
+      Database.delete_policy_authorizations_toward(resource, old_ids -- ids)
     else
-      _other -> true
+      :error -> Database.delete_policy_authorizations_for(resource)
     end
   end
 
@@ -69,11 +67,14 @@ defmodule Portal.Changes.Hooks.Resources do
     import Ecto.Query
     alias Portal.Safe
 
-    def any_device_exists?(account_id, device_ids) do
-      from(d in Portal.Device, as: :devices)
-      |> where([devices: d], d.account_id == ^account_id and d.id in ^device_ids)
+    def delete_policy_authorizations_toward(_resource, []), do: :ok
+
+    def delete_policy_authorizations_toward(%Portal.Resource{} = resource, device_ids) do
+      resource
+      |> policy_authorizations()
+      |> where([policy_authorizations: f], f.receiving_device_id in ^device_ids)
       |> Safe.unscoped()
-      |> Safe.exists?()
+      |> Safe.delete_all()
     end
 
     # Inline function from Portal.PolicyAuthorizations

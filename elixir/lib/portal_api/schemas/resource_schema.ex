@@ -27,8 +27,12 @@ defmodule PortalAPI.Schemas.Resource do
       In order: exactly the Clients named, the asking Actor's own Clients, every Client
       in the Account, and the Clients of every Actor in one Group.
 
-      Changing this is a breaking update: every active connection through the pool is
-      dropped, and Clients reconnect to the members they may still reach.
+      Editing the list of Clients the first rule names drops the connections to the
+      Clients removed and leaves every other connection through the pool alone.
+
+      Every other change to this field is a breaking update, because any Client can move
+      in or out of the pool: every active connection through the pool is dropped, and
+      Clients reconnect to the members they may still reach.
 
       Clients older than the device-pool protocol only understand a pool that names its
       members, so they are sent the first rule and never the other three.
