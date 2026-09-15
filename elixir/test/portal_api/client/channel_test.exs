@@ -6481,6 +6481,43 @@ defmodule PortalAPI.Client.ChannelTest do
       }
     end
 
+    test "refuses at a constant time however much work the answer took", %{
+      account: account,
+      client: client,
+      subject: subject,
+      target_client: target_client,
+      pool_resource: pool_resource
+    } do
+      stranger_actor = actor_fixture(account: account)
+      stranger = client_fixture(account: account, actor: stranger_actor) |> fetch_device!()
+
+      stranger_subject =
+        subject_fixture(
+          account: account,
+          actor: stranger_actor,
+          type: :client,
+          user_agent: "Mac OS/14 apple-client/1.5.16"
+        )
+
+      initiating_socket = join_channel(client, subject, channel: PortalAPI.Client.V3.Channel)
+      assert_push "init", _
+
+      join_channel(stranger, stranger_subject)
+      assert_push "init", _
+
+      # The target is the actor's own device and offline, so a pool holds it and the answer
+      # needs one read. The stranger is online, so refusing it needs none. The unused address
+      # matches nothing and needs one read. Only the refusals are padded.
+      {offline, offline_payload} = time_access(initiating_socket, pool_resource.id, target_client.ipv4)
+      {online_refusal, _} = time_access(initiating_socket, pool_resource.id, stranger.ipv4)
+      {unused_refusal, _} = time_access(initiating_socket, pool_resource.id, "100.64.255.99")
+
+      assert offline_payload.reason == :offline
+      assert offline < 400
+      assert online_refusal >= 450
+      assert unused_refusal >= 450
+    end
+
     test "answers an address no device holds the same as one it may not reach", %{
       account: account,
       client: client,
@@ -6890,14 +6927,17 @@ defmodule PortalAPI.Client.ChannelTest do
   end
 
   describe "handle_in/3 resolve_device_domain" do
-    setup %{account: account, actor: actor, subject: subject} do
+    setup %{account: account, actor: actor, group: group, subject: subject} do
       subject = put_user_agent(subject, "Mac OS/14 apple-client/1.5.16")
 
       target_client =
         client_fixture(account: account, actor: actor, name: "Device 42")
         |> fetch_device!()
 
-      %{subject: subject, target_client: target_client}
+      pool_resource = own_devices_pool_resource_fixture(account: account)
+      policy_fixture(account: account, group: group, resource: pool_resource)
+
+      %{subject: subject, target_client: target_client, pool_resource: pool_resource}
     end
 
     test "answers the name with the device's addresses, without a grant", %{
@@ -6952,7 +6992,7 @@ defmodule PortalAPI.Client.ChannelTest do
       assert_push "device_domain_resolved", %{domain: ^domain}
     end
 
-    test "resolves devices no pool admits", %{
+    test "hides a device no pool admits behind the same answer as an unknown name", %{
       account: account,
       client: client,
       subject: subject
@@ -6964,12 +7004,41 @@ defmodule PortalAPI.Client.ChannelTest do
       socket = join_channel(client, subject, channel: PortalAPI.Client.V3.Channel)
       assert_push "init", _
 
-      domain = Portal.Device.fqdn(stranger)
-      stranger_ipv4 = to_string(:inet.ntoa(stranger.ipv4.address))
+      stranger_domain = Portal.Device.fqdn(stranger)
+      unknown_domain = "ghost.#{Portal.Device.domain()}"
 
-      push(socket, "resolve_device_domain", %{"domain" => domain})
+      push(socket, "resolve_device_domain", %{"domain" => stranger_domain})
 
-      assert_push "device_domain_resolved", %{domain: ^domain, ipv4: ^stranger_ipv4}
+      assert_push "device_domain_resolution_failed", %{
+        domain: ^stranger_domain,
+        reason: :not_found
+      }
+
+      push(socket, "resolve_device_domain", %{"domain" => unknown_domain})
+
+      assert_push "device_domain_resolution_failed", %{domain: ^unknown_domain, reason: :not_found}
+    end
+
+    test "answers a name the client may not reach no faster than an unknown one", %{
+      account: account,
+      client: client,
+      subject: subject,
+      target_client: target_client
+    } do
+      stranger =
+        client_fixture(account: account, actor: actor_fixture(account: account), name: "Stranger")
+        |> fetch_device!()
+
+      socket = join_channel(client, subject, channel: PortalAPI.Client.V3.Channel)
+      assert_push "init", _
+
+      reachable = time_push(socket, Portal.Device.fqdn(target_client), "device_domain_resolved")
+      refused = time_push(socket, Portal.Device.fqdn(stranger), "device_domain_resolution_failed")
+      unknown = time_push(socket, "ghost.#{Portal.Device.domain()}", "device_domain_resolution_failed")
+
+      assert reachable < 400
+      assert refused >= 450
+      assert unknown >= 450
     end
 
     test "resolves the requesting device itself", %{client: client, subject: subject} do
@@ -8404,5 +8473,24 @@ defmodule PortalAPI.Client.ChannelTest do
       # pid on join and stops the channel on its :DOWN.
       refute Process.alive?(channel_pid)
     end
+  end
+
+  # Milliseconds between asking for an address and the refusal or offline answer landing.
+  defp time_access(socket, resource_id, address) do
+    ipv4 = if is_binary(address), do: address, else: Portal.Types.INET.to_string(address)
+    started_at = System.monotonic_time(:millisecond)
+
+    push(socket, "request_access", %{"resource_ids" => [resource_id], "ipv4" => ipv4})
+    assert_push "client_device_access_denied", payload
+
+    {System.monotonic_time(:millisecond) - started_at, payload}
+  end
+
+  # Milliseconds between asking for a name and the answer landing.
+  defp time_push(socket, domain, event) do
+    started_at = System.monotonic_time(:millisecond)
+    push(socket, "resolve_device_domain", %{"domain" => domain})
+    assert_push ^event, %{domain: ^domain}
+    System.monotonic_time(:millisecond) - started_at
   end
 end
