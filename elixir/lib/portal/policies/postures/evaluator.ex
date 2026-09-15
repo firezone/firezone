@@ -14,7 +14,7 @@ defmodule Portal.Policies.Postures.Evaluator do
 
   alias Portal.Device
   alias Portal.Policies.Postures
-  alias Portal.Policies.Postures.{And, Check, Leaf, Not, Or}
+  alias Portal.Policies.Postures.{And, Leaf, Not, Or}
 
   @spec evaluate(Postures.t() | nil, Device.t(), DateTime.t()) ::
           {:ok, DateTime.t() | nil} | {:error, [:postures]}
@@ -34,8 +34,6 @@ defmodule Portal.Policies.Postures.Evaluator do
   defp evaluate_node(%Or{nodes: nodes}, device, now) do
     nodes |> Enum.map(&evaluate_node(&1, device, now)) |> any_pass()
   end
-
-  defp evaluate_node(%Check{expr: expr}, device, now), do: evaluate_node(expr, device, now)
 
   defp evaluate_node(%Not{node: node}, device, now) do
     {passed?, _expires_at} = evaluate_node(node, device, now)

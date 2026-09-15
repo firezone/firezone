@@ -348,16 +348,7 @@ defmodule Portal.Policies.Postures.EvaluatorTest do
     end
   end
 
-  describe "evaluate/3 checks and macros" do
-    test "a check evaluates its expansion" do
-      compliant = struct!(Portal.Intune.Device, compliance_state: "compliant")
-      noncompliant = struct!(Portal.Intune.Device, compliance_state: "noncompliant")
-
-      assert evaluate(%{"check" => "compliant"}, device(posture: %{intune: [compliant]})) == {:ok, nil}
-      assert evaluate(%{"check" => "compliant"}, device(posture: %{intune: [noncompliant]})) == @failed
-      assert evaluate(%{"check" => "compliant"}, device(posture: %{})) == @failed
-    end
-
+  describe "evaluate/3 macros" do
     test "@latest resolves to the newest Client release for the device's platform" do
       latest = Portal.ComponentVersions.component_version(:apple)
       leaf = leaf("firezone.last_seen_version", "gte", "@latest")
@@ -365,7 +356,6 @@ defmodule Portal.Policies.Postures.EvaluatorTest do
 
       assert evaluate(leaf, device(last_seen_user_agent: apple <> latest, last_seen_version: latest)) == {:ok, nil}
       assert evaluate(leaf, device(last_seen_user_agent: apple <> "0.1.0", last_seen_version: "0.1.0")) == @failed
-      assert evaluate(%{"check" => "client_up_to_date"}, device(last_seen_user_agent: apple <> latest, last_seen_version: latest)) == {:ok, nil}
     end
   end
 

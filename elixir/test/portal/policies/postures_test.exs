@@ -27,19 +27,6 @@ defmodule Portal.Policies.PosturesTest do
   defp intune_leaf(op, value \\ :none), do: leaf("intune.compliance_state", op, value)
 
   describe "cast/1 grammar" do
-    test "a check node expands to its tree and is stored by name" do
-      assert %Postures{expr: %Postures.Check{name: :compliant, expr: %Leaf{provider: :intune}}} =
-               postures = cast!(%{"check" => "compliant"})
-
-      assert Postures.to_map(postures) == %{"check" => "compliant"}
-      assert Postures.leaf_count(postures) == 1
-
-      assert cast_error(%{"check" => "bogus"}) == "check: unknown check bogus"
-      assert cast_error(%{"check" => 1}) == "check: must be a string"
-      assert cast_error(%{"check" => "compliant", "op" => "is"}) =~ "must be one of and, or, not, check"
-      assert cast_error(%{"and" => [%{"check" => "bogus"}]}) == "and[0].check: unknown check bogus"
-    end
-
     test "@latest is only for the Client version" do
       assert %Postures{expr: %Leaf{parsed: :latest}} =
                cast!(%{"field" => "firezone.last_seen_version", "op" => "gte", "value" => "@latest"})
@@ -68,7 +55,7 @@ defmodule Portal.Policies.PosturesTest do
     end
 
     test "an empty object is not a node" do
-      assert cast_error(%{}) == "must be one of and, or, not, check, or a leaf with field and op"
+      assert cast_error(%{}) == "must be one of and, or, not, or a leaf with field and op"
     end
 
     test "rows all and rows any sit on the leaf" do
@@ -119,15 +106,15 @@ defmodule Portal.Policies.PosturesTest do
     end
 
     test "a node must be an object with one known shape" do
-      assert cast_error(%{"and" => [], "or" => []}) == "must be one of and, or, not, check, or a leaf with field and op"
-      assert cast_error(%{"field" => "intune.compliance_state"}) == "must be one of and, or, not, check, or a leaf with field and op"
+      assert cast_error(%{"and" => [], "or" => []}) == "must be one of and, or, not, or a leaf with field and op"
+      assert cast_error(%{"field" => "intune.compliance_state"}) == "must be one of and, or, not, or a leaf with field and op"
       assert cast_error(%{"and" => [1]}) == "and[0]: must be an object"
       assert cast_error(%{"not" => "x"}) == "not: must be an object"
     end
 
     test "errors name the path to the offending node" do
       map = %{"and" => [intune_leaf("is", "x"), %{"not" => %{"or" => [%{"x" => 1}]}}]}
-      assert cast_error(map) == "and[1].not.or[0]: must be one of and, or, not, check, or a leaf with field and op"
+      assert cast_error(map) == "and[1].not.or[0]: must be one of and, or, not, or a leaf with field and op"
       assert cast_error(%{"or" => [intune_leaf("is", 1)]}) == "or[0].value: must be a string"
     end
 
