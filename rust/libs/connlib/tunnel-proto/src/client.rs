@@ -619,129 +619,119 @@ impl ClientState {
                 return Ok(());
             }
         };
-        let pending_authorizations = &mut self.pending_authorizations;
-
-        let is_authorized = |resource_id: ResourceId| {
-            self.clients.peer_by_ip(dst).is_some_and(|(cid, _)| {
-                self.authorized_resources
-                    .get(&resource_id)
-                    .is_some_and(|resource| resource.client_token(cid).is_some())
-            })
-        };
-        let routes = self
-            .routing_tables
-            .resolve(dst, dst_proto, internet_resource, is_authorized);
-        let resource_ids = routes
-            .as_ref()
-            .map(|routes| routes.iter().map(Route::resource_id).unique().collect_vec())
-            .unwrap_or_default();
-        let route = routes.map(|routes| {
-            routes
-                .iter()
-                .find(|route| match route {
-                    Route::Client { resource_id } => is_authorized(*resource_id),
-                    Route::Gateway { resource_id, .. } => self
-                        .authorized_resources
-                        .get(resource_id)
-                        .is_some_and(|path| path.as_gateway().is_some()),
-                })
-                .or_else(|| routes.first())
-                .cloned()
-        });
-
         let direct_gateway = self.gateways.peer_by_ip(dst).map(|(gid, _)| gid);
         let peer_originated_client_flow = self.clients.peer_by_ip(dst).and_then(|(cid, peer)| {
             (peer.outbound_flow_originator(&packet) == Some(Originator::Peer)).then_some(cid)
         });
 
-        let (packet, peer) = match (direct_gateway, peer_originated_client_flow, route) {
-            (Some(gid), _, _) => {
+        let (packet, peer) = match (direct_gateway, peer_originated_client_flow) {
+            (Some(gid), _) => {
                 // Traffic addressed directly to a Gateway's TUN IP bypasses resource routing.
                 flow_tracker::record_peer(gid, flow_tracker::Role::Initiator);
 
                 (packet, gid.into())
             }
-            (None, Some(cid), _) => {
+            (None, Some(cid)) => {
                 // A reply follows its peer-originated flow even if we have no outbound route to
                 // that peer.
                 flow_tracker::record_peer(cid, flow_tracker::Role::Responder);
 
                 (packet, cid.into())
             }
-            (None, None, Ok(Some(Route::Client { resource_id: rid }))) => {
-                let authorized = self
-                    .clients
-                    .peer_by_ip(dst)
-                    .map(|(cid, _)| cid)
-                    .and_then(|cid| {
-                        let token = self.authorized_resources.get(&rid)?.client_token(cid)?;
+            (None, None) => {
+                let destination = packet.destination();
+                let routes = self
+                    .routing_tables
+                    .resolve(destination, dst_proto, internet_resource);
 
-                        Some((cid, token.clone()))
-                    });
-
-                let Some((cid, ingest_token)) = authorized else {
-                    // Not yet authorized: Buffer + send request.
-                    pending_authorizations.on_not_authorized_device(dst, resource_ids, packet, now);
-                    return Ok(());
+                #[cfg(any(test, feature = "malicious-behaviour"))]
+                let routes = {
+                    let client = self.clients.peer_by_ip(destination).map(|(cid, _)| cid);
+                    let bypass_routes = self.routing_tables.peer_filter_bypass_routes(
+                        destination,
+                        dst_proto,
+                        |resource_id| {
+                            client.is_some_and(|cid| {
+                                self.authorized_resources
+                                    .get(&resource_id)
+                                    .is_some_and(|resource| resource.client_token(cid).is_some())
+                            })
+                        },
+                    );
+                    if bypass_routes.is_empty() {
+                        routes
+                    } else {
+                        Ok(routes
+                            .unwrap_or_default()
+                            .into_iter()
+                            .chain(bypass_routes)
+                            .collect())
+                    }
                 };
 
-                let peer = self
-                    .clients
-                    .peer_by_id_mut(&cid)
-                    .with_context(|| UnroutablePacket::no_peer_state(&packet))?;
-
-                peer.record_outbound_as_originator(&packet, now);
-                flow_tracker::record_peer(cid, flow_tracker::Role::Initiator);
-                flow_tracker::record_ingest_token(Some(ingest_token));
-
-                (packet, cid.into())
-            }
-            (
-                None,
-                None,
-                Ok(Some(Route::Gateway {
-                    resource_id: rid,
-                    domain,
-                })),
-            ) => {
-                let Some((gid, ingest_token)) = self
-                    .authorized_resources
-                    .get(&rid)
-                    .and_then(|resource| resource.gateway_token())
-                else {
-                    // Not yet authorized: Buffer + send intent.
-                    pending_authorizations.on_not_authorized_resource(resource_ids, packet, now);
-                    return Ok(());
-                };
-
-                flow_tracker::record_peer(gid, flow_tracker::Role::Initiator);
-                flow_tracker::record_ingest_token(Some(ingest_token.clone()));
-
-                let packet = if let Some(domain) = domain {
-                    flow_tracker::record_domain(domain.clone());
-
-                    let Some(packet) = self
-                        .dns_resource_nat
-                        .handle_outgoing(gid, &domain, rid, packet, now)
-                    else {
+                let routes = match routes {
+                    Ok(routes) => routes,
+                    Err(routing::Denied) => {
+                        reply_with_icmp_prohibited(&mut self.buffered_packets, packet);
                         return Ok(());
-                    };
+                    }
+                };
+                let first = routes
+                    .first()
+                    .with_context(|| UnroutablePacket::unknown_resource(&packet))?;
 
-                    packet
-                } else {
-                    packet
+                let Some(route) = select_authorized_route(
+                    destination,
+                    &routes,
+                    &self.authorized_resources,
+                    &self.clients,
+                ) else {
+                    let resource_ids = routes.iter().map(Route::resource_id).unique().collect_vec();
+                    match first {
+                        Route::Client { .. } => self
+                            .pending_authorizations
+                            .on_not_authorized_device(destination, resource_ids, packet, now),
+                        Route::Gateway { .. } => self
+                            .pending_authorizations
+                            .on_not_authorized_resource(resource_ids, packet, now),
+                    }
+                    return Ok(());
                 };
 
-                (packet, gid.into())
-            }
-            (None, None, Err(routing::Denied)) => {
-                reply_with_icmp_prohibited(&mut self.buffered_packets, packet);
-                return Ok(());
-            }
-            (None, None, Ok(None)) => {
-                return Err(anyhow::Error::new(UnroutablePacket::unknown_resource(
-                    &packet,
-                )));
+                flow_tracker::record_peer(route.peer, flow_tracker::Role::Initiator);
+                flow_tracker::record_ingest_token(Some(route.ingest_token));
+
+                let packet = match route.peer {
+                    ClientOrGatewayId::Client(cid) => {
+                        self.clients
+                            .peer_by_id_mut(&cid)
+                            .with_context(|| UnroutablePacket::no_peer_state(&packet))?
+                            .record_outbound_as_originator(&packet, now);
+
+                        packet
+                    }
+                    ClientOrGatewayId::Gateway(gid) => {
+                        if let Some(domain) = route.domain {
+                            flow_tracker::record_domain(domain.clone());
+
+                            let Some(packet) = self.dns_resource_nat.handle_outgoing(
+                                gid,
+                                &domain,
+                                route.resource_id,
+                                packet,
+                                now,
+                            ) else {
+                                return Ok(());
+                            };
+
+                            packet
+                        } else {
+                            packet
+                        }
+                    }
+                };
+
+                (packet, route.peer)
             }
         };
 
@@ -2635,6 +2625,47 @@ fn reply_with_icmp_prohibited(buffered_packets: &mut VecDeque<IpPacket>, packet:
         Ok(reply) => buffered_packets.push_back(reply),
         Err(e) => tracing::debug!("Failed to create ICMP prohibited error: {e:#}"),
     }
+}
+
+fn select_authorized_route(
+    destination: IpAddr,
+    routes: &[Route],
+    authorized_resources: &HashMap<ResourceId, AuthorizedOutboundResource>,
+    clients: &PeerStore<ClientId, ClientOnClient>,
+) -> Option<AuthorizedRoute> {
+    let destination_client = clients.peer_by_ip(destination);
+
+    routes.iter().find_map(|route| {
+        let resource_id = route.resource_id();
+        let path = authorized_resources.get(&resource_id)?;
+        let (peer, domain, ingest_token) = match route {
+            Route::Client { .. } => {
+                let (cid, _) = destination_client?;
+                let ingest_token = path.client_token(cid)?;
+
+                (cid.into(), None, ingest_token.clone())
+            }
+            Route::Gateway { domain, .. } => {
+                let (gid, ingest_token) = path.gateway_token()?;
+
+                (gid.into(), domain.clone(), ingest_token.clone())
+            }
+        };
+
+        Some(AuthorizedRoute {
+            resource_id,
+            peer,
+            domain,
+            ingest_token,
+        })
+    })
+}
+
+struct AuthorizedRoute {
+    resource_id: ResourceId,
+    peer: ClientOrGatewayId,
+    domain: Option<DomainName>,
+    ingest_token: IngestToken,
 }
 
 #[derive(Debug, Clone)]

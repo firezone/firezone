@@ -50,12 +50,11 @@ impl RoutingTables {
         destination: IpAddr,
         protocol: Protocol,
         internet_resource: Option<ResourceId>,
-        is_authorized: impl Fn(ResourceId) -> bool,
     ) -> Result<Vec<Route>, Denied> {
         if let Some(peers) = self.peer.matches(destination, Ok(protocol)) {
             return allowed_routes(
                 peers,
-                |entry| is_authorized(entry.resource_id),
+                |_| false,
                 |entry| Route::Client {
                     resource_id: entry.resource_id,
                 },
@@ -64,6 +63,28 @@ impl RoutingTables {
 
         let routes = self.resolve_resource(destination, protocol, internet_resource)?;
         Ok(routes)
+    }
+
+    #[cfg(any(test, feature = "malicious-behaviour"))]
+    pub(super) fn peer_filter_bypass_routes(
+        &mut self,
+        destination: IpAddr,
+        protocol: Protocol,
+        can_bypass_peer_filter: impl Fn(ResourceId) -> bool,
+    ) -> Vec<Route> {
+        if !crate::malicious_behaviour::ignore_resource_filter() {
+            return Vec::new();
+        }
+
+        self.peer
+            .matches(destination, Ok(protocol))
+            .into_iter()
+            .flat_map(|matches| &matches.denied)
+            .filter(|entry| can_bypass_peer_filter(entry.resource_id))
+            .map(|entry| Route::Client {
+                resource_id: entry.resource_id,
+            })
+            .collect()
     }
 
     /// Resolves resources routed through a gateway.
@@ -280,7 +301,6 @@ mod tests {
                 other_client_tun_ip(),
                 Protocol::Tcp(80),
                 Some(internet_resource_id()),
-                |_| false,
             )
             .unwrap();
 
@@ -294,7 +314,7 @@ mod tests {
 
         for ip in ["100.64.0.4", "100.95.255.254", "fd00:2021:1111::4"] {
             let routes = tables
-                .resolve(ip.parse().unwrap(), Protocol::Tcp(80), None, |_| false)
+                .resolve(ip.parse().unwrap(), Protocol::Tcp(80), None)
                 .unwrap();
             assert_eq!(
                 routes.iter().map(Route::resource_id).collect::<Vec<_>>(),
@@ -303,12 +323,7 @@ mod tests {
         }
         assert!(
             tables
-                .resolve(
-                    "100.96.0.4".parse().unwrap(),
-                    Protocol::Tcp(80),
-                    None,
-                    |_| false
-                )
+                .resolve("100.96.0.4".parse().unwrap(), Protocol::Tcp(80), None)
                 .unwrap()
                 .is_empty()
         );
@@ -323,12 +338,7 @@ mod tests {
         tables.upsert_cidr(destination.into(), cidr_id, FilterEngine::DenyAll);
         assert!(
             tables
-                .resolve(
-                    destination,
-                    Protocol::Tcp(80),
-                    Some(internet_resource_id()),
-                    |_| false
-                )
+                .resolve(destination, Protocol::Tcp(80), Some(internet_resource_id()))
                 .is_err()
         );
 
@@ -343,12 +353,7 @@ mod tests {
         );
         assert!(
             tables
-                .resolve(
-                    destination,
-                    Protocol::Tcp(80),
-                    Some(internet_resource_id()),
-                    |_| false
-                )
+                .resolve(destination, Protocol::Tcp(80), Some(internet_resource_id()))
                 .is_err()
         );
 
@@ -356,12 +361,7 @@ mod tests {
         tables.upsert_pool(pool_id(), FilterEngine::DenyAll);
         assert!(
             tables
-                .resolve(
-                    destination,
-                    Protocol::Tcp(80),
-                    Some(internet_resource_id()),
-                    |_| false
-                )
+                .resolve(destination, Protocol::Tcp(80), Some(internet_resource_id()))
                 .is_err()
         );
     }
@@ -378,14 +378,18 @@ mod tests {
 
         assert!(
             tables
-                .resolve(other_client_tun_ip(), Protocol::Tcp(80), None, |_| false)
+                .resolve(other_client_tun_ip(), Protocol::Tcp(80), None)
                 .is_err()
         );
-        let routes = tables
-            .resolve(other_client_tun_ip(), Protocol::Tcp(80), None, |id| {
+        assert!(
+            tables
+                .peer_filter_bypass_routes(other_client_tun_ip(), Protocol::Tcp(80), |_| false)
+                .is_empty()
+        );
+        let routes =
+            tables.peer_filter_bypass_routes(other_client_tun_ip(), Protocol::Tcp(80), |id| {
                 id == pool_id()
-            })
-            .unwrap();
+            });
         assert_eq!(
             routes.iter().map(Route::resource_id).collect::<Vec<_>>(),
             vec![pool_id()]
