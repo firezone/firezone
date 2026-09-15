@@ -94,7 +94,7 @@ defmodule PortalWeb.ResourcesTest do
       account: account,
       actor: actor
     } do
-      resource = static_device_pool_resource_fixture(account: account)
+      resource = device_pool_resource_fixture(account: account)
 
       {:ok, _lv, html} =
         conn
@@ -106,6 +106,24 @@ defmodule PortalWeb.ResourcesTest do
       refute html =~ "No Site Associated"
     end
 
+    test "shows an own devices pool with the device domain and no site", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      own_devices_pool_resource_fixture(account: account, name: "Personal devices")
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources")
+
+      assert html =~ "Personal devices"
+      assert html =~ "Your devices"
+      assert html =~ "&lt;slug&gt;.firezone.network"
+      assert html =~ "No Site Needed"
+    end
+
     test "shows online member count instead of offline for device pools", %{
       conn: conn,
       account: account,
@@ -115,7 +133,7 @@ defmodule PortalWeb.ResourcesTest do
       device_two = client_fixture(account: account, actor: actor)
 
       _resource =
-        static_device_pool_resource_fixture(account: account, devices: [device_one, device_two])
+        device_pool_resource_fixture(account: account, devices: [device_one, device_two])
 
       {:ok, _lv, html} =
         conn
@@ -132,7 +150,7 @@ defmodule PortalWeb.ResourcesTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/resources")
 
-      assert has_element?(lv, "#resources-type-static_device_pool")
+      assert has_element?(lv, "#resources-type-device_pool")
       assert has_element?(lv, "#resources-type-dns")
     end
 
@@ -143,7 +161,7 @@ defmodule PortalWeb.ResourcesTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/resources/new")
 
-      assert has_element?(lv, "#resource-form-type--static-device-pool")
+      assert has_element?(lv, "#resource-form-type--device-pool")
       assert has_element?(lv, "#resource-form-type--dns")
     end
 
@@ -272,14 +290,14 @@ defmodule PortalWeb.ResourcesTest do
 
       lv
       |> form("[phx-submit='submit_resource_form']",
-        resource: %{type: "static_device_pool", name: "My Device Pool"}
+        resource: %{type: "device_pool", name: "My Device Pool"}
       )
       |> render_change()
 
       html =
         lv
         |> form("[phx-submit='submit_resource_form']",
-          resource: %{type: "static_device_pool", name: "My Device Pool"}
+          resource: %{type: "device_pool", name: "My Device Pool"}
         )
         |> render_submit()
 
@@ -403,7 +421,7 @@ defmodule PortalWeb.ResourcesTest do
         |> live(~p"/#{account}/resources/new")
 
       lv
-      |> form("[phx-submit='submit_resource_form']", resource: %{type: "static_device_pool"})
+      |> form("[phx-submit='submit_resource_form']", resource: %{type: "device_pool"})
       |> render_change()
 
       render_click(lv, "toggle_resource_filters_dropdown")
@@ -420,7 +438,7 @@ defmodule PortalWeb.ResourcesTest do
         lv
         |> form("[phx-submit='submit_resource_form']",
           resource: %{
-            type: "static_device_pool",
+            type: "device_pool",
             name: "Filtered Device Pool",
             filters: %{
               tcp: %{enabled: "true", protocol: "tcp", ports: "443, 8443"},
@@ -454,7 +472,7 @@ defmodule PortalWeb.ResourcesTest do
         |> live(~p"/#{account}/resources/new")
 
       lv
-      |> form("[phx-submit='submit_resource_form']", resource: %{type: "static_device_pool"})
+      |> form("[phx-submit='submit_resource_form']", resource: %{type: "device_pool"})
       |> render_change()
 
       assert render_focus(element(lv, "input[name='device_search']")) =~ "Search devices to add"
@@ -541,7 +559,7 @@ defmodule PortalWeb.ResourcesTest do
       account: account,
       actor: actor
     } do
-      resource = static_device_pool_resource_fixture(account: account)
+      resource = device_pool_resource_fixture(account: account)
 
       {:ok, _lv, html} =
         conn
@@ -977,6 +995,331 @@ defmodule PortalWeb.ResourcesTest do
       assert html =~ "Updated Resource Name"
     end
 
+    test "creates a Your devices pool from the members choice", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources/new")
+
+      lv
+      |> form("[phx-submit='submit_resource_form']", resource: %{type: "device_pool"})
+      |> render_change()
+
+      assert has_element?(lv, "#resource-form-members--own-devices")
+
+      html =
+        lv
+        |> form("[phx-submit='submit_resource_form']",
+          resource: %{type: "device_pool", members: "own_devices", name: "Laptops"}
+        )
+        |> render_submit()
+
+      assert html =~ "created successfully"
+
+      resource = Repo.get_by!(Portal.Resource, account_id: account.id, name: "Laptops")
+      assert resource.type == :device_pool
+      assert resource.device_membership_criteria == Portal.Resource.DeviceMembershipCriteria.own_devices()
+      assert is_nil(resource.address)
+      assert is_nil(resource.site_id)
+    end
+
+    test "offers the four kinds of pool membership", %{conn: conn, account: account, actor: actor} do
+      {:ok, lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources/new")
+
+      refute html =~ "Pool membership criteria"
+      refute html =~ "Requires a recent Firezone client"
+
+      html =
+        lv
+        |> form("[phx-submit='submit_resource_form']", resource: %{type: "device_pool"})
+        |> render_change()
+
+      assert html =~ "Requires a recent Firezone client"
+      assert html =~ "https://www.firezone.dev/kb/concepts/resources?utm_source=product#device-pools"
+      assert html =~ "See supported versions"
+
+      for {id, label, hint} <- [
+            {"own-devices", "Your devices", "Each actor&#39;s own devices"},
+            {"all-devices", "All devices", "Every device in the account"},
+            {"actor-group", "A group&#39;s devices", "Devices of a group&#39;s members"},
+            {"listed", "Static list", "Explicitly choose the devices in this pool"}
+          ] do
+        assert has_element?(lv, "#resource-form-members--#{id}")
+        assert html =~ label
+        assert html =~ hint
+      end
+    end
+
+    test "counts the devices each membership rule matches", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      client_fixture(account: account, actor: actor)
+      teammate = actor_fixture(account: account)
+      group = group_fixture(account: account)
+      membership_fixture(account: account, actor: teammate, group: group)
+      in_group = client_fixture(account: account, actor: teammate)
+      client_fixture(account: account, actor: actor_fixture(account: account))
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources/new")
+
+      lv
+      |> form("[phx-submit='submit_resource_form']", resource: %{type: "device_pool"})
+      |> render_change()
+
+      assert has_element?(lv, "[data-pool-count-for='own_devices']", "1")
+      assert has_element?(lv, "[data-pool-count-for='all_devices']", "3")
+      assert has_element?(lv, "[data-pool-count-for='listed']", "0")
+      assert has_element?(lv, "[data-pool-count-for='actor_group']", "-")
+
+      render_click(lv, "add_device", %{"device_id" => in_group.id})
+      assert has_element?(lv, "[data-pool-count-for='listed']", "1")
+
+      render_click(lv, "remove_device", %{"device_id" => in_group.id})
+      assert has_element?(lv, "[data-pool-count-for='listed']", "0")
+
+      lv
+      |> form("[phx-submit='submit_resource_form']",
+        resource: %{type: "device_pool", members: "actor_group"}
+      )
+      |> render_change()
+
+      assert has_element?(lv, "[data-pool-count-for='actor_group']", "-")
+      assert has_element?(lv, "[data-pool-count-for='listed']", "-")
+
+      lv
+      |> form("[phx-submit='submit_resource_form']",
+        resource: %{type: "device_pool", members: "actor_group", group_id: group.id}
+      )
+      |> render_change()
+
+      assert has_element?(lv, "[data-pool-count-for='actor_group']", "1")
+    end
+
+    test "creates an all devices pool from the members choice", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources/new")
+
+      lv
+      |> form("[phx-submit='submit_resource_form']", resource: %{type: "device_pool"})
+      |> render_change()
+
+      assert has_element?(lv, "#resource-form-members--all-devices")
+
+      html =
+        lv
+        |> form("[phx-submit='submit_resource_form']",
+          resource: %{type: "device_pool", members: "all_devices", name: "Everything"}
+        )
+        |> render_submit()
+
+      assert html =~ "created successfully"
+
+      resource = Repo.get_by!(Portal.Resource, account_id: account.id, name: "Everything")
+      assert resource.device_membership_criteria == Portal.Resource.DeviceMembershipCriteria.all_devices()
+    end
+
+    test "creates a group pool from the members choice and the picked group", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      group = group_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources/new")
+
+      lv
+      |> form("[phx-submit='submit_resource_form']", resource: %{type: "device_pool"})
+      |> render_change()
+
+      lv
+      |> form("[phx-submit='submit_resource_form']",
+        resource: %{type: "device_pool", members: "actor_group"}
+      )
+      |> render_change()
+
+      assert has_element?(lv, "#resource-form-members--actor-group[checked]")
+      assert has_element?(lv, "#resource-form-group-id")
+
+      html =
+        lv
+        |> form("[phx-submit='submit_resource_form']",
+          resource: %{type: "device_pool", members: "actor_group", name: "Engineering laptops"}
+        )
+        |> render_submit(%{resource: %{group_id: group.id}})
+
+      assert html =~ "created successfully"
+
+      resource = Repo.get_by!(Portal.Resource, account_id: account.id, name: "Engineering laptops")
+
+      assert resource.device_membership_criteria ==
+               Portal.Resource.DeviceMembershipCriteria.actor_group(group.id)
+    end
+
+    test "refuses a group pool without a group", %{conn: conn, account: account, actor: actor} do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources/new")
+
+      lv
+      |> form("[phx-submit='submit_resource_form']", resource: %{type: "device_pool"})
+      |> render_change()
+
+      html =
+        lv
+        |> form("[phx-submit='submit_resource_form']",
+          resource: %{type: "device_pool", members: "actor_group", name: "Nobody"}
+        )
+        |> render_submit()
+
+      refute html =~ "created successfully"
+      refute Repo.get_by(Portal.Resource, account_id: account.id, name: "Nobody")
+    end
+
+    test "edits a group pool with its group preselected", %{conn: conn, account: account, actor: actor} do
+      group = group_fixture(account: account, name: "Engineering")
+      resource = actor_group_pool_resource_fixture(account: account, group: group, name: "Group pool")
+
+      {:ok, lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources/#{resource.id}/edit")
+
+      assert has_element?(lv, "#resource-form-members--actor-group[checked]")
+      assert html =~ "Engineering"
+
+      html =
+        lv
+        |> form("[phx-submit='submit_resource_form']", resource: %{name: "Renamed"})
+        |> render_submit()
+
+      assert html =~ "updated successfully"
+
+      updated = Repo.get_by!(Portal.Resource, account_id: account.id, id: resource.id)
+      assert updated.name == "Renamed"
+      assert updated.device_membership_criteria == Portal.Resource.DeviceMembershipCriteria.actor_group(group.id)
+    end
+
+    test "does not warn when only the devices a pool names change", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      listed = client_fixture(account: account)
+      joining = client_fixture(account: account)
+      resource = device_pool_resource_fixture(account: account, devices: [listed], name: "Lab")
+      warning = "expires every active connection through it"
+      conn = authorize_conn(conn, actor)
+
+      {:ok, lv, html} = live(conn, ~p"/#{account}/resources/#{resource.id}/edit")
+
+      refute html =~ warning
+
+      html = render_click(lv, "add_device", %{"device_id" => joining.id})
+      refute html =~ warning
+
+      html = render_click(lv, "remove_device", %{"device_id" => listed.id})
+      refute html =~ warning
+    end
+
+    test "warns that changing a pool's members drops its connections", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      resource = own_devices_pool_resource_fixture(account: account, name: "Your devices")
+      warning = "expires every active connection through it"
+      conn = authorize_conn(conn, actor)
+
+      {:ok, lv, html} = live(conn, ~p"/#{account}/resources/#{resource.id}/edit")
+
+      refute html =~ warning
+
+      html =
+        lv
+        |> form("[phx-submit='submit_resource_form']", resource: %{name: "Renamed"})
+        |> render_change()
+
+      refute html =~ warning
+
+      html =
+        lv
+        |> form("[phx-submit='submit_resource_form']",
+          resource: %{type: "device_pool", members: "all_devices"}
+        )
+        |> render_change()
+
+      assert html =~ warning
+
+      {:ok, lv, html} = live(conn, ~p"/#{account}/resources/new")
+
+      refute html =~ warning
+
+      lv
+      |> form("[phx-submit='submit_resource_form']", resource: %{type: "device_pool"})
+      |> render_change()
+
+      html =
+        lv
+        |> form("[phx-submit='submit_resource_form']",
+          resource: %{type: "device_pool", members: "all_devices"}
+        )
+        |> render_change()
+
+      refute html =~ warning
+    end
+
+    test "updates the Your devices pool without a site and keeps its type and rule", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      resource = own_devices_pool_resource_fixture(account: account, name: "Your devices")
+
+      {:ok, lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources/#{resource.id}/edit")
+
+      assert html =~ "Edit Resource"
+      assert has_element?(lv, "#resource-form-members--own-devices[checked]")
+      refute has_element?(lv, "#resource-form_site_id")
+
+      html =
+        lv
+        |> form("[phx-submit='submit_resource_form']", resource: %{name: "Own Devices"})
+        |> render_submit()
+
+      assert html =~ "updated successfully"
+
+      updated = Repo.get_by!(Portal.Resource, account_id: account.id, id: resource.id)
+      assert updated.name == "Own Devices"
+      assert updated.type == :device_pool
+      assert updated.device_membership_criteria == Portal.Resource.DeviceMembershipCriteria.own_devices()
+      assert is_nil(updated.address)
+    end
+
     test "rejects moving a resource to the Internet Site", %{
       conn: conn,
       account: account,
@@ -1328,7 +1671,7 @@ defmodule PortalWeb.ResourcesTest do
       device = client_fixture(account: account, actor: actor)
 
       resource =
-        static_device_pool_resource_fixture(account: account, devices: [device])
+        device_pool_resource_fixture(account: account, devices: [device])
 
       {:ok, lv, _html} =
         conn
@@ -1346,7 +1689,7 @@ defmodule PortalWeb.ResourcesTest do
       device = client_fixture(account: account, actor: actor)
 
       resource =
-        static_device_pool_resource_fixture(account: account, devices: [device])
+        device_pool_resource_fixture(account: account, devices: [device])
 
       {:ok, _lv, html} =
         conn
@@ -1358,6 +1701,30 @@ defmodule PortalWeb.ResourcesTest do
       assert html =~ to_string(device.ipv4)
     end
 
+    test "says the group was deleted on a pool that followed it", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      group = group_fixture(account: account, name: "Engineering")
+      resource = actor_group_pool_resource_fixture(account: account, group: group, name: "Group pool")
+      conn = authorize_conn(conn, actor)
+
+      {:ok, lv, _html} = live(conn, ~p"/#{account}/resources")
+      assert has_element?(lv, "span", "Group's devices")
+
+      {:ok, lv, _html} = live(conn, ~p"/#{account}/resources/#{resource.id}")
+      assert has_element?(lv, "span", "Group's devices")
+
+      Repo.delete!(group)
+
+      {:ok, lv, _html} = live(conn, ~p"/#{account}/resources")
+      assert has_element?(lv, "span", "Group deleted")
+
+      {:ok, lv, _html} = live(conn, ~p"/#{account}/resources/#{resource.id}")
+      assert has_element?(lv, "span", "Group deleted")
+    end
+
     test "shows an offline status for devices without presence", %{
       conn: conn,
       account: account,
@@ -1366,7 +1733,7 @@ defmodule PortalWeb.ResourcesTest do
       device = client_fixture(account: account, actor: actor)
 
       resource =
-        static_device_pool_resource_fixture(account: account, devices: [device])
+        device_pool_resource_fixture(account: account, devices: [device])
 
       {:ok, _lv, html} =
         conn
@@ -1385,7 +1752,7 @@ defmodule PortalWeb.ResourcesTest do
       device = client_fixture(account: account, actor: actor)
 
       resource =
-        static_device_pool_resource_fixture(account: account, devices: [device])
+        device_pool_resource_fixture(account: account, devices: [device])
 
       :ok = Portal.Presence.Devices.Account.track(device)
 
@@ -1403,7 +1770,7 @@ defmodule PortalWeb.ResourcesTest do
       account: account,
       actor: actor
     } do
-      resource = static_device_pool_resource_fixture(account: account)
+      resource = device_pool_resource_fixture(account: account)
 
       {:ok, _lv, html} =
         conn
@@ -1419,7 +1786,7 @@ defmodule PortalWeb.ResourcesTest do
       account: account,
       actor: actor
     } do
-      static_device_pool_resource_fixture(account: account)
+      device_pool_resource_fixture(account: account)
 
       {:ok, _lv, html} =
         conn
@@ -1439,7 +1806,7 @@ defmodule PortalWeb.ResourcesTest do
         client_fixture(account: account, actor: actor, device_serial: "SERIAL-1234")
 
       resource =
-        static_device_pool_resource_fixture(account: account, devices: [device])
+        device_pool_resource_fixture(account: account, devices: [device])
 
       {:ok, lv, html} =
         conn
@@ -1474,7 +1841,7 @@ defmodule PortalWeb.ResourcesTest do
         )
 
       resource =
-        static_device_pool_resource_fixture(account: account, devices: [device])
+        device_pool_resource_fixture(account: account, devices: [device])
 
       {:ok, lv, _html} =
         conn
@@ -1496,7 +1863,7 @@ defmodule PortalWeb.ResourcesTest do
       device = client_fixture(account: account, actor: actor)
 
       resource =
-        static_device_pool_resource_fixture(account: account, devices: [device])
+        device_pool_resource_fixture(account: account, devices: [device])
 
       {:ok, lv, _html} =
         conn

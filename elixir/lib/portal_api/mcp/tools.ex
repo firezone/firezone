@@ -47,8 +47,6 @@ defmodule PortalAPI.MCP.Tools do
     {:post, "/resources"} => {false, false},
     {:put, "/resources/{id}"} => {true, true},
     {:delete, "/resources/{id}"} => {true, true},
-    {:put, "/resources/{resource_id}/pool_members"} => {true, true},
-    {:patch, "/resources/{resource_id}/pool_members"} => {true, true},
     {:post, "/policies"} => {false, false},
     {:put, "/policies/{id}"} => {true, true},
     {:delete, "/policies/{id}"} => {true, true},

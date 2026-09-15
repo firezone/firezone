@@ -2,8 +2,11 @@ defmodule Portal.Changes.Hooks.ClientsTest do
   use Portal.DataCase, async: true
   import Portal.Changes.Hooks.Devices
   import Portal.AccountFixtures
+  import Portal.ActorFixtures
   import Portal.DeviceFixtures
+  import Portal.GroupFixtures
   import Portal.PolicyAuthorizationFixtures
+  import Portal.ResourceFixtures
   alias Portal.Changes.Change
   alias Portal.Device
   alias Portal.PubSub
@@ -103,6 +106,28 @@ defmodule Portal.Changes.Hooks.ClientsTest do
       assert new_client.id == client.id
       refute Repo.get_by(Portal.PolicyAuthorization, id: policy_authorization.id)
     end
+
+    test "update unverifies client and keeps the authorizations toward it as a pool member" do
+      account = account_fixture()
+      client = client_fixture(account: account, verified_at: DateTime.utc_now())
+      initiator = client_fixture(account: account)
+      pool = all_devices_pool_resource_fixture(account: account)
+
+      old_data = %{
+        "id" => client.id,
+        "type" => "client",
+        "verified_at" => "2023-10-01T00:00:00Z",
+        "account_id" => client.account_id
+      }
+
+      data = Map.put(old_data, "verified_at", nil)
+
+      inbound =
+        policy_authorization_fixture(account: account, resource: pool, client: initiator, gateway: client)
+
+      assert :ok == on_update(0, old_data, data)
+      assert Repo.get_by(Portal.PolicyAuthorization, id: inbound.id)
+    end
   end
 
   describe "delete/1" do
@@ -116,6 +141,46 @@ defmodule Portal.Changes.Hooks.ClientsTest do
       assert :ok == on_delete(0, old_data)
       assert_receive %Change{op: :delete, old_struct: %Device{} = deleted_client, lsn: 0}
       assert deleted_client.id == client.id
+    end
+
+    test "removes the client from the pools that list it" do
+      account = account_fixture()
+      client = client_fixture(account: account)
+      other = client_fixture(account: account)
+
+      pool =
+        Portal.ResourceFixtures.device_pool_resource_fixture(account: account, devices: [client, other])
+
+      old_data = %{"id" => client.id, "type" => "client", "account_id" => client.account_id}
+
+      assert :ok == on_delete(0, old_data)
+
+      pool = Repo.get_by!(Portal.Resource, id: pool.id)
+
+      assert Portal.Resource.DeviceMembershipCriteria.device_ids(pool.device_membership_criteria) ==
+               {:ok, [other.id]}
+    end
+
+    test "leaves the pools that do not list their devices untouched" do
+      account = account_fixture()
+      actor = actor_fixture(account: account)
+      client = client_fixture(account: account, actor: actor)
+      group = group_fixture(account: account)
+
+      pools = [
+        own_devices_pool_resource_fixture(account: account),
+        all_devices_pool_resource_fixture(account: account),
+        actor_group_pool_resource_fixture(account: account, group: group)
+      ]
+
+      old_data = %{"id" => client.id, "type" => "client", "account_id" => client.account_id}
+
+      assert :ok == on_delete(0, old_data)
+
+      for pool <- pools do
+        assert Repo.get_by!(Portal.Resource, id: pool.id).device_membership_criteria ==
+                 pool.device_membership_criteria
+      end
     end
   end
 end

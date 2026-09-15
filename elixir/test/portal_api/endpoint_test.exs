@@ -1,7 +1,7 @@
 defmodule PortalAPI.EndpointTest do
   use ExUnit.Case, async: true
 
-  test "mounts legacy and v2 client and gateway sockets" do
+  test "mounts legacy, v2 and v3 client sockets and legacy and v2 gateway sockets" do
     sockets = PortalAPI.Endpoint.__sockets__()
 
     assert {"/client", PortalAPI.Client.Socket, _opts} =
@@ -9,6 +9,9 @@ defmodule PortalAPI.EndpointTest do
 
     assert {"/client/v2", PortalAPI.Client.V2.Socket, _opts} =
              Enum.find(sockets, fn {path, _socket, _opts} -> path == "/client/v2" end)
+
+    assert {"/client/v3", PortalAPI.Client.V3.Socket, _opts} =
+             Enum.find(sockets, fn {path, _socket, _opts} -> path == "/client/v3" end)
 
     assert {"/gateway", PortalAPI.Gateway.Socket, _opts} =
              Enum.find(sockets, fn {path, _socket, _opts} -> path == "/gateway" end)

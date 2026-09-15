@@ -17,6 +17,7 @@ defmodule PortalWeb.Resources do
       resource_form_panel: 1,
       resource_status_badge: 1,
       resource_type_label: 1,
+      lists_devices?: 1,
       type_badge_class: 1,
       to_grant_form: 1
     ]
@@ -45,6 +46,8 @@ defmodule PortalWeb.Resources do
         selected_resource: nil,
         selected_resource_pool_member_ids: [],
         selected_resource_pool_devices: [],
+        selected_resource_pool_group_ids: nil,
+        pool_group_ids: nil,
         devices_expanded_id: nil,
         online_ids: MapSet.new(),
         online_site_ids: MapSet.new(),
@@ -88,6 +91,7 @@ defmodule PortalWeb.Resources do
 
         pool_devices = Database.list_pool_members(resource, socket.assigns.subject)
         pool_member_ids = Enum.map(pool_devices, & &1.id)
+        pool_group_ids = Database.existing_pool_group_ids([resource], socket.assigns.subject)
 
         {:noreply,
          socket
@@ -96,6 +100,7 @@ defmodule PortalWeb.Resources do
            selected_resource: resource,
            selected_resource_pool_member_ids: pool_member_ids,
            selected_resource_pool_devices: pool_devices,
+           selected_resource_pool_group_ids: pool_group_ids,
            devices_expanded_id: nil,
            selected_groups: groups,
            policy_authorizations: policy_authorizations,
@@ -173,7 +178,10 @@ defmodule PortalWeb.Resources do
   defp new_resource_state_assigns(socket, resource_form, sites) do
     [
       resource_panel: base_resource_panel(socket, view: :new_form),
-      resource_form: base_resource_form(resource_form, sites),
+      resource_form:
+        base_resource_form(resource_form, sites,
+          pool_counts: Database.pool_counts(socket.assigns.subject, nil)
+        ),
       resource_grant: base_resource_grant(socket),
       resource_ui: base_resource_ui()
     ]
@@ -185,11 +193,19 @@ defmodule PortalWeb.Resources do
       resource_form:
         base_resource_form(resource_form, sites,
           active_protocols: Enum.map(resource.filters, & &1.protocol),
-          selected_devices: selected_devices
+          selected_devices: selected_devices,
+          pool_counts: Database.pool_counts(socket.assigns.subject, stored_group_id(resource))
         ),
       resource_grant: base_resource_grant(socket),
       resource_ui: base_resource_ui()
     ]
+  end
+
+  defp stored_group_id(%{device_membership_criteria: criteria}) do
+    case Resource.DeviceMembershipCriteria.group_id(criteria) do
+      {:ok, group_id} -> group_id
+      :error -> nil
+    end
   end
 
   defp base_resource_panel(socket, overrides \\ []) do
@@ -215,6 +231,7 @@ defmodule PortalWeb.Resources do
         active_protocols: [],
         filters_dropdown_open?: false,
         selected_devices: [],
+        pool_counts: %{},
         device_search: "",
         device_search_results: nil
       }
@@ -294,11 +311,11 @@ defmodule PortalWeb.Resources do
   end
 
   defp parse_show_tab(params, resource) do
-    default = if device_pool?(resource), do: "devices", else: "groups"
+    default = if lists_devices?(resource), do: "devices", else: "groups"
 
     case Map.get(params, "tab", default) do
       "devices" ->
-        if device_pool?(resource), do: :devices, else: :groups
+        if lists_devices?(resource), do: :devices, else: :groups
 
       tab when tab in ~w[groups authorizations] ->
         String.to_existing_atom(tab)
@@ -307,9 +324,6 @@ defmodule PortalWeb.Resources do
         String.to_existing_atom(default)
     end
   end
-
-  defp device_pool?(%{type: :static_device_pool}), do: true
-  defp device_pool?(_), do: false
 
   defp redirect_to_resources_index(socket, message) do
     {:noreply,
@@ -353,8 +367,8 @@ defmodule PortalWeb.Resources do
       resource_policy_counts =
         Database.count_policies_for_resources(all_resources, socket.assigns.subject)
 
-      device_pool_members =
-        Database.pool_member_ids_for_resources(all_resources, socket.assigns.subject)
+      device_pool_members = Database.pool_member_ids_for_resources(all_resources)
+      pool_group_ids = Database.existing_pool_group_ids(all_resources, socket.assigns.subject)
 
       {:ok,
        assign(socket,
@@ -362,6 +376,7 @@ defmodule PortalWeb.Resources do
          internet_resource: internet_resource,
          resource_policy_counts: resource_policy_counts,
          device_pool_members: device_pool_members,
+         pool_group_ids: pool_group_ids,
          online_ids: online_ids(socket.assigns.account.id),
          online_site_ids: Presence.Devices.online_site_ids(socket.assigns.account.id),
          resources_metadata: metadata
@@ -505,7 +520,7 @@ defmodule PortalWeb.Resources do
             class="hidden lg:table-cell"
           >
             <span
-              :if={resource.type not in [:internet, :static_device_pool]}
+              :if={resource.type not in [:internet, :device_pool]}
               class="font-mono text-xs text-heading"
             >
               {resource.address}
@@ -517,7 +532,13 @@ defmodule PortalWeb.Resources do
               0.0.0.0/0, ::/0
             </span>
             <span
-              :if={resource.type == :static_device_pool}
+              :if={resource.type == :device_pool and not lists_devices?(resource)}
+              class="font-mono text-xs text-heading"
+            >
+              &lt;slug&gt;.{Portal.Device.domain()}
+            </span>
+            <span
+              :if={lists_devices?(resource)}
               class="font-mono text-xs italic text-subtle"
             >
               Multiple Addresses
@@ -558,6 +579,7 @@ defmodule PortalWeb.Resources do
               online_site_ids={@online_site_ids}
               pool_member_ids={Map.get(@device_pool_members, resource.id, [])}
               online_ids={@online_ids}
+              pool_group_ids={@pool_group_ids}
             />
           </:col>
           <:empty>
@@ -587,6 +609,7 @@ defmodule PortalWeb.Resources do
         <%= if @resource_panel.view in [:new_form, :edit_form] do %>
           <.resource_form_panel
             account={@account}
+            subject={@subject}
             resource={@selected_resource}
             panel_view={@resource_panel.view}
             form_state={resource_form_panel_state(assigns)}
@@ -599,6 +622,7 @@ defmodule PortalWeb.Resources do
             resource={@selected_resource}
             pool_member_ids={@selected_resource_pool_member_ids}
             pool_devices={@selected_resource_pool_devices}
+            pool_group_ids={@selected_resource_pool_group_ids}
             devices_expanded_id={@devices_expanded_id}
             online_ids={@online_ids}
             online_site_ids={@online_site_ids}
@@ -711,7 +735,8 @@ defmodule PortalWeb.Resources do
      socket
      |> merge_state(:resource_form,
        form: to_form(changeset),
-       address_description_changed?: address_description_changed?
+       address_description_changed?: address_description_changed?,
+       pool_counts: Database.pool_counts(socket.assigns.subject, attrs["group_id"])
      )}
   end
 
@@ -1311,6 +1336,7 @@ defmodule PortalWeb.Resources do
       resource_form_active_protocols: assigns.resource_form.active_protocols,
       resource_form_filters_dropdown_open: assigns.resource_form.filters_dropdown_open?,
       resource_form_selected_devices: assigns.resource_form.selected_devices,
+      resource_form_pool_counts: assigns.resource_form.pool_counts,
       resource_form_device_search: assigns.resource_form.device_search,
       resource_form_device_search_results: assigns.resource_form.device_search_results,
       filter_ports: resource_filter_ports(assigns.resource_form.form),
@@ -1385,7 +1411,6 @@ defmodule PortalWeb.Resources do
     import Portal.Repo.Query
     alias Portal.Safe
     alias Portal.Resource
-    alias Portal.StaticDevicePoolMember
     alias Portal.Policy
     alias Portal.PolicyAuthorization
     alias Portal.ClientToken
@@ -1395,6 +1420,8 @@ defmodule PortalWeb.Resources do
     alias Portal.Group
     alias Portal.Directory
     alias PortalWeb.Resources.Components
+
+    @update_fields ~w[address address_description name type device_membership_criteria ip_stack site_id]a
 
     defdelegate get_device(device_id, subject), to: Components.Database
     defdelegate search_devices(search_term, subject, selected_devices), to: Components.Database
@@ -1406,31 +1433,31 @@ defmodule PortalWeb.Resources do
       |> Safe.all()
     end
 
-    def new_resource(subject, attrs \\ %{}) do
+    def new_resource(subject, attrs \\ %{}, device_ids \\ []) do
       changeset =
         %Resource{}
-        |> cast(attrs, [:name, :address, :address_description, :type, :ip_stack, :site_id])
+        |> cast(normalize_pool_attrs(attrs, device_ids), @update_fields)
         |> put_change(:account_id, subject.account.id)
         |> Resource.changeset()
         |> Resource.validate_site_matches_type(subject)
 
-      if get_field(changeset, :type) == :static_device_pool do
-        validate_required(changeset, [:name])
-      else
-        validate_required(changeset, [:name, :address])
+      case get_field(changeset, :type) do
+        :device_pool ->
+          validate_required(changeset, [:name])
+
+        _ ->
+          validate_required(changeset, [:name, :address])
       end
     end
 
     def create_resource(attrs, selected_devices, subject) do
       changeset =
-        new_resource(subject, attrs)
+        new_resource(subject, attrs, Enum.map(selected_devices, & &1.id))
         |> maybe_validate_required_fields()
 
-      with {:ok, validated_devices} <-
+      with {:ok, _validated_devices} <-
              Components.Database.validate_selected_devices(selected_devices, subject),
-           {:ok, resource} <- Safe.scoped(changeset, subject) |> Safe.insert(),
-           :ok <-
-             Components.Database.sync_static_pool_members(resource, validated_devices, subject) do
+           {:ok, resource} <- Safe.scoped(changeset, subject) |> Safe.insert() do
         {:ok, resource}
       else
         {:error, %Ecto.Changeset{} = cs} ->
@@ -1445,41 +1472,63 @@ defmodule PortalWeb.Resources do
     end
 
     defp maybe_validate_required_fields(changeset) do
-      if get_field(changeset, :type) == :static_device_pool do
-        validate_required(changeset, [:name])
-      else
-        validate_required(changeset, [:site_id])
+      case get_field(changeset, :type) do
+        :device_pool ->
+          validate_required(changeset, [:name])
+
+        _ ->
+          validate_required(changeset, [:site_id])
       end
     end
 
-    def change_resource(resource, subject, attrs \\ %{}) do
-      update_fields = ~w[address address_description name type ip_stack site_id]a
-
+    def change_resource(resource, subject, attrs \\ %{}, device_ids \\ []) do
       changeset =
         resource
-        |> cast(attrs, update_fields)
+        |> cast(normalize_pool_attrs(attrs, device_ids), @update_fields)
         |> Resource.changeset()
         |> Resource.validate_site_matches_type(subject)
 
-      if get_field(changeset, :type) == :static_device_pool do
-        validate_required(changeset, [:name, :type])
-      else
-        validate_required(changeset, [:name, :type, :site_id])
+      case get_field(changeset, :type) do
+        :device_pool ->
+          validate_required(changeset, [:name, :type])
+
+        _ ->
+          validate_required(changeset, [:name, :type, :site_id])
       end
     end
 
-    def update_resource(resource, attrs, selected_devices, subject) do
-      changeset = change_resource(resource, subject, attrs)
+    # The form's "Members" choice and the picked devices become the membership criteria.
+    defp normalize_pool_attrs(%{"type" => "device_pool", "members" => "own_devices"} = attrs, _ids) do
+      put_criteria(attrs, Resource.DeviceMembershipCriteria.own_devices())
+    end
 
-      with {:ok, validated_devices} <-
+    defp normalize_pool_attrs(%{"type" => "device_pool", "members" => "listed"} = attrs, ids) do
+      put_criteria(attrs, Resource.DeviceMembershipCriteria.devices(ids))
+    end
+
+    defp normalize_pool_attrs(%{"type" => "device_pool", "members" => "all_devices"} = attrs, _ids) do
+      put_criteria(attrs, Resource.DeviceMembershipCriteria.all_devices())
+    end
+
+    defp normalize_pool_attrs(%{"type" => "device_pool", "members" => "actor_group"} = attrs, _ids) do
+      case Ecto.UUID.cast(attrs["group_id"]) do
+        {:ok, group_id} -> put_criteria(attrs, Resource.DeviceMembershipCriteria.actor_group(group_id))
+        :error -> Map.put(attrs, "device_membership_criteria", nil)
+      end
+    end
+
+    defp normalize_pool_attrs(attrs, _device_ids), do: attrs
+
+    defp put_criteria(attrs, criteria) do
+      Map.put(attrs, "device_membership_criteria", Resource.DeviceMembershipCriteria.to_map(criteria))
+    end
+
+    def update_resource(resource, attrs, selected_devices, subject) do
+      changeset = change_resource(resource, subject, attrs, Enum.map(selected_devices, & &1.id))
+
+      with {:ok, _validated_devices} <-
              Components.Database.validate_selected_devices(selected_devices, subject),
-           {:ok, updated_resource} <- Safe.scoped(changeset, subject) |> Safe.update(),
-           :ok <-
-             Components.Database.sync_static_pool_members(
-               updated_resource,
-               validated_devices,
-               subject
-             ) do
+           {:ok, updated_resource} <- Safe.scoped(changeset, subject) |> Safe.update() do
         {:ok, updated_resource}
       else
         {:error, %Ecto.Changeset{} = cs} ->
@@ -1493,17 +1542,11 @@ defmodule PortalWeb.Resources do
       end
     end
 
-    def list_pool_members(%Resource{type: :static_device_pool} = resource, subject) do
+    def list_pool_members(%Resource{} = resource, subject) do
       device_ids =
-        from(m in StaticDevicePoolMember,
-          where: m.resource_id == ^resource.id,
-          select: m.device_id
-        )
-        |> Safe.scoped(subject)
-        |> Safe.all()
-        |> case do
-          {:error, _} -> []
-          ids -> ids
+        case Resource.DeviceMembershipCriteria.device_ids(resource.device_membership_criteria) do
+          {:ok, ids} -> ids
+          :error -> []
         end
 
       from(c in Device, as: :devices)
@@ -1520,8 +1563,6 @@ defmodule PortalWeb.Resources do
           Portal.Presence.Devices.preload_presence(devices)
       end
     end
-
-    def list_pool_members(_resource, _subject), do: []
 
     def get_resource(id, subject) do
       from(r in Resource, as: :resources)
@@ -1576,27 +1617,60 @@ defmodule PortalWeb.Resources do
       end
     end
 
-    def pool_member_ids_for_resources(resources, subject) do
-      ids =
-        resources
-        |> Enum.filter(&(&1.type == :static_device_pool))
-        |> Enum.map(& &1.id)
-        |> Enum.uniq()
+    def pool_member_ids_for_resources(resources) do
+      for resource <- resources,
+          {:ok, device_ids} <-
+            [Resource.DeviceMembershipCriteria.device_ids(resource.device_membership_criteria)],
+          into: %{},
+          do: {resource.id, device_ids}
+    end
 
-      from(m in StaticDevicePoolMember, as: :members)
-      |> where([members: m], m.resource_id in ^ids)
-      |> select([members: m], {m.resource_id, m.device_id})
+    # Counts with the same rule the portal authorizes by, so the badge and the pool agree.
+    def pool_counts(subject, group_id) do
+      counts = %{
+        own_devices: count_criteria_devices(Resource.DeviceMembershipCriteria.own_devices(), subject),
+        all_devices: count_criteria_devices(Resource.DeviceMembershipCriteria.all_devices(), subject)
+      }
+
+      case Ecto.UUID.cast(group_id) do
+        {:ok, id} ->
+          Map.put(counts, :actor_group, count_criteria_devices(Resource.DeviceMembershipCriteria.actor_group(id), subject))
+
+        :error ->
+          counts
+      end
+    end
+
+    defp count_criteria_devices(criteria, subject) do
+      from(d in Portal.Device, as: :devices)
+      |> where([devices: d], d.type == :client)
+      |> Resource.DeviceMembershipCriteria.where_members(
+        criteria,
+        Resource.DeviceMembershipCriteria.scope(criteria, subject)
+      )
       |> Safe.scoped(subject)
-      |> Safe.all()
-      |> case do
-        {:error, _} ->
-          %{}
+      |> Safe.aggregate(:count)
+    end
 
-        rows ->
-          Enum.group_by(rows, fn {resource_id, _device_id} -> resource_id end, fn {_resource_id,
-                                                                                   device_id} ->
-            device_id
-          end)
+    def existing_pool_group_ids(resources, subject) do
+      group_ids =
+        for resource <- resources,
+            {:ok, group_id} <-
+              [Resource.DeviceMembershipCriteria.group_id(resource.device_membership_criteria)],
+            do: group_id
+
+      if group_ids == [] do
+        MapSet.new()
+      else
+        from(g in Group, as: :groups)
+        |> where([groups: g], g.id in ^group_ids)
+        |> select([groups: g], g.id)
+        |> Safe.scoped(subject)
+        |> Safe.all()
+        |> case do
+          {:error, _reason} -> MapSet.new()
+          ids -> MapSet.new(ids)
+        end
       end
     end
 
@@ -1804,7 +1878,7 @@ defmodule PortalWeb.Resources do
             {"DNS", "dns"},
             {"IP", "ip"},
             {"CIDR", "cidr"},
-            {"Device Pool", "static_device_pool"}
+            {"Device Pool", "device_pool"}
           ],
           fun: &filter_by_type/2
         }

@@ -329,7 +329,7 @@ defmodule PortalWeb.DevicesTest do
       client = client_fixture(account: account, actor: actor)
 
       pool =
-        static_device_pool_resource_fixture(
+        device_pool_resource_fixture(
           account: account,
           name: "Engineering Laptops",
           devices: [client]
@@ -552,6 +552,100 @@ defmodule PortalWeb.DevicesTest do
       assert html =~ "Edit Device"
       assert html =~ "Save"
       assert html =~ client.name
+    end
+
+    test "offers a copy button for the device id and the slug", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      client = client_fixture(account: account, actor: actor, name: "Old Client Name")
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/devices/#{client.id}")
+
+      for field <- ["device-id", "device-slug"] do
+        id = "#{field}-#{client.id}"
+
+        assert has_element?(lv, "##{id}[phx-hook='CopyClipboard']")
+        assert has_element?(lv, "button[data-copy-to-clipboard-target='#{id}-code']")
+      end
+
+      assert has_element?(lv, "#device-id-#{client.id}-code", client.id)
+      assert has_element?(lv, "#device-slug-#{client.id}-code", Portal.Device.fqdn(client))
+    end
+
+    test "shows the slug and lets an admin change it", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      client = client_fixture(account: account, actor: actor, name: "Old Client Name")
+
+      {:ok, lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/devices/#{client.id}")
+
+      assert html =~ "old-client-name.firezone.network"
+
+      html = render_click(lv, "open_device_edit_form")
+
+      assert html =~ "Slug"
+      assert html =~ "Used to reach this device directly through a"
+      assert html =~ ">device pool</a>. Must be unique in the account."
+      refute has_element?(lv, "input[name='device[slug]'].font-mono")
+      assert has_element?(lv, "input[name='device[slug]'][required]")
+
+      for bad <- ["Bad Slug", "-laptop", "laptop-", "my.laptop", "my_laptop", String.duplicate("a", 64)] do
+        html =
+          lv
+          |> form("[phx-submit='submit_device_edit_form']", device: %{slug: bad})
+          |> render_change()
+
+        assert html =~ "must be 1 to 63 lowercase letters, digits or hyphens"
+      end
+
+      html =
+        lv
+        |> form("[phx-submit='submit_device_edit_form']", device: %{slug: ""})
+        |> render_change()
+
+      assert html =~ "can&#39;t be blank"
+
+      html =
+        lv
+        |> form("[phx-submit='submit_device_edit_form']", device: %{slug: "laptop"})
+        |> render_submit()
+
+      assert html =~ "Device updated successfully."
+      assert html =~ "laptop.firezone.network"
+    end
+
+    test "refuses a slug another device in the account already holds", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      taken = client_fixture(account: account, actor: actor, name: "Taken")
+      client = client_fixture(account: account, actor: actor, name: "Mine")
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/devices/#{client.id}")
+
+      render_click(lv, "open_device_edit_form")
+
+      html =
+        lv
+        |> form("[phx-submit='submit_device_edit_form']", device: %{slug: taken.slug})
+        |> render_submit()
+
+      assert html =~ "is already used by another device in this account"
+      assert Repo.get_by!(Device, id: client.id).slug == client.slug
     end
 
     test "opens edit form from show panel, validates, cancels, and updates client", %{

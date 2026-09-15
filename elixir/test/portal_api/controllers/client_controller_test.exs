@@ -381,6 +381,60 @@ defmodule PortalAPI.ClientControllerTest do
       assert resp["data"]["name"] == attrs["name"]
     end
 
+    test "changes the slug", %{conn: conn, actor: actor, client: client} do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> put(~p"/clients/#{client}", client: %{"name" => client.name, "slug" => "renamed-laptop"})
+
+      assert resp = json_response(conn, 200)
+      assert resp["data"]["slug"] == "renamed-laptop"
+      assert Portal.Repo.get_by!(Device, id: client.id).slug == "renamed-laptop"
+    end
+
+    test "keeps the slug when the body omits it", %{conn: conn, actor: actor, client: client} do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> put(~p"/clients/#{client}", client: %{"name" => "Updated Client"})
+
+      assert resp = json_response(conn, 200)
+      assert resp["data"]["slug"] == client.slug
+    end
+
+    test "refuses a slug that is not a DNS label", %{conn: conn, actor: actor, client: client} do
+      for bad <- ["Bad Slug", "-laptop", "laptop-", "my.laptop", String.duplicate("a", 64)] do
+        conn =
+          conn
+          |> authorize_conn(actor)
+          |> put_req_header("content-type", "application/json")
+          |> put(~p"/clients/#{client}", client: %{"name" => client.name, "slug" => bad})
+
+        assert %{"status" => 422, "validation_errors" => errors} = json_response(conn, 422)
+        assert errors["slug"] == ["must be 1 to 63 lowercase letters, digits or hyphens"]
+      end
+    end
+
+    test "refuses a slug another client in the account holds", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      client: client
+    } do
+      taken = client_fixture(account: account)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> put(~p"/clients/#{client}", client: %{"name" => client.name, "slug" => taken.slug})
+
+      assert %{"status" => 422, "validation_errors" => errors} = json_response(conn, 422)
+      assert errors["slug"] == ["is already used by another device in this account"]
+    end
+
     test "returns validation error for an invalid update", %{
       conn: conn,
       actor: actor,

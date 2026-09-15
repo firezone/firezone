@@ -187,6 +187,22 @@
         "title": "IruPostureProvider",
         "type": "object"
       },
+      "DeviceMembershipSubjectAttribute": {
+        "properties": {
+          "subject": {
+            "enum": [
+              "actor_id",
+              "account_id"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "subject"
+        ],
+        "title": "DeviceMembershipSubjectAttribute",
+        "type": "object"
+      },
       "SentinelOneDeviceResponse": {
         "properties": {
           "data": {
@@ -640,7 +656,7 @@
         "type": "object"
       },
       "ResourceCreateRequest": {
-        "description": "POST body for creating a Resource. `site_id` is required.\n\nDevice pools (`static_device_pool`) cannot currently be created through this API - create them in the admin portal. Existing pools can be read, updated, deleted, and have their members managed here as normal.",
+        "description": "POST body for creating a Resource. `site_id` is required for every type except `device_pool`, which needs `device_membership_criteria` instead.",
         "properties": {
           "resource": {
             "properties": {
@@ -655,6 +671,9 @@
                 "example": "Production Database",
                 "nullable": true,
                 "type": "string"
+              },
+              "device_membership_criteria": {
+                "$ref": "#/components/schemas/DeviceMembershipCriteria"
               },
               "filters": {
                 "description": "Traffic filters restricting the protocols and ports the Resource exposes",
@@ -695,12 +714,13 @@
                 "type": "string"
               },
               "type": {
-                "description": "Resource type. `internet` is accepted only in the Internet Site.",
+                "description": "Resource type. `internet` is accepted only in the Internet Site. `device_pool` takes no `site_id` and no `address`.",
                 "enum": [
                   "cidr",
                   "ip",
                   "dns",
-                  "internet"
+                  "internet",
+                  "device_pool"
                 ],
                 "example": "ip",
                 "type": "string"
@@ -2635,6 +2655,11 @@
             "description": "Client Name",
             "example": "John's Macbook Air",
             "type": "string"
+          },
+          "slug": {
+            "description": "DNS label the Client is reached at under `firezone.network`, unique within the Account. One to 63 lowercase letters, digits or hyphens, starting and ending with a letter or digit. Left as it is when omitted.",
+            "example": "johns-macbook-air",
+            "type": "string"
           }
         },
         "required": [
@@ -4169,7 +4194,7 @@
         "description": "Resource",
         "properties": {
           "address": {
-            "description": "Resource address. Null for `static_device_pool` Resources.",
+            "description": "Resource address. Null for `device_pool` Resources.",
             "example": "10.0.0.10",
             "nullable": true,
             "type": "string"
@@ -4179,6 +4204,9 @@
             "example": "Production Database",
             "nullable": true,
             "type": "string"
+          },
+          "device_membership_criteria": {
+            "$ref": "#/components/schemas/DeviceMembershipCriteria"
           },
           "filters": {
             "description": "Traffic filters restricting the protocols and ports the Resource exposes",
@@ -4216,21 +4244,20 @@
             "type": "string"
           },
           "site_id": {
-            "description": "Site to connect the Resource to. Required for all types except `static_device_pool`.",
+            "description": "Site to connect the Resource to. Required for all types except device pools.",
             "example": "0642e09d-b3a2-47e4-9cd1-c2195faeeb67",
             "format": "uuid",
             "title": "SiteID",
             "type": "string"
           },
           "type": {
-            "description": "Resource type. For `static_device_pool` and `dynamic_device_pool`, `address` is not applicable. Only `cidr`, `ip`, and `dns` Resources can be created through the API.",
+            "description": "Resource type. A `device_pool` has no `address` and no `site_id`; who it holds is `device_membership_criteria`.",
             "enum": [
               "cidr",
               "ip",
               "dns",
               "internet",
-              "static_device_pool",
-              "dynamic_device_pool"
+              "device_pool"
             ],
             "example": "ip",
             "type": "string"
@@ -4640,6 +4667,12 @@
             "nullable": true,
             "type": "string"
           },
+          "slug": {
+            "description": "DNS label the Client is reached at under `firezone.network`, unique within the Account. Null until the Client connects once.",
+            "example": "johns-macbook-air",
+            "nullable": true,
+            "type": "string"
+          },
           "updated_at": {
             "description": "Client update timestamp",
             "example": "2025-01-01T00:00:00Z",
@@ -4664,6 +4697,7 @@
           "hostname",
           "id",
           "identifier_for_vendor",
+          "slug",
           "ipv4",
           "ipv6",
           "last_attested_at",
@@ -4713,6 +4747,14 @@
         "title": "DefenderDeviceResponse",
         "type": "object"
       },
+      "DeviceMembershipIdList": {
+        "items": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "title": "DeviceMembershipIdList",
+        "type": "array"
+      },
       "EmailOTPAuthProviderResponse": {
         "description": "Response schema for single Email OTP Auth Provider",
         "properties": {
@@ -4721,6 +4763,71 @@
           }
         },
         "title": "EmailOTPAuthProviderResponse",
+        "type": "object"
+      },
+      "DeviceMembershipRule": {
+        "description": "One comparison against a field of the source the key names",
+        "properties": {
+          "field": {
+            "description": "The field to compare",
+            "enum": [
+              "id",
+              "actor_id",
+              "account_id"
+            ],
+            "example": "actor_id",
+            "type": "string"
+          },
+          "op": {
+            "description": "`in` takes a list of IDs, `eq` a single value",
+            "enum": [
+              "in",
+              "eq"
+            ],
+            "example": "eq",
+            "type": "string"
+          },
+          "value": {
+            "description": "A list of IDs, one ID, or `{\"subject\": \"actor_id\"}` / `{\"subject\": \"account_id\"}` for an attribute of the Actor asking",
+            "oneOf": [
+              {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "title": "DeviceMembershipIdList",
+                "type": "array"
+              },
+              {
+                "format": "uuid",
+                "title": "DeviceMembershipId",
+                "type": "string"
+              },
+              {
+                "properties": {
+                  "subject": {
+                    "enum": [
+                      "actor_id",
+                      "account_id"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "subject"
+                ],
+                "title": "DeviceMembershipSubjectAttribute",
+                "type": "object"
+              }
+            ]
+          }
+        },
+        "required": [
+          "field",
+          "op",
+          "value"
+        ],
+        "title": "DeviceMembershipRule",
         "type": "object"
       },
       "EntraDirectoryListResponse": {
@@ -4993,6 +5100,7 @@
         "type": "object"
       },
       "PoolMemberPutRequest": {
+        "deprecated": true,
         "description": "PUT body replacing the pool's entire membership. Any Client not named\nhere is removed from the pool.\n",
         "properties": {
           "pool_members": {
@@ -5192,6 +5300,9 @@
                 "nullable": true,
                 "type": "string"
               },
+              "device_membership_criteria": {
+                "$ref": "#/components/schemas/DeviceMembershipCriteria"
+              },
               "filters": {
                 "description": "Traffic filters restricting the protocols and ports the Resource exposes",
                 "example": [
@@ -5231,13 +5342,13 @@
                 "type": "string"
               },
               "type": {
-                "description": "Resource type. `internet` is accepted only in the Internet Site. `static_device_pool` is accepted only on a Resource that already is one.",
+                "description": "Resource type. `internet` is accepted only in the Internet Site. `device_pool` takes no `site_id` and no `address`.",
                 "enum": [
                   "cidr",
                   "ip",
                   "dns",
                   "internet",
-                  "static_device_pool"
+                  "device_pool"
                 ],
                 "example": "ip",
                 "type": "string"
@@ -5414,7 +5525,8 @@
         "type": "object"
       },
       "PoolMember": {
-        "description": "A Client belonging to a static device pool Resource",
+        "deprecated": true,
+        "description": "A Client a device pool Resource names as a member",
         "properties": {
           "id": {
             "description": "Client ID",
@@ -5723,6 +5835,87 @@
           "slug"
         ],
         "title": "Account",
+        "type": "object"
+      },
+      "DeviceMembershipCriteria": {
+        "additionalProperties": {
+          "description": "One comparison against a field of the source the key names",
+          "properties": {
+            "field": {
+              "description": "The field to compare",
+              "enum": [
+                "id",
+                "actor_id",
+                "account_id"
+              ],
+              "example": "actor_id",
+              "type": "string"
+            },
+            "op": {
+              "description": "`in` takes a list of IDs, `eq` a single value",
+              "enum": [
+                "in",
+                "eq"
+              ],
+              "example": "eq",
+              "type": "string"
+            },
+            "value": {
+              "description": "A list of IDs, one ID, or `{\"subject\": \"actor_id\"}` / `{\"subject\": \"account_id\"}` for an attribute of the Actor asking",
+              "oneOf": [
+                {
+                  "items": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "title": "DeviceMembershipIdList",
+                  "type": "array"
+                },
+                {
+                  "format": "uuid",
+                  "title": "DeviceMembershipId",
+                  "type": "string"
+                },
+                {
+                  "properties": {
+                    "subject": {
+                      "enum": [
+                        "actor_id",
+                        "account_id"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "subject"
+                  ],
+                  "title": "DeviceMembershipSubjectAttribute",
+                  "type": "object"
+                }
+              ]
+            }
+          },
+          "required": [
+            "field",
+            "op",
+            "value"
+          ],
+          "title": "DeviceMembershipRule",
+          "type": "object"
+        },
+        "description": "Who a `device_pool` Resource holds. Required for a device pool, absent for every\nother Resource type.\n\nThe object has exactly one key, naming where the field lives: `device` is the\nClient row itself, and `actor_group` is a group the Client's owner belongs to.\nThe value is one rule comparing a field against either a literal or an attribute\nof the Actor asking for access. More sources can be added later without changing\nthe rules already stored.\n\nThe four rules the API accepts, and who each one holds:\n\n    {\"device\": {\"field\": \"id\", \"op\": \"in\", \"value\": [\"<client id>\", ...]}}\n    {\"device\": {\"field\": \"actor_id\", \"op\": \"eq\", \"value\": {\"subject\": \"actor_id\"}}}\n    {\"device\": {\"field\": \"account_id\", \"op\": \"eq\", \"value\": {\"subject\": \"account_id\"}}}\n    {\"actor_group\": {\"field\": \"id\", \"op\": \"eq\", \"value\": \"<group id>\"}}\n\nIn order: exactly the Clients named, the asking Actor's own Clients, every Client\nin the Account, and the Clients of every Actor in one Group.\n\nEditing the list of Clients the first rule names drops the connections to the\nClients removed and leaves every other connection through the pool alone.\n\nEvery other change to this field is a breaking update, because any Client can move\nin or out of the pool: every active connection through the pool is dropped, and\nClients reconnect to the members they may still reach.\n\nClients older than the device-pool protocol only understand a pool that names its\nmembers, so they are sent the first rule and never the other three.\n",
+        "example": {
+          "device": {
+            "field": "actor_id",
+            "op": "eq",
+            "value": {
+              "subject": "actor_id"
+            }
+          }
+        },
+        "maxProperties": 1,
+        "minProperties": 1,
+        "title": "DeviceMembershipCriteria",
         "type": "object"
       },
       "SentinelOneDeviceListResponse": {
@@ -6091,6 +6284,7 @@
         "type": "object"
       },
       "PoolMemberPatchRequest": {
+        "deprecated": true,
         "description": "PATCH body for adding and removing individual pool members. Both\noperations are idempotent, and `remove` is applied before `add`, so a\nClient named in both ends up in the pool.\n",
         "properties": {
           "pool_members": {
@@ -6489,6 +6683,11 @@
         },
         "title": "EmailOTPAuthProviderListResponse",
         "type": "object"
+      },
+      "DeviceMembershipId": {
+        "format": "uuid",
+        "title": "DeviceMembershipId",
+        "type": "string"
       },
       "SiteCreateRequest": {
         "description": "POST body for creating a Site",
@@ -12248,7 +12447,7 @@
             }
           },
           {
-            "description": "Filter to Resources of this type: cidr, ip, dns, or static_device_pool.",
+            "description": "Filter to Resources of this type: cidr, ip, dns, or device_pool.",
             "example": "dns",
             "in": "query",
             "name": "type",
@@ -15921,7 +16120,8 @@
     "/resources/{resource_id}/pool_members": {
       "get": {
         "callbacks": {},
-        "description": "Lists the Clients belonging to a `static_device_pool` Resource.\n\nReturns 400 for any other Resource type - only device pools have members.\n",
+        "deprecated": true,
+        "description": "Deprecated. Read `device_membership_criteria` on the Resource instead, which\nalso describes the pools that pick their members by a rule.\n\nLists the Clients a `device_pool` Resource names as its members.\n\nReturns 400 for any other Resource type, and for a device pool whose members are\npicked by a rule rather than named.\n",
         "operationId": "PortalAPI.PoolMemberController.index",
         "parameters": [
           {
@@ -16055,7 +16255,8 @@
       },
       "patch": {
         "callbacks": {},
-        "description": "Adds and/or removes individual Clients, leaving every other member of the\npool untouched.\n\nBoth operations are idempotent: adding a Client already in the pool and\nremoving one that isn't are both no-ops. `remove` is applied before `add`,\nso a Client named in both ends up in the pool.\n",
+        "deprecated": true,
+        "description": "Deprecated. Write `device_membership_criteria` on the Resource instead.\n\nAdds and/or removes individual Clients, leaving every other member of the\npool untouched.\n\nBoth operations are idempotent: adding a Client already in the pool and\nremoving one that isn't are both no-ops. `remove` is applied before `add`,\nso a Client named in both ends up in the pool.\n\nRemoving a Client drops its connections through the pool. Every other connection\nthrough the pool is left alone.\n",
         "operationId": "PortalAPI.PoolMemberController.update_patch",
         "parameters": [
           {
@@ -16200,7 +16401,8 @@
       },
       "put": {
         "callbacks": {},
-        "description": "Replaces the Resource's entire membership list with the given Clients.\n\nAny Client not named in the request is removed from the pool. To add or\nremove individual Clients without disturbing the rest, use `PATCH`.\n",
+        "deprecated": true,
+        "description": "Deprecated. Write `device_membership_criteria` on the Resource instead.\n\nReplaces the Resource's entire membership list with the given Clients.\n\nAny Client not named in the request is removed from the pool. To add or\nremove individual Clients without disturbing the rest, use `PATCH`.\n\nRemoving a Client drops its connections through the pool. Every other connection\nthrough the pool is left alone.\n",
         "operationId": "PortalAPI.PoolMemberController.update_put",
         "parameters": [
           {

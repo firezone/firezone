@@ -1,8 +1,16 @@
 defmodule Portal.Changes.Hooks.MembershipsTest do
   use Portal.DataCase, async: true
   import Portal.Changes.Hooks.Memberships
+  import Portal.AccountFixtures
+  import Portal.ActorFixtures
+  import Portal.DeviceFixtures
+  import Portal.GroupFixtures
+  import Portal.MembershipFixtures
+  import Portal.PolicyAuthorizationFixtures
+  import Portal.ResourceFixtures
   alias Portal.Changes.Change
   alias Portal.Membership
+  alias Portal.PolicyAuthorization
   alias Portal.PubSub
 
   describe "insert/1" do
@@ -25,6 +33,28 @@ defmodule Portal.Changes.Hooks.MembershipsTest do
       assert membership.actor_id == actor_id
       assert membership.group_id == group_id
     end
+
+    test "keeps the authorizations toward the actor's devices" do
+      account = account_fixture()
+      group = group_fixture(account: account)
+      joiner = actor_fixture(account: account)
+      initiator = client_fixture(account: account)
+      joining = client_fixture(account: account, actor: joiner)
+      pool = actor_group_pool_resource_fixture(account: account, group: group)
+
+      authorization =
+        policy_authorization_fixture(account: account, resource: pool, client: initiator, gateway: joining)
+
+      data = %{
+        "id" => Ecto.UUID.generate(),
+        "account_id" => account.id,
+        "actor_id" => joiner.id,
+        "group_id" => group.id
+      }
+
+      assert :ok == on_insert(0, data)
+      assert Repo.get_by(PolicyAuthorization, id: authorization.id)
+    end
   end
 
   describe "update/2" do
@@ -34,6 +64,72 @@ defmodule Portal.Changes.Hooks.MembershipsTest do
   end
 
   describe "delete/1" do
+    test "deletes the authorizations toward the actor's devices through the group's pools" do
+      account = account_fixture()
+      group = group_fixture(account: account)
+      leaver = actor_fixture(account: account)
+      stayer = actor_fixture(account: account)
+      membership = membership_fixture(account: account, actor: leaver, group: group)
+      membership_fixture(account: account, actor: stayer, group: group)
+      initiator = client_fixture(account: account)
+      leaving = client_fixture(account: account, actor: leaver)
+      staying = client_fixture(account: account, actor: stayer)
+      pool = actor_group_pool_resource_fixture(account: account, group: group)
+      other_pool = actor_group_pool_resource_fixture(account: account, group: group_fixture(account: account))
+
+      leaving_pa =
+        policy_authorization_fixture(account: account, resource: pool, client: initiator, gateway: leaving)
+
+      staying_pa =
+        policy_authorization_fixture(account: account, resource: pool, client: initiator, gateway: staying)
+
+      other_pa =
+        policy_authorization_fixture(account: account, resource: other_pool, client: initiator, gateway: leaving)
+
+      old_data = %{
+        "id" => membership.id,
+        "account_id" => account.id,
+        "actor_id" => leaver.id,
+        "group_id" => group.id
+      }
+
+      assert :ok == on_delete(0, old_data)
+      refute Repo.get_by(PolicyAuthorization, id: leaving_pa.id)
+      assert Repo.get_by(PolicyAuthorization, id: staying_pa.id)
+      assert Repo.get_by(PolicyAuthorization, id: other_pa.id)
+    end
+
+    test "keeps the authorizations of pools that do not follow the group" do
+      account = account_fixture()
+      group = group_fixture(account: account)
+      leaver = actor_fixture(account: account)
+      membership = membership_fixture(account: account, actor: leaver, group: group)
+      initiator = client_fixture(account: account)
+      leaving = client_fixture(account: account, actor: leaver)
+
+      kept =
+        for pool <- [
+              own_devices_pool_resource_fixture(account: account),
+              all_devices_pool_resource_fixture(account: account),
+              device_pool_resource_fixture(account: account, devices: [leaving])
+            ] do
+          policy_authorization_fixture(account: account, resource: pool, client: initiator, gateway: leaving)
+        end
+
+      old_data = %{
+        "id" => membership.id,
+        "account_id" => account.id,
+        "actor_id" => leaver.id,
+        "group_id" => group.id
+      }
+
+      assert :ok == on_delete(0, old_data)
+
+      for authorization <- kept do
+        assert Repo.get_by(PolicyAuthorization, id: authorization.id)
+      end
+    end
+
     test "broadcasts deleted membership" do
       account_id = "00000000-0000-0000-0000-000000000001"
       :ok = PubSub.Changes.subscribe(account_id, :memberships)

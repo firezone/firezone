@@ -14,12 +14,15 @@ defmodule Portal.Resource do
           ports: [Portal.Types.Int4Range.t()]
         }
 
+  @self_device_pool_name "Your devices"
+
   @type t :: %__MODULE__{
           id: Ecto.UUID.t(),
           address: String.t(),
           address_description: String.t() | nil,
           name: String.t(),
-          type: :cidr | :ip | :dns | :internet | :static_device_pool | :dynamic_device_pool,
+          type: :cidr | :ip | :dns | :internet | :device_pool,
+          device_membership_criteria: Portal.Resource.DeviceMembershipCriteria.t() | nil,
           ip_stack: :ipv4_only | :ipv6_only | :dual,
           filters: [filter()],
           account_id: Ecto.UUID.t(),
@@ -36,8 +39,9 @@ defmodule Portal.Resource do
     field :address_description, :string
     field :name, :string
 
-    field :type, Ecto.Enum,
-      values: [:cidr, :ip, :dns, :internet, :static_device_pool, :dynamic_device_pool]
+    field :type, Ecto.Enum, values: [:cidr, :ip, :dns, :internet, :device_pool]
+
+    field :device_membership_criteria, Portal.Resource.DeviceMembershipCriteria
 
     field :ip_stack, Ecto.Enum, values: [:ipv4_only, :ipv6_only, :dual]
 
@@ -50,7 +54,6 @@ defmodule Portal.Resource do
 
     has_many :policies, Portal.Policy, references: :id
     has_many :groups, through: [:policies, :group]
-    has_many :static_pool_members, Portal.StaticDevicePoolMember, references: :id
 
     timestamps()
   end
@@ -64,7 +67,12 @@ defmodule Portal.Resource do
     |> validate_length(:address_description, min: 1, max: 255)
     |> maybe_put_default_ip_stack()
     |> validate_device_pool_site_id()
+    |> validate_device_membership_criteria()
     |> validate_address_format()
+    |> check_constraint(:device_membership_criteria,
+      name: :resources_device_membership_criteria_matches_type,
+      message: "must be set for device pools and empty for other types"
+    )
     |> check_constraint(:ip_stack,
       name: :resources_ip_stack_not_null,
       message:
@@ -87,6 +95,20 @@ defmodule Portal.Resource do
       name: :unique_internet_resource_per_account,
       message: "Internet resource already exists for this account"
     )
+  end
+
+  @doc """
+  Attributes of the `Your devices` pool every account gets at creation: a device
+  pool holding each actor's own devices, reached at `<slug>.firezone.network`,
+  see `Portal.Device.fqdn/1`.
+  """
+  @spec self_device_pool_attrs() :: map()
+  def self_device_pool_attrs do
+    %{
+      type: :device_pool,
+      device_membership_criteria: Portal.Resource.DeviceMembershipCriteria.own_devices(),
+      name: @self_device_pool_name
+    }
   end
 
   @doc """
@@ -157,12 +179,11 @@ defmodule Portal.Resource do
 
   defp validate_address_by_type(changeset) do
     case fetch_field(changeset, :type) do
-      {_, :dns} -> validate_dns_address(changeset)
+      {_, :dns} -> changeset |> validate_dns_address() |> validate_not_reserved_domain()
       {_, :cidr} -> validate_cidr_address(changeset)
       {_, :ip} -> validate_ip_address(changeset)
       {_, :internet} -> put_change(changeset, :address, nil)
-      {_, :static_device_pool} -> put_change(changeset, :address, nil)
-      {_, :dynamic_device_pool} -> validate_dns_address(changeset)
+      {_, :device_pool} -> put_change(changeset, :address, nil)
       _ -> changeset
     end
   end
@@ -258,6 +279,19 @@ defmodule Portal.Resource do
 
         true ->
           []
+      end
+    end)
+  end
+
+  defp validate_not_reserved_domain(changeset) do
+    validate_change(changeset, :address, fn field, address ->
+      address = String.downcase(address)
+      domain = Portal.Device.domain()
+
+      if address == domain or String.ends_with?(address, "." <> domain) do
+        [{field, "#{domain} is reserved for Firezone"}]
+      else
+        []
       end
     end)
   end
@@ -359,11 +393,18 @@ defmodule Portal.Resource do
 
   defp validate_device_pool_site_id(changeset) do
     case fetch_field(changeset, :type) do
-      {_, type} when type in [:static_device_pool, :dynamic_device_pool] ->
+      {_, :device_pool} ->
         put_change(changeset, :site_id, nil)
 
       _ ->
         changeset
+    end
+  end
+
+  defp validate_device_membership_criteria(changeset) do
+    case fetch_field(changeset, :type) do
+      {_, :device_pool} -> validate_required(changeset, [:device_membership_criteria])
+      _ -> put_change(changeset, :device_membership_criteria, nil)
     end
   end
 
@@ -456,8 +497,8 @@ defmodule Portal.Resource do
   @doc """
     Matches a fully-qualified domain name against a DNS-style wildcard pattern.
 
-    Supports the same wildcard tokens that `:dns` and `:dynamic_device_pool` resource
-    addresses are validated against:
+    Supports the same wildcard tokens that `:dns` resource addresses are validated
+    against:
 
       * `**` — zero or more labels (with dots)
       * `*`  — zero or more characters within a single label (no dots)
@@ -479,21 +520,10 @@ defmodule Portal.Resource do
   def adapt_resource_for_version(resource, nil), do: resource
 
   def adapt_resource_for_version(
-        %{type: :static_device_pool} = resource,
+        %{type: :device_pool} = resource,
         %Portal.Device{type: :client} = client
       ) do
-    if Portal.Version.client_supports_static_device_pools?(client) do
-      adapt_resource_for_version(resource, client.last_seen_version)
-    else
-      nil
-    end
-  end
-
-  def adapt_resource_for_version(
-        %{type: :dynamic_device_pool} = resource,
-        %Portal.Device{type: :client} = client
-      ) do
-    if Portal.Version.client_supports_dynamic_device_pools?(client) do
+    if Portal.Version.client_supports_device_pools?(client) do
       adapt_resource_for_version(resource, client.last_seen_version)
     else
       nil

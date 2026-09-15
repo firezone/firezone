@@ -121,11 +121,108 @@ defmodule Portal.Repo.Seeds do
         address: attrs[:address] || attrs["address"],
         address_description: attrs[:address_description] || attrs["address_description"],
         filters: attrs[:filters] || attrs["filters"] || [],
-        site_id: attrs[:site_id] || attrs["site_id"]
+        site_id: attrs[:site_id] || attrs["site_id"],
+        device_membership_criteria: attrs[:device_membership_criteria]
       }
       |> Repo.insert!()
 
     {:ok, resource}
+  end
+
+  @load_actors 1_000
+  @load_devices_per_actor 100
+
+  # Enough devices to make the pool bitmaps worth measuring, seeded before the clients
+  # below so the address trigger steers their random addresses around these. They sit
+  # at 100.80.0.0 and fd00:2021:1111::18:0 upwards, well above the pinned addresses.
+  defp seed_device_pool_load(account, admin_subject, everyone_group) do
+    now = DateTime.utc_now()
+
+    actors =
+      for i <- 1..@load_actors do
+        %{
+          id: Ecto.UUID.generate(),
+          account_id: account.id,
+          type: :account_user,
+          name: "Load user #{i}",
+          email: "load-user-#{i}@localhost.local",
+          inserted_at: now,
+          updated_at: now
+        }
+      end
+
+    actors |> Enum.chunk_every(1_000) |> Enum.each(&Repo.insert_all(Actor, &1))
+
+    group =
+      %Group{account_id: account.id, name: "Load test", type: :static}
+      |> Repo.insert!()
+
+    actors
+    |> Enum.take(div(@load_actors, 2))
+    |> Enum.map(&%{account_id: account.id, group_id: group.id, actor_id: &1.id})
+    |> Enum.chunk_every(1_000)
+    |> Enum.each(&Repo.insert_all(Membership, &1))
+
+    actors
+    |> Enum.with_index()
+    |> Enum.flat_map(fn {actor, index} ->
+      for d <- 1..@load_devices_per_actor do
+        n = index * @load_devices_per_actor + d
+
+        %{
+          account_id: account.id,
+          actor_id: actor.id,
+          type: :client,
+          name: "Load device #{n}",
+          firezone_id: "load-device-#{n}",
+          slug: "load-device-#{n}",
+          ipv4: {100, 80 + div(n, 65_536), rem(div(n, 256), 256), rem(n, 256)},
+          ipv6: {0xFD00, 0x2021, 0x1111, 0, 0, 0, 0x18 + div(n, 65_536), rem(n, 65_536)},
+          inserted_at: now,
+          updated_at: now
+        }
+      end
+    end)
+    |> Enum.chunk_every(5_000)
+    |> Enum.each(&Repo.insert_all(Device, &1))
+
+    {:ok, all_devices} =
+      create_resource(
+        %{
+          type: :device_pool,
+          name: "All devices",
+          address_description: "Every client device in the account",
+          device_membership_criteria: Portal.Resource.DeviceMembershipCriteria.all_devices()
+        },
+        admin_subject
+      )
+
+    {:ok, group_devices} =
+      create_resource(
+        %{
+          type: :device_pool,
+          name: "Load test group devices",
+          address_description: "The devices of the Load test group's members",
+          device_membership_criteria: Portal.Resource.DeviceMembershipCriteria.actor_group(group.id)
+        },
+        admin_subject
+      )
+
+    for resource <- [all_devices, group_devices] do
+      %Policy{
+        account_id: account.id,
+        group_id: everyone_group.id,
+        resource_id: resource.id,
+        description: "Everyone reaches the #{resource.name} pool"
+      }
+      |> Repo.insert!()
+    end
+
+    IO.puts("Created #{@load_actors * @load_devices_per_actor} load test devices:")
+    IO.puts("  #{@load_actors} actors, #{div(@load_actors, 2)} of them in the Load test group")
+    IO.puts("  #{all_devices.name} - Device Pool - policy: Everyone")
+    IO.puts("  #{group_devices.name} - Device Pool - policy: Everyone")
+    IO.puts("")
   end
 
   # Helper function to create gateway directly without context module
@@ -160,6 +257,7 @@ defmodule Portal.Repo.Seeds do
       |> Ecto.Changeset.put_change(:type, :gateway)
       |> Ecto.Changeset.put_change(:account_id, site.account_id)
       |> Ecto.Changeset.put_change(:site_id, site_id)
+      |> Portal.Devices.put_free_slug(site.account_id, nil)
       |> Device.changeset()
       |> Safe.unscoped()
       |> Safe.insert()
@@ -230,6 +328,7 @@ defmodule Portal.Repo.Seeds do
       |> Ecto.Changeset.put_change(:type, :client)
       |> Ecto.Changeset.put_change(:account_id, subject.account.id)
       |> Ecto.Changeset.put_change(:actor_id, subject.actor.id)
+      |> Portal.Devices.put_free_slug(subject.account.id, Portal.Devices.owner_name(subject.actor))
       |> Device.changeset()
       |> Safe.unscoped()
       |> Safe.insert()
@@ -1876,13 +1975,36 @@ defmodule Portal.Repo.Seeds do
       }
       |> Repo.insert!()
 
-    _everyone_group =
+    other_everyone_group =
       %Group{
         account_id: other_account.id,
         name: "Everyone",
         type: :managed
       }
       |> Repo.insert!()
+
+    for {seed_account, seed_everyone_group} <- [
+          {account, everyone_group},
+          {other_account, other_everyone_group}
+        ] do
+      self_device_pool =
+        %Resource{account_id: seed_account.id}
+        |> cast(Resource.self_device_pool_attrs(), [:type, :device_membership_criteria, :name])
+        |> Resource.changeset()
+        |> Repo.insert!()
+
+      %Policy{
+        account_id: seed_account.id,
+        group_id: seed_everyone_group.id,
+        resource_id: self_device_pool.id,
+        description: "Lets every actor reach their own devices."
+      }
+      |> Repo.insert!()
+
+      IO.puts("Created #{self_device_pool.name} pool for #{seed_account.name}:")
+      IO.puts("  <slug>.#{Portal.Device.domain()} - Device Pool - policy: Everyone")
+      IO.puts("")
+    end
 
     # Create auth providers for main account
     system_subject = %Authentication.Subject{
@@ -2150,6 +2272,7 @@ defmodule Portal.Repo.Seeds do
           |> Ecto.Changeset.put_change(:type, :client)
           |> Ecto.Changeset.put_change(:account_id, subject.account.id)
           |> Ecto.Changeset.put_change(:actor_id, subject.actor.id)
+          |> Portal.Devices.put_free_slug(subject.account.id, Portal.Devices.owner_name(subject.actor))
           |> Device.changeset()
           |> Safe.unscoped()
           |> Safe.insert()
@@ -2338,6 +2461,8 @@ defmodule Portal.Repo.Seeds do
 
     IO.puts("  #{service_account_actor.name} token: #{service_account_actor_encoded_token}")
     IO.puts("")
+
+    seed_device_pool_load(account, admin_subject, everyone_group)
 
     # Pinned so auto-assigned IPs never randomly collide with the pool member's 100.64.0.2.
     {:ok, user_iphone} =
@@ -2837,26 +2962,26 @@ defmodule Portal.Repo.Seeds do
         admin_subject
       )
 
-    {:ok, firez_one} =
+    {:ok, wikipedia} =
       create_resource(
         %{
           type: :dns,
-          name: "**.firez.one",
-          address: "**.firez.one",
-          address_description: "https://firez.one/",
+          name: "**.wikipedia.org",
+          address: "**.wikipedia.org",
+          address_description: "https://www.wikipedia.org/",
           site_id: site.id,
           filters: []
         },
         admin_subject
       )
 
-    {:ok, firezone_dev} =
+    {:ok, github} =
       create_resource(
         %{
           type: :dns,
-          name: "*.firezone.dev",
-          address: "*.firezone.dev",
-          address_description: "https://www.firezone.dev/",
+          name: "*.github.com",
+          address: "*.github.com",
+          address_description: "https://github.com/",
           site_id: site.id,
           filters: []
         },
@@ -3015,29 +3140,22 @@ defmodule Portal.Repo.Seeds do
     {:ok, pool_resource} =
       create_resource(
         %{
-          type: :static_device_pool,
+          type: :device_pool,
           name: "CI Static Pool",
           address_description: "CI integration test static device pool",
-          site_id: site.id,
+          device_membership_criteria:
+            Portal.Resource.DeviceMembershipCriteria.devices([pool_member_device.id]),
           filters: []
         },
         admin_subject
       )
 
-    %Portal.StaticDevicePoolMember{
-      account_id: account.id,
-      resource_id: pool_resource.id,
-      device_id: pool_member_device.id,
-      device_type: :client
-    }
-    |> Repo.insert!()
-
     IO.puts("Created resources:")
     IO.puts("  #{dns_google_resource.address} - DNS - gateways: #{gateway_name}")
     IO.puts("  #{address_description_null_resource.address} - DNS - gateways: #{gateway_name}")
     IO.puts("  #{dns_gitlab_resource.address} - DNS - gateways: #{gateway_name}")
-    IO.puts("  #{firez_one.address} - DNS - gateways: #{gateway_name}")
-    IO.puts("  #{firezone_dev.address} - DNS - gateways: #{gateway_name}")
+    IO.puts("  #{wikipedia.address} - DNS - gateways: #{gateway_name}")
+    IO.puts("  #{github.address} - DNS - gateways: #{gateway_name}")
     IO.puts("  #{example_dns.address} - DNS - gateways: #{gateway_name}")
     IO.puts("  #{ip_resource.address} - IP - gateways: #{gateway_name}")
     IO.puts("  #{cidr_resource.address} - CIDR - gateways: #{gateway_name}")
@@ -3075,9 +3193,9 @@ defmodule Portal.Repo.Seeds do
     {:ok, _} =
       create_policy.(
         %{
-          description: "All Access To firez.one",
+          description: "All Access To wikipedia.org",
           group_id: synced_group.id,
-          resource_id: firez_one.id
+          resource_id: wikipedia.id
         },
         admin_subject
       )
@@ -3085,7 +3203,7 @@ defmodule Portal.Repo.Seeds do
     {:ok, _} =
       create_policy.(
         %{
-          description: "All Access To firez.one",
+          description: "All Access To wikipedia.org",
           group_id: everyone_group.id,
           resource_id: example_dns.id
         },
@@ -3095,9 +3213,9 @@ defmodule Portal.Repo.Seeds do
     {:ok, _} =
       create_policy.(
         %{
-          description: "All Access To firezone.dev",
+          description: "All Access To github.com",
           group_id: everyone_group.id,
-          resource_id: firezone_dev.id
+          resource_id: github.id
         },
         admin_subject
       )

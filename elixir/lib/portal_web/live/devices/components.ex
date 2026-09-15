@@ -295,6 +295,26 @@ defmodule PortalWeb.Devices.Components do
           required
         />
       </div>
+      <div :if={@device_edit_form.data.type == :client}>
+        <label
+          for={@device_edit_form[:slug].id}
+          class="block text-xs font-medium text-body mb-1.5"
+        >
+          Slug <span class="text-error">*</span>
+        </label>
+        <.input
+          field={@device_edit_form[:slug]}
+          type="text"
+          placeholder="my-laptop"
+          phx-debounce="300"
+          suffix={".#{Portal.Device.domain()}"}
+          required
+        />
+        <p class="mt-1 text-xs text-subtle">
+          Used to reach this device directly through a
+          <.website_link path="/kb/concepts/resources" fragment="device-pools">device pool</.website_link>. Must be unique in the account.
+        </p>
+      </div>
     </div>
     """
   end
@@ -1036,9 +1056,10 @@ defmodule PortalWeb.Devices.Components do
       <.section_heading title="Details" />
       <dl class="space-y-2.5">
         <.device_detail_row label="Device ID">
-          <span class="font-mono text-[11px] text-body break-all">
-            {@device.id}
-          </span>
+          <.copyable_value id={"device-id-#{@device.id}"} value={@device.id} />
+        </.device_detail_row>
+        <.device_detail_row :if={@device.slug} label="Slug">
+          <.copyable_value id={"device-slug-#{@device.id}"} value={Portal.Device.fqdn(@device)} />
         </.device_detail_row>
         <.device_detail_row :if={@device.firezone_id} label="Firezone ID">
           <span class="font-mono text-[11px] text-body break-all">
@@ -1267,6 +1288,32 @@ defmodule PortalWeb.Devices.Components do
         {render_slot(@info)}
       </dt>
       <dd>{render_slot(@inner_block)}</dd>
+    </div>
+    """
+  end
+
+  attr :id, :string, required: true
+  attr :value, :string, required: true
+
+  # `CopyClipboard` reads the value out of `<id>-code` and swaps `<id>-default-message`
+  # for `<id>-success-message` for two seconds.
+  defp copyable_value(assigns) do
+    ~H"""
+    <div id={@id} phx-hook="CopyClipboard" class="flex items-start gap-1.5 min-w-0">
+      <span id={"#{@id}-code"} class="font-mono text-[11px] text-body break-all">{@value}</span>
+      <button
+        type="button"
+        class="shrink-0 text-subtle hover:text-heading cursor-pointer rounded"
+        data-copy-to-clipboard-target={"#{@id}-code"}
+        title="Copy to clipboard"
+      >
+        <span id={"#{@id}-default-message"} class="inline-flex">
+          <.icon name="ri-clipboard-line" class="h-3.5 w-3.5" />
+        </span>
+        <span id={"#{@id}-success-message"} class="hidden text-success">
+          <.icon name="ri-check-line" class="h-3.5 w-3.5" />
+        </span>
+      </button>
     </div>
     """
   end
