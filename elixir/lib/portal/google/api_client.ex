@@ -432,24 +432,28 @@ defmodule Portal.Google.APIClient do
         if user_flags_present?(user) do
           result
         else
-          remaining = deadline - System.monotonic_time(:millisecond)
-
-          if remaining > 0 do
-            Logger.warning("Retrying Google user with missing suspended/archived flags",
-              google_user_id: user_key
-            )
-
-            config = Portal.Config.fetch_env!(:portal, __MODULE__)
-            delay = Keyword.get(config, :user_flags_retry_delay, :timer.seconds(10))
-            Process.sleep(min(delay, remaining))
-            get_user_with_flags(access_token, user_key, deadline)
-          else
-            {:error, {:missing_user_flags, user_key}}
-          end
+          retry_user_with_flags(access_token, user_key, deadline)
         end
 
       result ->
         result
+    end
+  end
+
+  defp retry_user_with_flags(access_token, user_key, deadline) do
+    remaining = deadline - System.monotonic_time(:millisecond)
+
+    if remaining > 0 do
+      Logger.warning("Retrying Google user with missing suspended/archived flags",
+        google_user_id: user_key
+      )
+
+      config = Portal.Config.fetch_env!(:portal, __MODULE__)
+      delay = Keyword.get(config, :user_flags_retry_delay, :timer.seconds(10))
+      Process.sleep(min(delay, remaining))
+      get_user_with_flags(access_token, user_key, deadline)
+    else
+      {:error, {:missing_user_flags, user_key}}
     end
   end
 
@@ -896,12 +900,9 @@ defmodule Portal.Google.APIClient do
   defp filter_active_google_users_result(users, access_token) when is_list(users) do
     Enum.reduce_while(users, [], fn user, acc ->
       case resolve_user_flags(user, access_token) do
-        {:ok, user} ->
-          if user["suspended"] != true and user["archived"] != true do
-            {:cont, [user | acc]}
-          else
-            {:cont, acc}
-          end
+        {:ok, %{"suspended" => true}} -> {:cont, acc}
+        {:ok, %{"archived" => true}} -> {:cont, acc}
+        {:ok, user} -> {:cont, [user | acc]}
 
         :deleted -> {:cont, acc}
         {:error, _} = error -> {:halt, error}
