@@ -2432,6 +2432,7 @@ defmodule Portal.Repo.Seeds do
       |> Ecto.Changeset.put_change(:type, :client)
       |> Ecto.Changeset.put_change(:account_id, account.id)
       |> Ecto.Changeset.put_change(:actor_id, member.person.actor.id)
+      |> Portal.Devices.put_free_slug(account.id, Portal.Devices.owner_name(member.person.actor))
       |> Device.changeset()
       |> Safe.unscoped()
       |> Safe.insert()
