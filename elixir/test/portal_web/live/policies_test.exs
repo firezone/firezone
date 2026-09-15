@@ -1608,7 +1608,8 @@ defmodule PortalWeb.PoliciesTest do
 
       html = render_click(lv, "postures_toggle_check", %{"name" => "client_up_to_date"})
       assert lv |> element("#policy-postures-simple-client_up_to_date") |> render() =~ "checked"
-      assert html =~ ~s(value="{&quot;check&quot;:&quot;client_up_to_date&quot;}")
+      assert html =~ ~s(&quot;field&quot;:&quot;firezone.last_seen_version&quot;)
+      assert html =~ ~s(&quot;value&quot;:&quot;@latest&quot;)
 
       html =
         lv
@@ -1616,8 +1617,10 @@ defmodule PortalWeb.PoliciesTest do
         |> render_submit()
 
       assert html =~ "created successfully"
-      assert saved_postures(group, resource) == %{"check" => "client_up_to_date"}
-      assert html =~ "Firezone Client up to date"
+      assert saved_postures(group, resource) ==
+               %{"field" => "firezone.last_seen_version", "op" => "gte", "value" => "@latest"}
+
+      assert html =~ "firezone.last_seen_version"
     end
 
     test "connected providers and trust anchors unlock checks and silence the warning", %{
@@ -1639,11 +1642,12 @@ defmodule PortalWeb.PoliciesTest do
 
       render_click(lv, "postures_toggle_check", %{"name" => "compliant"})
       html = render_click(lv, "postures_toggle_check", %{"name" => "disk_encryption"})
-      assert html =~ ~s(&quot;and&quot;:[{&quot;check&quot;:&quot;compliant&quot;},{&quot;check&quot;:&quot;disk_encryption&quot;}])
+      assert html =~ ~s(&quot;field&quot;:&quot;intune.compliance_state&quot;)
+      assert html =~ ~s(&quot;field&quot;:&quot;iru.filevault_enabled&quot;)
 
       html = render_click(lv, "postures_tab", %{"tab" => "builder"})
-      assert html =~ ~s(<option value="compliant" selected)
-      assert html =~ ~s(<option value="disk_encryption" selected)
+      assert html =~ ~s(<option value="compliance_state" selected)
+      assert html =~ ~s(<option value="filevault_enabled" selected)
 
       render_click(lv, "postures_toggle_check", %{"name" => "compliant"})
       html = render_click(lv, "postures_tab", %{"tab" => "simple"})
