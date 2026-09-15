@@ -271,10 +271,7 @@ class TunnelService : VpnService() {
                 // `establish` only returns null once our VPN consent is gone, and no narrower
                 // interface wins it back.
                 Log.e(TAG, "VpnService.Builder.establish() returned null")
-                showErrorNotification(
-                    "VPN permission required",
-                    "Firezone is no longer allowed to set up a VPN on this device. Open Firezone to grant the permission again.",
-                )
+                TunnelNotification.showVpnPermissionRequiredNotification(this)
                 disconnect()
                 return
             }
