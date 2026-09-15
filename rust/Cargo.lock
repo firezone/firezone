@@ -834,9 +834,9 @@ dependencies = [
 
 [[package]]
 name = "blake2"
-version = "0.11.0-rc.6"
+version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "061f1a09225e328e1ffbb378d2d49923c0ca5fee19fb5ac1cc9c1e9d52b93690"
+checksum = "5b5d4d889834ee8ecfc0f8426ad30faf7cdcb10f741a8e6d7224d95325479f6f"
 dependencies = [
  "digest 0.11.3",
 ]
@@ -911,7 +911,7 @@ dependencies = [
 [[package]]
 name = "boringtun"
 version = "0.7.0"
-source = "git+https://github.com/firezone/boringtun?branch=master#b275f9028dc529165b05c6dd87157b1e7ea49693"
+source = "git+https://github.com/firezone/boringtun?branch=master#fcc140e9e4f0dfb4bbbfb2457409d1e8534846a8"
 dependencies = [
  "aead",
  "blake2",
@@ -1495,9 +1495,12 @@ checksum = "a6ef517f0926dd24a1582492c791b6a4818a4d94e789a334894aa15b0d12f55c"
 
 [[package]]
 name = "constant_time_eq"
-version = "0.5.0"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1a1ec0cfec728a79a5109075543131387f911cb4d07716436d7ae20533657a96"
+checksum = "6187e670c346a04bcbf5def0393d57ec0e5ab56565cde6be4a7cbdb6cdc2f3f6"
+dependencies = [
+ "rustversion",
+]
 
 [[package]]
 name = "convert_case"
