@@ -297,15 +297,11 @@ impl RefClient {
         self.peer_pools.remove(&peer);
     }
 
-    /// The pools whose filters permit `protocol`, in the order connlib names them: highest id first.
-    fn permitting_pools(&self, protocol: Protocol) -> Vec<ResourceId> {
+    fn candidate_pools(&self, protocol: Protocol) -> Vec<ResourceId> {
         self.device_pool_ids()
             .into_iter()
-            .filter(|pool| {
-                self.pool_filters(*pool)
-                    .is_some_and(|filters| protocol_filter_allows(filters, protocol))
-            })
-            .sorted()
+            .filter(|pool| self.resource_filter_allows(*pool, protocol))
+            .sorted_by_key(|pool| (self.strict_resource_filter_allows(*pool, protocol), *pool))
             .rev()
             .collect()
     }
@@ -810,8 +806,8 @@ impl RefClient {
 
     /// A flow to a peer goes through a pool we already hold a grant for if one permits
     /// it, otherwise the client asks the portal through the pools that permit it, and the
-    /// portal grants the first that holds the peer. A malicious client sends through a
-    /// granted pool regardless and the peer rejects the flow.
+    /// portal grants the first that holds the peer. A malicious client also requests
+    /// pools whose filters reject the packet, leaving enforcement to the peer.
     ///
     /// Also returns the peer when the portal granted the flow, since the peer then
     /// forgets its own grants towards us.
@@ -839,7 +835,7 @@ impl RefClient {
             return (PacketRoute::Drop, None);
         }
 
-        let pools = self.permitting_pools(protocol);
+        let pools = self.candidate_pools(protocol);
 
         if pools.is_empty() {
             return (PacketRoute::RejectedByClient, None);
@@ -849,7 +845,13 @@ impl RefClient {
             Some(pool) => {
                 self.peer_pools.entry(peer).or_default().insert(pool);
 
-                (PacketRoute::Peer(peer), Some(peer))
+                let route = if self.strict_resource_filter_allows(pool, protocol) {
+                    PacketRoute::Peer(peer)
+                } else {
+                    PacketRoute::PeerRejectedByPeer(peer)
+                };
+
+                (route, Some(peer))
             }
             None => (PacketRoute::RejectedByClient, None),
         }
@@ -1795,6 +1797,59 @@ fn default_routes_v6() -> Vec<IpNetwork> {
 mod tests {
     use super::*;
     use tunnel_proto::messages::PortRange;
+
+    #[test]
+    fn malicious_client_requests_a_pool_that_rejects_the_packet() {
+        let peer = ClientId::from_u128(2);
+        let allowed = ResourceId::from_u128(1);
+        let denied = ResourceId::from_u128(2);
+        let mut client = RefClient::new(
+            ClientId::from_u128(1),
+            PrivateKey([0; 32]),
+            "100.64.0.1".parse().unwrap(),
+            "fd00:2021:1111::1".parse().unwrap(),
+            Vec::new(),
+            false,
+            MaliciousBehaviour::default(),
+            crate::os::SimulatedOs::Linux,
+            0,
+        );
+        for (id, filters) in [
+            (allowed, vec![]),
+            (denied, vec![Filter::Tcp(PortRange::single(443))]),
+        ] {
+            client.add_device_pool_resource(DevicePoolResource {
+                id,
+                name: "pool".to_owned(),
+                filters,
+            });
+        }
+
+        assert_eq!(
+            client.route_to_peer(peer, Protocol::Tcp(80), |candidates, _| {
+                assert_eq!(candidates, &[allowed]);
+                None
+            }),
+            (PacketRoute::RejectedByClient, None)
+        );
+
+        client.malicious_behaviour.ignore_resource_filters = true;
+        let route = client.route_to_peer(peer, Protocol::Tcp(80), |candidates, target| {
+            assert_eq!(target, peer);
+            assert_eq!(candidates, &[allowed, denied]);
+            Some(denied)
+        });
+
+        assert_eq!(route, (PacketRoute::PeerRejectedByPeer(peer), Some(peer)));
+        assert_eq!(
+            client.peer_pools.get(&peer),
+            Some(&BTreeSet::from([denied]))
+        );
+        assert_eq!(
+            client.route_to_peer(peer, Protocol::Tcp(80), |_, _| unreachable!()),
+            (PacketRoute::PeerRejectedByPeer(peer), None)
+        );
+    }
 
     #[test]
     fn packet_route_makes_overlapping_resource_precedence_explicit() {

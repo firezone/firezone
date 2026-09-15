@@ -312,7 +312,9 @@ impl ClientState {
                     return None;
                 };
 
-                let outbound = self.authorized_resources.get(rid)
+                let outbound = self
+                    .authorized_resources
+                    .get(rid)
                     .is_some_and(|resource| resource.client_token(peer.id()).is_some());
 
                 (outbound || inbound.contains(rid)).then(|| pool.name.clone())
@@ -645,29 +647,11 @@ impl ClientState {
                     .resolve(destination, dst_proto, internet_resource);
 
                 #[cfg(any(test, feature = "malicious-behaviour"))]
-                let routes = {
-                    let client = self.clients.peer_by_ip(destination).map(|(cid, _)| cid);
-                    let bypass_routes = self.routing_tables.peer_filter_bypass_routes(
-                        destination,
-                        dst_proto,
-                        |resource_id| {
-                            client.is_some_and(|cid| {
-                                self.authorized_resources
-                                    .get(&resource_id)
-                                    .is_some_and(|resource| resource.client_token(cid).is_some())
-                            })
-                        },
-                    );
-                    if bypass_routes.is_empty() {
-                        routes
-                    } else {
-                        Ok(routes
-                            .unwrap_or_default()
-                            .into_iter()
-                            .chain(bypass_routes)
-                            .collect())
-                    }
-                };
+                let routes = routing::with_filter_bypass(
+                    routes,
+                    self.routing_tables
+                        .filter_bypass_routes(destination, dst_proto),
+                );
 
                 let routes = match routes {
                     Ok(routes) => routes,
@@ -1215,7 +1199,13 @@ impl ClientState {
         // We only add the inbound resource and filters on the *target* side of the connection.
         // The initiating side does not request connections if the filters don't allow it.
         if let Some((resource_id, filters, expires_at)) = authorization {
-            peer.add_resource(resource_id, filters, expires_at, flow_logs_ingest_token.clone(), now);
+            peer.add_resource(
+                resource_id,
+                filters,
+                expires_at,
+                flow_logs_ingest_token.clone(),
+                now,
+            );
         }
 
         let mut buffered_packets = Vec::new();
