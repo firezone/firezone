@@ -120,14 +120,8 @@ defmodule PortalAPI.Schemas.Policy do
         `contains_all_of`, `is_empty`, `is_not_empty`.
       * JSON attributes: `is_empty`, `is_not_empty`.
 
-      A node may also be a named check, `{"check": "disk_encryption"}`, which
-      stands for a tree over every provider that can answer the question. The
-      names are: compliant, disk_encryption, endpoint_protection,
-      no_active_threats, firewall, not_jailbroken, recently_seen, secure_boot,
-      no_debugging, corporate_owned, supervised, app_allowlisting,
-      agent_up_to_date, client_up_to_date, managed. The value `@latest` on
-      `firezone.last_seen_version` stands for the newest Client release for the
-      device's platform.
+      The value `@latest` on `firezone.last_seen_version` stands for the newest
+      Client release for the device's platform.
 
       Every attribute also accepts `exists` and `does_not_exist`, which take
       no value. An attribute the provider did not report fails every other
