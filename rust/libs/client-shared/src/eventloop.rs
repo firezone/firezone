@@ -860,6 +860,10 @@ impl Eventloop {
     }
 
     fn next_event(&mut self, cx: &mut Context) -> Poll<CombinedEvent> {
+        if let Poll::Ready(event) = self.clock.poll_event(cx) {
+            return Poll::Ready(CombinedEvent::Clock(event));
+        }
+
         if let Poll::Ready(cmd) = self.cmd_rx.poll_recv(cx) {
             return Poll::Ready(CombinedEvent::Command(cmd));
         }
@@ -869,20 +873,15 @@ impl Eventloop {
         }
 
         let now = self.clock.now();
-        if let Some(Poll::Ready(event)) = self.tunnel.as_mut().map(|t| t.poll_next_event(cx, now)) {
-            return Poll::Ready(CombinedEvent::Tunnel(event));
-        }
+        if let Some(tunnel) = self.tunnel.as_mut() {
+            if let Poll::Ready(event) = tunnel.poll_next_event(cx, now) {
+                return Poll::Ready(CombinedEvent::Tunnel(event));
+            }
 
-        // Nothing to do until the tunnel's next deadline: ask once, then suspend. Being sampled
-        // well past that deadline means we were not running, not that we had nothing to do.
-        self.clock.set_alarm(
-            self.tunnel
-                .as_mut()
-                .and_then(|tunnel| tunnel.next_timeout(now)),
-        );
-
-        if let Poll::Ready(event) = self.clock.poll_event(cx) {
-            return Poll::Ready(CombinedEvent::Clock(event));
+            // Nothing to do until the tunnel's next deadline: ask once, then suspend. Being
+            // sampled well past that deadline means we were not running, not that we had nothing
+            // to do.
+            self.clock.set_alarm(cx, tunnel.next_timeout(now));
         }
 
         Poll::Pending

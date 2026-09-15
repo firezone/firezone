@@ -273,6 +273,7 @@ impl ClientTunnel {
             {
                 if let Some(response) = dns_response {
                     self.role_state.handle_dns_response(response, now);
+                    self.needs_timeout = true;
 
                     tick.want_continue();
                 }
@@ -288,6 +289,8 @@ impl ClientTunnel {
                             Err(e) => error.push(e),
                         }
                     }
+
+                    self.needs_timeout = true;
 
                     // Eagerly flush GSO queue.
                     if let Poll::Ready(Err(e)) = self.io.flush_gso_queue(cx) {
@@ -323,7 +326,7 @@ impl ClientTunnel {
                             Ok(Some(packet)) => self
                                 .io
                                 .queue_tun(packet.with_ecn_from_transport(received.ecn)),
-                            Ok(None) => {}
+                            Ok(None) => self.needs_timeout = true,
                             Err(e) => error.push(e),
                         };
                     }
@@ -332,8 +335,6 @@ impl ClientTunnel {
 
                     tick.want_continue();
                 }
-
-                self.needs_timeout = true;
 
                 if !error.is_empty() {
                     return Poll::Ready(Err(error));
@@ -493,6 +494,8 @@ impl GatewayTunnel {
                         }
                     }
 
+                    self.needs_timeout = true;
+
                     // Eagerly flush GSO queue.
                     if let Poll::Ready(Err(e)) = self.io.flush_gso_queue(cx) {
                         error.push(e);
@@ -527,7 +530,7 @@ impl GatewayTunnel {
                             Ok(Some(packet)) => self
                                 .io
                                 .queue_tun(packet.with_ecn_from_transport(received.ecn)),
-                            Ok(None) => {}
+                            Ok(None) => self.needs_timeout = true,
                             Err(e) => error.push(e),
                         };
                     }
@@ -594,8 +597,6 @@ impl GatewayTunnel {
 
                     tick.want_continue();
                 }
-
-                self.needs_timeout = true;
 
                 if !error.is_empty() {
                     return Poll::Ready(Err(error));

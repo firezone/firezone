@@ -216,6 +216,10 @@ impl Eventloop {
     }
 
     fn next_event(&mut self, cx: &mut Context<'_>) -> Poll<CombinedEvent> {
+        if let Poll::Ready(event) = self.clock.poll_event(cx) {
+            return Poll::Ready(CombinedEvent::Clock(event));
+        }
+
         if let Poll::Ready(event) = self.portal_event_rx.poll_recv(cx) {
             return Poll::Ready(CombinedEvent::Portal(event));
         }
@@ -230,24 +234,18 @@ impl Eventloop {
             return Poll::Ready(CombinedEvent::DomainResolved((result, trigger)));
         }
 
-        let now = self.clock.now();
-        if let Some(Poll::Ready(event)) = self.tunnel.as_mut().map(|t| t.poll_next_event(cx, now)) {
-            return Poll::Ready(CombinedEvent::Tunnel(event));
-        }
-
         if let Poll::Ready(()) = self.sigint.poll_recv(cx) {
             return Poll::Ready(CombinedEvent::SigIntTerm);
         }
 
-        // Nothing to do until the tunnel's next deadline: ask once, then suspend.
-        self.clock.set_alarm(
-            self.tunnel
-                .as_mut()
-                .and_then(|tunnel| tunnel.next_timeout(now)),
-        );
+        let now = self.clock.now();
+        if let Some(tunnel) = self.tunnel.as_mut() {
+            if let Poll::Ready(event) = tunnel.poll_next_event(cx, now) {
+                return Poll::Ready(CombinedEvent::Tunnel(event));
+            }
 
-        if let Poll::Ready(event) = self.clock.poll_event(cx) {
-            return Poll::Ready(CombinedEvent::Clock(event));
+            // Nothing to do until the tunnel's next deadline: ask once, then suspend.
+            self.clock.set_alarm(cx, tunnel.next_timeout(now));
         }
 
         Poll::Pending
