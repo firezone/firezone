@@ -105,6 +105,12 @@ pub struct Tunnel<TRoleState> {
     io: Io,
 
     packet_counter: opentelemetry::metrics::Counter<u64>,
+
+    /// Set when the last poll handled IO whose effects only `handle_timeout` completes.
+    ///
+    /// Not every component advertises a deadline for that work, so the tunnel says so itself:
+    /// [`Tunnel::next_timeout`] reports `now` and the alarm rings straight away.
+    needs_timeout: bool,
 }
 
 impl<TRoleState> Tunnel<TRoleState> {
@@ -147,6 +153,7 @@ impl ClientTunnel {
                     .expect("Should be able to compute UNIX timestamp"),
             ),
             packet_counter: otel_instruments::network_packets(),
+            needs_timeout: false,
         }
     }
 
@@ -157,7 +164,11 @@ impl ClientTunnel {
     /// The instant by which the event loop must poll again.
     ///
     /// Asks the state once, so call this right before suspending rather than on every wake-up.
-    pub fn next_timeout(&mut self) -> Option<Instant> {
+    pub fn next_timeout(&mut self, now: Instant) -> Option<Instant> {
+        if mem::take(&mut self.needs_timeout) {
+            return Some(now);
+        }
+
         self.role_state.poll_timeout().map(|(deadline, _)| deadline)
     }
 
@@ -212,7 +223,6 @@ impl ClientTunnel {
         now: Instant,
     ) -> Poll<Result<ClientEvent, TunnelError>> {
         let mut budget = Budget::new(cx.waker(), MAX_EVENTLOOP_ITERS, "client-tunnel");
-        let mut advanced_state = false;
 
         while let Some(mut tick) = budget.next() {
             // Pass up existing events.
@@ -323,18 +333,11 @@ impl ClientTunnel {
                     tick.want_continue();
                 }
 
+                self.needs_timeout = true;
+
                 if !error.is_empty() {
                     return Poll::Ready(Err(error));
                 }
-            }
-
-            // Handling a packet leaves work in components that only `handle_timeout` drains and
-            // that do not all advertise a deadline of their own. Advance the state once per poll
-            // and let the next tick drain whatever that produced.
-            if !advanced_state {
-                advanced_state = true;
-                self.role_state.handle_timeout(now);
-                tick.want_continue();
             }
         }
 
@@ -359,6 +362,7 @@ impl GatewayTunnel {
                     .expect("Should be able to compute UNIX timestamp"),
             ),
             packet_counter: otel_instruments::network_packets(),
+            needs_timeout: false,
         }
     }
 
@@ -369,7 +373,11 @@ impl GatewayTunnel {
     /// The instant by which the event loop must poll again.
     ///
     /// Asks the state once, so call this right before suspending rather than on every wake-up.
-    pub fn next_timeout(&mut self) -> Option<Instant> {
+    pub fn next_timeout(&mut self, now: Instant) -> Option<Instant> {
+        if mem::take(&mut self.needs_timeout) {
+            return Some(now);
+        }
+
         self.role_state.poll_timeout().map(|(deadline, _)| deadline)
     }
 
@@ -404,7 +412,6 @@ impl GatewayTunnel {
         now: Instant,
     ) -> Poll<Result<GatewayEvent, TunnelError>> {
         let mut budget = Budget::new(cx.waker(), MAX_EVENTLOOP_ITERS, "gateway-tunnel");
-        let mut advanced_state = false;
 
         while let Some(mut tick) = budget.next() {
             // Pass up existing events.
@@ -588,18 +595,11 @@ impl GatewayTunnel {
                     tick.want_continue();
                 }
 
+                self.needs_timeout = true;
+
                 if !error.is_empty() {
                     return Poll::Ready(Err(error));
                 }
-            }
-
-            // Handling a packet leaves work in components that only `handle_timeout` drains and
-            // that do not all advertise a deadline of their own. Advance the state once per poll
-            // and let the next tick drain whatever that produced.
-            if !advanced_state {
-                advanced_state = true;
-                self.role_state.handle_timeout(now);
-                tick.want_continue();
             }
         }
 

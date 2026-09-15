@@ -243,7 +243,7 @@ impl Eventloop {
         self.clock.set_alarm(
             self.tunnel
                 .as_mut()
-                .and_then(|tunnel| tunnel.next_timeout()),
+                .and_then(|tunnel| tunnel.next_timeout(now)),
         );
 
         if let Poll::Ready(event) = self.clock.poll_event(cx) {
