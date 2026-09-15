@@ -8,7 +8,7 @@ use anyhow::{Context, Result};
 use connlib_model::{ClientId, ResourceId};
 use ip_packet::IpPacket;
 use smallvec::SmallVec;
-use std::collections::{BTreeSet, HashMap};
+use std::collections::BTreeSet;
 use std::time::Instant;
 
 /// Peer-level state of a connection with another Client.
@@ -38,9 +38,6 @@ pub(crate) struct ClientOnClient {
     /// Tracks outbound flows so legitimate return traffic is admitted.
     conn_track: ConnTrack,
 
-    /// The portal's per-flow ingest token for each resource of this peer, used
-    /// to attribute the client-to-client flow logs.
-    ingest_tokens: HashMap<ResourceId, IngestToken>,
     /// Finds the resource an inbound packet belongs to; rebuilt whenever
     /// `resources` changes.
     inbound_resources: InboundResources,
@@ -50,6 +47,7 @@ pub(crate) struct ClientOnClient {
 #[derive(Debug)]
 struct ResourceOnClient {
     filters: Vec<Filter>,
+    ingest_token: IngestToken,
 }
 
 /// The decision after applying inbound filters and the connection tracker.
@@ -77,7 +75,6 @@ impl ClientOnClient {
             // No resources -> no allowed inbound traffic by default.
             inbound_filter: FilterEngine::DenyAll,
             conn_track: ConnTrack::default(),
-            ingest_tokens: HashMap::new(),
             inbound_resources: InboundResources::default(),
         }
     }
@@ -98,10 +95,6 @@ impl ClientOnClient {
         self.remote_name = name;
     }
 
-    pub(crate) fn set_ingest_token(&mut self, resource_id: ResourceId, token: IngestToken) {
-        self.ingest_tokens.insert(resource_id, token);
-    }
-
     /// Allow the remote peer to send us packets associated with `resource_id` limited by the given filter set.
     ///
     /// If a resource with the same id is already tracked, its filters are replaced.
@@ -111,6 +104,7 @@ impl ClientOnClient {
         resource_id: ResourceId,
         filters: Vec<Filter>,
         expires_at: Option<Instant>,
+        ingest_token: IngestToken,
         now: Instant,
     ) {
         let expires_in = expires_at.map(|e| e.saturating_duration_since(now));
@@ -122,8 +116,15 @@ impl ClientOnClient {
         );
 
         let ttl = expires_in.unwrap_or(NEVER_EXPIRES_TTL);
-        self.resources
-            .insert(resource_id, ResourceOnClient { filters }, now, ttl);
+        self.resources.insert(
+            resource_id,
+            ResourceOnClient {
+                filters,
+                ingest_token,
+            },
+            now,
+            ttl,
+        );
         self.recompute_inbound_filter();
     }
 
@@ -133,7 +134,6 @@ impl ClientOnClient {
 
         for (resource_id, _) in self.resources.extract_if(|rid, _| !retain.contains(rid)) {
             tracing::info!(%resource_id, "Revoking peer authorization on resync");
-            self.ingest_tokens.remove(&resource_id);
             any_removed = true;
         }
 
@@ -171,8 +171,6 @@ impl ClientOnClient {
 
     /// Drop a previously-active resource.
     pub(crate) fn remove_resource(&mut self, resource_id: &ResourceId) {
-        self.ingest_tokens.remove(resource_id);
-
         let Some(_entry) = self.resources.remove(resource_id) else {
             return;
         };
@@ -210,10 +208,6 @@ impl ClientOnClient {
         self.conn_track.record_outbound_as_originator(packet, now);
     }
 
-    pub(crate) fn ingest_token(&self, resource: &ResourceId) -> Option<IngestToken> {
-        self.ingest_tokens.get(resource).cloned()
-    }
-
     /// Returns the next instant at which one of this peer's inbound authorizations expires.
     pub(crate) fn poll_timeout(&self) -> Option<Instant> {
         self.resources.poll_timeout()
@@ -229,7 +223,6 @@ impl ClientOnClient {
             match event {
                 crate::expiring_map::Event::EntryExpired { key, .. } => {
                     tracing::info!(rid = %key, "Resource authorization expired, revoking");
-                    self.ingest_tokens.remove(&key);
                     any_expired = true;
                 }
             }
@@ -306,7 +299,9 @@ impl ClientOnClient {
     fn ingest_token_for_inbound(&mut self, packet: &IpPacket) -> Option<IngestToken> {
         let resource = self.inbound_resources.resource_for(packet)?;
 
-        self.ingest_tokens.get(&resource).cloned()
+        self.resources
+            .get(&resource)
+            .map(|resource| resource.value.ingest_token.clone())
     }
 }
 
@@ -365,18 +360,68 @@ impl InboundResources {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::client::AuthorizedOutboundResource;
     use crate::messages::PortRange;
     use connlib_model::{ClientId, ResourceId};
+    use flow_tracker::IngestTokenRole::{Initiator, Responder};
     use ip_packet::make;
     use std::collections::BTreeSet;
     use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
     use std::time::Duration;
 
+    #[test_case::test_case(true; "inbound_grant_first")]
+    #[test_case::test_case(false; "outbound_grant_first")]
+    fn ingest_tokens_are_separate_for_each_direction(inbound_first: bool) {
+        let now = Instant::now();
+        let rid = ResourceId::from_u128(1);
+        let mut peer = peer();
+        let inbound = ingest_token(Responder);
+        let outbound = ingest_token(Initiator);
+        let mut outbound_resource = AuthorizedOutboundResource::direct();
+
+        if inbound_first {
+            peer.add_resource(rid, udp_port(80), None, inbound.clone(), now);
+            outbound_resource.authorize_client(peer.id(), outbound.clone());
+        } else {
+            outbound_resource.authorize_client(peer.id(), outbound.clone());
+            peer.add_resource(rid, udp_port(80), None, inbound.clone(), now);
+        }
+
+        assert_eq!(peer.ingest_token_for_inbound(&udp_to(80)), Some(inbound));
+        assert_eq!(outbound_resource.client_token(peer.id()), Some(&outbound));
+    }
+
+    #[test]
+    fn outbound_tokens_follow_each_device_authorization() {
+        let first = ClientId::from_u128(1);
+        let second = ClientId::from_u128(2);
+        let first_token = ingest_token_for_client(Initiator, first);
+        let second_token = ingest_token_for_client(Initiator, second);
+        let mut resource = AuthorizedOutboundResource::direct();
+
+        resource.authorize_client(first, first_token.clone());
+        resource.authorize_client(second, second_token.clone());
+
+        assert_eq!(resource.client_token(first), Some(&first_token));
+        assert_eq!(resource.client_token(second), Some(&second_token));
+
+        resource.remove_client(&first);
+
+        assert_eq!(resource.client_token(first), None);
+        assert_eq!(resource.client_token(second), Some(&second_token));
+    }
+
     #[test]
     fn spoofed_source_is_rejected() {
         let now = Instant::now();
         let mut peer = peer();
-        peer.add_resource(ResourceId::from_u128(1), vec![], None, now);
+        peer.add_resource(
+            ResourceId::from_u128(1),
+            vec![],
+            None,
+            ingest_token(Responder),
+            now,
+        );
 
         let spoofed = make::udp_packet(
             IpAddr::V4(Ipv4Addr::new(100, 64, 0, 99)),
@@ -394,7 +439,13 @@ mod tests {
     fn spoofed_destination_is_rejected() {
         let now = Instant::now();
         let mut peer = peer();
-        peer.add_resource(ResourceId::from_u128(1), vec![], None, now);
+        peer.add_resource(
+            ResourceId::from_u128(1),
+            vec![],
+            None,
+            ingest_token(Responder),
+            now,
+        );
 
         let spoofed = make::udp_packet(
             peer_v4(),
@@ -436,7 +487,7 @@ mod tests {
         let now = Instant::now();
         let rid = ResourceId::from_u128(1);
         let mut peer = peer();
-        peer.add_resource(rid, udp_port(80), None, now);
+        peer.add_resource(rid, udp_port(80), None, ingest_token(Responder), now);
 
         assert!(is_send(
             peer.ensure_allowed_inbound(udp_to(80), now).unwrap()
@@ -466,17 +517,30 @@ mod tests {
         let now = Instant::now();
         let rid = ResourceId::from_u128(1);
         let mut peer = peer();
-        peer.add_resource(rid, udp_port(80), Some(now + Duration::from_secs(60)), now);
+        peer.add_resource(
+            rid,
+            udp_port(80),
+            Some(now + Duration::from_secs(60)),
+            ingest_token(Responder),
+            now,
+        );
 
         assert!(is_send(
             peer.ensure_allowed_inbound(udp_to(80), now).unwrap()
         ));
         assert_eq!(peer.poll_timeout(), Some(now + Duration::from_secs(60)));
+        let mut outbound_resource = AuthorizedOutboundResource::direct();
+        outbound_resource.authorize_client(peer.id(), ingest_token(Initiator));
 
         let later = now + Duration::from_secs(61);
         peer.handle_timeout(later);
 
         assert_eq!(peer.poll_timeout(), None);
+        assert_eq!(peer.ingest_token_for_inbound(&udp_to(80)), None);
+        assert_eq!(
+            outbound_resource.client_token(peer.id()),
+            Some(&ingest_token(Initiator))
+        );
         assert!(is_filtered(
             peer.ensure_allowed_inbound(udp_to(80), later).unwrap()
         ));
@@ -488,8 +552,8 @@ mod tests {
         let keep = ResourceId::from_u128(1);
         let drop = ResourceId::from_u128(2);
         let mut peer = peer();
-        peer.add_resource(keep, udp_port(80), None, now);
-        peer.add_resource(drop, udp_port(90), None, now);
+        peer.add_resource(keep, udp_port(80), None, ingest_token(Responder), now);
+        peer.add_resource(drop, udp_port(90), None, ingest_token(Responder), now);
 
         assert!(is_send(
             peer.ensure_allowed_inbound(udp_to(80), now).unwrap()
@@ -498,7 +562,14 @@ mod tests {
             peer.ensure_allowed_inbound(udp_to(90), now).unwrap()
         ));
 
+        let mut outbound_resource = AuthorizedOutboundResource::direct();
+        outbound_resource.authorize_client(peer.id(), ingest_token(Initiator));
         peer.retain_authorizations(&BTreeSet::from([keep]));
+        assert_eq!(peer.ingest_token_for_inbound(&udp_to(90)), None);
+        assert_eq!(
+            outbound_resource.client_token(peer.id()),
+            Some(&ingest_token(Initiator))
+        );
 
         assert!(is_send(
             peer.ensure_allowed_inbound(udp_to(80), now).unwrap()
@@ -513,7 +584,13 @@ mod tests {
         let now = Instant::now();
         let rid = ResourceId::from_u128(1);
         let mut peer = peer();
-        peer.add_resource(rid, udp_port(80), Some(now + Duration::from_secs(600)), now);
+        peer.add_resource(
+            rid,
+            udp_port(80),
+            Some(now + Duration::from_secs(600)),
+            ingest_token(Responder),
+            now,
+        );
 
         peer.update_resource_expiry(rid, now, now);
         peer.handle_timeout(now);
@@ -537,13 +614,17 @@ mod tests {
             r1,
             ResourceOnClient {
                 filters: tcp_443.clone(),
+                ingest_token: ingest_token(Responder),
             },
             now,
             NEVER_EXPIRES_TTL,
         );
         resources.insert(
             r2,
-            ResourceOnClient { filters: vec![] },
+            ResourceOnClient {
+                filters: vec![],
+                ingest_token: ingest_token(Responder),
+            },
             now,
             NEVER_EXPIRES_TTL,
         );
@@ -559,7 +640,10 @@ mod tests {
         let mut resources = ExpiringMap::default();
         resources.insert(
             r1,
-            ResourceOnClient { filters: tcp_443 },
+            ResourceOnClient {
+                filters: tcp_443,
+                ingest_token: ingest_token(Responder),
+            },
             now,
             NEVER_EXPIRES_TTL,
         );
@@ -580,6 +664,31 @@ mod tests {
             &[],
         )
         .unwrap()
+    }
+
+    fn ingest_token(role: flow_tracker::IngestTokenRole) -> IngestToken {
+        ingest_token_for_client(role, ClientId::from_u128(1))
+    }
+
+    fn ingest_token_for_client(
+        role: flow_tracker::IngestTokenRole,
+        client: ClientId,
+    ) -> IngestToken {
+        use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
+
+        let [header, payload, _] = flow_tracker::TEST_INGEST_TOKEN
+            .split('.')
+            .collect::<Vec<_>>()
+            .try_into()
+            .unwrap();
+        let mut claims =
+            serde_json::from_slice::<serde_json::Value>(&URL_SAFE_NO_PAD.decode(payload).unwrap())
+                .unwrap();
+        claims["role"] = serde_json::json!(role.as_str());
+        claims["client_id"] = serde_json::json!(client);
+        let payload = URL_SAFE_NO_PAD.encode(serde_json::to_vec(&claims).unwrap());
+
+        serde_json::from_value(serde_json::json!(format!("{header}.{payload}.AA"))).unwrap()
     }
 
     fn peer() -> ClientOnClient {
