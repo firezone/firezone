@@ -39,6 +39,9 @@ pub(crate) struct StubPortal {
     #[debug(skip)]
     gateway_selector: u32,
 
+    /// Stable index used to pick a resource candidate (`index % len`).
+    resource_selector: u32,
+
     /// Whether the portal hands out ICE-less flows. Sampled once per test case
     /// and applied to every connection, modelling a portal-wide rollout toggle
     /// rather than a per-peer capability.
@@ -69,6 +72,7 @@ impl StubPortal {
         gateways_by_site: BTreeMap<SiteId, SmallVec<[(GatewayId, Ipv4Addr, Ipv6Addr); 3]>>,
         regular_sites: SmallVec<[Site; 3]>,
         gateway_selector: u32,
+        resource_selector: u32,
         cidr_resources: impl IntoIterator<Item = client::CidrResource>,
         dns_resources: impl IntoIterator<Item = client::DnsResource>,
         device_pool_resources: impl IntoIterator<Item = (DevicePoolResource, PoolMembers)>,
@@ -139,6 +143,7 @@ impl StubPortal {
             gateways_by_site,
             regular_sites,
             gateway_selector,
+            resource_selector,
             sites_by_resource: BTreeMap::from_iter(
                 cidr_sites.chain(dns_sites).chain(internet_site),
             ),
@@ -320,12 +325,15 @@ impl StubPortal {
         self.upstream_doh = upstream_doh;
     }
 
-    /// Picks, which gateway and site we should connect to for the given resource.
-    /// Selects the last candidate so simulations exercise authorizations for a non-preferred resource.
-    pub(crate) fn pick_resource(&self, candidates: &[ResourceId]) -> Option<ResourceId> {
-        candidates.last().copied()
+    pub(crate) fn resource_selector(&self) -> u32 {
+        self.resource_selector
     }
 
+    pub(crate) fn pick_resource(&self, candidates: &[ResourceId]) -> Option<ResourceId> {
+        select_by_index(candidates, self.resource_selector).copied()
+    }
+
+    /// Picks the gateway and site to connect to for the given resource.
     pub(crate) fn handle_connection_intent(
         &self,
         resource: ResourceId,

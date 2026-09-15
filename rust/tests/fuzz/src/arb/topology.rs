@@ -169,6 +169,7 @@ fn arb_stub_portal(g: &mut Generator) -> StubPortal {
         gateways_by_site,
         regular_sites,
         g.u32(),
+        g.u32(),
         cidr_resources,
         dns_resources,
         device_pool_resources,
@@ -361,7 +362,12 @@ fn arb_search_domain(g: &mut Generator, dns_resources: &[DnsResource]) -> Option
 fn arb_clients(g: &mut Generator, portal: &StubPortal) -> BTreeMap<ClientId, Host<RefClient>> {
     portal
         .client_tunnel_ips()
-        .map(|(id, tun4, tun6)| (id, arb_client_host(g, id, tun4, tun6)))
+        .map(|(id, tun4, tun6)| {
+            (
+                id,
+                arb_client_host(g, id, tun4, tun6, portal.resource_selector()),
+            )
+        })
         .collect::<BTreeMap<_, _>>()
 }
 
@@ -370,6 +376,7 @@ fn arb_client_host(
     id: ClientId,
     tun4: Ipv4Addr,
     tun6: Ipv6Addr,
+    resource_selector: u32,
 ) -> Host<RefClient> {
     let key = g.fresh_private_key();
     let system_dns = arb_system_dns_servers(g);
@@ -390,6 +397,7 @@ fn arb_client_host(
             send_untracked_icmp_errors,
         },
         os,
+        resource_selector,
     );
 
     let (ip4, ip6) = arb_socket_ip_stack(g);

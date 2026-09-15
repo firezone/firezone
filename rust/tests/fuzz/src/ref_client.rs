@@ -118,6 +118,8 @@ pub struct RefClient {
     /// Per peer, the pools the portal authorised us to reach it through.
     #[debug(skip)]
     peer_pools: BTreeMap<ClientId, BTreeSet<ResourceId>>,
+
+    resource_selector: u32,
 }
 
 impl RefClient {
@@ -134,6 +136,7 @@ impl RefClient {
         internet_resource_active: bool,
         malicious_behaviour: MaliciousBehaviour,
         os: crate::os::SimulatedOs,
+        resource_selector: u32,
     ) -> Self {
         Self {
             id,
@@ -144,6 +147,7 @@ impl RefClient {
             internet_resource_active,
             malicious_behaviour,
             os,
+            resource_selector,
             dns_records: Default::default(),
             connected_cidr_resources: Default::default(),
             connected_dns_resources: Default::default(),
@@ -1194,13 +1198,21 @@ impl RefClient {
             .collect()
     }
 
-    /// Existing grants take precedence; otherwise the simulated portal selects the last candidate.
+    /// Prefers existing grants, then applies the portal's sampled candidate index.
     fn select_gateway_resource(&self, candidates: &[ResourceId]) -> Option<ResourceId> {
+        if candidates.is_empty() {
+            return None;
+        }
+
         candidates
             .iter()
             .copied()
             .find(|candidate| self.connected_resources().any(|id| id == *candidate))
-            .or_else(|| candidates.last().copied())
+            .or_else(|| {
+                candidates
+                    .get(self.resource_selector as usize % candidates.len())
+                    .copied()
+            })
     }
 
     fn dns_resource_by_domain_for_records(
@@ -1804,6 +1816,7 @@ mod tests {
             false,
             MaliciousBehaviour::default(),
             crate::os::SimulatedOs::Linux,
+            0,
         );
         client.add_cidr_resource(CidrResource {
             id: broad_id,
@@ -1859,13 +1872,18 @@ mod tests {
         );
 
         client.malicious_behaviour.ignore_resource_filters = true;
-        assert_eq!(
-            route(&mut client, Protocol::Udp(81)).0,
-            PacketRoute::ResourceRejectedByGateway {
-                resource: broad_id,
-                gateway: broad_gateway,
-            }
-        );
+        for (selector, resource, gateway) in [
+            (0, specific_id, specific_gateway),
+            (1, broad_id, broad_gateway),
+            (2, specific_id, specific_gateway),
+            (3, broad_id, broad_gateway),
+        ] {
+            client.resource_selector = selector;
+            assert_eq!(
+                route(&mut client, Protocol::Udp(81)).0,
+                PacketRoute::ResourceRejectedByGateway { resource, gateway }
+            );
+        }
 
         client.connected_cidr_resources.insert(specific_id);
         assert_eq!(
