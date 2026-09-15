@@ -406,14 +406,20 @@ fn find_tun_fd() -> Result<RawFd, ConnlibError> {
 #[uniffi::export]
 impl Session {
     pub fn disconnect(&self) {
+        tracing::debug!("Received disconnect command");
+
         self.inner.stop();
     }
 
     pub fn set_internet_resource_state(&self, active: bool) {
+        tracing::debug!(active, "Received set_internet_resource_state command");
+
         self.inner.set_internet_resource_state(active);
     }
 
     pub fn set_dns(&self, dns_servers: Vec<String>) {
+        tracing::debug!(?dns_servers, "Received set_dns command");
+
         let dns_servers = dns_servers
             .into_iter()
             .filter_map(|server| {
@@ -428,10 +434,14 @@ impl Session {
     }
 
     pub fn reset(&self, reason: String) {
+        tracing::debug!(%reason, "Received reset command");
+
         self.inner.reset(reason)
     }
 
     pub fn set_tun(&self, fd: RawFd) -> Result<(), ConnlibError> {
+        tracing::debug!(fd, "Received set_tun command");
+
         let runtime = self.runtime.as_ref().context("No runtime")?;
         // SAFETY: FD must be open.
         let tun = unsafe {
