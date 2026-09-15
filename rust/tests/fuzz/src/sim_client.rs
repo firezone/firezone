@@ -253,10 +253,19 @@ impl SimClient {
         packet: IpPacket,
         now: Instant,
     ) -> Option<snownet::Transmit> {
-        self.handle_tun_input(packet, now)
-            .inspect_err(|e| tracing::warn!("{e:#}"))
-            .ok()
-            .flatten()
+        match self.handle_tun_input(packet, now) {
+            Ok(Some(transmit)) => Some(transmit),
+            Ok(None) => {
+                self.sut.handle_timeout(now); // If we handled the packet internally, make sure to advance state.
+
+                None
+            }
+            Err(e) => {
+                tracing::warn!("{e:#}");
+
+                None
+            }
+        }
     }
 
     pub(crate) fn encapsulate_probe(
@@ -322,12 +331,16 @@ impl SimClient {
         icmp_error_hosts: &IcmpErrorHosts,
         now: Instant,
     ) -> Option<Transmit> {
-        let packet = self
+        let Some(packet) = self
             .sut
             .handle_network_input(transmit.dst, transmit.src.unwrap(), &transmit.payload, now)
             .inspect_err(|e| tracing::warn!("{e:#}"))
             .ok()
-            .flatten()?;
+            .flatten()
+        else {
+            self.sut.handle_timeout(now);
+            return None;
+        };
 
         let transmit = self.on_received_packet(packet, icmp_error_hosts, now)?;
 

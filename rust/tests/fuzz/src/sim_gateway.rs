@@ -97,12 +97,16 @@ impl SimGateway {
         icmp_error_hosts: &IcmpErrorHosts,
         now: Instant,
     ) -> Option<Transmit> {
-        let packet = self
+        let Some(packet) = self
             .sut
             .handle_network_input(transmit.dst, transmit.src.unwrap(), &transmit.payload, now)
             .inspect_err(|e| tracing::warn!("{e:#}"))
             .ok()
-            .flatten()?;
+            .flatten()
+        else {
+            self.sut.handle_timeout(now);
+            return None;
+        };
 
         self.on_received_packet(packet, icmp_error_hosts, now)
     }
