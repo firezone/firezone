@@ -46,6 +46,8 @@ defmodule PortalWeb.Resources do
         selected_resource: nil,
         selected_resource_pool_member_ids: [],
         selected_resource_pool_devices: [],
+        selected_resource_pool_group_ids: nil,
+        pool_group_ids: nil,
         devices_expanded_id: nil,
         online_ids: MapSet.new(),
         online_site_ids: MapSet.new(),
@@ -89,6 +91,7 @@ defmodule PortalWeb.Resources do
 
         pool_devices = Database.list_pool_members(resource, socket.assigns.subject)
         pool_member_ids = Enum.map(pool_devices, & &1.id)
+        pool_group_ids = Database.existing_pool_group_ids([resource], socket.assigns.subject)
 
         {:noreply,
          socket
@@ -97,6 +100,7 @@ defmodule PortalWeb.Resources do
            selected_resource: resource,
            selected_resource_pool_member_ids: pool_member_ids,
            selected_resource_pool_devices: pool_devices,
+           selected_resource_pool_group_ids: pool_group_ids,
            devices_expanded_id: nil,
            selected_groups: groups,
            policy_authorizations: policy_authorizations,
@@ -352,6 +356,7 @@ defmodule PortalWeb.Resources do
         Database.count_policies_for_resources(all_resources, socket.assigns.subject)
 
       device_pool_members = Database.pool_member_ids_for_resources(all_resources)
+      pool_group_ids = Database.existing_pool_group_ids(all_resources, socket.assigns.subject)
 
       {:ok,
        assign(socket,
@@ -359,6 +364,7 @@ defmodule PortalWeb.Resources do
          internet_resource: internet_resource,
          resource_policy_counts: resource_policy_counts,
          device_pool_members: device_pool_members,
+         pool_group_ids: pool_group_ids,
          online_ids: online_ids(socket.assigns.account.id),
          online_site_ids: Presence.Devices.online_site_ids(socket.assigns.account.id),
          resources_metadata: metadata
@@ -561,6 +567,7 @@ defmodule PortalWeb.Resources do
               online_site_ids={@online_site_ids}
               pool_member_ids={Map.get(@device_pool_members, resource.id, [])}
               online_ids={@online_ids}
+              pool_group_ids={@pool_group_ids}
             />
           </:col>
           <:empty>
@@ -603,6 +610,7 @@ defmodule PortalWeb.Resources do
             resource={@selected_resource}
             pool_member_ids={@selected_resource_pool_member_ids}
             pool_devices={@selected_resource_pool_devices}
+            pool_group_ids={@selected_resource_pool_group_ids}
             devices_expanded_id={@devices_expanded_id}
             online_ids={@online_ids}
             online_site_ids={@online_site_ids}
@@ -1601,6 +1609,28 @@ defmodule PortalWeb.Resources do
             [Resource.DeviceMembershipCriteria.device_ids(resource.device_membership_criteria)],
           into: %{},
           do: {resource.id, device_ids}
+    end
+
+    def existing_pool_group_ids(resources, subject) do
+      group_ids =
+        for resource <- resources,
+            {:ok, group_id} <-
+              [Resource.DeviceMembershipCriteria.group_id(resource.device_membership_criteria)],
+            do: group_id
+
+      if group_ids == [] do
+        MapSet.new()
+      else
+        from(g in Group, as: :groups)
+        |> where([groups: g], g.id in ^group_ids)
+        |> select([groups: g], g.id)
+        |> Safe.scoped(subject)
+        |> Safe.all()
+        |> case do
+          {:error, _reason} -> MapSet.new()
+          ids -> MapSet.new(ids)
+        end
+      end
     end
 
     def list_groups_for_resource(resource, subject) do

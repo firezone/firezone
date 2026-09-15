@@ -1156,6 +1156,7 @@ defmodule PortalWeb.Resources.Components do
   attr :devices_expanded_id, :string, default: nil
   attr :online_ids, :any, default: %MapSet{}
   attr :online_site_ids, :any, default: %MapSet{}
+  attr :pool_group_ids, :any, default: nil
   attr :groups, :list, default: []
   attr :policy_authorizations, :list, default: []
   attr :policy_authorizations_page, :integer, default: 1
@@ -1184,6 +1185,7 @@ defmodule PortalWeb.Resources.Components do
                 online_site_ids={@online_site_ids}
                 pool_member_ids={@pool_member_ids}
                 online_ids={@online_ids}
+                pool_group_ids={@pool_group_ids}
               />
             </div>
             <p
@@ -2207,12 +2209,17 @@ defmodule PortalWeb.Resources.Components do
   attr :online_site_ids, :any, default: %MapSet{}
   attr :pool_member_ids, :list, default: []
   attr :online_ids, :any, default: %MapSet{}
+  attr :pool_group_ids, :any, default: nil
 
   def resource_status_badge(
         %{
           resource: %{
             type: :device_pool,
-            device_membership_criteria: %Portal.Resource.DeviceMembershipCriteria{field: :id}
+            device_membership_criteria: %Portal.Resource.DeviceMembershipCriteria{
+              provider: :device,
+              field: :id,
+              op: :in
+            }
           }
         } = assigns
       ) do
@@ -2230,11 +2237,16 @@ defmodule PortalWeb.Resources.Components do
   end
 
   def resource_status_badge(%{resource: %{type: :device_pool}} = assigns) do
-    assigns = assign(assigns, :kind, pool_kind(assigns.resource))
+    assigns =
+      if pool_group_missing?(assigns.resource, assigns.pool_group_ids) do
+        assign(assigns, style: :warning, label: "Group deleted")
+      else
+        assign(assigns, style: :neutral, label: pool_kind_label(pool_kind(assigns.resource)))
+      end
 
     ~H"""
-    <.status_badge style={:neutral}>
-      {pool_kind_label(@kind)}
+    <.status_badge style={@style}>
+      {@label}
     </.status_badge>
     """
   end
@@ -2247,6 +2259,17 @@ defmodule PortalWeb.Resources.Components do
       {if @online?, do: "Online", else: "Offline"}
     </.status_badge>
     """
+  end
+
+  # A pool keeps its rule when the group goes away, so it holds nobody until an admin
+  # picks another group. `nil` means the caller did not look the groups up.
+  defp pool_group_missing?(_resource, nil), do: false
+
+  defp pool_group_missing?(resource, group_ids) do
+    case stored_group_id(resource) do
+      nil -> false
+      group_id -> not MapSet.member?(group_ids, group_id)
+    end
   end
 
   defp pool_kind_label(:all_devices), do: "All devices"

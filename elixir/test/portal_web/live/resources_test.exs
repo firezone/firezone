@@ -1599,6 +1599,30 @@ defmodule PortalWeb.ResourcesTest do
       assert html =~ to_string(device.ipv4)
     end
 
+    test "says the group was deleted on a pool that followed it", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      group = group_fixture(account: account, name: "Engineering")
+      resource = actor_group_pool_resource_fixture(account: account, group: group, name: "Group pool")
+      conn = authorize_conn(conn, actor)
+
+      {:ok, lv, _html} = live(conn, ~p"/#{account}/resources")
+      assert has_element?(lv, "span", "Group's devices")
+
+      {:ok, lv, _html} = live(conn, ~p"/#{account}/resources/#{resource.id}")
+      assert has_element?(lv, "span", "Group's devices")
+
+      Repo.delete!(group)
+
+      {:ok, lv, _html} = live(conn, ~p"/#{account}/resources")
+      assert has_element?(lv, "span", "Group deleted")
+
+      {:ok, lv, _html} = live(conn, ~p"/#{account}/resources/#{resource.id}")
+      assert has_element?(lv, "span", "Group deleted")
+    end
+
     test "shows an offline status for devices without presence", %{
       conn: conn,
       account: account,
