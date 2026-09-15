@@ -136,6 +136,26 @@ defmodule Portal.DevicesTest do
       assert Devices.next_free_slug(account_fixture().id, "iPhone", "Jamil") == "jamils-iphone"
     end
 
+    test "trims a long owner name rather than crowding out the device name", %{account: account} do
+      owner = String.duplicate("a", 70)
+      slug = Devices.next_free_slug(account.id, "iPhone", owner)
+
+      assert String.length(slug) == 63
+      assert String.ends_with?(slug, "-iphone")
+
+      email_owner = String.duplicate("b", 64) <> "@example.com"
+      email_slug = Devices.next_free_slug(account.id, "MacBook Pro", email_owner)
+
+      assert String.length(email_slug) == 63
+      assert String.ends_with?(email_slug, "-macbook-pro")
+    end
+
+    test "drops the owner name when the device name fills the label", %{account: account} do
+      slug = Devices.next_free_slug(account.id, String.duplicate("c", 70), "Jamil")
+
+      assert slug == String.duplicate("c", 63)
+    end
+
     test "caps the slug at 63 characters, numbers included", %{account: account} do
       name = String.duplicate("a", 70)
       assert String.length(Devices.next_free_slug(account.id, name, nil)) == 63

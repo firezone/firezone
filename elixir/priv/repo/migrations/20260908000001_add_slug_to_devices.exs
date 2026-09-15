@@ -60,7 +60,13 @@ defmodule Portal.Repo.Migrations.AddSlugToDevices do
           v_owner := v_owner || 's';
         END IF;
 
-        v_base := v_owner || '-' || v_base;
+        -- The device name is the identity and the owner only tells two of them apart,
+        -- so a long owner is trimmed to fit around the name rather than crowding it out.
+        v_owner := rtrim(left(v_owner, greatest(62 - length(v_base), 0)), '-');
+
+        IF v_owner <> '' THEN
+          v_base := v_owner || '-' || v_base;
+        END IF;
       END IF;
 
       RETURN rtrim(left(v_base, 63), '-');
