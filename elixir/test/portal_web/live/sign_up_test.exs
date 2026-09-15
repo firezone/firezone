@@ -16,6 +16,36 @@ defmodule PortalWeb.SignUpTest do
   }
 
   describe "direct signup conversions" do
+    setup do
+      Portal.Config.put_env_override(:portal, Portal.Analytics.GoogleAds,
+        customer_id: "1234567890", registration_conversion_action_id: "1111111111",
+        service_account_email: "ads@example.com", workload_identity_provider: "provider",
+        workload_identity_audience: "audience")
+      :ok
+    end
+
+
+    test "enqueue failure rolls back account creation and permits signup retry", %{conn: conn} do
+      email = "conversion-retry@example.com"
+      Portal.Config.merge_env_override(:portal, Portal.Analytics.GoogleAds, customer_id: <<255>>)
+      Stripe.stub([
+        {"POST", "/v1/customers", 200, Stripe.customer_object("cus_retry", "Retry Corp", email)}
+      ] ++ Stripe.mock_create_subscription_endpoint())
+      conn = conn |> put_req_header("x-geo-location-region", "US") |> with_google_identity(email: email)
+      {:ok, lv, _} = live(conn, ~p"/sign_up/google")
+      params = %{account: %{name: "Retry Corp"}, actor: %{name: "Retry User"}, sign_up_survey: @survey}
+      html = lv |> form("#google-sign-up-form", registration: params) |> render_submit()
+      refute html =~ "Your account has been created!"
+      refute Portal.Repo.get_by(Portal.Account, name: "Retry Corp")
+      assert [] = all_enqueued(worker: Portal.Analytics.GoogleAds)
+
+      Portal.Config.merge_env_override(:portal, Portal.Analytics.GoogleAds, customer_id: "1234567890")
+      {:ok, lv, _} = live(conn, ~p"/sign_up/google")
+      html = lv |> form("#google-sign-up-form", registration: params) |> render_submit()
+      assert html =~ "Your account has been created!"
+      assert [_] = all_enqueued(worker: Portal.Analytics.GoogleAds)
+    end
+
     for {country, allowed} <- [{"US", true}, {"DE", false}] do
       @country country
       @allowed allowed
@@ -32,6 +62,7 @@ defmodule PortalWeb.SignUpTest do
         account = Portal.Repo.get_by!(Portal.Account, name: "Direct Corp")
         assert account.metadata.marketing_attribution["marketing_allowed"] == @allowed
         assert length(all_enqueued(worker: Portal.Analytics.OpenAI)) == if(@allowed, do: 1, else: 0)
+        assert length(all_enqueued(worker: Portal.Analytics.GoogleAds)) == if(@allowed, do: 1, else: 0)
       end
 
       test "email signup in #{country} carries regional tracking through verification", %{conn: conn} do
@@ -55,6 +86,7 @@ defmodule PortalWeb.SignUpTest do
         account = Portal.Repo.get_by!(Portal.Account, name: "Direct Corp")
         assert account.metadata.marketing_attribution["marketing_allowed"] == @allowed
         assert length(all_enqueued(worker: Portal.Analytics.OpenAI)) == if(@allowed, do: 1, else: 0)
+        assert length(all_enqueued(worker: Portal.Analytics.GoogleAds)) == if(@allowed, do: 1, else: 0)
       end
     end
   end

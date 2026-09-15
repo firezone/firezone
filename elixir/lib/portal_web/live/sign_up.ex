@@ -1289,7 +1289,6 @@ defmodule PortalWeb.SignUp do
          website_attribution
        ) do
     Portal.Analytics.PostHog.identify_actor(actor, account, website_attribution)
-    Portal.Analytics.registration_completed(account, actor)
     Portal.Workers.SignUpFollowUp.schedule(account, actor)
 
     assign(socket,
@@ -1497,6 +1496,12 @@ defmodule PortalWeb.SignUp do
                                                      } ->
         changeset_fns.self_device_pool_policy.(everyone_group, self_device_pool)
         |> insert()
+      end)
+      |> Ecto.Multi.run(:conversions, fn _repo, %{account: account, actor: actor} ->
+        case Portal.Analytics.registration_completed(account, actor) do
+          :ok -> {:ok, :queued}
+          {:error, _} = error -> error
+        end
       end)
       |> Ecto.Multi.run(:send_email, fn _repo, %{account: account, actor: actor} ->
         Portal.Mailer.AuthEmail.sign_up_link_email(account, actor, user_agent, real_ip)
