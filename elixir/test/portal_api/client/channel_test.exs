@@ -6976,6 +6976,46 @@ defmodule PortalAPI.Client.ChannelTest do
 
       assert_push "client_device_access_denied", %{ipv4: ^stranger_ip, reason: :forbidden}
     end
+
+    test "resolves and authorizes a group's device on the v2 protocol", %{
+      account: account,
+      group: group,
+      client: client,
+      subject: subject
+    } do
+      engineering = group_fixture(account: account)
+      engineer = actor_fixture(account: account)
+      membership_fixture(account: account, actor: engineer, group: engineering)
+      target_client = client_fixture(account: account, actor: engineer) |> fetch_device!()
+
+      target_subject =
+        subject_fixture(account: account, actor: engineer, type: :client, user_agent: "Mac OS/14 apple-client/1.5.16")
+
+      pool = actor_group_pool_resource_fixture(account: account, group: engineering)
+      policy_fixture(account: account, group: group, resource: pool)
+
+      initiating_socket = join_channel(client, subject, channel: PortalAPI.Client.V2.Channel)
+      assert_push "init", _
+
+      join_channel(target_client, target_subject)
+      assert_push "init", _
+
+      domain = Portal.Device.fqdn(target_client)
+      pool_id = pool.id
+      target_ip = Portal.Types.INET.to_string(target_client.ipv4)
+      target_client_id = target_client.id
+
+      push(initiating_socket, "resolve_device_pool_domain", %{"resource_id" => pool_id, "domain" => domain})
+
+      assert_push "device_pool_domain_resolved", %{resource_id: ^pool_id, domain: ^domain}
+
+      push(initiating_socket, "request_authorization", %{"resource_id" => pool_id, "ipv4" => target_ip})
+
+      assert_push "client_device_access_authorized", %{
+        client_id: ^target_client_id,
+        resource_id: ^pool_id
+      }
+    end
   end
 
   describe "handle_in/3 resolve_device_domain" do
