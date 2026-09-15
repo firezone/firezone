@@ -523,10 +523,10 @@ impl<'a> Handler<'a> {
                     // ends the session in an orderly way.
                     match self.handle_connlib_event(x).await {
                         Ok(()) => {}
-                        Err(error) if is_io_error(&error, io::ErrorKind::BrokenPipe) => {
-                            tracing::debug!("Cannot handle connlib callback: {error:#}")
-                        }
-                        Err(error) if is_io_error(&error, io::ErrorKind::ConnectionReset) => {
+                        Err(error)
+                            if is_io_error(&error, io::ErrorKind::BrokenPipe)
+                                || is_io_error(&error, io::ErrorKind::ConnectionReset) =>
+                        {
                             tracing::debug!("Cannot handle connlib callback: {error:#}")
                         }
                         Err(error) => {
