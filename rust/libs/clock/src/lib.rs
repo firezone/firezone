@@ -58,9 +58,8 @@ impl Clock {
     /// Time spent suspended before the next sample counts towards the overshoot reported as
     /// [`Event::Late`]: it is time we did not service our sockets.
     pub fn set_alarm(&mut self, deadline: Option<Instant>) {
-        self.alarm_at = deadline;
-
         let Some(deadline) = deadline else {
+            self.alarm_at = None;
             self.raw_alarm_at = None;
             self.alarm = None;
 
@@ -70,6 +69,10 @@ impl Clock {
         let raw_now = Instant::now();
         let now = raw_now.checked_add(self.suspend_offset).unwrap_or(raw_now);
 
+        // A deadline we are already past means the caller has work waiting, not that we mean to
+        // sleep. Measuring an overshoot against it would report how stale the deadline is rather
+        // than how late we ran.
+        self.alarm_at = (deadline > now).then_some(deadline);
         self.raw_alarm_at = Some(raw_now + deadline.saturating_duration_since(now));
     }
 
@@ -285,6 +288,32 @@ mod tests {
         );
 
         assert_eq!(poll_once(&mut clock), Poll::Pending);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn does_not_report_an_overshoot_against_a_deadline_that_had_already_passed() {
+        let monotonic = Instant::now();
+        let system = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
+        let mut clock = clock_at(monotonic, system);
+
+        // Arming a deadline in the past says there is work waiting, not that we will sleep.
+        clock.set_alarm(Some(monotonic - Duration::from_secs(120)));
+        clock.sample(
+            monotonic + Duration::from_secs(1),
+            system + Duration::from_secs(1),
+        );
+
+        assert_eq!(
+            poll_once(&mut clock),
+            Poll::Pending,
+            "a deadline we never meant to sleep until is not an overshoot"
+        );
+
+        tokio::time::advance(Duration::from_secs(1)).await;
+        assert!(matches!(
+            poll_once(&mut clock),
+            Poll::Ready(Event::Alarm(_))
+        ));
     }
 
     #[test]
