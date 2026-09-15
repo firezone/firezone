@@ -360,6 +360,8 @@ class TunnelService : VpnService() {
     }
 
     override fun onDestroy() {
+        Log.i(TAG, "Service destroyed")
+
         activeService = null
         unregisterReceiver(restrictionsReceiver)
         serviceScope.cancel()
@@ -371,6 +373,8 @@ class TunnelService : VpnService() {
     }
 
     override fun onRevoke() {
+        Log.i(TAG, "VPN permission revoked")
+
         disconnect()
         super.onRevoke()
     }
@@ -729,6 +733,8 @@ class TunnelService : VpnService() {
             try {
                 select<Unit> {
                     commandChannel.onReceive { command ->
+                        Log.d(TAG, "Forwarding $command to session")
+
                         when (command) {
                             is TunnelCommand.Disconnect -> {
                                 explicitDisconnect = true
