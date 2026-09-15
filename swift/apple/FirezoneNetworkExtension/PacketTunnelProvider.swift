@@ -200,7 +200,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     return typed
   }
 
-  // Logged because the reset below is otherwise the only evidence either ran.
+  // Overridden only to log: the system's sleep and wake callbacks are otherwise silent.
   override func sleep(completionHandler: @escaping @Sendable () -> Void) {
     Log.log("sleep")
 
