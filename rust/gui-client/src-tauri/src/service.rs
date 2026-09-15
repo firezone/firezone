@@ -518,9 +518,6 @@ impl<'a> Handler<'a> {
         let ret = loop {
             match poll_fn(|cx| self.next_event(cx, signals)).await {
                 Event::Connlib(x) => {
-                    // The GUI tears the pipe down as it exits, so sending to it can fail
-                    // through no fault of ours. `IpcDisconnected` arrives right after and
-                    // ends the session in an orderly way.
                     match self
                         .handle_connlib_event(x)
                         .await
