@@ -2306,19 +2306,20 @@ impl ClientState {
 
         if let Some(request) = self.pending_authorizations.poll_authorization_requests() {
             return Some(match request {
-                AuthorizationRequest::Resources(resources) => {
-                    ClientEvent::ResourceConnectionIntent {
-                        preferred_gateways: resources
-                            .iter()
-                            .flat_map(|resource| self.preferred_gateways(*resource))
-                            .unique()
-                            .collect(),
-                        resources,
-                    }
-                }
-                AuthorizationRequest::Device { addr, pools } => {
-                    ClientEvent::DeviceAccessRequested { ip: addr, pools }
-                }
+                AuthorizationRequest::Resources(resources) => ClientEvent::RequestAccess {
+                    preferred_gateways: resources
+                        .iter()
+                        .flat_map(|resource| self.preferred_gateways(*resource))
+                        .unique()
+                        .collect(),
+                    resource_ids: resources,
+                    ip: None,
+                },
+                AuthorizationRequest::Device { addr, pools } => ClientEvent::RequestAccess {
+                    resource_ids: pools,
+                    ip: Some(addr),
+                    preferred_gateways: Vec::new(),
+                },
             });
         }
 
@@ -2966,10 +2967,14 @@ mod tests {
             .unwrap();
 
         let request = iter::from_fn(|| state.poll_event()).find_map(|event| {
-            if let ClientEvent::DeviceAccessRequested { ip, pools } = event
+            if let ClientEvent::RequestAccess {
+                ip: Some(ip),
+                resource_ids,
+                ..
+            } = event
                 && ip == IpAddr::V4(device_tun_ipv4())
             {
-                return Some(pools);
+                return Some(resource_ids);
             }
 
             None
@@ -3039,9 +3044,10 @@ mod tests {
             "expected the packet to be buffered for a new request"
         );
         assert!(
-            state
-                .poll_event()
-                .is_some_and(|event| matches!(event, ClientEvent::DeviceAccessRequested { .. })),
+            state.poll_event().is_some_and(|event| matches!(
+                event,
+                ClientEvent::RequestAccess { ip: Some(_), .. }
+            )),
             "expected a new device access request"
         );
     }
@@ -3208,7 +3214,7 @@ mod tests {
     fn assert_no_device_connection_intent(state: &mut ClientState) {
         while let Some(event) = state.poll_event() {
             assert!(
-                !matches!(event, ClientEvent::DeviceAccessRequested { .. }),
+                !matches!(event, ClientEvent::RequestAccess { ip: Some(_), .. }),
                 "unexpected device access request"
             );
         }

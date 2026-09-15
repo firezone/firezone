@@ -414,32 +414,23 @@ impl Eventloop {
                     .await
                     .context("Failed to send message to portal")?;
             }
-            Ok(ClientEvent::ResourceConnectionIntent {
+            Ok(ClientEvent::RequestAccess {
+                resource_ids,
+                ip,
                 preferred_gateways,
-                resources,
             }) => {
-                self.portal_cmd_tx
-                    .send(PortalCommand::Send(EgressMessages::RequestAccess {
-                        resource_ids: resources,
-                        ipv4: None,
-                        ipv6: None,
-                        preferred_gateways,
-                    }))
-                    .await
-                    .context("Failed to send message to portal")?;
-            }
-            Ok(ClientEvent::DeviceAccessRequested { ip, pools }) => {
                 let (ipv4, ipv6) = match ip {
-                    IpAddr::V4(v4) => (Some(v4), None),
-                    IpAddr::V6(v6) => (None, Some(v6)),
+                    Some(IpAddr::V4(v4)) => (Some(v4), None),
+                    Some(IpAddr::V6(v6)) => (None, Some(v6)),
+                    None => (None, None),
                 };
 
                 self.portal_cmd_tx
                     .send(PortalCommand::Send(EgressMessages::RequestAccess {
-                        resource_ids: pools,
+                        resource_ids,
                         ipv4,
                         ipv6,
-                        preferred_gateways: Vec::new(),
+                        preferred_gateways,
                     }))
                     .await
                     .context("Failed to send message to portal")?;

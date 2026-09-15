@@ -1381,11 +1381,12 @@ impl TunnelTest {
 
                 Ok(())
             }
-            ClientEvent::ResourceConnectionIntent {
-                resources,
+            ClientEvent::RequestAccess {
+                resource_ids,
+                ip: None,
                 preferred_gateways,
             } => {
-                let resource_id = *resources.first().expect("request must name resources");
+                let resource_id = *resource_ids.first().expect("request must name resources");
                 let (gateway_id, site_id) =
                     portal.handle_connection_intent(resource_id, preferred_gateways);
                 let gateway = self.gateways.get_mut(&gateway_id).expect("unknown gateway");
@@ -1471,7 +1472,11 @@ impl TunnelTest {
 
                 Ok(())
             }
-            ClientEvent::DeviceAccessRequested { ip, pools } => {
+            ClientEvent::RequestAccess {
+                resource_ids: pools,
+                ip: Some(ip),
+                ..
+            } => {
                 let (ipv4, ipv6) = match ip {
                     std::net::IpAddr::V4(v4) => (Some(v4), None),
                     std::net::IpAddr::V6(v6) => (None, Some(v6)),
@@ -1879,8 +1884,7 @@ fn is_portal_bound_event(event: &ClientEvent) -> bool {
     match event {
         ClientEvent::AddedIceCandidates { .. } => true,
         ClientEvent::RemovedIceCandidates { .. } => true,
-        ClientEvent::ResourceConnectionIntent { .. } => true,
-        ClientEvent::DeviceAccessRequested { .. } => true,
+        ClientEvent::RequestAccess { .. } => true,
         ClientEvent::DeviceDomainQueried { .. } => true,
         ClientEvent::ResourcesChanged { .. } => false,
         ClientEvent::DnsRecordsChanged { .. } => false,

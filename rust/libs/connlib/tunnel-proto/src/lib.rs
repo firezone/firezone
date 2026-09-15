@@ -72,15 +72,12 @@ pub enum ClientEvent {
         conn_id: ClientOrGatewayId,
         candidates: BTreeSet<IceCandidate>,
     },
-    ResourceConnectionIntent {
-        resources: Vec<ResourceId>,
+    /// Requests access through the permitting resources, most preferred first.
+    RequestAccess {
+        resource_ids: Vec<ResourceId>,
+        /// The target device's tunnel address when requesting access through device pools.
+        ip: Option<IpAddr>,
         preferred_gateways: Vec<GatewayId>,
-    },
-    /// A packet to a tunnel address we hold no grant for asks the portal for access to
-    /// the device through the pools that permit the flow, most preferred first.
-    DeviceAccessRequested {
-        ip: IpAddr,
-        pools: Vec<ResourceId>,
     },
     /// A DNS query for a device name asks the portal to resolve it.
     DeviceDomainQueried {
