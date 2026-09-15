@@ -379,6 +379,8 @@ fn arb_resource_with_different_type(
 /// weight. Identical bytes always pick the same arm.
 fn weighted_choose(g: &mut Generator, opts: &[(TransitionKind, u32)]) -> TransitionKind {
     let total = opts.iter().map(|(_, weight)| *weight).sum::<u32>();
+    assert!(total > 0, "there is always at least one legal transition");
+
     let pick = g.u32_in(0..=total - 1);
 
     opts.iter()
@@ -387,5 +389,5 @@ fn weighted_choose(g: &mut Generator, opts: &[(TransitionKind, u32)]) -> Transit
             Some((*kind, *end))
         })
         .find_map(|(kind, end)| (pick < end).then_some(kind))
-        .expect("there is always at least one legal transition")
+        .expect("the selected transition must be within the total weight")
 }
