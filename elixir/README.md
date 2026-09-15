@@ -195,3 +195,8 @@ Two request parameters are easy to miss:
 A client running off the machine needs `api_external_url` and `web_external_url`
 pointed at a reachable hostname, such as a tunnel, since the metadata documents
 and the token audience are all derived from them.
+
+### Google Ads conversions
+
+See [Google Ads conversion verification](docs/google_ads.md) for deployment checks,
+validation-only requests, and processing diagnostics.

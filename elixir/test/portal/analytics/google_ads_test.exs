@@ -4,6 +4,7 @@ defmodule Portal.Analytics.GoogleAdsTest do
 
   alias Portal.Analytics
   alias Portal.Analytics.{GoogleAds, OpenAI}
+  alias GoogleAds.Diagnostics
   import Portal.AccountFixtures
 
   setup do
@@ -168,6 +169,96 @@ defmodule Portal.Analytics.GoogleAdsTest do
     assert {:ok, "fresh-token"} = Portal.Google.APIClient.get_service_account_access_token(Keyword.put(identity, :service_account_email, "other@test-project.iam.gserviceaccount.com"), scope)
     expect_service_account("ads@test-project.iam.gserviceaccount.com", "another-scope")
     assert {:ok, "fresh-token"} = Portal.Google.APIClient.get_service_account_access_token(identity, "another-scope")
+  end
+
+
+  test "successful ingestion schedules diagnostics after 30 minutes", %{account: account} do
+    Analytics.registration_completed(account, %Portal.Actor{email: "ada@example.com"})
+    [job] = all_enqueued(worker: GoogleAds)
+    expect_federation()
+    Req.Test.expect(__MODULE__, &Req.Test.json(&1, %{"requestId" => "request-diagnostics",
+      "fieldWarnings" => [%{"reason" => "WARNING_REASON_GENERIC", "field" => "events[0]", "description" => "private"}]}))
+    assert :ok = GoogleAds.perform(job)
+    assert [%{args: %{"request_id" => "request-diagnostics", "transaction_id" => transaction_id}, meta: meta, scheduled_at: scheduled_at}] = all_enqueued(worker: Diagnostics)
+    assert transaction_id == "registration_#{account.id}"
+    assert meta == %{"field_warnings" => [%{"reason" => "WARNING_REASON_GENERIC", "field" => "events[0]"}]}
+    assert DateTime.diff(scheduled_at, DateTime.utc_now()) in 1798..1800
+  end
+
+  test "diagnostics polls pending requests then completes without resubmitting" do
+    for {status, expected} <- [{"PROCESSING", {:error, :still_processing}}, {"SUCCESS", :ok}] do
+      expect_federation()
+      expect_status(%{"requestStatusPerDestination" => [%{"requestStatus" => status}]})
+      assert Diagnostics.perform(%Oban.Job{args: %{"request_id" => "request-123"}}) == expected
+    end
+    assert Diagnostics.backoff(%Oban.Job{attempt: 1}) == 2340
+    assert Diagnostics.backoff(%Oban.Job{attempt: 25}) == 3600
+  end
+
+  test "failed and partial diagnostics retain reasons without arbitrary response data" do
+    for status <- ["FAILED", "PARTIAL_SUCCESS"] do
+      expect_federation()
+      expect_status(%{"requestStatusPerDestination" => [%{
+        "requestStatus" => status,
+        "errorInfo" => %{"errorCounts" => [%{"reason" => "PROCESSING_ERROR_REASON_INVALID_GCLID", "recordCount" => "1", "message" => "sensitive"}]},
+        "userData" => "sensitive"
+      }]})
+      assert {:cancel, {:processing_failed, [%{"status" => ^status, "errors" => [error]}] = summary}} = Diagnostics.perform(%Oban.Job{args: %{"request_id" => "request-123"}})
+      assert error == %{"reason" => "PROCESSING_ERROR_REASON_INVALID_GCLID", "recordCount" => "1"}
+      refute inspect(summary) =~ "sensitive"
+    end
+  end
+
+  test "successful diagnostics retain warning counts without descriptions" do
+    expect_federation()
+    expect_status(%{"requestStatusPerDestination" => [%{
+      "requestStatus" => "SUCCESS",
+      "warningInfo" => %{"warningCounts" => [%{"reason" => "PROCESSING_WARNING_REASON_INTERNAL_ERROR", "recordCount" => "1", "description" => "private"}]}
+    }]})
+    assert {:ok, [%{"status" => "SUCCESS", "warnings" => [warning]}]} = GoogleAds.request_status("request-123")
+    assert warning == %{"reason" => "PROCESSING_WARNING_REASON_INTERNAL_ERROR", "recordCount" => "1"}
+  end
+
+  test "missing diagnostics and transient HTTP errors retry" do
+    for {status, expected} <- [{404, {:error, :diagnostics_not_ready}}, {429, {:error, {:http_status, 429}}}, {503, {:error, {:http_status, 503}}}] do
+      expect_federation()
+      Req.Test.expect(__MODULE__, &Plug.Conn.send_resp(&1, status, "private body"))
+      assert Diagnostics.perform(%Oban.Job{args: %{"request_id" => "request-123"}}) == expected
+    end
+  end
+
+  test "configuration validation uses validateOnly for both actions and does not enqueue" do
+    expect_federation()
+    for action <- ["1111111111", "2222222222"] do
+      Req.Test.expect(__MODULE__, fn conn ->
+        {:ok, body, conn} = Plug.Conn.read_body(conn)
+        payload = JSON.decode!(body)
+        assert payload["validateOnly"] == true
+        assert hd(payload["destinations"])["productDestinationId"] == action
+        Req.Test.json(conn, %{})
+      end)
+    end
+    assert [registration_conversion_action_id: {:ok, %{field_warnings: []}}, subscription_conversion_action_id: {:ok, %{field_warnings: []}}] = GoogleAds.validate_configuration()
+    assert [] = all_enqueued(worker: GoogleAds)
+    assert [] = all_enqueued(worker: Diagnostics)
+  end
+
+  test "conversion jobs roll back with the business transaction", %{account: account} do
+    assert {:error, :abort} = Portal.Repo.transact(fn ->
+      assert :ok = Analytics.registration_completed(account, %Portal.Actor{email: "ada@example.com"})
+      assert [_] = all_enqueued(worker: GoogleAds)
+      {:error, :abort}
+    end)
+    assert [] = all_enqueued(worker: GoogleAds)
+  end
+
+  defp expect_status(body) do
+    Req.Test.expect(__MODULE__, fn conn ->
+      assert conn.method == "GET"
+      assert conn.request_path == "/v1/requestStatus:retrieve"
+      assert URI.decode_query(conn.query_string) == %{"requestId" => "request-123"}
+      Req.Test.json(conn, body)
+    end)
   end
 
   defp expect_federation do
