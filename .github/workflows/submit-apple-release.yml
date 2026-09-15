@@ -27,7 +27,7 @@ env:
   ASC_STRICT_AUTH: "1"
   ASC_TELEMETRY_DISABLED: "1"
   # mark:next-apple-version
-  RELEASE_NAME: apple-client-1.5.20
+  RELEASE_NAME: apple-client-1.5.21
 
 jobs:
   prepare:
