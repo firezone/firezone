@@ -2540,6 +2540,11 @@ impl ClientState {
         self.pending_authorizations
             .remove_resource_authorizations(id);
 
+        if let Resource::DevicePool(_) = resource {
+            self.pending_authorizations
+                .remove_device_authorizations_for_pool(id);
+        }
+
         for peer in self.clients.iter_mut() {
             peer.remove_resource(&id);
         }

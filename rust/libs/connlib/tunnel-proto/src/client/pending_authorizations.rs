@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeMap, VecDeque},
+    collections::{BTreeMap, BTreeSet, VecDeque},
     net::{IpAddr, SocketAddr},
     time::{Duration, Instant},
 };
@@ -80,6 +80,34 @@ impl PendingAuthorizations {
         .collect()
     }
 
+    /// Removes pending device requests that named `pool` among their candidates.
+    pub fn remove_device_authorizations_for_pool(&mut self, pool: ResourceId) {
+        let removed_addrs = self
+            .inner
+            .extract_if(.., |target, pending| {
+                matches!(target, AuthorizationTarget::Device { .. })
+                    && pending.device_pools.contains(&pool)
+            })
+            .filter_map(|(target, _)| match target {
+                AuthorizationTarget::Device { addr } => Some(addr),
+                AuthorizationTarget::Resources(_) => None,
+            })
+            .collect::<BTreeSet<_>>();
+
+        if removed_addrs.is_empty() {
+            return;
+        }
+
+        self.authorization_requests = self
+            .authorization_requests
+            .drain(..)
+            .filter(|request| match request {
+                AuthorizationRequest::Resources(_) => true,
+                AuthorizationRequest::Device { addr, .. } => !removed_addrs.contains(addr),
+            })
+            .collect();
+    }
+
     /// Removes and returns every device entry whose address matches the predicate.
     ///
     /// The iterator must be consumed for the entries to be removed.
@@ -120,6 +148,10 @@ impl PendingAuthorizations {
             PendingAuthorization::new(now - Duration::from_secs(10))
         });
 
+        if let AuthorizationRequest::Device { pools, .. } = &request {
+            pending.device_pools.extend(pools.iter().copied());
+        }
+
         pending.push(trigger);
 
         let time_since_last_request = now.duration_since(pending.last_request_sent_at);
@@ -139,6 +171,7 @@ impl PendingAuthorizations {
 
 pub struct PendingAuthorization {
     last_request_sent_at: Instant,
+    device_pools: BTreeSet<ResourceId>,
     packets: UniquePacketBuffer,
     dns_queries: AllocRingBuffer<DnsQueryForSite>,
 }
@@ -154,6 +187,7 @@ impl PendingAuthorization {
     fn new(now: Instant) -> Self {
         Self {
             last_request_sent_at: now,
+            device_pools: BTreeSet::new(),
             packets: UniquePacketBuffer::with_capacity_power_of_2(
                 Self::CAPACITY_POW_2,
                 "pending-authorization",
@@ -462,6 +496,56 @@ mod tests {
             pending.poll_authorization_requests(),
             Some(device_request(ip))
         );
+    }
+
+    #[test]
+    fn removing_pool_clears_only_device_requests_that_named_it() {
+        let mut pending = PendingAuthorizations::default();
+        let now = Instant::now();
+        let removed_pool = ResourceId::from_u128(1);
+        let remaining_pool = ResourceId::from_u128(2);
+        let removed_device = device_ip();
+        let other_device = other_device_ip();
+        let first_request = AuthorizationRequest::Device {
+            addr: removed_device,
+            pools: vec![removed_pool],
+        };
+        let updated_request = AuthorizationRequest::Device {
+            addr: removed_device,
+            pools: vec![remaining_pool],
+        };
+        let other_request = AuthorizationRequest::Device {
+            addr: other_device,
+            pools: vec![remaining_pool],
+        };
+
+        pending.on_not_authorized(first_request.clone(), udp_trigger(1), now);
+        assert_eq!(pending.poll_authorization_requests(), Some(first_request));
+
+        let later = now + Duration::from_secs(3);
+        pending.on_not_authorized(updated_request.clone(), udp_trigger(2), later);
+        pending.on_not_authorized(other_request.clone(), udp_trigger(3), later);
+
+        pending.remove_device_authorizations_for_pool(removed_pool);
+        assert_eq!(
+            pending.poll_authorization_requests(),
+            Some(other_request.clone())
+        );
+        assert_eq!(pending.poll_authorization_requests(), None);
+
+        pending.on_not_authorized(
+            updated_request.clone(),
+            udp_trigger(4),
+            later + Duration::from_secs(1),
+        );
+        assert_eq!(pending.poll_authorization_requests(), Some(updated_request));
+
+        pending.on_not_authorized(
+            other_request,
+            udp_trigger(5),
+            later + Duration::from_secs(1),
+        );
+        assert_eq!(pending.poll_authorization_requests(), None);
     }
 
     fn device_request(addr: IpAddr) -> AuthorizationRequest {
