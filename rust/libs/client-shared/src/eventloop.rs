@@ -872,14 +872,17 @@ impl Eventloop {
             return Poll::Ready(CombinedEvent::Tunnel(event));
         }
 
-        // The tunnel has just armed its timer for this deadline, so being sampled well past it
-        // means we were not running, not that we had nothing to do.
-        self.clock.expect_sample_by(
+        // The tunnel is idle until this deadline, so being sampled well past it means we were
+        // not running, not that we had nothing to do.
+        self.clock.wake_at(
             self.tunnel
                 .as_mut()
                 .and_then(|tunnel| tunnel.state_mut().poll_timeout())
                 .map(|(deadline, _)| deadline),
         );
+        if self.clock.poll_alarm(cx).is_ready() {
+            cx.waker().wake_by_ref();
+        }
 
         Poll::Pending
     }

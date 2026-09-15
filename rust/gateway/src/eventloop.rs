@@ -222,6 +222,16 @@ impl Eventloop {
             return Poll::Ready(CombinedEvent::Tunnel(event));
         }
 
+        self.clock.wake_at(
+            self.tunnel
+                .as_mut()
+                .and_then(|tunnel| tunnel.state_mut().poll_timeout())
+                .map(|(deadline, _)| deadline),
+        );
+        if self.clock.poll_alarm(cx).is_ready() {
+            cx.waker().wake_by_ref();
+        }
+
         if let Poll::Ready(()) = self.sigint.poll_recv(cx) {
             return Poll::Ready(CombinedEvent::SigIntTerm);
         }

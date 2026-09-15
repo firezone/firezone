@@ -1,4 +1,9 @@
-use std::time::{Duration, Instant, SystemTime};
+use std::{
+    future::Future as _,
+    pin::Pin,
+    task::{Context, Poll},
+    time::{Duration, Instant, SystemTime},
+};
 
 /// Differences smaller than this are assumed to be clock resolution, sampling jitter, or clock
 /// slewing rather than time spent suspended.
@@ -21,7 +26,11 @@ pub struct Clock {
     last_monotonic: Instant,
     last_system: SystemTime,
     suspend_offset: Duration,
-    sample_due_by: Option<Instant>,
+    /// The deadline the event loop asked to be woken at, in this clock's domain.
+    wake_at: Option<Instant>,
+    /// The same deadline as a raw [`Instant`], which is what the timer runs on.
+    alarm_target: Option<Instant>,
+    alarm: Option<Pin<Box<tokio::time::Sleep>>>,
     lateness: Option<Duration>,
 }
 
@@ -35,13 +44,42 @@ impl Clock {
         self.sample(Instant::now(), SystemTime::now())
     }
 
-    /// Records when the caller next expects to sample this clock.
+    /// Arms the alarm for `deadline`, which is in this clock's domain.
     ///
-    /// Only a sample measured against a deadline can be called late: without one, an event loop
-    /// that slept because it had nothing to do is indistinguishable from one that was prevented
-    /// from running.
-    pub fn expect_sample_by(&mut self, deadline: Option<Instant>) {
-        self.sample_due_by = deadline;
+    /// Time spent suspended before the next sample counts towards the overshoot reported by
+    /// [`Clock::poll_lateness`]: it is time we did not service our sockets.
+    pub fn wake_at(&mut self, deadline: Option<Instant>) {
+        self.wake_at = deadline;
+
+        let Some(deadline) = deadline else {
+            self.alarm_target = None;
+            self.alarm = None;
+
+            return;
+        };
+
+        let raw_now = Instant::now();
+        let now = raw_now.checked_add(self.suspend_offset).unwrap_or(raw_now);
+
+        self.alarm_target = Some(raw_now + deadline.saturating_duration_since(now));
+    }
+
+    /// Completes once the deadline set via [`Clock::wake_at`] has passed.
+    pub fn poll_alarm(&mut self, cx: &mut Context<'_>) -> Poll<()> {
+        let Some(target) = self.alarm_target else {
+            return Poll::Pending;
+        };
+        let target = tokio::time::Instant::from_std(target);
+
+        let alarm = self
+            .alarm
+            .get_or_insert_with(|| Box::pin(tokio::time::sleep_until(target)));
+
+        if alarm.deadline() != target {
+            alarm.as_mut().reset(target);
+        }
+
+        alarm.as_mut().poll(cx)
     }
 
     /// Returns, once, by how much the latest sample overshot its deadline.
@@ -82,13 +120,11 @@ impl Clock {
             .checked_add(self.suspend_offset)
             .unwrap_or(monotonic);
 
-        // Time spent suspended counts towards the overshoot: it is time we did not service our
-        // sockets.
-        if let Some(due_by) = self.sample_due_by.take() {
-            let late_by = now.saturating_duration_since(due_by);
+        if let Some(due) = self.wake_at.take() {
+            let late = now.saturating_duration_since(due);
 
-            if late_by >= LATENESS_THRESHOLD {
-                self.lateness = Some(late_by);
+            if late >= LATENESS_THRESHOLD {
+                self.lateness = Some(late);
             }
         }
 
@@ -102,7 +138,9 @@ impl Default for Clock {
             last_monotonic: Instant::now(),
             last_system: SystemTime::now(),
             suspend_offset: Duration::ZERO,
-            sample_due_by: None,
+            wake_at: None,
+            alarm_target: None,
+            alarm: None,
             lateness: None,
         }
     }
@@ -110,6 +148,8 @@ impl Default for Clock {
 
 #[cfg(test)]
 mod tests {
+    use std::future::poll_fn;
+
     use super::*;
 
     #[test]
@@ -201,7 +241,7 @@ mod tests {
         let system = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
         let mut clock = clock_at(monotonic, system);
 
-        clock.expect_sample_by(Some(monotonic + Duration::from_secs(10)));
+        clock.wake_at(Some(monotonic + Duration::from_secs(10)));
         clock.sample(
             monotonic + Duration::from_secs(45),
             system + Duration::from_secs(45),
@@ -217,7 +257,7 @@ mod tests {
         let system = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
         let mut clock = clock_at(monotonic, system);
 
-        clock.expect_sample_by(Some(monotonic + Duration::from_secs(10)));
+        clock.wake_at(Some(monotonic + Duration::from_secs(10)));
         clock.sample(
             monotonic + Duration::from_secs(11),
             system + Duration::from_secs(11),
@@ -246,7 +286,7 @@ mod tests {
         let system = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
         let mut clock = clock_at(monotonic, system);
 
-        clock.expect_sample_by(Some(monotonic + Duration::from_secs(10)));
+        clock.wake_at(Some(monotonic + Duration::from_secs(10)));
 
         // A suspend barely advances the monotonic clock but does not stop the system clock.
         clock.sample(
@@ -257,12 +297,45 @@ mod tests {
         assert_eq!(clock.poll_lateness(), Some(Duration::from_secs(110)));
     }
 
+    #[tokio::test(start_paused = true)]
+    async fn alarm_fires_once_the_deadline_has_passed() {
+        let mut clock = Clock::new();
+        let now = Instant::now();
+
+        clock.wake_at(Some(now + Duration::from_secs(5)));
+
+        assert!(
+            poll_fn(|cx| Poll::Ready(clock.poll_alarm(cx)))
+                .await
+                .is_pending()
+        );
+
+        tokio::time::advance(Duration::from_secs(5)).await;
+        poll_fn(|cx| clock.poll_alarm(cx)).await;
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn alarm_without_deadline_never_fires() {
+        let mut clock = Clock::new();
+
+        clock.wake_at(None);
+        tokio::time::advance(Duration::from_secs(60)).await;
+
+        assert!(
+            poll_fn(|cx| Poll::Ready(clock.poll_alarm(cx)))
+                .await
+                .is_pending()
+        );
+    }
+
     fn clock_at(monotonic: Instant, system: SystemTime) -> Clock {
         Clock {
             last_monotonic: monotonic,
             last_system: system,
             suspend_offset: Duration::ZERO,
-            sample_due_by: None,
+            wake_at: None,
+            alarm_target: None,
+            alarm: None,
             lateness: None,
         }
     }

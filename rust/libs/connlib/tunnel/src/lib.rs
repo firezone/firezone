@@ -254,7 +254,6 @@ impl ClientTunnel {
 
             // Process all IO sources that are ready.
             if let Poll::Ready(io::Input {
-                timeout,
                 dns_response,
                 tcp_dns_queries: _,
                 udp_dns_queries: _,
@@ -265,13 +264,7 @@ impl ClientTunnel {
             {
                 if let Some(response) = dns_response {
                     self.role_state.handle_dns_response(response, now);
-                    self.io.schedule_timeout();
 
-                    tick.want_continue();
-                }
-
-                if timeout {
-                    self.role_state.handle_timeout(now);
                     tick.want_continue();
                 }
 
@@ -286,8 +279,6 @@ impl ClientTunnel {
                             Err(e) => error.push(e),
                         }
                     }
-
-                    self.io.schedule_timeout();
 
                     // Eagerly flush GSO queue.
                     if let Poll::Ready(Err(e)) = self.io.flush_gso_queue(cx) {
@@ -323,7 +314,7 @@ impl ClientTunnel {
                             Ok(Some(packet)) => self
                                 .io
                                 .queue_tun(packet.with_ecn_from_transport(received.ecn)),
-                            Ok(None) => self.io.schedule_timeout(),
+                            Ok(None) => {}
                             Err(e) => error.push(e),
                         };
                     }
@@ -337,12 +328,6 @@ impl ClientTunnel {
                     return Poll::Ready(Err(error));
                 }
             }
-        }
-
-        // Reset timer for time-based wakeup before we suspend.
-        if let Some((timeout, reason)) = self.role_state.poll_timeout() {
-            self.io
-                .reset_timeout_after(timeout.saturating_duration_since(now), reason);
         }
 
         Poll::Pending
@@ -430,7 +415,6 @@ impl GatewayTunnel {
 
             // Process all IO sources that are ready.
             if let Poll::Ready(io::Input {
-                timeout,
                 dns_response,
                 tcp_dns_queries,
                 udp_dns_queries,
@@ -470,11 +454,6 @@ impl GatewayTunnel {
                     tick.want_continue();
                 }
 
-                if timeout {
-                    self.role_state.handle_timeout(now);
-                    tick.want_continue();
-                }
-
                 if let Some(mut packets) = device {
                     for packet in packets.drain() {
                         match self
@@ -499,8 +478,6 @@ impl GatewayTunnel {
                             }
                         }
                     }
-
-                    self.io.schedule_timeout();
 
                     // Eagerly flush GSO queue.
                     if let Poll::Ready(Err(e)) = self.io.flush_gso_queue(cx) {
@@ -536,7 +513,7 @@ impl GatewayTunnel {
                             Ok(Some(packet)) => self
                                 .io
                                 .queue_tun(packet.with_ecn_from_transport(received.ecn)),
-                            Ok(None) => self.io.schedule_timeout(),
+                            Ok(None) => {}
                             Err(e) => error.push(e),
                         };
                     }
@@ -608,12 +585,6 @@ impl GatewayTunnel {
                     return Poll::Ready(Err(error));
                 }
             }
-        }
-
-        // Reset timer for time-based wakeup before we suspend.
-        if let Some((timeout, reason)) = self.role_state.poll_timeout() {
-            self.io
-                .reset_timeout_after(timeout.saturating_duration_since(now), reason);
         }
 
         Poll::Pending
