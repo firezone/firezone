@@ -330,6 +330,24 @@ defmodule Portal.Policies.Postures.EvaluatorTest do
     end
   end
 
+  describe "evaluate/3 os_up_to_date" do
+    test "asks the OS release mirror about the row" do
+      release = %Portal.OSRelease{os: :macos, line: "777", latest_version: "777.2.1", supported: true, fetched_at: @now}
+      :ets.insert(Portal.OSReleases.ETS, {{:macos, "777"}, release})
+
+      current = struct!(Portal.Santa.Device, os_version: "777.2.1")
+      behind = struct!(Portal.Santa.Device, os_version: "777.2.0")
+      unknown = struct!(Portal.Santa.Device, os_version: nil)
+      leaf = leaf("santa.os_up_to_date", "is", true)
+
+      assert evaluate(leaf, device(posture: %{santa: [current]})) == {:ok, nil}
+      assert evaluate(leaf, device(posture: %{santa: [behind]})) == @failed
+      assert evaluate(leaf, device(posture: %{santa: [unknown]})) == @failed
+      assert evaluate(leaf, device(posture: %{})) == @failed
+      assert evaluate(leaf("santa.os_up_to_date", "does_not_exist"), device(posture: %{santa: [unknown]})) == {:ok, nil}
+    end
+  end
+
   describe "evaluate/3 ips" do
     test "is_in_cidr and is_not_in_cidr for v4 and v6" do
       v4 = %Postgrex.INET{address: {10, 1, 2, 3}, netmask: nil}

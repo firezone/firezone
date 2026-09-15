@@ -95,6 +95,8 @@ defmodule Portal.Policies.Postures.Evaluator do
   defp earliest(left, right), do: Enum.min([left, right], DateTime)
 
   defp field_value(:enrolled, row, _device), do: not is_nil(row)
+  defp field_value(:os_up_to_date, nil, _device), do: nil
+  defp field_value(:os_up_to_date, row, _device), do: Portal.OSReleases.row_up_to_date?(row)
   defp field_value(_field, nil, _device), do: nil
   defp field_value(field, row, _device), do: Map.get(row, field)
 

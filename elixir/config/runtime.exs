@@ -355,6 +355,9 @@ if config_env() == :prod do
     # Check for outdated gateways - Sundays at 9am
     {"0 9 * * 0", Portal.Workers.OutdatedGateways},
 
+    # Refresh the operating system release feeds hourly
+    {"30 * * * *", Portal.OSReleases.Sync},
+
     # Delete expired tokens every 5 minutes
     {"*/5 * * * *", Portal.Workers.DeleteExpiredClientTokens},
 

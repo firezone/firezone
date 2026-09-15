@@ -387,6 +387,9 @@ config :portal, Portal.Crl.Sync, req_opts: []
 
 config :portal, Portal.Ocsp.Sync, req_opts: []
 
+config :portal, Portal.OSReleases, reload_every: :timer.minutes(10)
+config :portal, Portal.OSReleases.Sync, req_opts: []
+
 config :portal, Portal.ComponentVersions,
   firezone_releases_url: "https://www.firezone.dev/api/releases",
   fetch_from_url: true,
