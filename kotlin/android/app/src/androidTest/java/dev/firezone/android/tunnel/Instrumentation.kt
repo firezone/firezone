@@ -26,10 +26,10 @@ fun grantNotificationPermission() {
     shell("pm grant ${packageName()} android.permission.POST_NOTIFICATIONS")
 }
 
-// The same entry point the splash screen and the boot receiver use, so `startedByUser` is set
+// The same entry point the splash screen uses, so `startedByUser` is set
 // the way it is in production.
 fun startTunnelService() {
-    TunnelService.start(InstrumentationRegistry.getInstrumentation().targetContext)
+    TunnelService.start(InstrumentationRegistry.getInstrumentation().targetContext, TunnelService.StartSource.CONNECT_ON_START)
 }
 
 // Enters through the launcher, so that the splash screen's own routing decides which screen the

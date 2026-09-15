@@ -30,8 +30,7 @@ class BootReceiver : BroadcastReceiver() {
             applicationScope.launch(Dispatchers.IO) {
                 val userConfig = repo.getConfigSync()
                 if (userConfig.startOnLogin) {
-                    val serviceIntent = Intent(context, TunnelService::class.java)
-                    context.startService(serviceIntent)
+                    TunnelService.start(context, TunnelService.StartSource.BOOT)
                 }
             }
         }
