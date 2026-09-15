@@ -647,11 +647,15 @@ impl ClientState {
                     .resolve(destination, dst_proto, internet_resource);
 
                 #[cfg(any(test, feature = "malicious-behaviour"))]
-                let routes = routing::with_filter_bypass(
-                    routes,
-                    self.routing_tables
-                        .filter_bypass_routes(destination, dst_proto),
-                );
+                let routes = if crate::malicious_behaviour::ignore_resource_filter() {
+                    Ok(self.routing_tables.filter_bypass_routes(
+                        destination,
+                        dst_proto,
+                        internet_resource,
+                    ))
+                } else {
+                    routes
+                };
 
                 let routes = match routes {
                     Ok(routes) => routes,

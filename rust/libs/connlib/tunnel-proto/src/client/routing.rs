@@ -61,23 +61,21 @@ impl RoutingTables {
         Ok(routes)
     }
 
+    /// Returns all destination candidates, with filter-permitted routes first.
     #[cfg(any(test, feature = "malicious-behaviour"))]
     pub(super) fn filter_bypass_routes(
         &mut self,
         destination: IpAddr,
         protocol: Protocol,
+        internet_resource: Option<ResourceId>,
     ) -> Vec<Route> {
         if let Some(peers) = self.peer.matches(destination, Ok(protocol)) {
-            return peers
-                .denied
-                .iter()
-                .map(|entry| Route::Client {
-                    resource_id: entry.resource_id,
-                })
-                .collect();
+            return all_routes(peers, |entry| Route::Client {
+                resource_id: entry.resource_id,
+            });
         }
 
-        self.gateway_filter_bypass_routes(destination, protocol)
+        self.gateway_filter_bypass_routes(destination, protocol, internet_resource)
     }
 
     #[cfg(any(test, feature = "malicious-behaviour"))]
@@ -85,27 +83,23 @@ impl RoutingTables {
         &mut self,
         destination: IpAddr,
         protocol: Protocol,
+        internet_resource: Option<ResourceId>,
     ) -> Vec<Route> {
         if let Some(dns) = self.dns.matches(destination, Ok(protocol)) {
-            return dns
-                .denied
-                .iter()
-                .map(|entry| Route::Gateway {
-                    resource_id: entry.resource_id,
-                    domain: Some(entry.domain.clone()),
-                })
-                .collect();
+            return all_routes(dns, |entry| Route::Gateway {
+                resource_id: entry.resource_id,
+                domain: Some(entry.domain.clone()),
+            });
         }
 
-        self.cidr
-            .matches(destination, Ok(protocol))
-            .into_iter()
-            .flat_map(|matches| &matches.denied)
-            .map(|entry| Route::Gateway {
+        if let Some(cidr) = self.cidr.matches(destination, Ok(protocol)) {
+            return all_routes(cidr, |entry| Route::Gateway {
                 resource_id: entry.resource_id,
                 domain: None,
-            })
-            .collect()
+            });
+        }
+
+        internet_route(destination, internet_resource)
     }
 
     /// Resolves resources routed through a gateway.
@@ -116,13 +110,12 @@ impl RoutingTables {
         protocol: Protocol,
         internet_resource: Option<ResourceId>,
     ) -> Result<Vec<Route>, Denied> {
-        let routes = self.resolve_filtered_resource(destination, protocol, internet_resource);
         #[cfg(any(test, feature = "malicious-behaviour"))]
-        let routes = with_filter_bypass(
-            routes,
-            self.gateway_filter_bypass_routes(destination, protocol),
-        );
+        if crate::malicious_behaviour::ignore_resource_filter() {
+            return Ok(self.gateway_filter_bypass_routes(destination, protocol, internet_resource));
+        }
 
+        let routes = self.resolve_filtered_resource(destination, protocol, internet_resource);
         let routes = routes?;
         Ok(routes)
     }
@@ -147,18 +140,7 @@ impl RoutingTables {
             });
         }
 
-        // The Internet Resource must not send tunnel addresses to a gateway.
-        if crate::is_peer(destination) {
-            return Ok(Vec::new());
-        }
-
-        Ok(internet_resource
-            .into_iter()
-            .map(|resource_id| Route::Gateway {
-                resource_id,
-                domain: None,
-            })
-            .collect())
+        Ok(internet_route(destination, internet_resource))
     }
 
     pub(super) fn cidr_networks(&self) -> impl Iterator<Item = IpNetwork> + '_ {
@@ -174,13 +156,13 @@ impl RoutingTables {
         let matches = self.dns.matches(destination, protocol)?;
         let routes = allowed_routes(matches, |entry| (entry.resource_id, entry.domain.clone()));
         #[cfg(any(test, feature = "malicious-behaviour"))]
-        let routes = with_filter_bypass(
-            routes,
-            matches
-                .denied
-                .iter()
-                .map(|entry| (entry.resource_id, entry.domain.clone())),
-        );
+        let routes = if crate::malicious_behaviour::ignore_resource_filter() {
+            Ok(all_routes(matches, |entry| {
+                (entry.resource_id, entry.domain.clone())
+            }))
+        } else {
+            routes
+        };
 
         routes
             .ok()?
@@ -258,26 +240,29 @@ fn allowed_routes<T, R>(
     Ok(routes)
 }
 
-/// Only outbound routing may bypass filters to exercise remote enforcement in simulations.
 #[cfg(any(test, feature = "malicious-behaviour"))]
-pub(super) fn with_filter_bypass<R>(
-    routes: Result<Vec<R>, Denied>,
-    bypass_routes: impl IntoIterator<Item = R>,
-) -> Result<Vec<R>, Denied> {
-    if !crate::malicious_behaviour::ignore_resource_filter() {
-        return routes;
+fn all_routes<T, R>(matches: &Matches<T>, to_route: impl Fn(&T) -> R) -> Vec<R> {
+    matches
+        .allowed
+        .iter()
+        .chain(&matches.denied)
+        .map(to_route)
+        .collect()
+}
+
+fn internet_route(destination: IpAddr, internet_resource: Option<ResourceId>) -> Vec<Route> {
+    // The Internet Resource must not send tunnel addresses to a gateway.
+    if crate::is_peer(destination) {
+        return Vec::new();
     }
 
-    let mut bypass_routes = bypass_routes.into_iter().peekable();
-    if bypass_routes.peek().is_none() {
-        return routes;
-    }
-
-    Ok(routes
-        .unwrap_or_default()
+    internet_resource
         .into_iter()
-        .chain(bypass_routes)
-        .collect())
+        .map(|resource_id| Route::Gateway {
+            resource_id,
+            domain: None,
+        })
+        .collect()
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -417,58 +402,98 @@ mod tests {
     #[test_case::test_case("pool"; "device_pool")]
     #[test_case::test_case("cidr"; "cidr_resource")]
     #[test_case::test_case("dns"; "dns_resource")]
-    fn filter_bypass_includes_denied_resources(resource_kind: &str) {
+    fn filter_bypass_returns_all_resource_candidates(resource_kind: &str) {
         let mut tables = RoutingTables::default();
-        let resource_id = ResourceId::from_u128(1);
+        let allowed = ResourceId::from_u128(1);
+        let denied = ResourceId::from_u128(2);
         let destination = match resource_kind {
-            "pool" => {
-                tables.upsert_pool(resource_id, FilterEngine::DenyAll);
-                other_client_tun_ip()
-            }
-            "cidr" => {
-                let destination = "10.0.0.1".parse::<IpAddr>().unwrap();
-                tables.upsert_cidr(destination.into(), resource_id, FilterEngine::DenyAll);
-                destination
-            }
-            "dns" => {
-                let destination = "100.96.0.1".parse::<IpAddr>().unwrap();
-                tables.upsert_dns(
-                    destination.into(),
-                    resource_id,
-                    "example.com".parse().unwrap(),
-                    dns::Pattern::new("example.com").unwrap(),
-                    FilterEngine::DenyAll,
-                );
-                destination
-            }
+            "pool" => other_client_tun_ip(),
+            "cidr" => "10.0.0.1".parse::<IpAddr>().unwrap(),
+            "dns" => "100.96.0.1".parse::<IpAddr>().unwrap(),
             _ => unreachable!(),
         };
-
-        let resolve = |tables: &mut RoutingTables| {
-            let routes =
-                tables.resolve(destination, Protocol::Tcp(80), Some(internet_resource_id()));
-            with_filter_bypass(
-                routes,
-                tables.filter_bypass_routes(destination, Protocol::Tcp(80)),
-            )
-        };
-        assert!(resolve(&mut tables).is_err());
-
-        let _guard = crate::malicious_behaviour::MaliciousBehaviour {
-            ignore_resource_filters: true,
-            ..Default::default()
+        for (resource_id, filter) in [
+            (allowed, FilterEngine::PermitAll),
+            (denied, FilterEngine::DenyAll),
+        ] {
+            match resource_kind {
+                "pool" => tables.upsert_pool(resource_id, filter),
+                "cidr" => {
+                    tables.upsert_cidr(destination.into(), resource_id, filter);
+                }
+                "dns" => {
+                    tables.upsert_dns(
+                        destination.into(),
+                        resource_id,
+                        "example.com".parse().unwrap(),
+                        dns::Pattern::new("example.com").unwrap(),
+                        filter,
+                    );
+                }
+                _ => unreachable!(),
+            }
         }
-        .guard();
 
-        let routes = resolve(&mut tables).unwrap();
+        let routes = tables
+            .resolve(destination, Protocol::Tcp(80), Some(internet_resource_id()))
+            .unwrap();
         assert_eq!(
             routes.iter().map(Route::resource_id).collect::<Vec<_>>(),
-            vec![resource_id]
+            vec![allowed]
         );
+
+        let routes = tables.filter_bypass_routes(
+            destination,
+            Protocol::Tcp(80),
+            Some(internet_resource_id()),
+        );
+        assert_eq!(
+            routes.iter().map(Route::resource_id).collect::<Vec<_>>(),
+            vec![allowed, denied]
+        );
+
+        tables.remove_by_id(allowed);
         assert!(
             tables
                 .resolve(destination, Protocol::Tcp(80), Some(internet_resource_id()))
                 .is_err()
+        );
+        let routes = tables.filter_bypass_routes(
+            destination,
+            Protocol::Tcp(80),
+            Some(internet_resource_id()),
+        );
+        assert_eq!(
+            routes.iter().map(Route::resource_id).collect::<Vec<_>>(),
+            vec![denied]
+        );
+    }
+
+    #[test]
+    fn filter_bypass_preserves_internet_fallback() {
+        let mut tables = RoutingTables::default();
+        let routes = tables.filter_bypass_routes(
+            "1.1.1.1".parse().unwrap(),
+            Protocol::Tcp(443),
+            Some(internet_resource_id()),
+        );
+        assert_eq!(
+            routes.iter().map(Route::resource_id).collect::<Vec<_>>(),
+            vec![internet_resource_id()]
+        );
+        assert!(
+            tables
+                .filter_bypass_routes("1.1.1.1".parse().unwrap(), Protocol::Tcp(443), None)
+                .is_empty()
+        );
+        assert!(
+            tables
+                .filter_bypass_routes(
+                    other_client_tun_ip(),
+                    Protocol::Tcp(443),
+                    Some(internet_resource_id())
+                )
+                .is_empty()
         );
     }
 
