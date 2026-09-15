@@ -40,7 +40,7 @@ pub(super) struct Denied;
 pub(super) struct RoutingTables {
     cidr: RoutingTable<CidrEntry>,
     dns: RoutingTable<DnsEntry>,
-    peer: RoutingTable<PeerEntry>,
+    device_pool: RoutingTable<DevicePoolEntry>,
 }
 
 impl RoutingTables {
@@ -52,8 +52,8 @@ impl RoutingTables {
         internet_resource: Option<ResourceId>,
     ) -> Result<Vec<Route>, Denied> {
         let mode = outbound_filter_mode();
-        if let Some(peers) = self.peer.matches(destination, Ok(protocol), mode) {
-            return routes(peers, |entry| Route::DevicePool {
+        if let Some(pools) = self.device_pool.matches(destination, Ok(protocol), mode) {
+            return routes(pools, |entry| Route::DevicePool {
                 resource_id: entry.resource_id,
             });
         }
@@ -163,11 +163,11 @@ impl RoutingTables {
     }
 
     pub(super) fn upsert_pool(&mut self, resource_id: ResourceId, filter: FilterEngine) {
-        self.peer.remove_by_id(resource_id);
+        self.device_pool.remove_by_id(resource_id);
         for network in [crate::IPV4_TUNNEL.into(), crate::IPV6_TUNNEL.into()] {
-            self.peer.upsert(
+            self.device_pool.upsert(
                 network,
-                PeerEntry {
+                DevicePoolEntry {
                     resource_id,
                     filter: filter.clone(),
                 },
@@ -178,7 +178,7 @@ impl RoutingTables {
     pub(super) fn remove_by_id(&mut self, resource_id: ResourceId) {
         self.cidr.remove_by_id(resource_id);
         self.dns.remove_by_id(resource_id);
-        self.peer.remove_by_id(resource_id);
+        self.device_pool.remove_by_id(resource_id);
     }
 }
 
@@ -232,12 +232,12 @@ impl RouteEntry for CidrEntry {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-struct PeerEntry {
+struct DevicePoolEntry {
     filter: FilterEngine,
     resource_id: ResourceId,
 }
 
-impl RouteEntry for PeerEntry {
+impl RouteEntry for DevicePoolEntry {
     fn filter(&self) -> &FilterEngine {
         &self.filter
     }
