@@ -31,6 +31,26 @@ defmodule PortalWeb.BannerTest do
            |> String.contains?(banner.message)
   end
 
+  test "renders a dismiss button and the SHA-256 of the exact banner content", %{
+    conn: conn,
+    account: account,
+    actor: actor
+  } do
+    banner = banner_fixture(message: "<strong>Announcement &amp; updates</strong>")
+    {:ok, _lv, html} = conn |> authorize_conn(actor) |> live(~p"/#{account}/sites")
+    document = Floki.parse_fragment!(html)
+    expected_hash = Base.encode16(:crypto.hash(:sha256, banner.message), case: :lower)
+
+    assert Floki.attribute(document, "#banner", "data-content-hash") == [expected_hash]
+    assert Floki.attribute(document, "#banner", "phx-hook") == ["DismissableBanner"]
+    assert Floki.attribute(document, "#banner", "hidden") == [""]
+    assert [_button] =
+             Floki.find(
+               document,
+               "#banner button[type=button][data-dismiss-banner][aria-label='Dismiss announcement']"
+             )
+  end
+
   test "does not show banner when none exists", %{conn: conn, account: account, actor: actor} do
     {:ok, _lv, html} = conn |> authorize_conn(actor) |> live(~p"/#{account}/sites")
 

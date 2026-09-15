@@ -86,6 +86,15 @@ defmodule PortalAPI.Integrations.Google.WebhookControllerTest do
       assert job.args["user_id"] == "user-new"
     end
 
+    test "records when a notification was last accepted", %{conn: conn, directory: directory} do
+      assert is_nil(directory.webhook_received_at)
+
+      conn = post_notification(conn, directory, "update", user("user-unknown"))
+
+      assert response(conn, 200) == ""
+      assert Portal.Repo.get_by!(Google.Directory, id: directory.id).webhook_received_at
+    end
+
     test "queues unknown users while a job for the directory is running", %{
       conn: conn,
       directory: directory

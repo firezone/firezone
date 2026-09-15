@@ -4,11 +4,6 @@ defmodule PortalWeb.NavigationComponents do
   import PortalWeb.CoreComponents
 
   @doc """
-  Returns whether the global `trust_anchors` rollout flag is enabled.
-  """
-  def trust_anchors_enabled?, do: Portal.Features.enabled?(:trust_anchors)
-
-  @doc """
   Returns whether the global `device_posture` rollout flag is enabled.
   """
   def device_posture_enabled?, do: Portal.Features.enabled?(:device_posture)
@@ -207,7 +202,6 @@ defmodule PortalWeb.NavigationComponents do
               current_path={@current_path}
               navigate={~p"/#{@account}/resources"}
               icon="ri-server-line"
-              badge="NEW"
             >
               Resources
             </.sidebar_item>
@@ -244,15 +238,13 @@ defmodule PortalWeb.NavigationComponents do
             >
               Sites
             </.sidebar_item>
-            <%!-- Signposts the rename for admins who knew this page as Clients. --%>
             <.sidebar_item
               current_path={@current_path}
               navigate={~p"/#{@account}/devices"}
               icon="ri-computer-line"
               badge="NEW"
             >
-              <span class="line-through decoration-[1.3px]">Clients</span>
-              <span class="ml-0.5">Devices</span>
+              Devices
             </.sidebar_item>
           </ul>
         </div>
@@ -297,7 +289,6 @@ defmodule PortalWeb.NavigationComponents do
               navigate={~p"/#{@account}/logs/change_logs"}
               match="/#{@account.slug}/logs"
               icon="ri-file-list-3-line"
-              badge="NEW"
             >
               Logs
             </.sidebar_item>
@@ -321,9 +312,15 @@ defmodule PortalWeb.NavigationComponents do
           <.icon name="ri-settings-3-line" class="w-4 h-4 shrink-0" />
           <span
             data-sidebar-label
-            class="whitespace-nowrap transition-[max-width,opacity] duration-200 max-w-xs opacity-100"
+            class="whitespace-nowrap transition-[max-width,opacity] duration-200 max-w-xs opacity-100 flex-1"
           >
             Settings
+          </span>
+          <span
+            data-sidebar-badge
+            class="ml-auto px-1 py-px rounded text-[9px] font-semibold tracking-wider bg-brand-muted text-brand"
+          >
+            NEW
           </span>
         </.link>
       </div>
@@ -406,7 +403,6 @@ defmodule PortalWeb.NavigationComponents do
   """
   attr :account, :any, required: true
   attr :current_path, :string, required: true
-  attr :trust_anchors_enabled?, :boolean, default: false
   attr :device_posture_enabled?, :boolean, default: false
   slot :actions
 
@@ -527,11 +523,11 @@ defmodule PortalWeb.NavigationComponents do
           REST API
         </.settings_tab>
         <.settings_tab
-          :if={@trust_anchors_enabled?}
           current_path={@current_path}
           navigate={~p"/#{@account}/settings/trust_anchors"}
           tab_path="settings/trust_anchors"
           icon="ri-shield-check-fill"
+          badge="NEW"
         >
           Trust Anchors
         </.settings_tab>
@@ -544,6 +540,7 @@ defmodule PortalWeb.NavigationComponents do
   attr :current_path, :string, required: true
   attr :tab_path, :string, required: true
   attr :icon, :string, required: true
+  attr :badge, :string, default: nil
   slot :inner_block, required: true
 
   defp settings_tab(assigns) do
@@ -562,6 +559,13 @@ defmodule PortalWeb.NavigationComponents do
     >
       <.icon name={@icon} class="w-4 h-4 shrink-0" />
       {render_slot(@inner_block)}
+      <span
+        :if={@badge}
+        data-settings-tab-badge
+        class="px-1 py-px rounded text-[9px] font-semibold tracking-wider bg-brand-muted text-brand"
+      >
+        {@badge}
+      </span>
     </.link>
     """
   end
@@ -808,9 +812,7 @@ defmodule PortalWeb.NavigationComponents do
       target="_blank"
       rel="noopener noreferrer"
       {@rest}
-    >
-      {render_slot(@inner_block)}
-    </.link>
+    >{render_slot(@inner_block)}</.link>
     """
   end
 

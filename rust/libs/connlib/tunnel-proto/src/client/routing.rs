@@ -1,6 +1,6 @@
 use std::{cmp::Ordering, net::IpAddr};
 
-use connlib_model::{ClientId, ResourceId};
+use connlib_model::ResourceId;
 use dns_types::DomainName;
 use ip_network::IpNetwork;
 use ip_packet::{Protocol, UnsupportedProtocol};
@@ -16,7 +16,6 @@ pub(super) enum Route {
     Client {
         filter: FilterEngine,
         resource_id: ResourceId,
-        client_id: ClientId,
     },
     Gateway {
         filter: FilterEngine,
@@ -39,7 +38,7 @@ impl Route {
 pub(super) struct RoutingTables {
     cidr: RoutingTable<CidrEntry>,
     dns: RoutingTable<DnsEntry>,
-    client: RoutingTable<ClientEntry>,
+    peer: RoutingTable<PeerEntry>,
 }
 
 impl RoutingTables {
@@ -50,11 +49,10 @@ impl RoutingTables {
         protocol: Protocol,
         internet_resource: Option<ResourceId>,
     ) -> Option<Route> {
-        if let Some(entry) = self.client.matches(destination, Ok(protocol)).cloned() {
+        if let Some(entry) = self.peer.matches(destination, Ok(protocol)).cloned() {
             return Some(Route::Client {
                 filter: entry.filter,
                 resource_id: entry.resource_id,
-                client_id: entry.client_id,
             });
         }
 
@@ -105,16 +103,6 @@ impl RoutingTables {
         self.cidr.networks()
     }
 
-    /// Returns the Client routed at `destination`.
-    ///
-    /// Every entry for a device address identifies the same Client, so the protocol used to
-    /// select between entries is irrelevant.
-    pub(super) fn client_id_by_ip(&mut self, destination: IpAddr) -> Option<ClientId> {
-        self.client
-            .matches(destination, Ok(Protocol::Tcp(0)))
-            .map(|entry| entry.client_id)
-    }
-
     pub(super) fn dns_resource(
         &mut self,
         destination: IpAddr,
@@ -163,19 +151,17 @@ impl RoutingTables {
         )
     }
 
-    pub(super) fn upsert_client(
+    pub(super) fn upsert_peer(
         &mut self,
         network: IpNetwork,
         resource_id: ResourceId,
-        client_id: ClientId,
         filter: FilterEngine,
     ) -> bool {
-        self.client.upsert(
+        self.peer.upsert(
             network,
-            ClientEntry {
+            PeerEntry {
                 filter,
                 resource_id,
-                client_id,
             },
         )
     }
@@ -183,18 +169,12 @@ impl RoutingTables {
     pub(super) fn remove_by_id(&mut self, resource_id: ResourceId) {
         self.cidr.remove_by_id(resource_id);
         self.dns.remove_by_id(resource_id);
-        self.client.remove_by_id(resource_id);
+        self.peer.remove_by_id(resource_id);
     }
 
-    pub(super) fn remove_client(
-        &mut self,
-        network: IpNetwork,
-        client_id: ClientId,
-        resource_id: ResourceId,
-    ) {
-        self.client.remove(network, |entry| {
-            entry.client_id == client_id && entry.resource_id == resource_id
-        });
+    pub(super) fn remove_peer(&mut self, network: IpNetwork, resource_id: ResourceId) {
+        self.peer
+            .remove(network, |entry| entry.resource_id == resource_id);
     }
 }
 
@@ -215,13 +195,12 @@ impl RouteEntry for CidrEntry {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-struct ClientEntry {
+struct PeerEntry {
     filter: FilterEngine,
     resource_id: ResourceId,
-    client_id: ClientId,
 }
 
-impl RouteEntry for ClientEntry {
+impl RouteEntry for PeerEntry {
     fn filter(&self) -> &FilterEngine {
         &self.filter
     }
@@ -273,23 +252,21 @@ mod tests {
     }
 
     #[test]
-    fn device_pool_routes_to_another_client() {
+    fn dynamic_pool_does_not_claim_unresolved_peer() {
         let mut tables = RoutingTables::default();
-        let client_id = ClientId::from_u128(3);
-        tables.upsert_client(
-            IpNetwork::from(other_client_tun_ip()),
-            ResourceId::from_u128(2),
-            client_id,
-            FilterEngine::PermitAll,
-        );
+        resolve_through_pool(&mut tables, dynamic_pool_id(), FilterEngine::PermitAll);
 
         let route = tables.resolve(
-            other_client_tun_ip(),
+            IpAddr::V4(Ipv4Addr::new(100, 64, 0, 4)),
             Protocol::Tcp(80),
             Some(internet_resource_id()),
         );
 
-        assert!(matches!(route, Some(Route::Client { client_id: c, .. }) if c == client_id));
+        assert!(route.is_none());
+    }
+
+    fn resolve_through_pool(tables: &mut RoutingTables, pool: ResourceId, filter: FilterEngine) {
+        tables.upsert_peer(IpNetwork::from(other_client_tun_ip()), pool, filter);
     }
 
     fn other_client_tun_ip() -> IpAddr {
@@ -298,5 +275,9 @@ mod tests {
 
     fn internet_resource_id() -> ResourceId {
         ResourceId::from_u128(1)
+    }
+
+    fn dynamic_pool_id() -> ResourceId {
+        ResourceId::from_u128(10)
     }
 }

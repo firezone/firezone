@@ -17,11 +17,18 @@
     private static let appBundleID = "dev.firezone.firezone"
     private static let pointerParkingSpot = CGVector(dx: 0.5, dy: 1.2)
 
+    /// Each tab, with a label only its own content carries: a tab that never
+    /// opened leaves the one before it on screen, holding perfectly still, and
+    /// the gallery takes that as a picture of the tab it asked for.
     private static let settingsTabs = [
-      (label: "General", name: "general"),
-      (label: "Advanced", name: "advanced"),
-      (label: "Diagnostic Logs", name: "logs"),
+      (label: "General", name: "general", showing: "Account Slug"),
+      (label: "Advanced", name: "advanced", showing: "Auth Base URL"),
+      (label: "Diagnostic Logs", name: "logs", showing: "Clear Log Directory"),
     ]
+
+    /// A field every parsed certificate carries, so the Device Trust tab can be
+    /// told from the one that was showing before it.
+    private static let certificateAnchor = "Signing Algorithm"
 
     /// The scenarios describing the states of the certificate tab.
     private static let certificateScenarios = [
@@ -65,7 +72,7 @@
         // General is already selected, and is clicked anyway so that every tab
         // arrives the same way.
         for tab in Self.settingsTabs {
-          try selectTab(tab.label, in: window)
+          try selectTab(tab.label, showing: tab.showing, in: window)
           capture(window, as: "settings-\(tab.name)", in: appearance)
         }
       }
@@ -79,7 +86,7 @@
           defer { app.terminate() }
 
           let window = try onlyWindow(of: app)
-          try selectTab("Device Trust", in: window)
+          try selectTab("Device Trust", showing: Self.certificateAnchor, in: window)
           capture(window, as: scenario, in: appearance)
         }
       }
@@ -133,9 +140,20 @@
         corner.withOffset(CGVector(dx: -20, dy: rowY)).hover()
         corner.withOffset(CGVector(dx: rowFrame.midX - menuFrame.minX, dy: rowY)).hover()
 
-        let submenu = try openSubmenu(of: app, beside: menu)
+        let submenu = try openedSubmenu(of: row)
 
         capture([menuFrame, submenu.frame], as: "menu", in: appearance)
+
+        // Only the pointer resting on the row holds the submenu open, and the
+        // capture waits seconds for the screen to hold still. A submenu that
+        // closed in that time leaves the plain menu behind, which holds still
+        // perfectly and photographs as a screen this test never asked for.
+        guard submenuIsOpen(of: row) else {
+          print("The submenu closed while it was photographed; the row presents:")
+          print(row.debugDescription)
+
+          throw AppScreenshotError.menuDidNotStayOpen
+        }
       }
     }
 
@@ -190,27 +208,32 @@
       return menu
     }
 
-    /// The submenu a hovered row has opened: the largest menu on screen besides `menu`.
+    /// Whether the submenu the hovered `row` opens is on screen.
     ///
-    /// By frame rather than by index, because the tree also lists menus that are not
-    /// on screen, with an empty frame, and a ten-point stub in the screen's corner.
-    private func openSubmenu(of app: XCUIApplication, beside menu: XCUIElement) throws
-      -> XCUIElement
-    {
+    /// Hittable rather than present: every resource carries a submenu and they are
+    /// all in the tree before any of them is shown.
+    private func submenuIsOpen(of row: XCUIElement) -> Bool {
+      let item = row.menuItems["Copy address"].firstMatch
+
+      return item.exists && item.isHittable
+    }
+
+    /// Waits for the submenu the hovered `row` opens, and hands it back.
+    ///
+    /// The row's own, rather than the tallest menu that is not the menu: every resource
+    /// carries a submenu and they are all in the tree before any of them is shown, so
+    /// that handed back menus that were never on screen, whose frame the capture was
+    /// then cropped to.
+    private func openedSubmenu(of row: XCUIElement) throws -> XCUIElement {
       let deadline = Date().addingTimeInterval(10)
 
       while Date() < deadline {
-        let others = app.menus.allElementsBoundByIndex
-          .filter { $0.frame.width > 50 && $0.frame != menu.frame }
-
-        if let submenu = others.max(by: { $0.frame.height < $1.frame.height }) {
-          return submenu
-        }
+        if submenuIsOpen(of: row) { return row.menus.firstMatch }
 
         Thread.sleep(forTimeInterval: 0.5)
       }
 
-      print("The submenu did not open; the app presents:\n\(app.debugDescription)")
+      print("The submenu did not open; the row presents:\n\(row.debugDescription)")
 
       throw AppScreenshotError.menuDidNotOpen
     }
@@ -289,9 +312,18 @@
       return window
     }
 
+    /// Opens the tab named `label` and waits for `anchor`, which only its own
+    /// content carries.
+    ///
     /// SwiftUI has drawn the macOS tab picker as different controls across
-    /// releases, so the first kind that answers to `label` wins.
-    private func selectTab(_ label: String, in window: XCUIElement) throws {
+    /// releases, so the first kind that answers to `label` wins. A click that
+    /// lands while the window is still arriving is dropped without a word, so it
+    /// is repeated until the content it asks for is on screen. The tab's own
+    /// selected trait would be the cheaper signal, but these controls do not
+    /// report it, not even for the tab that is already showing.
+    private func selectTab(
+      _ label: String, showing anchor: String, in window: XCUIElement
+    ) throws {
       let candidates = [
         window.tabs[label],
         window.tabGroups.buttons[label],
@@ -304,7 +336,15 @@
         throw AppScreenshotError.tabNotFound(label)
       }
 
-      tab.click()
+      for _ in 0..<3 {
+        tab.click()
+
+        if window.descendants(matching: .any)[anchor].waitForExistence(timeout: 10) {
+          return
+        }
+      }
+
+      throw AppScreenshotError.tabDidNotOpen(label)
     }
   }
 
@@ -312,6 +352,8 @@
     case windowDidNotAppear
     case statusItemNotFound
     case menuDidNotOpen
+    case menuDidNotStayOpen
     case tabNotFound(String)
+    case tabDidNotOpen(String)
   }
 #endif

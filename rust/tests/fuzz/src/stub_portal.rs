@@ -381,6 +381,11 @@ impl StubPortal {
             return;
         }
 
+        if let Some(resource) = self.device_pool_resources.get_mut(&rid) {
+            resource.filters = new_filters;
+            return;
+        }
+
         tracing::error!(%rid, "Unknown resource");
     }
 
@@ -436,16 +441,17 @@ impl StubPortal {
         Some(pool.clone())
     }
 
-    pub(crate) fn static_device_pool_filters(
+    /// The filters of a static or dynamic device pool.
+    pub(crate) fn device_pool_filters(
         &self,
         pool_id: ResourceId,
     ) -> Option<Vec<tunnel_proto::messages::Filter>> {
-        Some(
-            self.static_device_pool_resources
-                .get(&pool_id)?
-                .filters
-                .clone(),
-        )
+        let filters = match self.static_device_pool_resources.get(&pool_id) {
+            Some(pool) => &pool.filters,
+            None => &self.device_pool_resources.get(&pool_id)?.filters,
+        };
+
+        Some(filters.clone())
     }
 
     pub(crate) fn move_resource_to_new_site(&mut self, rid: ResourceId, site: Site) {

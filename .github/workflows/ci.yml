@@ -209,7 +209,8 @@ jobs:
   commit-screenshots:
     name: commit-screenshots
     needs: [kotlin, swift, tauri]
-    if: "!cancelled() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository"
+    # Release PRs publish a QA'd snapshot; keep its screenshots unchanged.
+    if: "!cancelled() && github.event_name == 'pull_request' && !startsWith(github.head_ref, 'chore/publish-') && github.event.pull_request.head.repo.full_name == github.repository"
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -225,6 +226,12 @@ jobs:
         continue-on-error: true
         with:
           name: gui-client-screenshots
+          path: rust/gui-client/screenshots
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        continue-on-error: true
+        with:
+          pattern: gui-client-tray-screenshots-*
+          merge-multiple: true
           path: rust/gui-client/screenshots
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         continue-on-error: true
@@ -263,12 +270,14 @@ jobs:
           set -euo pipefail
 
           # The clients built the merge commit, not the branch checked out here.
-          git fetch --depth=1 origin "$GITHUB_SHA"
+          # Two deep, so that its first parent, the branch's merge target, comes along.
+          git fetch --depth=2 origin "$GITHUB_SHA"
 
           # `mise exec` puts `uv` on PATH: the shims the mise action sets up are
           # regenerated before it installs, not after.
           mise exec -- uv run scripts/prepare-store-screenshots.py
-          mise exec -- uv run scripts/settle-screenshots.py --baseline "$GITHUB_SHA" \
+          mise exec -- uv run scripts/settle-screenshots.py \
+            --baseline "$GITHUB_SHA" --merge-target "$GITHUB_SHA^1" \
             rust/gui-client/screenshots kotlin/android/screenshots swift/apple/screenshots
       - name: Set up GnuPG for the screenshot commit
         uses: ./.github/actions/setup-gpg
@@ -288,7 +297,11 @@ jobs:
           git config --local user.signingkey "${{ steps.setup-gpg.outputs.key_id }}"
           git config --local commit.gpgsign true
 
-          git add -A rust/gui-client/screenshots kotlin/android/screenshots swift/apple/screenshots
+          # The images only: an artifact holds everything that sits in the directory
+          # it was uploaded from, as the merge commit has it, and the Play Store
+          # listing beside the Android screens is kept by hand on the branch.
+          git add -A -- 'rust/gui-client/screenshots/*.png' \
+            'kotlin/android/screenshots/*.png' 'swift/apple/screenshots/*.png'
           if git diff --cached --quiet; then
             echo "The screenshots are unchanged; nothing to push."
             exit 0
@@ -345,6 +358,7 @@ jobs:
     uses: ./.github/workflows/_kotlin.yml
     secrets: inherit
     permissions:
+      actions: read # inspect store submission artifacts
       contents: write # release draft and build artifact uploads
       id-token: write # OIDC auth
       security-events: write # trivy SARIF upload from setup-mise
@@ -365,6 +379,7 @@ jobs:
     uses: ./.github/workflows/_swift.yml
     secrets: inherit
     permissions:
+      actions: read # inspect store submission artifacts
       contents: write # release draft and build artifact uploads
       id-token: write # OIDC auth
       security-events: write # trivy SARIF upload from setup-mise

@@ -1,6 +1,7 @@
 defmodule PortalWeb.WebsiteAttribution do
   @moduledoc """
-  Moves consented website attribution from the query string into the portal session.
+  Moves website attribution into the portal session and applies regional marketing
+  defaults for direct signups.
   """
 
   @behaviour Plug
@@ -13,6 +14,10 @@ defmodule PortalWeb.WebsiteAttribution do
   @pathname_param "fz_website_path"
   @session_key "website_attribution"
   @source "www.firezone.dev"
+  @click_params ~w[oppref gclid gbraid wbraid]
+  @marketing_params ["fz_mktg" | Enum.map(@click_params, &("fz_" <> &1))]
+  # Keep aligned with website/src/lib/consent-region.ts (EU/EEA and UK).
+  @opt_in_countries ~w[AT BE BG HR CY CZ DK EE FI FR DE GR HU IE IT LV LT LU MT NL PL PT RO SK SI ES SE IS LI NO GB]
 
   @impl true
   def init(opts), do: opts
@@ -24,10 +29,11 @@ defmodule PortalWeb.WebsiteAttribution do
     if attribution_params_present?(conn.query_params) do
       conn
       |> maybe_store_attribution(conn.query_params)
+      |> signup_marketing_default()
       |> Phoenix.Controller.redirect(to: clean_request_target(conn))
       |> halt()
     else
-      conn
+      signup_marketing_default(conn)
     end
   end
 
@@ -42,11 +48,45 @@ defmodule PortalWeb.WebsiteAttribution do
     {delete_session(conn, @session_key), attribution}
   end
 
+  # Capture the decision before LiveView mounts so both Google signup and the
+  # signed email verification token carry it into account metadata. Never replace
+  # an explicit choice with a regional default. Re-evaluate earlier defaults so
+  # a later visit from an opt-in region cannot reuse an implied allowance.
+  defp signup_marketing_default(%{path_info: ["sign_up" | _]} = conn) do
+    attribution = fetch(get_session(conn)) || %{}
+    marketing = attribution["marketing"]
+
+    cond do
+      "1" in get_req_header(conn, "sec-gpc") ->
+        store_marketing_attribution(conn, %{"fz_mktg" => "false"})
+
+      is_map(marketing) and marketing["source"] != "region" ->
+        conn
+
+      Map.has_key?(conn.query_params, "fz_mktg") ->
+        conn
+
+      true ->
+        {country, _city, _coordinates} = Portal.Geo.locate(conn.remote_ip, conn.req_headers)
+        allowed = country in Portal.Geo.all_country_codes!() and country not in @opt_in_countries
+
+        put_session(conn, @session_key, Map.put(attribution, "marketing", %{
+          "marketing_allowed" => allowed,
+          "captured_at" => System.os_time(:second),
+          "source" => "region"
+        }))
+    end
+  end
+
+  defp signup_marketing_default(conn), do: conn
+
   defp attribution_params_present?(params) do
-    Map.has_key?(params, @distinct_id_param) or Map.has_key?(params, @pathname_param)
+    Map.has_key?(params, @distinct_id_param) or Map.has_key?(params, @pathname_param) or
+      Map.has_key?(params, "fz_mktg")
   end
 
   defp maybe_store_attribution(conn, params) do
+    conn = store_marketing_attribution(conn, params)
     with {:ok, distinct_id} <- valid_distinct_id(params[@distinct_id_param]),
          {:ok, website_path} <- valid_website_path(params[@pathname_param]) do
       attribution = %{
@@ -56,10 +96,42 @@ defmodule PortalWeb.WebsiteAttribution do
       }
 
       PostHog.capture_portal_landing(attribution, conn.request_path)
-      put_session(conn, @session_key, attribution)
+      put_session(conn, @session_key, Map.merge(fetch(get_session(conn)) || %{}, attribution))
     else
       _ -> conn
     end
+  end
+
+  defp store_marketing_attribution(conn, %{"fz_mktg" => allowed} = params)
+       when allowed in ["true", "false"] do
+    marketing = %{
+      "marketing_allowed" => allowed == "true",
+      "captured_at" => System.os_time(:second)
+    }
+
+    marketing =
+      if allowed == "true" do
+        Map.merge(marketing, click_references(params))
+      else
+        marketing
+      end
+
+    attribution = Map.put(fetch(get_session(conn)) || %{}, "marketing", marketing)
+    put_session(conn, @session_key, attribution)
+  end
+
+  defp store_marketing_attribution(conn, _params), do: conn
+
+  defp click_references(params) do
+    Enum.reduce(@click_params, %{}, fn key, acc ->
+      value = params["fz_" <> key]
+
+      if is_binary(value) and byte_size(value) in 1..2048 do
+        Map.put(acc, key, value)
+      else
+        acc
+      end
+    end)
   end
 
   defp valid_distinct_id(value) when is_binary(value) do
@@ -81,7 +153,7 @@ defmodule PortalWeb.WebsiteAttribution do
     query_string =
       conn.query_string
       |> URI.query_decoder()
-      |> Enum.reject(fn {key, _value} -> key in [@distinct_id_param, @pathname_param] end)
+      |> Enum.reject(fn {key, _value} -> key in [@distinct_id_param, @pathname_param] ++ @marketing_params end)
       |> URI.encode_query()
 
     if query_string == "" do

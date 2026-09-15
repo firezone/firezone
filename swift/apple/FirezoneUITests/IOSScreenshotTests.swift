@@ -14,11 +14,18 @@
 
   @MainActor
   final class IOSScreenshotTests: XCTestCase {
+    /// Each tab, with a label only its own content carries: a tab that never
+    /// opened leaves the one before it on screen, holding perfectly still, and
+    /// the gallery takes that as a picture of the tab it asked for.
     private static let settingsTabs = [
-      (label: "General", name: "general"),
-      (label: "Advanced", name: "advanced"),
-      (label: "Diagnostic Logs", name: "logs"),
+      (label: "General", name: "general", showing: "Account Slug"),
+      (label: "Advanced", name: "advanced", showing: "Auth Base URL"),
+      (label: "Diagnostic Logs", name: "logs", showing: "Clear Log Directory"),
     ]
+
+    /// A field every parsed certificate carries, so the Device Trust tab can be
+    /// told from the one that was showing before it.
+    private static let certificateAnchor = "Signing Algorithm"
 
     /// The scenarios describing the states of the certificate tab. Each image
     /// carries the name of the scenario it was taken from.
@@ -129,7 +136,7 @@
       try waitFor(app.navigationBars["Settings"], on: "settings")
 
       for tab in Self.settingsTabs {
-        try selectTab(tab.label, in: app)
+        try selectTab(tab.label, showing: tab.showing, in: app)
         deliver(app, as: "settings-\(tab.name)", in: appearance)
       }
     }
@@ -145,7 +152,7 @@
         try waitFor(app.buttons["Settings"], on: scenario)
         app.buttons["Settings"].tap()
         try waitFor(app.navigationBars["Settings"], on: scenario)
-        try selectTab("Device Trust", in: app)
+        try selectTab("Device Trust", showing: Self.certificateAnchor, in: app)
         deliver(app, as: scenario, in: appearance)
       }
     }
@@ -188,9 +195,17 @@
       )
     }
 
-    /// SwiftUI has drawn the iOS tab bar as different controls across releases,
-    /// so the first kind that answers to `label` wins.
-    private func selectTab(_ label: String, in app: XCUIApplication) throws {
+    /// Opens the tab named `label` and waits for `anchor`, which only its own
+    /// content carries.
+    ///
+    /// SwiftUI has drawn the iOS tab bar as different controls across releases, so
+    /// the first kind that answers to `label` wins. A press that lands while the
+    /// sheet is still arriving is dropped without a word, so it is repeated until
+    /// the content it asks for is on screen. The tab's own selected trait would be
+    /// the cheaper signal, but these controls do not report it.
+    private func selectTab(
+      _ label: String, showing anchor: String, in app: XCUIApplication
+    ) throws {
       let candidates = [
         app.tabBars.buttons[label],
         app.buttons[label],
@@ -200,7 +215,13 @@
         throw IOSScreenshotError.tabNotFound(label)
       }
 
-      tab.tap()
+      for _ in 0..<3 {
+        tab.tap()
+
+        if app.descendants(matching: .any)[anchor].waitForExistence(timeout: 10) { return }
+      }
+
+      throw IOSScreenshotError.tabDidNotOpen(label)
     }
 
     /// Opens the account menu and waits for `item`, one of the controls it holds.
@@ -251,5 +272,6 @@
   private enum IOSScreenshotError: Error {
     case screenDidNotAppear(String)
     case tabNotFound(String)
+    case tabDidNotOpen(String)
   }
 #endif

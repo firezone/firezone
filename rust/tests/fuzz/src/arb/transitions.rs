@@ -1,8 +1,4 @@
-use std::{
-    collections::BTreeMap,
-    iter,
-    time::{Duration, Instant},
-};
+use std::{collections::BTreeMap, iter, time::Duration};
 
 use connlib_model::Site;
 use dns_types::DomainName;
@@ -18,10 +14,11 @@ use super::values::{
     arb_ip_stack_kind, arb_system_dns_servers, arb_upstream_doh_servers,
 };
 use super::{dns_queries, packets};
+use crate::probe::FlowId;
 use crate::reference::ReferenceState;
 use crate::resource::{CidrResource, DnsResource, Resource, StaticDevicePoolResource};
 use crate::sim_net::{EdgeConfig, Host};
-use crate::transition::Transition;
+use crate::transition::{Seq, Transition};
 
 #[derive(Clone, Copy, Debug)]
 enum TransitionKind {
@@ -48,16 +45,19 @@ enum TransitionKind {
     DeauthorizeWhileGatewayIsPartitioned,
     UpdateDnsRecords,
     SendPacket,
+    SendPacketOnExistingFlow,
     SendDnsQuery,
     // Static device pool membership update.
     UpdateStaticDevicePool,
 }
 
-pub(super) fn generate(
-    g: &mut Generator,
-    state: &ReferenceState,
-    now: Instant,
-) -> Option<Transition> {
+#[derive(Clone, Copy)]
+enum ExistingFlow {
+    Udp(FlowId),
+    Icmp(FlowId, Seq),
+}
+
+pub(super) fn generate(g: &mut Generator, state: &ReferenceState) -> Transition {
     let addable_resources = state.resources_unknown_to_all_clients();
     let cidr_resources = state.cidr_resources_on_any_client();
     let move_resources = move_resource_candidates(state);
@@ -67,8 +67,17 @@ pub(super) fn generate(
     let deauthorizable_resources = state.deauthorizable_resource_ids();
     let client_ids = state.all_client_ids();
     let dns_record_domains = state.dns_resource_domains();
-    let packet_targets = packets::targets(state, now);
-    let dns_query_targets = dns_queries::targets(state, now);
+    let packet_targets = packets::targets(state);
+    let existing_flows = iter::empty()
+        .chain(state.udp_flows().into_iter().map(ExistingFlow::Udp))
+        .chain(
+            state
+                .icmp_flows()
+                .into_iter()
+                .map(|(flow_id, seq)| ExistingFlow::Icmp(flow_id, seq)),
+        )
+        .collect::<Vec<_>>();
+    let dns_query_targets = dns_queries::targets(state);
     let static_device_pools = state.static_device_pools_on_any_client();
 
     // Build the legal action list. Data-plane actions stay more frequent because
@@ -99,18 +108,19 @@ pub(super) fn generate(
         (!client_ids.is_empty()).then_some((K::SetInternetResourceState, 1)),
         (!dns_record_domains.is_empty()).then_some((K::UpdateDnsRecords, 5)),
         (!packet_targets.is_empty()).then_some((K::SendPacket, 50)),
+        (!existing_flows.is_empty()).then_some((K::SendPacketOnExistingFlow, 25)),
         (!dns_query_targets.is_empty()).then_some((K::SendDnsQuery, 10)),
         (!static_device_pools.is_empty()).then_some((K::UpdateStaticDevicePool, 2)),
     ]
     .into_iter()
     .flatten()
-    .collect::<SmallVec<[_; 23]>>();
+    .collect::<SmallVec<[_; 24]>>();
 
     // Weighted pick over the legal list.
-    let kind = weighted_choose(g, &legal)?;
+    let kind = weighted_choose(g, &legal);
 
     // Generate only the chosen arm's payload from the following bytes.
-    let transition = match kind {
+    match kind {
         K::UpdateSystemDnsServers => Transition::UpdateSystemDnsServers {
             servers: arb_system_dns_servers(g),
         },
@@ -249,6 +259,21 @@ pub(super) fn generate(
             let target = packet_targets[g.choose_index(packet_targets.len())].clone();
             packets::generate(g, target)
         }
+        K::SendPacketOnExistingFlow => {
+            let flow = existing_flows[g.choose_index(existing_flows.len())];
+            let probe_id = g.fresh_probe_id();
+
+            match flow {
+                ExistingFlow::Udp(flow_id) => {
+                    Transition::SendUdpPacketOnExistingFlow { flow_id, probe_id }
+                }
+                ExistingFlow::Icmp(flow_id, seq) => Transition::SendIcmpPacketOnExistingFlow {
+                    flow_id,
+                    seq,
+                    probe_id,
+                },
+            }
+        }
         K::SendDnsQuery => {
             let target = dns_query_targets[g.choose_index(dns_query_targets.len())].clone();
             dns_queries::generate(g, target, state)
@@ -260,9 +285,7 @@ pub(super) fn generate(
                 new_devices: packets::arb_static_pool_members(g, state, &pool),
             }
         }
-    };
-
-    Some(transition)
+    }
 }
 
 fn move_resource_candidates(state: &ReferenceState) -> Vec<(Resource, Site)> {
@@ -352,11 +375,10 @@ fn arb_resource_with_different_type(
 
 /// Reproduces `Union::new_weighted`: partition `int_in_range` over the summed
 /// weight. Identical bytes always pick the same arm.
-fn weighted_choose(g: &mut Generator, opts: &[(TransitionKind, u32)]) -> Option<TransitionKind> {
-    if opts.is_empty() {
-        return None;
-    }
+fn weighted_choose(g: &mut Generator, opts: &[(TransitionKind, u32)]) -> TransitionKind {
     let total = opts.iter().map(|(_, weight)| *weight).sum::<u32>();
+    assert!(total > 0, "there is always at least one legal transition");
+
     let pick = g.u32_in(0..=total - 1);
 
     opts.iter()
@@ -365,4 +387,5 @@ fn weighted_choose(g: &mut Generator, opts: &[(TransitionKind, u32)]) -> Option<
             Some((*kind, *end))
         })
         .find_map(|(kind, end)| (pick < end).then_some(kind))
+        .expect("the selected transition must be within the total weight")
 }

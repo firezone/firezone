@@ -4,7 +4,6 @@ defmodule PortalWeb.Settings.TrustAnchors.IndexTest do
   import Portal.AccountFixtures
   import Portal.ActorFixtures
   import Portal.TrustAnchorFixtures
-  import Portal.FeaturesFixtures
 
   alias Portal.TrustAnchor
   alias Portal.Crypto.X509
@@ -64,7 +63,6 @@ defmodule PortalWeb.Settings.TrustAnchors.IndexTest do
   setup do
     account = account_fixture()
     actor = admin_actor_fixture(account: account)
-    enable_feature(:trust_anchors)
     %{account: account, actor: actor}
   end
 
@@ -83,32 +81,23 @@ defmodule PortalWeb.Settings.TrustAnchors.IndexTest do
   end
 
   describe "index (default action)" do
-    test "redirects to account settings when trust_anchors feature is disabled", %{
-      conn: conn,
-      account: account,
-      actor: actor
-    } do
-      disable_feature(:trust_anchors)
-
-      assert {:error, {:live_redirect, %{to: to}}} =
-               conn
-               |> authorize_conn(actor)
-               |> live(~p"/#{account}/settings/trust_anchors")
-
-      assert to == ~p"/#{account}/settings/account"
-    end
-
     test "renders empty state when no trust anchors", %{
       conn: conn,
       account: account,
       actor: actor
     } do
-      {:ok, _lv, html} =
+      {:ok, lv, html} =
         conn
         |> authorize_conn(actor)
         |> live(~p"/#{account}/settings/trust_anchors")
 
       assert html =~ "Trust Anchors"
+
+      assert has_element?(
+               lv,
+               "a[href='https://www.firezone.dev/kb/device-trust?utm_source=product#']"
+             )
+
       assert html =~ "No trust anchors yet"
     end
 

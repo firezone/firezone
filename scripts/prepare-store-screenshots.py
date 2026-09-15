@@ -214,7 +214,8 @@ def prepare_macos(directory: Path) -> None:
 
     for path in screenshots(directory):
         with Image.open(path) as image:
-            if image.size == MAC_SIZE:
+            # Reviewer attachments are web pages, not framed store listing images.
+            if path.name.startswith("reviewer-") or image.size == MAC_SIZE:
                 write_rgb(path, image)
                 continue
 

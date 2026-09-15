@@ -31,8 +31,7 @@ defmodule Portal.Crl.Sync do
           "distribution_point" => distribution_point
         }
       }) do
-    with true <- Portal.Features.enabled?(:trust_anchors),
-         {:ok, issuer} <- Base.decode64(encoded_issuer),
+    with {:ok, issuer} <- Base.decode64(encoded_issuer),
          endpoint when not is_nil(endpoint) <-
            Database.fetch_endpoint(account_id, issuer, distribution_point) do
       refresh(endpoint)

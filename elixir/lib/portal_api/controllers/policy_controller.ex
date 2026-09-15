@@ -75,6 +75,12 @@ defmodule PortalAPI.PolicyController do
   # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :create,
     summary: "Create Policy",
+    description: """
+    Creates a Policy.
+
+    A Policy is enabled by default. Pass `is_disabled: true` to create it \
+    disabled, so it grants no access until enabled.
+    """,
     parameters: [],
     request_body:
       {"Policy Attributes", "application/json", PortalAPI.Schemas.Policy.CreateRequest,
@@ -316,7 +322,7 @@ defmodule PortalAPI.PolicyController do
     # so we only do the request-specific casting here.
     defp create_changeset(attrs, %Authentication.Subject{} = subject) do
       %Policy{}
-      |> cast(attrs, ~w[description group_id resource_id flow_log_uploads_enabled]a)
+      |> cast(attrs, ~w[description group_id resource_id flow_log_uploads_enabled is_disabled]a)
       |> validate_required(~w[group_id resource_id]a)
       |> cast_embed(:conditions, with: &Portal.Policies.Condition.changeset/3)
       |> put_change(:account_id, subject.account.id)

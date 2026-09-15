@@ -1,0 +1,10 @@
+#!/bin/bash
+# A script rather than a symlink: macOS derives an app's bundle from the path its binary
+# was launched through, and only Contents/MacOS counts, so a symlink to the binary, even
+# one inside the bundle, leaves the client without the app's identity. Starting it at its
+# real path keeps it; `-a` only names it.
+#
+# $0 is the path we were invoked through, itself a symlink whenever one is on the PATH,
+# so resolve it before looking for the bundle around it.
+self="$(readlink -f "$0")"
+exec -a firezone "$(cd "$(dirname "$self")/../../MacOS" && pwd)/firezone-cli" "$@"

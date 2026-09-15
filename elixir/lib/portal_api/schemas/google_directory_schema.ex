@@ -13,7 +13,8 @@ defmodule PortalAPI.Schemas.GoogleDirectory do
                :is_verified,
                :sync_all_domains,
                :users_channel_id,
-               :users_resource_id
+               :users_resource_id,
+               :webhook_received_at
              ]}
     OpenApiSpex.schema(%{
       title: "GoogleDirectory",

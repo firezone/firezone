@@ -77,6 +77,13 @@ import kotlin.coroutines.cancellation.CancellationException
 @AndroidEntryPoint
 @OptIn(ExperimentalStdlibApi::class)
 class TunnelService : VpnService() {
+    enum class StartSource {
+        BOOT,
+        CONNECT_ON_START,
+        AUTH_TAB,
+        AUTH_CALLBACK,
+    }
+
     @Inject
     internal lateinit var repo: Repository
 
@@ -100,6 +107,7 @@ class TunnelService : VpnService() {
     private var tunnelDnsAddresses: MutableList<String> = mutableListOf()
     private var tunnelSearchDomain: String? = null
     private var tunnelRoutes: MutableList<Cidr> = mutableListOf()
+    private var acceptedFamilies: Set<AddressFamily>? = null
     private var resourceState: ResourceState = ResourceState.UNSET
 
     // For reacting to changes to the network
@@ -110,6 +118,7 @@ class TunnelService : VpnService() {
 
     var startedByUser: Boolean = false
     private var commandChannel: Channel<TunnelCommand>? = null
+    private var sessionJob: Job? = null
 
     // A `SupervisorJob` keeps one failed child from cancelling its siblings, but an exception it
     // does not handle still reaches the thread's default handler and takes the process with it.
@@ -169,7 +178,7 @@ class TunnelService : VpnService() {
             binder
         }
 
-    private fun buildVpnService() {
+    private fun vpnBuilder(families: Set<AddressFamily>): Builder {
         fun handleApplications(
             appRestrictions: Bundle,
             key: String,
@@ -180,13 +189,15 @@ class TunnelService : VpnService() {
             }
         }
 
-        Builder()
+        val routes = tunnelRoutes.filter { familyOf(it.address) in families }
+
+        return Builder()
             .apply {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                     setMetered(false) // Inherit the metered status from the underlying networks.
                 }
 
-                if (tunnelRoutes.all { it.prefix != 0 }) {
+                if (routes.all { it.prefix != 0 }) {
                     // Allow traffic to bypass the VPN interface when Always-on VPN is enabled only
                     // if full-route is not enabled.
                     allowBypass()
@@ -208,11 +219,11 @@ class TunnelService : VpnService() {
                 addDisallowedApplication("com.google.firebase.messaging") // Firebase Cloud Messaging
                 addDisallowedApplication("com.google.android.gsf") // Google Services Framework
 
-                tunnelRoutes.forEach {
+                routes.forEach {
                     addRoute(it.address, it.prefix)
                 }
 
-                tunnelDnsAddresses.forEach { dns ->
+                tunnelDnsAddresses.filter { familyOf(it) in families }.forEach { dns ->
                     addDnsServer(dns)
                 }
 
@@ -220,18 +231,69 @@ class TunnelService : VpnService() {
                     addSearchDomain(it)
                 }
 
-                addAddress(tunnelIpv4Address!!, 32)
-                addAddress(tunnelIpv6Address!!, 128)
-            }.runCatching { establish() }
-            .onFailure { Log.e(TAG, "Error establishing VPN service", it) }
-            .onSuccess { fd ->
-                if (fd == null) {
-                    Log.d(TAG, "VpnService.Builder.establish() returned null")
-                    return@onSuccess
+                if (AddressFamily.V4 in families) {
+                    addAddress(tunnelIpv4Address!!, 32)
                 }
 
-                sendTunnelCommand(TunnelCommand.SetTun(fd.detachFd()))
+                if (AddressFamily.V6 in families) {
+                    addAddress(tunnelIpv6Address!!, 128)
+                }
             }
+    }
+
+    private fun buildVpnService() {
+        if (tunnelIpv4Address == null || tunnelIpv6Address == null) {
+            // A managed-configuration change can land before connlib has handed us an interface.
+            Log.d(TAG, "Not building the VPN interface: connlib has not configured one yet")
+            return
+        }
+
+        // Android hands the addresses to the kernel one at a time and discards the ones it already
+        // applied as soon as one is rejected, so a device that refuses IPv6 fails the entire
+        // interface. Dropping the family it will not take is the only way to get a TUN device there.
+        //
+        // A rejected `establish` also tears down the interface we already have, so stay on the
+        // families this device accepted rather than re-running the doomed attempts on every update.
+        val attempts = acceptedFamilies?.let { listOf(it) } ?: ADDRESS_FAMILY_ATTEMPTS
+        var lastFailure: Throwable? = null
+
+        for (families in attempts) {
+            val fd =
+                try {
+                    vpnBuilder(families).establish()
+                } catch (e: Exception) {
+                    Log.d(TAG, "Cannot establish the VPN interface for $families", e)
+                    lastFailure = e
+                    continue
+                }
+
+            if (fd == null) {
+                // `establish` only returns null once our VPN consent is gone, and no narrower
+                // interface wins it back.
+                Log.e(TAG, "VpnService.Builder.establish() returned null")
+                TunnelNotification.showVpnPermissionRequiredNotification(this)
+                disconnect()
+                return
+            }
+
+            if (families != ALL_ADDRESS_FAMILIES) {
+                Log.i(TAG, "Established the VPN interface with $families only")
+            }
+
+            acceptedFamilies = families
+            sendTunnelCommand(TunnelCommand.SetTun(fd.detachFd()))
+            return
+        }
+
+        // Whatever we learned about this device no longer holds, so start over next time.
+        acceptedFamilies = null
+
+        Log.e(TAG, "Cannot establish the VPN interface", checkNotNull(lastFailure))
+        showErrorNotification(
+            "Could not create the VPN interface",
+            "This device rejected Firezone's tunnel configuration. Contact your administrator for support.",
+        )
+        disconnect()
     }
 
     private val restrictionsFilter = IntentFilter(Intent.ACTION_APPLICATION_RESTRICTIONS_CHANGED)
@@ -266,6 +328,18 @@ class TunnelService : VpnService() {
         flags: Int,
         startId: Int,
     ): Int {
+        val source =
+            StartSource.entries.firstOrNull { it.name == intent?.getStringExtra(START_SOURCE_EXTRA) }?.name
+                ?: when {
+                    intent == null -> "SERVICE_RESTART"
+                    intent.action == VpnService.SERVICE_INTERFACE -> "VPN_SERVICE"
+                    else -> "UNKNOWN"
+                }
+        Log.i(
+            TAG,
+            "Service start received: source=$source startId=$startId flags=$flags " +
+                "state=$tunnelState sessionLive=${sessionJob?.isCompleted == false}",
+        )
         if (intent?.getBooleanExtra("startedByUser", false) == true) {
             startedByUser = true
         }
@@ -334,6 +408,11 @@ class TunnelService : VpnService() {
     }
 
     private fun connect() {
+        if (sessionJob?.isCompleted == false) {
+            Log.i(TAG, "Ignoring repeated start because a session is already live")
+            return
+        }
+
         val token =
             (appRestrictions.getString("token") ?: tokenStore.get())
                 ?.takeUnless(String::isBlank)
@@ -350,102 +429,103 @@ class TunnelService : VpnService() {
 
             val context = this
 
-            serviceScope.launch {
-                try {
-                    // Set telemetry environment and user context
-                    val deviceIdValue = deviceId()
-                    Telemetry.setEnvironmentOrClose(config.apiUrl)
-                    Telemetry.setFirezoneId(deviceIdValue)
-                    // The portal names the account in `init`; until then this session has none.
-                    Telemetry.setAccountSlug(null)
+            sessionJob =
+                serviceScope.launch {
+                    try {
+                        // Set telemetry environment and user context
+                        val deviceIdValue = deviceId()
+                        Telemetry.setEnvironmentOrClose(config.apiUrl)
+                        Telemetry.setFirezoneId(deviceIdValue)
+                        // The portal names the account in `init`; until then this session has none.
+                        Telemetry.setAccountSlug(null)
 
-                    configureLogger(
-                        logDir(this@TunnelService),
-                        config.logFilter,
-                        flowLogsDir(this@TunnelService),
-                    )
-
-                    val deviceInfo =
-                        DeviceInfo(
-                            firebaseInstallationId = firebaseInstallationId(),
-                            deviceUuid = null,
-                            deviceSerial = null,
-                            identifierForVendor = null,
+                        configureLogger(
+                            logDir(this@TunnelService),
+                            config.logFilter,
+                            flowLogsDir(this@TunnelService),
                         )
 
-                    // An administrator who requires a certificate wants no session without one.
-                    if (certificateAlias == null && repo.isX509CertificateRequired(appRestrictions)) {
-                        throw X509IdentityException(
-                            "Your administrator requires a device certificate, and none has been released to Firezone yet.",
-                        )
-                    }
+                        val deviceInfo =
+                            DeviceInfo(
+                                firebaseInstallationId = firebaseInstallationId(),
+                                deviceUuid = null,
+                                deviceSerial = null,
+                                identifierForVendor = null,
+                            )
 
-                    // The KeyChain blocks on a system service and connlib reads the identity while
-                    // it constructs the session, so load it before we get there.
-                    val certificate =
-                        withContext(Dispatchers.IO) { x509Identity.load(certificateAlias) }
-
-                    sessionFactory
-                        .open(
-                            AndroidSessionConfig(
-                                apiUrl = config.apiUrl,
-                                token = token,
-                                deviceId = deviceIdValue,
-                                deviceName = getDeviceName(),
-                                isInternetResourceActive = resourceState.isEnabled(),
-                                deviceInfo = deviceInfo,
-                            ),
-                            // The token authenticates the user. A configured certificate attests
-                            // the device, and the portal decides whether to accept it.
-                            tlsIdentity = certificate?.tlsIdentity,
-                        ).use { session ->
-                            startNetworkMonitoring()
-                            startLogCleanup()
-                            startFeatureFlagPoll()
-
-                            val stopReason = eventLoop(session, commandChannel!!)
-
-                            Log.i(TAG, "Event-loop finished: $stopReason")
-
-                            val message =
-                                when (stopReason) {
-                                    is StopReason.Disconnected -> stopReason.message
-
-                                    StopReason.Error -> UNRECOVERABLE_ERROR
-
-                                    StopReason.ExplicitDisconnect,
-                                    StopReason.EventChannelClosed,
-                                    StopReason.CommandChannelClosed,
-                                    -> null
-                                }
-
-                            if (startedByUser && message != null) {
-                                TunnelNotification.showDisconnectedNotification(context, message)
-                            }
+                        // An administrator who requires a certificate wants no session without one.
+                        if (certificateAlias == null && repo.isX509CertificateRequired(appRestrictions)) {
+                            throw X509IdentityException(
+                                "Your administrator requires a device certificate, and none has been released to Firezone yet.",
+                            )
                         }
-                } catch (e: ConnlibException) {
-                    Log.e(TAG, "Failed to start session", e)
-                    e.close()
-                } catch (e: X509IdentityException) {
-                    Log.e(TAG, "Failed to load the client certificate", e)
-                    val advice = "Contact your administrator for support."
-                    showErrorNotification(
-                        "Client certificate unavailable",
-                        e.message?.takeUnless(String::isBlank)?.let { "$it $advice" } ?: advice,
-                    )
-                } finally {
-                    commandChannel = null
-                    tunnelState = State.DOWN
 
-                    stopNetworkMonitoring()
-                    stopFeatureFlagPoll()
+                        // The KeyChain blocks on a system service and connlib reads the identity while
+                        // it constructs the session, so load it before we get there.
+                        val certificate =
+                            withContext(Dispatchers.IO) { x509Identity.load(certificateAlias) }
 
-                    // Stop the foreground notification
-                    stopForeground(STOP_FOREGROUND_REMOVE)
-                    stopLogCleanup()
-                    stopSelf()
+                        sessionFactory
+                            .open(
+                                AndroidSessionConfig(
+                                    apiUrl = config.apiUrl,
+                                    token = token,
+                                    deviceId = deviceIdValue,
+                                    deviceName = getDeviceName(),
+                                    isInternetResourceActive = resourceState.isEnabled(),
+                                    deviceInfo = deviceInfo,
+                                ),
+                                // The token authenticates the user. A configured certificate attests
+                                // the device, and the portal decides whether to accept it.
+                                tlsIdentity = certificate?.tlsIdentity,
+                            ).use { session ->
+                                startNetworkMonitoring()
+                                startLogCleanup()
+                                startFeatureFlagPoll()
+
+                                val stopReason = eventLoop(session, commandChannel!!)
+
+                                Log.i(TAG, "Event-loop finished: $stopReason")
+
+                                val message =
+                                    when (stopReason) {
+                                        is StopReason.Disconnected -> stopReason.message
+
+                                        StopReason.Error -> UNRECOVERABLE_ERROR
+
+                                        StopReason.ExplicitDisconnect,
+                                        StopReason.EventChannelClosed,
+                                        StopReason.CommandChannelClosed,
+                                        -> null
+                                    }
+
+                                if (startedByUser && message != null) {
+                                    TunnelNotification.showDisconnectedNotification(context, message)
+                                }
+                            }
+                    } catch (e: ConnlibException) {
+                        Log.e(TAG, "Failed to start session", e)
+                        e.close()
+                    } catch (e: X509IdentityException) {
+                        Log.e(TAG, "Failed to load the client certificate", e)
+                        val advice = "Contact your administrator for support."
+                        showErrorNotification(
+                            "Client certificate unavailable",
+                            e.message?.takeUnless(String::isBlank)?.let { "$it $advice" } ?: advice,
+                        )
+                    } finally {
+                        commandChannel = null
+                        tunnelState = State.DOWN
+
+                        stopNetworkMonitoring()
+                        stopFeatureFlagPoll()
+
+                        // Stop the foreground notification
+                        stopForeground(STOP_FOREGROUND_REMOVE)
+                        stopLogCleanup()
+                        stopSelf()
+                    }
                 }
-            }
         }
     }
 
@@ -562,7 +642,7 @@ class TunnelService : VpnService() {
         return deviceId
     }
 
-    fun startConnectedNotification() {
+    private fun startConnectedNotification() {
         val notification = TunnelNotification.createConnectedNotification(this)
         startForeground(TunnelNotification.CONNECTED_NOTIFICATION_ID, notification)
     }
@@ -676,6 +756,13 @@ class TunnelService : VpnService() {
 
                             is TunnelCommand.SetTun -> {
                                 session.setTun(command.fd)
+
+                                // connlib only moves packets once it holds the TUN device, so this
+                                // is the first moment the tunnel is actually carrying traffic.
+                                if (tunnelState != State.UP) {
+                                    tunnelState = State.UP
+                                    startConnectedNotification()
+                                }
                             }
 
                             is TunnelCommand.Reset -> {
@@ -721,13 +808,6 @@ class TunnelService : VpnService() {
                                 is Event.ConnectedToPortal -> {
                                     Telemetry.setAccountSlug(event.accountSlug)
                                     tunnelActorName = event.actorName
-
-                                    // A slug forced through managed configuration already wins
-                                    // every read, so caching over it would only surface once the
-                                    // admin stops forcing one.
-                                    if (!repo.isAccountSlugManaged()) {
-                                        repo.saveAccountSlug(event.accountSlug).collect {}
-                                    }
                                 }
 
                                 is Event.Disconnected -> {
@@ -845,9 +925,27 @@ class TunnelService : VpnService() {
             DOWN,
         }
 
+        enum class AddressFamily {
+            V4,
+            V6,
+        }
+
+        private val ALL_ADDRESS_FAMILIES = setOf(AddressFamily.V4, AddressFamily.V6)
+
+        // Ordered from the interface we want to the ones we settle for.
+        private val ADDRESS_FAMILY_ATTEMPTS =
+            listOf(
+                ALL_ADDRESS_FAMILIES,
+                setOf(AddressFamily.V4),
+                setOf(AddressFamily.V6),
+            )
+
+        private fun familyOf(address: String): AddressFamily = if (address.contains(':')) AddressFamily.V6 else AddressFamily.V4
+
         private const val SESSION_NAME: String = "Firezone Connection"
         private const val MTU: Int = 1280
         private const val TAG: String = "TunnelService"
+        private const val START_SOURCE_EXTRA = "startSource"
 
         // Whatever the event loop threw reads like a stack trace, so the user is told that the
         // session ended rather than what raised it.
@@ -892,9 +990,13 @@ class TunnelService : VpnService() {
             return false
         }
 
-        fun start(context: Context) {
+        fun start(
+            context: Context,
+            source: StartSource,
+        ) {
             val intent = Intent(context, TunnelService::class.java)
-            intent.putExtra("startedByUser", true)
+            intent.putExtra(START_SOURCE_EXTRA, source.name)
+            intent.putExtra("startedByUser", source != StartSource.BOOT)
             context.startService(intent)
         }
     }

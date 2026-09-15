@@ -8,7 +8,7 @@ defmodule PortalAPI.Schemas.PoolMember do
     @derive {PortalAPI.JSON.Encoder,
              for: Portal.Device,
              internal: [
-               :account_id,
+               :posture, :account_id,
                :actor_id,
                :attested?,
                :client_token_id,
@@ -21,6 +21,7 @@ defmodule PortalAPI.Schemas.PoolMember do
                :gateway_token_rotated_at,
                :hostname,
                :identifier_for_vendor,
+               :slug,
                :inserted_at,
                :ipv4,
                :ipv6,
@@ -48,7 +49,8 @@ defmodule PortalAPI.Schemas.PoolMember do
              ]}
     OpenApiSpex.schema(%{
       title: "PoolMember",
-      description: "A Client belonging to a static device pool Resource",
+      deprecated: true,
+      description: "A Client a device pool Resource names as a member",
       type: :object,
       properties: %{
         id: %Schema{
@@ -76,6 +78,7 @@ defmodule PortalAPI.Schemas.PoolMember do
 
     OpenApiSpex.schema(%{
       title: "PoolMemberPatchRequest",
+      deprecated: true,
       description: """
       PATCH body for adding and removing individual pool members. Both
       operations are idempotent, and `remove` is applied before `add`, so a
@@ -111,6 +114,7 @@ defmodule PortalAPI.Schemas.PoolMember do
 
     OpenApiSpex.schema(%{
       title: "PoolMemberPutRequest",
+      deprecated: true,
       description: """
       PUT body replacing the pool's entire membership. Any Client not named
       here is removed from the pool.

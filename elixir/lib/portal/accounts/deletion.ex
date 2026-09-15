@@ -23,6 +23,14 @@ defmodule Portal.Accounts.Deletion do
     end
   end
 
+  def change_deletion_feedback(%Account{} = account, feedback \\ nil) do
+    Database.change_deletion_feedback(account, feedback)
+  end
+
+  def save_deletion_feedback(%Account{} = account, feedback, subject) do
+    Database.save_deletion_feedback(account, feedback, subject)
+  end
+
   defp enqueue_deletion_notification(%Account{} = account, subject) do
     notify_admins(
       account,
@@ -81,6 +89,7 @@ defmodule Portal.Accounts.Deletion do
 
   defmodule Database do
     import Ecto.Query
+    import Ecto.Changeset
 
     alias Portal.Account
     alias Portal.Actor
@@ -113,6 +122,26 @@ defmodule Portal.Accounts.Deletion do
         end
       end)
     end
+
+    def change_deletion_feedback(%Account{} = account, feedback) do
+      account
+      |> cast(%{metadata: %{deletion_feedback: feedback}}, [])
+      |> cast_embed(:metadata)
+      |> Account.changeset()
+    end
+
+    def save_deletion_feedback(
+          %Account{id: account_id} = account,
+          feedback,
+          %{account: %{id: account_id}} = subject
+        ) do
+      account
+      |> change_deletion_feedback(feedback)
+      |> Safe.scoped(subject)
+      |> Safe.update()
+    end
+
+    def save_deletion_feedback(_account, _feedback, _subject), do: {:error, :unauthorized}
 
     defp fetch_account(account_id, subject) do
       from(a in Account, where: a.id == ^account_id)

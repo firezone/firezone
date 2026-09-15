@@ -8,7 +8,7 @@ defmodule PortalWeb.FindAccountTest do
     test "renders email input form", %{conn: conn} do
       {:ok, _lv, html} = live(conn, ~p"/find_account")
 
-      assert html =~ "Find your company&#39;s account"
+      assert html =~ "Find your organization&#39;s account"
       assert html =~ "Work email"
       assert html =~ "Find"
     end

@@ -107,7 +107,6 @@ config :portal, Portal.ChangeLogs.Consumer,
     gateway_tokens
     policies
     resources
-    static_device_pool_members
     client_tokens
     one_time_passcodes
     api_tokens
@@ -160,7 +159,6 @@ config :portal, Portal.Changes.Consumer,
     sites
     policies
     resources
-    static_device_pool_members
     client_tokens
     google_auth_providers
     entra_auth_providers
@@ -323,6 +321,8 @@ config :portal, Portal.Analytics.PostHog,
   endpoint: "https://e.firezone.dev/i/v0/e/",
   project_api_key: nil,
   req_opts: [receive_timeout: 5_000, retry: :transient]
+
+config :portal, Portal.Workers.SignUpFollowUp, from_email: nil, bcc_email: nil
 
 config :portal, Portal.Splunk.APIClient, req_opts: []
 

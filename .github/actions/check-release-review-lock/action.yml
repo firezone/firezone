@@ -1,0 +1,35 @@
+name: Check release review lock
+description: Fail if a draft release is locked for store review
+inputs:
+  release-name:
+    description: Name of the release draft to check
+    required: true
+
+runs:
+  using: composite
+  steps:
+    # Build and submission workflows must hold the same concurrency group.
+    - shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        RELEASE_NAME: ${{ inputs.release-name }}
+      run: |
+        set -euo pipefail
+
+        # Listing distinguishes a missing release from an API or authentication failure.
+        release=$(gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/releases?per_page=100" | jq -c --arg name "$RELEASE_NAME" '
+            add | map(select(.tag_name == $name)) |
+            if length > 1 then error("multiple matching releases") else .[0] end')
+
+        if [[ "$release" == null ]]; then
+            exit 0
+        fi
+        jq -e '.draft == true' <<<"$release" >/dev/null
+
+        artifact="release-review-$RELEASE_NAME"
+        run_id=$(gh api --method GET --paginate --slurp "repos/$GITHUB_REPOSITORY/actions/artifacts" -f name="$artifact" -F per_page=100 |
+            jq -r --arg name "$artifact" '[.[].artifacts[] | select(.name == $name and .workflow_run.head_branch == "main") | .workflow_run.id][0] // empty')
+        if [[ -n "$run_id" ]]; then
+            echo "::error::$RELEASE_NAME is locked for review by https://github.com/$GITHUB_REPOSITORY/actions/runs/$run_id. To rebuild intentionally, select force_rebuild when dispatching this workflow."
+            exit 1
+        fi

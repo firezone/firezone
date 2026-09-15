@@ -1,6 +1,5 @@
 defmodule Portal.Google.APIClientTest do
   use ExUnit.Case, async: true
-  import ExUnit.CaptureLog
 
   alias Portal.Google.APIClient
   alias Portal.TokenCache
@@ -341,6 +340,73 @@ defmodule Portal.Google.APIClientTest do
 
       assert {:ok, "fallback-access-token"} =
                APIClient.get_access_token("admin@example.com")
+    end
+  end
+
+  describe "get_user/2 missing flags" do
+    test "retries until both flags are present" do
+      Portal.Config.merge_env_override(:portal, APIClient, user_flags_retry_delay: 0)
+
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{"id" => "user1", "suspended" => false})
+      end)
+
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, active_google_user(%{"id" => "user1"}))
+      end)
+
+      assert {:ok, %Req.Response{body: %{"suspended" => false, "archived" => false}}} =
+               APIClient.get_user(@test_access_token, "user1")
+    end
+
+    test "returns an error when the flags remain missing past the deadline" do
+      Portal.Config.merge_env_override(:portal, APIClient, user_flags_retry_timeout: 0)
+
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{"id" => "user1", "archived" => false})
+      end)
+
+      assert {:error, {:missing_user_flags, "user1"}} =
+               APIClient.get_user(@test_access_token, "user1")
+    end
+
+    test "preserves a deletion response while retrying incomplete users" do
+      Portal.Config.merge_env_override(:portal, APIClient, user_flags_retry_delay: 0)
+      Req.Test.expect(APIClient, fn conn -> Req.Test.json(conn, %{"id" => "user1"}) end)
+      Req.Test.expect(APIClient, fn conn -> Plug.Conn.send_resp(conn, 404, "") end)
+
+      assert {:ok, %Req.Response{status: 404}} = APIClient.get_user(@test_access_token, "user1")
+    end
+
+    test "propagates missing flags errors from batch users" do
+      Portal.Config.merge_env_override(:portal, APIClient, user_flags_retry_timeout: 0)
+
+      Req.Test.expect(APIClient, fn conn ->
+        boundary = "incomplete_user"
+        body = build_batch_body(boundary, [{"HTTP/1.1 200 OK", JSON.encode!(%{"id" => "user1"})}])
+
+        conn
+        |> Plug.Conn.put_resp_header("content-type", "multipart/mixed; boundary=#{boundary}")
+        |> Plug.Conn.send_resp(200, body)
+      end)
+
+      Req.Test.expect(APIClient, fn conn -> Req.Test.json(conn, %{"id" => "user1"}) end)
+
+      assert {:error, {:missing_user_flags, "user1"}} =
+               APIClient.batch_get_users(@test_access_token, ["user1"])
+    end
+
+    test "propagates missing flags errors from streamed users" do
+      Portal.Config.merge_env_override(:portal, APIClient, user_flags_retry_timeout: 0)
+
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{"users" => [%{"id" => "user1"}]})
+      end)
+
+      Req.Test.expect(APIClient, fn conn -> Req.Test.json(conn, %{"id" => "user1"}) end)
+
+      assert [{:error, {:missing_user_flags, "user1"}}] =
+               APIClient.stream_users(@test_access_token) |> Enum.to_list()
     end
   end
 
@@ -1028,8 +1094,8 @@ defmodule Portal.Google.APIClientTest do
         Req.Test.json(conn, %{
           "users" => [
             active_google_user(%{"id" => "user1", "primaryEmail" => "user1@example.com"}),
-            %{"id" => "user2", "primaryEmail" => "user2@example.com", "suspended" => true},
-            %{"id" => "user3", "primaryEmail" => "user3@example.com", "archived" => true}
+            %{"id" => "user2", "primaryEmail" => "user2@example.com", "suspended" => true, "archived" => false},
+            %{"id" => "user3", "primaryEmail" => "user3@example.com", "archived" => true, "suspended" => false}
           ]
         })
       end)
@@ -1136,6 +1202,24 @@ defmodule Portal.Google.APIClientTest do
       assert {:ok, []} = APIClient.batch_get_users(@test_access_token, ["deleted-user"])
     end
 
+    test "skips soft-deleted 412 users in batch response" do
+      Req.Test.expect(APIClient, fn conn ->
+        boundary = "deleted_boundary"
+
+        body =
+          build_batch_body(boundary, [
+            {"HTTP/1.1 412 Precondition Failed",
+             JSON.encode!(%{"error" => %{"code" => 412, "message" => "User is deleted."}})}
+          ])
+
+        conn
+        |> Plug.Conn.put_resp_header("content-type", "multipart/mixed; boundary=#{boundary}")
+        |> Plug.Conn.send_resp(200, body)
+      end)
+
+      assert {:ok, []} = APIClient.batch_get_users(@test_access_token, ["deleted-user"])
+    end
+
     test "handles iodata response body for multipart parsing" do
       Req.Test.expect(APIClient, fn conn ->
         boundary = "iodata_boundary"
@@ -1194,12 +1278,11 @@ defmodule Portal.Google.APIClientTest do
 
     test "returns error for unexpected per-part status in batch response" do
       Req.Test.expect(APIClient, fn conn ->
-        boundary = "server_error_part_boundary"
+        boundary = "teapot_part_boundary"
 
         body =
           build_batch_body(boundary, [
-            {"HTTP/1.1 500 Internal Server Error",
-             JSON.encode!(%{"error" => %{"message" => "boom"}})}
+            {"HTTP/1.1 418 I'm a teapot", JSON.encode!(%{"error" => %{"message" => "boom"}})}
           ])
 
         conn
@@ -1207,7 +1290,7 @@ defmodule Portal.Google.APIClientTest do
         |> Plug.Conn.send_resp(200, body)
       end)
 
-      assert {:error, %Req.Response{status: 500}} =
+      assert {:error, %Req.Response{status: 418}} =
                APIClient.batch_get_users(@test_access_token, ["user1"])
     end
 
@@ -1271,6 +1354,66 @@ defmodule Portal.Google.APIClientTest do
       assert :counters.get(attempts, 1) == 6
     end
 
+    test "retries the whole chunk when a part fails with a 5xx" do
+      Portal.Config.put_env_override(:portal, APIClient,
+        req_opts: [retry_delay: 0, plug: {Req.Test, APIClient}]
+      )
+
+      attempts = :counters.new(1, [:atomics])
+
+      Req.Test.expect(APIClient, 2, fn conn ->
+        :counters.add(attempts, 1, 1)
+        boundary = "server_error_part_boundary"
+
+        second_part =
+          case :counters.get(attempts, 1) do
+            1 -> {"HTTP/1.1 500 Internal Server Error", JSON.encode!(%{"error" => "boom"})}
+            2 -> {"HTTP/1.1 200 OK", JSON.encode!(active_google_user(%{"id" => "user2"}))}
+          end
+
+        body =
+          build_batch_body(boundary, [
+            {"HTTP/1.1 200 OK", JSON.encode!(active_google_user(%{"id" => "user1"}))},
+            second_part
+          ])
+
+        conn
+        |> Plug.Conn.put_resp_header("content-type", "multipart/mixed; boundary=#{boundary}")
+        |> Plug.Conn.send_resp(200, body)
+      end)
+
+      assert {:ok, users} = APIClient.batch_get_users(@test_access_token, ["user1", "user2"])
+      assert Enum.map(users, & &1["id"]) == ["user1", "user2"]
+      assert :counters.get(attempts, 1) == 2
+    end
+
+    test "surfaces the error when a 5xx part outlasts the retries" do
+      Portal.Config.put_env_override(:portal, APIClient,
+        req_opts: [retry_delay: 0, plug: {Req.Test, APIClient}]
+      )
+
+      attempts = :counters.new(1, [:atomics])
+
+      Req.Test.stub(APIClient, fn conn ->
+        :counters.add(attempts, 1, 1)
+        boundary = "always_failing_boundary"
+
+        body =
+          build_batch_body(boundary, [
+            {"HTTP/1.1 503 Service Unavailable", JSON.encode!(%{"error" => "boom"})}
+          ])
+
+        conn
+        |> Plug.Conn.put_resp_header("content-type", "multipart/mixed; boundary=#{boundary}")
+        |> Plug.Conn.send_resp(200, body)
+      end)
+
+      assert {:error, %Req.Response{status: 503}} =
+               APIClient.batch_get_users(@test_access_token, ["user1"])
+
+      assert :counters.get(attempts, 1) == 6
+    end
+
     test "returns transport error for batch request failure" do
       Req.Test.expect(APIClient, fn conn ->
         Req.Test.transport_error(conn, :timeout)
@@ -1294,13 +1437,15 @@ defmodule Portal.Google.APIClientTest do
              JSON.encode!(%{
                "id" => "user2",
                "primaryEmail" => "user2@example.com",
-               "suspended" => true
+               "suspended" => true,
+               "archived" => false
              })},
             {"HTTP/1.1 200 OK",
              JSON.encode!(%{
                "id" => "user3",
                "primaryEmail" => "user3@example.com",
-               "archived" => true
+               "archived" => true,
+               "suspended" => false
              })}
           ])
 
@@ -1315,7 +1460,7 @@ defmodule Portal.Google.APIClientTest do
       assert Enum.map(users, & &1["id"]) == ["user1"]
     end
 
-    test "logs and skips batch users missing suspended or archived flags" do
+    test "refetches batch users missing suspended or archived flags" do
       Req.Test.expect(APIClient, fn conn ->
         boundary = "missing_flags_boundary"
 
@@ -1334,14 +1479,13 @@ defmodule Portal.Google.APIClientTest do
         |> Plug.Conn.send_resp(200, body)
       end)
 
-      log =
-        capture_log(fn ->
-          assert {:ok, users} = APIClient.batch_get_users(@test_access_token, ["user1", "user2"])
-          assert Enum.map(users, & &1["id"]) == ["user2"]
-        end)
+      Req.Test.expect(APIClient, fn conn ->
+        assert conn.request_path == "/admin/directory/v1/users/user1"
+        Req.Test.json(conn, active_google_user(%{"id" => "user1"}))
+      end)
 
-      assert log =~ "Skipping Google user with missing suspended/archived flags"
-      assert log =~ "user1"
+      assert {:ok, users} = APIClient.batch_get_users(@test_access_token, ["user1", "user2"])
+      assert Enum.map(users, & &1["id"]) == ["user1", "user2"]
     end
 
     test "halts on chunk error after first successful chunk" do

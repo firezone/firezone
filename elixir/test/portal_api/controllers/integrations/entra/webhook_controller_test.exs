@@ -150,6 +150,15 @@ defmodule PortalAPI.Integrations.Entra.WebhookControllerTest do
       )
     end
 
+    test "records when a delivery was last accepted", %{conn: conn, directory: directory} do
+      assert is_nil(directory.webhook_received_at)
+
+      conn = post_notifications(conn, directory, [change("Users", "user-unknown", "updated")])
+
+      assert response(conn, 202) == ""
+      assert Portal.Repo.get_by!(Entra.Directory, id: directory.id).webhook_received_at
+    end
+
     test "queues unknown users and groups while a job for the directory is running", %{
       conn: conn,
       directory: directory

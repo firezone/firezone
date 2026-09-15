@@ -148,27 +148,22 @@ defmodule PortalWeb.Actors do
         _params,
         %{assigns: %{actor_panel: %{creating_actor: true}}} = socket
       ) do
-    params = Map.drop(socket.assigns.query_params, ["tab"])
-    {:noreply, push_patch(socket, to: ~p"/#{socket.assigns.account}/actors?#{params}")}
+    {:noreply, push_patch(socket, to: live_table_path(socket, ~p"/#{socket.assigns.account}/actors"))}
   end
 
   def handle_event("close_panel", _params, socket) do
-    params = Map.drop(socket.assigns.query_params, ["tab"])
-    {:noreply, push_patch(socket, to: ~p"/#{socket.assigns.account}/actors?#{params}")}
+    {:noreply, push_patch(socket, to: live_table_path(socket, ~p"/#{socket.assigns.account}/actors"))}
   end
 
   def handle_event("handle_keydown", _params, %{assigns: %{live_action: :edit}} = socket)
       when not is_nil(socket.assigns.selected_actor) do
     {:noreply,
-     push_patch(socket,
-       to: ~p"/#{socket.assigns.account}/actors/#{socket.assigns.selected_actor.id}"
-     )}
+     push_patch(socket, to: live_table_path(socket, ~p"/#{socket.assigns.account}/actors/#{socket.assigns.selected_actor.id}"))}
   end
 
   def handle_event("handle_keydown", _params, socket)
       when not is_nil(socket.assigns.selected_actor) do
-    params = Map.drop(socket.assigns.query_params, ["tab"])
-    {:noreply, push_patch(socket, to: ~p"/#{socket.assigns.account}/actors?#{params}")}
+    {:noreply, push_patch(socket, to: live_table_path(socket, ~p"/#{socket.assigns.account}/actors"))}
   end
 
   def handle_event(
@@ -176,8 +171,7 @@ defmodule PortalWeb.Actors do
         _params,
         %{assigns: %{actor_panel: %{creating_actor: true}}} = socket
       ) do
-    params = Map.drop(socket.assigns.query_params, ["tab"])
-    {:noreply, push_patch(socket, to: ~p"/#{socket.assigns.account}/actors?#{params}")}
+    {:noreply, push_patch(socket, to: live_table_path(socket, ~p"/#{socket.assigns.account}/actors"))}
   end
 
   def handle_event("handle_keydown", _params, socket) do
@@ -185,7 +179,7 @@ defmodule PortalWeb.Actors do
   end
 
   def handle_event("open_new_actor_panel", _params, socket) do
-    {:noreply, push_patch(socket, to: ~p"/#{socket.assigns.account}/actors/new")}
+    {:noreply, push_patch(socket, to: live_table_path(socket, ~p"/#{socket.assigns.account}/actors/new"))}
   end
 
   def handle_event("select_new_actor_type", %{"type" => "user"}, socket) do
@@ -209,16 +203,12 @@ defmodule PortalWeb.Actors do
 
   def handle_event("open_actor_edit_form", _params, socket) do
     {:noreply,
-     push_patch(socket,
-       to: ~p"/#{socket.assigns.account}/actors/#{socket.assigns.selected_actor.id}/edit"
-     )}
+     push_patch(socket, to: live_table_path(socket, ~p"/#{socket.assigns.account}/actors/#{socket.assigns.selected_actor.id}/edit"))}
   end
 
   def handle_event("cancel_actor_edit_form", _params, socket) do
     {:noreply,
-     push_patch(socket,
-       to: ~p"/#{socket.assigns.account}/actors/#{socket.assigns.selected_actor.id}"
-     )}
+     push_patch(socket, to: live_table_path(socket, ~p"/#{socket.assigns.account}/actors/#{socket.assigns.selected_actor.id}"))}
   end
 
   def handle_event("validate", %{"actor" => attrs} = params, socket) do
@@ -357,7 +347,7 @@ defmodule PortalWeb.Actors do
               |> apply_group_membership_changes(actor, socket.assigns.subject)
               |> put_flash(:success, "User created successfully")
               |> reload_live_table!("actors")
-              |> push_patch(to: ~p"/#{socket.assigns.account}/actors/#{actor.id}")
+              |> push_patch(to: live_table_path(socket, ~p"/#{socket.assigns.account}/actors/#{actor.id}"))
 
             {:noreply, socket}
 
@@ -390,7 +380,7 @@ defmodule PortalWeb.Actors do
             socket
             |> apply_group_membership_changes(actor, socket.assigns.subject)
             |> reload_live_table!("actors")
-            |> push_patch(to: ~p"/#{socket.assigns.account}/actors/#{actor.id}")
+            |> push_patch(to: live_table_path(socket, ~p"/#{socket.assigns.account}/actors/#{actor.id}"))
 
           {:noreply, socket}
 
@@ -400,7 +390,7 @@ defmodule PortalWeb.Actors do
             |> apply_group_membership_changes(actor, socket.assigns.subject)
             |> reload_live_table!("actors")
             |> merge_state(:actor_related, created_token: encoded_token)
-            |> push_patch(to: ~p"/#{socket.assigns.account}/actors/#{actor.id}")
+            |> push_patch(to: live_table_path(socket, ~p"/#{socket.assigns.account}/actors/#{actor.id}"))
 
           {:noreply, socket}
 
@@ -475,7 +465,7 @@ defmodule PortalWeb.Actors do
        socket
        |> put_flash(:success, "Actor deleted successfully")
        |> reload_live_table!("actors")
-       |> push_patch(to: ~p"/#{socket.assigns.account}/actors")}
+       |> push_patch(to: live_table_path(socket, ~p"/#{socket.assigns.account}/actors"))}
     else
       {:error, :not_found} ->
         {:noreply, put_flash(socket, :error, "Actor not found")}
@@ -559,12 +549,7 @@ defmodule PortalWeb.Actors do
         %{"tab" => tab},
         %{assigns: %{selected_actor: %Actor{} = actor}} = socket
       ) do
-    params = Map.put(socket.assigns.query_params, "tab", tab)
-
-    {:noreply,
-     push_patch(socket,
-       to: ~p"/#{socket.assigns.account}/actors/#{actor}?#{params}"
-     )}
+    {:noreply, push_patch(socket, to: live_table_path(socket, ~p"/#{socket.assigns.account}/actors/#{actor}", tab: tab))}
   end
 
   def handle_event("change_tab", _params, %{assigns: %{selected_actor: nil}} = socket) do
@@ -886,7 +871,7 @@ defmodule PortalWeb.Actors do
          socket
          |> put_flash(:success, flash_message)
          |> reload_live_table!("actors")
-         |> push_patch(to: ~p"/#{socket.assigns.account}/actors/#{actor.id}")}
+         |> push_patch(to: live_table_path(socket, ~p"/#{socket.assigns.account}/actors/#{actor.id}"))}
 
       {:error, changeset} ->
         {:noreply, assign(socket, actor_form: actor_form_state(to_form(changeset)))}

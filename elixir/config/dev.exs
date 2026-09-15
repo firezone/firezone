@@ -3,6 +3,7 @@ import Config
 # Local vars
 web_port = System.get_env("PHOENIX_WEB_PORT", "13443") |> String.to_integer()
 api_port = System.get_env("PHOENIX_API_PORT", "13001") |> String.to_integer()
+api_http_port = System.get_env("PHOENIX_API_HTTP_PORT", "13081") |> String.to_integer()
 mtls_port = System.get_env("PHOENIX_MTLS_PORT", "13003") |> String.to_integer()
 ops_port = System.get_env("PHOENIX_OPS_PORT", "13002") |> String.to_integer()
 certfile_path = System.get_env("CERTFILE_PATH", "priv/cert/selfsigned.pem")
@@ -167,6 +168,7 @@ config :portal, Oban,
     google_webhook: 5,
     okta_scheduler: 1,
     okta_sync: 5,
+    okta_webhook: 5,
     splunk_scheduler: 1,
     splunk_sync: 5,
     datadog_scheduler: 1,
@@ -309,6 +311,7 @@ config :portal, Portal.Endpoint,
 
 config :portal, PortalAPI.Endpoint,
   url: [scheme: "https", host: "localhost", port: api_port],
+  http: [port: api_http_port],
   https: [
     port: api_port,
     certfile: certfile_path,

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #MISE description="Minimize the corpus of a fuzz target"
-#MISE depends=["install-toolchain", "unpack-corpus {{usage.target}}"]
+#MISE depends=["install-toolchain"]
 #MISE raw=true
 #USAGE arg "<target>"
 set -euo pipefail

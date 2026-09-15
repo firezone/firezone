@@ -217,16 +217,6 @@ class Repository
                 emit(sharedPreferences.getString(ACCOUNT_SLUG_KEY, null))
             }.flowOn(coroutineDispatcher)
 
-        fun saveAccountSlug(value: String): Flow<Unit> =
-            flow {
-                emit(
-                    sharedPreferences
-                        .edit()
-                        .putString(ACCOUNT_SLUG_KEY, value)
-                        .apply(),
-                )
-            }.flowOn(coroutineDispatcher)
-
         fun saveDeviceIdSync(value: String): Unit =
             sharedPreferences
                 .edit()

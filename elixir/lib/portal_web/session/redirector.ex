@@ -74,6 +74,13 @@ defmodule PortalWeb.Session.Redirector do
 
     PostHog.identify_actor(actor, account, website_attribution)
 
+    if match?(%Portal.Actor{type: :account_admin_user}, actor) do
+      Portal.Analytics.update_marketing_attribution(
+        account,
+        get_in(website_attribution || %{}, ["marketing"])
+      )
+    end
+
     conn
     |> PortalWeb.Cookie.RecentAccounts.prepend(account.id)
     |> Phoenix.Controller.redirect(to: redirect_to)

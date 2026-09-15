@@ -152,7 +152,7 @@ defmodule PortalWeb.Policies do
     {:noreply,
      socket
      |> put_flash(:error, message)
-     |> push_patch(to: ~p"/#{socket.assigns.account}/policies?#{socket.assigns.query_params}")}
+     |> push_patch(to: live_table_path(socket, ~p"/#{socket.assigns.account}/policies"))}
   end
 
   defp parse_page(params) do
@@ -336,7 +336,7 @@ defmodule PortalWeb.Policies do
                 </p>
               </div>
               <.link
-                patch={~p"/#{@account}/policies/new"}
+                patch={live_table_path(assigns, ~p"/#{@account}/policies/new")}
                 class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
               >
                 <.icon name="ri-add-line" class="w-3 h-3" /> Add a Policy
@@ -474,8 +474,7 @@ defmodule PortalWeb.Policies do
       do: handle_live_table_event(event, params, socket)
 
   def handle_event("close_panel", _params, socket) do
-    params = Map.drop(socket.assigns.query_params, ["tab"])
-    {:noreply, push_patch(socket, to: ~p"/#{socket.assigns.account}/policies?#{params}")}
+    {:noreply, push_patch(socket, to: live_table_path(socket, ~p"/#{socket.assigns.account}/policies"))}
   end
 
   def handle_event(
@@ -483,15 +482,7 @@ defmodule PortalWeb.Policies do
         %{"tab" => tab},
         %{assigns: %{selected_policy: %Policy{} = policy}} = socket
       ) do
-    params =
-      socket.assigns.query_params
-      |> Map.put("tab", tab)
-      |> Map.delete("page")
-
-    {:noreply,
-     push_patch(socket,
-       to: ~p"/#{socket.assigns.account}/policies/#{policy}?#{params}"
-     )}
+    {:noreply, push_patch(socket, to: live_table_path(socket, ~p"/#{socket.assigns.account}/policies/#{policy}", tab: tab))}
   end
 
   def handle_event("switch_policy_tab", _params, %{assigns: %{selected_policy: nil}} = socket) do
@@ -499,11 +490,9 @@ defmodule PortalWeb.Policies do
   end
 
   def handle_event("change_policy_authorizations_page", %{"page" => page}, socket) do
-    params = Map.put(socket.assigns.query_params, "page", page)
-
     {:noreply,
      push_patch(socket,
-       to: ~p"/#{socket.assigns.account}/policies/#{socket.assigns.selected_policy.id}?#{params}"
+       to: live_table_path(socket, ~p"/#{socket.assigns.account}/policies/#{socket.assigns.selected_policy.id}", tab: "authorizations", page: page)
      )}
   end
 
@@ -522,13 +511,12 @@ defmodule PortalWeb.Policies do
         _ -> ~p"/#{socket.assigns.account}/policies"
       end
 
-    {:noreply, push_patch(socket, to: path)}
+    {:noreply, push_patch(socket, to: live_table_path(socket, path))}
   end
 
   def handle_event("handle_keydown", %{"key" => "Escape"}, socket)
       when not is_nil(socket.assigns.selected_policy) do
-    params = Map.drop(socket.assigns.query_params, ["tab"])
-    {:noreply, push_patch(socket, to: ~p"/#{socket.assigns.account}/policies?#{params}")}
+    {:noreply, push_patch(socket, to: live_table_path(socket, ~p"/#{socket.assigns.account}/policies"))}
   end
 
   def handle_event("handle_keydown", _params, socket) do
@@ -585,14 +573,12 @@ defmodule PortalWeb.Policies do
      |> put_flash(:success, "Policy deleted successfully.")
      |> merge_state(:policy_confirm, delete?: false)
      |> reload_live_table!("policies")
-     |> push_patch(to: ~p"/#{socket.assigns.account}/policies")}
+     |> push_patch(to: live_table_path(socket, ~p"/#{socket.assigns.account}/policies"))}
   end
 
   def handle_event("open_edit_form", _params, socket) do
     {:noreply,
-     push_patch(socket,
-       to: ~p"/#{socket.assigns.account}/policies/#{socket.assigns.selected_policy.id}/edit"
-     )}
+     push_patch(socket, to: live_table_path(socket, ~p"/#{socket.assigns.account}/policies/#{socket.assigns.selected_policy.id}/edit"))}
   end
 
   def handle_event("cancel_policy_form", _params, socket) do
@@ -602,11 +588,11 @@ defmodule PortalWeb.Policies do
         _ -> ~p"/#{socket.assigns.account}/policies"
       end
 
-    {:noreply, push_patch(socket, to: path)}
+    {:noreply, push_patch(socket, to: live_table_path(socket, path))}
   end
 
   def handle_event("open_new_policy_form", _params, socket) do
-    {:noreply, push_patch(socket, to: ~p"/#{socket.assigns.account}/policies/new")}
+    {:noreply, push_patch(socket, to: live_table_path(socket, ~p"/#{socket.assigns.account}/policies/new"))}
   end
 
   def handle_event("change_policy_form", %{"policy" => params}, socket) do
@@ -639,7 +625,7 @@ defmodule PortalWeb.Policies do
            socket
            |> put_flash(:success, "Policy created successfully.")
            |> reload_live_table!("policies")
-           |> push_patch(to: ~p"/#{socket.assigns.account}/policies/#{policy.id}")}
+           |> push_patch(to: live_table_path(socket, ~p"/#{socket.assigns.account}/policies/#{policy.id}"))}
 
         {:error, changeset} ->
           {:noreply, merge_state(socket, :policy_panel, form: to_form(changeset))}
@@ -661,7 +647,7 @@ defmodule PortalWeb.Policies do
            socket
            |> put_flash(:success, "Policy updated successfully.")
            |> reload_live_table!("policies")
-           |> push_patch(to: ~p"/#{socket.assigns.account}/policies/#{updated.id}")}
+           |> push_patch(to: live_table_path(socket, ~p"/#{socket.assigns.account}/policies/#{updated.id}"))}
 
         {:error, changeset} ->
           {:noreply, merge_state(socket, :policy_panel, form: to_form(changeset))}
@@ -1284,7 +1270,7 @@ defmodule PortalWeb.Policies do
       ]
 
       schemas =
-        if Portal.Features.enabled?(:trust_anchors) do
+        if Portal.Features.enabled?(:x509_auth) do
           [Portal.X509.AuthProvider | schemas]
         else
           schemas
@@ -1298,7 +1284,7 @@ defmodule PortalWeb.Policies do
     end
 
     def x509_auth_provider_id(subject) do
-      if Portal.Features.enabled?(:trust_anchors) do
+      if Portal.Features.enabled?(:x509_auth) do
         Portal.X509.AuthProvider
         |> Safe.scoped(subject)
         |> Safe.one()

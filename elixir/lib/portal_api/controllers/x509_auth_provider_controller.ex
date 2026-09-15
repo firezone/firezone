@@ -21,7 +21,7 @@ defmodule PortalAPI.X509AuthProviderController do
   # coveralls-ignore-stop
 
   def show(conn, _params) do
-    if Portal.Features.enabled?(:trust_anchors) do
+    if Portal.Features.enabled?(:x509_auth) do
       with {:ok, provider} <- Database.fetch_provider(conn.assigns.subject) do
         json(conn, JSON.encode(provider))
       else

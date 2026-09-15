@@ -908,13 +908,10 @@ defmodule Portal.Google.Sync do
         suspended != true and archived != true
 
       _ ->
-        Logger.error("Skipping Google user with missing suspended/archived flags",
-          google_directory_id: directory_id,
-          google_user_id: Map.get(user, "id", "unknown"),
-          google_user_email: Map.get(user, "primaryEmail", Map.get(user, "email", "unknown"))
-        )
-
-        false
+        raise Google.SyncError,
+          error: {:missing_user_flags, Map.get(user, "id", "unknown")},
+          directory_id: directory_id,
+          step: :validate_user
     end
   end
 

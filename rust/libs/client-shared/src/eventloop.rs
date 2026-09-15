@@ -211,6 +211,7 @@ enum CombinedEvent {
     Command(Option<Command>),
     Tunnel(Result<ClientEvent, TunnelError>),
     Portal(Option<Result<PortalEvent, phoenix_channel::Error>>),
+    Clock(clock::Event),
 }
 
 impl Eventloop {
@@ -249,6 +250,22 @@ impl Eventloop {
                 self.handle_tunnel_event(event).await?;
 
                 Ok(ControlFlow::Continue(()))
+            }
+            CombinedEvent::Clock(clock::Event::Alarm(now)) => {
+                if let Some(tunnel) = self.tunnel.as_mut() {
+                    tunnel.state_mut().handle_timeout(now);
+                }
+
+                Ok(ControlFlow::Continue(()))
+            }
+            CombinedEvent::Clock(clock::Event::Late(by)) => {
+                let cf = self
+                    .handle_eventloop_command(Command::Reset(format!(
+                        "event loop ran {by:.0?} late"
+                    )))
+                    .await?;
+
+                Ok(cf)
             }
             CombinedEvent::Portal(Some(Ok(PortalEvent::Message(msg)))) => {
                 self.handle_portal_message(msg).await?;
@@ -843,6 +860,10 @@ impl Eventloop {
     }
 
     fn next_event(&mut self, cx: &mut Context) -> Poll<CombinedEvent> {
+        if let Poll::Ready(event) = self.clock.poll_event(cx) {
+            return Poll::Ready(CombinedEvent::Clock(event));
+        }
+
         if let Poll::Ready(cmd) = self.cmd_rx.poll_recv(cx) {
             return Poll::Ready(CombinedEvent::Command(cmd));
         }
@@ -852,8 +873,15 @@ impl Eventloop {
         }
 
         let now = self.clock.now();
-        if let Some(Poll::Ready(event)) = self.tunnel.as_mut().map(|t| t.poll_next_event(cx, now)) {
-            return Poll::Ready(CombinedEvent::Tunnel(event));
+        if let Some(tunnel) = self.tunnel.as_mut() {
+            if let Poll::Ready(event) = tunnel.poll_next_event(cx, now) {
+                return Poll::Ready(CombinedEvent::Tunnel(event));
+            }
+
+            // Nothing to do until the tunnel's next deadline: ask once, then suspend. Being
+            // sampled well past that deadline means we were not running, not that we had nothing
+            // to do.
+            self.clock.set_alarm(cx, tunnel.next_timeout(now));
         }
 
         Poll::Pending

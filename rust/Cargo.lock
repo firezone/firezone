@@ -834,9 +834,9 @@ dependencies = [
 
 [[package]]
 name = "blake2"
-version = "0.11.0-rc.6"
+version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "061f1a09225e328e1ffbb378d2d49923c0ca5fee19fb5ac1cc9c1e9d52b93690"
+checksum = "5b5d4d889834ee8ecfc0f8426ad30faf7cdcb10f741a8e6d7224d95325479f6f"
 dependencies = [
  "digest 0.11.3",
 ]
@@ -911,7 +911,7 @@ dependencies = [
 [[package]]
 name = "boringtun"
 version = "0.7.0"
-source = "git+https://github.com/firezone/boringtun?branch=master#b275f9028dc529165b05c6dd87157b1e7ea49693"
+source = "git+https://github.com/firezone/boringtun?branch=master#fcc140e9e4f0dfb4bbbfb2457409d1e8534846a8"
 dependencies = [
  "aead",
  "blake2",
@@ -1286,6 +1286,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "clap_complete"
+version = "4.6.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3be2ad0423bdbbb0e25bc89add796f3559706d4a95e1bc98e4d9662a957b6a19"
+dependencies = [
+ "clap",
+]
+
+[[package]]
 name = "clap_derive"
 version = "4.6.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1343,6 +1352,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "client-ipc"
+version = "0.1.0"
+dependencies = [
+ "anyhow-ext",
+ "futures",
+ "known-dirs",
+ "libc",
+ "logging",
+ "sd-notify",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "windows",
+ "windows-package-identity",
+ "windows-security",
+]
+
+[[package]]
 name = "client-shared"
 version = "0.1.0"
 dependencies = [
@@ -1387,6 +1417,7 @@ dependencies = [
 name = "clock"
 version = "0.1.0"
 dependencies = [
+ "tokio",
  "tracing",
 ]
 
@@ -1464,9 +1495,12 @@ checksum = "a6ef517f0926dd24a1582492c791b6a4818a4d94e789a334894aa15b0d12f55c"
 
 [[package]]
 name = "constant_time_eq"
-version = "0.5.0"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1a1ec0cfec728a79a5109075543131387f911cb4d07716436d7ae20533657a96"
+checksum = "6187e670c346a04bcbf5def0393d57ec0e5ab56565cde6be4a7cbdb6cdc2f3f6"
+dependencies = [
+ "rustversion",
+]
 
 [[package]]
 name = "convert_case"
@@ -2457,10 +2491,28 @@ dependencies = [
 ]
 
 [[package]]
-name = "firezone-gateway"
-version = "1.6.1"
+name = "firezone-cli"
+version = "1.5.18"
 dependencies = [
  "anyhow-ext",
+ "clap",
+ "clap_complete",
+ "connlib-model",
+ "embed-resource",
+ "gui-ipc",
+ "secrecy",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "windows",
+]
+
+[[package]]
+name = "firezone-gateway"
+version = "1.6.2"
+dependencies = [
+ "anyhow-ext",
+ "atomicfs",
  "backoff",
  "bin-shared",
  "caps",
@@ -2471,6 +2523,7 @@ dependencies = [
  "flow-log-writer",
  "futures",
  "futures-bounded",
+ "hex",
  "hickory-resolver",
  "humantime",
  "ip-packet",
@@ -2488,6 +2541,9 @@ dependencies = [
  "rpassword",
  "rustls",
  "secrecy",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
  "snownet",
  "socket-factory",
  "telemetry",
@@ -2504,7 +2560,7 @@ dependencies = [
 
 [[package]]
 name = "firezone-gui-client"
-version = "1.5.17"
+version = "1.5.18"
 dependencies = [
  "admx-macro",
  "anyhow-ext",
@@ -2513,6 +2569,7 @@ dependencies = [
  "bin-shared",
  "chrono",
  "clap",
+ "client-ipc",
  "client-shared",
  "connlib-model",
  "dbus-secret-service-keyring-store",
@@ -2524,6 +2581,7 @@ dependencies = [
  "flow-log-upload",
  "flow-log-writer",
  "futures",
+ "gui-ipc",
  "hex",
  "humantime",
  "ip-packet",
@@ -2531,7 +2589,6 @@ dependencies = [
  "keyring-core",
  "known-dirs",
  "ksni",
- "libc",
  "logging",
  "mimalloc",
  "native-dialog",
@@ -2545,13 +2602,11 @@ dependencies = [
  "reqwest",
  "rustls",
  "sadness-generator",
- "sd-notify",
  "secrecy",
  "semver",
  "serde",
  "serde_json",
  "serde_variant",
- "sha2 0.11.0",
  "socket-factory",
  "specta",
  "specta-typescript",
@@ -2579,6 +2634,7 @@ dependencies = [
  "uuid",
  "windows",
  "windows-native-keyring-store",
+ "windows-package-identity",
  "windows-security",
  "windows-service",
  "winreg 0.56.0",
@@ -2588,7 +2644,7 @@ dependencies = [
 
 [[package]]
 name = "firezone-headless-client"
-version = "1.5.12"
+version = "1.5.13"
 dependencies = [
  "anyhow-ext",
  "backoff",
@@ -2749,12 +2805,14 @@ dependencies = [
  "base64 0.23.1",
  "chrono",
  "flow-log-spool",
+ "nix 0.31.3",
  "serde",
  "serde_json",
  "tempfile",
  "tracing",
  "tracing-subscriber",
  "uuid",
+ "windows",
  "windows-security",
 ]
 
@@ -3348,14 +3406,34 @@ dependencies = [
 ]
 
 [[package]]
+name = "gui-ipc"
+version = "0.1.0"
+dependencies = [
+ "anyhow-ext",
+ "client-ipc",
+ "connlib-model",
+ "futures",
+ "secrecy",
+ "serde",
+ "thiserror 2.0.20",
+ "url",
+]
+
+[[package]]
 name = "gui-smoke-test"
 version = "0.1.0"
 dependencies = [
  "anyhow-ext",
  "clap",
+ "png 0.18.1",
+ "serde_json",
  "subprocess",
+ "tempfile",
  "tracing",
  "tracing-subscriber",
+ "windows",
+ "winreg 0.56.0",
+ "zbus",
 ]
 
 [[package]]
@@ -6485,9 +6563,9 @@ dependencies = [
 
 [[package]]
 name = "rustls"
-version = "0.23.43"
+version = "0.23.45"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0283386ce02abc0151e1761d08802dfe86c173b0b494af5cbc086574e453da06"
+checksum = "0d41d731c7d2f962d1ccc364cec258de3c0e93b38c2fb3ba97ac74513048d634"
 dependencies = [
  "log",
  "once_cell",
@@ -6548,9 +6626,9 @@ checksum = "f87165f0995f63a9fbeea62b64d10b4d9d8e78ec6d7d51fb2125fda7bb36788f"
 
 [[package]]
 name = "rustls-webpki"
-version = "0.103.13"
+version = "0.103.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "61c429a8649f110dddef65e2a5ad240f747e85f7758a6bccc7e5777bd33f756e"
+checksum = "f3c3cf1d8b1e7d4927e2d154c3fcb02979afb9939629c62cd9048d4f07b60ac2"
 dependencies = [
  "ring",
  "rustls-pki-types",
@@ -9692,6 +9770,13 @@ checksum = "9150af68066c4c5c07ddc0ce30421554771e528bde427614c61038bc2c92c2b1"
 dependencies = [
  "windows-core",
  "windows-link 0.1.3",
+]
+
+[[package]]
+name = "windows-package-identity"
+version = "0.1.0"
+dependencies = [
+ "sha2 0.11.0",
 ]
 
 [[package]]

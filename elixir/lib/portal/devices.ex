@@ -12,6 +12,27 @@ defmodule Portal.Devices do
   alias Portal.Site
   alias __MODULE__.Database
 
+  @doc "Puts the slug a device named in `changeset` gets in `account_id`, see `next_free_slug/3`."
+  @spec put_free_slug(Ecto.Changeset.t(), Ecto.UUID.t(), String.t() | nil) :: Ecto.Changeset.t()
+  defdelegate put_free_slug(changeset, account_id, owner_name), to: Database
+
+  @doc """
+  The slug a device named `name` gets in `account_id`, composed by the `device_slug`
+  database function: the name's first dotted part, lowercased, with `owner_name`'s
+  first name in front unless the name already carries it, then numbered when
+  another device in the account holds it.
+  """
+  @spec next_free_slug(Ecto.UUID.t(), String.t(), String.t() | nil) :: String.t()
+  defdelegate next_free_slug(account_id, name, owner_name), to: Database
+
+  @doc "The name that prefixes a device slug: the owner's for people, nothing for service accounts."
+  @spec owner_name(Portal.Actor.t() | nil) :: String.t() | nil
+  def owner_name(%Portal.Actor{type: type, name: name})
+      when type in [:account_user, :account_admin_user],
+      do: name
+
+  def owner_name(_actor), do: nil
+
   @doc """
   Inserts a Gateway and mints its single-owner token.
 
@@ -39,6 +60,7 @@ defmodule Portal.Devices do
   end
 
   defmodule Database do
+    import Ecto.Query
     alias Portal.Safe
 
     # Repo.transact/1 rolls the transaction back when fun returns
@@ -62,8 +84,33 @@ defmodule Portal.Devices do
       |> Ecto.Changeset.cast(%{name: name}, [:name])
       |> Ecto.Changeset.put_change(:type, :gateway)
       |> Ecto.Changeset.put_change(:site_id, site.id)
+      |> put_free_slug(subject.account.id, nil)
       |> Safe.scoped(subject)
       |> Safe.insert()
+    end
+
+    def put_free_slug(changeset, account_id, owner_name) do
+      case Ecto.Changeset.get_field(changeset, :name) do
+        nil -> changeset
+        name -> Ecto.Changeset.put_change(changeset, :slug, next_free_slug(account_id, name, owner_name))
+      end
+    end
+
+    # Two devices inserted at the same time can still race for the slug; callers that
+    # must not fail retry on the unique violation.
+    def next_free_slug(account_id, name, owner_name) do
+      from(
+        slug in fragment(
+          "SELECT next_free_device_slug(?, ?, ?) AS slug",
+          type(^account_id, :binary_id),
+          ^name,
+          ^owner_name
+        ),
+        select: %{slug: slug.slug}
+      )
+      |> Safe.unscoped()
+      |> Safe.one()
+      |> Map.fetch!(:slug)
     end
   end
 end

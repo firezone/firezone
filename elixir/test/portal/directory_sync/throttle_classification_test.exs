@@ -98,8 +98,8 @@ defmodule Portal.DirectorySync.ThrottleClassificationTest do
   end
 
   describe "Okta" do
-    test "keeps the directory enabled when the provider throttles" do
-      for status <- @throttled do
+    test "keeps the directory enabled on transient HTTP errors" do
+      for status <- [403 | @throttled] do
         directory = okta_directory_fixture()
 
         Portal.Okta.ErrorHandler.handle(
@@ -117,14 +117,14 @@ defmodule Portal.DirectorySync.ThrottleClassificationTest do
       end
     end
 
-    test "still disables the directory when access is denied" do
+    test "still disables the directory when authentication fails" do
       directory = okta_directory_fixture()
 
       Portal.Okta.ErrorHandler.handle(
         Portal.Okta.SyncError.exception(
           directory_id: directory.id,
           step: :list_users,
-          error: %Req.Response{status: 403, body: ""}
+          error: %Req.Response{status: 401, body: ""}
         ),
         directory.id
       )

@@ -108,13 +108,12 @@ defmodule PortalAPI.MCP.ToolsTest do
     assert_annotations(tools, "update_actor", true, true)
     assert_annotations(tools, "replace_group_memberships", true, true)
     assert_annotations(tools, "update_group_memberships", true, true)
-    assert_annotations(tools, "replace_resource_pool_members", true, true)
-    assert_annotations(tools, "update_resource_pool_members", true, true)
     assert_annotations(tools, "rotate_single_owner_gateway_token", true, false)
   end
 
   test "does not expose deprecated API operations", %{tools: tools} do
     refute Enum.any?(tools, &(&1.path_template == "/sites/{site_id}/gateway_tokens" and &1.method == :post))
+    refute Enum.any?(tools, &(&1.path_template == "/resources/{resource_id}/pool_members"))
   end
 
   test "input schemas are closed objects listing path parameters as required", %{tools: tools} do
@@ -163,7 +162,7 @@ defmodule PortalAPI.MCP.ToolsTest do
     description = fetch(tools, "create_resource").description
 
     assert description =~ "Create Resource"
-    assert description =~ "Device pools"
+    assert description =~ "device_pool"
     assert description =~ "POST /resources"
   end
 

@@ -29,7 +29,8 @@ defmodule PortalWeb.OIDC.IdentityProfile do
           email_verified: :verified | :unverified | :missing
         }
 
-  @spec build(map(), map(), Ecto.UUID.t(), keyword()) :: {:ok, t()} | {:error, Ecto.Changeset.t()}
+  @spec build(map(), map(), Ecto.UUID.t() | nil, keyword()) ::
+          {:ok, t()} | {:error, Ecto.Changeset.t()}
   def build(claims, userinfo, account_id, opts \\ []) do
     userinfo = PortalWeb.OIDC.matching_userinfo(claims, userinfo)
     email = resolve_email(claims, Keyword.get(opts, :email_claim)) |> trim_email()
@@ -67,7 +68,7 @@ defmodule PortalWeb.OIDC.IdentityProfile do
   defp validate_upsert_attrs(attrs) do
     %ExternalIdentity{}
     |> cast(attrs, @idp_fields ++ ~w[account_id actor_id]a)
-    |> validate_required(~w[email issuer idp_id name account_id]a)
+    |> validate_required(required_fields(attrs["account_id"]))
     |> validate_length(:issuer, max: 2048)
     |> validate_length(:idp_id, max: 255)
     |> validate_length(:name, max: 255)
@@ -80,6 +81,10 @@ defmodule PortalWeb.OIDC.IdentityProfile do
     |> validate_length(:picture, max: 2048)
     |> Portal.Changeset.validate_email(:email)
   end
+
+  # Sign-up builds the profile before an account exists.
+  defp required_fields(nil), do: ~w[email issuer idp_id name]a
+  defp required_fields(_account_id), do: ~w[email issuer idp_id name account_id]a
 
   defp resolve_email(claims, nil), do: claims["email"]
   defp resolve_email(claims, email_claim), do: claims[email_claim]

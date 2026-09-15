@@ -27,7 +27,7 @@ use tunnel::{
     GatewayEvent, GatewayTunnel, IPV4_TUNNEL, IPV6_TUNNEL, IpConfig, ResolveDnsRequest, TunnelError,
 };
 
-use crate::RELEASE;
+use crate::{RELEASE, account_slug};
 
 pub const PHOENIX_TOPIC: &str = "gateway";
 
@@ -46,6 +46,8 @@ pub struct Eventloop {
 
     /// The `--flow-logs` flag.
     local_flow_logs: bool,
+
+    account_slug: account_slug::Cache,
 
     resolve_tasks: futures_bounded::FuturesTupleSet<
         Result<Vec<IpAddr>, Arc<anyhow::Error>>,
@@ -85,6 +87,7 @@ impl Eventloop {
         resolver: TokioResolver,
         flow_logs_dir: std::path::PathBuf,
         local_flow_logs: bool,
+        account_slug: account_slug::Cache,
     ) -> Result<Self> {
         let (portal_event_tx, portal_event_rx) = mpsc::channel(128);
         let (portal_cmd_tx, portal_cmd_rx) = mpsc::channel(128);
@@ -104,6 +107,7 @@ impl Eventloop {
             resolver,
             flow_logs_dir,
             local_flow_logs,
+            account_slug,
             resolve_tasks: futures_bounded::FuturesTupleSet::new(
                 || futures_bounded::Delay::tokio(DNS_RESOLUTION_TIMEOUT),
                 1000,
@@ -123,6 +127,7 @@ enum CombinedEvent {
     Tunnel(Result<GatewayEvent, TunnelError>),
     Portal(Option<Result<PortalEvent, phoenix_channel::Error>>),
     DomainResolved((Result<Vec<IpAddr>, Arc<anyhow::Error>>, ResolveDnsRequest)),
+    Clock(clock::Event),
 }
 
 impl Eventloop {
@@ -188,6 +193,18 @@ impl Eventloop {
 
                 Ok(ControlFlow::Continue(()))
             }
+            CombinedEvent::Clock(clock::Event::Alarm(now)) => {
+                if let Some(tunnel) = self.tunnel.as_mut() {
+                    tunnel.state_mut().handle_timeout(now);
+                }
+
+                Ok(ControlFlow::Continue(()))
+            }
+            CombinedEvent::Clock(clock::Event::Late(by)) => {
+                tracing::info!(late_by = ?by, "Event loop ran late");
+
+                Ok(ControlFlow::Continue(()))
+            }
             CombinedEvent::SigIntTerm => {
                 tracing::info!("Received SIGINT/SIGTERM");
 
@@ -199,6 +216,10 @@ impl Eventloop {
     }
 
     fn next_event(&mut self, cx: &mut Context<'_>) -> Poll<CombinedEvent> {
+        if let Poll::Ready(event) = self.clock.poll_event(cx) {
+            return Poll::Ready(CombinedEvent::Clock(event));
+        }
+
         if let Poll::Ready(event) = self.portal_event_rx.poll_recv(cx) {
             return Poll::Ready(CombinedEvent::Portal(event));
         }
@@ -213,13 +234,18 @@ impl Eventloop {
             return Poll::Ready(CombinedEvent::DomainResolved((result, trigger)));
         }
 
-        let now = self.clock.now();
-        if let Some(Poll::Ready(event)) = self.tunnel.as_mut().map(|t| t.poll_next_event(cx, now)) {
-            return Poll::Ready(CombinedEvent::Tunnel(event));
-        }
-
         if let Poll::Ready(()) = self.sigint.poll_recv(cx) {
             return Poll::Ready(CombinedEvent::SigIntTerm);
+        }
+
+        let now = self.clock.now();
+        if let Some(tunnel) = self.tunnel.as_mut() {
+            if let Poll::Ready(event) = tunnel.poll_next_event(cx, now) {
+                return Poll::Ready(CombinedEvent::Tunnel(event));
+            }
+
+            // Nothing to do until the tunnel's next deadline: ask once, then suspend.
+            self.clock.set_alarm(cx, tunnel.next_timeout(now));
         }
 
         Poll::Pending
@@ -428,6 +454,10 @@ impl Eventloop {
             }) => {
                 if let Some(account_slug) = account_slug {
                     telemetry::set_account_slug(account_slug.clone());
+
+                    if let Err(e) = self.account_slug.set(&account_slug) {
+                        tracing::debug!("Failed to cache account slug: {e:#}");
+                    }
 
                     analytics::identify(RELEASE.to_owned(), account_slug, None, None)
                 }

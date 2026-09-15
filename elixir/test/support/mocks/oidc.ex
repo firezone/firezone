@@ -125,6 +125,20 @@ defmodule PortalWeb.Mocks.OIDC do
   end
 
   @doc """
+  Points the shared Google auth provider config at this test's mock OIDC server.
+  """
+  def override_google_auth_provider_config do
+    Portal.Config.put_env_override(:portal, Portal.Google.AuthProvider,
+      client_id: "test-client",
+      client_secret: "test-secret",
+      response_type: "code",
+      scope: "openid email profile",
+      discovery_document_uri: discovery_document_uri(),
+      req_opts: [retry: false, plug: {Req.Test, PortalWeb.OIDC}]
+    )
+  end
+
+  @doc """
   Sets a custom token exchange response. Call this before making the token exchange request.
   The response should be a map that will be JSON encoded.
   """

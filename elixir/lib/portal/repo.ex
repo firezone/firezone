@@ -90,6 +90,11 @@ defmodule Portal.Repo do
     Repo.List.call(__MODULE__, queryable, query_module, opts)
   end
 
+  @doc """
+  Lists results using offset pagination. Pass `:count_limit` to cap the total
+  count; metadata sets `:count_limited` when the cap is reached. Page navigation
+  remains independent of the capped count.
+  """
   @spec list_offset(
           queryable :: Ecto.Queryable.t(),
           query_module :: module(),

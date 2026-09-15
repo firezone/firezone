@@ -105,6 +105,12 @@ pub struct Tunnel<TRoleState> {
     io: Io,
 
     packet_counter: opentelemetry::metrics::Counter<u64>,
+
+    /// Set when the last poll handled IO whose effects only `handle_timeout` completes.
+    ///
+    /// Not every component advertises a deadline for that work, so the tunnel says so itself:
+    /// [`Tunnel::next_timeout`] reports `now` and the alarm rings straight away.
+    needs_timeout: bool,
 }
 
 impl<TRoleState> Tunnel<TRoleState> {
@@ -147,11 +153,23 @@ impl ClientTunnel {
                     .expect("Should be able to compute UNIX timestamp"),
             ),
             packet_counter: otel_instruments::network_packets(),
+            needs_timeout: false,
         }
     }
 
     pub fn public_key(&self) -> PublicKey {
         self.role_state.public_key()
+    }
+
+    /// The instant by which the event loop must poll again.
+    ///
+    /// Asks the state once, so call this right before suspending rather than on every wake-up.
+    pub fn next_timeout(&mut self, now: Instant) -> Option<Instant> {
+        if mem::take(&mut self.needs_timeout) {
+            return Some(now);
+        }
+
+        self.role_state.poll_timeout().map(|(deadline, _)| deadline)
     }
 
     pub fn reset(&mut self, reason: &str, now: Instant) {
@@ -207,15 +225,6 @@ impl ClientTunnel {
         let mut budget = Budget::new(cx.waker(), MAX_EVENTLOOP_ITERS, "client-tunnel");
 
         while let Some(mut tick) = budget.next() {
-            if self
-                .role_state
-                .poll_timeout()
-                .is_some_and(|(timeout, _)| timeout <= now)
-            {
-                self.role_state.handle_timeout(now);
-                tick.want_continue();
-            }
-
             // Pass up existing events.
             if let Some(event) = self.role_state.poll_event() {
                 if let ClientEvent::TunInterfaceUpdated(config) = &event {
@@ -254,7 +263,6 @@ impl ClientTunnel {
 
             // Process all IO sources that are ready.
             if let Poll::Ready(io::Input {
-                timeout,
                 dns_response,
                 tcp_dns_queries: _,
                 udp_dns_queries: _,
@@ -265,13 +273,8 @@ impl ClientTunnel {
             {
                 if let Some(response) = dns_response {
                     self.role_state.handle_dns_response(response, now);
-                    self.io.schedule_timeout();
+                    self.needs_timeout = true;
 
-                    tick.want_continue();
-                }
-
-                if timeout {
-                    self.role_state.handle_timeout(now);
                     tick.want_continue();
                 }
 
@@ -287,7 +290,7 @@ impl ClientTunnel {
                         }
                     }
 
-                    self.io.schedule_timeout();
+                    self.needs_timeout = true;
 
                     // Eagerly flush GSO queue.
                     if let Poll::Ready(Err(e)) = self.io.flush_gso_queue(cx) {
@@ -323,7 +326,7 @@ impl ClientTunnel {
                             Ok(Some(packet)) => self
                                 .io
                                 .queue_tun(packet.with_ecn_from_transport(received.ecn)),
-                            Ok(None) => self.io.schedule_timeout(),
+                            Ok(None) => self.needs_timeout = true,
                             Err(e) => error.push(e),
                         };
                     }
@@ -337,12 +340,6 @@ impl ClientTunnel {
                     return Poll::Ready(Err(error));
                 }
             }
-        }
-
-        // Reset timer for time-based wakeup before we suspend.
-        if let Some((timeout, reason)) = self.role_state.poll_timeout() {
-            self.io
-                .reset_timeout_after(timeout.saturating_duration_since(now), reason);
         }
 
         Poll::Pending
@@ -366,11 +363,23 @@ impl GatewayTunnel {
                     .expect("Should be able to compute UNIX timestamp"),
             ),
             packet_counter: otel_instruments::network_packets(),
+            needs_timeout: false,
         }
     }
 
     pub fn public_key(&self) -> PublicKey {
         self.role_state.public_key()
+    }
+
+    /// The instant by which the event loop must poll again.
+    ///
+    /// Asks the state once, so call this right before suspending rather than on every wake-up.
+    pub fn next_timeout(&mut self, now: Instant) -> Option<Instant> {
+        if mem::take(&mut self.needs_timeout) {
+            return Some(now);
+        }
+
+        self.role_state.poll_timeout().map(|(deadline, _)| deadline)
     }
 
     /// Shut down the Gateway tunnel.
@@ -406,15 +415,6 @@ impl GatewayTunnel {
         let mut budget = Budget::new(cx.waker(), MAX_EVENTLOOP_ITERS, "gateway-tunnel");
 
         while let Some(mut tick) = budget.next() {
-            if self
-                .role_state
-                .poll_timeout()
-                .is_some_and(|(timeout, _)| timeout <= now)
-            {
-                self.role_state.handle_timeout(now);
-                tick.want_continue();
-            }
-
             // Pass up existing events.
             if let Some(other) = self.role_state.poll_event() {
                 return Poll::Ready(Ok(other));
@@ -430,7 +430,6 @@ impl GatewayTunnel {
 
             // Process all IO sources that are ready.
             if let Poll::Ready(io::Input {
-                timeout,
                 dns_response,
                 tcp_dns_queries,
                 udp_dns_queries,
@@ -470,11 +469,6 @@ impl GatewayTunnel {
                     tick.want_continue();
                 }
 
-                if timeout {
-                    self.role_state.handle_timeout(now);
-                    tick.want_continue();
-                }
-
                 if let Some(mut packets) = device {
                     for packet in packets.drain() {
                         match self
@@ -500,7 +494,7 @@ impl GatewayTunnel {
                         }
                     }
 
-                    self.io.schedule_timeout();
+                    self.needs_timeout = true;
 
                     // Eagerly flush GSO queue.
                     if let Poll::Ready(Err(e)) = self.io.flush_gso_queue(cx) {
@@ -536,7 +530,7 @@ impl GatewayTunnel {
                             Ok(Some(packet)) => self
                                 .io
                                 .queue_tun(packet.with_ecn_from_transport(received.ecn)),
-                            Ok(None) => self.io.schedule_timeout(),
+                            Ok(None) => self.needs_timeout = true,
                             Err(e) => error.push(e),
                         };
                     }
@@ -608,12 +602,6 @@ impl GatewayTunnel {
                     return Poll::Ready(Err(error));
                 }
             }
-        }
-
-        // Reset timer for time-based wakeup before we suspend.
-        if let Some((timeout, reason)) = self.role_state.poll_timeout() {
-            self.io
-                .reset_timeout_after(timeout.saturating_duration_since(now), reason);
         }
 
         Poll::Pending

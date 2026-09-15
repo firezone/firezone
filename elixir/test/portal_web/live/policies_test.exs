@@ -877,7 +877,7 @@ defmodule PortalWeb.PoliciesTest do
       account: account,
       actor: actor
     } do
-      enable_feature(:trust_anchors)
+      enable_feature(:x509_auth)
       x509_provider = x509_provider_fixture(account: account, is_disabled: false)
       group = group_fixture(account: account)
       resource = resource_fixture(account: account)
@@ -907,7 +907,7 @@ defmodule PortalWeb.PoliciesTest do
       account: account,
       actor: actor
     } do
-      enable_feature(:trust_anchors)
+      enable_feature(:x509_auth)
       x509_provider = x509_provider_fixture(account: account, is_disabled: false)
       _anchor = trust_anchor_fixture(account: account)
       group = group_fixture(account: account)
@@ -1186,7 +1186,7 @@ defmodule PortalWeb.PoliciesTest do
       account: account,
       actor: actor
     } do
-      enable_feature(:trust_anchors)
+      enable_feature(:x509_auth)
       x509_provider = x509_provider_fixture(account: account, is_disabled: false)
       group = group_fixture(account: account)
       resource = resource_fixture(account: account)
@@ -1337,6 +1337,84 @@ defmodule PortalWeb.PoliciesTest do
         |> live(~p"/#{account}/policies/#{policy.id}/edit")
 
       assert html =~ "Require Verified Device"
+    end
+
+    test "manages device_attested condition", %{conn: conn, account: account, actor: actor} do
+      group = group_fixture(account: account)
+      resource = resource_fixture(account: account)
+      policy = policy_fixture(group: group, resource: resource)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/policies/#{policy.id}/edit")
+
+      render_click(lv, "toggle_conditions_dropdown")
+      html = render_click(lv, "add_condition", %{"type" => "device_attested"})
+      assert html =~ "Require Attestation"
+    end
+
+    test "saves device_attested condition to DB", %{conn: conn, account: account, actor: actor} do
+      group = group_fixture(account: account)
+      resource = resource_fixture(account: account)
+      policy = policy_fixture(group: group, resource: resource)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/policies/#{policy.id}/edit")
+
+      render_click(lv, "toggle_conditions_dropdown")
+      render_click(lv, "add_condition", %{"type" => "device_attested"})
+
+      html =
+        lv
+        |> form("[phx-submit='submit_policy_form']",
+          policy: %{
+            group_id: group.id,
+            resource_id: resource.id,
+            description: "With client attested condition"
+          }
+        )
+        |> render_submit()
+
+      assert html =~ "updated successfully"
+
+      policy = Repo.get_by!(Policy, id: policy.id, account_id: account.id)
+
+      assert Enum.any?(
+               policy.conditions,
+               &(&1.property == :device_attested and &1.values == ["true"])
+             )
+    end
+
+    test "renders device_attested condition from saved policy", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      group = group_fixture(account: account)
+      resource = resource_fixture(account: account)
+
+      policy =
+        policy_fixture(
+          group: group,
+          resource: resource,
+          conditions: [
+            %{
+              property: :device_attested,
+              operator: :is,
+              values: ["true"]
+            }
+          ]
+        )
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/policies/#{policy.id}/edit")
+
+      assert html =~ "Require Attestation"
     end
   end
 
@@ -1545,6 +1623,110 @@ defmodule PortalWeb.PoliciesTest do
       html = render(lv)
       assert html =~ "0"
       assert html =~ "Total"
+    end
+  end
+  describe "live table filters across panel operations" do
+    setup %{account: account} do
+      group = group_fixture(account: account, name: "Engineering Team")
+      other_group = group_fixture(account: account, name: "Marketing Team")
+      resource = resource_fixture(account: account)
+      other_resource = resource_fixture(account: account)
+      matching = policy_fixture(group: group, resource: resource)
+      policy_fixture(group: other_group, resource: other_resource)
+      filter = %{"policies_filter[group_name]" => "Engineering"}
+
+      %{
+        group: group,
+        other_group: other_group,
+        resource: resource,
+        other_resource: other_resource,
+        matching: matching,
+        filter: filter
+      }
+    end
+
+    test "are kept when creating a policy", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      group: group,
+      other_group: other_group,
+      other_resource: other_resource,
+      filter: filter
+    } do
+      {:ok, lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/policies?#{filter}")
+
+      refute html =~ other_group.name
+
+      render_click(lv, "open_new_policy_form")
+      assert_patch(lv, ~p"/#{account}/policies/new?#{filter}")
+
+      render_click(lv, "cancel_policy_form")
+      assert_patch(lv, ~p"/#{account}/policies?#{filter}")
+
+      render_click(lv, "open_new_policy_form")
+
+      lv
+      |> form("[phx-submit='submit_policy_form']",
+        policy: %{
+          group_id: group.id,
+          resource_id: other_resource.id,
+          description: "Engineering access"
+        }
+      )
+      |> render_submit()
+
+      policy =
+        Portal.Repo.get_by!(Portal.Policy, group_id: group.id, resource_id: other_resource.id)
+
+      assert_patch(lv, ~p"/#{account}/policies/#{policy.id}?#{filter}")
+
+      html = render(lv)
+      assert html =~ "Engineering access"
+      refute html =~ other_group.name
+    end
+
+    test "are kept when editing a policy", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      group: group,
+      other_group: other_group,
+      resource: resource,
+      matching: matching,
+      filter: filter
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/policies/#{matching.id}?#{filter}")
+
+      render_click(lv, "open_edit_form")
+      assert_patch(lv, ~p"/#{account}/policies/#{matching.id}/edit?#{filter}")
+
+      render_click(lv, "cancel_policy_form")
+      assert_patch(lv, ~p"/#{account}/policies/#{matching.id}?#{filter}")
+
+      render_click(lv, "open_edit_form")
+
+      lv
+      |> form("[phx-submit='submit_policy_form']",
+        policy: %{
+          group_id: group.id,
+          resource_id: resource.id,
+          description: "Updated description"
+        }
+      )
+      |> render_submit()
+
+      assert_patch(lv, ~p"/#{account}/policies/#{matching.id}?#{filter}")
+
+      html = render(lv)
+      assert html =~ "Updated description"
+      refute html =~ other_group.name
     end
   end
 end
