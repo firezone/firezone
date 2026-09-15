@@ -259,6 +259,7 @@ defmodule Portal.Cache.Client do
       cache.policies
       |> conforming_resource_ids(client, Credential.auth_provider_id(subject.credential))
       |> adapted_resources(cache.resources, client)
+      |> reject_unsupported_pools(cache.protocol_version)
 
     {pool_members, device_addresses} =
       load_pool_state(raw_connectable, subject, cache.protocol_version)
@@ -702,6 +703,18 @@ defmodule Portal.Cache.Client do
           not is_nil(adapted_resource.site) do
       adapted_resource
     end
+  end
+
+  # The v2 wire format names a pool's members inline, so a pool that picks its devices by
+  # a rule has no shape there. Those pools reach v3 clients only.
+  defp reject_unsupported_pools(resources, protocol_version) when protocol_version >= 3,
+    do: resources
+
+  defp reject_unsupported_pools(resources, _protocol_version) do
+    Enum.reject(resources, fn resource ->
+      resource.type == :device_pool and
+        DeviceMembershipCriteria.device_ids(resource.device_membership_criteria) == :error
+    end)
   end
 
   defp resource_connectable_without_gateway?(%Cache.Cacheable.Resource{type: :device_pool}),

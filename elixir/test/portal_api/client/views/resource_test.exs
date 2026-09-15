@@ -85,7 +85,7 @@ defmodule PortalAPI.Client.Views.ResourceTest do
       assert %{devices: []} = Resource.render(cacheable, nil, 2)
     end
 
-    test "renders an own-devices pool as a dynamic_device_pool with the device domain pattern" do
+    test "renders a pool that picks its devices by a rule as an empty static_device_pool" do
       id_bytes = Ecto.UUID.bingenerate()
       id_string = Ecto.UUID.cast!(id_bytes)
 
@@ -102,9 +102,9 @@ defmodule PortalAPI.Client.Views.ResourceTest do
 
       assert rendered == %{
                id: id_string,
-               type: :dynamic_device_pool,
+               type: :static_device_pool,
                name: "Your devices",
-               address: "*.firezone.network",
+               devices: [],
                filters: [%{protocol: :tcp, port_range_start: 22, port_range_end: 22}]
              }
     end

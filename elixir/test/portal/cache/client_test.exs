@@ -459,7 +459,7 @@ defmodule Portal.Cache.ClientTest do
       }
     end
 
-    test "the v2 protocol sees every pool, with the devices of the pools that list them", %{
+    test "the v2 protocol sees only the pools that list their devices", %{
       subject: subject,
       client: client,
       target_client: target_client,
@@ -473,7 +473,7 @@ defmodule Portal.Cache.ClientTest do
       listed_id = Ecto.UUID.dump!(listed_pool.id)
       target_id = target_client.id
 
-      assert %{devices: []} = Enum.find(cache.connectable_resources, &(&1.id == own_id))
+      refute Enum.find(cache.connectable_resources, &(&1.id == own_id))
       assert %{devices: [%{id: ^target_id}]} = Enum.find(cache.connectable_resources, &(&1.id == listed_id))
       assert Map.keys(cache.pool_members) == [listed_id]
     end

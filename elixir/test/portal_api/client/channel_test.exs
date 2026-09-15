@@ -6745,16 +6745,13 @@ defmodule PortalAPI.Client.ChannelTest do
       listed_pool_id = listed_pool.id
       member_id = member.id
 
-      assert [%{id: ^pool_id, type: :dynamic_device_pool, address: "*.firezone.network"} = pool] =
-               Enum.filter(resources, &(&1.id == pool_id))
-
-      refute Map.has_key?(pool, :devices)
+      assert [] = Enum.filter(resources, &(&1.id == pool_id))
 
       assert [%{id: ^listed_pool_id, type: :static_device_pool, devices: [%{client_id: ^member_id}]}] =
                Enum.filter(resources, &(&1.id == listed_pool_id))
     end
 
-    test "reach clients on the legacy channel in the old wire format", %{
+    test "never reach clients on the legacy channel when they pick their devices by a rule", %{
       client: client,
       subject: subject,
       pool_resource: pool_resource
@@ -6764,131 +6761,11 @@ defmodule PortalAPI.Client.ChannelTest do
       assert_push "init", %{resources: resources}
       pool_id = pool_resource.id
 
-      assert [%{id: ^pool_id, type: :dynamic_device_pool, address: "*.firezone.network"}] =
-               Enum.filter(resources, &(&1.id == pool_id))
+      assert [] = Enum.filter(resources, &(&1.id == pool_id))
     end
   end
 
-  describe "handle_in/3 resolve_device_pool_domain" do
-    setup %{account: account, actor: actor, group: group, subject: subject} do
-      subject = put_user_agent(subject, "Mac OS/14 apple-client/1.5.16")
-
-      target_client =
-        client_fixture(account: account, actor: actor, name: "Device 42")
-        |> fetch_device!()
-
-      pool_resource = own_devices_pool_resource_fixture(account: account)
-      policy_fixture(account: account, group: group, resource: pool_resource)
-
-      %{subject: subject, target_client: target_client, pool_resource: pool_resource}
-    end
-
-    test "resolves the actor's own device through the pool", %{
-      client: client,
-      subject: subject,
-      target_client: target_client,
-      pool_resource: pool_resource
-    } do
-      socket = join_channel(client, subject)
-      assert_push "init", _
-
-      pool_id = pool_resource.id
-      domain = Portal.Device.fqdn(target_client)
-      target_ipv4 = %Postgrex.INET{address: target_client.ipv4.address, netmask: 32}
-      target_ipv6 = %Postgrex.INET{address: target_client.ipv6.address, netmask: 128}
-
-      push(socket, "resolve_device_pool_domain", %{"resource_id" => pool_id, "domain" => domain})
-
-      assert_push "device_pool_domain_resolved", %{
-        resource_id: ^pool_id,
-        domain: ^domain,
-        ipv4: ^target_ipv4,
-        ipv6: ^target_ipv6
-      }
-    end
-
-    test "matches the domain case-insensitively", %{
-      client: client,
-      subject: subject,
-      target_client: target_client,
-      pool_resource: pool_resource
-    } do
-      socket = join_channel(client, subject)
-      assert_push "init", _
-
-      pool_id = pool_resource.id
-      domain = target_client |> Portal.Device.fqdn() |> String.upcase()
-
-      push(socket, "resolve_device_pool_domain", %{"resource_id" => pool_id, "domain" => domain})
-
-      assert_push "device_pool_domain_resolved", %{resource_id: ^pool_id, domain: ^domain}
-    end
-
-    test "fails with :not_found when the pool does not admit the device", %{
-      account: account,
-      client: client,
-      subject: subject,
-      pool_resource: pool_resource
-    } do
-      stranger =
-        client_fixture(account: account, actor: actor_fixture(account: account), name: "Stranger")
-        |> fetch_device!()
-
-      socket = join_channel(client, subject)
-      assert_push "init", _
-
-      pool_id = pool_resource.id
-      domain = Portal.Device.fqdn(stranger)
-
-      push(socket, "resolve_device_pool_domain", %{"resource_id" => pool_id, "domain" => domain})
-
-      assert_push "device_pool_domain_resolution_failed", %{
-        resource_id: ^pool_id,
-        domain: ^domain,
-        reason: :not_found
-      }
-    end
-
-    test "fails with :not_found when no device has that slug", %{
-      client: client,
-      subject: subject,
-      pool_resource: pool_resource
-    } do
-      socket = join_channel(client, subject)
-      assert_push "init", _
-
-      pool_id = pool_resource.id
-
-      push(socket, "resolve_device_pool_domain", %{
-        "resource_id" => pool_id,
-        "domain" => "ghost.firezone.network"
-      })
-
-      assert_push "device_pool_domain_resolution_failed", %{resource_id: ^pool_id, reason: :not_found}
-    end
-
-    test "fails with :not_found when the resource is not a connectable pool", %{
-      client: client,
-      subject: subject,
-      target_client: target_client
-    } do
-      socket = join_channel(client, subject)
-      assert_push "init", _
-
-      domain = Portal.Device.fqdn(target_client)
-
-      for resource_id <- [Ecto.UUID.generate(), "not-a-uuid"] do
-        push(socket, "resolve_device_pool_domain", %{"resource_id" => resource_id, "domain" => domain})
-
-        assert_push "device_pool_domain_resolution_failed", %{
-          resource_id: ^resource_id,
-          reason: :not_found
-        }
-      end
-    end
-  end
-
-  describe "handle_in/3 request_authorization for an own devices pool" do
+  describe "handle_in/3 request_authorization for a listed pool" do
     setup %{account: account, actor: actor, group: group, subject: subject} do
       subject = put_user_agent(subject, "Mac OS/14 apple-client/1.5.16")
 
@@ -6904,7 +6781,7 @@ defmodule PortalAPI.Client.ChannelTest do
           user_agent: "Mac OS/14 apple-client/1.5.16"
         )
 
-      pool_resource = own_devices_pool_resource_fixture(account: account)
+      pool_resource = device_pool_resource_fixture(account: account, devices: [target_client])
       policy_fixture(account: account, group: group, resource: pool_resource)
 
       %{
@@ -6915,7 +6792,7 @@ defmodule PortalAPI.Client.ChannelTest do
       }
     end
 
-    test "authorizes the actor's own device on the v2 protocol", %{
+    test "authorizes a member device on the v2 protocol", %{
       client: client,
       subject: subject,
       target_client: target_client,
@@ -6944,7 +6821,7 @@ defmodule PortalAPI.Client.ChannelTest do
       }
     end
 
-    test "denies another actor's device with :forbidden", %{
+    test "denies a device the pool does not list with :forbidden", %{
       account: account,
       client: client,
       subject: subject,
@@ -6977,44 +6854,27 @@ defmodule PortalAPI.Client.ChannelTest do
       assert_push "client_device_access_denied", %{ipv4: ^stranger_ip, reason: :forbidden}
     end
 
-    test "resolves and authorizes a group's device on the v2 protocol", %{
+    test "denies a pool that picks its devices by a rule with :not_found", %{
       account: account,
       group: group,
       client: client,
-      subject: subject
+      subject: subject,
+      target_client: target_client
     } do
-      engineering = group_fixture(account: account)
-      engineer = actor_fixture(account: account)
-      membership_fixture(account: account, actor: engineer, group: engineering)
-      target_client = client_fixture(account: account, actor: engineer) |> fetch_device!()
-
-      target_subject =
-        subject_fixture(account: account, actor: engineer, type: :client, user_agent: "Mac OS/14 apple-client/1.5.16")
-
-      pool = actor_group_pool_resource_fixture(account: account, group: engineering)
-      policy_fixture(account: account, group: group, resource: pool)
+      own_pool = own_devices_pool_resource_fixture(account: account)
+      policy_fixture(account: account, group: group, resource: own_pool)
 
       initiating_socket = join_channel(client, subject, channel: PortalAPI.Client.V2.Channel)
       assert_push "init", _
 
-      join_channel(target_client, target_subject)
-      assert_push "init", _
-
-      domain = Portal.Device.fqdn(target_client)
-      pool_id = pool.id
       target_ip = Portal.Types.INET.to_string(target_client.ipv4)
-      target_client_id = target_client.id
 
-      push(initiating_socket, "resolve_device_pool_domain", %{"resource_id" => pool_id, "domain" => domain})
+      push(initiating_socket, "request_authorization", %{
+        "resource_id" => own_pool.id,
+        "ipv4" => target_ip
+      })
 
-      assert_push "device_pool_domain_resolved", %{resource_id: ^pool_id, domain: ^domain}
-
-      push(initiating_socket, "request_authorization", %{"resource_id" => pool_id, "ipv4" => target_ip})
-
-      assert_push "client_device_access_authorized", %{
-        client_id: ^target_client_id,
-        resource_id: ^pool_id
-      }
+      assert_push "authorization_creation_failed", %{reason: :not_found}
     end
   end
 
