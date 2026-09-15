@@ -19,7 +19,7 @@ use crate::client::dns_config::DnsConfig;
 use crate::client::pending_authorizations::{
     AuthorizationRequest, DnsQueryForSite, PendingAuthorizations,
 };
-use crate::client::routing::{Route, RoutingTables};
+use crate::client::routing::{MatchedRoutes, RoutingTables};
 use crate::client::tracked_state::TrackedState;
 use crate::conn_track::Originator;
 use crate::dns::{
@@ -386,7 +386,7 @@ impl ClientState {
             .collect_vec();
 
         for pending in pending {
-            let (packets, _) = pending.into_buffered_packets();
+            let (packets, _) = pending.into_buffers();
 
             for packet in packets {
                 reply_with_icmp_prohibited(&mut self.buffered_packets, packet);
@@ -645,9 +645,9 @@ impl ClientState {
                         return Ok(());
                     }
                 };
-                let first = routes
-                    .first()
-                    .with_context(|| UnroutablePacket::unknown_resource(&packet))?;
+                if routes.is_empty() {
+                    return Err(UnroutablePacket::unknown_resource(&packet).into());
+                }
 
                 let Some(route) = select_authorized_route(
                     destination,
@@ -655,15 +655,16 @@ impl ClientState {
                     &self.outbound_authorizations,
                     &self.clients,
                 ) else {
-                    let resource_ids = routes.iter().map(Route::resource_id).unique().collect_vec();
-                    match first {
-                        Route::DevicePool { .. } => self
-                            .pending_authorizations
-                            .on_not_authorized_device(destination, resource_ids, packet, now),
-                        Route::Gateway { .. } => self
-                            .pending_authorizations
-                            .on_not_authorized_resource(resource_ids, packet, now),
-                    }
+                    let resource_ids = routes.resource_ids().into_iter().unique().collect_vec();
+                    let request = match routes {
+                        MatchedRoutes::DevicePools(_) => AuthorizationRequest::Device {
+                            addr: destination,
+                            pools: resource_ids,
+                        },
+                        MatchedRoutes::Gateways(_) => AuthorizationRequest::Resources(resource_ids),
+                    };
+                    self.pending_authorizations
+                        .on_not_authorized(request, packet, now);
                     return Ok(());
                 };
 
@@ -855,15 +856,19 @@ impl ClientState {
                         failed_packet.dst_proto(),
                         internet_resource,
                     )
-                    && let resources = routes.iter().map(Route::resource_id).unique().collect_vec()
+                    && let resources = routes
+                        .iter()
+                        .map(|route| route.resource_id)
+                        .unique()
+                        .collect_vec()
                     && !resources.is_empty()
                 {
                     telemetry::analytics::feature_flag_called(
                         "icmp-error-unreachable-prohibited-create-new-flow",
                     );
 
-                    self.pending_authorizations.on_not_authorized_resource(
-                        resources,
+                    self.pending_authorizations.on_not_authorized(
+                        AuthorizationRequest::Resources(resources),
                         pending_authorizations::Trigger::IcmpDestinationUnreachableProhibited,
                         now,
                     );
@@ -1065,7 +1070,7 @@ impl ClientState {
 
         let (packet_buffers, query_buffers) = pending_authorizations
             .into_iter()
-            .map(|pending| pending.into_buffered_packets())
+            .map(|pending| pending.into_buffers())
             .unzip::<_, _, Vec<_>, Vec<_>>();
         let buffered_resource_packets = packet_buffers.into_iter().flatten();
         let dns_queries = query_buffers.into_iter().flatten().collect_vec();
@@ -1201,7 +1206,7 @@ impl ClientState {
             .pending_authorizations
             .remove_device_authorizations(|addr| client_tun.is_ip(addr))
         {
-            let (packets, _) = pending.into_buffered_packets();
+            let (packets, _) = pending.into_buffers();
             buffered_packets.extend(packets);
         }
 
@@ -1987,8 +1992,8 @@ impl ClientState {
                 });
                 let Some(gateway) = gateway_id.and_then(|id| self.gateways.peer_by_id_mut(&id))
                 else {
-                    self.pending_authorizations.on_not_authorized_resource(
-                        resources,
+                    self.pending_authorizations.on_not_authorized(
+                        AuthorizationRequest::Resources(resources),
                         DnsQueryForSite {
                             local,
                             remote,
@@ -2599,44 +2604,41 @@ fn reply_with_icmp_prohibited(buffered_packets: &mut VecDeque<IpPacket>, packet:
 
 fn select_authorized_route(
     destination: IpAddr,
-    routes: &[Route],
+    routes: &MatchedRoutes,
     authorizations: &OutboundAuthorizations,
     clients: &PeerStore<ClientId, ClientOnClient>,
 ) -> Option<AuthorizedRoute> {
-    let destination_client = clients.peer_by_ip(destination);
+    match routes {
+        MatchedRoutes::DevicePools(resources) => {
+            let (cid, _) = clients.peer_by_ip(destination)?;
 
-    for route in routes {
-        let resource_id = route.resource_id();
-        let (peer, domain, ingest_token) = match route {
-            Route::DevicePool { .. } => {
-                let Some((cid, _)) = destination_client else {
-                    continue;
-                };
+            for &resource_id in resources {
                 let Some(ingest_token) = authorizations.client_token(resource_id, cid) else {
                     continue;
                 };
 
-                (cid.into(), None, ingest_token.clone())
+                return Some(AuthorizedRoute {
+                    resource_id,
+                    peer: cid.into(),
+                    domain: None,
+                    ingest_token: ingest_token.clone(),
+                });
             }
-            Route::Gateway { domain, .. } => {
-                let Some(authorization) = authorizations.gateway(resource_id) else {
+        }
+        MatchedRoutes::Gateways(routes) => {
+            for route in routes {
+                let Some(authorization) = authorizations.gateway(route.resource_id) else {
                     continue;
                 };
 
-                (
-                    authorization.gateway_id.into(),
-                    domain.clone(),
-                    authorization.ingest_token.clone(),
-                )
+                return Some(AuthorizedRoute {
+                    resource_id: route.resource_id,
+                    peer: authorization.gateway_id.into(),
+                    domain: route.domain.clone(),
+                    ingest_token: authorization.ingest_token.clone(),
+                });
             }
-        };
-
-        return Some(AuthorizedRoute {
-            resource_id,
-            peer,
-            domain,
-            ingest_token,
-        });
+        }
     }
 
     None

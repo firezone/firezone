@@ -11,25 +11,31 @@ use crate::{
     routing_table::{FilterMode, RouteEntry, RoutingTable},
 };
 
-/// The result of applying all Client routing tables to an outbound packet.
-#[derive(Clone)]
-pub(super) enum Route {
-    DevicePool {
-        resource_id: ResourceId,
-    },
-    Gateway {
-        resource_id: ResourceId,
-        domain: Option<DomainName>,
-    },
+/// The matching outbound routes for one kind of destination.
+pub(super) enum MatchedRoutes {
+    DevicePools(Vec<ResourceId>),
+    Gateways(Vec<GatewayRoute>),
 }
 
-impl Route {
-    pub(super) fn resource_id(&self) -> ResourceId {
+impl MatchedRoutes {
+    pub(super) fn resource_ids(&self) -> Vec<ResourceId> {
         match self {
-            Self::DevicePool { resource_id } => *resource_id,
-            Self::Gateway { resource_id, .. } => *resource_id,
+            Self::DevicePools(resources) => resources.clone(),
+            Self::Gateways(routes) => routes.iter().map(|route| route.resource_id).collect(),
         }
     }
+
+    pub(super) fn is_empty(&self) -> bool {
+        match self {
+            Self::DevicePools(resources) => resources.is_empty(),
+            Self::Gateways(routes) => routes.is_empty(),
+        }
+    }
+}
+
+pub(super) struct GatewayRoute {
+    pub(super) resource_id: ResourceId,
+    pub(super) domain: Option<DomainName>,
 }
 
 #[derive(Debug)]
@@ -50,17 +56,16 @@ impl RoutingTables {
         destination: IpAddr,
         protocol: Protocol,
         internet_resource: Option<ResourceId>,
-    ) -> Result<Vec<Route>, Denied> {
+    ) -> Result<MatchedRoutes, Denied> {
         let mode = outbound_filter_mode();
         if let Some(pools) = self.device_pool.matches(destination, Ok(protocol), mode) {
-            return routes(pools, |entry| Route::DevicePool {
-                resource_id: entry.resource_id,
-            });
+            let resources = routes(pools, |entry| entry.resource_id)?;
+            return Ok(MatchedRoutes::DevicePools(resources));
         }
 
         let routes =
             self.resolve_filtered_resource(destination, protocol, internet_resource, mode)?;
-        Ok(routes)
+        Ok(MatchedRoutes::Gateways(routes))
     }
 
     /// Resolves resources routed through a gateway.
@@ -70,7 +75,7 @@ impl RoutingTables {
         destination: IpAddr,
         protocol: Protocol,
         internet_resource: Option<ResourceId>,
-    ) -> Result<Vec<Route>, Denied> {
+    ) -> Result<Vec<GatewayRoute>, Denied> {
         let routes = self.resolve_filtered_resource(
             destination,
             protocol,
@@ -87,16 +92,16 @@ impl RoutingTables {
         protocol: Protocol,
         internet_resource: Option<ResourceId>,
         mode: FilterMode,
-    ) -> Result<Vec<Route>, Denied> {
+    ) -> Result<Vec<GatewayRoute>, Denied> {
         if let Some(dns) = self.dns.matches(destination, Ok(protocol), mode) {
-            return routes(dns, |entry| Route::Gateway {
+            return routes(dns, |entry| GatewayRoute {
                 resource_id: entry.resource_id,
                 domain: Some(entry.domain.clone()),
             });
         }
 
         if let Some(cidr) = self.cidr.matches(destination, Ok(protocol), mode) {
-            return routes(cidr, |entry| Route::Gateway {
+            return routes(cidr, |entry| GatewayRoute {
                 resource_id: entry.resource_id,
                 domain: None,
             });
@@ -200,7 +205,7 @@ fn outbound_filter_mode() -> FilterMode {
     FilterMode::Apply
 }
 
-fn internet_route(destination: IpAddr, internet_resource: Option<ResourceId>) -> Vec<Route> {
+fn internet_route(destination: IpAddr, internet_resource: Option<ResourceId>) -> Vec<GatewayRoute> {
     // The Internet Resource must not send tunnel addresses to a gateway.
     if crate::is_peer(destination) {
         return Vec::new();
@@ -208,7 +213,7 @@ fn internet_route(destination: IpAddr, internet_resource: Option<ResourceId>) ->
 
     internet_resource
         .into_iter()
-        .map(|resource_id| Route::Gateway {
+        .map(|resource_id| GatewayRoute {
             resource_id,
             domain: None,
         })
@@ -299,10 +304,7 @@ mod tests {
             let routes = tables
                 .resolve(ip.parse().unwrap(), Protocol::Tcp(80), None)
                 .unwrap();
-            assert_eq!(
-                routes.iter().map(Route::resource_id).collect::<Vec<_>>(),
-                vec![pool_id()]
-            );
+            assert_eq!(routes.resource_ids(), vec![pool_id()]);
         }
         assert!(
             tables
@@ -387,10 +389,7 @@ mod tests {
         let routes = tables
             .resolve(destination, Protocol::Tcp(80), Some(internet_resource_id()))
             .unwrap();
-        assert_eq!(
-            routes.iter().map(Route::resource_id).collect::<Vec<_>>(),
-            vec![allowed]
-        );
+        assert_eq!(routes.resource_ids(), vec![allowed]);
 
         let _guard = crate::malicious_behaviour::MaliciousBehaviour {
             ignore_resource_filters: true,
@@ -400,19 +399,13 @@ mod tests {
         let routes = tables
             .resolve(destination, Protocol::Tcp(80), Some(internet_resource_id()))
             .unwrap();
-        assert_eq!(
-            routes.iter().map(Route::resource_id).collect::<Vec<_>>(),
-            vec![denied, allowed]
-        );
+        assert_eq!(routes.resource_ids(), vec![denied, allowed]);
 
         tables.remove_by_id(allowed);
         let routes = tables
             .resolve(destination, Protocol::Tcp(80), Some(internet_resource_id()))
             .unwrap();
-        assert_eq!(
-            routes.iter().map(Route::resource_id).collect::<Vec<_>>(),
-            vec![denied]
-        );
+        assert_eq!(routes.resource_ids(), vec![denied]);
     }
 
     #[test]
@@ -430,10 +423,7 @@ mod tests {
                 Some(internet_resource_id()),
             )
             .unwrap();
-        assert_eq!(
-            routes.iter().map(Route::resource_id).collect::<Vec<_>>(),
-            vec![internet_resource_id()]
-        );
+        assert_eq!(routes.resource_ids(), vec![internet_resource_id()]);
         assert!(
             tables
                 .resolve("1.1.1.1".parse().unwrap(), Protocol::Tcp(443), None)
