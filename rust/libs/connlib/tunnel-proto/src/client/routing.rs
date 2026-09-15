@@ -14,7 +14,7 @@ use crate::{
 /// The result of applying all Client routing tables to an outbound packet.
 #[derive(Clone)]
 pub(super) enum Route {
-    Client {
+    DevicePool {
         resource_id: ResourceId,
     },
     Gateway {
@@ -26,7 +26,7 @@ pub(super) enum Route {
 impl Route {
     pub(super) fn resource_id(&self) -> ResourceId {
         match self {
-            Self::Client { resource_id } => *resource_id,
+            Self::DevicePool { resource_id } => *resource_id,
             Self::Gateway { resource_id, .. } => *resource_id,
         }
     }
@@ -53,7 +53,7 @@ impl RoutingTables {
     ) -> Result<Vec<Route>, Denied> {
         let mode = outbound_filter_mode();
         if let Some(peers) = self.peer.matches(destination, Ok(protocol), mode) {
-            return routes(peers, |entry| Route::Client {
+            return routes(peers, |entry| Route::DevicePool {
                 resource_id: entry.resource_id,
             });
         }

@@ -660,7 +660,7 @@ impl ClientState {
                 ) else {
                     let resource_ids = routes.iter().map(Route::resource_id).unique().collect_vec();
                     match first {
-                        Route::Client { .. } => self
+                        Route::DevicePool { .. } => self
                             .pending_authorizations
                             .on_not_authorized_device(destination, resource_ids, packet, now),
                         Route::Gateway { .. } => self
@@ -2619,7 +2619,7 @@ fn select_authorized_route(
             continue;
         };
         let (peer, domain, ingest_token) = match (route, &path.access_path, destination_client) {
-            (Route::Client { .. }, AccessPath::Direct(tokens), Some((cid, _))) => {
+            (Route::DevicePool { .. }, AccessPath::Direct(tokens), Some((cid, _))) => {
                 let Some(ingest_token) = tokens.get(&cid) else {
                     continue;
                 };
@@ -2634,8 +2634,8 @@ fn select_authorized_route(
                 },
                 _,
             ) => ((*gateway_id).into(), domain.clone(), ingest_token.clone()),
-            (Route::Client { .. }, AccessPath::Direct(_), None) => continue,
-            (Route::Client { .. }, AccessPath::Gateway { .. }, _) => continue,
+            (Route::DevicePool { .. }, AccessPath::Direct(_), None) => continue,
+            (Route::DevicePool { .. }, AccessPath::Gateway { .. }, _) => continue,
             (Route::Gateway { .. }, AccessPath::Direct(_), _) => continue,
         };
 
