@@ -13,9 +13,9 @@ This list drives both pull-request CI and the nightly discovery matrix.
 ## Corpora
 
 Each target's corpus is committed as one deterministic archive under `corpora/<target>.tar.gz`.
-The mise tasks unpack it into the ignored `corpus/<target>` directory before invoking `cargo-fuzz`.
-That directory is the working copy from then on: unpacking again leaves it alone, so that what `cmin` drops stays dropped.
-Delete it to start from the committed archive again.
+`unpack-corpus` materializes it into the ignored `corpus/<target>` directory, which is the working copy from there on.
+`fuzz` unpacks first because it starts from the committed inputs; `cmin` and `coverage` read the directory as it stands, so that what `cmin` drops stays dropped.
+Unpack explicitly before running either from a fresh checkout.
 Pull-request CI only replays these inputs, making fuzz regression and coverage checks deterministic.
 It never performs random coverage discovery.
 
@@ -62,6 +62,7 @@ A fuzz job's findings arrive in the corpus instead, under the `crash-` name libF
 Replay a committed corpus and check its uncovered-region ceiling:
 
 ```console
+mise run //rust/tests/fuzz:unpack-corpus ip-packet
 mise run //rust/tests/fuzz:coverage ip-packet
 mise run //rust/tests/fuzz:coverage-check ip-packet
 ```
@@ -102,5 +103,6 @@ mise run //rust/tests/fuzz:pack-corpus tunnel-proto
 For a local browsable report:
 
 ```console
+mise run //rust/tests/fuzz:unpack-corpus tunnel-proto
 mise run //rust/tests/fuzz:coverage-report tunnel-proto
 ```
