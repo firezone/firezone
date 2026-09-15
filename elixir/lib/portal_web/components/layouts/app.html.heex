@@ -33,7 +33,7 @@
           hidden
           class={["border-b px-4 py-2.5", wrapper_classes]}
         >
-          <div class="flex items-center justify-center gap-2.5">
+          <div class="relative flex items-center justify-center gap-2.5 px-6">
             <.icon name={icon_name} class={"w-4 h-4 shrink-0 #{icon_class}"} />
             <p class={["text-sm font-medium", text_class]}>
               <%!-- credo:disable-for-next-line Credo.Check.Warning.UnsafeTemplateHTML --%>
@@ -43,7 +43,10 @@
               type="button"
               data-dismiss-banner
               aria-label="Dismiss announcement"
-              class={["opacity-50 hover:opacity-100 shrink-0", text_class]}
+              class={[
+                "absolute right-0 top-1/2 -translate-y-1/2 opacity-50 hover:opacity-100",
+                text_class
+              ]}
             >
               <.icon name="ri-close-line" class="h-4 w-4" />
             </button>
