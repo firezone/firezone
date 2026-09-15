@@ -26,13 +26,27 @@
       <% banner = Database.fetch_banner() %>
       <%= if banner do %>
         <% {wrapper_classes, text_class, icon_class, icon_name} = banner_classes(banner.color) %>
-        <div id="banner" class={["border-b px-4 py-2.5", wrapper_classes]}>
+        <div
+          id="banner"
+          phx-hook="DismissableBanner"
+          data-content-hash={Base.encode16(:crypto.hash(:sha256, banner.message), case: :lower)}
+          hidden
+          class={["border-b px-4 py-2.5", wrapper_classes]}
+        >
           <div class="flex items-center justify-center gap-2.5">
             <.icon name={icon_name} class={"w-4 h-4 shrink-0 #{icon_class}"} />
             <p class={["text-sm font-medium", text_class]}>
               <%!-- credo:disable-for-next-line Credo.Check.Warning.UnsafeTemplateHTML --%>
               {Phoenix.HTML.raw(banner.message)}
             </p>
+            <button
+              type="button"
+              data-dismiss-banner
+              aria-label="Dismiss announcement"
+              class={["shrink-0 rounded p-1 hover:opacity-75 focus-visible:outline", text_class]}
+            >
+              <.icon name="ri-close-line" class="w-4 h-4" />
+            </button>
           </div>
         </div>
       <% end %>

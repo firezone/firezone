@@ -1,4 +1,7 @@
 {
+  "scripts": {
+    "test": "node --test test/*.test.mjs"
+  },
   "dependencies": {
     "@fontsource-variable/roboto": "^5.3.0",
     "@fontsource-variable/roboto-mono": "^5.3.0"
