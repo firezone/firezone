@@ -301,6 +301,40 @@ defmodule Portal.Intune.SyncTest do
     assert Repo.aggregate(Device, :count) == 999
   end
 
+  test "revokes authorizations of posture policies the synced rows no longer satisfy" do
+    provider = intune_posture_provider_fixture()
+    account = Portal.Repo.get!(Portal.Account, provider.account_id)
+    actor = Portal.ActorFixtures.actor_fixture(account: account)
+    group = Portal.GroupFixtures.group_fixture(account: account)
+    Portal.MembershipFixtures.membership_fixture(account: account, actor: actor, group: group)
+    resource = Portal.ResourceFixtures.resource_fixture(account: account)
+    client = Portal.DeviceFixtures.client_fixture(account: account, actor: actor, device_serial: "SER-1")
+
+    policy =
+      Portal.PolicyFixtures.policy_fixture(
+        account: account,
+        group: group,
+        resource: resource,
+        postures: %{"field" => "intune.compliance_state", "op" => "is", "value" => "compliant"}
+      )
+
+    authorization =
+      Portal.PolicyAuthorizationFixtures.policy_authorization_fixture(
+        account: account,
+        policy: policy,
+        client: client,
+        resource: resource
+      )
+
+    stub_managed_devices([
+      managed_device(%{"id" => "managed-device-1", "serialNumber" => "SER-1", "complianceState" => "noncompliant"})
+    ])
+
+    assert :ok = perform_job(Sync, %{"account_id" => provider.account_id, "posture_provider_id" => provider.id})
+
+    refute Repo.get_by(Portal.PolicyAuthorization, id: authorization.id)
+  end
+
   test "deletes devices absent from a completed sync" do
     provider = intune_posture_provider_fixture()
     stale = intune_device_fixture(provider: provider, intune_id: "stale-device")

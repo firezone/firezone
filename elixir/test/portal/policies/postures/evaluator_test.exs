@@ -330,6 +330,17 @@ defmodule Portal.Policies.Postures.EvaluatorTest do
     end
   end
 
+  describe "evaluate/3 macros" do
+    test "@latest resolves to the newest Client release for the device's platform" do
+      latest = Portal.ComponentVersions.component_version(:apple)
+      leaf = leaf("firezone.last_seen_version", "gte", "@latest")
+      apple = "macOS/15.6 apple-client/"
+
+      assert evaluate(leaf, device(last_seen_user_agent: apple <> latest, last_seen_version: latest)) == {:ok, nil}
+      assert evaluate(leaf, device(last_seen_user_agent: apple <> "0.1.0", last_seen_version: "0.1.0")) == @failed
+    end
+  end
+
   describe "evaluate/3 ips" do
     test "is_in_cidr and is_not_in_cidr for v4 and v6" do
       v4 = %Postgrex.INET{address: {10, 1, 2, 3}, netmask: nil}
