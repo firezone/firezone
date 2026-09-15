@@ -448,6 +448,15 @@ defmodule PortalWeb.Resources.Components do
 
     ~H"""
     <div class="space-y-3">
+      <div class="flex items-center gap-2 rounded border border-border bg-raised px-3 py-2 text-[11px] text-subtle">
+        <.icon name="ri-information-line" class="h-4 w-4 shrink-0 text-brand" />
+        <span>
+          Requires a recent Firezone client.
+          <.website_link path="/kb/concepts/resources" fragment="device-pools">
+            See supported versions
+          </.website_link>
+        </span>
+      </div>
       <div>
         <span class="block text-xs font-medium text-body mb-1">
           Pool membership criteria <span class="text-error">*</span>

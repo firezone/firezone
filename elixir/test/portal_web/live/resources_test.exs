@@ -1034,11 +1034,16 @@ defmodule PortalWeb.ResourcesTest do
         |> live(~p"/#{account}/resources/new")
 
       refute html =~ "Pool membership criteria"
+      refute html =~ "Requires a recent Firezone client"
 
       html =
         lv
         |> form("[phx-submit='submit_resource_form']", resource: %{type: "device_pool"})
         |> render_change()
+
+      assert html =~ "Requires a recent Firezone client"
+      assert html =~ "https://www.firezone.dev/kb/concepts/resources?utm_source=product#device-pools"
+      assert html =~ "See supported versions"
 
       for {id, label, hint} <- [
             {"own-devices", "Your devices", "Each actor&#39;s own devices"},
