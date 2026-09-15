@@ -6,6 +6,7 @@ defmodule PortalWeb.ResourcesTest do
   alias Portal.Resource
 
   import Portal.AccountFixtures
+  import Portal.DevicePostureFixtures
   import Portal.ActorFixtures
   import Portal.ClientSessionFixtures
   import Portal.DeviceFixtures
@@ -606,6 +607,53 @@ defmodule PortalWeb.ResourcesTest do
 
       html = render_click(lv, "close_grant_form")
       assert html =~ "Grant access"
+    end
+
+    test "grants access with device postures", %{conn: conn} do
+      enable_device_posture()
+      account = device_posture_account_fixture()
+      actor = admin_actor_fixture(account: account)
+      resource = resource_fixture(account: account)
+      group = group_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources/#{resource.id}")
+
+      html = render_click(lv, "open_grant_form")
+      assert html =~ "Device posture"
+
+      render_click(lv, "toggle_grant_group", %{"group_id" => group.id})
+      render_click(lv, "postures_tab", %{"tab" => "json"})
+
+      html =
+        lv
+        |> element("textarea[name='_postures_json']")
+        |> render_change(%{"_postures_json" => ~s({"field": "intune.jail_broken", "op": "is", "value": "yes"})})
+
+      assert html =~ "Must be true or false"
+
+      html =
+        lv
+        |> form("#grant-form")
+        |> render_submit()
+
+      assert html =~ "must be true or false"
+      refute Repo.get_by(Policy, resource_id: resource.id, group_id: group.id)
+
+      lv
+      |> element("textarea[name='_postures_json']")
+      |> render_change(%{"_postures_json" => ~s({"field": "intune.jail_broken", "op": "is", "value": true})})
+
+      lv
+      |> form("#grant-form")
+      |> render_submit()
+
+      policy = Repo.get_by!(Policy, resource_id: resource.id, group_id: group.id)
+
+      assert Portal.Policies.Postures.to_map(policy.postures) ==
+               %{"field" => "intune.jail_broken", "op" => "is", "value" => true}
     end
 
     test "grants access with flow log reporting disabled", %{

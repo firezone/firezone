@@ -2,6 +2,7 @@ defmodule PortalWeb.Policies.Components do
   use PortalWeb, :component_library
   alias Portal.Policies.Condition
   alias PortalWeb.Policies.Database
+  import PortalWeb.Policies.PostureComponents
 
   @days_of_week [
     {"M", "Monday"},
@@ -159,6 +160,7 @@ defmodule PortalWeb.Policies.Components do
   attr :subject, :any, required: true
   attr :panel, :map, required: true
   attr :conditions_state, :map, required: true
+  attr :postures, :map, required: true
   attr :confirm_state, :map, required: true
   attr :policy_authorizations, :list, default: []
   attr :policy_authorizations_page, :integer, default: 1
@@ -213,6 +215,7 @@ defmodule PortalWeb.Policies.Components do
         panel_active_conditions={@conditions_state.panel_active_conditions}
         panel_conditions_dropdown_open={@conditions_state.panel_conditions_dropdown_open}
         conditions_state={@form_conditions_state}
+        postures={@postures}
         mode={:new}
       />
 
@@ -228,6 +231,7 @@ defmodule PortalWeb.Policies.Components do
         panel_active_conditions={@conditions_state.panel_active_conditions}
         panel_conditions_dropdown_open={@conditions_state.panel_conditions_dropdown_open}
         conditions_state={@form_conditions_state}
+        postures={@postures}
         mode={:edit}
       />
 
@@ -262,6 +266,8 @@ defmodule PortalWeb.Policies.Components do
   attr :conditions_state, :map, required: true
   attr :mode, :atom, required: true
 
+  attr :postures, :map, required: true
+
   def policy_form_view(assigns) do
     ~H"""
     <div class="flex flex-col h-full overflow-hidden">
@@ -285,6 +291,7 @@ defmodule PortalWeb.Policies.Components do
           panel_active_conditions={@panel_active_conditions}
           panel_conditions_dropdown_open={@panel_conditions_dropdown_open}
           conditions_state={@conditions_state}
+          postures={@postures}
         />
         <.policy_form_actions mode={@mode} />
       </.form>
@@ -319,6 +326,8 @@ defmodule PortalWeb.Policies.Components do
   attr :panel_conditions_dropdown_open, :boolean, default: false
   attr :conditions_state, :map, required: true
 
+  attr :postures, :map, required: true
+
   def policy_form_body(assigns) do
     ~H"""
     <div class="flex-1 overflow-y-auto px-5 py-4 space-y-4">
@@ -340,6 +349,7 @@ defmodule PortalWeb.Policies.Components do
         has_trust_anchors?={@has_trust_anchors?}
         conditions_state={@conditions_state}
       />
+      <.postures_section id="policy-postures" account={@account} state={@postures} mode={@mode} />
     </div>
     """
   end
@@ -1032,6 +1042,7 @@ defmodule PortalWeb.Policies.Components do
           />
         </ul>
       <% end %>
+      <.postures_summary postures={@policy.postures} />
     </div>
     """
   end

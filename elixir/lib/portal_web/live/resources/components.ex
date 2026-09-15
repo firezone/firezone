@@ -1,5 +1,6 @@
 defmodule PortalWeb.Resources.Components do
   use PortalWeb, :component_library
+  import PortalWeb.Policies.PostureComponents
 
   import PortalWeb.Policies.Components,
     only: [
@@ -1890,6 +1891,7 @@ defmodule PortalWeb.Resources.Components do
               </div>
             <% end %>
           </div>
+          <.postures_section id="resource-grant-postures" account={@account} state={@postures} />
           <div class="border-t border-border pt-4">
             <.flow_log_uploads_toggle
               form={@grant_form}
