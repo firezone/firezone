@@ -54,7 +54,10 @@
         </div>
       <% end %>
       <.flash :if={Portal.Billing.any_limit_exceeded?(@account)} kind={:warning} class="m-1">
-        {Portal.Billing.build_limits_exceeded_message(@account)}.
+        Your account has exceeded the following limits: {Portal.Billing.build_limits_exceeded_message(
+          @account
+        )
+        |> String.replace("\n", ", ")}.
         <span :if={Portal.Billing.account_provisioned?(@account)}>
           Please
           <.link navigate={~p"/#{@account}/settings/account"} class={link_style()}>
