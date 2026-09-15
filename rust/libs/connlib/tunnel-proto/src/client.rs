@@ -1361,7 +1361,12 @@ impl ClientState {
 
         let dst = event.dst;
 
-        let Some(rid) = self.get_resource_by_destination(dst, event.protocol.into()) else {
+        let internet_resource = self.active_internet_resource().map(|r| r.id);
+        let Some(rid) = self
+            .routing_tables
+            .resolve_resource(dst, event.protocol.into(), internet_resource)
+            .map(|route| route.resource_id())
+        else {
             tracing::debug!(%gid, %dst, "Ignoring `NoAuthorization` event for unknown destination");
             return;
         };
