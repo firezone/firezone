@@ -8,9 +8,7 @@ use connlib_model::ResourceId;
 use ip_packet::IpPacket;
 use ringbuffer::{AllocRingBuffer, RingBuffer as _};
 
-use crate::{
-    client::Resource, dns, filter_engine::FilterEngine, unique_packet_buffer::UniquePacketBuffer,
-};
+use crate::{dns, unique_packet_buffer::UniquePacketBuffer};
 
 /// Tracks authorizations we have requested from the portal but have not yet been granted.
 ///
@@ -53,28 +51,16 @@ impl PendingAuthorizations {
         &mut self,
         resource_ids: Vec<ResourceId>,
         trigger: impl Into<Trigger>,
-        resources_by_id: &BTreeMap<ResourceId, Resource>,
         now: Instant,
     ) {
         let Some(rid) = resource_ids.first().copied() else {
             return;
         };
-        let trigger = trigger.into();
-
-        let Some(resource) = resources_by_id.get(&rid) else {
-            tracing::debug!("Resource not found, skipping authorization request");
-            return;
-        };
-
-        if !is_trigger_allowed(&trigger, &FilterEngine::new(resource.filters())) {
-            tracing::debug!("Trigger filtered by resource filters, dropping");
-            return;
-        }
 
         self.upsert(
             AuthorizationTarget::Resource(rid),
             AuthorizationRequest::Resources(resource_ids),
-            trigger,
+            trigger.into(),
             now,
         );
     }
@@ -243,37 +229,9 @@ impl From<DnsQueryForSite> for Trigger {
     }
 }
 
-/// Checks whether the trigger's protocol is allowed by the given filters.
-fn is_trigger_allowed(trigger: &Trigger, filter: &FilterEngine) -> bool {
-    let protocol = match trigger {
-        Trigger::PacketForResource(packet) => packet.destination_protocol(),
-        // DNS queries and ICMP errors are control-plane triggers, not subject to data-plane filters.
-        Trigger::DnsQueryForSite(_) | Trigger::IcmpDestinationUnreachableProhibited => return true,
-    };
-
-    if filter.apply(protocol).is_ok() {
-        return true;
-    }
-
-    #[cfg(any(test, feature = "malicious-behaviour"))]
-    if crate::malicious_behaviour::ignore_resource_filter() {
-        tracing::debug!("Malicious client: ignoring resource filter");
-        return true;
-    }
-
-    false
-}
-
 #[cfg(test)]
 mod tests {
-    use std::net::{Ipv4Addr, Ipv6Addr};
-
-    use connlib_model::{Site, SiteId};
-    use ip_network::IpNetwork;
-
-    use crate::{
-        client::resource::CidrResource, malicious_behaviour::MaliciousBehaviour, messages::Filter,
-    };
+    use std::net::Ipv4Addr;
 
     use super::*;
 
@@ -281,9 +239,9 @@ mod tests {
     fn skips_authorization_request_if_sent_within_last_two_seconds() {
         let mut pending = PendingAuthorizations::default();
         let mut now = Instant::now();
-        let (rid, resources) = single_resource();
+        let rid = ResourceId::from_u128(1);
 
-        pending.on_not_authorized_resource(vec![rid], udp_trigger(1), &resources, now);
+        pending.on_not_authorized_resource(vec![rid], udp_trigger(1), now);
         assert_eq!(
             pending.poll_authorization_requests(),
             Some(resource_request(rid))
@@ -291,7 +249,7 @@ mod tests {
 
         now += Duration::from_secs(1);
 
-        pending.on_not_authorized_resource(vec![rid], udp_trigger(2), &resources, now);
+        pending.on_not_authorized_resource(vec![rid], udp_trigger(2), now);
         assert_eq!(pending.poll_authorization_requests(), None);
     }
 
@@ -299,9 +257,9 @@ mod tests {
     fn sends_new_request_after_two_seconds() {
         let mut pending = PendingAuthorizations::default();
         let mut now = Instant::now();
-        let (rid, resources) = single_resource();
+        let rid = ResourceId::from_u128(1);
 
-        pending.on_not_authorized_resource(vec![rid], udp_trigger(1), &resources, now);
+        pending.on_not_authorized_resource(vec![rid], udp_trigger(1), now);
         assert_eq!(
             pending.poll_authorization_requests(),
             Some(resource_request(rid))
@@ -309,7 +267,7 @@ mod tests {
 
         now += Duration::from_secs(3);
 
-        pending.on_not_authorized_resource(vec![rid], udp_trigger(2), &resources, now);
+        pending.on_not_authorized_resource(vec![rid], udp_trigger(2), now);
         assert_eq!(
             pending.poll_authorization_requests(),
             Some(resource_request(rid))
@@ -319,15 +277,11 @@ mod tests {
     #[test]
     fn requests_every_matching_resource_in_order() {
         let mut pending = PendingAuthorizations::default();
-        let (first, second, resources) = two_resources();
+        let first = ResourceId::from_u128(1);
+        let second = ResourceId::from_u128(2);
         let resource_ids = vec![second, first];
 
-        pending.on_not_authorized_resource(
-            resource_ids.clone(),
-            udp_trigger(1),
-            &resources,
-            Instant::now(),
-        );
+        pending.on_not_authorized_resource(resource_ids.clone(), udp_trigger(1), Instant::now());
 
         assert_eq!(
             pending.poll_authorization_requests(),
@@ -338,59 +292,23 @@ mod tests {
     }
 
     #[test]
-    fn sends_request_for_same_site_in_parallel() {
+    fn sends_request_for_different_resources_in_parallel() {
         let _guard = logging::test("trace");
 
         let mut pending = PendingAuthorizations::default();
         let now = Instant::now();
-        let (rid1, rid2, resources) = two_resources();
+        let rid1 = ResourceId::from_u128(1);
+        let rid2 = ResourceId::from_u128(2);
 
-        pending.on_not_authorized_resource(vec![rid1], udp_trigger(1), &resources, now);
+        pending.on_not_authorized_resource(vec![rid1], udp_trigger(1), now);
         assert_eq!(
             pending.poll_authorization_requests(),
             Some(resource_request(rid1))
         );
-        pending.on_not_authorized_resource(vec![rid2], udp_trigger(2), &resources, now);
+        pending.on_not_authorized_resource(vec![rid2], udp_trigger(2), now);
         assert_eq!(
             pending.poll_authorization_requests(),
             Some(resource_request(rid2))
-        );
-    }
-
-    #[test]
-    fn drops_packet_when_resource_filter_does_not_allow_protocol() {
-        let mut pending = PendingAuthorizations::default();
-        let now = Instant::now();
-        let resource = icmp_only_localhost_resource();
-        let rid = resource.id();
-        let resources = BTreeMap::from([(rid, resource)]);
-
-        // The trigger is a UDP packet, but the resource only permits ICMP.
-        pending.on_not_authorized_resource(vec![rid], udp_trigger(1), &resources, now);
-
-        assert_eq!(pending.poll_authorization_requests(), None);
-    }
-
-    #[test]
-    fn malicious_client_can_ignore_resource_filter() {
-        let mut pending = PendingAuthorizations::default();
-        let now = Instant::now();
-        let resource = icmp_only_localhost_resource();
-        let rid = resource.id();
-        let resources = BTreeMap::from([(rid, resource)]);
-
-        let _guard = MaliciousBehaviour {
-            ignore_resource_filters: true,
-            ..Default::default()
-        }
-        .guard();
-
-        // The trigger is a UDP packet that the resource's filter would normally reject.
-        pending.on_not_authorized_resource(vec![rid], udp_trigger(1), &resources, now);
-
-        assert_eq!(
-            pending.poll_authorization_requests(),
-            Some(resource_request(rid))
         );
     }
 
@@ -449,10 +367,10 @@ mod tests {
     fn remove_device_authorizations_leaves_resource_entries() {
         let mut pending = PendingAuthorizations::default();
         let mut now = Instant::now();
-        let (rid, resources) = single_resource();
+        let rid = ResourceId::from_u128(1);
         let ip = device_ip();
 
-        pending.on_not_authorized_resource(vec![rid], udp_trigger(1), &resources, now);
+        pending.on_not_authorized_resource(vec![rid], udp_trigger(1), now);
         pending.on_not_authorized_device(ip, pools(), udp_trigger(2), now);
         assert_eq!(
             pending.poll_authorization_requests(),
@@ -468,7 +386,7 @@ mod tests {
         now += Duration::from_millis(500);
 
         // The resource entry survived: within its throttle window, no new request.
-        pending.on_not_authorized_resource(vec![rid], udp_trigger(3), &resources, now);
+        pending.on_not_authorized_resource(vec![rid], udp_trigger(3), now);
         assert_eq!(pending.poll_authorization_requests(), None);
 
         // The device entry was removed: a new trigger requests again immediately.
@@ -477,25 +395,6 @@ mod tests {
             pending.poll_authorization_requests(),
             Some(device_request(ip))
         );
-    }
-
-    fn single_resource() -> (ResourceId, BTreeMap<ResourceId, Resource>) {
-        let resource = ipv4_localhost_resource();
-        let rid = resource.id();
-
-        (rid, BTreeMap::from([(rid, resource)]))
-    }
-
-    fn two_resources() -> (ResourceId, ResourceId, BTreeMap<ResourceId, Resource>) {
-        let one = ipv4_localhost_resource();
-        let two = ipv6_localhost_resource();
-        let (rid_one, rid_two) = (one.id(), two.id());
-
-        (
-            rid_one,
-            rid_two,
-            BTreeMap::from([(rid_one, one), (rid_two, two)]),
-        )
     }
 
     fn device_request(addr: IpAddr) -> AuthorizationRequest {
@@ -530,45 +429,5 @@ mod tests {
 
     fn resource_request(resource_id: ResourceId) -> AuthorizationRequest {
         AuthorizationRequest::Resources(vec![resource_id])
-    }
-
-    fn ipv4_localhost_resource() -> Resource {
-        Resource::Cidr(CidrResource {
-            id: ResourceId::from_u128(1),
-            address: IpNetwork::from(Ipv4Addr::LOCALHOST),
-            name: "localhost-ipv4".to_owned(),
-            address_description: None,
-            sites: vec![site1()],
-            filters: Vec::default(),
-        })
-    }
-
-    fn ipv6_localhost_resource() -> Resource {
-        Resource::Cidr(CidrResource {
-            id: ResourceId::from_u128(2),
-            address: IpNetwork::from(Ipv6Addr::LOCALHOST),
-            name: "localhost-ipv6".to_owned(),
-            address_description: None,
-            sites: vec![site1()],
-            filters: Vec::default(),
-        })
-    }
-
-    fn icmp_only_localhost_resource() -> Resource {
-        Resource::Cidr(CidrResource {
-            id: ResourceId::from_u128(3),
-            address: IpNetwork::from(Ipv4Addr::LOCALHOST),
-            name: "localhost-icmp-only".to_owned(),
-            address_description: None,
-            sites: vec![site1()],
-            filters: vec![Filter::Icmp],
-        })
-    }
-
-    fn site1() -> Site {
-        Site {
-            id: SiteId::from_u128(1),
-            name: "site-1".to_owned(),
-        }
     }
 }

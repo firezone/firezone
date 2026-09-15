@@ -617,7 +617,6 @@ impl ClientState {
             }
         };
         let pending_authorizations = &mut self.pending_authorizations;
-        let resources = &self.resources_by_id;
 
         let is_authorized = |resource_id: ResourceId| {
             self.clients.peer_by_ip(dst).is_some_and(|(cid, _)| {
@@ -705,12 +704,7 @@ impl ClientState {
                     .and_then(|resource| resource.gateway_token())
                 else {
                     // Not yet authorized: Buffer + send intent.
-                    pending_authorizations.on_not_authorized_resource(
-                        resource_ids,
-                        packet,
-                        resources,
-                        now,
-                    );
+                    pending_authorizations.on_not_authorized_resource(resource_ids, packet, now);
                     return Ok(());
                 };
 
@@ -906,7 +900,6 @@ impl ClientState {
                     self.pending_authorizations.on_not_authorized_resource(
                         resources,
                         pending_authorizations::Trigger::IcmpDestinationUnreachableProhibited,
-                        &self.resources_by_id,
                         now,
                     );
                 }
@@ -2028,7 +2021,6 @@ impl ClientState {
                             transport,
                             message,
                         },
-                        &self.resources_by_id,
                         now,
                     );
                     return None;
