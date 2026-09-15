@@ -674,9 +674,15 @@ impl ClientState {
                 None,
                 None,
                 Some(Route::Client {
-                    resource_id: rid, ..
+                    filter,
+                    resource_id: rid,
                 }),
             ) => {
+                if !filter_allows(&filter, dst_proto) {
+                    reply_with_icmp_prohibited(&mut self.buffered_packets, packet);
+                    return Ok(());
+                }
+
                 let authorized = self
                     .clients
                     .peer_by_ip(dst)
