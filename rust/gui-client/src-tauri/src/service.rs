@@ -518,9 +518,21 @@ impl<'a> Handler<'a> {
         let ret = loop {
             match poll_fn(|cx| self.next_event(cx, signals)).await {
                 Event::Connlib(x) => {
-                    if let Err(error) = self.handle_connlib_event(x).await {
-                        tracing::error!("Error while handling connlib callback: {error:#}");
-                        continue;
+                    match self
+                        .handle_connlib_event(x)
+                        .await
+                        .context("Error while handling connlib callback")
+                    {
+                        Ok(()) => {}
+                        Err(error)
+                            if matches!(
+                                error.any_downcast_ref::<io::Error>().map(io::Error::kind),
+                                Some(io::ErrorKind::BrokenPipe | io::ErrorKind::ConnectionReset)
+                            ) =>
+                        {
+                            tracing::debug!("{error:#}")
+                        }
+                        Err(error) => tracing::error!("{error:#}"),
                     }
                 }
                 Event::CallbackChannelClosed => {
