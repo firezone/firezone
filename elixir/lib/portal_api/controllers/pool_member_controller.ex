@@ -13,11 +13,15 @@ defmodule PortalAPI.PoolMemberController do
   # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :index,
     summary: "List Pool Members",
+    deprecated: true,
     description: """
+    Deprecated. Read `device_membership_criteria` on the Resource instead, which
+    also describes the pools that pick their members by a rule.
+
     Lists the Clients a `device_pool` Resource names as its members.
 
     Returns 400 for any other Resource type, and for a device pool whose members are
-    each actor's own devices rather than a list.
+    picked by a rule rather than named.
     """,
     parameters: [
       resource_id: [
@@ -57,7 +61,10 @@ defmodule PortalAPI.PoolMemberController do
   # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :update_put,
     summary: "Replace Pool Members",
+    deprecated: true,
     description: """
+    Deprecated. Write `device_membership_criteria` on the Resource instead.
+
     Replaces the Resource's entire membership list with the given Clients.
 
     Any Client not named in the request is removed from the pool. To add or
@@ -115,7 +122,10 @@ defmodule PortalAPI.PoolMemberController do
   # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :update_patch,
     summary: "Add or Remove Pool Members",
+    deprecated: true,
     description: """
+    Deprecated. Write `device_membership_criteria` on the Resource instead.
+
     Adds and/or removes individual Clients, leaving every other member of the
     pool untouched.
 

@@ -4,6 +4,8 @@ defmodule PortalAPI.ResourceControllerTest do
 
   import Portal.AccountFixtures
   import Portal.ActorFixtures
+  import Portal.DeviceFixtures
+  import Portal.GroupFixtures
   import Portal.ResourceFixtures
   import Portal.SiteFixtures
   import Portal.SubjectFixtures
@@ -397,13 +399,62 @@ defmodule PortalAPI.ResourceControllerTest do
                json_response(conn, 422)
     end
 
-    test "rejects creating a device pool", %{
+    test "creates a device pool from each membership rule", %{
       conn: conn,
+      account: account,
       actor: actor
     } do
+      group = group_fixture(account: account)
+      device = client_fixture(account: account)
+
+      rules = [
+        %{"device" => %{"field" => "id", "op" => "in", "value" => [device.id]}},
+        %{"device" => %{"field" => "actor_id", "op" => "eq", "value" => %{"subject" => "actor_id"}}},
+        %{"device" => %{"field" => "account_id", "op" => "eq", "value" => %{"subject" => "account_id"}}},
+        %{"actor_group" => %{"field" => "id", "op" => "eq", "value" => group.id}}
+      ]
+
+      for {criteria, index} <- Enum.with_index(rules) do
+        attrs = %{
+          "name" => "Shared Devices #{index}",
+          "type" => "device_pool",
+          "device_membership_criteria" => criteria
+        }
+
+        conn =
+          conn
+          |> authorize_conn(actor)
+          |> put_req_header("content-type", "application/json")
+          |> post("/resources", resource: attrs)
+
+        assert resp = json_response(conn, 201)
+        assert resp["data"]["type"] == "device_pool"
+        assert resp["data"]["device_membership_criteria"] == criteria
+        refute resp["data"]["site_id"]
+
+        pool = Repo.get_by!(Portal.Resource, account_id: account.id, id: resp["data"]["id"])
+        assert Portal.Resource.DeviceMembershipCriteria.to_map(pool.device_membership_criteria) == criteria
+      end
+    end
+
+    test "rejects a device pool without a membership rule", %{conn: conn, actor: actor} do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> post("/resources", resource: %{"name" => "Shared Devices", "type" => "device_pool"})
+
+      assert resp = json_response(conn, 422)
+      assert resp["validation_errors"]["device_membership_criteria"] == ["can't be blank"]
+    end
+
+    test "rejects a membership rule outside the grammar", %{conn: conn, actor: actor} do
       attrs = %{
         "name" => "Shared Devices",
-        "type" => "device_pool"
+        "type" => "device_pool",
+        "device_membership_criteria" => %{
+          "device" => %{"field" => "name", "op" => "eq", "value" => "laptop"}
+        }
       }
 
       conn =
@@ -413,7 +464,34 @@ defmodule PortalAPI.ResourceControllerTest do
         |> post("/resources", resource: attrs)
 
       assert resp = json_response(conn, 422)
-      assert resp["validation_errors"]["type"] == ["is invalid"]
+
+      assert %{"device" => %{"field" => ["is invalid"]}} =
+               resp["validation_errors"]["device_membership_criteria"]
+    end
+
+    test "rejects a field and operator pairing the grammar has no rule for", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      device = client_fixture(account: account)
+
+      attrs = %{
+        "name" => "Shared Devices",
+        "type" => "device_pool",
+        "device_membership_criteria" => %{
+          "device" => %{"field" => "id", "op" => "eq", "value" => device.id}
+        }
+      }
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> post("/resources", resource: attrs)
+
+      assert resp = json_response(conn, 422)
+      assert resp["validation_errors"]["device_membership_criteria"] == ["is invalid"]
     end
 
     test "creates a resource with filters for Starter accounts", %{
@@ -723,7 +801,37 @@ defmodule PortalAPI.ResourceControllerTest do
 
     # Converting an existing Resource to a pool is creation by another
     # name, so the same guard covers update.
-    test "rejects converting a resource to the device_pool type", %{
+    test "converts a resource to a device pool with a membership rule", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      site = site_fixture(account: account)
+      resource = dns_resource_fixture(account: account, site: site)
+
+      criteria = %{
+        "device" => %{"field" => "actor_id", "op" => "eq", "value" => %{"subject" => "actor_id"}}
+      }
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> put("/resources/#{resource.id}",
+          resource: %{"type" => "device_pool", "device_membership_criteria" => criteria}
+        )
+
+      assert resp = json_response(conn, 200)
+      assert resp["data"]["type"] == "device_pool"
+      assert resp["data"]["device_membership_criteria"] == criteria
+
+      updated = Repo.get_by!(Portal.Resource, account_id: account.id, id: resource.id)
+      assert updated.type == :device_pool
+      assert is_nil(updated.site_id)
+      assert is_nil(updated.address)
+    end
+
+    test "rejects converting a resource to a device pool without a rule", %{
       conn: conn,
       account: account,
       actor: actor
@@ -738,13 +846,11 @@ defmodule PortalAPI.ResourceControllerTest do
         |> put("/resources/#{resource.id}", resource: %{"type" => "device_pool"})
 
       assert resp = json_response(conn, 422)
-      assert resp["validation_errors"]["type"] == ["device pools cannot be created via the API"]
+      assert resp["validation_errors"]["device_membership_criteria"] == ["can't be blank"]
 
       assert Repo.get_by!(Portal.Resource, account_id: account.id, id: resource.id).type == :dns
     end
 
-    # An existing pool - created in the admin portal - stays fully
-    # manageable; only creating one is blocked.
     test "allows updating an existing device pool", %{
       conn: conn,
       account: account,

@@ -49,6 +49,7 @@ defmodule PortalAPI.Schemas.PoolMember do
              ]}
     OpenApiSpex.schema(%{
       title: "PoolMember",
+      deprecated: true,
       description: "A Client a device pool Resource names as a member",
       type: :object,
       properties: %{
@@ -77,6 +78,7 @@ defmodule PortalAPI.Schemas.PoolMember do
 
     OpenApiSpex.schema(%{
       title: "PoolMemberPatchRequest",
+      deprecated: true,
       description: """
       PATCH body for adding and removing individual pool members. Both
       operations are idempotent, and `remove` is applied before `add`, so a
@@ -112,6 +114,7 @@ defmodule PortalAPI.Schemas.PoolMember do
 
     OpenApiSpex.schema(%{
       title: "PoolMemberPutRequest",
+      deprecated: true,
       description: """
       PUT body replacing the pool's entire membership. Any Client not named
       here is removed from the pool.
