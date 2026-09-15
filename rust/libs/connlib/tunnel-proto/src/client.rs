@@ -188,11 +188,12 @@ pub struct ClientState {
     buffered_events: VecDeque<ClientEvent>,
     buffered_packets: VecDeque<IpPacket>,
     buffered_transmits: snownet::TransmitBuffer,
-    /// When to run [`ClientState::handle_timeout`] for work we buffered internally.
+    /// When we queued work that only [`ClientState::handle_timeout`] acts on.
     ///
-    /// Handling a packet can leave a DNS query or response queued in a sub-component that only
-    /// `handle_timeout` drains, without that component advertising a deadline of its own.
-    flush_buffered_at: Option<Instant>,
+    /// Handling a packet can leave a DNS query or response in a sub-component that only
+    /// `handle_timeout` drains and that advertises no deadline of its own. Reported as already
+    /// due, so the event loop runs one `handle_timeout` before it suspends.
+    queued_work_at: Option<Instant>,
 
     /// Our connection to the portal, holding back ICE candidates while it is down.
     portal: PortalConnection<ClientOrGatewayId>,
@@ -229,7 +230,7 @@ impl ClientState {
             device_stub_resolver: Default::default(),
             dns_cache: Default::default(),
             buffered_transmits: Default::default(),
-            flush_buffered_at: None,
+            queued_work_at: None,
             is_internet_resource_active,
             buffered_dns_queries: Default::default(),
             udp_dns_client: l3_udp_dns_client::Client::new(seed),
@@ -600,7 +601,7 @@ impl ClientState {
         // DNS packets to our sentinel resolvers never become flows.
         let packet = match self.try_handle_dns(packet, now) {
             ControlFlow::Break(()) => {
-                self.flush_buffered_work_soon(now);
+                self.queued_work_at.get_or_insert(now);
 
                 return Ok(());
             }
@@ -792,17 +793,6 @@ impl ClientState {
         Ok(())
     }
 
-    /// Records that we buffered work internally that only [`ClientState::handle_timeout`] acts on.
-    ///
-    /// Waking no sooner than this batches a burst of such work into a single `handle_timeout`,
-    /// which walks every connection.
-    fn flush_buffered_work_soon(&mut self, now: Instant) {
-        const SIDE_EFFECT_TIMEOUT: Duration = Duration::from_secs(1);
-
-        self.flush_buffered_at
-            .get_or_insert(now + SIDE_EFFECT_TIMEOUT);
-    }
-
     /// Handles UDP packets received on the network interface.
     ///
     /// Most of these packets will be WireGuard encrypted IP packets and will thus yield an [`IpPacket`].
@@ -819,7 +809,7 @@ impl ClientState {
         let packet = self.decapsulate(local, from, packet, now)?;
 
         if packet.is_none() {
-            self.flush_buffered_work_soon(now);
+            self.queued_work_at.get_or_insert(now);
         }
 
         Ok(packet)
@@ -968,7 +958,7 @@ impl ClientState {
     }
 
     pub fn handle_dns_response(&mut self, response: dns::RecursiveResponse, now: Instant) {
-        self.flush_buffered_work_soon(now);
+        self.queued_work_at.get_or_insert(now);
 
         let mut attributes = vec![
             match response.recursion {
@@ -1745,10 +1735,7 @@ impl ClientState {
                     .map(|instant| (instant, "Offline site status expiry")),
             )
             .chain(stale_dns_stream.map(|instant| (instant, "Stale DNS stream")))
-            .chain(
-                self.flush_buffered_at
-                    .map(|instant| (instant, "Buffered work")),
-            )
+            .chain(self.queued_work_at.map(|instant| (instant, "Queued work")))
             .chain(
                 self.flow_tracker
                     .poll_timeout()
@@ -1782,7 +1769,7 @@ impl ClientState {
         self.reset_offline_site_status(now);
         self.discard_stale_dns_streams(now);
 
-        self.flush_buffered_at = None;
+        self.queued_work_at = None;
     }
 
     /// Advance the DNS server and client state machines.
