@@ -1417,6 +1417,7 @@ dependencies = [
 name = "clock"
 version = "0.1.0"
 dependencies = [
+ "tokio",
  "tracing",
 ]
 

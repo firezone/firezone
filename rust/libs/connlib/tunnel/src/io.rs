@@ -2,14 +2,13 @@ mod device;
 mod doh;
 mod nameserver_set;
 mod tcp_dns;
-mod timeout;
 mod udp_dns;
 mod udp_gso_queue;
 
 pub use device::{Device, TunChannelClosed};
 pub(crate) use udp_gso_queue::{GSO_BUFFER_SIZE, UdpGsoQueue};
 
-use crate::{TunnelError, dns, io::timeout::Timeout, otel, sockets::Sockets};
+use crate::{TunnelError, dns, otel, sockets::Sockets};
 use anyhow::{ErrorExt, Result};
 use bootstrap_dns_client::BootstrapDnsClient;
 use bufferpool::{Buffer, VecBuf};
@@ -34,8 +33,6 @@ use std::{
 };
 use tun::Tun;
 
-const DEFAULT_TIME_ADVANCE: Duration = Duration::from_secs(10);
-
 /// Bundles together all side-effects that connlib needs to have access to.
 pub struct Io {
     /// The UDP sockets used to send & receive packets from the network.
@@ -56,8 +53,6 @@ pub struct Io {
     bootstrap_dns_client: BootstrapDnsClient,
     doh_clients: BTreeMap<DoHUrl, DohClient>,
     doh_clients_bootstrap: FuturesMap<DoHUrl, Result<HttpClient>>,
-
-    timeout: Timeout,
 
     tun: Device,
     packet_counter: opentelemetry::metrics::Counter<u64>,
@@ -86,7 +81,6 @@ enum DohClient {
 /// This structure allows us to batch-process multiple ready sources rather than
 /// handling them one at a time, improving fairness and preventing starvation.
 pub struct Input {
-    pub timeout: bool,
     pub device: Option<tun::PacketBatch>,
     pub network: Option<Buffer<VecBuf<DatagramBatch>>>,
     pub tcp_dns_queries: Vec<l4_tcp_dns_server::Query>,
@@ -98,7 +92,6 @@ pub struct Input {
 impl Input {
     fn error(e: impl Into<anyhow::Error>) -> Self {
         Self {
-            timeout: false,
             device: None,
             network: None,
             tcp_dns_queries: Vec::new(),
@@ -147,7 +140,6 @@ impl Io {
         sockets.rebind(udp_socket_factory.clone()); // Bind sockets on startup.
 
         Self {
-            timeout: Timeout::new(DEFAULT_TIME_ADVANCE),
             sockets,
             nameservers: NameserverSet::new(
                 nameservers,
@@ -357,10 +349,7 @@ impl Io {
             });
         };
 
-        let timeout = self.timeout.poll_tick(cx).is_ready();
-
-        if !timeout
-            && device.is_pending()
+        if device.is_pending()
             && network.is_pending()
             && tcp_dns_queries.is_empty()
             && udp_dns_queries.is_empty()
@@ -371,7 +360,6 @@ impl Io {
         }
 
         Poll::Ready(Input {
-            timeout,
             device: poll_result_to_option(device, &mut error),
             network: poll_to_option(network),
             tcp_dns_queries,
@@ -461,27 +449,6 @@ impl Io {
         for (server, _) in std::mem::take(&mut self.doh_clients) {
             self.bootstrap_doh_client(server);
         }
-    }
-
-    pub fn reset_timeout_after(&mut self, wakeup_in: Duration, reason: &'static str) {
-        let now = Instant::now();
-        let Some(timeout) = now.checked_add(wakeup_in) else {
-            tracing::warn!(?wakeup_in, %reason, "Unable to schedule tunnel timeout without overflowing");
-
-            return;
-        };
-
-        if self.timeout.deadline() != timeout {
-            tracing::trace!(?wakeup_in, %reason);
-
-            self.timeout.reset(timeout);
-        }
-    }
-
-    /// Schedules a wakeup in case one isn't registered yet.
-    pub fn schedule_timeout(&mut self) {
-        self.timeout
-            .schedule(Instant::now() + Duration::from_secs(1));
     }
 
     /// The GSO queue used as the destination buffer when encapsulating packets in place.
@@ -691,42 +658,6 @@ mod tests {
             io.doh_clients.get(&DoHUrl::cloudflare()),
             Some(DohClient::Connecting(_))
         ));
-    }
-
-    #[tokio::test]
-    async fn schedule_timeout_shortens_deadline_when_current_is_too_far_away() {
-        let mut io = Io::for_test();
-
-        // The default deadline is DEFAULT_TIME_ADVANCE (10s) from now.
-        // schedule_timeout should pull it in to ~1s from now.
-        let now = Instant::now();
-        io.schedule_timeout();
-
-        let deadline = io.timeout.deadline();
-        let wakeup_in = deadline.duration_since(now);
-
-        assert!(
-            wakeup_in <= Duration::from_millis(1_010),
-            "expected deadline within 1s, got {wakeup_in:?}"
-        );
-    }
-
-    #[tokio::test]
-    async fn schedule_timeout_does_not_postpone_an_already_close_deadline() {
-        let mut io = Io::for_test();
-
-        // Set a deadline that is already sooner than 1s.
-        io.reset_timeout_after(Duration::from_millis(100), "close deadline");
-        let close_deadline = io.timeout.deadline();
-
-        io.schedule_timeout();
-
-        let deadline = io.timeout.deadline();
-
-        assert_eq!(
-            deadline, close_deadline,
-            "schedule_timeout must not push out a deadline that is already close"
-        );
     }
 
     #[tokio::test]
