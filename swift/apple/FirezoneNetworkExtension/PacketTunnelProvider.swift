@@ -210,9 +210,13 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
   override func wake() {
     Log.log("wake")
 
-    let adapter = self.adapter
+    guard let adapter else {
+      Log.warning("Adapter is nil")
+      return
+    }
+
     Task { @Sendable in
-      await adapter?.reset(reason: "awoke from sleep")
+      await adapter.reset(reason: "awoke from sleep")
     }
   }
 
