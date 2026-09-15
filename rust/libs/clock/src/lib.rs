@@ -1,7 +1,7 @@
 use std::{
     future::Future as _,
     pin::Pin,
-    task::{Context, Poll},
+    task::{Context, Poll, ready},
     time::{Duration, Instant, SystemTime},
 };
 
@@ -15,6 +15,15 @@ const CLOCK_DRIFT_TOLERANCE: Duration = Duration::from_secs(1);
 /// bindings, ICE candidates and peer sessions are all suspect. The cause does not matter: a system
 /// suspend, a starved process and an OS that never reported its suspend all look the same here.
 const LATENESS_THRESHOLD: Duration = Duration::from_secs(30);
+
+/// What the event loop has to react to, in the order [`Clock::poll_event`] reports it.
+#[derive(Debug, PartialEq, Eq)]
+pub enum Event {
+    /// The latest sample landed this far past the deadline set via [`Clock::wake_at`].
+    Late(Duration),
+    /// The deadline set via [`Clock::wake_at`] has passed.
+    Alarm,
+}
 
 /// A monotonic clock that also advances while the system is suspended.
 ///
@@ -46,8 +55,8 @@ impl Clock {
 
     /// Arms the alarm for `deadline`, which is in this clock's domain.
     ///
-    /// Time spent suspended before the next sample counts towards the overshoot reported by
-    /// [`Clock::poll_lateness`]: it is time we did not service our sockets.
+    /// Time spent suspended before the next sample counts towards the overshoot reported as
+    /// [`Event::Late`]: it is time we did not service our sockets.
     pub fn wake_at(&mut self, deadline: Option<Instant>) {
         self.wake_at = deadline;
 
@@ -64,8 +73,15 @@ impl Clock {
         self.alarm_target = Some(raw_now + deadline.saturating_duration_since(now));
     }
 
-    /// Completes once the deadline set via [`Clock::wake_at`] has passed.
-    pub fn poll_alarm(&mut self, cx: &mut Context<'_>) -> Poll<()> {
+    /// Reports each [`Event`] once.
+    ///
+    /// The alarm rings once per [`Clock::wake_at`] and is quiet until re-armed, so a caller that
+    /// polls after every wake-up runs its timeout handling exactly once per deadline.
+    pub fn poll_event(&mut self, cx: &mut Context<'_>) -> Poll<Event> {
+        if let Some(by) = self.lateness.take() {
+            return Poll::Ready(Event::Late(by));
+        }
+
         let Some(target) = self.alarm_target else {
             return Poll::Pending;
         };
@@ -79,12 +95,10 @@ impl Clock {
             alarm.as_mut().reset(target);
         }
 
-        alarm.as_mut().poll(cx)
-    }
+        ready!(alarm.as_mut().poll(cx));
+        self.alarm_target = None;
 
-    /// Returns, once, by how much the latest sample overshot its deadline.
-    pub fn poll_lateness(&mut self) -> Option<Duration> {
-        self.lateness.take()
+        Poll::Ready(Event::Alarm)
     }
 
     fn sample(&mut self, monotonic: Instant, system: SystemTime) -> Instant {
@@ -148,7 +162,7 @@ impl Default for Clock {
 
 #[cfg(test)]
 mod tests {
-    use std::future::poll_fn;
+    use std::task::Waker;
 
     use super::*;
 
@@ -235,8 +249,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn reports_a_sample_that_overshoots_its_deadline() {
+    #[tokio::test(start_paused = true)]
+    async fn reports_a_sample_that_overshoots_its_deadline() {
         let monotonic = Instant::now();
         let system = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
         let mut clock = clock_at(monotonic, system);
@@ -247,12 +261,19 @@ mod tests {
             system + Duration::from_secs(45),
         );
 
-        assert_eq!(clock.poll_lateness(), Some(Duration::from_secs(35)));
-        assert_eq!(clock.poll_lateness(), None, "overshoot is reported once");
+        assert_eq!(
+            poll_once(&mut clock),
+            Poll::Ready(Event::Late(Duration::from_secs(35)))
+        );
+        assert_eq!(
+            poll_once(&mut clock),
+            Poll::Pending,
+            "overshoot is reported once"
+        );
     }
 
-    #[test]
-    fn does_not_report_a_sample_that_roughly_meets_its_deadline() {
+    #[tokio::test(start_paused = true)]
+    async fn does_not_report_a_sample_that_roughly_meets_its_deadline() {
         let monotonic = Instant::now();
         let system = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
         let mut clock = clock_at(monotonic, system);
@@ -263,7 +284,7 @@ mod tests {
             system + Duration::from_secs(11),
         );
 
-        assert_eq!(clock.poll_lateness(), None);
+        assert_eq!(poll_once(&mut clock), Poll::Pending);
     }
 
     #[test]
@@ -277,7 +298,7 @@ mod tests {
             system + Duration::from_secs(600),
         );
 
-        assert_eq!(clock.poll_lateness(), None);
+        assert_eq!(poll_once(&mut clock), Poll::Pending);
     }
 
     #[test]
@@ -294,38 +315,41 @@ mod tests {
             system + Duration::from_secs(120),
         );
 
-        assert_eq!(clock.poll_lateness(), Some(Duration::from_secs(110)));
+        assert_eq!(
+            poll_once(&mut clock),
+            Poll::Ready(Event::Late(Duration::from_secs(110)))
+        );
     }
 
     #[tokio::test(start_paused = true)]
-    async fn alarm_fires_once_the_deadline_has_passed() {
+    async fn alarm_rings_once_the_deadline_has_passed() {
         let mut clock = Clock::new();
         let now = Instant::now();
 
         clock.wake_at(Some(now + Duration::from_secs(5)));
+        assert_eq!(poll_once(&mut clock), Poll::Pending);
 
-        assert!(
-            poll_fn(|cx| Poll::Ready(clock.poll_alarm(cx)))
-                .await
-                .is_pending()
+        tokio::time::advance(Duration::from_secs(6)).await;
+        assert_eq!(poll_once(&mut clock), Poll::Ready(Event::Alarm));
+        assert_eq!(
+            poll_once(&mut clock),
+            Poll::Pending,
+            "the alarm rings once until re-armed"
         );
-
-        tokio::time::advance(Duration::from_secs(5)).await;
-        poll_fn(|cx| clock.poll_alarm(cx)).await;
     }
 
     #[tokio::test(start_paused = true)]
-    async fn alarm_without_deadline_never_fires() {
+    async fn alarm_without_deadline_never_rings() {
         let mut clock = Clock::new();
 
         clock.wake_at(None);
         tokio::time::advance(Duration::from_secs(60)).await;
 
-        assert!(
-            poll_fn(|cx| Poll::Ready(clock.poll_alarm(cx)))
-                .await
-                .is_pending()
-        );
+        assert_eq!(poll_once(&mut clock), Poll::Pending);
+    }
+
+    fn poll_once(clock: &mut Clock) -> Poll<Event> {
+        clock.poll_event(&mut Context::from_waker(Waker::noop()))
     }
 
     fn clock_at(monotonic: Instant, system: SystemTime) -> Clock {

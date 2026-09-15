@@ -127,6 +127,7 @@ enum CombinedEvent {
     Tunnel(Result<GatewayEvent, TunnelError>),
     Portal(Option<Result<PortalEvent, phoenix_channel::Error>>),
     DomainResolved((Result<Vec<IpAddr>, Arc<anyhow::Error>>, ResolveDnsRequest)),
+    Clock(clock::Event),
 }
 
 impl Eventloop {
@@ -192,6 +193,19 @@ impl Eventloop {
 
                 Ok(ControlFlow::Continue(()))
             }
+            CombinedEvent::Clock(clock::Event::Alarm) => {
+                let now = self.clock.now();
+                if let Some(tunnel) = self.tunnel.as_mut() {
+                    tunnel.state_mut().handle_timeout(now);
+                }
+
+                Ok(ControlFlow::Continue(()))
+            }
+            CombinedEvent::Clock(clock::Event::Late(by)) => {
+                tracing::info!(late_by = ?by, "Event loop ran late");
+
+                Ok(ControlFlow::Continue(()))
+            }
             CombinedEvent::SigIntTerm => {
                 tracing::info!("Received SIGINT/SIGTERM");
 
@@ -218,22 +232,28 @@ impl Eventloop {
         }
 
         let now = self.clock.now();
+
+        if let Poll::Ready(event) = self.clock.poll_event(cx) {
+            return Poll::Ready(CombinedEvent::Clock(event));
+        }
+
         if let Some(Poll::Ready(event)) = self.tunnel.as_mut().map(|t| t.poll_next_event(cx, now)) {
             return Poll::Ready(CombinedEvent::Tunnel(event));
         }
 
+        if let Poll::Ready(()) = self.sigint.poll_recv(cx) {
+            return Poll::Ready(CombinedEvent::SigIntTerm);
+        }
+
+        // Nothing to do until the tunnel's next deadline: ask once, then suspend.
         self.clock.wake_at(
             self.tunnel
                 .as_mut()
-                .and_then(|tunnel| tunnel.state_mut().poll_timeout())
-                .map(|(deadline, _)| deadline),
+                .and_then(|tunnel| tunnel.next_timeout(now)),
         );
-        if self.clock.poll_alarm(cx).is_ready() {
-            cx.waker().wake_by_ref();
-        }
 
-        if let Poll::Ready(()) = self.sigint.poll_recv(cx) {
-            return Poll::Ready(CombinedEvent::SigIntTerm);
+        if let Poll::Ready(event) = self.clock.poll_event(cx) {
+            return Poll::Ready(CombinedEvent::Clock(event));
         }
 
         Poll::Pending
