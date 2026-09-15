@@ -147,8 +147,8 @@ jobs:
       matrix:
         test:
           - script: create-flow-after-revocation
-            min_client_version: 1.5.11
-            min_gateway_version: 1.5.3
+            min_client_version: 1.5.13
+            min_gateway_version: 1.6.2
           - script: download-rst
             min_gateway_version: 1.4.18
           - script: curl-portal-down

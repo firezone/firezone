@@ -250,6 +250,11 @@ impl Transition {
                 FlowRoute::Gateway(_) => false,
                 FlowRoute::Peer(_) => false,
             },
+            Transition::RevokeGatewayAuthorization(resource) => match route {
+                FlowRoute::Resource { resource: used, .. } => used != *resource,
+                FlowRoute::Gateway(_) => false,
+                FlowRoute::Peer(_) => true,
+            },
             Transition::UpdateDnsRecords { .. } => true,
         }
     }
