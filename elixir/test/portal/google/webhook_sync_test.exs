@@ -83,6 +83,23 @@ defmodule Portal.Google.WebhookSyncTest do
       assert actor.email == "new@example.com"
     end
 
+    test "preserves the identity and memberships when user flags never arrive",
+         %{directory: directory} = ctx do
+      identity = directory_identity(ctx, "user-1")
+      actor = mark_created_by_directory(identity.actor_id, directory)
+      Portal.Config.merge_env_override(:portal, APIClient, user_flags_retry_timeout: 0)
+      user = google_user("user-1", "New User", "u1@example.com") |> Map.delete("archived")
+      stub_google(users: %{"user-1" => user})
+
+      assert_raise Portal.Google.SyncError, ~r/missing_user_flags/, fn ->
+        perform_job(WebhookSync, args(directory, "user-1"))
+      end
+
+      assert Repo.get_by(ExternalIdentity, id: identity.id)
+      assert Repo.get_by(Membership, actor_id: actor.id)
+      assert Repo.get_by(Actor, id: actor.id)
+    end
+
     test "removes a suspended user with their memberships and directory actor",
          %{directory: directory, base_directory: base_directory} = ctx do
       identity = directory_identity(ctx, "user-1")
