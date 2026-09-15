@@ -42,11 +42,18 @@ pub struct GatewayState {
 
     unix_ts_clock: UnixTsClock,
 
-    /// Drives a 1 Hz wake-up so that callers without other near-term work pump
-    /// the gateway's internal subsystems (NAT/flow tracking eviction etc.) at a
-    /// regular cadence. It doubles as the upper bound on how long work buffered
-    /// while handling a packet waits to be picked up.
+    /// Drives a 1 Hz wake-up so test harnesses (and any callers without
+    /// other near-term work) pump the gateway's internal subsystems
+    /// (NAT/flow tracking eviction etc.) at a regular cadence. Lazily
+    /// initialised on the first `handle_timeout` call.
     next_periodic_tick: Option<Instant>,
+
+    /// Set while a packet we handled has left work behind for [`GatewayState::handle_timeout`].
+    ///
+    /// Handling a packet leaves work in sub-components that only `handle_timeout` drains and that
+    /// do not all advertise a deadline of their own, so every packet sets this. It is reported as
+    /// already due, so the event loop runs one `handle_timeout` before it suspends.
+    pending_work_at: Option<Instant>,
 
     buffered_events: VecDeque<GatewayEvent>,
     buffered_transmits: snownet::TransmitBuffer,
@@ -83,7 +90,8 @@ impl GatewayState {
             flow_tracker: flow_tracker::Tracker::new(now, unix_ts),
             tun_ip_config: None,
             unix_ts_clock: UnixTsClock::new(now, unix_ts),
-            next_periodic_tick: Some(now),
+            next_periodic_tick: None,
+            pending_work_at: None,
         }
     }
 
@@ -114,6 +122,8 @@ impl GatewayState {
         now: Instant,
         provider: &mut impl snownet::BufferProvider,
     ) -> Result<()> {
+        self.pending_work_at = Some(now);
+
         let _guard = self.flow_tracker.begin_tun_packet(&packet, now);
 
         if packet.is_fz_p2p_control() {
@@ -149,8 +159,7 @@ impl GatewayState {
     /// Most of these packets will be WireGuard encrypted IP packets and will thus yield an [`IpPacket`].
     /// Some of them will however be handled internally, for example, TURN control packets exchanged with relays.
     ///
-    /// Anything handled internally is picked up by the next `handle_timeout`, which
-    /// [`GatewayState::poll_timeout`] schedules at 1 Hz.
+    /// Anything handled internally is advertised through [`GatewayState::poll_timeout`].
     pub fn handle_network_input(
         &mut self,
         local: SocketAddr,
@@ -158,6 +167,8 @@ impl GatewayState {
         packet: &[u8],
         now: Instant,
     ) -> Result<Option<IpPacket>> {
+        self.pending_work_at = Some(now);
+
         let _guard = self.flow_tracker.begin_network_packet(local, from, now);
 
         let Some((cid, packet)) = self
@@ -445,6 +456,10 @@ impl GatewayState {
                 self.next_periodic_tick
                     .map(|instant| (instant, "periodic tick")),
             )
+            .chain(
+                self.pending_work_at
+                    .map(|instant| (instant, "Pending work")),
+            )
             .min_by_key(|(instant, _)| *instant)
     }
 
@@ -466,6 +481,7 @@ impl GatewayState {
         }
 
         self.next_periodic_tick = Some(now + Duration::from_secs(1));
+        self.pending_work_at = None;
     }
 
     fn drain_node_events(&mut self) {
