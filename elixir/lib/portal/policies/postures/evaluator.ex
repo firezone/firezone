@@ -14,7 +14,7 @@ defmodule Portal.Policies.Postures.Evaluator do
 
   alias Portal.Device
   alias Portal.Policies.Postures
-  alias Portal.Policies.Postures.{And, Leaf, Not, Or}
+  alias Portal.Policies.Postures.{And, Check, Leaf, Not, Or}
 
   @spec evaluate(Postures.t() | nil, Device.t(), DateTime.t()) ::
           {:ok, DateTime.t() | nil} | {:error, [:postures]}
@@ -35,13 +35,17 @@ defmodule Portal.Policies.Postures.Evaluator do
     nodes |> Enum.map(&evaluate_node(&1, device, now)) |> any_pass()
   end
 
+  defp evaluate_node(%Check{expr: expr}, device, now), do: evaluate_node(expr, device, now)
+
   defp evaluate_node(%Not{node: node}, device, now) do
     {passed?, _expires_at} = evaluate_node(node, device, now)
     {not passed?, nil}
   end
 
   defp evaluate_node(%Leaf{provider: :firezone} = leaf, device, now) do
-    evaluate_leaf(leaf, field_value(leaf.field, device, device), now)
+    leaf
+    |> resolve_macro(device)
+    |> evaluate_leaf(field_value(leaf.field, device, device), now)
   end
 
   defp evaluate_node(%Leaf{provider: provider, rows: rows} = leaf, device, now) do
@@ -93,6 +97,12 @@ defmodule Portal.Policies.Postures.Evaluator do
   defp earliest(nil, other), do: other
   defp earliest(other, nil), do: other
   defp earliest(left, right), do: Enum.min([left, right], DateTime)
+
+  defp resolve_macro(%Leaf{parsed: :latest} = leaf, device) do
+    %{leaf | parsed: Postures.parse_version(Portal.ComponentVersions.client_version(device))}
+  end
+
+  defp resolve_macro(leaf, _device), do: leaf
 
   defp field_value(:enrolled, row, _device), do: not is_nil(row)
   defp field_value(:os_up_to_date, nil, _device), do: nil
