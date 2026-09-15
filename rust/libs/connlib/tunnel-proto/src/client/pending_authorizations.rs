@@ -31,8 +31,6 @@ enum AuthorizationTarget {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AuthorizationRequest {
     Resources(Vec<ResourceId>),
-    /// Access to the device at `addr` through `pools`, most preferred first; the portal
-    /// grants the first that holds the device.
     Device {
         addr: IpAddr,
         pools: Vec<ResourceId>,
