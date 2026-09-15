@@ -30,6 +30,7 @@ fuzz_target!(|data: &[u8]| {
         }
 
         let transition = generator.transition(&reference);
+        let resource_edit_path = transition.resource_edit_path();
 
         tracing::debug!("Applying transition {applied}: {transition:?}");
 
@@ -41,6 +42,11 @@ fuzz_target!(|data: &[u8]| {
         reference = ReferenceState::apply(reference, &transition, flux_capacitor.now_instant());
         tunnel = TunnelTest::apply(tunnel, &reference, transition);
         TunnelTest::check_invariants(&tunnel, &reference);
+
+        if let Some(path) = resource_edit_path {
+            path.mark_covered();
+        }
+
         ReferenceState::clear_expected_probes(&mut reference);
         TunnelTest::clear_probe_observations(&mut tunnel);
     }

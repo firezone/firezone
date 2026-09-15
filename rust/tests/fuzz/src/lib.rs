@@ -17,6 +17,7 @@ mod ref_client;
 mod ref_gateway;
 mod reference;
 mod resource;
+mod resource_edit_path_coverage;
 mod sim_client;
 mod sim_gateway;
 mod sim_net;
@@ -39,6 +40,7 @@ pub mod tunnel_proto {
     pub use super::arb::Generator;
     pub use super::flux_capacitor::FluxCapacitor;
     pub use super::reference::ReferenceState;
+    pub use super::resource_edit_path_coverage::ResourceEditPath;
     pub use super::sut::TunnelTest;
     pub use super::transition::Transition;
 
