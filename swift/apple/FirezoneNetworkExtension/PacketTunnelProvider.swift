@@ -200,7 +200,16 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     return typed
   }
 
+  // Logged because the reset below is otherwise the only evidence either ran.
+  override func sleep(completionHandler: @escaping @Sendable () -> Void) {
+    Log.log("sleep")
+
+    completionHandler()
+  }
+
   override func wake() {
+    Log.log("wake")
+
     let adapter = self.adapter
     Task { @Sendable in
       await adapter?.reset(reason: "awoke from sleep")
