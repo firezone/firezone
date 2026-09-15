@@ -436,6 +436,7 @@ defmodule PortalWeb.Resources.Components do
   attr :form, :any, required: true
   attr :subject, :any, required: true
   attr :selected_devices, :list, default: []
+  attr :pool_counts, :map, default: %{}
 
   def resource_pool_members_section(assigns) do
     assigns =
@@ -448,10 +449,13 @@ defmodule PortalWeb.Resources.Components do
     ~H"""
     <div class="space-y-3">
       <div>
-        <span class="block text-xs font-medium text-body mb-1.5">
-          Device pool members <span class="text-error">*</span>
+        <span class="block text-xs font-medium text-body mb-1">
+          Pool membership criteria <span class="text-error">*</span>
         </span>
-        <ul class="grid w-full max-w-md gap-3 grid-cols-2">
+        <p class="text-[10px] text-subtle mb-2">
+          Select which devices this pool should match.
+        </p>
+        <ul class="grid w-full gap-3 grid-cols-4">
           <.pool_members_choice
             :for={{value, icon, title, hint} <- pool_members_choices()}
             form={@form}
@@ -459,6 +463,7 @@ defmodule PortalWeb.Resources.Components do
             checked={@members == value}
             icon={icon}
             title={title}
+            count={pool_choice_count(value, @members == value, @pool_counts, @selected_devices)}
           >
             {hint}
           </.pool_members_choice>
@@ -487,11 +492,36 @@ defmodule PortalWeb.Resources.Components do
     """
   end
 
+  # The listed count comes off the picker so it follows every add and remove; the others are
+  # counted with the rule the portal authorizes by. A rule that needs a pick of its own shows
+  # a dash until it has one.
+  defp pool_choice_count(:listed, true, _counts, selected_devices),
+    do: to_string(length(selected_devices))
+
+  defp pool_choice_count(:listed, false, _counts, _selected_devices), do: "-"
+
+  defp pool_choice_count(:actor_group, true, counts, _selected_devices) do
+    case Map.get(counts, :actor_group) do
+      nil -> "-"
+      count -> to_string(count)
+    end
+  end
+
+  defp pool_choice_count(:actor_group, false, _counts, _selected_devices), do: "-"
+
+  defp pool_choice_count(value, _picked?, counts, _selected_devices) do
+    case Map.get(counts, value) do
+      nil -> nil
+      count -> to_string(count)
+    end
+  end
+
   attr :form, :any, required: true
   attr :value, :atom, required: true
   attr :checked, :boolean, required: true
   attr :icon, :string, required: true
   attr :title, :string, required: true
+  attr :count, :string, default: nil
   slot :inner_block, required: true
 
   defp pool_members_choice(assigns) do
@@ -509,10 +539,20 @@ defmodule PortalWeb.Resources.Components do
       />
       <label
         for={@id}
-        class="inline-flex items-center justify-between w-full p-3 text-body bg-surface border border-border rounded cursor-pointer peer-checked:border-brand peer-checked:text-brand hover:text-heading hover:bg-raised transition-colors"
+        class="relative inline-flex items-center justify-between w-full p-3 text-body bg-surface border border-border rounded cursor-pointer peer-checked:border-brand peer-checked:text-brand hover:text-heading hover:bg-raised transition-colors"
       >
+        <span
+          :if={@count}
+          data-pool-count-for={@value}
+          class={[
+            "absolute top-2 right-2 tabular-nums px-1.5 py-0.5 rounded text-[10px] font-semibold",
+            if(@checked, do: "bg-brand-muted text-brand", else: "bg-raised text-subtle")
+          ]}
+        >
+          {@count}
+        </span>
         <div class="block">
-          <div class="w-full font-semibold mb-1 text-xs">
+          <div class="w-full font-semibold mb-1 pr-8 text-xs flex items-center">
             <.icon name={@icon} class="w-4 h-4 mr-1" /> {@title}
           </div>
           <div class="w-full text-[10px]">
@@ -526,10 +566,10 @@ defmodule PortalWeb.Resources.Components do
 
   defp pool_members_choices do
     [
-      {:listed, "ri-list-check", "Selected devices", "A fixed list you pick"},
+      {:own_devices, "ri-user-line", "Your devices", "Each actor's own devices"},
       {:all_devices, "ri-device-line", "All devices", "Every device in the account"},
-      {:own_devices, "ri-user-line", "Each actor's own devices", "Each actor reaches only their own devices"},
-      {:actor_group, "ri-group-line", "A group's devices", "The devices of every actor in a group"}
+      {:actor_group, "ri-group-line", "A group's devices", "Devices of a group's members"},
+      {:listed, "ri-list-check", "Static list", "Devices you pick by hand"}
     ]
   end
 
@@ -1101,6 +1141,7 @@ defmodule PortalWeb.Resources.Components do
             form={@resource_form}
             subject={@subject}
             selected_devices={@resource_form_selected_devices}
+            pool_counts={@resource_form_pool_counts}
           />
 
           <.resource_device_pool_section
@@ -2266,10 +2307,10 @@ defmodule PortalWeb.Resources.Components do
     end
   end
 
+  defp pool_kind_label(:own_devices), do: "Your devices"
   defp pool_kind_label(:all_devices), do: "All devices"
-  defp pool_kind_label(:own_devices), do: "Own devices"
   defp pool_kind_label(:actor_group), do: "Group's devices"
-  defp pool_kind_label(:listed), do: "Selected devices"
+  defp pool_kind_label(:listed), do: "Static list"
 
   @spec resource_type_label(atom()) :: String.t()
   def resource_type_label(:dns), do: "DNS"

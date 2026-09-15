@@ -178,7 +178,10 @@ defmodule PortalWeb.Resources do
   defp new_resource_state_assigns(socket, resource_form, sites) do
     [
       resource_panel: base_resource_panel(socket, view: :new_form),
-      resource_form: base_resource_form(resource_form, sites),
+      resource_form:
+        base_resource_form(resource_form, sites,
+          pool_counts: Database.pool_counts(socket.assigns.subject, nil)
+        ),
       resource_grant: base_resource_grant(socket),
       resource_ui: base_resource_ui()
     ]
@@ -190,11 +193,19 @@ defmodule PortalWeb.Resources do
       resource_form:
         base_resource_form(resource_form, sites,
           active_protocols: Enum.map(resource.filters, & &1.protocol),
-          selected_devices: selected_devices
+          selected_devices: selected_devices,
+          pool_counts: Database.pool_counts(socket.assigns.subject, stored_group_id(resource))
         ),
       resource_grant: base_resource_grant(socket),
       resource_ui: base_resource_ui()
     ]
+  end
+
+  defp stored_group_id(%{device_membership_criteria: criteria}) do
+    case Resource.DeviceMembershipCriteria.group_id(criteria) do
+      {:ok, group_id} -> group_id
+      :error -> nil
+    end
   end
 
   defp base_resource_panel(socket, overrides \\ []) do
@@ -220,6 +231,7 @@ defmodule PortalWeb.Resources do
         active_protocols: [],
         filters_dropdown_open?: false,
         selected_devices: [],
+        pool_counts: %{},
         device_search: "",
         device_search_results: nil
       }
@@ -723,7 +735,8 @@ defmodule PortalWeb.Resources do
      socket
      |> merge_state(:resource_form,
        form: to_form(changeset),
-       address_description_changed?: address_description_changed?
+       address_description_changed?: address_description_changed?,
+       pool_counts: Database.pool_counts(socket.assigns.subject, attrs["group_id"])
      )}
   end
 
@@ -1323,6 +1336,7 @@ defmodule PortalWeb.Resources do
       resource_form_active_protocols: assigns.resource_form.active_protocols,
       resource_form_filters_dropdown_open: assigns.resource_form.filters_dropdown_open?,
       resource_form_selected_devices: assigns.resource_form.selected_devices,
+      resource_form_pool_counts: assigns.resource_form.pool_counts,
       resource_form_device_search: assigns.resource_form.device_search,
       resource_form_device_search_results: assigns.resource_form.device_search_results,
       filter_ports: resource_filter_ports(assigns.resource_form.form),
@@ -1609,6 +1623,33 @@ defmodule PortalWeb.Resources do
             [Resource.DeviceMembershipCriteria.device_ids(resource.device_membership_criteria)],
           into: %{},
           do: {resource.id, device_ids}
+    end
+
+    # Counts with the same rule the portal authorizes by, so the badge and the pool agree.
+    def pool_counts(subject, group_id) do
+      counts = %{
+        own_devices: count_criteria_devices(Resource.DeviceMembershipCriteria.own_devices(), subject),
+        all_devices: count_criteria_devices(Resource.DeviceMembershipCriteria.all_devices(), subject)
+      }
+
+      case Ecto.UUID.cast(group_id) do
+        {:ok, id} ->
+          Map.put(counts, :actor_group, count_criteria_devices(Resource.DeviceMembershipCriteria.actor_group(id), subject))
+
+        :error ->
+          counts
+      end
+    end
+
+    defp count_criteria_devices(criteria, subject) do
+      from(d in Portal.Device, as: :devices)
+      |> where([devices: d], d.type == :client)
+      |> Resource.DeviceMembershipCriteria.where_members(
+        criteria,
+        Resource.DeviceMembershipCriteria.scope(criteria, subject)
+      )
+      |> Safe.scoped(subject)
+      |> Safe.aggregate(:count)
     end
 
     def existing_pool_group_ids(resources, subject) do
