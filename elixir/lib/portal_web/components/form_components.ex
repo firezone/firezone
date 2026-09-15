@@ -358,7 +358,7 @@ defmodule PortalWeb.FormComponents do
         />
         <span
           :if={@suffix}
-          class="inline-flex items-center px-3 rounded-r border border-l-0 border-input-border bg-raised text-sm text-subtle font-mono whitespace-nowrap"
+          class="inline-flex items-center px-3 rounded-r border border-l-0 border-input-border bg-raised text-sm text-subtle whitespace-nowrap"
         >
           {@suffix}
         </span>

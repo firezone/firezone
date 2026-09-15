@@ -812,9 +812,7 @@ defmodule PortalWeb.NavigationComponents do
       target="_blank"
       rel="noopener noreferrer"
       {@rest}
-    >
-      {render_slot(@inner_block)}
-    </.link>
+    >{render_slot(@inner_block)}</.link>
     """
   end
 

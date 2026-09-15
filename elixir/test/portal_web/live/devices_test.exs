@@ -554,6 +554,29 @@ defmodule PortalWeb.DevicesTest do
       assert html =~ client.name
     end
 
+    test "offers a copy button for the device id and the slug", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      client = client_fixture(account: account, actor: actor, name: "Old Client Name")
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/devices/#{client.id}")
+
+      for field <- ["device-id", "device-slug"] do
+        id = "#{field}-#{client.id}"
+
+        assert has_element?(lv, "##{id}[phx-hook='CopyClipboard']")
+        assert has_element?(lv, "button[data-copy-to-clipboard-target='#{id}-code']")
+      end
+
+      assert has_element?(lv, "#device-id-#{client.id}-code", client.id)
+      assert has_element?(lv, "#device-slug-#{client.id}-code", Portal.Device.fqdn(client))
+    end
+
     test "shows the slug and lets an admin change it", %{
       conn: conn,
       account: account,
@@ -572,6 +595,8 @@ defmodule PortalWeb.DevicesTest do
 
       assert html =~ "Slug"
       assert html =~ "Used to reach this device directly through a"
+      assert html =~ ">device pool</a>. Must be unique in the account."
+      refute has_element?(lv, "input[name='device[slug]'].font-mono")
       assert has_element?(lv, "input[name='device[slug]'][required]")
 
       for bad <- ["Bad Slug", "-laptop", "laptop-", "my.laptop", "my_laptop", String.duplicate("a", 64)] do

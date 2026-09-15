@@ -458,10 +458,10 @@ defmodule PortalWeb.Resources.Components do
         </span>
       </div>
       <div>
-        <span class="block text-xs font-medium text-body mb-1">
+        <span class="block text-xs font-medium text-body mb-1.5">
           Pool membership criteria <span class="text-error">*</span>
         </span>
-        <p class="text-[10px] text-subtle mb-2">
+        <p class="mb-2 text-xs text-subtle">
           Select which devices this pool should match.
         </p>
         <ul class="grid w-full gap-3 grid-cols-4">
@@ -723,7 +723,7 @@ defmodule PortalWeb.Resources.Components do
         Devices <span class="text-muted font-normal">(optional)</span>
       </span>
       <p class="mb-2 text-xs text-subtle">
-        Select devices to include in this pool.
+        Adding or removing a device only affects that device's connections.
       </p>
       <.device_picker
         selected_devices={@selected_devices}
