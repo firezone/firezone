@@ -29,6 +29,10 @@ defmodule PortalAPI.Client.Channel.Shared do
 
   @session_durability_timeout :timer.seconds(15)
 
+  # A device lookup that the asking client may not have answers after this long, whether or
+  # not anything is behind the name or address. Devices it may reach answer straight away.
+  @device_lookup_constant_time 500
+
   @doc false
   def policy_authorization_queue_opts do
     [
@@ -644,6 +648,16 @@ defmodule PortalAPI.Client.Channel.Shared do
     {:noreply, track_presence(socket)}
   end
 
+  def handle_info({:device_domain_resolution_failed, domain}, socket) do
+    push(socket, "device_domain_resolution_failed", %{domain: domain, reason: :not_found})
+
+    {:noreply, socket}
+  end
+
+  def handle_info({:device_access_denied, payload, reason}, socket) do
+    push_device_access_denied(socket, payload, reason)
+  end
+
   # Catch-all for messages we don't handle
   def handle_info(_message, socket), do: {:noreply, socket}
 
@@ -784,9 +798,13 @@ defmodule PortalAPI.Client.Channel.Shared do
     end
   end
 
-  # Connlib intercepts DNS queries for `<slug>.firezone.network`. Every client device in
-  # the account resolves; access is decided when connlib sees a packet for the address.
+  # Connlib intercepts DNS queries for `<slug>.firezone.network`. A name the client may reach
+  # resolves straight away. Every other name, whether the client may not reach it or nothing
+  # holds it, answers `not_found` after the same delay, so the account's devices cannot be
+  # listed by guessing names.
   def handle_in("resolve_device_domain", %{"domain" => domain}, socket) when is_binary(domain) do
+    started_at = System.monotonic_time(:millisecond)
+
     case resolve_device_domain(domain, socket) do
       {:ok, %Portal.Device{} = device} ->
         push(socket, "device_domain_resolved", %{
@@ -795,8 +813,8 @@ defmodule PortalAPI.Client.Channel.Shared do
           ipv6: %Postgrex.INET{address: device.ipv6.address, netmask: 128}
         })
 
-      {:error, reason} ->
-        push(socket, "device_domain_resolution_failed", %{domain: domain, reason: reason})
+      {:error, _reason} ->
+        schedule_after_constant_time(started_at, {:device_domain_resolution_failed, domain})
     end
 
     {:noreply, socket}
@@ -1245,9 +1263,33 @@ defmodule PortalAPI.Client.Channel.Shared do
     domain = String.downcase(domain)
     slug = domain |> String.split(".") |> hd()
 
-    with true <- domain == Portal.Device.fqdn_for_slug(slug) || {:error, :not_found} do
-      Database.get_device_by_slug(slug, socket.assigns.subject)
+    with true <- domain == Portal.Device.fqdn_for_slug(slug) || {:error, :not_found},
+         {:ok, %Portal.Device{} = device} <- Database.get_device_by_slug(slug, socket.assigns.subject),
+         true <- reachable_through_any_pool?(device, socket) || {:error, :not_found} do
+      {:ok, device}
     end
+  end
+
+  # Whether any pool the client holds admits the device, judged the same way a packet for it
+  # would be, so a name resolves exactly when the client could use the answer.
+  defp reachable_through_any_pool?(device, socket) do
+    pool_ids =
+      for %Cache.Cacheable.Resource{type: :device_pool, id: id} <-
+            socket.assigns.cache.connectable_resources,
+          do: Ecto.UUID.load!(id)
+
+    match?(
+      {:ok, _resource, _membership_id, _policy_id, _expires_at},
+      pick_device_pool(pool_ids, device, socket)
+    )
+  end
+
+  defp schedule_after_constant_time(started_at, message) do
+    Process.send_after(
+      self(),
+      message,
+      Portal.Timing.remaining_constant_time(started_at, @device_lookup_constant_time)
+    )
   end
 
   defp find_online_client_by_address(account_id, {:ipv4, ipv4_tuple}) do
@@ -1486,6 +1528,7 @@ defmodule PortalAPI.Client.Channel.Shared do
   # device is authorized without a query. An offline device is read once to tell "offline"
   # from "not in any of these pools".
   defp handle_request_device_access(resource_ids, target, payload, socket) do
+    started_at = System.monotonic_time(:millisecond)
     account_id = socket.assigns.client.account_id
 
     case find_online_client_by_address(account_id, target) do
@@ -1511,24 +1554,30 @@ defmodule PortalAPI.Client.Channel.Shared do
             )
 
           {:error, :forbidden} ->
-            push_device_access_denied(socket, payload, :forbidden)
+            deny_device_access(socket, payload, started_at)
         end
 
       {:ok, _self_id, _meta} ->
-        push_device_access_denied(socket, payload, :forbidden)
+        deny_device_access(socket, payload, started_at)
 
       :offline ->
-        # An address no device holds answers exactly like one the asking client may not
-        # reach, so sweeping the tunnel range tells an actor nothing about who is in it.
-        # connlib only logs the reason on this path, so the two are the same to it.
         with {:ok, %Portal.Device{} = device} <- fetch_target_device(target, socket),
              {:ok, _resource, _membership_id, _policy_id, _expires_at} <-
                pick_device_pool(resource_ids, device, socket) do
           push_device_access_denied(socket, Map.put(payload, "client_id", device.id), :offline)
         else
-          _other -> push_device_access_denied(socket, payload, :forbidden)
+          _other -> deny_device_access(socket, payload, started_at)
         end
     end
+  end
+
+  # An address no device holds answers exactly like one the asking client may not reach, and
+  # after the same delay, so sweeping the tunnel range tells an actor nothing about who is in
+  # it. A device the client may reach answers straight away, offline or not.
+  defp deny_device_access(socket, payload, started_at) do
+    schedule_after_constant_time(started_at, {:device_access_denied, payload, :forbidden})
+
+    {:noreply, socket}
   end
 
   # Walks the pools connlib named, in its order, and grants the first the client may use
