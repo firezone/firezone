@@ -106,6 +106,28 @@ defmodule Portal.Changes.Hooks.ClientsTest do
       assert new_client.id == client.id
       refute Repo.get_by(Portal.PolicyAuthorization, id: policy_authorization.id)
     end
+
+    test "update unverifies client and keeps the authorizations toward it as a pool member" do
+      account = account_fixture()
+      client = client_fixture(account: account, verified_at: DateTime.utc_now())
+      initiator = client_fixture(account: account)
+      pool = all_devices_pool_resource_fixture(account: account)
+
+      old_data = %{
+        "id" => client.id,
+        "type" => "client",
+        "verified_at" => "2023-10-01T00:00:00Z",
+        "account_id" => client.account_id
+      }
+
+      data = Map.put(old_data, "verified_at", nil)
+
+      inbound =
+        policy_authorization_fixture(account: account, resource: pool, client: initiator, gateway: client)
+
+      assert :ok == on_update(0, old_data, data)
+      assert Repo.get_by(Portal.PolicyAuthorization, id: inbound.id)
+    end
   end
 
   describe "delete/1" do
