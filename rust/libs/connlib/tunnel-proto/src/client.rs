@@ -698,7 +698,7 @@ impl ClientState {
 
                 peer.record_outbound_as_originator(&packet, now);
                 flow_tracker::record_peer(cid, flow_tracker::Role::Initiator);
-                flow_tracker::record_ingest_token(peer.ingest_token(&rid));
+                flow_tracker::record_ingest_token(peer.outbound_ingest_token(&rid));
 
                 (packet, cid.into())
             }
@@ -1234,9 +1234,13 @@ impl ClientState {
         // We only add the inbound resource and filters on the *target* side of the connection.
         // The initiating side does not request connections if the filters don't allow it.
         if let Some((resource_id, filters, expires_at)) = authorization {
-            // The token logs the peer's flows for this resource.
-            peer.set_ingest_token(resource_id, flow_logs_ingest_token.clone());
-            peer.add_resource(resource_id, filters, expires_at, now);
+            peer.add_resource(
+                resource_id,
+                filters,
+                expires_at,
+                flow_logs_ingest_token.clone(),
+                now,
+            );
         }
 
         let pending_authorizations = self
@@ -1273,7 +1277,7 @@ impl ClientState {
             self.clients
                 .peer_by_id_mut(&cid)
                 .expect("peer was just inserted")
-                .set_ingest_token(resource_id, flow_logs_ingest_token.clone());
+                .set_outbound_ingest_token(resource_id, flow_logs_ingest_token.clone());
 
             buffered_packets.extend(packets);
         }
