@@ -6481,19 +6481,30 @@ defmodule PortalAPI.Client.ChannelTest do
       }
     end
 
-    test "denies when target IP belongs to no device in the account", %{
+    test "answers an address no device holds the same as one it may not reach", %{
+      account: account,
       client: client,
       subject: subject,
       pool_resource: pool_resource
     } do
+      stranger = client_fixture(account: account, actor: actor_fixture(account: account)) |> fetch_device!()
+
       initiating_socket = join_channel(client, subject, channel: PortalAPI.Client.V3.Channel)
       assert_push "init", _
 
       orphan_ip = "100.64.255.99"
+      stranger_ip = Portal.Types.INET.to_string(stranger.ipv4)
 
       push(initiating_socket, "request_access", %{"resource_ids" => [pool_resource.id], "ipv4" => orphan_ip})
 
-      assert_push "client_device_access_denied", %{ipv4: ^orphan_ip, reason: :not_found}
+      assert_push "client_device_access_denied", %{ipv4: ^orphan_ip, reason: :forbidden} = orphan_denial
+
+      push(initiating_socket, "request_access", %{"resource_ids" => [pool_resource.id], "ipv4" => stranger_ip})
+
+      assert_push "client_device_access_denied", %{ipv4: ^stranger_ip} = stranger_denial
+
+      assert Map.delete(orphan_denial, :ipv4) == Map.delete(stranger_denial, :ipv4)
+      refute Map.has_key?(stranger_denial, :client_id)
     end
 
     test "persists a policy_authorization on success", %{
