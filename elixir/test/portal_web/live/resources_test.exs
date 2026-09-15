@@ -1049,7 +1049,7 @@ defmodule PortalWeb.ResourcesTest do
             {"own-devices", "Your devices", "Each actor&#39;s own devices"},
             {"all-devices", "All devices", "Every device in the account"},
             {"actor-group", "A group&#39;s devices", "Devices of a group&#39;s members"},
-            {"listed", "Static list", "Devices you pick by hand"}
+            {"listed", "Static list", "Explicitly choose the devices in this pool"}
           ] do
         assert has_element?(lv, "#resource-form-members--#{id}")
         assert html =~ label

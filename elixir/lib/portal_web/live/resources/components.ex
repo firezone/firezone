@@ -578,7 +578,7 @@ defmodule PortalWeb.Resources.Components do
       {:own_devices, "ri-user-line", "Your devices", "Each actor's own devices"},
       {:all_devices, "ri-device-line", "All devices", "Every device in the account"},
       {:actor_group, "ri-group-line", "A group's devices", "Devices of a group's members"},
-      {:listed, "ri-list-check", "Static list", "Devices you pick by hand"}
+      {:listed, "ri-list-check", "Static list", "Explicitly choose the devices in this pool"}
     ]
   end
 
@@ -720,7 +720,7 @@ defmodule PortalWeb.Resources.Components do
     ~H"""
     <div>
       <span class="block text-xs font-medium text-body mb-1.5">
-        Devices <span class="text-muted font-normal">(optional)</span>
+        Devices
       </span>
       <p class="mb-2 text-xs text-subtle">
         Adding or removing a device only affects that device's connections.
