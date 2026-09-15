@@ -56,6 +56,10 @@ impl Clock {
     /// Arms the alarm for `deadline`, which is in this clock's domain, and registers interest in
     /// it so that `cx` is woken once it rings.
     ///
+    /// Poll for events before calling this. Re-arming replaces the deadline, so a deadline that
+    /// has just passed is lost unless it has been observed first, and the caller then never hears
+    /// the alarm it asked for.
+    ///
     /// Time spent suspended before the next sample counts towards the overshoot reported as
     /// [`Event::Late`]: it is time we did not service our sockets.
     pub fn set_alarm(&mut self, cx: &mut Context<'_>, deadline: Option<Instant>) {
