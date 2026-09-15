@@ -519,7 +519,12 @@ impl<'a> Handler<'a> {
             match poll_fn(|cx| self.next_event(cx, signals)).await {
                 Event::Connlib(x) => {
                     if let Err(error) = self.handle_connlib_event(x).await {
-                        tracing::error!("Error while handling connlib callback: {error:#}");
+                        if gui_is_gone(&error) {
+                            tracing::debug!("Cannot handle connlib callback: {error:#}");
+                        } else {
+                            tracing::error!("Error while handling connlib callback: {error:#}");
+                        }
+
                         continue;
                     }
                 }
@@ -953,29 +958,27 @@ impl<'a> Handler<'a> {
     }
 
     async fn send_ipc(&mut self, msg: ServerMsg) -> Result<()> {
-        let result = self
-            .ipc_tx
+        self.ipc_tx
             .send(&msg)
             .await
-            .with_context(|| format!("Failed to send IPC message `{msg}`"));
+            .with_context(|| format!("Failed to send IPC message `{msg}`"))?;
 
-        // A GUI that is exiting tears the pipe down while we are still sending to it.
-        // `IpcDisconnected` arrives right after, so there is nothing to report here.
-        if let Err(e) = &result
-            && e.any_downcast_ref::<io::Error>().is_some_and(|e| {
-                matches!(
-                    e.kind(),
-                    io::ErrorKind::BrokenPipe | io::ErrorKind::ConnectionReset
-                )
-            })
-        {
-            tracing::debug!("{e:#}");
-
-            return Ok(());
-        }
-
-        result
+        Ok(())
     }
+}
+
+/// Whether this error is the GUI's end of the IPC connection going away.
+///
+/// The GUI tears the pipe down as it exits, so sending to it can fail through no fault of
+/// ours. [`Event::IpcDisconnected`] arrives right after and ends the session in an orderly
+/// way, so there is nothing to report.
+fn gui_is_gone(error: &anyhow::Error) -> bool {
+    error.any_downcast_ref::<io::Error>().is_some_and(|e| {
+        matches!(
+            e.kind(),
+            io::ErrorKind::BrokenPipe | io::ErrorKind::ConnectionReset
+        )
+    })
 }
 
 /// Run the Tunnel service in an interactive terminal rather than as a
