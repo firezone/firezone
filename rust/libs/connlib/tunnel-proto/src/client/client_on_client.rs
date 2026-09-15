@@ -367,7 +367,7 @@ impl InboundResources {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::client::AuthorizedOutboundResource;
+    use crate::client::OutboundAuthorizations;
     use crate::messages::PortRange;
     use connlib_model::{ClientId, ResourceId};
     use flow_tracker::IngestTokenRole::{Initiator, Responder};
@@ -376,26 +376,26 @@ mod tests {
     use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
     use std::time::Duration;
 
-    #[test_case::test_case(true; "inbound_grant_first")]
-    #[test_case::test_case(false; "outbound_grant_first")]
+    #[test_case::test_case(true; "inbound_authorization_first")]
+    #[test_case::test_case(false; "outbound_authorization_first")]
     fn ingest_tokens_are_separate_for_each_direction(inbound_first: bool) {
         let now = Instant::now();
         let rid = ResourceId::from_u128(1);
         let mut peer = peer();
         let inbound = ingest_token(Responder);
         let outbound = ingest_token(Initiator);
-        let mut outbound_resource = AuthorizedOutboundResource::direct();
+        let mut authorizations = OutboundAuthorizations::default();
 
         if inbound_first {
             peer.add_resource(rid, udp_port(80), None, inbound.clone(), now);
-            outbound_resource.authorize_client(peer.id(), outbound.clone());
+            authorizations.authorize_client(rid, peer.id(), outbound.clone());
         } else {
-            outbound_resource.authorize_client(peer.id(), outbound.clone());
+            authorizations.authorize_client(rid, peer.id(), outbound.clone());
             peer.add_resource(rid, udp_port(80), None, inbound.clone(), now);
         }
 
         assert_eq!(peer.ingest_token_for_inbound(&udp_to(80)), Some(inbound));
-        assert_eq!(outbound_resource.client_token(peer.id()), Some(&outbound));
+        assert_eq!(authorizations.client_token(rid, peer.id()), Some(&outbound));
     }
 
     #[test]
@@ -404,18 +404,25 @@ mod tests {
         let second = ClientId::from_u128(2);
         let first_token = ingest_token_for_client(Initiator, first);
         let second_token = ingest_token_for_client(Initiator, second);
-        let mut resource = AuthorizedOutboundResource::direct();
+        let rid = ResourceId::from_u128(1);
+        let mut authorizations = OutboundAuthorizations::default();
 
-        resource.authorize_client(first, first_token.clone());
-        resource.authorize_client(second, second_token.clone());
+        authorizations.authorize_client(rid, first, first_token.clone());
+        authorizations.authorize_client(rid, second, second_token.clone());
 
-        assert_eq!(resource.client_token(first), Some(&first_token));
-        assert_eq!(resource.client_token(second), Some(&second_token));
+        assert_eq!(authorizations.client_token(rid, first), Some(&first_token));
+        assert_eq!(
+            authorizations.client_token(rid, second),
+            Some(&second_token)
+        );
 
-        resource.remove_client(&first);
+        authorizations.remove_client(rid, first);
 
-        assert_eq!(resource.client_token(first), None);
-        assert_eq!(resource.client_token(second), Some(&second_token));
+        assert_eq!(authorizations.client_token(rid, first), None);
+        assert_eq!(
+            authorizations.client_token(rid, second),
+            Some(&second_token)
+        );
     }
 
     #[test]
@@ -536,8 +543,8 @@ mod tests {
             peer.ensure_allowed_inbound(udp_to(80), now).unwrap()
         ));
         assert_eq!(peer.poll_timeout(), Some(now + Duration::from_secs(60)));
-        let mut outbound_resource = AuthorizedOutboundResource::direct();
-        outbound_resource.authorize_client(peer.id(), ingest_token(Initiator));
+        let mut authorizations = OutboundAuthorizations::default();
+        authorizations.authorize_client(rid, peer.id(), ingest_token(Initiator));
 
         let later = now + Duration::from_secs(61);
         peer.handle_timeout(later);
@@ -545,7 +552,7 @@ mod tests {
         assert_eq!(peer.poll_timeout(), None);
         assert_eq!(peer.ingest_token_for_inbound(&udp_to(80)), None);
         assert_eq!(
-            outbound_resource.client_token(peer.id()),
+            authorizations.client_token(rid, peer.id()),
             Some(&ingest_token(Initiator))
         );
         assert!(is_filtered(
@@ -569,12 +576,12 @@ mod tests {
             peer.ensure_allowed_inbound(udp_to(90), now).unwrap()
         ));
 
-        let mut outbound_resource = AuthorizedOutboundResource::direct();
-        outbound_resource.authorize_client(peer.id(), ingest_token(Initiator));
+        let mut authorizations = OutboundAuthorizations::default();
+        authorizations.authorize_client(keep, peer.id(), ingest_token(Initiator));
         peer.retain_authorizations(&BTreeSet::from([keep]));
         assert_eq!(peer.ingest_token_for_inbound(&udp_to(90)), None);
         assert_eq!(
-            outbound_resource.client_token(peer.id()),
+            authorizations.client_token(keep, peer.id()),
             Some(&ingest_token(Initiator))
         );
 

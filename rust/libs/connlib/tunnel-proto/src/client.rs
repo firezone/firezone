@@ -145,12 +145,11 @@ pub struct ClientState {
     pending_peer_packets: BTreeMap<ClientOrGatewayId, UniquePacketBuffer>,
 
     dns_resource_nat: DnsResourceNat,
-    /// Resources we have requested access to and the path that authorises
-    /// our traffic to each.
+    /// Outbound authorizations received from the portal.
     ///
     /// This state persists across `reset`s so we can re-attach to the same
     /// gateway / pool peers.
-    authorized_resources: HashMap<ResourceId, AuthorizedOutboundResource>,
+    outbound_authorizations: OutboundAuthorizations,
     /// Tracks which gateways are in a site.
     ///
     /// This state gets populated as we connect to various Gateways.
@@ -207,7 +206,7 @@ impl ClientState {
         unix_ts: Duration,
     ) -> Self {
         Self {
-            authorized_resources: Default::default(),
+            outbound_authorizations: Default::default(),
             routing_tables: RoutingTables::default(),
             resources_by_id: Default::default(),
             gateways: Default::default(),
@@ -313,9 +312,9 @@ impl ClientState {
                 };
 
                 let outbound = self
-                    .authorized_resources
-                    .get(rid)
-                    .is_some_and(|resource| resource.client_token(peer.id()).is_some());
+                    .outbound_authorizations
+                    .client_token(*rid, peer.id())
+                    .is_some();
 
                 (outbound || inbound.contains(rid)).then(|| pool.name.clone())
             })
@@ -406,7 +405,7 @@ impl ClientState {
             {}
         }
 
-        self.forget_outbound_grants(cid);
+        self.forget_outbound_authorizations(cid);
 
         if self.clients.remove(&cid).is_some() {
             self.node
@@ -471,7 +470,8 @@ impl ClientState {
                     .dns_resources(packet.destination(), proto)
                     .into_iter()
                     .find_map(|(resource, domain)| {
-                        let gateway_id = self.authorized_resources.get(&resource)?.as_gateway()?;
+                        let gateway_id =
+                            self.outbound_authorizations.gateway_by_resource(resource)?;
                         Some((gateway_id, resource, domain))
                     })
                     .context("IP is not associated with an authorized DNS resource")?;
@@ -497,10 +497,7 @@ impl ClientState {
             self.resource_stub_resolver
                 .resolved_resources()
                 .map(|(domain, resource, proxy_ips)| {
-                    let gateway = self
-                        .authorized_resources
-                        .get(resource)
-                        .and_then(|p| p.as_gateway());
+                    let gateway = self.outbound_authorizations.gateway_by_resource(*resource);
 
                     (domain, resource, proxy_ips, gateway)
                 })
@@ -655,7 +652,7 @@ impl ClientState {
                 let Some(route) = select_authorized_route(
                     destination,
                     &routes,
-                    &self.authorized_resources,
+                    &self.outbound_authorizations,
                     &self.clients,
                 ) else {
                     let resource_ids = routes.iter().map(Route::resource_id).unique().collect_vec();
@@ -1024,6 +1021,10 @@ impl ClientState {
         tracing::debug!(%gid, "New resource access authorized");
 
         let resource = self.resources_by_id.get(&rid).context("Unknown resource")?;
+        anyhow::ensure!(
+            !matches!(resource, Resource::DevicePool(_)),
+            "Device pool cannot be authorized through a gateway"
+        );
 
         let pending_authorizations = self
             .pending_authorizations
@@ -1049,10 +1050,8 @@ impl ClientState {
             Ok(()) => {}
             Err(e) => return Ok(Err(e)),
         };
-        self.authorized_resources.insert(
-            rid,
-            AuthorizedOutboundResource::gateway(gid, flow_logs_ingest_token),
-        );
+        self.outbound_authorizations
+            .authorize_gateway(rid, gid, flow_logs_ingest_token);
         self.gateways_by_site
             .entry(site_id)
             .or_default()
@@ -1149,10 +1148,10 @@ impl ClientState {
             return Ok(());
         };
 
-        // A peer connecting to us anew may have reset since we were granted access to it,
-        // taking our inbound grant with it, so our next flow to it asks the portal again.
+        // A peer connecting to us anew may have reset since we were authorized to access it,
+        // taking our inbound authorization with it, so our next flow asks the portal again.
         if authorization.is_some() {
-            self.forget_outbound_grants(cid);
+            self.forget_outbound_authorizations(cid);
         }
 
         self.node.upsert_connection(
@@ -1231,10 +1230,8 @@ impl ClientState {
             tracing::debug!(%resource_id, "Portal authorised access through a pool we do not hold");
             return;
         };
-        self.authorized_resources
-            .entry(resource_id)
-            .or_insert_with(AuthorizedOutboundResource::direct)
-            .authorize_client(cid, ingest_token);
+        self.outbound_authorizations
+            .authorize_client(resource_id, cid, ingest_token);
     }
 
     /// Update the inbound filter for any peer whose authorization references
@@ -1251,9 +1248,7 @@ impl ClientState {
 
     /// Drop a previously-active authorization for the given peer, either way.
     pub fn handle_reject_client_device_access(&mut self, cid: ClientId, resource_id: ResourceId) {
-        if let Some(resource) = self.authorized_resources.get_mut(&resource_id) {
-            resource.remove_client(&cid);
-        }
+        self.outbound_authorizations.remove_client(resource_id, cid);
 
         let Some(peer) = self.clients.peer_by_id_mut(&cid) else {
             return;
@@ -1351,12 +1346,12 @@ impl ClientState {
         self.pending_authorizations
             .remove_resource_authorizations(resource);
 
-        // A pool's `Direct` authorizations must survive a single member's failure.
+        // A pool's authorizations must survive a single member's failure.
         let Some(disconnected_gateway) = self.gateway_by_resource(&resource) else {
             return;
         };
 
-        self.authorized_resources.remove(&resource);
+        self.outbound_authorizations.remove_resource(resource);
         self.cleanup_connected_gateway(&disconnected_gateway, now);
     }
 
@@ -1394,7 +1389,9 @@ impl ClientState {
     }
 
     pub fn gateway_by_resource(&self, resource: &ResourceId) -> Option<GatewayId> {
-        let gid = self.authorized_resources.get(resource)?.as_gateway()?;
+        let gid = self
+            .outbound_authorizations
+            .gateway_by_resource(*resource)?;
 
         Some(*gid)
     }
@@ -1464,10 +1461,8 @@ impl ClientState {
             .forget(&ClientOrGatewayId::Gateway(*disconnected_gateway));
         self.update_site_status_by_gateway(disconnected_gateway, ResourceStatus::Unknown, now);
         self.gateways.remove(disconnected_gateway);
-        for _ in self
-            .authorized_resources
-            .extract_if(|_, p| p.as_gateway() == Some(disconnected_gateway))
-        {}
+        self.outbound_authorizations
+            .forget_gateway(*disconnected_gateway);
         self.dns_resource_nat.clear_by_gateway(disconnected_gateway);
     }
 
@@ -1479,18 +1474,16 @@ impl ClientState {
             .remove(&ClientOrGatewayId::Client(*disconnected_client));
         self.portal
             .forget(&ClientOrGatewayId::Client(*disconnected_client));
-        self.forget_outbound_grants(*disconnected_client);
+        self.forget_outbound_authorizations(*disconnected_client);
 
         if self.clients.remove(disconnected_client).is_some() {
             self.resource_list.update(self.resource_list_snapshot());
         }
     }
 
-    /// Drops every grant the portal gave us towards `cid`, so the next flow asks again.
-    fn forget_outbound_grants(&mut self, cid: ClientId) {
-        for resource in self.authorized_resources.values_mut() {
-            resource.remove_client(&cid);
-        }
+    /// Drops outbound authorizations towards `cid`, so the next flow asks again.
+    fn forget_outbound_authorizations(&mut self, cid: ClientId) {
+        self.outbound_authorizations.forget_client(cid);
     }
 
     fn routes(&self) -> impl Iterator<Item = IpNetwork> + '_ {
@@ -1988,9 +1981,8 @@ impl ClientState {
             }
             resource_stub_resolver::ResolveStrategy::RecurseSite(resources) => {
                 let gateway_id = resources.iter().find_map(|resource| {
-                    self.authorized_resources
-                        .get(resource)?
-                        .as_gateway()
+                    self.outbound_authorizations
+                        .gateway_by_resource(*resource)
                         .copied()
                 });
                 let Some(gateway) = gateway_id.and_then(|id| self.gateways.peer_by_id_mut(&id))
@@ -2548,15 +2540,15 @@ impl ClientState {
         }
 
         let Some((_, peer)) =
-            gateway_by_resource_mut(&self.authorized_resources, &mut self.gateways, id)
+            gateway_by_resource_mut(&self.outbound_authorizations, &mut self.gateways, id)
         else {
-            self.authorized_resources.remove(&id);
+            self.outbound_authorizations.remove_resource(id);
             return;
         };
 
         peer.remove_resource(id);
 
-        self.authorized_resources.remove(&id);
+        self.outbound_authorizations.remove_resource(id);
         self.dns_resource_nat.clear_by_resource(&id);
 
         let unused_gateways = self.gateways.extract_if(|_, p| p.no_allowed_resources());
@@ -2608,35 +2600,35 @@ fn reply_with_icmp_prohibited(buffered_packets: &mut VecDeque<IpPacket>, packet:
 fn select_authorized_route(
     destination: IpAddr,
     routes: &[Route],
-    authorized_resources: &HashMap<ResourceId, AuthorizedOutboundResource>,
+    authorizations: &OutboundAuthorizations,
     clients: &PeerStore<ClientId, ClientOnClient>,
 ) -> Option<AuthorizedRoute> {
     let destination_client = clients.peer_by_ip(destination);
 
     for route in routes {
         let resource_id = route.resource_id();
-        let Some(path) = authorized_resources.get(&resource_id) else {
-            continue;
-        };
-        let (peer, domain, ingest_token) = match (route, &path.access_path, destination_client) {
-            (Route::DevicePool { .. }, AccessPath::Direct(tokens), Some((cid, _))) => {
-                let Some(ingest_token) = tokens.get(&cid) else {
+        let (peer, domain, ingest_token) = match route {
+            Route::DevicePool { .. } => {
+                let Some((cid, _)) = destination_client else {
+                    continue;
+                };
+                let Some(ingest_token) = authorizations.client_token(resource_id, cid) else {
                     continue;
                 };
 
                 (cid.into(), None, ingest_token.clone())
             }
-            (
-                Route::Gateway { domain, .. },
-                AccessPath::Gateway {
-                    gateway_id,
-                    ingest_token,
-                },
-                _,
-            ) => ((*gateway_id).into(), domain.clone(), ingest_token.clone()),
-            (Route::DevicePool { .. }, AccessPath::Direct(_), None) => continue,
-            (Route::DevicePool { .. }, AccessPath::Gateway { .. }, _) => continue,
-            (Route::Gateway { .. }, AccessPath::Direct(_), _) => continue,
+            Route::Gateway { domain, .. } => {
+                let Some(authorization) = authorizations.gateway(resource_id) else {
+                    continue;
+                };
+
+                (
+                    authorization.gateway_id.into(),
+                    domain.clone(),
+                    authorization.ingest_token.clone(),
+                )
+            }
         };
 
         return Some(AuthorizedRoute {
@@ -2657,69 +2649,79 @@ struct AuthorizedRoute {
     ingest_token: IngestToken,
 }
 
-#[derive(Debug, Clone)]
-struct AuthorizedOutboundResource {
-    access_path: AccessPath,
+#[derive(Default)]
+struct OutboundAuthorizations {
+    gateways: HashMap<ResourceId, GatewayAuthorization>,
+    device_pools: HashMap<ResourceId, BTreeMap<ClientId, IngestToken>>,
 }
 
-#[derive(Debug, Clone)]
-enum AccessPath {
-    Gateway {
+struct GatewayAuthorization {
+    gateway_id: GatewayId,
+    ingest_token: IngestToken,
+}
+
+impl OutboundAuthorizations {
+    fn authorize_gateway(
+        &mut self,
+        resource_id: ResourceId,
         gateway_id: GatewayId,
         ingest_token: IngestToken,
-    },
-    Direct(BTreeMap<ClientId, IngestToken>),
-}
-
-impl AuthorizedOutboundResource {
-    fn gateway(gateway_id: GatewayId, ingest_token: IngestToken) -> Self {
-        Self {
-            access_path: AccessPath::Gateway {
+    ) {
+        self.gateways.insert(
+            resource_id,
+            GatewayAuthorization {
                 gateway_id,
                 ingest_token,
             },
+        );
+    }
+
+    fn authorize_client(
+        &mut self,
+        resource_id: ResourceId,
+        client_id: ClientId,
+        ingest_token: IngestToken,
+    ) {
+        self.device_pools
+            .entry(resource_id)
+            .or_default()
+            .insert(client_id, ingest_token);
+    }
+
+    fn gateway(&self, resource_id: ResourceId) -> Option<&GatewayAuthorization> {
+        self.gateways.get(&resource_id)
+    }
+
+    fn gateway_by_resource(&self, resource_id: ResourceId) -> Option<&GatewayId> {
+        Some(&self.gateway(resource_id)?.gateway_id)
+    }
+
+    fn client_token(&self, resource_id: ResourceId, client_id: ClientId) -> Option<&IngestToken> {
+        self.device_pools.get(&resource_id)?.get(&client_id)
+    }
+
+    fn remove_client(&mut self, resource_id: ResourceId, client_id: ClientId) {
+        if let Some(clients) = self.device_pools.get_mut(&resource_id) {
+            clients.remove(&client_id);
         }
     }
 
-    fn direct() -> Self {
-        Self {
-            access_path: AccessPath::Direct(BTreeMap::new()),
+    fn forget_client(&mut self, client_id: ClientId) {
+        for clients in self.device_pools.values_mut() {
+            clients.remove(&client_id);
         }
     }
 
-    fn authorize_client(&mut self, cid: ClientId, ingest_token: IngestToken) {
-        match &mut self.access_path {
-            AccessPath::Direct(clients) => {
-                clients.insert(cid, ingest_token);
-            }
-            AccessPath::Gateway { .. } => {
-                tracing::warn!("Device pool clobbering existing gateway authorisation");
-                self.access_path = AccessPath::Direct(BTreeMap::from([(cid, ingest_token)]));
-            }
-        }
+    fn remove_resource(&mut self, resource_id: ResourceId) {
+        self.gateways.remove(&resource_id);
+        self.device_pools.remove(&resource_id);
     }
 
-    fn as_gateway(&self) -> Option<&GatewayId> {
-        match &self.access_path {
-            AccessPath::Gateway { gateway_id, .. } => Some(gateway_id),
-            AccessPath::Direct(_) => None,
-        }
-    }
-
-    fn client_token(&self, cid: ClientId) -> Option<&IngestToken> {
-        match &self.access_path {
-            AccessPath::Gateway { .. } => None,
-            AccessPath::Direct(clients) => clients.get(&cid),
-        }
-    }
-
-    fn remove_client(&mut self, cid: &ClientId) {
-        match &mut self.access_path {
-            AccessPath::Gateway { .. } => {}
-            AccessPath::Direct(clients) => {
-                clients.remove(cid);
-            }
-        }
+    fn forget_gateway(&mut self, gateway_id: GatewayId) {
+        for _ in self
+            .gateways
+            .extract_if(|_, authorization| authorization.gateway_id == gateway_id)
+        {}
     }
 }
 
@@ -2833,11 +2835,11 @@ fn encapsulate_or_buffer(
 }
 
 fn gateway_by_resource_mut<'p>(
-    authorized_resources: &HashMap<ResourceId, AuthorizedOutboundResource>,
+    authorizations: &OutboundAuthorizations,
     peers: &'p mut PeerStore<GatewayId, GatewayOnClient>,
     resource: ResourceId,
 ) -> Option<(GatewayId, &'p mut GatewayOnClient)> {
-    let gateway_id = authorized_resources.get(&resource)?.as_gateway()?;
+    let gateway_id = authorizations.gateway_by_resource(resource)?;
     let peer = peers.peer_by_id_mut(gateway_id)?;
 
     Some((*gateway_id, peer))
@@ -3107,9 +3109,10 @@ mod tests {
             HashSet::from([GatewayId::from_u128(30), GatewayId::from_u128(40)]),
         );
         state.gateways.upsert(GatewayId::from_u128(30), peer);
-        state.authorized_resources.insert(
+        state.outbound_authorizations.authorize_gateway(
             ResourceId::from_u128(100),
-            AuthorizedOutboundResource::gateway(GatewayId::from_u128(30), test_ingest_token()),
+            GatewayId::from_u128(30),
+            test_ingest_token(),
         );
 
         state.reset(Instant::now(), "test");
@@ -3396,9 +3399,10 @@ mod proptests {
         }
 
         let first_resource = resources_online.first().unwrap();
-        client_state.authorized_resources.insert(
+        client_state.outbound_authorizations.authorize_gateway(
             first_resource.id(),
-            AuthorizedOutboundResource::gateway(gateway, test_ingest_token()),
+            gateway,
+            test_ingest_token(),
         );
         client_state.gateways_by_site.insert(
             first_resource.sites().iter().next().unwrap().id,
@@ -3436,9 +3440,10 @@ mod proptests {
             client_state.upsert_resource(r.clone(), Instant::now());
         }
         let first_resources = resources.first().unwrap();
-        client_state.authorized_resources.insert(
+        client_state.outbound_authorizations.authorize_gateway(
             first_resources.id(),
-            AuthorizedOutboundResource::gateway(gateway, test_ingest_token()),
+            gateway,
+            test_ingest_token(),
         );
         client_state.gateways_by_site.insert(
             first_resources.sites().iter().next().unwrap().id,
