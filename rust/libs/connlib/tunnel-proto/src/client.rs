@@ -787,7 +787,7 @@ impl ClientState {
     /// Most of these packets will be WireGuard encrypted IP packets and will thus yield an [`IpPacket`].
     /// Some of them will however be handled internally, for example, TURN control packets exchanged with relays.
     ///
-    /// In case this function returns `None`, the packet was handled internally.
+    /// In case this function returns `None`, you should call [`ClientState::handle_timeout`] next to fully advance the internal state.
     pub fn handle_network_input(
         &mut self,
         local: SocketAddr,

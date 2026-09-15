@@ -44,8 +44,8 @@ pub struct GatewayState {
 
     /// Drives a 1 Hz wake-up so test harnesses (and any callers without
     /// other near-term work) pump the gateway's internal subsystems
-    /// (NAT/flow tracking eviction etc.) at a regular cadence. Armed from
-    /// construction so that it also covers the first connection.
+    /// (NAT/flow tracking eviction etc.) at a regular cadence. Lazily
+    /// initialised on the first `handle_timeout` call.
     next_periodic_tick: Option<Instant>,
 
     buffered_events: VecDeque<GatewayEvent>,
@@ -83,7 +83,7 @@ impl GatewayState {
             flow_tracker: flow_tracker::Tracker::new(now, unix_ts),
             tun_ip_config: None,
             unix_ts_clock: UnixTsClock::new(now, unix_ts),
-            next_periodic_tick: Some(now),
+            next_periodic_tick: None,
         }
     }
 
@@ -149,7 +149,7 @@ impl GatewayState {
     /// Most of these packets will be WireGuard encrypted IP packets and will thus yield an [`IpPacket`].
     /// Some of them will however be handled internally, for example, TURN control packets exchanged with relays.
     ///
-    /// Anything handled internally is advertised through [`GatewayState::poll_timeout`].
+    /// In case this function returns `None`, you should call [`GatewayState::handle_timeout`] next to fully advance the internal state.
     pub fn handle_network_input(
         &mut self,
         local: SocketAddr,
