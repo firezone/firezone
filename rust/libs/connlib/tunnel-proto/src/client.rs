@@ -2618,11 +2618,8 @@ fn select_authorized_route(
         let Some(path) = authorized_resources.get(&resource_id) else {
             continue;
         };
-        let (peer, domain, ingest_token) = match (route, &path.access_path) {
-            (Route::Client { .. }, AccessPath::Direct(tokens)) => {
-                let Some((cid, _)) = destination_client else {
-                    continue;
-                };
+        let (peer, domain, ingest_token) = match (route, &path.access_path, destination_client) {
+            (Route::Client { .. }, AccessPath::Direct(tokens), Some((cid, _))) => {
                 let Some(ingest_token) = tokens.get(&cid) else {
                     continue;
                 };
@@ -2635,9 +2632,11 @@ fn select_authorized_route(
                     gateway_id,
                     ingest_token,
                 },
+                _,
             ) => ((*gateway_id).into(), domain.clone(), ingest_token.clone()),
-            (Route::Client { .. }, AccessPath::Gateway { .. }) => continue,
-            (Route::Gateway { .. }, AccessPath::Direct(_)) => continue,
+            (Route::Client { .. }, AccessPath::Direct(_), None) => continue,
+            (Route::Client { .. }, AccessPath::Gateway { .. }, _) => continue,
+            (Route::Gateway { .. }, AccessPath::Direct(_), _) => continue,
         };
 
         return Some(AuthorizedRoute {
