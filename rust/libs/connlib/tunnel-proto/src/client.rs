@@ -2613,30 +2613,40 @@ fn select_authorized_route(
 ) -> Option<AuthorizedRoute> {
     let destination_client = clients.peer_by_ip(destination);
 
-    routes.iter().find_map(|route| {
+    for route in routes {
         let resource_id = route.resource_id();
-        let path = authorized_resources.get(&resource_id)?;
+        let Some(path) = authorized_resources.get(&resource_id) else {
+            continue;
+        };
         let (peer, domain, ingest_token) = match route {
             Route::Client { .. } => {
-                let (cid, _) = destination_client?;
-                let ingest_token = path.client_token(cid)?;
+                let Some((cid, _)) = destination_client else {
+                    continue;
+                };
+                let Some(ingest_token) = path.client_token(cid) else {
+                    continue;
+                };
 
                 (cid.into(), None, ingest_token.clone())
             }
             Route::Gateway { domain, .. } => {
-                let (gid, ingest_token) = path.gateway_token()?;
+                let Some((gid, ingest_token)) = path.gateway_token() else {
+                    continue;
+                };
 
                 (gid.into(), domain.clone(), ingest_token.clone())
             }
         };
 
-        Some(AuthorizedRoute {
+        return Some(AuthorizedRoute {
             resource_id,
             peer,
             domain,
             ingest_token,
-        })
-    })
+        });
+    }
+
+    None
 }
 
 struct AuthorizedRoute {
