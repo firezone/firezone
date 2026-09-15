@@ -1518,12 +1518,15 @@ defmodule PortalAPI.Client.Channel.Shared do
         push_device_access_denied(socket, payload, :forbidden)
 
       :offline ->
+        # An address no device holds answers exactly like one the asking client may not
+        # reach, so sweeping the tunnel range tells an actor nothing about who is in it.
+        # connlib only logs the reason on this path, so the two are the same to it.
         with {:ok, %Portal.Device{} = device} <- fetch_target_device(target, socket),
              {:ok, _resource, _membership_id, _policy_id, _expires_at} <-
                pick_device_pool(resource_ids, device, socket) do
           push_device_access_denied(socket, Map.put(payload, "client_id", device.id), :offline)
         else
-          {:error, reason} -> push_device_access_denied(socket, payload, reason)
+          _other -> push_device_access_denied(socket, payload, :forbidden)
         end
     end
   end
