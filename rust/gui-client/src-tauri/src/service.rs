@@ -953,24 +953,28 @@ impl<'a> Handler<'a> {
     }
 
     async fn send_ipc(&mut self, msg: ServerMsg) -> Result<()> {
-        if let Err(e) = self.ipc_tx.send(&msg).await {
-            // A GUI that is exiting tears the pipe down while we are still sending to it.
-            // `IpcDisconnected` arrives right after, so there is nothing to report here.
-            if let Some(e) = e.any_downcast_ref::<io::Error>().filter(|e| {
+        let result = self
+            .ipc_tx
+            .send(&msg)
+            .await
+            .with_context(|| format!("Failed to send IPC message `{msg}`"));
+
+        // A GUI that is exiting tears the pipe down while we are still sending to it.
+        // `IpcDisconnected` arrives right after, so there is nothing to report here.
+        if let Err(e) = &result
+            && e.any_downcast_ref::<io::Error>().is_some_and(|e| {
                 matches!(
                     e.kind(),
                     io::ErrorKind::BrokenPipe | io::ErrorKind::ConnectionReset
                 )
-            }) {
-                tracing::debug!("Failed to send IPC message `{msg}`: {e}");
+            })
+        {
+            tracing::debug!("{e:#}");
 
-                return Ok(());
-            }
-
-            return Err(e).with_context(|| format!("Failed to send IPC message `{msg}`"));
+            return Ok(());
         }
 
-        Ok(())
+        result
     }
 }
 
