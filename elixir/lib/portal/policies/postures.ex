@@ -12,7 +12,7 @@ defmodule Portal.Policies.Postures do
 
   use Ecto.Type
 
-  alias Portal.Policies.Postures.Fields
+  alias Portal.Policies.Postures.{Checks, Fields}
 
   defmodule Leaf do
     @moduledoc false
@@ -34,9 +34,14 @@ defmodule Portal.Policies.Postures do
     defstruct [:node]
   end
 
+  defmodule Check do
+    @moduledoc false
+    defstruct [:name, :expr]
+  end
+
   defstruct [:expr]
 
-  @type expr :: %Leaf{} | %And{} | %Or{} | %Not{}
+  @type expr :: %Leaf{} | %And{} | %Or{} | %Not{} | %Check{}
   @type t :: %__MODULE__{expr: expr()}
 
   @max_depth 10
@@ -169,23 +174,52 @@ defmodule Portal.Policies.Postures do
     end
   end
 
+  # A named check expands to its tree here, so a policy stores only the name.
+  defp parse_node(%{"check" => name} = node, at, depth) when map_size(node) == 1 do
+    with {:ok, check} <- fetch_check(name, at ++ ["check"]),
+         {:ok, expr} <- parse_node(check.expansion, at ++ ["check"], depth) do
+      {:ok, %Check{name: check.name, expr: expr}}
+    end
+  end
+
   defp parse_node(%{"field" => field, "op" => op} = leaf, at, _depth) do
     value = Map.get(leaf, "value")
 
     with :ok <- reject_extra_keys(Map.keys(leaf) -- @leaf_keys, at),
          {:ok, provider, field, type} <- parse_field(field, at ++ ["field"]),
          {:ok, op} <- parse_operator(op, type, at ++ ["op"]),
-         {:ok, parsed} <- parse_value(type, op, value, at ++ ["value"]),
+         {:ok, parsed} <- parse_leaf_value(provider, field, type, op, value, at ++ ["value"]),
          {:ok, rows} <- parse_rows(provider, Map.get(leaf, "rows"), at ++ ["rows"]) do
       {:ok, %Leaf{provider: provider, field: field, type: type, op: op, value: value, parsed: parsed, rows: rows}}
     end
   end
 
   defp parse_node(node, at, _depth) when is_map(node) do
-    error(at, "must be one of and, or, not, or a leaf with field and op")
+    error(at, "must be one of and, or, not, check, or a leaf with field and op")
   end
 
   defp parse_node(_node, at, _depth), do: error(at, "must be an object")
+
+  defp fetch_check(name, at) when is_binary(name) do
+    case Checks.fetch(name) do
+      {:ok, check} -> {:ok, check}
+      :error -> error(at, "unknown check #{name}")
+    end
+  end
+
+  defp fetch_check(_name, at), do: error(at, "must be a string")
+
+  # `@latest` stands for the newest Firezone Client release for the device's
+  # platform and is resolved when the policy is evaluated.
+  defp parse_leaf_value(:firezone, :last_seen_version, :version, op, "@latest", _at)
+       when op not in @no_value_operators,
+       do: {:ok, :latest}
+
+  defp parse_leaf_value(_provider, _field, _type, _op, "@" <> _rest = macro, at) do
+    error(at, "unknown macro #{macro}, only @latest on firezone.last_seen_version is supported")
+  end
+
+  defp parse_leaf_value(_provider, _field, type, op, value, at), do: parse_value(type, op, value, at)
 
   defp parse_nodes(nodes, at, depth) when is_list(nodes) and nodes != [] do
     nodes
@@ -389,11 +423,13 @@ defmodule Portal.Policies.Postures do
   end
 
   defp count_leaves(%Leaf{}), do: 1
+  defp count_leaves(%Check{}), do: 1
   defp count_leaves(%And{nodes: nodes}), do: nodes |> Enum.map(&count_leaves/1) |> Enum.sum()
   defp count_leaves(%Or{nodes: nodes}), do: nodes |> Enum.map(&count_leaves/1) |> Enum.sum()
   defp count_leaves(%Not{node: node}), do: count_leaves(node)
 
   defp node_depth(%Leaf{}), do: 0
+  defp node_depth(%Check{}), do: 0
   defp node_depth(%And{nodes: nodes}), do: 1 + Enum.max(Enum.map(nodes, &node_depth/1))
   defp node_depth(%Or{nodes: nodes}), do: 1 + Enum.max(Enum.map(nodes, &node_depth/1))
   defp node_depth(%Not{node: node}), do: 1 + node_depth(node)
@@ -404,6 +440,7 @@ defmodule Portal.Policies.Postures do
     |> put_rows(leaf.rows)
   end
 
+  defp node_to_map(%Check{name: name}), do: %{"check" => Atom.to_string(name)}
   defp node_to_map(%And{nodes: nodes}), do: %{"and" => Enum.map(nodes, &node_to_map/1)}
   defp node_to_map(%Or{nodes: nodes}), do: %{"or" => Enum.map(nodes, &node_to_map/1)}
   defp node_to_map(%Not{node: node}), do: %{"not" => node_to_map(node)}

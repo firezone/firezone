@@ -115,9 +115,19 @@ defmodule PortalAPI.Schemas.Policy do
         ISO 8601 duration such as `PT24H` or `P30D`. A date-only attribute
         counts as the start of that day in UTC.
       * IP addresses: `is_in_cidr` and `is_not_in_cidr` with a list of CIDRs.
+        `firezone.ipv4` takes IPv4 CIDRs only and `firezone.ipv6` IPv6 only.
       * lists of strings: `contains`, `does_not_contain`, `contains_any_of`,
         `contains_all_of`, `is_empty`, `is_not_empty`.
       * JSON attributes: `is_empty`, `is_not_empty`.
+
+      A node may also be a named check, `{"check": "disk_encryption"}`, which
+      stands for a tree over every provider that can answer the question. The
+      names are: compliant, disk_encryption, endpoint_protection,
+      no_active_threats, firewall, not_jailbroken, recently_seen, secure_boot,
+      no_debugging, corporate_owned, supervised, app_allowlisting,
+      agent_up_to_date, client_up_to_date, managed. The value `@latest` on
+      `firezone.last_seen_version` stands for the newest Client release for the
+      device's platform.
 
       Every attribute also accepts `exists` and `does_not_exist`, which take
       no value. An attribute the provider did not report fails every other
