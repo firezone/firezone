@@ -231,7 +231,6 @@ impl Eventloop {
         }
 
         let now = self.clock.now();
-
         if let Some(Poll::Ready(event)) = self.tunnel.as_mut().map(|t| t.poll_next_event(cx, now)) {
             return Poll::Ready(CombinedEvent::Tunnel(event));
         }
@@ -247,7 +246,11 @@ impl Eventloop {
                 .and_then(|tunnel| tunnel.next_timeout()),
         );
 
-        self.clock.poll_event(cx).map(CombinedEvent::Clock)
+        if let Poll::Ready(event) = self.clock.poll_event(cx) {
+            return Poll::Ready(CombinedEvent::Clock(event));
+        }
+
+        Poll::Pending
     }
 
     async fn shut_down_tunnel(&mut self) -> Result<()> {

@@ -212,6 +212,7 @@ impl ClientTunnel {
         now: Instant,
     ) -> Poll<Result<ClientEvent, TunnelError>> {
         let mut budget = Budget::new(cx.waker(), MAX_EVENTLOOP_ITERS, "client-tunnel");
+        let mut advanced_state = false;
 
         while let Some(mut tick) = budget.next() {
             // Pass up existing events.
@@ -326,6 +327,15 @@ impl ClientTunnel {
                     return Poll::Ready(Err(error));
                 }
             }
+
+            // Handling a packet leaves work in components that only `handle_timeout` drains and
+            // that do not all advertise a deadline of their own. Advance the state once per poll
+            // and let the next tick drain whatever that produced.
+            if !advanced_state {
+                advanced_state = true;
+                self.role_state.handle_timeout(now);
+                tick.want_continue();
+            }
         }
 
         Poll::Pending
@@ -394,6 +404,7 @@ impl GatewayTunnel {
         now: Instant,
     ) -> Poll<Result<GatewayEvent, TunnelError>> {
         let mut budget = Budget::new(cx.waker(), MAX_EVENTLOOP_ITERS, "gateway-tunnel");
+        let mut advanced_state = false;
 
         while let Some(mut tick) = budget.next() {
             // Pass up existing events.
@@ -580,6 +591,15 @@ impl GatewayTunnel {
                 if !error.is_empty() {
                     return Poll::Ready(Err(error));
                 }
+            }
+
+            // Handling a packet leaves work in components that only `handle_timeout` drains and
+            // that do not all advertise a deadline of their own. Advance the state once per poll
+            // and let the next tick drain whatever that produced.
+            if !advanced_state {
+                advanced_state = true;
+                self.role_state.handle_timeout(now);
+                tick.want_continue();
             }
         }
 
