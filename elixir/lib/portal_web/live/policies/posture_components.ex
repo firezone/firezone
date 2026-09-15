@@ -1,5 +1,6 @@
 defmodule PortalWeb.Policies.PostureComponents do
   use PortalWeb, :component_library
+  alias Portal.Policies.Postures.Checks
   alias PortalWeb.Policies.Postures
 
   @input_class "text-xs rounded border border-border bg-raised text-heading px-2 py-1 outline-none focus:border-border-focus focus:ring-1 focus:ring-border-focus/30 transition-colors"
@@ -46,8 +47,16 @@ defmodule PortalWeb.Policies.PostureComponents do
           <button
             type="button"
             phx-click="postures_tab"
+            phx-value-tab="simple"
+            class={pill_class(@state.tab == :simple)}
+          >
+            Simple
+          </button>
+          <button
+            type="button"
+            phx-click="postures_tab"
             phx-value-tab="builder"
-            class={pill_class(@state.tab == :builder)}
+            class={[pill_class(@state.tab == :builder), "border-l border-border"]}
           >
             Builder
           </button>
@@ -61,6 +70,18 @@ defmodule PortalWeb.Policies.PostureComponents do
           </button>
         </div>
       </div>
+      <p
+        :if={@state.availability == :enabled and not @state.trust_anchors?}
+        class="mb-3 flex items-start gap-1.5 rounded border border-amber-200 bg-amber-50 px-2.5 py-2 text-xs text-amber-700 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-400"
+      >
+        <.icon name="ri-alert-line" class="w-3.5 h-3.5 shrink-0 mt-0.5" />
+        <span>
+          No trust anchors are defined. Device matching is based on Firezone-reported attributes only.
+          <.website_link path="/kb/device-trust" fragment="device-attributes" class="font-medium underline hover:no-underline">
+            Learn more
+          </.website_link>
+        </span>
+      </p>
       <p :if={@mode == :edit and @state.availability == :enabled} class="mb-3 text-xs text-warning">
         Saving a change here revokes this policy's active authorizations, so sessions that rely on it are
         interrupted until the client reconnects.
@@ -76,6 +97,7 @@ defmodule PortalWeb.Policies.PostureComponents do
         </.upgrade_locked_section>
       <% else %>
         <input type="hidden" name="policy[postures]" value={Postures.hidden_value(@state)} />
+        <.postures_simple :if={@state.tab == :simple} id={@id <> "-simple"} state={@state} />
         <div :if={@state.tab == :builder}>
           <.postures_group node={@state.tree} root?={true} state={@state} />
           <p :if={@state.root_error} class="mt-2 text-xs text-error">{error_message({nil, @state.root_error})}</p>
@@ -83,6 +105,77 @@ defmodule PortalWeb.Policies.PostureComponents do
         </div>
         <.postures_json_editor :if={@state.tab == :json} id={@id <> "-json"} state={@state} />
       <% end %>
+    </div>
+    """
+  end
+
+  attr :id, :string, required: true
+  attr :state, :map, required: true
+
+  def postures_simple(assigns) do
+    {enabled, notice} =
+      case Postures.simple_checks(assigns.state) do
+        {:ok, names} -> {names, nil}
+        :custom -> {[], "This policy uses custom rules. Edit them in the Builder or JSON tab."}
+      end
+
+    assigns = assign(assigns, enabled: enabled, notice: notice)
+
+    ~H"""
+    <div id={@id} class="rounded-lg border border-border overflow-hidden">
+      <p :if={@notice} class="px-3 py-2 text-xs text-warning border-b border-border bg-raised">{@notice}</p>
+      <p :if={@state.json_notice} class="px-3 py-2 text-xs text-warning border-b border-border bg-raised">{@state.json_notice}</p>
+      <table class="w-full text-xs">
+        <thead class="bg-raised text-[10px] font-semibold tracking-widest uppercase text-subtle">
+          <tr>
+            <th class="px-3 py-2 text-left w-12"></th>
+            <th class="px-3 py-2 text-left">Check</th>
+            <th class="px-3 py-2 text-left w-28">Providers</th>
+            <th class="px-3 py-2 text-left w-28">Platforms</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-border">
+          <tr :for={check <- Checks.all()} class={[not Postures.check_available?(@state, check) && "opacity-60"]}>
+            <td class="px-3 py-2">
+              <.toggle
+                id={"#{@id}-#{check.name}"}
+                size="sm"
+                checked={check.name in @enabled}
+                disabled={not is_nil(@notice) or not Postures.check_available?(@state, check)}
+                phx-click="postures_toggle_check"
+                phx-value-name={check.name}
+              />
+            </td>
+            <td class="px-3 py-2">
+              <div class="font-medium text-heading">{check.label}</div>
+              <div class="text-muted">{check.description}</div>
+              <div :if={not Postures.check_available?(@state, check)} class="text-[10px] text-muted mt-0.5">
+                Connect {check.providers |> Enum.map(&provider_label(Atom.to_string(&1))) |> Enum.join(" or ")} to use this check.
+              </div>
+            </td>
+            <td class="px-3 py-2">
+              <div class="flex items-center gap-1.5">
+                <.provider_icon
+                  :for={provider <- check.providers}
+                  provider={Atom.to_string(provider)}
+                  size="xs"
+                  title={provider_label(Atom.to_string(provider))}
+                />
+              </div>
+            </td>
+            <td class="px-3 py-2">
+              <div class="flex items-center gap-1.5 text-body">
+                <.icon
+                  :for={{icon, title} <- platform_icons(check.platforms)}
+                  name={icon}
+                  title={title}
+                  class="w-3.5 h-3.5"
+                />
+              </div>
+            </td>
+          </tr>
+        </tbody>
+      </table>
     </div>
     """
   end
@@ -155,6 +248,15 @@ defmodule PortalWeb.Policies.PostureComponents do
             <.icon name="ri-add-line" class="w-2.5 h-2.5" /> Rule
           </button>
           <button
+            :if={@can_add_rule?}
+            type="button"
+            phx-click="postures_add_check"
+            phx-value-id={@node.id}
+            class={@small_button_class}
+          >
+            <.icon name="ri-checkbox-circle-line" class="w-2.5 h-2.5" /> Check
+          </button>
+          <button
             :if={@can_add_group?}
             type="button"
             phx-click="postures_add_group"
@@ -181,6 +283,7 @@ defmodule PortalWeb.Policies.PostureComponents do
       <div :if={@node.children != []} class="px-2 pb-2 space-y-2">
         <%= for child <- @node.children do %>
           <.postures_group :if={child.kind == :group} node={child} state={@state} />
+          <.postures_check :if={child.kind == :check} node={child} errors={@state.errors} />
           <.postures_leaf :if={child.kind == :leaf} node={child} errors={@state.errors} />
         <% end %>
       </div>
@@ -325,6 +428,43 @@ defmodule PortalWeb.Policies.PostureComponents do
   end
 
   attr :node, :map, required: true
+  attr :errors, :map, required: true
+
+  def postures_check(assigns) do
+    assigns =
+      assigns
+      |> assign(:error, Map.get(assigns.errors, assigns.node.id))
+      |> assign(:select_class, [@input_class, "pr-8"])
+
+    ~H"""
+    <div
+      id={"posture-node-#{@node.id}"}
+      class={["rounded-lg border bg-surface px-2 py-2", if(@error, do: "border-error/60", else: "border-border")]}
+    >
+      <div class="flex items-center gap-1.5 flex-wrap">
+        <.postures_not_toggle node={@node} />
+        <span class="text-[10px] font-semibold tracking-wide uppercase text-subtle">Check</span>
+        <select name={"_postures[#{@node.id}][check]"} phx-change="postures_change" class={@select_class}>
+          <option :for={check <- Checks.all()} value={check.name} selected={check.name == @node.name}>
+            {check.label}
+          </option>
+        </select>
+        <button
+          type="button"
+          phx-click="postures_remove"
+          phx-value-id={@node.id}
+          title="Remove check"
+          class="ml-auto flex items-center justify-center w-5 h-5 rounded text-subtle hover:text-heading hover:bg-raised transition-colors"
+        >
+          <.icon name="ri-close-line" class="w-3.5 h-3.5" />
+        </button>
+      </div>
+      <p :if={@error} class="mt-1.5 text-xs text-error">{error_message(@error)}</p>
+    </div>
+    """
+  end
+
+  attr :node, :map, required: true
 
   def postures_not_toggle(assigns) do
     ~H"""
@@ -396,8 +536,9 @@ defmodule PortalWeb.Policies.PostureComponents do
     </div>
     <p :if={@state.json_error} class="mt-1.5 text-xs text-error">{error_message({nil, @state.json_error.message})}</p>
     <p class="mt-1.5 text-[10px] text-muted">
-      A node is <code>and</code>, <code>or</code>, <code>not</code>, or a rule with <code>field</code>
-      (<code>provider.field</code>), <code>op</code>, and <code>value</code>. Leave empty for no requirement.
+      A node is <code>and</code>, <code>or</code>, <code>not</code>, a named <code>check</code>, or a rule
+      with <code>field</code> (<code>provider.field</code>), <code>op</code>, and <code>value</code>.
+      Leave empty for no requirement.
     </p>
     """
   end
@@ -427,6 +568,23 @@ defmodule PortalWeb.Policies.PostureComponents do
       <span class="shrink-0 px-1 rounded text-[10px] font-semibold bg-error/10 text-error">NOT</span>
       <div class="flex-1 min-w-0"><.postures_summary_node node={@inner} /></div>
     </div>
+    """
+  end
+
+  def postures_summary_node(%{node: %{"check" => name}} = assigns) do
+    label =
+      case Checks.fetch(name) do
+        {:ok, check} -> check.label
+        :error -> name
+      end
+
+    assigns = assign(assigns, :label, label)
+
+    ~H"""
+    <span>
+      <span class="px-1 rounded text-[10px] font-semibold bg-brand-muted text-brand">check</span>
+      {@label}
+    </span>
     """
   end
 
@@ -476,6 +634,23 @@ defmodule PortalWeb.Policies.PostureComponents do
   end
 
   defp provider_label(provider), do: Map.get(@provider_labels, provider, provider)
+
+  # Apple covers both of its operating systems with one icon.
+  defp platform_icons(platforms) do
+    apple = Enum.filter([:macos, :ios], &(&1 in platforms))
+
+    [
+      {:windows in platforms, {"ri-windows-fill", "Windows"}},
+      {apple != [], {"ri-apple-fill", apple |> Enum.map(&platform_name/1) |> Enum.join(", ")}},
+      {:android in platforms, {"ri-android-fill", "Android"}},
+      {:linux in platforms, {"ri-ubuntu-fill", "Linux"}}
+    ]
+    |> Enum.filter(&elem(&1, 0))
+    |> Enum.map(&elem(&1, 1))
+  end
+
+  defp platform_name(:macos), do: "macOS"
+  defp platform_name(:ios), do: "iOS"
 
   defp operator_label(nil), do: ""
   defp operator_label(op), do: Map.get_lazy(@operator_labels, op, fn -> String.replace(op, "_", " ") end)

@@ -238,6 +238,7 @@ defmodule PortalWeb.GroupsTest do
       assert html =~ "Device posture"
 
       render_click(lv, "toggle_grant_resource", %{"resource_id" => resource.id})
+      render_click(lv, "postures_tab", %{"tab" => "builder"})
       render_click(lv, "postures_add_rule", %{"id" => "0"})
 
       lv

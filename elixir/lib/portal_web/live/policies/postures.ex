@@ -9,8 +9,9 @@ defmodule PortalWeb.Policies.Postures do
   the builder can still be shown when the JSON does not lift into a tree.
   """
 
+  alias __MODULE__.Database
   alias Portal.Policies.Postures
-  alias Portal.Policies.Postures.Fields
+  alias Portal.Policies.Postures.{Checks, Fields}
   alias PortalWeb.Policies.Postures.JSONSpan
 
   @root_id 0
@@ -31,16 +32,23 @@ defmodule PortalWeb.Policies.Postures do
   end
 
   @spec for_account(Portal.Account.t(), Postures.t() | nil) :: t()
-  def for_account(account, postures \\ nil), do: new(availability(account), postures)
+  def for_account(account, postures \\ nil) do
+    new(availability(account), postures,
+      connected: Database.list_connected_provider_types(account.id),
+      trust_anchors?: Database.trust_anchors?(account.id)
+    )
+  end
 
-  @spec new(:enabled | :locked | :hidden, Postures.t() | nil) :: t()
-  def new(availability, postures \\ nil) do
+  @spec new(:enabled | :locked | :hidden, Postures.t() | nil, keyword()) :: t()
+  def new(availability, postures \\ nil, opts \\ []) do
     wire = if postures, do: Postures.to_map(postures)
     {tree, next_id} = lift_root(wire)
 
     validate(%{
       availability: availability,
-      tab: :builder,
+      connected: Keyword.get(opts, :connected, []),
+      trust_anchors?: Keyword.get(opts, :trust_anchors?, true),
+      tab: :simple,
       source: :tree,
       tree: tree,
       next_id: next_id,
@@ -60,7 +68,7 @@ defmodule PortalWeb.Policies.Postures do
 
   @doc "The value the hidden `policy[postures]` input carries: the active tab as JSON."
   @spec hidden_value(t()) :: String.t()
-  def hidden_value(%{tab: :builder} = state) do
+  def hidden_value(%{tab: tab} = state) when tab in [:simple, :builder] do
     case to_wire(state.tree) do
       nil -> ""
       wire -> JSON.encode!(wire)
@@ -71,7 +79,28 @@ defmodule PortalWeb.Policies.Postures do
 
   @spec handle_event(String.t(), map(), t()) :: t()
   def handle_event("postures_tab", %{"tab" => "json"}, state), do: switch_to_json(state)
-  def handle_event("postures_tab", %{"tab" => "builder"}, state), do: switch_to_builder(state)
+  def handle_event("postures_tab", %{"tab" => "builder"}, state), do: switch_to_tree(state, :builder)
+  def handle_event("postures_tab", %{"tab" => "simple"}, state), do: switch_to_tree(state, :simple)
+
+  def handle_event("postures_toggle_check", %{"name" => name}, state) do
+    with {:ok, check} <- Checks.fetch(name),
+         {:ok, names} <- simple_checks(state) do
+      children =
+        if check.name in names do
+          Enum.reject(state.tree.children, &(&1.name == check.name))
+        else
+          state.tree.children ++ [new_check(state.next_id, check.name)]
+        end
+
+      put_tree(state, %{state.tree | children: children}, state.next_id + 1)
+    else
+      _custom_or_unknown -> state
+    end
+  end
+
+  def handle_event("postures_add_check", %{"id" => id}, state) do
+    put_tree(state, append_child(state.tree, to_id(id), new_check(state.next_id, hd(Checks.names()))), state.next_id + 1)
+  end
 
   def handle_event("postures_add_rule", %{"id" => id}, state) do
     {leaf, next_id} = new_leaf(state.next_id)
@@ -122,6 +151,27 @@ defmodule PortalWeb.Policies.Postures do
   end
 
   def handle_event(_event, _params, state), do: state
+
+  @doc """
+  The checks the Simplified tab can show as toggles: the tree is empty or a
+  flat `and` of checks. Anything else is `:custom` and belongs to the Builder.
+  """
+  @spec simple_checks(t()) :: {:ok, [atom()]} | :custom
+  def simple_checks(%{tree: %{op: "and", negated?: false, children: children}}) do
+    if Enum.all?(children, &(&1.kind == :check and not &1.negated?)) do
+      {:ok, Enum.map(children, & &1.name)}
+    else
+      :custom
+    end
+  end
+
+  def simple_checks(_state), do: :custom
+
+  @doc "Whether a provider that can answer the check is connected to the account."
+  @spec check_available?(t(), Checks.t()) :: boolean()
+  def check_available?(state, check) do
+    :firezone in check.providers or Enum.any?(check.providers, &(&1 in state.connected))
+  end
 
   @doc "Whether one more rule under this group stays inside the parser's depth and leaf limits."
   @spec can_add_rule?(t(), node_id()) :: boolean()
@@ -218,25 +268,26 @@ defmodule PortalWeb.Policies.Postures do
 
   defp switch_to_json(state), do: validate(%{state | tab: :json, json_notice: nil})
 
-  defp switch_to_builder(%{source: :json} = state) do
+  # The Simplified and Builder tabs both edit the tree, so they share one switch.
+  defp switch_to_tree(%{source: :json} = state, tab) do
     with {:ok, decoded} <- decode(state.json_text),
          {:ok, tree, next_id} <- lift_root_strict(decoded, state.next_id) do
-      validate(%{state | tab: :builder, source: :tree, tree: tree, next_id: next_id, json_notice: nil})
+      validate(%{state | tab: tab, source: :tree, tree: tree, next_id: next_id, json_notice: nil})
     else
       _error ->
         {tree, next_id} = lift_root(state.last_valid, state.next_id)
 
         validate(%{
           state
-          | tab: :builder,
+          | tab: tab,
             tree: tree,
             next_id: next_id,
-            json_notice: "The JSON could not be read, so the builder shows the last valid version."
+            json_notice: "The JSON could not be read, so this tab shows the last valid version."
         })
     end
   end
 
-  defp switch_to_builder(state), do: validate(%{state | tab: :builder, json_notice: nil})
+  defp switch_to_tree(state, tab), do: validate(%{state | tab: tab, json_notice: nil})
 
   defp decode(text) do
     case String.trim(text) do
@@ -249,7 +300,7 @@ defmodule PortalWeb.Policies.Postures do
     validate(%{state | tree: tree, next_id: next_id || state.next_id, source: :tree, json_notice: nil})
   end
 
-  defp validate(%{tab: :builder} = state) do
+  defp validate(%{tab: tab} = state) when tab in [:simple, :builder] do
     wire = to_wire(state.tree)
 
     case check(wire) do
@@ -334,6 +385,7 @@ defmodule PortalWeb.Policies.Postures do
   end
 
   defp locate_in(%{kind: :group} = group, path), do: locate_group(group, path, false)
+  defp locate_in(%{kind: :check} = check, _path), do: {check.id, nil}
   defp locate_in(%{kind: :leaf} = leaf, [sub | _rest]) when sub in @leaf_subfields, do: {leaf.id, sub}
   defp locate_in(%{kind: :leaf} = leaf, _path), do: {leaf.id, nil}
 
@@ -368,6 +420,8 @@ defmodule PortalWeb.Policies.Postures do
   defp lower(%{kind: :group, op: op, children: children, negated?: negated?}) do
     negate(negated?, %{op => Enum.map(children, &lower/1)})
   end
+
+  defp lower(%{kind: :check, name: name, negated?: negated?}), do: negate(negated?, %{"check" => Atom.to_string(name)})
 
   defp lower(%{kind: :leaf} = leaf) do
     wire = %{"field" => "#{leaf.provider}.#{leaf.field}", "op" => leaf.op}
@@ -443,6 +497,7 @@ defmodule PortalWeb.Policies.Postures do
     {negated?, inner} = strip_not(wire, false)
 
     case inner do
+      %{"check" => name} when map_size(inner) == 1 -> lift_check(name, negated?, next_id)
       %{"and" => nodes} when map_size(inner) == 1 -> lift_group("and", nodes, negated?, next_id)
       %{"or" => nodes} when map_size(inner) == 1 -> lift_group("or", nodes, negated?, next_id)
       %{"field" => field, "op" => op} when is_binary(field) and is_binary(op) -> lift_leaf(inner, negated?, next_id)
@@ -470,6 +525,15 @@ defmodule PortalWeb.Policies.Postures do
   end
 
   defp lift_group(_op, _nodes, _negated?, _next_id), do: :error
+
+  defp lift_check(name, negated?, next_id) do
+    case Checks.fetch(name) do
+      {:ok, check} -> {:ok, %{new_check(next_id, check.name) | negated?: negated?}, next_id + 1}
+      :error -> :error
+    end
+  end
+
+  defp new_check(id, name), do: %{id: id, kind: :check, name: name, negated?: false}
 
   defp lift_leaf(wire, negated?, next_id) do
     if Map.keys(wire) -- @leaf_keys == [] do
@@ -530,21 +594,27 @@ defmodule PortalWeb.Policies.Postures do
     {ensure_op(leaf), next_id + 1}
   end
 
-  defp apply_leaf_changes(%{kind: :leaf} = leaf, subs) when is_map(subs) do
+  defp apply_leaf_changes(%{kind: kind} = leaf, subs) when kind in [:leaf, :check] and is_map(subs) do
     Enum.reduce(subs, leaf, fn
-      {"provider", provider}, leaf when is_binary(provider) ->
+      {"provider", provider}, %{kind: :leaf} = leaf when is_binary(provider) ->
         ensure_op(%{leaf | provider: provider, field: provider |> fields() |> List.first("")})
 
-      {"field", field}, leaf when is_binary(field) ->
+      {"field", field}, %{kind: :leaf} = leaf when is_binary(field) ->
         ensure_op(%{leaf | field: field})
 
-      {"op", op}, leaf when is_binary(op) ->
+      {"check", name}, %{kind: :check} = check when is_binary(name) ->
+        case Checks.fetch(name) do
+          {:ok, found} -> %{check | name: found.name}
+          :error -> check
+        end
+
+      {"op", op}, %{kind: :leaf} = leaf when is_binary(op) ->
         change_op(leaf, op)
 
-      {"value", value}, leaf when is_binary(value) ->
+      {"value", value}, %{kind: :leaf} = leaf when is_binary(value) ->
         %{leaf | value: value}
 
-      {"value_input", value}, leaf when is_binary(value) ->
+      {"value_input", value}, %{kind: :leaf} = leaf when is_binary(value) ->
         %{leaf | value_input: value}
 
       _other, leaf ->
@@ -662,6 +732,7 @@ defmodule PortalWeb.Policies.Postures do
 
   defp pretty_node(scalar, _indent), do: JSON.encode!(scalar)
 
+  defp key_rank("check"), do: {0, ""}
   defp key_rank("field"), do: {0, ""}
   defp key_rank("op"), do: {1, ""}
   defp key_rank("value"), do: {2, ""}
@@ -669,4 +740,38 @@ defmodule PortalWeb.Policies.Postures do
   defp key_rank(key), do: {4, key}
 
   defp pad(indent), do: String.duplicate("  ", indent)
+
+  defmodule Database do
+    import Ecto.Query
+    alias Portal.{Defender, Intune, Iru, Safe, Santa, SentinelOne}
+
+    @providers %{
+      "intune" => {Intune.PostureProvider, :intune},
+      "iru" => {Iru.PostureProvider, :iru},
+      "defender" => {Defender.PostureProvider, :defender},
+      "santa" => {Santa.PostureProvider, :santa},
+      "sentinelone" => {SentinelOne.PostureProvider, :sentinelone}
+    }
+
+    def list_connected_provider_types(account_id) do
+      @providers
+      |> Enum.map(fn {name, {schema, _type}} ->
+        from(p in schema,
+          where: p.account_id == ^account_id and not p.is_disabled,
+          select: type(^name, :string),
+          limit: 1
+        )
+      end)
+      |> Enum.reduce(fn query, acc -> union_all(acc, ^query) end)
+      |> Safe.unscoped()
+      |> Safe.all()
+      |> Enum.map(fn name -> @providers |> Map.fetch!(name) |> elem(1) end)
+    end
+
+    def trust_anchors?(account_id) do
+      from(t in Portal.TrustAnchorCertificate, where: t.account_id == ^account_id)
+      |> Safe.unscoped()
+      |> Safe.exists?()
+    end
+  end
 end
