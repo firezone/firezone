@@ -138,7 +138,67 @@ defmodule PortalWeb.Policies.PosturesTest do
       assert %{"or" => [%{"rows" => "all"} | _rest]} = Postures.to_wire(state.tree)
     end
 
-    test "list operators split on commas and boolean fields default to true" do
+    test "list values are chips, so a comma inside a value survives" do
+      state = Postures.new(:enabled) |> event("postures_add_rule", %{"id" => "0"})
+      [leaf] = state.tree.children
+      id = to_string(leaf.id)
+
+      state =
+        state
+        |> event("postures_change", %{"_postures" => %{id => %{"provider" => "intune"}}})
+        |> event("postures_change", %{"_postures" => %{id => %{"field" => "compliance_state"}}})
+        |> event("postures_change", %{"_postures" => %{id => %{"op" => "is_in"}}})
+        |> event("postures_change", %{"_postures" => %{id => %{"value_input" => " Contoso, Ltd "}}})
+        |> event("postures_add_value", %{"id" => id})
+        |> event("postures_change", %{"_postures" => %{id => %{"value_input" => "compliant"}}})
+        |> event("postures_add_value", %{"id" => id})
+        |> event("postures_add_value", %{"id" => id})
+
+      assert Postures.to_wire(state.tree)["value"] == ["Contoso, Ltd", "compliant"]
+      assert hd(state.tree.children).value_input == ""
+      assert state.errors == %{}
+
+      state = event(state, "postures_remove_value", %{"id" => id, "value" => "compliant"})
+      assert Postures.to_wire(state.tree)["value"] == ["Contoso, Ltd"]
+
+      json = event(state, "postures_tab", %{"tab" => "json"})
+      builder = event(json, "postures_tab", %{"tab" => "builder"})
+      assert hd(builder.tree.children).values == ["Contoso, Ltd"]
+    end
+
+    test "a value moves between the single input and the list when the operator changes" do
+      state = Postures.new(:enabled) |> event("postures_add_rule", %{"id" => "0"})
+      [leaf] = state.tree.children
+      id = to_string(leaf.id)
+
+      state =
+        state
+        |> event("postures_change", %{"_postures" => %{id => %{"provider" => "intune"}}})
+        |> event("postures_change", %{"_postures" => %{id => %{"field" => "compliance_state"}}})
+        |> event("postures_change", %{"_postures" => %{id => %{"value" => "compliant"}}})
+        |> event("postures_change", %{"_postures" => %{id => %{"op" => "is_in"}}})
+
+      assert Postures.to_wire(state.tree)["value"] == ["compliant"]
+
+      state = event(state, "postures_change", %{"_postures" => %{id => %{"op" => "is_not"}}})
+      assert Postures.to_wire(state.tree)["value"] == "compliant"
+    end
+
+    test "a list error points at the value input" do
+      state = Postures.new(:enabled) |> event("postures_add_rule", %{"id" => "0"})
+      [leaf] = state.tree.children
+      id = to_string(leaf.id)
+
+      state =
+        state
+        |> event("postures_change", %{"_postures" => %{id => %{"provider" => "intune"}}})
+        |> event("postures_change", %{"_postures" => %{id => %{"field" => "compliance_state"}}})
+        |> event("postures_change", %{"_postures" => %{id => %{"op" => "is_in"}}})
+
+      assert state.errors == %{leaf.id => {"value", "must not be empty"}}
+    end
+
+    test "boolean fields default to true" do
       state = Postures.new(:enabled) |> event("postures_add_rule", %{"id" => "0"})
       [leaf] = state.tree.children
       id = to_string(leaf.id)
@@ -150,14 +210,6 @@ defmodule PortalWeb.Policies.PosturesTest do
 
       assert %{"field" => "intune.jail_broken", "op" => "is", "value" => true} = Postures.to_wire(state.tree)
 
-      state =
-        state
-        |> event("postures_change", %{"_postures" => %{id => %{"field" => "compliance_state"}}})
-        |> event("postures_change", %{"_postures" => %{id => %{"op" => "is_in"}}})
-        |> event("postures_change", %{"_postures" => %{id => %{"value" => "compliant, , inGracePeriod"}}})
-
-      assert Postures.to_wire(state.tree)["value"] == ["compliant", "inGracePeriod"]
-      assert state.errors == %{}
     end
 
     test "stops offering groups and rules at the parser limits" do

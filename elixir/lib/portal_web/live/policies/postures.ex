@@ -100,6 +100,14 @@ defmodule PortalWeb.Policies.Postures do
     put_tree(state, update_node(state.tree, to_id(id), &put_leaf_rows(&1, rows)))
   end
 
+  def handle_event("postures_add_value", %{"id" => id}, state) do
+    put_tree(state, update_node(state.tree, to_id(id), &add_value/1))
+  end
+
+  def handle_event("postures_remove_value", %{"id" => id, "value" => value}, state) do
+    put_tree(state, update_node(state.tree, to_id(id), &remove_value(&1, value)))
+  end
+
   def handle_event("postures_change", %{"_postures" => changes}, state) when is_map(changes) do
     tree =
       Enum.reduce(changes, state.tree, fn {id, subs}, tree ->
@@ -326,7 +334,7 @@ defmodule PortalWeb.Policies.Postures do
   end
 
   defp locate_in(%{kind: :group} = group, path), do: locate_group(group, path, false)
-  defp locate_in(%{kind: :leaf} = leaf, [sub]) when sub in @leaf_subfields, do: {leaf.id, sub}
+  defp locate_in(%{kind: :leaf} = leaf, [sub | _rest]) when sub in @leaf_subfields, do: {leaf.id, sub}
   defp locate_in(%{kind: :leaf} = leaf, _path), do: {leaf.id, nil}
 
   defp consume_not(%{negated?: true}, ["not" | rest]), do: {:ok, rest}
@@ -384,11 +392,11 @@ defmodule PortalWeb.Policies.Postures do
   defp negate(true, wire), do: %{"not" => wire}
   defp negate(false, wire), do: wire
 
-  defp lower_value(%{op: op, value: value} = leaf) when is_binary(value) do
+  defp lower_value(%{op: op} = leaf) do
     if list_operator?(op) do
-      value |> String.split(",") |> Enum.map(&String.trim/1) |> Enum.reject(&(&1 == ""))
+      leaf.values
     else
-      scalar(field_type(leaf.provider, leaf.field), value)
+      scalar(field_type(leaf.provider, leaf.field), leaf.value)
     end
   end
 
@@ -479,6 +487,8 @@ defmodule PortalWeb.Policies.Postures do
         field: field,
         op: wire["op"],
         value: lift_value(Map.get(wire, "value")),
+        values: lift_values(Map.get(wire, "value")),
+        value_input: "",
         rows: if(wire["rows"] == "all", do: "all", else: "any")
       }
 
@@ -490,9 +500,12 @@ defmodule PortalWeb.Policies.Postures do
 
   defp lift_value(nil), do: ""
   defp lift_value(value) when is_binary(value), do: value
-  defp lift_value(value) when is_list(value), do: Enum.map_join(value, ", ", &lift_value/1)
+  defp lift_value(value) when is_list(value), do: ""
   defp lift_value(value) when is_boolean(value) or is_number(value), do: to_string(value)
   defp lift_value(value), do: JSON.encode!(value)
+
+  defp lift_values(value) when is_list(value), do: Enum.map(value, &lift_value/1)
+  defp lift_values(_value), do: []
 
   defp empty_root, do: %{id: @root_id, kind: :group, op: "and", negated?: false, children: []}
 
@@ -501,7 +514,19 @@ defmodule PortalWeb.Policies.Postures do
   defp new_leaf(next_id) do
     provider = "firezone"
     field = provider |> fields() |> List.first("")
-    leaf = %{id: next_id, kind: :leaf, negated?: false, provider: provider, field: field, op: "", value: "", rows: "any"}
+    leaf = %{
+      id: next_id,
+      kind: :leaf,
+      negated?: false,
+      provider: provider,
+      field: field,
+      op: "",
+      value: "",
+      values: [],
+      value_input: "",
+      rows: "any"
+    }
+
     {ensure_op(leaf), next_id + 1}
   end
 
@@ -514,10 +539,13 @@ defmodule PortalWeb.Policies.Postures do
         ensure_op(%{leaf | field: field})
 
       {"op", op}, leaf when is_binary(op) ->
-        %{leaf | op: op}
+        change_op(leaf, op)
 
       {"value", value}, leaf when is_binary(value) ->
         %{leaf | value: value}
+
+      {"value_input", value}, leaf when is_binary(value) ->
+        %{leaf | value_input: value}
 
       _other, leaf ->
         leaf
@@ -525,6 +553,28 @@ defmodule PortalWeb.Policies.Postures do
   end
 
   defp apply_leaf_changes(node, _subs), do: node
+
+  # A single value carries over into the list when the operator changes to a
+  # list one, and the first value comes back out when it changes away again.
+  defp change_op(leaf, op) do
+    case {list_operator?(leaf.op), list_operator?(op)} do
+      {false, true} when leaf.value != "" -> %{leaf | op: op, values: Enum.uniq(leaf.values ++ [leaf.value]), value: ""}
+      {true, false} when leaf.values != [] -> %{leaf | op: op, value: hd(leaf.values)}
+      _same -> %{leaf | op: op}
+    end
+  end
+
+  defp add_value(%{kind: :leaf} = leaf) do
+    case String.trim(leaf.value_input) do
+      "" -> leaf
+      value -> %{leaf | values: Enum.uniq(leaf.values ++ [value]), value_input: ""}
+    end
+  end
+
+  defp add_value(node), do: node
+
+  defp remove_value(%{kind: :leaf} = leaf, value), do: %{leaf | values: List.delete(leaf.values, value)}
+  defp remove_value(node, _value), do: node
 
   defp ensure_op(leaf) do
     ops = operators(leaf.provider, leaf.field)
