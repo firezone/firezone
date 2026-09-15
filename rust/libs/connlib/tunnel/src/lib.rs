@@ -46,27 +46,6 @@ pub use utils::turn;
 /// Thus, it is chosen as a safe, upper boundary that is not meant to be hit (and thus doesn't affect performance), yet acts as a safe guard, just in case.
 const MAX_EVENTLOOP_ITERS: u32 = 5000;
 
-/// How long a side effect may wait before `handle_timeout` flushes it.
-///
-/// Packets the state buffers internally (an ICE message, a DNS response) are only acted on by
-/// `handle_timeout`, which walks every connection. Waking no sooner than this batches a burst of
-/// side effects into one walk; a nearer deadline from `poll_timeout` still wins.
-const SIDE_EFFECT_TIMEOUT: Duration = Duration::from_secs(1);
-
-fn clamp_for_side_effects(
-    deadline: Option<Instant>,
-    wake_soon: bool,
-    now: Instant,
-) -> Option<Instant> {
-    if !wake_soon {
-        return deadline;
-    }
-
-    let soon = now + SIDE_EFFECT_TIMEOUT;
-
-    Some(deadline.map_or(soon, |deadline| deadline.min(soon)))
-}
-
 pub type GatewayTunnel = Tunnel<GatewayState>;
 pub type ClientTunnel = Tunnel<ClientState>;
 
@@ -126,9 +105,6 @@ pub struct Tunnel<TRoleState> {
     io: Io,
 
     packet_counter: opentelemetry::metrics::Counter<u64>,
-
-    /// Set when the state buffered work that only `handle_timeout` will act on.
-    wake_soon: bool,
 }
 
 impl<TRoleState> Tunnel<TRoleState> {
@@ -171,7 +147,6 @@ impl ClientTunnel {
                     .expect("Should be able to compute UNIX timestamp"),
             ),
             packet_counter: otel_instruments::network_packets(),
-            wake_soon: false,
         }
     }
 
@@ -182,10 +157,8 @@ impl ClientTunnel {
     /// The instant by which the event loop must poll again.
     ///
     /// Asks the state once, so call this right before suspending rather than on every wake-up.
-    pub fn next_timeout(&mut self, now: Instant) -> Option<Instant> {
-        let deadline = self.role_state.poll_timeout().map(|(deadline, _)| deadline);
-
-        clamp_for_side_effects(deadline, mem::take(&mut self.wake_soon), now)
+    pub fn next_timeout(&mut self) -> Option<Instant> {
+        self.role_state.poll_timeout().map(|(deadline, _)| deadline)
     }
 
     pub fn reset(&mut self, reason: &str, now: Instant) {
@@ -289,7 +262,6 @@ impl ClientTunnel {
             {
                 if let Some(response) = dns_response {
                     self.role_state.handle_dns_response(response, now);
-                    self.wake_soon = true;
 
                     tick.want_continue();
                 }
@@ -305,8 +277,6 @@ impl ClientTunnel {
                             Err(e) => error.push(e),
                         }
                     }
-
-                    self.wake_soon = true;
 
                     // Eagerly flush GSO queue.
                     if let Poll::Ready(Err(e)) = self.io.flush_gso_queue(cx) {
@@ -342,7 +312,7 @@ impl ClientTunnel {
                             Ok(Some(packet)) => self
                                 .io
                                 .queue_tun(packet.with_ecn_from_transport(received.ecn)),
-                            Ok(None) => self.wake_soon = true,
+                            Ok(None) => {}
                             Err(e) => error.push(e),
                         };
                     }
@@ -379,7 +349,6 @@ impl GatewayTunnel {
                     .expect("Should be able to compute UNIX timestamp"),
             ),
             packet_counter: otel_instruments::network_packets(),
-            wake_soon: false,
         }
     }
 
@@ -390,10 +359,8 @@ impl GatewayTunnel {
     /// The instant by which the event loop must poll again.
     ///
     /// Asks the state once, so call this right before suspending rather than on every wake-up.
-    pub fn next_timeout(&mut self, now: Instant) -> Option<Instant> {
-        let deadline = self.role_state.poll_timeout().map(|(deadline, _)| deadline);
-
-        clamp_for_side_effects(deadline, mem::take(&mut self.wake_soon), now)
+    pub fn next_timeout(&mut self) -> Option<Instant> {
+        self.role_state.poll_timeout().map(|(deadline, _)| deadline)
     }
 
     /// Shut down the Gateway tunnel.
@@ -508,8 +475,6 @@ impl GatewayTunnel {
                         }
                     }
 
-                    self.wake_soon = true;
-
                     // Eagerly flush GSO queue.
                     if let Poll::Ready(Err(e)) = self.io.flush_gso_queue(cx) {
                         error.push(e);
@@ -544,7 +509,7 @@ impl GatewayTunnel {
                             Ok(Some(packet)) => self
                                 .io
                                 .queue_tun(packet.with_ecn_from_transport(received.ecn)),
-                            Ok(None) => self.wake_soon = true,
+                            Ok(None) => {}
                             Err(e) => error.push(e),
                         };
                     }
@@ -627,27 +592,4 @@ impl GatewayTunnel {
 pub struct FailedToHandleNetworkPacket {
     local: SocketAddr,
     from: SocketAddr,
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn side_effects_are_flushed_within_the_side_effect_timeout() {
-        let now = Instant::now();
-        let soon = now + SIDE_EFFECT_TIMEOUT;
-        let later = now + Duration::from_secs(30);
-        let sooner = now + Duration::from_millis(200);
-
-        assert_eq!(clamp_for_side_effects(Some(later), false, now), Some(later));
-        assert_eq!(clamp_for_side_effects(None, false, now), None);
-
-        assert_eq!(clamp_for_side_effects(Some(later), true, now), Some(soon));
-        assert_eq!(clamp_for_side_effects(None, true, now), Some(soon));
-        assert_eq!(
-            clamp_for_side_effects(Some(sooner), true, now),
-            Some(sooner)
-        );
-    }
 }

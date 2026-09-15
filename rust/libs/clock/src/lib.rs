@@ -19,10 +19,10 @@ const LATENESS_THRESHOLD: Duration = Duration::from_secs(30);
 /// What the event loop has to react to, in the order [`Clock::poll_event`] reports it.
 #[derive(Debug, PartialEq, Eq)]
 pub enum Event {
-    /// The latest sample landed this far past the deadline set via [`Clock::wake_at`].
+    /// The latest sample landed this far past the deadline set via [`Clock::set_alarm`].
     Late(Duration),
-    /// The deadline set via [`Clock::wake_at`] has passed.
-    Alarm,
+    /// The deadline set via [`Clock::set_alarm`] has passed, as observed at this instant.
+    Alarm(Instant),
 }
 
 /// A monotonic clock that also advances while the system is suspended.
@@ -36,9 +36,9 @@ pub struct Clock {
     last_system: SystemTime,
     suspend_offset: Duration,
     /// The deadline the event loop asked to be woken at, in this clock's domain.
-    wake_at: Option<Instant>,
+    alarm_at: Option<Instant>,
     /// The same deadline as a raw [`Instant`], which is what the timer runs on.
-    alarm_target: Option<Instant>,
+    raw_alarm_at: Option<Instant>,
     alarm: Option<Pin<Box<tokio::time::Sleep>>>,
     lateness: Option<Duration>,
 }
@@ -57,11 +57,11 @@ impl Clock {
     ///
     /// Time spent suspended before the next sample counts towards the overshoot reported as
     /// [`Event::Late`]: it is time we did not service our sockets.
-    pub fn wake_at(&mut self, deadline: Option<Instant>) {
-        self.wake_at = deadline;
+    pub fn set_alarm(&mut self, deadline: Option<Instant>) {
+        self.alarm_at = deadline;
 
         let Some(deadline) = deadline else {
-            self.alarm_target = None;
+            self.raw_alarm_at = None;
             self.alarm = None;
 
             return;
@@ -70,19 +70,19 @@ impl Clock {
         let raw_now = Instant::now();
         let now = raw_now.checked_add(self.suspend_offset).unwrap_or(raw_now);
 
-        self.alarm_target = Some(raw_now + deadline.saturating_duration_since(now));
+        self.raw_alarm_at = Some(raw_now + deadline.saturating_duration_since(now));
     }
 
     /// Reports each [`Event`] once.
     ///
-    /// The alarm rings once per [`Clock::wake_at`] and is quiet until re-armed, so a caller that
+    /// The alarm rings once per [`Clock::set_alarm`] and is quiet until re-armed, so a caller that
     /// polls after every wake-up runs its timeout handling exactly once per deadline.
     pub fn poll_event(&mut self, cx: &mut Context<'_>) -> Poll<Event> {
         if let Some(by) = self.lateness.take() {
             return Poll::Ready(Event::Late(by));
         }
 
-        let Some(target) = self.alarm_target else {
+        let Some(target) = self.raw_alarm_at else {
             return Poll::Pending;
         };
         let target = tokio::time::Instant::from_std(target);
@@ -96,9 +96,9 @@ impl Clock {
         }
 
         ready!(alarm.as_mut().poll(cx));
-        self.alarm_target = None;
+        self.raw_alarm_at = None;
 
-        Poll::Ready(Event::Alarm)
+        Poll::Ready(Event::Alarm(self.now()))
     }
 
     fn sample(&mut self, monotonic: Instant, system: SystemTime) -> Instant {
@@ -134,7 +134,7 @@ impl Clock {
             .checked_add(self.suspend_offset)
             .unwrap_or(monotonic);
 
-        if let Some(due) = self.wake_at.take() {
+        if let Some(due) = self.alarm_at.take() {
             let late = now.saturating_duration_since(due);
 
             if late >= LATENESS_THRESHOLD {
@@ -152,8 +152,8 @@ impl Default for Clock {
             last_monotonic: Instant::now(),
             last_system: SystemTime::now(),
             suspend_offset: Duration::ZERO,
-            wake_at: None,
-            alarm_target: None,
+            alarm_at: None,
+            raw_alarm_at: None,
             alarm: None,
             lateness: None,
         }
@@ -255,7 +255,7 @@ mod tests {
         let system = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
         let mut clock = clock_at(monotonic, system);
 
-        clock.wake_at(Some(monotonic + Duration::from_secs(10)));
+        clock.set_alarm(Some(monotonic + Duration::from_secs(10)));
         clock.sample(
             monotonic + Duration::from_secs(45),
             system + Duration::from_secs(45),
@@ -278,7 +278,7 @@ mod tests {
         let system = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
         let mut clock = clock_at(monotonic, system);
 
-        clock.wake_at(Some(monotonic + Duration::from_secs(10)));
+        clock.set_alarm(Some(monotonic + Duration::from_secs(10)));
         clock.sample(
             monotonic + Duration::from_secs(11),
             system + Duration::from_secs(11),
@@ -307,7 +307,7 @@ mod tests {
         let system = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
         let mut clock = clock_at(monotonic, system);
 
-        clock.wake_at(Some(monotonic + Duration::from_secs(10)));
+        clock.set_alarm(Some(monotonic + Duration::from_secs(10)));
 
         // A suspend barely advances the monotonic clock but does not stop the system clock.
         clock.sample(
@@ -326,11 +326,14 @@ mod tests {
         let mut clock = Clock::new();
         let now = Instant::now();
 
-        clock.wake_at(Some(now + Duration::from_secs(5)));
+        clock.set_alarm(Some(now + Duration::from_secs(5)));
         assert_eq!(poll_once(&mut clock), Poll::Pending);
 
         tokio::time::advance(Duration::from_secs(6)).await;
-        assert_eq!(poll_once(&mut clock), Poll::Ready(Event::Alarm));
+        assert!(matches!(
+            poll_once(&mut clock),
+            Poll::Ready(Event::Alarm(_))
+        ));
         assert_eq!(
             poll_once(&mut clock),
             Poll::Pending,
@@ -342,7 +345,7 @@ mod tests {
     async fn alarm_without_deadline_never_rings() {
         let mut clock = Clock::new();
 
-        clock.wake_at(None);
+        clock.set_alarm(None);
         tokio::time::advance(Duration::from_secs(60)).await;
 
         assert_eq!(poll_once(&mut clock), Poll::Pending);
@@ -357,8 +360,8 @@ mod tests {
             last_monotonic: monotonic,
             last_system: system,
             suspend_offset: Duration::ZERO,
-            wake_at: None,
-            alarm_target: None,
+            alarm_at: None,
+            raw_alarm_at: None,
             alarm: None,
             lateness: None,
         }

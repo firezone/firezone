@@ -251,8 +251,7 @@ impl Eventloop {
 
                 Ok(ControlFlow::Continue(()))
             }
-            CombinedEvent::Clock(clock::Event::Alarm) => {
-                let now = self.clock.now();
+            CombinedEvent::Clock(clock::Event::Alarm(now)) => {
                 if let Some(tunnel) = self.tunnel.as_mut() {
                     tunnel.state_mut().handle_timeout(now);
                 }
@@ -871,27 +870,19 @@ impl Eventloop {
 
         let now = self.clock.now();
 
-        if let Poll::Ready(event) = self.clock.poll_event(cx) {
-            return Poll::Ready(CombinedEvent::Clock(event));
-        }
-
         if let Some(Poll::Ready(event)) = self.tunnel.as_mut().map(|t| t.poll_next_event(cx, now)) {
             return Poll::Ready(CombinedEvent::Tunnel(event));
         }
 
         // Nothing to do until the tunnel's next deadline: ask once, then suspend. Being sampled
         // well past that deadline means we were not running, not that we had nothing to do.
-        self.clock.wake_at(
+        self.clock.set_alarm(
             self.tunnel
                 .as_mut()
-                .and_then(|tunnel| tunnel.next_timeout(now)),
+                .and_then(|tunnel| tunnel.next_timeout()),
         );
 
-        if let Poll::Ready(event) = self.clock.poll_event(cx) {
-            return Poll::Ready(CombinedEvent::Clock(event));
-        }
-
-        Poll::Pending
+        self.clock.poll_event(cx).map(CombinedEvent::Clock)
     }
 
     async fn shut_down_tunnel(&mut self) -> Result<()> {

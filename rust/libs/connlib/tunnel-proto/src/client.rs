@@ -188,6 +188,11 @@ pub struct ClientState {
     buffered_events: VecDeque<ClientEvent>,
     buffered_packets: VecDeque<IpPacket>,
     buffered_transmits: snownet::TransmitBuffer,
+    /// When to run [`ClientState::handle_timeout`] for work we buffered internally.
+    ///
+    /// Handling a packet can leave a DNS query or response queued in a sub-component that only
+    /// `handle_timeout` drains, without that component advertising a deadline of its own.
+    flush_buffered_at: Option<Instant>,
 
     /// Our connection to the portal, holding back ICE candidates while it is down.
     portal: PortalConnection<ClientOrGatewayId>,
@@ -224,6 +229,7 @@ impl ClientState {
             device_stub_resolver: Default::default(),
             dns_cache: Default::default(),
             buffered_transmits: Default::default(),
+            flush_buffered_at: None,
             is_internet_resource_active,
             buffered_dns_queries: Default::default(),
             udp_dns_client: l3_udp_dns_client::Client::new(seed),
@@ -593,7 +599,11 @@ impl ClientState {
 
         // DNS packets to our sentinel resolvers never become flows.
         let packet = match self.try_handle_dns(packet, now) {
-            ControlFlow::Break(()) => return Ok(()),
+            ControlFlow::Break(()) => {
+                self.flush_buffered_work_soon(now);
+
+                return Ok(());
+            }
             ControlFlow::Continue(non_dns_packet) => non_dns_packet,
         };
 
@@ -782,13 +792,40 @@ impl ClientState {
         Ok(())
     }
 
+    /// Records that we buffered work internally that only [`ClientState::handle_timeout`] acts on.
+    ///
+    /// Waking no sooner than this batches a burst of such work into a single `handle_timeout`,
+    /// which walks every connection.
+    fn flush_buffered_work_soon(&mut self, now: Instant) {
+        const SIDE_EFFECT_TIMEOUT: Duration = Duration::from_secs(1);
+
+        self.flush_buffered_at
+            .get_or_insert(now + SIDE_EFFECT_TIMEOUT);
+    }
+
     /// Handles UDP packets received on the network interface.
     ///
     /// Most of these packets will be WireGuard encrypted IP packets and will thus yield an [`IpPacket`].
     /// Some of them will however be handled internally, for example, TURN control packets exchanged with relays.
     ///
-    /// In case this function returns `None`, you should call [`ClientState::handle_timeout`] next to fully advance the internal state.
+    /// Anything handled internally is advertised through [`ClientState::poll_timeout`].
     pub fn handle_network_input(
+        &mut self,
+        local: SocketAddr,
+        from: SocketAddr,
+        packet: &[u8],
+        now: Instant,
+    ) -> Result<Option<IpPacket>> {
+        let packet = self.decapsulate(local, from, packet, now)?;
+
+        if packet.is_none() {
+            self.flush_buffered_work_soon(now);
+        }
+
+        Ok(packet)
+    }
+
+    fn decapsulate(
         &mut self,
         local: SocketAddr,
         from: SocketAddr,
@@ -931,6 +968,8 @@ impl ClientState {
     }
 
     pub fn handle_dns_response(&mut self, response: dns::RecursiveResponse, now: Instant) {
+        self.flush_buffered_work_soon(now);
+
         let mut attributes = vec![
             match response.recursion {
                 dns::Recursion::Local => otel::attr::dns_recursion_local(),
@@ -1707,6 +1746,10 @@ impl ClientState {
             )
             .chain(stale_dns_stream.map(|instant| (instant, "Stale DNS stream")))
             .chain(
+                self.flush_buffered_at
+                    .map(|instant| (instant, "Buffered work")),
+            )
+            .chain(
                 self.flow_tracker
                     .poll_timeout()
                     .map(|instant| (instant, "Flow tracker")),
@@ -1738,6 +1781,8 @@ impl ClientState {
         self.send_dns_resource_nat_packets(now);
         self.reset_offline_site_status(now);
         self.discard_stale_dns_streams(now);
+
+        self.flush_buffered_at = None;
     }
 
     /// Advance the DNS server and client state machines.
