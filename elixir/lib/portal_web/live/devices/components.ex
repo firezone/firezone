@@ -300,7 +300,7 @@ defmodule PortalWeb.Devices.Components do
           for={@device_edit_form[:slug].id}
           class="block text-xs font-medium text-body mb-1.5"
         >
-          DNS Name
+          Slug <span class="text-error">*</span>
         </label>
         <.input
           field={@device_edit_form[:slug]}
@@ -309,9 +309,14 @@ defmodule PortalWeb.Devices.Components do
           phx-debounce="300"
           class="font-mono"
           suffix={".#{Portal.Device.domain()}"}
+          required
         />
         <p class="mt-1 text-xs text-subtle">
-          Other devices reach this one at this name. Unique in this account.
+          Used to reach this device directly through a
+          <.website_link path="/kb/concepts/resources" fragment="device-pools">
+            device pool
+          </.website_link>
+          . Must be unique in the account.
         </p>
       </div>
     </div>
@@ -1059,7 +1064,7 @@ defmodule PortalWeb.Devices.Components do
             {@device.id}
           </span>
         </.device_detail_row>
-        <.device_detail_row :if={@device.slug} label="DNS Name">
+        <.device_detail_row :if={@device.slug} label="Slug">
           <span class="font-mono text-[11px] text-body break-all">
             {Portal.Device.fqdn(@device)}
           </span>

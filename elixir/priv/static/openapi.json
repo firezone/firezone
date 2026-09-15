@@ -2655,6 +2655,11 @@
             "description": "Client Name",
             "example": "John's Macbook Air",
             "type": "string"
+          },
+          "slug": {
+            "description": "DNS label the Client is reached at under `firezone.network`, unique within the Account. One to 63 lowercase letters, digits or hyphens, starting and ending with a letter or digit. Left as it is when omitted.",
+            "example": "johns-macbook-air",
+            "type": "string"
           }
         },
         "required": [

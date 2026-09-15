@@ -279,6 +279,14 @@ defmodule PortalAPI.Schemas.Client do
           example: "John's Macbook Air",
           type: :string,
           description: "Client Name"
+        },
+        slug: %Schema{
+          example: "johns-macbook-air",
+          type: :string,
+          description:
+            "DNS label the Client is reached at under `firezone.network`, unique within " <>
+              "the Account. One to 63 lowercase letters, digits or hyphens, starting and " <>
+              "ending with a letter or digit. Left as it is when omitted."
         }
       },
       required: [:name]
