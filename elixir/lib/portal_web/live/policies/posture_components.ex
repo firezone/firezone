@@ -641,7 +641,7 @@ defmodule PortalWeb.Policies.PostureComponents do
 
     [
       {:windows in platforms, {"ri-windows-fill", "Windows"}},
-      {apple != [], {"ri-apple-fill", apple |> Enum.map(&platform_name/1) |> Enum.join(", ")}},
+      {apple != [], {"ri-apple-fill", Enum.map_join(apple, ", ", &platform_name/1)}},
       {:android in platforms, {"ri-android-fill", "Android"}},
       {:linux in platforms, {"ri-ubuntu-fill", "Linux"}}
     ]
