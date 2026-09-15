@@ -14,6 +14,8 @@ This list drives both pull-request CI and the nightly discovery matrix.
 
 Each target's corpus is committed as one deterministic archive under `corpora/<target>.tar.gz`.
 The mise tasks unpack it into the ignored `corpus/<target>` directory before invoking `cargo-fuzz`.
+That directory is the working copy from then on: unpacking again leaves it alone, so that what `cmin` drops stays dropped.
+Delete it to start from the committed archive again.
 Pull-request CI only replays these inputs, making fuzz regression and coverage checks deterministic.
 It never performs random coverage discovery.
 
