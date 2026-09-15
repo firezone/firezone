@@ -109,21 +109,17 @@ impl RoutingTables {
         self.cidr.networks()
     }
 
-    pub(super) fn dns_resource(
+    pub(super) fn dns_resources(
         &mut self,
         destination: IpAddr,
         protocol: Result<Protocol, UnsupportedProtocol>,
-        is_authorized: impl Fn(ResourceId) -> bool,
-    ) -> Option<(ResourceId, DomainName)> {
-        let matches = self
-            .dns
-            .matches(destination, protocol, outbound_filter_mode())?;
-        let routes = routes(matches, |entry| (entry.resource_id, entry.domain.clone()));
-
-        routes
-            .ok()?
+    ) -> Vec<(ResourceId, DomainName)> {
+        self.dns
+            .matches(destination, protocol, outbound_filter_mode())
             .into_iter()
-            .find(|(resource, _)| is_authorized(*resource))
+            .flatten()
+            .map(|entry| (entry.resource_id, entry.domain.clone()))
+            .collect()
     }
 
     pub(super) fn has_cidr_route(&mut self, destination: IpAddr, protocol: Protocol) -> bool {
@@ -457,7 +453,7 @@ mod tests {
     }
 
     #[test]
-    fn dns_nat_uses_an_authorized_candidate_that_permits_the_packet() {
+    fn dns_resources_return_ordered_filter_candidates() {
         let mut tables = RoutingTables::default();
         let destination = "100.96.0.4".parse::<IpAddr>().unwrap();
         let domain = "example.com".parse::<DomainName>().unwrap();
@@ -474,8 +470,8 @@ mod tests {
         }
 
         assert_eq!(
-            tables.dns_resource(destination, Ok(Protocol::Tcp(80)), |id| id == b),
-            Some((b, domain.clone()))
+            tables.dns_resources(destination, Ok(Protocol::Tcp(80))),
+            vec![(a, domain.clone()), (b, domain.clone())]
         );
 
         tables.remove_by_id(b);
@@ -487,8 +483,8 @@ mod tests {
             FilterEngine::DenyAll,
         );
         assert_eq!(
-            tables.dns_resource(destination, Ok(Protocol::Tcp(80)), |id| id == b),
-            None
+            tables.dns_resources(destination, Ok(Protocol::Tcp(80))),
+            vec![(a, domain.clone())]
         );
 
         let _guard = crate::malicious_behaviour::MaliciousBehaviour {
@@ -497,8 +493,8 @@ mod tests {
         }
         .guard();
         assert_eq!(
-            tables.dns_resource(destination, Ok(Protocol::Tcp(80)), |id| id == b),
-            Some((b, domain))
+            tables.dns_resources(destination, Ok(Protocol::Tcp(80))),
+            vec![(b, domain.clone()), (a, domain)]
         );
     }
 

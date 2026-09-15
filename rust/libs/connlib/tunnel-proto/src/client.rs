@@ -466,20 +466,15 @@ impl ClientState {
         let mut buffered_packets_by_gateway_domain_and_resource = buffered_packets
             .map(|packet| {
                 let proto = packet.destination_protocol();
-                let (resource, domain) = self
+                let (gateway_id, resource, domain) = self
                     .routing_tables
-                    .dns_resource(packet.destination(), proto, |resource| {
-                        self.authorized_resources
-                            .get(&resource)
-                            .is_some_and(|path| path.as_gateway().is_some())
+                    .dns_resources(packet.destination(), proto)
+                    .into_iter()
+                    .find_map(|(resource, domain)| {
+                        let gateway_id = self.authorized_resources.get(&resource)?.as_gateway()?;
+                        Some((gateway_id, resource, domain))
                     })
-                    .context("IP is not associated with a DNS resource")?;
-                let gateway_id = self
-                    .authorized_resources
-                    .get(&resource)
-                    .context("No gateway for resource")?
-                    .as_gateway()
-                    .context("DNS resource is on a static device pool path")?;
+                    .context("IP is not associated with an authorized DNS resource")?;
 
                 anyhow::Ok((gateway_id, resource, domain, packet))
             })
