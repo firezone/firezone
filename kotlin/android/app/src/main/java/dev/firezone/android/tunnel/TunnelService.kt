@@ -392,8 +392,8 @@ class TunnelService : VpnService() {
     }
 
     private fun connect() {
-        // Repeated service starts must not replace a session that is still running or cleaning up.
         if (sessionJob?.isCompleted == false) {
+            Log.i(TAG, "Ignoring repeated start because a session is already live")
             return
         }
 
