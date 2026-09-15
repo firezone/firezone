@@ -72,7 +72,7 @@ pub enum ClientEvent {
         conn_id: ClientOrGatewayId,
         candidates: BTreeSet<IceCandidate>,
     },
-    /// Requests access through the permitting resources, most preferred first.
+    /// Requests access through the candidate resources, most preferred first.
     RequestAccess {
         resource_ids: Vec<ResourceId>,
         /// The target device's tunnel address when requesting access through device pools.

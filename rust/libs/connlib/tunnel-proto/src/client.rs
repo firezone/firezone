@@ -646,17 +646,6 @@ impl ClientState {
                     .routing_tables
                     .resolve(destination, dst_proto, internet_resource);
 
-                #[cfg(any(test, feature = "malicious-behaviour"))]
-                let routes = if crate::malicious_behaviour::ignore_resource_filter() {
-                    Ok(self.routing_tables.filter_bypass_routes(
-                        destination,
-                        dst_proto,
-                        internet_resource,
-                    ))
-                } else {
-                    routes
-                };
-
                 let routes = match routes {
                     Ok(routes) => routes,
                     Err(routing::Denied) => {

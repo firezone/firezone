@@ -301,8 +301,12 @@ impl RefClient {
         self.device_pool_ids()
             .into_iter()
             .filter(|pool| self.resource_filter_allows(*pool, protocol))
-            .sorted_by_key(|pool| (self.strict_resource_filter_allows(*pool, protocol), *pool))
-            .rev()
+            .sorted_by_key(|pool| {
+                (
+                    filter_breadth(self.pool_filters(*pool).unwrap()),
+                    std::cmp::Reverse(*pool),
+                )
+            })
             .collect()
     }
 
@@ -818,24 +822,19 @@ impl RefClient {
         pick_pool: impl Fn(&[ResourceId], ClientId) -> Option<ResourceId>,
     ) -> (PacketRoute, Option<ClientId>) {
         let granted = self.peer_pools.get(&peer).cloned().unwrap_or_default();
-        let granted_permits = granted.iter().any(|pool| {
-            self.pool_filters(*pool)
-                .is_some_and(|filters| protocol_filter_allows(filters, protocol))
-        });
-
-        if granted_permits {
-            return (PacketRoute::Peer(peer), None);
-        }
-
-        if self.malicious_behaviour.ignore_resource_filters && !granted.is_empty() {
-            return (PacketRoute::PeerRejectedByPeer(peer), None);
-        }
-
         if granted.is_empty() && self.device_pool_ids().is_empty() {
             return (PacketRoute::Drop, None);
         }
 
         let pools = self.candidate_pools(protocol);
+        if let Some(pool) = pools.iter().find(|pool| granted.contains(pool)) {
+            let route = if self.strict_resource_filter_allows(*pool, protocol) {
+                PacketRoute::Peer(peer)
+            } else {
+                PacketRoute::PeerRejectedByPeer(peer)
+            };
+            return (route, None);
+        }
 
         if pools.is_empty() {
             return (PacketRoute::RejectedByClient, None);
@@ -1143,11 +1142,21 @@ impl RefClient {
         src: IpAddr,
         proto: Protocol,
     ) -> Option<DnsResource> {
-        let candidates = self.dns_resources_by_domain(
+        let mut candidates = self.dns_resources_by_domain(
             domain,
             |resource| resource.ip_stack.supports_ip(src),
             |resource| protocol_filter_allows(&resource.filters, proto),
         );
+        candidates.sort_by(|left, right| {
+            filter_breadth(&left.filters)
+                .cmp(&filter_breadth(&right.filters))
+                .then_with(|| {
+                    dns::Pattern::new(&left.address)
+                        .unwrap()
+                        .cmp(&dns::Pattern::new(&right.address).unwrap())
+                })
+                .then_with(|| right.id.cmp(&left.id))
+        });
         let ids = candidates
             .iter()
             .filter(|resource| self.filter_allows(&resource.filters, proto))
@@ -1330,8 +1339,14 @@ impl RefClient {
         ip: IpAddr,
         proto: Protocol,
     ) -> Option<ResourceId> {
-        let candidates =
+        let mut candidates =
             self.cidr_resources_by_ip(ip, |r| protocol_filter_allows(&r.filters, proto));
+        candidates.sort_by(|left, right| {
+            filter_breadth(&left.filters)
+                .cmp(&filter_breadth(&right.filters))
+                .then_with(|| right.address.netmask().cmp(&left.address.netmask()))
+                .then_with(|| right.id.cmp(&left.id))
+        });
         let ids = candidates
             .iter()
             .filter(|resource| self.filter_allows(&resource.filters, proto))
@@ -1689,6 +1704,37 @@ pub(crate) fn protocol_filter_allows(filters: &[Filter], protocol: Protocol) -> 
     }
 }
 
+fn filter_breadth(filters: &[Filter]) -> u32 {
+    if filters.is_empty() {
+        return u32::MAX;
+    }
+
+    let count_ports = |extract: fn(&Filter) -> Option<(u16, u16)>| {
+        let mut ranges = filters.iter().filter_map(extract).collect_vec();
+        ranges.sort_unstable();
+
+        let mut next = 0u32;
+        let mut count = 0u32;
+        for (start, end) in ranges {
+            let first = u32::from(start).max(next);
+            let end = u32::from(end);
+            if first <= end {
+                count += end - first + 1;
+                next = end + 1;
+            }
+        }
+        count
+    };
+
+    count_ports(|filter| match filter {
+        Filter::Tcp(range) => Some((range.start(), range.end())),
+        Filter::Udp(_) | Filter::Icmp => None,
+    }) + count_ports(|filter| match filter {
+        Filter::Udp(range) => Some((range.start(), range.end())),
+        Filter::Tcp(_) | Filter::Icmp => None,
+    }) + u32::from(filters.iter().any(|filter| matches!(filter, Filter::Icmp)))
+}
+
 /// Checks if a set of [`Filter`]s allows the given TCP port.
 fn tcp_filter_allows(filters: &[Filter], dport: u16) -> bool {
     filters.is_empty()
@@ -1836,7 +1882,7 @@ mod tests {
         client.malicious_behaviour.ignore_resource_filters = true;
         let route = client.route_to_peer(peer, Protocol::Tcp(80), |candidates, target| {
             assert_eq!(target, peer);
-            assert_eq!(candidates, &[allowed, denied]);
+            assert_eq!(candidates, &[denied, allowed]);
             Some(denied)
         });
 

@@ -353,8 +353,11 @@ impl InboundResources {
     fn resource_for(&mut self, packet: &IpPacket) -> Option<ResourceId> {
         let entry = self
             .table
-            .matches(packet.destination(), packet.destination_protocol())?
-            .allowed
+            .matches(
+                packet.destination(),
+                packet.destination_protocol(),
+                crate::routing_table::FilterMode::Apply,
+            )?
             .first()?;
 
         Some(entry.resource_id)
@@ -635,8 +638,8 @@ mod tests {
 
         let mut inbound = InboundResources::new(&resources);
 
-        // Both admit TCP 443; the highest id wins, like on the sender.
-        assert_eq!(inbound.resource_for(&tcp_packet_to_us(443)), Some(r2));
+        // Both admit TCP 443; the narrower filter wins, like on the sender.
+        assert_eq!(inbound.resource_for(&tcp_packet_to_us(443)), Some(r1));
         // Only R2 admits TCP 80.
         assert_eq!(inbound.resource_for(&tcp_packet_to_us(80)), Some(r2));
 

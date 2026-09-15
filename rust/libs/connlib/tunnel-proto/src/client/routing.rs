@@ -8,7 +8,7 @@ use ip_packet::{Protocol, UnsupportedProtocol};
 use crate::{
     dns,
     filter_engine::FilterEngine,
-    routing_table::{Matches, RouteEntry, RoutingTable},
+    routing_table::{FilterMode, RouteEntry, RoutingTable},
 };
 
 /// The result of applying all Client routing tables to an outbound packet.
@@ -51,55 +51,16 @@ impl RoutingTables {
         protocol: Protocol,
         internet_resource: Option<ResourceId>,
     ) -> Result<Vec<Route>, Denied> {
-        if let Some(peers) = self.peer.matches(destination, Ok(protocol)) {
-            return allowed_routes(peers, |entry| Route::Client {
+        let mode = outbound_filter_mode();
+        if let Some(peers) = self.peer.matches(destination, Ok(protocol), mode) {
+            return routes(peers, |entry| Route::Client {
                 resource_id: entry.resource_id,
             });
         }
 
-        let routes = self.resolve_filtered_resource(destination, protocol, internet_resource)?;
+        let routes =
+            self.resolve_filtered_resource(destination, protocol, internet_resource, mode)?;
         Ok(routes)
-    }
-
-    /// Returns all destination candidates, with filter-permitted routes first.
-    #[cfg(any(test, feature = "malicious-behaviour"))]
-    pub(super) fn filter_bypass_routes(
-        &mut self,
-        destination: IpAddr,
-        protocol: Protocol,
-        internet_resource: Option<ResourceId>,
-    ) -> Vec<Route> {
-        if let Some(peers) = self.peer.matches(destination, Ok(protocol)) {
-            return all_routes(peers, |entry| Route::Client {
-                resource_id: entry.resource_id,
-            });
-        }
-
-        self.gateway_filter_bypass_routes(destination, protocol, internet_resource)
-    }
-
-    #[cfg(any(test, feature = "malicious-behaviour"))]
-    fn gateway_filter_bypass_routes(
-        &mut self,
-        destination: IpAddr,
-        protocol: Protocol,
-        internet_resource: Option<ResourceId>,
-    ) -> Vec<Route> {
-        if let Some(dns) = self.dns.matches(destination, Ok(protocol)) {
-            return all_routes(dns, |entry| Route::Gateway {
-                resource_id: entry.resource_id,
-                domain: Some(entry.domain.clone()),
-            });
-        }
-
-        if let Some(cidr) = self.cidr.matches(destination, Ok(protocol)) {
-            return all_routes(cidr, |entry| Route::Gateway {
-                resource_id: entry.resource_id,
-                domain: None,
-            });
-        }
-
-        internet_route(destination, internet_resource)
     }
 
     /// Resolves resources routed through a gateway.
@@ -110,12 +71,12 @@ impl RoutingTables {
         protocol: Protocol,
         internet_resource: Option<ResourceId>,
     ) -> Result<Vec<Route>, Denied> {
-        #[cfg(any(test, feature = "malicious-behaviour"))]
-        if crate::malicious_behaviour::ignore_resource_filter() {
-            return Ok(self.gateway_filter_bypass_routes(destination, protocol, internet_resource));
-        }
-
-        let routes = self.resolve_filtered_resource(destination, protocol, internet_resource);
+        let routes = self.resolve_filtered_resource(
+            destination,
+            protocol,
+            internet_resource,
+            outbound_filter_mode(),
+        );
         let routes = routes?;
         Ok(routes)
     }
@@ -125,16 +86,17 @@ impl RoutingTables {
         destination: IpAddr,
         protocol: Protocol,
         internet_resource: Option<ResourceId>,
+        mode: FilterMode,
     ) -> Result<Vec<Route>, Denied> {
-        if let Some(dns) = self.dns.matches(destination, Ok(protocol)) {
-            return allowed_routes(dns, |entry| Route::Gateway {
+        if let Some(dns) = self.dns.matches(destination, Ok(protocol), mode) {
+            return routes(dns, |entry| Route::Gateway {
                 resource_id: entry.resource_id,
                 domain: Some(entry.domain.clone()),
             });
         }
 
-        if let Some(cidr) = self.cidr.matches(destination, Ok(protocol)) {
-            return allowed_routes(cidr, |entry| Route::Gateway {
+        if let Some(cidr) = self.cidr.matches(destination, Ok(protocol), mode) {
+            return routes(cidr, |entry| Route::Gateway {
                 resource_id: entry.resource_id,
                 domain: None,
             });
@@ -153,16 +115,10 @@ impl RoutingTables {
         protocol: Result<Protocol, UnsupportedProtocol>,
         is_authorized: impl Fn(ResourceId) -> bool,
     ) -> Option<(ResourceId, DomainName)> {
-        let matches = self.dns.matches(destination, protocol)?;
-        let routes = allowed_routes(matches, |entry| (entry.resource_id, entry.domain.clone()));
-        #[cfg(any(test, feature = "malicious-behaviour"))]
-        let routes = if crate::malicious_behaviour::ignore_resource_filter() {
-            Ok(all_routes(matches, |entry| {
-                (entry.resource_id, entry.domain.clone())
-            }))
-        } else {
-            routes
-        };
+        let matches = self
+            .dns
+            .matches(destination, protocol, outbound_filter_mode())?;
+        let routes = routes(matches, |entry| (entry.resource_id, entry.domain.clone()));
 
         routes
             .ok()?
@@ -171,7 +127,9 @@ impl RoutingTables {
     }
 
     pub(super) fn has_cidr_route(&mut self, destination: IpAddr, protocol: Protocol) -> bool {
-        self.cidr.matches(destination, Ok(protocol)).is_some()
+        self.cidr
+            .matches(destination, Ok(protocol), FilterMode::Apply)
+            .is_some()
     }
 
     pub(super) fn upsert_cidr(
@@ -228,11 +186,8 @@ impl RoutingTables {
     }
 }
 
-fn allowed_routes<T, R>(
-    matches: &Matches<T>,
-    to_route: impl Fn(&T) -> R,
-) -> Result<Vec<R>, Denied> {
-    let routes = matches.allowed.iter().map(to_route).collect::<Vec<_>>();
+fn routes<T, R>(matches: &[T], to_route: impl Fn(&T) -> R) -> Result<Vec<R>, Denied> {
+    let routes = matches.iter().map(to_route).collect::<Vec<_>>();
     if routes.is_empty() {
         return Err(Denied);
     }
@@ -240,14 +195,13 @@ fn allowed_routes<T, R>(
     Ok(routes)
 }
 
-#[cfg(any(test, feature = "malicious-behaviour"))]
-fn all_routes<T, R>(matches: &Matches<T>, to_route: impl Fn(&T) -> R) -> Vec<R> {
-    matches
-        .allowed
-        .iter()
-        .chain(&matches.denied)
-        .map(to_route)
-        .collect()
+fn outbound_filter_mode() -> FilterMode {
+    #[cfg(any(test, feature = "malicious-behaviour"))]
+    if crate::malicious_behaviour::ignore_resource_filter() {
+        return FilterMode::Ignore;
+    }
+
+    FilterMode::Apply
 }
 
 fn internet_route(destination: IpAddr, internet_resource: Option<ResourceId>) -> Vec<Route> {
@@ -402,7 +356,7 @@ mod tests {
     #[test_case::test_case("pool"; "device_pool")]
     #[test_case::test_case("cidr"; "cidr_resource")]
     #[test_case::test_case("dns"; "dns_resource")]
-    fn filter_bypass_returns_all_resource_candidates(resource_kind: &str) {
+    fn filter_mode_selects_candidates_before_sorting(resource_kind: &str) {
         let mut tables = RoutingTables::default();
         let allowed = ResourceId::from_u128(1);
         let denied = ResourceId::from_u128(2);
@@ -442,27 +396,23 @@ mod tests {
             vec![allowed]
         );
 
-        let routes = tables.filter_bypass_routes(
-            destination,
-            Protocol::Tcp(80),
-            Some(internet_resource_id()),
-        );
+        let _guard = crate::malicious_behaviour::MaliciousBehaviour {
+            ignore_resource_filters: true,
+            ..Default::default()
+        }
+        .guard();
+        let routes = tables
+            .resolve(destination, Protocol::Tcp(80), Some(internet_resource_id()))
+            .unwrap();
         assert_eq!(
             routes.iter().map(Route::resource_id).collect::<Vec<_>>(),
-            vec![allowed, denied]
+            vec![denied, allowed]
         );
 
         tables.remove_by_id(allowed);
-        assert!(
-            tables
-                .resolve(destination, Protocol::Tcp(80), Some(internet_resource_id()))
-                .is_err()
-        );
-        let routes = tables.filter_bypass_routes(
-            destination,
-            Protocol::Tcp(80),
-            Some(internet_resource_id()),
-        );
+        let routes = tables
+            .resolve(destination, Protocol::Tcp(80), Some(internet_resource_id()))
+            .unwrap();
         assert_eq!(
             routes.iter().map(Route::resource_id).collect::<Vec<_>>(),
             vec![denied]
@@ -470,29 +420,38 @@ mod tests {
     }
 
     #[test]
-    fn filter_bypass_preserves_internet_fallback() {
+    fn malicious_filter_mode_preserves_internet_fallback() {
         let mut tables = RoutingTables::default();
-        let routes = tables.filter_bypass_routes(
-            "1.1.1.1".parse().unwrap(),
-            Protocol::Tcp(443),
-            Some(internet_resource_id()),
-        );
+        let _guard = crate::malicious_behaviour::MaliciousBehaviour {
+            ignore_resource_filters: true,
+            ..Default::default()
+        }
+        .guard();
+        let routes = tables
+            .resolve(
+                "1.1.1.1".parse().unwrap(),
+                Protocol::Tcp(443),
+                Some(internet_resource_id()),
+            )
+            .unwrap();
         assert_eq!(
             routes.iter().map(Route::resource_id).collect::<Vec<_>>(),
             vec![internet_resource_id()]
         );
         assert!(
             tables
-                .filter_bypass_routes("1.1.1.1".parse().unwrap(), Protocol::Tcp(443), None)
+                .resolve("1.1.1.1".parse().unwrap(), Protocol::Tcp(443), None)
+                .unwrap()
                 .is_empty()
         );
         assert!(
             tables
-                .filter_bypass_routes(
+                .resolve(
                     other_client_tun_ip(),
                     Protocol::Tcp(443),
                     Some(internet_resource_id())
                 )
+                .unwrap()
                 .is_empty()
         );
     }

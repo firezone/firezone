@@ -28,7 +28,7 @@ pub(crate) trait RouteEntry: Ord + Clone {
     fn filter(&self) -> &FilterEngine;
     fn resource_id(&self) -> ResourceId;
 
-    /// An entry-level tie-breaker applied after [`filter`](RouteEntry::filter)
+    /// An entry-level tie-breaker applied after filter breadth
     /// but before the network prefix-length comparison.
     fn specificity(&self, other: &Self) -> Ordering {
         let _ = other;
@@ -38,15 +38,28 @@ pub(crate) trait RouteEntry: Ord + Clone {
 
 pub(crate) struct RoutingTable<T> {
     inner: IpNetworkTable<BTreeSet<T>>,
-    match_cache: LruCache<(IpAddr, FilterProtocol), Option<Matches<T>>>,
+    match_cache: LruCache<(IpAddr, FilterProtocol, FilterMode), Option<Vec<T>>>,
 }
 
-/// Address matches partitioned by filter allowance, each in routing preference order.
-/// An empty `allowed` list means that the address is covered but traffic is denied.
-pub(crate) struct Matches<T> {
-    pub(crate) allowed: Vec<T>,
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) enum FilterMode {
+    Apply,
     #[cfg(any(test, feature = "malicious-behaviour"))]
-    pub(crate) denied: Vec<T>,
+    Ignore,
+}
+
+impl FilterMode {
+    fn allows(
+        self,
+        filter: &FilterEngine,
+        protocol: Result<Protocol, UnsupportedProtocol>,
+    ) -> bool {
+        match self {
+            Self::Apply => filter.apply(protocol).is_ok(),
+            #[cfg(any(test, feature = "malicious-behaviour"))]
+            Self::Ignore => true,
+        }
+    }
 }
 
 /// Protocol classes distinguished by the filter engine.
@@ -132,49 +145,45 @@ where
         self.inner.retain(|_, entries| !entries.is_empty());
     }
 
-    /// Returns address matches with filters evaluated, or `None` if no network covers `ip`.
+    /// Returns address matches, or `None` if no network covers `ip`.
     ///
-    /// Permitting entries are ordered by specificity, prefix length and resource ID.
+    /// Entries are ordered by filter breadth, specificity, prefix length and resource ID.
+    /// An empty list means that the address is covered but traffic is denied.
     pub(crate) fn matches(
         &mut self,
         ip: IpAddr,
         protocol: Result<Protocol, UnsupportedProtocol>,
-    ) -> Option<&Matches<T>> {
+        filter_mode: FilterMode,
+    ) -> Option<&[T]> {
         self.match_cache
-            .get_or_insert((ip, FilterProtocol::from(&protocol)), || {
+            .get_or_insert((ip, FilterProtocol::from(&protocol), filter_mode), || {
                 let mut entries = self
                     .inner
                     .matches(ip)
                     .flat_map(|(network, entries)| {
                         entries.iter().map(move |entry| (network, entry))
                     })
-                    .sorted_by(|(l_net, l_entry), (r_net, r_entry)| {
-                        l_entry
-                            .specificity(r_entry)
-                            .then(by_netmask(l_net, r_net))
-                            .then_with(|| l_entry.resource_id().cmp(&r_entry.resource_id()))
-                            .reverse()
-                    })
                     .peekable();
                 entries.peek()?;
 
-                let mut matches = Matches {
-                    allowed: Vec::new(),
-                    #[cfg(any(test, feature = "malicious-behaviour"))]
-                    denied: Vec::new(),
-                };
-                for (_, entry) in entries {
-                    if entry.filter().apply(protocol.clone()).is_ok() {
-                        matches.allowed.push(entry.clone());
-                    } else {
-                        #[cfg(any(test, feature = "malicious-behaviour"))]
-                        matches.denied.push(entry.clone());
-                    }
-                }
-
-                Some(matches)
+                Some(
+                    entries
+                        .filter(|(_, entry)| filter_mode.allows(entry.filter(), protocol.clone()))
+                        .sorted_by(|(l_net, l_entry), (r_net, r_entry)| {
+                            r_entry
+                                .filter()
+                                .breadth()
+                                .cmp(&l_entry.filter().breadth())
+                                .then(l_entry.specificity(r_entry))
+                                .then(by_netmask(l_net, r_net))
+                                .then_with(|| l_entry.resource_id().cmp(&r_entry.resource_id()))
+                                .reverse()
+                        })
+                        .map(|(_, entry)| entry.clone())
+                        .collect(),
+                )
             })
-            .as_ref()
+            .as_deref()
     }
 
     pub(crate) fn networks(&self) -> impl Iterator<Item = IpNetwork> + '_ {
@@ -221,14 +230,16 @@ mod tests {
         t.upsert(net("10.0.0.0/8"), entry(1, R1, permit_all()));
 
         assert_eq!(
-            t.matches(ip("10.1.2.3"), tcp(80))
+            t.matches(ip("10.1.2.3"), tcp(80), FilterMode::Apply)
                 .unwrap()
-                .allowed
                 .first()
                 .map(|e| e.id),
             Some(R1)
         );
-        assert!(t.matches(ip("192.168.0.1"), tcp(80)).is_none());
+        assert!(
+            t.matches(ip("192.168.0.1"), tcp(80), FilterMode::Apply)
+                .is_none()
+        );
     }
 
     #[test]
@@ -238,13 +249,17 @@ mod tests {
         table.upsert(net("10.20.0.0/16"), entry(1, R2, permit_tcp(443)));
         table.upsert(net("10.20.0.0/16"), entry(1, R3, permit_tcp(443)));
 
-        let matches = &table.matches(ip("10.20.0.1"), tcp(443)).unwrap().allowed;
+        let matches = &table
+            .matches(ip("10.20.0.1"), tcp(443), FilterMode::Apply)
+            .unwrap();
         assert_eq!(
             matches.iter().map(|entry| entry.id).collect::<Vec<_>>(),
             vec![R3, R2, R1]
         );
 
-        let matches = &table.matches(ip("10.20.0.1"), tcp(80)).unwrap().allowed;
+        let matches = &table
+            .matches(ip("10.20.0.1"), tcp(80), FilterMode::Apply)
+            .unwrap();
         assert_eq!(
             matches.iter().map(|entry| entry.id).collect::<Vec<_>>(),
             vec![R1]
@@ -252,30 +267,55 @@ mod tests {
     }
 
     #[test]
+    fn filter_mode_is_applied_before_breadth_ordering() {
+        let mut table = RoutingTable::new();
+        table.upsert(net("10.0.0.0/8"), entry(1, R1, permit_all()));
+        table.upsert(net("10.20.0.0/16"), entry(1, R2, FilterEngine::DenyAll));
+        table.upsert(net("10.0.0.0/8"), entry(1, R3, permit_tcp(80)));
+
+        let ids = |table: &mut RoutingTable<TestEntry>, mode| {
+            table
+                .matches(ip("10.20.0.1"), tcp(80), mode)
+                .unwrap()
+                .iter()
+                .map(|entry| entry.id)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(ids(&mut table, FilterMode::Apply), vec![R3, R1]);
+        assert_eq!(ids(&mut table, FilterMode::Ignore), vec![R2, R3, R1]);
+        assert_eq!(ids(&mut table, FilterMode::Apply), vec![R3, R1]);
+    }
+
+    #[test]
     fn denied_matches_are_distinct_from_missing_routes() {
         let mut table = RoutingTable::new();
         table.upsert(net("10.0.0.0/8"), entry(1, R1, permit_tcp(443)));
 
-        assert!(table.matches(ip("192.168.0.1"), tcp(80)).is_none());
         assert!(
             table
-                .matches(ip("10.0.0.1"), tcp(80))
+                .matches(ip("192.168.0.1"), tcp(80), FilterMode::Apply)
+                .is_none()
+        );
+        assert!(
+            table
+                .matches(ip("10.0.0.1"), tcp(80), FilterMode::Apply)
                 .unwrap()
-                .allowed
                 .is_empty()
         );
 
         table.upsert(net("10.0.0.0/8"), entry(1, R2, permit_tcp(80)));
         assert_eq!(
-            table.matches(ip("10.0.0.1"), tcp(80)).unwrap().allowed[0].id,
+            table
+                .matches(ip("10.0.0.1"), tcp(80), FilterMode::Apply)
+                .unwrap()[0]
+                .id,
             R2
         );
         table.remove_by_id(R2);
         assert!(
             table
-                .matches(ip("10.0.0.1"), tcp(80))
+                .matches(ip("10.0.0.1"), tcp(80), FilterMode::Apply)
                 .unwrap()
-                .allowed
                 .is_empty()
         );
     }
@@ -298,9 +338,8 @@ mod tests {
             let expected = matches!(protocol, Err(UnsupportedProtocol::UnsupportedIcmpv4Type(_)));
             assert_eq!(
                 !table
-                    .matches(ip("10.0.0.1"), protocol)
+                    .matches(ip("10.0.0.1"), protocol, FilterMode::Apply)
                     .unwrap()
-                    .allowed
                     .is_empty(),
                 expected
             );
@@ -317,9 +356,8 @@ mod tests {
         t.upsert(net, entry(2, R1, permit_tcp(80)));
         t.upsert(net, entry(1, R2, permit_tcp(80)));
         assert_eq!(
-            t.matches(ip("1.2.3.4"), tcp(80))
+            t.matches(ip("1.2.3.4"), tcp(80), FilterMode::Apply)
                 .unwrap()
-                .allowed
                 .first()
                 .map(|e| e.id),
             Some(R1)
@@ -329,9 +367,8 @@ mod tests {
         // A matching filter beats a non-matching one regardless of specificity.
         t.upsert(net, entry(1, R3, permit_tcp(443)));
         assert_eq!(
-            t.matches(ip("1.2.3.4"), tcp(443))
+            t.matches(ip("1.2.3.4"), tcp(443), FilterMode::Apply)
                 .unwrap()
-                .allowed
                 .first()
                 .map(|e| e.id),
             Some(R3)
@@ -346,9 +383,8 @@ mod tests {
 
         t.remove_by_id(R1);
         assert_eq!(
-            t.matches(ip("10.1.2.3"), tcp(80))
+            t.matches(ip("10.1.2.3"), tcp(80), FilterMode::Apply)
                 .unwrap()
-                .allowed
                 .first()
                 .map(|e| e.id),
             Some(R2)
@@ -356,16 +392,18 @@ mod tests {
 
         t.remove_by_id(R3); // never inserted – no-op
         assert_eq!(
-            t.matches(ip("10.1.2.3"), tcp(80))
+            t.matches(ip("10.1.2.3"), tcp(80), FilterMode::Apply)
                 .unwrap()
-                .allowed
                 .first()
                 .map(|e| e.id),
             Some(R2)
         );
 
         t.remove_by_id(R2);
-        assert!(t.matches(ip("10.1.2.3"), tcp(80)).is_none());
+        assert!(
+            t.matches(ip("10.1.2.3"), tcp(80), FilterMode::Apply)
+                .is_none()
+        );
     }
 
     #[test]
@@ -374,14 +412,16 @@ mod tests {
 
         // Use an IP that is not covered by any network yet.
         // Cache the empty result.
-        assert!(t.matches(ip("10.1.2.3"), tcp(80)).is_none());
+        assert!(
+            t.matches(ip("10.1.2.3"), tcp(80), FilterMode::Apply)
+                .is_none()
+        );
 
         // Inserting a covering network must evict the cached result.
         t.upsert(net("10.0.0.0/8"), entry(1, R1, permit_all()));
         assert_eq!(
-            t.matches(ip("10.1.2.3"), tcp(80))
+            t.matches(ip("10.1.2.3"), tcp(80), FilterMode::Apply)
                 .unwrap()
-                .allowed
                 .first()
                 .map(|e| e.id),
             Some(R1)
@@ -395,9 +435,8 @@ mod tests {
 
         // Warm the cache: R1 is the winner for TCP/80.
         assert_eq!(
-            t.matches(ip("10.1.2.3"), tcp(80))
+            t.matches(ip("10.1.2.3"), tcp(80), FilterMode::Apply)
                 .unwrap()
-                .allowed
                 .first()
                 .map(|e| e.id),
             Some(R1)
@@ -407,9 +446,8 @@ mod tests {
         // must be evicted so the new winner is returned.
         t.upsert(net("10.0.0.0/8"), entry(1, R2, permit_tcp(80)));
         assert_eq!(
-            t.matches(ip("10.1.2.3"), tcp(80))
+            t.matches(ip("10.1.2.3"), tcp(80), FilterMode::Apply)
                 .unwrap()
-                .allowed
                 .first()
                 .map(|e| e.id),
             Some(R2)
@@ -423,14 +461,18 @@ mod tests {
         t.upsert(net("10.0.0.0/8"), entry(1, R2, permit_all()));
 
         // Warm the cache with both matching entries.
-        assert_eq!(t.matches(ip("10.1.2.3"), tcp(80)).unwrap().allowed.len(), 2);
+        assert_eq!(
+            t.matches(ip("10.1.2.3"), tcp(80), FilterMode::Apply)
+                .unwrap()
+                .len(),
+            2
+        );
 
         // Removing R2 must evict the cached result; R1 should now be returned.
         t.remove_by_id(R2);
         assert_eq!(
-            t.matches(ip("10.1.2.3"), tcp(80))
+            t.matches(ip("10.1.2.3"), tcp(80), FilterMode::Apply)
                 .unwrap()
-                .allowed
                 .first()
                 .map(|e| e.id),
             Some(R1)
@@ -438,7 +480,10 @@ mod tests {
 
         // Removing the last entry must evict the cache too; expect a miss.
         t.remove_by_id(R1);
-        assert!(t.matches(ip("10.1.2.3"), tcp(80)).is_none());
+        assert!(
+            t.matches(ip("10.1.2.3"), tcp(80), FilterMode::Apply)
+                .is_none()
+        );
     }
 
     #[test]
@@ -533,8 +578,8 @@ mod benches {
 
         bencher.bench_local(|| {
             table
-                .matches(ip, proto.clone())
-                .is_some_and(|m| !m.allowed.is_empty())
+                .matches(ip, proto.clone(), FilterMode::Apply)
+                .is_some_and(|m| !m.is_empty())
         });
     }
 
@@ -565,8 +610,8 @@ mod benches {
 
         bencher.bench_local(|| {
             table
-                .matches(ip, proto.clone())
-                .is_some_and(|m| !m.allowed.is_empty())
+                .matches(ip, proto.clone(), FilterMode::Apply)
+                .is_some_and(|m| !m.is_empty())
         });
     }
 
@@ -594,8 +639,8 @@ mod benches {
 
         bencher.bench_local(|| {
             table
-                .matches(ip, proto.clone())
-                .is_some_and(|m| !m.allowed.is_empty())
+                .matches(ip, proto.clone(), FilterMode::Apply)
+                .is_some_and(|m| !m.is_empty())
         });
     }
 
