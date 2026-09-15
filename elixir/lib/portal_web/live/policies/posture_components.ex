@@ -1,6 +1,6 @@
 defmodule PortalWeb.Policies.PostureComponents do
   use PortalWeb, :component_library
-  alias Portal.Policies.Postures.Checks
+  alias PortalWeb.Policies.Postures.Checks
   alias PortalWeb.Policies.Postures
 
   @input_class "text-xs rounded border border-border bg-raised text-heading px-2 py-1 outline-none focus:border-border-focus focus:ring-1 focus:ring-border-focus/30 transition-colors"
@@ -248,15 +248,6 @@ defmodule PortalWeb.Policies.PostureComponents do
             <.icon name="ri-add-line" class="w-2.5 h-2.5" /> Rule
           </button>
           <button
-            :if={@can_add_rule?}
-            type="button"
-            phx-click="postures_add_check"
-            phx-value-id={@node.id}
-            class={@small_button_class}
-          >
-            <.icon name="ri-checkbox-circle-line" class="w-2.5 h-2.5" /> Check
-          </button>
-          <button
             :if={@can_add_group?}
             type="button"
             phx-click="postures_add_group"
@@ -283,7 +274,6 @@ defmodule PortalWeb.Policies.PostureComponents do
       <div :if={@node.children != []} class="px-2 pb-2 space-y-2">
         <%= for child <- @node.children do %>
           <.postures_group :if={child.kind == :group} node={child} state={@state} />
-          <.postures_check :if={child.kind == :check} node={child} errors={@state.errors} />
           <.postures_leaf :if={child.kind == :leaf} node={child} errors={@state.errors} />
         <% end %>
       </div>
@@ -428,43 +418,6 @@ defmodule PortalWeb.Policies.PostureComponents do
   end
 
   attr :node, :map, required: true
-  attr :errors, :map, required: true
-
-  def postures_check(assigns) do
-    assigns =
-      assigns
-      |> assign(:error, Map.get(assigns.errors, assigns.node.id))
-      |> assign(:select_class, [@input_class, "pr-8"])
-
-    ~H"""
-    <div
-      id={"posture-node-#{@node.id}"}
-      class={["rounded-lg border bg-surface px-2 py-2", if(@error, do: "border-error/60", else: "border-border")]}
-    >
-      <div class="flex items-center gap-1.5 flex-wrap">
-        <.postures_not_toggle node={@node} />
-        <span class="text-[10px] font-semibold tracking-wide uppercase text-subtle">Check</span>
-        <select name={"_postures[#{@node.id}][check]"} phx-change="postures_change" class={@select_class}>
-          <option :for={check <- Checks.all()} value={check.name} selected={check.name == @node.name}>
-            {check.label}
-          </option>
-        </select>
-        <button
-          type="button"
-          phx-click="postures_remove"
-          phx-value-id={@node.id}
-          title="Remove check"
-          class="ml-auto flex items-center justify-center w-5 h-5 rounded text-subtle hover:text-heading hover:bg-raised transition-colors"
-        >
-          <.icon name="ri-close-line" class="w-3.5 h-3.5" />
-        </button>
-      </div>
-      <p :if={@error} class="mt-1.5 text-xs text-error">{error_message(@error)}</p>
-    </div>
-    """
-  end
-
-  attr :node, :map, required: true
 
   def postures_not_toggle(assigns) do
     ~H"""
@@ -536,9 +489,8 @@ defmodule PortalWeb.Policies.PostureComponents do
     </div>
     <p :if={@state.json_error} class="mt-1.5 text-xs text-error">{error_message({nil, @state.json_error.message})}</p>
     <p class="mt-1.5 text-[10px] text-muted">
-      A node is <code>and</code>, <code>or</code>, <code>not</code>, a named <code>check</code>, or a rule
-      with <code>field</code> (<code>provider.field</code>), <code>op</code>, and <code>value</code>.
-      Leave empty for no requirement.
+      A node is <code>and</code>, <code>or</code>, <code>not</code>, or a rule with <code>field</code>
+      (<code>provider.field</code>), <code>op</code>, and <code>value</code>. Leave empty for no requirement.
     </p>
     """
   end
@@ -568,23 +520,6 @@ defmodule PortalWeb.Policies.PostureComponents do
       <span class="shrink-0 px-1 rounded text-[10px] font-semibold bg-error/10 text-error">NOT</span>
       <div class="flex-1 min-w-0"><.postures_summary_node node={@inner} /></div>
     </div>
-    """
-  end
-
-  def postures_summary_node(%{node: %{"check" => name}} = assigns) do
-    label =
-      case Checks.fetch(name) do
-        {:ok, check} -> check.label
-        :error -> name
-      end
-
-    assigns = assign(assigns, :label, label)
-
-    ~H"""
-    <span>
-      <span class="px-1 rounded text-[10px] font-semibold bg-brand-muted text-brand">check</span>
-      {@label}
-    </span>
     """
   end
 

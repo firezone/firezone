@@ -9,9 +9,9 @@ defmodule PortalWeb.Policies.Postures do
   the builder can still be shown when the JSON does not lift into a tree.
   """
 
-  alias __MODULE__.Database
+  alias __MODULE__.{Checks, Database}
   alias Portal.Policies.Postures
-  alias Portal.Policies.Postures.{Checks, Fields}
+  alias Portal.Policies.Postures.Fields
   alias PortalWeb.Policies.Postures.JSONSpan
 
   @root_id 0
@@ -82,24 +82,21 @@ defmodule PortalWeb.Policies.Postures do
   def handle_event("postures_tab", %{"tab" => "builder"}, state), do: switch_to_tree(state, :builder)
   def handle_event("postures_tab", %{"tab" => "simple"}, state), do: switch_to_tree(state, :simple)
 
+  # A check is written as its expansion, plain rules the grammar already has,
+  # and recognised again by finding that same tree under the root.
   def handle_event("postures_toggle_check", %{"name" => name}, state) do
     with {:ok, check} <- Checks.fetch(name),
          {:ok, names} <- simple_checks(state) do
-      children =
-        if check.name in names do
-          Enum.reject(state.tree.children, &(&1.name == check.name))
-        else
-          state.tree.children ++ [new_check(state.next_id, check.name)]
-        end
-
-      put_tree(state, %{state.tree | children: children}, state.next_id + 1)
+      if check.name in names do
+        children = Enum.reject(state.tree.children, &(lower(&1) == check.expansion))
+        put_tree(state, %{state.tree | children: children})
+      else
+        {:ok, node, next_id} = lift(check.expansion, state.next_id)
+        put_tree(state, %{state.tree | children: state.tree.children ++ [node]}, next_id)
+      end
     else
       _custom_or_unknown -> state
     end
-  end
-
-  def handle_event("postures_add_check", %{"id" => id}, state) do
-    put_tree(state, append_child(state.tree, to_id(id), new_check(state.next_id, hd(Checks.names()))), state.next_id + 1)
   end
 
   def handle_event("postures_add_rule", %{"id" => id}, state) do
@@ -153,13 +150,20 @@ defmodule PortalWeb.Policies.Postures do
   def handle_event(_event, _params, state), do: state
 
   @doc """
-  The checks the Simplified tab can show as toggles: the tree is empty or a
-  flat `and` of checks. Anything else is `:custom` and belongs to the Builder.
+  The checks the Simple tab can show as toggles: the tree is empty or a flat
+  `and` whose every child is exactly one check's expansion. Anything else is
+  `:custom` and belongs to the Builder.
   """
   @spec simple_checks(t()) :: {:ok, [atom()]} | :custom
   def simple_checks(%{tree: %{op: "and", negated?: false, children: children}}) do
-    if Enum.all?(children, &(&1.kind == :check and not &1.negated?)) do
-      {:ok, Enum.map(children, & &1.name)}
+    names =
+      Enum.map(children, fn child ->
+        wire = lower(child)
+        Enum.find_value(Checks.all(), fn check -> check.expansion == wire and check.name end)
+      end)
+
+    if Enum.all?(names) do
+      {:ok, names}
     else
       :custom
     end
@@ -385,7 +389,6 @@ defmodule PortalWeb.Policies.Postures do
   end
 
   defp locate_in(%{kind: :group} = group, path), do: locate_group(group, path, false)
-  defp locate_in(%{kind: :check} = check, _path), do: {check.id, nil}
   defp locate_in(%{kind: :leaf} = leaf, [sub | _rest]) when sub in @leaf_subfields, do: {leaf.id, sub}
   defp locate_in(%{kind: :leaf} = leaf, _path), do: {leaf.id, nil}
 
@@ -420,8 +423,6 @@ defmodule PortalWeb.Policies.Postures do
   defp lower(%{kind: :group, op: op, children: children, negated?: negated?}) do
     negate(negated?, %{op => Enum.map(children, &lower/1)})
   end
-
-  defp lower(%{kind: :check, name: name, negated?: negated?}), do: negate(negated?, %{"check" => Atom.to_string(name)})
 
   defp lower(%{kind: :leaf} = leaf) do
     wire = %{"field" => "#{leaf.provider}.#{leaf.field}", "op" => leaf.op}
@@ -497,7 +498,6 @@ defmodule PortalWeb.Policies.Postures do
     {negated?, inner} = strip_not(wire, false)
 
     case inner do
-      %{"check" => name} when map_size(inner) == 1 -> lift_check(name, negated?, next_id)
       %{"and" => nodes} when map_size(inner) == 1 -> lift_group("and", nodes, negated?, next_id)
       %{"or" => nodes} when map_size(inner) == 1 -> lift_group("or", nodes, negated?, next_id)
       %{"field" => field, "op" => op} when is_binary(field) and is_binary(op) -> lift_leaf(inner, negated?, next_id)
@@ -525,15 +525,6 @@ defmodule PortalWeb.Policies.Postures do
   end
 
   defp lift_group(_op, _nodes, _negated?, _next_id), do: :error
-
-  defp lift_check(name, negated?, next_id) do
-    case Checks.fetch(name) do
-      {:ok, check} -> {:ok, %{new_check(next_id, check.name) | negated?: negated?}, next_id + 1}
-      :error -> :error
-    end
-  end
-
-  defp new_check(id, name), do: %{id: id, kind: :check, name: name, negated?: false}
 
   defp lift_leaf(wire, negated?, next_id) do
     if Map.keys(wire) -- @leaf_keys == [] do
@@ -594,27 +585,21 @@ defmodule PortalWeb.Policies.Postures do
     {ensure_op(leaf), next_id + 1}
   end
 
-  defp apply_leaf_changes(%{kind: kind} = leaf, subs) when kind in [:leaf, :check] and is_map(subs) do
+  defp apply_leaf_changes(%{kind: :leaf} = leaf, subs) when is_map(subs) do
     Enum.reduce(subs, leaf, fn
-      {"provider", provider}, %{kind: :leaf} = leaf when is_binary(provider) ->
+      {"provider", provider}, leaf when is_binary(provider) ->
         ensure_op(%{leaf | provider: provider, field: provider |> fields() |> List.first("")})
 
-      {"field", field}, %{kind: :leaf} = leaf when is_binary(field) ->
+      {"field", field}, leaf when is_binary(field) ->
         ensure_op(%{leaf | field: field})
 
-      {"check", name}, %{kind: :check} = check when is_binary(name) ->
-        case Checks.fetch(name) do
-          {:ok, found} -> %{check | name: found.name}
-          :error -> check
-        end
-
-      {"op", op}, %{kind: :leaf} = leaf when is_binary(op) ->
+      {"op", op}, leaf when is_binary(op) ->
         change_op(leaf, op)
 
-      {"value", value}, %{kind: :leaf} = leaf when is_binary(value) ->
+      {"value", value}, leaf when is_binary(value) ->
         %{leaf | value: value}
 
-      {"value_input", value}, %{kind: :leaf} = leaf when is_binary(value) ->
+      {"value_input", value}, leaf when is_binary(value) ->
         %{leaf | value_input: value}
 
       _other, leaf ->
@@ -732,7 +717,6 @@ defmodule PortalWeb.Policies.Postures do
 
   defp pretty_node(scalar, _indent), do: JSON.encode!(scalar)
 
-  defp key_rank("check"), do: {0, ""}
   defp key_rank("field"), do: {0, ""}
   defp key_rank("op"), do: {1, ""}
   defp key_rank("value"), do: {2, ""}

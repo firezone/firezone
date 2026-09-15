@@ -2,6 +2,7 @@ defmodule PortalWeb.Policies.PosturesTest do
   use ExUnit.Case, async: true
 
   alias PortalWeb.Policies.Postures
+  alias PortalWeb.Policies.Postures.Checks
 
   @wire %{
     "and" => [
@@ -41,16 +42,19 @@ defmodule PortalWeb.Policies.PosturesTest do
     end
 
     test "toggling a check adds and removes it and the tree stays a flat and of checks" do
+      {:ok, compliant} = Checks.fetch(:compliant)
+      {:ok, encryption} = Checks.fetch(:disk_encryption)
+
       state = Postures.new(:enabled) |> event("postures_toggle_check", %{"name" => "compliant"})
-      assert Postures.to_wire(state.tree) == %{"check" => "compliant"}
+      assert Postures.to_wire(state.tree) == compliant.expansion
       assert state.errors == %{}
 
       state = event(state, "postures_toggle_check", %{"name" => "disk_encryption"})
-      assert Postures.to_wire(state.tree) == %{"and" => [%{"check" => "compliant"}, %{"check" => "disk_encryption"}]}
+      assert Postures.to_wire(state.tree) == %{"and" => [compliant.expansion, encryption.expansion]}
       assert Postures.simple_checks(state) == {:ok, [:compliant, :disk_encryption]}
 
       state = event(state, "postures_toggle_check", %{"name" => "compliant"})
-      assert Postures.to_wire(state.tree) == %{"check" => "disk_encryption"}
+      assert Postures.to_wire(state.tree) == encryption.expansion
 
       assert event(state, "postures_toggle_check", %{"name" => "bogus"}) == state
     end
@@ -60,14 +64,15 @@ defmodule PortalWeb.Policies.PosturesTest do
       assert Postures.simple_checks(state) == :custom
       assert event(state, "postures_toggle_check", %{"name" => "compliant"}) == state
 
-      negated = Postures.new(:enabled, cast(%{"not" => %{"check" => "compliant"}}))
+      {:ok, compliant} = Checks.fetch(:compliant)
+      negated = Postures.new(:enabled, cast(%{"not" => compliant.expansion}))
       assert Postures.simple_checks(negated) == :custom
     end
 
     test "checks are available only when a provider that answers them is connected" do
-      {:ok, compliant} = Portal.Policies.Postures.Checks.fetch(:compliant)
-      {:ok, encryption} = Portal.Policies.Postures.Checks.fetch(:disk_encryption)
-      {:ok, client} = Portal.Policies.Postures.Checks.fetch(:client_up_to_date)
+      {:ok, compliant} = Checks.fetch(:compliant)
+      {:ok, encryption} = Checks.fetch(:disk_encryption)
+      {:ok, client} = Checks.fetch(:client_up_to_date)
 
       none = Postures.new(:enabled, nil, connected: [])
       refute Postures.check_available?(none, compliant)
@@ -78,24 +83,25 @@ defmodule PortalWeb.Policies.PosturesTest do
       assert Postures.check_available?(iru, encryption)
     end
 
-    test "check nodes round-trip through the builder and JSON" do
-      state = Postures.new(:enabled) |> event("postures_tab", %{"tab" => "builder"}) |> event("postures_add_check", %{"id" => "0"})
-      [check] = state.tree.children
-      assert check.kind == :check
-      assert check.name == hd(Portal.Policies.Postures.Checks.names())
-
-      state = event(state, "postures_change", %{"_postures" => %{to_string(check.id) => %{"check" => "firewall"}}})
-      assert Postures.to_wire(state.tree) == %{"check" => "firewall"}
-
-      state = event(state, "postures_toggle_not", %{"id" => to_string(check.id)})
-      assert Postures.to_wire(state.tree) == %{"not" => %{"check" => "firewall"}}
+    test "an expanded check is plain rules the Builder can edit, after which it is custom" do
+      {:ok, encryption} = Checks.fetch(:disk_encryption)
+      state = Postures.new(:enabled) |> event("postures_toggle_check", %{"name" => "disk_encryption"})
 
       json = event(state, "postures_tab", %{"tab" => "json"})
-      assert json.json_text =~ ~s("check": "firewall")
+      assert JSON.decode!(json.json_text) == encryption.expansion
+      refute json.json_text =~ "check"
 
-      simple = event(json, "postures_tab", %{"tab" => "simple"})
-      assert Postures.simple_checks(simple) == :custom
-      assert [%{kind: :check, name: :firewall, negated?: true}] = simple.tree.children
+      builder = event(json, "postures_tab", %{"tab" => "builder"})
+      [group] = builder.tree.children
+      assert group.kind == :group and group.op == "or"
+      [leaf | _rest] = group.children
+
+      edited = event(builder, "postures_toggle_not", %{"id" => to_string(leaf.id)})
+      assert Postures.simple_checks(edited) == :custom
+      assert event(edited, "postures_toggle_check", %{"name" => "compliant"}) == edited
+
+      restored = event(edited, "postures_toggle_not", %{"id" => to_string(leaf.id)})
+      assert Postures.simple_checks(restored) == {:ok, [:disk_encryption]}
     end
   end
 
