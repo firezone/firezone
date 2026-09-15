@@ -200,12 +200,14 @@ defmodule PortalWeb.Policies.PostureComponents do
       assigns
       |> assign(:error, Map.get(assigns.errors, node.id))
       |> assign(:input_class, @input_class)
+      |> assign(:small_button_class, @small_button_class)
       |> assign(:select_class, [@input_class, "pr-8"])
       |> assign(:type, type)
       |> assign(:providers, with_current(Postures.providers(), node.provider))
       |> assign(:fields, with_current(Postures.fields(node.provider), node.field))
       |> assign(:operators, with_current(Postures.operators(node.provider, node.field), node.op))
       |> assign(:boolean_value?, type == :boolean and not Postures.list_operator?(node.op))
+      |> assign(:list_value?, Postures.list_operator?(node.op))
 
     ~H"""
     <div
@@ -240,7 +242,7 @@ defmodule PortalWeb.Policies.PostureComponents do
             <option value="false" selected={@node.value == "false"}>false</option>
           </select>
           <input
-            :if={not @boolean_value?}
+            :if={not @boolean_value? and not @list_value?}
             type="text"
             name={"_postures[#{@node.id}][value]"}
             value={@node.value}
@@ -250,6 +252,38 @@ defmodule PortalWeb.Policies.PostureComponents do
             autocomplete="off"
             class={[@input_class, "flex-1 min-w-32 font-mono"]}
           />
+          <div :if={@list_value?} class="flex flex-1 min-w-48 flex-wrap items-center gap-1">
+            <span
+              :for={value <- @node.values}
+              class="inline-flex items-center gap-1 pl-1.5 pr-1 py-0.5 rounded text-[10px] font-mono bg-brand-muted text-brand border border-brand/20"
+            >
+              {value}
+              <button
+                type="button"
+                phx-click="postures_remove_value"
+                phx-value-id={@node.id}
+                phx-value-value={value}
+                class="hover:text-error transition-colors"
+              >
+                <.icon name="ri-close-line" class="w-2.5 h-2.5" />
+              </button>
+            </span>
+            <input
+              type="text"
+              name={"_postures[#{@node.id}][value_input]"}
+              value={@node.value_input}
+              placeholder={value_placeholder(@type, @node.op)}
+              phx-change="postures_change"
+              phx-key="Enter"
+              phx-keyup="postures_add_value"
+              phx-value-id={@node.id}
+              autocomplete="off"
+              class={[@input_class, "flex-1 min-w-32 font-mono"]}
+            />
+            <button type="button" phx-click="postures_add_value" phx-value-id={@node.id} class={@small_button_class}>
+              Add
+            </button>
+          </div>
         <% end %>
         <div
           :if={@node.provider != "firezone"}
@@ -446,9 +480,9 @@ defmodule PortalWeb.Policies.PostureComponents do
   defp operator_label(nil), do: ""
   defp operator_label(op), do: Map.get_lazy(@operator_labels, op, fn -> String.replace(op, "_", " ") end)
 
-  defp value_placeholder(_type, op) when op in ~w[is_in is_not_in contains_any_of contains_all_of], do: "one, two, three"
-  defp value_placeholder(:ipv6, _op), do: "fd00::/8, 2001:db8::/32"
-  defp value_placeholder(_type, op) when op in ~w[is_in_cidr is_not_in_cidr], do: "10.0.0.0/8, 192.168.0.0/16"
+  defp value_placeholder(_type, op) when op in ~w[is_in is_not_in contains_any_of contains_all_of], do: "add a value"
+  defp value_placeholder(:ipv6, _op), do: "fd00::/8"
+  defp value_placeholder(_type, op) when op in ~w[is_in_cidr is_not_in_cidr], do: "10.0.0.0/8"
   defp value_placeholder(_type, op) when op in ~w[matches does_not_match], do: "^regex$"
   defp value_placeholder(:datetime, op) when op in ~w[within_last not_within_last], do: "PT24H"
   defp value_placeholder(:datetime, _op), do: "2026-01-01T00:00:00Z"
