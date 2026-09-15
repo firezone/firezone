@@ -180,6 +180,25 @@ defmodule Portal.Resource.DeviceMembershipCriteriaTest do
       refute DeviceMembershipCriteria.member?(DeviceMembershipCriteria.actor_group(Ecto.UUID.generate()), in_group, subject)
     end
 
+    test "admits every signed-in actor's devices through the Everyone group", %{
+      account: account,
+      subject: subject
+    } do
+      everyone = group_fixture(account: account, name: "Everyone", type: :managed)
+      criteria = DeviceMembershipCriteria.actor_group(everyone.id)
+
+      member = client_fixture(account: account, actor: actor_fixture(account: account))
+
+      service_account =
+        client_fixture(
+          account: account,
+          actor: actor_fixture(account: account, type: :service_account)
+        )
+
+      assert DeviceMembershipCriteria.member?(criteria, member, subject)
+      refute DeviceMembershipCriteria.member?(criteria, service_account, subject)
+    end
+
     test "admits exactly the listed devices", %{account: account, subject: subject} do
       listed = client_fixture(account: account, actor: actor_fixture(account: account))
       other = client_fixture(account: account, actor: actor_fixture(account: account))

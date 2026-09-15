@@ -133,6 +133,9 @@ defmodule Portal.Resource.DeviceMembershipCriteria do
     query
   end
 
+  # The managed `Everyone` group has no membership rows: it holds every actor who signs in,
+  # which is what `Cache.Client` synthesises for the client asking. The same rule has to hold
+  # here, or a pool on that group would look empty.
   def where_members(query, %__MODULE__{provider: :actor_group, field: :id, op: :eq, value: {:literal, group_id}}, :all) do
     where(
       query,
@@ -144,7 +147,19 @@ defmodule Portal.Resource.DeviceMembershipCriteria do
               m.actor_id == parent_as(:devices).actor_id and
               m.group_id == ^group_id
         )
-      )
+      ) or
+        exists(
+          from(g in Portal.Group,
+            join: a in Portal.Actor,
+            on: a.account_id == g.account_id and a.id == parent_as(:devices).actor_id,
+            where:
+              g.account_id == parent_as(:devices).account_id and
+                g.id == ^group_id and
+                g.type == :managed and
+                g.name == "Everyone" and
+                a.type in [:account_user, :account_admin_user]
+          )
+        )
     )
   end
 
