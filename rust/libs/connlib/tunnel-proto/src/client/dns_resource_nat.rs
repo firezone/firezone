@@ -20,8 +20,7 @@ use crate::{p2p_control, unique_packet_buffer::UniquePacketBuffer};
 pub struct DnsResourceNat {
     inner: BTreeMap<(GatewayId, DomainName, ResourceId), (State, IpPacket)>,
 
-    /// Packets waiting to be sent, each with the instant it was queued at.
-    assigned_ips_packets: VecDeque<(Instant, (GatewayId, DomainName, ResourceId, IpPacket))>,
+    assigned_ips_packets: VecDeque<(GatewayId, DomainName, ResourceId, IpPacket)>,
 }
 
 impl DnsResourceNat {
@@ -59,7 +58,7 @@ impl DnsResourceNat {
                 ));
 
                 self.assigned_ips_packets
-                    .push_back((now, (gid, domain, rid, assigned_ips)));
+                    .push_back((gid, domain, rid, assigned_ips));
             }
             Entry::Occupied(mut o) => {
                 let (state, assigned_ips) = o.get_mut();
@@ -86,8 +85,12 @@ impl DnsResourceNat {
                             should_buffer: *should_buffer,
                         };
 
-                        self.assigned_ips_packets
-                            .push_back((now, (gid, domain, rid, assigned_ips.clone())));
+                        self.assigned_ips_packets.push_back((
+                            gid,
+                            domain,
+                            rid,
+                            assigned_ips.clone(),
+                        ));
                     }
                     State::Pending {
                         sent_at,
@@ -100,8 +103,12 @@ impl DnsResourceNat {
 
                         if should_send_assigned_ips_packet(now, *sent_at) {
                             *sent_at = now;
-                            self.assigned_ips_packets
-                                .push_back((now, (gid, domain, rid, assigned_ips.clone())));
+                            self.assigned_ips_packets.push_back((
+                                gid,
+                                domain,
+                                rid,
+                                assigned_ips.clone(),
+                            ));
                         }
                     }
                 }
@@ -168,8 +175,12 @@ impl DnsResourceNat {
 
                 if should_send_assigned_ips_packet(now, *sent_at) {
                     *sent_at = now;
-                    self.assigned_ips_packets
-                        .push_back((now, (gid, domain.clone(), rid, assigned_ips.clone())));
+                    self.assigned_ips_packets.push_back((
+                        gid,
+                        domain.clone(),
+                        rid,
+                        assigned_ips.clone(),
+                    ));
                 }
 
                 None
@@ -181,8 +192,12 @@ impl DnsResourceNat {
             } => {
                 if should_send_assigned_ips_packet(now, *sent_at) {
                     *sent_at = now;
-                    self.assigned_ips_packets
-                        .push_back((now, (gid, domain.clone(), rid, assigned_ips.clone())));
+                    self.assigned_ips_packets.push_back((
+                        gid,
+                        domain.clone(),
+                        rid,
+                        assigned_ips.clone(),
+                    ));
                 }
 
                 Some(packet)
@@ -234,16 +249,8 @@ impl DnsResourceNat {
         into_iter(Some(nat_state.confirm()))
     }
 
-    pub fn poll_timeout(&self) -> Option<Instant> {
-        self.assigned_ips_packets
-            .front()
-            .map(|(queued_at, _)| *queued_at)
-    }
-
     pub fn poll_packet(&mut self) -> Option<(GatewayId, DomainName, ResourceId, IpPacket)> {
-        self.assigned_ips_packets
-            .pop_front()
-            .map(|(_, packet)| packet)
+        self.assigned_ips_packets.pop_front()
     }
 }
 

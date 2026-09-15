@@ -359,32 +359,12 @@ where
         }
     }
 
-    /// Returns when [`Tracker::handle_timeout`] next has a flow to close.
-    #[expect(clippy::disallowed_methods, reason = "Iteration order doesn't matter.")]
-    pub fn poll_timeout(&self) -> Option<Instant> {
-        let tcp = self.active_tcp_flows.values().map(|value| {
-            if value.fin_tx && value.fin_rx {
-                value.last_packet
-            } else {
-                value.last_packet + FLOW_TIMEOUT
-            }
-        });
-        let udp = self
-            .active_udp_flows
-            .values()
-            .map(|value| value.last_packet + FLOW_TIMEOUT);
-
-        let due = tcp.chain(udp).min()?;
-
-        Some(self.created_at + (due - self.created_at_utc).to_std().unwrap_or_default())
-    }
-
     pub fn handle_timeout(&mut self, now: Instant) {
         let now_utc = self.now_utc(now);
 
         for (key, value) in self
             .active_tcp_flows
-            .extract_if(|_, value| now_utc.signed_duration_since(value.last_packet) >= FLOW_TIMEOUT)
+            .extract_if(|_, value| now_utc.signed_duration_since(value.last_packet) > FLOW_TIMEOUT)
         {
             tracing::debug!(?key, "Terminating TCP flow; timeout");
 
@@ -393,7 +373,7 @@ where
 
         for (key, value) in self
             .active_udp_flows
-            .extract_if(|_, value| now_utc.signed_duration_since(value.last_packet) >= FLOW_TIMEOUT)
+            .extract_if(|_, value| now_utc.signed_duration_since(value.last_packet) > FLOW_TIMEOUT)
         {
             tracing::debug!(?key, "Terminating UDP flow; timeout");
 
@@ -1410,93 +1390,6 @@ impl std::fmt::Debug for FlowContextDiff {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn idle_flow_is_due_after_flow_timeout() {
-        let now = Instant::now();
-        let mut tracker = enabled_tracker(now);
-
-        tracker.record_tx(opening_tx(Protocol::Udp), now);
-
-        let due = now + FLOW_TIMEOUT.to_std().unwrap();
-        assert_eq!(tracker.poll_timeout(), Some(due));
-
-        tracker.handle_timeout(due);
-        assert_eq!(tracker.poll_timeout(), None);
-    }
-
-    #[test]
-    fn tcp_flow_closed_in_both_directions_is_due_at_its_last_packet() {
-        let now = Instant::now();
-        let mut tracker = enabled_tracker(now);
-        let last_packet = now + Duration::from_secs(1);
-
-        tracker.record_tx(opening_tx(Protocol::Tcp), now);
-        tracker.record_tx(
-            TxPacket {
-                tcp_syn: false,
-                tcp_fin: true,
-                ..opening_tx(Protocol::Tcp)
-            },
-            last_packet,
-        );
-        tracker.record_rx(
-            RxPacket {
-                scope: SCOPE,
-                src_ip: RESPONDER_IP.parse().unwrap(),
-                dst_ip: INITIATOR_IP.parse().unwrap(),
-                src_proto: Protocol::Tcp(RESPONDER_PORT),
-                dst_proto: Protocol::Tcp(INITIATOR_PORT),
-                tcp_fin: true,
-                tcp_rst: false,
-                payload_len: 0,
-            },
-            last_packet,
-        );
-
-        assert_eq!(tracker.poll_timeout(), Some(last_packet));
-    }
-
-    #[test]
-    fn tracker_without_flows_has_no_deadline() {
-        assert_eq!(enabled_tracker(Instant::now()).poll_timeout(), None);
-    }
-
-    const SCOPE: ClientOrGatewayId = ClientOrGatewayId::Client(ClientId::from_u128(1));
-    const INITIATOR_IP: &str = "100.64.0.1";
-    const INITIATOR_PORT: u16 = 1234;
-    const RESPONDER_IP: &str = "10.0.0.5";
-    const RESPONDER_PORT: u16 = 443;
-
-    fn enabled_tracker(now: Instant) -> Tracker<ClientOrGatewayId> {
-        let mut tracker = Tracker::new(now, Duration::from_secs(1_700_000_000));
-        tracker.set_enabled(true);
-
-        tracker
-    }
-
-    /// The opening packet of a flow from the initiator to the responder.
-    fn opening_tx(protocol: fn(u16) -> Protocol) -> TxPacket<ClientOrGatewayId> {
-        TxPacket {
-            scope: SCOPE,
-            context: FlowContext::new(
-                None::<SocketAddr>,
-                "203.0.113.1:51820".parse().unwrap(),
-                DateTime::UNIX_EPOCH,
-            ),
-            src_ip: INITIATOR_IP.parse().unwrap(),
-            dst_ip: RESPONDER_IP.parse().unwrap(),
-            src_proto: protocol(INITIATOR_PORT),
-            dst_proto: protocol(RESPONDER_PORT),
-            tcp_syn: true,
-            tcp_ack: false,
-            tcp_fin: false,
-            tcp_rst: false,
-            payload_len: 0,
-            ingest_token: serde_json::from_str(&format!("\"{TEST_INGEST_TOKEN}\"")).unwrap(),
-            domain: None,
-        }
-    }
 
     #[test]
     fn flow_context_diff_rendering() {

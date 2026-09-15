@@ -1655,13 +1655,6 @@ impl ClientState {
     }
 
     pub fn poll_timeout(&mut self) -> Option<(Instant, &'static str)> {
-        #[expect(clippy::disallowed_methods, reason = "Iteration order doesn't matter.")]
-        let stale_dns_stream = self
-            .dns_streams_by_upstream_query
-            .values()
-            .map(|(_, _, started_at)| *started_at + DNS_STREAM_TIMEOUT)
-            .min();
-
         iter::empty()
             .chain(
                 self.udp_dns_client
@@ -1704,17 +1697,6 @@ impl ClientState {
                     })
                     .min()
                     .map(|instant| (instant, "Offline site status expiry")),
-            )
-            .chain(stale_dns_stream.map(|instant| (instant, "Stale DNS stream")))
-            .chain(
-                self.flow_tracker
-                    .poll_timeout()
-                    .map(|instant| (instant, "Flow tracker")),
-            )
-            .chain(
-                self.dns_resource_nat
-                    .poll_timeout()
-                    .map(|instant| (instant, "DNS resource NAT")),
             )
             .chain(self.node.poll_timeout())
             .min_by_key(|(instant, _)| *instant)
