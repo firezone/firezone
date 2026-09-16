@@ -110,7 +110,7 @@ defmodule PortalWeb.Policies.PostureComponents do
                 id={"#{@id}-#{check.name}"}
                 size="sm"
                 checked={check.name in @enabled}
-                disabled={@custom? or not Postures.check_available?(@state, check)}
+                disabled={@custom? or (check.name not in @enabled and not Postures.check_available?(@state, check))}
                 phx-click="postures_toggle_check"
                 phx-value-name={check.name}
               />

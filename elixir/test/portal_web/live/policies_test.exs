@@ -1607,6 +1607,40 @@ defmodule PortalWeb.PoliciesTest do
       assert html =~ "updated successfully"
       assert saved_postures(group, resource) == custom
     end
+    test "a check whose provider was removed can still be turned off", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      group: group,
+      resource: resource
+    } do
+      {:ok, postures} = Portal.Policies.Postures.cast(expansion(:compliant))
+
+      policy =
+        policy_fixture(account: account, group: group, resource: resource)
+        |> Ecto.Changeset.change(postures: postures)
+        |> Repo.update!()
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/policies/#{policy.id}/edit")
+
+      assert toggle(lv, "compliant") =~ "checked"
+      refute toggle(lv, "compliant") =~ "disabled"
+      assert toggle(lv, "disk_encryption") =~ "disabled"
+
+      render_click(lv, "postures_toggle_check", %{"name" => "compliant"})
+      assert toggle(lv, "compliant") =~ "disabled"
+
+      html =
+        lv
+        |> form("[phx-submit='submit_policy_form']", policy: %{description: "no checks"})
+        |> render_submit()
+
+      assert html =~ "updated successfully"
+      assert Repo.get_by!(Policy, group_id: group.id, resource_id: resource.id).postures == nil
+    end
   end
 
   describe ":show action authorizations tab" do
