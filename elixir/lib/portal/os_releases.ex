@@ -2,7 +2,7 @@ defmodule Portal.OSReleases do
   @moduledoc """
   Answers whether a device runs a current, supported operating system release.
 
-  The releases live in the `os_releases` table, refreshed hourly by
+  The releases live in the `os_releases` table, refreshed daily by
   `Portal.OSReleases.Sync`, and are mirrored into an ETS table on every node so
   a posture evaluation never touches the database. Each node reloads the mirror
   on a timer; the node that ran the sync reloads it at once.

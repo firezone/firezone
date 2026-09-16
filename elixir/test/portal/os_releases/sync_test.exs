@@ -35,6 +35,12 @@ defmodule Portal.OSReleases.SyncTest do
     %{"cycle" => "11-26h1-e", "latest" => "10.0.28000", "eol" => false}
   ]
 
+  @windows_server [
+    %{"cycle" => "2025", "latest" => "10.0.26100", "eol" => "2034-11-14"},
+    %{"cycle" => "2022", "latest" => "10.0.20348", "eol" => "2031-10-14"},
+    %{"cycle" => "2012-r2", "latest" => "6.3.9600", "eol" => "2023-10-10"}
+  ]
+
   @android [
     %{"cycle" => "16", "eol" => false},
     %{"cycle" => "15", "eol" => false},
@@ -48,6 +54,7 @@ defmodule Portal.OSReleases.SyncTest do
           {"gdmf.apple.com", _path} -> @apple
           {"www.kernel.org", _path} -> @kernel
           {_host, "/api/windows.json"} -> @windows
+          {_host, "/api/windows-server.json"} -> @windows_server
           {_host, "/api/android.json"} -> @android
         end
 
@@ -77,7 +84,8 @@ defmodule Portal.OSReleases.SyncTest do
     assert releases(:windows) == %{
              "10.0.26100" => {"10.0.26100.4652", true},
              "10.0.19045" => {"10.0.19045.6093", false},
-             "10.0.28000" => {"10.0.28000", true}
+             "10.0.28000" => {"10.0.28000", true},
+             "10.0.20348" => {"10.0.20348", true}
            }
 
     assert releases(:android) == %{"16" => {"16", true}, "15" => {"15", true}, "13" => {"13", false}}

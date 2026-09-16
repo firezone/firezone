@@ -1,11 +1,15 @@
 defmodule Portal.OSReleases.Sync do
   @moduledoc """
-  Hourly Oban worker that refreshes `os_releases` from the vendors' feeds.
+  Daily Oban worker that refreshes `os_releases` from the vendors' feeds.
 
   Apple and the Linux kernel publish machine-readable feeds of the releases they
-  still support. Microsoft and Google do not, so Windows and Android come from
-  endoflife.date, which tracks their release health pages. A feed that fails
-  leaves that operating system's rows as they were.
+  still support. Microsoft and Google do not, so Windows, Windows Server and
+  Android come from endoflife.date, which tracks their release health pages. A
+  feed that fails leaves that operating system's rows as they were.
+
+  Apple serves its feed from a certificate chain that ends at Apple's own root,
+  which public bundles do not carry, so that request trusts the copy of Apple
+  Root CA shipped in `priv/certs`.
   """
 
   use Oban.Worker,
@@ -19,7 +23,7 @@ defmodule Portal.OSReleases.Sync do
 
   @apple_url "https://gdmf.apple.com/v2/pmv"
   @kernel_url "https://www.kernel.org/releases.json"
-  @windows_url "https://endoflife.date/api/windows.json"
+  @windows_urls ["https://endoflife.date/api/windows.json", "https://endoflife.date/api/windows-server.json"]
   @android_url "https://endoflife.date/api/android.json"
 
   @impl Oban.Worker
@@ -51,7 +55,10 @@ defmodule Portal.OSReleases.Sync do
   # Apple lists the versions it still signs. Watches share the iOS asset set, so
   # a version counts only if a device of the wanted family can run it.
   defp fetch_apple(now, set, device_prefix) do
-    with {:ok, %{"PublicAssetSets" => sets}} <- get(@apple_url) do
+    cacertfile = Application.app_dir(:portal, "priv/certs/apple_root_ca.pem")
+
+    with {:ok, %{"PublicAssetSets" => sets}} <-
+           get(@apple_url, connect_options: [transport_opts: [cacertfile: cacertfile]]) do
       rows =
         sets
         |> Map.get(set, [])
@@ -83,7 +90,7 @@ defmodule Portal.OSReleases.Sync do
   # Windows editions share a build, so the lines of every cycle on that build
   # merge: supported while any edition is, at the newest patch either reports.
   defp fetch_windows(now) do
-    with {:ok, cycles} when is_list(cycles) <- get(@windows_url) do
+    with {:ok, cycles} when is_list(cycles) <- get_all(@windows_urls) do
       rows =
         cycles
         |> Enum.flat_map(&windows_line(&1, now))
@@ -147,8 +154,21 @@ defmodule Portal.OSReleases.Sync do
     %{line: line, latest_version: latest, supported: supported?, fetched_at: now, inserted_at: now, updated_at: now}
   end
 
-  defp get(url) do
-    req_opts = Portal.Config.fetch_env!(:portal, __MODULE__) |> Keyword.get(:req_opts, [])
+  defp get_all(urls) do
+    Enum.reduce_while(urls, {:ok, []}, fn url, {:ok, acc} ->
+      case get(url) do
+        {:ok, list} when is_list(list) -> {:cont, {:ok, acc ++ list}}
+        {:ok, _other} -> {:halt, {:error, {:unexpected_body, url}}}
+        {:error, reason} -> {:halt, {:error, reason}}
+      end
+    end)
+  end
+
+  defp get(url, extra_opts \\ []) do
+    req_opts =
+      Portal.Config.fetch_env!(:portal, __MODULE__)
+      |> Keyword.get(:req_opts, [])
+      |> Keyword.merge(extra_opts)
 
     case Req.get(url, req_opts) do
       {:ok, %Req.Response{status: 200, body: body}} when is_map(body) or is_list(body) -> {:ok, body}
