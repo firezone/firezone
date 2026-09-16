@@ -267,7 +267,7 @@ impl ClientOnClient {
             "Dropping inbound packet not addressed to us (dst {dst})"
         );
 
-        if packet.icmp_error().is_ok_and(|e| e.is_some()) {
+        if packet.icmp_error()?.is_some() {
             anyhow::ensure!(
                 self.conn_track.is_known_inbound_flow(&packet),
                 "Dropping ICMP error from peer referencing an unknown flow"
