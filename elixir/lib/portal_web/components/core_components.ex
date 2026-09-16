@@ -1748,7 +1748,7 @@ defmodule PortalWeb.CoreComponents do
   def toggle(assigns) do
     ~H"""
     <label class={[
-      "inline-flex items-center shrink-0",
+      "relative inline-flex items-center shrink-0",
       @disabled && "opacity-50 cursor-not-allowed",
       not @disabled && "cursor-pointer",
       @class
