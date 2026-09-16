@@ -245,8 +245,8 @@ defmodule PortalWeb.Policies.Components do
         <:title>Save these changes?</:title>
         <:body>
           <p>
-            This change revokes all access granted by this policy. Sessions that rely on it are
-            interrupted until the client reconnects.
+            This change resets all access previously granted by this policy. Sessions using it will
+            be briefly interrupted while the client reconnects.
           </p>
         </:body>
         <:cancel_button>Cancel</:cancel_button>

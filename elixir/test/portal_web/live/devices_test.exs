@@ -1008,6 +1008,21 @@ defmodule PortalWeb.DevicesTest do
       refute html =~ "No posture data was found for this device."
     end
 
+    test "still shows the record of a disabled provider", %{conn: conn, account: account, actor: actor} do
+      provider = intune_posture_provider_fixture(account: account, name: "Paused Intune", is_disabled: true)
+      intune_device_fixture(provider: provider, serial_number: "INTUNE-1234", device_name: "ENG-LAPTOP-02")
+      client = client_fixture(account: account, actor: actor, device_serial: "INTUNE-1234")
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/devices/#{client.id}?tab=posture")
+
+      assert html =~ "Paused Intune"
+      assert html =~ "ENG-LAPTOP-02"
+      refute html =~ "No posture data was found for this device."
+    end
+
     test "shows the Intune record matched on the attested MDM device id", %{
       conn: conn,
       account: account,

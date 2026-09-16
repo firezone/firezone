@@ -121,6 +121,16 @@ defmodule Portal.Devices.PostureTest do
       client = client_fixture(account: account, actor: actor)
       assert Posture.rows_by_type(client) == %{}
     end
+
+    test "leaves out the rows of a disabled provider, which match/1 still returns", %{account: account, actor: actor} do
+      provider = intune_posture_provider_fixture(account: account, is_disabled: true)
+      intune_device_fixture(provider: provider, serial_number: "SER-1")
+      client = client_fixture(account: account, actor: actor, device_serial: "SER-1")
+
+      assert Posture.rows_by_type(client) == %{}
+      assert Posture.rows_by_type_all([client]) == %{client.id => %{}}
+      assert [{:intune, %Portal.Intune.Device{}, :device_serial, nil}] = Posture.match(client)
+    end
   end
 
   test "rung_rank/1 orders the ladder" do
