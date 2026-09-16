@@ -194,6 +194,22 @@ defmodule PortalWeb.Policies.Postures.Checks do
       expansion: %{"field" => "sentinelone.is_up_to_date", "op" => "is", "value" => true}
     },
     %{
+      name: :os_up_to_date,
+      label: "OS up to date",
+      description: "The OS runs the newest release of its line, or Android carries the latest security patch level.",
+      providers: [:intune, :iru, :defender, :santa, :sentinelone],
+      platforms: [:windows, :macos, :ios, :android],
+      expansion: %{
+        "or" => [
+          %{"field" => "intune.os_up_to_date", "op" => "is", "value" => true},
+          %{"field" => "iru.os_up_to_date", "op" => "is", "value" => true},
+          %{"field" => "defender.os_up_to_date", "op" => "is", "value" => true},
+          %{"field" => "santa.os_up_to_date", "op" => "is", "value" => true},
+          %{"field" => "sentinelone.os_up_to_date", "op" => "is", "value" => true}
+        ]
+      }
+    },
+    %{
       name: :client_up_to_date,
       label: "Firezone Client up to date",
       description: "The Firezone Client runs the latest release for its platform.",
