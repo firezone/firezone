@@ -55,6 +55,8 @@ defmodule Portal.Policies.Postures do
 
   def max_depth, do: @max_depth
   def max_leaves, do: @max_leaves
+  def no_value_operators, do: @no_value_operators
+  def list_operators, do: @list_operators
 
   @impl Ecto.Type
   def type, do: :map
@@ -68,6 +70,15 @@ defmodule Portal.Policies.Postures do
   @impl Ecto.Type
   def cast(nil), do: {:ok, nil}
   def cast(%__MODULE__{} = postures), do: {:ok, postures}
+
+  def cast(json) when is_binary(json) do
+    case JSON.decode(json) do
+      {:ok, nil} -> {:ok, nil}
+      {:ok, decoded} when is_map(decoded) -> cast(decoded)
+      {:ok, _other} -> {:error, message: "must be an object"}
+      {:error, _reason} -> {:error, message: "is not valid JSON"}
+    end
+  end
 
   def cast(map) when is_map(map) do
     case parse(map) do
@@ -346,15 +357,24 @@ defmodule Portal.Policies.Postures do
     end
   end
 
-  defp parse_scalar(:ip, _op, value, at) do
+  defp parse_scalar(type, _op, value, at) when type in [:ip, :ipv4, :ipv6] do
     with {:ok, string} <- bounded_string(value, @max_string_bytes, at),
-         {:ok, inet} <- Portal.Types.INET.cast(string) do
+         {:ok, inet} <- Portal.Types.INET.cast(string),
+         true <- ip_family?(type, inet) do
       {:ok, %{inet | netmask: inet.netmask || Portal.Types.CIDR.max_netmask(inet)}}
     else
       {:error, message} when is_binary(message) -> {:error, message}
-      _ -> error(at, "must be a CIDR such as 10.0.0.0/8")
+      _ -> error(at, "must be #{cidr_example(type)}")
     end
   end
+
+  defp ip_family?(:ipv4, %Postgrex.INET{address: address}), do: tuple_size(address) == 4
+  defp ip_family?(:ipv6, %Postgrex.INET{address: address}), do: tuple_size(address) == 8
+  defp ip_family?(:ip, _inet), do: true
+
+  defp cidr_example(:ipv4), do: "an IPv4 CIDR such as 10.0.0.0/8"
+  defp cidr_example(:ipv6), do: "an IPv6 CIDR such as fd00::/8"
+  defp cidr_example(:ip), do: "a CIDR such as 10.0.0.0/8"
 
   defp non_empty_list(value, at) do
     cond do

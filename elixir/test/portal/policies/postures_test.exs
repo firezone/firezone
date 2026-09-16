@@ -45,8 +45,18 @@ defmodule Portal.Policies.PosturesTest do
     end
 
     test "anything but a map is rejected" do
-      assert Postures.cast("intune") == {:error, message: "must be an object"}
       assert Postures.cast([]) == {:error, message: "must be an object"}
+      assert Postures.cast(1) == {:error, message: "must be an object"}
+    end
+
+    test "a JSON string is decoded first" do
+      json = JSON.encode!(intune_leaf("is", "compliant"))
+      assert {:ok, %Postures{expr: %Leaf{provider: :intune}}} = Postures.cast(json)
+      assert Postures.cast("null") == {:ok, nil}
+      assert Postures.cast("[]") == {:error, message: "must be an object"}
+      assert Postures.cast("\"intune\"") == {:error, message: "must be an object"}
+      assert Postures.cast("{\"and\": [") == {:error, message: "is not valid JSON"}
+      assert Postures.cast("intune") == {:error, message: "is not valid JSON"}
     end
 
     test "the root is a node, so a bare leaf is a tree" do
@@ -279,6 +289,20 @@ defmodule Portal.Policies.PosturesTest do
                "value[0]: must be a CIDR such as 10.0.0.0/8"
 
       assert cast_error(leaf("defender.last_ip_address", "is_in_cidr", [1])) == "value[0]: must be a string"
+    end
+
+    test "firezone tunnel addresses only take CIDRs of their own family" do
+      assert %Postures{expr: %Leaf{type: :ipv4}} = cast!(leaf("firezone.ipv4", "is_in_cidr", ["100.64.0.0/10"]))
+      assert %Postures{expr: %Leaf{type: :ipv6}} = cast!(leaf("firezone.ipv6", "is_not_in_cidr", ["fd00:2021:1111::/48"]))
+
+      assert cast_error(leaf("firezone.ipv4", "is_in_cidr", ["fd00::/8"])) ==
+               "value[0]: must be an IPv4 CIDR such as 10.0.0.0/8"
+
+      assert cast_error(leaf("firezone.ipv6", "is_in_cidr", ["10.0.0.0/8"])) ==
+               "value[0]: must be an IPv6 CIDR such as fd00::/8"
+
+      assert cast_error(leaf("firezone.ipv6", "is_in_cidr", ["office"])) ==
+               "value[0]: must be an IPv6 CIDR such as fd00::/8"
     end
 
     test "string arrays" do

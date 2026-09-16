@@ -2,6 +2,7 @@ defmodule PortalWeb.Policies.Components do
   use PortalWeb, :component_library
   alias Portal.Policies.Condition
   alias PortalWeb.Policies.Database
+  import PortalWeb.Policies.PostureComponents
 
   @days_of_week [
     {"M", "Monday"},
@@ -159,6 +160,7 @@ defmodule PortalWeb.Policies.Components do
   attr :subject, :any, required: true
   attr :panel, :map, required: true
   attr :conditions_state, :map, required: true
+  attr :postures, :map, required: true
   attr :confirm_state, :map, required: true
   attr :policy_authorizations, :list, default: []
   attr :policy_authorizations_page, :integer, default: 1
@@ -213,6 +215,7 @@ defmodule PortalWeb.Policies.Components do
         panel_active_conditions={@conditions_state.panel_active_conditions}
         panel_conditions_dropdown_open={@conditions_state.panel_conditions_dropdown_open}
         conditions_state={@form_conditions_state}
+        postures={@postures}
         mode={:new}
       />
 
@@ -228,8 +231,27 @@ defmodule PortalWeb.Policies.Components do
         panel_active_conditions={@conditions_state.panel_active_conditions}
         panel_conditions_dropdown_open={@conditions_state.panel_conditions_dropdown_open}
         conditions_state={@form_conditions_state}
+        postures={@postures}
         mode={:edit}
       />
+
+      <.modal
+        :if={@panel.panel_view == :edit_form and @confirm_state.confirm_breaking_change}
+        id="policy-breaking-change-modal"
+        on_close="cancel_policy_breaking_change"
+        on_cancel="cancel_policy_breaking_change"
+        on_confirm="save_policy_breaking_change"
+      >
+        <:title>Save these changes?</:title>
+        <:body>
+          <p>
+            This change resets all access previously granted by this policy. Sessions using it will
+            be briefly interrupted while the client reconnects.
+          </p>
+        </:body>
+        <:cancel_button>Cancel</:cancel_button>
+        <:confirm_button>Save Changes</:confirm_button>
+      </.modal>
 
       <.policy_details_view
         :if={@policy && @panel.panel_view == :list}
@@ -262,6 +284,8 @@ defmodule PortalWeb.Policies.Components do
   attr :conditions_state, :map, required: true
   attr :mode, :atom, required: true
 
+  attr :postures, :map, required: true
+
   def policy_form_view(assigns) do
     ~H"""
     <div class="flex flex-col h-full overflow-hidden">
@@ -285,6 +309,7 @@ defmodule PortalWeb.Policies.Components do
           panel_active_conditions={@panel_active_conditions}
           panel_conditions_dropdown_open={@panel_conditions_dropdown_open}
           conditions_state={@conditions_state}
+          postures={@postures}
         />
         <.policy_form_actions mode={@mode} />
       </.form>
@@ -319,6 +344,8 @@ defmodule PortalWeb.Policies.Components do
   attr :panel_conditions_dropdown_open, :boolean, default: false
   attr :conditions_state, :map, required: true
 
+  attr :postures, :map, required: true
+
   def policy_form_body(assigns) do
     ~H"""
     <div class="flex-1 overflow-y-auto px-5 py-4 space-y-4">
@@ -340,6 +367,7 @@ defmodule PortalWeb.Policies.Components do
         has_trust_anchors?={@has_trust_anchors?}
         conditions_state={@conditions_state}
       />
+      <.postures_section id="policy-postures" account={@account} state={@postures} />
     </div>
     """
   end
@@ -501,26 +529,12 @@ defmodule PortalWeb.Policies.Components do
 
   def policy_flow_log_uploads_field(assigns) do
     ~H"""
-    <div>
-      <.flow_log_uploads_toggle
-        form={@panel_form}
-        internet_resource?={internet_resource?(@panel_selected_resource)}
-      />
-      <p :if={flow_log_uploads_changed?(@panel_form)} class="mt-1 text-xs text-warning">
-        Changing this setting expires all active connections created by this Policy;
-        users may experience a few seconds of interrupted connectivity.
-      </p>
-    </div>
+    <.flow_log_uploads_toggle
+      form={@panel_form}
+      internet_resource?={internet_resource?(@panel_selected_resource)}
+    />
     """
   end
-
-  # Warn only when flipping the flag on an existing policy: the flip expires
-  # the policy's active authorizations so fresh ingest tokens get minted.
-  defp flow_log_uploads_changed?(%Phoenix.HTML.Form{source: %Ecto.Changeset{} = changeset}) do
-    not is_nil(changeset.data.id) and Map.has_key?(changeset.changes, :flow_log_uploads_enabled)
-  end
-
-  defp flow_log_uploads_changed?(_form), do: false
 
   @doc """
   The flow-log reporting toggle shared by every form that creates or edits a
@@ -544,7 +558,7 @@ defmodule PortalWeb.Policies.Components do
       <div class="flex items-center justify-between py-1">
         <div>
           <div class="flex items-center gap-2">
-            <p class="text-sm font-medium text-body">Flow log reporting</p>
+            <p class="text-xs font-semibold text-body">Flow log reporting</p>
             <span
               data-flow-logs-new-badge="true"
               class="px-1 py-px rounded text-[9px] font-semibold tracking-wider bg-brand-muted text-brand"
@@ -552,7 +566,7 @@ defmodule PortalWeb.Policies.Components do
               NEW
             </span>
           </div>
-          <p class="text-[11px] text-subtle">
+          <p class="text-xs text-subtle">
             Report flow logs for connections created by this Policy
           </p>
         </div>
@@ -737,6 +751,7 @@ defmodule PortalWeb.Policies.Components do
             class="w-full text-left px-3 py-1.5 text-xs text-body hover:text-heading hover:bg-raised transition-colors"
           >
             {condition_type_label(type)}
+            <.condition_new_badge type={type} />
           </button>
         </div>
       </div>
@@ -1032,6 +1047,7 @@ defmodule PortalWeb.Policies.Components do
           />
         </ul>
       <% end %>
+      <.postures_summary postures={@policy.postures} />
     </div>
     """
   end
@@ -2344,11 +2360,27 @@ defmodule PortalWeb.Policies.Components do
 
   attr :type, :atom, required: true
 
+  defp condition_new_badge(%{type: :device_attested} = assigns) do
+    ~H"""
+    <span
+      data-condition-new-badge
+      class="ml-1.5 px-1 py-px rounded text-[9px] font-semibold tracking-wider bg-brand-muted text-brand"
+    >
+      NEW
+    </span>
+    """
+  end
+
+  defp condition_new_badge(assigns), do: ~H""
+
+  attr :type, :atom, required: true
+
   defp grant_condition_card_header(assigns) do
     ~H"""
     <div class="flex items-center justify-between px-3 py-2 bg-raised border-b border-border">
       <span class="text-xs font-medium text-heading">
         {condition_type_label(@type)}
+        <.condition_new_badge type={@type} />
       </span>
       <button
         type="button"

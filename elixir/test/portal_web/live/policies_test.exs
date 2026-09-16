@@ -5,6 +5,7 @@ defmodule PortalWeb.PoliciesTest do
   alias Portal.Changes.Change
 
   import Portal.AccountFixtures
+  import Portal.DevicePostureFixtures
   import Portal.ActorFixtures
   import Portal.AuthProviderFixtures
   import Portal.FeaturesFixtures
@@ -551,34 +552,49 @@ defmodule PortalWeb.PoliciesTest do
                "Enabling flow log collection for the internet resource can result in substantial log volume."
     end
 
-    test "warns when changing flow log reporting on an existing policy", %{
+    test "asks before saving a change that revokes access, and only then", %{
       conn: conn,
       account: account,
       actor: actor
     } do
       group = group_fixture(account: account)
+      other_group = group_fixture(account: account)
       resource = resource_fixture(account: account)
       policy = policy_fixture(group: group, resource: resource)
 
-      {:ok, lv, html} =
-        conn
-        |> authorize_conn(actor)
-        |> live(~p"/#{account}/policies/#{policy.id}/edit")
-
-      refute html =~ "a few seconds of interrupted connectivity"
+      conn = authorize_conn(conn, actor)
+      {:ok, lv, _html} = live(conn, ~p"/#{account}/policies/#{policy.id}/edit")
 
       html =
         lv
-        |> form("[phx-submit='submit_policy_form']",
-          policy: %{
-            group_id: group.id,
-            resource_id: resource.id,
-            flow_log_uploads_enabled: false
-          }
-        )
-        |> render_change()
+        |> form("[phx-submit='submit_policy_form']", policy: %{description: "harmless"})
+        |> render_submit()
 
-      assert html =~ "a few seconds of interrupted connectivity"
+      refute html =~ "Save these changes?"
+      assert html =~ "updated successfully"
+
+      {:ok, lv, _html} = live(conn, ~p"/#{account}/policies/#{policy.id}/edit")
+
+      html =
+        lv
+        |> form("[phx-submit='submit_policy_form']", policy: %{group_id: other_group.id})
+        |> render_submit()
+
+      assert html =~ "Save these changes?"
+      assert html =~ "resets all access previously granted by this policy"
+      assert Repo.get_by!(Policy, id: policy.id, account_id: account.id).group_id == group.id
+
+      html = render_click(lv, "cancel_policy_breaking_change")
+      refute html =~ "Save these changes?"
+      assert Repo.get_by!(Policy, id: policy.id, account_id: account.id).group_id == group.id
+
+      lv
+      |> form("[phx-submit='submit_policy_form']", policy: %{flow_log_uploads_enabled: false})
+      |> render_submit()
+
+      html = render_click(lv, "save_policy_breaking_change")
+      assert html =~ "updated successfully"
+      assert Repo.get_by!(Policy, id: policy.id, account_id: account.id).flow_log_uploads_enabled == false
     end
 
     test "moving a policy onto the Internet Resource disables flow log reporting", %{
@@ -615,6 +631,8 @@ defmodule PortalWeb.PoliciesTest do
         )
         |> render_submit()
 
+      assert html =~ "Save these changes?"
+      html = render_click(lv, "save_policy_breaking_change")
       assert html =~ "updated successfully"
 
       reloaded = Repo.get_by!(Policy, id: policy.id, account_id: account.id)
@@ -770,6 +788,8 @@ defmodule PortalWeb.PoliciesTest do
         )
         |> render_submit()
 
+      assert html =~ "Save these changes?"
+      html = render_click(lv, "save_policy_breaking_change")
       assert html =~ "updated successfully"
 
       policy = Repo.get_by!(Policy, id: policy.id, account_id: account.id)
@@ -820,6 +840,8 @@ defmodule PortalWeb.PoliciesTest do
         )
         |> render_submit()
 
+      assert html =~ "Save these changes?"
+      html = render_click(lv, "save_policy_breaking_change")
       assert html =~ "updated successfully"
 
       policy = Repo.get_by!(Policy, id: policy.id, account_id: account.id)
@@ -1076,6 +1098,8 @@ defmodule PortalWeb.PoliciesTest do
         )
         |> render_submit()
 
+      assert html =~ "Save these changes?"
+      html = render_click(lv, "save_policy_breaking_change")
       assert html =~ "updated successfully"
 
       policy = Repo.get_by!(Policy, id: policy.id, account_id: account.id)
@@ -1141,6 +1165,8 @@ defmodule PortalWeb.PoliciesTest do
         )
         |> render_submit()
 
+      assert html =~ "Save these changes?"
+      html = render_click(lv, "save_policy_breaking_change")
       assert html =~ "updated successfully"
 
       policy = Repo.get_by!(Policy, id: policy.id, account_id: account.id)
@@ -1300,6 +1326,8 @@ defmodule PortalWeb.PoliciesTest do
         )
         |> render_submit()
 
+      assert html =~ "Save these changes?"
+      html = render_click(lv, "save_policy_breaking_change")
       assert html =~ "updated successfully"
 
       policy = Repo.get_by!(Policy, id: policy.id, account_id: account.id)
@@ -1349,9 +1377,14 @@ defmodule PortalWeb.PoliciesTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/policies/#{policy.id}/edit")
 
-      render_click(lv, "toggle_conditions_dropdown")
+      html = render_click(lv, "toggle_conditions_dropdown")
+      assert has_element?(lv, "button[phx-value-type='device_attested'] [data-condition-new-badge]", "NEW")
+      refute has_element?(lv, "button[phx-value-type='client_verified'] [data-condition-new-badge]")
+      refute html =~ "Require Attestation</span"
+
       html = render_click(lv, "add_condition", %{"type" => "device_attested"})
       assert html =~ "Require Attestation"
+      assert has_element?(lv, "[data-condition-new-badge]", "NEW")
     end
 
     test "saves device_attested condition to DB", %{conn: conn, account: account, actor: actor} do
@@ -1378,6 +1411,8 @@ defmodule PortalWeb.PoliciesTest do
         )
         |> render_submit()
 
+      assert html =~ "Save these changes?"
+      html = render_click(lv, "save_policy_breaking_change")
       assert html =~ "updated successfully"
 
       policy = Repo.get_by!(Policy, id: policy.id, account_id: account.id)
@@ -1415,6 +1450,255 @@ defmodule PortalWeb.PoliciesTest do
         |> live(~p"/#{account}/policies/#{policy.id}/edit")
 
       assert html =~ "Require Attestation"
+    end
+  end
+
+  describe ":device postures" do
+    setup do
+      enable_device_posture()
+      account = device_posture_account_fixture()
+      actor = admin_actor_fixture(account: account)
+      group = group_fixture(account: account)
+      resource = resource_fixture(account: account)
+      %{account: account, actor: actor, group: group, resource: resource}
+    end
+
+    defp expansion(name) do
+      {:ok, check} = PortalWeb.Policies.Postures.Checks.fetch(name)
+      check.expansion
+    end
+
+    defp saved_postures(group, resource) do
+      Policy
+      |> Repo.get_by!(group_id: group.id, resource_id: resource.id)
+      |> Map.fetch!(:postures)
+      |> Portal.Policies.Postures.to_map()
+    end
+
+    defp toggle(lv, id), do: lv |> element("#policy-postures-checks-#{id}") |> render()
+
+    test "the section is hidden when the feature is off globally", %{conn: conn} do
+      enable_device_posture(false)
+      account = account_fixture()
+      actor = admin_actor_fixture(account: account)
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/policies/new")
+
+      refute html =~ "Device posture"
+    end
+
+    test "the section is locked when the account lacks the feature", %{conn: conn} do
+      account = account_fixture()
+      actor = admin_actor_fixture(account: account)
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/policies/new")
+
+      assert html =~ "Device posture"
+      assert html =~ "Upgrade your plan to unlock device posture checks."
+      assert html =~ ~s(data-locked-section="device-posture")
+      refute html =~ ~s(name="policy[postures]")
+    end
+
+    test "toggles checks, gates them on connected providers and saves their rules", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      group: group,
+      resource: resource
+    } do
+      {:ok, lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/policies/new")
+
+      assert html =~ "Disk encryption"
+      assert html =~ "Connect Intune or Iru to use this check."
+      assert html =~ "300 more device posture fields"
+      assert has_element?(lv, "#policy-postures [data-postures-new-badge]", "NEW")
+      assert html =~ "kb/device-posture?utm_source=product"
+      assert html =~ "are defined. Devices will be identified by Firezone-reported attributes only."
+      assert html =~ "settings/trust_anchors"
+      assert html =~ "kb/device-trust?utm_source=product#device-attributes"
+
+      assert toggle(lv, "disk_encryption") =~ "disabled"
+      refute toggle(lv, "client_up_to_date") =~ "disabled"
+
+      html = render_click(lv, "postures_toggle_check", %{"name" => "client_up_to_date"})
+      assert toggle(lv, "client_up_to_date") =~ "checked"
+      assert html =~ ~s(&quot;field&quot;:&quot;firezone.last_seen_version&quot;)
+
+      html =
+        lv
+        |> form("[phx-submit='submit_policy_form']", policy: %{group_id: group.id, resource_id: resource.id})
+        |> render_submit()
+
+      assert html =~ "created successfully"
+      assert saved_postures(group, resource) == expansion(:client_up_to_date)
+      assert html =~ "firezone.last_seen_version"
+    end
+
+    test "every connected provider type unlocks its checks, disabled ones do not", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      Portal.IntuneFixtures.intune_posture_provider_fixture(account: account)
+      Portal.IruFixtures.iru_posture_provider_fixture(account: account)
+      Portal.SentinelOneFixtures.sentinelone_posture_provider_fixture(account: account)
+      Portal.DefenderFixtures.defender_posture_provider_fixture(account: account, is_disabled: true)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/policies/new")
+
+      refute toggle(lv, "compliant") =~ "disabled"
+      refute toggle(lv, "disk_encryption") =~ "disabled"
+      refute toggle(lv, "agent_up_to_date") =~ "disabled"
+      assert toggle(lv, "app_allowlisting") =~ "disabled"
+    end
+
+    test "connected providers and trust anchors unlock checks and silence the warning", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      Portal.IntuneFixtures.intune_posture_provider_fixture(account: account)
+      trust_anchor_fixture(account: account)
+
+      {:ok, lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/policies/new")
+
+      refute html =~ "Devices will be identified by Firezone-reported attributes only."
+      refute toggle(lv, "compliant") =~ "disabled"
+      assert toggle(lv, "firewall") =~ "disabled"
+
+      render_click(lv, "postures_toggle_check", %{"name" => "compliant"})
+      html = render_click(lv, "postures_toggle_check", %{"name" => "disk_encryption"})
+      assert html =~ ~s(&quot;field&quot;:&quot;intune.compliance_state&quot;)
+      assert html =~ ~s(&quot;field&quot;:&quot;iru.filevault_enabled&quot;)
+
+      html = render_click(lv, "postures_toggle_check", %{"name" => "compliant"})
+      refute html =~ ~s(&quot;field&quot;:&quot;intune.compliance_state&quot;)
+      refute toggle(lv, "compliant") =~ "checked"
+      assert toggle(lv, "disk_encryption") =~ "checked"
+    end
+
+    test "a policy saved from checks shows them checked when edited", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      group: group,
+      resource: resource
+    } do
+      Portal.IntuneFixtures.intune_posture_provider_fixture(account: account)
+      {:ok, postures} = Portal.Policies.Postures.cast(%{"and" => [expansion(:compliant), expansion(:client_up_to_date)]})
+
+      policy =
+        policy_fixture(account: account, group: group, resource: resource)
+        |> Ecto.Changeset.change(postures: postures)
+        |> Repo.update!()
+
+      {:ok, lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/policies/#{policy.id}/edit")
+
+      assert toggle(lv, "compliant") =~ "checked"
+      assert toggle(lv, "client_up_to_date") =~ "checked"
+      refute toggle(lv, "disk_encryption") =~ "checked"
+
+      render_click(lv, "postures_toggle_check", %{"name" => "compliant"})
+
+      html =
+        lv
+        |> form("[phx-submit='submit_policy_form']", policy: %{description: "fewer checks"})
+        |> render_submit()
+
+      assert html =~ "Save these changes?"
+      html = render_click(lv, "save_policy_breaking_change")
+      assert html =~ "updated successfully"
+      assert saved_postures(group, resource) == expansion(:client_up_to_date)
+    end
+
+    test "rules written through the API are shown as custom, kept on save, and summarised", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      group: group,
+      resource: resource
+    } do
+      custom = %{"not" => %{"field" => "intune.jail_broken", "op" => "is", "value" => true}}
+      {:ok, postures} = Portal.Policies.Postures.cast(custom)
+
+      policy =
+        policy_fixture(account: account, group: group, resource: resource)
+        |> Ecto.Changeset.change(postures: postures)
+        |> Repo.update!()
+
+      conn = authorize_conn(conn, actor)
+
+      {:ok, _lv, html} = live(conn, ~p"/#{account}/policies/#{policy.id}")
+      assert html =~ "Device posture"
+      assert html =~ "intune.jail_broken"
+      assert html =~ ">NOT<"
+      assert html =~ ~r/>\s*Posture\s*</
+
+      {:ok, lv, html} = live(conn, ~p"/#{account}/policies/#{policy.id}/edit")
+      assert html =~ "written through the REST API"
+      assert toggle(lv, "client_up_to_date") =~ "disabled"
+
+      html =
+        lv
+        |> form("[phx-submit='submit_policy_form']", policy: %{description: "still custom"})
+        |> render_submit()
+
+      assert html =~ "updated successfully"
+      assert saved_postures(group, resource) == custom
+    end
+    test "a check whose provider was removed can still be turned off", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      group: group,
+      resource: resource
+    } do
+      {:ok, postures} = Portal.Policies.Postures.cast(expansion(:compliant))
+
+      policy =
+        policy_fixture(account: account, group: group, resource: resource)
+        |> Ecto.Changeset.change(postures: postures)
+        |> Repo.update!()
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/policies/#{policy.id}/edit")
+
+      assert toggle(lv, "compliant") =~ "checked"
+      refute toggle(lv, "compliant") =~ "disabled"
+      assert toggle(lv, "disk_encryption") =~ "disabled"
+
+      render_click(lv, "postures_toggle_check", %{"name" => "compliant"})
+      assert toggle(lv, "compliant") =~ "disabled"
+
+      html =
+        lv
+        |> form("[phx-submit='submit_policy_form']", policy: %{description: "no checks"})
+        |> render_submit()
+
+      assert html =~ "Save these changes?"
+      html = render_click(lv, "save_policy_breaking_change")
+      assert html =~ "updated successfully"
+      assert Repo.get_by!(Policy, group_id: group.id, resource_id: resource.id).postures == nil
     end
   end
 

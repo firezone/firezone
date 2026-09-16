@@ -28,9 +28,13 @@ defmodule Portal.Devices.Posture do
   @type key :: {:mdm_device_id | :serial | :entra_device_id, String.t()}
   @type match :: {atom(), struct(), rung(), :intune | nil}
 
-  @doc "Every provider row matched to the device, one entry per row."
+  @doc """
+  Every provider row matched to the device, one entry per row, whatever the
+  state of its provider. This is what an admin sees on the device; a policy
+  reads `rows_by_type/1`, which leaves out disabled providers.
+  """
   @spec match(Device.t()) :: [match()]
-  def match(%Device{type: :client} = device), do: device |> match_all() |> Map.get(device.id, [])
+  def match(%Device{type: :client} = device), do: device |> match_all(:all) |> Map.get(device.id, [])
   def match(_device), do: []
 
   @doc """
@@ -38,12 +42,13 @@ defmodule Portal.Devices.Posture do
 
   One statement joins the devices to every provider table on the identifiers
   of the ladder, and to Defender through the Intune row, so a batch of a
-  thousand devices costs the same round trip as one.
+  thousand devices costs the same round trip as one. `:enabled` leaves out
+  the rows of disabled providers.
   """
-  @spec match_all([Device.t()] | Device.t()) :: %{Ecto.UUID.t() => [match()]}
-  def match_all(%Device{} = device), do: match_all([device])
+  @spec match_all([Device.t()] | Device.t(), :enabled | :all) :: %{Ecto.UUID.t() => [match()]}
+  def match_all(%Device{} = device, providers), do: match_all([device], providers)
 
-  def match_all(devices) when is_list(devices) do
+  def match_all(devices, providers) when is_list(devices) do
     keys_by_id =
       for %Device{type: :client} = device <- devices, match_keys(device) != [], into: %{} do
         {device.id, match_keys(device)}
@@ -57,7 +62,7 @@ defmodule Portal.Devices.Posture do
         account_id = devices |> hd() |> Map.fetch!(:account_id)
 
         account_id
-        |> Database.list_matches(device_ids)
+        |> Database.list_matches(device_ids, providers)
         |> Enum.group_by(&elem(&1, 0), &Tuple.delete_at(&1, 0))
         |> Map.new(fn {device_id, rows} -> {device_id, matches(rows, Map.fetch!(keys_by_id, device_id))} end)
     end
@@ -65,11 +70,12 @@ defmodule Portal.Devices.Posture do
 
   @doc "The matched rows grouped by provider type, the shape the posture evaluator reads."
   @spec rows_by_type(Device.t()) :: %{atom() => [struct()]}
-  def rows_by_type(device), do: device |> match() |> group_rows()
+  def rows_by_type(device), do: device |> match_all(:enabled) |> Map.get(device.id, []) |> group_rows()
 
   @doc "`rows_by_type/1` for a batch of devices of one account, keyed by device id."
   @spec rows_by_type_all([Device.t()]) :: %{Ecto.UUID.t() => %{atom() => [struct()]}}
-  def rows_by_type_all(devices), do: devices |> match_all() |> Map.new(fn {id, rows} -> {id, group_rows(rows)} end)
+  def rows_by_type_all(devices),
+    do: devices |> match_all(:enabled) |> Map.new(fn {id, rows} -> {id, group_rows(rows)} end)
 
   @spec rung_rank(rung()) :: 0 | 1 | 2
   def rung_rank(:mdm_device_id), do: 0
@@ -214,20 +220,22 @@ defmodule Portal.Devices.Posture do
     # actor may read, and the account filter keeps them in bounds. The join
     # conditions are the matching ladder; `rung_fields/2` names the same
     # columns so the credit given to a returned row can never disagree.
-    def list_matches(account_id, device_ids) do
+    def list_matches(account_id, device_ids, providers) do
+      all? = providers == :all
+
       from(d in Device, as: :device, where: d.account_id == ^account_id and d.id in ^device_ids)
-      |> join_intune()
-      |> join_iru()
-      |> join_santa()
-      |> join_sentinelone()
-      |> join_defender()
+      |> join_intune(all?)
+      |> join_iru(all?)
+      |> join_santa(all?)
+      |> join_sentinelone(all?)
+      |> join_defender(all?)
       |> select([device: d, intune: i, iru: r, santa: s, sentinelone: o, defender: f], {d.id, i, r, s, o, f})
       |> Safe.unscoped()
       |> Safe.all()
     end
 
-    defp join_intune(query) do
-      join(query, :left, [device: d], i in subquery(enabled(Intune.Device, Intune.PostureProvider)),
+    defp join_intune(query, all?) do
+      join(query, :left, [device: d], i in subquery(rows(Intune.Device, Intune.PostureProvider, all?)),
         as: :intune,
         on:
           i.account_id == d.account_id and
@@ -237,8 +245,8 @@ defmodule Portal.Devices.Posture do
       )
     end
 
-    defp join_iru(query) do
-      join(query, :left, [device: d], r in subquery(enabled(Iru.Device, Iru.PostureProvider)),
+    defp join_iru(query, all?) do
+      join(query, :left, [device: d], r in subquery(rows(Iru.Device, Iru.PostureProvider, all?)),
         as: :iru,
         on:
           r.account_id == d.account_id and
@@ -248,8 +256,8 @@ defmodule Portal.Devices.Posture do
       )
     end
 
-    defp join_santa(query) do
-      join(query, :left, [device: d], s in subquery(enabled(Santa.Device, Santa.PostureProvider)),
+    defp join_santa(query, all?) do
+      join(query, :left, [device: d], s in subquery(rows(Santa.Device, Santa.PostureProvider, all?)),
         as: :santa,
         on:
           s.account_id == d.account_id and
@@ -257,8 +265,8 @@ defmodule Portal.Devices.Posture do
       )
     end
 
-    defp join_sentinelone(query) do
-      join(query, :left, [device: d], o in subquery(enabled(SentinelOne.Device, SentinelOne.PostureProvider)),
+    defp join_sentinelone(query, all?) do
+      join(query, :left, [device: d], o in subquery(rows(SentinelOne.Device, SentinelOne.PostureProvider, all?)),
         as: :sentinelone,
         on:
           o.account_id == d.account_id and
@@ -266,8 +274,8 @@ defmodule Portal.Devices.Posture do
       )
     end
 
-    defp join_defender(query) do
-      join(query, :left, [device: d, intune: i], f in subquery(enabled(Defender.Device, Defender.PostureProvider)),
+    defp join_defender(query, all?) do
+      join(query, :left, [device: d, intune: i], f in subquery(rows(Defender.Device, Defender.PostureProvider, all?)),
         as: :defender,
         on:
           f.account_id == d.account_id and
@@ -275,12 +283,13 @@ defmodule Portal.Devices.Posture do
       )
     end
 
-    # A disabled provider's rows are as good as absent: nothing refreshes them.
-    defp enabled(device_schema, provider_schema) do
+    # A disabled provider's rows are still shown on the device, but a policy
+    # must not trust data nothing refreshes any more.
+    defp rows(device_schema, provider_schema, all?) do
       from(r in device_schema,
         join: p in ^provider_schema,
         on: p.account_id == r.account_id and p.id == r.posture_provider_id,
-        where: not p.is_disabled,
+        where: ^all? or not p.is_disabled,
         select: r
       )
     end

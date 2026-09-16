@@ -375,8 +375,16 @@ defmodule Portal.Policies.Postures.EvaluatorTest do
     end
 
     test "firezone tunnel addresses" do
-      device = device(ipv4: %Postgrex.INET{address: {100, 64, 0, 5}, netmask: nil})
+      device =
+        device(
+          ipv4: %Postgrex.INET{address: {100, 64, 0, 5}, netmask: nil},
+          ipv6: %Postgrex.INET{address: {0xFD00, 0x2021, 0x1111, 0, 0, 0, 0, 5}, netmask: nil}
+        )
+
       assert evaluate(leaf("firezone.ipv4", "is_in_cidr", ["100.64.0.0/10"]), device) == {:ok, nil}
+      assert evaluate(leaf("firezone.ipv4", "is_in_cidr", ["100.96.0.0/11"]), device) == @failed
+      assert evaluate(leaf("firezone.ipv6", "is_in_cidr", ["fd00:2021:1111::/48"]), device) == {:ok, nil}
+      assert evaluate(leaf("firezone.ipv6", "is_not_in_cidr", ["fd00:2021:1111::/48"]), device) == @failed
     end
   end
 
