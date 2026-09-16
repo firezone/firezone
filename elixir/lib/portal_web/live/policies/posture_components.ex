@@ -31,6 +31,12 @@ defmodule PortalWeb.Policies.PostureComponents do
     <div :if={@state.availability != :hidden} id={@id} class="border-t border-border pt-4">
       <h4 class="text-[10px] font-semibold tracking-widest uppercase text-subtle mb-3">
         Device posture
+        <span
+          data-postures-new-badge
+          class="ml-1.5 px-1 py-px rounded text-[9px] font-semibold tracking-wider normal-case bg-brand-muted text-brand"
+        >
+          NEW
+        </span>
         <span class="ml-1 font-normal normal-case tracking-normal text-muted">
           (optional)
         </span>

@@ -495,6 +495,7 @@ defmodule PortalWeb.NavigationComponents do
           navigate={~p"/#{@account}/settings/device_posture"}
           tab_path="settings/device_posture"
           icon="ri-shield-star-fill"
+          badge="NEW"
         >
           Device Posture
         </.settings_tab>

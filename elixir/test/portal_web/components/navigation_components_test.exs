@@ -49,6 +49,17 @@ defmodule PortalWeb.NavigationComponentsTest do
       assert html =~ "Trust Anchors"
       assert has_element?(lv, "a[href='/#{account.slug}/settings/trust_anchors'] [data-settings-tab-badge]", "NEW")
     end
+
+    test "device posture carries a NEW badge too", %{conn: conn, account: account, actor: actor} do
+      Portal.DevicePostureFixtures.enable_device_posture()
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/account")
+
+      assert has_element?(lv, "a[href='/#{account.slug}/settings/device_posture'] [data-settings-tab-badge]", "NEW")
+    end
   end
 
   describe "sidebar badges" do
