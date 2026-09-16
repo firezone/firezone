@@ -16,7 +16,7 @@ defmodule PortalWeb.OAuthHTML do
     <div :if={@accounts != []}>
       <div class="flex items-center gap-3 mb-3">
         <div class="flex-1 h-px bg-border"></div>
-        <span class="text-xs font-medium text-muted uppercase tracking-widest">
+        <span class="text-xs font-medium text-subtle uppercase tracking-widest">
           Recently signed in
         </span>
         <div class="flex-1 h-px bg-border"></div>
@@ -32,7 +32,7 @@ defmodule PortalWeb.OAuthHTML do
 
     <div :if={@accounts != []} class="flex items-center gap-3 my-5">
       <div class="flex-1 h-px bg-border"></div>
-      <span class="text-xs text-muted">or</span>
+      <span class="text-xs text-subtle">or</span>
       <div class="flex-1 h-px bg-border"></div>
     </div>
 

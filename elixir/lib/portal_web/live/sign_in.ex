@@ -192,7 +192,7 @@ defmodule PortalWeb.SignIn do
     ~H"""
     <div class="flex items-center gap-3 my-5">
       <div class="flex-1 h-px bg-border"></div>
-      <span class="text-xs text-muted">or</span>
+      <span class="text-xs text-subtle">or</span>
       <div class="flex-1 h-px bg-border"></div>
     </div>
     """
@@ -214,7 +214,7 @@ defmodule PortalWeb.SignIn do
       <span class="flex-1">Continue with <strong>{@provider.name}</strong></span>
       <.icon
         name="ri-arrow-right-s-line"
-        class="w-5 h-5 text-muted group-hover:text-brand group-hover:translate-x-0.5 transition-all shrink-0"
+        class="w-5 h-5 text-subtle group-hover:text-brand group-hover:translate-x-0.5 transition-all shrink-0"
       />
     </.link>
     """
@@ -241,14 +241,14 @@ defmodule PortalWeb.SignIn do
         name="userpass[idp_id]"
         value={@userpass_form[:idp_id].value}
         placeholder="Username"
-        class="w-full px-3 py-2 text-sm rounded border bg-input border-input-border text-heading outline-none focus:border-border-focus focus:ring-1 focus:ring-border-focus/30 transition-colors placeholder:text-muted"
+        class="w-full px-3 py-2 text-sm rounded border bg-input border-input-border text-heading outline-none focus:border-border-focus focus:ring-1 focus:ring-border-focus/30 transition-colors placeholder:text-subtle"
         required
       />
       <input
         type="password"
         name="userpass[secret]"
         placeholder="Password"
-        class="w-full px-3 py-2 text-sm rounded border bg-input border-input-border text-heading outline-none focus:border-border-focus focus:ring-1 focus:ring-border-focus/30 transition-colors placeholder:text-muted"
+        class="w-full px-3 py-2 text-sm rounded border bg-input border-input-border text-heading outline-none focus:border-border-focus focus:ring-1 focus:ring-border-focus/30 transition-colors placeholder:text-subtle"
         required
       />
       <button
@@ -282,7 +282,7 @@ defmodule PortalWeb.SignIn do
           name="email[email]"
           value={@email_form[:email].value}
           placeholder="you@example.com"
-          class="flex-1 px-3 py-2 text-sm rounded border bg-input border-input-border text-heading outline-none focus:border-border-focus focus:ring-1 focus:ring-border-focus/30 transition-colors placeholder:text-muted"
+          class="flex-1 px-3 py-2 text-sm rounded border bg-input border-input-border text-heading outline-none focus:border-border-focus focus:ring-1 focus:ring-border-focus/30 transition-colors placeholder:text-subtle"
           required
         />
         <button

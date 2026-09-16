@@ -265,7 +265,7 @@ defmodule PortalWeb.PageComponents do
             placeholder="e.g. acme_corp"
             autofocus={@autofocus}
             required
-            class="flex-1 px-3 py-2 text-sm rounded border bg-input border-input-border text-heading outline-none focus:border-border-focus focus:ring-1 focus:ring-border-focus/30 transition-colors placeholder:text-muted"
+            class="flex-1 px-3 py-2 text-sm rounded border bg-input border-input-border text-heading outline-none focus:border-border-focus focus:ring-1 focus:ring-border-focus/30 transition-colors placeholder:text-subtle"
           />
           <button
             type="submit"
@@ -307,7 +307,7 @@ defmodule PortalWeb.PageComponents do
       </div>
       <.icon
         name="ri-arrow-right-s-line"
-        class="w-5.5 h-5.5 text-muted group-hover:text-brand group-hover:translate-x-0.5 transition-all shrink-0"
+        class="w-5.5 h-5.5 text-subtle group-hover:text-brand group-hover:translate-x-0.5 transition-all shrink-0"
       />
     </a>
     """

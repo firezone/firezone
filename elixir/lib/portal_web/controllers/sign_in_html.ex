@@ -53,7 +53,7 @@ defmodule PortalWeb.SignInHTML do
           <p class="mt-2 text-sm text-body">
             You're signed in to <span class="font-medium text-heading">{@account.name}</span>.
           </p>
-          <p class="mt-4 text-xs text-muted">
+          <p class="mt-4 text-xs text-subtle">
             You can now close this window and return to what you were doing.
           </p>
         </div>
@@ -96,9 +96,9 @@ defmodule PortalWeb.SignInHTML do
         <div class="w-full max-w-sm px-6 py-12">
           <img src="/images/logo-text.svg" alt="Firezone" class="h-8 block mx-auto mb-8" />
           <div class="flex items-center gap-3 mb-8">
-            <div class="w-11 h-11 rounded bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 flex items-center justify-center shrink-0">
+            <div class="w-11 h-11 rounded bg-danger-light border border-danger/30 flex items-center justify-center shrink-0">
               <svg
-                class="w-5 h-5 text-red-500"
+                class="w-5 h-5 text-danger"
                 viewBox="0 0 24 24"
                 fill="none"
                 stroke="currentColor"
@@ -122,7 +122,7 @@ defmodule PortalWeb.SignInHTML do
           <div class="flex justify-center">
             <.link
               href={@retry_path}
-              class="inline-flex items-center justify-center rounded-sm bg-accent-500 px-4 py-2 text-sm font-medium text-white hover:bg-accent-700 focus:outline-hidden focus:ring-2 focus:ring-offset-2 focus:ring-accent-500"
+              class="inline-flex items-center justify-center rounded-sm bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-dark focus:outline-hidden focus:ring-2 focus:ring-offset-2 focus:ring-accent-500"
             >
               Return to sign in
             </.link>
@@ -187,7 +187,7 @@ defmodule PortalWeb.SignInHTML do
             <span class="font-medium text-heading">{@account.name}</span>
             has been disabled.
           </p>
-          <p class="mt-4 text-xs text-muted">
+          <p class="mt-4 text-xs text-subtle">
             Please contact your Firezone administrator to enable this account.
           </p>
         </div>
@@ -240,7 +240,7 @@ defmodule PortalWeb.SignInHTML do
           <div class="flex items-center gap-3 mb-8">
             <div class="w-11 h-11 rounded bg-violet-50 dark:bg-violet-950/30 border border-violet-200 dark:border-violet-800 flex items-center justify-center shrink-0">
               <svg
-                class="w-5 h-5 text-violet-500"
+                class="w-5 h-5 text-link"
                 viewBox="0 0 24 24"
                 fill="none"
                 stroke="currentColor"
@@ -266,19 +266,19 @@ defmodule PortalWeb.SignInHTML do
             <dl class="space-y-2">
               <div class="flex gap-2">
                 <dt class="text-xs text-subtle w-28 shrink-0 pt-0.5">Signed in as</dt>
-                <dd class="text-xs text-heading font-medium">{@actor_name}</dd>
+                <dd class="text-xs text-body font-medium">{@actor_name}</dd>
               </div>
               <div class="flex gap-2">
                 <dt class="text-xs text-subtle w-28 shrink-0 pt-0.5">Account</dt>
-                <dd class="text-xs text-heading">{@account.name}</dd>
+                <dd class="text-xs text-body font-medium">{@account.name}</dd>
               </div>
               <div class="flex gap-2">
                 <dt class="text-xs text-subtle w-28 shrink-0 pt-0.5">Slug</dt>
-                <dd class="text-xs text-heading font-mono">{@account.slug}</dd>
+                <dd class="text-xs text-body font-mono font-medium">{@account.slug}</dd>
               </div>
               <div class="flex gap-2">
                 <dt class="text-xs text-subtle w-28 shrink-0 pt-0.5">Account ID</dt>
-                <dd class="text-xs text-heading font-mono">{@account.id}</dd>
+                <dd class="text-xs text-body font-mono font-medium">{@account.id}</dd>
               </div>
             </dl>
           </div>
@@ -302,7 +302,7 @@ defmodule PortalWeb.SignInHTML do
                 type="button"
                 data-copy-token-button
                 data-copy-target="#token-value"
-                class="px-4 py-2 rounded text-xs font-semibold bg-violet-600 text-white hover:bg-violet-700 transition-colors whitespace-nowrap"
+                class="px-4 py-2 rounded text-xs font-semibold bg-accent text-white hover:bg-accent-dark transition-colors whitespace-nowrap"
               >
                 Copy to clipboard
               </button>

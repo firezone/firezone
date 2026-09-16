@@ -202,7 +202,7 @@ defmodule PortalWeb.Settings.ApiClients.Index do
             <div class="flex items-center justify-center h-full">
               <div class="flex flex-col items-center gap-3 py-16">
                 <div class="w-9 h-9 rounded-lg border border-border bg-raised flex items-center justify-center">
-                  <.icon name="ri-key-line" class="w-3 h-3" />
+                  <.icon name="ri-key-line" class="w-5 h-5 text-subtle" />
                 </div>
                 <div class="text-center">
                   <p class="text-sm font-medium text-heading">No API tokens yet</p>
@@ -383,8 +383,8 @@ defmodule PortalWeb.Settings.ApiClients.Index do
     ~H"""
     <tr class={[
       "border-b transition-colors",
-      @is_pending_delete && "border-red-200 bg-red-50",
-      @is_pending_toggle && "border-amber-200 bg-amber-50",
+      @is_pending_delete && "border-danger/30 bg-danger-light",
+      @is_pending_toggle && "border-warning/30 bg-warning-light",
       !@is_pending_delete && !@is_pending_toggle &&
         "border-border hover:bg-raised"
     ]}>

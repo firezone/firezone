@@ -52,10 +52,10 @@ defmodule PortalWeb.JSONComponents do
         phx-keydown={@collapsed && toggle_json_view(@id)}
         phx-key={@collapsed && "Enter"}
       >
-        <h3 class="text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)]">
+        <h3 class="text-[10px] font-semibold tracking-widest uppercase text-subtle">
           {@label}
         </h3>
-        <span class="flex items-center gap-2 text-[10px] text-[var(--text-tertiary)]">
+        <span class="flex items-center gap-2 text-[10px] text-subtle">
           <span :if={@hint}>{@hint}</span>
           <span :if={@collapsed} id={"#{@id}-expand"} class="flex items-center gap-1">
             Click to expand <.icon name="ri-arrow-down-s-line" class="h-4 w-4" />
@@ -66,18 +66,18 @@ defmodule PortalWeb.JSONComponents do
         </span>
       </div>
       <div id={"#{@id}-body"} class={["relative", @collapsed && "hidden"]}>
-        <pre class="max-h-96 overflow-auto rounded border border-[var(--border)] bg-[var(--surface-raised)] p-4 pr-24 text-xs leading-5"><code id={"#{@id}-code"} class="block min-w-max" phx-no-format><span :for={token <- @tokens} class={token_class(token.kind)}><%= token.text %></span></code></pre>
+        <pre class="max-h-96 overflow-auto rounded border border-border bg-raised p-4 pr-24 text-xs leading-5"><code id={"#{@id}-code"} class="block min-w-max" phx-no-format><span :for={token <- @tokens} class={token_class(token.kind)}><%= token.text %></span></code></pre>
         <button
           type="button"
           data-copy-to-clipboard-target={"#{@id}-code"}
           title="Copy JSON to clipboard"
-          class="absolute end-2 top-2 inline-flex h-8 items-center gap-1.5 rounded border border-[var(--control-border)] bg-[var(--surface)] px-2.5 text-xs text-[var(--text-secondary)] shadow-sm hover:text-[var(--text-primary)]"
+          class="absolute end-2 top-2 inline-flex h-8 items-center gap-1.5 rounded border border-input-border bg-surface px-2.5 text-xs text-body shadow-sm hover:text-heading"
         >
           <span id={"#{@id}-default-message"} class="inline-flex items-center gap-1.5">
             <.icon name="ri-clipboard-line" data-icon class="h-3.5 w-3.5" /> Copy
           </span>
           <span id={"#{@id}-success-message"} class="hidden items-center gap-1.5">
-            <.icon name="ri-check-line" data-icon class="h-3.5 w-3.5 text-emerald-600" /> Copied
+            <.icon name="ri-check-line" data-icon class="h-3.5 w-3.5 text-success" /> Copied
           </span>
         </button>
       </div>
@@ -166,6 +166,6 @@ defmodule PortalWeb.JSONComponents do
   defp token_class(:string), do: "json-string text-emerald-700 dark:text-emerald-300"
   defp token_class(:number), do: "json-number text-violet-700 dark:text-violet-300"
   defp token_class(:boolean), do: "json-boolean text-amber-700 dark:text-amber-300"
-  defp token_class(:null), do: "json-null text-[var(--text-tertiary)]"
+  defp token_class(:null), do: "json-null text-subtle"
   defp token_class(:plain), do: nil
 end

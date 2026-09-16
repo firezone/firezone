@@ -13,6 +13,12 @@ defmodule PortalWeb.Dev.ColorsLive do
       ]
     },
     %{
+      label: "Link",
+      swatches: [
+        %{name: "link", class: "bg-link", css_var: "--link"}
+      ]
+    },
+    %{
       label: "Accent",
       swatches: [
         %{name: "accent", class: "bg-accent", css_var: "--accent"},
@@ -28,7 +34,7 @@ defmodule PortalWeb.Dev.ColorsLive do
         %{name: "heading", class: "bg-heading", css_var: "--text-primary"},
         %{name: "body", class: "bg-body", css_var: "--text-secondary"},
         %{name: "subtle", class: "bg-subtle", css_var: "--text-tertiary"},
-        %{name: "muted", class: "bg-muted", css_var: "--text-muted"},
+        %{name: "disabled", class: "bg-disabled", css_var: "--text-disabled"},
         %{name: "inverse", class: "bg-inverse", css_var: "--text-inverse"}
       ]
     },
@@ -68,6 +74,21 @@ defmodule PortalWeb.Dev.ColorsLive do
       ]
     },
     %{
+      label: "Toasts",
+      swatches: [
+        %{name: "toast-success", class: "bg-toast-success", css_var: "--toast-bg-success"},
+        %{name: "toast-info", class: "bg-toast-info", css_var: "--toast-bg-info"},
+        %{name: "toast-warn", class: "bg-toast-warn", css_var: "--toast-bg-warn"},
+        %{name: "toast-error", class: "bg-toast-error", css_var: "--toast-bg-error"}
+      ]
+    },
+    %{
+      label: "Navigation",
+      swatches: [
+        %{name: "brand-wash", class: "bg-brand-wash", css_var: "--brand-wash"}
+      ]
+    },
+    %{
       label: "Controls",
       swatches: [
         %{name: "input", class: "bg-input", css_var: "--control-bg"},
@@ -84,7 +105,9 @@ defmodule PortalWeb.Dev.ColorsLive do
         %{name: "badge-cidr", class: "bg-badge-cidr", css_var: "--badge-cidr-bg"},
         %{name: "badge-cidr-text", class: "bg-badge-cidr-text", css_var: "--badge-cidr-text"},
         %{name: "badge-device-pool", class: "bg-badge-device-pool", css_var: "--badge-device-pool-bg"},
-        %{name: "badge-device-pool-text", class: "bg-badge-device-pool-text", css_var: "--badge-device-pool-text"}
+        %{name: "badge-device-pool-text", class: "bg-badge-device-pool-text", css_var: "--badge-device-pool-text"},
+        %{name: "badge-accent", class: "bg-badge-accent", css_var: "--badge-accent-bg"},
+        %{name: "badge-accent-text", class: "bg-badge-accent-text", css_var: "--badge-accent-text"}
       ]
     },
     %{
@@ -143,7 +166,7 @@ defmodule PortalWeb.Dev.ColorsLive do
         <div class="flex gap-8 items-start">
           <div class="flex-1 space-y-10">
             <section :for={section <- @sections}>
-              <h2 class="text-xs font-semibold uppercase tracking-widest text-muted mb-4">
+              <h2 class="text-xs font-semibold uppercase tracking-widest text-subtle mb-4">
                 {section.label}
               </h2>
               <div class="flex flex-wrap gap-4">
@@ -192,7 +215,7 @@ defmodule PortalWeb.Dev.ColorsLive do
                 phx-value-name={@selected.name}
                 phx-value-css_var={@selected.css_var}
                 phx-value-class={@selected.class}
-                class="text-muted hover:text-body transition-colors"
+                class="text-subtle hover:text-body transition-colors"
               >
                 <.icon name="ri-close-line" class="w-4 h-4" />
               </button>
@@ -200,13 +223,13 @@ defmodule PortalWeb.Dev.ColorsLive do
 
             <div class={["w-full h-16 rounded-lg border border-border mb-4", @selected.class]}></div>
 
-            <p class="text-[11px] font-mono text-muted mb-4">{@selected.css_var}</p>
+            <p class="text-[11px] font-mono text-subtle mb-4">{@selected.css_var}</p>
 
             <div class="space-y-4">
               <div>
                 <div class="flex justify-between mb-1">
                   <label class="text-xs text-subtle">L — Lightness</label>
-                  <span class="text-xs font-mono text-muted" id="l-display"></span>
+                  <span class="text-xs font-mono text-subtle" id="l-display"></span>
                 </div>
                 <div class="relative h-3 rounded-full mb-1" data-gradient="l"></div>
                 <input

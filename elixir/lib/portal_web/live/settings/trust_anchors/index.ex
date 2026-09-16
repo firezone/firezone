@@ -234,7 +234,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
             <div class="flex items-center justify-center h-full">
               <div class="flex flex-col items-center gap-3 py-16">
                 <div class="w-9 h-9 rounded-lg border border-border bg-raised flex items-center justify-center">
-                  <.icon name="ri-shield-check-line" class="w-3 h-3" />
+                  <.icon name="ri-shield-check-line" class="w-5 h-5 text-subtle" />
                 </div>
                 <div class="text-center">
                   <p class="text-sm font-medium text-heading">No trust anchors yet</p>
@@ -408,7 +408,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
   defp revocation_warning_icon(%{health: %{state: :disabled}} = assigns) do
     ~H"""
     <span title="Revocation is not being checked for at least one of this CA's addresses.">
-      <.icon name="ri-error-warning-fill" class="w-4 h-4 text-red-600 dark:text-red-400" />
+      <.icon name="ri-error-warning-fill" class="w-4 h-4 text-danger" />
     </span>
     """
   end
@@ -416,7 +416,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
   defp revocation_warning_icon(assigns) do
     ~H"""
     <span title="Firezone is having trouble reaching at least one of this CA's addresses.">
-      <.icon name="ri-error-warning-fill" class="w-4 h-4 text-amber-500 dark:text-amber-400" />
+      <.icon name="ri-error-warning-fill" class="w-4 h-4 text-warning" />
     </span>
     """
   end
@@ -481,7 +481,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
       <.icon
         :if={@warn}
         name="ri-error-warning-fill"
-        class="w-3.5 h-3.5 text-amber-500 dark:text-amber-400"
+        class="w-3.5 h-3.5 text-warning"
       />
     </button>
     """
@@ -511,7 +511,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
     <div class="space-y-3">
       <p
         :if={@entry.endpoint.is_disabled}
-        class="flex items-start gap-1.5 text-xs text-red-600 dark:text-red-400"
+        class="flex items-start gap-1.5 text-xs text-danger"
       >
         <.icon name="ri-forbid-line" class="w-3.5 h-3.5 shrink-0 mt-0.5" />
         <span>
@@ -523,7 +523,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
 
       <p
         :if={!@entry.endpoint.is_disabled && @entry.endpoint.errored_at}
-        class="flex items-start gap-1.5 text-xs text-amber-600 dark:text-amber-400"
+        class="flex items-start gap-1.5 text-xs text-warning"
       >
         <.icon name="ri-error-warning-line" class="w-3.5 h-3.5 shrink-0 mt-0.5" />
         <span>
@@ -539,9 +539,9 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
           <div :for={{label, value} <- group.rows} class="min-w-0">
             <dt class="text-[10px] text-subtle">{label}</dt>
             <dd class={[
-              "text-xs break-all",
+              "text-xs break-all font-medium",
               label == "Error" && "text-danger",
-              label != "Error" && "text-heading"
+              label != "Error" && "text-body"
             ]}>
               <.detail_value value={value} />
             </dd>
@@ -623,13 +623,13 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
           <dl class="space-y-2.5">
             <div>
               <dt class="text-[10px] text-subtle mb-0.5">Created</dt>
-              <dd class="text-xs text-body">
+              <dd class="text-xs text-body font-medium">
                 <.relative_datetime datetime={@trust_anchor.inserted_at} />
               </dd>
             </div>
             <div>
               <dt class="text-[10px] text-subtle mb-0.5">Certificates</dt>
-              <dd class="text-xs text-body">{cert_count_label(@trust_anchor.certificates)}</dd>
+              <dd class="text-xs text-body font-medium">{cert_count_label(@trust_anchor.certificates)}</dd>
             </div>
           </dl>
         </section>
@@ -716,7 +716,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
               <dl class="space-y-2">
                 <div :for={{label, value} <- certificate_detail_rows(detail)}>
                   <dt class="text-[10px] text-subtle mb-0.5">{label}</dt>
-                  <dd class="text-xs text-heading font-mono break-all">
+                  <dd class="text-xs text-body font-mono break-all font-medium">
                     <.detail_value value={value} />
                   </dd>
                 </div>
@@ -728,7 +728,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
         <div class="border-t border-border"></div>
 
         <section>
-          <h3 class="text-[10px] font-semibold tracking-widest uppercase text-error/60 mb-3">
+          <h3 class="text-[10px] font-semibold tracking-widest uppercase text-error mb-3">
             Danger Zone
           </h3>
           <button

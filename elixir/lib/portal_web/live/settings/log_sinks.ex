@@ -333,14 +333,24 @@ defmodule PortalWeb.Settings.LogSinks do
 
           <div class="flex-1 overflow-auto">
             <%= if Enum.empty?(@log_sinks) do %>
-              <div class="flex flex-col items-center justify-center h-full gap-3 text-subtle">
-                <p class="text-sm">No log sinks configured.</p>
-                <.link
-                  patch={~p"/#{@account}/settings/log_sinks/new"}
-                  class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
-                >
-                  <.icon name="ri-add-line" class="w-3 h-3" /> Add a log sink
-                </.link>
+              <div class="flex items-center justify-center h-full">
+                <div class="flex flex-col items-center gap-3 py-16">
+                  <div class="w-9 h-9 rounded-lg border border-border bg-raised flex items-center justify-center">
+                    <.icon name="ri-upload-cloud-2-line" class="w-5 h-5 text-subtle" />
+                  </div>
+                  <div class="text-center">
+                    <p class="text-sm font-medium text-heading">No log sinks yet</p>
+                    <p class="text-xs text-subtle mt-0.5">
+                      Forward flow and audit logs to an external destination.
+                    </p>
+                  </div>
+                  <.link
+                    patch={~p"/#{@account}/settings/log_sinks/new"}
+                    class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
+                  >
+                    <.icon name="ri-add-line" class="w-3 h-3" /> Add a log sink
+                  </.link>
+                </div>
               </div>
             <% else %>
               <table class="w-full text-sm border-collapse">
@@ -652,7 +662,7 @@ defmodule PortalWeb.Settings.LogSinks do
                       </div>
                     </td>
                     <td class="px-6 py-3 w-28">
-                      <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400">
+                      <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-success-light text-success">
                         Active
                       </span>
                     </td>
@@ -857,7 +867,7 @@ defmodule PortalWeb.Settings.LogSinks do
           </p>
         </.status_popover>
       <% true -> %>
-        <span class="inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded bg-green-100 text-green-700">
+        <span class="inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded bg-success-light text-success">
           Active
         </span>
     <% end %>

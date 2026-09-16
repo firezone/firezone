@@ -67,11 +67,11 @@ defmodule PortalWeb.Settings.Account do
               class="space-y-1.5 pt-2 border-t border-border"
             >
               <dt class="text-[10px] text-subtle">Billing Email</dt>
-              <dd class="text-xs text-heading">
+              <dd class="text-xs text-body font-medium">
                 {@account.metadata.stripe.billing_email}
               </dd>
               <dt class="text-[10px] text-subtle mt-4">Support Type</dt>
-              <dd class="text-xs text-heading capitalize">
+              <dd class="text-xs text-body capitalize font-medium">
                 {billing_support_label(@account.metadata.stripe.support_type)}
               </dd>
             </dl>
@@ -88,7 +88,7 @@ defmodule PortalWeb.Settings.Account do
               <div class="rounded-lg border border-violet-200 bg-violet-50 dark:border-violet-800 dark:bg-violet-950/30 p-3 flex gap-2.5 items-start">
                 <.icon
                   name="ri-customer-service-2-line"
-                  class="w-4 h-4 shrink-0 text-violet-500 dark:text-violet-400 mt-0.5"
+                  class="w-4 h-4 shrink-0 text-link mt-0.5"
                 />
                 <div>
                   <p class="text-xs font-medium text-violet-700 dark:text-violet-300">
@@ -148,7 +148,7 @@ defmodule PortalWeb.Settings.Account do
             </p>
             <div
               :if={Portal.Billing.paid_plan?(@account)}
-              class="mb-3 px-3 py-2 rounded border border-amber-200 bg-amber-50 text-xs text-amber-800"
+              class="mb-3 px-3 py-2 rounded border border-warning/30 bg-warning-light text-xs text-warning"
             >
               You are on a paid plan. Any remaining time left on your subscription will be lost when the account is deleted.
             </div>
@@ -195,7 +195,7 @@ defmodule PortalWeb.Settings.Account do
           <%!-- Danger Zone (active, unlocked accounts only) --%>
           <div :if={Account.active?(@account) and not Account.locked?(@account)} class="mt-6">
             <div class="border-t border-border mb-4"></div>
-            <h3 class="text-[10px] font-semibold tracking-widest uppercase text-error/60 mb-3">
+            <h3 class="text-[10px] font-semibold tracking-widest uppercase text-error mb-3">
               Danger Zone
             </h3>
 
@@ -230,7 +230,7 @@ defmodule PortalWeb.Settings.Account do
                   value={@slug_confirmation}
                   placeholder={@account.slug}
                   autocomplete="off"
-                  class="w-full mb-2.5 rounded border border-error/30 bg-surface px-2 py-1.5 text-xs text-heading placeholder:text-muted focus:outline-none focus:ring-1 focus:ring-error/40"
+                  class="w-full mb-2.5 rounded border border-error/30 bg-surface px-2 py-1.5 text-xs text-heading placeholder:text-subtle focus:outline-none focus:ring-1 focus:ring-error/40"
                 />
                 <div class="flex items-center gap-1.5">
                   <.button type="button" phx-click="cancel_delete_account" size="xs">
@@ -367,7 +367,7 @@ defmodule PortalWeb.Settings.Account do
         </div>
         <span class={[
           "text-xs tabular-nums shrink-0 ml-4",
-          @over? && "text-red-500",
+          @over? && "text-danger",
           not @over? && "text-body"
         ]}>
           {@used} / {@limit}
@@ -380,7 +380,7 @@ defmodule PortalWeb.Settings.Account do
           data-pct={bar_pct(@used, @limit)}
           class={[
             "h-full rounded-full transition-all",
-            @over? && "bg-red-500",
+            @over? && "bg-danger",
             not @over? && "bg-brand"
           ]}
         >

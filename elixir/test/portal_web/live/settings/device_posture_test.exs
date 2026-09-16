@@ -144,7 +144,7 @@ defmodule PortalWeb.Settings.DevicePostureTest do
       |> live(~p"/#{account}/settings/device_posture")
 
     assert html =~ "Device Posture"
-    assert html =~ "No posture provider configured."
+    assert html =~ "No posture providers yet"
     assert html =~ "Add posture provider"
     refute html =~ "Upgrade to Unlock"
   end

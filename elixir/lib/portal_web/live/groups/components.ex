@@ -159,7 +159,7 @@ defmodule PortalWeb.Groups.Components do
 
               <.member_bucket
                 title="To Add"
-                title_class="text-green-700"
+                title_class="text-success"
                 count={length(@members_to_add)}
                 members={@members_to_add}
                 empty_message="No pending additions."
@@ -182,7 +182,7 @@ defmodule PortalWeb.Groups.Components do
 
               <.member_bucket
                 title="To Remove"
-                title_class="text-red-700"
+                title_class="text-danger"
                 count={length(@members_to_remove)}
                 members={@members_to_remove}
                 empty_message="No pending removals."
@@ -364,7 +364,7 @@ defmodule PortalWeb.Groups.Components do
         <span class={[
           "tabular-nums px-1.5 py-0.5 rounded text-[10px] font-semibold",
           if(@tab == :members,
-            do: "bg-brand-muted text-brand",
+            do: "bg-brand-wash text-heading",
             else: "bg-raised text-subtle"
           )
         ]}>
@@ -387,7 +387,7 @@ defmodule PortalWeb.Groups.Components do
         <span class={[
           "tabular-nums px-1.5 py-0.5 rounded text-[10px] font-semibold",
           if(@tab == :resources,
-            do: "bg-brand-muted text-brand",
+            do: "bg-brand-wash text-heading",
             else: "bg-raised text-subtle"
           )
         ]}>
@@ -414,7 +414,7 @@ defmodule PortalWeb.Groups.Components do
               name="filter"
               autocomplete="off"
               data-1p-ignore
-              class="pl-6 pr-2 py-1 text-xs rounded border bg-input border-input-border text-heading placeholder:text-muted outline-none focus:border-border-focus focus:ring-1 focus:ring-border-focus/30 transition-colors w-32"
+              class="pl-6 pr-2 py-1 text-xs rounded border bg-input border-input-border text-heading placeholder:text-subtle outline-none focus:border-border-focus focus:ring-1 focus:ring-border-focus/30 transition-colors w-32"
             />
           </div>
         </form>
@@ -476,7 +476,7 @@ defmodule PortalWeb.Groups.Components do
       >
         <span class="text-xs text-subtle">
           Page {@member_page} of {@member_pages}
-          <span class="text-muted">({@member_total} members)</span>
+          <span class="text-subtle">({@member_total} members)</span>
         </span>
         <div class="flex items-center gap-1">
           <.icon_button
@@ -610,7 +610,7 @@ defmodule PortalWeb.Groups.Components do
                   <span class="text-[10px] font-semibold uppercase tracking-wider text-subtle">
                     Available
                   </span>
-                  <span class="text-[10px] text-muted">
+                  <span class="text-[10px] text-subtle">
                     {length(filtered_available)}
                   </span>
                 </div>
@@ -628,7 +628,7 @@ defmodule PortalWeb.Groups.Components do
                       phx-debounce="200"
                       autocomplete="off"
                       data-1p-ignore
-                      class="w-full pl-6 pr-2 py-1 text-xs rounded border border-border bg-surface text-heading placeholder:text-muted outline-none focus:border-border-focus focus:ring-1 focus:ring-border-focus/30 transition-colors"
+                      class="w-full pl-6 pr-2 py-1 text-xs rounded border border-border bg-surface text-heading placeholder:text-subtle outline-none focus:border-border-focus focus:ring-1 focus:ring-border-focus/30 transition-colors"
                     />
                   </div>
                 </div>
@@ -667,7 +667,7 @@ defmodule PortalWeb.Groups.Components do
                   <span class="text-[10px] font-semibold uppercase tracking-wider text-subtle">
                     Selected
                   </span>
-                  <span class="text-[10px] font-medium text-muted">
+                  <span class="text-[10px] font-medium text-subtle">
                     {length(@grant_selected_resource_ids)}
                   </span>
                 </div>
@@ -717,7 +717,7 @@ defmodule PortalWeb.Groups.Components do
             <div class="flex items-center justify-between mb-3">
               <h4 class="text-[10px] font-semibold tracking-widest uppercase text-subtle">
                 Conditions
-                <span class="ml-1 font-normal normal-case tracking-normal text-muted">
+                <span class="ml-1 font-normal normal-case tracking-normal text-subtle">
                   (optional)
                 </span>
               </h4>
@@ -750,7 +750,7 @@ defmodule PortalWeb.Groups.Components do
             </div>
             <p
               :if={@active_conditions == []}
-              class="text-xs text-muted text-center py-4 rounded-lg border border-dashed border-border"
+              class="text-xs text-subtle text-center py-4 rounded-lg border border-dashed border-border"
             >
               No conditions - access is unrestricted
             </p>
@@ -859,9 +859,12 @@ defmodule PortalWeb.Groups.Components do
                 row.policy_is_disabled && "opacity-50 hover:opacity-75"
               ]}
             >
-              <div class="w-14 shrink-0 flex">
+              <div class={[
+                "shrink-0 flex",
+                type_badge_col_class(Enum.map(@resources, & &1.resource.type))
+              ]}>
                 <span class={type_badge_class(row.resource.type)}>
-                  {row.resource.type}
+                  {resource_type_label(row.resource.type)}
                 </span>
               </div>
               <div class="flex-1 min-w-0">
@@ -937,41 +940,41 @@ defmodule PortalWeb.Groups.Components do
         <dl class="space-y-2.5">
           <div>
             <dt class="text-[10px] text-subtle mb-0.5">ID</dt>
-            <dd class="font-mono text-[11px] text-body break-all">
+            <dd class="font-mono text-[11px] text-body break-all font-medium">
               {@group.id}
             </dd>
           </div>
           <div>
             <dt class="text-[10px] text-subtle mb-0.5">Name</dt>
-            <dd class="text-xs text-body truncate" title={@group.name}>
+            <dd class="text-xs text-body truncate font-medium" title={@group.name}>
               {@group.name}
             </dd>
           </div>
           <div>
             <dt class="text-[10px] text-subtle mb-0.5">Directory</dt>
-            <dd class="text-xs text-body">
+            <dd class="text-xs text-body font-medium">
               {directory_display_name(@group.directory)}
             </dd>
           </div>
           <div :if={@group.entity_type == :org_unit}>
             <dt class="text-[10px] text-subtle mb-0.5">Type</dt>
-            <dd class="text-xs text-body">Org Unit</dd>
+            <dd class="text-xs text-body font-medium">Org Unit</dd>
           </div>
           <div>
             <dt class="text-[10px] text-subtle mb-0.5">Created</dt>
-            <dd class="text-xs text-body mt-0.5">
+            <dd class="text-xs text-body mt-0.5 font-medium">
               <.relative_datetime datetime={@group.inserted_at} />
             </dd>
           </div>
           <div>
             <dt class="text-[10px] text-subtle mb-0.5">Updated</dt>
-            <dd class="text-xs text-body mt-0.5">
+            <dd class="text-xs text-body mt-0.5 font-medium">
               <.relative_datetime datetime={@group.updated_at} />
             </dd>
           </div>
           <div :if={Ecto.assoc_loaded?(@group.sync_state) && @group.sync_state && @group.sync_state.synced_at}>
             <dt class="text-[10px] text-subtle mb-0.5">Last Synced</dt>
-            <dd class="text-xs text-body mt-0.5">
+            <dd class="text-xs text-body mt-0.5 font-medium">
               <.relative_datetime datetime={@group.sync_state.synced_at} />
             </dd>
           </div>
@@ -988,7 +991,7 @@ defmodule PortalWeb.Groups.Components do
       </section>
       <div :if={deletable_group?(@group)} class="border-t border-border"></div>
       <section :if={deletable_group?(@group)}>
-        <h3 class="text-[10px] font-semibold tracking-widest uppercase text-error/60 mb-3">
+        <h3 class="text-[10px] font-semibold tracking-widest uppercase text-error mb-3">
           Danger Zone
         </h3>
         <button
@@ -1081,7 +1084,7 @@ defmodule PortalWeb.Groups.Components do
           phx-focus="focus_search"
           autocomplete="off"
           data-1p-ignore
-          class="w-full pl-7 pr-3 py-1.5 text-xs rounded border border-border bg-surface text-heading placeholder:text-muted outline-none focus:border-border-focus focus:ring-1 focus:ring-border-focus/30 transition-colors"
+          class="w-full pl-7 pr-3 py-1.5 text-xs rounded border border-border bg-surface text-heading placeholder:text-subtle outline-none focus:border-border-focus focus:ring-1 focus:ring-border-focus/30 transition-colors"
         />
       </div>
 
@@ -1132,7 +1135,7 @@ defmodule PortalWeb.Groups.Components do
         <h4 class={["text-[10px] font-semibold uppercase tracking-wider", @title_class || "text-subtle"]}>
           {@title}
         </h4>
-        <span class="text-[10px] text-muted">{@count}</span>
+        <span class="text-[10px] text-subtle">{@count}</span>
       </div>
       <.member_list
         members={@members}
@@ -1215,26 +1218,6 @@ defmodule PortalWeb.Groups.Components do
       _ -> "Firezone"
     end
   end
-
-  defp type_badge_class(:dns),
-    do:
-      "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-medium tracking-wider uppercase bg-badge-dns text-badge-dns-text"
-
-  defp type_badge_class(:ip),
-    do:
-      "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-medium tracking-wider uppercase bg-badge-ip text-badge-ip-text"
-
-  defp type_badge_class(:cidr),
-    do:
-      "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-medium tracking-wider uppercase bg-badge-cidr text-badge-cidr-text"
-
-  defp type_badge_class(:internet),
-    do:
-      "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-medium tracking-wider uppercase bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300"
-
-  defp type_badge_class(_),
-    do:
-      "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-medium tracking-wider uppercase bg-raised text-body"
 
   defp get_idp_id(idp_id) do
     case String.split(idp_id, ":", parts: 2) do

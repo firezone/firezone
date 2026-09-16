@@ -320,7 +320,7 @@ defmodule PortalWeb.Sites do
             >
               <td class="px-4 py-3">
                 <div class="flex items-center gap-2">
-                  <.icon name="ri-global-line" class="w-5 h-5 text-violet-500" />
+                  <.icon name="ri-global-line" class="w-5 h-5 text-link" />
                   <div class={[
                     "font-medium transition-colors",
                     if(not is_nil(@selected_site) and @selected_site.id == @internet_site.id,

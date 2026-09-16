@@ -165,7 +165,7 @@ defmodule PortalWeb.CoreComponents do
       <code id={"#{@id}-code"} phx-no-format><%= render_slot(@inner_block) %></code>
       <button
         type="button"
-        class={~w[text-neutral-400 cursor-pointer rounded]}
+        class={~w[text-subtle cursor-pointer rounded]}
         data-copy-to-clipboard-target={"#{@id}-code"}
         title="Copy to clipboard"
       >
@@ -195,16 +195,16 @@ defmodule PortalWeb.CoreComponents do
   def result_page(assigns) do
     ~H"""
     <div
-      class="min-h-screen flex items-center justify-center px-4 sm:px-6 lg:px-8 bg-gray-50"
+      class="min-h-screen flex items-center justify-center px-4 sm:px-6 lg:px-8 bg-surface"
       data-auto-close-window-after-ms={@auto_close_after_ms}
     >
       <div class="w-full max-w-md">
         <div class="text-center space-y-4">
           <div class="mx-auto flex h-32 w-32 items-center justify-center">
-            <.icon :if={@success} name="ri-checkbox-circle-line" class="h-32 w-32 text-green-600" />
-            <.icon :if={!@success} name="ri-alert-line" class="h-32 w-32 text-red-600" />
+            <.icon :if={@success} name="ri-checkbox-circle-line" class="h-32 w-32 text-success" />
+            <.icon :if={!@success} name="ri-alert-line" class="h-32 w-32 text-danger" />
           </div>
-          <h2 class="text-4xl font-bold tracking-tight text-gray-900">
+          <h2 class="text-4xl font-bold tracking-tight text-heading">
             {@title}
           </h2>
           {render_slot(@inner_block)}
@@ -241,7 +241,7 @@ defmodule PortalWeb.CoreComponents do
       <div class="grid grid-cols-1 xl:grid-cols-3 xl:gap-4">
         <div class="col-span-full">
           <div class="flex justify-between items-center">
-            <h2 class="text-2xl leading-none tracking-tight text-neutral-900">
+            <h2 class="text-2xl leading-none tracking-tight text-heading">
               {render_slot(@title)}
             </h2>
             <div class="inline-flex justify-between items-center space-x-2">
@@ -250,7 +250,7 @@ defmodule PortalWeb.CoreComponents do
           </div>
         </div>
       </div>
-      <div :for={help <- @help} class="pt-3 text-neutral-400">
+      <div :for={help <- @help} class="pt-3 text-subtle">
         {render_slot(help)}
       </div>
     </div>
@@ -325,10 +325,10 @@ defmodule PortalWeb.CoreComponents do
         @style == "inline" && @base_kind == :info && "bg-info-light",
         @style == "inline" && @base_kind == :warning && "bg-warning-light",
         @style == "inline" && @base_kind == :error && "bg-error-light",
-        @style == "toast" && @base_kind == :success && "bg-[var(--toast-bg-success)]",
-        @style == "toast" && @base_kind == :info && "bg-[var(--toast-bg-info)]",
-        @style == "toast" && @base_kind == :warning && "bg-[var(--toast-bg-warn)]",
-        @style == "toast" && @base_kind == :error && "bg-[var(--toast-bg-error)]",
+        @style == "toast" && @base_kind == :success && "bg-toast-success",
+        @style == "toast" && @base_kind == :info && "bg-toast-info",
+        @style == "toast" && @base_kind == :warning && "bg-toast-warn",
+        @style == "toast" && @base_kind == :error && "bg-toast-error",
         @style == "toast" && "m-0 border rounded-sm shadow-md",
         @style == "inline" && "mb-6 rounded-sm border",
         @class
@@ -457,7 +457,7 @@ defmodule PortalWeb.CoreComponents do
     <p
       :if={@error}
       data-validation-error-for={"#{@form.id}[#{@field}]"}
-      class="mt-3 mb-3 flex gap-3 text-m leading-6 text-rose-600"
+      class="mt-3 mb-3 flex gap-3 text-m leading-6 text-danger"
       {@rest}
     >
       <.icon name="ri-alert-line" class="mt-0.5 h-5 w-5 flex-none" />
@@ -483,10 +483,10 @@ defmodule PortalWeb.CoreComponents do
   def list(assigns) do
     ~H"""
     <div class="mt-14">
-      <dl class="-my-4 divide-y divide-neutral-100">
+      <dl class="-my-4 divide-y divide-border">
         <div :for={item <- @item} class="flex gap-4 py-4 text-sm leading-6 sm:gap-8">
-          <dt class="w-1/4 flex-none text-neutral-500">{item.title}</dt>
-          <dd class="text-neutral-700">{render_slot(item)}</dd>
+          <dt class="w-1/4 flex-none text-subtle">{item.title}</dt>
+          <dd class="text-body font-medium">{render_slot(item)}</dd>
         </div>
       </dl>
     </div>
@@ -514,7 +514,7 @@ defmodule PortalWeb.CoreComponents do
       <.icon name="ri-close-fill" />
       <.icon name="ri-loop-left-line" class="ml-1 w-3 h-3 animate-spin" />
       <.icon name="ri-user-fill" class="w-5 h-5" />
-      <.icon name="ri-settings-3-line" class="w-4 h-4 text-gray-500" />
+      <.icon name="ri-settings-3-line" class="w-4 h-4 text-subtle" />
   """
   attr :name, :string, required: true
   attr :class, :any, default: nil
@@ -685,7 +685,7 @@ defmodule PortalWeb.CoreComponents do
         "light" => "bg-brand-subtle text-brand"
       },
       "accent" => %{
-        "dark" => "bg-accent-100 text-accent-800",
+        "dark" => "bg-accent-muted text-accent-800",
         "light" => "bg-accent-light text-accent"
       },
       "neutral" => %{
@@ -895,7 +895,7 @@ defmodule PortalWeb.CoreComponents do
 
   def online_icon(assigns) do
     ~H"""
-    <span :if={@schema.online?} class="inline-flex rounded-full h-2.5 w-2.5 bg-green-500"></span>
+    <span :if={@schema.online?} class="inline-flex rounded-full h-2.5 w-2.5 bg-success"></span>
     """
   end
 
@@ -924,7 +924,7 @@ defmodule PortalWeb.CoreComponents do
         "text-white",
         "rounded",
         "transition-colors",
-        (@connected? && "bg-accent-450 hover:bg-accent-700") || "bg-primary-500 cursor-progress"
+        (@connected? && "bg-accent hover:bg-accent-dark") || "bg-primary-500 cursor-progress"
       ]}
       navigate={@navigate}
       {
@@ -1031,7 +1031,7 @@ defmodule PortalWeb.CoreComponents do
     ~H"""
     <span
       class={[
-        "inline-flex items-center rounded-sm border border-neutral-200 overflow-hidden mr-1",
+        "inline-flex items-center rounded-sm border border-border-strong overflow-hidden mr-1",
         @class
       ]}
       data-group-id={@group.id}
@@ -1039,17 +1039,17 @@ defmodule PortalWeb.CoreComponents do
       <span class={~w[
           inline-flex items-center justify-center
           py-0.5 px-1.5
-          text-neutral-800
-          bg-neutral-100
+          text-body
+          bg-raised
           border-r
-          border-neutral-200
+          border-border-strong
         ]}>
         <.provider_icon provider={provider_type_from_group(@group)} size="xs" />
       </span>
       <.link
         title={"View Group \"#{@group.name}\""}
         navigate={@navigate_url}
-        class="text-xs truncate min-w-0 py-0.5 pl-1.5 pr-2.5 text-neutral-900 bg-neutral-50"
+        class="text-xs truncate min-w-0 py-0.5 pl-1.5 pr-2.5 text-heading bg-surface"
       >
         {@group.name}
       </.link>
@@ -1081,9 +1081,9 @@ defmodule PortalWeb.CoreComponents do
           inline-flex items-center justify-center
           rounded-l
           py-0.5 px-1.5
-          text-neutral-800
-          bg-neutral-100
-          border-neutral-100
+          text-body
+          bg-raised
+          border-border
           border
         ]}>
         <.provider_icon provider={provider_type_from_group(@group)} size="xs" />
@@ -1092,7 +1092,7 @@ defmodule PortalWeb.CoreComponents do
         title={"View Group \"#{@group.name}\""}
         navigate={@navigate_url}
         class={[
-          "text-xs truncate min-w-0 py-0.5 text-neutral-900 bg-neutral-50",
+          "text-xs truncate min-w-0 py-0.5 text-heading bg-surface",
           if(@group.idp_id, do: "rounded-r pl-1.5 pr-2.5", else: "rounded-sm px-2.5")
         ]}
       >
@@ -1286,7 +1286,7 @@ defmodule PortalWeb.CoreComponents do
   def step(assigns) do
     ~H"""
     <div class="mb-6">
-      <h2 class="mb-2 text-2xl tracking-tight font-medium text-neutral-900">
+      <h2 class="mb-2 text-2xl tracking-tight font-medium text-heading">
         {render_slot(@title)}
       </h2>
       <div class="px-4">
@@ -1320,7 +1320,7 @@ defmodule PortalWeb.CoreComponents do
 
   defp ping_icon_color(color) do
     case color do
-      "info" -> {"bg-accent-500", "bg-accent-400"}
+      "info" -> {"bg-accent", "bg-accent-light"}
       "success" -> {"bg-success", "bg-green-400"}
       "warning" -> {"bg-warning", "bg-amber-400"}
       "danger" -> {"bg-danger", "bg-red-400"}
@@ -1408,7 +1408,7 @@ defmodule PortalWeb.CoreComponents do
       <.icon
         :if={@icon_spec.type == :icon}
         name={@icon_spec.name}
-        class={[@icon_class, "text-[var(--text-primary)]"]}
+        class={[@icon_class, "text-heading"]}
         aria-hidden="true"
       />
     </span>
@@ -1657,14 +1657,14 @@ defmodule PortalWeb.CoreComponents do
 
   defp provider_icon_variant("circle", size) do
     [
-      "inline-flex items-center justify-center rounded-full bg-[var(--icon-bg)] border border-[var(--border)]",
+      "inline-flex items-center justify-center rounded-full bg-icon border border-border",
       provider_icon_wrapper_size(size)
     ]
   end
 
   defp provider_icon_variant("square", size) do
     [
-      "inline-flex items-center justify-center rounded-md bg-[var(--icon-bg)] border border-[var(--border)]",
+      "inline-flex items-center justify-center rounded-md bg-icon border border-border",
       provider_icon_wrapper_size(size)
     ]
   end
@@ -1709,7 +1709,7 @@ defmodule PortalWeb.CoreComponents do
 
   def link_style do
     [
-      "text-accent-500",
+      "text-link",
       "hover:underline"
     ]
   end
@@ -1857,8 +1857,8 @@ defmodule PortalWeb.CoreComponents do
       data-popover-placement="bottom"
       class={[
         "inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded cursor-pointer",
-        @color == "red" && "bg-red-100 text-red-700",
-        @color == "yellow" && "bg-yellow-100 text-yellow-700"
+        @color == "red" && "bg-danger-light text-danger",
+        @color == "yellow" && "bg-warning-light text-warning"
       ]}
     >
       {@label} <.icon name="ri-information-line" class="w-3 h-3" />
@@ -1872,13 +1872,48 @@ defmodule PortalWeb.CoreComponents do
     """
   end
 
-  defp badge_pill_class(:success), do: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
-  defp badge_pill_class(:warning), do: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
-  defp badge_pill_class(:danger), do: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
-  defp badge_pill_class(:neutral), do: "bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400"
+  @doc """
+  Renders the small "NEW" pill that flags recently shipped functionality.
 
-  defp badge_dot_class(:success), do: "bg-green-500"
-  defp badge_dot_class(:warning), do: "bg-amber-500"
-  defp badge_dot_class(:danger), do: "bg-red-500"
-  defp badge_dot_class(:neutral), do: "bg-gray-400"
+  Uses the accent palette rather than brand, so it reads as its own kind of element instead of
+  competing with the brand-tinted selected states in the sidebar and tab strips.
+
+  Positioning belongs at the call site via `class`. Any other attribute passes through, which
+  matters for the `data-*-new-badge` hooks that tests assert on and for `data-sidebar-badge`,
+  which the sidebar-collapse JS toggles.
+
+  ## Examples
+
+      <.new_badge />
+      <.new_badge class="ml-auto" data-sidebar-badge />
+      <.new_badge label={@badge} class="ml-1.5 normal-case" />
+  """
+  attr :label, :string, default: "NEW"
+  attr :class, :any, default: nil
+  attr :rest, :global
+
+  def new_badge(assigns) do
+    ~H"""
+    <span
+      class={[
+        "px-1 py-px rounded text-[9px] font-semibold tracking-wider",
+        "bg-badge-accent text-badge-accent-text",
+        @class
+      ]}
+      {@rest}
+    >
+      {@label}
+    </span>
+    """
+  end
+
+  defp badge_pill_class(:success), do: "bg-success-light text-success"
+  defp badge_pill_class(:warning), do: "bg-warning-light text-warning"
+  defp badge_pill_class(:danger), do: "bg-danger-light text-danger"
+  defp badge_pill_class(:neutral), do: "bg-neutral-status-light text-neutral-status"
+
+  defp badge_dot_class(:success), do: "bg-success"
+  defp badge_dot_class(:warning), do: "bg-warning"
+  defp badge_dot_class(:danger), do: "bg-danger"
+  defp badge_dot_class(:neutral), do: "bg-neutral-status"
 end

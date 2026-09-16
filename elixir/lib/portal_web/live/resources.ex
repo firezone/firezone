@@ -16,9 +16,7 @@ defmodule PortalWeb.Resources do
       resource_details_panel: 1,
       resource_form_panel: 1,
       resource_status_badge: 1,
-      resource_type_label: 1,
       lists_devices?: 1,
-      type_badge_class: 1,
       to_grant_form: 1
     ]
 
@@ -445,7 +443,7 @@ defmodule PortalWeb.Resources do
             >
               <td class="px-4 py-3">
                 <div class="flex items-center gap-2">
-                  <.icon name="ri-global-line" class="w-5 h-5 text-violet-500" />
+                  <.icon name="ri-global-line" class="w-5 h-5 text-link" />
                   <div class="font-semibold transition-colors text-heading group-hover:text-brand">
                     Internet Resource
                   </div>
@@ -473,13 +471,13 @@ defmodule PortalWeb.Resources do
                     ~p"/#{@account}/policies?policies_filter[resource_id]=#{@internet_resource.id}"
                   }
                 >
-                  <span class="inline-flex items-center justify-center w-6 h-6 rounded text-xs font-semibold tabular-nums bg-brand-subtle text-brand">
+                  <span class="inline-flex items-center justify-center w-6 h-6 rounded text-xs font-semibold tabular-nums bg-brand-wash text-heading transition-colors hover:bg-brand/40">
                     {count}
                   </span>
                 </.link>
                 <span
                   :if={count == 0}
-                  class="inline-flex items-center justify-center w-6 h-6 rounded text-xs font-semibold tabular-nums bg-neutral-status-light text-subtle"
+                  class="inline-flex items-center justify-center w-6 h-6 rounded text-xs font-semibold tabular-nums bg-neutral-status-light text-body"
                 >
                   0
                 </span>
@@ -504,7 +502,7 @@ defmodule PortalWeb.Resources do
               "text-xs mt-0.5 truncate max-w-xs",
               if(resource.address_description,
                 do: "text-subtle",
-                else: "text-muted italic"
+                else: "text-subtle italic"
               )
             ]}>
               {resource.address_description || "No Address Description"}
@@ -552,13 +550,13 @@ defmodule PortalWeb.Resources do
               :if={count > 0}
               navigate={~p"/#{@account}/policies?policies_filter[resource_id]=#{resource.id}"}
             >
-              <span class="inline-flex items-center justify-center w-6 h-6 rounded text-xs font-semibold tabular-nums bg-brand-subtle text-brand">
+              <span class="inline-flex items-center justify-center w-6 h-6 rounded text-xs font-semibold tabular-nums bg-brand-wash text-heading transition-colors hover:bg-brand/40">
                 {count}
               </span>
             </.link>
             <span
               :if={count == 0}
-              class="inline-flex items-center justify-center w-6 h-6 rounded text-xs font-semibold tabular-nums bg-neutral-status-light text-subtle"
+              class="inline-flex items-center justify-center w-6 h-6 rounded text-xs font-semibold tabular-nums bg-neutral-status-light text-body"
             >
               0
             </span>
@@ -571,7 +569,7 @@ defmodule PortalWeb.Resources do
             >
               {resource.site.name}
             </.link>
-            <span :if={is_nil(resource.site)} class="text-muted italic">
+            <span :if={is_nil(resource.site)} class="text-xs text-subtle italic">
               {nil_site_label(resource)}
             </span>
           </:col>

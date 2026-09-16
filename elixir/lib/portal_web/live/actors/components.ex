@@ -323,11 +323,11 @@ defmodule PortalWeb.Actors.Components do
                   </button>
                   <.icon
                     name="ri-arrow-down-s-line"
-                    class="w-4 h-4 text-muted shrink-0 group-open/details:hidden"
+                    class="w-4 h-4 text-subtle shrink-0 group-open/details:hidden"
                   />
                   <.icon
                     name="ri-arrow-up-s-line"
-                    class="w-4 h-4 text-muted shrink-0 hidden group-open/details:block"
+                    class="w-4 h-4 text-subtle shrink-0 hidden group-open/details:block"
                   />
                 </div>
               </summary>
@@ -338,7 +338,7 @@ defmodule PortalWeb.Actors.Components do
                       Directory
                     </dt>
                     <dd
-                      class="text-xs text-heading truncate mt-0.5"
+                      class="text-xs text-body font-medium truncate mt-0.5"
                       title={identity.directory_name}
                     >
                       {identity.directory_name}
@@ -349,7 +349,7 @@ defmodule PortalWeb.Actors.Components do
                       IDP ID
                     </dt>
                     <dd
-                      class="font-mono text-xs text-heading truncate mt-0.5"
+                      class="font-mono text-xs text-body font-medium truncate mt-0.5"
                       title={identity.idp_id}
                     >
                       {extract_idp_id(identity.idp_id)}
@@ -359,7 +359,7 @@ defmodule PortalWeb.Actors.Components do
                     <dt class="text-[10px] font-semibold tracking-widest uppercase text-subtle">
                       Email
                     </dt>
-                    <dd class="text-xs text-heading truncate mt-0.5">
+                    <dd class="text-xs text-body truncate mt-0.5 font-medium">
                       {identity.email}
                     </dd>
                   </div>
@@ -367,7 +367,7 @@ defmodule PortalWeb.Actors.Components do
                     <dt class="text-[10px] font-semibold tracking-widest uppercase text-subtle">
                       Name
                     </dt>
-                    <dd class="text-xs text-heading truncate mt-0.5">
+                    <dd class="text-xs text-body truncate mt-0.5 font-medium">
                       {identity.name}
                     </dd>
                   </div>
@@ -375,7 +375,7 @@ defmodule PortalWeb.Actors.Components do
                     <dt class="text-[10px] font-semibold tracking-widest uppercase text-subtle">
                       Given Name
                     </dt>
-                    <dd class="text-xs text-heading truncate mt-0.5">
+                    <dd class="text-xs text-body truncate mt-0.5 font-medium">
                       {identity.given_name}
                     </dd>
                   </div>
@@ -383,7 +383,7 @@ defmodule PortalWeb.Actors.Components do
                     <dt class="text-[10px] font-semibold tracking-widest uppercase text-subtle">
                       Family Name
                     </dt>
-                    <dd class="text-xs text-heading truncate mt-0.5">
+                    <dd class="text-xs text-body truncate mt-0.5 font-medium">
                       {identity.family_name}
                     </dd>
                   </div>
@@ -391,7 +391,7 @@ defmodule PortalWeb.Actors.Components do
                     <dt class="text-[10px] font-semibold tracking-widest uppercase text-subtle">
                       Middle Name
                     </dt>
-                    <dd class="text-xs text-heading truncate mt-0.5">
+                    <dd class="text-xs text-body truncate mt-0.5 font-medium">
                       {identity.middle_name}
                     </dd>
                   </div>
@@ -399,7 +399,7 @@ defmodule PortalWeb.Actors.Components do
                     <dt class="text-[10px] font-semibold tracking-widest uppercase text-subtle">
                       Nickname
                     </dt>
-                    <dd class="text-xs text-heading truncate mt-0.5">
+                    <dd class="text-xs text-body truncate mt-0.5 font-medium">
                       {identity.nickname}
                     </dd>
                   </div>
@@ -407,7 +407,7 @@ defmodule PortalWeb.Actors.Components do
                     <dt class="text-[10px] font-semibold tracking-widest uppercase text-subtle">
                       Preferred Username
                     </dt>
-                    <dd class="text-xs text-heading truncate mt-0.5">
+                    <dd class="text-xs text-body truncate mt-0.5 font-medium">
                       {identity.preferred_username}
                     </dd>
                   </div>
@@ -415,7 +415,7 @@ defmodule PortalWeb.Actors.Components do
                     <dt class="text-[10px] font-semibold tracking-widest uppercase text-subtle">
                       Last Synced
                     </dt>
-                    <dd class="text-xs text-body mt-0.5">
+                    <dd class="text-xs text-body mt-0.5 font-medium">
                       <.relative_datetime datetime={identity.sync_state.synced_at} />
                     </dd>
                   </div>
@@ -508,11 +508,11 @@ defmodule PortalWeb.Actors.Components do
                   </button>
                   <.icon
                     name="ri-arrow-down-s-line"
-                    class="w-4 h-4 text-muted shrink-0 group-open/details:hidden"
+                    class="w-4 h-4 text-subtle shrink-0 group-open/details:hidden"
                   />
                   <.icon
                     name="ri-arrow-up-s-line"
-                    class="w-4 h-4 text-muted shrink-0 hidden group-open/details:block"
+                    class="w-4 h-4 text-subtle shrink-0 hidden group-open/details:block"
                   />
                 </div>
               </summary>
@@ -596,11 +596,11 @@ defmodule PortalWeb.Actors.Components do
                   </button>
                   <.icon
                     name="ri-arrow-down-s-line"
-                    class="w-4 h-4 text-muted shrink-0 group-open/details:hidden"
+                    class="w-4 h-4 text-subtle shrink-0 group-open/details:hidden"
                   />
                   <.icon
                     name="ri-arrow-up-s-line"
-                    class="w-4 h-4 text-muted shrink-0 hidden group-open/details:block"
+                    class="w-4 h-4 text-subtle shrink-0 hidden group-open/details:block"
                   />
                 </div>
               </summary>
@@ -685,7 +685,7 @@ defmodule PortalWeb.Actors.Components do
                 type="date"
                 name="token_expiration"
                 value={@token_expiration}
-                class="block w-full rounded-md border-neutral-300 focus:border-accent-400 focus:ring-3 focus:ring-accent-200/50 text-sm"
+                class="block w-full rounded-md border-border-strong focus:border-border-focus focus:ring-3 focus:ring-accent-200/50 text-sm"
                 required
               />
             </div>
@@ -778,11 +778,11 @@ defmodule PortalWeb.Actors.Components do
                     </button>
                     <.icon
                       name="ri-arrow-down-s-line"
-                      class="w-4 h-4 text-muted shrink-0 group-open/details:hidden"
+                      class="w-4 h-4 text-subtle shrink-0 group-open/details:hidden"
                     />
                     <.icon
                       name="ri-arrow-up-s-line"
-                      class="w-4 h-4 text-muted shrink-0 hidden group-open/details:block"
+                      class="w-4 h-4 text-subtle shrink-0 hidden group-open/details:block"
                     />
                   </div>
                 </summary>
@@ -820,7 +820,7 @@ defmodule PortalWeb.Actors.Components do
               </span>
               <.icon
                 name="ri-arrow-right-s-line"
-                class="w-4 h-4 text-muted shrink-0"
+                class="w-4 h-4 text-subtle shrink-0"
               />
             </.link>
           </li>
@@ -846,21 +846,21 @@ defmodule PortalWeb.Actors.Components do
         <dl class="space-y-3">
           <div>
             <dt class="text-[10px] text-subtle mb-0.5">Actor ID</dt>
-            <dd class="font-mono text-[11px] text-body break-all">{@actor.id}</dd>
+            <dd class="font-mono text-[11px] text-body break-all font-medium">{@actor.id}</dd>
           </div>
           <div :if={@actor.email}>
             <dt class="text-[10px] text-subtle mb-0.5">Email</dt>
-            <dd class="text-xs text-heading break-all">{@actor.email}</dd>
+            <dd class="text-xs text-body break-all font-medium">{@actor.email}</dd>
           </div>
           <div>
             <dt class="text-[10px] text-subtle mb-0.5">Created</dt>
-            <dd class="text-xs text-body">
+            <dd class="text-xs text-body font-medium">
               <.relative_datetime datetime={@actor.inserted_at} />
             </dd>
           </div>
           <div>
             <dt class="text-[10px] text-subtle mb-0.5">Updated</dt>
-            <dd class="text-xs text-body">
+            <dd class="text-xs text-body font-medium">
               <.relative_datetime datetime={@actor.updated_at} />
             </dd>
           </div>
@@ -870,8 +870,8 @@ defmodule PortalWeb.Actors.Components do
               <span class={[
                 "inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-medium",
                 if(@actor.allow_email_otp_sign_in,
-                  do: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
-                  else: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
+                  do: "bg-success-light text-success",
+                  else: "bg-danger-light text-danger"
                 )
               ]}>
                 <.icon
@@ -915,7 +915,7 @@ defmodule PortalWeb.Actors.Components do
               @actor.type in [:account_user, :account_admin_user] and not is_nil(@actor.email) and
                 @welcome_email_sent
             }
-            class="flex items-center gap-2 w-full px-3 py-2 rounded text-xs text-green-600 bg-green-50 dark:text-green-400 dark:bg-green-900/20"
+            class="flex items-center gap-2 w-full px-3 py-2 rounded text-xs text-success bg-success-light"
           >
             <.icon name="ri-checkbox-circle-line" class="w-3.5 h-3.5" />
             Email sent to {@actor.email}
@@ -964,7 +964,7 @@ defmodule PortalWeb.Actors.Components do
 
       <div :if={@actor.id != @subject.actor.id} class="border-t border-border"></div>
       <section :if={@actor.id != @subject.actor.id}>
-        <h3 class="text-[10px] font-semibold tracking-widest uppercase text-error/60 mb-3">
+        <h3 class="text-[10px] font-semibold tracking-widest uppercase text-error mb-3">
           Danger Zone
         </h3>
         <.action_button
@@ -1100,7 +1100,7 @@ defmodule PortalWeb.Actors.Components do
               </label>
             </div>
           </div>
-          <p :if={@is_last_admin} class="mt-1 text-xs text-orange-600">
+          <p :if={@is_last_admin} class="mt-1 text-xs text-warning">
             Cannot change role. At least one admin must remain in the account.
           </p>
         </div>
@@ -1127,7 +1127,7 @@ defmodule PortalWeb.Actors.Components do
               />
             </div>
           </div>
-          <p :if={@identities == []} class="mt-1 text-xs text-orange-600">
+          <p :if={@identities == []} class="mt-1 text-xs text-warning">
             This actor has no SSO identity. Disabling Email OTP will lock them out.
           </p>
         </div>
@@ -1196,8 +1196,8 @@ defmodule PortalWeb.Actors.Components do
       <div class="shrink-0 px-5 pt-4 pb-3 border-b border-border bg-elevated">
         <div class="flex items-center justify-between gap-3">
           <div class="flex items-center gap-3">
-            <div class="inline-flex items-center justify-center w-8 h-8 rounded-full bg-neutral-100 dark:bg-neutral-800">
-              <.icon name="ri-add-line" class="w-4 h-4 text-neutral-600 dark:text-neutral-300" />
+            <div class="inline-flex items-center justify-center w-8 h-8 rounded-full bg-raised">
+              <.icon name="ri-add-line" class="w-4 h-4 text-subtle" />
             </div>
             <div>
               <h2 class="text-sm font-semibold text-heading">New Actor</h2>
@@ -1372,14 +1372,14 @@ defmodule PortalWeb.Actors.Components do
             required
           />
           <div>
-            <label class="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
+            <label class="block text-sm font-medium text-body mb-2">
               Token expiration
             </label>
             <input
               type="date"
               name="token_expiration"
               value={@token_expiration}
-              class="block w-full rounded-md border-neutral-300 focus:border-accent-400 focus:ring-3 focus:ring-accent-200/50 text-sm"
+              class="block w-full rounded-md border-border-strong focus:border-border-focus focus:ring-3 focus:ring-accent-200/50 text-sm"
             />
           </div>
           <.actor_group_picker
@@ -1456,7 +1456,7 @@ defmodule PortalWeb.Actors.Components do
             phx-debounce="300"
             autocomplete="off"
             data-1p-ignore
-            class="w-full pl-7 pr-3 py-1.5 text-xs rounded border border-border bg-surface text-heading placeholder:text-muted outline-none focus:border-border-focus focus:ring-1 focus:ring-border-focus/30 transition-colors"
+            class="w-full pl-7 pr-3 py-1.5 text-xs rounded border border-border bg-surface text-heading placeholder:text-subtle outline-none focus:border-border-focus focus:ring-1 focus:ring-border-focus/30 transition-colors"
           />
         </div>
         <div
@@ -1502,7 +1502,7 @@ defmodule PortalWeb.Actors.Components do
 
         <.group_bucket
           title="To Add"
-          title_class="text-green-700"
+          title_class="text-success"
           count={length(@pending_additions)}
           groups={@pending_additions}
           empty_message="No pending additions."
@@ -1522,7 +1522,7 @@ defmodule PortalWeb.Actors.Components do
 
         <.group_bucket
           title="To Remove"
-          title_class="text-red-700"
+          title_class="text-danger"
           count={length(@removed_groups)}
           groups={Enum.map(@removed_groups, & &1.group)}
           empty_message="No pending removals."
@@ -1558,7 +1558,7 @@ defmodule PortalWeb.Actors.Components do
         <h4 class={["text-[10px] font-semibold uppercase tracking-wider", @title_class || "text-subtle"]}>
           {@title}
         </h4>
-        <span class="text-[10px] text-muted">{@count}</span>
+        <span class="text-[10px] text-subtle">{@count}</span>
       </div>
       <ul :if={@groups != []} class="h-48 overflow-y-auto px-2 py-1.5 space-y-0.5">
         <li :for={group <- @groups}>
@@ -1703,7 +1703,7 @@ defmodule PortalWeb.Actors.Components do
         {@label}
       </dt>
       <dd
-        class={["text-xs text-heading truncate mt-0.5", if(@mono, do: "font-mono")]}
+        class={["text-xs text-body font-medium truncate mt-0.5", if(@mono, do: "font-mono")]}
         title={@title}
       >
         {render_slot(@inner_block)}
