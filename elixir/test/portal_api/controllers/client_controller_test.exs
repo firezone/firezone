@@ -404,6 +404,18 @@ defmodule PortalAPI.ClientControllerTest do
       assert resp["data"]["slug"] == client.slug
     end
 
+    test "refuses a blank slug", %{conn: conn, actor: actor, client: client} do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> put(~p"/clients/#{client}", client: %{"name" => client.name, "slug" => ""})
+
+      assert %{"status" => 422, "validation_errors" => errors} = json_response(conn, 422)
+      assert errors["slug"] == ["can't be blank"]
+      assert Portal.Repo.get_by!(Device, id: client.id).slug == client.slug
+    end
+
     test "refuses a slug that is not a DNS label", %{conn: conn, actor: actor, client: client} do
       for bad <- ["Bad Slug", "-laptop", "laptop-", "my.laptop", String.duplicate("a", 64)] do
         conn =
