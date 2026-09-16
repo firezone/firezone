@@ -8,7 +8,6 @@ defmodule Portal.OSReleasesTest do
     put(table, :macos, "15", "15.6.1", true)
     put(table, :macos, "13", "13.7.6", false)
     put(table, :ios, "18", "18.6", true)
-    put(table, :android, "15", "15", true)
     put(table, :windows, "10.0.26100", "10.0.26100.4652", true)
     put(table, :windows, "10.0.19045", "10.0.19045.6093", false)
     put(table, :linux, "6.12", "6.12.34", true)
@@ -25,7 +24,6 @@ defmodule Portal.OSReleasesTest do
     assert OSReleases.line_for(:windows, [11]) == nil
     assert OSReleases.line_for(:macos, [15, 6, 1]) == "15"
     assert OSReleases.line_for(:ios, [18]) == "18"
-    assert OSReleases.line_for(:android, [15]) == "15"
     assert OSReleases.line_for(:linux, [6, 12, 34]) == "6.12"
     assert OSReleases.line_for(:linux, [6]) == nil
     assert OSReleases.line_for(:macos, []) == nil
@@ -42,7 +40,6 @@ defmodule Portal.OSReleasesTest do
     refute OSReleases.up_to_date?(:windows, "10.0.19045.6093", table)
     assert OSReleases.up_to_date?(:linux, "6.12.34", table)
     refute OSReleases.up_to_date?(:linux, "6.12.1", table)
-    assert OSReleases.up_to_date?(:android, "15", table)
     assert OSReleases.up_to_date?(:macos, "garbage", table) == nil
   end
 
@@ -50,7 +47,12 @@ defmodule Portal.OSReleasesTest do
     assert OSReleases.row_up_to_date?(%Portal.Intune.Device{operating_system: "macOS", os_version: "15.6.1"}, table)
     refute OSReleases.row_up_to_date?(%Portal.Intune.Device{operating_system: "Windows", os_version: "10.0.26100.1000"}, table)
     assert OSReleases.row_up_to_date?(%Portal.Intune.Device{operating_system: "iOS", os_version: "18.6"}, table)
-    assert OSReleases.row_up_to_date?(%Portal.Intune.Device{operating_system: "Android", os_version: "15"}, table)
+    android = %Portal.Intune.Device{operating_system: "Android", os_version: "15"}
+    today = ~D[2026-09-15]
+    assert OSReleases.row_up_to_date?(%{android | android_security_patch_level: ~D[2026-09-05]}, table, today)
+    assert OSReleases.row_up_to_date?(%{android | android_security_patch_level: ~D[2026-07-20]}, table, today)
+    refute OSReleases.row_up_to_date?(%{android | android_security_patch_level: ~D[2026-06-05]}, table, today)
+    assert OSReleases.row_up_to_date?(android, table, today) == nil
     assert OSReleases.row_up_to_date?(%Portal.Iru.Device{os_name: "iPadOS", os_version: "18.6"}, table)
     assert OSReleases.row_up_to_date?(%Portal.Defender.Device{os_platform: "macOS", version: "15.6.1"}, table)
     assert OSReleases.row_up_to_date?(%Portal.Santa.Device{os_version: "15.6.1"}, table)

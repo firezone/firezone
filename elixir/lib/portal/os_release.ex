@@ -3,9 +3,10 @@ defmodule Portal.OSRelease do
   The newest release of one operating system line and whether the vendor still
   supports it, as last fetched from the vendor's release feed.
 
-  A line is what a device stays on between feature updates: a macOS, iOS or
-  Android major version, a Windows build such as `10.0.26100`, or a Linux
-  kernel series such as `6.12`.
+  A line is what a device stays on between feature updates: a macOS or iOS
+  major version, a Windows build such as `10.0.26100`, or a Linux kernel series
+  such as `6.12`. Android is not listed: it is judged by its security patch
+  level instead.
   """
 
   use Ecto.Schema
@@ -14,7 +15,7 @@ defmodule Portal.OSRelease do
   @primary_key false
   @timestamps_opts [type: :utc_datetime_usec]
 
-  @type os :: :windows | :macos | :ios | :android | :linux
+  @type os :: :windows | :macos | :ios | :linux
   @type t :: %__MODULE__{
           os: os(),
           line: String.t(),
@@ -24,7 +25,7 @@ defmodule Portal.OSRelease do
         }
 
   schema "os_releases" do
-    field :os, Ecto.Enum, values: ~w[windows macos ios android linux]a, primary_key: true
+    field :os, Ecto.Enum, values: ~w[windows macos ios linux]a, primary_key: true
     field :line, :string, primary_key: true
     field :latest_version, :string
     field :supported, :boolean

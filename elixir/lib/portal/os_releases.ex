@@ -2,6 +2,10 @@ defmodule Portal.OSReleases do
   @moduledoc """
   Answers whether a device runs a current, supported operating system release.
 
+  Android is judged differently: its monthly security bulletin is what keeps a
+  device safe, not the platform version, so an Android device is current while
+  its security patch level is at most two bulletins old.
+
   The releases live in the `os_releases` table, refreshed daily by
   `Portal.OSReleases.Sync`, and are mirrored into an ETS table on every node so
   a posture evaluation never touches the database. Each node reloads the mirror
@@ -16,6 +20,7 @@ defmodule Portal.OSReleases do
 
   @table __MODULE__.ETS
   @reload_every :timer.minutes(10)
+  @android_patch_window_days 60
 
   def start_link(opts), do: GenServer.start_link(__MODULE__, opts, name: __MODULE__)
 
@@ -71,9 +76,10 @@ defmodule Portal.OSReleases do
   Whether a provider row describes a device on the newest release of a
   supported line. `nil` when the row carries no OS version this can judge.
   """
-  @spec row_up_to_date?(struct(), :ets.table()) :: boolean() | nil
-  def row_up_to_date?(row, table \\ @table) when is_struct(row) do
+  @spec row_up_to_date?(struct(), :ets.table(), Date.t()) :: boolean() | nil
+  def row_up_to_date?(row, table \\ @table, today \\ Date.utc_today()) when is_struct(row) do
     case os_and_version(row) do
+      {:android, %Date{} = patch_level} -> Date.diff(today, patch_level) <= @android_patch_window_days
       {os, version} when is_binary(version) -> up_to_date?(os, version, table)
       _unknown -> nil
     end
@@ -96,10 +102,15 @@ defmodule Portal.OSReleases do
   @spec line_for(OSRelease.os(), [non_neg_integer()]) :: String.t() | nil
   def line_for(:windows, [10, 0, build | _rest]), do: "10.0.#{build}"
   def line_for(:linux, [major, minor | _rest]), do: "#{major}.#{minor}"
-  def line_for(os, [major | _rest]) when os in [:macos, :ios, :android], do: Integer.to_string(major)
+  def line_for(os, [major | _rest]) when os in [:macos, :ios], do: Integer.to_string(major)
   def line_for(_os, _segments), do: nil
 
-  defp os_and_version(%Intune.Device{operating_system: os, os_version: version}), do: {apple_or_other(os), version}
+  defp os_and_version(%Intune.Device{operating_system: os, android_security_patch_level: patch_level} = row) do
+    case apple_or_other(os) do
+      :android -> {:android, patch_level}
+      other -> {other, row.os_version}
+    end
+  end
   defp os_and_version(%Iru.Device{os_name: os, os_version: version}), do: {apple_or_other(os), version}
   defp os_and_version(%Defender.Device{os_platform: "macOS", version: version}), do: {:macos, version}
   defp os_and_version(%Santa.Device{os_version: version}), do: {:macos, version}

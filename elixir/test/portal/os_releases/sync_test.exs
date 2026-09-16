@@ -41,11 +41,6 @@ defmodule Portal.OSReleases.SyncTest do
     %{"cycle" => "2012-r2", "latest" => "6.3.9600", "eol" => "2023-10-10"}
   ]
 
-  @android [
-    %{"cycle" => "16", "eol" => false},
-    %{"cycle" => "15", "eol" => false},
-    %{"cycle" => "13", "eol" => "2026-03-02"}
-  ]
 
   defp stub(overrides \\ %{}) do
     Req.Test.stub(Portal.OSReleases.Sync, fn conn ->
@@ -55,7 +50,6 @@ defmodule Portal.OSReleases.SyncTest do
           {"www.kernel.org", _path} -> @kernel
           {_host, "/api/windows.json"} -> @windows
           {_host, "/api/windows-server.json"} -> @windows_server
-          {_host, "/api/android.json"} -> @android
         end
 
       case Map.get(overrides, conn.host) do
@@ -87,8 +81,6 @@ defmodule Portal.OSReleases.SyncTest do
              "10.0.28000" => {"10.0.28000", true},
              "10.0.20348" => {"10.0.20348", true}
            }
-
-    assert releases(:android) == %{"16" => {"16", true}, "15" => {"15", true}, "13" => {"13", false}}
   end
 
   test "a failing feed keeps that operating system's rows and drops lines that left a feed" do

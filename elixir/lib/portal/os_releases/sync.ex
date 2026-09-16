@@ -3,9 +3,10 @@ defmodule Portal.OSReleases.Sync do
   Daily Oban worker that refreshes `os_releases` from the vendors' feeds.
 
   Apple and the Linux kernel publish machine-readable feeds of the releases they
-  still support. Microsoft and Google do not, so Windows, Windows Server and
-  Android come from endoflife.date, which tracks their release health pages. A
-  feed that fails leaves that operating system's rows as they were.
+  still support. Microsoft does not, so Windows and Windows Server come from
+  endoflife.date, which tracks its release health pages. Android needs no feed:
+  it is judged by the device's security patch level. A feed that fails leaves
+  that operating system's rows as they were.
 
   Apple serves its feed from a certificate chain that ends at Apple's own root,
   which public bundles do not carry, so that request trusts the copy of Apple
@@ -24,7 +25,6 @@ defmodule Portal.OSReleases.Sync do
   @apple_url "https://gdmf.apple.com/v2/pmv"
   @kernel_url "https://www.kernel.org/releases.json"
   @windows_urls ["https://endoflife.date/api/windows.json", "https://endoflife.date/api/windows-server.json"]
-  @android_url "https://endoflife.date/api/android.json"
 
   @impl Oban.Worker
   def perform(_job) do
@@ -34,8 +34,7 @@ defmodule Portal.OSReleases.Sync do
           macos: &fetch_apple(&1, "macOS", "Mac"),
           ios: &fetch_apple(&1, "iOS", "iP"),
           linux: &fetch_kernel/1,
-          windows: &fetch_windows/1,
-          android: &fetch_android/1
+          windows: &fetch_windows/1
         ] do
       case fetch.(now) do
         {:ok, rows} when rows != [] ->
@@ -110,18 +109,6 @@ defmodule Portal.OSReleases.Sync do
     case OSReleases.line_for(:windows, segments) do
       nil -> []
       line -> [{line, cycle["latest"], supported?(cycle["eol"], now)}]
-    end
-  end
-
-  defp fetch_android(now) do
-    with {:ok, cycles} when is_list(cycles) <- get(@android_url) do
-      rows =
-        for %{"cycle" => cycle} = entry <- cycles,
-            line = OSReleases.line_for(:android, Portal.Policies.Postures.parse_version(cycle)),
-            is_binary(line),
-            do: row(line, cycle, supported?(entry["eol"], now), now)
-
-      {:ok, rows}
     end
   end
 
