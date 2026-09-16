@@ -1410,7 +1410,16 @@ defmodule PortalWeb.Settings.DirectorySync do
               {if @directory.webhook_verified_at, do: "Re-verify event hook", else: "Set up event hook"}
             </button>
             <div class="my-1 border-t border-border"></div>
+            <.link
+              :if={@directory.is_disabled and @directory.disabled_reason == "Sync error"}
+              patch={~p"/#{@account}/settings/directory_sync/#{@type}/#{@directory.id}/edit"}
+              class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-raised transition-colors text-body"
+            >
+              <.icon name="ri-refresh-line" class="w-3.5 h-3.5 shrink-0" />
+              Re-verify to enable
+            </.link>
             <.button_with_confirmation
+              :if={not (@directory.is_disabled and @directory.disabled_reason == "Sync error")}
               id={"toggle-directory-#{@directory.id}"}
               on_confirm="toggle_directory"
               on_confirm_id={@directory.id}

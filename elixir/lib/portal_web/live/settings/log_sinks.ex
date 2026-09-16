@@ -762,8 +762,16 @@ defmodule PortalWeb.Settings.LogSinks do
               <.icon name="ri-loop-left-line" class="w-3.5 h-3.5 shrink-0" /> Deliver Now
             </button>
             <div class="my-1 border-t border-border"></div>
+            <.link
+              :if={@sink.is_disabled and @sink.disabled_reason == "Sync error"}
+              patch={~p"/#{@account}/settings/log_sinks/#{@type}/#{@sink.id}/edit"}
+              class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-raised transition-colors text-body"
+            >
+              <.icon name="ri-refresh-line" class="w-3.5 h-3.5 shrink-0" />
+              Re-verify to enable
+            </.link>
             <.button_with_confirmation
-              :if={@sink.disabled_reason != "Sync error"}
+              :if={not (@sink.is_disabled and @sink.disabled_reason == "Sync error")}
               id={"toggle-sink-#{@sink.id}"}
               on_confirm="toggle_sink"
               on_confirm_id={@sink.id}

@@ -1124,7 +1124,16 @@ defmodule PortalWeb.Settings.DevicePosture do
               <.icon name="ri-loop-left-line" class="w-3.5 h-3.5 shrink-0" /> Sync Now
             </button>
             <div class="my-1 border-t border-border"></div>
+            <.link
+              :if={@provider.is_disabled and @provider.disabled_reason == "Sync error"}
+              patch={~p"/#{@account}/settings/device_posture/#{@provider.type}/#{@provider.id}/edit"}
+              class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-raised transition-colors text-body"
+            >
+              <.icon name="ri-refresh-line" class="w-3.5 h-3.5 shrink-0" />
+              Re-verify to enable
+            </.link>
             <button
+              :if={not (@provider.is_disabled and @provider.disabled_reason == "Sync error")}
               type="button"
               phx-click="toggle"
               phx-value-id={@provider.id}
