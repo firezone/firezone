@@ -39,23 +39,22 @@ defmodule Portal.OSReleases.Sync do
           linux: &fetch_kernel/1,
           windows: &fetch_windows/1
         ] do
-      case fetch.(now) do
-        {:ok, rows} when rows != [] ->
-          OSReleases.replace(os, Enum.map(rows, &Map.put(&1, :os, os)))
-
-        {:ok, []} ->
-          Logger.error("OS release source for #{os} returned no release lines", os: os)
-
-        :skip ->
-          Logger.info("OS release source for #{os} is not configured", os: os)
-
-        {:error, details} ->
-          summary = Enum.map_join(details, " ", fn {key, value} -> "#{key}=#{value}" end)
-          Logger.error("Can't fetch OS releases for #{os}: #{summary}", [os: os] ++ details)
-      end
+      store(os, fetch.(now))
     end
 
     OSReleases.reload()
+  end
+
+  defp store(os, {:ok, rows}) when rows != [] do
+    OSReleases.replace(os, Enum.map(rows, &Map.put(&1, :os, os)))
+  end
+
+  defp store(os, {:ok, []}), do: Logger.error("OS release source for #{os} returned no release lines", os: os)
+  defp store(os, :skip), do: Logger.info("OS release source for #{os} is not configured", os: os)
+
+  defp store(os, {:error, details}) do
+    summary = Enum.map_join(details, " ", fn {key, value} -> "#{key}=#{value}" end)
+    Logger.error("Can't fetch OS releases for #{os}: #{summary}", [os: os] ++ details)
   end
 
   # Apple lists the versions it still signs. Watches share the iOS asset set, so
@@ -102,18 +101,24 @@ defmodule Portal.OSReleases.Sync do
     if blank?(tenant_id) or blank?(client_id) do
       :skip
     else
-      with {:ok, token} <- windows_updates_token(tenant_id),
-           {:ok, products} <- windows_update_products(token) do
-        rows =
-          products
-          |> Enum.flat_map(fn product -> Enum.map(product["revisions"] || [], &revision_version/1) end)
-          |> newest_per_line(&OSReleases.line_for(:windows, &1))
-          |> Enum.map(fn {line, latest} -> row(line, latest, true, now) end)
-
-        {:ok, rows}
-      end
+      fetch_windows_catalog(tenant_id, now)
     end
   end
+
+  defp fetch_windows_catalog(tenant_id, now) do
+    with {:ok, token} <- windows_updates_token(tenant_id),
+         {:ok, products} <- windows_update_products(token) do
+      rows =
+        products
+        |> Enum.flat_map(&revision_versions/1)
+        |> newest_per_line(&OSReleases.line_for(:windows, &1))
+        |> Enum.map(fn {line, latest} -> row(line, latest, true, now) end)
+
+      {:ok, rows}
+    end
+  end
+
+  defp revision_versions(product), do: Enum.map(product["revisions"] || [], &revision_version/1)
 
   defp windows_updates_token(tenant_id) do
     case APIClient.get_access_token(:windows_updates, tenant_id) do
