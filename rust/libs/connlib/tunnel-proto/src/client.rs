@@ -643,24 +643,20 @@ impl ClientState {
                 (packet, cid.into())
             }
             (None, None, Ok(MatchedRoutes::DevicePools(pools))) => {
-                let mut authorized = None;
-                if let Some((cid, _)) = self.clients.peer_by_ip(dst) {
-                    for &resource_id in &pools {
-                        let Some(token) =
-                            self.outbound_authorizations.client_token(resource_id, cid)
-                        else {
-                            continue;
-                        };
-
-                        authorized = Some((cid, token.clone()));
-                        break;
-                    }
-                }
-
-                let Some((cid, token)) = authorized else {
-                    let pools = pools.into_iter().unique().collect_vec();
+                let Some((cid, _)) = self.clients.peer_by_ip(dst) else {
                     self.pending_authorizations.on_not_authorized(
-                        AuthorizationRequest::Device { addr: dst, pools },
+                        AuthorizationRequest::device(dst, pools),
+                        packet,
+                        now,
+                    );
+                    return Ok(());
+                };
+
+                let Some(token) = pools.iter().find_map(|&resource_id| {
+                    self.outbound_authorizations.client_token(resource_id, cid)
+                }) else {
+                    self.pending_authorizations.on_not_authorized(
+                        AuthorizationRequest::device(dst, pools),
                         packet,
                         now,
                     );
@@ -668,7 +664,7 @@ impl ClientState {
                 };
 
                 flow_tracker::record_peer(cid, flow_tracker::Role::Initiator);
-                flow_tracker::record_ingest_token(Some(token));
+                flow_tracker::record_ingest_token(Some(token.clone()));
 
                 self.clients
                     .peer_by_id_mut(&cid)
@@ -678,47 +674,31 @@ impl ClientState {
                 (packet, cid.into())
             }
             (None, None, Ok(MatchedRoutes::Gateways(routes))) => {
-                let mut authorized = None;
-                for route in &routes {
-                    let Some(authorization) =
-                        self.outbound_authorizations.gateway(route.resource_id)
-                    else {
-                        continue;
-                    };
-
-                    authorized = Some((
-                        authorization.gateway_id,
-                        route.resource_id,
-                        route.domain.clone(),
-                        authorization.ingest_token.clone(),
-                    ));
-                    break;
-                }
-
-                let Some((gid, resource_id, domain, token)) = authorized else {
-                    let resource_ids = routes
-                        .into_iter()
-                        .map(|route| route.resource_id)
-                        .unique()
-                        .collect_vec();
+                let Some((route, authorization)) = routes.iter().find_map(|route| {
+                    self.outbound_authorizations
+                        .gateway(route.resource_id)
+                        .map(|authorization| (route, authorization))
+                }) else {
                     self.pending_authorizations.on_not_authorized(
-                        AuthorizationRequest::Resources(resource_ids),
+                        AuthorizationRequest::resources(
+                            routes.into_iter().map(|route| route.resource_id),
+                        ),
                         packet,
                         now,
                     );
                     return Ok(());
                 };
 
-                flow_tracker::record_peer(gid, flow_tracker::Role::Initiator);
-                flow_tracker::record_ingest_token(Some(token));
+                flow_tracker::record_peer(authorization.gateway_id, flow_tracker::Role::Initiator);
+                flow_tracker::record_ingest_token(Some(authorization.ingest_token.clone()));
 
-                let packet = if let Some(domain) = domain {
+                let packet = if let Some(domain) = &route.domain {
                     flow_tracker::record_domain(domain.clone());
 
                     let Some(packet) = self.dns_resource_nat.handle_outgoing(
-                        gid,
-                        &domain,
-                        resource_id,
+                        authorization.gateway_id,
+                        domain,
+                        route.resource_id,
                         packet,
                         now,
                     ) else {
@@ -730,7 +710,7 @@ impl ClientState {
                     packet
                 };
 
-                (packet, gid.into())
+                (packet, authorization.gateway_id.into())
             }
         };
 

@@ -6,6 +6,7 @@ use std::{
 
 use connlib_model::ResourceId;
 use ip_packet::IpPacket;
+use itertools::Itertools as _;
 use ringbuffer::{AllocRingBuffer, RingBuffer as _};
 
 use crate::{dns, unique_packet_buffer::UniquePacketBuffer};
@@ -38,6 +39,17 @@ pub enum AuthorizationRequest {
 }
 
 impl AuthorizationRequest {
+    pub(super) fn resources(resources: impl IntoIterator<Item = ResourceId>) -> Self {
+        Self::Resources(resources.into_iter().unique().collect_vec())
+    }
+
+    pub(super) fn device(addr: IpAddr, pools: impl IntoIterator<Item = ResourceId>) -> Self {
+        Self::Device {
+            addr,
+            pools: pools.into_iter().unique().collect_vec(),
+        }
+    }
+
     fn target(&self) -> AuthorizationTarget {
         match self {
             Self::Resources(resources) => AuthorizationTarget::Resources(resources.clone()),
