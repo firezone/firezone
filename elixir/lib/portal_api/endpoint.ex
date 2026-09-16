@@ -86,6 +86,10 @@ defmodule PortalAPI.Endpoint do
     longpoll: false,
     drainer: []
 
+  # Phoenix dispatches the sockets above from the first plug of this endpoint,
+  # so any WebSocket upgrade still in the pipeline here has no socket to go to.
+  plug PortalAPI.Plugs.RejectUnknownSockets
+
   plug :fetch_user_agent
   plug :redirect_to_rest_api_url
 
