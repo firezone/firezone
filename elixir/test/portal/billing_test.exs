@@ -1,6 +1,7 @@
 defmodule Portal.BillingTest do
   use Portal.DataCase, async: true
 
+  import Ecto.Query
   import ExUnit.CaptureLog
   import Portal.Billing
   import Portal.AccountFixtures
@@ -750,6 +751,97 @@ defmodule Portal.BillingTest do
       # Internet site and resource should be created
       assert {:ok, _site} = Portal.Billing.Database.fetch_internet_site(account)
       assert {:ok, _resource} = Portal.Billing.Database.fetch_internet_resource(account)
+    end
+
+    test "creates the Your devices pool, the Account owner group and the policy", %{
+      account: account
+    } do
+      Portal.Config.put_env_override(Portal.Billing, enabled: false)
+      admin = actor_fixture(account: account, type: :account_admin_user)
+
+      assert {:ok, ^account} = Portal.Billing.provision_account(account)
+
+      pool = Portal.Repo.get_by!(Portal.Resource, account_id: account.id, type: :device_pool)
+      assert pool.name == "Your devices"
+
+      assert pool.device_membership_criteria ==
+               Portal.Resource.DeviceMembershipCriteria.own_devices()
+
+      owner_group =
+        Portal.Repo.get_by!(Portal.Group, account_id: account.id, name: "Account owner")
+
+      assert owner_group.type == :static
+
+      policy = Portal.Repo.get_by!(Portal.Policy, account_id: account.id, resource_id: pool.id)
+      assert policy.group_id == owner_group.id
+
+      assert Portal.Repo.get_by!(Portal.Membership,
+               account_id: account.id,
+               group_id: owner_group.id,
+               actor_id: admin.id
+             )
+    end
+
+    test "puts the oldest admin in the Account owner group", %{account: account} do
+      Portal.Config.put_env_override(Portal.Billing, enabled: false)
+      first = actor_fixture(account: account, type: :account_admin_user)
+      _second = actor_fixture(account: account, type: :account_admin_user)
+
+      assert {:ok, ^account} = Portal.Billing.provision_account(account)
+
+      owner_group =
+        Portal.Repo.get_by!(Portal.Group, account_id: account.id, name: "Account owner")
+
+      assert [membership] =
+               Portal.Repo.all(
+                 from(m in Portal.Membership,
+                   where: m.account_id == ^account.id and m.group_id == ^owner_group.id
+                 )
+               )
+
+      assert membership.actor_id == first.id
+    end
+
+    test "leaves the defaults alone when they are already there", %{account: account} do
+      Portal.Config.put_env_override(Portal.Billing, enabled: false)
+      actor_fixture(account: account, type: :account_admin_user)
+
+      assert {:ok, ^account} = Portal.Billing.provision_account(account)
+      pool = Portal.Repo.get_by!(Portal.Resource, account_id: account.id, type: :device_pool)
+
+      assert {:ok, ^account} = Portal.Billing.provision_account(account)
+
+      assert [^pool] =
+               Portal.Repo.all(
+                 from(r in Portal.Resource,
+                   where: r.account_id == ^account.id and r.type == :device_pool
+                 )
+               )
+
+      assert Portal.Repo.aggregate(
+               from(g in Portal.Group,
+                 where: g.account_id == ^account.id and g.name == "Account owner"
+               ),
+               :count
+             ) == 1
+    end
+
+    test "creates the group without a membership when the account has no admin", %{
+      account: account
+    } do
+      Portal.Config.put_env_override(Portal.Billing, enabled: false)
+
+      assert {:ok, ^account} = Portal.Billing.provision_account(account)
+
+      owner_group =
+        Portal.Repo.get_by!(Portal.Group, account_id: account.id, name: "Account owner")
+
+      assert Portal.Repo.aggregate(
+               from(m in Portal.Membership,
+                 where: m.account_id == ^account.id and m.group_id == ^owner_group.id
+               ),
+               :count
+             ) == 0
     end
 
     test "returns error when provisioning fails", %{account: account} do

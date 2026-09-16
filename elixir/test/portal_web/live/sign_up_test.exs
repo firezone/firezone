@@ -869,9 +869,24 @@ defmodule PortalWeb.SignUpTest do
       assert is_nil(pool.address)
       assert is_nil(pool.site_id)
 
-      everyone = Portal.Repo.get_by!(Portal.Group, account_id: account.id, name: "Everyone")
+      assert Portal.Repo.get_by!(Portal.Group, account_id: account.id, name: "Everyone")
+
+      owner_group =
+        Portal.Repo.get_by!(Portal.Group, account_id: account.id, name: "Account owner")
+
+      assert owner_group.type == :static
+
       policy = Portal.Repo.get_by!(Portal.Policy, account_id: account.id, resource_id: pool.id)
-      assert policy.group_id == everyone.id
+      assert policy.group_id == owner_group.id
+
+      admin =
+        Portal.Repo.get_by!(Portal.Actor, account_id: account.id, type: :account_admin_user)
+
+      assert Portal.Repo.get_by!(Portal.Membership,
+               account_id: account.id,
+               group_id: owner_group.id,
+               actor_id: admin.id
+             )
     end
 
     test "valid token for already-registered email redirects to account sign-in", %{conn: conn} do
