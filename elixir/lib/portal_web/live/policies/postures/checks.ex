@@ -148,20 +148,6 @@ defmodule PortalWeb.Policies.Postures.Checks do
       }
     },
     %{
-      name: :no_debugging,
-      label: "No debugging or test signing",
-      description: "Boot debugging, test signing and safe mode are all off.",
-      providers: [:intune],
-      platforms: [:windows],
-      expansion: %{
-        "and" => [
-          %{"field" => "intune.attestation_boot_debugging", "op" => "is", "value" => false},
-          %{"field" => "intune.attestation_test_signing", "op" => "is", "value" => false},
-          %{"field" => "intune.attestation_safe_mode", "op" => "is", "value" => false}
-        ]
-      }
-    },
-    %{
       name: :corporate_owned,
       label: "Corporate owned",
       description: "The MDM records the device as company owned, not personal.",

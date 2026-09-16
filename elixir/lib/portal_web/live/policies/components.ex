@@ -235,6 +235,24 @@ defmodule PortalWeb.Policies.Components do
         mode={:edit}
       />
 
+      <.modal
+        :if={@panel.panel_view == :edit_form and @confirm_state.confirm_breaking_change}
+        id="policy-breaking-change-modal"
+        on_close="cancel_policy_breaking_change"
+        on_cancel="cancel_policy_breaking_change"
+        on_confirm="save_policy_breaking_change"
+      >
+        <:title>Save these changes?</:title>
+        <:body>
+          <p>
+            This change revokes all access granted by this policy. Sessions that rely on it are
+            interrupted until the client reconnects.
+          </p>
+        </:body>
+        <:cancel_button>Cancel</:cancel_button>
+        <:confirm_button>Save Changes</:confirm_button>
+      </.modal>
+
       <.policy_details_view
         :if={@policy && @panel.panel_view == :list}
         account={@account}
@@ -349,7 +367,7 @@ defmodule PortalWeb.Policies.Components do
         has_trust_anchors?={@has_trust_anchors?}
         conditions_state={@conditions_state}
       />
-      <.postures_section id="policy-postures" account={@account} state={@postures} mode={@mode} />
+      <.postures_section id="policy-postures" account={@account} state={@postures} />
     </div>
     """
   end
@@ -511,26 +529,12 @@ defmodule PortalWeb.Policies.Components do
 
   def policy_flow_log_uploads_field(assigns) do
     ~H"""
-    <div>
-      <.flow_log_uploads_toggle
-        form={@panel_form}
-        internet_resource?={internet_resource?(@panel_selected_resource)}
-      />
-      <p :if={flow_log_uploads_changed?(@panel_form)} class="mt-1 text-xs text-warning">
-        Changing this setting expires all active connections created by this Policy;
-        users may experience a few seconds of interrupted connectivity.
-      </p>
-    </div>
+    <.flow_log_uploads_toggle
+      form={@panel_form}
+      internet_resource?={internet_resource?(@panel_selected_resource)}
+    />
     """
   end
-
-  # Warn only when flipping the flag on an existing policy: the flip expires
-  # the policy's active authorizations so fresh ingest tokens get minted.
-  defp flow_log_uploads_changed?(%Phoenix.HTML.Form{source: %Ecto.Changeset{} = changeset}) do
-    not is_nil(changeset.data.id) and Map.has_key?(changeset.changes, :flow_log_uploads_enabled)
-  end
-
-  defp flow_log_uploads_changed?(_form), do: false
 
   @doc """
   The flow-log reporting toggle shared by every form that creates or edits a
@@ -554,7 +558,7 @@ defmodule PortalWeb.Policies.Components do
       <div class="flex items-center justify-between py-1">
         <div>
           <div class="flex items-center gap-2">
-            <p class="text-sm font-medium text-body">Flow log reporting</p>
+            <p class="text-xs font-semibold text-body">Flow log reporting</p>
             <span
               data-flow-logs-new-badge="true"
               class="px-1 py-px rounded text-[9px] font-semibold tracking-wider bg-brand-muted text-brand"

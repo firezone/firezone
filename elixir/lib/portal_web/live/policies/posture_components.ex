@@ -26,37 +26,27 @@ defmodule PortalWeb.Policies.PostureComponents do
   attr :id, :string, required: true
   attr :account, :any, required: true
   attr :state, :map, required: true
-  attr :mode, :atom, default: :new
-
   def postures_section(assigns) do
     ~H"""
     <div :if={@state.availability != :hidden} id={@id} class="border-t border-border pt-4">
-      <h4 class="text-[10px] font-semibold tracking-widest uppercase text-subtle mb-1">
+      <h4 class="text-[10px] font-semibold tracking-widest uppercase text-subtle mb-3">
         Device posture
         <span class="ml-1 font-normal normal-case tracking-normal text-muted">
           (optional)
         </span>
       </h4>
-      <p class="mb-3 text-xs text-body">
-        Turn on the checks a device must pass. Over 300 more posture fields are available through the
-        <.website_link path="/kb/device-posture">REST API</.website_link>.
-      </p>
-      <p
+      <div
         :if={@state.availability == :enabled and not @state.trust_anchors?}
-        class="mb-3 flex items-start gap-1.5 rounded border border-amber-200 bg-amber-50 px-2.5 py-2 text-xs text-amber-700 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-400"
+        class="mb-3 flex items-start gap-1.5 rounded border border-warning-light bg-warning-light px-3 py-2 text-xs text-warning"
       >
-        <.icon name="ri-alert-line" class="w-3.5 h-3.5 shrink-0 mt-0.5" />
+        <.icon name="ri-error-warning-line" class="w-3.5 h-3.5 shrink-0 mt-0.5" />
         <span>
           No trust anchors are defined. Device matching is based on Firezone-reported attributes only.
           <.website_link path="/kb/device-trust" fragment="device-attributes" class="font-medium underline hover:no-underline">
             Learn more
           </.website_link>
         </span>
-      </p>
-      <p :if={@mode == :edit and @state.availability == :enabled} class="mb-3 text-xs text-warning">
-        Saving a change here revokes this policy's active authorizations, so sessions that rely on it are
-        interrupted until the client reconnects.
-      </p>
+      </div>
       <%= if @state.availability == :locked do %>
         <.upgrade_locked_section
           account={@account}
@@ -72,6 +62,9 @@ defmodule PortalWeb.Policies.PostureComponents do
         <input type="hidden" name="policy[postures]" value={Postures.hidden_value(@state)} />
         <.postures_checks id={@id <> "-checks"} state={@state} />
       <% end %>
+      <p class="mt-2 text-[11px] text-subtle">
+        Over <.website_link path="/kb/device-posture">300 more fields</.website_link> are available through the REST API.
+      </p>
     </div>
     """
   end
@@ -94,48 +87,46 @@ defmodule PortalWeb.Policies.PostureComponents do
         This policy has posture rules written through the REST API that these checks cannot show.
         Saving keeps them as they are.
       </p>
-      <table class="w-full text-xs">
+      <table class="w-full">
         <thead class="bg-raised text-[10px] font-semibold tracking-widest uppercase text-subtle">
           <tr>
-            <th class="px-3 py-2 text-left w-12"></th>
+            <th class="px-3 py-2 text-left w-32">Providers</th>
+            <th class="px-3 py-2 text-left w-24">Platforms</th>
             <th class="px-3 py-2 text-left">Check</th>
-            <th class="px-3 py-2 text-left w-28">Providers</th>
-            <th class="px-3 py-2 text-left w-28">Platforms</th>
+            <th class="px-3 py-2 w-14"></th>
           </tr>
         </thead>
         <tbody class="divide-y divide-border bg-surface">
           <tr :for={check <- Checks.all()}>
             <td class="px-3 py-2.5 align-top">
-              <.toggle
-                id={"#{@id}-#{check.name}"}
-                size="sm"
-                checked={check.name in @enabled}
-                disabled={@custom? or (check.name not in @enabled and not Postures.check_available?(@state, check))}
-                phx-click="postures_toggle_check"
-                phx-value-name={check.name}
-              />
-            </td>
-            <td class="px-3 py-2.5">
-              <div class="text-xs font-medium text-heading">{check.label}</div>
-              <div class="text-xs text-body">{check.description}</div>
-              <div :if={not Postures.check_available?(@state, check)} class="text-xs text-subtle mt-0.5">
-                Connect {check.providers |> Enum.map(&provider_label(Atom.to_string(&1))) |> Enum.join(" or ")} to use this check.
-              </div>
-            </td>
-            <td class="px-3 py-2.5 align-top">
               <div class="flex items-center gap-1.5">
                 <.provider_icon
                   :for={provider <- check.providers}
                   provider={Atom.to_string(provider)}
-                  size="xs"
+                  size="md"
                   title={provider_label(Atom.to_string(provider))}
                 />
               </div>
             </td>
             <td class="px-3 py-2.5 align-top">
               <div class="flex items-center gap-1.5 text-heading">
-                <.icon :for={{icon, title} <- platform_icons(check.platforms)} name={icon} title={title} class="w-3.5 h-3.5" />
+                <.icon :for={{icon, title} <- platform_icons(check.platforms)} name={icon} title={title} class="w-5 h-5" />
               </div>
+            </td>
+            <td class="px-3 py-2.5">
+              <div class="text-xs font-semibold text-body">{check.label}</div>
+              <div class="text-[11px] text-subtle">{check.description}</div>
+            </td>
+            <td class="px-3 py-2.5 align-top text-right">
+              <span title={toggle_title(@state, check, @enabled)}>
+                <.toggle
+                  id={"#{@id}-#{check.name}"}
+                  checked={check.name in @enabled}
+                  disabled={@custom? or (check.name not in @enabled and not Postures.check_available?(@state, check))}
+                  phx-click="postures_toggle_check"
+                  phx-value-name={check.name}
+                />
+              </span>
             </td>
           </tr>
         </tbody>
@@ -208,6 +199,14 @@ defmodule PortalWeb.Policies.PostureComponents do
   defp summary_value(value) when is_list(value), do: Enum.map_join(value, ", ", &summary_value/1)
   defp summary_value(value) when is_binary(value), do: value
   defp summary_value(value), do: JSON.encode!(value)
+
+  defp toggle_title(state, check, enabled) do
+    if check.name in enabled or Postures.check_available?(state, check) do
+      nil
+    else
+      "Connect #{Enum.map_join(check.providers, " or ", &provider_label(Atom.to_string(&1)))} to use this check."
+    end
+  end
 
   defp provider_label(provider), do: Map.get(@provider_labels, provider, provider)
 

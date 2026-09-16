@@ -552,34 +552,49 @@ defmodule PortalWeb.PoliciesTest do
                "Enabling flow log collection for the internet resource can result in substantial log volume."
     end
 
-    test "warns when changing flow log reporting on an existing policy", %{
+    test "asks before saving a change that revokes access, and only then", %{
       conn: conn,
       account: account,
       actor: actor
     } do
       group = group_fixture(account: account)
+      other_group = group_fixture(account: account)
       resource = resource_fixture(account: account)
       policy = policy_fixture(group: group, resource: resource)
 
-      {:ok, lv, html} =
-        conn
-        |> authorize_conn(actor)
-        |> live(~p"/#{account}/policies/#{policy.id}/edit")
-
-      refute html =~ "a few seconds of interrupted connectivity"
+      conn = authorize_conn(conn, actor)
+      {:ok, lv, _html} = live(conn, ~p"/#{account}/policies/#{policy.id}/edit")
 
       html =
         lv
-        |> form("[phx-submit='submit_policy_form']",
-          policy: %{
-            group_id: group.id,
-            resource_id: resource.id,
-            flow_log_uploads_enabled: false
-          }
-        )
-        |> render_change()
+        |> form("[phx-submit='submit_policy_form']", policy: %{description: "harmless"})
+        |> render_submit()
 
-      assert html =~ "a few seconds of interrupted connectivity"
+      refute html =~ "Save these changes?"
+      assert html =~ "updated successfully"
+
+      {:ok, lv, _html} = live(conn, ~p"/#{account}/policies/#{policy.id}/edit")
+
+      html =
+        lv
+        |> form("[phx-submit='submit_policy_form']", policy: %{group_id: other_group.id})
+        |> render_submit()
+
+      assert html =~ "Save these changes?"
+      assert html =~ "revokes all access granted by this policy"
+      assert Repo.get_by!(Policy, id: policy.id, account_id: account.id).group_id == group.id
+
+      html = render_click(lv, "cancel_policy_breaking_change")
+      refute html =~ "Save these changes?"
+      assert Repo.get_by!(Policy, id: policy.id, account_id: account.id).group_id == group.id
+
+      lv
+      |> form("[phx-submit='submit_policy_form']", policy: %{flow_log_uploads_enabled: false})
+      |> render_submit()
+
+      html = render_click(lv, "save_policy_breaking_change")
+      assert html =~ "updated successfully"
+      assert Repo.get_by!(Policy, id: policy.id, account_id: account.id).flow_log_uploads_enabled == false
     end
 
     test "moving a policy onto the Internet Resource disables flow log reporting", %{
@@ -616,6 +631,8 @@ defmodule PortalWeb.PoliciesTest do
         )
         |> render_submit()
 
+      assert html =~ "Save these changes?"
+      html = render_click(lv, "save_policy_breaking_change")
       assert html =~ "updated successfully"
 
       reloaded = Repo.get_by!(Policy, id: policy.id, account_id: account.id)
@@ -771,6 +788,8 @@ defmodule PortalWeb.PoliciesTest do
         )
         |> render_submit()
 
+      assert html =~ "Save these changes?"
+      html = render_click(lv, "save_policy_breaking_change")
       assert html =~ "updated successfully"
 
       policy = Repo.get_by!(Policy, id: policy.id, account_id: account.id)
@@ -821,6 +840,8 @@ defmodule PortalWeb.PoliciesTest do
         )
         |> render_submit()
 
+      assert html =~ "Save these changes?"
+      html = render_click(lv, "save_policy_breaking_change")
       assert html =~ "updated successfully"
 
       policy = Repo.get_by!(Policy, id: policy.id, account_id: account.id)
@@ -1077,6 +1098,8 @@ defmodule PortalWeb.PoliciesTest do
         )
         |> render_submit()
 
+      assert html =~ "Save these changes?"
+      html = render_click(lv, "save_policy_breaking_change")
       assert html =~ "updated successfully"
 
       policy = Repo.get_by!(Policy, id: policy.id, account_id: account.id)
@@ -1142,6 +1165,8 @@ defmodule PortalWeb.PoliciesTest do
         )
         |> render_submit()
 
+      assert html =~ "Save these changes?"
+      html = render_click(lv, "save_policy_breaking_change")
       assert html =~ "updated successfully"
 
       policy = Repo.get_by!(Policy, id: policy.id, account_id: account.id)
@@ -1301,6 +1326,8 @@ defmodule PortalWeb.PoliciesTest do
         )
         |> render_submit()
 
+      assert html =~ "Save these changes?"
+      html = render_click(lv, "save_policy_breaking_change")
       assert html =~ "updated successfully"
 
       policy = Repo.get_by!(Policy, id: policy.id, account_id: account.id)
@@ -1379,6 +1406,8 @@ defmodule PortalWeb.PoliciesTest do
         )
         |> render_submit()
 
+      assert html =~ "Save these changes?"
+      html = render_click(lv, "save_policy_breaking_change")
       assert html =~ "updated successfully"
 
       policy = Repo.get_by!(Policy, id: policy.id, account_id: account.id)
@@ -1485,11 +1514,10 @@ defmodule PortalWeb.PoliciesTest do
 
       assert html =~ "Disk encryption"
       assert html =~ "Connect Intune or Iru to use this check."
-      assert html =~ "Over 300 more posture fields"
+      assert html =~ "300 more fields"
       assert html =~ "kb/device-posture?utm_source=product"
       assert html =~ "No trust anchors are defined."
       assert html =~ "kb/device-trust?utm_source=product#device-attributes"
-      refute html =~ "revokes this policy&#39;s active authorizations"
 
       assert toggle(lv, "disk_encryption") =~ "disabled"
       refute toggle(lv, "client_up_to_date") =~ "disabled"
@@ -1556,7 +1584,6 @@ defmodule PortalWeb.PoliciesTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/policies/#{policy.id}/edit")
 
-      assert html =~ "revokes this policy&#39;s active authorizations"
       assert toggle(lv, "compliant") =~ "checked"
       assert toggle(lv, "client_up_to_date") =~ "checked"
       refute toggle(lv, "disk_encryption") =~ "checked"
@@ -1568,6 +1595,8 @@ defmodule PortalWeb.PoliciesTest do
         |> form("[phx-submit='submit_policy_form']", policy: %{description: "fewer checks"})
         |> render_submit()
 
+      assert html =~ "Save these changes?"
+      html = render_click(lv, "save_policy_breaking_change")
       assert html =~ "updated successfully"
       assert saved_postures(group, resource) == expansion(:client_up_to_date)
     end
@@ -1638,6 +1667,8 @@ defmodule PortalWeb.PoliciesTest do
         |> form("[phx-submit='submit_policy_form']", policy: %{description: "no checks"})
         |> render_submit()
 
+      assert html =~ "Save these changes?"
+      html = render_click(lv, "save_policy_breaking_change")
       assert html =~ "updated successfully"
       assert Repo.get_by!(Policy, group_id: group.id, resource_id: resource.id).postures == nil
     end
