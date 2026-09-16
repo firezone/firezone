@@ -16,7 +16,6 @@ defmodule PortalAPI.Client.ChannelTest do
   import Portal.IdentityFixtures
   import Portal.MembershipFixtures
   import Portal.PolicyFixtures
-  import Portal.PolicyAuthorizationFixtures
   import Portal.RelayFixtures
   import Portal.ResourceFixtures
   import Portal.SiteFixtures
