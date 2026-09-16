@@ -35,6 +35,7 @@ defmodule Portal.Config.Definitions do
   @intune_sync_client_id ""
   @windows_updates_client_id ""
   @windows_updates_tenant_id ""
+  @windows_updates_identity_client_id ""
   @defender_sync_client_id ""
   @sentinel_sync_client_id ""
   @google_oidc_client_id "689429116054-72vkp65pqrntsq3bksj9bt4pft15if4v.apps.googleusercontent.com"
@@ -778,6 +779,7 @@ defmodule Portal.Config.Definitions do
   defconfig(:intune_sync_client_id, :string, default: @intune_sync_client_id)
   defconfig(:windows_updates_client_id, :string, default: @windows_updates_client_id)
   defconfig(:windows_updates_tenant_id, :string, default: @windows_updates_tenant_id)
+  defconfig(:windows_updates_identity_client_id, :string, default: @windows_updates_identity_client_id)
   defconfig(:defender_sync_client_id, :string, default: @defender_sync_client_id)
 
   defconfig(:entra_oidc_client_id, :string, default: @entra_oidc_client_id)

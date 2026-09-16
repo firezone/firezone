@@ -74,6 +74,28 @@ defmodule Portal.Azure.ManagedIdentityTest do
       assert ManagedIdentity.access_token!(@database_resource) == "cached_token"
     end
 
+    test "mints for the identity it is given and caches that apart from the default" do
+      test_pid = self()
+
+      Req.Test.expect(ManagedIdentity, 2, fn conn ->
+        client_id = URI.decode_query(conn.query_string)["client_id"]
+        send(test_pid, {:imds_request, client_id})
+
+        Req.Test.json(conn, %{
+          "access_token" => "token-for-#{client_id}",
+          "expires_on" => System.system_time(:second) + 3600
+        })
+      end)
+
+      assert ManagedIdentity.access_token!("resource-a") == "token-for-test-azure-client-id"
+      assert ManagedIdentity.access_token!("resource-a", "other-identity") == "token-for-other-identity"
+      assert ManagedIdentity.access_token!("resource-a") == "token-for-test-azure-client-id"
+      assert ManagedIdentity.access_token!("resource-a", "other-identity") == "token-for-other-identity"
+
+      assert_received {:imds_request, "test-azure-client-id"}
+      assert_received {:imds_request, "other-identity"}
+    end
+
     test "caches tokens independently by resource" do
       test_pid = self()
 

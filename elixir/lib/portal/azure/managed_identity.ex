@@ -42,17 +42,20 @@ defmodule Portal.Azure.ManagedIdentity do
   to fetching directly when the token cache is not running. Raises on an IMDS
   error.
   """
-  def access_token!(resource) when is_binary(resource) do
+  def access_token!(resource, client_id \\ nil) when is_binary(resource) do
     config = Portal.Config.fetch_env!(:portal, __MODULE__)
     token_cache = Keyword.get(config, :token_cache, @token_cache)
+    client_id = client_id || config[:client_id]
 
-    case Portal.TokenCache.fetch(token_cache, resource, fn -> fetch_token(resource, config) end) do
+    case Portal.TokenCache.fetch(token_cache, {resource, client_id}, fn -> fetch_token(resource, client_id, config) end) do
       {:ok, token} -> token
       {:error, exception} -> raise exception
     end
   end
 
-  defp fetch_token(resource, config) do
+  # A VM can carry several user-assigned identities; `client_id` picks the one
+  # IMDS mints the token for.
+  defp fetch_token(resource, client_id, config) do
     req_opts =
       (config[:req_opts] || [])
       |> Keyword.put(:allow_private_ips, true)
@@ -60,7 +63,7 @@ defmodule Portal.Azure.ManagedIdentity do
       |> Keyword.put(:params, [
         "api-version": "2018-02-01",
         resource: resource,
-        client_id: config[:client_id]
+        client_id: client_id
       ])
 
     response =

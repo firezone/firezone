@@ -163,7 +163,11 @@ if config_env() == :prod do
     applications: [
       entra: [client_id: env_var_to_config!(:entra_sync_client_id), client_secret: nil],
       intune: [client_id: env_var_to_config!(:intune_sync_client_id), client_secret: nil],
-      windows_updates: [client_id: env_var_to_config!(:windows_updates_client_id), client_secret: nil]
+      windows_updates: [
+        client_id: env_var_to_config!(:windows_updates_client_id),
+        client_secret: nil,
+        identity_client_id: env_var_to_config!(:windows_updates_identity_client_id)
+      ]
     ]
 
   # The Windows Update release catalog is read as a single-tenant application in

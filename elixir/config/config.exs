@@ -226,7 +226,8 @@ config :portal, Portal.Microsoft.Graph.APIClient,
     ],
     windows_updates: [
       client_id: System.get_env("WINDOWS_UPDATES_CLIENT_ID"),
-      client_secret: System.get_env("WINDOWS_UPDATES_CLIENT_SECRET")
+      client_secret: System.get_env("WINDOWS_UPDATES_CLIENT_SECRET"),
+      identity_client_id: System.get_env("WINDOWS_UPDATES_IDENTITY_CLIENT_ID")
     ]
   ],
   req_opts: [

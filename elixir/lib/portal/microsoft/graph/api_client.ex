@@ -63,12 +63,14 @@ defmodule Portal.Microsoft.Graph.APIClient do
         {:ok, %{"client_secret" => secret}}
 
       _ ->
-        federated_credential()
+        federated_credential(config)
     end
   end
 
-  defp federated_credential do
-    assertion = Portal.Azure.ManagedIdentity.access_token!("api://AzureADTokenExchange")
+  # An application may be federated to an identity of its own rather than the
+  # VM's default one; `identity_client_id` names it.
+  defp federated_credential(config) do
+    assertion = Portal.Azure.ManagedIdentity.access_token!("api://AzureADTokenExchange", config[:identity_client_id])
 
     {:ok,
      %{
