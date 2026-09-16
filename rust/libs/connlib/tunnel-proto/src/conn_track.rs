@@ -371,57 +371,53 @@ mod tests {
         assert!(ct.is_return_traffic(&reply));
     }
 
-    #[test]
-    fn opposite_echo_requests_with_the_same_identifier_are_independent() {
-        for (local, peer) in [
-            (ip(10, 0, 0, 1), ip(10, 0, 0, 2)),
-            ("fd00::1".parse().unwrap(), "fd00::2".parse().unwrap()),
-        ] {
-            let mut ct = ConnTrack::default();
-            let now = Instant::now();
-            let inbound = make::icmp_request_packet(peer, local, 1, 42, &[]).unwrap();
-            let outbound = make::icmp_request_packet(local, peer, 2, 42, &[]).unwrap();
-            let our_reply = make::icmp_reply_packet(local, peer, 1, 42, &[]).unwrap();
-            let peer_reply = make::icmp_reply_packet(peer, local, 2, 42, &[]).unwrap();
-            ct.record_inbound(&inbound, now);
+    #[test_case::test_case("10.0.0.1", "10.0.0.2"; "ipv4")]
+    #[test_case::test_case("fd00::1", "fd00::2"; "ipv6")]
+    fn opposite_echo_requests_with_the_same_identifier_are_independent(local: &str, peer: &str) {
+        let local = local.parse::<IpAddr>().unwrap();
+        let peer = peer.parse::<IpAddr>().unwrap();
+        let mut ct = ConnTrack::default();
+        let now = Instant::now();
+        let inbound = make::icmp_request_packet(peer, local, 1, 42, &[]).unwrap();
+        let outbound = make::icmp_request_packet(local, peer, 2, 42, &[]).unwrap();
+        let our_reply = make::icmp_reply_packet(local, peer, 1, 42, &[]).unwrap();
+        let peer_reply = make::icmp_reply_packet(peer, local, 2, 42, &[]).unwrap();
+        ct.record_inbound(&inbound, now);
 
-            assert_eq!(ct.outbound_flow_originator(&outbound), None);
-            ct.record_outbound_as_originator(&outbound, now);
+        assert_eq!(ct.outbound_flow_originator(&outbound), None);
+        ct.record_outbound_as_originator(&outbound, now);
 
-            assert_eq!(ct.outbound_flow_originator(&outbound), Some(Originator::Us));
-            assert_eq!(
-                ct.outbound_flow_originator(&our_reply),
-                Some(Originator::Peer)
-            );
-            assert!(ct.is_return_traffic(&peer_reply));
-            assert!(!ct.is_return_traffic(&inbound));
+        assert_eq!(ct.outbound_flow_originator(&outbound), Some(Originator::Us));
+        assert_eq!(
+            ct.outbound_flow_originator(&our_reply),
+            Some(Originator::Peer)
+        );
+        assert!(ct.is_return_traffic(&peer_reply));
+        assert!(!ct.is_return_traffic(&inbound));
 
-            let error = make::icmp_dest_unreachable_prohibited(&our_reply).unwrap();
-            assert!(ct.is_known_inbound_flow(&error));
-            assert!(!ct.is_known_outbound_error(&error));
-            let error = make::icmp_dest_unreachable_prohibited(&peer_reply).unwrap();
-            assert!(ct.is_known_outbound_error(&error));
-            assert!(!ct.is_known_inbound_flow(&error));
-        }
+        let error = make::icmp_dest_unreachable_prohibited(&our_reply).unwrap();
+        assert!(ct.is_known_inbound_flow(&error));
+        assert!(!ct.is_known_outbound_error(&error));
+        let error = make::icmp_dest_unreachable_prohibited(&peer_reply).unwrap();
+        assert!(ct.is_known_outbound_error(&error));
+        assert!(!ct.is_known_inbound_flow(&error));
     }
 
-    #[test]
-    fn echo_replies_do_not_open_flows() {
-        for (local, peer) in [
-            (ip(10, 0, 0, 1), ip(10, 0, 0, 2)),
-            ("fd00::1".parse().unwrap(), "fd00::2".parse().unwrap()),
-        ] {
-            let mut ct = ConnTrack::default();
-            let now = Instant::now();
-            let outbound = make::icmp_reply_packet(local, peer, 1, 42, &[]).unwrap();
-            let inbound = make::icmp_reply_packet(peer, local, 1, 42, &[]).unwrap();
+    #[test_case::test_case("10.0.0.1", "10.0.0.2"; "ipv4")]
+    #[test_case::test_case("fd00::1", "fd00::2"; "ipv6")]
+    fn echo_replies_do_not_open_flows(local: &str, peer: &str) {
+        let local = local.parse::<IpAddr>().unwrap();
+        let peer = peer.parse::<IpAddr>().unwrap();
+        let mut ct = ConnTrack::default();
+        let now = Instant::now();
+        let outbound = make::icmp_reply_packet(local, peer, 1, 42, &[]).unwrap();
+        let inbound = make::icmp_reply_packet(peer, local, 1, 42, &[]).unwrap();
 
-            ct.record_outbound_as_originator(&outbound, now);
-            ct.record_inbound(&inbound, now);
+        ct.record_outbound_as_originator(&outbound, now);
+        ct.record_inbound(&inbound, now);
 
-            assert!(!ct.is_return_traffic(&inbound));
-            assert_eq!(ct.outbound_flow_originator(&outbound), None);
-        }
+        assert!(!ct.is_return_traffic(&inbound));
+        assert_eq!(ct.outbound_flow_originator(&outbound), None);
     }
 
     #[test]

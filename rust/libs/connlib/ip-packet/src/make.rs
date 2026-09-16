@@ -482,48 +482,36 @@ mod tests {
         assert!(matches!(icmp_error.icmp_error(), Ok(Some(_))));
     }
 
-    #[test]
-    fn errors_can_quote_echo_replies_but_cannot_generate_more_errors() {
-        for (src, dst) in [
-            (
-                "10.0.0.1".parse::<IpAddr>().unwrap(),
-                "10.0.0.2".parse::<IpAddr>().unwrap(),
-            ),
-            ("fd00::1".parse().unwrap(), "fd00::2".parse().unwrap()),
-        ] {
-            let reply = icmp_reply_packet(src, dst, 7, 42, &[]).unwrap();
-            let error = icmp_dest_unreachable_prohibited(&reply).unwrap();
+    #[test_case::test_case("10.0.0.1", "10.0.0.2"; "ipv4")]
+    #[test_case::test_case("fd00::1", "fd00::2"; "ipv6")]
+    fn errors_can_quote_echo_replies_but_cannot_generate_more_errors(src: &str, dst: &str) {
+        let src = src.parse::<IpAddr>().unwrap();
+        let dst = dst.parse::<IpAddr>().unwrap();
+        let reply = icmp_reply_packet(src, dst, 7, 42, &[]).unwrap();
+        let error = icmp_dest_unreachable_prohibited(&reply).unwrap();
 
-            let (failed, _) = error.icmp_error().unwrap().unwrap();
-            assert_eq!(failed.src(), src);
-            assert_eq!(failed.dst(), dst);
-            assert_eq!(failed.src_proto(), crate::Protocol::IcmpEcho(42));
-            assert!(icmp_dest_unreachable_prohibited(&error).is_err());
-            assert!(icmp_dest_unreachable_network(&error).is_err());
-        }
+        let (failed, _) = error.icmp_error().unwrap().unwrap();
+        assert_eq!(failed.src(), src);
+        assert_eq!(failed.dst(), dst);
+        assert_eq!(failed.src_proto(), crate::Protocol::IcmpEcho(42));
+        assert!(icmp_dest_unreachable_prohibited(&error).is_err());
+        assert!(icmp_dest_unreachable_network(&error).is_err());
     }
 
-    #[test]
-    fn unsupported_icmp_errors_cannot_generate_more_errors() {
-        for (src, dst) in [
-            (
-                "10.0.0.1".parse::<IpAddr>().unwrap(),
-                "10.0.0.2".parse::<IpAddr>().unwrap(),
-            ),
-            ("fd00::1".parse().unwrap(), "fd00::2".parse().unwrap()),
-        ] {
-            let mut packet = icmp_request_packet(src, dst, 7, 42, &[]).unwrap();
-            let error_types = if src.is_ipv4() { [3, 12] } else { [1, 4] };
-            for error_type in error_types {
-                // Neither an error without a quoted packet nor an unsupported error may trigger a reply.
-                packet.payload_mut()[0] = error_type;
-                packet.compute_checksums();
+    #[test_case::test_case("10.0.0.1", "10.0.0.2", 3; "ipv4_missing_quote")]
+    #[test_case::test_case("10.0.0.1", "10.0.0.2", 12; "ipv4_unsupported")]
+    #[test_case::test_case("fd00::1", "fd00::2", 1; "ipv6_missing_quote")]
+    #[test_case::test_case("fd00::1", "fd00::2", 4; "ipv6_unsupported")]
+    fn unsupported_icmp_errors_cannot_generate_more_errors(src: &str, dst: &str, error_type: u8) {
+        let src = src.parse::<IpAddr>().unwrap();
+        let dst = dst.parse::<IpAddr>().unwrap();
+        let mut packet = icmp_request_packet(src, dst, 7, 42, &[]).unwrap();
+        packet.payload_mut()[0] = error_type;
+        packet.compute_checksums();
 
-                assert!(packet.icmp_error().is_err());
-                assert!(icmp_dest_unreachable_prohibited(&packet).is_err());
-                assert!(icmp_dest_unreachable_network(&packet).is_err());
-            }
-        }
+        assert!(packet.icmp_error().is_err());
+        assert!(icmp_dest_unreachable_prohibited(&packet).is_err());
+        assert!(icmp_dest_unreachable_network(&packet).is_err());
     }
 
     fn payload(max_size: usize) -> impl Strategy<Value = Vec<u8>> {
