@@ -791,8 +791,8 @@ defmodule PortalAPI.Client.Channel.Shared do
       {:ok, %Portal.Device{} = device} ->
         push(socket, "device_domain_resolved", %{
           domain: domain,
-          ipv4: %Postgrex.INET{address: device.ipv4.address, netmask: 32},
-          ipv6: %Postgrex.INET{address: device.ipv6.address, netmask: 128}
+          ipv4: to_string(:inet.ntoa(device.ipv4.address)),
+          ipv6: to_string(:inet.ntoa(device.ipv6.address))
         })
 
       {:error, reason} ->
