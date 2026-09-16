@@ -1200,18 +1200,11 @@ defmodule Portal.Repo.Seeds do
     %{intune: intune, iru: iru, defender: defender, santa: santa, sentinelone: sentinelone}
   end
 
-  # Seeded providers are disabled on purpose. Their credentials are made up, so
-  # leaving them enabled would have every scheduler run fire a sync at the real
-  # vendor API and fail. Disabled keeps the rows and the devices they own
-  # visible, which is the whole point of seeding them.
+  # A disabled provider's rows count as absent, so seeded providers stay
+  # enabled. Their credentials are made up, which is why dev.exs leaves the
+  # posture schedulers off unless POSTURE_SYNC_DEV_SCHEDULE is set.
   defp create_posture_provider(account, type, name, typed_module, typed_attrs) do
     id = Ecto.UUID.generate()
-
-    typed_attrs =
-      Map.merge(typed_attrs, %{
-        is_disabled: true,
-        disabled_reason: "Seeded for local development"
-      })
 
     shared =
       %Portal.PostureProvider{}
