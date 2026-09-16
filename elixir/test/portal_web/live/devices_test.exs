@@ -1061,7 +1061,7 @@ defmodule PortalWeb.DevicesTest do
       refute html =~ "Self-reported serial"
 
       # Columns the summary grid leaves out are still in the copy-paste blob.
-      assert html =~ "Provider record"
+      assert html =~ "Raw provider record"
       assert html =~ "Click to expand"
       assert html =~ ~r/id="posture-intune-[^"]+-body" class="relative hidden"/
       assert html =~ "management_agent"
