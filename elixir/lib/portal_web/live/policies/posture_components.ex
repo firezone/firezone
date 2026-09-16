@@ -100,8 +100,6 @@ defmodule PortalWeb.Policies.PostureComponents do
       <table class="w-full text-sm text-body">
         <thead class="bg-raised text-[10px] font-semibold tracking-widest uppercase text-subtle">
           <tr>
-            <th class="px-3 py-2 text-left w-32">Providers</th>
-            <th class="px-3 py-2 text-left w-24">Platforms</th>
             <th class="px-3 py-2 text-left">Check</th>
             <th class="px-3 py-2 w-14"></th>
           </tr>
@@ -110,21 +108,16 @@ defmodule PortalWeb.Policies.PostureComponents do
           <tr :for={check <- Checks.all()}>
             <td class="px-3 py-2.5 align-middle">
               <div class="flex items-center gap-1.5">
-                <.provider_icon
-                  :for={provider <- check.providers}
-                  provider={Atom.to_string(provider)}
-                  size="sm"
-                  title={provider_label(Atom.to_string(provider))}
-                />
+                <span class="text-xs font-semibold text-body">{check.label}</span>
+                <.popover placement="right" class="inline-flex">
+                  <:target>
+                    <.icon name="ri-information-line" class="w-3.5 h-3.5 text-subtle hover:text-heading cursor-help" />
+                  </:target>
+                  <:content>
+                    <.check_support check={check} />
+                  </:content>
+                </.popover>
               </div>
-            </td>
-            <td class="px-3 py-2.5 align-middle">
-              <div class="flex items-center gap-1.5">
-                <.icon :for={{icon, title} <- platform_icons(check.platforms)} name={icon} title={title} class="w-4 h-4" />
-              </div>
-            </td>
-            <td class="px-3 py-2.5 align-middle">
-              <div class="text-xs font-semibold text-body">{check.label}</div>
               <div class="text-xs text-subtle mt-0.5">{check.description}</div>
             </td>
             <td class="px-3 py-2.5 align-middle">
@@ -142,6 +135,33 @@ defmodule PortalWeb.Policies.PostureComponents do
         </tbody>
       </table>
     </div>
+    """
+  end
+
+  attr :check, :map, required: true
+
+  defp check_support(assigns) do
+    ~H"""
+    <dl class="space-y-2 min-w-40">
+      <div>
+        <dt class="text-[10px] font-semibold tracking-widest uppercase text-subtle mb-1">Providers</dt>
+        <dd class="space-y-1">
+          <div :for={provider <- @check.providers} class="flex items-center gap-1.5">
+            <.provider_icon provider={Atom.to_string(provider)} size="sm" />
+            <span>{provider_label(Atom.to_string(provider))}</span>
+          </div>
+        </dd>
+      </div>
+      <div>
+        <dt class="text-[10px] font-semibold tracking-widest uppercase text-subtle mb-1">Platforms</dt>
+        <dd class="space-y-1">
+          <div :for={{icon, title} <- platform_icons(@check.platforms)} class="flex items-center gap-1.5">
+            <.icon name={icon} class="w-4 h-4" />
+            <span>{title}</span>
+          </div>
+        </dd>
+      </div>
+    </dl>
     """
   end
 
