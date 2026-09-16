@@ -272,8 +272,6 @@ actor Adapter {
         isInternetResourceActive: internetResourceEnabled,
         tlsIdentity: tlsIdentity
       )
-    } catch let error as ConnlibError {
-      throw AdapterError.connlibConnectError(error.message())
     } catch {
       throw AdapterError.connlibConnectError(String(describing: error))
     }
