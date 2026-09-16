@@ -1,22 +1,42 @@
-defmodule Portal.Policies.Postures.Revocation do
+defmodule Portal.Workers.DeleteStalePostureAuthorizations do
   @moduledoc """
-  Re-checks the posture policies an account's clients hold authorizations for
-  and revokes the ones that stopped holding.
+  Re-checks the posture policies clients hold authorizations for and deletes
+  the ones that stopped holding.
 
-  A provider sync runs this once it has written its rows. A connected client
-  refreshes its own resource list from the change feed, but an offline client
-  would otherwise keep its flows alive on the gateway until the authorization
-  expires, so the check is tied to the sync rather than to the connection.
+  A connected client keeps its own resource list current from the change feed
+  and its minute timer, but an offline client would otherwise keep its flows
+  alive on the gateway until the authorization expires. This also catches what
+  no row change announces: a provider that was disabled or deleted, a new OS
+  or Client release, and time-based rules aging out.
   """
+
+  use Oban.Worker,
+    queue: :default,
+    max_attempts: 3,
+    unique: [period: :infinity, states: :incomplete]
 
   alias __MODULE__.Database
   alias Portal.Devices.Posture
   alias Portal.Policies.Postures
 
-  @spec revoke_stale_authorizations(Ecto.UUID.t()) :: :ok
-  def revoke_stale_authorizations(account_id) do
+  require Logger
+
+  @impl Oban.Worker
+  def perform(%Oban.Job{}) do
     now = DateTime.utc_now()
 
+    count =
+      now
+      |> Database.list_account_ids()
+      |> Enum.map(&delete_stale(&1, now))
+      |> Enum.sum()
+
+    Logger.info("Deleted #{count} stale posture policy authorizations")
+
+    :ok
+  end
+
+  defp delete_stale(account_id, now) do
     policies_by_client =
       account_id
       |> Database.list_authorized_posture_policies(now)
@@ -31,16 +51,29 @@ defmodule Portal.Policies.Postures.Revocation do
           {:error, _violations} <- [Postures.Evaluator.evaluate(policy.postures, client, now)],
           do: {client.id, policy.id}
 
-    if stale != [] do
-      Database.delete_policy_authorizations(account_id, stale)
+    if stale == [] do
+      0
+    else
+      {count, nil} = Database.delete_policy_authorizations(account_id, stale)
+      count
     end
-
-    :ok
   end
 
   defmodule Database do
     import Ecto.Query
     alias Portal.{Device, Policy, PolicyAuthorization, Safe}
+
+    def list_account_ids(now) do
+      from(a in PolicyAuthorization,
+        join: p in Policy,
+        on: p.account_id == a.account_id and p.id == a.policy_id,
+        where: a.expires_at > ^now and not is_nil(p.postures),
+        distinct: true,
+        select: a.account_id
+      )
+      |> Safe.unscoped()
+      |> Safe.all()
+    end
 
     def list_authorized_posture_policies(account_id, now) do
       from(a in PolicyAuthorization,

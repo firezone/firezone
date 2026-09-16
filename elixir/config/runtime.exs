@@ -251,6 +251,9 @@ if config_env() == :prod do
     # Delete expired policy_authorizations every minute
     {"* * * * *", Portal.Workers.DeleteExpiredPolicyAuthorizations},
 
+    # Delete policy_authorizations whose device postures stopped holding
+    {"*/15 * * * *", Portal.Workers.DeleteStalePostureAuthorizations},
+
     # Refresh cached certificate revocation lists hourly
     {"15 */2 * * *", Portal.Crl.Scheduler},
 

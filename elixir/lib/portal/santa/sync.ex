@@ -115,7 +115,6 @@ defmodule Portal.Santa.Sync do
 
     delete_stale_devices(provider, started_at)
     Database.mark_succeeded(provider, started_at)
-    Portal.Policies.Postures.Revocation.revoke_stale_authorizations(provider.account_id)
 
     Logger.info("Finished Santa device inventory sync",
       posture_provider_id: provider.id,

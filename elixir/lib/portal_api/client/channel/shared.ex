@@ -25,6 +25,14 @@ defmodule PortalAPI.Client.Channel.Shared do
   # connlib state will be cleaned up so it can request a new connection.
   @recompute_authorized_resources_every :timer.minutes(1)
 
+  @posture_provider_schemas [
+    Portal.Intune.PostureProvider,
+    Portal.Iru.PostureProvider,
+    Portal.Defender.PostureProvider,
+    Portal.Santa.PostureProvider,
+    Portal.SentinelOne.PostureProvider
+  ]
+
   # The interval at which the inbound policy_authorizations cache is pruned.
   @prune_authorizations_cache_every :timer.minutes(1)
 
@@ -2449,12 +2457,20 @@ defmodule PortalAPI.Client.Channel.Shared do
   # back from the database rather than patched in memory, which also picks up
   # a Defender row newly linked through an Intune row.
   defp handle_change(%Change{} = change, socket) do
-    if posture_row_change?(change) and concerns_client?(change, socket.assigns.client) do
+    if posture_provider_toggled?(change) or
+         (posture_row_change?(change) and concerns_client?(change, socket.assigns.client)) do
       refresh_posture_rows(socket)
     else
       {:noreply, socket}
     end
   end
+
+  # A disabled provider's rows count as absent, and the rows themselves do not change.
+  defp posture_provider_toggled?(%Change{op: :update, old_struct: %module{} = old, struct: %module{} = new}) do
+    module in @posture_provider_schemas and old.is_disabled != new.is_disabled
+  end
+
+  defp posture_provider_toggled?(%Change{}), do: false
 
   defp posture_row_change?(%Change{struct: %module{}}), do: module in Devices.Posture.schemas()
   defp posture_row_change?(%Change{old_struct: %module{}}), do: module in Devices.Posture.schemas()

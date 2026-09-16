@@ -1,5 +1,6 @@
-defmodule Portal.Policies.Postures.RevocationTest do
+defmodule Portal.Workers.DeleteStalePostureAuthorizationsTest do
   use Portal.DataCase, async: true
+  use Oban.Testing, repo: Portal.Repo
 
   import Portal.ActorFixtures
   import Portal.DeviceFixtures
@@ -12,8 +13,8 @@ defmodule Portal.Policies.Postures.RevocationTest do
   import Portal.ResourceFixtures
   import Portal.SiteFixtures
 
-  alias Portal.Policies.Postures.Revocation
   alias Portal.PolicyAuthorization
+  alias Portal.Workers.DeleteStalePostureAuthorizations
 
   @compliant %{"field" => "intune.compliance_state", "op" => "is", "value" => "compliant"}
 
@@ -45,7 +46,7 @@ defmodule Portal.Policies.Postures.RevocationTest do
     stale = authorize(ctx, policy(ctx, @compliant), client)
     held = authorize(ctx, policy(ctx, %{"field" => "intune.jail_broken", "op" => "is", "value" => false}), client)
 
-    assert :ok == Revocation.revoke_stale_authorizations(ctx.account.id)
+    assert :ok = perform_job(DeleteStalePostureAuthorizations, %{})
 
     refute alive?(stale)
     assert alive?(held)
@@ -56,12 +57,12 @@ defmodule Portal.Policies.Postures.RevocationTest do
     intune_device_fixture(provider: ctx.provider, serial_number: "SER-OTHER")
     stale = authorize(ctx, policy(ctx, @compliant), client)
 
-    assert :ok == Revocation.revoke_stale_authorizations(ctx.account.id)
+    assert :ok = perform_job(DeleteStalePostureAuthorizations, %{})
 
     refute alive?(stale)
   end
 
-  test "leaves policies without postures, expired authorizations and other accounts alone", ctx do
+  test "leaves policies without postures and expired authorizations alone, sweeps every account", ctx do
     client = client_fixture(account: ctx.account, actor: ctx.actor, device_serial: "SER-1")
     intune_device_fixture(provider: ctx.provider, serial_number: "SER-1", compliance_state: "noncompliant")
 
@@ -98,11 +99,11 @@ defmodule Portal.Policies.Postures.RevocationTest do
         resource: Repo.get_by!(Portal.Resource, id: other_policy.resource_id, account_id: other_policy.account_id)
       )
 
-    assert :ok == Revocation.revoke_stale_authorizations(ctx.account.id)
+    assert :ok = perform_job(DeleteStalePostureAuthorizations, %{})
 
     assert alive?(plain)
     assert alive?(expired)
-    assert alive?(other)
+    refute alive?(other)
   end
 
   test "follows a Defender row through the Intune row that links it", ctx do
@@ -112,8 +113,48 @@ defmodule Portal.Policies.Postures.RevocationTest do
     Portal.DefenderFixtures.defender_device_fixture(provider: defender, entra_device_id: "entra-1", health_status: "Inactive")
     stale = authorize(ctx, policy(ctx, %{"field" => "defender.health_status", "op" => "is", "value" => "active"}), client)
 
-    assert :ok == Revocation.revoke_stale_authorizations(ctx.account.id)
+    assert :ok = perform_job(DeleteStalePostureAuthorizations, %{})
 
     refute alive?(stale)
+  end
+
+  test "a disabled provider's rows count as absent", ctx do
+    client = client_fixture(account: ctx.account, actor: ctx.actor, device_serial: "SER-1")
+    intune_device_fixture(provider: ctx.provider, serial_number: "SER-1", compliance_state: "compliant")
+    held = authorize(ctx, policy(ctx, @compliant), client)
+
+    assert :ok = perform_job(DeleteStalePostureAuthorizations, %{})
+    assert alive?(held)
+
+    ctx.provider |> Ecto.Changeset.change(is_disabled: true, disabled_reason: "Sync error") |> Repo.update!()
+
+    assert :ok = perform_job(DeleteStalePostureAuthorizations, %{})
+    refute alive?(held)
+  end
+
+  test "a deleted provider takes its rows and the authorizations with it", ctx do
+    client = client_fixture(account: ctx.account, actor: ctx.actor, device_serial: "SER-1")
+    intune_device_fixture(provider: ctx.provider, serial_number: "SER-1", compliance_state: "compliant")
+    held = authorize(ctx, policy(ctx, @compliant), client)
+
+    Repo.delete!(Repo.get_by!(Portal.PostureProvider, id: ctx.provider.id, account_id: ctx.account.id))
+
+    assert :ok = perform_job(DeleteStalePostureAuthorizations, %{})
+    refute alive?(held)
+  end
+
+  test "a time-based rule ages out without any row changing", ctx do
+    client = client_fixture(account: ctx.account, actor: ctx.actor, device_serial: "SER-1")
+    row = intune_device_fixture(provider: ctx.provider, serial_number: "SER-1", last_sync_at: DateTime.utc_now())
+    recent = %{"field" => "intune.last_sync_at", "op" => "within_last", "value" => "P7D"}
+    held = authorize(ctx, policy(ctx, recent), client)
+
+    assert :ok = perform_job(DeleteStalePostureAuthorizations, %{})
+    assert alive?(held)
+
+    row |> Ecto.Changeset.change(last_sync_at: DateTime.add(DateTime.utc_now(), -8, :day)) |> Repo.update!()
+
+    assert :ok = perform_job(DeleteStalePostureAuthorizations, %{})
+    refute alive?(held)
   end
 end

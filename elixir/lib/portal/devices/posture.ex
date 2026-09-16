@@ -227,7 +227,7 @@ defmodule Portal.Devices.Posture do
     end
 
     defp join_intune(query) do
-      join(query, :left, [device: d], i in Intune.Device,
+      join(query, :left, [device: d], i in subquery(enabled(Intune.Device, Intune.PostureProvider)),
         as: :intune,
         on:
           i.account_id == d.account_id and
@@ -238,7 +238,7 @@ defmodule Portal.Devices.Posture do
     end
 
     defp join_iru(query) do
-      join(query, :left, [device: d], r in Iru.Device,
+      join(query, :left, [device: d], r in subquery(enabled(Iru.Device, Iru.PostureProvider)),
         as: :iru,
         on:
           r.account_id == d.account_id and
@@ -249,7 +249,7 @@ defmodule Portal.Devices.Posture do
     end
 
     defp join_santa(query) do
-      join(query, :left, [device: d], s in Santa.Device,
+      join(query, :left, [device: d], s in subquery(enabled(Santa.Device, Santa.PostureProvider)),
         as: :santa,
         on:
           s.account_id == d.account_id and
@@ -258,7 +258,7 @@ defmodule Portal.Devices.Posture do
     end
 
     defp join_sentinelone(query) do
-      join(query, :left, [device: d], o in SentinelOne.Device,
+      join(query, :left, [device: d], o in subquery(enabled(SentinelOne.Device, SentinelOne.PostureProvider)),
         as: :sentinelone,
         on:
           o.account_id == d.account_id and
@@ -267,9 +267,21 @@ defmodule Portal.Devices.Posture do
     end
 
     defp join_defender(query) do
-      join(query, :left, [device: d, intune: i], f in Defender.Device,
+      join(query, :left, [device: d, intune: i], f in subquery(enabled(Defender.Device, Defender.PostureProvider)),
         as: :defender,
-        on: f.account_id == d.account_id and f.entra_device_id == i.entra_device_id
+        on:
+          f.account_id == d.account_id and
+            f.entra_device_id == i.entra_device_id
+      )
+    end
+
+    # A disabled provider's rows are as good as absent: nothing refreshes them.
+    defp enabled(device_schema, provider_schema) do
+      from(r in device_schema,
+        join: p in ^provider_schema,
+        on: p.account_id == r.account_id and p.id == r.posture_provider_id,
+        where: not p.is_disabled,
+        select: r
       )
     end
   end
