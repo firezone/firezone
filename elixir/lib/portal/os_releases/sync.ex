@@ -1,16 +1,18 @@
 defmodule Portal.OSReleases.Sync do
   @moduledoc """
-  Daily Oban worker that refreshes `os_releases` from the vendors' feeds.
+  Daily Oban worker that refreshes `os_releases` from the vendors.
 
-  Apple and the Linux kernel publish machine-readable feeds of the releases they
-  still support. Microsoft does not, so Windows and Windows Server come from
-  endoflife.date, which tracks its release health pages. Android needs no feed:
-  it is judged by the device's security patch level. A feed that fails leaves
-  that operating system's rows as they were.
+  Apple and the Linux kernel publish anonymous feeds of the releases they still
+  support. Microsoft publishes none, so Windows comes from the Windows Update
+  for Business deployment service catalog on Microsoft Graph, read as a
+  single-tenant application in the Firezone tenant. Android needs no feed: it
+  is judged by the device's security patch level.
 
-  Apple serves its feed from a certificate chain that ends at Apple's own root,
-  which public bundles do not carry, so that request trusts the copy of Apple
-  Root CA shipped in `priv/certs`.
+  A source that fails is reported with everything the response said and leaves
+  that operating system's rows as they were. Apple serves its feed from a
+  certificate chain that ends at Apple's own root, which public bundles do not
+  carry, so that request trusts the copy of Apple Root CA shipped in
+  `priv/certs`.
   """
 
   use Oban.Worker,
@@ -20,11 +22,12 @@ defmodule Portal.OSReleases.Sync do
 
   require Logger
 
+  alias Portal.Microsoft.Graph.APIClient
   alias Portal.OSReleases
+  alias Portal.Policies.Postures
 
   @apple_url "https://gdmf.apple.com/v2/pmv"
   @kernel_url "https://www.kernel.org/releases.json"
-  @windows_urls ["https://endoflife.date/api/windows.json", "https://endoflife.date/api/windows-server.json"]
 
   @impl Oban.Worker
   def perform(_job) do
@@ -41,10 +44,14 @@ defmodule Portal.OSReleases.Sync do
           OSReleases.replace(os, Enum.map(rows, &Map.put(&1, :os, os)))
 
         {:ok, []} ->
-          Logger.warning("OS release feed returned no lines", os: os)
+          Logger.error("OS release source for #{os} returned no release lines", os: os)
 
-        {:error, reason} ->
-          Logger.warning("Can't fetch OS releases", os: os, reason: inspect(reason))
+        :skip ->
+          Logger.info("OS release source for #{os} is not configured", os: os)
+
+        {:error, details} ->
+          summary = Enum.map_join(details, " ", fn {key, value} -> "#{key}=#{value}" end)
+          Logger.error("Can't fetch OS releases for #{os}: #{summary}", [os: os] ++ details)
       end
     end
 
@@ -78,7 +85,7 @@ defmodule Portal.OSReleases.Sync do
       rows =
         for %{"moniker" => moniker, "version" => version, "iseol" => eol?} <- releases,
             moniker in ["stable", "longterm"],
-            line = OSReleases.line_for(:linux, Portal.Policies.Postures.parse_version(version)),
+            line = OSReleases.line_for(:linux, Postures.parse_version(version)),
             is_binary(line),
             do: row(line, version, not eol?, now)
 
@@ -86,70 +93,81 @@ defmodule Portal.OSReleases.Sync do
     end
   end
 
-  # Windows editions share a build, so the lines of every cycle on that build
-  # merge: supported while any edition is, at the newest patch either reports.
+  # Every product in the catalog is one Microsoft still services, and every
+  # revision is a build it shipped, so a line is current at its newest revision.
   defp fetch_windows(now) do
-    with {:ok, cycles} when is_list(cycles) <- get_all(@windows_urls) do
-      rows =
-        cycles
-        |> Enum.flat_map(&windows_line(&1, now))
-        |> Enum.group_by(&elem(&1, 0))
-        |> Enum.map(fn {line, entries} ->
-          latest = entries |> Enum.map(&elem(&1, 1)) |> Enum.max_by(&Portal.Policies.Postures.parse_version/1, &version_gte?/2)
-          row(line, latest, Enum.any?(entries, &elem(&1, 2)), now)
-        end)
+    tenant_id = Portal.Config.fetch_env!(:portal, __MODULE__) |> Keyword.get(:windows_updates_tenant_id)
+    client_id = APIClient.client_id(:windows_updates)
 
-      {:ok, rows}
+    if blank?(tenant_id) or blank?(client_id) do
+      :skip
+    else
+      with {:ok, token} <- windows_updates_token(tenant_id),
+           {:ok, products} <- windows_update_products(token) do
+        rows =
+          products
+          |> Enum.flat_map(fn product -> Enum.map(product["revisions"] || [], &revision_version/1) end)
+          |> newest_per_line(&OSReleases.line_for(:windows, &1))
+          |> Enum.map(fn {line, latest} -> row(line, latest, true, now) end)
+
+        {:ok, rows}
+      end
     end
   end
 
-  defp windows_line(cycle, now) do
-    segments = Portal.Policies.Postures.parse_version(cycle["latest"] || "")
+  defp windows_updates_token(tenant_id) do
+    case APIClient.get_access_token(:windows_updates, tenant_id) do
+      {:ok, %Req.Response{status: 200, body: %{"access_token" => token}}} ->
+        {:ok, token}
 
-    case OSReleases.line_for(:windows, segments) do
-      nil -> []
-      line -> [{line, cycle["latest"], supported?(cycle["eol"], now)}]
+      {:ok, %Req.Response{status: status, body: body}} ->
+        {:error, [step: :token, tenant_id: tenant_id, status: status, body: inspect(body)]}
+
+      {:error, reason} ->
+        {:error, [step: :token, tenant_id: tenant_id, reason: inspect(reason)]}
     end
   end
+
+  defp windows_update_products(token) do
+    token
+    |> APIClient.stream_windows_update_products()
+    |> Enum.reduce_while({:ok, []}, fn
+      {:error, %Req.Response{status: status, body: body}}, _acc ->
+        {:halt, {:error, [step: :products, status: status, body: inspect(body)]}}
+
+      {:error, reason}, _acc ->
+        {:halt, {:error, [step: :products, reason: inspect(reason)]}}
+
+      page, {:ok, acc} when is_list(page) ->
+        {:cont, {:ok, acc ++ page}}
+    end)
+  end
+
+  defp revision_version(%{"osBuild" => %{} = build}) do
+    ~w[majorVersion minorVersion buildNumber updateBuildRevision]
+    |> Enum.map(&build[&1])
+    |> Enum.reject(&is_nil/1)
+    |> Enum.join(".")
+  end
+
+  defp revision_version(%{"version" => version}) when is_binary(version), do: version
+  defp revision_version(_revision), do: ""
 
   defp newest_per_line(versions, line_fun) do
     versions
     |> Enum.filter(&is_binary/1)
-    |> Enum.group_by(fn version -> line_fun.(Portal.Policies.Postures.parse_version(version)) end)
+    |> Enum.group_by(fn version -> line_fun.(Postures.parse_version(version)) end)
     |> Enum.reject(fn {line, _versions} -> is_nil(line) end)
-    |> Enum.map(fn {line, versions} ->
-      {line, Enum.max_by(versions, &Portal.Policies.Postures.parse_version/1, &version_gte?/2)}
-    end)
+    |> Enum.map(fn {line, versions} -> {line, Enum.max_by(versions, &Postures.parse_version/1, &version_gte?/2)} end)
   end
 
-  defp version_gte?(left, right), do: Portal.Policies.Postures.compare_versions(left, right) != :lt
-
-  # endoflife.date writes `false` for a cycle with no end date yet.
-  defp supported?(false, _now), do: true
-  defp supported?(true, _now), do: false
-
-  defp supported?(date, now) when is_binary(date) do
-    case Date.from_iso8601(date) do
-      {:ok, eol} -> Date.compare(eol, DateTime.to_date(now)) == :gt
-      _error -> false
-    end
-  end
-
-  defp supported?(_other, _now), do: false
+  defp version_gte?(left, right), do: Postures.compare_versions(left, right) != :lt
 
   defp row(line, latest, supported?, now) do
     %{line: line, latest_version: latest, supported: supported?, fetched_at: now, inserted_at: now, updated_at: now}
   end
 
-  defp get_all(urls) do
-    Enum.reduce_while(urls, {:ok, []}, fn url, {:ok, acc} ->
-      case get(url) do
-        {:ok, list} when is_list(list) -> {:cont, {:ok, acc ++ list}}
-        {:ok, _other} -> {:halt, {:error, {:unexpected_body, url}}}
-        {:error, reason} -> {:halt, {:error, reason}}
-      end
-    end)
-  end
+  defp blank?(value), do: value in [nil, ""]
 
   defp get(url, extra_opts \\ []) do
     req_opts =
@@ -159,8 +177,8 @@ defmodule Portal.OSReleases.Sync do
 
     case Req.get(url, req_opts) do
       {:ok, %Req.Response{status: 200, body: body}} when is_map(body) or is_list(body) -> {:ok, body}
-      {:ok, response} -> {:error, {response.status, response.body}}
-      {:error, reason} -> {:error, reason}
+      {:ok, %Req.Response{status: status, body: body}} -> {:error, [url: url, status: status, body: inspect(body)]}
+      {:error, reason} -> {:error, [url: url, reason: inspect(reason)]}
     end
   end
 end

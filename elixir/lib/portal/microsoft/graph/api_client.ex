@@ -8,7 +8,7 @@ defmodule Portal.Microsoft.Graph.APIClient do
   require Logger
 
   @entra_user_select_fields "id,displayName,mail,userPrincipalName,givenName,surname,accountEnabled"
-  @applications [:entra, :intune]
+  @applications [:entra, :intune, :windows_updates]
   @page_size "999"
 
   @doc """
@@ -77,6 +77,14 @@ defmodule Portal.Microsoft.Graph.APIClient do
      }}
   rescue
     exception -> {:error, exception}
+  end
+
+  @doc """
+  Streams the Windows Update for Business catalog: every Windows product Microsoft
+  services, each with the revisions (builds) it has shipped.
+  """
+  def stream_windows_update_products(access_token) do
+    stream_pages("/beta/admin/windows/updates/products", "$expand=revisions", access_token)
   end
 
   @doc """

@@ -3,8 +3,10 @@ defmodule Portal.OSReleases do
   Answers whether a device runs a current, supported operating system release.
 
   Android is judged differently: its monthly security bulletin is what keeps a
-  device safe, not the platform version, so an Android device is current while
-  its security patch level is at most two bulletins old.
+  device safe, not the platform version, so an Android device is current only
+  on the patch level of the latest bulletin. Google publishes the bulletin on
+  the first Monday of each month, so until then the previous month's is the
+  latest.
 
   The releases live in the `os_releases` table, refreshed daily by
   `Portal.OSReleases.Sync`, and are mirrored into an ETS table on every node so
@@ -20,7 +22,6 @@ defmodule Portal.OSReleases do
 
   @table __MODULE__.ETS
   @reload_every :timer.minutes(10)
-  @android_patch_window_days 60
 
   def start_link(opts), do: GenServer.start_link(__MODULE__, opts, name: __MODULE__)
 
@@ -79,7 +80,7 @@ defmodule Portal.OSReleases do
   @spec row_up_to_date?(struct(), :ets.table(), Date.t()) :: boolean() | nil
   def row_up_to_date?(row, table \\ @table, today \\ Date.utc_today()) when is_struct(row) do
     case os_and_version(row) do
-      {:android, %Date{} = patch_level} -> Date.diff(today, patch_level) <= @android_patch_window_days
+      {:android, %Date{} = patch_level} -> Date.compare(patch_level, latest_android_bulletin(today)) != :lt
       {os, version} when is_binary(version) -> up_to_date?(os, version, table)
       _unknown -> nil
     end
@@ -95,6 +96,19 @@ defmodule Portal.OSReleases do
     else
       [] -> false
       nil -> nil
+    end
+  end
+
+  @doc "The first day of the month whose Android security bulletin is the latest published on `today`."
+  @spec latest_android_bulletin(Date.t()) :: Date.t()
+  def latest_android_bulletin(today) do
+    this_month = Date.beginning_of_month(today)
+    first_monday = Date.add(this_month, rem(8 - Date.day_of_week(this_month), 7))
+
+    if Date.compare(today, first_monday) == :lt do
+      this_month |> Date.add(-1) |> Date.beginning_of_month()
+    else
+      this_month
     end
   end
 

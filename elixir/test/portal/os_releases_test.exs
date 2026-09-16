@@ -48,11 +48,14 @@ defmodule Portal.OSReleasesTest do
     refute OSReleases.row_up_to_date?(%Portal.Intune.Device{operating_system: "Windows", os_version: "10.0.26100.1000"}, table)
     assert OSReleases.row_up_to_date?(%Portal.Intune.Device{operating_system: "iOS", os_version: "18.6"}, table)
     android = %Portal.Intune.Device{operating_system: "Android", os_version: "15"}
-    today = ~D[2026-09-15]
-    assert OSReleases.row_up_to_date?(%{android | android_security_patch_level: ~D[2026-09-05]}, table, today)
-    assert OSReleases.row_up_to_date?(%{android | android_security_patch_level: ~D[2026-07-20]}, table, today)
-    refute OSReleases.row_up_to_date?(%{android | android_security_patch_level: ~D[2026-06-05]}, table, today)
-    assert OSReleases.row_up_to_date?(android, table, today) == nil
+    after_bulletin = ~D[2026-09-15]
+    assert OSReleases.row_up_to_date?(%{android | android_security_patch_level: ~D[2026-09-05]}, table, after_bulletin)
+    assert OSReleases.row_up_to_date?(%{android | android_security_patch_level: ~D[2026-09-01]}, table, after_bulletin)
+    refute OSReleases.row_up_to_date?(%{android | android_security_patch_level: ~D[2026-08-05]}, table, after_bulletin)
+    before_bulletin = ~D[2026-09-03]
+    assert OSReleases.row_up_to_date?(%{android | android_security_patch_level: ~D[2026-08-05]}, table, before_bulletin)
+    refute OSReleases.row_up_to_date?(%{android | android_security_patch_level: ~D[2026-07-05]}, table, before_bulletin)
+    assert OSReleases.row_up_to_date?(android, table, after_bulletin) == nil
     assert OSReleases.row_up_to_date?(%Portal.Iru.Device{os_name: "iPadOS", os_version: "18.6"}, table)
     assert OSReleases.row_up_to_date?(%Portal.Defender.Device{os_platform: "macOS", version: "15.6.1"}, table)
     assert OSReleases.row_up_to_date?(%Portal.Santa.Device{os_version: "15.6.1"}, table)
@@ -63,6 +66,13 @@ defmodule Portal.OSReleasesTest do
     assert OSReleases.row_up_to_date?(%Portal.SentinelOne.Device{os_type: "windows", os_revision: "24H2"}, table) == nil
     assert OSReleases.row_up_to_date?(%Portal.SentinelOne.Device{os_type: "linux", os_revision: "24.04.2 LTS"}, table) == nil
     assert OSReleases.row_up_to_date?(%Portal.Intune.Device{operating_system: nil, os_version: nil}, table) == nil
+  end
+
+  test "latest_android_bulletin/1 is this month once its first Monday has passed" do
+    assert OSReleases.latest_android_bulletin(~D[2026-09-07]) == ~D[2026-09-01]
+    assert OSReleases.latest_android_bulletin(~D[2026-09-06]) == ~D[2026-08-01]
+    assert OSReleases.latest_android_bulletin(~D[2026-06-01]) == ~D[2026-06-01]
+    assert OSReleases.latest_android_bulletin(~D[2026-01-03]) == ~D[2025-12-01]
   end
 
   test "refresh/1 mirrors the table into ETS", %{table: table} do

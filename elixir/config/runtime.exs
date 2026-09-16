@@ -162,8 +162,14 @@ if config_env() == :prod do
     endpoint: "https://graph.microsoft.com",
     applications: [
       entra: [client_id: env_var_to_config!(:entra_sync_client_id), client_secret: nil],
-      intune: [client_id: env_var_to_config!(:intune_sync_client_id), client_secret: nil]
+      intune: [client_id: env_var_to_config!(:intune_sync_client_id), client_secret: nil],
+      windows_updates: [client_id: env_var_to_config!(:windows_updates_client_id), client_secret: nil]
     ]
+
+  # The Windows Update release catalog is read as a single-tenant application in
+  # the Firezone tenant, through the same federated credential.
+  config :portal, Portal.OSReleases.Sync,
+    windows_updates_tenant_id: env_var_to_config!(:windows_updates_tenant_id)
 
   # Defender for Endpoint uses its own app registration, granted Machine.Read.All
   # on the WindowsDefenderATP API rather than on Microsoft Graph. It follows the

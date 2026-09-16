@@ -168,7 +168,8 @@ config :portal, Portal.Microsoft.Graph.APIClient,
   token_base_url: "https://login.microsoftonline.com",
   applications: [
     entra: [client_id: "test_client_id", client_secret: "test_client_secret"],
-    intune: [client_id: "test_intune_client_id", client_secret: "test_intune_client_secret"]
+    intune: [client_id: "test_intune_client_id", client_secret: "test_intune_client_secret"],
+    windows_updates: [client_id: "test_windows_updates_client_id", client_secret: "test_windows_updates_secret"]
   ],
   req_opts: [
     plug: {Req.Test, Portal.Microsoft.Graph.APIClient},
@@ -223,6 +224,7 @@ config :portal, :revocation_endpoint_queue, enabled: false
 config :portal, Portal.OSReleases, reload_every: false
 
 config :portal, Portal.OSReleases.Sync,
+  windows_updates_tenant_id: "test-firezone-tenant",
   req_opts: [
     plug: {Req.Test, Portal.OSReleases.Sync},
     retry: false
