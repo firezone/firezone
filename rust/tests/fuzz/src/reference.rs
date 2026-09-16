@@ -477,35 +477,54 @@ impl ReferenceState {
                     let gateway_edges = state
                         .gateways
                         .iter()
-                        .map(|(id, g)| (*id, (g.edge_config(), g.ip6.is_some())))
+                        .map(|(id, g)| (*id, (g.edge_config(), g.ip4.is_some(), g.ip6.is_some())))
+                        .collect::<BTreeMap<_, _>>();
+                    let client_edges = state
+                        .clients
+                        .iter()
+                        .map(|(id, c)| (*id, (c.edge_config(), c.ip4.is_some(), c.ip6.is_some())))
                         .collect::<BTreeMap<_, _>>();
                     let portal = &state.portal;
 
-                    for client in state.clients.values_mut() {
+                    for (client_id, client) in state.clients.iter_mut() {
                         let client_edge = client.edge_config();
+                        let client_has_ip4 = client.ip4.is_some();
                         let client_has_ip6 = client.ip6.is_some();
                         let unreachable_gateways = gateway_edges
                             .iter()
-                            .filter(|(_, (gateway_edge, gateway_has_ip6))| {
+                            .filter(|(_, (gateway_edge, gateway_has_ip4, gateway_has_ip6))| {
                                 !direct_path_possible(
                                     client_edge,
                                     *gateway_edge,
+                                    client_has_ip4 && *gateway_has_ip4,
                                     client_has_ip6 && *gateway_has_ip6,
                                 )
                             })
                             .map(|(id, _)| *id)
                             .collect::<BTreeSet<_>>();
 
-                        if unreachable_gateways.is_empty() {
-                            continue;
-                        }
+                        let unreachable_clients = client_edges
+                            .iter()
+                            .filter(|(id, (peer_edge, peer_has_ip4, peer_has_ip6))| {
+                                *id != client_id
+                                    && !direct_path_possible(
+                                        client_edge,
+                                        *peer_edge,
+                                        client_has_ip4 && *peer_has_ip4,
+                                        client_has_ip6 && *peer_has_ip6,
+                                    )
+                            })
+                            .map(|(id, _)| *id);
 
                         client.exec_mut(|c| {
                             c.reset_connections_to_gateways(
                                 &unreachable_gateways,
                                 |rid| portal.gateway_for_resource(rid).copied(),
                                 now,
-                            )
+                            );
+                            for peer in unreachable_clients {
+                                c.forget_peer_grants(peer);
+                            }
                         });
                     }
                 }

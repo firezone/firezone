@@ -112,9 +112,17 @@ pub(crate) enum EdgeConfig {
 /// per destination (endpoint-dependent mapping) and the other side only
 /// accepts packets from sockets it has contacted: the advertised reflexive
 /// candidate then never matches the source the peer actually sees.
-pub(crate) fn direct_path_possible(a: EdgeConfig, b: EdgeConfig, shared_ip6: bool) -> bool {
+pub(crate) fn direct_path_possible(
+    a: EdgeConfig,
+    b: EdgeConfig,
+    shared_ip4: bool,
+    shared_ip6: bool,
+) -> bool {
     if shared_ip6 {
         return true;
+    }
+    if !shared_ip4 {
+        return false;
     }
 
     fn symmetric(e: EdgeConfig) -> bool {
