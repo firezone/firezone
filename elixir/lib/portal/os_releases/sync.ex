@@ -5,8 +5,9 @@ defmodule Portal.OSReleases.Sync do
   Apple and the Linux kernel publish anonymous feeds of the releases they still
   support. Microsoft publishes none, so Windows comes from the Windows Update
   for Business deployment service catalog on Microsoft Graph, read as a
-  single-tenant application in the Firezone tenant. Android needs no feed: it
-  is judged by the device's security patch level.
+  single-tenant application in the Firezone tenant through the same federated
+  credential the Intune sync uses. Android needs no feed: it is judged by the
+  device's security patch level.
 
   A source that fails is reported with everything the response said and leaves
   that operating system's rows as they were. Apple serves its feed from a
@@ -95,18 +96,15 @@ defmodule Portal.OSReleases.Sync do
   # Every product in the catalog is one Microsoft still services, and every
   # revision is a build it shipped, so a line is current at its newest revision.
   defp fetch_windows(now) do
-    tenant_id = Portal.Config.fetch_env!(:portal, __MODULE__) |> Keyword.get(:windows_updates_tenant_id)
-    client_id = APIClient.client_id(:windows_updates)
-
-    if blank?(tenant_id) or blank?(client_id) do
+    if blank?(APIClient.client_id(:windows_updates)) do
       :skip
     else
-      fetch_windows_catalog(tenant_id, now)
+      fetch_windows_catalog(now)
     end
   end
 
-  defp fetch_windows_catalog(tenant_id, now) do
-    with {:ok, token} <- windows_updates_token(tenant_id),
+  defp fetch_windows_catalog(now) do
+    with {:ok, token} <- windows_updates_token(),
          {:ok, products} <- windows_update_products(token) do
       rows =
         products
@@ -120,16 +118,16 @@ defmodule Portal.OSReleases.Sync do
 
   defp revision_versions(product), do: Enum.map(product["revisions"] || [], &revision_version/1)
 
-  defp windows_updates_token(tenant_id) do
-    case APIClient.get_access_token(:windows_updates, tenant_id) do
+  defp windows_updates_token do
+    case APIClient.get_access_token(:windows_updates) do
       {:ok, %Req.Response{status: 200, body: %{"access_token" => token}}} ->
         {:ok, token}
 
       {:ok, %Req.Response{status: status, body: body}} ->
-        {:error, [step: :token, tenant_id: tenant_id, status: status, body: inspect(body)]}
+        {:error, [step: :token, status: status, body: inspect(body)]}
 
       {:error, reason} ->
-        {:error, [step: :token, tenant_id: tenant_id, reason: inspect(reason)]}
+        {:error, [step: :token, reason: inspect(reason)]}
     end
   end
 
