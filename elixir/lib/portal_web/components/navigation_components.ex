@@ -809,7 +809,7 @@ defmodule PortalWeb.NavigationComponents do
     ~H"""
     <.link
       href={"https://www.firezone.dev#{@path}?utm_source=product##{@fragment}"}
-      class={[link_style(), @class]}
+      class={@class || link_style()}
       target="_blank"
       rel="noopener noreferrer"
       {@rest}
