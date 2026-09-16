@@ -4,10 +4,10 @@ defmodule PortalAPI.RedirectToRestApiUrlTest do
   import Plug.Test
   import Plug.Conn
 
-  alias PortalAPI.Endpoint
+  alias PortalAPI.Router
 
   defp call(conn) do
-    Endpoint.redirect_to_rest_api_url(conn, [])
+    Router.redirect_to_rest_api_url(conn, [])
   end
 
   describe "redirect_to_rest_api_url/2" do
@@ -42,6 +42,15 @@ defmodule PortalAPI.RedirectToRestApiUrlTest do
       assert result == conn
     end
 
+    test "passes other requests through on the configured flow API host" do
+      Portal.Config.put_env_override(:rest_api_url, "https://rest-api.firezone.dev/")
+      Portal.Config.put_env_override(:flow_logs_api_url, "https://flow-api.firez.one/")
+
+      conn = conn(:get, "https://flow-api.firez.one/clients")
+
+      assert call(conn) == conn
+    end
+
     test "permanent-redirects requests on any other host preserving path and query" do
       Portal.Config.put_env_override(:rest_api_url, "https://rest-api.firezone.dev/")
 
@@ -59,13 +68,13 @@ defmodule PortalAPI.RedirectToRestApiUrlTest do
     test "preserves the request method for non-GET requests" do
       Portal.Config.put_env_override(:rest_api_url, "https://rest-api.firezone.dev/")
 
-      conn = conn(:post, "https://api.firezone.dev/clients", "")
+      conn = conn(:post, "https://api.firezone.dev/resources", "")
 
       result = call(conn)
 
       assert result.halted
       assert result.status == 308
-      assert get_resp_header(result, "location") == ["https://rest-api.firezone.dev/clients"]
+      assert get_resp_header(result, "location") == ["https://rest-api.firezone.dev/resources"]
     end
 
     test "redirects before authentication, ignoring request headers" do
