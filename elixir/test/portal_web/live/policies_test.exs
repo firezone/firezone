@@ -581,7 +581,7 @@ defmodule PortalWeb.PoliciesTest do
         |> render_submit()
 
       assert html =~ "Save these changes?"
-      assert html =~ "revokes all access granted by this policy"
+      assert html =~ "resets all access previously granted by this policy"
       assert Repo.get_by!(Policy, id: policy.id, account_id: account.id).group_id == group.id
 
       html = render_click(lv, "cancel_policy_breaking_change")
