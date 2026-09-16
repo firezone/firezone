@@ -129,16 +129,17 @@ defmodule PortalWeb.Policies.Postures do
       "sentinelone" => {SentinelOne.PostureProvider, :sentinelone}
     }
 
+    # A `limit` on any branch would apply to the whole union, so the branches
+    # return every enabled provider and `union` folds the repeats.
     def list_connected_provider_types(account_id) do
       @providers
       |> Enum.map(fn {name, {schema, _type}} ->
         from(p in schema,
           where: p.account_id == ^account_id and not p.is_disabled,
-          select: type(^name, :string),
-          limit: 1
+          select: type(^name, :string)
         )
       end)
-      |> Enum.reduce(fn query, acc -> union_all(acc, ^query) end)
+      |> Enum.reduce(fn query, acc -> union(acc, ^query) end)
       |> Safe.unscoped()
       |> Safe.all()
       |> Enum.map(fn name -> @providers |> Map.fetch!(name) |> elem(1) end)

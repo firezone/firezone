@@ -1543,6 +1543,27 @@ defmodule PortalWeb.PoliciesTest do
       assert html =~ "firezone.last_seen_version"
     end
 
+    test "every connected provider type unlocks its checks, disabled ones do not", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      Portal.IntuneFixtures.intune_posture_provider_fixture(account: account)
+      Portal.IruFixtures.iru_posture_provider_fixture(account: account)
+      Portal.SentinelOneFixtures.sentinelone_posture_provider_fixture(account: account)
+      Portal.DefenderFixtures.defender_posture_provider_fixture(account: account, is_disabled: true)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/policies/new")
+
+      refute toggle(lv, "compliant") =~ "disabled"
+      refute toggle(lv, "disk_encryption") =~ "disabled"
+      refute toggle(lv, "agent_up_to_date") =~ "disabled"
+      assert toggle(lv, "app_allowlisting") =~ "disabled"
+    end
+
     test "connected providers and trust anchors unlock checks and silence the warning", %{
       conn: conn,
       account: account,
