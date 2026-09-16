@@ -114,7 +114,7 @@ defmodule PortalWeb.Policies.PostureComponents do
               </div>
             </td>
             <td class="px-3 py-2.5 align-middle">
-              <div class="font-medium text-heading">{check.label}</div>
+              <div class="text-xs font-semibold text-body">{check.label}</div>
               <div class="text-xs text-subtle mt-0.5">{check.description}</div>
             </td>
             <td class="px-3 py-2.5 align-middle">
