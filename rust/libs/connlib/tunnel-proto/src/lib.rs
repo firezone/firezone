@@ -19,6 +19,7 @@ use std::{
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
 };
 
+mod authorization_rejections;
 mod client;
 mod conn_track;
 pub mod dns;
@@ -149,10 +150,6 @@ pub(crate) struct NotClientIp(IpAddr);
 #[derive(Debug, thiserror::Error)]
 #[error("Traffic to/from this resource IP is not allowed: {0}")]
 pub(crate) struct NotAllowedResource(IpAddr);
-
-#[derive(Debug, thiserror::Error)]
-#[error("No active authorization covers this resource IP: {0}")]
-pub(crate) struct NoAuthorization(IpAddr);
 
 #[derive(Debug, thiserror::Error)]
 #[error("Failed to decapsulate '{0}' packet")]

@@ -41,7 +41,6 @@ pub(crate) struct ClientOnClient {
     /// Finds the resource an inbound packet belongs to; rebuilt whenever
     /// `resources` changes.
     inbound_resources: InboundResources,
-    no_authorization_events: p2p_control::no_authorization::Sender,
 }
 
 /// An inbound resource: filters granted by a resource for traffic from the remote peer.
@@ -59,7 +58,7 @@ pub(crate) enum InboundResult {
     /// unreachable (prohibited) reply back to the peer.
     Filtered {
         reply: IpPacket,
-        no_authorization: Option<IpPacket>,
+        no_authorization: Option<p2p_control::no_authorization::NoAuthorization>,
     },
 }
 
@@ -80,7 +79,6 @@ impl ClientOnClient {
             inbound_filter: FilterEngine::DenyAll,
             conn_track: ConnTrack::default(),
             inbound_resources: InboundResources::default(),
-            no_authorization_events: Default::default(),
         }
     }
 
@@ -192,14 +190,6 @@ impl ClientOnClient {
     fn recompute_inbound_filter(&mut self) {
         self.inbound_resources = InboundResources::new(&self.resources);
 
-        for (id, resource) in self.resources.iter() {
-            self.no_authorization_events.register_scope(
-                *id,
-                [self.local_tun.v4.into(), self.local_tun.v6.into()],
-                &resource.filters,
-            );
-        }
-
         if self.resources.is_empty() {
             // No resources -> deny all (except return traffic).
             self.inbound_filter = FilterEngine::DenyAll;
@@ -300,14 +290,12 @@ impl ClientOnClient {
             tracing::debug!(filtered_packet = ?packet, "{e:#}");
             let reply = ip_packet::make::icmp_dest_unreachable_prohibited(&packet)
                 .context("Failed to build ICMP prohibited reply")?;
-            let missing_authorization = self.resources.is_empty()
-                || self
-                    .no_authorization_events
-                    .scope_for_packet(&packet)
-                    .is_some_and(|id| self.resources.get(&id).is_none());
-            let no_authorization = missing_authorization
-                .then(|| self.no_authorization_events.for_packet(&packet, now))
-                .flatten();
+            let no_authorization = packet.destination_protocol().ok().map(|protocol| {
+                p2p_control::no_authorization::NoAuthorization {
+                    dst: packet.destination(),
+                    protocol: protocol.into(),
+                }
+            });
 
             return Ok(InboundResult::Filtered {
                 reply,

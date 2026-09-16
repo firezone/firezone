@@ -11,6 +11,8 @@ mod tracked_state;
 
 pub(crate) use crate::client::client_on_client::ClientOnClient;
 pub(crate) use crate::client::gateway_on_client::GatewayOnClient;
+
+use crate::authorization_rejections::AuthorizationRejections;
 use resource::{DevicePoolResource, InternetResource, Resource};
 
 use crate::client::client_on_client::InboundResult;
@@ -128,6 +130,7 @@ pub struct ClientState {
 
     /// Tracks the flows tunneled through this Client.
     flow_tracker: flow_tracker::Tracker<ClientOrGatewayId>,
+    authorization_rejections: AuthorizationRejections,
     /// Tracks the authorizations we have requested but not yet been granted.
     pending_authorizations: PendingAuthorizations,
 
@@ -217,6 +220,7 @@ impl ClientState {
             buffered_packets: Default::default(),
             node: Node::new(seed, now, unix_ts),
             flow_tracker: flow_tracker::Tracker::new(now, unix_ts),
+            authorization_rejections: Default::default(),
             portal: Default::default(),
             sites_status: Default::default(),
             gateways_by_site: Default::default(),
@@ -850,7 +854,10 @@ impl ClientState {
                             &mut self.buffered_transmits,
                             &mut self.pending_peer_packets,
                         );
-                        if let Some(event) = no_authorization {
+                        if let Some(event) = no_authorization.and_then(|rejection| {
+                            self.authorization_rejections
+                                .on_rejected(cid, rejection, now)
+                        }) {
                             encapsulate_and_queue(
                                 event,
                                 cid.into(),
@@ -1665,6 +1672,11 @@ impl ClientState {
     pub fn poll_timeout(&mut self) -> Option<(Instant, &'static str)> {
         iter::empty()
             .chain(
+                self.authorization_rejections
+                    .poll_timeout()
+                    .map(|instant| (instant, "Authorization rejection expiry")),
+            )
+            .chain(
                 self.udp_dns_client
                     .poll_timeout()
                     .map(|instant| (instant, "UDP DNS client")),
@@ -1713,6 +1725,7 @@ impl ClientState {
     pub fn handle_timeout(&mut self, now: Instant) {
         self.node.handle_timeout(now);
         self.flow_tracker.handle_timeout(now);
+        self.authorization_rejections.handle_timeout(now);
         self.dns_cache.handle_timeout(now);
         self.device_stub_resolver.handle_timeout(now);
 

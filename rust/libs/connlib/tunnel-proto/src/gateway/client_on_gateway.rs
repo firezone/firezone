@@ -17,9 +17,7 @@ use crate::messages::gateway::ResourceDescription;
 use crate::messages::{Filter, IngestToken};
 use crate::routing_table::{self, RoutingTable};
 use crate::unroutable_packet::UnroutablePacket;
-use crate::{
-    GatewayEvent, IpConfig, NoAuthorization, NotAllowedResource, NotClientIp, p2p_control,
-};
+use crate::{GatewayEvent, IpConfig, NotAllowedResource, NotClientIp, p2p_control};
 
 /// The state of one client on a gateway.
 pub struct ClientOnGateway {
@@ -41,8 +39,6 @@ pub struct ClientOnGateway {
     permanent_translations: BTreeMap<IpAddr, TranslationState>,
     nat_table: NatTable,
     buffered_events: VecDeque<GatewayEvent>,
-
-    no_authorization_events: p2p_control::no_authorization::Sender,
 }
 
 #[derive(Debug, PartialEq)]
@@ -50,8 +46,8 @@ pub enum TranslateOutboundResult {
     Send(IpPacket),
     IcmpError {
         reply: IpPacket,
-        /// Tells the client to request a new authorization, if we rejected the packet because we don't have one.
-        no_authorization: Option<IpPacket>,
+        /// Identifies traffic rejected by the access policy.
+        no_authorization: Option<p2p_control::no_authorization::NoAuthorization>,
     },
 }
 
@@ -72,7 +68,6 @@ impl ClientOnGateway {
             nat_table: Default::default(),
             buffered_events: Default::default(),
             internet_resource_enabled: None,
-            no_authorization_events: Default::default(),
         }
     }
 
@@ -288,20 +283,6 @@ impl ClientOnGateway {
             .resources
             .iter()
             .find_map(|(id, r)| r.is_internet_resource().then_some(*id));
-
-        for (id, resource) in self.resources.iter() {
-            let networks = if resource.is_dns() {
-                self.permanent_translations
-                    .iter()
-                    .filter(|(_, translation)| translation.resources.contains(id))
-                    .map(|(ip, _)| IpNetwork::from(*ip))
-                    .collect()
-            } else {
-                resource.ips()
-            };
-            self.no_authorization_events
-                .register_scope(*id, networks, resource.filters());
-        }
     }
 
     fn recalculate_cidr_filters(&mut self) {
@@ -362,9 +343,13 @@ impl ClientOnGateway {
             };
 
             let no_authorization = error
-                .any_is::<NoAuthorization>()
-                .then(|| self.no_authorization_events.for_packet(&packet, now))
-                .flatten();
+                .any_is::<NotAllowedResource>()
+                .then(|| packet.destination_protocol().ok())
+                .flatten()
+                .map(|protocol| p2p_control::no_authorization::NoAuthorization {
+                    dst: packet.destination(),
+                    protocol: protocol.into(),
+                });
 
             return Ok(TranslateOutboundResult::IcmpError {
                 reply,
@@ -570,7 +555,7 @@ impl ClientOnGateway {
                 protocol,
                 crate::routing_table::FilterMode::Apply,
             )
-            .context(NoAuthorization(resource_ip))?
+            .context(NotAllowedResource(resource_ip))?
             .first()
             .context(NotAllowedResource(resource_ip))?;
 

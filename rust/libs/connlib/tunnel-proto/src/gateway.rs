@@ -3,6 +3,7 @@ mod nat_table;
 
 pub(crate) use crate::gateway::client_on_gateway::ClientOnGateway;
 
+use crate::authorization_rejections::AuthorizationRejections;
 use crate::gateway::client_on_gateway::TranslateOutboundResult;
 use crate::messages::gateway::{Client, ResourceDescription};
 use crate::messages::{IceCredentials, IngestToken, ResolveRequest};
@@ -37,6 +38,7 @@ pub struct GatewayState {
 
     /// Tracks the flows tunneled through this Gateway.
     flow_tracker: flow_tracker::Tracker<(ClientId, ResourceId)>,
+    authorization_rejections: AuthorizationRejections,
 
     tun_ip_config: Option<IpConfig>,
 
@@ -81,6 +83,7 @@ impl GatewayState {
             buffered_events: VecDeque::default(),
             buffered_transmits: snownet::TransmitBuffer::default(),
             flow_tracker: flow_tracker::Tracker::new(now, unix_ts),
+            authorization_rejections: Default::default(),
             tun_ip_config: None,
             unix_ts_clock: UnixTsClock::new(now, unix_ts),
             next_periodic_tick: None,
@@ -236,7 +239,10 @@ impl GatewayState {
                     now,
                 )?;
 
-                if let Some(event) = no_authorization {
+                if let Some(event) = no_authorization.and_then(|rejection| {
+                    self.authorization_rejections
+                        .on_rejected(cid, rejection, now)
+                }) {
                     encrypt_packet(
                         event,
                         cid,
@@ -452,6 +458,11 @@ impl GatewayState {
 
     pub fn poll_timeout(&mut self) -> Option<(Instant, &'static str)> {
         iter::empty()
+            .chain(
+                self.authorization_rejections
+                    .poll_timeout()
+                    .map(|instant| (instant, "Authorization rejection expiry")),
+            )
             .chain(self.node.poll_timeout())
             .chain(
                 self.next_periodic_tick
@@ -465,6 +476,7 @@ impl GatewayState {
         self.drain_node_events();
 
         self.flow_tracker.handle_timeout(now);
+        self.authorization_rejections.handle_timeout(now);
 
         self.peers.iter_mut().for_each(|p| {
             p.handle_timeout(now);
