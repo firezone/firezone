@@ -63,6 +63,7 @@
 //! Raymond Chen also explains it on his blog: <https://devblogs.microsoft.com/oldnewthing/20191125-00/?p=103135>
 
 use crate::DnsControlMethod;
+use crate::windows::TUNNEL_UUID;
 use anyhow::{Context as _, Result, anyhow};
 use futures::{Stream, StreamExt as _, stream};
 use std::collections::HashMap;
@@ -78,8 +79,9 @@ use windows::{
     Win32::{
         Foundation::HANDLE,
         NetworkManagement::IpHelper::{
-            CancelMibChangeNotify2, MIB_NOTIFICATION_TYPE, MIB_UNICASTIPADDRESS_ROW,
-            MibAddInstance, MibDeleteInstance, NotifyUnicastIpAddressChange,
+            CancelMibChangeNotify2, ConvertInterfaceLuidToGuid, MIB_NOTIFICATION_TYPE,
+            MIB_UNICASTIPADDRESS_ROW, MibAddInstance, MibDeleteInstance,
+            NotifyUnicastIpAddressChange,
         },
         Networking::NetworkListManager::{
             INetworkEvents, INetworkEvents_Impl, INetworkListManager, NLM_CONNECTIVITY,
@@ -179,7 +181,7 @@ impl Drop for AddressChangeListener {
 /// expects), keeping the only `unsafe` to the single pointer dereference below.
 extern "system" fn address_change_callback(
     ctx: *const c_void,
-    _row: *const MIB_UNICASTIPADDRESS_ROW,
+    row: *const MIB_UNICASTIPADDRESS_ROW,
     notification_type: MIB_NOTIFICATION_TYPE,
 ) {
     // Only react to addresses being added or removed (i.e. an interface coming up or going
@@ -187,6 +189,29 @@ extern "system" fn address_change_callback(
     // change which source IP we should use.
     if notification_type != MibAddInstance && notification_type != MibDeleteInstance {
         return;
+    }
+
+    // Connlib configures the Wintun addresses after portal init. Those are not changes to
+    // our egress network; treating them as such would make our own tunnel updates reset it.
+    // Compare the stable interface GUID rather than its alias, which users can rename.
+    // SAFETY: Windows supplies `row` for this callback; a null pointer is handled below.
+    if let Some(row) = unsafe { row.as_ref() } {
+        let mut guid = GUID::default();
+        // SAFETY: Both pointers refer to live values for the duration of this callback.
+        if unsafe { ConvertInterfaceLuidToGuid(&row.InterfaceLuid, &mut guid) }
+            .ok()
+            .is_ok()
+            && guid == GUID::from_u128(TUNNEL_UUID.as_u128())
+        {
+            tracing::debug!("Ignoring address change on Firezone tunnel interface");
+            return;
+        }
+
+        tracing::debug!(
+            interface_index = row.InterfaceIndex,
+            ?notification_type,
+            "Local unicast address changed"
+        );
     }
 
     // SAFETY: `ctx` is the pointer we passed to `NotifyUnicastIpAddressChange`: a valid
