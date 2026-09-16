@@ -6898,16 +6898,22 @@ defmodule PortalAPI.Client.ChannelTest do
       assert_push "init", _
 
       domain = Portal.Device.fqdn(target_client)
-      target_ipv4 = %Postgrex.INET{address: target_client.ipv4.address, netmask: 32}
-      target_ipv6 = %Postgrex.INET{address: target_client.ipv6.address, netmask: 128}
+      target_ipv4 = to_string(:inet.ntoa(target_client.ipv4.address))
+      target_ipv6 = to_string(:inet.ntoa(target_client.ipv6.address))
 
       push(socket, "resolve_device_domain", %{"domain" => domain})
 
-      assert_push "device_domain_resolved", %{
-        domain: ^domain,
-        ipv4: ^target_ipv4,
-        ipv6: ^target_ipv6
-      }
+      assert_push "device_domain_resolved", payload = %{
+                    domain: ^domain,
+                    ipv4: ^target_ipv4,
+                    ipv6: ^target_ipv6
+                  }
+
+      assert JSON.decode!(JSON.encode!(payload)) == %{
+               "domain" => domain,
+               "ipv4" => target_ipv4,
+               "ipv6" => target_ipv6
+             }
 
       refute_push "client_device_access_authorized", _
       refute_push "client_device_access_denied", _
@@ -6948,7 +6954,7 @@ defmodule PortalAPI.Client.ChannelTest do
       assert_push "init", _
 
       domain = Portal.Device.fqdn(stranger)
-      stranger_ipv4 = %Postgrex.INET{address: stranger.ipv4.address, netmask: 32}
+      stranger_ipv4 = to_string(:inet.ntoa(stranger.ipv4.address))
 
       push(socket, "resolve_device_domain", %{"domain" => domain})
 
