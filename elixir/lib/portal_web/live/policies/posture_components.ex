@@ -100,24 +100,25 @@ defmodule PortalWeb.Policies.PostureComponents do
       <table class="w-full text-sm text-body">
         <thead class="bg-raised text-[10px] font-semibold tracking-widest uppercase text-subtle">
           <tr>
+            <th class="pl-3 py-2 w-8"></th>
             <th class="px-3 py-2 text-left">Check</th>
             <th class="px-3 py-2 w-14"></th>
           </tr>
         </thead>
         <tbody class="divide-y divide-border bg-surface">
           <tr :for={check <- Checks.all()}>
+            <td class="pl-3 py-2.5 align-middle">
+              <.popover placement="right" class="flex">
+                <:target>
+                  <.icon name="ri-information-line" class="w-4 h-4 text-subtle hover:text-heading cursor-help" />
+                </:target>
+                <:content>
+                  <.check_support check={check} />
+                </:content>
+              </.popover>
+            </td>
             <td class="px-3 py-2.5 align-middle">
-              <div class="flex items-center gap-1.5">
-                <span class="text-xs font-semibold text-body">{check.label}</span>
-                <.popover placement="right" class="inline-flex">
-                  <:target>
-                    <.icon name="ri-information-line" class="w-3.5 h-3.5 text-subtle hover:text-heading cursor-help" />
-                  </:target>
-                  <:content>
-                    <.check_support check={check} />
-                  </:content>
-                </.popover>
-              </div>
+              <div class="text-xs font-semibold text-body">{check.label}</div>
               <div class="text-xs text-subtle mt-0.5">{check.description}</div>
             </td>
             <td class="px-3 py-2.5 align-middle">
