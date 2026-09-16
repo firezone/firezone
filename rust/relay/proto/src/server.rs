@@ -1592,6 +1592,56 @@ mod tests {
         assert_eq!(server.next_command(), None);
     }
 
+    #[test]
+    fn failed_allocation_is_deleted() {
+        let now = Instant::now();
+        let client = ClientSocket::new(SocketAddr::from(([127, 0, 0, 1], 50_000)));
+        let account = auth::AccountId::from(Uuid::nil());
+        let mut server = Server::new(
+            Ipv4Addr::LOCALHOST,
+            StdRng::seed_from_u64(0),
+            3478,
+            49_152..=49_153,
+        );
+
+        server.set_accounts([account]);
+        let nonce = issue_nonce(&mut server, client, now);
+        let username = Username::new(format!(
+            "2145916800:{}:credential-salt",
+            auth::hash_account_id(&account)
+        ))
+        .unwrap();
+
+        let allocate = authenticated_request(
+            &server,
+            ALLOCATE,
+            TransactionId::new([1; 12]),
+            &username,
+            &nonce,
+            [Attribute::RequestedTransport(RequestedTransport::new(
+                UDP_TRANSPORT,
+            ))],
+        );
+        server.handle_client_input(&allocate, client, now);
+
+        let Some(Command::CreateAllocation { port, family }) = server.next_command() else {
+            panic!("the relay creates an allocation for an authenticated request");
+        };
+        assert!(matches!(
+            server.next_command(),
+            Some(Command::SendMessage { .. })
+        ));
+
+        server.handle_allocation_failed(port);
+
+        assert_eq!(server.num_allocations(), 0);
+        assert_eq!(
+            server.next_command(),
+            Some(Command::FreeAllocation { port, family })
+        );
+        assert_eq!(server.next_command(), None);
+    }
+
     fn issue_nonce(server: &mut Server<StdRng>, client: ClientSocket, now: Instant) -> Nonce {
         let mut allocate =
             Message::<Attribute>::new(MessageClass::Request, ALLOCATE, TransactionId::new([0; 12]));

@@ -472,7 +472,7 @@ where
         bind_ip6: Ipv6Addr,
         is_connected: Arc<AtomicBool>,
     ) -> Result<Self> {
-        let mut sockets = Sockets::new();
+        let mut sockets = Sockets::new().context("Failed to initialize sockets")?;
 
         if public_address.as_v4().is_some() {
             sockets
@@ -536,16 +536,18 @@ where
                             AddressFamily::V4 => self.bind_ip4.into(),
                             AddressFamily::V6 => self.bind_ip6.into(),
                         };
-                        self.sockets
-                            .bind(port.value(), bind_addr)
-                            .with_context(|| {
-                                format!(
-                                    "Failed to bind to port {} on {family} interfaces",
-                                    port.value()
-                                )
-                            })?;
 
-                        tracing::info!(target: "relay", %port, %family, "Created allocation");
+                        // Failing to bind a single port must not take down the entire Relay.
+                        match self.sockets.bind(port.value(), bind_addr) {
+                            Ok(()) => {
+                                tracing::info!(target: "relay", %port, %family, "Created allocation");
+                            }
+                            Err(e) => {
+                                tracing::warn!(target: "relay", %port, %family, "Failed to create allocation: {}", err_with_src(&e));
+
+                                self.server.handle_allocation_failed(port);
+                            }
+                        }
                     }
                     Command::FreeAllocation { port, family } => {
                         self.sockets.unbind(port.value(), family).with_context(|| {
