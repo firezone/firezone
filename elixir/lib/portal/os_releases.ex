@@ -47,6 +47,10 @@ defmodule Portal.OSReleases do
     {:noreply, state}
   end
 
+  @doc "Replaces one operating system's release lines with a freshly fetched set."
+  @spec replace(OSRelease.os(), [map()]) :: {non_neg_integer(), nil}
+  def replace(os, rows), do: Database.replace(os, rows)
+
   @doc "Asks the mirror on this node to reload from the database now."
   @spec reload() :: :ok
   def reload do

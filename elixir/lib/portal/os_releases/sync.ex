@@ -35,7 +35,7 @@ defmodule Portal.OSReleases.Sync do
         ] do
       case fetch.(now) do
         {:ok, rows} when rows != [] ->
-          OSReleases.Database.replace(os, Enum.map(rows, &Map.put(&1, :os, os)))
+          OSReleases.replace(os, Enum.map(rows, &Map.put(&1, :os, os)))
 
         {:ok, []} ->
           Logger.warning("OS release feed returned no lines", os: os)
@@ -86,14 +86,7 @@ defmodule Portal.OSReleases.Sync do
     with {:ok, cycles} when is_list(cycles) <- get(@windows_url) do
       rows =
         cycles
-        |> Enum.flat_map(fn cycle ->
-          segments = Portal.Policies.Postures.parse_version(cycle["latest"] || "")
-
-          case OSReleases.line_for(:windows, segments) do
-            nil -> []
-            line -> [{line, cycle["latest"], supported?(cycle["eol"], now)}]
-          end
-        end)
+        |> Enum.flat_map(&windows_line(&1, now))
         |> Enum.group_by(&elem(&1, 0))
         |> Enum.map(fn {line, entries} ->
           latest = entries |> Enum.map(&elem(&1, 1)) |> Enum.max_by(&Portal.Policies.Postures.parse_version/1, &version_gte?/2)
@@ -101,6 +94,15 @@ defmodule Portal.OSReleases.Sync do
         end)
 
       {:ok, rows}
+    end
+  end
+
+  defp windows_line(cycle, now) do
+    segments = Portal.Policies.Postures.parse_version(cycle["latest"] || "")
+
+    case OSReleases.line_for(:windows, segments) do
+      nil -> []
+      line -> [{line, cycle["latest"], supported?(cycle["eol"], now)}]
     end
   end
 
