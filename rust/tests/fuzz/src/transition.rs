@@ -3,7 +3,7 @@ use dns_types::{DomainName, OwnedRecordData, RecordType};
 use ip_network::IpNetwork;
 use tunnel_proto::{
     dns,
-    messages::{Filter, UpstreamDo53, UpstreamDoH, client::DevicePoolMember},
+    messages::{Filter, UpstreamDo53, UpstreamDoH},
 };
 
 use super::{
@@ -39,9 +39,12 @@ pub enum Transition {
         old_resource: Resource,
         new_resource: Resource,
     },
-    UpdateStaticDevicePool {
+    /// Replaces the member list of a pool that lists its members; `removed` are the
+    /// clients that were listed before and are not any more.
+    UpdateDevicePoolMembers {
         pool_id: ResourceId,
-        new_devices: Vec<DevicePoolMember>,
+        members: BTreeSet<ClientId>,
+        removed: BTreeSet<ClientId>,
     },
     SetInternetResourceState {
         client_id: ClientId,
@@ -136,7 +139,7 @@ impl Transition {
             Transition::MoveResourceToNewSite { .. } => true,
             Transition::ChangeFiltersOfResource { .. } => true,
             Transition::ChangeResourceType { .. } => true,
-            Transition::UpdateStaticDevicePool { .. } => true,
+            Transition::UpdateDevicePoolMembers { .. } => true,
             Transition::SetInternetResourceState { .. } => true,
             Transition::SendIcmpPacketOnNewFlow { .. } => false,
             Transition::SendIcmpPacketOnExistingFlow { .. } => false,
@@ -204,7 +207,11 @@ impl Transition {
                     !is_device_pool(old_resource) && !is_device_pool(new_resource)
                 }
             },
-            Transition::UpdateStaticDevicePool { .. } => !route.is_peer(),
+            Transition::UpdateDevicePoolMembers { removed, .. } => match route {
+                FlowRoute::Resource { .. } => true,
+                FlowRoute::Gateway(_) => true,
+                FlowRoute::Peer(peer) => !removed.contains(&peer) && !removed.contains(&client_id),
+            },
             Transition::SetInternetResourceState {
                 client_id: changed, ..
             } => client_id != *changed,
@@ -254,8 +261,7 @@ fn is_device_pool(resource: &Resource) -> bool {
         Resource::Dns(_) => false,
         Resource::Cidr(_) => false,
         Resource::Internet(_) => false,
-        Resource::StaticDevicePool(_) => true,
-        Resource::DynamicDevicePool(_) => true,
+        Resource::DevicePool(_) => true,
     }
 }
 

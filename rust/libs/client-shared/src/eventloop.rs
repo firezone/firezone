@@ -22,7 +22,7 @@ use tun::Tun;
 use tunnel::messages::client::{
     Authorization, AuthorizationCreated, AuthorizationCreationFailed, ClientDeviceAccessAuthorized,
     ClientDeviceAccessDenied, ClientIceCandidateError, ClientIceCandidates, ClientRejectAccess,
-    DevicePoolDomainResolutionFailed, DevicePoolDomainResolved, EgressMessages, FailReason,
+    DeviceDomainResolutionFailed, DeviceDomainResolved, EgressMessages, FailReason,
     GatewayIceCandidates, IngressMessages, InitClient, ResourceAuthorization,
     ResourceFiltersUpdated,
 };
@@ -414,38 +414,32 @@ impl Eventloop {
                     .await
                     .context("Failed to send message to portal")?;
             }
-            Ok(ClientEvent::ResourceConnectionIntent {
-                preferred_gateways,
-                resource,
+            Ok(ClientEvent::RequestAccess {
+                resource_ids,
                 ip,
+                preferred_gateways,
             }) => {
                 let (ipv4, ipv6) = match ip {
-                    None => (None, None),
                     Some(IpAddr::V4(v4)) => (Some(v4), None),
                     Some(IpAddr::V6(v6)) => (None, Some(v6)),
+                    None => (None, None),
                 };
 
                 self.portal_cmd_tx
-                    .send(PortalCommand::Send(EgressMessages::RequestAuthorization {
-                        resource_id: resource,
-                        preferred_gateways,
+                    .send(PortalCommand::Send(EgressMessages::RequestAccess {
+                        resource_ids,
                         ipv4,
                         ipv6,
+                        preferred_gateways,
                     }))
                     .await
                     .context("Failed to send message to portal")?;
             }
-            Ok(ClientEvent::DevicePoolDomainQueried {
-                resource_id,
-                domain,
-            }) => {
+            Ok(ClientEvent::DeviceDomainQueried { domain }) => {
                 self.portal_cmd_tx
-                    .send(PortalCommand::Send(
-                        EgressMessages::ResolveDevicePoolDomain {
-                            resource_id,
-                            domain: domain.to_string(),
-                        },
-                    ))
+                    .send(PortalCommand::Send(EgressMessages::ResolveDeviceDomain {
+                        domain: domain.to_string(),
+                    }))
                     .await
                     .context("Failed to send message to portal")?;
             }
@@ -733,6 +727,7 @@ impl Eventloop {
                 remote_ice_credentials,
                 ice_role,
                 use_iceless,
+                resource_id,
                 resource,
                 expires_at,
                 flow_logs_ingest_token,
@@ -761,6 +756,7 @@ impl Eventloop {
                     ice_role,
                     use_iceless,
                     client_name,
+                    resource_id,
                     authorization,
                     flow_logs_ingest_token,
                     now,
@@ -801,7 +797,7 @@ impl Eventloop {
             }) => {
                 tunnel
                     .state_mut()
-                    .handle_client_device_access_denied(ipv4, ipv6, reason, now);
+                    .handle_client_device_access_denied(ipv4, ipv6, reason);
             }
             IngressMessages::ClientIceCandidateError(ClientIceCandidateError {
                 client_id,
@@ -823,36 +819,24 @@ impl Eventloop {
                     | FailReason::Unknown => {}
                 }
             }
-            IngressMessages::DevicePoolDomainResolved(DevicePoolDomainResolved {
-                resource_id,
+            IngressMessages::DeviceDomainResolved(DeviceDomainResolved { domain, ipv4, ipv6 }) => {
+                let Some(domain) = parse_portal_domain(&domain) else {
+                    return Ok(());
+                };
+                tunnel
+                    .state_mut()
+                    .handle_device_domain_resolved(domain, Ok((ipv4, ipv6)));
+            }
+            IngressMessages::DeviceDomainResolutionFailed(DeviceDomainResolutionFailed {
                 domain,
-                ipv4,
-                ipv6,
+                reason,
             }) => {
                 let Some(domain) = parse_portal_domain(&domain) else {
                     return Ok(());
                 };
-                tunnel.state_mut().handle_device_pool_domain_resolved(
-                    resource_id,
-                    domain,
-                    Ok((ipv4, ipv6)),
-                );
-            }
-            IngressMessages::DevicePoolDomainResolutionFailed(
-                DevicePoolDomainResolutionFailed {
-                    resource_id,
-                    domain,
-                    reason,
-                },
-            ) => {
-                let Some(domain) = parse_portal_domain(&domain) else {
-                    return Ok(());
-                };
-                tunnel.state_mut().handle_device_pool_domain_resolved(
-                    resource_id,
-                    domain,
-                    Err(reason),
-                );
+                tunnel
+                    .state_mut()
+                    .handle_device_domain_resolved(domain, Err(reason));
             }
         }
 

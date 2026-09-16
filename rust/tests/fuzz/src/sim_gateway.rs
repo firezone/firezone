@@ -267,21 +267,23 @@ impl SimGateway {
         if let Some(udp) = packet.as_udp() {
             let socket = SocketAddr::new(dst_ip, udp.destination_port());
 
-            // NOTE: we can make this assumption because port 53 is excluded from non-dns query packets
-            if let Some(server) = self.udp_dns_server_resources.get_mut(&socket) {
-                server.handle_input(packet);
-                return None;
-            }
+            // Synthetic UDP probes contain only their eight-byte probe ID. DNS
+            // queries have a longer wire header, so probes still exercise normal
+            // packet routing when they happen to target a DNS server port.
+            if udp.payload().len() != size_of::<u64>() {
+                if let Some(server) = self.udp_dns_server_resources.get_mut(&socket) {
+                    server.handle_input(packet);
+                    return None;
+                }
 
-            // Port 53 is excluded from generated packets, so this is a recursive
-            // query to a resolver without a deployed DNS server, i.e. one that
-            // answers with ICMP errors. connlib consumes the error internally,
-            // so the reference does not track this exchange as a request.
-            if udp.destination_port() == 53 {
-                let reply = icmp_error?;
-                let transmit = self.handle_tun_input(reply, now).unwrap()?;
+                // A recursive query to a resolver without a deployed DNS server
+                // answers with an ICMP error. Connlib consumes this internally.
+                if udp.destination_port() == 53 {
+                    let reply = icmp_error?;
+                    let transmit = self.handle_tun_input(reply, now).unwrap()?;
 
-                return Some(transmit);
+                    return Some(transmit);
+                }
             }
         }
 
