@@ -514,16 +514,18 @@ defmodule Portal.Billing.EventHandler do
   defp setup_account_defaults(account, metadata, account_email) do
     # Create default groups and resources
     changeset = create_everyone_group_changeset(account)
-    {:ok, everyone_group} = Database.insert(changeset)
+    {:ok, _everyone_group} = Database.insert(changeset)
     changeset = create_site_changeset(account, %{name: "Default Site"})
     {:ok, _site} = Database.insert_site(changeset)
     changeset = create_internet_site_changeset(account)
     {:ok, internet_site} = Database.insert_site(changeset)
     changeset = create_internet_resource_changeset(account, internet_site)
     {:ok, _resource} = Database.insert(changeset)
+    changeset = create_account_owner_group_changeset(account)
+    {:ok, account_owner_group} = Database.insert(changeset)
     changeset = create_self_device_pool_changeset(account)
     {:ok, self_device_pool} = Database.insert(changeset)
-    changeset = create_self_device_pool_policy_changeset(everyone_group, self_device_pool)
+    changeset = create_self_device_pool_policy_changeset(account_owner_group, self_device_pool)
     {:ok, _policy} = Database.insert(changeset)
 
     # Create email provider
@@ -536,7 +538,10 @@ defmodule Portal.Billing.EventHandler do
     family_name = metadata["account_owner_last_name"]
     name = "#{given_name} #{family_name}"
     changeset = create_admin_changeset(account, email, name)
-    {:ok, _actor} = Database.insert(changeset)
+    {:ok, actor} = Database.insert(changeset)
+
+    changeset = create_account_owner_membership_changeset(account_owner_group, actor)
+    {:ok, _membership} = Database.insert(changeset)
 
     :ok
   end
@@ -545,6 +550,22 @@ defmodule Portal.Billing.EventHandler do
     import Ecto.Changeset
     attrs = %{account_id: account.id, name: "Everyone", type: :managed}
     cast(%Portal.Group{}, attrs, ~w[account_id name type]a)
+  end
+
+  defp create_account_owner_group_changeset(account) do
+    import Ecto.Changeset
+
+    %Portal.Group{account_id: account.id}
+    |> cast(Portal.Group.account_owner_attrs(), [:name, :type])
+    |> Portal.Group.changeset()
+  end
+
+  defp create_account_owner_membership_changeset(account_owner_group, actor) do
+    import Ecto.Changeset
+
+    %Portal.Membership{account_id: account_owner_group.account_id}
+    |> cast(%{group_id: account_owner_group.id, actor_id: actor.id}, [:group_id, :actor_id])
+    |> Portal.Membership.changeset()
   end
 
   defp create_admin_changeset(account, email, name) do
@@ -608,13 +629,13 @@ defmodule Portal.Billing.EventHandler do
     |> Portal.Resource.changeset()
   end
 
-  defp create_self_device_pool_policy_changeset(everyone_group, self_device_pool) do
-    %Portal.Policy{account_id: everyone_group.account_id}
+  defp create_self_device_pool_policy_changeset(account_owner_group, self_device_pool) do
+    %Portal.Policy{account_id: account_owner_group.account_id}
     |> cast(
       %{
-        group_id: everyone_group.id,
+        group_id: account_owner_group.id,
         resource_id: self_device_pool.id,
-        description: "Lets every actor reach their own devices."
+        description: "Lets the account owner reach their own devices."
       },
       [:group_id, :resource_id, :description]
     )

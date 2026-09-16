@@ -526,6 +526,59 @@ defmodule Portal.Billing do
     false
   end
 
+  # Everything sign-up gives a new account, for one that predates it or was created some
+  # other way. Each step is skipped when the row is already there, so it is safe to re-run.
+  defp ensure_defaults_exist(%Portal.Account{} = account) do
+    with {:ok, account} <- ensure_internet_site_and_resource_exist(account) do
+      ensure_self_device_pool_exists(account)
+    end
+  end
+
+  defp ensure_self_device_pool_exists(%Portal.Account{} = account) do
+    pool =
+      case Database.fetch_self_device_pool(account) do
+        {:ok, pool} ->
+          pool
+
+        {:error, :not_found} ->
+          {:ok, pool} = Database.create_self_device_pool(account)
+          pool
+      end
+
+    group =
+      case Database.fetch_account_owner_group(account) do
+        {:ok, group} ->
+          group
+
+        {:error, :not_found} ->
+          {:ok, group} = Database.create_account_owner_group(account)
+          group
+      end
+
+    :ok = ensure_account_owner_membership_exists(account, group)
+
+    case Database.fetch_self_device_pool_policy(account, group, pool) do
+      {:ok, _policy} ->
+        {:ok, account}
+
+      {:error, :not_found} ->
+        {:ok, _policy} = Database.create_self_device_pool_policy(account, group, pool)
+        {:ok, account}
+    end
+  end
+
+  # The account's oldest admin is the closest thing an existing account has to the actor who
+  # created it. An account without one is left alone; the group is there for the first admin.
+  defp ensure_account_owner_membership_exists(%Portal.Account{} = account, group) do
+    with {:ok, actor} <- Database.fetch_oldest_admin(account),
+         {:error, :not_found} <- Database.fetch_membership(account, group, actor) do
+      {:ok, _membership} = Database.create_membership(account, group, actor)
+      :ok
+    else
+      _other -> :ok
+    end
+  end
+
   defp ensure_internet_site_and_resource_exist(%Portal.Account{} = account) do
     # Ensure Internet site exists
     site =
@@ -595,13 +648,13 @@ defmodule Portal.Billing do
   def provision_account(%Portal.Account{} = account) do
     with true <- enabled?(),
          true <- not account_provisioned?(account),
-         {:ok, account} <- ensure_internet_site_and_resource_exist(account),
+         {:ok, account} <- ensure_defaults_exist(account),
          {:ok, account} <- create_customer(account),
          {:ok, account} <- create_subscription(account) do
       {:ok, account}
     else
       false ->
-        ensure_internet_site_and_resource_exist(account)
+        ensure_defaults_exist(account)
 
       {:error, reason} ->
         {:error, reason}
@@ -830,6 +883,120 @@ defmodule Portal.Billing do
         type: :internet,
         site_id: site.id
       }
+      |> Safe.unscoped()
+      |> Safe.insert()
+    end
+
+    def fetch_self_device_pool(%Account{} = account) do
+      from(r in Portal.Resource,
+        where: r.account_id == ^account.id,
+        where: r.type == :device_pool
+      )
+      |> Safe.unscoped()
+      |> Safe.one()
+      |> case do
+        nil -> {:error, :not_found}
+        resource -> {:ok, resource}
+      end
+    end
+
+    def create_self_device_pool(%Account{} = account) do
+      %Portal.Resource{account_id: account.id}
+      |> Ecto.Changeset.cast(Portal.Resource.self_device_pool_attrs(), [
+        :type,
+        :device_membership_criteria,
+        :name
+      ])
+      |> Portal.Resource.changeset()
+      |> Safe.unscoped()
+      |> Safe.insert()
+    end
+
+    def fetch_account_owner_group(%Account{} = account) do
+      %{name: name} = Portal.Group.account_owner_attrs()
+
+      from(g in Portal.Group,
+        where: g.account_id == ^account.id,
+        where: g.name == ^name
+      )
+      |> Safe.unscoped()
+      |> Safe.one()
+      |> case do
+        nil -> {:error, :not_found}
+        group -> {:ok, group}
+      end
+    end
+
+    def create_account_owner_group(%Account{} = account) do
+      %Portal.Group{account_id: account.id}
+      |> Ecto.Changeset.cast(Portal.Group.account_owner_attrs(), [:name, :type])
+      |> Portal.Group.changeset()
+      |> Safe.unscoped()
+      |> Safe.insert()
+    end
+
+    def fetch_self_device_pool_policy(%Account{} = account, group, resource) do
+      from(p in Portal.Policy,
+        where: p.account_id == ^account.id,
+        where: p.group_id == ^group.id,
+        where: p.resource_id == ^resource.id
+      )
+      |> Safe.unscoped()
+      |> Safe.one()
+      |> case do
+        nil -> {:error, :not_found}
+        policy -> {:ok, policy}
+      end
+    end
+
+    def create_self_device_pool_policy(%Account{} = account, group, resource) do
+      %Portal.Policy{account_id: account.id}
+      |> Ecto.Changeset.cast(
+        %{
+          group_id: group.id,
+          resource_id: resource.id,
+          description: "Lets the account owner reach their own devices."
+        },
+        [:group_id, :resource_id, :description]
+      )
+      |> Portal.Policy.changeset()
+      |> Safe.unscoped()
+      |> Safe.insert()
+    end
+
+    def fetch_oldest_admin(%Account{} = account) do
+      from(a in Portal.Actor,
+        where: a.account_id == ^account.id,
+        where: a.type == :account_admin_user,
+        order_by: [asc: a.inserted_at, asc: a.id],
+        limit: 1
+      )
+      |> Safe.unscoped()
+      |> Safe.one()
+      |> case do
+        nil -> {:error, :not_found}
+        actor -> {:ok, actor}
+      end
+    end
+
+    def fetch_membership(%Account{} = account, group, actor) do
+      from(m in Portal.Membership,
+        where: m.account_id == ^account.id,
+        where: m.group_id == ^group.id,
+        where: m.actor_id == ^actor.id
+      )
+      |> Safe.unscoped()
+      |> Safe.one()
+      |> case do
+        nil -> {:error, :not_found}
+        membership -> {:ok, membership}
+      end
+    end
+
+    def create_membership(%Account{} = account, group, actor) do
+      %Portal.Membership{account_id: account.id}
+      |> Ecto.Changeset.cast(%{group_id: group.id, actor_id: actor.id}, [:group_id, :actor_id])
+      |> Portal.Membership.changeset()
       |> Safe.unscoped()
       |> Safe.insert()
     end
