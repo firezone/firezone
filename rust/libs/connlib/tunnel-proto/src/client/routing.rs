@@ -17,22 +17,6 @@ pub(super) enum MatchedRoutes {
     Gateways(Vec<GatewayRoute>),
 }
 
-impl MatchedRoutes {
-    pub(super) fn resource_ids(&self) -> Vec<ResourceId> {
-        match self {
-            Self::DevicePools(resources) => resources.clone(),
-            Self::Gateways(routes) => routes.iter().map(|route| route.resource_id).collect(),
-        }
-    }
-
-    pub(super) fn is_empty(&self) -> bool {
-        match self {
-            Self::DevicePools(resources) => resources.is_empty(),
-            Self::Gateways(routes) => routes.is_empty(),
-        }
-    }
-}
-
 pub(super) struct GatewayRoute {
     pub(super) resource_id: ResourceId,
     pub(super) domain: Option<DomainName>,
@@ -486,6 +470,22 @@ mod tests {
             tables.dns_resources(destination, Ok(Protocol::Tcp(80))),
             vec![(b, domain.clone()), (a, domain)]
         );
+    }
+
+    impl MatchedRoutes {
+        fn resource_ids(&self) -> Vec<ResourceId> {
+            match self {
+                Self::DevicePools(resources) => resources.clone(),
+                Self::Gateways(routes) => routes.iter().map(|route| route.resource_id).collect(),
+            }
+        }
+
+        fn is_empty(&self) -> bool {
+            match self {
+                Self::DevicePools(resources) => resources.is_empty(),
+                Self::Gateways(routes) => routes.is_empty(),
+            }
+        }
     }
 
     fn other_client_tun_ip() -> IpAddr {
