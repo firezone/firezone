@@ -4099,6 +4099,7 @@ dependencies = [
  "incremental-inet-checksum",
  "ingot",
  "proptest",
+ "test-case",
  "test-strategy",
  "thiserror 2.0.20",
 ]
