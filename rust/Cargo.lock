@@ -911,7 +911,7 @@ dependencies = [
 [[package]]
 name = "boringtun"
 version = "0.7.0"
-source = "git+https://github.com/firezone/boringtun?branch=expire-tunnel-when-a-used-session-expires#5bf18cafb9273e376951b44a70f7f88637496821"
+source = "git+https://github.com/firezone/boringtun?branch=master#a050cff8fd3c55e3a7f426b9463adcbdc05c7762"
 dependencies = [
  "aead",
  "blake2",
