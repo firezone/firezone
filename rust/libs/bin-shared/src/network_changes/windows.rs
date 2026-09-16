@@ -63,13 +63,15 @@
 //! Raymond Chen also explains it on his blog: <https://devblogs.microsoft.com/oldnewthing/20191125-00/?p=103135>
 
 use crate::DnsControlMethod;
-use crate::windows::TUNNEL_UUID;
 use anyhow::{Context as _, Result, anyhow};
 use futures::{Stream, StreamExt as _, stream};
 use std::collections::HashMap;
 use std::ffi::c_void;
 use std::ops::Deref as _;
-use std::sync::Mutex;
+use std::sync::{
+    Mutex,
+    atomic::{AtomicU32, Ordering},
+};
 use std::thread;
 use tokio::sync::{
     mpsc::{self, error::TrySendError},
@@ -79,9 +81,8 @@ use windows::{
     Win32::{
         Foundation::HANDLE,
         NetworkManagement::IpHelper::{
-            CancelMibChangeNotify2, ConvertInterfaceLuidToGuid, MIB_NOTIFICATION_TYPE,
-            MIB_UNICASTIPADDRESS_ROW, MibAddInstance, MibDeleteInstance,
-            NotifyUnicastIpAddressChange,
+            CancelMibChangeNotify2, MIB_NOTIFICATION_TYPE, MIB_UNICASTIPADDRESS_ROW,
+            MibAddInstance, MibDeleteInstance, NotifyUnicastIpAddressChange,
         },
         Networking::NetworkListManager::{
             INetworkEvents, INetworkEvents_Impl, INetworkListManager, NLM_CONNECTIVITY,
@@ -123,6 +124,26 @@ pub async fn new_network_notifier() -> Result<impl Stream<Item = Result<()>> + D
     })?;
 
     Ok(NetworkNotifier(worker_into_stream(worker).boxed()))
+}
+
+/// The notifier starts before Wintun is created, so record its interface index when the
+/// adapter is created instead of trying to resolve its GUID during notifier registration.
+static TUNNEL_INTERFACE_INDEX: AtomicU32 = AtomicU32::new(0);
+
+pub(crate) struct TunnelInterfaceIndexGuard(u32);
+
+impl TunnelInterfaceIndexGuard {
+    pub(crate) fn new(index: u32) -> Self {
+        TUNNEL_INTERFACE_INDEX.store(index, Ordering::Release);
+        Self(index)
+    }
+}
+
+impl Drop for TunnelInterfaceIndexGuard {
+    fn drop(&mut self) {
+        let _ =
+            TUNNEL_INTERFACE_INDEX.compare_exchange(self.0, 0, Ordering::AcqRel, Ordering::Relaxed);
+    }
 }
 
 /// Notifies whenever a local unicast IP address is added or removed.
@@ -178,7 +199,7 @@ impl Drop for AddressChangeListener {
 /// Runs on a Windows-managed thread-pool thread, so keep it minimal: just wake the notifier.
 ///
 /// This is a safe `extern "system" fn` (it coerces to the unsafe callback pointer the OS
-/// expects), keeping the only `unsafe` to the single pointer dereference below.
+/// expects). Dereferencing pointers provided by the OS still requires `unsafe`.
 extern "system" fn address_change_callback(
     ctx: *const c_void,
     row: *const MIB_UNICASTIPADDRESS_ROW,
@@ -193,16 +214,9 @@ extern "system" fn address_change_callback(
 
     // Connlib configures the Wintun addresses after portal init. Those are not changes to
     // our egress network; treating them as such would make our own tunnel updates reset it.
-    // Compare the stable interface GUID rather than its alias, which users can rename.
     // SAFETY: Windows supplies `row` for this callback; a null pointer is handled below.
     if let Some(row) = unsafe { row.as_ref() } {
-        let mut guid = GUID::default();
-        // SAFETY: Both pointers refer to live values for the duration of this callback.
-        if unsafe { ConvertInterfaceLuidToGuid(&row.InterfaceLuid, &mut guid) }
-            .ok()
-            .is_ok()
-            && guid == GUID::from_u128(TUNNEL_UUID.as_u128())
-        {
+        if row.InterfaceIndex == TUNNEL_INTERFACE_INDEX.load(Ordering::Acquire) {
             tracing::debug!("Ignoring address change on Firezone tunnel interface");
             return;
         }

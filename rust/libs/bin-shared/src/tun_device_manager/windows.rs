@@ -1,4 +1,5 @@
 use crate::TUNNEL_NAME;
+use crate::network_changes::TunnelInterfaceIndexGuard;
 use crate::tun_device_manager::{TunIpStack, TunWorkers};
 use crate::windows::TUNNEL_UUID;
 use crate::windows::error::{NOT_FOUND, NOT_SUPPORTED, OBJECT_EXISTS};
@@ -228,6 +229,8 @@ pub struct Tun {
 
     session: Arc<wintun::Session>,
     workers: TunWorkers,
+    /// Drop after the session so address-removal callbacks remain filtered during teardown.
+    _interface_index_guard: TunnelInterfaceIndexGuard,
 }
 
 impl Drop for Tun {
@@ -255,6 +258,7 @@ impl Tun {
         let iface_idx = adapter
             .get_adapter_index()
             .context("Failed to get adapter index")?;
+        let interface_index_guard = TunnelInterfaceIndexGuard::new(iface_idx);
         let luid = adapter.get_luid();
 
         set_iface_config(luid, mtu).context("Failed to set interface config")?;
@@ -287,6 +291,7 @@ impl Tun {
             luid,
             session,
             workers,
+            _interface_index_guard: interface_index_guard,
         })
     }
 
