@@ -5,7 +5,6 @@ use std::{
     io,
     net::{IpAddr, SocketAddr},
     task::{Context, Poll, Waker},
-    time::Duration,
 };
 use stun_codec::rfc8656::attributes::AddressFamily;
 use tokio::sync::mpsc;
@@ -249,9 +248,9 @@ fn mio_worker_task(event_tx: mpsc::Sender<Event>, mut poll: mio::Poll) -> Result
     let mut events = mio::Events::with_capacity(1024);
 
     loop {
-        // Suspend for up to 1 second to wait for IO events.
-        // Polling without any registered sockets sleeps forever, so we must not block indefinitely.
-        match poll.poll(&mut events, Some(Duration::from_secs(1))) {
+        // Suspend until one of our sockets is ready.
+        // Registering a socket from the eventloop wakes us up, even if nothing is registered yet.
+        match poll.poll(&mut events, None) {
             Ok(()) => {}
             Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
             Err(e) => return Err(e.into()),
