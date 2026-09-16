@@ -42,16 +42,12 @@ defmodule Portal.Changes.Hooks.SantaDevicesTest do
     }
   end
 
-  test "a rewrite that only touched the sync bookkeeping is not published", %{provider: provider} do
+  test "a rewrite that only touched the sync bookkeeping is broadcast like any other", %{provider: provider} do
     row = santa_device_fixture(provider: provider, last_seen_client_mode: "LOCKDOWN")
     later = DateTime.add(DateTime.utc_now(), 3600)
 
     assert :ok == on_update(9, wal(row), wal(%{row | synced_at: later, updated_at: later}))
-    assert :ok == on_update(9, wal(row), wal(row))
-    refute_receive %Change{}
-
-    assert :ok == on_update(10, wal(row), wal(%{row | last_seen_client_mode: "MONITOR", synced_at: later}))
-    assert_receive %Change{op: :update, lsn: 10, struct: %Santa.Device{last_seen_client_mode: "MONITOR"}}
+    assert_receive %Change{op: :update, lsn: 9, struct: %Santa.Device{synced_at: ^later}}
   end
 
   test "a delete is broadcast to the account", %{provider: provider} do

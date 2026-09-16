@@ -1,16 +1,11 @@
 defmodule Portal.Changes.Hooks.SantaDevices do
   @moduledoc """
   Hooks for the device rows a Santa sync writes.
-
-  A sync rewrites every row it reports, so a rewrite that touched nothing but
-  the sync bookkeeping is not published at all.
   """
 
   @behaviour Portal.Changes.Hooks
   alias Portal.{Changes.Change, PubSub}
   import Portal.SchemaHelpers
-
-  @bookkeeping ~w[synced_at updated_at]
 
   @impl true
   def on_insert(lsn, data) do
@@ -22,14 +17,11 @@ defmodule Portal.Changes.Hooks.SantaDevices do
 
   @impl true
   def on_update(lsn, old_data, data) do
-    if bookkeeping_only_change?(old_data, data) do
-      :ok
-    else
-      old_device = struct_from_params(Portal.Santa.Device, old_data)
-      device = struct_from_params(Portal.Santa.Device, data)
-      change = %Change{lsn: lsn, op: :update, old_struct: old_device, struct: device}
-      PubSub.Changes.broadcast(device.account_id, :santa_devices, change)
-    end
+    old_device = struct_from_params(Portal.Santa.Device, old_data)
+    device = struct_from_params(Portal.Santa.Device, data)
+    change = %Change{lsn: lsn, op: :update, old_struct: old_device, struct: device}
+
+    PubSub.Changes.broadcast(device.account_id, :santa_devices, change)
   end
 
   @impl true
@@ -39,11 +31,4 @@ defmodule Portal.Changes.Hooks.SantaDevices do
 
     PubSub.Changes.broadcast(device.account_id, :santa_devices, change)
   end
-
-  defp bookkeeping_only_change?(old_data, data) when is_map(old_data) and is_map(data) do
-    changed = for {key, value} <- data, Map.get(old_data, key) != value, do: key
-    Enum.all?(changed, &(&1 in @bookkeeping))
-  end
-
-  defp bookkeeping_only_change?(_old_data, _data), do: false
 end
