@@ -57,6 +57,9 @@ private func forwardCommands(from commandReceiver: Receiver<SessionCommand>, to 
       break
     }
 
+    // Logged before the call: a command that never arrives differs from one that never returns.
+    Log.log("Forwarding \(command) to session")
+
     switch command {
     case .disconnect:
       session.disconnect()

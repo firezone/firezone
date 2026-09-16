@@ -200,10 +200,23 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     return typed
   }
 
+  // Overridden only to log: the system's sleep and wake callbacks are otherwise silent.
+  override func sleep(completionHandler: @escaping @Sendable () -> Void) {
+    Log.log("sleep")
+
+    completionHandler()
+  }
+
   override func wake() {
-    let adapter = self.adapter
+    Log.log("wake")
+
+    guard let adapter else {
+      Log.warning("Adapter is nil")
+      return
+    }
+
     Task { @Sendable in
-      await adapter?.reset(reason: "awoke from sleep")
+      await adapter.reset(reason: "awoke from sleep")
     }
   }
 
