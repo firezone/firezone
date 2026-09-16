@@ -225,13 +225,20 @@ pub fn goodbye() -> IpPacket {
 pub mod no_authorization {
     use super::*;
     use anyhow::{Context as _, Result};
+    use connlib_model::ResourceId;
+    use ip_network::IpNetwork;
+    use std::collections::BTreeMap;
+
+    use crate::filter_engine::FilterEngine;
+    use crate::messages::Filter;
+    use crate::routing_table::{self, RoutingTable};
     use ip_packet::{FzP2pControlSlice, IpPacket};
     use std::net::IpAddr;
 
     /// Constructs an event for a packet whose destination has no active authorization on the receiver.
     ///
     /// The receiver may be a gateway or another client. The event carries the denied
-    /// destination and protocol because the expired authorization's resource ID is unknown.
+    /// destination and protocol so the sender can resolve its own matching authorizations.
     /// The sender resolves the destination against its routes and requests fresh access
     /// for matching grants on the peer that sent the event. ICMP errors remain independent
     /// so rejected application traffic can stop while authorization is refreshed.
@@ -258,32 +265,82 @@ pub mod no_authorization {
             .context("Failed to deserialize `NoAuthorization`")
     }
 
-    /// Limits event retransmission to once every two seconds per peer connection.
+    /// Limits traffic-triggered events to once every two seconds per authorization scope.
     #[derive(Default)]
     pub(crate) struct Sender {
-        last_sent_at: Option<std::time::Instant>,
+        // Scope metadata survives authorization expiry so all addresses of a resource share a limit.
+        scopes: RoutingTable<Scope>,
+        last_sent_at: BTreeMap<Option<ResourceId>, std::time::Instant>,
+    }
+
+    #[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
+    struct Scope {
+        resource_id: ResourceId,
+        filter: FilterEngine,
+    }
+
+    impl routing_table::RouteEntry for Scope {
+        fn filter(&self) -> &FilterEngine {
+            &self.filter
+        }
+
+        fn resource_id(&self) -> ResourceId {
+            self.resource_id
+        }
     }
 
     impl Sender {
         const THROTTLE: std::time::Duration = std::time::Duration::from_secs(2);
+
+        pub(crate) fn register_scope(
+            &mut self,
+            resource_id: ResourceId,
+            networks: impl IntoIterator<Item = IpNetwork>,
+            filters: &[Filter],
+        ) {
+            self.scopes.remove_by_id(resource_id);
+            let scope = Scope {
+                resource_id,
+                filter: FilterEngine::new(filters),
+            };
+            for network in networks {
+                self.scopes.upsert(network, scope.clone());
+            }
+        }
+
+        pub(crate) fn scope_for_packet(&mut self, packet: &IpPacket) -> Option<ResourceId> {
+            let scope = self
+                .scopes
+                .matches(
+                    packet.destination(),
+                    packet.destination_protocol(),
+                    routing_table::FilterMode::Apply,
+                )?
+                .first()?;
+
+            Some(scope.resource_id)
+        }
 
         pub(crate) fn for_packet(
             &mut self,
             packet: &IpPacket,
             now: std::time::Instant,
         ) -> Option<IpPacket> {
+            let protocol = packet.destination_protocol().ok()?;
+            let scope = self.scope_for_packet(packet);
+            // Unknown destinations share a fallback limit rather than growing state per packet IP.
             if self
                 .last_sent_at
-                .is_some_and(|sent_at| now.duration_since(sent_at) < Self::THROTTLE)
+                .get(&scope)
+                .is_some_and(|sent_at| now.duration_since(*sent_at) < Self::THROTTLE)
             {
                 return None;
             }
 
-            let protocol = packet.destination_protocol().ok()?.into();
-            let event = event(packet.destination(), protocol)
+            let event = event(packet.destination(), protocol.into())
                 .inspect_err(|e| tracing::trace!("Failed to create `NoAuthorization` event: {e:#}"))
                 .ok()?;
-            self.last_sent_at = Some(now);
+            self.last_sent_at.insert(scope, now);
 
             Some(event)
         }
@@ -329,13 +386,26 @@ pub mod no_authorization {
         use std::net::{Ipv4Addr, Ipv6Addr};
 
         #[test]
-        fn rate_limits_rejections_across_destinations() {
+        fn rate_limits_rejections_per_cidr_resource() {
             let now = std::time::Instant::now();
             let mut sender = Sender::default();
+            let resource = ResourceId::from_u128(1);
+            sender.register_scope(resource, ["10.0.0.0/24".parse().unwrap()], &[]);
+            sender.register_scope(
+                ResourceId::from_u128(2),
+                ["10.1.0.0/24".parse().unwrap()],
+                &[],
+            );
             let first = rejected_packet(Ipv4Addr::new(10, 0, 0, 1));
             let second = rejected_packet(Ipv4Addr::new(10, 0, 0, 2));
 
             assert!(sender.for_packet(&first, now).is_some());
+            assert!(
+                sender
+                    .for_packet(&rejected_packet(Ipv4Addr::new(10, 1, 0, 1)), now)
+                    .is_some()
+            );
+            sender.register_scope(resource, ["10.0.0.0/24".parse().unwrap()], &[]);
             for milliseconds in [0, 100, 1000, 1999] {
                 let now = now + std::time::Duration::from_millis(milliseconds);
                 assert!(sender.for_packet(&first, now).is_none());
@@ -347,6 +417,34 @@ pub mod no_authorization {
                 decode(event.as_fz_p2p_control().unwrap()).unwrap().dst,
                 second.destination()
             );
+        }
+
+        #[test]
+        fn independently_limits_scopes_for_the_same_peer_address() {
+            let now = std::time::Instant::now();
+            let mut sender = Sender::default();
+            let dst = Ipv4Addr::new(100, 64, 0, 2);
+            sender.register_scope(
+                ResourceId::from_u128(1),
+                [dst.into()],
+                &[Filter::Udp(crate::messages::PortRange::single(80))],
+            );
+            sender.register_scope(
+                ResourceId::from_u128(2),
+                [dst.into()],
+                &[Filter::Udp(crate::messages::PortRange::single(443))],
+            );
+            let first =
+                ip_packet::make::udp_packet(Ipv4Addr::new(100, 64, 0, 1), dst, 1234, 80, &[])
+                    .unwrap();
+            let second =
+                ip_packet::make::udp_packet(Ipv4Addr::new(100, 64, 0, 1), dst, 1234, 443, &[])
+                    .unwrap();
+
+            assert!(sender.for_packet(&first, now).is_some());
+            assert!(sender.for_packet(&second, now).is_some());
+            assert!(sender.for_packet(&first, now).is_none());
+            assert!(sender.for_packet(&second, now).is_none());
         }
 
         #[test]

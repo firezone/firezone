@@ -192,6 +192,14 @@ impl ClientOnClient {
     fn recompute_inbound_filter(&mut self) {
         self.inbound_resources = InboundResources::new(&self.resources);
 
+        for (id, resource) in self.resources.iter() {
+            self.no_authorization_events.register_scope(
+                *id,
+                [self.local_tun.v4.into(), self.local_tun.v6.into()],
+                &resource.filters,
+            );
+        }
+
         if self.resources.is_empty() {
             // No resources -> deny all (except return traffic).
             self.inbound_filter = FilterEngine::DenyAll;
@@ -292,9 +300,12 @@ impl ClientOnClient {
             tracing::debug!(filtered_packet = ?packet, "{e:#}");
             let reply = ip_packet::make::icmp_dest_unreachable_prohibited(&packet)
                 .context("Failed to build ICMP prohibited reply")?;
-            let no_authorization = self
-                .resources
-                .is_empty()
+            let missing_authorization = self.resources.is_empty()
+                || self
+                    .no_authorization_events
+                    .scope_for_packet(&packet)
+                    .is_some_and(|id| self.resources.get(&id).is_none());
+            let no_authorization = missing_authorization
                 .then(|| self.no_authorization_events.for_packet(&packet, now))
                 .flatten();
 

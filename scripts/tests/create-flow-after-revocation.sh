@@ -19,8 +19,7 @@ portal_send_reject_access "AWS US-East" "MyCorp Network (IPv6)" # This is the 10
 expect_error client_curl "10.20.0.100/get"
 expect_error client_curl "[10:20:0::100]/get"
 
-# Both destinations share a peer's event throttle. Keep sending traffic so a
-# suppressed event can be sent after the two-second window.
+# Keep sending traffic while the independent resource authorizations are refreshed.
 for url in "10.20.0.100/get" "[10:20:0::100]/get"; do
     client timeout 15 sh -c '
         until curl --connect-timeout 2 --fail "$1" >/dev/null; do

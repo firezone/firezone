@@ -288,6 +288,20 @@ impl ClientOnGateway {
             .resources
             .iter()
             .find_map(|(id, r)| r.is_internet_resource().then_some(*id));
+
+        for (id, resource) in self.resources.iter() {
+            let networks = if resource.is_dns() {
+                self.permanent_translations
+                    .iter()
+                    .filter(|(_, translation)| translation.resources.contains(id))
+                    .map(|(ip, _)| IpNetwork::from(*ip))
+                    .collect()
+            } else {
+                resource.ips()
+            };
+            self.no_authorization_events
+                .register_scope(*id, networks, resource.filters());
+        }
     }
 
     fn recalculate_cidr_filters(&mut self) {
