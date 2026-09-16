@@ -142,21 +142,25 @@ defmodule PortalWeb.Policies.PostureComponents do
 
   defp check_support(assigns) do
     ~H"""
-    <dl class="space-y-2 min-w-40">
+    <dl class="space-y-2 min-w-44">
       <div>
-        <dt class="text-[10px] font-semibold tracking-widest uppercase text-subtle mb-1">Providers</dt>
+        <dt class="text-[10px] font-semibold tracking-widest uppercase text-subtle mb-1">Supported providers</dt>
         <dd class="space-y-1">
-          <div :for={provider <- @check.providers} class="flex items-center gap-1.5">
-            <.provider_icon provider={Atom.to_string(provider)} size="sm" />
+          <div :for={provider <- @check.providers} class="flex items-center gap-2">
+            <span class="w-5 shrink-0 flex justify-center">
+              <.provider_icon provider={Atom.to_string(provider)} size="sm" />
+            </span>
             <span>{provider_label(Atom.to_string(provider))}</span>
           </div>
         </dd>
       </div>
       <div>
-        <dt class="text-[10px] font-semibold tracking-widest uppercase text-subtle mb-1">Platforms</dt>
+        <dt class="text-[10px] font-semibold tracking-widest uppercase text-subtle mb-1">Supported platforms</dt>
         <dd class="space-y-1">
-          <div :for={{icon, title} <- platform_icons(@check.platforms)} class="flex items-center gap-1.5">
-            <.icon name={icon} class="w-4 h-4" />
+          <div :for={{icon, title} <- platform_icons(@check.platforms)} class="flex items-center gap-2">
+            <span class="w-5 shrink-0 flex justify-center">
+              <.icon name={icon} class="w-4 h-4" />
+            </span>
             <span>{title}</span>
           </div>
         </dd>
