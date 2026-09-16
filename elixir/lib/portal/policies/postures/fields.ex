@@ -167,6 +167,45 @@ defmodule Portal.Policies.Postures.Fields do
             |> Map.new(fn {provider, schema, opts} -> {provider, Classifier.classify!(schema, opts)} end)
             |> Map.put(:firezone, @firezone)
 
+  @platforms ~w[windows macos linux ios android]a
+
+  # The platforms a provider describes at all. A rule on a field is ignored
+  # for a device on any other platform, so an iOS-only rule does not fail a
+  # Windows laptop.
+  @provider_platforms %{
+    firezone: @platforms,
+    intune: ~w[windows macos ios android]a,
+    iru: ~w[macos ios]a,
+    defender: ~w[windows macos linux]a,
+    santa: ~w[macos]a,
+    sentinelone: ~w[windows macos linux]a
+  }
+
+  # Fields narrower than their provider. Intune's attestation_* columns are
+  # Windows Device Health Attestation. OS release lines are only tracked for
+  # the platforms `Portal.OSReleases` can place a row on.
+  @field_platforms %{
+    intune: %{jail_broken: ~w[ios android]a, is_supervised: ~w[macos ios]a},
+    iru: %{
+      filevault_enabled: ~w[macos]a,
+      filevault_key_type: ~w[macos]a,
+      firewall_enabled: ~w[macos]a,
+      firewall_version: ~w[macos]a,
+      firewall_logging_option: ~w[macos]a,
+      secure_boot_level: ~w[macos]a,
+      external_boot_level: ~w[macos]a,
+      sip_enabled: ~w[macos]a,
+      ssv_enabled: ~w[macos]a,
+      gatekeeper_enabled: ~w[macos]a,
+      gatekeeper_version: ~w[macos]a,
+      gatekeeper_opaque_version: ~w[macos]a,
+      xprotect_version: ~w[macos]a,
+      malware_removal_tool_version: ~w[macos]a
+    },
+    defender: %{os_up_to_date: ~w[macos]a},
+    sentinelone: %{os_up_to_date: ~w[windows macos]a}
+  }
+
   @provider_names Map.new(@providers, &{Atom.to_string(&1), &1})
   @operator_names Map.new(@all_operators, &{Atom.to_string(&1), &1})
 
@@ -176,6 +215,25 @@ defmodule Portal.Policies.Postures.Fields do
 
   @spec providers() :: [atom()]
   def providers, do: @providers
+
+  @spec platforms() :: [atom()]
+  def platforms, do: @platforms
+
+  @doc "The platforms a field says something about; a rule on it is ignored elsewhere."
+  @spec platforms(atom(), atom()) :: [atom()]
+  def platforms(:intune, field) when field not in [:jail_broken, :is_supervised] do
+    if String.starts_with?(Atom.to_string(field), "attestation_") do
+      ~w[windows]a
+    else
+      Map.fetch!(@provider_platforms, :intune)
+    end
+  end
+
+  def platforms(provider, field) do
+    @field_platforms
+    |> Map.get(provider, %{})
+    |> Map.get(field, Map.fetch!(@provider_platforms, provider))
+  end
 
   @spec types() :: [atom()]
   def types, do: @types

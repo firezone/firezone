@@ -348,6 +348,58 @@ defmodule Portal.Policies.Postures.EvaluatorTest do
     end
   end
 
+  describe "evaluate/3 platform relevance" do
+    @jailbroken %{"field" => "intune.jail_broken", "op" => "is", "value" => false}
+    @compliant %{"field" => "intune.compliance_state", "op" => "is", "value" => "compliant"}
+
+    test "a rule about another platform is ignored, the rest still count" do
+      windows = intune(operating_system: "Windows", compliance_state: "noncompliant")
+      device = device(posture: %{intune: [windows]})
+
+      assert evaluate(@jailbroken, device) == {:ok, nil}
+      assert evaluate(%{"not" => @jailbroken}, device) == {:ok, nil}
+      assert evaluate(%{"and" => [@jailbroken, @compliant]}, device) == @failed
+      assert evaluate(%{"or" => [@jailbroken, @compliant]}, device) == @failed
+      assert evaluate(%{"or" => [@jailbroken, %{"not" => @jailbroken}]}, device) == {:ok, nil}
+    end
+
+    test "a rule about the device's own platform is enforced" do
+      phone = intune(operating_system: "iOS", jail_broken: true)
+      assert evaluate(@jailbroken, device(posture: %{intune: [phone]})) == @failed
+    end
+
+    test "the provider row's platform beats the user agent's" do
+      phone = intune(operating_system: "iOS", jail_broken: true)
+      device = device(posture: %{intune: [phone]}, last_seen_user_agent: "Windows/11 gui-client/1.0.0")
+
+      assert Evaluator.platform(device) == :ios
+      assert evaluate(@jailbroken, device) == @failed
+    end
+
+    test "the user agent decides when no row says, and nothing is dropped when neither does" do
+      assert Evaluator.platform(device(last_seen_user_agent: "Windows/11 gui-client/1.0.0")) == :windows
+      assert Evaluator.platform(device(last_seen_user_agent: "Mac OS/15.6 apple-client/1.0.0")) == :macos
+      assert Evaluator.platform(device(last_seen_user_agent: "iOS/18 apple-client/1.0.0")) == :ios
+      assert Evaluator.platform(device(last_seen_user_agent: "Android/15 android-client/1.0.0")) == :android
+      assert Evaluator.platform(device(last_seen_user_agent: "Ubuntu/24.04 headless-client/1.0.0")) == :linux
+      assert Evaluator.platform(device(last_seen_user_agent: "curl/8")) == nil
+
+      assert evaluate(@jailbroken, device(last_seen_user_agent: "Windows/11 gui-client/1.0.0")) == {:ok, nil}
+      assert evaluate(@jailbroken, device(last_seen_user_agent: "curl/8")) == @failed
+      assert evaluate(@jailbroken, device()) == @failed
+    end
+
+    test "Defender and SentinelOne name the platform too" do
+      defender = struct!(Portal.Defender.Device, os_platform: "WindowsServer2022")
+      sentinelone = struct!(Portal.SentinelOne.Device, os_type: "linux")
+      santa = struct!(Portal.Santa.Device, os_version: "15.6")
+
+      assert Evaluator.platform(device(posture: %{defender: [defender]})) == :windows
+      assert Evaluator.platform(device(posture: %{sentinelone: [sentinelone]})) == :linux
+      assert Evaluator.platform(device(posture: %{santa: [santa]})) == :macos
+    end
+  end
+
   describe "evaluate/3 macros" do
     test "@latest resolves to the newest Client release for the device's platform" do
       latest = Portal.ComponentVersions.component_version(:apple)

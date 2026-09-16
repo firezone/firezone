@@ -14,17 +14,98 @@ defmodule Portal.Policies.Postures.Evaluator do
 
   alias Portal.Device
   alias Portal.Policies.Postures
-  alias Portal.Policies.Postures.{And, Leaf, Not, Or}
+  alias Portal.Policies.Postures.{And, Fields, Leaf, Not, Or}
 
   @spec evaluate(Postures.t() | nil, Device.t(), DateTime.t()) ::
           {:ok, DateTime.t() | nil} | {:error, [:postures]}
   def evaluate(nil, %Device{}, %DateTime{}), do: {:ok, nil}
 
   def evaluate(%Postures{expr: expr}, %Device{type: :client} = device, %DateTime{} = now) do
-    case evaluate_node(expr, device, now) do
-      {true, expires_at} -> {:ok, expires_at}
-      {false, _expires_at} -> {:error, [:postures]}
+    case prune(expr, platform(device)) do
+      nil ->
+        {:ok, nil}
+
+      expr ->
+        case evaluate_node(expr, device, now) do
+          {true, expires_at} -> {:ok, expires_at}
+          {false, _expires_at} -> {:error, [:postures]}
+        end
     end
+  end
+
+  @doc """
+  The platform the device runs, from the matched provider rows first, since
+  an MDM's word beats the Client's own, and the user agent otherwise. `nil`
+  when nothing says.
+  """
+  @spec platform(Device.t()) :: atom() | nil
+  def platform(%Device{} = device) do
+    row_platform =
+      Enum.find_value(~w[intune iru defender santa sentinelone]a, fn provider ->
+        device.posture |> Map.get(provider, []) |> Enum.find_value(&row_platform/1)
+      end)
+
+    row_platform || user_agent_platform(device.last_seen_user_agent)
+  end
+
+  # Rules on fields that say nothing about this platform are dropped, so a
+  # requirement about jailbreaks does not fail a Windows laptop. A branch
+  # with nothing left holds. Without a known platform nothing is dropped.
+  defp prune(expr, nil), do: expr
+
+  defp prune(%Leaf{provider: provider, field: field} = leaf, platform) do
+    if platform in Fields.platforms(provider, field), do: leaf, else: nil
+  end
+
+  defp prune(%And{nodes: nodes}, platform), do: prune_nodes(nodes, platform, &%And{nodes: &1})
+  defp prune(%Or{nodes: nodes}, platform), do: prune_nodes(nodes, platform, &%Or{nodes: &1})
+
+  defp prune(%Not{node: node}, platform) do
+    case prune(node, platform) do
+      nil -> nil
+      node -> %Not{node: node}
+    end
+  end
+
+  defp prune_nodes(nodes, platform, build) do
+    case nodes |> Enum.map(&prune(&1, platform)) |> Enum.reject(&is_nil/1) do
+      [] -> nil
+      kept -> build.(kept)
+    end
+  end
+
+  defp row_platform(%Portal.Intune.Device{operating_system: os}), do: os_name_platform(os)
+  defp row_platform(%Portal.Iru.Device{os_name: os}), do: os_name_platform(os)
+  defp row_platform(%Portal.Defender.Device{os_platform: os}), do: os_name_platform(os)
+  defp row_platform(%Portal.SentinelOne.Device{os_type: os}), do: os_name_platform(os)
+  defp row_platform(%Portal.Santa.Device{}), do: :macos
+  defp row_platform(_row), do: nil
+
+  # Intune says "Windows", Defender "Windows10" or "WindowsServer2022", so a
+  # prefix is what is shared.
+  defp os_name_platform(nil), do: nil
+
+  defp os_name_platform(name) do
+    case String.downcase(name) do
+      "windows" <> _rest -> :windows
+      "macos" <> _rest -> :macos
+      "mac os" <> _rest -> :macos
+      "ipados" <> _rest -> :ios
+      "ios" <> _rest -> :ios
+      "android" <> _rest -> :android
+      "linux" <> _rest -> :linux
+      _other -> nil
+    end
+  end
+
+  defp user_agent_platform(nil), do: nil
+  defp user_agent_platform("Windows/" <> _rest), do: :windows
+  defp user_agent_platform("Mac OS/" <> _rest), do: :macos
+  defp user_agent_platform("iOS/" <> _rest), do: :ios
+  defp user_agent_platform("Android/" <> _rest), do: :android
+
+  defp user_agent_platform(user_agent) do
+    if String.contains?(user_agent, ["headless-client/", "gui-client/"]), do: :linux, else: nil
   end
 
   defp evaluate_node(%And{nodes: nodes}, device, now) do
