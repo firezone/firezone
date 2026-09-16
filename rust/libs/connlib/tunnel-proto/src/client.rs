@@ -617,12 +617,18 @@ impl ClientState {
         let peer_originated_client_flow = self.clients.peer_by_ip(dst).and_then(|(cid, peer)| {
             (peer.outbound_flow_originator(&packet) == Some(Originator::Peer)).then_some(cid)
         });
-
         let routes = self
             .routing_tables
             .resolve(dst, dst_proto, internet_resource);
 
         let (packet, peer) = match (direct_gateway, peer_originated_client_flow, routes) {
+            (None, None, Err(routing::Denied)) => {
+                reply_with_icmp_prohibited(&mut self.buffered_packets, packet);
+                return Ok(());
+            }
+            (None, None, Ok(routes)) if routes.is_empty() => {
+                return Err(UnroutablePacket::unknown_resource(&packet).into());
+            }
             (Some(gid), _, _) => {
                 // A Gateway's TUN IP takes precedence over resource matches.
                 flow_tracker::record_peer(gid, flow_tracker::Role::Initiator);
@@ -636,15 +642,7 @@ impl ClientState {
 
                 (packet, cid.into())
             }
-            (None, None, Err(routing::Denied)) => {
-                reply_with_icmp_prohibited(&mut self.buffered_packets, packet);
-                return Ok(());
-            }
             (None, None, Ok(MatchedRoutes::DevicePools(pools))) => {
-                if pools.is_empty() {
-                    return Err(UnroutablePacket::unknown_resource(&packet).into());
-                }
-
                 let mut authorized = None;
                 if let Some((cid, _)) = self.clients.peer_by_ip(dst) {
                     for &resource_id in &pools {
@@ -680,10 +678,6 @@ impl ClientState {
                 (packet, cid.into())
             }
             (None, None, Ok(MatchedRoutes::Gateways(routes))) => {
-                if routes.is_empty() {
-                    return Err(UnroutablePacket::unknown_resource(&packet).into());
-                }
-
                 let mut authorized = None;
                 for route in &routes {
                     let Some(authorization) =

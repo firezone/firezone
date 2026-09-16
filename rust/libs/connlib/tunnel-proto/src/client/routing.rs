@@ -17,6 +17,15 @@ pub(super) enum MatchedRoutes {
     Gateways(Vec<GatewayRoute>),
 }
 
+impl MatchedRoutes {
+    pub fn is_empty(&self) -> bool {
+        match self {
+            Self::DevicePools(resources) => resources.is_empty(),
+            Self::Gateways(routes) => routes.is_empty(),
+        }
+    }
+}
+
 pub(super) struct GatewayRoute {
     pub(super) resource_id: ResourceId,
     pub(super) domain: Option<DomainName>,
@@ -477,13 +486,6 @@ mod tests {
             match self {
                 Self::DevicePools(resources) => resources.clone(),
                 Self::Gateways(routes) => routes.iter().map(|route| route.resource_id).collect(),
-            }
-        }
-
-        fn is_empty(&self) -> bool {
-            match self {
-                Self::DevicePools(resources) => resources.is_empty(),
-                Self::Gateways(routes) => routes.is_empty(),
             }
         }
     }
