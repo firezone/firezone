@@ -566,7 +566,7 @@ defmodule PortalWeb.Policies.Components do
               NEW
             </span>
           </div>
-          <p class="text-[11px] text-subtle">
+          <p class="text-xs text-subtle">
             Report flow logs for connections created by this Policy
           </p>
         </div>

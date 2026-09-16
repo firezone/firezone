@@ -62,7 +62,7 @@ defmodule PortalWeb.Policies.PostureComponents do
         <input type="hidden" name="policy[postures]" value={Postures.hidden_value(@state)} />
         <.postures_checks id={@id <> "-checks"} state={@state} />
       <% end %>
-      <p class="mt-2 text-[11px] text-subtle">
+      <p class="mt-2 text-xs text-subtle">
         Over <.website_link path="/kb/device-posture">300 more fields</.website_link> are available through the REST API.
       </p>
     </div>
