@@ -27,6 +27,17 @@ defmodule Portal.Policies.PosturesTest do
   defp intune_leaf(op, value \\ :none), do: leaf("intune.compliance_state", op, value)
 
   describe "cast/1 grammar" do
+    test "@latest is only for the Client version" do
+      assert %Postures{expr: %Leaf{parsed: :latest}} =
+               cast!(%{"field" => "firezone.last_seen_version", "op" => "gte", "value" => "@latest"})
+
+      assert cast_error(%{"field" => "intune.os_version", "op" => "gte", "value" => "@latest"}) =~
+               "value: unknown macro @latest"
+
+      assert cast_error(%{"field" => "firezone.last_seen_version", "op" => "gte", "value" => "@newest"}) =~
+               "value: unknown macro @newest"
+    end
+
     test "nil and an existing tree pass through" do
       assert Postures.cast(nil) == {:ok, nil}
       postures = cast!(intune_leaf("is", "compliant"))

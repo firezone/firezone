@@ -41,7 +41,9 @@ defmodule Portal.Policies.Postures.Evaluator do
   end
 
   defp evaluate_node(%Leaf{provider: :firezone} = leaf, device, now) do
-    evaluate_leaf(leaf, field_value(leaf.field, device, device), now)
+    leaf
+    |> resolve_macro(device)
+    |> evaluate_leaf(field_value(leaf.field, device, device), now)
   end
 
   defp evaluate_node(%Leaf{provider: provider, rows: rows} = leaf, device, now) do
@@ -93,6 +95,12 @@ defmodule Portal.Policies.Postures.Evaluator do
   defp earliest(nil, other), do: other
   defp earliest(other, nil), do: other
   defp earliest(left, right), do: Enum.min([left, right], DateTime)
+
+  defp resolve_macro(%Leaf{parsed: :latest} = leaf, device) do
+    %{leaf | parsed: Postures.parse_version(Portal.ComponentVersions.client_version(device))}
+  end
+
+  defp resolve_macro(leaf, _device), do: leaf
 
   defp field_value(:enrolled, row, _device), do: not is_nil(row)
   defp field_value(:os_up_to_date, nil, _device), do: nil

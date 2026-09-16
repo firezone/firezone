@@ -3,9 +3,8 @@ defmodule Portal.Changes.Hooks.IruPostureProviders do
   Hooks for changes to an Iru provider.
 
   A run ends by writing its provider row, so this reports a finished sync as
-  well as an edit. The synced devices are deliberately not in the publication:
-  a run rewrites every device it reports, so subscribing them would carry one
-  event per device every couple of hours.
+  well as an edit. The synced devices have hooks of their own that publish a
+  row only under the identifiers a client device can match it on.
   """
 
   @behaviour Portal.Changes.Hooks

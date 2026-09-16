@@ -25,31 +25,51 @@ defmodule Portal.Devices.Posture do
   alias __MODULE__.Database
 
   @type rung :: :mdm_device_id | :attested_serial | :device_serial
+  @type key :: {:mdm_device_id | :serial | :entra_device_id, String.t()}
   @type match :: {atom(), struct(), rung(), :intune | nil}
 
   @doc "Every provider row matched to the device, one entry per row."
   @spec match(Device.t()) :: [match()]
-  def match(%Device{type: :client, account_id: account_id} = device) do
-    keys = match_keys(device)
-    types = Database.list_provider_types(account_id)
+  def match(%Device{type: :client} = device), do: device |> match_all() |> Map.get(device.id, [])
+  def match(_device), do: []
 
-    if keys == [] or types == [] do
-      []
-    else
-      matched = Enum.flat_map(types, &match_type(&1, keys, account_id))
-      matched ++ link_defender(types, matched, account_id)
+  @doc """
+  The matched rows of many client devices of one account, keyed by device id.
+
+  One statement joins the devices to every provider table on the identifiers
+  of the ladder, and to Defender through the Intune row, so a batch of a
+  thousand devices costs the same round trip as one.
+  """
+  @spec match_all([Device.t()] | Device.t()) :: %{Ecto.UUID.t() => [match()]}
+  def match_all(%Device{} = device), do: match_all([device])
+
+  def match_all(devices) when is_list(devices) do
+    keys_by_id =
+      for %Device{type: :client} = device <- devices, match_keys(device) != [], into: %{} do
+        {device.id, match_keys(device)}
+      end
+
+    case Map.keys(keys_by_id) do
+      [] ->
+        %{}
+
+      device_ids ->
+        account_id = devices |> hd() |> Map.fetch!(:account_id)
+
+        account_id
+        |> Database.list_matches(device_ids)
+        |> Enum.group_by(&elem(&1, 0), &Tuple.delete_at(&1, 0))
+        |> Map.new(fn {device_id, rows} -> {device_id, matches(rows, Map.fetch!(keys_by_id, device_id))} end)
     end
   end
 
-  def match(_device), do: []
-
   @doc "The matched rows grouped by provider type, the shape the posture evaluator reads."
   @spec rows_by_type(Device.t()) :: %{atom() => [struct()]}
-  def rows_by_type(device) do
-    device
-    |> match()
-    |> Enum.group_by(fn {type, _row, _rung, _via} -> type end, fn {_type, row, _rung, _via} -> row end)
-  end
+  def rows_by_type(device), do: device |> match() |> group_rows()
+
+  @doc "`rows_by_type/1` for a batch of devices of one account, keyed by device id."
+  @spec rows_by_type_all([Device.t()]) :: %{Ecto.UUID.t() => %{atom() => [struct()]}}
+  def rows_by_type_all(devices), do: devices |> match_all() |> Map.new(fn {id, rows} -> {id, group_rows(rows)} end)
 
   @spec rung_rank(rung()) :: 0 | 1 | 2
   def rung_rank(:mdm_device_id), do: 0
@@ -63,6 +83,60 @@ defmodule Portal.Devices.Posture do
   def schema(:defender), do: Defender.Device
   def schema(:santa), do: Santa.Device
   def schema(:sentinelone), do: SentinelOne.Device
+
+  @types ~w[intune iru defender santa sentinelone]a
+
+  @spec types() :: [atom()]
+  def types, do: @types
+
+  @doc "The mirror schemas, so a change can be recognised as a provider row."
+  @spec schemas() :: [module()]
+  def schemas, do: Enum.map(@types, &schema/1)
+
+  @doc "The provider type of a mirror schema."
+  @spec type(module()) :: atom()
+  def type(Intune.Device), do: :intune
+  def type(Iru.Device), do: :iru
+  def type(Defender.Device), do: :defender
+  def type(Santa.Device), do: :santa
+  def type(SentinelOne.Device), do: :sentinelone
+
+  @doc """
+  The identifiers a provider row can be matched on, which are the keys its
+  changes are published under. A Defender row is reached through an Intune
+  row, so it is keyed by its Entra device id instead.
+  """
+  @spec row_keys(struct()) :: [key()]
+  def row_keys(%Defender.Device{entra_device_id: entra_id}), do: keys(entra_device_id: entra_id)
+
+  def row_keys(%schema{} = row) do
+    type = type(schema)
+
+    keys(
+      for {kind, rung} <- [mdm_device_id: :mdm_device_id, serial: :device_serial],
+          field <- rung_fields(type, rung),
+          do: {kind, Map.fetch!(row, field)}
+    )
+  end
+
+  @doc "The identifiers a client device is matched on, which are the keys its channel listens under."
+  @spec device_keys(Device.t()) :: [key()]
+  def device_keys(%Device{} = device) do
+    keys(
+      mdm_device_id: device.last_attested_mdm_device_id,
+      serial: device.last_attested_device_serial,
+      serial: device.device_serial
+    )
+  end
+
+  @doc "The Entra device ids of the matched Intune rows, which are the keys Defender rows arrive under."
+  @spec entra_keys(%{atom() => [struct()]}) :: [key()]
+  def entra_keys(rows_by_type) do
+    rows_by_type
+    |> Map.get(:intune, [])
+    |> Enum.map(&{:entra_device_id, &1.entra_device_id})
+    |> keys()
+  end
 
   # Which columns of a provider's row each rung is compared against. Both the
   # query and the credit given to a row it returns are built from this, so they
@@ -91,47 +165,30 @@ defmodule Portal.Devices.Posture do
     )
   end
 
-  defp match_type(type, keys, account_id) do
-    case rung_conditions(type, keys) do
-      [] ->
-        []
+  # One joined result row per combination of matched provider rows; the
+  # struct of a provider that matched nothing is nil. Defender rides on the
+  # Intune row it was joined through and inherits that row's rung.
+  defp matches(rows, keys) do
+    provider_matches =
+      for {type, index} <- [intune: 0, iru: 1, santa: 2, sentinelone: 3],
+          row <- rows |> Enum.map(&elem(&1, index)) |> Enum.reject(&is_nil/1) |> Enum.uniq_by(&Ecto.primary_key/1),
+          rung = matched_rung(type, keys, row),
+          not is_nil(rung),
+          do: {type, row, rung, nil}
 
-      conditions ->
-        schema(type)
-        |> Database.list_rows(account_id, Enum.reduce(conditions, &dynamic(^&1 or ^&2)))
-        |> Enum.map(&{type, &1, matched_rung(type, keys, &1), nil})
-    end
-  end
+    defender_matches =
+      for {intune, _iru, _santa, _sentinelone, defender} <- rows,
+          not is_nil(intune) and not is_nil(defender),
+          rung = matched_rung(:intune, keys, intune),
+          not is_nil(rung),
+          do: {:defender, defender, rung, :intune}
 
-  defp link_defender(types, matched, account_id) do
-    if :defender in types do
-      matched
-      |> Enum.flat_map(fn
-        {:intune, %{entra_device_id: entra_id}, rung, _via} when is_binary(entra_id) -> [{entra_id, rung}]
-        _other -> []
-      end)
-      |> Enum.sort_by(fn {_entra_id, rung} -> rung_rank(rung) end)
-      |> Enum.uniq_by(fn {entra_id, _rung} -> entra_id end)
-      |> match_defender_by_entra_id(account_id)
-    else
-      []
-    end
-  end
+    defender_matches =
+      defender_matches
+      |> Enum.sort_by(fn {_type, _row, rung, _via} -> rung_rank(rung) end)
+      |> Enum.uniq_by(fn {_type, row, _rung, _via} -> Ecto.primary_key(row) end)
 
-  defp match_defender_by_entra_id([], _account_id), do: []
-
-  defp match_defender_by_entra_id(entra_ids, account_id) do
-    rung_by_entra_id = Map.new(entra_ids)
-
-    Defender.Device
-    |> Database.list_rows(account_id, dynamic([d], d.entra_device_id in ^Map.keys(rung_by_entra_id)))
-    |> Enum.map(&{:defender, &1, Map.fetch!(rung_by_entra_id, &1.entra_device_id), :intune})
-  end
-
-  defp rung_conditions(type, keys) do
-    for {rung, value} <- keys,
-        field_name <- rung_fields(type, rung),
-        do: dynamic([d], field(d, ^field_name) == ^value)
+    provider_matches ++ defender_matches
   end
 
   defp matched_rung(type, keys, row) do
@@ -139,22 +196,93 @@ defmodule Portal.Devices.Posture do
       if Enum.any?(rung_fields(type, rung), &(Map.fetch!(row, &1) == value)), do: rung
     end)
   end
+
+  defp keys(pairs) do
+    pairs
+    |> Enum.reject(fn {_kind, value} -> is_nil(value) end)
+    |> Enum.uniq()
+  end
+
+  defp group_rows(matches) do
+    Enum.group_by(matches, fn {type, _row, _rung, _via} -> type end, fn {_type, row, _rung, _via} -> row end)
+  end
   defmodule Database do
     import Ecto.Query
-    alias Portal.{PostureProvider, Safe}
+    alias Portal.{Defender, Device, Intune, Iru, Safe, Santa, SentinelOne}
 
-    # Reads run unscoped: a policy check must see the rows whatever the
-    # connecting actor may read, and the account filter keeps them in bounds.
-    def list_provider_types(account_id) do
-      from(p in PostureProvider, where: p.account_id == ^account_id, distinct: true, select: p.type)
+    # Runs unscoped: a policy check must see the rows whatever the connecting
+    # actor may read, and the account filter keeps them in bounds. The join
+    # conditions are the matching ladder; `rung_fields/2` names the same
+    # columns so the credit given to a returned row can never disagree.
+    def list_matches(account_id, device_ids) do
+      from(d in Device, as: :device, where: d.account_id == ^account_id and d.id in ^device_ids)
+      |> join_intune()
+      |> join_iru()
+      |> join_santa()
+      |> join_sentinelone()
+      |> join_defender()
+      |> select([device: d, intune: i, iru: r, santa: s, sentinelone: o, defender: f], {d.id, i, r, s, o, f})
       |> Safe.unscoped()
       |> Safe.all()
     end
 
-    def list_rows(schema, account_id, condition) do
-      from(d in schema, where: d.account_id == ^account_id, where: ^condition)
-      |> Safe.unscoped()
-      |> Safe.all()
+    defp join_intune(query) do
+      join(query, :left, [device: d], i in subquery(enabled(Intune.Device, Intune.PostureProvider)),
+        as: :intune,
+        on:
+          i.account_id == d.account_id and
+            (i.intune_id == d.last_attested_mdm_device_id or
+               i.serial_number == d.last_attested_device_serial or
+               i.serial_number == d.device_serial)
+      )
+    end
+
+    defp join_iru(query) do
+      join(query, :left, [device: d], r in subquery(enabled(Iru.Device, Iru.PostureProvider)),
+        as: :iru,
+        on:
+          r.account_id == d.account_id and
+            (r.iru_id == d.last_attested_mdm_device_id or
+               r.serial_number == d.last_attested_device_serial or
+               r.serial_number == d.device_serial)
+      )
+    end
+
+    defp join_santa(query) do
+      join(query, :left, [device: d], s in subquery(enabled(Santa.Device, Santa.PostureProvider)),
+        as: :santa,
+        on:
+          s.account_id == d.account_id and
+            (s.serial_number == d.last_attested_device_serial or s.serial_number == d.device_serial)
+      )
+    end
+
+    defp join_sentinelone(query) do
+      join(query, :left, [device: d], o in subquery(enabled(SentinelOne.Device, SentinelOne.PostureProvider)),
+        as: :sentinelone,
+        on:
+          o.account_id == d.account_id and
+            (o.serial_number == d.last_attested_device_serial or o.serial_number == d.device_serial)
+      )
+    end
+
+    defp join_defender(query) do
+      join(query, :left, [device: d, intune: i], f in subquery(enabled(Defender.Device, Defender.PostureProvider)),
+        as: :defender,
+        on:
+          f.account_id == d.account_id and
+            f.entra_device_id == i.entra_device_id
+      )
+    end
+
+    # A disabled provider's rows are as good as absent: nothing refreshes them.
+    defp enabled(device_schema, provider_schema) do
+      from(r in device_schema,
+        join: p in ^provider_schema,
+        on: p.account_id == r.account_id and p.id == r.posture_provider_id,
+        where: not p.is_disabled,
+        select: r
+      )
     end
   end
 end
