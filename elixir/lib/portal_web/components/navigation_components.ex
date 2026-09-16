@@ -801,6 +801,7 @@ defmodule PortalWeb.NavigationComponents do
   """
   attr :path, :string, required: true
   attr :fragment, :string, required: false, default: ""
+  attr :class, :string, default: nil
   slot :inner_block, required: true
   attr :rest, :global
 
@@ -808,7 +809,7 @@ defmodule PortalWeb.NavigationComponents do
     ~H"""
     <.link
       href={"https://www.firezone.dev#{@path}?utm_source=product##{@fragment}"}
-      class={link_style()}
+      class={[link_style(), @class]}
       target="_blank"
       rel="noopener noreferrer"
       {@rest}
