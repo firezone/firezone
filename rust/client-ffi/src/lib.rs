@@ -714,6 +714,16 @@ struct Logger {
 
 static LOGGER: OnceLock<Logger> = OnceLock::new();
 
+/// Serialises [`configure_logger`], which entry points call from whichever thread
+/// the platform hands them.
+///
+/// [`LOGGER`] is only filled in once the install has succeeded, so concurrent
+/// callers would otherwise both find it empty and race to install a global
+/// subscriber. The loser of that race leaves the process with a subscriber no
+/// [`Logger`] describes, which fails every later call and denies [`connect`] the
+/// flow-log spool root for good.
+static CONFIGURE_LOGGER: parking_lot::Mutex<()> = parking_lot::Mutex::new(());
+
 /// Installs the logger, or re-applies `log_filter` when it is already installed.
 ///
 /// A session is not the only thing that logs: the network extension is woken
@@ -730,6 +740,8 @@ pub fn configure_logger(
     log_filter: String,
     flow_logs_dir: Option<String>,
 ) -> Result<(), ConnlibError> {
+    let _guard = CONFIGURE_LOGGER.lock();
+
     if let Some(logger) = LOGGER.get() {
         logger
             .reload_handle
