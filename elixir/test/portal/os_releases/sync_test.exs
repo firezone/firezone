@@ -71,10 +71,22 @@ defmodule Portal.OSReleases.SyncTest do
     end)
   end
 
+  # The portal's identity mints the federated assertion; its tid claim names our tenant.
+  defp stub_identity do
+    payload = Base.url_encode64(JSON.encode!(%{"tid" => "test-firezone-tenant"}), padding: false)
+
+    Req.Test.stub(Portal.Azure.ManagedIdentity, fn conn ->
+      Req.Test.json(conn, %{"access_token" => "h.#{payload}.s", "expires_on" => System.system_time(:second) + 3600})
+    end)
+  end
+
   defp stub_graph(token_status \\ 200) do
+    stub_identity()
+
     Req.Test.stub(Portal.Microsoft.Graph.APIClient, fn conn ->
       case {conn.host, conn.request_path} do
         {"login.microsoftonline.com", "/test-firezone-tenant/oauth2/v2.0/token"} when token_status == 200 ->
+          assert URI.decode_query(Plug.Conn.read_body(conn) |> elem(1))["client_assertion"] =~ "h."
           Req.Test.json(conn, %{"access_token" => "graph-token", "expires_in" => 3600})
 
         {"login.microsoftonline.com", _path} ->
@@ -128,7 +140,7 @@ defmodule Portal.OSReleases.SyncTest do
     log = capture_log(fn -> assert :ok = perform_job(Portal.OSReleases.Sync, %{}) end)
 
     assert log =~ "Can't fetch OS releases for linux: url=https://www.kernel.org/releases.json status=500"
-    assert log =~ "Can't fetch OS releases for windows: step=token tenant_id=test-firezone-tenant status=401"
+    assert log =~ "Can't fetch OS releases for windows: step=token status=401"
     assert log =~ "invalid_client"
 
     assert releases(:linux) == %{"4.19" => {"4.19.300", true}}

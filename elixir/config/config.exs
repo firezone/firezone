@@ -392,9 +392,7 @@ config :portal, Portal.Crl.Sync, req_opts: []
 config :portal, Portal.Ocsp.Sync, req_opts: []
 
 config :portal, Portal.OSReleases, reload_every: :timer.minutes(10)
-config :portal, Portal.OSReleases.Sync,
-  req_opts: [],
-  windows_updates_tenant_id: System.get_env("WINDOWS_UPDATES_TENANT_ID")
+config :portal, Portal.OSReleases.Sync, req_opts: []
 
 config :portal, Portal.ComponentVersions,
   firezone_releases_url: "https://www.firezone.dev/api/releases",

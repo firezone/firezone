@@ -166,11 +166,6 @@ if config_env() == :prod do
       windows_updates: [client_id: env_var_to_config!(:windows_updates_client_id), client_secret: nil]
     ]
 
-  # The Windows Update release catalog is read as a single-tenant application in
-  # the Firezone tenant, through the same federated credential.
-  config :portal, Portal.OSReleases.Sync,
-    windows_updates_tenant_id: env_var_to_config!(:windows_updates_tenant_id)
-
   # Defender for Endpoint uses its own app registration, granted Machine.Read.All
   # on the WindowsDefenderATP API rather than on Microsoft Graph. It follows the
   # same rules as the two above: no client secret in production, and the
