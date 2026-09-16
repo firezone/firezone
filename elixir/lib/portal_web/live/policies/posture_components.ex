@@ -87,7 +87,7 @@ defmodule PortalWeb.Policies.PostureComponents do
         This policy has posture rules written through the REST API that these checks cannot show.
         Saving keeps them as they are.
       </p>
-      <table class="w-full">
+      <table class="w-full text-sm text-body">
         <thead class="bg-raised text-[10px] font-semibold tracking-widest uppercase text-subtle">
           <tr>
             <th class="px-3 py-2 text-left w-32">Providers</th>
@@ -98,27 +98,27 @@ defmodule PortalWeb.Policies.PostureComponents do
         </thead>
         <tbody class="divide-y divide-border bg-surface">
           <tr :for={check <- Checks.all()}>
-            <td class="px-3 py-2.5 align-top">
+            <td class="px-3 py-2.5 align-middle">
               <div class="flex items-center gap-1.5">
                 <.provider_icon
                   :for={provider <- check.providers}
                   provider={Atom.to_string(provider)}
-                  size="md"
+                  size="sm"
                   title={provider_label(Atom.to_string(provider))}
                 />
               </div>
             </td>
-            <td class="px-3 py-2.5 align-top">
-              <div class="flex items-center gap-1.5 text-heading">
-                <.icon :for={{icon, title} <- platform_icons(check.platforms)} name={icon} title={title} class="w-5 h-5" />
+            <td class="px-3 py-2.5 align-middle">
+              <div class="flex items-center gap-1.5">
+                <.icon :for={{icon, title} <- platform_icons(check.platforms)} name={icon} title={title} class="w-4 h-4" />
               </div>
             </td>
-            <td class="px-3 py-2.5">
-              <div class="text-xs font-semibold text-body">{check.label}</div>
-              <div class="text-[11px] text-subtle">{check.description}</div>
+            <td class="px-3 py-2.5 align-middle">
+              <div class="font-medium text-heading">{check.label}</div>
+              <div class="text-xs text-subtle mt-0.5">{check.description}</div>
             </td>
-            <td class="px-3 py-2.5 align-top text-right">
-              <span title={toggle_title(@state, check, @enabled)}>
+            <td class="px-3 py-2.5 align-middle">
+              <span class="flex justify-end" title={toggle_title(@state, check, @enabled)}>
                 <.toggle
                   id={"#{@id}-#{check.name}"}
                   checked={check.name in @enabled}
@@ -213,20 +213,15 @@ defmodule PortalWeb.Policies.PostureComponents do
   defp operator_label(nil), do: ""
   defp operator_label(op), do: Map.get_lazy(@operator_labels, op, fn -> String.replace(op, "_", " ") end)
 
-  # Apple covers both of its operating systems with one icon.
+  @platform_icons [
+    windows: {"icon-os-windows", "Windows"},
+    macos: {"icon-os-macos", "macOS"},
+    ios: {"icon-os-ios", "iOS"},
+    android: {"icon-os-android", "Android"},
+    linux: {"icon-os-linux", "Linux"}
+  ]
+
   defp platform_icons(platforms) do
-    apple = Enum.filter([:macos, :ios], &(&1 in platforms))
-
-    [
-      {:windows in platforms, {"ri-windows-fill", "Windows"}},
-      {apple != [], {"ri-apple-fill", Enum.map_join(apple, ", ", &platform_name/1)}},
-      {:android in platforms, {"ri-android-fill", "Android"}},
-      {:linux in platforms, {"ri-ubuntu-fill", "Linux"}}
-    ]
-    |> Enum.filter(&elem(&1, 0))
-    |> Enum.map(&elem(&1, 1))
+    for {platform, icon} <- @platform_icons, platform in platforms, do: icon
   end
-
-  defp platform_name(:macos), do: "macOS"
-  defp platform_name(:ios), do: "iOS"
 end
