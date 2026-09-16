@@ -1516,7 +1516,8 @@ defmodule PortalWeb.PoliciesTest do
       assert html =~ "Connect Intune or Iru to use this check."
       assert html =~ "300 more fields"
       assert html =~ "kb/device-posture?utm_source=product"
-      assert html =~ "No trust anchors are defined."
+      assert html =~ "are defined. Devices will be identified by Firezone-reported attributes only."
+      assert html =~ "settings/trust_anchors"
       assert html =~ "kb/device-trust?utm_source=product#device-attributes"
 
       assert toggle(lv, "disk_encryption") =~ "disabled"
@@ -1549,7 +1550,7 @@ defmodule PortalWeb.PoliciesTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/policies/new")
 
-      refute html =~ "No trust anchors are defined."
+      refute html =~ "Devices will be identified by Firezone-reported attributes only."
       refute toggle(lv, "compliant") =~ "disabled"
       assert toggle(lv, "firewall") =~ "disabled"
 

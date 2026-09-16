@@ -41,7 +41,11 @@ defmodule PortalWeb.Policies.PostureComponents do
       >
         <.icon name="ri-error-warning-line" class="w-3.5 h-3.5 shrink-0 mt-0.5" />
         <span>
-          No trust anchors are defined. Device matching is based on Firezone-reported attributes only.
+          No
+          <.link navigate={~p"/#{@account}/settings/trust_anchors"} class="font-medium underline hover:no-underline">
+            trust anchors
+          </.link>
+          are defined. Devices will be identified by Firezone-reported attributes only.
           <.website_link path="/kb/device-trust" fragment="device-attributes" class="font-medium underline hover:no-underline">
             Learn more
           </.website_link>
@@ -63,7 +67,7 @@ defmodule PortalWeb.Policies.PostureComponents do
         <.postures_checks id={@id <> "-checks"} state={@state} />
       <% end %>
       <p class="mt-2 text-xs text-subtle">
-        Over <.website_link path="/kb/device-posture">300 more fields</.website_link> are available through the REST API.
+        Over <.website_link path="/kb/device-posture">300 more device posture fields</.website_link> are available to configure through the REST API.
       </p>
     </div>
     """
