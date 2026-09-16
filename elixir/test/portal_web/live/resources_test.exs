@@ -625,35 +625,16 @@ defmodule PortalWeb.ResourcesTest do
       assert html =~ "Device posture"
 
       render_click(lv, "toggle_grant_group", %{"group_id" => group.id})
-      render_click(lv, "postures_tab", %{"tab" => "json"})
-
-      html =
-        lv
-        |> element("textarea[name='_postures_json']")
-        |> render_change(%{"_postures_json" => ~s({"field": "intune.jail_broken", "op": "is", "value": "yes"})})
-
-      assert html =~ "Must be true or false"
-
-      html =
-        lv
-        |> form("#grant-form")
-        |> render_submit()
-
-      assert html =~ "must be true or false"
-      refute Repo.get_by(Policy, resource_id: resource.id, group_id: group.id)
-
-      lv
-      |> element("textarea[name='_postures_json']")
-      |> render_change(%{"_postures_json" => ~s({"field": "intune.jail_broken", "op": "is", "value": true})})
+      html = render_click(lv, "postures_toggle_check", %{"name" => "client_up_to_date"})
+      assert html =~ ~s(&quot;field&quot;:&quot;firezone.last_seen_version&quot;)
 
       lv
       |> form("#grant-form")
       |> render_submit()
 
       policy = Repo.get_by!(Policy, resource_id: resource.id, group_id: group.id)
-
-      assert Portal.Policies.Postures.to_map(policy.postures) ==
-               %{"field" => "intune.jail_broken", "op" => "is", "value" => true}
+      {:ok, check} = PortalWeb.Policies.Postures.Checks.fetch(:client_up_to_date)
+      assert Portal.Policies.Postures.to_map(policy.postures) == check.expansion
     end
 
     test "grants access with flow log reporting disabled", %{

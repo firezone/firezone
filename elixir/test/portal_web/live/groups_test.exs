@@ -238,28 +238,16 @@ defmodule PortalWeb.GroupsTest do
       assert html =~ "Device posture"
 
       render_click(lv, "toggle_grant_resource", %{"resource_id" => resource.id})
-      render_click(lv, "postures_tab", %{"tab" => "builder"})
-      render_click(lv, "postures_add_rule", %{"id" => "0"})
-
-      lv
-      |> element("[name='_postures[1][provider]']")
-      |> render_change(%{"_postures" => %{"1" => %{"provider" => "intune"}}})
-
-      html =
-        lv
-        |> element("[name='_postures[1][field]']")
-        |> render_change(%{"_postures" => %{"1" => %{"field" => "jail_broken"}}})
-
-      assert html =~ ~s(<option value="true" selected)
+      html = render_click(lv, "postures_toggle_check", %{"name" => "client_up_to_date"})
+      assert html =~ ~s(&quot;field&quot;:&quot;firezone.last_seen_version&quot;)
 
       lv
       |> form("#grant-resource-form")
       |> render_submit()
 
       policy = Repo.get_by!(Policy, group_id: group.id, resource_id: resource.id)
-
-      assert Portal.Policies.Postures.to_map(policy.postures) ==
-               %{"field" => "intune.jail_broken", "op" => "is", "value" => true}
+      {:ok, check} = PortalWeb.Policies.Postures.Checks.fetch(:client_up_to_date)
+      assert Portal.Policies.Postures.to_map(policy.postures) == check.expansion
     end
 
     test "grants access with flow log reporting disabled", %{

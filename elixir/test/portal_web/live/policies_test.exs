@@ -1429,13 +1429,10 @@ defmodule PortalWeb.PoliciesTest do
       %{account: account, actor: actor, group: group, resource: resource}
     end
 
-    defp change_posture_leaf(lv, id, sub, value) do
-      lv
-      |> element("[name='_postures[#{id}][#{sub}]']")
-      |> render_change(%{"_postures" => %{to_string(id) => %{sub => value}}})
+    defp expansion(name) do
+      {:ok, check} = PortalWeb.Policies.Postures.Checks.fetch(name)
+      check.expansion
     end
-
-    defp jail_broken_json, do: ~s({"field": "intune.jail_broken", "op": "is", "value": true})
 
     defp saved_postures(group, resource) do
       Policy
@@ -1443,6 +1440,8 @@ defmodule PortalWeb.PoliciesTest do
       |> Map.fetch!(:postures)
       |> Portal.Policies.Postures.to_map()
     end
+
+    defp toggle(lv, id), do: lv |> element("#policy-postures-checks-#{id}") |> render()
 
     test "the section is hidden when the feature is off globally", %{conn: conn} do
       enable_device_posture(false)
@@ -1472,121 +1471,7 @@ defmodule PortalWeb.PoliciesTest do
       refute html =~ ~s(name="policy[postures]")
     end
 
-    test "builds a rule and saves it", %{conn: conn, account: account, actor: actor, group: group, resource: resource} do
-      {:ok, lv, html} =
-        conn
-        |> authorize_conn(actor)
-        |> live(~p"/#{account}/policies/new")
-
-      assert html =~ ~s(phx-value-tab="simple")
-      refute html =~ "revokes this policy&#39;s active authorizations"
-
-      html = render_click(lv, "postures_tab", %{"tab" => "builder"})
-      assert html =~ "No posture rules"
-
-      html = render_click(lv, "postures_add_rule", %{"id" => "0"})
-      assert html =~ ~s(name="_postures[1][provider]")
-      refute html =~ "No posture rules"
-
-      html = change_posture_leaf(lv, 1, "provider", "intune")
-      assert html =~ ~s(<option value="jail_broken")
-
-      html = change_posture_leaf(lv, 1, "field", "jail_broken")
-      assert html =~ ~s(<option value="true" selected)
-
-      html =
-        lv
-        |> form("[phx-submit='submit_policy_form']",
-          policy: %{group_id: group.id, resource_id: resource.id}
-        )
-        |> render_submit()
-
-      assert html =~ "created successfully"
-      assert saved_postures(group, resource) == %{"field" => "intune.jail_broken", "op" => "is", "value" => true}
-      assert html =~ "intune.jail_broken"
-    end
-
-    test "shows a leaf error under the input and refuses to save", %{conn: conn, account: account, actor: actor, group: group, resource: resource} do
-      {:ok, lv, _html} =
-        conn
-        |> authorize_conn(actor)
-        |> live(~p"/#{account}/policies/new")
-
-      render_click(lv, "postures_tab", %{"tab" => "builder"})
-      render_click(lv, "postures_add_rule", %{"id" => "0"})
-      change_posture_leaf(lv, 1, "provider", "intune")
-      change_posture_leaf(lv, 1, "field", "os_version")
-      html = change_posture_leaf(lv, 1, "value", "fourteen")
-      assert html =~ "Value must be a version such as 14.4.1"
-
-      html =
-        lv
-        |> form("[phx-submit='submit_policy_form']",
-          policy: %{group_id: group.id, resource_id: resource.id}
-        )
-        |> render_submit()
-
-      refute html =~ "created successfully"
-      assert html =~ "must be a version such as 14.4.1"
-      refute Repo.get_by(Policy, group_id: group.id, resource_id: resource.id)
-    end
-
-    test "the JSON tab saves postures and underlines errors", %{conn: conn, account: account, actor: actor, group: group, resource: resource} do
-      {:ok, lv, _html} =
-        conn
-        |> authorize_conn(actor)
-        |> live(~p"/#{account}/policies/new")
-
-      html = render_click(lv, "postures_tab", %{"tab" => "json"})
-      assert html =~ ~s(name="_postures_json")
-      assert html =~ ~s(phx-hook="PostureJsonEditor")
-
-      html =
-        lv
-        |> element("textarea[name='_postures_json']")
-        |> render_change(%{"_postures_json" => ~s({"and": [})})
-
-      assert html =~ ~s(Unexpected character)
-      assert html =~ ~s(data-error-start="9")
-
-      html =
-        lv
-        |> element("textarea[name='_postures_json']")
-        |> render_change(%{"_postures_json" => ~s({"field": "intune.jail_broken", "op": "is", "value": 12})})
-
-      assert html =~ "Must be true or false"
-      assert html =~ ~s(data-error-start="53")
-      assert html =~ ~s(data-error-length="2")
-
-      html =
-        lv
-        |> form("[phx-submit='submit_policy_form']",
-          policy: %{group_id: group.id, resource_id: resource.id}
-        )
-        |> render_submit()
-
-      refute html =~ "created successfully"
-      refute Repo.get_by(Policy, group_id: group.id, resource_id: resource.id)
-
-      lv
-      |> element("textarea[name='_postures_json']")
-      |> render_change(%{"_postures_json" => jail_broken_json()})
-
-      html = render_click(lv, "postures_tab", %{"tab" => "builder"})
-      assert html =~ ~s(<option value="jail_broken" selected)
-
-      html =
-        lv
-        |> form("[phx-submit='submit_policy_form']",
-          policy: %{group_id: group.id, resource_id: resource.id}
-        )
-        |> render_submit()
-
-      assert html =~ "created successfully"
-      assert saved_postures(group, resource) == %{"field" => "intune.jail_broken", "op" => "is", "value" => true}
-    end
-
-    test "the Simple tab toggles named checks and gates them on connected providers", %{
+    test "toggles checks, gates them on connected providers and saves their rules", %{
       conn: conn,
       account: account,
       actor: actor,
@@ -1600,16 +1485,18 @@ defmodule PortalWeb.PoliciesTest do
 
       assert html =~ "Disk encryption"
       assert html =~ "Connect Intune or Iru to use this check."
+      assert html =~ "Over 300 more posture fields"
+      assert html =~ "kb/device-posture?utm_source=product"
       assert html =~ "No trust anchors are defined."
       assert html =~ "kb/device-trust?utm_source=product#device-attributes"
+      refute html =~ "revokes this policy&#39;s active authorizations"
 
-      assert lv |> element("#policy-postures-simple-disk_encryption") |> render() =~ "disabled"
-      refute lv |> element("#policy-postures-simple-client_up_to_date") |> render() =~ "disabled"
+      assert toggle(lv, "disk_encryption") =~ "disabled"
+      refute toggle(lv, "client_up_to_date") =~ "disabled"
 
       html = render_click(lv, "postures_toggle_check", %{"name" => "client_up_to_date"})
-      assert lv |> element("#policy-postures-simple-client_up_to_date") |> render() =~ "checked"
+      assert toggle(lv, "client_up_to_date") =~ "checked"
       assert html =~ ~s(&quot;field&quot;:&quot;firezone.last_seen_version&quot;)
-      assert html =~ ~s(&quot;value&quot;:&quot;@latest&quot;)
 
       html =
         lv
@@ -1617,9 +1504,7 @@ defmodule PortalWeb.PoliciesTest do
         |> render_submit()
 
       assert html =~ "created successfully"
-      assert saved_postures(group, resource) ==
-               %{"field" => "firezone.last_seen_version", "op" => "gte", "value" => "@latest"}
-
+      assert saved_postures(group, resource) == expansion(:client_up_to_date)
       assert html =~ "firezone.last_seen_version"
     end
 
@@ -1637,27 +1522,65 @@ defmodule PortalWeb.PoliciesTest do
         |> live(~p"/#{account}/policies/new")
 
       refute html =~ "No trust anchors are defined."
-      refute lv |> element("#policy-postures-simple-compliant") |> render() =~ "disabled"
-      assert lv |> element("#policy-postures-simple-firewall") |> render() =~ "disabled"
+      refute toggle(lv, "compliant") =~ "disabled"
+      assert toggle(lv, "firewall") =~ "disabled"
 
       render_click(lv, "postures_toggle_check", %{"name" => "compliant"})
       html = render_click(lv, "postures_toggle_check", %{"name" => "disk_encryption"})
       assert html =~ ~s(&quot;field&quot;:&quot;intune.compliance_state&quot;)
       assert html =~ ~s(&quot;field&quot;:&quot;iru.filevault_enabled&quot;)
 
-      html = render_click(lv, "postures_tab", %{"tab" => "builder"})
-      assert html =~ ~s(<option value="compliance_state" selected)
-      assert html =~ ~s(<option value="filevault_enabled" selected)
-
-      render_click(lv, "postures_toggle_check", %{"name" => "compliant"})
-      html = render_click(lv, "postures_tab", %{"tab" => "simple"})
-      refute lv |> element("#policy-postures-simple-compliant") |> render() =~ "checked"
-      assert lv |> element("#policy-postures-simple-disk_encryption") |> render() =~ "checked"
-      assert html =~ "Disk encryption"
+      html = render_click(lv, "postures_toggle_check", %{"name" => "compliant"})
+      refute html =~ ~s(&quot;field&quot;:&quot;intune.compliance_state&quot;)
+      refute toggle(lv, "compliant") =~ "checked"
+      assert toggle(lv, "disk_encryption") =~ "checked"
     end
 
-    test "existing postures load into the editor, the overview and the list", %{conn: conn, account: account, actor: actor, group: group, resource: resource} do
-      {:ok, postures} = Portal.Policies.Postures.cast(%{"not" => JSON.decode!(jail_broken_json())})
+    test "a policy saved from checks shows them checked when edited", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      group: group,
+      resource: resource
+    } do
+      Portal.IntuneFixtures.intune_posture_provider_fixture(account: account)
+      {:ok, postures} = Portal.Policies.Postures.cast(%{"and" => [expansion(:compliant), expansion(:client_up_to_date)]})
+
+      policy =
+        policy_fixture(account: account, group: group, resource: resource)
+        |> Ecto.Changeset.change(postures: postures)
+        |> Repo.update!()
+
+      {:ok, lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/policies/#{policy.id}/edit")
+
+      assert html =~ "revokes this policy&#39;s active authorizations"
+      assert toggle(lv, "compliant") =~ "checked"
+      assert toggle(lv, "client_up_to_date") =~ "checked"
+      refute toggle(lv, "disk_encryption") =~ "checked"
+
+      render_click(lv, "postures_toggle_check", %{"name" => "compliant"})
+
+      html =
+        lv
+        |> form("[phx-submit='submit_policy_form']", policy: %{description: "fewer checks"})
+        |> render_submit()
+
+      assert html =~ "updated successfully"
+      assert saved_postures(group, resource) == expansion(:client_up_to_date)
+    end
+
+    test "rules written through the API are shown as custom, kept on save, and summarised", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      group: group,
+      resource: resource
+    } do
+      custom = %{"not" => %{"field" => "intune.jail_broken", "op" => "is", "value" => true}}
+      {:ok, postures} = Portal.Policies.Postures.cast(custom)
 
       policy =
         policy_fixture(account: account, group: group, resource: resource)
@@ -1667,31 +1590,22 @@ defmodule PortalWeb.PoliciesTest do
       conn = authorize_conn(conn, actor)
 
       {:ok, _lv, html} = live(conn, ~p"/#{account}/policies/#{policy.id}")
-
       assert html =~ "Device posture"
       assert html =~ "intune.jail_broken"
       assert html =~ ">NOT<"
       assert html =~ ~r/>\s*Posture\s*</
 
       {:ok, lv, html} = live(conn, ~p"/#{account}/policies/#{policy.id}/edit")
-
-      assert html =~ "This policy uses custom rules"
-
-      html = render_click(lv, "postures_tab", %{"tab" => "builder"})
-      assert html =~ ~s(<option value="jail_broken" selected)
-      assert html =~ ~s(<option value="true" selected)
-      assert html =~ "revokes this policy&#39;s active authorizations"
-
-      html = render_click(lv, "postures_remove", %{"id" => "2"})
-      assert html =~ "No posture rules"
+      assert html =~ "written through the REST API"
+      assert toggle(lv, "client_up_to_date") =~ "disabled"
 
       html =
         lv
-        |> form("[phx-submit='submit_policy_form']", policy: %{description: "no postures"})
+        |> form("[phx-submit='submit_policy_form']", policy: %{description: "still custom"})
         |> render_submit()
 
       assert html =~ "updated successfully"
-      assert Repo.get_by!(Policy, id: policy.id).postures == nil
+      assert saved_postures(group, resource) == custom
     end
   end
 
