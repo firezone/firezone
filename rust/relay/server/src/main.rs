@@ -538,12 +538,19 @@ where
                         };
 
                         // Failing to bind a single port must not take down the entire Relay.
-                        match self.sockets.bind(port.value(), bind_addr) {
+                        let bind = self.sockets.bind(port.value(), bind_addr).with_context(|| {
+                            format!(
+                                "Failed to bind to port {} on {family} interfaces",
+                                port.value()
+                            )
+                        });
+
+                        match bind {
                             Ok(()) => {
                                 tracing::info!(target: "relay", %port, %family, "Created allocation");
                             }
                             Err(e) => {
-                                tracing::warn!(target: "relay", %port, %family, "Failed to create allocation: {}", err_with_src(&e));
+                                tracing::warn!(target: "relay", "{e:#}");
 
                                 self.server.handle_allocation_failed(port);
                             }
