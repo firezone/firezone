@@ -1415,7 +1415,7 @@ defmodule PortalWeb.Settings.DirectorySync do
               patch={~p"/#{@account}/settings/directory_sync/#{@type}/#{@directory.id}/edit"}
               class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-raised transition-colors text-body"
             >
-              <.icon name="ri-refresh-line" class="w-3.5 h-3.5 shrink-0" />
+              <.icon name="ri-flashlight-line" class="w-3.5 h-3.5 shrink-0" />
               Re-verify to enable
             </.link>
             <.button_with_confirmation
