@@ -1047,6 +1047,8 @@ defmodule PortalWeb.DevicesTest do
 
       # Columns the summary grid leaves out are still in the copy-paste blob.
       assert html =~ "Provider record"
+      assert html =~ "Click to expand"
+      assert html =~ ~r/id="posture-intune-[^"]+-body" class="relative hidden"/
       assert html =~ "management_agent"
       # Columns the provider left empty are not.
       refute html =~ "android_security_patch_level"

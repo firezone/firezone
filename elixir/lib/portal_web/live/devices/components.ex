@@ -825,6 +825,7 @@ defmodule PortalWeb.Devices.Components do
         value={posture_record(@entry.device)}
         label="Provider record"
         hint="Empty fields omitted"
+        collapsed
       />
     </div>
     """
