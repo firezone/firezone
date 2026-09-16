@@ -703,6 +703,22 @@ impl TunnelTest {
                     tracing::error!(%rid, "No gateway for resource");
                 }
             }
+            Transition::ExpirePeerAuthorizations {
+                client,
+                peer,
+                pools,
+            } => {
+                state.clients.get_mut(&peer).unwrap().exec_mut(|receiver| {
+                    for pool in pools {
+                        receiver.sut.update_access_authorization_expiry(
+                            client,
+                            pool,
+                            Duration::ZERO,
+                            now,
+                        );
+                    }
+                });
+            }
             Transition::RevokeGatewayAuthorization(rid) => {
                 if let Some(gid) = ref_state.portal.gateway_for_resource(rid)
                     && let Some(gateway) = state.gateways.get_mut(gid)

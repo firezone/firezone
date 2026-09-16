@@ -1,4 +1,4 @@
-//! Firezone's P2P control protocol between clients and gateways.
+//! Firezone's P2P control protocol between clients and gateways, and between clients.
 //!
 //! The protocol is event-based, i.e. does not have a notion of requests or responses.
 //! It operates on top of IP, meaning delivery is not guaranteed.
@@ -228,17 +228,13 @@ pub mod no_authorization {
     use ip_packet::{FzP2pControlSlice, IpPacket};
     use std::net::IpAddr;
 
-    /// Construct a new [`NoAuthorization`] event.
+    /// Constructs an event for a packet whose destination has no active authorization on the receiver.
     ///
-    /// The Gateway sends this event to the Client when it receives a packet for a destination
-    /// that none of the Client's active authorizations cover, e.g. because it expired.
-    /// Upon receiving the event, the Client discards its local authorization state for the
-    /// corresponding resource so that the next packet requests a new authorization.
-    ///
-    /// The event names the denied flow's destination and protocol instead of a resource ID:
-    /// once an authorization expired or was revoked, the Gateway no longer knows which
-    /// resource the destination belonged to. The Client resolves the destination against its
-    /// own routing table, which is authoritative for which authorization produced the packet.
+    /// The receiver may be a gateway or another client. The event carries the denied
+    /// destination and protocol because the expired authorization's resource ID is unknown.
+    /// The sender resolves the destination against its routes and requests fresh access
+    /// for matching grants on the peer that sent the event. ICMP errors remain independent
+    /// so rejected application traffic can stop while authorization is refreshed.
     pub fn event(dst: IpAddr, protocol: Protocol) -> Result<IpPacket> {
         let payload = serde_json::to_vec(&NoAuthorization { dst, protocol })
             .context("Failed to serialize `NoAuthorization` event")?;
@@ -260,6 +256,37 @@ pub mod no_authorization {
 
         serde_json::from_slice::<NoAuthorization>(packet.payload())
             .context("Failed to deserialize `NoAuthorization`")
+    }
+
+    /// Limits event retransmission to once every two seconds per peer connection.
+    #[derive(Default)]
+    pub(crate) struct Sender {
+        last_sent_at: Option<std::time::Instant>,
+    }
+
+    impl Sender {
+        const THROTTLE: std::time::Duration = std::time::Duration::from_secs(2);
+
+        pub(crate) fn for_packet(
+            &mut self,
+            packet: &IpPacket,
+            now: std::time::Instant,
+        ) -> Option<IpPacket> {
+            if self
+                .last_sent_at
+                .is_some_and(|sent_at| now.duration_since(sent_at) < Self::THROTTLE)
+            {
+                return None;
+            }
+
+            let protocol = packet.destination_protocol().ok()?.into();
+            let event = event(packet.destination(), protocol)
+                .inspect_err(|e| tracing::trace!("Failed to create `NoAuthorization` event: {e:#}"))
+                .ok()?;
+            self.last_sent_at = Some(now);
+
+            Some(event)
+        }
     }
 
     #[derive(serde::Serialize, serde::Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
@@ -302,6 +329,27 @@ pub mod no_authorization {
         use std::net::{Ipv4Addr, Ipv6Addr};
 
         #[test]
+        fn rate_limits_rejections_across_destinations() {
+            let now = std::time::Instant::now();
+            let mut sender = Sender::default();
+            let first = rejected_packet(Ipv4Addr::new(10, 0, 0, 1));
+            let second = rejected_packet(Ipv4Addr::new(10, 0, 0, 2));
+
+            assert!(sender.for_packet(&first, now).is_some());
+            for milliseconds in [0, 100, 1000, 1999] {
+                let now = now + std::time::Duration::from_millis(milliseconds);
+                assert!(sender.for_packet(&first, now).is_none());
+                assert!(sender.for_packet(&second, now).is_none());
+            }
+            let event = sender.for_packet(&second, now + Sender::THROTTLE).unwrap();
+
+            assert_eq!(
+                decode(event.as_fz_p2p_control().unwrap()).unwrap().dst,
+                second.destination()
+            );
+        }
+
+        #[test]
         fn no_authorization_serde_roundtrip() {
             let packet = event(
                 IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1)),
@@ -325,6 +373,9 @@ pub mod no_authorization {
 
             assert_eq!(no_authorization.dst, IpAddr::V6(Ipv6Addr::LOCALHOST));
             assert_eq!(no_authorization.protocol, Protocol::Icmp);
+        }
+        fn rejected_packet(dst: Ipv4Addr) -> IpPacket {
+            ip_packet::make::udp_packet(Ipv4Addr::LOCALHOST, dst, 1234, 443, &[]).unwrap()
         }
     }
 }

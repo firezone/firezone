@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use std::net::{IpAddr, Ipv4Addr};
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use anyhow::{Context, ErrorExt, Result, bail};
 use connlib_model::{ClientId, ResourceId};
@@ -42,25 +42,8 @@ pub struct ClientOnGateway {
     nat_table: NatTable,
     buffered_events: VecDeque<GatewayEvent>,
 
-    /// When we last told the client that it lacks an authorization for a given destination.
-    ///
-    /// The client is expected to react to a single [`p2p_control::no_authorization`]
-    /// event but its delivery is unreliable.
-    /// Retransmissions are driven by the client's own traffic:
-    /// every packet for an unauthorized destination re-sends the event,
-    /// throttled to one per destination per [`NO_AUTHORIZATION_THROTTLE`].
-    no_authorization_sent_at: BTreeMap<IpAddr, Instant>,
+    no_authorization_events: p2p_control::no_authorization::Sender,
 }
-
-/// How long we wait before re-sending a [`p2p_control::no_authorization`] event for the same destination.
-///
-/// Mirrors the throttle the client applies to its authorization requests.
-const NO_AUTHORIZATION_THROTTLE: Duration = Duration::from_secs(2);
-
-/// Upper bound on the number of destinations we track for [`p2p_control::no_authorization`] events.
-///
-/// Bounds the memory used by a client that sprays packets across many unauthorized destinations.
-const MAX_TRACKED_NO_AUTHORIZATION_EVENTS: usize = 1000;
 
 #[derive(Debug, PartialEq)]
 pub enum TranslateOutboundResult {
@@ -89,7 +72,7 @@ impl ClientOnGateway {
             nat_table: Default::default(),
             buffered_events: Default::default(),
             internet_resource_enabled: None,
-            no_authorization_sent_at: Default::default(),
+            no_authorization_events: Default::default(),
         }
     }
 
@@ -184,9 +167,6 @@ impl ClientOnGateway {
     pub(crate) fn handle_timeout(&mut self, now: Instant) {
         self.nat_table.handle_timeout(now);
         self.resources.handle_timeout(now);
-        for _ in self.no_authorization_sent_at.extract_if(.., |_, sent_at| {
-            now.duration_since(*sent_at) >= NO_AUTHORIZATION_THROTTLE
-        }) {}
 
         let cid = self.id;
         let mut any_expired = false;
@@ -229,10 +209,6 @@ impl ClientOnGateway {
             self.resources
                 .insert(rid, ResourceOnGateway::new(resource), now, ttl);
         }
-
-        // A fresh authorization voids recently sent `no_authorization` events:
-        // if it gets revoked again, the client deserves a new event right away.
-        self.no_authorization_sent_at.clear();
 
         self.recalculate_filters();
     }
@@ -373,7 +349,7 @@ impl ClientOnGateway {
 
             let no_authorization = error
                 .any_is::<NoAuthorization>()
-                .then(|| self.make_no_authorization_event(&packet, now))
+                .then(|| self.no_authorization_events.for_packet(&packet, now))
                 .flatten();
 
             return Ok(TranslateOutboundResult::IcmpError {
@@ -385,38 +361,6 @@ impl ClientOnGateway {
         let result = self.transform_network_to_tun(packet, now)?;
 
         Ok(result)
-    }
-
-    /// Construct a [`p2p_control::no_authorization`] event for the given denied packet.
-    ///
-    /// Returns `None` if the packet's protocol cannot be represented in the event or if we
-    /// recently sent one for the same destination.
-    fn make_no_authorization_event(&mut self, packet: &IpPacket, now: Instant) -> Option<IpPacket> {
-        let dst = packet.destination();
-        let protocol = packet.destination_protocol().ok()?.into();
-
-        match self.no_authorization_sent_at.get_mut(&dst) {
-            Some(sent_at) => {
-                if now.duration_since(*sent_at) < NO_AUTHORIZATION_THROTTLE {
-                    return None;
-                }
-
-                *sent_at = now;
-            }
-            None => {
-                if self.no_authorization_sent_at.len() >= MAX_TRACKED_NO_AUTHORIZATION_EVENTS {
-                    return None;
-                }
-
-                self.no_authorization_sent_at.insert(dst, now);
-            }
-        }
-
-        tracing::debug!(cid = %self.id, %dst, "Requesting re-authorization from client");
-
-        p2p_control::no_authorization::event(dst, protocol)
-            .inspect_err(|e| tracing::debug!("Failed to create `NoAuthorization` event: {e:#}"))
-            .ok()
     }
 
     pub fn translate_inbound(

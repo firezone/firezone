@@ -85,8 +85,7 @@ pub struct RefClient {
     /// Resources whose authorization the Gateway revoked without the client knowing.
     ///
     /// The Gateway rejects the next packet for such a resource and sends a
-    /// `no_authorization` event, upon which the client discards its own authorization
-    /// and requests a new one for the packet after that.
+    /// `no_authorization` event, upon which the client requests a fresh authorization.
     #[debug(skip)]
     gateway_revoked_authorizations: BTreeSet<ResourceId>,
 
@@ -125,6 +124,7 @@ pub struct RefClient {
     /// Per peer, the pools the portal authorised us to reach it through.
     #[debug(skip)]
     peer_pools: BTreeMap<ClientId, BTreeSet<ResourceId>>,
+    peers_without_authorization: BTreeSet<ClientId>,
 
     resource_selector: u32,
 }
@@ -172,6 +172,7 @@ impl RefClient {
             gateway_send_times: Default::default(),
             client_send_times: Default::default(),
             peer_pools: Default::default(),
+            peers_without_authorization: Default::default(),
         }
     }
 
@@ -334,6 +335,22 @@ impl RefClient {
     /// Drops every grant towards `peer`, as the connection to it is gone.
     pub(crate) fn forget_peer_grants(&mut self, peer: ClientId) {
         self.peer_pools.remove(&peer);
+        self.peers_without_authorization.remove(&peer);
+    }
+
+    pub(crate) fn peer_grants(
+        &self,
+    ) -> impl Iterator<Item = (ClientId, BTreeSet<ResourceId>)> + '_ {
+        self.peer_pools
+            .iter()
+            .filter(|(peer, pools)| {
+                !pools.is_empty() && !self.peers_without_authorization.contains(peer)
+            })
+            .map(|(peer, pools)| (*peer, pools.clone()))
+    }
+
+    pub(crate) fn expire_peer_authorizations(&mut self, peer: ClientId) {
+        self.peers_without_authorization.insert(peer);
     }
 
     fn candidate_pools(&self, protocol: Protocol) -> Vec<ResourceId> {
@@ -387,6 +404,7 @@ impl RefClient {
     pub(crate) fn restart(&mut self, key: PrivateKey, now: Instant) {
         self.routes.clear();
         self.peer_pools.clear();
+        self.peers_without_authorization.clear();
 
         self.key = key;
 
@@ -459,6 +477,7 @@ impl RefClient {
         self.connected_internet_resource = false;
         // Grants towards peers go with their connections.
         self.peer_pools.clear();
+        self.peers_without_authorization.clear();
         self.gateway_revoked_authorizations.clear();
 
         for status in self.site_status.values_mut() {
@@ -684,12 +703,8 @@ impl RefClient {
                 tracing::Span::current().record("gateway", tracing::field::display(gateway));
 
                 if self.gateway_revoked_authorizations.contains(&resource) {
-                    // The rejection comes with a `no_authorization` event: the client
-                    // discards its authorization and re-authorizes on the next packet.
-                    // A malicious client ignores the event and keeps its stale
-                    // authorization, so the Gateway keeps rejecting its packets.
                     if !self.malicious_behaviour.ignore_no_authorization_events {
-                        self.discard_authorization(&resource);
+                        self.gateway_revoked_authorizations.remove(&resource);
                     }
                 } else {
                     self.connect_to_resource(resource, dst);
@@ -759,12 +774,8 @@ impl RefClient {
                 gateway: _,
             } => {
                 if self.gateway_revoked_authorizations.contains(&resource) {
-                    // The rejection comes with a `no_authorization` event: the client
-                    // discards its authorization and re-authorizes on the next packet.
-                    // A malicious client ignores the event and keeps its stale
-                    // authorization, so the Gateway keeps rejecting its packets.
                     if !self.malicious_behaviour.ignore_no_authorization_events {
-                        self.discard_authorization(&resource);
+                        self.gateway_revoked_authorizations.remove(&resource);
                     }
                 } else {
                     self.connect_to_resource(resource, dst);
@@ -908,6 +919,16 @@ impl RefClient {
 
         let pools = self.candidate_pools(protocol);
         if let Some(pool) = pools.iter().find(|pool| granted.contains(pool)) {
+            if self.peers_without_authorization.contains(&peer) {
+                let granted_peer = if self.malicious_behaviour.ignore_no_authorization_events {
+                    None
+                } else {
+                    self.peers_without_authorization.remove(&peer);
+                    Some(peer)
+                };
+                return (PacketRoute::PeerRejectedByPeer(peer), granted_peer);
+            }
+
             let route = if self.strict_resource_filter_allows(*pool, protocol) {
                 PacketRoute::Peer(peer)
             } else {
@@ -923,6 +944,7 @@ impl RefClient {
         match pick_pool(&pools, peer) {
             Some(pool) => {
                 self.peer_pools.entry(peer).or_default().insert(pool);
+                self.peers_without_authorization.remove(&peer);
 
                 let route = if self.strict_resource_filter_allows(pool, protocol) {
                     PacketRoute::Peer(peer)

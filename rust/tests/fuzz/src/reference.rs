@@ -515,6 +515,11 @@ impl ReferenceState {
                     client.exec_mut(|client| client.remove_resource(resource))
                 }
             }
+            Transition::ExpirePeerAuthorizations { client, peer, .. } => {
+                state.clients.get_mut(client).unwrap().exec_mut(|client| {
+                    client.expire_peer_authorizations(*peer);
+                });
+            }
             Transition::RevokeGatewayAuthorization(resource) => {
                 let portal = &state.portal;
 
@@ -819,6 +824,20 @@ impl ReferenceState {
                 self.portal
                     .gateway_for_resource(*resource)
                     .is_some_and(|gateway| self.gateways.contains_key(gateway))
+            })
+            .collect()
+    }
+
+    pub(crate) fn expirable_peer_authorizations(
+        &self,
+    ) -> Vec<(ClientId, ClientId, BTreeSet<ResourceId>)> {
+        self.clients
+            .iter()
+            .flat_map(|(client, state)| {
+                state
+                    .inner()
+                    .peer_grants()
+                    .map(|(peer, pools)| (*client, peer, pools))
             })
             .collect()
     }

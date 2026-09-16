@@ -211,6 +211,7 @@ impl PendingAuthorization {
     fn push(&mut self, trigger: Trigger) {
         match trigger {
             Trigger::Packet(packet) => self.packets.push(packet),
+            Trigger::NoAuthorization => {}
             Trigger::DnsQueryForSite(query) => {
                 self.dns_queries.enqueue(query);
             }
@@ -230,6 +231,8 @@ impl PendingAuthorization {
 
 /// What triggered us to request an authorization.
 pub enum Trigger {
+    /// The receiving peer reports that it has no authorization for our traffic.
+    NoAuthorization,
     /// A packet received on the TUN device that needs outbound authorization.
     Packet(IpPacket),
     /// A DNS query that needs to be resolved within a particular site that we aren't connected to yet.
@@ -247,6 +250,7 @@ impl Trigger {
     fn name(&self) -> &'static str {
         match self {
             Trigger::Packet(_) => "packet",
+            Trigger::NoAuthorization => "no-authorization",
             Trigger::DnsQueryForSite(_) => "dns-query-for-site",
         }
     }
@@ -269,6 +273,39 @@ mod tests {
     use std::net::Ipv4Addr;
 
     use super::*;
+
+    #[test]
+    fn no_authorization_requests_access_without_buffering_traffic() {
+        let mut pending = PendingAuthorizations::default();
+        let now = Instant::now();
+        let rid = ResourceId::from_u128(1);
+
+        pending.on_not_authorized(resource_request(rid), Trigger::NoAuthorization, now);
+        assert_eq!(
+            pending.poll_authorization_requests(),
+            Some(resource_request(rid))
+        );
+        pending.on_not_authorized(
+            resource_request(rid),
+            Trigger::NoAuthorization,
+            now + Duration::from_secs(1),
+        );
+        assert_eq!(pending.poll_authorization_requests(), None);
+        pending.on_not_authorized(
+            resource_request(rid),
+            Trigger::NoAuthorization,
+            now + Duration::from_secs(2),
+        );
+        assert_eq!(
+            pending.poll_authorization_requests(),
+            Some(resource_request(rid))
+        );
+
+        let removed = pending.remove_resource_authorizations(rid).pop().unwrap();
+        let (packets, queries) = removed.into_buffers();
+        assert!(packets.into_iter().next().is_none());
+        assert!(queries.is_empty());
+    }
 
     #[test]
     fn skips_authorization_request_if_sent_within_last_two_seconds() {

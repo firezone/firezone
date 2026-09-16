@@ -19,7 +19,7 @@ portal_send_reject_access "AWS US-East" "MyCorp Network (IPv6)" # This is the 10
 expect_error client_curl "10.20.0.100/get"
 expect_error client_curl "[10:20:0::100]/get"
 
-# The Client has discarded the revoked authorization; these requests trigger a
-# new one and go through.
+# The control event triggers re-authorization independently of the rejected traffic.
+# These requests go through after the new grant arrives.
 client_curl "10.20.0.100/get"
 client_curl "[10:20:0::100]/get"
