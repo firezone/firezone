@@ -12,16 +12,8 @@ defmodule PortalWeb.Policies.PostureComponents do
     "sentinelone" => "SentinelOne"
   }
 
-  @operator_labels %{
-    "eq" => "=",
-    "ne" => "≠",
-    "gt" => ">",
-    "gte" => "≥",
-    "lt" => "<",
-    "lte" => "≤",
-    "is_in_cidr" => "is in CIDR",
-    "is_not_in_cidr" => "is not in CIDR"
-  }
+  @editor_class "font-mono text-xs leading-5 px-2 py-1.5 whitespace-pre"
+  @mark_class "underline decoration-wavy decoration-error underline-offset-2 bg-error/10"
 
   attr :id, :string, required: true
   attr :account, :any, required: true
@@ -29,18 +21,44 @@ defmodule PortalWeb.Policies.PostureComponents do
   def postures_section(assigns) do
     ~H"""
     <div :if={@state.availability != :hidden} id={@id} class="border-t border-border pt-4">
-      <h4 class="text-[10px] font-semibold tracking-widest uppercase text-subtle mb-3">
-        Device posture
-        <span
-          data-postures-new-badge
-          class="ml-1.5 px-1 py-px rounded text-[9px] font-semibold tracking-wider normal-case bg-brand-muted text-brand"
-        >
-          NEW
-        </span>
-        <span class="ml-1 font-normal normal-case tracking-normal text-muted">
-          (optional)
-        </span>
-      </h4>
+      <div class="flex items-center justify-between gap-2 mb-3">
+        <h4 class="text-[10px] font-semibold tracking-widest uppercase text-subtle">
+          Device posture
+          <span
+            data-postures-new-badge
+            class="ml-1.5 px-1 py-px rounded text-[9px] font-semibold tracking-wider normal-case bg-brand-muted text-brand"
+          >
+            NEW
+          </span>
+          <span class="ml-1 font-normal normal-case tracking-normal text-muted">
+            (optional)
+          </span>
+        </h4>
+        <div :if={@state.availability == :enabled} class="flex items-center gap-2">
+          <button
+            :if={Postures.dirty?(@state)}
+            type="button"
+            phx-click="postures_reset"
+            class="flex items-center gap-1 text-[10px] text-body hover:text-heading transition-colors"
+            title="Back to the saved rules"
+          >
+            <.icon name="ri-arrow-go-back-line" class="w-3 h-3" /> Reset
+          </button>
+          <div class="inline-flex rounded border border-border overflow-hidden">
+            <button type="button" phx-click="postures_tab" phx-value-tab="simple" class={pill_class(@state.tab == :simple)}>
+              Simplified
+            </button>
+            <button
+              type="button"
+              phx-click="postures_tab"
+              phx-value-tab="json"
+              class={[pill_class(@state.tab == :json), "border-l border-border"]}
+            >
+              JSON
+            </button>
+          </div>
+        </div>
+      </div>
       <div
         :if={@state.availability == :enabled and not @state.trust_anchors?}
         class="mb-3 flex items-start gap-1.5 rounded border border-warning-light bg-warning-light px-3 py-2 text-xs text-warning"
@@ -70,10 +88,11 @@ defmodule PortalWeb.Policies.PostureComponents do
         </.upgrade_locked_section>
       <% else %>
         <input type="hidden" name="policy[postures]" value={Postures.hidden_value(@state)} />
-        <.postures_checks id={@id <> "-checks"} state={@state} />
+        <.postures_checks :if={@state.tab == :simple} id={@id <> "-checks"} state={@state} />
+        <.postures_json_editor :if={@state.tab == :json} id={@id <> "-json"} state={@state} />
       <% end %>
       <p class="mt-2 text-xs text-subtle">
-        Over <.website_link path="/kb/device-posture">300 more device posture fields</.website_link> are available to configure through the REST API.
+        Check the <.website_link path="/kb/device-posture/grammar">grammar reference</.website_link> to configure over 300 posture fields.
       </p>
     </div>
     """
@@ -94,8 +113,11 @@ defmodule PortalWeb.Policies.PostureComponents do
     ~H"""
     <div id={@id} class="rounded-lg border border-border overflow-hidden">
       <p :if={@custom?} class="px-3 py-2 text-xs text-warning border-b border-border bg-raised">
-        This policy has posture rules written through the REST API that these checks cannot show.
-        Saving keeps them as they are.
+        This policy has posture rules these checks cannot show. Edit them in the JSON tab; saving from
+        here keeps them as they are.
+      </p>
+      <p :if={not @custom? and @state.json_error} class="px-3 py-2 text-xs text-warning border-b border-border bg-raised">
+        The JSON tab holds an error. These are the last rules that were valid.
       </p>
       <table class="w-full text-sm text-body">
         <thead class="bg-raised text-[10px] font-semibold tracking-widest uppercase text-subtle">
@@ -139,6 +161,60 @@ defmodule PortalWeb.Policies.PostureComponents do
     """
   end
 
+  attr :id, :string, required: true
+  attr :state, :map, required: true
+
+  def postures_json_editor(assigns) do
+    {start, length} = (assigns.state.json_error && assigns.state.json_error.span) || {nil, nil}
+
+    assigns =
+      assigns
+      |> assign(:error_start, start)
+      |> assign(:error_length, length)
+      |> assign(:editor_class, @editor_class)
+      |> assign(:mark_class, @mark_class)
+
+    ~H"""
+    <div
+      id={@id}
+      phx-hook="PostureJsonEditor"
+      data-error-start={@error_start}
+      data-error-length={@error_length}
+      data-validated-length={String.length(@state.json_text)}
+      data-mark-class={@mark_class}
+      class="relative"
+    >
+      <pre
+        id={@id <> "-backdrop"}
+        data-backdrop
+        phx-update="ignore"
+        aria-hidden="true"
+        class={[@editor_class, "absolute inset-0 m-0 overflow-hidden pointer-events-none text-heading border border-transparent"]}
+      ></pre>
+      <textarea
+        id={@id <> "-input"}
+        name="_postures_json"
+        rows="14"
+        wrap="off"
+        spellcheck="false"
+        autocomplete="off"
+        phx-change="postures_json_change"
+        phx-debounce="400"
+        placeholder={~s({"and": [{"field": "intune.compliance_state", "op": "is", "value": "compliant"}]})}
+        class={[
+          @editor_class,
+          "relative block w-full resize-y overflow-auto rounded border bg-transparent text-transparent caret-heading placeholder:text-muted outline-none",
+          "focus:ring-1 focus:ring-border-focus/30 transition-colors",
+          if(@state.json_error, do: "border-error/60", else: "border-border focus:border-border-focus")
+        ]}
+      >{@state.json_text}</textarea>
+    </div>
+    <p :if={@state.json_error} data-postures-json-error class="mt-1.5 text-xs text-error">
+      {error_message(@state.json_error.message)}
+    </p>
+    """
+  end
+
   attr :check, :map, required: true
 
   defp check_support(assigns) do
@@ -172,68 +248,44 @@ defmodule PortalWeb.Policies.PostureComponents do
 
   attr :postures, :any, default: nil
 
+  def postures_summary(%{postures: nil} = assigns), do: ~H""
+
   def postures_summary(assigns) do
+    state = Postures.new(:enabled, assigns.postures)
+    wire = state.wire
+
+    checks =
+      case Postures.checks(state) do
+        {:ok, names} -> Enum.map(names, &check!/1)
+        :custom -> :custom
+      end
+
+    assigns = assign(assigns, wire: wire, checks: checks)
+
     ~H"""
-    <div :if={@postures} class="mt-4">
-      <h4 class="text-[10px] font-semibold tracking-widest uppercase text-subtle mb-2">
-        Device posture
-      </h4>
-      <div class="px-3 py-2.5 rounded border border-border bg-raised text-xs text-body">
-        <.postures_summary_node node={Portal.Policies.Postures.to_map(@postures)} />
-      </div>
+    <div class="mt-4">
+      <%= if @checks == :custom do %>
+        <.json_view id="policy-postures-rules" value={@wire} label="Device posture" hint="Custom rules" collapsed />
+      <% else %>
+        <h4 class="text-[10px] font-semibold tracking-widest uppercase text-subtle mb-2">
+          Device posture
+        </h4>
+        <ul class="rounded border border-border bg-raised divide-y divide-border">
+          <li :for={check <- @checks} class="flex items-center gap-2 px-3 py-2">
+            <.icon name="ri-checkbox-circle-fill" class="w-3.5 h-3.5 shrink-0 text-success" />
+            <span class="text-xs font-medium text-heading">{check.label}</span>
+            <span class="text-xs text-subtle truncate">{check.description}</span>
+          </li>
+        </ul>
+      <% end %>
     </div>
     """
   end
 
-  attr :node, :map, required: true
-
-  def postures_summary_node(%{node: %{"not" => inner}} = assigns) do
-    assigns = assign(assigns, :inner, inner)
-
-    ~H"""
-    <div class="flex items-start gap-1.5">
-      <span class="shrink-0 px-1 rounded text-[10px] font-semibold bg-error/10 text-error">NOT</span>
-      <div class="flex-1 min-w-0"><.postures_summary_node node={@inner} /></div>
-    </div>
-    """
+  defp check!(name) do
+    {:ok, check} = Checks.fetch(name)
+    check
   end
-
-  def postures_summary_node(%{node: %{"and" => nodes}} = assigns) do
-    assigns = assign(assigns, nodes: nodes, label: "ALL of")
-    postures_summary_group(assigns)
-  end
-
-  def postures_summary_node(%{node: %{"or" => nodes}} = assigns) do
-    assigns = assign(assigns, nodes: nodes, label: "ANY of")
-    postures_summary_group(assigns)
-  end
-
-  def postures_summary_node(assigns) do
-    ~H"""
-    <span class="font-mono break-all">
-      {@node["field"]}
-      <span class="text-subtle font-sans">{operator_label(@node["op"])}</span>
-      {summary_value(@node["value"])}
-      <span :if={@node["rows"] == "all"} class="text-subtle font-sans">(all records)</span>
-    </span>
-    """
-  end
-
-  defp postures_summary_group(assigns) do
-    ~H"""
-    <div>
-      <span class="text-[10px] font-semibold text-subtle">{@label}</span>
-      <ul class="ml-2 pl-2 border-l border-border space-y-1 mt-1">
-        <li :for={node <- @nodes}><.postures_summary_node node={node} /></li>
-      </ul>
-    </div>
-    """
-  end
-
-  defp summary_value(nil), do: ""
-  defp summary_value(value) when is_list(value), do: Enum.map_join(value, ", ", &summary_value/1)
-  defp summary_value(value) when is_binary(value), do: value
-  defp summary_value(value), do: JSON.encode!(value)
 
   defp toggle_title(state, check, enabled) do
     if check.name in enabled or Postures.check_available?(state, check) do
@@ -245,8 +297,14 @@ defmodule PortalWeb.Policies.PostureComponents do
 
   defp provider_label(provider), do: Map.get(@provider_labels, provider, provider)
 
-  defp operator_label(nil), do: ""
-  defp operator_label(op), do: Map.get_lazy(@operator_labels, op, fn -> String.replace(op, "_", " ") end)
+  defp error_message(message), do: String.capitalize(String.first(message)) <> String.slice(message, 1..-1//1)
+
+  defp pill_class(active?) do
+    [
+      "px-2 py-0.5 text-[10px] transition-colors",
+      if(active?, do: "bg-brand text-white", else: "bg-surface text-body hover:text-heading")
+    ]
+  end
 
   @platform_icons [
     windows: {"icon-os-windows", "Windows"},

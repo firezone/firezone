@@ -1,7 +1,7 @@
 defmodule PortalWeb.Policies.Components do
   use PortalWeb, :component_library
   alias Portal.Policies.Condition
-  alias PortalWeb.Policies.Database
+  alias PortalWeb.Policies.{Database, Postures}
   import PortalWeb.Policies.PostureComponents
 
   @days_of_week [
@@ -311,7 +311,7 @@ defmodule PortalWeb.Policies.Components do
           conditions_state={@conditions_state}
           postures={@postures}
         />
-        <.policy_form_actions mode={@mode} />
+        <.policy_form_actions mode={@mode} postures={@postures} />
       </.form>
     </div>
     """
@@ -760,6 +760,7 @@ defmodule PortalWeb.Policies.Components do
   end
 
   attr :mode, :atom, required: true
+  attr :postures, :map, required: true
 
   def policy_form_actions(assigns) do
     ~H"""
@@ -767,7 +768,7 @@ defmodule PortalWeb.Policies.Components do
       <.panel_footer_button type="button" phx-click="cancel_policy_form">
         Cancel
       </.panel_footer_button>
-      <.panel_footer_button type="submit" style="primary">
+      <.panel_footer_button type="submit" style="primary" disabled={Postures.blocked?(@postures)}>
         {if @mode == :new, do: "Create Policy", else: "Save Changes"}
       </.panel_footer_button>
     </.panel_footer>

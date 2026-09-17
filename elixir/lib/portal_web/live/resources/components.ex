@@ -1913,7 +1913,7 @@ defmodule PortalWeb.Resources.Components do
         <.panel_footer_button
           type="submit"
           style="primary"
-          disabled={@grant_selected_group_ids == []}
+          disabled={PortalWeb.Policies.Postures.blocked?(@postures) or @grant_selected_group_ids == []}
         >
           Grant access
         </.panel_footer_button>
