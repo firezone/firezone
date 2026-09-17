@@ -1893,7 +1893,7 @@ defmodule PortalWeb.Sites.Components do
 
   defp gateway_debian_authenticate do
     """
-    sudo firezone gateway authenticate
+    sudo firezone-gateway authenticate
     """
   end
 
