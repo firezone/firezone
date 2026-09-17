@@ -42,6 +42,23 @@ defmodule Portal.Policies.Postures.FieldsTest do
     end
   end
 
+  test "platforms/2 narrows a field to the platforms it describes" do
+    assert Fields.platforms() == ~w[windows macos linux ios android]a
+    assert Fields.platforms(:firezone, :hostname) == Fields.platforms()
+    assert Fields.platforms(:intune, :compliance_state) == ~w[windows macos ios android]a
+    assert Fields.platforms(:intune, :jail_broken) == ~w[ios android]a
+    assert Fields.platforms(:intune, :attestation_bit_locker_enabled) == ~w[windows]a
+    assert Fields.platforms(:iru, :enrolled) == ~w[macos ios]a
+    assert Fields.platforms(:iru, :filevault_enabled) == ~w[macos]a
+    assert Fields.platforms(:santa, :sip_status) == ~w[macos]a
+    assert Fields.platforms(:sentinelone, :os_up_to_date) == ~w[windows macos]a
+
+    for {provider, fields} <- Fields.registry(), {field, _type} <- fields do
+      platforms = Fields.platforms(provider, field)
+      assert platforms != [] and platforms -- Fields.platforms() == [], "#{provider}.#{field}"
+    end
+  end
+
   test "providers/0 lists firezone and every mirror" do
     assert Fields.providers() == [:firezone, :intune, :iru, :defender, :santa, :sentinelone]
   end

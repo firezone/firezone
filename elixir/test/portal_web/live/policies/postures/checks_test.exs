@@ -13,6 +13,28 @@ defmodule PortalWeb.Policies.Postures.ChecksTest do
     end
   end
 
+  test "platforms follow from the fields each check reads" do
+    expected = %{
+      compliant: ~w[windows macos ios android]a,
+      disk_encryption: ~w[windows macos ios android]a,
+      endpoint_protection: ~w[windows macos linux ios android]a,
+      no_active_threats: ~w[windows macos linux]a,
+      firewall: ~w[windows macos linux]a,
+      not_jailbroken: ~w[ios android]a,
+      recently_seen: ~w[windows macos linux ios android]a,
+      secure_boot: ~w[windows macos]a,
+      corporate_owned: ~w[windows macos ios android]a,
+      supervised: ~w[macos ios]a,
+      app_allowlisting: ~w[macos]a,
+      agent_up_to_date: ~w[windows macos linux]a,
+      os_up_to_date: ~w[windows macos ios android]a,
+      client_up_to_date: ~w[windows macos linux ios android]a,
+      managed: ~w[windows macos ios android]a
+    }
+
+    assert Map.new(Checks.all(), &{&1.name, &1.platforms}) == expected
+  end
+
   test "names/0 and fetch/1 agree" do
     for name <- Checks.names() do
       assert {:ok, %{name: ^name}} = Checks.fetch(name)

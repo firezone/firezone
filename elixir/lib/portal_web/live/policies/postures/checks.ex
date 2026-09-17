@@ -19,13 +19,34 @@ defmodule PortalWeb.Policies.Postures.Checks do
 
   @within_a_week "P7D"
 
+  defmodule Platforms do
+    @moduledoc false
+    alias Portal.Policies.Postures.Fields
+
+    # A check applies wherever one of its fields does, in the catalog's order.
+    def of(expansion) do
+      platforms = expansion |> leaves() |> Enum.flat_map(fn {provider, field} -> Fields.platforms(provider, field) end)
+      Enum.filter(Fields.platforms(), &(&1 in platforms))
+    end
+
+    defp leaves(%{"field" => name}) do
+      [provider, field] = String.split(name, ".", parts: 2)
+      {:ok, provider} = Fields.fetch_provider(provider)
+      {:ok, field, _type} = Fields.fetch_field(provider, field)
+      [{provider, field}]
+    end
+
+    defp leaves(%{"not" => node}), do: leaves(node)
+    defp leaves(%{"and" => nodes}), do: Enum.flat_map(nodes, &leaves/1)
+    defp leaves(%{"or" => nodes}), do: Enum.flat_map(nodes, &leaves/1)
+  end
+
   @checks [
     %{
       name: :compliant,
       label: "Compliant",
       description: "The MDM reports the device as compliant with its policies.",
       providers: [:intune],
-      platforms: [:windows, :macos, :ios, :android],
       expansion: %{"field" => "intune.compliance_state", "op" => "is", "value" => "compliant"}
     },
     %{
@@ -33,7 +54,6 @@ defmodule PortalWeb.Policies.Postures.Checks do
       label: "Disk encryption",
       description: "FileVault, BitLocker or the mobile OS encryption is on.",
       providers: [:intune, :iru],
-      platforms: [:windows, :macos, :ios, :android],
       expansion: %{
         "or" => [
           %{"field" => "intune.is_encrypted", "op" => "is", "value" => true},
@@ -47,7 +67,6 @@ defmodule PortalWeb.Policies.Postures.Checks do
       label: "Endpoint protection active",
       description: "An EDR agent is onboarded and reporting.",
       providers: [:defender, :sentinelone, :intune],
-      platforms: [:windows, :macos, :linux, :ios, :android],
       expansion: %{
         "or" => [
           %{
@@ -71,7 +90,6 @@ defmodule PortalWeb.Policies.Postures.Checks do
       label: "No active threats",
       description: "The EDR reports no infection and no high risk.",
       providers: [:sentinelone, :defender],
-      platforms: [:windows, :macos, :linux],
       expansion: %{
         "or" => [
           %{"field" => "sentinelone.infected", "op" => "is", "value" => false},
@@ -89,7 +107,6 @@ defmodule PortalWeb.Policies.Postures.Checks do
       label: "Firewall enabled",
       description: "The host firewall is turned on.",
       providers: [:iru, :sentinelone],
-      platforms: [:windows, :macos, :linux],
       expansion: %{
         "or" => [
           %{"field" => "iru.firewall_enabled", "op" => "is", "value" => true},
@@ -102,7 +119,6 @@ defmodule PortalWeb.Policies.Postures.Checks do
       label: "Not jailbroken or rooted",
       description: "The MDM has not flagged the device as jailbroken or rooted.",
       providers: [:intune],
-      platforms: [:ios, :android],
       expansion: %{"field" => "intune.jail_broken", "op" => "is", "value" => false}
     },
     %{
@@ -110,7 +126,6 @@ defmodule PortalWeb.Policies.Postures.Checks do
       label: "Recently seen",
       description: "A provider has heard from the device within the last week.",
       providers: [:intune, :iru, :defender, :santa, :sentinelone],
-      platforms: [:windows, :macos, :linux, :ios, :android],
       expansion: %{
         "or" => [
           %{"field" => "intune.last_sync_at", "op" => "within_last", "value" => @within_a_week},
@@ -126,7 +141,6 @@ defmodule PortalWeb.Policies.Postures.Checks do
       label: "Secure boot and system integrity",
       description: "Secure Boot, code integrity, SIP and Gatekeeper are on.",
       providers: [:intune, :iru, :santa],
-      platforms: [:windows, :macos],
       expansion: %{
         "or" => [
           %{
@@ -152,7 +166,6 @@ defmodule PortalWeb.Policies.Postures.Checks do
       label: "Corporate owned",
       description: "The MDM records the device as company owned, not personal.",
       providers: [:intune],
-      platforms: [:windows, :macos, :ios, :android],
       expansion: %{"field" => "intune.managed_device_owner_type", "op" => "is", "value" => "company"}
     },
     %{
@@ -160,7 +173,6 @@ defmodule PortalWeb.Policies.Postures.Checks do
       label: "Supervised",
       description: "The Apple device is supervised by the MDM.",
       providers: [:intune],
-      platforms: [:macos, :ios],
       expansion: %{"field" => "intune.is_supervised", "op" => "is", "value" => true}
     },
     %{
@@ -168,7 +180,6 @@ defmodule PortalWeb.Policies.Postures.Checks do
       label: "Application allowlisting enforced",
       description: "Santa runs in lockdown mode, so only allowed binaries execute.",
       providers: [:santa],
-      platforms: [:macos],
       expansion: %{"field" => "santa.configured_client_mode", "op" => "is", "value" => "LOCKDOWN"}
     },
     %{
@@ -176,7 +187,6 @@ defmodule PortalWeb.Policies.Postures.Checks do
       label: "Endpoint agent up to date",
       description: "The EDR agent runs its current release.",
       providers: [:sentinelone],
-      platforms: [:windows, :macos, :linux],
       expansion: %{"field" => "sentinelone.is_up_to_date", "op" => "is", "value" => true}
     },
     %{
@@ -184,7 +194,6 @@ defmodule PortalWeb.Policies.Postures.Checks do
       label: "OS up to date",
       description: "The OS runs the newest release of its line, or Android carries the latest security patch level.",
       providers: [:intune, :iru, :defender, :santa, :sentinelone],
-      platforms: [:windows, :macos, :ios, :android],
       expansion: %{
         "or" => [
           %{"field" => "intune.os_up_to_date", "op" => "is", "value" => true},
@@ -200,7 +209,6 @@ defmodule PortalWeb.Policies.Postures.Checks do
       label: "Firezone Client up to date",
       description: "The Firezone Client runs the latest release for its platform.",
       providers: [:firezone],
-      platforms: [:windows, :macos, :linux, :ios, :android],
       expansion: %{"field" => "firezone.last_seen_version", "op" => "gte", "value" => "@latest"}
     },
     %{
@@ -208,7 +216,6 @@ defmodule PortalWeb.Policies.Postures.Checks do
       label: "Managed by an MDM",
       description: "An MDM holds a record for the device at all.",
       providers: [:intune, :iru],
-      platforms: [:windows, :macos, :ios, :android],
       expansion: %{
         "or" => [
           %{"field" => "intune.enrolled", "op" => "is", "value" => true},
@@ -217,6 +224,8 @@ defmodule PortalWeb.Policies.Postures.Checks do
       }
     }
   ]
+
+  @checks Enum.map(@checks, &Map.put(&1, :platforms, Platforms.of(&1.expansion)))
 
   @by_name Map.new(@checks, &{&1.name, &1})
   @names Enum.map(@checks, & &1.name)
