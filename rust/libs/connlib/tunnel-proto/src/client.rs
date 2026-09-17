@@ -497,8 +497,6 @@ impl ClientState {
                 },
             );
 
-        let mut sendable_packets = Vec::new();
-
         for (domain, rid, proxy_ips, gid) in
             self.resource_stub_resolver
                 .resolved_resources()
@@ -528,7 +526,7 @@ impl ClientState {
                 packets_for_domain,
                 now,
             ) {
-                Ok(packets) => sendable_packets.extend(packets),
+                Ok(()) => {}
                 Err(e) => {
                     tracing::warn!("Failed to update DNS resource NAT state: {e:#}");
                     continue;
@@ -539,13 +537,6 @@ impl ClientState {
                 for ip in proxy_ips {
                     peer.allow_ip_for_resource(ip, *rid);
                 }
-            }
-        }
-
-        // Packets buffered for an already-confirmed NAT can be sent right away.
-        for packet in sendable_packets {
-            if let Err(e) = self.handle_out_of_band_ip_packet(packet, now) {
-                tracing::debug!("Failed to route buffered DNS resource packet: {e:#}");
             }
         }
     }

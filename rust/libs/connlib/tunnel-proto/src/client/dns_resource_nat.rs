@@ -24,10 +24,6 @@ pub struct DnsResourceNat {
 }
 
 impl DnsResourceNat {
-    /// Updates the DNS resource NAT state for a domain, buffering the given packets until the
-    /// NAT is set up.
-    ///
-    /// Returns the packets that can be sent right away because the NAT is already confirmed.
     pub fn update(
         &mut self,
         domain: DomainName,
@@ -36,7 +32,7 @@ impl DnsResourceNat {
         proxy_ips: &[IpAddr],
         packets_for_domain: VecDeque<IpPacket>,
         now: Instant,
-    ) -> Result<VecDeque<IpPacket>> {
+    ) -> Result<()> {
         match self.inner.entry((gid, domain.clone(), rid)) {
             Entry::Vacant(v) => {
                 tracing::trace!(%domain, %gid, %rid, "No DNS resource NAT state, creating `Pending` entry");
@@ -70,15 +66,9 @@ impl DnsResourceNat {
                 match state {
                     State::Confirmed => {
                         tracing::trace!(%domain, %gid, %rid, "DNS resource NAT already confirmed");
-
-                        return Ok(packets_for_domain);
                     }
                     State::Failed => {
                         tracing::trace!(%domain, %gid, %rid, "DNS resource NAT failed");
-
-                        // Same as `handle_outgoing`: some of these might be black-holed on
-                        // the Gateway but there isn't much we can do.
-                        return Ok(packets_for_domain);
                     }
                     State::Recreating { should_buffer } => {
                         tracing::trace!(%domain, %gid, %rid, "Recreating DNS resource NAT");
@@ -125,7 +115,7 @@ impl DnsResourceNat {
             }
         }
 
-        Ok(VecDeque::default())
+        Ok(())
     }
 
     /// Recreate the DNS resource NAT state for a given domain.
@@ -509,47 +499,6 @@ mod tests {
 
         assert!(maybe_packet.is_some_and(|p| p == app_packet));
         assert!(dns_resource_nat.poll_packet().is_some());
-    }
-
-    #[test]
-    fn forwards_buffered_packets_when_nat_already_confirmed() {
-        let mut dns_resource_nat = DnsResourceNat::default();
-
-        dns_resource_nat
-            .update(
-                EXAMPLE_COM.to_vec(),
-                GID,
-                RID,
-                PROXY_IPS,
-                VecDeque::default(),
-                Instant::now(),
-            )
-            .unwrap();
-        dns_resource_nat.on_domain_status(
-            GID,
-            p2p_control::dns_resource_nat::DomainStatus {
-                status: p2p_control::dns_resource_nat::NatStatus::Active,
-                resource: RID,
-                domain: EXAMPLE_COM.to_vec(),
-            },
-        );
-
-        let packet =
-            ip_packet::make::udp_packet(Ipv4Addr::LOCALHOST, Ipv4Addr::LOCALHOST, 0, 0, &[])
-                .unwrap();
-
-        let packets = dns_resource_nat
-            .update(
-                EXAMPLE_COM.to_vec(),
-                GID,
-                RID,
-                PROXY_IPS,
-                VecDeque::from([packet.clone()]),
-                Instant::now(),
-            )
-            .unwrap();
-
-        assert_eq!(packets, VecDeque::from([packet]));
     }
 
     #[test]
