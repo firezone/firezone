@@ -803,7 +803,9 @@ impl ClientState {
                     let event = p2p_control::no_authorization::decode(fz_p2p_control)
                         .context("Failed to decode `NoAuthorization`")?;
 
-                    self.handle_no_authorization(pid, event, now);
+                    if let Err(e) = self.handle_no_authorization(pid, event, now) {
+                        tracing::debug!(%pid, dst = %event.dst, protocol = ?event.protocol, "Ignoring `NoAuthorization` event: {e:#}");
+                    }
                 }
                 (p2p_control::GOODBYE_EVENT, pid) => {
                     self.node.remove_connection(pid, "received `goodbye`", now);
@@ -1351,48 +1353,35 @@ impl ClientState {
     }
 
     /// Requests fresh access for matching grants held by the peer reporting a missing authorization.
-    #[tracing::instrument(level = "debug", skip_all, fields(%pid, dst = %event.dst, protocol = ?event.protocol))]
     fn handle_no_authorization(
         &mut self,
         pid: ClientOrGatewayId,
         event: p2p_control::no_authorization::NoAuthorization,
         now: Instant,
-    ) {
+    ) -> Result<()> {
         #[cfg(any(test, feature = "malicious-behaviour"))]
-        if crate::malicious_behaviour::ignore_no_authorization_events() {
-            tracing::trace!("Malicious client: ignoring `NoAuthorization` event");
-            return;
-        }
+        anyhow::ensure!(
+            !crate::malicious_behaviour::ignore_no_authorization_events(),
+            "Malicious client is configured to ignore the event"
+        );
 
         let internet_resource = self.active_internet_resource().map(|r| r.id);
-        let Ok(routes) =
-            self.routing_tables
-                .resolve(event.dst, event.protocol.into(), internet_resource)
-        else {
-            tracing::debug!(
-                "Ignoring `NoAuthorization` event: destination rejected by routing policy"
-            );
-            return;
-        };
-        if routes.is_empty() {
-            tracing::debug!("Ignoring `NoAuthorization` event: no matching route");
-            return;
-        }
+        let routes = self
+            .routing_tables
+            .resolve(event.dst, event.protocol.into(), internet_resource)
+            .map_err(|routing::Denied| anyhow::anyhow!("Destination rejected by routing policy"))?;
+        anyhow::ensure!(!routes.is_empty(), "No matching route");
 
-        match (pid, routes) {
+        let request = match (pid, routes) {
             (ClientOrGatewayId::Client(cid), MatchedRoutes::DevicePools(pools)) => {
-                let Some(peer) = self.clients.peer_by_id_mut(&cid) else {
-                    tracing::trace!(
-                        "Ignoring `NoAuthorization` event: client peer no longer exists"
-                    );
-                    return;
-                };
-                if !peer.remote_tun().is_ip(event.dst) {
-                    tracing::debug!(
-                        "Ignoring `NoAuthorization` event: destination does not belong to the client peer"
-                    );
-                    return;
-                }
+                let peer = self
+                    .clients
+                    .peer_by_id(&cid)
+                    .context("Client peer no longer exists")?;
+                anyhow::ensure!(
+                    peer.remote_tun().is_ip(event.dst),
+                    "Destination does not belong to the client peer"
+                );
 
                 let pools = pools
                     .into_iter()
@@ -1402,17 +1391,12 @@ impl ClientState {
                             .is_some()
                     })
                     .collect_vec();
-                if pools.is_empty() {
-                    tracing::trace!(
-                        "Ignoring `NoAuthorization` event: no outbound authorization for the client peer"
-                    );
-                    return;
-                }
-                self.pending_authorizations.on_not_authorized(
-                    AuthorizationRequest::device(event.dst, pools),
-                    pending_authorizations::Trigger::NoAuthorization,
-                    now,
+                anyhow::ensure!(
+                    !pools.is_empty(),
+                    "No outbound authorization for the client peer"
                 );
+
+                AuthorizationRequest::device(event.dst, pools)
             }
             (ClientOrGatewayId::Gateway(gid), MatchedRoutes::Gateways(routes)) => {
                 let resources = routes
@@ -1422,29 +1406,27 @@ impl ClientState {
                         self.outbound_authorizations.gateway_by_resource(*resource) == Some(&gid)
                     })
                     .collect_vec();
-                if resources.is_empty() {
-                    tracing::trace!(
-                        "Ignoring `NoAuthorization` event: no matching resource authorized through the gateway"
-                    );
-                    return;
-                }
-                self.pending_authorizations.on_not_authorized(
-                    AuthorizationRequest::resources(resources),
-                    pending_authorizations::Trigger::NoAuthorization,
-                    now,
+                anyhow::ensure!(
+                    !resources.is_empty(),
+                    "No matching resource authorized through the gateway"
                 );
+
+                AuthorizationRequest::resources(resources)
             }
             (ClientOrGatewayId::Client(_), MatchedRoutes::Gateways(_)) => {
-                tracing::debug!(
-                    "Ignoring `NoAuthorization` event from client: destination routes through a gateway"
-                );
+                anyhow::bail!("Client reported a destination that routes through a gateway");
             }
             (ClientOrGatewayId::Gateway(_), MatchedRoutes::DevicePools(_)) => {
-                tracing::debug!(
-                    "Ignoring `NoAuthorization` event from gateway: destination routes to a client"
-                );
+                anyhow::bail!("Gateway reported a destination that routes to a client");
             }
-        }
+        };
+        self.pending_authorizations.on_not_authorized(
+            request,
+            pending_authorizations::Trigger::NoAuthorization,
+            now,
+        );
+
+        Ok(())
     }
 
     pub fn on_resource_connection_failed(&mut self, resource: ResourceId, now: Instant) {
