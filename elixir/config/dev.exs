@@ -80,6 +80,23 @@ config :portal, Portal.Billing,
 # For dev, we want to run things very frequently to aid development and testing.
 worker_dev_schedule = System.get_env("WORKER_DEV_SCHEDULE", "* * * * *")
 
+# Seeded posture providers carry made-up credentials, so their syncs only run
+# when asked for, e.g. POSTURE_SYNC_DEV_SCHEDULE="* * * * *".
+posture_sync_dev_crontab =
+  case System.get_env("POSTURE_SYNC_DEV_SCHEDULE") do
+    nil ->
+      []
+
+    schedule ->
+      [
+        {schedule, Portal.Intune.Scheduler},
+        {schedule, Portal.Iru.Scheduler},
+        {schedule, Portal.Defender.Scheduler},
+        {schedule, Portal.Santa.Scheduler},
+        {schedule, Portal.SentinelOne.Scheduler}
+      ]
+  end
+
 # Oban has its own config validation that prevents overriding config in runtime.exs,
 # so we explicitly set the config in dev.exs, test.exs, and runtime.exs (for prod) only.
 config :portal, Oban,
@@ -99,11 +116,6 @@ config :portal, Oban,
        {worker_dev_schedule, Portal.Crl.Scheduler},
        {worker_dev_schedule, Portal.Ocsp.Scheduler},
        {worker_dev_schedule, Portal.Entra.Scheduler},
-       {worker_dev_schedule, Portal.Intune.Scheduler},
-       {worker_dev_schedule, Portal.Iru.Scheduler},
-       {worker_dev_schedule, Portal.Defender.Scheduler},
-       {worker_dev_schedule, Portal.Santa.Scheduler},
-       {worker_dev_schedule, Portal.SentinelOne.Scheduler},
        {worker_dev_schedule, Portal.Google.Scheduler},
        {worker_dev_schedule, Portal.Okta.Scheduler},
        {worker_dev_schedule, Portal.Splunk.Scheduler},
@@ -128,6 +140,7 @@ config :portal, Oban,
         args: %{provider: "google", frequency: "weekly"}},
        {worker_dev_schedule, Portal.Workers.LogSinkErrorNotification},
        {worker_dev_schedule, Portal.Workers.DeleteExpiredPolicyAuthorizations},
+       {worker_dev_schedule, Portal.Workers.DeleteStalePostureAuthorizations},
        {worker_dev_schedule, Portal.Workers.CheckAccountLimits},
        {worker_dev_schedule, Portal.Workers.OutdatedGateways},
        {worker_dev_schedule, Portal.OSReleases.Sync},
@@ -141,7 +154,7 @@ config :portal, Oban,
        {worker_dev_schedule, Portal.Workers.DeleteExpiredPortalSessions},
        {worker_dev_schedule, Portal.Workers.PartitionFlowLogs},
        {worker_dev_schedule, Portal.Workers.SweepAccountDeletions}
-     ]}
+     ] ++ posture_sync_dev_crontab}
   ],
   queues: [
     default: 10,

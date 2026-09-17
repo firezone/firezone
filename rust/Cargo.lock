@@ -1334,6 +1334,7 @@ dependencies = [
  "oslog",
  "otel-attributes",
  "otel-instruments",
+ "parking_lot",
  "phoenix-channel",
  "rustls",
  "rustls-platform-verifier",

@@ -943,16 +943,24 @@ defmodule Portal.Cache.ClientTest do
       membership_fixture(account: account, actor: actor, group: group)
       resource = dns_resource_fixture(account: account, site: site_fixture(account: account))
 
-      policy_fixture(
-        account: account,
-        group: group,
-        resource: resource,
-        postures: %{"field" => "intune.compliance_state", "op" => "is", "value" => "compliant"}
-      )
+      policy =
+        policy_fixture(
+          account: account,
+          group: group,
+          resource: resource,
+          postures: %{"field" => "intune.compliance_state", "op" => "is", "value" => "compliant"}
+        )
 
       compliant = %Portal.Intune.Device{compliance_state: "compliant"}
       noncompliant = %Portal.Intune.Device{compliance_state: "noncompliant"}
-      %{subject: subject, client: client, resource: resource, compliant: compliant, noncompliant: noncompliant}
+      %{
+        subject: subject,
+        client: client,
+        resource: resource,
+        policy: policy,
+        compliant: compliant,
+        noncompliant: noncompliant
+      }
     end
 
     test "a passing posture makes the resource connectable and authorizes it", ctx do

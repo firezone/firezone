@@ -311,7 +311,7 @@ defmodule PortalWeb.SitesTest do
 
       # Currently defaults to Debian/Ubuntu instructions
       assert html =~ "Add the Firezone APT repository"
-      assert html =~ "sudo firezone gateway authenticate"
+      assert html =~ "sudo firezone-gateway authenticate"
       assert html =~ "Use this token when prompted"
 
       html = render_click(lv, "deploy_tab_selected", %{"tab" => "systemd-instructions"})

@@ -6,6 +6,7 @@ defmodule PortalAPI.Client.Channel.Shared do
   alias Portal.{
     Cache,
     Device,
+    Devices,
     FlowLogToken,
     PG,
     Changes.Change,
@@ -23,6 +24,14 @@ defmodule PortalAPI.Client.Channel.Shared do
   # If not, we need to send resource_deleted so that if it's added back later, the client's
   # connlib state will be cleaned up so it can request a new connection.
   @recompute_authorized_resources_every :timer.minutes(1)
+
+  @posture_provider_schemas [
+    Portal.Intune.PostureProvider,
+    Portal.Iru.PostureProvider,
+    Portal.Defender.PostureProvider,
+    Portal.Santa.PostureProvider,
+    Portal.SentinelOne.PostureProvider
+  ]
 
   # The interval at which the inbound policy_authorizations cache is pruned.
   @prune_authorizations_cache_every :timer.minutes(1)
@@ -2441,7 +2450,62 @@ defmodule PortalAPI.Client.Channel.Shared do
     push_resource_updates({:ok, added, removed_ids, cache}, socket)
   end
 
-  defp handle_change(%Change{}, socket), do: {:noreply, socket}
+  # POSTURE ROWS
+  #
+  # Every provider row change in the account arrives here, so only one that
+  # carries an identifier of this device is acted on. The rows are then read
+  # back from the database rather than patched in memory, which also picks up
+  # a Defender row newly linked through an Intune row.
+  defp handle_change(%Change{} = change, socket) do
+    if posture_provider_toggled?(change) or
+         (posture_row_change?(change) and concerns_client?(change, socket.assigns.client)) do
+      refresh_posture_rows(socket)
+    else
+      {:noreply, socket}
+    end
+  end
+
+  # A disabled provider's rows count as absent, and the rows themselves do not change.
+  defp posture_provider_toggled?(%Change{op: :update, old_struct: %module{} = old, struct: %module{} = new}) do
+    module in @posture_provider_schemas and old.is_disabled != new.is_disabled
+  end
+
+  defp posture_provider_toggled?(%Change{}), do: false
+
+  defp posture_row_change?(%Change{struct: %module{}}), do: module in Devices.Posture.schemas()
+  defp posture_row_change?(%Change{old_struct: %module{}}), do: module in Devices.Posture.schemas()
+  defp posture_row_change?(%Change{}), do: false
+
+  defp concerns_client?(%Change{old_struct: old_row, struct: row}, client) do
+    row_keys = Enum.flat_map([old_row, row], &if(is_nil(&1), do: [], else: Devices.Posture.row_keys(&1)))
+    client_keys = Devices.Posture.device_keys(client) ++ Devices.Posture.entra_keys(client.posture)
+
+    Enum.any?(row_keys, &(&1 in client_keys))
+  end
+
+  defp refresh_posture_rows(socket) do
+    client = socket.assigns.client
+    rows = load_posture_rows(socket)
+
+    if rows == client.posture do
+      {:noreply, socket}
+    else
+      client = %{client | posture: rows}
+
+      socket = assign(socket, :client, client)
+
+      Cache.Client.recompute_connectable_resources(socket.assigns.cache, client, socket.assigns.subject)
+      |> push_resource_updates(socket)
+    end
+  end
+
+  defp load_posture_rows(socket) do
+    if Portal.Account.device_posture_enabled?(socket.assigns.subject.account) do
+      Devices.Posture.rows_by_type(socket.assigns.client)
+    else
+      %{}
+    end
+  end
 
   defp protocol_version(socket), do: socket.assigns.channel_protocol.protocol_version()
 

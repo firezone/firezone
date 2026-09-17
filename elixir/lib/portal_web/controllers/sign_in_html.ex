@@ -312,9 +312,10 @@ defmodule PortalWeb.SignInHTML do
           <div class="pt-5 border-t border-border">
             <p class="text-xs text-subtle leading-relaxed">
               Paste this token in the prompt opened by the Firezone Client, or set it as the
-              <code class="px-1 py-0.5 rounded border border-border bg-raised font-mono">
-                FIREZONE_TOKEN
-              </code>
+              <code
+                class="px-1 py-0.5 rounded border border-border bg-raised font-mono"
+                phx-no-format
+              >FIREZONE_TOKEN</code>
               environment variable.
             </p>
           </div>

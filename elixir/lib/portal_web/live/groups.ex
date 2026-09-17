@@ -2,6 +2,7 @@ defmodule PortalWeb.Groups do
   use PortalWeb, :live_view
 
   alias __MODULE__.Database
+  alias PortalWeb.Policies.Postures
   alias Portal.Changes.Change
   alias Portal.Group
   alias Portal.PubSub
@@ -354,6 +355,13 @@ defmodule PortalWeb.Groups do
      |> merge_state(:grant_conditions, active_conditions: active)}
   end
 
+  def handle_event("postures_" <> _rest = event, params, socket) do
+    {:noreply,
+     update(socket, :grant_conditions, fn conditions ->
+       Map.update!(conditions, :postures, &Postures.handle_event(event, params, &1))
+     end)}
+  end
+
   def handle_event("submit_grant_resource", params, socket) do
     group = socket.assigns.selected_group
     selected_resource_ids = socket.assigns.group_resources.grant_selected_resource_ids
@@ -363,6 +371,7 @@ defmodule PortalWeb.Groups do
       policy_params
       |> map_condition_params(empty_values: :drop)
       |> maybe_drop_unsupported_conditions(socket)
+      |> Postures.maybe_drop_unsupported(socket.assigns.grant_conditions.postures)
       |> Map.put("group_id", group.id)
 
     result =
@@ -983,6 +992,7 @@ defmodule PortalWeb.Groups do
     Map.merge(
       %{
         providers: [],
+        postures: Postures.for_account(socket.assigns.account),
         timezone: timezone,
         active_conditions: [],
         conditions_dropdown_open?: false,
@@ -1702,7 +1712,7 @@ defmodule PortalWeb.Groups do
 
       changeset =
         %Portal.Policy{}
-        |> cast(attrs, ~w[group_id resource_id flow_log_uploads_enabled]a)
+        |> cast(attrs, ~w[group_id resource_id flow_log_uploads_enabled postures]a)
         |> validate_required(~w[group_id resource_id]a)
         |> cast_embed(:conditions, with: &Portal.Policies.Condition.changeset/3)
         |> Portal.Policy.changeset()

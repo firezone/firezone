@@ -55,6 +55,8 @@ defmodule Portal.Policies.Postures do
 
   def max_depth, do: @max_depth
   def max_leaves, do: @max_leaves
+  def no_value_operators, do: @no_value_operators
+  def list_operators, do: @list_operators
 
   @impl Ecto.Type
   def type, do: :map
@@ -68,6 +70,15 @@ defmodule Portal.Policies.Postures do
   @impl Ecto.Type
   def cast(nil), do: {:ok, nil}
   def cast(%__MODULE__{} = postures), do: {:ok, postures}
+
+  def cast(json) when is_binary(json) do
+    case JSON.decode(json) do
+      {:ok, nil} -> {:ok, nil}
+      {:ok, decoded} when is_map(decoded) -> cast(decoded)
+      {:ok, _other} -> {:error, message: "must be an object"}
+      {:error, _reason} -> {:error, message: "is not valid JSON"}
+    end
+  end
 
   def cast(map) when is_map(map) do
     case parse(map) do
@@ -175,7 +186,7 @@ defmodule Portal.Policies.Postures do
     with :ok <- reject_extra_keys(Map.keys(leaf) -- @leaf_keys, at),
          {:ok, provider, field, type} <- parse_field(field, at ++ ["field"]),
          {:ok, op} <- parse_operator(op, type, at ++ ["op"]),
-         {:ok, parsed} <- parse_value(type, op, value, at ++ ["value"]),
+         {:ok, parsed} <- parse_leaf_value(provider, field, type, op, value, at ++ ["value"]),
          {:ok, rows} <- parse_rows(provider, Map.get(leaf, "rows"), at ++ ["rows"]) do
       {:ok, %Leaf{provider: provider, field: field, type: type, op: op, value: value, parsed: parsed, rows: rows}}
     end
@@ -186,6 +197,18 @@ defmodule Portal.Policies.Postures do
   end
 
   defp parse_node(_node, at, _depth), do: error(at, "must be an object")
+
+  # `@latest` stands for the newest Firezone Client release for the device's
+  # platform and is resolved when the policy is evaluated.
+  defp parse_leaf_value(:firezone, :last_seen_version, :version, op, "@latest", _at)
+       when op not in @no_value_operators,
+       do: {:ok, :latest}
+
+  defp parse_leaf_value(_provider, _field, _type, _op, "@" <> _rest = macro, at) do
+    error(at, "unknown macro #{macro}, only @latest on firezone.last_seen_version is supported")
+  end
+
+  defp parse_leaf_value(_provider, _field, type, op, value, at), do: parse_value(type, op, value, at)
 
   defp parse_nodes(nodes, at, depth) when is_list(nodes) and nodes != [] do
     nodes
@@ -334,15 +357,24 @@ defmodule Portal.Policies.Postures do
     end
   end
 
-  defp parse_scalar(:ip, _op, value, at) do
+  defp parse_scalar(type, _op, value, at) when type in [:ip, :ipv4, :ipv6] do
     with {:ok, string} <- bounded_string(value, @max_string_bytes, at),
-         {:ok, inet} <- Portal.Types.INET.cast(string) do
+         {:ok, inet} <- Portal.Types.INET.cast(string),
+         true <- ip_family?(type, inet) do
       {:ok, %{inet | netmask: inet.netmask || Portal.Types.CIDR.max_netmask(inet)}}
     else
       {:error, message} when is_binary(message) -> {:error, message}
-      _ -> error(at, "must be a CIDR such as 10.0.0.0/8")
+      _ -> error(at, "must be #{cidr_example(type)}")
     end
   end
+
+  defp ip_family?(:ipv4, %Postgrex.INET{address: address}), do: tuple_size(address) == 4
+  defp ip_family?(:ipv6, %Postgrex.INET{address: address}), do: tuple_size(address) == 8
+  defp ip_family?(:ip, _inet), do: true
+
+  defp cidr_example(:ipv4), do: "an IPv4 CIDR such as 10.0.0.0/8"
+  defp cidr_example(:ipv6), do: "an IPv6 CIDR such as fd00::/8"
+  defp cidr_example(:ip), do: "a CIDR such as 10.0.0.0/8"
 
   defp non_empty_list(value, at) do
     cond do
@@ -425,4 +457,8 @@ defmodule Portal.Policies.Postures do
     end)
     |> String.trim_leading(".")
   end
+end
+
+defimpl JSON.Encoder, for: Portal.Policies.Postures do
+  def encode(postures, encoder), do: encoder.(Portal.Policies.Postures.to_map(postures), encoder)
 end

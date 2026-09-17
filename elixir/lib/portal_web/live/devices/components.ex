@@ -823,8 +823,9 @@ defmodule PortalWeb.Devices.Components do
       <.json_view
         id={@dom_id}
         value={posture_record(@entry.device)}
-        label="Provider record"
+        label="Raw provider record"
         hint="Empty fields omitted"
+        collapsed
       />
     </div>
     """

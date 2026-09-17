@@ -56,7 +56,8 @@ defmodule PortalAPI.Client.ChannelTest do
         last_seen_remote_ip_location_lon: subject.context.remote_ip_location_lon,
         last_seen_version: client_version,
         last_seen_at: DateTime.utc_now(),
-        attested?: Keyword.get(opts, :attested?, false)
+        attested?: Keyword.get(opts, :attested?, false),
+        posture: Keyword.get(opts, :posture, %{})
     }
 
     {:ok, _reply, socket} =
@@ -8472,6 +8473,208 @@ defmodule PortalAPI.Client.ChannelTest do
       # this is enforced by `Phoenix.Channel.Server`, which monitors the transport
       # pid on join and stops the channel on its :DOWN.
       refute Process.alive?(channel_pid)
+    end
+  end
+  describe "handle_info/2 for posture row changes" do
+    alias Portal.Changes.Hooks
+
+    setup do
+      Portal.DevicePostureFixtures.enable_device_posture()
+      account = Portal.DevicePostureFixtures.device_posture_account_fixture()
+      actor = actor_fixture(type: :account_admin_user, account: account)
+      group = group_fixture(account: account)
+      membership_fixture(account: account, actor: actor, group: group)
+
+      subject =
+        subject_fixture(account: account, actor: actor, type: :client, user_agent: "Linux/24.04 connlib/1.3.0")
+
+      client = client_fixture(account: account, actor: actor, device_serial: "POSTURE-SER") |> fetch_device!()
+      resource = resource_fixture(account: account, site: site_fixture(account: account))
+      provider = Portal.IntuneFixtures.intune_posture_provider_fixture(account: account)
+
+      %{account: account, group: group, subject: subject, client: client, resource: resource, provider: provider}
+    end
+
+    defp wal(row) do
+      row
+      |> Map.from_struct()
+      |> Map.drop([:__meta__])
+      |> Map.new(fn {key, value} -> {Atom.to_string(key), value} end)
+    end
+
+    defp compliant_policy(ctx) do
+      policy_fixture(
+        account: ctx.account,
+        group: ctx.group,
+        resource: ctx.resource,
+        postures: %{"field" => "intune.compliance_state", "op" => "is", "value" => "compliant"}
+      )
+    end
+
+    test "a row that starts satisfying a posture makes the resource connectable", ctx do
+      compliant_policy(ctx)
+      socket = join_channel(ctx.client, ctx.subject)
+      assert_push "init", %{resources: []}
+
+      row = Portal.IntuneFixtures.intune_device_fixture(provider: ctx.provider, serial_number: "POSTURE-SER")
+      :ok = Hooks.IntuneDevices.on_insert(1, wal(row))
+
+      assert_push "resource_created_or_updated", %{id: resource_id}
+      assert resource_id == ctx.resource.id
+
+      assert %{assigns: %{client: %{posture: %{intune: [%{intune_id: intune_id}]}}}} =
+               :sys.get_state(socket.channel_pid)
+
+      assert intune_id == row.intune_id
+    end
+
+    test "a row that stops satisfying a posture removes the resource", ctx do
+      compliant_policy(ctx)
+      row = Portal.IntuneFixtures.intune_device_fixture(provider: ctx.provider, serial_number: "POSTURE-SER")
+      join_channel(ctx.client, ctx.subject, posture: %{intune: [row]})
+      assert_push "init", %{resources: [%{id: resource_id}]}
+      assert resource_id == ctx.resource.id
+
+      noncompliant = row |> Ecto.Changeset.change(compliance_state: "noncompliant") |> Portal.Repo.update!()
+      :ok = Hooks.IntuneDevices.on_update(2, wal(row), wal(noncompliant))
+
+      assert_push "resource_deleted", ^resource_id
+    end
+
+    test "a Defender row is followed through the Intune row it is linked to", ctx do
+      policy_fixture(
+        account: ctx.account,
+        group: ctx.group,
+        resource: ctx.resource,
+        postures: %{"field" => "defender.health_status", "op" => "is", "value" => "active"}
+      )
+
+      intune_row =
+        Portal.IntuneFixtures.intune_device_fixture(
+          provider: ctx.provider,
+          serial_number: "POSTURE-SER",
+          entra_device_id: "entra-1"
+        )
+
+      join_channel(ctx.client, ctx.subject, posture: %{intune: [intune_row]})
+      assert_push "init", %{resources: []}
+
+      defender = Portal.DefenderFixtures.defender_posture_provider_fixture(account: ctx.account)
+
+      row =
+        Portal.DefenderFixtures.defender_device_fixture(
+          provider: defender,
+          entra_device_id: "entra-1",
+          health_status: "Active"
+        )
+
+      :ok = Hooks.DefenderDevices.on_insert(3, wal(row))
+
+      assert_push "resource_created_or_updated", %{id: resource_id}
+      assert resource_id == ctx.resource.id
+    end
+
+    test "a relinked Intune row is read back from the database", ctx do
+      intune_row =
+        Portal.IntuneFixtures.intune_device_fixture(
+          provider: ctx.provider,
+          serial_number: "POSTURE-SER",
+          entra_device_id: "entra-1"
+        )
+
+      socket = join_channel(ctx.client, ctx.subject, posture: %{intune: [intune_row]})
+      assert_push "init", _
+
+      relinked = intune_row |> Ecto.Changeset.change(entra_device_id: "entra-2") |> Portal.Repo.update!()
+      send(socket.channel_pid, %Changes.Change{lsn: 4, op: :update, old_struct: intune_row, struct: relinked})
+
+      assert %{assigns: %{client: %{posture: %{intune: [%{entra_device_id: "entra-2"}]}}}} =
+               :sys.get_state(socket.channel_pid)
+    end
+
+    test "a row about another device is ignored", ctx do
+      compliant_policy(ctx)
+      socket = join_channel(ctx.client, ctx.subject)
+      assert_push "init", %{resources: []}
+
+      row = Portal.IntuneFixtures.intune_device_fixture(provider: ctx.provider, serial_number: "SOMEONE-ELSE")
+      :ok = Hooks.IntuneDevices.on_insert(6, wal(row))
+
+      refute_push "resource_created_or_updated", _
+      assert %{assigns: %{client: %{posture: %{}}}} = :sys.get_state(socket.channel_pid)
+    end
+
+    test "disabling a provider drops its rows, enabling it brings them back", ctx do
+      compliant_policy(ctx)
+      row = Portal.IntuneFixtures.intune_device_fixture(provider: ctx.provider, serial_number: "POSTURE-SER")
+      socket = join_channel(ctx.client, ctx.subject, posture: %{intune: [row]})
+      assert_push "init", %{resources: [%{id: resource_id}]}
+      assert resource_id == ctx.resource.id
+
+      disabled = ctx.provider |> Ecto.Changeset.change(is_disabled: true) |> Portal.Repo.update!()
+      send(socket.channel_pid, %Changes.Change{lsn: 7, op: :update, old_struct: ctx.provider, struct: disabled})
+
+      assert_push "resource_deleted", ^resource_id
+      assert %{assigns: %{client: %{posture: %{}}}} = :sys.get_state(socket.channel_pid)
+
+      enabled = disabled |> Ecto.Changeset.change(is_disabled: false) |> Portal.Repo.update!()
+      send(socket.channel_pid, %Changes.Change{lsn: 8, op: :update, old_struct: disabled, struct: enabled})
+
+      assert_push "resource_created_or_updated", %{id: ^resource_id}
+    end
+
+    test "a provider update that leaves it enabled is ignored", ctx do
+      row = Portal.IntuneFixtures.intune_device_fixture(provider: ctx.provider, serial_number: "POSTURE-SER")
+      socket = join_channel(ctx.client, ctx.subject, posture: %{intune: [row]})
+      assert_push "init", _
+
+      synced = ctx.provider |> Ecto.Changeset.change(synced_at: DateTime.utc_now()) |> Portal.Repo.update!()
+      send(socket.channel_pid, %Changes.Change{lsn: 9, op: :update, old_struct: ctx.provider, struct: synced})
+
+      :sys.get_state(socket.channel_pid)
+      refute_push "resource_deleted", _
+    end
+
+    test "the minute timer re-evaluates a time-based posture", ctx do
+      policy_fixture(
+        account: ctx.account,
+        group: ctx.group,
+        resource: ctx.resource,
+        postures: %{"field" => "intune.last_sync_at", "op" => "within_last", "value" => "PT1H"}
+      )
+
+      now = DateTime.utc_now()
+      Portal.Config.put_env_override(:portal, :current_time_fn, fn -> now end)
+
+      row =
+        Portal.IntuneFixtures.intune_device_fixture(
+          provider: ctx.provider,
+          serial_number: "POSTURE-SER",
+          last_sync_at: DateTime.add(now, -30, :minute)
+        )
+
+      socket = join_channel(ctx.client, ctx.subject, posture: %{intune: [row]})
+      assert_push "init", %{resources: [%{id: resource_id}]}
+      assert resource_id == ctx.resource.id
+
+      Portal.Config.put_env_override(:portal, :current_time_fn, fn -> DateTime.add(now, 2, :hour) end)
+      send(socket.channel_pid, :recompute_authorized_resources)
+
+      assert_push "resource_deleted", ^resource_id
+    end
+
+    test "rows are ignored while the feature is off", ctx do
+      Portal.DevicePostureFixtures.enable_device_posture(false)
+      compliant_policy(ctx)
+      socket = join_channel(ctx.client, ctx.subject)
+      assert_push "init", %{resources: []}
+
+      row = Portal.IntuneFixtures.intune_device_fixture(provider: ctx.provider, serial_number: "POSTURE-SER")
+      :ok = Hooks.IntuneDevices.on_insert(5, wal(row))
+
+      refute_push "resource_created_or_updated", _
+      assert %{assigns: %{client: %{posture: posture}}} = :sys.get_state(socket.channel_pid)
+      assert posture == %{}
     end
   end
 
