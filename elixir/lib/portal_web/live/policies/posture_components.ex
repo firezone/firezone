@@ -12,6 +12,9 @@ defmodule PortalWeb.Policies.PostureComponents do
     "sentinelone" => "SentinelOne"
   }
 
+  @editor_class "font-mono text-xs leading-5 px-2 py-1.5 whitespace-pre"
+  @mark_class "underline decoration-wavy decoration-error underline-offset-2 bg-error/10"
+
   @operator_labels %{
     "eq" => "=",
     "ne" => "≠",
@@ -29,18 +32,44 @@ defmodule PortalWeb.Policies.PostureComponents do
   def postures_section(assigns) do
     ~H"""
     <div :if={@state.availability != :hidden} id={@id} class="border-t border-border pt-4">
-      <h4 class="text-[10px] font-semibold tracking-widest uppercase text-subtle mb-3">
-        Device posture
-        <span
-          data-postures-new-badge
-          class="ml-1.5 px-1 py-px rounded text-[9px] font-semibold tracking-wider normal-case bg-brand-muted text-brand"
-        >
-          NEW
-        </span>
-        <span class="ml-1 font-normal normal-case tracking-normal text-muted">
-          (optional)
-        </span>
-      </h4>
+      <div class="flex items-center justify-between gap-2 mb-3">
+        <h4 class="text-[10px] font-semibold tracking-widest uppercase text-subtle">
+          Device posture
+          <span
+            data-postures-new-badge
+            class="ml-1.5 px-1 py-px rounded text-[9px] font-semibold tracking-wider normal-case bg-brand-muted text-brand"
+          >
+            NEW
+          </span>
+          <span class="ml-1 font-normal normal-case tracking-normal text-muted">
+            (optional)
+          </span>
+        </h4>
+        <div :if={@state.availability == :enabled} class="flex items-center gap-2">
+          <button
+            :if={Postures.dirty?(@state)}
+            type="button"
+            phx-click="postures_reset"
+            class="flex items-center gap-1 text-[10px] text-body hover:text-heading transition-colors"
+            title="Back to the saved rules"
+          >
+            <.icon name="ri-arrow-go-back-line" class="w-3 h-3" /> Reset
+          </button>
+          <div class="inline-flex rounded border border-border overflow-hidden">
+            <button type="button" phx-click="postures_tab" phx-value-tab="simple" class={pill_class(@state.tab == :simple)}>
+              Simplified
+            </button>
+            <button
+              type="button"
+              phx-click="postures_tab"
+              phx-value-tab="json"
+              class={[pill_class(@state.tab == :json), "border-l border-border"]}
+            >
+              JSON
+            </button>
+          </div>
+        </div>
+      </div>
       <div
         :if={@state.availability == :enabled and not @state.trust_anchors?}
         class="mb-3 flex items-start gap-1.5 rounded border border-warning-light bg-warning-light px-3 py-2 text-xs text-warning"
@@ -70,9 +99,10 @@ defmodule PortalWeb.Policies.PostureComponents do
         </.upgrade_locked_section>
       <% else %>
         <input type="hidden" name="policy[postures]" value={Postures.hidden_value(@state)} />
-        <.postures_checks id={@id <> "-checks"} state={@state} />
+        <.postures_checks :if={@state.tab == :simple} id={@id <> "-checks"} state={@state} />
+        <.postures_json_editor :if={@state.tab == :json} id={@id <> "-json"} state={@state} />
       <% end %>
-      <p class="mt-2 text-xs text-subtle">
+      <p :if={@state.tab == :simple} class="mt-2 text-xs text-subtle">
         Over <.website_link path="/kb/device-posture">300 more device posture fields</.website_link> are available to configure through the REST API.
       </p>
     </div>
@@ -94,8 +124,11 @@ defmodule PortalWeb.Policies.PostureComponents do
     ~H"""
     <div id={@id} class="rounded-lg border border-border overflow-hidden">
       <p :if={@custom?} class="px-3 py-2 text-xs text-warning border-b border-border bg-raised">
-        This policy has posture rules written through the REST API that these checks cannot show.
-        Saving keeps them as they are.
+        This policy has posture rules these checks cannot show. Edit them in the JSON tab; saving from
+        here keeps them as they are.
+      </p>
+      <p :if={not @custom? and @state.json_error} class="px-3 py-2 text-xs text-warning border-b border-border bg-raised">
+        The JSON tab holds an error. These are the last rules that were valid.
       </p>
       <table class="w-full text-sm text-body">
         <thead class="bg-raised text-[10px] font-semibold tracking-widest uppercase text-subtle">
@@ -136,6 +169,65 @@ defmodule PortalWeb.Policies.PostureComponents do
         </tbody>
       </table>
     </div>
+    """
+  end
+
+  attr :id, :string, required: true
+  attr :state, :map, required: true
+
+  def postures_json_editor(assigns) do
+    {start, length} = (assigns.state.json_error && assigns.state.json_error.span) || {nil, nil}
+
+    assigns =
+      assigns
+      |> assign(:error_start, start)
+      |> assign(:error_length, length)
+      |> assign(:editor_class, @editor_class)
+      |> assign(:mark_class, @mark_class)
+
+    ~H"""
+    <div
+      id={@id}
+      phx-hook="PostureJsonEditor"
+      data-error-start={@error_start}
+      data-error-length={@error_length}
+      data-validated-length={String.length(@state.json_text)}
+      data-mark-class={@mark_class}
+      class="relative"
+    >
+      <pre
+        id={@id <> "-backdrop"}
+        data-backdrop
+        phx-update="ignore"
+        aria-hidden="true"
+        class={[@editor_class, "absolute inset-0 m-0 overflow-hidden pointer-events-none text-heading border border-transparent"]}
+      ></pre>
+      <textarea
+        id={@id <> "-input"}
+        name="_postures_json"
+        rows="14"
+        wrap="off"
+        spellcheck="false"
+        autocomplete="off"
+        phx-change="postures_json_change"
+        phx-debounce="400"
+        placeholder={~s({"and": [{"field": "intune.compliance_state", "op": "is", "value": "compliant"}]})}
+        class={[
+          @editor_class,
+          "relative block w-full resize-y overflow-auto rounded border bg-transparent text-transparent caret-heading placeholder:text-muted outline-none",
+          "focus:ring-1 focus:ring-border-focus/30 transition-colors",
+          if(@state.json_error, do: "border-error/60", else: "border-border focus:border-border-focus")
+        ]}
+      >{@state.json_text}</textarea>
+    </div>
+    <p :if={@state.json_error} data-postures-json-error class="mt-1.5 text-xs text-error">
+      {error_message(@state.json_error.message)}
+    </p>
+    <p class="mt-2 text-xs text-subtle">
+      A node is <code>and</code>, <code>or</code>, <code>not</code>, or a rule with <code>field</code>
+      (<code>provider.field</code>), <code>op</code> and <code>value</code>. Leave empty for no requirement. The
+      <.website_link path="/kb/device-posture/grammar">grammar reference</.website_link> lists every field and operator.
+    </p>
     """
   end
 
@@ -244,6 +336,15 @@ defmodule PortalWeb.Policies.PostureComponents do
   end
 
   defp provider_label(provider), do: Map.get(@provider_labels, provider, provider)
+
+  defp error_message(message), do: String.capitalize(String.first(message)) <> String.slice(message, 1..-1//1)
+
+  defp pill_class(active?) do
+    [
+      "px-2 py-0.5 text-[10px] transition-colors",
+      if(active?, do: "bg-brand text-white", else: "bg-surface text-body hover:text-heading")
+    ]
+  end
 
   defp operator_label(nil), do: ""
   defp operator_label(op), do: Map.get_lazy(@operator_labels, op, fn -> String.replace(op, "_", " ") end)

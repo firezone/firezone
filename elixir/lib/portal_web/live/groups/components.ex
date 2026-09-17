@@ -785,7 +785,7 @@ defmodule PortalWeb.Groups.Components do
         <.panel_footer_button
           type="submit"
           style="primary"
-          disabled={@grant_selected_resource_ids == []}
+          disabled={@grant_selected_resource_ids == [] or PortalWeb.Policies.Postures.blocked?(@postures)}
         >
           Grant access
         </.panel_footer_button>

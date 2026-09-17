@@ -1653,7 +1653,11 @@ defmodule PortalWeb.PoliciesTest do
       assert html =~ ~r/>\s*Posture\s*</
 
       {:ok, lv, html} = live(conn, ~p"/#{account}/policies/#{policy.id}/edit")
-      assert html =~ "written through the REST API"
+      assert has_element?(lv, "#policy-postures-json-input")
+      assert html =~ "intune.jail_broken"
+
+      render_click(lv, "postures_tab", %{"tab" => "simple"})
+      assert has_element?(lv, "#policy-postures-checks", "rules these checks cannot show")
       assert toggle(lv, "client_up_to_date") =~ "disabled"
 
       html =
@@ -1699,6 +1703,62 @@ defmodule PortalWeb.PoliciesTest do
       html = render_click(lv, "save_policy_breaking_change")
       assert html =~ "updated successfully"
       assert Repo.get_by!(Policy, group_id: group.id, resource_id: resource.id).postures == nil
+    end
+    test "the JSON tab edits the rules, the Simplified tab follows, and a broken document blocks saving", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      group: group,
+      resource: resource
+    } do
+      Portal.IntuneFixtures.intune_posture_provider_fixture(account: account)
+      {:ok, postures} = Portal.Policies.Postures.cast(expansion(:compliant))
+
+      policy =
+        policy_fixture(account: account, group: group, resource: resource)
+        |> Ecto.Changeset.change(postures: postures)
+        |> Repo.update!()
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/policies/#{policy.id}/edit")
+
+      refute has_element?(lv, "button[phx-click='postures_reset']")
+      html = render_click(lv, "postures_tab", %{"tab" => "json"})
+      assert html =~ "intune.compliance_state"
+
+      broken = ~s({"and": [)
+      html = lv |> element("#policy-postures-json-input") |> render_change(%{"_postures_json" => broken})
+      assert has_element?(lv, "[data-postures-json-error]", "Unexpected end of input")
+      assert html =~ ~s(data-error-start="8")
+      assert has_element?(lv, "#policy-form button[type='submit'][disabled]")
+      assert has_element?(lv, "button[phx-click='postures_reset']")
+
+      render_click(lv, "postures_tab", %{"tab" => "simple"})
+      assert has_element?(lv, "#policy-postures-checks", "The JSON tab holds an error")
+      assert toggle(lv, "compliant") =~ "checked"
+
+      render_click(lv, "postures_reset")
+      refute has_element?(lv, "button[phx-click='postures_reset']")
+      render_click(lv, "postures_tab", %{"tab" => "json"})
+      refute has_element?(lv, "[data-postures-json-error]")
+
+      lv
+      |> element("#policy-postures-json-input")
+      |> render_change(%{"_postures_json" => JSON.encode!(%{"and" => [expansion(:compliant), expansion(:client_up_to_date)]})})
+
+      refute has_element?(lv, "#policy-form button[type='submit'][disabled]")
+      render_click(lv, "postures_tab", %{"tab" => "simple"})
+      assert toggle(lv, "client_up_to_date") =~ "checked"
+
+      lv
+      |> form("[phx-submit='submit_policy_form']", policy: %{description: "from json"})
+      |> render_submit()
+
+      html = render_click(lv, "save_policy_breaking_change")
+      assert html =~ "updated successfully"
+      assert saved_postures(group, resource) == %{"and" => [expansion(:compliant), expansion(:client_up_to_date)]}
     end
   end
 
