@@ -1540,7 +1540,8 @@ defmodule PortalWeb.PoliciesTest do
 
       assert html =~ "created successfully"
       assert saved_postures(group, resource) == expansion(:client_up_to_date)
-      assert html =~ "firezone.last_seen_version"
+      assert html =~ "Firezone Client up to date"
+      refute html =~ "Click to expand"
     end
 
     test "every connected provider type unlocks its checks, disabled ones do not", %{
@@ -1607,10 +1608,13 @@ defmodule PortalWeb.PoliciesTest do
         |> Ecto.Changeset.change(postures: postures)
         |> Repo.update!()
 
-      {:ok, lv, html} =
-        conn
-        |> authorize_conn(actor)
-        |> live(~p"/#{account}/policies/#{policy.id}/edit")
+      conn = authorize_conn(conn, actor)
+      {:ok, lv, html} = live(conn, ~p"/#{account}/policies/#{policy.id}")
+      assert html =~ "Device posture"
+      assert has_element?(lv, "li", "Compliant")
+      assert has_element?(lv, "li", "Firezone Client up to date")
+
+      {:ok, lv, html} = live(conn, ~p"/#{account}/policies/#{policy.id}/edit")
 
       assert toggle(lv, "compliant") =~ "checked"
       assert toggle(lv, "client_up_to_date") =~ "checked"
@@ -1646,10 +1650,11 @@ defmodule PortalWeb.PoliciesTest do
 
       conn = authorize_conn(conn, actor)
 
-      {:ok, _lv, html} = live(conn, ~p"/#{account}/policies/#{policy.id}")
+      {:ok, lv, html} = live(conn, ~p"/#{account}/policies/#{policy.id}")
       assert html =~ "Device posture"
       assert html =~ "intune.jail_broken"
-      assert html =~ ">NOT<"
+      assert has_element?(lv, "#policy-postures-rules", "Click to expand")
+      assert html =~ "Custom rules"
       assert html =~ ~r/>\s*Posture\s*</
 
       {:ok, lv, html} = live(conn, ~p"/#{account}/policies/#{policy.id}/edit")

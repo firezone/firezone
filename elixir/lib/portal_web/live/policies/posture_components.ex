@@ -15,17 +15,6 @@ defmodule PortalWeb.Policies.PostureComponents do
   @editor_class "font-mono text-xs leading-5 px-2 py-1.5 whitespace-pre"
   @mark_class "underline decoration-wavy decoration-error underline-offset-2 bg-error/10"
 
-  @operator_labels %{
-    "eq" => "=",
-    "ne" => "≠",
-    "gt" => ">",
-    "gte" => "≥",
-    "lt" => "<",
-    "lte" => "≤",
-    "is_in_cidr" => "is in CIDR",
-    "is_not_in_cidr" => "is not in CIDR"
-  }
-
   attr :id, :string, required: true
   attr :account, :any, required: true
   attr :state, :map, required: true
@@ -259,68 +248,43 @@ defmodule PortalWeb.Policies.PostureComponents do
 
   attr :postures, :any, default: nil
 
+  def postures_summary(%{postures: nil} = assigns), do: ~H""
+
   def postures_summary(assigns) do
+    wire = Portal.Policies.Postures.to_map(assigns.postures)
+
+    checks =
+      case Postures.checks(%{wire: wire}) do
+        {:ok, names} -> Enum.map(names, &check!/1)
+        :custom -> :custom
+      end
+
+    assigns = assign(assigns, wire: wire, checks: checks)
+
     ~H"""
-    <div :if={@postures} class="mt-4">
-      <h4 class="text-[10px] font-semibold tracking-widest uppercase text-subtle mb-2">
-        Device posture
-      </h4>
-      <div class="px-3 py-2.5 rounded border border-border bg-raised text-xs text-body">
-        <.postures_summary_node node={Portal.Policies.Postures.to_map(@postures)} />
-      </div>
+    <div class="mt-4">
+      <%= if @checks == :custom do %>
+        <.json_view id="policy-postures-rules" value={@wire} label="Device posture" hint="Custom rules" collapsed />
+      <% else %>
+        <h4 class="text-[10px] font-semibold tracking-widest uppercase text-subtle mb-2">
+          Device posture
+        </h4>
+        <ul class="rounded border border-border bg-raised divide-y divide-border">
+          <li :for={check <- @checks} class="flex items-center gap-2 px-3 py-2">
+            <.icon name="ri-checkbox-circle-fill" class="w-3.5 h-3.5 shrink-0 text-success" />
+            <span class="text-xs font-medium text-heading">{check.label}</span>
+            <span class="text-xs text-subtle truncate">{check.description}</span>
+          </li>
+        </ul>
+      <% end %>
     </div>
     """
   end
 
-  attr :node, :map, required: true
-
-  def postures_summary_node(%{node: %{"not" => inner}} = assigns) do
-    assigns = assign(assigns, :inner, inner)
-
-    ~H"""
-    <div class="flex items-start gap-1.5">
-      <span class="shrink-0 px-1 rounded text-[10px] font-semibold bg-error/10 text-error">NOT</span>
-      <div class="flex-1 min-w-0"><.postures_summary_node node={@inner} /></div>
-    </div>
-    """
+  defp check!(name) do
+    {:ok, check} = Checks.fetch(name)
+    check
   end
-
-  def postures_summary_node(%{node: %{"and" => nodes}} = assigns) do
-    assigns = assign(assigns, nodes: nodes, label: "ALL of")
-    postures_summary_group(assigns)
-  end
-
-  def postures_summary_node(%{node: %{"or" => nodes}} = assigns) do
-    assigns = assign(assigns, nodes: nodes, label: "ANY of")
-    postures_summary_group(assigns)
-  end
-
-  def postures_summary_node(assigns) do
-    ~H"""
-    <span class="font-mono break-all">
-      {@node["field"]}
-      <span class="text-subtle font-sans">{operator_label(@node["op"])}</span>
-      {summary_value(@node["value"])}
-      <span :if={@node["rows"] == "all"} class="text-subtle font-sans">(all records)</span>
-    </span>
-    """
-  end
-
-  defp postures_summary_group(assigns) do
-    ~H"""
-    <div>
-      <span class="text-[10px] font-semibold text-subtle">{@label}</span>
-      <ul class="ml-2 pl-2 border-l border-border space-y-1 mt-1">
-        <li :for={node <- @nodes}><.postures_summary_node node={node} /></li>
-      </ul>
-    </div>
-    """
-  end
-
-  defp summary_value(nil), do: ""
-  defp summary_value(value) when is_list(value), do: Enum.map_join(value, ", ", &summary_value/1)
-  defp summary_value(value) when is_binary(value), do: value
-  defp summary_value(value), do: JSON.encode!(value)
 
   defp toggle_title(state, check, enabled) do
     if check.name in enabled or Postures.check_available?(state, check) do
@@ -340,9 +304,6 @@ defmodule PortalWeb.Policies.PostureComponents do
       if(active?, do: "bg-brand text-white", else: "bg-surface text-body hover:text-heading")
     ]
   end
-
-  defp operator_label(nil), do: ""
-  defp operator_label(op), do: Map.get_lazy(@operator_labels, op, fn -> String.replace(op, "_", " ") end)
 
   @platform_icons [
     windows: {"icon-os-windows", "Windows"},
