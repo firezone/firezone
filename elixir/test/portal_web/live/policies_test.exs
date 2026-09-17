@@ -1519,9 +1519,9 @@ defmodule PortalWeb.PoliciesTest do
 
       assert html =~ "Disk encryption"
       assert html =~ "Connect Intune or Iru to use this check."
-      assert html =~ "300 more device posture fields"
+      assert html =~ "to configure over 300 posture fields"
       assert has_element?(lv, "#policy-postures [data-postures-new-badge]", "NEW")
-      assert html =~ "kb/device-posture?utm_source=product"
+      assert html =~ "kb/device-posture/grammar?utm_source=product"
       assert html =~ "are defined. Devices will be identified by Firezone-reported attributes only."
       assert html =~ "settings/trust_anchors"
       assert html =~ "kb/device-trust?utm_source=product#device-attributes"

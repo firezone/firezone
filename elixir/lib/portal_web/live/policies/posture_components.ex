@@ -102,8 +102,8 @@ defmodule PortalWeb.Policies.PostureComponents do
         <.postures_checks :if={@state.tab == :simple} id={@id <> "-checks"} state={@state} />
         <.postures_json_editor :if={@state.tab == :json} id={@id <> "-json"} state={@state} />
       <% end %>
-      <p :if={@state.tab == :simple} class="mt-2 text-xs text-subtle">
-        Over <.website_link path="/kb/device-posture">300 more device posture fields</.website_link> are available to configure through the REST API.
+      <p class="mt-2 text-xs text-subtle">
+        Check the <.website_link path="/kb/device-posture/grammar">grammar reference</.website_link> to configure over 300 posture fields.
       </p>
     </div>
     """
@@ -222,11 +222,6 @@ defmodule PortalWeb.Policies.PostureComponents do
     </div>
     <p :if={@state.json_error} data-postures-json-error class="mt-1.5 text-xs text-error">
       {error_message(@state.json_error.message)}
-    </p>
-    <p class="mt-2 text-xs text-subtle">
-      A node is <code>and</code>, <code>or</code>, <code>not</code>, or a rule with <code>field</code>
-      (<code>provider.field</code>), <code>op</code> and <code>value</code>. Leave empty for no requirement. The
-      <.website_link path="/kb/device-posture/grammar">grammar reference</.website_link> lists every field and operator.
     </p>
     """
   end
