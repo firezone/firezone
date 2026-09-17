@@ -89,6 +89,11 @@ pub struct RefClient {
     #[debug(skip)]
     gateway_revoked_authorizations: BTreeSet<ResourceId>,
 
+    /// Receiver grants survive client-side resets until revoked or closed with goodbye.
+    /// The portal selects a fixed gateway per site.
+    #[debug(skip)]
+    gateway_authorizations: BTreeMap<SiteId, BTreeSet<ResourceId>>,
+
     /// The [`ResourceStatus`] of each site.
     #[debug(skip)]
     site_status: BTreeMap<SiteId, ResourceStatus>,
@@ -160,6 +165,7 @@ impl RefClient {
             connected_dns_resources: Default::default(),
             dns_resource_resolutions: Default::default(),
             gateway_revoked_authorizations: Default::default(),
+            gateway_authorizations: Default::default(),
             connected_internet_resource: Default::default(),
             expected_tcp_connections: Default::default(),
             expected_tcp_rejections: Default::default(),
@@ -217,6 +223,7 @@ impl RefClient {
     }
 
     pub(crate) fn disconnect_resource(&mut self, resource: &ResourceId) {
+        let was_connected = self.connected_resources().contains(resource);
         for _ in self.routes.extract_if(.., |(r, _)| r == resource) {}
 
         self.discard_authorization(resource);
@@ -245,6 +252,9 @@ impl RefClient {
             );
 
             self.site_status.remove(&site.id);
+            if was_connected {
+                self.gateway_authorizations.remove(&site.id);
+            }
         }
     }
 
@@ -278,21 +288,22 @@ impl RefClient {
         gateway_for_resource: impl Fn(ResourceId) -> Option<GatewayId>,
         now: Instant,
     ) {
-        if !self.connected_resources().contains(&resource) {
-            return; // The Gateway holds no authorization for us.
+        let Ok(site) = self.site_for_resource(resource) else {
+            return;
+        };
+        let Some(authorizations) = self.gateway_authorizations.get_mut(&site.id) else {
+            return;
+        };
+        if !authorizations.remove(&resource) {
+            return;
         }
-
+        let last_authorization_on_gateway = authorizations.is_empty();
         let Some(gateway) = gateway_for_resource(resource) else {
             return;
         };
 
-        let last_authorization_on_gateway = self
-            .connected_resources()
-            .filter(|r| *r != resource)
-            .filter(|r| !self.gateway_revoked_authorizations.contains(r))
-            .all(|r| gateway_for_resource(r) != Some(gateway));
-
         if last_authorization_on_gateway {
+            self.gateway_authorizations.remove(&site.id);
             // The Gateway closes the connection with a `goodbye`; the client resets its
             // state and the next packet requests a new authorization right away.
             self.reset_connections_to_gateways(
@@ -300,7 +311,7 @@ impl RefClient {
                 gateway_for_resource,
                 now,
             );
-        } else {
+        } else if self.connected_resources().contains(&resource) {
             // The Gateway rejects the next packet with a `no_authorization` event.
             self.gateway_revoked_authorizations.insert(resource);
         }
@@ -402,6 +413,13 @@ impl RefClient {
     }
 
     pub(crate) fn restart(&mut self, key: PrivateKey, now: Instant) {
+        let connected_sites = self
+            .connected_resources()
+            .filter_map(|resource| self.site_for_resource(resource).ok().map(|site| site.id))
+            .collect::<BTreeSet<_>>();
+        for site in connected_sites {
+            self.gateway_authorizations.remove(&site);
+        }
         self.routes.clear();
         self.peer_pools.clear();
         self.peers_without_authorization.clear();
@@ -705,6 +723,7 @@ impl RefClient {
                 if self.gateway_revoked_authorizations.contains(&resource) {
                     if !self.malicious_behaviour.ignore_no_authorization_events {
                         self.gateway_revoked_authorizations.remove(&resource);
+                        self.record_gateway_authorization(resource);
                     }
                 } else {
                     self.connect_to_resource(resource, dst);
@@ -776,6 +795,7 @@ impl RefClient {
                 if self.gateway_revoked_authorizations.contains(&resource) {
                     if !self.malicious_behaviour.ignore_no_authorization_events {
                         self.gateway_revoked_authorizations.remove(&resource);
+                        self.record_gateway_authorization(resource);
                     }
                 } else {
                     self.connect_to_resource(resource, dst);
@@ -959,12 +979,23 @@ impl RefClient {
     }
 
     fn connect_to_resource(&mut self, resource: ResourceId, destination: Destination) {
+        self.record_gateway_authorization(resource);
         match destination {
             Destination::DomainName { .. } => {
                 self.connected_dns_resources.insert(resource);
             }
             Destination::IpAddr(_) => self.connect_to_internet_or_cidr_resource(resource),
         }
+    }
+
+    fn record_gateway_authorization(&mut self, resource: ResourceId) {
+        let Ok(site) = self.site_for_resource(resource) else {
+            return;
+        };
+        self.gateway_authorizations
+            .entry(site.id)
+            .or_default()
+            .insert(resource);
     }
 
     /// The client no longer holds an authorization for `resource`; the next packet requests a new one.
@@ -996,6 +1027,7 @@ impl RefClient {
     }
 
     fn connect_to_internet_or_cidr_resource(&mut self, rid: ResourceId) {
+        self.record_gateway_authorization(rid);
         if self.internet_resource_active
             && let Some(internet) = self.internet_resource()
             && internet == rid
@@ -1029,9 +1061,21 @@ impl RefClient {
             self.prepare_dns_resource_connection(resource, global_dns_records);
             self.set_resource_online(resource);
             self.connected_dns_resources.insert(resource);
+            self.record_gateway_authorization(resource);
             self.expect_dns_response(query);
 
             return;
+        }
+
+        if self.is_local_dns_resource_query(query)
+            && matches!(query.r_type, RecordType::A | RecordType::AAAA)
+        {
+            let record_types = global_dns_records.domain_rtypes(&query.domain);
+            for ((_, domain), records) in &mut self.dns_resource_resolutions {
+                if domain == &query.domain {
+                    *records = record_types.clone();
+                }
+            }
         }
 
         if self.is_local_dns_resource_query(query)
@@ -1043,29 +1087,6 @@ impl RefClient {
 
         if self.local_dns_resource(query).is_some() {
             self.expect_dns_response(query);
-
-            if matches!(query.r_type, RecordType::A | RecordType::AAAA) {
-                let resolved = self
-                    .connected_dns_resources
-                    .iter()
-                    .copied()
-                    .filter(|resource| {
-                        self.dns_resource_serves(
-                            *resource,
-                            &query.domain,
-                            query.r_type == RecordType::A,
-                            query.r_type == RecordType::AAAA,
-                        )
-                    })
-                    .collect_vec();
-
-                let record_types = global_dns_records.domain_rtypes(&query.domain);
-
-                for resource in resolved {
-                    self.dns_resource_resolutions
-                        .insert((resource, query.domain.clone()), record_types.clone());
-                }
-            }
 
             return;
         }

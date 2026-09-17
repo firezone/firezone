@@ -2,7 +2,7 @@ use super::dns_records::DnsRecords;
 use super::icmp_error_hosts::IcmpErrorHosts;
 use super::probe::{
     ExpectedOutcome, ExpectedProbe, FlowId, FlowRoute, IcmpFlow, KnownLoss, PacketRoute, ProbeId,
-    ProbeRequest, RejectionRemote, Remote, TraceRequirement, UdpFlow,
+    ProbeRequest, RejectionRemote, RejectionResponse, Remote, TraceRequirement, UdpFlow,
 };
 use super::{ref_client::*, ref_gateway::*, sim_net::*, stub_portal::StubPortal, transition::*};
 use connlib_model::{ClientId, GatewayId, RelayId, ResourceId, Site, StaticSecret};
@@ -35,6 +35,9 @@ pub struct ReferenceState {
     pub(crate) relays: BTreeMap<RelayId, Host<u64>>,
 
     pub(crate) portal: StubPortal,
+
+    /// Portal grants `(initiator, target, pool)`, retained independently of cached client state.
+    device_grants: BTreeSet<(ClientId, ClientId, ResourceId)>,
 
     /// All IP addresses a domain resolves to in our test.
     ///
@@ -79,6 +82,7 @@ impl ReferenceState {
             gateways,
             relays,
             portal,
+            device_grants: Default::default(),
             global_dns_records,
             tcp_resources,
             icmp_error_hosts,
@@ -127,8 +131,17 @@ impl ReferenceState {
                 }
             }
             Transition::RemoveResource(id) => {
+                for _ in state
+                    .device_grants
+                    .extract_if(.., |(_, _, pool)| pool == id)
+                {}
                 for client in state.clients.values_mut() {
                     client.exec_mut(|client| {
+                        client.revoke_gateway_authorization(
+                            *id,
+                            |resource| state.portal.gateway_for_resource(resource).copied(),
+                            now,
+                        );
                         client.remove_resource(id);
                     });
                 }
@@ -147,7 +160,14 @@ impl ReferenceState {
                 };
 
                 for client in state.clients.values_mut() {
-                    client.exec_mut(|c| c.add_cidr_resource(new_resource.clone()));
+                    client.exec_mut(|c| {
+                        c.revoke_gateway_authorization(
+                            resource.id,
+                            |resource| state.portal.gateway_for_resource(resource).copied(),
+                            now,
+                        );
+                        c.add_cidr_resource(new_resource.clone());
+                    });
                 }
             }
             Transition::MoveResourceToNewSite { resource, new_site } => {
@@ -189,10 +209,18 @@ impl ReferenceState {
                 old_resource: _,
                 new_resource,
             } => {
-                state.portal.replace_resource(new_resource.clone());
+                for _ in state
+                    .device_grants
+                    .extract_if(.., |(_, _, pool)| *pool == new_resource.id())
+                {}
 
                 for client in state.clients.values_mut() {
                     client.exec_mut(|client| {
+                        client.revoke_gateway_authorization(
+                            new_resource.id(),
+                            |resource| state.portal.gateway_for_resource(resource).copied(),
+                            now,
+                        );
                         client.remove_resource(&new_resource.id());
 
                         match new_resource {
@@ -216,6 +244,7 @@ impl ReferenceState {
                         }
                     });
                 }
+                state.portal.replace_resource(new_resource.clone());
             }
             Transition::UpdateDevicePoolMembers {
                 pool_id,
@@ -224,12 +253,23 @@ impl ReferenceState {
             } => {
                 state.portal.set_pool_members(*pool_id, members.clone());
 
-                // The portal revokes every grant towards a device that left, which also
-                // drops that device's own grants through the pool.
-                for (client_id, client) in &mut state.clients {
-                    let peers = (!removed.contains(client_id)).then_some(removed);
-
-                    client.exec_mut(|c| c.forget_pool_grants(*pool_id, peers));
+                let revoked = state
+                    .device_grants
+                    .extract_if(.., |(_, target, pool)| {
+                        *pool == *pool_id && removed.contains(target)
+                    })
+                    .collect_vec();
+                for (initiator, target, _) in revoked {
+                    state
+                        .clients
+                        .get_mut(&initiator)
+                        .unwrap()
+                        .exec_mut(|client| {
+                            client.forget_pool_grants(*pool_id, Some(&BTreeSet::from([target])));
+                        });
+                    state.clients.get_mut(&target).unwrap().exec_mut(|client| {
+                        client.forget_pool_grants(*pool_id, Some(&BTreeSet::from([initiator])));
+                    });
                 }
             }
             Transition::SetInternetResourceState {
@@ -317,6 +357,10 @@ impl ReferenceState {
                     ExpectedOutcome::Dropped => {
                         panic!("reused ICMP route must complete a round trip")
                     }
+                    ExpectedOutcome::Rejected {
+                        by: RejectionRemote::Gateway(_),
+                        response: RejectionResponse::Unreachable,
+                    } => {}
                     ExpectedOutcome::Rejected { .. } => {
                         panic!("reused ICMP route must complete a round trip")
                     }
@@ -372,6 +416,10 @@ impl ReferenceState {
                     ExpectedOutcome::Dropped => {
                         panic!("reused UDP route must complete a round trip")
                     }
+                    ExpectedOutcome::Rejected {
+                        by: RejectionRemote::Gateway(_),
+                        response: RejectionResponse::Unreachable,
+                    } => {}
                     ExpectedOutcome::Rejected { .. } => {
                         panic!("reused UDP route must complete a round trip")
                     }
@@ -531,7 +579,14 @@ impl ReferenceState {
             }
             Transition::DeauthorizeWhileGatewayIsPartitioned(resource) => {
                 for client in state.clients.values_mut() {
-                    client.exec_mut(|client| client.remove_resource(resource))
+                    client.exec_mut(|client| {
+                        client.revoke_gateway_authorization(
+                            *resource,
+                            |resource| state.portal.gateway_for_resource(resource).copied(),
+                            now,
+                        );
+                        client.remove_resource(resource);
+                    })
                 }
             }
             Transition::ExpirePeerAuthorizations { client, peer, .. } => {
@@ -626,9 +681,17 @@ impl ReferenceState {
             self.refresh_peer_grant(origin, &request);
         }
 
-        let outcome = self.clients.get_mut(&origin).unwrap().exec_mut(|client| {
-            client.on_packet(request.destination().clone(), route.packet_route(), sent_at)
-        });
+        let route = self.check_dns_reachability(
+            origin,
+            request.source(),
+            request.destination(),
+            route.packet_route(),
+        );
+        let outcome = self
+            .clients
+            .get_mut(&origin)
+            .unwrap()
+            .exec_mut(|client| client.on_packet(request.destination().clone(), route, sent_at));
 
         self.record_expected_probe(id, origin, request, sent_at, outcome)
     }
@@ -713,6 +776,16 @@ impl ReferenceState {
         protocol: Protocol,
     ) -> PacketRoute {
         let route = self.route_for_packet(origin, source, destination, protocol);
+        self.check_dns_reachability(origin, source, destination, route)
+    }
+
+    fn check_dns_reachability(
+        &mut self,
+        origin: ClientId,
+        source: IpAddr,
+        destination: &Destination,
+        route: PacketRoute,
+    ) -> PacketRoute {
         let Destination::DomainName { name, .. } = destination else {
             return route;
         };
@@ -924,6 +997,14 @@ impl ReferenceState {
 
     /// A peer we connect to anew drops its grants towards us, as we may have reset.
     fn apply_peer_grant(&mut self, client_id: ClientId, peer: ClientId) {
+        let pools = self.clients[&client_id]
+            .inner()
+            .peer_grants()
+            .find_map(|(target, pools)| (target == peer).then_some(pools))
+            .unwrap_or_default();
+        self.device_grants
+            .extend(pools.into_iter().map(|pool| (client_id, peer, pool)));
+
         if let Some(peer) = self.clients.get_mut(&peer) {
             peer.exec_mut(|peer| peer.forget_peer_grants(client_id));
         }
