@@ -129,13 +129,18 @@ defmodule PortalAPI.ClientController do
 
   defp update_changeset(device, attrs) do
     import Ecto.Changeset
-    update_fields = ~w[name]a
-    required_fields = ~w[name]a
+    update_fields = ~w[name slug]a
 
+    # A body that omits either keeps the stored value, but `cast/3` reads `""` as nil, and
+    # both columns are NOT NULL. Requiring them turns a blank one into a 422 rather than a
+    # constraint error.
+    required_fields = ~w[name slug]a
+
+    # `Safe.update/1` runs `Portal.Device.changeset/1` on the way in, so running it here
+    # too would report every failed validation twice.
     device
     |> cast(attrs, update_fields)
     |> validate_required(required_fields)
-    |> Portal.Device.changeset()
   end
 
   # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable

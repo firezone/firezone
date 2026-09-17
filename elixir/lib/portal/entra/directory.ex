@@ -27,6 +27,7 @@ defmodule Portal.Entra.Directory do
     field :email_field, :string, default: "userPrincipalName"
 
     field :webhook_secret, :string, redact: true
+    field :webhook_received_at, :utc_datetime_usec
     field :users_subscription_id, :string
     field :groups_subscription_id, :string
     field :subscriptions_expire_at, :utc_datetime_usec

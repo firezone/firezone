@@ -697,6 +697,49 @@ defmodule Portal.Google.SyncTest do
       assert updated_directory.error_message == nil
     end
 
+    test "does not prune existing identities when user flags remain missing" do
+      account = account_fixture()
+      directory = google_directory_fixture(account: account, domain: "example.com")
+      base_directory = Repo.get_by!(Portal.Directory, id: directory.id)
+      identity = identity_fixture(account: account, directory: base_directory, idp_id: "user1")
+      Portal.Config.merge_env_override(:portal, APIClient, user_flags_retry_timeout: 0)
+
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{"access_token" => "test_token", "expires_in" => 3600})
+      end)
+
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{
+          "groups" => [%{"id" => "group1", "name" => "Engineering", "email" => "eng@example.com"}]
+        })
+      end)
+
+      Req.Test.expect(APIClient, fn conn -> Req.Test.json(conn, %{"organizationUnits" => []}) end)
+
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{"members" => [%{"id" => "user1", "type" => "USER", "email" => "user1@example.com"}]})
+      end)
+
+      Req.Test.expect(APIClient, fn conn ->
+        boundary = "missing_flags"
+        body = "--#{boundary}\r\nContent-Type: application/http\r\n\r\nHTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n" <>
+          JSON.encode!(%{"id" => "user1"}) <> "\r\n--#{boundary}--"
+
+        conn
+        |> Plug.Conn.put_resp_header("content-type", "multipart/mixed; boundary=#{boundary}")
+        |> Plug.Conn.send_resp(200, body)
+      end)
+
+      Req.Test.expect(APIClient, fn conn -> Req.Test.json(conn, %{"id" => "user1"}) end)
+
+      assert_raise SyncError, ~r/missing_user_flags/, fn ->
+        perform_job(Sync, %{"account_id" => account.id, "directory_id" => directory.id})
+      end
+
+      assert Repo.get_by!(Portal.ExternalIdentity, id: identity.id)
+      assert Repo.get_by!(Portal.Actor, id: identity.actor_id)
+    end
+
     test "deletes unsynced identities and groups" do
       account = account_fixture()
       directory = google_directory_fixture(account: account, domain: "example.com")
@@ -1209,6 +1252,10 @@ defmodule Portal.Google.SyncTest do
     end
 
     test "keeps identities when a batch part fails" do
+      Portal.Config.put_env_override(:portal, APIClient,
+        req_opts: [retry_delay: 0, plug: {Req.Test, APIClient}]
+      )
+
       account = account_fixture()
       directory = google_directory_fixture(account: account, domain: "example.com")
 

@@ -8,6 +8,7 @@ defmodule PortalAPI.Integrations.WebhookBanditTest do
   @stripe "/integrations/stripe/webhooks"
   @acs "/integrations/azure_communication_services/webhooks"
   @google "/integrations/google/webhooks"
+  @okta "/integrations/okta/webhooks"
   @report %{
     eventType: "Microsoft.Communication.EmailDeliveryReportReceived",
     data: %{messageId: "message", recipient: "user@example.com", status: "Bounced"}
@@ -42,6 +43,11 @@ defmodule PortalAPI.Integrations.WebhookBanditTest do
          "Bad Request: missing notifications"},
         {"Entra oversized batch", @entra, [], JSON.encode!(%{value: List.duplicate(%{}, 1001)}),
          413, "Request Entity Too Large: too many notifications"},
+        {"Okta invalid JSON", @okta, [], "{", 400, "Bad Request: invalid JSON"},
+        {"Okta missing events", @okta, [], "{}", 400, "Bad Request: missing events"},
+        {"Okta oversized batch", @okta, [],
+         JSON.encode!(%{data: %{events: List.duplicate(%{}, 1001)}}), 413,
+         "Request Entity Too Large: too many events"},
         {"Stripe missing timestamp", @stripe, [{"stripe-signature", "v1=invalid"}], "{}", 400,
          "Bad Request: missing timestamp"},
         {"Stripe missing signatures", @stripe, [{"stripe-signature", "t=0"}], "{}", 400,
@@ -72,6 +78,7 @@ defmodule PortalAPI.Integrations.WebhookBanditTest do
 
   for {path, headers, size} <- [
         {@entra, [], 1_100_000},
+        {@okta, [], 1_100_000},
         {@stripe, [{"stripe-signature", "v1=invalid"}], 1_100_000},
         {@acs, [{"aeg-event-type", "Notification"}], 8_100_000}
       ] do
@@ -109,6 +116,8 @@ defmodule PortalAPI.Integrations.WebhookBanditTest do
         {"Stripe", @stripe, :stripe, "{}", FunctionClauseError},
         {"Entra", @entra <> "?directory_id=#{Ecto.UUID.generate()}", [],
          JSON.encode!(%{value: [%{clientState: "state"}]}), DBConnection.OwnershipError},
+        {"Okta", @okta <> "?directory_id=#{Ecto.UUID.generate()}", [{"authorization", "secret"}],
+         JSON.encode!(%{data: %{events: [%{}]}}), DBConnection.OwnershipError},
         {"Google", @google <> "?directory_id=#{Ecto.UUID.generate()}",
          [{"x-goog-resource-state", "update"}], JSON.encode!(%{id: "user"}),
          DBConnection.OwnershipError},
@@ -138,6 +147,7 @@ defmodule PortalAPI.Integrations.WebhookBanditTest do
 
   for {path, headers, body} <- [
         {@entra, [], "{"},
+        {@okta, [], "{"},
         {@stripe, [{"stripe-signature", "v1=invalid"}], "{}"},
         {@acs, [{"aeg-event-type", "Notification"}], "{"}
       ] do

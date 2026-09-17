@@ -23,7 +23,7 @@ concurrency:
 env:
   TARGET_TRACK: ${{ inputs.track == 'Intune (closed testing)' && 'Intune' || inputs.track }}
   # mark:next-android-version
-  RELEASE_NAME: android-client-1.5.14
+  RELEASE_NAME: android-client-1.5.15
 
 jobs:
   prepare:
@@ -113,7 +113,7 @@ jobs:
             printf "| Source | [\`%s\`](https://github.com/%s/commit/%s) |\n" "$SOURCE_SHA" "$GITHUB_REPOSITORY" "$SOURCE_SHA"
             printf "| Play release | \`%s@%s\` |\n" "$VERSION_NAME" "$SOURCE_SHA"
             printf "| Version code | \`%s\` |\n" "$VERSION_CODE"
-            echo "| What's New | [Android changelog](https://www.firezone.dev/changelog#tab-android) |"
+            echo "| What's New | See our full changelog at https://www.firezone.dev/changelog#tab-android. |"
             echo
             echo "### Store listing assets"
             echo
@@ -152,6 +152,7 @@ jobs:
       url: https://play.google.com/console/
     runs-on: ubuntu-24.04
     permissions:
+      actions: read # find an existing review lock when retrying
       contents: write # Revalidating the draft also requires push access.
       id-token: write
       security-events: write
@@ -182,6 +183,13 @@ jobs:
             echo "$RELEASE_NAME changed while awaiting approval; start a new workflow run" >&2
             exit 1
           fi
+
+      # Load the locking action from this workflow's revision.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: ./.github/actions/create-release-review-lock
+        with:
+          release-name: ${{ env.RELEASE_NAME }}
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

@@ -1,6 +1,13 @@
 defmodule PortalAPI.Router do
   use PortalAPI, :router
 
+  # Router pipelines run only after a route matches; sockets are handled by the endpoint.
+  pipeline :canonical_host do
+    plug :redirect_to_rest_api_url
+  end
+
+  pipe_through :canonical_host
+
   pipeline :api do
     plug :accepts, ["json"]
     plug PortalAPI.Plugs.Auth
@@ -202,8 +209,52 @@ defmodule PortalAPI.Router do
       post "/webhooks", WebhookController, :handle_webhook
     end
 
+    scope "/okta", Okta do
+      get "/webhooks", WebhookController, :verify
+      post "/webhooks", WebhookController, :handle_webhook
+    end
+
     scope "/stripe", Stripe do
       post "/webhooks", WebhookController, :handle_webhook
     end
+  end
+
+  # Ingestion has its own configured hostname and is not part of the REST API.
+  def redirect_to_rest_api_url(%Plug.Conn{path_info: ["ingestion" | _]} = conn, _opts), do: conn
+
+  def redirect_to_rest_api_url(%Plug.Conn{} = conn, _opts) do
+    rest_api_url = Portal.Config.get_env(:portal, :rest_api_url)
+    flow_api_host = URI.parse(Portal.Config.get_env(:portal, :flow_logs_api_url)).host
+
+    if rest_api_url && conn.host != flow_api_host do
+      redirect_to_canonical_host(conn, URI.parse(rest_api_url))
+    else
+      conn
+    end
+  end
+
+  defp redirect_to_canonical_host(%Plug.Conn{host: host} = conn, %URI{host: host}), do: conn
+
+  defp redirect_to_canonical_host(conn, %URI{scheme: scheme, host: host, port: port}) do
+    query =
+      if conn.query_string == "" do
+        nil
+      else
+        conn.query_string
+      end
+
+    location =
+      URI.to_string(%URI{
+        scheme: scheme,
+        host: host,
+        port: port,
+        path: conn.request_path,
+        query: query
+      })
+
+    conn
+    |> put_resp_header("location", location)
+    |> send_resp(308, "")
+    |> halt()
   end
 end

@@ -945,8 +945,8 @@ defmodule PortalAPI.Gateway.Channel.Shared do
          },
          socket
        )
-       when old_filters != filters and type != :static_device_pool and
-              old_type != :static_device_pool do
+       when old_filters != filters and type != :device_pool and
+              old_type != :device_pool do
     # Send regardless of cache state - if the Gateway has no policy_authorizations for this resource,
     # it will simply ignore the message.
     resource = Cache.Cacheable.to_cache(resource)

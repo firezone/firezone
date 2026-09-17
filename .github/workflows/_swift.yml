@@ -2,6 +2,11 @@ name: Build macOS/iOS app
 on:
   workflow_call:
   workflow_dispatch:
+    inputs:
+      force_rebuild:
+        description: Rebuild even if this release is locked for store review
+        type: boolean
+        default: false
 
 concurrency:
   group: ${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' && 'apple-release-main' || format('apple-ci-{0}', github.run_id) }}
@@ -14,15 +19,23 @@ jobs:
     outputs:
       build_number: ${{ steps.release-metadata.outputs.build_number }}
     permissions:
+      actions: read # inspect store submission artifacts
       contents: write # release-drafter needs to create/update releases
     env:
       # mark:next-apple-version
-      RELEASE_NAME: apple-client-1.5.20
+      RELEASE_NAME: apple-client-1.5.21
     steps:
       - name: Set release metadata
         id: release-metadata
         run: |
           echo "build_number=$(date +%s)" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: github.event_name == 'workflow_dispatch' && github.ref_name == 'main'
+      - name: Check the release can be rebuilt
+        if: github.event_name == 'workflow_dispatch' && github.ref_name == 'main' && !inputs.force_rebuild
+        uses: ./.github/actions/check-release-review-lock
+        with:
+          release-name: ${{ env.RELEASE_NAME }}
       - uses: release-drafter/release-drafter@34d80673e067bdc0c24568d3af899c216adcfaa9 # v7.7.0
         if: "${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}"
         id: update-release-draft
@@ -67,7 +80,7 @@ jobs:
   # once here and photographed on each release in parallel below.
   build-macos-ui-tests:
     # A release dispatch from main only needs the builds, not the screenshots.
-    if: "${{ !(github.event_name == 'workflow_dispatch' && github.ref_name == 'main') }}"
+    if: "${{ !startsWith(github.head_ref, 'chore/publish-') && !(github.event_name == 'workflow_dispatch' && github.ref_name == 'main') }}"
     runs-on: macos-26
     env:
       XCODE_VERSION: "26.2"
@@ -146,6 +159,7 @@ jobs:
       - name: Pin what is behind the windows
         run: |
           defaults -currentHost write com.apple.screensaver idleTime -int 0
+          osascript -e 'tell application "System Events" to tell appearance preferences to set dark mode to false'
 
           osascript -e "tell application \"System Events\" to tell every desktop \
             to set picture to \"${GITHUB_WORKSPACE}/swift/apple/FirezoneUITests/Resources/screenshot-backdrop.png\"" \
@@ -179,7 +193,7 @@ jobs:
   # once here and photographed on each simulator in parallel below.
   build-ios-ui-tests:
     # A release dispatch from main only needs the builds, not the screenshots.
-    if: "${{ !(github.event_name == 'workflow_dispatch' && github.ref_name == 'main') }}"
+    if: "${{ !startsWith(github.head_ref, 'chore/publish-') && !(github.event_name == 'workflow_dispatch' && github.ref_name == 'main') }}"
     runs-on: macos-26
     env:
       XCODE_VERSION: "26.2"
@@ -312,10 +326,10 @@ jobs:
             build-script: scripts/build/ios-appstore.sh
             upload-script: scripts/upload/app-store-connect.sh
             # mark:next-apple-version
-            artifact-file: "firezone-ios-client-1.5.20.ipa"
+            artifact-file: "firezone-ios-client-1.5.21.ipa"
             platform: iOS
             # mark:next-apple-version
-            release-name: apple-client-1.5.20
+            release-name: apple-client-1.5.21
 
           - job_name: build-macos-appstore
             rust-targets: aarch64-apple-darwin x86_64-apple-darwin
@@ -329,11 +343,11 @@ jobs:
             build-script: scripts/build/macos-standalone.sh
             upload-script: scripts/upload/github-release.sh
             # mark:next-apple-version
-            artifact-file: "firezone-macos-client-1.5.20.dmg"
+            artifact-file: "firezone-macos-client-1.5.21.dmg"
             # mark:next-apple-version
-            pkg-artifact-file: "firezone-macos-client-1.5.20.pkg"
+            pkg-artifact-file: "firezone-macos-client-1.5.21.pkg"
             # mark:next-apple-version
-            release-name: apple-client-1.5.20
+            release-name: apple-client-1.5.21
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -374,6 +388,14 @@ jobs:
           API_KEY_ID: "${{ secrets.APPLE_APP_STORE_CONNECT_API_KEY_ID }}"
           API_KEY: "${{ secrets.APPLE_APP_STORE_CONNECT_API_KEY }}"
           TEMP_DIR: "${{ runner.temp }}"
+      - name: Preserve the App Store package
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: github.event_name == 'workflow_dispatch' && matrix.job_name != 'build-macos-standalone'
+        with:
+          name: ${{ matrix.job_name }}-package
+          path: "${{ runner.temp }}/${{ matrix.artifact-file }}"
+          if-no-files-found: error
+          retention-days: 90
       - name: Upload .dmg artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: "${{ matrix.job_name == 'build-macos-standalone' }}"

@@ -385,7 +385,7 @@ defmodule PortalWeb.Logs.ChangeLogs do
     def list_change_logs(subject, opts \\ []) do
       from(cl in ChangeLog, as: :change_logs)
       |> Safe.scoped(subject)
-      |> Safe.list_offset(__MODULE__, Keyword.put(opts, :order_by_nulls, :natural))
+      |> Safe.list_offset(__MODULE__, Keyword.merge(opts, order_by_nulls: :natural, count_limit: 10_000))
     end
 
     def fetch_change_log(log_id, subject) do
@@ -438,7 +438,6 @@ defmodule PortalWeb.Logs.ChangeLogs do
       {"Portal sessions", "portal_sessions"},
       {"Resources", "resources"},
       {"Sites", "sites"},
-      {"Static device pool members", "static_device_pool_members"},
       {"Userpass auth providers", "userpass_auth_providers"},
       {"X.509 auth providers", "x509_auth_providers"}
     ]

@@ -85,7 +85,8 @@ defmodule Portal.Google.WebhookSync do
           remove_identity(directory, identity)
         end
 
-      {:ok, %Req.Response{status: 404}} ->
+      # Google answers 412 "User is deleted." for a user in the 20-day undelete window.
+      {:ok, %Req.Response{status: status}} when status in [404, 412] ->
         remove_identity(directory, identity)
 
       {:ok, response} ->

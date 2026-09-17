@@ -1,0 +1,33 @@
+[package]
+name = "firezone-cli"
+# mark:next-gui-version
+version = "1.5.18"
+description = "Command-line remote control for the Firezone GUI Client"
+edition = { workspace = true }
+authors = ["Firezone, Inc."]
+license = { workspace = true }
+
+[dependencies]
+anyhow = { workspace = true }
+clap = { workspace = true, features = ["derive"] }
+connlib-model = { workspace = true }
+gui-ipc = { workspace = true }
+secrecy = { workspace = true }
+tokio = { workspace = true, features = ["net", "rt", "time"] }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+[target.'cfg(target_os = "windows")'.dependencies.windows]
+workspace = true
+# `CreateToolhelp32Snapshot` to find the shell that launched us.
+features = ["Win32_Foundation", "Win32_System_Diagnostics_ToolHelp"]
+
+[build-dependencies]
+clap = { workspace = true, features = ["derive"] }
+clap_complete = { workspace = true }
+
+[target.'cfg(target_os = "windows")'.build-dependencies]
+embed-resource = { workspace = true }
+
+[lints]
+workspace = true

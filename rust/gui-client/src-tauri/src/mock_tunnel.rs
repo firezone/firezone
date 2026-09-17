@@ -1,6 +1,6 @@
 //! Debug-only, in-process mock of the Tunnel service.
 //!
-//! When enabled (GUI `--mock-tunnel`), [`crate::ipc::connect`] for [`crate::ipc::SocketId::Tunnel`]
+//! When enabled (GUI `--mock-tunnel`), [`client_ipc::connect`] for [`client_ipc::SocketId::Tunnel`]
 //! hands the real `Controller` an in-memory `tokio::io::duplex` channel instead of a real
 //! socket, and [`serve`] plays the Tunnel service on the other end. It speaks the same
 //! `ClientMsg`/`ServerMsg` protocol over the same JSON codec, but never touches connlib, the
@@ -8,11 +8,11 @@
 //! a single unprivileged process (no root, no separate process, no socket file).
 
 use crate::{
-    ipc,
     service::{ClientMsg, ServerMsg},
     settings::{AdvancedSettings, MdmSettings},
 };
 use anyhow::Result;
+use client_ipc as ipc;
 use client_shared::ConnectedAs;
 use connlib_model::{
     CidrResourceView, ConnectedDeviceView, DnsResourceView, InternetResourceView, ResourceList,
@@ -45,7 +45,7 @@ pub(crate) fn enabled() -> bool {
 /// Build the client end of an in-memory IPC channel and spawn the mock Tunnel service on the
 /// other end.
 ///
-/// Returns the boxed client stream; [`crate::ipc::connect`] frames it with the usual codec, so
+/// Returns the boxed client stream; [`client_ipc::framed`] applies the usual codec, so
 /// the `Controller` is none the wiser.
 pub(crate) fn spawn() -> ipc::ClientStream {
     let (client_io, server_io) = tokio::io::duplex(64 * 1024);

@@ -568,7 +568,9 @@ defmodule PortalWeb.LiveTable do
           )
         ]}
       >
-        <option value="">All {pluralize(String.downcase(@filter.title))}</option>
+        <option value="" selected={@form[@filter.name].value in [nil, ""]}>
+          All {pluralize(String.downcase(@filter.title))}
+        </option>
         <option
           :for={{label, value} <- @filter.values}
           value={value}
@@ -678,13 +680,14 @@ defmodule PortalWeb.LiveTable do
 
   def paginator(assigns) do
     first_row = assigns.metadata.offset + 1
-    last_row = min(assigns.metadata.offset + assigns.rows_count, assigns.metadata.count)
+    last_row = assigns.metadata.offset + assigns.rows_count
 
     assigns =
       assign_new(assigns, :footer, fn -> [] end)
 
     assigns =
       assign(assigns,
+        count_label: count_label(assigns.metadata),
         first_row: first_row,
         last_row: last_row,
         previous_page: page_from_offset(assigns.metadata.previous_offset, assigns.metadata.limit),
@@ -760,11 +763,20 @@ defmodule PortalWeb.LiveTable do
       {render_slot(@footer)}
       <span class="flex-1 text-right">
         Showing <span class="font-medium tabular-nums text-heading mx-1">{@first_row}</span>&mdash;<span class="font-medium tabular-nums text-heading mx-1">{@last_row}</span>
-        of <span class="font-medium tabular-nums text-heading mx-1">{@metadata.count}</span>
+        of <span class="font-medium tabular-nums text-heading mx-1">{@count_label}</span>
       </span>
     </div>
     """
   end
+
+  defp count_label(%{count: count, count_limited: true}) do
+    count
+    |> Integer.to_string()
+    |> String.replace(~r/\B(?=(\d{3})+(?!\d))/, ",")
+    |> Kernel.<>("+")
+  end
+
+  defp count_label(%{count: count}), do: count
 
   defp page_from_offset(nil, _limit), do: nil
   defp page_from_offset(offset, limit), do: div(offset, limit) + 1
@@ -1342,6 +1354,47 @@ defmodule PortalWeb.LiveTable do
 
     path = socket.assigns.current_path
     {:noreply, push_patch(socket, to: String.trim_trailing("#{path}?#{query}", "?"))}
+  end
+
+  @doc """
+  Builds a patch path that carries the state of every live table on the socket
+  (filters, ordering, pagination) so that opening, closing or submitting a panel
+  does not reset the table.
+
+  Panel-local query keys such as `tab` and `page` are dropped; pass them in
+  `extra` when the target panel needs them. `return_to` is kept so a panel can
+  still navigate back to where it was opened from.
+
+  Accepts either a socket or the template assigns.
+  """
+  def live_table_path(socket_or_assigns, path, extra \\ [])
+
+  def live_table_path(%Phoenix.LiveView.Socket{assigns: assigns}, path, extra) do
+    live_table_path(assigns, path, extra)
+  end
+
+  def live_table_path(assigns, path, extra) when is_map(assigns) do
+    table_ids = Map.get(assigns, :live_table_ids, [])
+
+    query =
+      assigns
+      |> Map.get(:query_params, %{})
+      |> Map.filter(fn {key, _value} -> live_table_key?(key, table_ids) end)
+      |> Map.merge(Map.new(extra, fn {key, value} -> {to_string(key), value} end))
+      |> Map.reject(fn {_key, value} -> is_nil(value) end)
+      |> Plug.Conn.Query.encode()
+
+    if query == "" do
+      path
+    else
+      "#{path}?#{query}"
+    end
+  end
+
+  defp live_table_key?("return_to", _table_ids), do: true
+
+  defp live_table_key?(key, table_ids) do
+    Enum.any?(table_ids, &String.starts_with?(key, "#{&1}_"))
   end
 
   defp put_page_to_params(params, id, page) do

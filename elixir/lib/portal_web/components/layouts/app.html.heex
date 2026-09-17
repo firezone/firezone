@@ -26,18 +26,38 @@
       <% banner = Database.fetch_banner() %>
       <%= if banner do %>
         <% {wrapper_classes, text_class, icon_class, icon_name} = banner_classes(banner.color) %>
-        <div id="banner" class={["border-b px-4 py-2.5", wrapper_classes]}>
-          <div class="flex items-center justify-center gap-2.5">
+        <div
+          id="banner"
+          phx-hook="DismissableBanner"
+          data-content-hash={Base.encode16(:crypto.hash(:sha256, banner.message), case: :lower)}
+          hidden
+          class={["border-b px-4 py-2.5", wrapper_classes]}
+        >
+          <div class="relative flex items-center justify-center gap-2.5 px-6">
             <.icon name={icon_name} class={"w-4 h-4 shrink-0 #{icon_class}"} />
             <p class={["text-sm font-medium", text_class]}>
               <%!-- credo:disable-for-next-line Credo.Check.Warning.UnsafeTemplateHTML --%>
               {Phoenix.HTML.raw(banner.message)}
             </p>
+            <button
+              type="button"
+              data-dismiss-banner
+              aria-label="Dismiss announcement"
+              class={[
+                "absolute right-0 top-1/2 -translate-y-1/2 opacity-50 hover:opacity-100",
+                text_class
+              ]}
+            >
+              <.icon name="ri-close-line" class="h-4 w-4" />
+            </button>
           </div>
         </div>
       <% end %>
       <.flash :if={Portal.Billing.any_limit_exceeded?(@account)} kind={:warning} class="m-1">
-        {Portal.Billing.build_limits_exceeded_message(@account)}.
+        Your account has exceeded the following limits: {Portal.Billing.build_limits_exceeded_message(
+          @account
+        )
+        |> String.replace("\n", ", ")}.
         <span :if={Portal.Billing.account_provisioned?(@account)}>
           Please
           <.link navigate={~p"/#{@account}/settings/account"} class={link_style()}>

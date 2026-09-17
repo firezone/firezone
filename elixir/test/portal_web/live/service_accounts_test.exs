@@ -1140,4 +1140,83 @@ defmodule PortalWeb.ServiceAccountsTest do
       assert render(lv) =~ "Renamed Service Account"
     end
   end
+  describe "live table filters across panel operations" do
+    setup %{account: account} do
+      matching = service_account_fixture(account: account, name: "ci-runner")
+      other = service_account_fixture(account: account, name: "backup-bot")
+      filter = %{"actors_filter[name_or_email]" => "ci-"}
+      %{matching: matching, other: other, filter: filter}
+    end
+
+    test "are kept when creating a service account", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      other: other,
+      filter: filter
+    } do
+      {:ok, lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/service_accounts?#{filter}")
+
+      refute html =~ other.name
+
+      render_click(lv, "open_new_actor_panel")
+      assert_patch(lv, ~p"/#{account}/service_accounts/new?#{filter}")
+
+      render_click(lv, "close_panel")
+      assert_patch(lv, ~p"/#{account}/service_accounts?#{filter}")
+
+      render_click(lv, "open_new_actor_panel")
+
+      lv
+      |> form("form[phx-submit='create_service_account']",
+        actor: %{name: "ci-deployer"},
+        token_expiration: ""
+      )
+      |> render_submit()
+
+      created =
+        Repo.get_by!(Actor, account_id: account.id, type: :service_account, name: "ci-deployer")
+
+      assert_patch(lv, ~p"/#{account}/service_accounts/#{created.id}?#{filter}")
+
+      html = render(lv)
+      assert html =~ "ci-deployer"
+      refute html =~ other.name
+    end
+
+    test "are kept when editing a service account", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      matching: matching,
+      other: other,
+      filter: filter
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/service_accounts/#{matching}?#{filter}")
+
+      render_click(lv, "open_actor_edit_form")
+      assert_patch(lv, ~p"/#{account}/service_accounts/#{matching}/edit?#{filter}")
+
+      render_click(lv, "cancel_actor_edit_form")
+      assert_patch(lv, ~p"/#{account}/service_accounts/#{matching}?#{filter}")
+
+      render_click(lv, "open_actor_edit_form")
+
+      lv
+      |> form("form[phx-submit='save']", actor: %{name: "ci-renamed"})
+      |> render_submit()
+
+      assert_patch(lv, ~p"/#{account}/service_accounts/#{matching}?#{filter}")
+
+      html = render(lv)
+      assert html =~ "ci-renamed"
+      refute html =~ other.name
+    end
+  end
 end

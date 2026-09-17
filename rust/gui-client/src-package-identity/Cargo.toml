@@ -1,0 +1,12 @@
+[package]
+name = "windows-package-identity"
+version = "0.1.0"
+edition = { workspace = true }
+description = "Identity of the Firezone sparse MSIX package."
+license = { workspace = true }
+
+[build-dependencies]
+sha2 = { workspace = true }
+
+[lints]
+workspace = true

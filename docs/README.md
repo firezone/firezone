@@ -1,18 +1,17 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="https://github.com/user-attachments/assets/cae1e42d-78cb-4368-87b0-06b621962233">
-    <img alt="firezone logo" width="400" src="https://github.com/user-attachments/assets/81a90197-2250-4f5c-8195-43e25fb0b0b8">
+    <img alt="Firezone logo" width="400" src="https://github.com/user-attachments/assets/81a90197-2250-4f5c-8195-43e25fb0b0b8">
   </picture>
 </p>
 <p align="center">
- <strong>Secure remote access that's 3x faster than OpenVPN with zero-trust, peer-to-peer connections</strong>
+  <strong>Blazing-fast remote access with identity-based policies, attested device trust, and detailed audit logs</strong>
 </p>
 
 <p align="center">
-  <a href="https://www.firezone.dev/kb">Docs</a>
+  <a href="https://www.firezone.dev/kb">Documentation</a>
   | <a href="https://www.firezone.dev/kb/quickstart">Quickstart</a>
   | <a href="https://www.firezone.dev/kb/client-apps">Download Clients</a>
-  | <a href="https://github.com/firezone/firezone/discussions">Discussions</a>
   | <a href="https://www.firezone.dev/support">Support</a>
 </p>
 
@@ -34,246 +33,169 @@
 
 ## Overview
 
-[Firezone](https://www.firezone.dev/?utm_source=readme) is an open source
-platform to securely manage remote access for any-sized organization. Unlike
-most VPNs, Firezone takes a granular, least-privileged approach to access
-management with group-based policies that control access to individual
-applications, entire subnets, and everything in between.
+[Firezone](https://www.firezone.dev/?utm_source=readme) is a secure remote access
+platform built on WireGuard®. Connect users to private applications, databases,
+servers, and subnets with granular policies that define who can access each
+Resource and under what conditions.
+
+Combine identity-based access with cryptographic device verification and detailed
+audit records. Gateways run in your infrastructure, and the full product source
+is available for inspection in this repository.
 
 <p align="center">
-  <img width="1439" alt="architecture" src="https://github.com/firezone/firezone/assets/167144/48cd6a1e-2f3f-4ca7-969a-fc5b33e13d1c">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://github.com/user-attachments/assets/a95a32a3-9449-455e-85e8-20ee4327c1e1">
+    <img width="570" height="696" alt="Firezone component diagram" src="https://github.com/user-attachments/assets/411265e5-a131-4e25-9dad-1a0b77534b28" />
+  </picture>
 </p>
-
-<!-- TODO: Record new overview video without so many colors so that the gif compressed better. This one (26 MB) was too large.
-<p align="center">
-  <img width="1200" alt="Firezone Overview" src="https://www.firezone.dev/images/overview-screencap.gif">
-</p>
--->
 
 ## Getting Started
 
-### Option 1: Cloud (Recommended)
+### Cloud (recommended)
 
-Get started in under 2 minutes with our managed solution.
+[Sign up free](https://app.firezone.dev/sign_up?utm_source=readme) and follow
+the [Quickstart](https://www.firezone.dev/kb/quickstart) to:
 
-[**Sign up free →**](https://app.firezone.dev/sign_up?utm_source=readme) _(No credit card required)_
+1. Deploy a Gateway in the network containing your Resources.
+   See the [Gateway sizing documentation](https://www.firezone.dev/kb/deploy/sizing)
+   for sizing and configuration guidance.
+2. Define Resources and policies that grant access to the appropriate groups.
+3. Install a Client, sign in, and connect to an authorized Resource.
 
-Once you've signed up, follow the instructions in the welcome email to:
+For plan details and feature availability, see [pricing](https://www.firezone.dev/pricing?utm_source=readme).
 
-1. Install the client on your device
-2. Connect to your first resource
-3. Configure access policies
+### Self-hosting
+
+The [licenses](#license) permit self-hosting, subject to their terms. Production
+self-hosting is not officially supported. For development or evaluation, follow
+[CONTRIBUTING.md](CONTRIBUTING.md) to run a local environment.
+
+Published Clients are only guaranteed to work with the managed service. Internal
+APIs change, and app store releases may lag behind this repository. A self-hosted
+portal may require Clients built from a compatible revision. Build instructions
+are available in [swift/apple](../swift/apple),
+[kotlin/android](../kotlin/android), and [rust/gui-client](../rust/gui-client).
 
 ## Features
 
-Firezone is:
-
-- **Fast:** Built on WireGuard® to be
-  [3-4 times](https://wireguard.com/performance/) faster than OpenVPN with sub-10ms latency overhead.
-- **Scalable:** Deploy two or more gateways for automatic load balancing and
+- **Least-privilege access:** Grant groups access to specific Resources through
+  policies, including conditions that require device attestation.
+- **Device Trust:** Require cryptographic device verification in addition to user
+  authentication, using X.509 certificates issued by your MDM or enterprise PKI.
+  [Learn more](https://www.firezone.dev/kb/device-trust).
+- **Audit Logs:** Track configuration changes, sessions, API requests, and traffic
+  flows with 90-day retention. Export records to your SIEM through Log Sinks.
+  [Learn more](https://www.firezone.dev/kb/audit-logs).
+- **Device Pools:** Create a peer-to-peer mesh of devices with encrypted
+  Client-to-Client WireGuard tunnels, without deploying a Gateway. Policies
+  control which groups can reach the devices in each pool.
+  [Learn more](https://www.firezone.dev/kb/concepts/resources#device-pools).
+- **Identity provider integration:** Authenticate with Google Workspace, Okta,
+  Microsoft Entra ID, or OIDC. Directory sync keeps users and groups aligned with
+  your identity provider.
+- **Encrypted connectivity:** WireGuard tunnels encrypt traffic between Clients
+  and Gateways or between devices in a Device Pool. Direct connections reduce
+  routing overhead; Relays carry encrypted traffic when a direct connection
+  cannot be established.
+- **Distributed deployment:** Deploy Gateways near your Resources across cloud
+  and on-premises environments. Use multiple Gateways for load balancing and
   failover.
-- **Private:** Peer-to-peer, end-to-end encrypted tunnels prevent packets from
-  routing through our infrastructure.
-- **Secure:** Zero attack surface thanks to Firezone's holepunching tech which
-  establishes tunnels on-the-fly at the time of access.
-- **Open:** Our entire product is open-source, allowing anyone to audit the
-  codebase.
-- **Flexible:** Authenticate users via email, Google Workspace, Okta, Entra ID,
-  or OIDC and sync users and groups automatically.
-- **Simple:** Deploy gateways and configure access in minutes with a snappy
-  admin UI.
+- **Cross-platform access:** Clients are available for Windows, macOS, Linux,
+  iOS, and Android, with headless clients for automated workloads.
+- **Compliance:** The managed service is SOC 2 Type II compliant.
+  See the [Trust Center](https://trust.firezone.dev).
 
-Firezone is **not:**
+See the [architecture documentation](https://www.firezone.dev/kb/architecture)
+for details on the control plane, data plane, and connection lifecycle.
 
-- A tool for creating bi-directional mesh networks
-- A full-featured router or firewall
-- An IPSec or OpenVPN server
+## Performance
 
-## Performance & Security
+Firezone is committed to achieving the fastest possible speeds on every platform.
+Its shared Rust data plane combines WireGuard encryption with platform-specific
+I/O optimizations to reduce system calls, task wake-ups, and per-packet overhead.
 
-### Performance
+### Throughput
 
-<!-- TODO: Add actual performance metrics from testing -->
+| Platform | Throughput (as tested)                                |
+| -------- | ----------------------------------------------------- |
+| iOS      | 2+ Gbps                                               |
+| Android  | 2+ Gbps                                               |
+| Windows  | 3+ Gbps                                               |
+| macOS    | 4+ Gbps                                               |
+| Linux    | 5+ Gbps on commodity VMs / 10+ Gbps on tuned hardware |
 
-- **Throughput:** Up to 5 Gbps per connection
-- **Latency:** Hole-punched connections eliminate routing overhead
-- **Scaling:** Need more capacity? Simply add more gateways
-- **Memory Usage:** Lightweight Rust-based data plane requires only a few MB
+Throughput varies with round-trip latency, packet loss, hardware, network capacity,
+and workload.
 
-### Security & Compliance
+### Platform-specific optimizations
 
-- **Encryption:** WireGuard® protocol with ChaCha20/Poly1305
-- **Authentication:** Multiple SSO providers supported
-- **Zero Trust:** All connections authenticated and authorized
-- **Audit Logs:** Full activity logging for compliance and monitoring
-- **Compliance:** SOC 2 Type I and II compliant (managed offering)
+Firezone combines packet batching with each platform's available offloads to
+process more packets with fewer system calls and wake-ups.
 
-### Comparison with Alternatives
+- **macOS and iOS:** kqueue-backed readiness through Tokio/Mio, with batched
+  `sendmsg_x` / `recvmsg_x` calls for both UDP sockets and the `utun` interface.
+  A cache of connected UDP sockets enables Darwin's fast send path and flow
+  advisories for active peers.
+- **Windows:** Batched packet transfer to and from WinTUN, with support for TCP
+  coalescing before injection into its ring buffer. UDP sockets use segmentation
+  offload (USO) and receive coalescing (URO) where supported.
+- **Android:** UDP GSO/GRO where supported by the device's kernel.
+- **Linux:** UDP GSO/GRO plus TCP and UDP segmentation and checksum offloads on
+  the TUN interface.
 
-| Feature      | Legacy VPN | Firezone     |
-| ------------ | ---------- | ------------ |
-| Setup Time   | Hours      | 5 minutes    |
-| Performance  | Baseline   | 3x faster    |
-| Architecture | Hub-spoke  | Peer-to-peer |
-| Zero Trust   | ❌         | ✅           |
-| Open Source  | ❌         | ✅           |
+### Network path optimizations
 
-## Contents of this repository
+The [bandwidth-delay product](https://en.wikipedia.org/wiki/Bandwidth-delay_product)
+means throughput is a function of round-trip latency. Firezone keeps network
+paths short to minimize that latency.
 
-This is a monorepo containing the full Firezone product and its documentation,
-organized as follows:
+Direct peer connections form on demand through a custom NAT traversal system
+optimized for time to first byte. By piggybacking connection
+establishment on the WireGuard handshake, connections to new peers are typically
+ready in 200 ms or less.
 
-- [elixir](../elixir): Admin portal and control plane
-- [rust/](../rust): Data plane and internal Rust libraries:
-  - [rust/gateway](../rust/gateway): Gateway - Tunnel server based on WireGuard
-    and deployed to your infrastructure.
-  - [rust/relay](../rust/relay): Relay - STUN/TURN server to facilitate
-    holepunching.
-  - [rust/headless-client](../rust/headless-client): Cross-platform CLI client.
-  - [rust/gui-client](../rust/gui-client): Cross-platform GUI client.
-- [swift/](../swift/apple): macOS / iOS clients.
-- [kotlin/](../kotlin/android): Android / ChromeOS clients.
-- [policy-templates/](../policy-templates): MDM policy templates (Windows ADMX/ADML, macOS profile manifests) published for admin download and compiled into the Windows client.
-- The marketing website and product documentation live in the separate [firezone/website](https://github.com/firezone/website) repository.
+When a direct connection is unavailable, encrypted traffic flows through one of
+our 34 relay clusters worldwide. Relays combine eBPF/XDP and SR-IOV to process
+packets at line rate for most workloads.
 
-## License & Pricing
+## Repository structure
 
-### Open Source (Apache 2.0 + Elastic 2.0)
+This monorepo contains the Firezone product:
 
-- ✅ Full source code available for audit
-- ✅ Self-hosting allowed (educational/hobby use)
-- ✅ Community support via GitHub Discussions
-- ⚠️ Production self-hosting not officially supported
+| Directory                                       | Contents                                        |
+| ----------------------------------------------- | ----------------------------------------------- |
+| [elixir](../elixir)                             | Admin portal and control plane                  |
+| [rust](../rust)                                 | Data plane and shared Rust libraries            |
+| [rust/gateway](../rust/gateway)                 | WireGuard tunnel server for your infrastructure |
+| [rust/relay](../rust/relay)                     | STUN/TURN relay for connection establishment    |
+| [rust/headless-client](../rust/headless-client) | Headless client                                 |
+| [rust/gui-client](../rust/gui-client)           | Windows and Linux GUI client                    |
+| [swift/apple](../swift/apple)                   | macOS and iOS clients                           |
+| [kotlin/android](../kotlin/android)             | Android and ChromeOS clients                    |
+| [policy-templates](../policy-templates)         | MDM policy templates for Windows and macOS      |
 
-### Cloud - Usage Based
+## Documentation and support
 
-- ✅ Managed hosting with SLA
-- ✅ Production-ready with enterprise support
-- ✅ Automatic updates and maintenance
-- 💰 Starting free, then per-seat pricing
-- [**View detailed pricing →**](https://www.firezone.dev/pricing?utm_source=readme)
+- [Documentation](https://www.firezone.dev/kb): Deployment, configuration, and troubleshooting.
+- [GitHub Issues](https://github.com/firezone/firezone/issues): Bug reports and feature requests.
+- [Support](https://www.firezone.dev/support): Support options for your deployment.
+- [Contact sales](https://www.firezone.dev/contact/sales?utm_source=readme): Enterprise requirements and deployment planning.
 
-**Pricing Overview:**
+## Contributing
 
-- **Starter:** Free for 6 users with basic features
-- **Team:** $5 / user / month with advanced features
-- **Enterprise:** Custom pricing with directory sync, compliance, priority support
-
-### Enterprise Features
-
-- 🗂️ **Directory Sync** - Sync users and groups from Google Workspace, Okta, or Entra
-- 📝 **Audit Logs** - Complete activity tracking for up to 90 days for compliance
-- 🏢 **Priority Support** - Dedicated Slack channel for your organization
-- 🎯 **Custom Integrations** - Tailored solutions for your infrastructure
-
-## Frequently asked questions (FAQ)
-
-### Can I self-host Firezone?
-
-Our [license](#license) won't stop you from self-hosting the entire Firezone
-product top to bottom, but our internal APIs are changing rapidly so we can't
-meaningfully support self-hosting Firezone in production at this time.
-
-If you're feeling especially adventurous and want to self-host Firezone for
-**educational** or **hobby** purposes, follow the instructions to spin up a
-local development environment in [CONTRIBUTING.md](CONTRIBUTING.md).
-
-The latest published clients (on App Stores and on
-[releases](https://github.com/firezone/firezone/releases)) are only guaranteed
-to work with the managed version of Firezone and may not work with a self-hosted
-portal built from this repository. This is because Apple and Google can
-sometimes delay updates to their app stores, and so the latest published version
-may not be compatible with the tip of `main` from this repository.
-
-Therefore, if you're experimenting with self-hosting Firezone, you will probably
-want to use clients you build and distribute yourself as well.
-
-See the READMEs in the following directories for more information on building
-each client:
-
-- macOS / iOS: [swift/apple](../swift/apple)
-- Android / ChromeOS: [kotlin/android](../kotlin/android)
-- Windows / Linux: [rust/gui-client](../rust/gui-client)
-
-### How much does it cost?
-
-See our detailed [License & Pricing](#license--pricing) section above for comprehensive pricing information.
-
-<!-- TODO
-### Migrating from Other VPNs
-
-**Coming from OpenVPN, ZeroTier, or Tailscale?**
-
-
-- [Migrate from OpenVPN →]
-- [Migrate from ZeroTier →]
-- [Migrate from Tailscale →]
-- [General VPN Migration Guide →]
-
-**Migration typically involves:**
-
-1. Installing Firezone alongside your current solution
-2. Configuring equivalent access policies
-3. Testing connectivity with a subset of users
-4. Gradually migrating users and decommissioning old infrastructure
--->
-
-## Documentation
-
-Additional documentation on general usage, troubleshooting, and configuration
-can be found at [https://www.firezone.dev/kb](https://www.firezone.dev/kb).
-
-## Join Our Community
-
-### Quick Ways to Contribute
-
-- ⭐ **Star this repo** to show support and stay updated
-- 🐛 **Report bugs** or request features via [GitHub Issues](https://github.com/firezone/firezone/issues)
-- 💬 **Join [GitHub Discussions](https://github.com/firezone/firezone/discussions)** for community support and conversations
-
-### For Contributors
-
-- 🎯 **Check out [help wanted](https://github.com/firezone/firezone/issues?q=is%3Aissue+is%3Aopen+label%3Akind/help_wanted)** to get started
-- 📖 **Read our [contribution guide](CONTRIBUTING.md)** for development setup
-- 🏗️ **See the [development environment setup](CONTRIBUTING.md)** to start coding
-- 🔄 **Submit a pull request** - all contributions welcome!
-
-**Recognition:** All contributors get credited in our [contributors list](https://github.com/firezone/firezone/graphs/contributors).
-
-## Get Help
-
-**Community Support (Free)**
-
-- [GitHub Discussions](https://github.com/firezone/firezone/discussions) - Community Q&A
-- [GitHub Issues](https://github.com/firezone/firezone/issues) - Bug reports and feature requests
-
-**Business Support**
-
-- [Contact Sales](https://www.firezone.dev/contact/sales?utm_source=readme) for enterprise deployment help
-- [Support Portal](https://www.firezone.dev/support) for paid customers
-- Priority support included with Team and Enterprise plans
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, code guidelines,
+testing, and the pull request process. Browse
+[help wanted issues](https://github.com/firezone/firezone/issues?q=is%3Aissue+is%3Aopen+label%3Akind/help_wanted)
+for contribution opportunities.
 
 ## Star History
 
 [![Star History Chart](https://api.gitrep.fyi/v1/star-history.svg?repos=firezone/firezone&theme=light&markers=true)](https://gitrep.fyi/history?compare=firezone/firezone)
 
-## Developing and Contributing
-
-We welcome contributions of all kinds! See [CONTRIBUTING.md](CONTRIBUTING.md) for:
-
-- Development environment setup
-- Code style guidelines
-- Testing procedures
-- Pull request process
-
 ## Security
 
-Security is fundamental to Firezone. See [SECURITY.md](SECURITY.md) for:
-
-- Security disclosure process
-- Vulnerability reporting
-- Security best practices
-- Audit information
+To report a vulnerability, follow [SECURITY.md](SECURITY.md). Do not report
+security vulnerabilities through public GitHub issues.
 
 ## License
 

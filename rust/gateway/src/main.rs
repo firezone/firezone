@@ -31,6 +31,7 @@ use tracing_subscriber::layer;
 use tun::Tun;
 use url::Url;
 
+mod account_slug;
 mod eventloop;
 mod manage;
 mod otel;
@@ -44,6 +45,11 @@ const DEFAULT_MAX_PARTITION_TIME: Duration = Duration::from_secs(60 * 60 * 24); 
 /// Holds Bearer tokens, so it lives outside the log directory and is written
 /// with 0700/0600 permissions.
 const FLOW_LOGS_DIR: &str = "/var/lib/firezone/flow_logs";
+
+/// Exit code that tells systemd this failure needs an operator, so restarting cannot fix it.
+///
+/// `EX_CONFIG` from `sysexits.h`; `firezone-gateway.service` lists it in `RestartPreventExitStatus`.
+const EX_CONFIG: u8 = 78;
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
@@ -88,9 +94,20 @@ fn main() -> ExitCode {
         }
         Err(e) if e.any_is::<EventloopFailed>() => {
             tracing::error!("{e:#}");
+
+            let exit_code = if needs_new_token(&e) {
+                tracing::info!(
+                    "Replace the token in `/etc/firezone/gateway-token` and start the service again"
+                );
+
+                ExitCode::from(EX_CONFIG)
+            } else {
+                ExitCode::FAILURE
+            };
+
             telemetry::stop();
 
-            ExitCode::FAILURE
+            exit_code
         }
         Err(e) => {
             tracing::info!("{e:#}");
@@ -172,9 +189,15 @@ async fn try_main(cli: Cli) -> Result<()> {
             .context("Failed to read `FIREZONE_TOKEN` systemd credential")?,
     };
 
+    let account_slug = account_slug::Cache::new(&token);
+
     if cli.is_telemetry_allowed() {
         telemetry::start(cli.api_url.as_str(), RELEASE, telemetry::GATEWAY_DSN);
         telemetry::set_firezone_id(firezone_id.clone());
+
+        if let Some(slug) = account_slug.get() {
+            telemetry::set_account_slug(slug.to_owned());
+        }
     }
 
     if let Some(backend) = cli.metrics {
@@ -291,6 +314,7 @@ async fn try_main(cli: Cli) -> Result<()> {
         resolver,
         flow_logs_dir,
         cli.flow_logs,
+        account_slug,
     )?
     .run()
     .await
@@ -302,6 +326,12 @@ async fn try_main(cli: Cli) -> Result<()> {
 #[derive(thiserror::Error, Debug)]
 #[error("Eventloop failed")]
 struct EventloopFailed;
+
+/// Returns whether the portal refused our token and will keep refusing it.
+fn needs_new_token(e: &anyhow::Error) -> bool {
+    e.any_downcast_ref::<phoenix_channel::Error>()
+        .is_some_and(phoenix_channel::Error::requires_sign_in)
+}
 
 fn tonic_otlp_exporter(
     endpoint: String,
@@ -604,6 +634,28 @@ mod tests {
         unsafe {
             std::env::remove_var("CREDENTIALS_DIRECTORY");
         }
+    }
+
+    #[test]
+    fn only_an_invalid_token_needs_a_new_one() {
+        let invalid_token =
+            anyhow::Error::new(phoenix_channel::Error::InvalidToken).context(EventloopFailed);
+        let unrelated = anyhow::Error::msg("TUN device disappeared").context(EventloopFailed);
+
+        assert!(needs_new_token(&invalid_token));
+        assert!(!needs_new_token(&unrelated));
+    }
+
+    #[test]
+    fn packaged_unit_prevents_restart_on_ex_config() {
+        let unit = include_str!("../debian/firezone-gateway.service");
+
+        let directive = format!("RestartPreventExitStatus={EX_CONFIG}");
+
+        assert!(
+            unit.contains(&directive),
+            "`firezone-gateway.service` must carry `{directive}`"
+        );
     }
 
     #[test]

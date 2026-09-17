@@ -92,6 +92,22 @@ fn extracts_typed_mdm_device_id_like_the_portal() {
 }
 
 #[test]
+fn accepts_iru_and_kandji_mdm_device_ids() {
+    for attribute in ["iru-id", "kandji-id"] {
+        let uri = format!("firezone://{attribute}/5F2E7B7A-9D54-4BD2-9D4F-8F6C2A01F9D3");
+        let der = certificate_with_uri_sans(&[&uri]);
+        let metadata = parse_certificate(&der, now()).expect("generated certificate should parse");
+
+        assert_eq!(
+            metadata.mdm_device_id.valid(),
+            Some("5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3")
+        );
+        assert!(metadata.is_device_certificate());
+        assert!(metadata.unrecognised_claims.is_empty());
+    }
+}
+
+#[test]
 fn percent_decodes_typed_mdm_identifiers() {
     // The portal runs every typed claim through `URI.decode`, so a client that reported the
     // escape sequence verbatim would name a device the portal has never heard of.

@@ -1466,7 +1466,7 @@ defmodule Portal.Okta.SyncTest do
       assert updated_directory.errored_at != nil
     end
 
-    test "ErrorHandler classifies 403 as client_error and disables directory" do
+    test "ErrorHandler classifies 403 as transient and keeps directory enabled" do
       account = account_fixture(features: %{idp_sync: true})
 
       directory =
@@ -1520,9 +1520,10 @@ defmodule Portal.Okta.SyncTest do
       Portal.DirectorySync.ErrorHandler.handle_error(meta)
 
       updated_directory = Repo.get(Portal.Okta.Directory, directory.id)
-      assert updated_directory.is_disabled == true
-      assert updated_directory.disabled_reason == "Sync error"
-      assert updated_directory.is_verified == false
+      assert updated_directory.is_disabled == false
+      assert updated_directory.disabled_reason == nil
+      assert updated_directory.is_verified == directory.is_verified
+      assert updated_directory.errored_at != nil
       assert updated_directory.error_message =~ "Access denied"
     end
   end

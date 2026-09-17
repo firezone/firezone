@@ -361,6 +361,14 @@ defmodule PortalWeb.OIDC do
     {:ok, %{config: config}}
   end
 
+  def setup_verification("google_sign_up", _opts) do
+    config =
+      Portal.Config.fetch_env!(:portal, Portal.Google.AuthProvider)
+      |> verification_config([])
+
+    {:ok, %{config: config}}
+  end
+
   def setup_verification(provider_type, opts) do
     config = verification_config_for_type(provider_type, opts)
     {:ok, %{config: config}}
@@ -400,6 +408,7 @@ defmodule PortalWeb.OIDC do
   def verification_state_type("sentinel_log_sink"), do: "sentinel-log-sink"
 
   def verification_state_type("defender_posture_provider"), do: "defender-posture-provider"
+  def verification_state_type("google_sign_up"), do: "google-sign-up"
 
   def verification_state_type(type) when type in ["google", "okta", "oidc"],
     do: "oidc-auth-provider"
@@ -456,21 +465,16 @@ defmodule PortalWeb.OIDC do
   """
   def build_verification_uri(type, config, verifier, state_token)
       when type in ["google", "okta", "oidc"] do
-    challenge = :crypto.hash(:sha256, verifier) |> Base.url_encode64(padding: false)
-
-    oidc_params = %{
-      state: state_token,
-      nonce: nonce(verifier),
-      code_challenge_method: :S256,
-      code_challenge: challenge,
-      prompt: "login"
-    }
-
     discovery_document_uri = config[:discovery_document_uri] || config["discovery_document_uri"]
 
     with :ok <- validate_public_host(discovery_document_uri) do
-      OpenIDConnect.authorization_uri(config, callback_url(), oidc_params)
+      code_flow_uri(config, verifier, state_token, "login")
     end
+  end
+
+  # Sign-up has no existing session to step up, so an account picker is enough.
+  def build_verification_uri("google_sign_up", config, verifier, state_token) do
+    code_flow_uri(config, verifier, state_token, "select_account")
   end
 
   def build_verification_uri("google_directory_sync", config, verifier, state_token) do
@@ -560,6 +564,20 @@ defmodule PortalWeb.OIDC do
     else
       _ -> {:error, :invalid_entra_tenant}
     end
+  end
+
+  defp code_flow_uri(config, verifier, state_token, prompt) do
+    challenge = :crypto.hash(:sha256, verifier) |> Base.url_encode64(padding: false)
+
+    oidc_params = %{
+      state: state_token,
+      nonce: nonce(verifier),
+      code_challenge_method: :S256,
+      code_challenge: challenge,
+      prompt: prompt
+    }
+
+    OpenIDConnect.authorization_uri(config, callback_url(), oidc_params)
   end
 
   defp maybe_put_prompt(params, nil), do: params

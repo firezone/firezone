@@ -24,7 +24,7 @@ defmodule Portal.DirectorySync do
   @workers %{
     entra: [Portal.Entra.Sync, Portal.Entra.WebhookSync],
     google: [Portal.Google.Sync, Portal.Google.WebhookSync],
-    okta: [Portal.Okta.Sync]
+    okta: [Portal.Okta.Sync, Portal.Okta.WebhookSync]
   }
 
   @full_sync_timeout :timer.minutes(100)

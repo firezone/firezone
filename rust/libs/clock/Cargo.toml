@@ -5,7 +5,11 @@ edition = { workspace = true }
 license = { workspace = true }
 
 [dependencies]
+tokio = { workspace = true, features = ["time"] }
 tracing = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt", "test-util"] }
 
 [lints]
 workspace = true

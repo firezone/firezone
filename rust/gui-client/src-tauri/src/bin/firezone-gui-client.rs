@@ -93,7 +93,7 @@ fn attach_parent_console() {
 fn try_main(cli: Cli, rt: &Runtime, log_guard: &mut Option<LogGuard>) -> Result<()> {
     #[cfg(debug_assertions)]
     if cli.skip_peer_verification {
-        firezone_gui_client::ipc::skip_peer_verification();
+        client_ipc::skip_peer_verification();
     }
 
     #[cfg(debug_assertions)]
@@ -127,8 +127,8 @@ fn try_main(cli: Cli, rt: &Runtime, log_guard: &mut Option<LogGuard>) -> Result<
     // owned by the privileged Tunnel service and arrive over the `Hello` IPC
     // message. Telemetry stays in `entrypoint` mode (started in `main`) and the
     // log filter is `RUST_LOG` or a hardcoded `info` until then; once `Hello`
-    // lands the controller re-applies the effective log filter and sends the
-    // real environment to the service via `StartTelemetry`.
+    // lands the controller re-applies the effective log filter and re-points
+    // telemetry at the effective API URL.
     let log_filter = std::env::var("RUST_LOG").unwrap_or_else(|_| "info".to_owned());
 
     *log_guard = None;
@@ -169,6 +169,18 @@ fn try_main(cli: Cli, rt: &Runtime, log_guard: &mut Option<LogGuard>) -> Result<
         }
         Some(Cmd::SingleInstance) => {
             rt.block_on(debug_single_instance())?;
+
+            return Ok(());
+        }
+        Some(Cmd::OpenTrayMenu) => {
+            rt.block_on(gui::send_and_await_ack(gui_ipc::ClientMsg::OpenTrayMenu))
+                .context("Failed to open the running instance's tray menu")?;
+
+            return Ok(());
+        }
+        Some(Cmd::CloseTrayMenu) => {
+            rt.block_on(gui::send_and_await_ack(gui_ipc::ClientMsg::CloseTrayMenu))
+                .context("Failed to close the running instance's tray menu")?;
 
             return Ok(());
         }
@@ -226,7 +238,7 @@ fn try_main(cli: Cli, rt: &Runtime, log_guard: &mut Option<LogGuard>) -> Result<
                 return Err(anyhow);
             }
 
-            if anyhow.any_is::<firezone_gui_client::ipc::WrongUser>() {
+            if anyhow.any_is::<client_ipc::WrongUser>() {
                 dialog::error(
                     "Firezone is already running in another logon session. \
                      Sign out of that session first, then try again.",
@@ -241,7 +253,7 @@ fn try_main(cli: Cli, rt: &Runtime, log_guard: &mut Option<LogGuard>) -> Result<
                 return Err(anyhow);
             }
 
-            if anyhow.any_is::<firezone_gui_client::ipc::NotFound>() {
+            if anyhow.any_is::<client_ipc::NotFound>() {
                 dialog::error("Couldn't find Firezone Tunnel service. Is the service running?")?;
                 return Err(anyhow);
             }
@@ -389,6 +401,10 @@ enum Cmd {
     SingleInstance,
     #[command(hide = true)]
     SmokeTest,
+    #[command(hide = true)]
+    OpenTrayMenu,
+    #[command(hide = true)]
+    CloseTrayMenu,
 }
 
 #[derive(clap::Parser)]

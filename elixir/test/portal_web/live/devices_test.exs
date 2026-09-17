@@ -329,7 +329,7 @@ defmodule PortalWeb.DevicesTest do
       client = client_fixture(account: account, actor: actor)
 
       pool =
-        static_device_pool_resource_fixture(
+        device_pool_resource_fixture(
           account: account,
           name: "Engineering Laptops",
           devices: [client]
@@ -552,6 +552,100 @@ defmodule PortalWeb.DevicesTest do
       assert html =~ "Edit Device"
       assert html =~ "Save"
       assert html =~ client.name
+    end
+
+    test "offers a copy button for the device id and the slug", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      client = client_fixture(account: account, actor: actor, name: "Old Client Name")
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/devices/#{client.id}")
+
+      for field <- ["device-id", "device-slug"] do
+        id = "#{field}-#{client.id}"
+
+        assert has_element?(lv, "##{id}[phx-hook='CopyClipboard']")
+        assert has_element?(lv, "button[data-copy-to-clipboard-target='#{id}-code']")
+      end
+
+      assert has_element?(lv, "#device-id-#{client.id}-code", client.id)
+      assert has_element?(lv, "#device-slug-#{client.id}-code", Portal.Device.fqdn(client))
+    end
+
+    test "shows the slug and lets an admin change it", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      client = client_fixture(account: account, actor: actor, name: "Old Client Name")
+
+      {:ok, lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/devices/#{client.id}")
+
+      assert html =~ "old-client-name.firezone.network"
+
+      html = render_click(lv, "open_device_edit_form")
+
+      assert html =~ "Slug"
+      assert html =~ "Used to reach this device directly through a"
+      assert html =~ ">device pool</a>. Must be unique in the account."
+      refute has_element?(lv, "input[name='device[slug]'].font-mono")
+      assert has_element?(lv, "input[name='device[slug]'][required]")
+
+      for bad <- ["Bad Slug", "-laptop", "laptop-", "my.laptop", "my_laptop", String.duplicate("a", 64)] do
+        html =
+          lv
+          |> form("[phx-submit='submit_device_edit_form']", device: %{slug: bad})
+          |> render_change()
+
+        assert html =~ "must be 1 to 63 lowercase letters, digits or hyphens"
+      end
+
+      html =
+        lv
+        |> form("[phx-submit='submit_device_edit_form']", device: %{slug: ""})
+        |> render_change()
+
+      assert html =~ "can&#39;t be blank"
+
+      html =
+        lv
+        |> form("[phx-submit='submit_device_edit_form']", device: %{slug: "laptop"})
+        |> render_submit()
+
+      assert html =~ "Device updated successfully."
+      assert html =~ "laptop.firezone.network"
+    end
+
+    test "refuses a slug another device in the account already holds", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      taken = client_fixture(account: account, actor: actor, name: "Taken")
+      client = client_fixture(account: account, actor: actor, name: "Mine")
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/devices/#{client.id}")
+
+      render_click(lv, "open_device_edit_form")
+
+      html =
+        lv
+        |> form("[phx-submit='submit_device_edit_form']", device: %{slug: taken.slug})
+        |> render_submit()
+
+      assert html =~ "is already used by another device in this account"
+      assert Repo.get_by!(Device, id: client.id).slug == client.slug
     end
 
     test "opens edit form from show panel, validates, cancels, and updates client", %{
@@ -914,6 +1008,21 @@ defmodule PortalWeb.DevicesTest do
       refute html =~ "No posture data was found for this device."
     end
 
+    test "still shows the record of a disabled provider", %{conn: conn, account: account, actor: actor} do
+      provider = intune_posture_provider_fixture(account: account, name: "Paused Intune", is_disabled: true)
+      intune_device_fixture(provider: provider, serial_number: "INTUNE-1234", device_name: "ENG-LAPTOP-02")
+      client = client_fixture(account: account, actor: actor, device_serial: "INTUNE-1234")
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/devices/#{client.id}?tab=posture")
+
+      assert html =~ "Paused Intune"
+      assert html =~ "ENG-LAPTOP-02"
+      refute html =~ "No posture data was found for this device."
+    end
+
     test "shows the Intune record matched on the attested MDM device id", %{
       conn: conn,
       account: account,
@@ -952,7 +1061,9 @@ defmodule PortalWeb.DevicesTest do
       refute html =~ "Self-reported serial"
 
       # Columns the summary grid leaves out are still in the copy-paste blob.
-      assert html =~ "Provider record"
+      assert html =~ "Raw provider record"
+      assert html =~ "Click to expand"
+      assert html =~ ~r/id="posture-intune-[^"]+-body" class="relative hidden"/
       assert html =~ "management_agent"
       # Columns the provider left empty are not.
       refute html =~ "android_security_patch_level"
@@ -1534,5 +1645,50 @@ defmodule PortalWeb.DevicesTest do
       {:rdnSequence,
        [[{:AttributeTypeAndValue, {2, 5, 4, 3}, {:utf8String, common_name}}]]}
     )
+  end
+  describe "live table filters across panel operations" do
+    setup %{account: account, actor: actor} do
+      matching = client_fixture(account: account, actor: actor, name: "laptop-alpha")
+      other = client_fixture(account: account, actor: actor, name: "desktop-beta")
+      filter = %{"devices_filter[search]" => "laptop"}
+      %{matching: matching, other: other, filter: filter}
+    end
+
+    test "are kept when editing a device", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      matching: matching,
+      other: other,
+      filter: filter
+    } do
+      {:ok, lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/devices/#{matching.id}?#{filter}")
+
+      refute html =~ other.name
+
+      render_click(lv, "open_device_edit_form")
+      assert_patch(lv, ~p"/#{account}/devices/#{matching.id}/edit?#{filter}")
+
+      render_click(lv, "cancel_device_edit_form")
+      assert_patch(lv, ~p"/#{account}/devices/#{matching.id}?#{filter}")
+
+      render_click(lv, "open_device_edit_form")
+
+      lv
+      |> form("[phx-submit='submit_device_edit_form']", device: %{name: "laptop-renamed"})
+      |> render_submit()
+
+      assert_patch(lv, ~p"/#{account}/devices/#{matching.id}?#{filter}")
+
+      html = render(lv)
+      assert html =~ "laptop-renamed"
+      refute html =~ other.name
+
+      render_click(lv, "close_panel")
+      assert_patch(lv, ~p"/#{account}/devices?#{filter}")
+    end
   end
 end

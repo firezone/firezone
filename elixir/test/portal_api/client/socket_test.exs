@@ -127,6 +127,22 @@ defmodule PortalAPI.Client.SocketTest do
       assert connect(Socket, attrs, connect_info: connect_info) == {:error, :invalid_token}
     end
 
+    test "stores an IPv4-mapped IPv6 peer address as IPv4" do
+      token = client_token_fixture()
+      encoded_token = encode_token(token)
+      {a, b, c, d} = @client_remote_ip
+      mapped_ip = {0, 0, 0, 0, 0, 0xFFFF, a * 256 + b, c * 256 + d}
+
+      attrs = connect_attrs(token: encoded_token)
+      connect_info = build_connect_info(ip: mapped_ip, token: encoded_token)
+
+      assert {:ok, socket} = connect(Socket, attrs, connect_info: connect_info)
+      assert client = Map.fetch!(socket.assigns, :client)
+
+      assert client.last_seen_remote_ip == @client_remote_ip
+      assert client.last_seen_remote_ip_location_city == "Kyiv"
+    end
+
     test "creates a new client for user identity" do
       token = client_token_fixture()
       encoded_token = encode_token(token)
@@ -912,13 +928,13 @@ defmodule PortalAPI.Client.SocketTest do
                {:error, :x509_user_type_not_allowed}
     end
 
-    test "returns a trust-anchor error when trust anchors are globally disabled", %{
+    test "refuses X.509 authentication when the feature is globally disabled", %{
       account: account,
       actor: actor,
       pki: pki
     } do
       _provider = x509_provider_fixture(account: account, is_disabled: false)
-      disable_feature(:trust_anchors)
+      disable_feature(:x509_auth)
 
       connect_info =
         build_connect_info(
@@ -927,7 +943,7 @@ defmodule PortalAPI.Client.SocketTest do
         )
 
       assert connect(Socket, connect_attrs([]), connect_info: connect_info) ==
-               {:error, :no_trust_anchors}
+               {:error, :x509_authentication_not_found}
     end
 
     test "refuses a connect through the mutual-TLS host without a certificate", %{token: token} do
@@ -1075,7 +1091,7 @@ defmodule PortalAPI.Client.SocketTest do
       actor: actor,
       pki: pki
     } do
-      for socket_module <- [Socket, PortalAPI.Client.V2.Socket] do
+      for socket_module <- [Socket, PortalAPI.Client.V2.Socket, PortalAPI.Client.V3.Socket] do
         token = client_token_fixture(account: account, actor: actor)
         attrs = connect_attrs([])
 
@@ -1119,6 +1135,34 @@ defmodule PortalAPI.Client.SocketTest do
       assert {:ok, socket} = connect(Socket, attrs, connect_info: connect_info)
       assert socket.assigns.client.id == existing.id
       assert is_nil(socket.assigns.client.firezone_id)
+    end
+  end
+
+  describe "connect/3 posture rows" do
+    setup do
+      account = Portal.DevicePostureFixtures.device_posture_account_fixture()
+      actor = actor_fixture(account: account)
+      token = client_token_fixture(account: account, actor: actor)
+      provider = Portal.IntuneFixtures.intune_posture_provider_fixture(account: account)
+      row = Portal.IntuneFixtures.intune_device_fixture(provider: provider, serial_number: "POSTURE-SER")
+      %{account: account, actor: actor, token: encode_token(token), row: row}
+    end
+
+    test "loads the matched provider rows onto the client", %{token: token, row: row} do
+      Portal.DevicePostureFixtures.enable_device_posture()
+      attrs = connect_attrs(token: token, device_serial: "POSTURE-SER")
+
+      assert {:ok, socket} = connect(Socket, attrs, connect_info: build_connect_info())
+      assert %{intune: [%Portal.Intune.Device{intune_id: intune_id}]} = socket.assigns.client.posture
+      assert intune_id == row.intune_id
+    end
+
+    test "loads nothing while the feature is off", %{token: token} do
+      Portal.DevicePostureFixtures.enable_device_posture(false)
+      attrs = connect_attrs(token: token, device_serial: "POSTURE-SER")
+
+      assert {:ok, socket} = connect(Socket, attrs, connect_info: build_connect_info())
+      assert socket.assigns.client.posture == %{}
     end
   end
 
@@ -1169,6 +1213,81 @@ defmodule PortalAPI.Client.SocketTest do
       assert is_nil(client.last_attested_at)
     end
 
+    test "a new device gets a slug from its name and owner", %{account: account, subject: subject} do
+      subject = %{subject | actor: %{subject.actor | name: "Jamil Bou Kheir"}}
+      actor = subject.actor
+
+      changeset =
+        device_trust_changeset(account, actor, %{
+          "name" => "iPhone",
+          "firezone_id" => "fz-slug"
+        })
+
+      assert {:ok, client, false} = Socket.Database.resolve_client(changeset, nil, subject)
+      assert client.slug == "jamils-iphone"
+
+      changeset =
+        device_trust_changeset(account, actor, %{
+          "name" => "Jamil's MacBook Pro.local",
+          "firezone_id" => "fz-slug-2"
+        })
+
+      assert {:ok, client, false} = Socket.Database.resolve_client(changeset, nil, subject)
+      assert client.slug == "jamils-macbook-pro"
+    end
+
+    test "a same-named device in the account gets a numbered slug", %{account: account, subject: subject} do
+      subject = %{subject | actor: %{subject.actor | name: "Jamil Bou Kheir"}}
+      actor = subject.actor
+      client_fixture(account: account, actor: actor, name: "Pixel 8")
+      client_fixture(account: account, actor: actor, name: "Pixel 8", slug: "jamils-pixel-8-2")
+
+      changeset =
+        device_trust_changeset(account, actor, %{"name" => "Pixel 8", "firezone_id" => "fz-px"})
+
+      assert {:ok, client, false} = Socket.Database.resolve_client(changeset, nil, subject)
+      assert client.slug == "jamils-pixel-8-3"
+    end
+
+    test "the same name under a namesake in the account gets a numbered slug", %{account: account, subject: subject} do
+      subject = %{subject | actor: %{subject.actor | name: "Jamil Bou Kheir"}}
+      actor = subject.actor
+      namesake = actor_fixture(account: account, name: "Jamil Other")
+      client_fixture(account: account, actor: namesake, name: "Pixel 8")
+
+      changeset =
+        device_trust_changeset(account, actor, %{"name" => "Pixel 8", "firezone_id" => "fz-px"})
+
+      assert {:ok, client, false} = Socket.Database.resolve_client(changeset, nil, subject)
+      assert client.slug == "jamils-pixel-8-2"
+    end
+
+    test "the same name in another account keeps the plain slug", %{account: account, subject: subject} do
+      subject = %{subject | actor: %{subject.actor | name: "Jamil Bou Kheir"}}
+      actor = subject.actor
+
+      other_account = account_fixture()
+      other_actor = actor_fixture(account: other_account, name: "Jamil Bou Kheir")
+      client_fixture(account: other_account, actor: other_actor, name: "Pixel 8")
+
+      changeset =
+        device_trust_changeset(account, actor, %{"name" => "Pixel 8", "firezone_id" => "fz-px"})
+
+      assert {:ok, client, false} = Socket.Database.resolve_client(changeset, nil, subject)
+      assert client.slug == "jamils-pixel-8"
+    end
+
+    test "a service account's device keeps its plain name", %{account: account, subject: subject} do
+      subject = %{subject | actor: %{subject.actor | type: :service_account, name: "CI runner"}}
+      actor = subject.actor
+
+      changeset =
+        device_trust_changeset(account, actor, %{"name" => "build-01", "firezone_id" => "fz-ci"})
+
+      assert {:ok, client, false} = Socket.Database.resolve_client(changeset, nil, subject)
+      assert client.slug == "build-01"
+    end
+
     test "an unattested connect never reaches an attested row", %{
       account: account,
       actor: actor,
@@ -1205,6 +1324,7 @@ defmodule PortalAPI.Client.SocketTest do
                  "firezone_id" => "fz-b",
                  "last_attested_mdm_device_id" => "mdm-dup"
                })
+               |> Portal.Devices.put_free_slug(account.id, Portal.Devices.owner_name(actor))
                |> Portal.Safe.unscoped()
                |> Portal.Safe.insert()
 
@@ -1228,6 +1348,7 @@ defmodule PortalAPI.Client.SocketTest do
                  "last_attested_mdm_device_id" => "mdm-second",
                  "last_attested_cert_fingerprint" => "fp-second"
                })
+               |> Portal.Devices.put_free_slug(account.id, Portal.Devices.owner_name(actor))
                |> Portal.Safe.unscoped()
                |> Portal.Safe.insert()
     end
@@ -1724,7 +1845,7 @@ defmodule PortalAPI.Client.SocketTest do
     Portal.Config.put_env_override(:portal, :mtls_external_url, "https://mtls.firezone.test/")
 
     account = account_fixture()
-    enable_feature(:trust_anchors)
+    enable_feature(:x509_auth)
     pki = pki()
     trust_anchor_fixture(account: account, certs: [pki.ca_der])
 

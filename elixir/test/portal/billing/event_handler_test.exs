@@ -244,6 +244,32 @@ defmodule Portal.Billing.EventHandlerTest do
       assert admin != nil
       assert admin.email == "billing@newcorp.com"
       assert admin.name == "Jane Doe"
+
+      pool =
+        Portal.Repo.get_by!(Portal.Resource, account_id: account.id, type: :device_pool)
+
+      assert pool.name == "Your devices"
+      assert pool.device_membership_criteria == Portal.Resource.DeviceMembershipCriteria.own_devices()
+      assert is_nil(pool.address)
+
+      assert Portal.Repo.get_by!(Portal.Group, account_id: account.id, name: "Everyone")
+
+      owner_group =
+        Portal.Repo.get_by!(Portal.Group, account_id: account.id, name: "Account owner")
+
+      assert owner_group.type == :static
+
+      policy = Portal.Repo.get_by!(Portal.Policy, account_id: account.id, resource_id: pool.id)
+      assert policy.group_id == owner_group.id
+
+      admin =
+        Portal.Repo.get_by!(Portal.Actor, account_id: account.id, type: :account_admin_user)
+
+      assert Portal.Repo.get_by!(Portal.Membership,
+               account_id: account.id,
+               group_id: owner_group.id,
+               actor_id: admin.id
+             )
     end
   end
 

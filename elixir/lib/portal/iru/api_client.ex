@@ -4,8 +4,8 @@ defmodule Portal.Iru.APIClient do
 
   A tenant is reached at `https://<subdomain>.api.kandji.io`, or the EU host of
   the same shape, and authenticates with a bearer token the admin creates under
-  Settings > Access. Every list endpoint pages with `limit` and `offset`, and
-  caps `limit` at 300.
+  Settings > Access. Device lists use `limit` and `offset`; Prism categories
+  use `limit` and an opaque `cursor`. Pages request up to 300 records.
   """
 
   alias Portal.Iru.PostureProvider
@@ -35,14 +35,14 @@ defmodule Portal.Iru.APIClient do
   Emits a list per page, or an error tuple that ends the stream.
   """
   def stream_devices(%__MODULE__{} = client) do
-    stream_pages(client, @devices_path, &devices_page/1)
+    stream_pages(client, @devices_path, [limit: @page_size, offset: 0], &devices_page/2)
   end
 
   @doc """
   Streams every page of one Prism category.
   """
   def stream_prism(%__MODULE__{} = client, category) do
-    stream_pages(client, prism_path(category), &prism_page/1)
+    stream_pages(client, prism_path(category), [limit: @page_size], &prism_page/2)
   end
 
   @doc """
@@ -80,21 +80,21 @@ defmodule Portal.Iru.APIClient do
   defp region_key("eu"), do: :eu
   defp region_key(_region), do: :us
 
-  defp stream_pages(client, path, parse) do
+  defp stream_pages(client, path, params, parse) do
     Stream.resource(
-      fn -> 0 end,
+      fn -> params end,
       fn
         nil -> {:halt, nil}
-        offset -> fetch_page(client, path, offset, parse)
+        params -> fetch_page(client, path, params, parse)
       end,
       fn _state -> :ok end
     )
   end
 
-  defp fetch_page(client, path, offset, parse) do
-    case get(client, path, limit: @page_size, offset: offset) do
+  defp fetch_page(client, path, params, parse) do
+    case get(client, path, params) do
       {:ok, %Req.Response{status: 200, body: body}} ->
-        parse_page(parse.(body), offset)
+        parse.(body, params)
 
       {:ok, %Req.Response{} = response} ->
         {[{:error, response}], nil}
@@ -104,25 +104,35 @@ defmodule Portal.Iru.APIClient do
     end
   end
 
-  # A short page is the last one; Iru sends no total or next link that a full
-  # page could be checked against.
-  defp parse_page({:ok, items}, offset) when length(items) == @page_size do
-    {[items], offset + @page_size}
+  # Device lists have no cursor; a short page is the last one.
+  defp devices_page(items, params) when is_list(items) do
+    next_params =
+      if length(items) == @page_size do
+        Keyword.update!(params, :offset, &(&1 + @page_size))
+      end
+
+    {[items], next_params}
   end
 
-  defp parse_page({:ok, items}, _offset), do: {[items], nil}
-  defp parse_page({:error, _reason} = error, _offset), do: {[error], nil}
-
-  defp devices_page(body) when is_list(body), do: {:ok, body}
-
-  defp devices_page(body) do
-    {:error, {:invalid_response, "expected a list of devices", body}}
+  defp devices_page(body, _params) do
+    {[{:error, {:invalid_response, "expected a list of devices", body}}], nil}
   end
 
-  defp prism_page(%{"data" => data}) when is_list(data), do: {:ok, data}
+  defp prism_page(%{"data" => data} = body, _params) when is_list(data) do
+    case body["cursor"] do
+      cursor when cursor in [nil, ""] ->
+        {[data], nil}
 
-  defp prism_page(body) do
-    {:error, {:missing_key, "expected key 'data' not found in response", body}}
+      cursor when is_binary(cursor) ->
+        {[data], [limit: @page_size, cursor: cursor]}
+
+      _cursor ->
+        {[{:error, {:invalid_response, "expected a string cursor", body}}], nil}
+    end
+  end
+
+  defp prism_page(body, _params) do
+    {[{:error, {:missing_key, "expected key 'data' not found in response", body}}], nil}
   end
 
   defp get(client, path, params) do

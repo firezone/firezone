@@ -33,6 +33,7 @@ defmodule Portal.Config.Definitions do
 
   @entra_sync_client_id ""
   @intune_sync_client_id ""
+  @windows_updates_client_id ""
   @defender_sync_client_id ""
   @sentinel_sync_client_id ""
   @google_oidc_client_id "689429116054-72vkp65pqrntsq3bksj9bt4pft15if4v.apps.googleusercontent.com"
@@ -774,6 +775,7 @@ defmodule Portal.Config.Definitions do
 
   defconfig(:entra_sync_client_id, :string, default: @entra_sync_client_id)
   defconfig(:intune_sync_client_id, :string, default: @intune_sync_client_id)
+  defconfig(:windows_updates_client_id, :string, default: @windows_updates_client_id)
   defconfig(:defender_sync_client_id, :string, default: @defender_sync_client_id)
 
   defconfig(:entra_oidc_client_id, :string, default: @entra_oidc_client_id)
@@ -821,6 +823,42 @@ defmodule Portal.Config.Definitions do
     end
   )
 
+  @doc "Google Ads customer ID receiving account conversions, without hyphens."
+  defconfig(:google_ads_customer_id, :string, default: nil)
+
+  @doc "Optional Google Ads manager customer ID used to access the receiving account."
+  defconfig(:google_ads_login_customer_id, :string, default: nil)
+
+  @doc "Google Ads import conversion action ID for completed registrations."
+  defconfig(:google_ads_registration_conversion_action_id, :string, default: nil)
+
+  @doc "Google Ads import conversion action ID for active Team enrollments."
+  defconfig(:google_ads_subscription_conversion_action_id, :string, default: nil)
+
+  @doc "Dedicated Google service account used for Ads conversions."
+  defconfig(:google_ads_service_account_email, :string, default: nil)
+
+  @doc "Canonical workload identity provider used for Ads conversions."
+  defconfig(:google_ads_workload_identity_provider, :string, default: nil)
+
+  @doc "Azure managed identity audience used for Ads federation."
+  defconfig(:google_ads_workload_identity_audience, :string, default: nil)
+
+  @doc "OpenAI Ads pixel receiving portal conversions."
+  defconfig(:openai_conversions_pixel_id, :string, default: nil)
+
+  @doc """
+  OpenAI Ads Conversions API key. Conversion delivery is disabled when unset or blank.
+  """
+  defconfig(:openai_conversions_api_key, :string,
+    default: nil,
+    sensitive: true,
+    dump: fn
+      value when is_binary(value) -> if String.trim(value) == "", do: nil, else: String.trim(value)
+      value -> value
+    end
+  )
+
   @doc """
   PostHog project API key used to attribute consented website visitors after authentication.
 
@@ -837,6 +875,31 @@ defmodule Portal.Config.Definitions do
 
       project_api_key ->
         project_api_key
+    end
+  )
+
+  @doc """
+  Sender address of the founder follow-up email sent 15 minutes after a web sign-up.
+
+  The follow-up email is disabled when this is unset or blank. The address must be
+  allowed as a sender on the outbound email adapter.
+  """
+  defconfig(:sign_up_follow_up_from_email, :string,
+    default: nil,
+    dump: fn
+      value when is_binary(value) -> if String.trim(value) == "", do: nil, else: String.trim(value)
+      value -> value
+    end
+  )
+
+  @doc """
+  BCC address for the founder follow-up email, such as the HubSpot BCC logging address.
+  """
+  defconfig(:sign_up_follow_up_bcc_email, :string,
+    default: nil,
+    dump: fn
+      value when is_binary(value) -> if String.trim(value) == "", do: nil, else: String.trim(value)
+      value -> value
     end
   )
 

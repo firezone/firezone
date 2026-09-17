@@ -11,3 +11,6 @@ mod imp;
 mod imp;
 
 pub use imp::{new_dns_notifier, new_network_notifier};
+
+#[cfg(target_os = "windows")]
+pub(crate) use imp::TunnelInterfaceIndexGuard;

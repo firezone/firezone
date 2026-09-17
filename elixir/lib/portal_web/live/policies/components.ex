@@ -2,6 +2,7 @@ defmodule PortalWeb.Policies.Components do
   use PortalWeb, :component_library
   alias Portal.Policies.Condition
   alias PortalWeb.Policies.Database
+  import PortalWeb.Policies.PostureComponents
 
   @days_of_week [
     {"M", "Monday"},
@@ -18,6 +19,7 @@ defmodule PortalWeb.Policies.Components do
     :remote_ip,
     :auth_provider_id,
     :client_verified,
+    :device_attested,
     :current_utc_datetime
   ]
 
@@ -29,7 +31,7 @@ defmodule PortalWeb.Policies.Components do
     dns: @all_conditions,
     ip: @all_conditions,
     cidr: @all_conditions,
-    static_device_pool: @all_conditions
+    device_pool: @all_conditions
   }
 
   attr(:policy, :map, required: true)
@@ -158,6 +160,7 @@ defmodule PortalWeb.Policies.Components do
   attr :subject, :any, required: true
   attr :panel, :map, required: true
   attr :conditions_state, :map, required: true
+  attr :postures, :map, required: true
   attr :confirm_state, :map, required: true
   attr :policy_authorizations, :list, default: []
   attr :policy_authorizations_page, :integer, default: 1
@@ -212,6 +215,7 @@ defmodule PortalWeb.Policies.Components do
         panel_active_conditions={@conditions_state.panel_active_conditions}
         panel_conditions_dropdown_open={@conditions_state.panel_conditions_dropdown_open}
         conditions_state={@form_conditions_state}
+        postures={@postures}
         mode={:new}
       />
 
@@ -227,8 +231,27 @@ defmodule PortalWeb.Policies.Components do
         panel_active_conditions={@conditions_state.panel_active_conditions}
         panel_conditions_dropdown_open={@conditions_state.panel_conditions_dropdown_open}
         conditions_state={@form_conditions_state}
+        postures={@postures}
         mode={:edit}
       />
+
+      <.modal
+        :if={@panel.panel_view == :edit_form and @confirm_state.confirm_breaking_change}
+        id="policy-breaking-change-modal"
+        on_close="cancel_policy_breaking_change"
+        on_cancel="cancel_policy_breaking_change"
+        on_confirm="save_policy_breaking_change"
+      >
+        <:title>Save these changes?</:title>
+        <:body>
+          <p>
+            This change resets all access previously granted by this policy. Sessions using it will
+            be briefly interrupted while the client reconnects.
+          </p>
+        </:body>
+        <:cancel_button>Cancel</:cancel_button>
+        <:confirm_button>Save Changes</:confirm_button>
+      </.modal>
 
       <.policy_details_view
         :if={@policy && @panel.panel_view == :list}
@@ -261,6 +284,8 @@ defmodule PortalWeb.Policies.Components do
   attr :conditions_state, :map, required: true
   attr :mode, :atom, required: true
 
+  attr :postures, :map, required: true
+
   def policy_form_view(assigns) do
     ~H"""
     <div class="flex flex-col h-full overflow-hidden">
@@ -284,6 +309,7 @@ defmodule PortalWeb.Policies.Components do
           panel_active_conditions={@panel_active_conditions}
           panel_conditions_dropdown_open={@panel_conditions_dropdown_open}
           conditions_state={@conditions_state}
+          postures={@postures}
         />
         <.policy_form_actions mode={@mode} />
       </.form>
@@ -318,6 +344,8 @@ defmodule PortalWeb.Policies.Components do
   attr :panel_conditions_dropdown_open, :boolean, default: false
   attr :conditions_state, :map, required: true
 
+  attr :postures, :map, required: true
+
   def policy_form_body(assigns) do
     ~H"""
     <div class="flex-1 overflow-y-auto px-5 py-4 space-y-4">
@@ -339,6 +367,7 @@ defmodule PortalWeb.Policies.Components do
         has_trust_anchors?={@has_trust_anchors?}
         conditions_state={@conditions_state}
       />
+      <.postures_section id="policy-postures" account={@account} state={@postures} />
     </div>
     """
   end
@@ -500,26 +529,12 @@ defmodule PortalWeb.Policies.Components do
 
   def policy_flow_log_uploads_field(assigns) do
     ~H"""
-    <div>
-      <.flow_log_uploads_toggle
-        form={@panel_form}
-        internet_resource?={internet_resource?(@panel_selected_resource)}
-      />
-      <p :if={flow_log_uploads_changed?(@panel_form)} class="mt-1 text-xs text-warning">
-        Changing this setting expires all active connections created by this Policy;
-        users may experience a few seconds of interrupted connectivity.
-      </p>
-    </div>
+    <.flow_log_uploads_toggle
+      form={@panel_form}
+      internet_resource?={internet_resource?(@panel_selected_resource)}
+    />
     """
   end
-
-  # Warn only when flipping the flag on an existing policy: the flip expires
-  # the policy's active authorizations so fresh ingest tokens get minted.
-  defp flow_log_uploads_changed?(%Phoenix.HTML.Form{source: %Ecto.Changeset{} = changeset}) do
-    not is_nil(changeset.data.id) and Map.has_key?(changeset.changes, :flow_log_uploads_enabled)
-  end
-
-  defp flow_log_uploads_changed?(_form), do: false
 
   @doc """
   The flow-log reporting toggle shared by every form that creates or edits a
@@ -543,7 +558,7 @@ defmodule PortalWeb.Policies.Components do
       <div class="flex items-center justify-between py-1">
         <div>
           <div class="flex items-center gap-2">
-            <p class="text-sm font-medium text-body">Flow log reporting</p>
+            <p class="text-xs font-semibold text-body">Flow log reporting</p>
             <span
               data-flow-logs-new-badge="true"
               class="px-1 py-px rounded text-[9px] font-semibold tracking-wider bg-brand-muted text-brand"
@@ -551,7 +566,7 @@ defmodule PortalWeb.Policies.Components do
               NEW
             </span>
           </div>
-          <p class="text-[11px] text-subtle">
+          <p class="text-xs text-subtle">
             Report flow logs for connections created by this Policy
           </p>
         </div>
@@ -736,6 +751,7 @@ defmodule PortalWeb.Policies.Components do
             class="w-full text-left px-3 py-1.5 text-xs text-body hover:text-heading hover:bg-raised transition-colors"
           >
             {condition_type_label(type)}
+            <.condition_new_badge type={type} />
           </button>
         </div>
       </div>
@@ -1031,6 +1047,7 @@ defmodule PortalWeb.Policies.Components do
           />
         </ul>
       <% end %>
+      <.postures_summary postures={@policy.postures} />
     </div>
     """
   end
@@ -1381,6 +1398,7 @@ defmodule PortalWeb.Policies.Components do
 
   @spec condition_short_label(atom()) :: String.t()
   def condition_short_label(:client_verified), do: "Verified"
+  def condition_short_label(:device_attested), do: "Attested"
   def condition_short_label(:auth_provider_id), do: "Auth"
   def condition_short_label(:remote_ip_location_region), do: "Location"
   def condition_short_label(:remote_ip), do: "IP Range"
@@ -1413,6 +1431,10 @@ defmodule PortalWeb.Policies.Components do
     do:
       "inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium shrink-0 text-success bg-success-light"
 
+  defp condition_type_badge_class(:device_attested),
+    do:
+      "inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium shrink-0 text-success bg-success-light"
+
   defp condition_type_badge_class(:auth_provider_id),
     do:
       "inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium shrink-0 text-badge-dns-text bg-badge-dns"
@@ -1436,6 +1458,9 @@ defmodule PortalWeb.Policies.Components do
   @spec condition_values_display(map(), list(), any()) :: String.t()
   defp condition_values_display(%{property: :client_verified}, _providers, _account),
     do: "Device must be verified"
+
+  defp condition_values_display(%{property: :device_attested}, _providers, _account),
+    do: "Devices must have a trusted X.509 certificate"
 
   defp condition_values_display(
          %{property: :auth_provider_id, values: values},
@@ -1610,6 +1635,16 @@ defmodule PortalWeb.Policies.Components do
       <span>by clients that are</span>
       <span :if={@values == ["true"]}>verified</span>
       <span :if={@values == ["false"]}>not verified</span>
+    </span>
+    """
+  end
+
+  defp condition(%{property: :device_attested} = assigns) do
+    ~H"""
+    <span :if={@values != []} class="mr-1">
+      <span>by clients that are</span>
+      <span :if={@values == ["true"]}>attested</span>
+      <span :if={@values == ["false"]}>not attested</span>
     </span>
     """
   end
@@ -2242,7 +2277,13 @@ defmodule PortalWeb.Policies.Components do
 
   @spec available_conditions(map() | nil) :: [atom()]
   def available_conditions(%{type: :internet}),
-    do: [:remote_ip_location_region, :remote_ip, :auth_provider_id, :client_verified]
+    do: [
+      :remote_ip_location_region,
+      :remote_ip,
+      :auth_provider_id,
+      :client_verified,
+      :device_attested
+    ]
 
   def available_conditions(_resource),
     do: [
@@ -2250,11 +2291,13 @@ defmodule PortalWeb.Policies.Components do
       :remote_ip,
       :auth_provider_id,
       :client_verified,
+      :device_attested,
       :current_utc_datetime
     ]
 
   @spec condition_type_label(atom()) :: String.t()
   def condition_type_label(:client_verified), do: "Require Verified Device"
+  def condition_type_label(:device_attested), do: "Require Attestation"
   def condition_type_label(:auth_provider_id), do: "Authentication Provider"
   def condition_type_label(:remote_ip_location_region), do: "Device Location"
   def condition_type_label(:remote_ip), do: "IP Range"
@@ -2278,6 +2321,7 @@ defmodule PortalWeb.Policies.Components do
   def grant_condition_card(assigns) do
     ~H"""
     <.grant_client_verified_condition_card :if={@type == :client_verified} type={@type} />
+    <.grant_device_attested_condition_card :if={@type == :device_attested} type={@type} />
     <.grant_ip_range_condition_card
       :if={@type == :remote_ip}
       type={@type}
@@ -2316,11 +2360,27 @@ defmodule PortalWeb.Policies.Components do
 
   attr :type, :atom, required: true
 
+  defp condition_new_badge(%{type: :device_attested} = assigns) do
+    ~H"""
+    <span
+      data-condition-new-badge
+      class="ml-1.5 px-1 py-px rounded text-[9px] font-semibold tracking-wider bg-brand-muted text-brand"
+    >
+      NEW
+    </span>
+    """
+  end
+
+  defp condition_new_badge(assigns), do: ~H""
+
+  attr :type, :atom, required: true
+
   defp grant_condition_card_header(assigns) do
     ~H"""
     <div class="flex items-center justify-between px-3 py-2 bg-raised border-b border-border">
       <span class="text-xs font-medium text-heading">
         {condition_type_label(@type)}
+        <.condition_new_badge type={@type} />
       </span>
       <button
         type="button"
@@ -2354,6 +2414,31 @@ defmodule PortalWeb.Policies.Components do
       <input
         type="hidden"
         name="policy[conditions][client_verified][values][]"
+        value="true"
+      />
+    </div>
+    """
+  end
+
+  attr :type, :atom, required: true
+
+  defp grant_device_attested_condition_card(assigns) do
+    ~H"""
+    <div class="rounded-lg border border-border overflow-hidden">
+      <.grant_condition_card_header type={@type} />
+      <input
+        type="hidden"
+        name="policy[conditions][device_attested][property]"
+        value="device_attested"
+      />
+      <input
+        type="hidden"
+        name="policy[conditions][device_attested][operator]"
+        value="is"
+      />
+      <input
+        type="hidden"
+        name="policy[conditions][device_attested][values][]"
         value="true"
       />
     </div>

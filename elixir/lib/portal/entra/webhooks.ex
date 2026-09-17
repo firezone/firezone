@@ -16,6 +16,11 @@ defmodule Portal.Entra.Webhooks do
     with {:ok, id} <- Ecto.UUID.cast(directory_id || ""),
          %Entra.Directory{} = directory <- Database.get_directory(id) do
       notifications = authentic(directory, notifications)
+
+      if notifications != [] do
+        Database.touch_received(directory)
+      end
+
       {lifecycle, changes} = Enum.split_with(notifications, &Map.has_key?(&1, "lifecycleEvent"))
 
       changes =
@@ -180,6 +185,12 @@ defmodule Portal.Entra.Webhooks do
       )
       |> Safe.unscoped()
       |> Safe.one()
+    end
+
+    def touch_received(directory) do
+      from(d in Portal.Entra.Directory, where: d.id == ^directory.id)
+      |> Safe.unscoped()
+      |> Safe.update_all(set: [webhook_received_at: DateTime.utc_now()])
     end
 
     def known_user_ids(_directory, []), do: MapSet.new()

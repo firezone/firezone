@@ -187,6 +187,22 @@
         "title": "IruPostureProvider",
         "type": "object"
       },
+      "DeviceMembershipSubjectAttribute": {
+        "properties": {
+          "subject": {
+            "enum": [
+              "actor_id",
+              "account_id"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "subject"
+        ],
+        "title": "DeviceMembershipSubjectAttribute",
+        "type": "object"
+      },
       "SentinelOneDeviceResponse": {
         "properties": {
           "data": {
@@ -248,6 +264,21 @@
             "example": "88eae9ce-9179-48c6-8430-770e38dd4775",
             "format": "uuid",
             "type": "string"
+          },
+          "is_disabled": {
+            "default": false,
+            "description": "Whether the Policy is disabled. A disabled Policy grants no access but is otherwise retained. Defaults to false.",
+            "example": false,
+            "type": "boolean"
+          },
+          "postures": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PolicyPostureNode"
+              }
+            ],
+            "description": "Device posture the connecting device must satisfy, or null when none is required. Requires the device posture feature. Changing it revokes this policy's active authorizations, so sessions that rely on it are interrupted until the client reconnects.",
+            "nullable": true
           },
           "resource_id": {
             "description": "Resource ID",
@@ -344,10 +375,6 @@
             "nullable": true,
             "type": "array"
           },
-          "primary_user_locked": {
-            "nullable": true,
-            "type": "boolean"
-          },
           "rule_sync_at": {
             "format": "date-time",
             "nullable": true,
@@ -385,14 +412,6 @@
             "nullable": true,
             "type": "array"
           },
-          "tags_locked": {
-            "nullable": true,
-            "type": "boolean"
-          },
-          "tags_truncated": {
-            "nullable": true,
-            "type": "boolean"
-          },
           "temporary_admin_mode_ends_at": {
             "format": "date-time",
             "nullable": true,
@@ -426,7 +445,6 @@
           "os_type",
           "sip_status",
           "primary_user",
-          "primary_user_locked",
           "primary_user_groups",
           "santa_version",
           "santanetd_version",
@@ -436,8 +454,6 @@
           "last_preflight_at",
           "last_preflight_ip",
           "tags",
-          "tags_locked",
-          "tags_truncated",
           "configured_client_mode",
           "temporary_monitor_mode_ends_at",
           "first_seen_at",
@@ -649,7 +665,7 @@
         "type": "object"
       },
       "ResourceCreateRequest": {
-        "description": "POST body for creating a Resource. `site_id` is required.\n\nDevice pools (`static_device_pool`) cannot currently be created through this API - create them in the admin portal. Existing pools can be read, updated, deleted, and have their members managed here as normal.",
+        "description": "POST body for creating a Resource. `site_id` is required for every type except `device_pool`, which needs `device_membership_criteria` instead.",
         "properties": {
           "resource": {
             "properties": {
@@ -664,6 +680,9 @@
                 "example": "Production Database",
                 "nullable": true,
                 "type": "string"
+              },
+              "device_membership_criteria": {
+                "$ref": "#/components/schemas/DeviceMembershipCriteria"
               },
               "filters": {
                 "description": "Traffic filters restricting the protocols and ports the Resource exposes",
@@ -704,12 +723,13 @@
                 "type": "string"
               },
               "type": {
-                "description": "Resource type. `internet` is accepted only in the Internet Site.",
+                "description": "Resource type. `internet` is accepted only in the Internet Site. `device_pool` takes no `site_id` and no `address`.",
                 "enum": [
                   "cidr",
                   "ip",
                   "dns",
-                  "internet"
+                  "internet",
+                  "device_pool"
                 ],
                 "example": "ip",
                 "type": "string"
@@ -2496,6 +2516,107 @@
         "title": "Membership",
         "type": "object"
       },
+      "PolicyPostureNode": {
+        "additionalProperties": false,
+        "description": "One node of a Policy's device posture expression. A node has exactly one\nof these shapes:\n\n* `and`: a non-empty list of nodes that must all hold.\n* `or`: a non-empty list of nodes of which at least one must hold.\n* `not`: a node that must not hold.\n* a leaf: a `field`, an `op`, and for most operators a `value`.\n\nA leaf's `field` is `<provider>.<attribute>`, such as\n`intune.compliance_state` or `firezone.last_seen_version`. The provider\nis one of `firezone` (the connecting device's own record), `intune`,\n`iru`, `defender`, `santa` or `sentinelone`. The attribute is one of that\nprovider's synced device attributes. Every synced provider also has a\nboolean `enrolled` that is true when the provider knows the device.\n\nThe attribute's type decides which operators apply and what `value`\nmust be:\n\n* strings: `is`, `is_not`, `is_in`, `is_not_in`, `contains`,\n  `does_not_contain`, `starts_with`, `ends_with`, `matches`,\n  `does_not_match`. Comparisons ignore case. `is_in` and `is_not_in`\n  take a list of strings. `matches` and `does_not_match` take a regular\n  expression.\n* booleans: `is` with `true` or `false`.\n* numbers: `eq`, `ne`, `gt`, `gte`, `lt`, `lte`.\n* versions: `is`, `is_not`, `gt`, `gte`, `lt`, `lte`, compared segment\n  by segment, so `14.4` equals `14.4.0`.\n* timestamps: `before` and `after` with an ISO 8601 datetime such as\n  `2026-01-01T00:00:00Z`; `within_last` and `not_within_last` with an\n  ISO 8601 duration such as `PT24H` or `P30D`. A date-only attribute\n  counts as the start of that day in UTC.\n* IP addresses: `is_in_cidr` and `is_not_in_cidr` with a list of CIDRs.\n  `firezone.ipv4` takes IPv4 CIDRs only and `firezone.ipv6` IPv6 only.\n* lists of strings: `contains`, `does_not_contain`, `contains_any_of`,\n  `contains_all_of`, `is_empty`, `is_not_empty`.\n* JSON attributes: `is_empty`, `is_not_empty`.\n\nThe value `@latest` on `firezone.last_seen_version` stands for the newest\nClient release for the device's platform.\n\nEvery attribute also accepts `exists` and `does_not_exist`, which take\nno value. An attribute the provider did not report fails every other\noperator, so a device the provider does not know never passes.\n\nWhen a device matches more than one record of a provider, a leaf holds\nwhen any record satisfies it. Set `rows` to `all` to require every\nrecord. An expression may nest 10 levels deep and hold 100 leaves.\n",
+        "example": {
+          "and": [
+            {
+              "field": "intune.compliance_state",
+              "op": "is",
+              "value": "compliant"
+            },
+            {
+              "field": "intune.last_sync_date_time",
+              "op": "within_last",
+              "value": "PT24H"
+            },
+            {
+              "not": {
+                "field": "intune.jail_broken",
+                "op": "is",
+                "value": true
+              }
+            }
+          ]
+        },
+        "properties": {
+          "and": {
+            "description": "Nodes that must all hold",
+            "items": {
+              "$ref": "#/components/schemas/PolicyPostureNode"
+            },
+            "minItems": 1,
+            "type": "array"
+          },
+          "field": {
+            "description": "The provider attribute a leaf tests, as `<provider>.<attribute>`",
+            "example": "intune.compliance_state",
+            "type": "string"
+          },
+          "not": {
+            "$ref": "#/components/schemas/PolicyPostureNode"
+          },
+          "op": {
+            "description": "How the attribute is compared to the value",
+            "enum": [
+              "eq",
+              "ne",
+              "gt",
+              "gte",
+              "lt",
+              "lte",
+              "is",
+              "is_not",
+              "is_in",
+              "is_not_in",
+              "contains",
+              "does_not_contain",
+              "starts_with",
+              "ends_with",
+              "matches",
+              "does_not_match",
+              "is_in_cidr",
+              "is_not_in_cidr",
+              "is_empty",
+              "is_not_empty",
+              "before",
+              "after",
+              "within_last",
+              "not_within_last",
+              "contains_any_of",
+              "contains_all_of",
+              "exists",
+              "does_not_exist"
+            ],
+            "example": "is",
+            "type": "string"
+          },
+          "or": {
+            "description": "Nodes of which at least one must hold",
+            "items": {
+              "$ref": "#/components/schemas/PolicyPostureNode"
+            },
+            "minItems": 1,
+            "type": "array"
+          },
+          "rows": {
+            "default": "any",
+            "description": "Whether any or every record of the provider must satisfy the leaf when several match the device",
+            "enum": [
+              "any",
+              "all"
+            ],
+            "type": "string"
+          },
+          "value": {
+            "description": "What the attribute is compared to: a string, number, boolean or list, as the operator requires",
+            "example": "compliant"
+          }
+        },
+        "title": "PolicyPostureNode",
+        "type": "object"
+      },
       "OIDCAuthProvider": {
         "description": "OIDC Auth Provider",
         "properties": {
@@ -2643,6 +2764,11 @@
           "name": {
             "description": "Client Name",
             "example": "John's Macbook Air",
+            "type": "string"
+          },
+          "slug": {
+            "description": "DNS label the Client is reached at under `firezone.network`, unique within the Account. One to 63 lowercase letters, digits or hyphens, starting and ending with a letter or digit. Left as it is when omitted.",
+            "example": "johns-macbook-air",
             "type": "string"
           }
         },
@@ -3363,6 +3489,15 @@
             "example": false,
             "type": "boolean"
           },
+          "postures": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PolicyPostureNode"
+              }
+            ],
+            "description": "Device posture the connecting device must satisfy, or null when none is required. Requires the device posture feature. Changing it revokes this policy's active authorizations, so sessions that rely on it are interrupted until the client reconnects.",
+            "nullable": true
+          },
           "resource_id": {
             "description": "Resource ID",
             "format": "uuid",
@@ -3473,10 +3608,6 @@
             "nullable": false,
             "type": "string"
           },
-          "merged_into_machine_id": {
-            "nullable": true,
-            "type": "string"
-          },
           "entra_device_id": {
             "nullable": true,
             "type": "string"
@@ -3577,7 +3708,6 @@
           "rbac_group_id",
           "rbac_group_name",
           "is_potential_duplication",
-          "merged_into_machine_id",
           "is_excluded",
           "exclusion_reason",
           "vm_id",
@@ -3778,11 +3908,6 @@
             "nullable": true,
             "type": "string"
           },
-          "source_created_at": {
-            "format": "date-time",
-            "nullable": true,
-            "type": "string"
-          },
           "machine_sid": {
             "nullable": true,
             "type": "string"
@@ -3875,10 +4000,6 @@
             "nullable": false,
             "type": "string"
           },
-          "proxy_console_address": {
-            "nullable": true,
-            "type": "string"
-          },
           "cpu_count": {
             "nullable": true,
             "type": "integer"
@@ -3890,10 +4011,6 @@
           "protected_tasks_count": {
             "nullable": true,
             "type": "integer"
-          },
-          "proxy_deep_visibility_address": {
-            "nullable": true,
-            "type": "string"
           },
           "storage_type": {
             "nullable": true,
@@ -3914,11 +4031,6 @@
           "total_memory": {
             "nullable": true,
             "type": "integer"
-          },
-          "policy_updated_at": {
-            "format": "date-time",
-            "nullable": true,
-            "type": "string"
           },
           "encrypted_applications": {
             "nullable": true,
@@ -3964,18 +4076,9 @@
             "nullable": true,
             "type": "array"
           },
-          "source_updated_at": {
-            "format": "date-time",
-            "nullable": true,
-            "type": "string"
-          },
           "ad_mail": {
             "nullable": true,
             "type": "string"
-          },
-          "show_alert_icon": {
-            "nullable": true,
-            "type": "boolean"
           },
           "external_ip": {
             "nullable": true,
@@ -3994,11 +4097,6 @@
             "type": "string"
           },
           "proxy_method": {
-            "nullable": true,
-            "type": "string"
-          },
-          "group_updated_at": {
-            "format": "date-time",
             "nullable": true,
             "type": "string"
           },
@@ -4113,10 +4211,6 @@
           "account_id",
           "uuid",
           "posture_provider_id",
-          "source_created_at",
-          "source_updated_at",
-          "group_updated_at",
-          "policy_updated_at",
           "sentinelone_account_id",
           "account_name",
           "site_id",
@@ -4196,14 +4290,11 @@
           "detection_state",
           "first_full_mode_at",
           "tags",
-          "show_alert_icon",
           "last_successful_scan_at",
           "proxy_console",
           "proxy_deep_visibility",
           "proxy_pac_file_usage",
           "proxy_method",
-          "proxy_console_address",
-          "proxy_deep_visibility_address",
           "protected_pods_count",
           "protected_containers_count",
           "protected_tasks_count",
@@ -4222,7 +4313,7 @@
         "description": "Resource",
         "properties": {
           "address": {
-            "description": "Resource address. Null for `static_device_pool` Resources.",
+            "description": "Resource address. Null for `device_pool` Resources.",
             "example": "10.0.0.10",
             "nullable": true,
             "type": "string"
@@ -4232,6 +4323,9 @@
             "example": "Production Database",
             "nullable": true,
             "type": "string"
+          },
+          "device_membership_criteria": {
+            "$ref": "#/components/schemas/DeviceMembershipCriteria"
           },
           "filters": {
             "description": "Traffic filters restricting the protocols and ports the Resource exposes",
@@ -4269,21 +4363,20 @@
             "type": "string"
           },
           "site_id": {
-            "description": "Site to connect the Resource to. Required for all types except `static_device_pool`.",
+            "description": "Site to connect the Resource to. Required for all types except device pools.",
             "example": "0642e09d-b3a2-47e4-9cd1-c2195faeeb67",
             "format": "uuid",
             "title": "SiteID",
             "type": "string"
           },
           "type": {
-            "description": "Resource type. For `static_device_pool` and `dynamic_device_pool`, `address` is not applicable. Only `cidr`, `ip`, and `dns` Resources can be created through the API.",
+            "description": "Resource type. A `device_pool` has no `address` and no `site_id`; who it holds is `device_membership_criteria`.",
             "enum": [
               "cidr",
               "ip",
               "dns",
               "internet",
-              "static_device_pool",
-              "dynamic_device_pool"
+              "device_pool"
             ],
             "example": "ip",
             "type": "string"
@@ -4693,6 +4786,12 @@
             "nullable": true,
             "type": "string"
           },
+          "slug": {
+            "description": "DNS label the Client is reached at under `firezone.network`, unique within the Account. Null until the Client connects once.",
+            "example": "johns-macbook-air",
+            "nullable": true,
+            "type": "string"
+          },
           "updated_at": {
             "description": "Client update timestamp",
             "example": "2025-01-01T00:00:00Z",
@@ -4717,6 +4816,7 @@
           "hostname",
           "id",
           "identifier_for_vendor",
+          "slug",
           "ipv4",
           "ipv6",
           "last_attested_at",
@@ -4766,6 +4866,14 @@
         "title": "DefenderDeviceResponse",
         "type": "object"
       },
+      "DeviceMembershipIdList": {
+        "items": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "title": "DeviceMembershipIdList",
+        "type": "array"
+      },
       "EmailOTPAuthProviderResponse": {
         "description": "Response schema for single Email OTP Auth Provider",
         "properties": {
@@ -4774,6 +4882,71 @@
           }
         },
         "title": "EmailOTPAuthProviderResponse",
+        "type": "object"
+      },
+      "DeviceMembershipRule": {
+        "description": "One comparison against a field of the source the key names",
+        "properties": {
+          "field": {
+            "description": "The field to compare",
+            "enum": [
+              "id",
+              "actor_id",
+              "account_id"
+            ],
+            "example": "actor_id",
+            "type": "string"
+          },
+          "op": {
+            "description": "`in` takes a list of IDs, `eq` a single value",
+            "enum": [
+              "in",
+              "eq"
+            ],
+            "example": "eq",
+            "type": "string"
+          },
+          "value": {
+            "description": "A list of IDs, one ID, or `{\"subject\": \"actor_id\"}` / `{\"subject\": \"account_id\"}` for an attribute of the Actor asking",
+            "oneOf": [
+              {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "title": "DeviceMembershipIdList",
+                "type": "array"
+              },
+              {
+                "format": "uuid",
+                "title": "DeviceMembershipId",
+                "type": "string"
+              },
+              {
+                "properties": {
+                  "subject": {
+                    "enum": [
+                      "actor_id",
+                      "account_id"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "subject"
+                ],
+                "title": "DeviceMembershipSubjectAttribute",
+                "type": "object"
+              }
+            ]
+          }
+        },
+        "required": [
+          "field",
+          "op",
+          "value"
+        ],
+        "title": "DeviceMembershipRule",
         "type": "object"
       },
       "EntraDirectoryListResponse": {
@@ -5046,6 +5219,7 @@
         "type": "object"
       },
       "PoolMemberPutRequest": {
+        "deprecated": true,
         "description": "PUT body replacing the pool's entire membership. Any Client not named\nhere is removed from the pool.\n",
         "properties": {
           "pool_members": {
@@ -5245,6 +5419,9 @@
                 "nullable": true,
                 "type": "string"
               },
+              "device_membership_criteria": {
+                "$ref": "#/components/schemas/DeviceMembershipCriteria"
+              },
               "filters": {
                 "description": "Traffic filters restricting the protocols and ports the Resource exposes",
                 "example": [
@@ -5284,13 +5461,13 @@
                 "type": "string"
               },
               "type": {
-                "description": "Resource type. `internet` is accepted only in the Internet Site. `static_device_pool` is accepted only on a Resource that already is one.",
+                "description": "Resource type. `internet` is accepted only in the Internet Site. `device_pool` takes no `site_id` and no `address`.",
                 "enum": [
                   "cidr",
                   "ip",
                   "dns",
                   "internet",
-                  "static_device_pool"
+                  "device_pool"
                 ],
                 "example": "ip",
                 "type": "string"
@@ -5467,7 +5644,8 @@
         "type": "object"
       },
       "PoolMember": {
-        "description": "A Client belonging to a static device pool Resource",
+        "deprecated": true,
+        "description": "A Client a device pool Resource names as a member",
         "properties": {
           "id": {
             "description": "Client ID",
@@ -5545,6 +5723,15 @@
             "example": false,
             "type": "boolean"
           },
+          "postures": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PolicyPostureNode"
+              }
+            ],
+            "description": "Device posture the connecting device must satisfy, or null when none is required. Requires the device posture feature. Changing it revokes this policy's active authorizations, so sessions that rely on it are interrupted until the client reconnects.",
+            "nullable": true
+          },
           "resource_id": {
             "description": "Resource ID",
             "example": "a9f60587-793c-46ae-8525-597f43ab2fb1",
@@ -5559,6 +5746,7 @@
           "group_id",
           "id",
           "is_disabled",
+          "postures",
           "resource_id"
         ],
         "title": "Policy",
@@ -5658,7 +5846,7 @@
         "type": "object"
       },
       "PolicyCondition": {
-        "description": "A condition that must be satisfied for the Policy to grant access.\n\nAll conditions on a Policy must evaluate to true for access to be\ngranted. A condition is made up of a `property`, an `operator`, and a\nlist of `values`. The valid operators and the meaning of `values`\ndepend on the `property`:\n\n* `remote_ip_location_region` with `is_in` / `is_not_in`: `values` are\n  ISO 3166-1 alpha-2 country codes, e.g. `[\"US\", \"CA\"]`.\n* `remote_ip` with `is_in_cidr` / `is_not_in_cidr`: `values` are CIDR\n  ranges (IPv4 or IPv6), e.g. `[\"10.0.0.0/8\", \"2607:f8b0::/32\"]`.\n* `auth_provider_id` with `is_in` / `is_not_in`: `values` are\n  authentication provider IDs (UUIDs).\n* `current_utc_datetime` with `is_in_day_of_week_time_ranges`: each\n  value is a `DAY/TIME_RANGES/TIMEZONE` string where `DAY` is one of\n  `M T W R F S U` (Monday through Sunday), `TIME_RANGES` is a\n  comma-separated list of `HH:MM-HH:MM` ranges, and `TIMEZONE` is an\n  IANA timezone name, e.g. `\"M/09:00-17:00/America/New_York\"`.\n* `client_verified` with `is`: `values` is a single-element list\n  containing `\"true\"` or `\"false\"`.\n",
+        "description": "A condition that must be satisfied for the Policy to grant access.\n\nAll conditions on a Policy must evaluate to true for access to be\ngranted. A condition is made up of a `property`, an `operator`, and a\nlist of `values`. The valid operators and the meaning of `values`\ndepend on the `property`:\n\n* `remote_ip_location_region` with `is_in` / `is_not_in`: `values` are\n  ISO 3166-1 alpha-2 country codes, e.g. `[\"US\", \"CA\"]`.\n* `remote_ip` with `is_in_cidr` / `is_not_in_cidr`: `values` are CIDR\n  ranges (IPv4 or IPv6), e.g. `[\"10.0.0.0/8\", \"2607:f8b0::/32\"]`.\n* `auth_provider_id` with `is_in` / `is_not_in`: `values` are\n  authentication provider IDs (UUIDs).\n* `current_utc_datetime` with `is_in_day_of_week_time_ranges`: each\n  value is a `DAY/TIME_RANGES/TIMEZONE` string where `DAY` is one of\n  `M T W R F S U` (Monday through Sunday), `TIME_RANGES` is a\n  comma-separated list of `HH:MM-HH:MM` ranges, and `TIMEZONE` is an\n  IANA timezone name, e.g. `\"M/09:00-17:00/America/New_York\"`.\n* `client_verified` with `is`: `values` is a single-element list\n  containing `\"true\"` or `\"false\"`.\n* `device_attested` with `is`: `values` is a single-element list\n  containing `\"true\"` or `\"false\"`. `\"true\"` requires the Client to\n  have presented a valid X.509 certificate from one of the account's\n  trust anchors on its current connection.\n",
         "properties": {
           "operator": {
             "description": "How the values are compared against the property",
@@ -5680,7 +5868,8 @@
               "remote_ip",
               "auth_provider_id",
               "current_utc_datetime",
-              "client_verified"
+              "client_verified",
+              "device_attested"
             ],
             "example": "remote_ip_location_region",
             "type": "string"
@@ -5775,6 +5964,87 @@
           "slug"
         ],
         "title": "Account",
+        "type": "object"
+      },
+      "DeviceMembershipCriteria": {
+        "additionalProperties": {
+          "description": "One comparison against a field of the source the key names",
+          "properties": {
+            "field": {
+              "description": "The field to compare",
+              "enum": [
+                "id",
+                "actor_id",
+                "account_id"
+              ],
+              "example": "actor_id",
+              "type": "string"
+            },
+            "op": {
+              "description": "`in` takes a list of IDs, `eq` a single value",
+              "enum": [
+                "in",
+                "eq"
+              ],
+              "example": "eq",
+              "type": "string"
+            },
+            "value": {
+              "description": "A list of IDs, one ID, or `{\"subject\": \"actor_id\"}` / `{\"subject\": \"account_id\"}` for an attribute of the Actor asking",
+              "oneOf": [
+                {
+                  "items": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "title": "DeviceMembershipIdList",
+                  "type": "array"
+                },
+                {
+                  "format": "uuid",
+                  "title": "DeviceMembershipId",
+                  "type": "string"
+                },
+                {
+                  "properties": {
+                    "subject": {
+                      "enum": [
+                        "actor_id",
+                        "account_id"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "subject"
+                  ],
+                  "title": "DeviceMembershipSubjectAttribute",
+                  "type": "object"
+                }
+              ]
+            }
+          },
+          "required": [
+            "field",
+            "op",
+            "value"
+          ],
+          "title": "DeviceMembershipRule",
+          "type": "object"
+        },
+        "description": "Who a `device_pool` Resource holds. Required for a device pool, absent for every\nother Resource type.\n\nThe object has exactly one key, naming where the field lives: `device` is the\nClient row itself, and `actor_group` is a group the Client's owner belongs to.\nThe value is one rule comparing a field against either a literal or an attribute\nof the Actor asking for access. More sources can be added later without changing\nthe rules already stored.\n\nThe four rules the API accepts, and who each one holds:\n\n    {\"device\": {\"field\": \"id\", \"op\": \"in\", \"value\": [\"<client id>\", ...]}}\n    {\"device\": {\"field\": \"actor_id\", \"op\": \"eq\", \"value\": {\"subject\": \"actor_id\"}}}\n    {\"device\": {\"field\": \"account_id\", \"op\": \"eq\", \"value\": {\"subject\": \"account_id\"}}}\n    {\"actor_group\": {\"field\": \"id\", \"op\": \"eq\", \"value\": \"<group id>\"}}\n\nIn order: exactly the Clients named, the asking Actor's own Clients, every Client\nin the Account, and the Clients of every Actor in one Group.\n\nEditing the list of Clients the first rule names drops the connections to the\nClients removed and leaves every other connection through the pool alone.\n\nEvery other change to this field is a breaking update, because any Client can move\nin or out of the pool: every active connection through the pool is dropped, and\nClients reconnect to the members they may still reach.\n\nClients older than the device-pool protocol only understand a pool that names its\nmembers, so they are sent the first rule and never the other three.\n",
+        "example": {
+          "device": {
+            "field": "actor_id",
+            "op": "eq",
+            "value": {
+              "subject": "actor_id"
+            }
+          }
+        },
+        "maxProperties": 1,
+        "minProperties": 1,
+        "title": "DeviceMembershipCriteria",
         "type": "object"
       },
       "SentinelOneDeviceListResponse": {
@@ -6143,6 +6413,7 @@
         "type": "object"
       },
       "PoolMemberPatchRequest": {
+        "deprecated": true,
         "description": "PATCH body for adding and removing individual pool members. Both\noperations are idempotent, and `remove` is applied before `add`, so a\nClient named in both ends up in the pool.\n",
         "properties": {
           "pool_members": {
@@ -6542,6 +6813,11 @@
         "title": "EmailOTPAuthProviderListResponse",
         "type": "object"
       },
+      "DeviceMembershipId": {
+        "format": "uuid",
+        "title": "DeviceMembershipId",
+        "type": "string"
+      },
       "SiteCreateRequest": {
         "description": "POST body for creating a Site",
         "properties": {
@@ -6651,13 +6927,6 @@
           "total_storage_space_bytes": {
             "nullable": true,
             "type": "integer"
-          },
-          "device_action_results": {
-            "items": {
-              "type": "object"
-            },
-            "nullable": true,
-            "type": "array"
           },
           "attestation_operating_system_kernel_debugging": {
             "nullable": true,
@@ -6776,10 +7045,6 @@
           "attestation_early_launch_anti_malware_driver_protection": {
             "nullable": true,
             "type": "boolean"
-          },
-          "attestation_last_update_date_time": {
-            "nullable": true,
-            "type": "string"
           },
           "management_agent": {
             "nullable": true,
@@ -6964,10 +7229,6 @@
             "nullable": true,
             "type": "string"
           },
-          "attestation_content_namespace_url": {
-            "nullable": true,
-            "type": "string"
-          },
           "posture_provider_id": {
             "format": "uuid",
             "nullable": false,
@@ -7033,8 +7294,6 @@
           "config_manager_device_configuration",
           "config_manager_compliance_policy",
           "config_manager_windows_update_for_business",
-          "attestation_last_update_date_time",
-          "attestation_content_namespace_url",
           "attestation_status",
           "attestation_content_version",
           "attestation_issued_at",
@@ -7065,7 +7324,6 @@
           "attestation_operating_system_rev_list_info",
           "attestation_health_status_mismatch_info",
           "attestation_supported",
-          "device_action_results",
           "enrolled_at",
           "last_sync_at",
           "compliance_grace_period_expiration_at",
@@ -12318,7 +12576,7 @@
             }
           },
           {
-            "description": "Filter to Resources of this type: cidr, ip, dns, or static_device_pool.",
+            "description": "Filter to Resources of this type: cidr, ip, dns, or device_pool.",
             "example": "dns",
             "in": "query",
             "name": "type",
@@ -15991,7 +16249,8 @@
     "/resources/{resource_id}/pool_members": {
       "get": {
         "callbacks": {},
-        "description": "Lists the Clients belonging to a `static_device_pool` Resource.\n\nReturns 400 for any other Resource type - only device pools have members.\n",
+        "deprecated": true,
+        "description": "Deprecated. Read `device_membership_criteria` on the Resource instead, which\nalso describes the pools that pick their members by a rule.\n\nLists the Clients a `device_pool` Resource names as its members.\n\nReturns 400 for any other Resource type, and for a device pool whose members are\npicked by a rule rather than named.\n",
         "operationId": "PortalAPI.PoolMemberController.index",
         "parameters": [
           {
@@ -16125,7 +16384,8 @@
       },
       "patch": {
         "callbacks": {},
-        "description": "Adds and/or removes individual Clients, leaving every other member of the\npool untouched.\n\nBoth operations are idempotent: adding a Client already in the pool and\nremoving one that isn't are both no-ops. `remove` is applied before `add`,\nso a Client named in both ends up in the pool.\n",
+        "deprecated": true,
+        "description": "Deprecated. Write `device_membership_criteria` on the Resource instead.\n\nAdds and/or removes individual Clients, leaving every other member of the\npool untouched.\n\nBoth operations are idempotent: adding a Client already in the pool and\nremoving one that isn't are both no-ops. `remove` is applied before `add`,\nso a Client named in both ends up in the pool.\n\nRemoving a Client drops its connections through the pool. Every other connection\nthrough the pool is left alone.\n",
         "operationId": "PortalAPI.PoolMemberController.update_patch",
         "parameters": [
           {
@@ -16270,7 +16530,8 @@
       },
       "put": {
         "callbacks": {},
-        "description": "Replaces the Resource's entire membership list with the given Clients.\n\nAny Client not named in the request is removed from the pool. To add or\nremove individual Clients without disturbing the rest, use `PATCH`.\n",
+        "deprecated": true,
+        "description": "Deprecated. Write `device_membership_criteria` on the Resource instead.\n\nReplaces the Resource's entire membership list with the given Clients.\n\nAny Client not named in the request is removed from the pool. To add or\nremove individual Clients without disturbing the rest, use `PATCH`.\n\nRemoving a Client drops its connections through the pool. Every other connection\nthrough the pool is left alone.\n",
         "operationId": "PortalAPI.PoolMemberController.update_put",
         "parameters": [
           {
@@ -18263,6 +18524,7 @@
       },
       "post": {
         "callbacks": {},
+        "description": "Creates a Policy.\n\nA Policy is enabled by default. Pass `is_disabled: true` to create it disabled, so it grants no access until enabled.\n",
         "operationId": "PortalAPI.PolicyController.create",
         "parameters": [],
         "requestBody": {

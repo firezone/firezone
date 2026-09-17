@@ -4,6 +4,19 @@ defmodule PortalWeb.Session.RedirectorTest do
   alias PortalWeb.Session.Redirector
 
   describe "portal_signed_in/4" do
+    test "persists an admin's marketing opt-out before clearing the session", %{conn: conn} do
+      account = Portal.AccountFixtures.account_fixture(metadata: %{
+        marketing_attribution: %{"marketing_allowed" => true, "captured_at" => System.os_time(:second)}
+      })
+      actor = %Portal.Actor{id: Ecto.UUID.generate(), type: :account_admin_user}
+      attribution = %{"marketing_allowed" => false, "captured_at" => System.os_time(:second)}
+      conn = conn
+        |> put_session("website_attribution", %{"marketing" => attribution})
+        |> Redirector.portal_signed_in(account, %{}, actor)
+      assert get_session(conn, "website_attribution") == nil
+      assert Portal.Repo.get!(Portal.Account, account.id).metadata.marketing_attribution == attribution
+    end
+
     test "clears website attribution after a successful portal sign-in", %{conn: conn} do
       account = %Portal.Account{id: Ecto.UUID.generate(), slug: "acme"}
       actor = %Portal.Actor{id: Ecto.UUID.generate()}

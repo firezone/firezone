@@ -68,7 +68,10 @@ use futures::{Stream, StreamExt as _, stream};
 use std::collections::HashMap;
 use std::ffi::c_void;
 use std::ops::Deref as _;
-use std::sync::Mutex;
+use std::sync::{
+    Mutex,
+    atomic::{AtomicU32, Ordering},
+};
 use std::thread;
 use tokio::sync::{
     mpsc::{self, error::TrySendError},
@@ -121,6 +124,26 @@ pub async fn new_network_notifier() -> Result<impl Stream<Item = Result<()>> + D
     })?;
 
     Ok(NetworkNotifier(worker_into_stream(worker).boxed()))
+}
+
+/// The notifier starts before Wintun is created, so record its interface index when the
+/// adapter is created instead of trying to resolve its GUID during notifier registration.
+static TUNNEL_INTERFACE_INDEX: AtomicU32 = AtomicU32::new(0);
+
+pub(crate) struct TunnelInterfaceIndexGuard(u32);
+
+impl TunnelInterfaceIndexGuard {
+    pub(crate) fn new(index: u32) -> Self {
+        TUNNEL_INTERFACE_INDEX.store(index, Ordering::Release);
+        Self(index)
+    }
+}
+
+impl Drop for TunnelInterfaceIndexGuard {
+    fn drop(&mut self) {
+        let _ =
+            TUNNEL_INTERFACE_INDEX.compare_exchange(self.0, 0, Ordering::AcqRel, Ordering::Relaxed);
+    }
 }
 
 /// Notifies whenever a local unicast IP address is added or removed.
@@ -176,10 +199,10 @@ impl Drop for AddressChangeListener {
 /// Runs on a Windows-managed thread-pool thread, so keep it minimal: just wake the notifier.
 ///
 /// This is a safe `extern "system" fn` (it coerces to the unsafe callback pointer the OS
-/// expects), keeping the only `unsafe` to the single pointer dereference below.
+/// expects). Dereferencing pointers provided by the OS still requires `unsafe`.
 extern "system" fn address_change_callback(
     ctx: *const c_void,
-    _row: *const MIB_UNICASTIPADDRESS_ROW,
+    row: *const MIB_UNICASTIPADDRESS_ROW,
     notification_type: MIB_NOTIFICATION_TYPE,
 ) {
     // Only react to addresses being added or removed (i.e. an interface coming up or going
@@ -187,6 +210,22 @@ extern "system" fn address_change_callback(
     // change which source IP we should use.
     if notification_type != MibAddInstance && notification_type != MibDeleteInstance {
         return;
+    }
+
+    // Connlib configures the Wintun addresses after portal init. Those are not changes to
+    // our egress network; treating them as such would make our own tunnel updates reset it.
+    // SAFETY: Windows supplies `row` for this callback; a null pointer is handled below.
+    if let Some(row) = unsafe { row.as_ref() } {
+        if row.InterfaceIndex == TUNNEL_INTERFACE_INDEX.load(Ordering::Acquire) {
+            tracing::debug!("Ignoring address change on Firezone tunnel interface");
+            return;
+        }
+
+        tracing::debug!(
+            interface_index = row.InterfaceIndex,
+            ?notification_type,
+            "Local unicast address changed"
+        );
     }
 
     // SAFETY: `ctx` is the pointer we passed to `NotifyUnicastIpAddressChange`: a valid
