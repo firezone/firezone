@@ -251,10 +251,11 @@ defmodule PortalWeb.Policies.PostureComponents do
   def postures_summary(%{postures: nil} = assigns), do: ~H""
 
   def postures_summary(assigns) do
-    wire = Portal.Policies.Postures.to_map(assigns.postures)
+    state = Postures.new(:enabled, assigns.postures)
+    wire = state.wire
 
     checks =
-      case Postures.checks(%{wire: wire}) do
+      case Postures.checks(state) do
         {:ok, names} -> Enum.map(names, &check!/1)
         :custom -> :custom
       end
