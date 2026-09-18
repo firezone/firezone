@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, net::SocketAddr, time::Instant};
+use std::{collections::BTreeMap, mem, net::SocketAddr, time::Instant};
 
 use anyhow::{Context, Result};
 use ip_packet::{IpPacket, Layer4Protocol};
@@ -173,9 +173,41 @@ impl Server {
             &mut self.device,
             &mut self.sockets,
         );
+
+        // Every address in `listen_endpoints` always has one socket in `Listen`:
+        // a listener that accepted a connection is replaced by a fresh one.
+        let accepted = self
+            .listen_endpoints
+            .iter()
+            .filter(|(handle, _)| {
+                self.sockets.get::<l3_tcp::Socket>(**handle).state() != l3_tcp::State::Listen
+            })
+            .map(|(handle, address)| (*handle, *address))
+            .collect::<Vec<_>>();
+
+        for (handle, address) in accepted {
+            self.listen_endpoints.remove(&handle);
+            self.listen(address)
+                .expect("re-listening on a previously bound address to succeed");
+        }
     }
 
     pub fn poll_outbound(&mut self) -> Option<IpPacket> {
         self.device.next_send()
+    }
+
+    /// Drops all connections but keeps listening on the same addresses.
+    pub fn reset(&mut self) {
+        self.sockets = l3_tcp::SocketSet::new(Vec::default());
+        self.device.clear();
+
+        let addresses = mem::take(&mut self.listen_endpoints)
+            .into_values()
+            .collect::<Vec<_>>();
+
+        for address in addresses {
+            self.listen(address)
+                .expect("re-listening on a previously bound address to succeed");
+        }
     }
 }
