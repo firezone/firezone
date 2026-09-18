@@ -17,7 +17,7 @@ use crate::messages::gateway::ResourceDescription;
 use crate::messages::{Filter, IngestToken};
 use crate::routing_table::{self, RoutingTable};
 use crate::unroutable_packet::UnroutablePacket;
-use crate::{GatewayEvent, IpConfig, NotAllowedResource, NotClientIp};
+use crate::{GatewayEvent, IpConfig, NotAllowedResource, NotClientIp, p2p_control};
 
 /// The state of one client on a gateway.
 pub struct ClientOnGateway {
@@ -44,7 +44,11 @@ pub struct ClientOnGateway {
 #[derive(Debug, PartialEq)]
 pub enum TranslateOutboundResult {
     Send(IpPacket),
-    IcmpError(IpPacket),
+    IcmpError {
+        reply: IpPacket,
+        /// Identifies traffic rejected by the access policy.
+        no_authorization: Option<p2p_control::no_authorization::NoAuthorization>,
+    },
 }
 
 impl ClientOnGateway {
@@ -338,7 +342,19 @@ impl ClientOnGateway {
                 None => ip_packet::make::icmp_dest_unreachable_prohibited(&packet)?,
             };
 
-            return Ok(TranslateOutboundResult::IcmpError(reply));
+            let no_authorization = error
+                .any_is::<NotAllowedResource>()
+                .then(|| packet.destination_protocol().ok())
+                .flatten()
+                .map(|protocol| p2p_control::no_authorization::NoAuthorization {
+                    dst: packet.destination(),
+                    protocol: protocol.into(),
+                });
+
+            return Ok(TranslateOutboundResult::IcmpError {
+                reply,
+                no_authorization,
+            });
         }
 
         let result = self.transform_network_to_tun(packet, now)?;
@@ -398,15 +414,17 @@ impl ClientOnGateway {
         let Some(state) = self.permanent_translations.get_mut(&packet.destination()) else {
             tracing::debug!(%dst, "No translation entry");
 
-            return Ok(TranslateOutboundResult::IcmpError(
-                ip_packet::make::icmp_dest_unreachable_network(&packet)?,
-            ));
+            return Ok(TranslateOutboundResult::IcmpError {
+                reply: ip_packet::make::icmp_dest_unreachable_network(&packet)?,
+                no_authorization: None,
+            });
         };
 
         let Some(resolved_ip) = state.resolved_ip else {
-            return Ok(TranslateOutboundResult::IcmpError(
-                ip_packet::make::icmp_dest_unreachable_network(&packet)?,
-            ));
+            return Ok(TranslateOutboundResult::IcmpError {
+                reply: ip_packet::make::icmp_dest_unreachable_network(&packet)?,
+                no_authorization: None,
+            });
         };
 
         if resolved_ip.is_ipv4() != dst.is_ipv4() {
@@ -416,9 +434,10 @@ impl ClientOnGateway {
                 "Cannot translate between IP versions"
             );
 
-            return Ok(TranslateOutboundResult::IcmpError(
-                ip_packet::make::icmp_dest_unreachable_network(&packet)?,
-            ));
+            return Ok(TranslateOutboundResult::IcmpError {
+                reply: ip_packet::make::icmp_dest_unreachable_network(&packet)?,
+                no_authorization: None,
+            });
         }
 
         flow_tracker::record_domain(state.domain.clone());
@@ -536,7 +555,8 @@ impl ClientOnGateway {
                 protocol,
                 crate::routing_table::FilterMode::Apply,
             )
-            .and_then(|matches| matches.first())
+            .context(NotAllowedResource(resource_ip))?
+            .first()
             .context(NotAllowedResource(resource_ip))?;
 
         Ok(entry.resource_id)
@@ -910,7 +930,7 @@ mod tests {
 
         assert!(matches!(
             peer.translate_outbound(pkt, Instant::now()).unwrap(),
-            TranslateOutboundResult::IcmpError(_)
+            TranslateOutboundResult::IcmpError { .. }
         ));
 
         let pkt = ip_packet::make::udp_packet(
@@ -924,7 +944,7 @@ mod tests {
 
         assert!(matches!(
             peer.translate_outbound(pkt, Instant::now()).unwrap(),
-            TranslateOutboundResult::IcmpError(_)
+            TranslateOutboundResult::IcmpError { .. }
         ));
 
         let pkt = ip_packet::make::udp_packet(
@@ -974,7 +994,7 @@ mod tests {
 
         assert!(matches!(
             peer.translate_outbound(pkt, Instant::now()).unwrap(),
-            TranslateOutboundResult::IcmpError(_)
+            TranslateOutboundResult::IcmpError { .. }
         ));
 
         let pkt = ip_packet::make::udp_packet(
@@ -1005,7 +1025,7 @@ mod tests {
 
         assert!(matches!(
             peer.translate_outbound(request, Instant::now()).unwrap(),
-            TranslateOutboundResult::IcmpError(_)
+            TranslateOutboundResult::IcmpError { .. }
         ));
     }
 
@@ -1266,7 +1286,7 @@ mod tests {
         )
         .unwrap();
 
-        let TranslateOutboundResult::IcmpError(packet) =
+        let TranslateOutboundResult::IcmpError { reply: packet, .. } =
             peer.translate_outbound(request, now).unwrap()
         else {
             panic!("Bad translation result")

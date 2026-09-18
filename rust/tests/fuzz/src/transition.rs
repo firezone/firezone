@@ -123,6 +123,17 @@ pub enum Transition {
     Idle,
     RebootRelaysWhilePartitioned(BTreeMap<RelayId, Host<u64>>),
     DeauthorizeWhileGatewayIsPartitioned(ResourceId),
+    /// Revokes the authorization for a resource on the Gateway only, without informing the Client.
+    ///
+    /// Models an authorization expiring on the Gateway or the portal's `reject_access` message.
+    /// The Client recovers through the Gateway's `no_authorization` p2p control event.
+    RevokeGatewayAuthorization(ResourceId),
+    /// Expires inbound grants at the receiving client while the sender retains its grants.
+    ExpirePeerAuthorizations {
+        client: ClientId,
+        peer: ClientId,
+        pools: BTreeSet<ResourceId>,
+    },
     UpdateDnsRecords {
         domain: DomainName,
         records: BTreeSet<OwnedRecordData>,
@@ -160,6 +171,8 @@ impl Transition {
             Transition::Idle => false,
             Transition::RebootRelaysWhilePartitioned(_) => false,
             Transition::DeauthorizeWhileGatewayIsPartitioned(_) => true,
+            Transition::RevokeGatewayAuthorization(_) => true,
+            Transition::ExpirePeerAuthorizations { .. } => true,
             Transition::UpdateDnsRecords { .. } => false,
         }
     }
@@ -250,6 +263,19 @@ impl Transition {
                 FlowRoute::Resource { resource: used, .. } => used != *resource,
                 FlowRoute::Gateway(_) => false,
                 FlowRoute::Peer(_) => false,
+            },
+            Transition::RevokeGatewayAuthorization(resource) => match route {
+                FlowRoute::Resource { resource: used, .. } => used != *resource,
+                FlowRoute::Gateway(_) => false,
+                FlowRoute::Peer(_) => true,
+            },
+            Transition::ExpirePeerAuthorizations { client, peer, .. } => match route {
+                FlowRoute::Peer(remote) => {
+                    !((client_id == *client && remote == *peer)
+                        || (client_id == *peer && remote == *client))
+                }
+                FlowRoute::Resource { .. } => true,
+                FlowRoute::Gateway(_) => true,
             },
             Transition::UpdateDnsRecords { .. } => true,
         }

@@ -11,6 +11,8 @@ mod tracked_state;
 
 pub(crate) use crate::client::client_on_client::ClientOnClient;
 pub(crate) use crate::client::gateway_on_client::GatewayOnClient;
+
+use crate::authorization_rejections::AuthorizationRejections;
 use resource::{DevicePoolResource, InternetResource, Resource};
 
 use crate::client::client_on_client::InboundResult;
@@ -128,6 +130,7 @@ pub struct ClientState {
 
     /// Tracks the flows tunneled through this Client.
     flow_tracker: flow_tracker::Tracker<ClientOrGatewayId>,
+    authorization_rejections: AuthorizationRejections,
     /// Tracks the authorizations we have requested but not yet been granted.
     pending_authorizations: PendingAuthorizations,
 
@@ -217,6 +220,7 @@ impl ClientState {
             buffered_packets: Default::default(),
             node: Node::new(seed, now, unix_ts),
             flow_tracker: flow_tracker::Tracker::new(now, unix_ts),
+            authorization_rejections: Default::default(),
             portal: Default::default(),
             sites_status: Default::default(),
             gateways_by_site: Default::default(),
@@ -804,6 +808,14 @@ impl ClientState {
                         }
                     }
                 }
+                (p2p_control::NO_AUTHORIZATION_EVENT, pid) => {
+                    let event = p2p_control::no_authorization::decode(fz_p2p_control)
+                        .context("Failed to decode `NoAuthorization`")?;
+
+                    if let Err(e) = self.handle_no_authorization(pid, event, now) {
+                        tracing::debug!(%pid, dst = %event.dst, protocol = ?event.protocol, "Ignoring `NoAuthorization` event: {e:#}");
+                    }
+                }
                 (p2p_control::GOODBYE_EVENT, pid) => {
                     self.node.remove_connection(pid, "received `goodbye`", now);
 
@@ -832,7 +844,10 @@ impl ClientState {
 
                 let packet = match peer.ensure_allowed_inbound(packet, now)? {
                     InboundResult::Send(p) => p,
-                    InboundResult::Filtered(reply) => {
+                    InboundResult::Filtered {
+                        reply,
+                        no_authorization,
+                    } => {
                         encapsulate_and_queue(
                             reply,
                             ClientOrGatewayId::Client(cid),
@@ -841,6 +856,19 @@ impl ClientState {
                             &mut self.buffered_transmits,
                             &mut self.pending_peer_packets,
                         );
+                        if let Some(event) = no_authorization.and_then(|rejection| {
+                            self.authorization_rejections
+                                .on_rejected(cid, rejection, now)
+                        }) {
+                            encapsulate_and_queue(
+                                event,
+                                cid.into(),
+                                now,
+                                &mut self.node,
+                                &mut self.buffered_transmits,
+                                &mut self.pending_peer_packets,
+                            );
+                        }
                         return Ok(None);
                     }
                 };
@@ -859,38 +887,6 @@ impl ClientState {
                 // To a gateway we are always the one who opened the flow;
                 // this packet is a reply.
                 flow_tracker::record_peer(gid, flow_tracker::Role::Initiator);
-
-                // All facts are recorded; commit the flow so the tracker
-                // borrow is free for the `&mut self` calls below.
-                drop(_guard);
-
-                #[cfg(feature = "telemetry")]
-                if telemetry::feature_flags::icmp_error_unreachable_prohibited_create_new_flow()
-                    && let Ok(Some((failed_packet, error))) = packet.icmp_error()
-                    && error.is_unreachable_prohibited()
-                    && let internet_resource = self.active_internet_resource().map(|r| r.id)
-                    && let Ok(routes) = self.routing_tables.resolve_resource(
-                        failed_packet.dst(),
-                        failed_packet.dst_proto(),
-                        internet_resource,
-                    )
-                    && let resources = routes
-                        .iter()
-                        .map(|route| route.resource_id)
-                        .unique()
-                        .collect_vec()
-                    && !resources.is_empty()
-                {
-                    telemetry::analytics::feature_flag_called(
-                        "icmp-error-unreachable-prohibited-create-new-flow",
-                    );
-
-                    self.pending_authorizations.on_not_authorized(
-                        AuthorizationRequest::Resources(resources),
-                        pending_authorizations::Trigger::IcmpDestinationUnreachableProhibited,
-                        now,
-                    );
-                }
             }
         }
 
@@ -1365,6 +1361,83 @@ impl ClientState {
         ControlFlow::Break(())
     }
 
+    /// Requests fresh access for matching grants held by the peer reporting a missing authorization.
+    fn handle_no_authorization(
+        &mut self,
+        pid: ClientOrGatewayId,
+        event: p2p_control::no_authorization::NoAuthorization,
+        now: Instant,
+    ) -> Result<()> {
+        #[cfg(any(test, feature = "malicious-behaviour"))]
+        anyhow::ensure!(
+            !crate::malicious_behaviour::ignore_no_authorization_events(),
+            "Malicious client is configured to ignore the event"
+        );
+
+        let internet_resource = self.active_internet_resource().map(|r| r.id);
+        let routes = self
+            .routing_tables
+            .resolve(event.dst, event.protocol.into(), internet_resource)
+            .map_err(|routing::Denied| anyhow::anyhow!("Destination rejected by routing policy"))?;
+        anyhow::ensure!(!routes.is_empty(), "No matching route");
+
+        let request = match (pid, routes) {
+            (ClientOrGatewayId::Client(cid), MatchedRoutes::DevicePools(pools)) => {
+                let peer = self
+                    .clients
+                    .peer_by_id(&cid)
+                    .context("Client peer no longer exists")?;
+                anyhow::ensure!(
+                    peer.remote_tun().is_ip(event.dst),
+                    "Destination does not belong to the client peer"
+                );
+
+                let pools = pools
+                    .into_iter()
+                    .filter(|pool| {
+                        self.outbound_authorizations
+                            .client_token(*pool, cid)
+                            .is_some()
+                    })
+                    .collect_vec();
+                anyhow::ensure!(
+                    !pools.is_empty(),
+                    "No outbound authorization for the client peer"
+                );
+
+                AuthorizationRequest::device(event.dst, pools)
+            }
+            (ClientOrGatewayId::Gateway(gid), MatchedRoutes::Gateways(routes)) => {
+                let resources = routes
+                    .into_iter()
+                    .map(|route| route.resource_id)
+                    .filter(|resource| {
+                        self.outbound_authorizations.gateway_by_resource(*resource) == Some(&gid)
+                    })
+                    .collect_vec();
+                anyhow::ensure!(
+                    !resources.is_empty(),
+                    "No matching resource authorized through the gateway"
+                );
+
+                AuthorizationRequest::resources(resources)
+            }
+            (ClientOrGatewayId::Client(_), MatchedRoutes::Gateways(_)) => {
+                anyhow::bail!("Client reported a destination that routes through a gateway");
+            }
+            (ClientOrGatewayId::Gateway(_), MatchedRoutes::DevicePools(_)) => {
+                anyhow::bail!("Gateway reported a destination that routes to a client");
+            }
+        };
+        self.pending_authorizations.on_not_authorized(
+            request,
+            pending_authorizations::Trigger::NoAuthorization,
+            now,
+        );
+
+        Ok(())
+    }
+
     pub fn on_resource_connection_failed(&mut self, resource: ResourceId, now: Instant) {
         self.pending_authorizations
             .remove_resource_authorizations(resource);
@@ -1617,6 +1690,11 @@ impl ClientState {
     pub fn poll_timeout(&mut self) -> Option<(Instant, &'static str)> {
         iter::empty()
             .chain(
+                self.authorization_rejections
+                    .poll_timeout()
+                    .map(|instant| (instant, "Authorization rejection expiry")),
+            )
+            .chain(
                 self.udp_dns_client
                     .poll_timeout()
                     .map(|instant| (instant, "UDP DNS client")),
@@ -1665,6 +1743,7 @@ impl ClientState {
     pub fn handle_timeout(&mut self, now: Instant) {
         self.node.handle_timeout(now);
         self.flow_tracker.handle_timeout(now);
+        self.authorization_rejections.handle_timeout(now);
         self.dns_cache.handle_timeout(now);
         self.device_stub_resolver.handle_timeout(now);
 
