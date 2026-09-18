@@ -1058,11 +1058,9 @@ impl TunnelTest {
                     }
 
                     relay_proto::Command::CreateAllocation { port, family } => {
-                        relay.allocate_port(port.value(), family);
                         relay.exec_mut(|r| r.allocations.insert((family, port)));
                     }
                     relay_proto::Command::FreeAllocation { port, family } => {
-                        relay.deallocate_port(port.value(), family);
                         relay.exec_mut(|r| r.allocations.remove(&(family, port)));
                     }
                     relay_proto::Command::CreateChannelBinding { .. }
@@ -1099,7 +1097,7 @@ impl TunnelTest {
                 continue;
             }
 
-            let Some((time_to_next_action, _)) = self.poll_timeout() else {
+            let Some(time_to_next_action) = self.poll_timeout() else {
                 break; // Nothing to do.
             };
 
@@ -1231,12 +1229,12 @@ impl TunnelTest {
         }
     }
 
-    fn poll_timeout(&mut self) -> Option<(Instant, &'static str)> {
+    fn poll_timeout(&mut self) -> Option<Instant> {
         iter::empty()
             .chain(self.clients.values_mut().flat_map(|c| c.poll_timeout()))
             .chain(self.gateways.values_mut().flat_map(|g| g.poll_timeout()))
             .chain(self.relays.values_mut().flat_map(|r| r.poll_timeout()))
-            .min_by_key(|(instant, _)| *instant)
+            .min()
     }
 
     /// Dispatches a [`Transmit`] to the correct host.

@@ -52,10 +52,6 @@ impl DnsRecords {
     pub(crate) fn domain_rtypes(&self, name: &DomainName) -> BTreeSet<RecordType> {
         self.domain_records_iter(name).map(|r| r.rtype()).collect()
     }
-
-    pub(crate) fn is_empty(&self) -> bool {
-        self.inner.is_empty()
-    }
 }
 
 impl<I> From<I> for DnsRecords

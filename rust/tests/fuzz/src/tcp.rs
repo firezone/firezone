@@ -17,7 +17,6 @@ pub struct Client {
     os: SimulatedOs,
 
     created_at: Instant,
-    last_now: Instant,
 }
 
 pub struct Server {
@@ -27,7 +26,6 @@ pub struct Server {
     interface: l3_tcp::Interface,
 
     created_at: Instant,
-    last_now: Instant,
 }
 
 impl Client {
@@ -42,7 +40,6 @@ impl Client {
             interface,
             os,
             created_at: now,
-            last_now: now,
         }
     }
 
@@ -113,8 +110,6 @@ impl Client {
     }
 
     pub fn handle_timeout(&mut self, now: Instant) {
-        self.last_now = now;
-
         let _result = self.interface.poll(
             l3_tcp::now(self.created_at, now),
             &mut self.device,
@@ -153,7 +148,6 @@ impl Server {
             device,
             interface,
             created_at: now,
-            last_now: now,
         }
     }
 
@@ -174,8 +168,6 @@ impl Server {
     }
 
     pub fn handle_timeout(&mut self, now: Instant) {
-        self.last_now = now;
-
         let _result = self.interface.poll(
             l3_tcp::now(self.created_at, now),
             &mut self.device,

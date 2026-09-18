@@ -1023,15 +1023,13 @@ fn assert_destination_is_dns_resource(
 pub(crate) struct PanicOnErrorEvents<S> {
     subscriber: PhantomData<S>,
     has_seen_error: AtomicBool,
-    index: u32,
 }
 
 impl<S> PanicOnErrorEvents<S> {
-    pub(crate) fn new(index: u32) -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             subscriber: PhantomData,
             has_seen_error: Default::default(),
-            index,
         }
     }
 }
@@ -1039,7 +1037,7 @@ impl<S> PanicOnErrorEvents<S> {
 impl<S> Drop for PanicOnErrorEvents<S> {
     fn drop(&mut self) {
         if self.has_seen_error.load(Ordering::SeqCst) {
-            panic!("Testcase {} failed", self.index);
+            panic!("Testcase failed");
         }
     }
 }
