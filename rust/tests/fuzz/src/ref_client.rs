@@ -117,7 +117,11 @@ pub struct RefClient {
 
     /// Per peer, the pools the portal authorised us to reach it through.
     #[debug(skip)]
-    peer_pools: BTreeMap<ClientId, BTreeSet<ResourceId>>,
+    outbound_peer_authorizations: BTreeMap<ClientId, BTreeSet<ResourceId>>,
+
+    /// Per peer, the pools through which the portal authorised it to reach us.
+    #[debug(skip)]
+    inbound_peer_authorizations: BTreeMap<ClientId, BTreeSet<ResourceId>>,
 
     resource_selector: u32,
 }
@@ -163,7 +167,8 @@ impl RefClient {
             connection_resets: Default::default(),
             gateway_send_times: Default::default(),
             client_send_times: Default::default(),
-            peer_pools: Default::default(),
+            outbound_peer_authorizations: Default::default(),
+            inbound_peer_authorizations: Default::default(),
         }
     }
 
@@ -274,35 +279,67 @@ impl RefClient {
         }
 
         self.resources.retain(|r| r.id() != *resource);
-        self.forget_pool_grants(*resource, None);
+        self.remove_pool_authorizations(*resource);
     }
 
-    /// Drops the grants through `pool` towards `peers`, or towards everyone.
-    pub(crate) fn forget_pool_grants(
-        &mut self,
-        pool: ResourceId,
-        peers: Option<&BTreeSet<ClientId>>,
-    ) {
-        self.peer_pools.retain(|peer, pools| {
-            if peers.is_none_or(|peers| peers.contains(peer)) {
-                pools.remove(&pool);
-            }
-
-            !pools.is_empty()
-        });
+    /// Records a pool through which `peer` may reach us.
+    pub(crate) fn add_inbound_peer_pool(&mut self, peer: ClientId, pool: ResourceId) {
+        self.inbound_peer_authorizations
+            .entry(peer)
+            .or_default()
+            .insert(pool);
     }
 
-    /// Drops every grant towards `peer`, as the connection to it is gone.
-    pub(crate) fn forget_peer_grants(&mut self, peer: ClientId) {
-        self.peer_pools.remove(&peer);
+    /// Drops a rejected pool in both directions for `peer`.
+    pub(crate) fn reject_peer_pool(&mut self, peer: ClientId, pool: ResourceId) {
+        remove_peer_pool(&mut self.outbound_peer_authorizations, peer, pool);
+        remove_peer_pool(&mut self.inbound_peer_authorizations, peer, pool);
     }
 
-    pub(crate) fn granted_pools(&self, peer: ClientId) -> impl Iterator<Item = ResourceId> + '_ {
-        self.peer_pools.get(&peer).into_iter().flatten().copied()
+    /// Drops all active authorizations through `pool`.
+    fn remove_pool_authorizations(&mut self, pool: ResourceId) {
+        remove_pool(&mut self.outbound_peer_authorizations, pool);
+        remove_pool(&mut self.inbound_peer_authorizations, pool);
     }
 
-    pub(crate) fn record_grant(&mut self, peer: ClientId, pool: ResourceId) {
-        self.peer_pools.entry(peer).or_default().insert(pool);
+    /// Drops our outbound authorizations towards `peer` when it connects to us anew.
+    pub(crate) fn forget_outbound_peer_authorizations(&mut self, peer: ClientId) {
+        self.outbound_peer_authorizations.remove(&peer);
+    }
+
+    /// Drops every authorization involving `peer`, as the connection to it is gone.
+    pub(crate) fn forget_peer_authorizations(&mut self, peer: ClientId) {
+        self.outbound_peer_authorizations.remove(&peer);
+        self.inbound_peer_authorizations.remove(&peer);
+    }
+
+    /// Checks whether any active inbound authorization from `peer` permits `protocol`.
+    pub(crate) fn inbound_peer_filter_allows(&self, peer: ClientId, protocol: Protocol) -> bool {
+        self.inbound_peer_authorizations
+            .get(&peer)
+            .is_some_and(|pools| {
+                pools
+                    .iter()
+                    .any(|pool| self.strict_resource_filter_allows(*pool, protocol))
+            })
+    }
+
+    pub(crate) fn authorized_pools_towards(
+        &self,
+        peer: ClientId,
+    ) -> impl Iterator<Item = ResourceId> + '_ {
+        self.outbound_peer_authorizations
+            .get(&peer)
+            .into_iter()
+            .flatten()
+            .copied()
+    }
+
+    pub(crate) fn record_outbound_peer_authorization(&mut self, peer: ClientId, pool: ResourceId) {
+        self.outbound_peer_authorizations
+            .entry(peer)
+            .or_default()
+            .insert(pool);
     }
 
     pub(crate) fn candidate_pools(&self, protocol: Protocol) -> Vec<ResourceId> {
@@ -355,7 +392,6 @@ impl RefClient {
 
     pub(crate) fn restart(&mut self, key: PrivateKey, now: Instant) {
         self.routes.clear();
-        self.peer_pools.clear();
 
         self.key = key;
 
@@ -431,8 +467,9 @@ impl RefClient {
         self.connected_dns_resources.clear();
         self.dns_resource_resolutions.clear();
         self.connected_internet_resource = false;
-        // Grants towards peers go with their connections.
-        self.peer_pools.clear();
+        // Peer authorizations in both directions go with their connections.
+        self.outbound_peer_authorizations.clear();
+        self.inbound_peer_authorizations.clear();
 
         for status in self.site_status.values_mut() {
             *status = ResourceStatus::Unknown;
@@ -500,7 +537,7 @@ impl RefClient {
             .iter()
             .position(|existing| existing.id() == rid)
         {
-            // A filter change keeps the pool's grants: the client updates its routes in place.
+            // A filter change keeps the pool's authorizations: the client updates its routes in place.
             Some(index) => self.resources[index] = r,
             None => self.resources.push(r),
         }
@@ -1001,7 +1038,7 @@ impl RefClient {
             .collect()
     }
 
-    /// Prefers existing grants, then applies the portal's sampled candidate index.
+    /// Prefers existing connections, then applies the portal's sampled candidate index.
     fn select_gateway_resource(&self, candidates: &[ResourceId]) -> Option<ResourceId> {
         if candidates.is_empty() {
             return None;
@@ -1477,6 +1514,28 @@ impl RefClient {
         self.expected_tcp_connections.clear();
         self.expected_tcp_rejections.clear();
     }
+}
+
+fn remove_peer_pool(
+    authorizations: &mut BTreeMap<ClientId, BTreeSet<ResourceId>>,
+    peer: ClientId,
+    pool: ResourceId,
+) {
+    let Some(pools) = authorizations.get_mut(&peer) else {
+        return;
+    };
+
+    pools.remove(&pool);
+    if pools.is_empty() {
+        authorizations.remove(&peer);
+    }
+}
+
+fn remove_pool(authorizations: &mut BTreeMap<ClientId, BTreeSet<ResourceId>>, pool: ResourceId) {
+    for pools in authorizations.values_mut() {
+        pools.remove(&pool);
+    }
+    for _ in authorizations.extract_if(.., |_, pools| pools.is_empty()) {}
 }
 
 /// Applies the reference model's independent interpretation of resource filters.

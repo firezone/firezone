@@ -29,6 +29,8 @@ pub(crate) struct StubPortal {
     device_pool_resources: BTreeMap<ResourceId, DevicePoolResource>,
     /// The portal's membership criteria per pool, evaluated when a client asks for access.
     pool_members: BTreeMap<ResourceId, PoolMembers>,
+    /// The peer subset of the portal's persisted policy authorizations.
+    peer_policy_authorizations: BTreeSet<PeerAuthorization>,
     internet_resource: client::InternetResource,
 
     search_domain: Option<DomainName>,
@@ -53,6 +55,13 @@ pub(crate) struct StubPortal {
 pub(crate) enum PoolMembers {
     AllClients,
     Listed(BTreeSet<ClientId>),
+}
+
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub struct PeerAuthorization {
+    pub(crate) initiator: ClientId,
+    pub(crate) target: ClientId,
+    pub(crate) pool: ResourceId,
 }
 
 #[derive(Clone, Debug)]
@@ -151,6 +160,7 @@ impl StubPortal {
             dns_resources,
             device_pool_resources,
             pool_members,
+            peer_policy_authorizations: Default::default(),
             internet_resource,
             search_domain,
             upstream_do53,
@@ -233,6 +243,26 @@ impl StubPortal {
         })
     }
 
+    pub(crate) fn record_peer_policy_authorization(
+        &mut self,
+        initiator: ClientId,
+        target: ClientId,
+        pool: ResourceId,
+    ) {
+        self.peer_policy_authorizations.insert(PeerAuthorization {
+            initiator,
+            target,
+            pool,
+        });
+    }
+
+    pub(crate) fn revoke_peer_policy_authorizations_for_pool(&mut self, pool: ResourceId) {
+        for _ in self
+            .peer_policy_authorizations
+            .extract_if(.., |authorization| authorization.pool == pool)
+        {}
+    }
+
     fn is_pool_member(&self, pool: ResourceId, client: ClientId) -> bool {
         match self.pool_members.get(&pool) {
             Some(PoolMembers::AllClients) => self.clients.contains_key(&client),
@@ -250,14 +280,29 @@ impl StubPortal {
             .collect()
     }
 
-    /// Every pool that lists its members, with its current list.
-    pub(crate) fn listed_pools(&self) -> Vec<(ResourceId, BTreeSet<ClientId>)> {
+    /// Returns every pool that lists its members.
+    pub(crate) fn listed_pool_ids(&self) -> Vec<ResourceId> {
         self.pool_members
             .iter()
             .filter_map(|(pool, members)| match members {
-                PoolMembers::Listed(members) => Some((*pool, members.clone())),
+                PoolMembers::Listed(_) => Some(*pool),
                 PoolMembers::AllClients => None,
             })
+            .collect()
+    }
+
+    /// The peer authorizations through `pool` that setting its members to `members` revokes.
+    pub(crate) fn peer_authorizations_revoked_by(
+        &self,
+        pool: ResourceId,
+        members: &BTreeSet<ClientId>,
+    ) -> Vec<PeerAuthorization> {
+        self.peer_policy_authorizations
+            .iter()
+            .filter(|authorization| {
+                authorization.pool == pool && !members.contains(&authorization.target)
+            })
+            .copied()
             .collect()
     }
 
@@ -267,6 +312,9 @@ impl StubPortal {
             return;
         }
 
+        for authorization in self.peer_authorizations_revoked_by(pool, &members) {
+            self.peer_policy_authorizations.remove(&authorization);
+        }
         self.pool_members.insert(pool, PoolMembers::Listed(members));
     }
 

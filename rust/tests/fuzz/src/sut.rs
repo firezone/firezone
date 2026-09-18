@@ -13,7 +13,7 @@ use crate::probe::{DnsNatObservation, FlowId, ProbeId, ProbeObservation, Remote}
 use crate::resource as client;
 use crate::transition::Transition;
 use bufferpool::BufferPool;
-use connlib_model::{ClientId, ClientOrGatewayId, GatewayId, PublicKey, RelayId, ResourceId};
+use connlib_model::{ClientId, ClientOrGatewayId, GatewayId, PublicKey, RelayId};
 use dns_types::ResponseCode;
 use dns_types::prelude::*;
 use ip_packet::Ecn;
@@ -56,9 +56,6 @@ pub struct TunnelTest {
     icmp_flows: BTreeMap<FlowId, ResolvedIcmpFlow>,
     udp_flows: BTreeMap<FlowId, ResolvedUdpFlow>,
     dns_nat_observations: Vec<DnsNatObservation>,
-
-    /// The portal's `policy_authorizations` rows for device pools: (initiator, target, pool).
-    device_grants: BTreeSet<(ClientId, ClientId, ResourceId)>,
 }
 
 #[derive(Clone, Copy)]
@@ -173,7 +170,6 @@ impl TunnelTest {
             icmp_flows: Default::default(),
             udp_flows: Default::default(),
             dns_nat_observations: Default::default(),
-            device_grants: Default::default(),
         };
 
         let mut buffered_transmits = BufferedTransmits::default();
@@ -278,10 +274,6 @@ impl TunnelTest {
             } => {
                 debug_assert_eq!(old_resource.id(), new_resource.id());
 
-                state
-                    .device_grants
-                    .retain(|(_, _, pool)| *pool != old_resource.id());
-
                 for (client_id, client) in &mut state.clients {
                     for gateway in state.gateways.values_mut() {
                         gateway.exec_mut(|gateway| {
@@ -302,32 +294,27 @@ impl TunnelTest {
                     });
                 }
             }
-            Transition::UpdateDevicePoolMembers {
-                pool_id, removed, ..
-            } => {
-                // Mimic the portal: deleting the authorizations of the devices that left
-                // rejects the access on both sides.
-                let revoked = state
-                    .device_grants
-                    .extract_if(.., |(_, target, pool)| {
-                        *pool == pool_id && removed.contains(target)
-                    })
-                    .collect::<Vec<_>>();
-
-                for (initiator, target, pool) in revoked {
-                    if let Some(client) = state.clients.get_mut(&initiator) {
-                        client.exec_mut(|c| c.sut.handle_reject_client_device_access(target, pool));
-                    }
-                    if let Some(client) = state.clients.get_mut(&target) {
+            Transition::UpdateDevicePoolMembers { revoked, .. } => {
+                for authorization in revoked {
+                    if let Some(client) = state.clients.get_mut(&authorization.initiator) {
                         client.exec_mut(|c| {
-                            c.sut.handle_reject_client_device_access(initiator, pool)
+                            c.sut.handle_reject_client_device_access(
+                                authorization.target,
+                                authorization.pool,
+                            )
+                        });
+                    }
+                    if let Some(client) = state.clients.get_mut(&authorization.target) {
+                        client.exec_mut(|c| {
+                            c.sut.handle_reject_client_device_access(
+                                authorization.initiator,
+                                authorization.pool,
+                            )
                         });
                     }
                 }
             }
             Transition::RemoveResource(rid) => {
-                state.device_grants.retain(|(_, _, pool)| *pool != rid);
-
                 for (client_id, client) in &mut state.clients {
                     client.exec_mut(|c| c.sut.remove_resource(rid, now));
 
@@ -1482,7 +1469,7 @@ impl TunnelTest {
                 };
 
                 // Mimic the portal: the address must be another client's, and the first of
-                // the named pools the initiator holds that admits it is granted.
+                // the named pools the initiator holds that admits it is authorized.
                 let Some(remote_id) = portal
                     .client_by_ip(ip)
                     .filter(|id| self.clients.contains_key(id))
@@ -1576,8 +1563,6 @@ impl TunnelTest {
 
                     Ok(())
                 })?;
-
-                self.device_grants.insert((src, remote_id, pool));
 
                 Ok(())
             }

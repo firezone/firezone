@@ -77,7 +77,7 @@ pub(super) fn generate(g: &mut Generator, state: &ReferenceState) -> Transition 
         )
         .collect::<Vec<_>>();
     let dns_query_targets = dns_queries::targets(state);
-    let listed_device_pools = state.listed_device_pools_on_any_client();
+    let listed_device_pools = state.listed_device_pool_ids_on_any_client();
 
     // Build the legal action list. Data-plane actions stay more frequent because
     // they drive most of the tunnel state machine; libFuzzer chooses the concrete
@@ -278,15 +278,16 @@ pub(super) fn generate(g: &mut Generator, state: &ReferenceState) -> Transition 
             dns_queries::generate(g, target, state)
         }
         K::UpdateDevicePoolMembers => {
-            let (pool_id, old_members) =
-                listed_device_pools[g.choose_index(listed_device_pools.len())].clone();
+            let pool_id = listed_device_pools[g.choose_index(listed_device_pools.len())];
             let members = packets::arb_pool_members(g, state);
-            let removed = old_members.difference(&members).copied().collect();
+            let revoked = state
+                .portal
+                .peer_authorizations_revoked_by(pool_id, &members);
 
             Transition::UpdateDevicePoolMembers {
                 pool_id,
                 members,
-                removed,
+                revoked,
             }
         }
     }
