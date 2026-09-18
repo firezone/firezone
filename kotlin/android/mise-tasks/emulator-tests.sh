@@ -66,6 +66,9 @@ if ! timeout "$SUITE_TIMEOUT" adb shell am instrument -w \
     ${filter[@]+"${filter[@]}"} "$RUNNER" | tee "$log"; then
     echo >&2
     echo "error: the instrumented run did not finish within ${SUITE_TIMEOUT}" >&2
+    # What the app was doing when it stopped, which is the only thing the run itself cannot say.
+    echo "==> The last of the log:" >&2
+    adb logcat -d -t 400 >&2 || true
     exit 1
 fi
 
