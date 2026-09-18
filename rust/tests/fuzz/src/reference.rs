@@ -856,10 +856,7 @@ impl ReferenceState {
         let known_loss = match outcome {
             ExpectedOutcome::Dropped => None,
             ExpectedOutcome::RoundTripCompleted(Route::Peer(client))
-                if self
-                    .clients
-                    .get(&client)
-                    .unwrap()
+                if self.clients[&client]
                     .inner()
                     .has_reset_connections_within_ice_timeout(sent_at) =>
             {
@@ -893,7 +890,7 @@ impl ReferenceState {
     }
 
     fn can_drop_during_rekey(&self, origin: ClientId, remote: Remote, sent_at: Instant) -> bool {
-        let client = self.clients.get(&origin).unwrap().inner();
+        let client = self.clients[&origin].inner();
 
         match remote {
             Remote::Gateway(gateway) => client
