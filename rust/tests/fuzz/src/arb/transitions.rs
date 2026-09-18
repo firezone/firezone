@@ -277,85 +277,78 @@ fn arb_resource_edit(
 
     let mut new = old.clone();
 
-    // Each arm names every field of its resource, so a new field fails to compile here
-    // until it has an edit in the list below.
+    // Each arm names every field of its resource and edits it through that binding, so a
+    // new field fails to compile until it has an edit here or is ignored explicitly.
     match &mut new {
         Resource::Dns(resource) => {
             let DnsResource {
                 id: _,
-                address: _,
-                name: _,
-                address_description: _,
+                address,
+                name,
+                address_description,
                 sites,
-                ip_stack: _,
-                filters: _,
-            } = &*resource;
-            type Edit = fn(&mut Generator, &ReferenceState, &StubPortal, &mut DnsResource);
+                ip_stack,
+                filters,
+            } = resource;
 
-            let edits = [
-                Some::<Edit>(|g, state, _, r| {
-                    r.address = arb_different_dns_resource_address(g, &r.address, state)
-                }),
-                Some(|g, _, _, r| r.name = arb_different_name(g, &r.name)),
-                Some(|g, _, _, r| {
-                    r.address_description =
-                        arb_different_address_description(g, &r.address_description)
-                }),
+            let edits: [Option<Box<dyn FnOnce(&mut Generator) + '_>>; 6] = [
+                Some(Box::new(|g| {
+                    *address = arb_different_dns_resource_address(g, address, state)
+                })),
+                Some(Box::new(|g| *name = arb_different_name(g, name))),
+                Some(Box::new(|g| {
+                    *address_description = arb_different_address_description(g, address_description)
+                })),
                 has_alternative_site(sites, portal)
-                    .then_some(|g, _, portal, r| r.sites = arb_different_site(g, &r.sites, portal)),
-                Some(|g, _, _, r| r.ip_stack = arb_different_ip_stack_kind(g, r.ip_stack)),
-                Some(|g, _, _, r| r.filters = arb_different_filters(g, &r.filters)),
-            ]
-            .into_iter()
-            .flatten()
-            .collect::<SmallVec<[Edit; 6]>>();
+                    .then_some(Box::new(|g| *sites = arb_different_site(g, sites, portal))),
+                Some(Box::new(|g| {
+                    *ip_stack = arb_different_ip_stack_kind(g, *ip_stack)
+                })),
+                Some(Box::new(|g| *filters = arb_different_filters(g, filters))),
+            ];
+            let mut edits = edits.into_iter().flatten().collect::<SmallVec<[_; 6]>>();
 
-            edits[g.choose_index(edits.len())](g, state, portal, resource);
+            edits.swap_remove(g.choose_index(edits.len()))(g);
         }
         Resource::Cidr(resource) => {
             let CidrResource {
                 id: _,
-                address: _,
-                name: _,
-                address_description: _,
+                address,
+                name,
+                address_description,
                 sites,
-                filters: _,
-            } = &*resource;
-            type Edit = fn(&mut Generator, &ReferenceState, &StubPortal, &mut CidrResource);
+                filters,
+            } = resource;
 
-            let edits = [
-                Some::<Edit>(|g, _, _, r| {
-                    r.address = arb_different_cidr_resource_address(g, r.address)
-                }),
-                Some(|g, _, _, r| r.name = arb_different_name(g, &r.name)),
-                Some(|g, _, _, r| {
-                    r.address_description =
-                        arb_different_address_description(g, &r.address_description)
-                }),
+            let edits: [Option<Box<dyn FnOnce(&mut Generator) + '_>>; 5] = [
+                Some(Box::new(|g| {
+                    *address = arb_different_cidr_resource_address(g, *address)
+                })),
+                Some(Box::new(|g| *name = arb_different_name(g, name))),
+                Some(Box::new(|g| {
+                    *address_description = arb_different_address_description(g, address_description)
+                })),
                 has_alternative_site(sites, portal)
-                    .then_some(|g, _, portal, r| r.sites = arb_different_site(g, &r.sites, portal)),
-                Some(|g, _, _, r| r.filters = arb_different_filters(g, &r.filters)),
-            ]
-            .into_iter()
-            .flatten()
-            .collect::<SmallVec<[Edit; 5]>>();
+                    .then_some(Box::new(|g| *sites = arb_different_site(g, sites, portal))),
+                Some(Box::new(|g| *filters = arb_different_filters(g, filters))),
+            ];
+            let mut edits = edits.into_iter().flatten().collect::<SmallVec<[_; 5]>>();
 
-            edits[g.choose_index(edits.len())](g, state, portal, resource);
+            edits.swap_remove(g.choose_index(edits.len()))(g);
         }
         Resource::DevicePool(resource) => {
             let DevicePoolResource {
                 id: _,
-                name: _,
-                filters: _,
-            } = &*resource;
-            type Edit = fn(&mut Generator, &mut DevicePoolResource);
+                name,
+                filters,
+            } = resource;
 
-            let edits: [Edit; 2] = [
-                |g, r| r.name = arb_different_name(g, &r.name),
-                |g, r| r.filters = arb_different_filters(g, &r.filters),
-            ];
+            let mut edits = SmallVec::<[Box<dyn FnOnce(&mut Generator) + '_>; 2]>::from_buf([
+                Box::new(|g| *name = arb_different_name(g, name)),
+                Box::new(|g| *filters = arb_different_filters(g, filters)),
+            ]);
 
-            edits[g.choose_index(edits.len())](g, resource);
+            edits.swap_remove(g.choose_index(edits.len()))(g);
         }
         Resource::Internet(_) => {
             unreachable!("the Portal API does not allow editing the Internet Resource")
