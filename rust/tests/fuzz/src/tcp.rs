@@ -173,6 +173,23 @@ impl Server {
             &mut self.device,
             &mut self.sockets,
         );
+
+        // Every address in `listen_endpoints` always has one socket in `Listen`:
+        // a listener that accepted a connection is replaced by a fresh one.
+        let accepted = self
+            .listen_endpoints
+            .iter()
+            .filter(|(handle, _)| {
+                self.sockets.get::<l3_tcp::Socket>(**handle).state() != l3_tcp::State::Listen
+            })
+            .map(|(handle, address)| (*handle, *address))
+            .collect::<Vec<_>>();
+
+        for (handle, address) in accepted {
+            self.listen_endpoints.remove(&handle);
+            self.listen(address)
+                .expect("re-listening on a previously bound address to succeed");
+        }
     }
 
     pub fn poll_outbound(&mut self) -> Option<IpPacket> {
