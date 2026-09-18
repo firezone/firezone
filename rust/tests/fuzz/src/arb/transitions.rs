@@ -280,17 +280,15 @@ fn arb_resource_edit(
     // Each arm names every field of its resource and edits it through that binding, so a
     // new field fails to compile until it has an edit here or is ignored explicitly.
     match &mut new {
-        Resource::Dns(resource) => {
-            let DnsResource {
-                id: _,
-                address,
-                name,
-                address_description,
-                sites,
-                ip_stack,
-                filters,
-            } = resource;
-
+        Resource::Dns(DnsResource {
+            id: _,
+            address,
+            name,
+            address_description,
+            sites,
+            ip_stack,
+            filters,
+        }) => {
             let edits: [Option<Box<dyn FnOnce(&mut Generator) + '_>>; 6] = [
                 Some(Box::new(|g| {
                     *address = arb_different_dns_resource_address(g, address, state)
@@ -310,16 +308,14 @@ fn arb_resource_edit(
 
             edits.swap_remove(g.choose_index(edits.len()))(g);
         }
-        Resource::Cidr(resource) => {
-            let CidrResource {
-                id: _,
-                address,
-                name,
-                address_description,
-                sites,
-                filters,
-            } = resource;
-
+        Resource::Cidr(CidrResource {
+            id: _,
+            address,
+            name,
+            address_description,
+            sites,
+            filters,
+        }) => {
             let edits: [Option<Box<dyn FnOnce(&mut Generator) + '_>>; 5] = [
                 Some(Box::new(|g| {
                     *address = arb_different_cidr_resource_address(g, *address)
@@ -336,13 +332,11 @@ fn arb_resource_edit(
 
             edits.swap_remove(g.choose_index(edits.len()))(g);
         }
-        Resource::DevicePool(resource) => {
-            let DevicePoolResource {
-                id: _,
-                name,
-                filters,
-            } = resource;
-
+        Resource::DevicePool(DevicePoolResource {
+            id: _,
+            name,
+            filters,
+        }) => {
             let mut edits = SmallVec::<[Box<dyn FnOnce(&mut Generator) + '_>; 2]>::from_buf([
                 Box::new(|g| *name = arb_different_name(g, name)),
                 Box::new(|g| *filters = arb_different_filters(g, filters)),
