@@ -344,7 +344,7 @@ impl StubPortal {
             .get(&resource)
             .expect("resource to be known");
 
-        let gateways = self.gateways_by_site.get(site_id).unwrap();
+        let gateways = &self.gateways_by_site[site_id];
         let (gateway, _, _) =
             select_by_index(gateways, self.gateway_selector).expect("site to have a gateway");
 

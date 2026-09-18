@@ -46,7 +46,7 @@ pub(crate) struct IcmpFlow {
     pub(crate) dst: Destination,
     pub(crate) identifier: Identifier,
     pub(crate) next_seq: Seq,
-    pub(crate) route: FlowRoute,
+    pub(crate) route: Route,
 }
 
 #[derive(Debug, Clone)]
@@ -56,11 +56,11 @@ pub(crate) struct UdpFlow {
     pub(crate) dst: Destination,
     pub(crate) sport: SPort,
     pub(crate) dport: DPort,
-    pub(crate) route: FlowRoute,
+    pub(crate) route: Route,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum FlowRoute {
+pub(crate) enum Route {
     Resource {
         resource: ResourceId,
         gateway: GatewayId,
@@ -69,33 +69,12 @@ pub(crate) enum FlowRoute {
     Peer(ClientId),
 }
 
-impl FlowRoute {
-    pub(crate) fn from_remote(remote: Remote, resource: Option<ResourceId>) -> Self {
-        match (remote, resource) {
-            (Remote::Gateway(gateway), Some(resource)) => FlowRoute::Resource { resource, gateway },
-            (Remote::Gateway(gateway), None) => FlowRoute::Gateway(gateway),
-            (Remote::Client(client), None) => FlowRoute::Peer(client),
-            (Remote::Client(client), Some(resource)) => {
-                panic!("client {client} cannot serve resource {resource}")
-            }
-        }
-    }
-
-    pub(crate) fn packet_route(self) -> PacketRoute {
+impl Route {
+    pub(crate) fn remote(self) -> Remote {
         match self {
-            FlowRoute::Resource { resource, gateway } => {
-                PacketRoute::Resource { resource, gateway }
-            }
-            FlowRoute::Gateway(gateway) => PacketRoute::Gateway(gateway),
-            FlowRoute::Peer(client) => PacketRoute::Peer(client),
-        }
-    }
-
-    pub(crate) fn is_peer(self) -> bool {
-        match self {
-            FlowRoute::Resource { .. } => false,
-            FlowRoute::Gateway(_) => false,
-            FlowRoute::Peer(_) => true,
+            Route::Resource { gateway, .. } => Remote::Gateway(gateway),
+            Route::Gateway(gateway) => Remote::Gateway(gateway),
+            Route::Peer(client) => Remote::Client(client),
         }
     }
 }
@@ -155,27 +134,6 @@ impl ProbeRequest {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum PacketRoute {
-    Drop,
-    Resource {
-        resource: ResourceId,
-        gateway: GatewayId,
-    },
-    RejectedByClient,
-    ResourceRejectedByGateway {
-        resource: ResourceId,
-        gateway: GatewayId,
-    },
-    ResourceUnreachableByGateway {
-        resource: ResourceId,
-        gateway: GatewayId,
-    },
-    Gateway(GatewayId),
-    Peer(ClientId),
-    PeerRejectedByPeer(ClientId),
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Remote {
     Gateway(GatewayId),
     Client(ClientId),
@@ -184,14 +142,33 @@ pub(crate) enum Remote {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ExpectedOutcome {
     Dropped,
-    RoundTripCompleted {
-        remote: Remote,
-        resource: Option<ResourceId>,
-    },
+    RoundTripCompleted(Route),
     Rejected {
         by: RejectionRemote,
         response: RejectionResponse,
     },
+}
+
+impl ExpectedOutcome {
+    /// The remote the packet reached, if any.
+    pub(crate) fn remote(self) -> Option<Remote> {
+        match self {
+            ExpectedOutcome::Dropped => None,
+            ExpectedOutcome::RoundTripCompleted(route) => Some(route.remote()),
+            ExpectedOutcome::Rejected {
+                by: RejectionRemote::Local,
+                ..
+            } => None,
+            ExpectedOutcome::Rejected {
+                by: RejectionRemote::Gateway(gateway),
+                ..
+            } => Some(Remote::Gateway(gateway)),
+            ExpectedOutcome::Rejected {
+                by: RejectionRemote::Client(client),
+                ..
+            } => Some(Remote::Client(client)),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

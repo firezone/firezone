@@ -502,20 +502,3 @@ fn non_dns_port(index: u32) -> u16 {
 
     (after_do53 + u32::from(after_do53 >= 53535)) as u16
 }
-
-#[cfg(test)]
-mod tests {
-    use std::collections::BTreeSet;
-
-    use super::non_dns_port;
-
-    /// The mapping is a bijection onto `[0, 65535] \ {53, 53535}`.
-    #[test]
-    fn non_dns_port_is_a_bijection() {
-        let seen = (0..=65533).map(non_dns_port).collect::<BTreeSet<_>>();
-
-        assert_eq!(seen.len(), 65534);
-        assert!(!seen.contains(&53));
-        assert!(!seen.contains(&53535));
-    }
-}

@@ -104,10 +104,8 @@ pub(crate) fn assert_probes(
                     continue;
                 };
             }
-            ExpectedOutcome::RoundTripCompleted {
-                remote: expected_remote,
-                ..
-            } => {
+            ExpectedOutcome::RoundTripCompleted(route) => {
+                let expected_remote = route.remote();
                 let ([received_request], [received_response]) =
                     (received_requests.as_slice(), received_responses.as_slice())
                 else {
@@ -392,7 +390,7 @@ fn assert_received_request(
         tracing::error!(target: "assertions", id = ?expected.id, "Probe payload changed in transit");
     }
 
-    let ref_client = ref_clients.get(&expected.origin).unwrap();
+    let ref_client = &ref_clients[&expected.origin];
     let expected_source = ref_client.tunnel_ip_for(received_request.packet.source());
     if received_request.packet.source() != expected_source {
         tracing::error!(target: "assertions", id = ?expected.id, "Received request has the wrong source");

@@ -342,12 +342,8 @@ impl TunnelTest {
             }
             Transition::SetInternetResourceState { client_id, active } => {
                 if !active
-                    && let Some(resource) = ref_state
-                        .clients
-                        .get(&client_id)
-                        .unwrap()
-                        .inner()
-                        .internet_resource()
+                    && let Some(resource) =
+                        ref_state.clients[&client_id].inner().internet_resource()
                 {
                     for gateway in state.gateways.values_mut() {
                         gateway.exec_mut(|gateway| {
@@ -594,7 +590,7 @@ impl TunnelTest {
                 // 3. Reconnect to the portal: in prod, we reconnect and receive a
                 //    new `init` message.
                 let now = state.flux_capacitor.now::<Instant>();
-                let ref_client = ref_state.clients.get(&client_id).unwrap();
+                let ref_client = &ref_state.clients[&client_id];
                 let client = state.clients.get_mut(&client_id).unwrap();
                 client.exec_mut(|c| {
                     c.sut.set_portal_connected(true);
@@ -606,7 +602,7 @@ impl TunnelTest {
 
             Transition::ReconnectPortal { client_id } => {
                 let client = state.clients.get_mut(&client_id).unwrap();
-                let ref_client = ref_state.clients.get(&client_id).unwrap();
+                let ref_client = &ref_state.clients[&client_id];
                 let ipv4 = client.inner().sut.tunnel_ip_config().unwrap().v4;
                 let ipv6 = client.inner().sut.tunnel_ip_config().unwrap().v6;
                 let all_resources = ref_client.inner().resource_descriptions();
@@ -672,7 +668,7 @@ impl TunnelTest {
                     .clients
                     .iter_mut()
                     .map(|(client_id, client)| {
-                        let ref_client = ref_state.clients.get(client_id).unwrap();
+                        let ref_client = &ref_state.clients[client_id];
                         let resources = ref_client
                             .inner()
                             .all_resource_ids()
@@ -705,7 +701,7 @@ impl TunnelTest {
                 }
 
                 let client = state.clients.get_mut(&client_id).unwrap();
-                let ref_client = ref_state.clients.get(&client_id).unwrap();
+                let ref_client = &ref_state.clients[&client_id];
 
                 // Copy current state that will be preserved.
                 let ipv4 = client.inner().sut.tunnel_ip_config().unwrap().v4;
@@ -774,7 +770,7 @@ impl TunnelTest {
         // Per-client assertions for client-specific state
         for (client_id, ref_client_host) in &ref_state.clients {
             let ref_client = ref_client_host.inner();
-            let sut_client = state.clients.get(client_id).unwrap().inner();
+            let sut_client = state.clients[client_id].inner();
 
             assert_tcp_connections(ref_client, sut_client);
             assert_udp_dns_packets_properties(ref_client, sut_client);
@@ -1758,14 +1754,7 @@ fn address_from_destination(
 ) -> IpAddr {
     match destination {
         Destination::DomainName { resolved_ip, name } => {
-            let available_ips = state
-                .clients
-                .get(&client_id)
-                .unwrap()
-                .inner()
-                .dns_records
-                .get(name)
-                .unwrap()
+            let available_ips = state.clients[&client_id].inner().dns_records[name]
                 .iter()
                 .filter(|ip| match ip {
                     IpAddr::V4(_) => src.is_ipv4(),

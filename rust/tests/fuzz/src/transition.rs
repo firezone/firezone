@@ -7,7 +7,7 @@ use tunnel_proto::{
 };
 
 use super::{
-    probe::{FlowId, FlowRoute, ProbeId},
+    probe::{FlowId, ProbeId, Route},
     reference::PrivateKey,
     resource::{CidrResource, Resource},
     sim_net::Host,
@@ -167,52 +167,45 @@ impl Transition {
     }
 
     /// Returns whether a flow remains predictable across this transition.
-    pub(crate) fn retains_flow(
-        &self,
-        client_id: ClientId,
-        route: FlowRoute,
-        iceless: bool,
-    ) -> bool {
+    pub(crate) fn retains_flow(&self, client_id: ClientId, route: Route, iceless: bool) -> bool {
         match self {
             Transition::AddResource(_) => match route {
-                FlowRoute::Resource { .. } => false,
-                FlowRoute::Gateway(_) => true,
-                FlowRoute::Peer(_) => true,
+                Route::Resource { .. } => false,
+                Route::Gateway(_) => true,
+                Route::Peer(_) => true,
             },
             Transition::RemoveResource(resource) => match route {
-                FlowRoute::Resource { resource: used, .. } => used != *resource,
-                FlowRoute::Gateway(_) => false,
-                FlowRoute::Peer(_) => false,
+                Route::Resource { resource: used, .. } => used != *resource,
+                Route::Gateway(_) => false,
+                Route::Peer(_) => false,
             },
             Transition::ChangeCidrResourceAddress { .. } => match route {
-                FlowRoute::Resource { .. } => false,
-                FlowRoute::Gateway(_) => false,
-                FlowRoute::Peer(_) => true,
+                Route::Resource { .. } => false,
+                Route::Gateway(_) => false,
+                Route::Peer(_) => true,
             },
             Transition::MoveResourceToNewSite { resource, .. } => match route {
-                FlowRoute::Resource { resource: used, .. } => used != resource.id(),
-                FlowRoute::Gateway(_) => false,
-                FlowRoute::Peer(_) => true,
+                Route::Resource { resource: used, .. } => used != resource.id(),
+                Route::Gateway(_) => false,
+                Route::Peer(_) => true,
             },
             Transition::ChangeFiltersOfResource { resource, .. } => match route {
-                FlowRoute::Resource { .. } => false,
-                FlowRoute::Gateway(_) => false,
-                FlowRoute::Peer(_) => !is_device_pool(resource),
+                Route::Resource { .. } => false,
+                Route::Gateway(_) => false,
+                Route::Peer(_) => !is_device_pool(resource),
             },
             Transition::ChangeResourceType {
                 old_resource,
                 new_resource,
             } => match route {
-                FlowRoute::Resource { .. } => false,
-                FlowRoute::Gateway(_) => false,
-                FlowRoute::Peer(_) => {
-                    !is_device_pool(old_resource) && !is_device_pool(new_resource)
-                }
+                Route::Resource { .. } => false,
+                Route::Gateway(_) => false,
+                Route::Peer(_) => !is_device_pool(old_resource) && !is_device_pool(new_resource),
             },
             Transition::UpdateDevicePoolMembers { removed, .. } => match route {
-                FlowRoute::Resource { .. } => true,
-                FlowRoute::Gateway(_) => true,
-                FlowRoute::Peer(peer) => !removed.contains(&peer) && !removed.contains(&client_id),
+                Route::Resource { .. } => true,
+                Route::Gateway(_) => true,
+                Route::Peer(peer) => !removed.contains(&peer) && !removed.contains(&client_id),
             },
             Transition::SetInternetResourceState {
                 client_id: changed, ..
@@ -231,27 +224,27 @@ impl Transition {
             Transition::RoamClient {
                 client_id: changed, ..
             } => match route {
-                FlowRoute::Resource { .. } => iceless || client_id != *changed,
-                FlowRoute::Gateway(_) => iceless || client_id != *changed,
-                FlowRoute::Peer(peer) => iceless || (client_id != *changed && peer != *changed),
+                Route::Resource { .. } => iceless || client_id != *changed,
+                Route::Gateway(_) => iceless || client_id != *changed,
+                Route::Peer(peer) => iceless || (client_id != *changed && peer != *changed),
             },
             Transition::ReconnectPortal { .. } => true,
             Transition::RestartClient {
                 client_id: restarted,
                 ..
             } => match route {
-                FlowRoute::Resource { .. } => client_id != *restarted,
-                FlowRoute::Gateway(_) => client_id != *restarted,
-                FlowRoute::Peer(peer) => client_id != *restarted && peer != *restarted,
+                Route::Resource { .. } => client_id != *restarted,
+                Route::Gateway(_) => client_id != *restarted,
+                Route::Peer(peer) => client_id != *restarted && peer != *restarted,
             },
             Transition::DeployNewRelays(_) => iceless,
             Transition::PartitionRelaysFromPortal => false,
             Transition::Idle => true,
             Transition::RebootRelaysWhilePartitioned(_) => false,
             Transition::DeauthorizeWhileGatewayIsPartitioned(resource) => match route {
-                FlowRoute::Resource { resource: used, .. } => used != *resource,
-                FlowRoute::Gateway(_) => false,
-                FlowRoute::Peer(_) => false,
+                Route::Resource { resource: used, .. } => used != *resource,
+                Route::Gateway(_) => false,
+                Route::Peer(_) => false,
             },
             Transition::UpdateDnsRecords { .. } => true,
         }
