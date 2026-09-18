@@ -38,12 +38,7 @@ fuzz_target!(|data: &[u8]| {
         TunnelTest::invalidate(&mut tunnel, &reference, &transition);
 
         portal.apply(&transition);
-        reference = ReferenceState::apply(
-            reference,
-            &portal,
-            &transition,
-            flux_capacitor.now_instant(),
-        );
+        reference = ReferenceState::apply(reference, &portal, &transition, flux_capacitor.now());
         tunnel = TunnelTest::apply(tunnel, &reference, &mut portal, transition);
         TunnelTest::check_invariants(&tunnel, &reference, &portal);
     }
