@@ -37,45 +37,31 @@ import dev.firezone.android.features.session.ui.SessionActivity
 import dev.firezone.android.features.settings.ui.SettingsActivity
 import dev.firezone.android.features.signin.ui.compose.SignInScreen
 import dev.firezone.android.features.splash.ui.SplashViewModel
-import dev.firezone.android.features.splash.ui.compose.SplashScreen
 
-private const val ROUTE_SPLASH = "splash"
+// Where the launch waits while the check decides, and where the permission destinations hand
+// control back to. The system splash covers it on launch; it has nothing of its own to draw.
+private const val ROUTE_DECIDING = "deciding"
 private const val ROUTE_SIGN_IN = "sign-in"
 private const val ROUTE_VPN_PERMISSION = "vpn-permission"
 private const val ROUTE_NOTIFICATION_PERMISSION = "notification-permission"
 private const val ROUTE_CERTIFICATE_PERMISSION = "certificate-permission"
 
 @Composable
-fun AppNavHost(
+internal fun AppNavHost(
     onNotificationPermissionRequested: () -> Unit,
     onSignInLaunched: () -> Unit,
+    onDestinationReached: () -> Unit,
     modifier: Modifier = Modifier,
-) {
-    val navController = rememberNavController()
-
-    NavHost(navController = navController, startDestination = ROUTE_SPLASH, modifier = modifier) {
-        composable(ROUTE_SPLASH) { SplashRoute(navController) }
-        composable(ROUTE_SIGN_IN) { SignInRoute(onSignInLaunched) }
-        composable(ROUTE_VPN_PERMISSION) { VpnPermissionRoute(navController) }
-        composable(ROUTE_NOTIFICATION_PERMISSION) {
-            NotificationPermissionRoute(navController, onNotificationPermissionRequested)
-        }
-        composable(ROUTE_CERTIFICATE_PERMISSION) { CertificatePermissionRoute(navController) }
-    }
-}
-
-@Composable
-private fun SplashRoute(
-    navController: NavHostController,
     viewModel: SplashViewModel = hiltViewModel(),
 ) {
+    val navController = rememberNavController()
     val context = LocalContext.current
     val activity = LocalActivity.current ?: return
     val action by viewModel.actionStateFlow.collectAsStateWithLifecycle()
-    // Connect on start applies to the launch, not to every return to the splash.
+    // Connect on start applies to the launch, not to every return to this host.
     var isInitialLaunch by rememberSaveable { mutableStateOf(true) }
 
-    // The other destinations hand control back here when they are done, and the answer can change
+    // The permission destinations hand control back when they are done, and the answer can change
     // while the app is in the background, so the check runs on every resume rather than once.
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
         viewModel.checkTunnelState(activity, isInitialLaunch)
@@ -111,9 +97,19 @@ private fun SplashRoute(
                 )
             }
         }
+
+        onDestinationReached()
     }
 
-    SplashScreen()
+    NavHost(navController = navController, startDestination = ROUTE_DECIDING, modifier = modifier) {
+        composable(ROUTE_DECIDING) { }
+        composable(ROUTE_SIGN_IN) { SignInRoute(onSignInLaunched) }
+        composable(ROUTE_VPN_PERMISSION) { VpnPermissionRoute(navController) }
+        composable(ROUTE_NOTIFICATION_PERMISSION) {
+            NotificationPermissionRoute(navController, onNotificationPermissionRequested)
+        }
+        composable(ROUTE_CERTIFICATE_PERMISSION) { CertificatePermissionRoute(navController) }
+    }
 }
 
 @Composable

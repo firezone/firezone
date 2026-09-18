@@ -13,7 +13,6 @@ import dev.firezone.android.features.permission.certificate.ui.compose.Certifica
 import dev.firezone.android.features.permission.notification.ui.compose.NotificationPermissionScreen
 import dev.firezone.android.features.permission.vpn.ui.compose.VpnPermissionScreen
 import dev.firezone.android.features.signin.ui.compose.SignInScreen
-import dev.firezone.android.features.splash.ui.compose.SplashScreen
 import dev.firezone.android.ui.theme.FirezoneTheme
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -30,9 +29,6 @@ import org.robolectric.annotation.GraphicsMode
     qualifiers = STORE_SCREENSHOT_QUALIFIERS,
 )
 class OnboardingScreenshotTest {
-    @Test
-    fun splash() = capture("splash") { SplashScreen() }
-
     @Test
     fun signIn() = capture("sign-in") { SignInScreen(onSignIn = {}, onSettings = {}) }
 

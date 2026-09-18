@@ -23,7 +23,6 @@ import dev.firezone.android.core.x509.KeyChain
 import dev.firezone.android.tunnel.TunnelService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -33,7 +32,6 @@ import kotlinx.coroutines.withTimeoutOrNull
 import javax.inject.Inject
 import kotlin.coroutines.resume
 
-private const val REQUEST_DELAY = 1000L
 private const val POLICY_ANSWER_TIMEOUT = 10_000L
 
 @HiltViewModel
@@ -71,9 +69,6 @@ internal class SplashViewModel
             activity: Activity,
             isInitialLaunch: Boolean,
         ) {
-            // Stay a while and enjoy the logo
-            delay(REQUEST_DELAY)
-
             // If we don't have VPN permission, we can't continue.
             if (!hasVpnPermissions(activity) && applicationMode != ApplicationMode.TESTING) {
                 actionMutableStateFlow.value = ViewAction.NavigateToVpnPermission
