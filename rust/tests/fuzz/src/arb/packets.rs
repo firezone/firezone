@@ -10,6 +10,7 @@ use tunnel_proto::messages::{Filter, PortRange};
 
 use super::context::Generator;
 use crate::reference::ReferenceState;
+use crate::stub_portal::StubPortal;
 use crate::transition::{Destination, Transition};
 
 /// Represents a semantic destination selected by the state-aware grammar.
@@ -56,7 +57,7 @@ enum DstSpec {
     Ip(IpAddr),
 }
 
-pub(super) fn targets(state: &ReferenceState) -> Vec<PacketTarget> {
+pub(super) fn targets(state: &ReferenceState, portal: &StubPortal) -> Vec<PacketTarget> {
     state
         .ipv4_cidr_resource_dsts()
         .into_iter()
@@ -143,7 +144,7 @@ pub(super) fn targets(state: &ReferenceState) -> Vec<PacketTarget> {
         )
         .chain(
             state
-                .connected_gateway_ipv4_ips()
+                .connected_gateway_ipv4_ips(portal)
                 .into_iter()
                 .map(|(client_id, network)| PacketTarget::ConnectedGateway {
                     client_id,
@@ -153,7 +154,7 @@ pub(super) fn targets(state: &ReferenceState) -> Vec<PacketTarget> {
         )
         .chain(
             state
-                .connected_gateway_ipv6_ips()
+                .connected_gateway_ipv6_ips(portal)
                 .into_iter()
                 .map(|(client_id, network)| PacketTarget::ConnectedGateway {
                     client_id,
@@ -161,21 +162,24 @@ pub(super) fn targets(state: &ReferenceState) -> Vec<PacketTarget> {
                     network: network.into(),
                 }),
         )
-        .chain(state.pool_routed_other_client_tun_ips().into_iter().map(
-            |(client_id, dst, filters)| {
-                let client = state.clients[&client_id].inner();
-                let src = match dst {
-                    IpAddr::V4(_) => IpAddr::V4(client.tunnel_ip4),
-                    IpAddr::V6(_) => IpAddr::V6(client.tunnel_ip6),
-                };
-                PacketTarget::Peer {
-                    client_id,
-                    src,
-                    dst,
-                    filters,
-                }
-            },
-        ))
+        .chain(
+            state
+                .pool_routed_other_client_tun_ips(portal)
+                .into_iter()
+                .map(|(client_id, dst, filters)| {
+                    let client = state.clients[&client_id].inner();
+                    let src = match dst {
+                        IpAddr::V4(_) => IpAddr::V4(client.tunnel_ip4),
+                        IpAddr::V6(_) => IpAddr::V6(client.tunnel_ip6),
+                    };
+                    PacketTarget::Peer {
+                        client_id,
+                        src,
+                        dst,
+                        filters,
+                    }
+                }),
+        )
         .collect::<Vec<_>>()
 }
 

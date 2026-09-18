@@ -19,25 +19,31 @@ fuzz_target!(|data: &[u8]| {
     let utc_start = DateTime::<Utc>::from_timestamp(0, 0).expect("0 is a valid UNIX timestamp");
     let flux_capacitor = FluxCapacitor::new(now, utc_start);
     let mut generator = Generator::new(data);
-    let mut reference = generator.initial_state();
+    let (mut reference, mut portal) = generator.initial_state();
 
-    let mut tunnel = TunnelTest::init_test(&reference, flux_capacitor.clone());
-    TunnelTest::check_invariants(&tunnel, &reference);
+    let mut tunnel = TunnelTest::init_test(&reference, &mut portal, flux_capacitor.clone());
+    TunnelTest::check_invariants(&tunnel, &reference, &portal);
 
     for applied in 0..MAX_TRANSITIONS {
         if generator.is_empty() {
             break;
         }
 
-        let transition = generator.transition(&reference);
+        let transition = generator.transition(&reference, &portal);
 
         tracing::debug!("Applying transition {applied}: {transition:?}");
 
-        ReferenceState::invalidate(&mut reference, &transition);
+        ReferenceState::invalidate(&mut reference, &portal, &transition);
         TunnelTest::invalidate(&mut tunnel, &reference, &transition);
 
-        reference = ReferenceState::apply(reference, &transition, flux_capacitor.now_instant());
-        tunnel = TunnelTest::apply(tunnel, &reference, transition);
-        TunnelTest::check_invariants(&tunnel, &reference);
+        portal.apply(&transition);
+        reference = ReferenceState::apply(
+            reference,
+            &portal,
+            &transition,
+            flux_capacitor.now_instant(),
+        );
+        tunnel = TunnelTest::apply(tunnel, &reference, &mut portal, transition);
+        TunnelTest::check_invariants(&tunnel, &reference, &portal);
     }
 });

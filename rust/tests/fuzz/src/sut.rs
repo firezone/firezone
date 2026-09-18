@@ -6,6 +6,7 @@ use super::sim_client::SimClient;
 use super::sim_gateway::SimGateway;
 use super::sim_net::{Host, HostId, RoutingTable};
 use super::sim_relay::SimRelay;
+use super::stub_portal::StubPortal;
 use super::transition::{DPort, Destination, DnsQuery, Identifier, SPort, Seq};
 use crate::assertions::*;
 use crate::flux_capacitor::FluxCapacitor;
@@ -77,7 +78,11 @@ struct ResolvedUdpFlow {
 
 impl TunnelTest {
     // Initialize the system under test from our reference state.
-    pub fn init_test(ref_state: &ReferenceState, flux_capacitor: FluxCapacitor) -> Self {
+    pub fn init_test(
+        ref_state: &ReferenceState,
+        portal: &mut StubPortal,
+        flux_capacitor: FluxCapacitor,
+    ) -> Self {
         // Construct client, gateway and relay from the initial state.
         let mut clients = ref_state
             .clients
@@ -86,9 +91,9 @@ impl TunnelTest {
                 let client = ref_client.map(
                     |ref_client, _, _| {
                         ref_client.init(
-                            ref_state.portal.upstream_do53().to_vec(),
-                            ref_state.portal.upstream_doh().to_vec(),
-                            ref_state.portal.search_domain(),
+                            portal.upstream_do53().to_vec(),
+                            portal.upstream_doh().to_vec(),
+                            portal.search_domain(),
                             flux_capacitor.now(),
                             flux_capacitor.now(),
                         )
@@ -144,8 +149,7 @@ impl TunnelTest {
                 .exec_mut(|g| g.update_relays(iter::empty(), relays.iter(), flux_capacitor.now()));
         }
 
-        let upstream_do53_servers = ref_state
-            .portal
+        let upstream_do53_servers = portal
             .upstream_do53()
             .iter()
             .map(|u| SocketAddr::new(u.ip, 53))
@@ -173,13 +177,18 @@ impl TunnelTest {
         };
 
         let mut buffered_transmits = BufferedTransmits::default();
-        this.advance(ref_state, &mut buffered_transmits); // Perform initial setup before we apply the first transition.
+        this.advance(ref_state, portal, &mut buffered_transmits); // Perform initial setup before we apply the first transition.
 
         this
     }
 
     /// Apply a generated state transition to our system under test.
-    pub fn apply(mut state: Self, ref_state: &ReferenceState, transition: Transition) -> Self {
+    pub fn apply(
+        mut state: Self,
+        ref_state: &ReferenceState,
+        portal: &mut StubPortal,
+        transition: Transition,
+    ) -> Self {
         let mut buffered_transmits = BufferedTransmits::default();
         let now = state.flux_capacitor.now();
         let utc_now = state.flux_capacitor.now();
@@ -220,8 +229,7 @@ impl TunnelTest {
                 });
 
                 for (client_id, client) in &mut state.clients {
-                    if let Some(gateway) = ref_state
-                        .portal
+                    if let Some(gateway) = portal
                         .gateway_for_resource(new_resource.id())
                         .and_then(|gid| state.gateways.get_mut(gid))
                     {
@@ -318,8 +326,7 @@ impl TunnelTest {
                 for (client_id, client) in &mut state.clients {
                     client.exec_mut(|c| c.sut.remove_resource(rid, now));
 
-                    if let Some(gateway) = ref_state
-                        .portal
+                    if let Some(gateway) = portal
                         .gateway_for_resource(rid)
                         .and_then(|gid| state.gateways.get_mut(gid))
                     {
@@ -482,8 +489,8 @@ impl TunnelTest {
                             ipv6: c.sut.tunnel_ip_config().unwrap().v6,
                             upstream_dns: vec![],
                             upstream_do53: upstream_do53.clone(),
-                            search_domain: ref_state.portal.search_domain(),
-                            upstream_doh: ref_state.portal.upstream_doh().to_vec(),
+                            search_domain: portal.search_domain(),
+                            upstream_doh: portal.upstream_doh().to_vec(),
                         })
                     });
                 }
@@ -508,8 +515,8 @@ impl TunnelTest {
                             ipv4: c.sut.tunnel_ip_config().unwrap().v4,
                             ipv6: c.sut.tunnel_ip_config().unwrap().v6,
                             upstream_dns: vec![],
-                            upstream_do53: ref_state.portal.upstream_do53().to_vec(),
-                            search_domain: ref_state.portal.search_domain(),
+                            upstream_do53: portal.upstream_do53().to_vec(),
+                            search_domain: portal.search_domain(),
                             upstream_doh: upstream_doh.clone(),
                         })
                     });
@@ -522,8 +529,8 @@ impl TunnelTest {
                             ipv4: c.sut.tunnel_ip_config().unwrap().v4,
                             ipv6: c.sut.tunnel_ip_config().unwrap().v6,
                             upstream_dns: vec![],
-                            upstream_do53: ref_state.portal.upstream_do53().to_vec(),
-                            upstream_doh: ref_state.portal.upstream_doh().to_vec(),
+                            upstream_do53: portal.upstream_do53().to_vec(),
+                            upstream_doh: portal.upstream_doh().to_vec(),
                             search_domain: search_domain.clone(),
                         })
                     });
@@ -549,7 +556,7 @@ impl TunnelTest {
                 client.set_offline();
 
                 let dead_until = now + dead_window;
-                state.advance_to(ref_state, &mut buffered_transmits, dead_until);
+                state.advance_to(ref_state, portal, &mut buffered_transmits, dead_until);
                 state.flux_capacitor.skip_to(dead_until);
 
                 // 2. The new link comes up: assign the new IPs, re-register the
@@ -570,7 +577,7 @@ impl TunnelTest {
 
                 let portal_until = now + portal_window;
                 state.client_portal_offline_until = Some((client_id, portal_until));
-                state.advance_to(ref_state, &mut buffered_transmits, portal_until);
+                state.advance_to(ref_state, portal, &mut buffered_transmits, portal_until);
                 state.flux_capacitor.skip_to(portal_until);
                 state.client_portal_offline_until = None;
 
@@ -600,9 +607,9 @@ impl TunnelTest {
                         ipv4,
                         ipv6,
                         upstream_dns: Vec::new(),
-                        upstream_do53: ref_state.portal.upstream_do53().to_vec(),
-                        upstream_doh: ref_state.portal.upstream_doh().to_vec(),
-                        search_domain: ref_state.portal.search_domain(),
+                        upstream_do53: portal.upstream_do53().to_vec(),
+                        upstream_doh: portal.upstream_doh().to_vec(),
+                        search_domain: portal.search_domain(),
                     });
                     c.update_relays(iter::empty(), state.relays.iter(), now);
                     c.sut.set_resources(all_resources, now);
@@ -617,7 +624,7 @@ impl TunnelTest {
 
                 while state.flux_capacitor.now::<Instant>() <= cut_off {
                     state.flux_capacitor.tick(Duration::from_secs(5));
-                    state.advance(ref_state, &mut buffered_transmits);
+                    state.advance(ref_state, portal, &mut buffered_transmits);
                 }
             }
             Transition::PartitionRelaysFromPortal => {
@@ -634,7 +641,7 @@ impl TunnelTest {
                 }
 
                 // 2. Advance state to ensure this is reflected.
-                state.advance(ref_state, &mut buffered_transmits);
+                state.advance(ref_state, portal, &mut buffered_transmits);
 
                 let now = state.flux_capacitor.now();
 
@@ -669,7 +676,7 @@ impl TunnelTest {
                     })
                     .collect();
 
-                if let Some(gid) = ref_state.portal.gateway_for_resource(rid)
+                if let Some(gid) = portal.gateway_for_resource(rid)
                     && let Some(gateway) = state.gateways.get_mut(gid)
                 {
                     gateway.exec_mut(|gateway| gateway.retain_authorizations(authorizations));
@@ -705,9 +712,9 @@ impl TunnelTest {
                         ipv4,
                         ipv6,
                         upstream_dns: Vec::new(),
-                        upstream_do53: ref_state.portal.upstream_do53().to_vec(),
-                        upstream_doh: ref_state.portal.upstream_doh().to_vec(),
-                        search_domain: ref_state.portal.search_domain(),
+                        upstream_do53: portal.upstream_do53().to_vec(),
+                        upstream_doh: portal.upstream_doh().to_vec(),
+                        search_domain: portal.search_domain(),
                     });
                     c.sut.update_system_resolvers(system_dns);
                     c.sut.set_resources(all_resources, now);
@@ -718,7 +725,7 @@ impl TunnelTest {
             Transition::UpdateDnsRecords { .. } => {}
         };
 
-        state.advance(ref_state, &mut buffered_transmits);
+        state.advance(ref_state, portal, &mut buffered_transmits);
 
         if let Some((probe_id, flow_id)) = application_probe {
             state.record_dns_nat_observation(ref_state, probe_id, flow_id);
@@ -728,7 +735,7 @@ impl TunnelTest {
     }
 
     // Assert against the reference state machine.
-    pub fn check_invariants(state: &Self, ref_state: &ReferenceState) {
+    pub fn check_invariants(state: &Self, ref_state: &ReferenceState, portal: &StubPortal) {
         // Aggregate all clients for system-wide assertions
         let all_ref_clients = ref_state
             .clients
@@ -762,8 +769,8 @@ impl TunnelTest {
             assert_tcp_connections(ref_client, sut_client);
             assert_udp_dns_packets_properties(ref_client, sut_client);
             assert_tcp_dns(ref_client, sut_client);
-            assert_dns_servers_are_valid(ref_client, sut_client, &ref_state.portal);
-            assert_search_domain_is_valid(&ref_state.portal, sut_client);
+            assert_dns_servers_are_valid(ref_client, sut_client, portal);
+            assert_search_domain_is_valid(portal, sut_client);
             assert_routes_are_valid(ref_client, sut_client);
             assert_resource_list(ref_client, sut_client);
         }
@@ -908,15 +915,21 @@ impl TunnelTest {
     /// Consequently, this function needs to loop until no host can make progress at which point we consider the [`Transition`] complete.
     ///
     /// At most, we will spend 20s of "simulation time" advancing the state.
-    fn advance(&mut self, ref_state: &ReferenceState, buffered_transmits: &mut BufferedTransmits) {
+    fn advance(
+        &mut self,
+        ref_state: &ReferenceState,
+        portal: &mut StubPortal,
+        buffered_transmits: &mut BufferedTransmits,
+    ) {
         let cut_off = self.flux_capacitor.now::<Instant>() + Duration::from_secs(20);
-        self.advance_to(ref_state, buffered_transmits, cut_off);
+        self.advance_to(ref_state, portal, buffered_transmits, cut_off);
     }
 
     /// Like [`TunnelTest::advance`] but advances at most until `cut_off`.
     fn advance_to(
         &mut self,
         ref_state: &ReferenceState,
+        portal: &mut StubPortal,
         buffered_transmits: &mut BufferedTransmits,
         cut_off: Instant,
     ) {
@@ -959,7 +972,7 @@ impl TunnelTest {
             });
 
             if let Some((client_id, event)) = client_event {
-                match self.on_client_event(client_id, event, ref_state) {
+                match self.on_client_event(client_id, event, ref_state, portal) {
                     Ok(()) => {}
                     Err(ClientEventError::Client { id, error: e }) => {
                         tracing::debug!("Failed to handle ClientEvent: {e}");
@@ -1290,8 +1303,8 @@ impl TunnelTest {
         src: ClientId,
         event: ClientEvent,
         ref_state: &ReferenceState,
+        portal: &mut StubPortal,
     ) -> Result<(), ClientEventError> {
-        let portal = &ref_state.portal;
         let now = self.flux_capacitor.now();
 
         // Simulate a client that has not yet reconnected to the portal after a
@@ -1496,6 +1509,7 @@ impl TunnelTest {
                     deny_device_access(&mut self.clients, src, ipv4, ipv6, FailReason::Forbidden);
                     return Ok(());
                 };
+                portal.record_peer_policy_authorization(src, remote_id, pool);
                 let filters = portal.device_pool_filters(pool).unwrap_or_default();
 
                 let src_client = self.clients.get(&src).expect("unknown source client");

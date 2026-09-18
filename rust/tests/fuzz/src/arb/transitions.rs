@@ -18,6 +18,7 @@ use crate::probe::FlowId;
 use crate::reference::ReferenceState;
 use crate::resource::{CidrResource, DevicePoolResource, DnsResource, Resource};
 use crate::sim_net::{EdgeConfig, Host};
+use crate::stub_portal::StubPortal;
 use crate::transition::{Seq, Transition};
 
 #[derive(Clone, Copy, Debug)]
@@ -56,17 +57,21 @@ enum ExistingFlow {
     Icmp(FlowId, Seq),
 }
 
-pub(super) fn generate(g: &mut Generator, state: &ReferenceState) -> Transition {
-    let addable_resources = state.resources_unknown_to_all_clients();
-    let cidr_resources = state.cidr_resources_on_any_client();
-    let move_resources = move_resource_candidates(state);
-    let filter_resources = state.resources_with_filters_on_any_client();
-    let replaceable_resources = state.replaceable_resources_on_any_client();
+pub(super) fn generate(
+    g: &mut Generator,
+    state: &ReferenceState,
+    portal: &StubPortal,
+) -> Transition {
+    let addable_resources = state.resources_unknown_to_all_clients(portal);
+    let cidr_resources = state.cidr_resources_on_any_client(portal);
+    let move_resources = move_resource_candidates(state, portal);
+    let filter_resources = state.resources_with_filters_on_any_client(portal);
+    let replaceable_resources = state.replaceable_resources_on_any_client(portal);
     let removable_resources = state.removable_resource_ids();
-    let deauthorizable_resources = state.deauthorizable_resource_ids();
+    let deauthorizable_resources = state.deauthorizable_resource_ids(portal);
     let client_ids = state.all_client_ids();
     let dns_record_domains = state.dns_resource_domains();
-    let packet_targets = packets::targets(state);
+    let packet_targets = packets::targets(state, portal);
     let existing_flows = iter::empty()
         .chain(state.udp_flows().into_iter().map(ExistingFlow::Udp))
         .chain(
@@ -76,8 +81,8 @@ pub(super) fn generate(g: &mut Generator, state: &ReferenceState) -> Transition 
                 .map(|(flow_id, seq)| ExistingFlow::Icmp(flow_id, seq)),
         )
         .collect::<Vec<_>>();
-    let dns_query_targets = dns_queries::targets(state);
-    let listed_device_pools = state.listed_device_pool_ids_on_any_client();
+    let dns_query_targets = dns_queries::targets(state, portal);
+    let listed_device_pools = state.listed_device_pool_ids_on_any_client(portal);
 
     // Build the legal action list. Data-plane actions stay more frequent because
     // they drive most of the tunnel state machine; libFuzzer chooses the concrete
@@ -130,7 +135,7 @@ pub(super) fn generate(g: &mut Generator, state: &ReferenceState) -> Transition 
             Transition::UpdateUpstreamDoHServers(arb_upstream_doh_servers(g))
         }
         K::UpdateUpstreamSearchDomain => {
-            let domains = state.portal.dns_resources();
+            let domains = portal.dns_resources();
             let candidates = domains
                 .filter_map(|r| {
                     let (_, s) = r.address.split_once('.')?;
@@ -163,7 +168,7 @@ pub(super) fn generate(g: &mut Generator, state: &ReferenceState) -> Transition 
         K::DeployNewRelays => {
             // An ICEless connection survives relay deployment changes. Keeping one deployed
             // relay out of `connected` exercises refreshing an unmentioned live allocation.
-            let retained = if state.portal.iceless() && state.relays.len() >= 2 {
+            let retained = if portal.iceless() && state.relays.len() >= 2 {
                 let index = g.choose_index(state.relays.len());
                 let (relay_id, relay) = state.relays.iter().nth(index).unwrap();
 
@@ -221,7 +226,7 @@ pub(super) fn generate(g: &mut Generator, state: &ReferenceState) -> Transition 
         K::ChangeResourceType => {
             let old_resource =
                 replaceable_resources[g.choose_index(replaceable_resources.len())].clone();
-            let new_resource = arb_resource_with_different_type(g, state, &old_resource);
+            let new_resource = arb_resource_with_different_type(g, portal, &old_resource);
             Transition::ChangeResourceType {
                 old_resource,
                 new_resource,
@@ -280,9 +285,7 @@ pub(super) fn generate(g: &mut Generator, state: &ReferenceState) -> Transition 
         K::UpdateDevicePoolMembers => {
             let pool_id = listed_device_pools[g.choose_index(listed_device_pools.len())];
             let members = packets::arb_pool_members(g, state);
-            let revoked = state
-                .portal
-                .peer_authorizations_revoked_by(pool_id, &members);
+            let revoked = portal.peer_authorizations_revoked_by(pool_id, &members);
 
             Transition::UpdateDevicePoolMembers {
                 pool_id,
@@ -293,11 +296,11 @@ pub(super) fn generate(g: &mut Generator, state: &ReferenceState) -> Transition 
     }
 }
 
-fn move_resource_candidates(state: &ReferenceState) -> Vec<(Resource, Site)> {
-    let sites = state.regular_sites();
+fn move_resource_candidates(state: &ReferenceState, portal: &StubPortal) -> Vec<(Resource, Site)> {
+    let sites = portal.regular_sites();
 
     state
-        .cidr_and_dns_resources_on_any_client()
+        .cidr_and_dns_resources_on_any_client(portal)
         .into_iter()
         .flat_map(|resource| {
             let candidate = resource.clone();
@@ -311,7 +314,7 @@ fn move_resource_candidates(state: &ReferenceState) -> Vec<(Resource, Site)> {
 
 fn arb_resource_with_different_type(
     g: &mut Generator,
-    state: &ReferenceState,
+    portal: &StubPortal,
     resource: &Resource,
 ) -> Resource {
     #[derive(Clone, Copy)]
@@ -334,7 +337,7 @@ fn arb_resource_with_different_type(
         .sites()
         .first()
         .cloned()
-        .unwrap_or_else(|| pick_site(g, state.regular_sites()).clone());
+        .unwrap_or_else(|| pick_site(g, portal.regular_sites()).clone());
     let id = resource.id();
     let name = resource.name().to_owned();
     let filters = resource.filters().to_vec();

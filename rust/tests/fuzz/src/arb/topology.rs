@@ -27,7 +27,7 @@ use crate::resource::{CidrResource, DevicePoolResource, DnsResource, InternetRes
 use crate::sim_net::{EdgeConfig, Expiry, FilterMode, Host, Mapping, RoutingTable};
 use crate::stub_portal::{PoolMembers, StubPortal};
 
-pub(super) fn generate(g: &mut Generator) -> ReferenceState {
+pub(super) fn generate(g: &mut Generator) -> (ReferenceState, StubPortal) {
     let portal = arb_stub_portal(g);
     let clients = arb_clients(g, &portal);
     let gateways = arb_gateways(g, &portal);
@@ -57,16 +57,17 @@ pub(super) fn generate(g: &mut Generator) -> ReferenceState {
         network
     });
 
-    ReferenceState::from_parts(
+    let reference = ReferenceState::from_parts(
         clients,
         gateways,
         relays,
-        portal,
         global_dns_records,
         tcp_resources,
         icmp_error_hosts,
         network,
-    )
+    );
+
+    (reference, portal)
 }
 
 pub(super) fn pick_site<'a>(g: &mut Generator, sites: &'a [Site]) -> &'a Site {

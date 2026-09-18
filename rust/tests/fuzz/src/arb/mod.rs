@@ -7,6 +7,7 @@
 //! generator rather than checked after generation.
 
 use crate::reference::ReferenceState;
+use crate::stub_portal::StubPortal;
 use crate::transition::Transition;
 
 mod context;
@@ -19,11 +20,11 @@ mod values;
 pub use context::Generator;
 
 impl Generator<'_> {
-    pub fn initial_state(&mut self) -> ReferenceState {
+    pub fn initial_state(&mut self) -> (ReferenceState, StubPortal) {
         topology::generate(self)
     }
 
-    pub fn transition(&mut self, state: &ReferenceState) -> Transition {
-        transitions::generate(self, state)
+    pub fn transition(&mut self, state: &ReferenceState, portal: &StubPortal) -> Transition {
+        transitions::generate(self, state, portal)
     }
 }
