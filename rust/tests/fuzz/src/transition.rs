@@ -1,15 +1,14 @@
-use connlib_model::{ClientId, RelayId, ResourceId, Site};
+use connlib_model::{ClientId, RelayId, ResourceId};
 use dns_types::{DomainName, OwnedRecordData, RecordType};
-use ip_network::IpNetwork;
 use tunnel_proto::{
     dns,
-    messages::{Filter, UpstreamDo53, UpstreamDoH},
+    messages::{UpstreamDo53, UpstreamDoH},
 };
 
 use super::{
     probe::{FlowId, ProbeId, Route},
     reference::PrivateKey,
-    resource::{CidrResource, Resource},
+    resource::{EditEffect, Resource, ResourceEdit, classify},
     sim_net::Host,
     stub_portal::PeerAuthorization,
 };
@@ -24,22 +23,7 @@ use std::{
 pub enum Transition {
     AddResource(Resource),
     RemoveResource(ResourceId),
-    ChangeCidrResourceAddress {
-        resource: CidrResource,
-        new_address: IpNetwork,
-    },
-    MoveResourceToNewSite {
-        resource: Resource,
-        new_site: Site,
-    },
-    ChangeFiltersOfResource {
-        resource: Resource,
-        new_filters: Vec<Filter>,
-    },
-    ChangeResourceType {
-        old_resource: Resource,
-        new_resource: Resource,
-    },
+    EditResource(ResourceEdit),
     /// Replaces the member list of a pool that lists its members; `revoked` are the
     /// portal's peer authorizations through it towards a client that left.
     UpdateDevicePoolMembers {
@@ -138,10 +122,7 @@ impl Transition {
         match self {
             Transition::AddResource(_) => true,
             Transition::RemoveResource(_) => true,
-            Transition::ChangeCidrResourceAddress { .. } => true,
-            Transition::MoveResourceToNewSite { .. } => true,
-            Transition::ChangeFiltersOfResource { .. } => true,
-            Transition::ChangeResourceType { .. } => true,
+            Transition::EditResource(edit) => classify(&edit.old, &edit.new).clears_packets(),
             Transition::UpdateDevicePoolMembers { .. } => true,
             Transition::SetInternetResourceState { .. } => true,
             Transition::SendIcmpPacketOnNewFlow { .. } => false,
@@ -180,29 +161,7 @@ impl Transition {
                 Route::Gateway(_) => false,
                 Route::Peer(_) => false,
             },
-            Transition::ChangeCidrResourceAddress { .. } => match route {
-                Route::Resource { .. } => false,
-                Route::Gateway(_) => false,
-                Route::Peer(_) => true,
-            },
-            Transition::MoveResourceToNewSite { resource, .. } => match route {
-                Route::Resource { resource: used, .. } => used != resource.id(),
-                Route::Gateway(_) => false,
-                Route::Peer(_) => true,
-            },
-            Transition::ChangeFiltersOfResource { resource, .. } => match route {
-                Route::Resource { .. } => false,
-                Route::Gateway(_) => false,
-                Route::Peer(_) => !is_device_pool(resource),
-            },
-            Transition::ChangeResourceType {
-                old_resource,
-                new_resource,
-            } => match route {
-                Route::Resource { .. } => false,
-                Route::Gateway(_) => false,
-                Route::Peer(_) => !is_device_pool(old_resource) && !is_device_pool(new_resource),
-            },
+            Transition::EditResource(edit) => classify(&edit.old, &edit.new).retains_flow(route),
             Transition::UpdateDevicePoolMembers { revoked, .. } => match route {
                 Route::Resource { .. } => true,
                 Route::Gateway(_) => true,
@@ -262,6 +221,45 @@ fn is_device_pool(resource: &Resource) -> bool {
         Resource::Cidr(_) => false,
         Resource::Internet(_) => false,
         Resource::DevicePool(_) => true,
+    }
+}
+
+impl EditEffect<'_> {
+    fn clears_packets(&self) -> bool {
+        match self {
+            EditEffect::Metadata => false,
+            EditEffect::Filters { affects_tcp, .. } => *affects_tcp,
+            EditEffect::Access { affects_tcp, .. } => *affects_tcp,
+            EditEffect::DevicePoolRouting => false,
+            EditEffect::Type { old, .. } => match old {
+                Resource::Dns(_) => true,
+                Resource::Cidr(_) => false,
+                Resource::Internet(_) => false,
+                Resource::DevicePool(_) => false,
+            },
+        }
+    }
+
+    fn retains_flow(&self, route: Route) -> bool {
+        match (self, route) {
+            (EditEffect::Metadata, _) => true,
+            (
+                EditEffect::Filters { resource_id, .. } | EditEffect::Access { resource_id, .. },
+                Route::Resource { resource, .. },
+            ) => resource != *resource_id,
+            (EditEffect::Filters { .. } | EditEffect::Access { .. }, Route::Gateway(_)) => false,
+            (EditEffect::Filters { .. } | EditEffect::Access { .. }, Route::Peer(_)) => true,
+            (EditEffect::DevicePoolRouting, Route::Resource { .. }) => true,
+            (EditEffect::DevicePoolRouting, Route::Gateway(_)) => true,
+            (EditEffect::DevicePoolRouting, Route::Peer(_)) => false,
+            (EditEffect::Type { old, .. }, Route::Resource { resource, .. }) => {
+                resource != old.id()
+            }
+            (EditEffect::Type { .. }, Route::Gateway(_)) => false,
+            (EditEffect::Type { old, new, .. }, Route::Peer(_)) => {
+                !is_device_pool(old) && !is_device_pool(new)
+            }
+        }
     }
 }
 

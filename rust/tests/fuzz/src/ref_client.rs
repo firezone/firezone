@@ -4,7 +4,10 @@ use super::{
     icmp_error_hosts::IcmpErrorHosts,
     probe::{ExpectedOutcome, RejectionResponse, Remote, Route},
     reference::PrivateKey,
-    resource::{CidrResource, DevicePoolResource, DnsResource, InternetResource, Resource},
+    resource::{
+        CidrResource, DevicePoolResource, DnsResource, EditEffect, InternetResource, Resource,
+        classify,
+    },
     sim_client::SimClient,
     sim_net::ExecMutScope,
     transition::{DPort, Destination, DnsQuery, DnsTransport, SPort},
@@ -379,6 +382,16 @@ impl RefClient {
         })
     }
 
+    pub(crate) fn update_resource_metadata(&mut self, resource: Resource) {
+        let existing = self
+            .resources
+            .iter_mut()
+            .find(|existing| existing.id() == resource.id())
+            .expect("an edited resource must exist on the client");
+
+        *existing = resource;
+    }
+
     pub(crate) fn connected_resources(&self) -> impl Iterator<Item = ResourceId> + '_ {
         iter::empty()
             .chain(self.connected_cidr_resources.clone())
@@ -493,9 +506,7 @@ impl RefClient {
         let rid = r.id();
 
         if let Some(existing) = self.resources.iter().find(|existing| existing.id() == rid)
-            && (existing.has_different_address(&r)
-                || existing.has_different_site(&r)
-                || existing.has_different_filters(&r))
+            && !matches!(classify(existing, &r), EditEffect::Metadata)
         {
             self.remove_resource(&existing.id());
         }
@@ -513,10 +524,7 @@ impl RefClient {
         let rid = r.id();
 
         if let Some(existing) = self.resources.iter().find(|existing| existing.id() == rid)
-            && (existing.has_different_address(&r)
-                || existing.has_different_ip_stack(&r)
-                || existing.has_different_site(&r)
-                || existing.has_different_filters(&r))
+            && !matches!(classify(existing, &r), EditEffect::Metadata)
         {
             self.remove_resource(&existing.id());
         }

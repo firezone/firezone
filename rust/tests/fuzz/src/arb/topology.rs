@@ -13,8 +13,9 @@ use tunnel_proto::messages::{Filter, PortRange, UpstreamDo53};
 
 use super::context::Generator;
 use super::values::{
-    arb_address_description, arb_cidr_resource_address, arb_domain_name_string, arb_filters,
-    arb_ip_stack_kind, arb_more_specific_subnet, arb_system_dns_servers, arb_upstream_do53_servers,
+    arb_address_description, arb_cidr_resource_address, arb_dns_resource_address,
+    arb_domain_matching_dns_resource, arb_domain_name_string, arb_filters, arb_ip_stack_kind,
+    arb_more_specific_subnet, arb_system_dns_servers, arb_upstream_do53_servers,
     arb_upstream_doh_servers,
 };
 use crate::dns_records::DnsRecords;
@@ -191,15 +192,9 @@ fn arb_cidr_resource(g: &mut Generator, site: &Site) -> CidrResource {
 }
 
 fn arb_dns_resource(g: &mut Generator, site: &Site) -> DnsResource {
-    let base = arb_domain_name_string(g, 2, 3);
-    let address = match g.choose_index(3) {
-        0 => base,                 // non-wildcard
-        1 => format!("*.{base}"),  // single star
-        _ => format!("**.{base}"), // double star
-    };
     DnsResource {
         id: g.fresh_resource_id(),
-        address,
+        address: arb_dns_resource_address(g),
         name: g.lower_ascii(4, 10),
         address_description: arb_address_description(g),
         sites: vec![site.clone()],
@@ -309,19 +304,10 @@ fn arb_dns_resources(g: &mut Generator, sites: &[Site]) -> SmallVec<[DnsResource
             let site = pick_site(g, sites);
             let resource = arb_dns_resource(g, site);
             let sibling = g.flip(50).then(|| {
-                let address = if let Some(base) = resource.address.strip_prefix("**.") {
-                    match g.choose_index(3) {
-                        0 => resource.address.clone(),
-                        1 => format!("*.{base}"),
-                        _ => format!("{}.{base}", g.lower_ascii(3, 6)),
-                    }
-                } else if let Some(base) = resource.address.strip_prefix("*.") {
-                    match g.choose_index(2) {
-                        0 => resource.address.clone(),
-                        _ => format!("{}.{base}", g.lower_ascii(3, 6)),
-                    }
-                } else {
+                let address = if g.bool() {
                     resource.address.clone()
+                } else {
+                    arb_domain_matching_dns_resource(g, &resource.address).to_string()
                 };
 
                 DnsResource {
@@ -500,27 +486,25 @@ fn arb_site_specific_dns_records(
 }
 
 fn arb_records_for_dns_resource(g: &mut Generator, address: &str) -> DnsRecords {
-    match address.split_once('.') {
-        Some(("*", base)) => arb_subdomain_records(g, base.to_owned()),
-        Some(("**", base)) => arb_subdomain_records(g, base.to_owned()),
-        _ => DnsRecords::from([(address.parse::<DomainName>().unwrap(), arb_resolved_ips(g))]),
-    }
+    let n = if address.contains('*') || address.contains('?') {
+        g.count(1, 3)
+    } else {
+        1
+    };
+
+    (0..n)
+        .map(|_| {
+            (
+                arb_domain_matching_dns_resource(g, address),
+                arb_resolved_ips(g),
+            )
+        })
+        .collect()
 }
 
 fn merge_dns_records(mut records: DnsRecords, next: DnsRecords) -> DnsRecords {
     records.merge(next);
     records
-}
-
-fn arb_subdomain_records(g: &mut Generator, base: String) -> DnsRecords {
-    let n = g.count(1, 3);
-    (0..n)
-        .map(|_| {
-            let label = g.lower_ascii(3, 6);
-            let domain = format!("{label}.{base}").parse::<DomainName>().unwrap();
-            (domain, arb_resolved_ips(g))
-        })
-        .collect::<DnsRecords>()
 }
 
 fn arb_resolved_ips(g: &mut Generator) -> BTreeSet<OwnedRecordData> {

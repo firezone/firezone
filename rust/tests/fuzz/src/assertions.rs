@@ -6,6 +6,7 @@ use super::{
         SubmittedRequest, TraceRequirement,
     },
     ref_client::RefClient,
+    resource::Resource,
     sim_client::SimClient,
     sim_gateway::SimGateway,
     stub_portal::StubPortal,
@@ -24,6 +25,7 @@ use std::{
 };
 use tracing::{Level, Subscriber};
 use tracing_subscriber::Layer;
+use tunnel_proto::dns;
 
 /// Compares each expected application probe with all endpoint observations.
 pub(crate) fn assert_probes(
@@ -740,6 +742,34 @@ pub(crate) fn assert_resource_list(ref_client: &RefClient, sim_client: &SimClien
     for actual in actual_resources {
         if !expected_ids.contains(&actual.id()) {
             tracing::error!(target: "assertions", resource = %actual.id(), "Unexpected resource");
+        }
+    }
+}
+
+pub(crate) fn assert_dns_resource_record_cache(ref_client: &RefClient, sim_client: &SimClient) {
+    let addresses = ref_client
+        .all_resources()
+        .into_iter()
+        .filter_map(|resource| match resource {
+            Resource::Dns(resource) => Some((resource.id, resource.address)),
+            Resource::Cidr(_) => None,
+            Resource::DevicePool(_) => None,
+            Resource::Internet(_) => None,
+        })
+        .collect::<BTreeMap<_, _>>();
+
+    for record in &sim_client.dns_resource_record_cache {
+        for (pattern, resource_id) in &record.resources {
+            let Some(address) = addresses.get(resource_id) else {
+                continue;
+            };
+
+            if pattern.to_string() != *address {
+                tracing::error!(target: "assertions", %resource_id, domain = %record.domain, cached_pattern = %pattern, current_address = %address, "DNS record cache has an obsolete resource pattern");
+            }
+            if !dns::is_subdomain(&record.domain, address) {
+                tracing::error!(target: "assertions", %resource_id, domain = %record.domain, current_address = %address, "DNS record cache associates a domain with a non-matching resource");
+            }
         }
     }
 }

@@ -6,6 +6,7 @@ use tunnel_proto::dns;
 
 use super::context::Generator;
 use super::packets::{host_in_v4, host_in_v6};
+use super::values::arb_domain_matching_dns_resource;
 use crate::reference::ReferenceState;
 use crate::stub_portal::StubPortal;
 use crate::transition::{DnsQuery, DnsTransport, IpFamily, Transition};
@@ -29,8 +30,8 @@ enum DnsNameSpec {
         domain: DomainName,
         rtypes: Vec<RecordType>,
     },
-    Wildcard {
-        base: String,
+    Resource {
+        address: String,
     },
     KnownDevice {
         base: String,
@@ -61,19 +62,22 @@ pub(super) fn targets(state: &ReferenceState, portal: &StubPortal) -> Vec<DnsQue
                     },
                 })
         })
-        .chain(state.wildcard_dns_resources(portal).into_iter().flat_map(
-            |(client_id, resource)| {
-                servers.iter().filter(move |(id, _)| *id == client_id).map(
-                    move |(_, dns_server)| DnsQueryTarget {
-                        client_id,
-                        dns_server: dns_server.clone(),
-                        name: DnsNameSpec::Wildcard {
-                            base: resource.address.trim_start_matches("*.").to_owned(),
+        .chain(
+            state
+                .dns_resources_on_any_client(portal)
+                .into_iter()
+                .flat_map(|(client_id, resource)| {
+                    servers.iter().filter(move |(id, _)| *id == client_id).map(
+                        move |(_, dns_server)| DnsQueryTarget {
+                            client_id,
+                            dns_server: dns_server.clone(),
+                            name: DnsNameSpec::Resource {
+                                address: resource.address.clone(),
+                            },
                         },
-                    },
-                )
-            },
-        ))
+                    )
+                }),
+        )
         .chain(servers.iter().cloned().flat_map(|(client_id, dns_server)| {
             let base = dns::DEVICE_DOMAIN.to_owned();
             [
@@ -104,10 +108,8 @@ pub(super) fn generate(
 ) -> Transition {
     let (domain, rtypes) = match target.name {
         DnsNameSpec::Concrete { domain, rtypes } => (domain, rtypes),
-        DnsNameSpec::Wildcard { base } => {
-            let domain = format!("{}.{}", g.lower_ascii(3, 6), base)
-                .parse::<DomainName>()
-                .unwrap();
+        DnsNameSpec::Resource { address } => {
+            let domain = arb_domain_matching_dns_resource(g, &address);
             let rtypes = if g.bool() {
                 vec![RecordType::A]
             } else {
