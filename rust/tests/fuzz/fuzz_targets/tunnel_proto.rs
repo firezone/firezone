@@ -33,9 +33,8 @@ fuzz_target!(|data: &[u8]| {
 
         tracing::debug!("Applying transition {applied}: {transition:?}");
 
-        let invalidates = transition.invalidates();
-        ReferenceState::invalidate(&mut reference, invalidates);
-        TunnelTest::invalidate(&mut tunnel, invalidates);
+        ReferenceState::invalidate(&mut reference, &transition);
+        TunnelTest::invalidate(&mut tunnel, &reference, &transition);
 
         reference = ReferenceState::apply(reference, &transition, flux_capacitor.now_instant());
         tunnel = TunnelTest::apply(tunnel, &reference, transition);

@@ -93,14 +93,6 @@ impl ReferenceState {
     ///
     /// Here is where we implement the "expected" logic.
     pub fn apply(mut state: Self, transition: &Transition, now: Instant) -> Self {
-        let iceless = state.portal.iceless();
-        for _ in state.icmp_flows.extract_if(.., |_, flow| {
-            !transition.retains_flow(flow.client_id, flow.route, iceless)
-        }) {}
-        for _ in state.udp_flows.extract_if(.., |_, flow| {
-            !transition.retains_flow(flow.client_id, flow.route, iceless)
-        }) {}
-
         match transition {
             Transition::AddResource(resource) => {
                 for client in state.clients.values_mut() {
@@ -534,16 +526,23 @@ impl ReferenceState {
         state
     }
 
-    pub fn invalidate(state: &mut ReferenceState, what: Invalidates) {
-        if what.contains(Invalidates::PROBES) {
-            state.expected_probes.clear();
-        }
+    /// Drops the bookkeeping that `transition` makes stale before it is applied.
+    pub fn invalidate(state: &mut ReferenceState, transition: &Transition) {
+        state.expected_probes.clear();
 
-        if what.contains(Invalidates::PACKETS) {
+        if transition.clears_packets() {
             for client in state.clients.values_mut() {
                 client.exec_mut(|c| c.clear_packets())
             }
         }
+
+        let iceless = state.portal.iceless();
+        for _ in state.icmp_flows.extract_if(.., |_, flow| {
+            !transition.retains_flow(flow.client_id, flow.route, iceless)
+        }) {}
+        for _ in state.udp_flows.extract_if(.., |_, flow| {
+            !transition.retains_flow(flow.client_id, flow.route, iceless)
+        }) {}
     }
 
     fn record_icmp_probe(
