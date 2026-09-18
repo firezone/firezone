@@ -8,8 +8,6 @@ import android.content.Intent
 import android.content.SharedPreferences
 import android.net.Uri
 import androidx.browser.auth.AuthTabIntent
-import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
-import androidx.compose.ui.test.onAllNodesWithText
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.espresso.intent.ActivityResultFunction
 import androidx.test.espresso.intent.Intents.intended
@@ -31,10 +29,10 @@ import dev.firezone.android.tunnel.FakeSession
 import dev.firezone.android.tunnel.FakeSessionFactory
 import dev.firezone.android.tunnel.TestRestrictions
 import dev.firezone.android.tunnel.awaitResumed
+import dev.firezone.android.tunnel.awaitTextOnScreen
 import dev.firezone.android.tunnel.finishAllActivities
 import dev.firezone.android.tunnel.grantNotificationPermission
 import dev.firezone.android.tunnel.grantVpnConsent
-import dev.firezone.android.tunnel.resumedActivity
 import dev.firezone.android.tunnel.stopTunnelService
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -47,7 +45,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
-import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 import javax.inject.Inject
 
@@ -58,9 +55,6 @@ class AuthFlowE2eTest {
 
     @get:Rule(order = 1)
     val intentsRule = IntentsRule()
-
-    @get:Rule(order = 2)
-    val composeRule = createEmptyComposeRule()
 
     @Inject
     internal lateinit var tokenStore: TokenStore
@@ -173,24 +167,7 @@ class AuthFlowE2eTest {
 
     // Where the handoff lands. A test that returns before it does leaves the launch in flight, and
     // it then arrives after the Hilt component is torn down and takes the whole process with it.
-    private fun awaitSessionScreen() {
-        val deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(TIMEOUT_MS)
-
-        while (!isShowing("Resources")) {
-            if (System.nanoTime() > deadline) {
-                throw AssertionError("Timed out waiting for the session screen, showing ${resumedActivity()}")
-            }
-
-            Thread.sleep(50)
-        }
-    }
-
-    // There are moments between activities with no Compose content at all, which
-    // `fetchSemanticsNodes` reports as an error rather than as an empty screen.
-    private fun isShowing(text: String): Boolean =
-        runCatching {
-            composeRule.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty()
-        }.getOrDefault(false)
+    private fun awaitSessionScreen() = awaitTextOnScreen("Resources")
 
     private fun authTabIntent(): Matcher<Intent> =
         allOf(
