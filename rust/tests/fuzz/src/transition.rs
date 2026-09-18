@@ -3,11 +3,11 @@ use dns_types::{DomainName, OwnedRecordData, RecordType};
 use ip_network::IpNetwork;
 use tunnel_proto::{
     dns,
-    messages::{Filter, UpstreamDo53, UpstreamDoH, client::DevicePoolMember},
+    messages::{Filter, UpstreamDo53, UpstreamDoH},
 };
 
 use super::{
-    probe::ProbeId,
+    probe::{FlowId, FlowRoute, ProbeId},
     reference::PrivateKey,
     resource::{CidrResource, Resource},
     sim_net::Host,
@@ -39,15 +39,19 @@ pub enum Transition {
         old_resource: Resource,
         new_resource: Resource,
     },
-    UpdateStaticDevicePool {
+    /// Replaces the member list of a pool that lists its members; `removed` are the
+    /// clients that were listed before and are not any more.
+    UpdateDevicePoolMembers {
         pool_id: ResourceId,
-        new_devices: Vec<DevicePoolMember>,
+        members: BTreeSet<ClientId>,
+        removed: BTreeSet<ClientId>,
     },
     SetInternetResourceState {
         client_id: ClientId,
         active: bool,
     },
-    SendIcmpPacket {
+    SendIcmpPacketOnNewFlow {
+        flow_id: FlowId,
         client_id: ClientId,
         src: IpAddr,
         dst: Destination,
@@ -55,12 +59,22 @@ pub enum Transition {
         identifier: Identifier,
         probe_id: ProbeId,
     },
-    SendUdpPacket {
+    SendIcmpPacketOnExistingFlow {
+        flow_id: FlowId,
+        seq: Seq,
+        probe_id: ProbeId,
+    },
+    SendUdpPacketOnNewFlow {
+        flow_id: FlowId,
         client_id: ClientId,
         src: IpAddr,
         dst: Destination,
         sport: SPort,
         dport: DPort,
+        probe_id: ProbeId,
+    },
+    SendUdpPacketOnExistingFlow {
+        flow_id: FlowId,
         probe_id: ProbeId,
     },
     ConnectTcp {
@@ -116,36 +130,148 @@ pub enum Transition {
 }
 
 impl Transition {
-    /// Returns whether assertions should discard stale packets before applying this transition.
-    pub fn should_clear_packets(&self) -> bool {
+    /// Bookkeeping that is stale once this transition is applied.
+    pub fn invalidates(&self) -> Invalidates {
         match self {
-            Transition::AddResource(_) => true,
-            Transition::RemoveResource(_) => true,
-            Transition::ChangeCidrResourceAddress { .. } => true,
-            Transition::MoveResourceToNewSite { .. } => true,
-            Transition::ChangeFiltersOfResource { .. } => true,
-            Transition::ChangeResourceType { .. } => true,
-            Transition::UpdateStaticDevicePool { .. } => true,
-            Transition::SetInternetResourceState { .. } => true,
-            Transition::SendIcmpPacket { .. } => false,
-            Transition::SendUdpPacket { .. } => false,
-            Transition::ConnectTcp { .. } => false,
-            Transition::SendDnsQuery { .. } => false,
-            Transition::SendDnsResourcePtrQuery { .. } => false,
-            Transition::UpdateSystemDnsServers { .. } => false,
-            Transition::UpdateUpstreamDo53Servers(_) => false,
-            Transition::UpdateUpstreamDoHServers(_) => false,
-            Transition::UpdateUpstreamSearchDomain(_) => false,
-            Transition::RoamClient { .. } => false,
-            Transition::ReconnectPortal { .. } => false,
-            Transition::RestartClient { .. } => false,
-            Transition::DeployNewRelays(_) => false,
-            Transition::PartitionRelaysFromPortal => false,
-            Transition::Idle => false,
-            Transition::RebootRelaysWhilePartitioned(_) => false,
-            Transition::DeauthorizeWhileGatewayIsPartitioned(_) => true,
-            Transition::UpdateDnsRecords { .. } => false,
+            Transition::AddResource(_) => Invalidates::PROBES | Invalidates::PACKETS,
+            Transition::RemoveResource(_) => Invalidates::PROBES | Invalidates::PACKETS,
+            Transition::ChangeCidrResourceAddress { .. } => {
+                Invalidates::PROBES | Invalidates::PACKETS
+            }
+            Transition::MoveResourceToNewSite { .. } => Invalidates::PROBES | Invalidates::PACKETS,
+            Transition::ChangeFiltersOfResource { .. } => {
+                Invalidates::PROBES | Invalidates::PACKETS
+            }
+            Transition::ChangeResourceType { .. } => Invalidates::PROBES | Invalidates::PACKETS,
+            Transition::UpdateDevicePoolMembers { .. } => {
+                Invalidates::PROBES | Invalidates::PACKETS
+            }
+            Transition::SetInternetResourceState { .. } => {
+                Invalidates::PROBES | Invalidates::PACKETS
+            }
+            Transition::SendIcmpPacketOnNewFlow { .. } => Invalidates::PROBES,
+            Transition::SendIcmpPacketOnExistingFlow { .. } => Invalidates::PROBES,
+            Transition::SendUdpPacketOnNewFlow { .. } => Invalidates::PROBES,
+            Transition::SendUdpPacketOnExistingFlow { .. } => Invalidates::PROBES,
+            Transition::ConnectTcp { .. } => Invalidates::PROBES,
+            Transition::SendDnsQuery { .. } => Invalidates::PROBES,
+            Transition::SendDnsResourcePtrQuery { .. } => Invalidates::PROBES,
+            Transition::UpdateSystemDnsServers { .. } => Invalidates::PROBES,
+            Transition::UpdateUpstreamDo53Servers(_) => Invalidates::PROBES,
+            Transition::UpdateUpstreamDoHServers(_) => Invalidates::PROBES,
+            Transition::UpdateUpstreamSearchDomain(_) => Invalidates::PROBES,
+            Transition::RoamClient { .. } => Invalidates::PROBES,
+            Transition::ReconnectPortal { .. } => Invalidates::PROBES,
+            Transition::RestartClient { .. } => Invalidates::PROBES,
+            Transition::DeployNewRelays(_) => Invalidates::PROBES,
+            Transition::PartitionRelaysFromPortal => Invalidates::PROBES,
+            Transition::Idle => Invalidates::PROBES,
+            Transition::RebootRelaysWhilePartitioned(_) => Invalidates::PROBES,
+            Transition::DeauthorizeWhileGatewayIsPartitioned(_) => {
+                Invalidates::PROBES | Invalidates::PACKETS
+            }
+            Transition::UpdateDnsRecords { .. } => Invalidates::PROBES,
         }
+    }
+
+    /// Returns whether a flow remains predictable across this transition.
+    pub(crate) fn retains_flow(
+        &self,
+        client_id: ClientId,
+        route: FlowRoute,
+        iceless: bool,
+    ) -> bool {
+        match self {
+            Transition::AddResource(_) => match route {
+                FlowRoute::Resource { .. } => false,
+                FlowRoute::Gateway(_) => true,
+                FlowRoute::Peer(_) => true,
+            },
+            Transition::RemoveResource(resource) => match route {
+                FlowRoute::Resource { resource: used, .. } => used != *resource,
+                FlowRoute::Gateway(_) => false,
+                FlowRoute::Peer(_) => false,
+            },
+            Transition::ChangeCidrResourceAddress { .. } => match route {
+                FlowRoute::Resource { .. } => false,
+                FlowRoute::Gateway(_) => false,
+                FlowRoute::Peer(_) => true,
+            },
+            Transition::MoveResourceToNewSite { resource, .. } => match route {
+                FlowRoute::Resource { resource: used, .. } => used != resource.id(),
+                FlowRoute::Gateway(_) => false,
+                FlowRoute::Peer(_) => true,
+            },
+            Transition::ChangeFiltersOfResource { resource, .. } => match route {
+                FlowRoute::Resource { .. } => false,
+                FlowRoute::Gateway(_) => false,
+                FlowRoute::Peer(_) => !is_device_pool(resource),
+            },
+            Transition::ChangeResourceType {
+                old_resource,
+                new_resource,
+            } => match route {
+                FlowRoute::Resource { .. } => false,
+                FlowRoute::Gateway(_) => false,
+                FlowRoute::Peer(_) => {
+                    !is_device_pool(old_resource) && !is_device_pool(new_resource)
+                }
+            },
+            Transition::UpdateDevicePoolMembers { removed, .. } => match route {
+                FlowRoute::Resource { .. } => true,
+                FlowRoute::Gateway(_) => true,
+                FlowRoute::Peer(peer) => !removed.contains(&peer) && !removed.contains(&client_id),
+            },
+            Transition::SetInternetResourceState {
+                client_id: changed, ..
+            } => client_id != *changed,
+            Transition::SendIcmpPacketOnNewFlow { .. } => true,
+            Transition::SendIcmpPacketOnExistingFlow { .. } => true,
+            Transition::SendUdpPacketOnNewFlow { .. } => true,
+            Transition::SendUdpPacketOnExistingFlow { .. } => true,
+            Transition::ConnectTcp { .. } => true,
+            Transition::SendDnsQuery { .. } => true,
+            Transition::SendDnsResourcePtrQuery { .. } => true,
+            Transition::UpdateSystemDnsServers { .. } => true,
+            Transition::UpdateUpstreamDo53Servers(_) => true,
+            Transition::UpdateUpstreamDoHServers(_) => true,
+            Transition::UpdateUpstreamSearchDomain(_) => true,
+            Transition::RoamClient {
+                client_id: changed, ..
+            } => match route {
+                FlowRoute::Resource { .. } => iceless || client_id != *changed,
+                FlowRoute::Gateway(_) => iceless || client_id != *changed,
+                FlowRoute::Peer(peer) => iceless || (client_id != *changed && peer != *changed),
+            },
+            Transition::ReconnectPortal { .. } => true,
+            Transition::RestartClient {
+                client_id: restarted,
+                ..
+            } => match route {
+                FlowRoute::Resource { .. } => client_id != *restarted,
+                FlowRoute::Gateway(_) => client_id != *restarted,
+                FlowRoute::Peer(peer) => client_id != *restarted && peer != *restarted,
+            },
+            Transition::DeployNewRelays(_) => iceless,
+            Transition::PartitionRelaysFromPortal => false,
+            Transition::Idle => true,
+            Transition::RebootRelaysWhilePartitioned(_) => false,
+            Transition::DeauthorizeWhileGatewayIsPartitioned(resource) => match route {
+                FlowRoute::Resource { resource: used, .. } => used != *resource,
+                FlowRoute::Gateway(_) => false,
+                FlowRoute::Peer(_) => false,
+            },
+            Transition::UpdateDnsRecords { .. } => true,
+        }
+    }
+}
+
+fn is_device_pool(resource: &Resource) -> bool {
+    match resource {
+        Resource::Dns(_) => false,
+        Resource::Cidr(_) => false,
+        Resource::Internet(_) => false,
+        Resource::DevicePool(_) => true,
     }
 }
 
@@ -237,5 +363,30 @@ impl PartialEq for Destination {
             (Self::IpAddr(l0), Self::IpAddr(r0)) => l0 == r0,
             _ => false,
         }
+    }
+}
+
+/// Bookkeeping recorded by the reference model and the system under test that a
+/// [`Transition`] makes stale.
+#[derive(Debug, Clone, Copy)]
+pub struct Invalidates(u8);
+
+impl Invalidates {
+    /// The probes recorded for the previous transition and their observations.
+    pub const PROBES: Self = Self(1 << 0);
+    /// Packet-level expectations that accumulate across transitions: DNS queries
+    /// and responses, TCP connections and rejections.
+    pub const PACKETS: Self = Self(1 << 1);
+
+    pub fn contains(self, other: Self) -> bool {
+        self.0 & other.0 == other.0
+    }
+}
+
+impl std::ops::BitOr for Invalidates {
+    type Output = Self;
+
+    fn bitor(self, rhs: Self) -> Self {
+        Self(self.0 | rhs.0)
     }
 }

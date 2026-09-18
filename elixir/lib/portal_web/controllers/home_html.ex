@@ -61,7 +61,7 @@ defmodule PortalWeb.HomeHTML do
         </div>
         <div class="flex-1 min-w-0">
           <p class="text-sm font-semibold text-heading group-hover:text-brand transition-colors">
-            My company uses Firezone
+            My organization uses Firezone
           </p>
           <p class="text-xs text-subtle mt-0.5 leading-relaxed">
             Find your organization's sign-in page.

@@ -401,6 +401,9 @@ defmodule Portal.Dev.AccountPopulation do
     default_site = create_site(account, "Default Site", :account)
     internet_site = create_site(account, "Internet", :system)
     internet_resource = create_resource(account, internet_site, 1, :internet, spec)
+    account_owner_group = create_group(account, Group.account_owner_attrs())
+    create_membership(account, account_owner_group, admin_actor)
+    self_device_pool = create_self_device_pool(account, account_owner_group)
 
     %{
       account: account,
@@ -409,8 +412,8 @@ defmodule Portal.Dev.AccountPopulation do
       everyone_group: everyone_group,
       actors: %{admins: [admin_actor], users: [], service_accounts: []},
       sites: %{account_sites: [default_site], internet_site: internet_site},
-      resources: %{internet: internet_resource, managed: []},
-      groups: [everyone_group],
+      resources: %{internet: internet_resource, self_device_pool: self_device_pool, managed: []},
+      groups: [everyone_group, account_owner_group],
       policies: [],
       gateways: [],
       clients: [],
@@ -657,6 +660,31 @@ defmodule Portal.Dev.AccountPopulation do
     |> Repo.insert!()
   end
 
+  defp create_membership(account, group, actor) do
+    Repo.insert!(%Membership{
+      account_id: account.id,
+      group_id: group.id,
+      actor_id: actor.id
+    })
+  end
+
+  defp create_self_device_pool(account, account_owner_group) do
+    resource =
+      %Resource{account_id: account.id}
+      |> cast(Resource.self_device_pool_attrs(), [:type, :device_membership_criteria, :name])
+      |> Resource.changeset()
+      |> Repo.insert!()
+
+    Repo.insert!(%Policy{
+      account_id: account.id,
+      group_id: account_owner_group.id,
+      resource_id: resource.id,
+      description: "Lets the account owner reach their own devices."
+    })
+
+    resource
+  end
+
   defp create_resource(account, site, index, type, spec, filtered? \\ false)
 
   defp create_resource(account, site, _index, :internet, _spec, _filtered?) do
@@ -759,6 +787,7 @@ defmodule Portal.Dev.AccountPopulation do
       |> put_change(:type, :gateway)
       |> put_change(:account_id, state.account.id)
       |> put_change(:site_id, site.id)
+      |> Portal.Devices.put_free_slug(state.account.id, nil)
       |> Device.changeset()
       |> Repo.insert!()
 
@@ -825,6 +854,7 @@ defmodule Portal.Dev.AccountPopulation do
       |> put_change(:type, :client)
       |> put_change(:account_id, state.account.id)
       |> put_change(:actor_id, actor.id)
+      |> Portal.Devices.put_free_slug(state.account.id, Portal.Devices.owner_name(actor))
       |> Device.changeset()
       |> Repo.insert!()
 

@@ -97,6 +97,7 @@ defmodule Portal.DeviceFixtures do
     |> Ecto.Changeset.put_change(:type, :client)
     |> Ecto.Changeset.put_change(:account_id, account.id)
     |> Ecto.Changeset.put_change(:actor_id, actor.id)
+    |> Portal.Devices.put_free_slug(account.id, Portal.Devices.owner_name(actor))
     |> Portal.Device.changeset()
     |> Portal.Repo.insert()
   end
@@ -127,10 +128,20 @@ defmodule Portal.DeviceFixtures do
       |> Map.drop([:account, :actor, :ipv4_address, :ipv6_address])
       |> valid_client_attrs()
 
+    device_attrs =
+      Map.put_new_lazy(device_attrs, :slug, fn ->
+        Portal.Devices.next_free_slug(
+          account.id,
+          device_attrs.name,
+          Portal.Devices.owner_name(actor)
+        )
+      end)
+
     {:ok, device} =
       %Portal.Device{}
       |> Ecto.Changeset.cast(device_attrs, [
         :name,
+        :slug,
         :firezone_id,
         :device_serial,
         :device_uuid,
@@ -321,6 +332,7 @@ defmodule Portal.DeviceFixtures do
       |> Ecto.Changeset.put_change(:type, :gateway)
       |> Ecto.Changeset.put_change(:account_id, account.id)
       |> Ecto.Changeset.put_change(:site_id, site.id)
+      |> Portal.Devices.put_free_slug(account.id, nil)
       |> Ecto.Changeset.put_assoc(:account, account)
       |> Ecto.Changeset.put_assoc(:site, site)
       |> Portal.Device.changeset()
@@ -453,4 +465,5 @@ defmodule Portal.DeviceFixtures do
   defp extract_address(nil), do: nil
   defp extract_address(%Postgrex.INET{} = address), do: address
   defp extract_address(%{address: %Postgrex.INET{} = address}), do: address
+
 end

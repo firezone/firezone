@@ -24,6 +24,7 @@ defmodule Portal.Google.APIClient do
   ]
   @token_cache Portal.Google.TokenCache
   @max_retries 5
+  @transient_statuses [408, 429, 500, 502, 503, 504]
 
   @doc """
   Gets a delegated Google Workspace access token using deployment credentials.
@@ -45,6 +46,52 @@ defmodule Portal.Google.APIClient do
   """
   def get_customer_access_token(impersonation_email) do
     get_delegated_access_token(impersonation_email, @customer_readonly_scope)
+  end
+
+  @doc """
+  Gets a scoped token for the service account itself through workload identity
+  federation. Unlike Workspace delegation, this does not impersonate a user or
+  fall back to a private key. Identity settings must be supplied explicitly.
+  """
+  def get_service_account_access_token(identity, scope) do
+    config = Portal.Config.fetch_env!(:portal, __MODULE__)
+    identity = Keyword.merge(
+      [service_account_email: nil, workload_identity_provider: nil, workload_identity_audience: nil],
+      identity
+    )
+
+    with {:ok, federation} <- workload_identity_config(identity),
+         {:ok, federated_token} <-
+           TokenCache.fetch(token_cache(config),
+             {:federated_access_token, federation.provider, federation.audience},
+             fn -> fetch_federated_token(federation, config) end
+           ) do
+      TokenCache.fetch(token_cache(config),
+        {:service_account_access_token, federation.provider, federation.audience,
+         federation.service_account_email, scope},
+        fn -> generate_access_token(federation.service_account_email, federated_token, scope, config) end
+      )
+    else
+      :not_configured -> {:error, :service_account_not_configured}
+      {:error, _} = error -> error
+    end
+  end
+
+  defp generate_access_token(email, federated_token, scope, config) do
+    endpoint = "#{config[:iam_credentials_endpoint]}/v1/projects/-/serviceAccounts/#{URI.encode(email)}:generateAccessToken"
+
+    case Req.post(endpoint,
+           [auth: {:bearer, federated_token}, json: %{scope: [scope], lifetime: "3600s"}] ++ request_opts(config)
+         ) do
+      {:ok, %Req.Response{status: 200, body: %{"accessToken" => token, "expireTime" => expires_at}}}
+      when is_binary(token) and byte_size(token) > 0 ->
+        case DateTime.from_iso8601(expires_at) do
+          {:ok, timestamp, _} -> {:ok, %{token: token, expires_at: DateTime.to_unix(timestamp)}}
+          _ -> {:error, :invalid_service_account_token_expiration}
+        end
+      {:ok, %Req.Response{} = response} -> {:error, {:service_account_access_token, response}}
+      {:error, reason} -> {:error, {:service_account_access_token, reason}}
+    end
   end
 
   defp get_delegated_access_token(impersonation_email, scope) do
@@ -366,9 +413,48 @@ defmodule Portal.Google.APIClient do
 
   @doc """
   Fetches one user by Google user id or primary email.
+
+  Newly created users can temporarily lack suspended/archived flags. Retry these
+  responses every ten seconds for five minutes, then return an error so callers
+  do not mistake an incomplete user for an inactive one. In-flight requests retain
+  the normal HTTP timeout and retry policy.
   """
   def get_user(access_token, user_key) do
-    get("/admin/directory/v1/users/#{URI.encode(user_key)}", access_token)
+    config = Portal.Config.fetch_env!(:portal, __MODULE__)
+    timeout = Keyword.get(config, :user_flags_retry_timeout, :timer.minutes(5))
+    deadline = System.monotonic_time(:millisecond) + timeout
+    get_user_with_flags(access_token, user_key, deadline)
+  end
+
+  defp get_user_with_flags(access_token, user_key, deadline) do
+    case get("/admin/directory/v1/users/#{URI.encode(user_key)}", access_token) do
+      {:ok, %Req.Response{status: 200, body: user}} = result when is_map(user) ->
+        if user_flags_present?(user) do
+          result
+        else
+          retry_user_with_flags(access_token, user_key, deadline)
+        end
+
+      result ->
+        result
+    end
+  end
+
+  defp retry_user_with_flags(access_token, user_key, deadline) do
+    remaining = deadline - System.monotonic_time(:millisecond)
+
+    if remaining > 0 do
+      Logger.warning("Retrying Google user with missing suspended/archived flags",
+        google_user_id: user_key
+      )
+
+      config = Portal.Config.fetch_env!(:portal, __MODULE__)
+      delay = Keyword.get(config, :user_flags_retry_delay, :timer.seconds(10))
+      Process.sleep(min(delay, remaining))
+      get_user_with_flags(access_token, user_key, deadline)
+    else
+      {:error, {:missing_user_flags, user_key}}
+    end
   end
 
   @doc """
@@ -473,7 +559,7 @@ defmodule Portal.Google.APIClient do
       })
 
     stream_pages("/admin/directory/v1/users", query, access_token, "users")
-    |> Stream.map(&filter_active_google_users_result/1)
+    |> Stream.map(&filter_active_google_users_result(&1, access_token))
   end
 
   @doc """
@@ -547,8 +633,8 @@ defmodule Portal.Google.APIClient do
   Fetches multiple users by Google user ID using the Google API Batch endpoint.
 
   Chunks `user_ids` into groups of #{@batch_size} and issues one multipart HTTP POST
-  per chunk. Users that return 404 (deleted from Google Workspace) are silently
-  skipped. Returns `{:ok, [user_map]}` or `{:error, reason}` on transport/HTTP failure.
+  per chunk. Users that return 404 or 412 (deleted from Google Workspace) are
+  silently skipped. Returns `{:ok, [user_map]}` or `{:error, reason}` on transport/HTTP failure.
   """
   @spec batch_get_users(String.t(), [String.t()]) :: {:ok, [map()]} | {:error, term()}
   def batch_get_users(_access_token, []), do: {:ok, []}
@@ -566,22 +652,26 @@ defmodule Portal.Google.APIClient do
 
     case result do
       {:ok, chunks} ->
-        {:ok, chunks |> Enum.reverse() |> List.flatten() |> Enum.filter(&active_google_user?/1)}
+        case filter_active_google_users_result(chunks |> Enum.reverse() |> List.flatten(), access_token) do
+          {:error, _} = error -> error
+          users -> {:ok, users}
+        end
 
       {:error, _} = error ->
         error
     end
   end
 
-  # The batch endpoint answers 200 even when parts are throttled, so Req's retry
-  # never sees those. Re-sending the whole chunk is cheaper than tracking parts.
+  # The batch endpoint answers 200 even when parts are throttled or fail with a
+  # 5xx, so Req's retry never sees those. Re-sending the whole chunk is cheaper
+  # than tracking parts.
   defp get_users_chunk(access_token, chunk, retry_count \\ 0) do
     case do_batch_get_users(access_token, chunk) do
-      {:throttled, _response} when retry_count < @max_retries ->
+      {:retry, _response} when retry_count < @max_retries ->
         Process.sleep(batch_retry_delay(retry_count))
         get_users_chunk(access_token, chunk, retry_count + 1)
 
-      {:throttled, response} ->
+      {:retry, response} ->
         {:error, response}
 
       result ->
@@ -653,8 +743,8 @@ defmodule Portal.Google.APIClient do
         {:ok, users} ->
           {:cont, {:ok, Enum.reverse(users, acc)}}
 
-        {:throttled, _} = throttled ->
-          {:halt, throttled}
+        {:retry, _} = retry ->
+          {:halt, retry}
 
         {:error, _} = error ->
           {:halt, error}
@@ -683,9 +773,9 @@ defmodule Portal.Google.APIClient do
     #   HTTP/1.1 200 OK\r\n<response headers>\r\n\r\n<JSON body>
     with [_outer_headers, nested] <- String.split(part, "\r\n\r\n", parts: 2),
          [status_and_headers, json_body] <- String.split(nested, "\r\n\r\n", parts: 2),
-         status when status in [200, 403, 404] <- extract_http_status(status_and_headers) do
+         status when status in [200, 403, 404, 412] <- extract_http_status(status_and_headers) do
       case status do
-        404 ->
+        status when status in [404, 412] ->
           {:ok, []}
 
         403 ->
@@ -695,7 +785,10 @@ defmodule Portal.Google.APIClient do
           decode_json_user(json_body)
       end
     else
-      status when is_integer(status) and status not in [200, 403, 404] ->
+      status when status in @transient_statuses ->
+        {:retry, %Req.Response{status: status, body: %{"error" => "Batch users part failed"}}}
+
+      status when is_integer(status) and status not in [200, 403, 404, 412] ->
         log_batch_parse_issue("Failing batch users response part with unexpected status",
           status: status
         )
@@ -721,8 +814,7 @@ defmodule Portal.Google.APIClient do
 
   defp parse_forbidden_batch_part(json_body) do
     if usage_limits_error?(String.trim(json_body)) do
-      {:throttled,
-       %Req.Response{status: 403, body: %{"error" => "Batch users part throttled"}}}
+      {:retry, %Req.Response{status: 403, body: %{"error" => "Batch users part throttled"}}}
     else
       log_batch_parse_issue("Failing batch users response part with unexpected status",
         status: 403
@@ -798,30 +890,46 @@ defmodule Portal.Google.APIClient do
     path = "/admin/directory/v1/users"
 
     stream_pages(path, query, access_token, "users")
-    |> Stream.map(&filter_org_unit_members_result/1)
+    |> Stream.map(&filter_org_unit_members_result(&1, access_token))
   end
 
-  defp filter_org_unit_members_result({:error, {:missing_key, _msg, _body}}), do: []
-  defp filter_org_unit_members_result(result), do: filter_active_google_users_result(result)
+  defp filter_org_unit_members_result({:error, {:missing_key, _msg, _body}}, _access_token), do: []
+  defp filter_org_unit_members_result(result, access_token),
+    do: filter_active_google_users_result(result, access_token)
 
-  defp filter_active_google_users_result(users) when is_list(users) do
-    Enum.filter(users, &active_google_user?/1)
+  defp filter_active_google_users_result(users, access_token) when is_list(users) do
+    Enum.reduce_while(users, [], fn user, acc ->
+      case resolve_user_flags(user, access_token) do
+        {:ok, %{"suspended" => true}} -> {:cont, acc}
+        {:ok, %{"archived" => true}} -> {:cont, acc}
+        {:ok, user} -> {:cont, [user | acc]}
+
+        :deleted -> {:cont, acc}
+        {:error, _} = error -> {:halt, error}
+      end
+    end)
+    |> case do
+      {:error, _} = error -> error
+      users -> Enum.reverse(users)
+    end
   end
 
-  defp filter_active_google_users_result(other), do: other
+  defp filter_active_google_users_result(other, _access_token), do: other
 
-  defp active_google_user?(user) do
-    case {Map.fetch(user, "suspended"), Map.fetch(user, "archived")} do
-      {{:ok, suspended}, {:ok, archived}} ->
-        suspended != true and archived != true
+  defp user_flags_present?(user),
+    do: Map.has_key?(user, "suspended") and Map.has_key?(user, "archived")
 
-      _ ->
-        Logger.error("Skipping Google user with missing suspended/archived flags",
-          google_user_id: Map.get(user, "id", "unknown"),
-          google_user_email: Map.get(user, "primaryEmail", Map.get(user, "email", "unknown"))
-        )
-
-        false
+  defp resolve_user_flags(user, access_token) do
+    cond do
+      user_flags_present?(user) -> {:ok, user}
+      is_binary(user["id"]) ->
+        case get_user(access_token, user["id"]) do
+          {:ok, %Req.Response{status: 200, body: resolved}} -> {:ok, resolved}
+          {:ok, %Req.Response{status: status}} when status in [404, 412] -> :deleted
+          {:ok, response} -> {:error, response}
+          {:error, _} = error -> error
+        end
+      true -> {:error, {:missing_user_flags, Map.get(user, "id", "unknown")}}
     end
   end
 
@@ -845,7 +953,6 @@ defmodule Portal.Google.APIClient do
   # strategies miss it. A custom predicate replaces them, hence the repetition.
   # https://developers.google.com/workspace/admin/directory/v1/limits
   @usage_limits_domain "usageLimits"
-  @transient_statuses [408, 429, 500, 502, 503, 504]
   @transient_transport_reasons [:timeout, :econnrefused, :closed]
   @transient_http_reasons [:unprocessed, :pool_not_available]
 

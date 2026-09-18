@@ -9,6 +9,8 @@ defmodule Portal.Group do
 
   @type t :: %__MODULE__{}
 
+  @account_owner_name "Account owner"
+
   schema "groups" do
     belongs_to :account, Portal.Account, primary_key: true
     field :id, :binary_id, primary_key: true, autogenerate: true
@@ -19,6 +21,7 @@ defmodule Portal.Group do
     field :entity_type, Ecto.Enum, values: ~w[group org_unit]a, default: :group
 
     field :idp_id, :string
+    field :nested_group_idp_ids, {:array, :string}, default: []
 
     has_one :sync_state, Portal.GroupSyncState, foreign_key: :group_id, references: :id
 
@@ -30,6 +33,16 @@ defmodule Portal.Group do
     belongs_to :directory, Portal.Directory
 
     timestamps()
+  end
+
+  @doc """
+  Attributes of the `Account owner` group every account gets at creation, holding the actor
+  who created it. The `Your devices` pool is granted to this group, so the owner reaches
+  their own devices from the start.
+  """
+  @spec account_owner_attrs() :: map()
+  def account_owner_attrs do
+    %{name: @account_owner_name, type: :static}
   end
 
   def changeset(%Ecto.Changeset{} = changeset) do

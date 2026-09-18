@@ -346,12 +346,20 @@ defmodule PortalAPI.Client.Socket do
   defp assign_connect(socket, subject, client, version, attested?, proof) do
     socket
     |> assign(:subject, subject)
-    |> assign(:client, %{client | attested?: attested?})
+    |> assign(:client, %{client | attested?: attested?, posture: posture_rows(client, subject)})
     |> assign(:attestation, attestation(attested?, proof))
     |> assign(:session_ref, make_ref())
     |> assign(:client_version, version)
     |> assign(:opentelemetry_span_ctx, OpenTelemetry.Tracer.current_span_ctx())
     |> assign(:opentelemetry_ctx, OpenTelemetry.Ctx.get_current())
+  end
+
+  defp posture_rows(client, subject) do
+    if Portal.Account.device_posture_enabled?(subject.account) do
+      Portal.Devices.Posture.rows_by_type(client)
+    else
+      %{}
+    end
   end
 
   # The certificate this session is riding on, so a revocation learned later can
@@ -566,7 +574,7 @@ defmodule PortalAPI.Client.Socket do
       if client = find_by_firezone_id(actor_id, firezone_id, subject) do
         {:ok, merge_hardware_ids(client, changeset), false}
       else
-        with {:ok, client} <- changeset |> Safe.scoped(subject) |> Safe.insert() do
+        with {:ok, client} <- insert_with_slug(changeset, subject) do
           {:ok, client, false}
         end
       end
@@ -576,11 +584,30 @@ defmodule PortalAPI.Client.Socket do
       result =
         changeset
         |> Ecto.Changeset.put_change(:firezone_id, nil)
-        |> Safe.scoped(subject)
-        |> Safe.insert()
+        |> insert_with_slug(subject)
 
       with {:ok, client} <- result do
         {:ok, client, true}
+      end
+    end
+
+    # A concurrent first connect of two same-named devices can race for a slug, so a
+    # unique violation on it is retried with a fresh probe.
+    defp insert_with_slug(changeset, subject, attempt \\ 1) do
+      changeset
+      |> Portal.Devices.put_free_slug(subject.account.id, Portal.Devices.owner_name(subject.actor))
+      |> Safe.scoped(subject)
+      |> Safe.insert()
+      |> case do
+        {:error, %Ecto.Changeset{errors: errors} = failed} when attempt < 3 ->
+          if Keyword.has_key?(errors, :slug) do
+            insert_with_slug(changeset, subject, attempt + 1)
+          else
+            {:error, failed}
+          end
+
+        result ->
+          result
       end
     end
 

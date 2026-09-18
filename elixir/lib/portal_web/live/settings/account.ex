@@ -7,17 +7,19 @@ defmodule PortalWeb.Settings.Account do
   alias __MODULE__.Database
   require Logger
 
-  def mount(_params, _session, socket) do
+  def mount(_params, session, socket) do
     account = socket.assigns.account
     subject = socket.assigns.subject
     socket =
       assign(socket,
+        marketing_attribution: get_in(PortalWeb.WebsiteAttribution.fetch(session) || %{}, ["marketing"]),
         page_title: "Account",
         billing_provisioned: Billing.account_provisioned?(account),
         billing_plan_type: Billing.plan_type(account),
         error: nil,
         slug_confirmation: "",
         confirm_delete_account: false,
+        deletion_feedback_form: nil,
         edit_account_open: false,
         name_form: to_form(Database.change_account_name(account)),
         admins_count: Database.count_account_admin_users_for_account(subject),
@@ -25,7 +27,6 @@ defmodule PortalWeb.Settings.Account do
         users_count: Database.count_users_for_account(subject),
         active_users_count: Database.count_1m_active_users_for_account(subject),
         sites_count: Database.count_groups_for_account(subject),
-        trust_anchors_enabled?: PortalWeb.NavigationComponents.trust_anchors_enabled?(),
         device_posture_enabled?: PortalWeb.NavigationComponents.device_posture_enabled?()
       )
 
@@ -38,7 +39,6 @@ defmodule PortalWeb.Settings.Account do
       <.settings_nav
         account={@account}
         current_path={@current_path}
-        trust_anchors_enabled?={@trust_anchors_enabled?}
         device_posture_enabled?={@device_posture_enabled?}
       >
         <:actions>
@@ -159,6 +159,38 @@ defmodule PortalWeb.Settings.Account do
               {@error}
             </.flash>
           </div>
+
+          <.modal
+            :if={@deletion_feedback_form}
+            id="deletion-feedback-modal"
+            on_close="skip_deletion_feedback"
+            on_cancel="skip_deletion_feedback"
+          >
+            <:title>Sorry Firezone didn't work out</:title>
+            <:body>
+              <p class="mb-4">Anything you'd like to share about your experience?</p>
+              <.form
+                id="deletion-feedback-form"
+                for={@deletion_feedback_form}
+                phx-change="validate_deletion_feedback"
+                phx-submit="submit_deletion_feedback"
+              >
+                <.inputs_for :let={metadata} field={@deletion_feedback_form[:metadata]}>
+                  <.input
+                    field={metadata[:deletion_feedback]}
+                    type="textarea"
+                    placeholder="Your feedback (optional)"
+                    maxlength={Portal.Account.Metadata.deletion_feedback_max_length()}
+                    phx-debounce="300"
+                  />
+                </.inputs_for>
+              </.form>
+            </:body>
+            <:cancel_button>Skip</:cancel_button>
+            <:confirm_button form="deletion-feedback-form" type="submit">
+              Send feedback
+            </:confirm_button>
+          </.modal>
 
           <%!-- Danger Zone (active, unlocked accounts only) --%>
           <div :if={Account.active?(@account) and not Account.locked?(@account)} class="mt-6">
@@ -502,6 +534,11 @@ defmodule PortalWeb.Settings.Account do
   end
 
   def handle_event("redirect_to_billing_portal", _params, socket) do
+    Portal.Analytics.update_marketing_attribution(
+      socket.assigns.account,
+      socket.assigns.marketing_attribution
+    )
+
     with {:ok, billing_portal_url} <-
            Billing.billing_portal_url(
              socket.assigns.account,
@@ -571,6 +608,7 @@ defmodule PortalWeb.Settings.Account do
                account: updated_account,
                confirm_delete_account: false,
                slug_confirmation: "",
+               deletion_feedback_form: deletion_feedback_form(updated_account),
                error: nil
              )}
 
@@ -582,6 +620,54 @@ defmodule PortalWeb.Settings.Account do
       true ->
         {:noreply,
          assign(socket, slug_confirmation: "", error: "Slug does not match, please try again.")}
+    end
+  end
+
+  def handle_event("validate_deletion_feedback", params, socket) do
+    form =
+      socket.assigns.account
+      |> Deletion.change_deletion_feedback(deletion_feedback_param(params))
+      |> Map.put(:action, :validate)
+      |> to_form(as: :account)
+
+    {:noreply, assign(socket, deletion_feedback_form: form)}
+  end
+
+  def handle_event("submit_deletion_feedback", params, socket) do
+    account = socket.assigns.account
+
+    case params |> deletion_feedback_param() |> String.trim() do
+      "" ->
+        {:noreply, assign(socket, deletion_feedback_form: nil)}
+
+      feedback ->
+        case Deletion.save_deletion_feedback(account, feedback, socket.assigns.subject) do
+          {:ok, updated_account} ->
+            {:noreply, assign(socket, account: updated_account, deletion_feedback_form: nil)}
+
+          {:error, %Ecto.Changeset{} = changeset} ->
+            {:noreply, assign(socket, deletion_feedback_form: to_form(changeset, as: :account))}
+
+          {:error, _reason} ->
+            {:noreply, assign(socket, deletion_feedback_form: nil)}
+        end
+    end
+  end
+
+  def handle_event("skip_deletion_feedback", _params, socket) do
+    {:noreply, assign(socket, deletion_feedback_form: nil)}
+  end
+
+  defp deletion_feedback_form(account) do
+    account
+    |> Deletion.change_deletion_feedback()
+    |> to_form(as: :account)
+  end
+
+  defp deletion_feedback_param(params) do
+    case get_in(params, ["account", "metadata", "deletion_feedback"]) do
+      feedback when is_binary(feedback) -> feedback
+      _ -> ""
     end
   end
 

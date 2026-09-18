@@ -11,6 +11,7 @@ defmodule PortalAPI.Schemas.Gateway do
                :account_id,
                :actor_id,
                :attested?,
+               :posture,
                :client_token_id,
                :device_serial,
                :device_uuid,
@@ -20,6 +21,7 @@ defmodule PortalAPI.Schemas.Gateway do
                :gateway_token_rotated_at,
                :hostname,
                :identifier_for_vendor,
+               :slug,
                :inserted_at,
                :last_attested_at,
                :last_attested_cert_fingerprint,
@@ -166,6 +168,13 @@ defmodule PortalAPI.Schemas.Gateway do
 
     def map(%Portal.Device{provisioned_token: nil} = device, _map) do
       %{online: device.online?, rotated_at: device.gateway_token_rotated_at}
+    end
+
+    def map(%Portal.Device{provisioned_token: token} = device, map) when is_binary(token) do
+      device
+      |> Map.put(:provisioned_token, nil)
+      |> map(map)
+      |> Map.put(:token, token)
     end
 
     def map(%Portal.Device{provisioned_token: token} = device, map) do

@@ -28,6 +28,10 @@ defmodule PortalAPI.Schemas.Policy do
         IANA timezone name, e.g. `"M/09:00-17:00/America/New_York"`.
       * `client_verified` with `is`: `values` is a single-element list
         containing `"true"` or `"false"`.
+      * `device_attested` with `is`: `values` is a single-element list
+        containing `"true"` or `"false"`. `"true"` requires the Client to
+        have presented a valid X.509 certificate from one of the account's
+        trust anchors on its current connection.
       """,
       type: :object,
       properties: %{
@@ -40,7 +44,8 @@ defmodule PortalAPI.Schemas.Policy do
             "remote_ip",
             "auth_provider_id",
             "current_utc_datetime",
-            "client_verified"
+            "client_verified",
+            "device_attested"
           ]
         },
         operator: %Schema{
@@ -64,6 +69,115 @@ defmodule PortalAPI.Schemas.Policy do
         }
       },
       required: [:property, :operator, :values]
+    })
+  end
+
+  defmodule PostureNode do
+    require OpenApiSpex
+    alias OpenApiSpex.{Reference, Schema}
+    alias Portal.Policies.Postures.Fields
+
+    @node %Reference{"$ref": "#/components/schemas/PolicyPostureNode"}
+    @operators Enum.map(Fields.operators(), &Atom.to_string/1)
+
+    OpenApiSpex.schema(%{
+      title: "PolicyPostureNode",
+      description: """
+      One node of a Policy's device posture expression. A node has exactly one
+      of these shapes:
+
+      * `and`: a non-empty list of nodes that must all hold.
+      * `or`: a non-empty list of nodes of which at least one must hold.
+      * `not`: a node that must not hold.
+      * a leaf: a `field`, an `op`, and for most operators a `value`.
+
+      A leaf's `field` is `<provider>.<attribute>`, such as
+      `intune.compliance_state` or `firezone.last_seen_version`. The provider
+      is one of `firezone` (the connecting device's own record), `intune`,
+      `iru`, `defender`, `santa` or `sentinelone`. The attribute is one of that
+      provider's synced device attributes. Every synced provider also has a
+      boolean `enrolled` that is true when the provider knows the device.
+
+      The attribute's type decides which operators apply and what `value`
+      must be:
+
+      * strings: `is`, `is_not`, `is_in`, `is_not_in`, `contains`,
+        `does_not_contain`, `starts_with`, `ends_with`, `matches`,
+        `does_not_match`. Comparisons ignore case. `is_in` and `is_not_in`
+        take a list of strings. `matches` and `does_not_match` take a regular
+        expression.
+      * booleans: `is` with `true` or `false`.
+      * numbers: `eq`, `ne`, `gt`, `gte`, `lt`, `lte`.
+      * versions: `is`, `is_not`, `gt`, `gte`, `lt`, `lte`, compared segment
+        by segment, so `14.4` equals `14.4.0`.
+      * timestamps: `before` and `after` with an ISO 8601 datetime such as
+        `2026-01-01T00:00:00Z`; `within_last` and `not_within_last` with an
+        ISO 8601 duration such as `PT24H` or `P30D`. A date-only attribute
+        counts as the start of that day in UTC.
+      * IP addresses: `is_in_cidr` and `is_not_in_cidr` with a list of CIDRs.
+        `firezone.ipv4` takes IPv4 CIDRs only and `firezone.ipv6` IPv6 only.
+      * lists of strings: `contains`, `does_not_contain`, `contains_any_of`,
+        `contains_all_of`, `is_empty`, `is_not_empty`.
+      * JSON attributes: `is_empty`, `is_not_empty`.
+
+      The value `@latest` on `firezone.last_seen_version` stands for the newest
+      Client release for the device's platform.
+
+      Every attribute also accepts `exists` and `does_not_exist`, which take
+      no value. An attribute the provider did not report fails every other
+      operator, so a device the provider does not know never passes.
+
+      When a device matches more than one record of a provider, a leaf holds
+      when any record satisfies it. Set `rows` to `all` to require every
+      record. An expression may nest 10 levels deep and hold 100 leaves.
+      """,
+      type: :object,
+      example: %{
+        "and" => [
+          %{"field" => "intune.compliance_state", "op" => "is", "value" => "compliant"},
+          %{"field" => "intune.last_sync_date_time", "op" => "within_last", "value" => "PT24H"},
+          %{"not" => %{"field" => "intune.jail_broken", "op" => "is", "value" => true}}
+        ]
+      },
+      properties: %{
+        and: %Schema{
+          type: :array,
+          items: @node,
+          minItems: 1,
+          description: "Nodes that must all hold"
+        },
+        or: %Schema{
+          type: :array,
+          items: @node,
+          minItems: 1,
+          description: "Nodes of which at least one must hold"
+        },
+        not: @node,
+        field: %Schema{
+          type: :string,
+          example: "intune.compliance_state",
+          description: "The provider attribute a leaf tests, as `<provider>.<attribute>`"
+        },
+        op: %Schema{
+          type: :string,
+          example: "is",
+          enum: @operators,
+          description: "How the attribute is compared to the value"
+        },
+        value: %Schema{
+          example: "compliant",
+          description:
+            "What the attribute is compared to: a string, number, boolean or list, as the operator requires"
+        },
+        rows: %Schema{
+          type: :string,
+          enum: ["any", "all"],
+          default: "any",
+          description:
+            "Whether any or every record of the provider must satisfy the leaf when several match the device"
+        }
+      },
+      additionalProperties: false
     })
   end
 
@@ -102,6 +216,22 @@ defmodule PortalAPI.Schemas.Policy do
             "Whether flow logs are reported for connections authorized by this Policy. " <>
               "Defaults to true. Always false for Internet Resource policies.",
           default: true
+        },
+        is_disabled: %Schema{
+          example: false,
+          type: :boolean,
+          description:
+            "Whether the Policy is disabled. A disabled Policy grants no access but is " <>
+              "otherwise retained. Defaults to false.",
+          default: false
+        },
+        postures: %Schema{
+          allOf: [Policy.PostureNode],
+          nullable: true,
+          description:
+            "Device posture the connecting device must satisfy, or null when none is required. " <>
+              "Requires the device posture feature. Changing it revokes this policy's active " <>
+              "authorizations, so sessions that rely on it are interrupted until the client reconnects."
         },
         conditions: %Schema{
           example: [
@@ -153,6 +283,14 @@ defmodule PortalAPI.Schemas.Policy do
             "Whether the Policy is disabled. A disabled Policy grants no access but is " <>
               "otherwise retained.",
           default: false
+        },
+        postures: %Schema{
+          allOf: [Policy.PostureNode],
+          nullable: true,
+          description:
+            "Device posture the connecting device must satisfy, or null when none is required. " <>
+              "Requires the device posture feature. Changing it revokes this policy's active " <>
+              "authorizations, so sessions that rely on it are interrupted until the client reconnects."
         },
         conditions: %Schema{
           example: [
@@ -221,6 +359,14 @@ defmodule PortalAPI.Schemas.Policy do
             "Whether the Policy is disabled. A disabled Policy grants no access but is " <>
               "otherwise retained."
         },
+        postures: %Schema{
+          allOf: [Policy.PostureNode],
+          nullable: true,
+          description:
+            "Device posture the connecting device must satisfy, or null when none is required. " <>
+              "Requires the device posture feature. Changing it revokes this policy's active " <>
+              "authorizations, so sessions that rely on it are interrupted until the client reconnects."
+        },
         conditions: %Schema{
           example: [
             %{
@@ -241,6 +387,7 @@ defmodule PortalAPI.Schemas.Policy do
         :group_id,
         :id,
         :is_disabled,
+        :postures,
         :resource_id
       ]
     })

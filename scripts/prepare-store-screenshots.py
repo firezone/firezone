@@ -199,13 +199,23 @@ def frame_window(capture: Image.Image, radius: int, appearance: str) -> Image.Im
     return Image.composite(window, canvas, placed(inner))
 
 
+def centred(capture: Image.Image) -> Image.Image:
+    canvas = Image.new("RGB", MAC_SIZE, MAC_BACKGROUND)
+    canvas.paste(
+        capture.convert("RGB"),
+        ((MAC_SIZE[0] - capture.width) // 2, (MAC_SIZE[1] - capture.height) // 2),
+    )
+    return canvas
+
+
 def prepare_macos(directory: Path) -> None:
     if directory.name not in MAC_CORNER_RADIUS:
         raise RuntimeError(f"No window corner radius is known for macOS {directory.name}")
 
     for path in screenshots(directory):
         with Image.open(path) as image:
-            if image.size == MAC_SIZE:
+            # Reviewer attachments are web pages, not framed store listing images.
+            if path.name.startswith("reviewer-") or image.size == MAC_SIZE:
                 write_rgb(path, image)
                 continue
 
@@ -214,6 +224,11 @@ def prepare_macos(directory: Path) -> None:
                 raise RuntimeError(f"{relative} does not fit on a {MAC_SIZE} canvas")
 
             screen, appearance = path.stem.rsplit("-", 1)
+            if screen == "menu":
+                # Two shapes on the canvas colour already (see ScreenshotDelivery.swift).
+                write_rgb(path, centred(image))
+                continue
+
             window = "main" if screen in MAIN_WINDOW_SCREENS else "settings"
             radius = MAC_CORNER_RADIUS[directory.name][window]
             write_rgb(path, frame_window(image, radius, appearance))

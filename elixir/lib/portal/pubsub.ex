@@ -53,11 +53,15 @@ defmodule Portal.PubSub do
             | :memberships
             | :policies
             | :policy_authorizations
+            | :intune_devices
+            | :iru_devices
+            | :defender_devices
+            | :santa_devices
+            | :sentinelone_devices
             | :portal_sessions
             | :posture_providers
             | :resources
             | :sites
-            | :static_device_pool_members
             | :x509_auth_providers
 
     @spec subscribe(String.t()) :: :ok | {:error, term()}
@@ -104,6 +108,7 @@ defmodule Portal.PubSub do
 
     defp account_topic(account_id), do: "account:#{account_id}"
     defp entity_topic(account_id, entity), do: "account:#{account_id}:#{entity}"
+
     defp accounts_topic do
       Portal.Config.get_env(:portal, :account_changes_topic, "accounts")
     end

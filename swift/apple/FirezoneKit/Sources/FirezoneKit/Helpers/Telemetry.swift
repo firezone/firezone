@@ -18,7 +18,7 @@ public enum Telemetry {
     }
   }
 
-  public static func start(enableAppHangTracking: Bool = true) {
+  public static func start(enableAppHangTracking: Bool = true, enableMetricKit: Bool = false) {
     guard !BundleHelper.noTelemetry else {
       Log.info("Telemetry is switched off for this build")
 
@@ -32,6 +32,7 @@ public enum Telemetry {
       options.releaseName = releaseName()
       options.dist = distributionType()
       options.enableAppHangTracking = enableAppHangTracking
+      options.enableMetricKit = enableMetricKit
       options.enableLogs = true
     }
   }

@@ -17,11 +17,18 @@
     private static let appBundleID = "dev.firezone.firezone"
     private static let pointerParkingSpot = CGVector(dx: 0.5, dy: 1.2)
 
+    /// Each tab, with a label only its own content carries: a tab that never
+    /// opened leaves the one before it on screen, holding perfectly still, and
+    /// the gallery takes that as a picture of the tab it asked for.
     private static let settingsTabs = [
-      (label: "General", name: "general"),
-      (label: "Advanced", name: "advanced"),
-      (label: "Diagnostic Logs", name: "logs"),
+      (label: "General", name: "general", showing: "Account Slug"),
+      (label: "Advanced", name: "advanced", showing: "Auth Base URL"),
+      (label: "Diagnostic Logs", name: "logs", showing: "Clear Log Directory"),
     ]
+
+    /// A field every parsed certificate carries, so the Device Trust tab can be
+    /// told from the one that was showing before it.
+    private static let certificateAnchor = "Signing Algorithm"
 
     /// The scenarios describing the states of the certificate tab.
     private static let certificateScenarios = [
@@ -65,7 +72,7 @@
         // General is already selected, and is clicked anyway so that every tab
         // arrives the same way.
         for tab in Self.settingsTabs {
-          try selectTab(tab.label, in: window)
+          try selectTab(tab.label, showing: tab.showing, in: window)
           capture(window, as: "settings-\(tab.name)", in: appearance)
         }
       }
@@ -79,7 +86,7 @@
           defer { app.terminate() }
 
           let window = try onlyWindow(of: app)
-          try selectTab("Device Trust", in: window)
+          try selectTab("Device Trust", showing: Self.certificateAnchor, in: window)
           capture(window, as: scenario, in: appearance)
         }
       }
@@ -101,6 +108,55 @@
       }
     }
 
+    /// The menu bar menu with a resource hovered, so its submenu is open beside it.
+    ///
+    /// macOS 26 only: before it, the menu redraws its whole background a few steps
+    /// differently on every run once the submenu is open, so there is no picture to keep.
+    func testMenuWithResource() throws {
+      try XCTSkipIf(
+        ProcessInfo.processInfo.operatingSystemVersion.majorVersion < 26,
+        "the menu does not render repeatably before macOS 26"
+      )
+
+      for appearance in Appearance.allCases {
+        let app = launchApp(scenario: "connected", appearance: appearance, window: "none")
+        defer { app.terminate() }
+
+        let menu = try openMenu(of: app)
+        // The row and the submenu it opens share the title.
+        let row = menu.menuItems["Engineering wiki"].firstMatch
+        let menuFrame = menu.frame
+        let rowFrame = row.frame
+
+        // The pointer arrives from the side, because a row it highlights on its way
+        // is redrawn a shade differently from its first draw, and it leaves through
+        // the menu's padding rather than along the menu bar, where it would hand the
+        // menu to whichever status item it passed. Offsets are taken from the menu:
+        // an app with no window has no frame for a coordinate to be relative to.
+        let corner = menu.coordinate(withNormalizedOffset: .zero)
+        let rowY = rowFrame.midY - menuFrame.minY
+        corner.withOffset(CGVector(dx: 4, dy: 4)).hover()
+        corner.withOffset(CGVector(dx: -20, dy: 4)).hover()
+        corner.withOffset(CGVector(dx: -20, dy: rowY)).hover()
+        corner.withOffset(CGVector(dx: rowFrame.midX - menuFrame.minX, dy: rowY)).hover()
+
+        let submenu = try openedSubmenu(of: row)
+
+        capture([menuFrame, submenu.frame], as: "menu", in: appearance)
+
+        // Only the pointer resting on the row holds the submenu open, and the
+        // capture waits seconds for the screen to hold still. A submenu that
+        // closed in that time leaves the plain menu behind, which holds still
+        // perfectly and photographs as a screen this test never asked for.
+        guard submenuIsOpen(of: row) else {
+          print("The submenu closed while it was photographed; the row presents:")
+          print(row.debugDescription)
+
+          throw AppScreenshotError.menuDidNotStayOpen
+        }
+      }
+    }
+
     private func launchApp(
       scenario: String, appearance: Appearance, window: String
     ) -> XCUIApplication {
@@ -113,6 +169,73 @@
       app.launch()
 
       return app
+    }
+
+    /// Clicks the status item and hands back its open menu.
+    ///
+    /// The rows reach the accessibility tree before the menu is ever shown, so the
+    /// store's resources are waited for first: a title set on a menu that is
+    /// already showing is drawn a shade differently from one drawn as it opens.
+    private func openMenu(of app: XCUIApplication) throws -> XCUIElement {
+      let item = app.statusItems.firstMatch
+
+      guard item.waitForExistence(timeout: 30) else {
+        print("No status item appeared; the app presents:\n\(app.debugDescription)")
+
+        throw AppScreenshotError.statusItemNotFound
+      }
+
+      let row = app.menuItems["Office network"]
+
+      guard row.waitForExistence(timeout: 30) else {
+        print("The menu never listed the resources; the app presents:\n\(app.debugDescription)")
+
+        throw AppScreenshotError.menuDidNotOpen
+      }
+
+      item.click()
+
+      // The menu is reported as the status item's child on some releases and as
+      // the app's on others.
+      let candidates = [item.menus.firstMatch, app.menus.firstMatch]
+
+      guard let menu = candidates.first(where: { $0.waitForExistence(timeout: 10) }) else {
+        print("The menu did not open; the app presents:\n\(app.debugDescription)")
+
+        throw AppScreenshotError.menuDidNotOpen
+      }
+
+      return menu
+    }
+
+    /// Whether the submenu the hovered `row` opens is on screen.
+    ///
+    /// Hittable rather than present: every resource carries a submenu and they are
+    /// all in the tree before any of them is shown.
+    private func submenuIsOpen(of row: XCUIElement) -> Bool {
+      let item = row.menuItems["Copy address"].firstMatch
+
+      return item.exists && item.isHittable
+    }
+
+    /// Waits for the submenu the hovered `row` opens, and hands it back.
+    ///
+    /// The row's own, rather than the tallest menu that is not the menu: every resource
+    /// carries a submenu and they are all in the tree before any of them is shown, so
+    /// that handed back menus that were never on screen, whose frame the capture was
+    /// then cropped to.
+    private func openedSubmenu(of row: XCUIElement) throws -> XCUIElement {
+      let deadline = Date().addingTimeInterval(10)
+
+      while Date() < deadline {
+        if submenuIsOpen(of: row) { return row.menus.firstMatch }
+
+        Thread.sleep(forTimeInterval: 0.5)
+      }
+
+      print("The submenu did not open; the row presents:\n\(row.debugDescription)")
+
+      throw AppScreenshotError.menuDidNotOpen
     }
 
     /// Photographs the window and pins that its dark capture is actually dark.
@@ -132,7 +255,16 @@
         return
       }
 
-      let image = deliver(window, as: name, in: appearance)
+      record(deliver(window, as: name, in: appearance), as: name, in: appearance)
+    }
+
+    /// Photographs the region a screen covers when it is more than one element:
+    /// a menu together with the submenu it has open.
+    private func capture(_ frames: [CGRect], as name: String, in appearance: Appearance) {
+      record(deliver(frames, as: name, in: appearance), as: name, in: appearance)
+    }
+
+    private func record(_ image: Data, as name: String, in appearance: Appearance) {
       brightness["\(name)-\(appearance.rawValue)"] = meanBrightness(of: image)
       captured["\(name)-\(appearance.rawValue)"] = image
 
@@ -180,9 +312,18 @@
       return window
     }
 
+    /// Opens the tab named `label` and waits for `anchor`, which only its own
+    /// content carries.
+    ///
     /// SwiftUI has drawn the macOS tab picker as different controls across
-    /// releases, so the first kind that answers to `label` wins.
-    private func selectTab(_ label: String, in window: XCUIElement) throws {
+    /// releases, so the first kind that answers to `label` wins. A click that
+    /// lands while the window is still arriving is dropped without a word, so it
+    /// is repeated until the content it asks for is on screen. The tab's own
+    /// selected trait would be the cheaper signal, but these controls do not
+    /// report it, not even for the tab that is already showing.
+    private func selectTab(
+      _ label: String, showing anchor: String, in window: XCUIElement
+    ) throws {
       let candidates = [
         window.tabs[label],
         window.tabGroups.buttons[label],
@@ -195,12 +336,24 @@
         throw AppScreenshotError.tabNotFound(label)
       }
 
-      tab.click()
+      for _ in 0..<3 {
+        tab.click()
+
+        if window.descendants(matching: .any)[anchor].waitForExistence(timeout: 10) {
+          return
+        }
+      }
+
+      throw AppScreenshotError.tabDidNotOpen(label)
     }
   }
 
   private enum AppScreenshotError: Error {
     case windowDidNotAppear
+    case statusItemNotFound
+    case menuDidNotOpen
+    case menuDidNotStayOpen
     case tabNotFound(String)
+    case tabDidNotOpen(String)
   }
 #endif

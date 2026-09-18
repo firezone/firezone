@@ -3,6 +3,7 @@ defmodule PortalAPI.Integrations.Google.WebhookControllerTest do
   use Oban.Testing, repo: Portal.Repo
 
   import Portal.AccountFixtures
+  import Portal.ObanFixtures
   import Portal.GoogleDirectoryFixtures
   import Portal.IdentityFixtures
 
@@ -83,6 +84,28 @@ defmodule PortalAPI.Integrations.Google.WebhookControllerTest do
       assert response(conn, 200) == ""
       assert [job] = all_enqueued(worker: Google.WebhookSync)
       assert job.args["user_id"] == "user-new"
+    end
+
+    test "records when a notification was last accepted", %{conn: conn, directory: directory} do
+      assert is_nil(directory.webhook_received_at)
+
+      conn = post_notification(conn, directory, "update", user("user-unknown"))
+
+      assert response(conn, 200) == ""
+      assert Portal.Repo.get_by!(Google.Directory, id: directory.id).webhook_received_at
+    end
+
+    test "queues unknown users while a job for the directory is running", %{
+      conn: conn,
+      directory: directory
+    } do
+      executing_job(Google.Sync.new(%{account_id: directory.account_id, directory_id: directory.id}))
+
+      conn = post_notification(conn, directory, "delete", user("user-unknown"))
+
+      assert response(conn, 200) == ""
+      assert [job] = all_enqueued(worker: Google.WebhookSync)
+      assert job.args["user_id"] == "user-unknown"
     end
 
     test "drops notifications with the wrong token", %{conn: conn, directory: directory} do

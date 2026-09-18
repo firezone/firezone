@@ -24,6 +24,7 @@ logging = { workspace = true, features = ["telemetry"] }
 opentelemetry = { workspace = true }
 otel-attributes = { workspace = true }
 otel-instruments = { workspace = true }
+parking_lot = { workspace = true }
 phoenix-channel = { workspace = true }
 rustls = { workspace = true }
 secrecy = { workspace = true }

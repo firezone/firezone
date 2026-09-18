@@ -57,7 +57,7 @@ defmodule PortalWeb.Endpoint do
   end
 
   plug Plug.Parsers,
-    parsers: [:urlencoded, :multipart, :json],
+    parsers: [Portal.Parsers.URLENCODED, Portal.Parsers.JSON],
     pass: ["*/*"],
     json_decoder: Phoenix.json_library()
 

@@ -82,7 +82,7 @@ defmodule PortalWeb.FindAccount do
       </div>
       <div>
         <h1 class="text-xl font-bold text-heading tracking-tight">
-          Find your company's account
+          Find your organization's account
         </h1>
         <p class="text-xs text-subtle mt-0.5">
           We'll send you a link to your organization's sign-in page.

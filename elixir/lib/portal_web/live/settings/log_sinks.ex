@@ -75,7 +75,6 @@ defmodule PortalWeb.Settings.LogSinks do
         submit_failed?: false,
         sentinel_verification_ref: nil,
         s3_setup_tab: "console",
-        trust_anchors_enabled?: PortalWeb.NavigationComponents.trust_anchors_enabled?(),
         device_posture_enabled?: PortalWeb.NavigationComponents.device_posture_enabled?()
       )
 
@@ -309,7 +308,6 @@ defmodule PortalWeb.Settings.LogSinks do
       <.settings_nav
         account={@account}
         current_path={@current_path}
-        trust_anchors_enabled?={@trust_anchors_enabled?}
         device_posture_enabled?={@device_posture_enabled?}
       />
 
@@ -764,8 +762,16 @@ defmodule PortalWeb.Settings.LogSinks do
               <.icon name="ri-loop-left-line" class="w-3.5 h-3.5 shrink-0" /> Deliver Now
             </button>
             <div class="my-1 border-t border-border"></div>
+            <.link
+              :if={@sink.is_disabled and @sink.disabled_reason == "Sync error"}
+              patch={~p"/#{@account}/settings/log_sinks/#{@type}/#{@sink.id}/edit"}
+              class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-raised transition-colors text-body"
+            >
+              <.icon name="ri-flashlight-line" class="w-3.5 h-3.5 shrink-0" />
+              Re-verify to enable
+            </.link>
             <.button_with_confirmation
-              :if={@sink.disabled_reason != "Sync error"}
+              :if={not (@sink.is_disabled and @sink.disabled_reason == "Sync error")}
               id={"toggle-sink-#{@sink.id}"}
               on_confirm="toggle_sink"
               on_confirm_id={@sink.id}

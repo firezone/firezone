@@ -1,7 +1,4 @@
-use std::{
-    net::{IpAddr, Ipv4Addr, Ipv6Addr},
-    time::Instant,
-};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
 use connlib_model::ClientId;
 use dns_types::{DomainName, RecordType};
@@ -43,12 +40,12 @@ enum DnsNameSpec {
     },
 }
 
-pub(super) fn targets(state: &ReferenceState, now: Instant) -> Vec<DnsQueryTarget> {
+pub(super) fn targets(state: &ReferenceState) -> Vec<DnsQueryTarget> {
     let servers = state.reachable_dns_servers();
     let labels = state.portal.device_labels();
 
     state
-        .all_domains(now)
+        .all_domains()
         .into_iter()
         .flat_map(|(client_id, domain, rtypes)| {
             servers
@@ -79,28 +76,26 @@ pub(super) fn targets(state: &ReferenceState, now: Instant) -> Vec<DnsQueryTarge
                     )
                 }),
         )
-        .chain(state.device_pool_query_targets().into_iter().flat_map(
-            |(client_id, resource, dns_server)| {
-                let base = resource.address.trim_start_matches("*.").to_owned();
-                [
-                    (!labels.is_empty()).then(|| DnsQueryTarget {
-                        client_id,
-                        dns_server: dns_server.clone(),
-                        name: DnsNameSpec::KnownDevice {
-                            base: base.clone(),
-                            labels: labels.clone(),
-                        },
-                    }),
-                    Some(DnsQueryTarget {
-                        client_id,
-                        dns_server,
-                        name: DnsNameSpec::UnknownDevice { base },
-                    }),
-                ]
-                .into_iter()
-                .flatten()
-            },
-        ))
+        .chain(servers.iter().cloned().flat_map(|(client_id, dns_server)| {
+            let base = dns::DEVICE_DOMAIN.to_owned();
+            [
+                (!labels.is_empty()).then(|| DnsQueryTarget {
+                    client_id,
+                    dns_server: dns_server.clone(),
+                    name: DnsNameSpec::KnownDevice {
+                        base: base.clone(),
+                        labels: labels.clone(),
+                    },
+                }),
+                Some(DnsQueryTarget {
+                    client_id,
+                    dns_server,
+                    name: DnsNameSpec::UnknownDevice { base },
+                }),
+            ]
+            .into_iter()
+            .flatten()
+        }))
         .collect::<Vec<_>>()
 }
 

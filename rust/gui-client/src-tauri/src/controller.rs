@@ -1,7 +1,6 @@
 use crate::{
     auth, deep_link, dialog,
     gui::{self, system_tray},
-    ipc::{self, SocketId},
     logging::{self, FileCount},
     service,
     settings::{AdvancedSettings, GeneralSettings, MdmSettings},
@@ -9,6 +8,7 @@ use crate::{
     view::{GeneralSettingsForm, SessionViewModel},
 };
 use anyhow::{Context, ErrorExt as _, Result, anyhow, bail};
+use client_ipc::{self as ipc, SocketId};
 use client_shared::ConnectedAs;
 use connlib_model::{ResourceId, ResourceList, ResourceView, Site};
 use futures::{
@@ -64,10 +64,17 @@ pub struct Controller<I: GuiIntegration> {
     gui_ipc_clients: BoxStream<
         'static,
         Result<(
-            ipc::ServerRead<gui::ClientMsg>,
-            ipc::ServerWrite<gui::ServerMsg>,
+            ipc::ServerRead<gui_ipc::ClientMsg>,
+            ipc::ServerWrite<gui_ipc::ServerMsg>,
         )>,
     >,
+    /// CLIs whose `Connect` is answered once the session is up or has failed.
+    pending_connect_replies: Vec<ipc::ServerWrite<gui_ipc::ServerMsg>>,
+    /// A token supplied over `Connect` that is saved once the portal accepts it.
+    ///
+    /// Saving it earlier would replace the stored token with one that may be
+    /// stale, and a rejection would then delete the replacement.
+    unconfirmed_token: Option<SecretString>,
 }
 
 pub trait GuiIntegration {
@@ -89,6 +96,8 @@ pub trait GuiIntegration {
 
     fn set_tray_icon(&mut self, icon: system_tray::Icon);
     fn set_tray_menu(&mut self, app_state: system_tray::AppState);
+    fn open_tray_menu(&self) -> Result<()>;
+    fn close_tray_menu(&self) -> Result<()>;
     fn show_notification(&self, title: impl Into<String>, body: impl Into<String>) -> Result<()>;
 
     /// Shows a notification about a new release, opening its download URL on click where the platform supports it.
@@ -121,6 +130,8 @@ pub enum ControllerRequest {
         stem: PathBuf,
     },
     Fail(Failure),
+    OpenTrayMenu,
+    CloseTrayMenu,
     SignIn,
     SignOut,
     UpdateState,
@@ -173,12 +184,19 @@ enum EventloopTick {
     NewInstanceLaunched(
         Option<
             Result<(
-                ipc::ServerRead<gui::ClientMsg>,
-                ipc::ServerWrite<gui::ServerMsg>,
+                ipc::ServerRead<gui_ipc::ClientMsg>,
+                ipc::ServerWrite<gui_ipc::ServerMsg>,
             )>,
         >,
     ),
     QuitTimeoutElapsed,
+}
+
+/// When the reply to a GUI IPC message is sent.
+enum GuiIpcReply {
+    Now(gui_ipc::ServerMsg),
+    /// Once the session reaches [`Status::TunnelReady`] or gives up.
+    WhenConnected,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -199,8 +217,7 @@ impl<I: GuiIntegration> Controller<I> {
     ) -> Result<()> {
         tracing::debug!("Starting new instance of `Controller`");
 
-        let (mut ipc_rx, mut ipc_client) =
-            ipc::connect(socket, ipc::ConnectOptions::default()).await?;
+        let (mut ipc_rx, mut ipc_client) = connect_to_tunnel_service(socket).await?;
 
         let (firezone_id, advanced_settings, mdm_settings, x509) = receive_hello(&mut ipc_rx)
             .await
@@ -261,6 +278,8 @@ impl<I: GuiIntegration> Controller<I> {
                 Some((result, gui_ipc))
             })
             .boxed(),
+            pending_connect_replies: Vec::new(),
+            unconfirmed_token: None,
         };
 
         controller.main_loop().await?;
@@ -311,15 +330,22 @@ impl<I: GuiIntegration> Controller<I> {
                 EventloopTick::NewInstanceLaunched(Some(Ok((mut read, mut write)))) => {
                     let client_msg = read.next().await;
 
-                    if let Err(e) = self.handle_gui_ipc_msg(client_msg).await {
-                        tracing::debug!(
-                            "Failed to handle IPC message from new GUI instance: {e:#}"
-                        );
-                        continue;
-                    }
+                    let reply = match self.handle_gui_ipc_msg(client_msg).await {
+                        Ok(GuiIpcReply::Now(reply)) => reply,
+                        Ok(GuiIpcReply::WhenConnected) => {
+                            self.pending_connect_replies.push(write);
 
-                    if let Err(e) = write.send(&gui::ServerMsg::Ack).await {
-                        tracing::debug!("Failed to ack IPC message from new GUI instance: {e:#}")
+                            continue;
+                        }
+                        Err(e) => {
+                            tracing::debug!("Failed to handle GUI IPC message: {e:#}");
+
+                            gui_ipc::ServerMsg::Error(gui_ipc::ServerError::Other(format!("{e:#}")))
+                        }
+                    };
+
+                    if let Err(e) = write.send(&reply).await {
+                        tracing::debug!("Failed to reply to GUI IPC message: {e:#}")
                     }
                 }
                 EventloopTick::QuitTimeoutElapsed => {
@@ -422,16 +448,13 @@ impl<I: GuiIntegration> Controller<I> {
     }
 
     async fn update_telemetry_context(&mut self) -> Result<()> {
-        let environment = self.api_url().to_string();
-
         if !self.telemetry_allowed {
             return Ok(());
         }
 
-        telemetry::start(&environment, crate::RELEASE, telemetry::GUI_DSN);
+        telemetry::start(self.api_url().as_str(), crate::RELEASE, telemetry::GUI_DSN);
 
         self.send_ipc(&service::ClientMsg::StartTelemetry {
-            environment: environment.clone(),
             release: crate::RELEASE.to_string(),
         })
         .await?;
@@ -516,6 +539,8 @@ impl<I: GuiIntegration> Controller<I> {
             }
             Fail(Failure::Error) => Err(anyhow!("Test error"))?,
             Fail(Failure::Panic) => panic!("Test panic"),
+            OpenTrayMenu => self.integration.open_tray_menu()?,
+            CloseTrayMenu => self.integration.close_tray_menu()?,
             SignIn | SystemTrayMenu(system_tray::Event::SignIn) => {
                 let auth_url = self.auth_url().clone();
                 let account_slug = self.account_slug().map(|a| a.to_owned());
@@ -578,12 +603,10 @@ impl<I: GuiIntegration> Controller<I> {
                 self.refresh_favorite_resources().await?;
             }
             SystemTrayMenu(system_tray::Event::EnableInternetResource) => {
-                self.general_settings.internet_resource_enabled = Some(true);
-                self.update_disabled_resources().await?;
+                self.set_internet_resource_enabled(true).await?;
             }
             SystemTrayMenu(system_tray::Event::DisableInternetResource) => {
-                self.general_settings.internet_resource_enabled = Some(false);
-                self.update_disabled_resources().await?;
+                self.set_internet_resource_enabled(false).await?;
             }
             SystemTrayMenu(system_tray::Event::ShowWindow(window)) => {
                 match window {
@@ -693,16 +716,6 @@ impl<I: GuiIntegration> Controller<I> {
 
                 telemetry::set_account_slug(connected.account_slug.clone());
 
-                // An MDM-forced slug is the admin's answer to the same question and wins
-                // every read of it, so it is left alone rather than cached over.
-                if self.mdm_settings.account_slug.is_none() {
-                    self.general_settings.account_slug = Some(connected.account_slug.clone());
-                    self.integration
-                        .save_general_settings(&self.general_settings)
-                        .await?;
-                    self.notify_settings_changed()?;
-                }
-
                 self.connected_as = Some(connected);
                 self.refresh_ui_state();
             }
@@ -726,6 +739,7 @@ impl<I: GuiIntegration> Controller<I> {
                 );
 
                 self.status = Status::TunnelReady { resources };
+                self.resolve_connect_replies(gui_ipc::ServerMsg::Ack).await;
 
                 self.refresh_ui_state();
                 self.update_disabled_resources().await?;
@@ -793,35 +807,132 @@ impl<I: GuiIntegration> Controller<I> {
 
     async fn handle_gui_ipc_msg(
         &mut self,
-        maybe_msg: Option<Result<gui::ClientMsg>>,
-    ) -> Result<()> {
+        maybe_msg: Option<Result<gui_ipc::ClientMsg>>,
+    ) -> Result<GuiIpcReply> {
         let client_msg = maybe_msg
             .context("No message received")?
             .context("Failed to read message")?;
 
-        match client_msg {
-            gui::ClientMsg::Deeplink(url) => match self.handle_deep_link(&url).await {
-                Ok(()) => {}
-                Err(error)
-                    if error
-                        .any_downcast_ref::<auth::Error>()
-                        .is_some_and(|e| matches!(e, auth::Error::NoInflightRequest)) =>
-                {
-                    tracing::debug!("Ignoring deep-link; no local state");
+        let reply = match client_msg {
+            gui_ipc::ClientMsg::Deeplink(url) => {
+                match self.handle_deep_link(&url).await {
+                    Ok(()) => {}
+                    Err(error)
+                        if error
+                            .any_downcast_ref::<auth::Error>()
+                            .is_some_and(|e| matches!(e, auth::Error::NoInflightRequest)) =>
+                    {
+                        tracing::debug!("Ignoring deep-link; no local state");
+                    }
+                    Err(error) => {
+                        tracing::error!("`handle_deep_link` failed: {error:#}");
+                    }
                 }
-                Err(error) => {
-                    tracing::error!("`handle_deep_link` failed: {error:#}");
-                }
-            },
-            gui::ClientMsg::NewInstance => {
+
+                gui_ipc::ServerMsg::Ack
+            }
+            gui_ipc::ClientMsg::NewInstance => {
                 let (_, session_view_model) = self.build_ui_state();
 
                 self.integration.show_overview_page(&session_view_model)?;
                 self.reload_device_trust().await?;
+
+                gui_ipc::ServerMsg::Ack
             }
+            gui_ipc::ClientMsg::OpenTrayMenu => {
+                self.handle_request(ControllerRequest::OpenTrayMenu).await?;
+
+                gui_ipc::ServerMsg::Ack
+            }
+            gui_ipc::ClientMsg::CloseTrayMenu => {
+                self.handle_request(ControllerRequest::CloseTrayMenu)
+                    .await?;
+
+                gui_ipc::ServerMsg::Ack
+            }
+            gui_ipc::ClientMsg::ListResources => {
+                let Status::TunnelReady { resources } = &self.status else {
+                    return Ok(GuiIpcReply::Now(gui_ipc::ServerMsg::Error(
+                        gui_ipc::ServerError::NotConnected,
+                    )));
+                };
+
+                gui_ipc::ServerMsg::Resources(resources.resources.clone())
+            }
+            gui_ipc::ClientMsg::SetInternetResourceEnabled(enabled) => {
+                self.set_internet_resource_enabled(enabled).await?;
+
+                gui_ipc::ServerMsg::Ack
+            }
+            gui_ipc::ClientMsg::Status => gui_ipc::ServerMsg::Status(match &self.status {
+                Status::TunnelReady { .. } => gui_ipc::TunnelStatus::Connected {
+                    account_slug: self
+                        .connected_as
+                        .as_ref()
+                        .map(|connected| connected.account_slug.clone()),
+                    actor_name: self
+                        .connected_as
+                        .as_ref()
+                        .map(|connected| connected.actor_name.clone()),
+                },
+                Status::WaitingForPortal | Status::WaitingForTunnel => {
+                    gui_ipc::TunnelStatus::Connecting
+                }
+                Status::Disconnected | Status::Quitting => gui_ipc::TunnelStatus::Disconnected,
+            }),
+            gui_ipc::ClientMsg::SignOut => {
+                self.sign_out().await?;
+
+                gui_ipc::ServerMsg::Ack
+            }
+            gui_ipc::ClientMsg::Connect { token } => {
+                return self.connect_over_gui_ipc(token).await;
+            }
+            gui_ipc::ClientMsg::Disconnect => {
+                self.disconnect().await?;
+
+                gui_ipc::ServerMsg::Ack
+            }
+        };
+
+        Ok(GuiIpcReply::Now(reply))
+    }
+
+    /// Starts a session for the CLI, with `token` or else with the stored one.
+    ///
+    /// A running or starting session is left alone, even if a token was supplied:
+    /// a script re-running `connect` must not tear down the tunnel.
+    async fn connect_over_gui_ipc(&mut self, token: Option<SecretString>) -> Result<GuiIpcReply> {
+        match self.status {
+            Status::TunnelReady { .. } => return Ok(GuiIpcReply::Now(gui_ipc::ServerMsg::Ack)),
+            Status::WaitingForPortal => return Ok(GuiIpcReply::WhenConnected),
+            Status::WaitingForTunnel => return Ok(GuiIpcReply::WhenConnected),
+            Status::Disconnected => {}
+            Status::Quitting => {}
         }
 
-        Ok(())
+        let token = match token {
+            Some(token) => {
+                self.unconfirmed_token = Some(token.clone());
+
+                token
+            }
+            None => {
+                let Some(token) = self.auth.token() else {
+                    return Ok(GuiIpcReply::Now(gui_ipc::ServerMsg::Error(
+                        gui_ipc::ServerError::NotSignedIn {
+                            sign_in_url: self.headless_sign_in_url(),
+                        },
+                    )));
+                };
+
+                token
+            }
+        };
+
+        self.start_session(token).await?;
+
+        Ok(GuiIpcReply::WhenConnected)
     }
 
     async fn handle_connect_result(&mut self, result: Result<(), String>) -> Result<()> {
@@ -833,6 +944,9 @@ impl<I: GuiIntegration> Controller<I> {
 
         match result {
             Ok(()) => {
+                if let Some(token) = self.unconfirmed_token.take() {
+                    self.auth.sign_in_with_token(&token);
+                }
                 ran_before::set().await?;
                 self.status = Status::WaitingForTunnel;
                 self.refresh_ui_state();
@@ -842,9 +956,30 @@ impl<I: GuiIntegration> Controller<I> {
                 // We log this here directly instead of forwarding it because errors hard-abort the event-loop and we still want to be able to export logs and stuff.
                 // See <https://github.com/firezone/firezone/issues/6547>.
                 tracing::error!("Failed to connect to Firezone: {error}");
-                self.sign_out().await?;
+
+                // `disconnect` answers whatever is still pending with `NotConnected`;
+                // the portal's reason is the more useful one, so it goes out first.
+                self.resolve_connect_replies(gui_ipc::ServerMsg::Error(
+                    gui_ipc::ServerError::Other(error),
+                ))
+                .await;
+                match self.unconfirmed_token.take() {
+                    Some(_) => self.disconnect().await?,
+                    None => self.sign_out().await?,
+                }
 
                 Ok(())
+            }
+        }
+    }
+
+    /// Sends `reply` to every CLI waiting on `Connect`.
+    ///
+    /// A CLI that gave up waiting has closed its end, which is not our failure.
+    async fn resolve_connect_replies(&mut self, reply: gui_ipc::ServerMsg) {
+        for mut write in self.pending_connect_replies.drain(..) {
+            if let Err(e) = write.send(&reply).await {
+                tracing::debug!("Failed to reply to GUI IPC `Connect`: {e:#}");
             }
         }
     }
@@ -861,6 +996,13 @@ impl<I: GuiIntegration> Controller<I> {
         self.refresh_ui_state();
 
         self.integration.show_update_notification(release)?;
+
+        Ok(())
+    }
+
+    async fn set_internet_resource_enabled(&mut self, enabled: bool) -> Result<()> {
+        self.general_settings.internet_resource_enabled = Some(enabled);
+        self.update_disabled_resources().await?;
 
         Ok(())
     }
@@ -966,6 +1108,11 @@ impl<I: GuiIntegration> Controller<I> {
         }
         self.status = Status::Disconnected;
         self.connected_as = None;
+        self.unconfirmed_token = None;
+        self.resolve_connect_replies(gui_ipc::ServerMsg::Error(
+            gui_ipc::ServerError::NotConnected,
+        ))
+        .await;
         telemetry::set_account_slug(None);
         tracing::debug!("disconnecting connlib");
         // This is redundant if the token is expired, in that case
@@ -1062,11 +1209,46 @@ impl<I: GuiIntegration> Controller<I> {
             .or(self.general_settings.account_slug.as_deref())
     }
 
+    /// Where the CLI user signs in to be shown a token to copy.
+    ///
+    /// `as=headless-client` makes the portal display the token instead of
+    /// handing it back through a deep link, which only the GUI can receive.
+    fn headless_sign_in_url(&self) -> String {
+        let mut url = self.auth_url().clone();
+
+        if let Some(account_slug) = self.account_slug() {
+            url.set_path(account_slug);
+        }
+
+        url.query_pairs_mut().append_pair("as", "headless-client");
+
+        url.to_string()
+    }
+
     fn connect_on_start(&self) -> Option<bool> {
         self.mdm_settings
             .connect_on_start
             .or(self.general_settings.connect_on_start)
     }
+}
+
+/// Connects to the Tunnel service.
+///
+/// When the GUI is launched with `--mock-tunnel`, this hands back an in-memory
+/// channel served by an in-process mock instead of connecting to the real
+/// (root-only) Tunnel service. Debug builds only.
+async fn connect_to_tunnel_service(
+    socket: SocketId,
+) -> Result<(
+    ipc::ClientRead<service::ServerMsg>,
+    ipc::ClientWrite<service::ClientMsg>,
+)> {
+    #[cfg(debug_assertions)]
+    if socket == SocketId::Tunnel && crate::mock_tunnel::enabled() {
+        return Ok(ipc::framed(crate::mock_tunnel::spawn()));
+    }
+
+    ipc::connect(socket, ipc::ConnectOptions::default()).await
 }
 
 async fn receive_hello(
@@ -1303,11 +1485,324 @@ mod tests {
         mock_tunnel.send_hello().await;
 
         let (mut gui_rx, mut gui_tx) = test_controller.gui_ipc_connect().await;
-        gui_tx.send(&gui::ClientMsg::NewInstance).await.unwrap();
+        gui_tx.send(&gui_ipc::ClientMsg::NewInstance).await.unwrap();
         let response = gui_rx.next().await.unwrap().unwrap();
 
         assert_eq!(test_controller.integration().shown_overview_page.len(), 2);
-        assert_eq!(response, gui::ServerMsg::Ack)
+        assert_eq!(response, gui_ipc::ServerMsg::Ack)
+    }
+
+    #[tokio::test]
+    async fn opens_and_closes_the_tray_menu_on_request() {
+        let _guard = logging::test("debug");
+        let mut test_controller = Controller::start_for_test();
+
+        let mut mock_tunnel = test_controller.tunnel_service_ipc_accept().await;
+        mock_tunnel.send_hello().await;
+
+        let (mut gui_rx, mut gui_tx) = test_controller.gui_ipc_connect().await;
+        gui_tx
+            .send(&gui_ipc::ClientMsg::OpenTrayMenu)
+            .await
+            .unwrap();
+        let response = gui_rx.next().await.unwrap().unwrap();
+        assert_eq!(response, gui_ipc::ServerMsg::Ack);
+
+        let (mut gui_rx, mut gui_tx) = test_controller.gui_ipc_connect().await;
+        gui_tx
+            .send(&gui_ipc::ClientMsg::CloseTrayMenu)
+            .await
+            .unwrap();
+        let response = gui_rx.next().await.unwrap().unwrap();
+        assert_eq!(response, gui_ipc::ServerMsg::Ack);
+
+        assert_eq!(test_controller.integration().tray_menu_opens.len(), 1);
+        assert_eq!(test_controller.integration().tray_menu_closes.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn lists_resources_over_gui_ipc() {
+        let _guard = logging::test("debug");
+        let mut test_controller = Controller::start_for_test();
+        let mut mock_tunnel = test_controller.tunnel_service_ipc_accept().await;
+        mock_tunnel.send_hello().await;
+
+        let response = test_controller
+            .gui_ipc_request(gui_ipc::ClientMsg::ListResources)
+            .await;
+        assert_eq!(
+            response,
+            gui_ipc::ServerMsg::Error(gui_ipc::ServerError::NotConnected)
+        );
+
+        test_controller.sign_in().await;
+        mock_tunnel.start_ok().await;
+        mock_tunnel.send_resources(vec![dns_resource_foo()]).await;
+        test_controller
+            .wait_integration(|i| i.nth_notification(0))
+            .await;
+
+        let response = test_controller
+            .gui_ipc_request(gui_ipc::ClientMsg::ListResources)
+            .await;
+        assert_eq!(
+            response,
+            gui_ipc::ServerMsg::Resources(vec![dns_resource_foo()])
+        );
+    }
+
+    #[tokio::test]
+    async fn enables_internet_resource_over_gui_ipc() {
+        let _guard = logging::test("debug");
+        let mut test_controller = Controller::start_for_test();
+        let mut mock_tunnel = test_controller.tunnel_service_ipc_accept().await;
+        mock_tunnel.send_hello().await;
+
+        let response = test_controller
+            .gui_ipc_request(gui_ipc::ClientMsg::SetInternetResourceEnabled(true))
+            .await;
+
+        assert_eq!(response, gui_ipc::ServerMsg::Ack);
+        let msg = mock_tunnel.next_msg().await;
+        assert!(
+            matches!(msg, service::ClientMsg::SetInternetResourceState(true)),
+            "expected `SetInternetResourceState(true)` but got {msg:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn connect_over_gui_ipc_needs_a_token() {
+        let _guard = logging::test("debug");
+        let mut test_controller = Controller::start_for_test();
+        let mut mock_tunnel = test_controller.tunnel_service_ipc_accept().await;
+        mock_tunnel.send_hello().await;
+
+        let response = test_controller
+            .gui_ipc_request(gui_ipc::ClientMsg::Connect { token: None })
+            .await;
+
+        assert_eq!(
+            response,
+            gui_ipc::ServerMsg::Error(gui_ipc::ServerError::NotSignedIn {
+                sign_in_url: format!(
+                    "{}?as=headless-client",
+                    AdvancedSettings::default().auth_url
+                ),
+            })
+        );
+    }
+
+    #[tokio::test]
+    async fn connects_with_the_supplied_token_over_gui_ipc() {
+        let _guard = logging::test("debug");
+        let mut test_controller = Controller::start_for_test();
+        let mut mock_tunnel = test_controller.tunnel_service_ipc_accept().await;
+        mock_tunnel.send_hello().await;
+
+        let (mut rx, mut tx) = test_controller.gui_ipc_connect().await;
+        tx.send(&gui_ipc::ClientMsg::Connect {
+            token: Some(SecretString::from("cli-token")),
+        })
+        .await
+        .unwrap();
+
+        let token = mock_tunnel.rx_connect().await;
+        assert_eq!(token.expose_secret(), "cli-token");
+        assert!(
+            rx.next().now_or_never().is_none(),
+            "the reply must wait for the tunnel"
+        );
+
+        mock_tunnel.send_connect_ok().await;
+        mock_tunnel.send_resources(vec![dns_resource_foo()]).await;
+
+        let response = rx.next().await.unwrap().unwrap();
+        assert_eq!(response, gui_ipc::ServerMsg::Ack);
+        // The first resource list also pushes the internet-resource state.
+        let msg = mock_tunnel.next_msg().await;
+        assert!(
+            matches!(msg, service::ClientMsg::SetInternetResourceState(false)),
+            "expected `SetInternetResourceState(false)` but got {msg:?}"
+        );
+
+        let response = test_controller
+            .gui_ipc_request(gui_ipc::ClientMsg::Disconnect)
+            .await;
+        assert_eq!(response, gui_ipc::ServerMsg::Ack);
+        let msg = mock_tunnel.next_msg().await;
+        assert!(
+            matches!(msg, service::ClientMsg::Disconnect),
+            "expected `Disconnect` but got {msg:?}"
+        );
+        let (_rx, mut tx) = test_controller.gui_ipc_connect().await;
+        tx.send(&gui_ipc::ClientMsg::Connect { token: None })
+            .await
+            .unwrap();
+        let stored_token = mock_tunnel.rx_connect().await;
+        assert_eq!(stored_token.expose_secret(), "cli-token");
+    }
+
+    #[tokio::test]
+    async fn connect_over_gui_ipc_relays_the_portals_rejection() {
+        let _guard = logging::test("debug");
+        let mut test_controller = Controller::start_for_test();
+        let mut mock_tunnel = test_controller.tunnel_service_ipc_accept().await;
+        mock_tunnel.send_hello().await;
+        test_controller.sign_in().await;
+        let browser_token = mock_tunnel.rx_connect().await;
+        mock_tunnel.send_connect_ok().await;
+        mock_tunnel.send_resources(vec![dns_resource_foo()]).await;
+        test_controller
+            .wait_integration(|i| i.nth_notification(0))
+            .await;
+        // The first resource list also pushes the internet-resource state.
+        let msg = mock_tunnel.next_msg().await;
+        assert!(
+            matches!(msg, service::ClientMsg::SetInternetResourceState(false)),
+            "expected `SetInternetResourceState(false)` but got {msg:?}"
+        );
+
+        let response = test_controller
+            .gui_ipc_request(gui_ipc::ClientMsg::Disconnect)
+            .await;
+        assert_eq!(response, gui_ipc::ServerMsg::Ack);
+        let msg = mock_tunnel.next_msg().await;
+        assert!(
+            matches!(msg, service::ClientMsg::Disconnect),
+            "expected `Disconnect` but got {msg:?}"
+        );
+
+        let (mut rx, mut tx) = test_controller.gui_ipc_connect().await;
+        tx.send(&gui_ipc::ClientMsg::Connect {
+            token: Some(SecretString::from("cli-token")),
+        })
+        .await
+        .unwrap();
+        let _token = mock_tunnel.rx_connect().await;
+
+        mock_tunnel.send_connect_err("invalid token").await;
+
+        let response = rx.next().await.unwrap().unwrap();
+        assert_eq!(
+            response,
+            gui_ipc::ServerMsg::Error(gui_ipc::ServerError::Other("invalid token".to_owned()))
+        );
+        let msg = mock_tunnel.next_msg().await;
+        assert!(
+            matches!(msg, service::ClientMsg::Disconnect),
+            "expected `Disconnect` but got {msg:?}"
+        );
+
+        let (_rx, mut tx) = test_controller.gui_ipc_connect().await;
+        tx.send(&gui_ipc::ClientMsg::Connect { token: None })
+            .await
+            .unwrap();
+        let stored_token = mock_tunnel.rx_connect().await;
+        assert_eq!(stored_token.expose_secret(), browser_token.expose_secret());
+    }
+
+    #[tokio::test]
+    async fn disconnect_over_gui_ipc_keeps_the_token() {
+        let _guard = logging::test("debug");
+        let mut test_controller = Controller::start_for_test();
+        let mut mock_tunnel = test_controller.tunnel_service_ipc_accept().await;
+        mock_tunnel.send_hello().await;
+        test_controller.sign_in().await;
+        mock_tunnel.start_ok().await;
+
+        let response = test_controller
+            .gui_ipc_request(gui_ipc::ClientMsg::Disconnect)
+            .await;
+
+        assert_eq!(response, gui_ipc::ServerMsg::Ack);
+        let msg = mock_tunnel.next_msg().await;
+        assert!(
+            matches!(msg, service::ClientMsg::Disconnect),
+            "expected `Disconnect` but got {msg:?}"
+        );
+        let (_rx, mut tx) = test_controller.gui_ipc_connect().await;
+        tx.send(&gui_ipc::ClientMsg::Connect { token: None })
+            .await
+            .unwrap();
+        let _stored_token = mock_tunnel.rx_connect().await;
+    }
+
+    #[tokio::test]
+    async fn reports_status_over_gui_ipc() {
+        let _guard = logging::test("debug");
+        let mut test_controller = Controller::start_for_test();
+        let mut mock_tunnel = test_controller.tunnel_service_ipc_accept().await;
+        mock_tunnel.send_hello().await;
+
+        let response = test_controller
+            .gui_ipc_request(gui_ipc::ClientMsg::Status)
+            .await;
+        assert_eq!(
+            response,
+            gui_ipc::ServerMsg::Status(gui_ipc::TunnelStatus::Disconnected)
+        );
+
+        test_controller.sign_in().await;
+        mock_tunnel.start_ok().await;
+        mock_tunnel.send_connected_to_portal("firezone").await;
+        mock_tunnel.send_resources(vec![dns_resource_foo()]).await;
+        test_controller
+            .wait_integration(|i| i.nth_notification(0))
+            .await;
+
+        let response = test_controller
+            .gui_ipc_request(gui_ipc::ClientMsg::Status)
+            .await;
+        assert_eq!(
+            response,
+            gui_ipc::ServerMsg::Status(gui_ipc::TunnelStatus::Connected {
+                account_slug: Some("firezone".to_owned()),
+                actor_name: Some("Foo Bar".to_owned()),
+            })
+        );
+    }
+
+    #[tokio::test]
+    async fn signs_out_over_gui_ipc() {
+        let _guard = logging::test("debug");
+        let mut test_controller = Controller::start_for_test();
+        let mut mock_tunnel = test_controller.tunnel_service_ipc_accept().await;
+
+        boot_tunnel(
+            &mut test_controller,
+            &mut mock_tunnel,
+            vec![dns_resource_foo()],
+        )
+        .await;
+        test_controller
+            .wait_integration(|i| i.nth_notification(0))
+            .await;
+
+        // The first resource list also pushes the internet-resource state.
+        let msg = mock_tunnel.next_msg().await;
+        assert!(
+            matches!(msg, service::ClientMsg::SetInternetResourceState(false)),
+            "expected `SetInternetResourceState(false)` but got {msg:?}"
+        );
+
+        let response = test_controller
+            .gui_ipc_request(gui_ipc::ClientMsg::SignOut)
+            .await;
+        assert_eq!(response, gui_ipc::ServerMsg::Ack);
+
+        let msg = mock_tunnel.next_msg().await;
+        assert!(
+            matches!(msg, service::ClientMsg::Disconnect),
+            "expected `Disconnect` but got {msg:?}"
+        );
+
+        let response = test_controller
+            .gui_ipc_request(gui_ipc::ClientMsg::Status)
+            .await;
+        assert_eq!(
+            response,
+            gui_ipc::ServerMsg::Status(gui_ipc::TunnelStatus::Disconnected)
+        );
     }
 
     #[tokio::test]
@@ -1624,15 +2119,21 @@ mod tests {
         async fn gui_ipc_connect(
             &mut self,
         ) -> (
-            ipc::ClientRead<gui::ServerMsg>,
-            ipc::ClientWrite<gui::ClientMsg>,
+            ipc::ClientRead<gui_ipc::ServerMsg>,
+            ipc::ClientWrite<gui_ipc::ClientMsg>,
         ) {
-            ipc::connect(
-                SocketId::Test(self.gui_id),
-                ipc::ConnectOptions { num_attempts: 2 },
-            )
-            .await
-            .unwrap()
+            // The pipe only exists once the eventloop reaches its first
+            // `next_client`, which two attempts can miss on a busy runner.
+            ipc::connect(SocketId::Test(self.gui_id), ipc::ConnectOptions::default())
+                .await
+                .unwrap()
+        }
+
+        async fn gui_ipc_request(&mut self, msg: gui_ipc::ClientMsg) -> gui_ipc::ServerMsg {
+            let (mut rx, mut tx) = self.gui_ipc_connect().await;
+            tx.send(&msg).await.unwrap();
+
+            rx.next().await.unwrap().unwrap()
         }
 
         async fn sign_in(&mut self) {
@@ -1648,11 +2149,11 @@ mod tests {
                 .unwrap();
 
             let (mut rx, mut tx) = self.gui_ipc_connect().await;
-            tx.send(&gui::ClientMsg::Deeplink(format!("firezone-fd0020211111://handle_client_sign_in_callback?account_name=Firezone&account_slug=firezone&actor_name=Foo+Bar&fragment=a_very_secret_string&identity_provider_identifier=1234&state={state}").parse().unwrap()))
+            tx.send(&gui_ipc::ClientMsg::Deeplink(format!("firezone-fd0020211111://handle_client_sign_in_callback?account_name=Firezone&account_slug=firezone&actor_name=Foo+Bar&fragment=a_very_secret_string&identity_provider_identifier=1234&state={state}").parse().unwrap()))
             .await
             .unwrap();
             let ack = rx.next().await.unwrap().unwrap();
-            assert_eq!(ack, gui::ServerMsg::Ack);
+            assert_eq!(ack, gui_ipc::ServerMsg::Ack);
         }
 
         fn integration(&self) -> MutexGuard<'_, MockIntegration> {
@@ -1692,6 +2193,8 @@ mod tests {
         shown_overview_page: Vec<SessionViewModel>,
         shown_settings_page: Vec<(MdmSettings, GeneralSettings, AdvancedSettings)>,
         shown_about_page: Vec<()>,
+        tray_menu_opens: Vec<()>,
+        tray_menu_closes: Vec<()>,
     }
 
     impl MockIntegration {
@@ -1749,6 +2252,18 @@ mod tests {
 
         fn set_tray_menu(&mut self, app_state: system_tray::AppState) {
             self.lock().tray_states.push(app_state);
+        }
+
+        fn open_tray_menu(&self) -> Result<()> {
+            self.lock().tray_menu_opens.push(());
+
+            Ok(())
+        }
+
+        fn close_tray_menu(&self) -> Result<()> {
+            self.lock().tray_menu_closes.push(());
+
+            Ok(())
         }
 
         fn show_notification(
@@ -1875,11 +2390,28 @@ mod tests {
                 .unwrap();
         }
 
+        async fn send_connect_err(&mut self, error: &str) {
+            self.tx
+                .send(&service::ServerMsg::ConnectResult(Err(error.to_owned())))
+                .await
+                .unwrap();
+        }
+
         async fn send_resources(&mut self, resources: Vec<ResourceView>) {
             self.tx
                 .send(&service::ServerMsg::OnUpdateResources(ResourceList {
                     resources,
                     connected_devices: Vec::new(),
+                }))
+                .await
+                .unwrap();
+        }
+
+        async fn send_connected_to_portal(&mut self, account_slug: &str) {
+            self.tx
+                .send(&service::ServerMsg::ConnectedToPortal(ConnectedAs {
+                    account_slug: account_slug.to_owned(),
+                    actor_name: "Foo Bar".to_owned(),
                 }))
                 .await
                 .unwrap();

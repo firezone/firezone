@@ -122,6 +122,27 @@ defmodule Portal.DirectorySync.ErrorHandlerTest do
       %{account: account, directory: directory}
     end
 
+    test "a job timeout is reported without touching the directory", %{directory: directory} do
+      job = %Oban.Job{
+        id: 1,
+        args: %{"directory_id" => directory.id},
+        meta: %{},
+        queue: "okta_sync",
+        worker: "Portal.Okta.Sync"
+      }
+
+      error = Oban.TimeoutError.exception({Portal.Okta.Sync, :timer.minutes(100)})
+
+      context = ErrorHandler.handle_error(%{reason: error, job: job})
+
+      assert context.worker == "Portal.Okta.Sync"
+
+      untouched = Portal.Repo.get!(Portal.Okta.Directory, directory.id)
+      assert untouched.is_disabled == false
+      assert untouched.errored_at == nil
+      assert untouched.error_message == nil
+    end
+
     test "classifies check_deletion_threshold errors as client_error and disables directory",
          %{directory: directory} do
       job = %Oban.Job{
@@ -192,7 +213,7 @@ defmodule Portal.DirectorySync.ErrorHandlerTest do
       assert updated_directory.error_email_count == 0
     end
 
-    test "classifies HTTP 403 errors as client_error and disables directory",
+    test "classifies HTTP 403 errors as transient and keeps directory enabled",
          %{directory: directory} do
       job = %Oban.Job{
         worker: "Portal.Okta.Sync",
@@ -213,12 +234,13 @@ defmodule Portal.DirectorySync.ErrorHandlerTest do
 
       ErrorHandler.handle_error(%{reason: error, job: job})
 
-      # Reload directory and verify it was disabled
+      # Reload directory and verify it remains enabled
       updated_directory = Portal.Repo.get!(Portal.Okta.Directory, directory.id)
 
-      assert updated_directory.is_disabled == true
-      assert updated_directory.disabled_reason == "Sync error"
-      assert updated_directory.is_verified == false
+      assert updated_directory.is_disabled == false
+      assert updated_directory.disabled_reason == nil
+      assert updated_directory.is_verified == directory.is_verified
+      assert updated_directory.errored_at != nil
       assert updated_directory.error_message =~ "Access denied"
     end
 

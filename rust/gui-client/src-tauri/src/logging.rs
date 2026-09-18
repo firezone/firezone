@@ -92,14 +92,9 @@ pub fn setup_gui(directives: &str) -> Result<Handles> {
         "`gui-client` started logging"
     );
 
-    // Start background log cleanup thread
-    let log_dirs = log_paths()
-        .context("Can't compute log paths for cleanup")?
-        .into_iter()
-        .map(|lp| lp.src)
-        .collect();
+    // Not the Tunnel service's log dir: only it has the privileges to delete those.
     let cleanup = logging::start_log_cleanup_thread(
-        log_dirs,
+        vec![log_path],
         logging::DEFAULT_MAX_SIZE_MB,
         logging::DEFAULT_CLEANUP_INTERVAL,
     )?;
@@ -121,6 +116,7 @@ pub fn setup_tunnel(
     logging::file::Handle,
     logging::FilterReloadHandle,
     Option<flow_log_writer::Guard>,
+    logging::CleanupHandle,
 )> {
     // If `log_dir` is Some, use that. Else call `tunnel_service_logs`
     let log_path = log_path.map_or_else(
@@ -164,10 +160,17 @@ pub fn setup_tunnel(
         "`tunnel service` started logging"
     );
 
+    let cleanup = logging::start_log_cleanup_thread(
+        vec![log_path],
+        logging::DEFAULT_MAX_SIZE_MB,
+        logging::DEFAULT_CLEANUP_INTERVAL,
+    )?;
+
     Ok((
         file_handle,
         file_reloader.merge(stdout_reloader),
         flow_log_guard,
+        cleanup,
     ))
 }
 

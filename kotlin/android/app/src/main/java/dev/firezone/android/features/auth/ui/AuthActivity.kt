@@ -98,7 +98,7 @@ class AuthActivity : AppCompatActivity() {
     }
 
     private fun completeAuthFlow() {
-        TunnelService.start(this)
+        TunnelService.start(this, TunnelService.StartSource.AUTH_TAB)
         startActivity(mainActivityHandoffIntent(this))
         finish()
     }

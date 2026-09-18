@@ -81,6 +81,15 @@ defmodule PortalAPI.Sockets.RateLimitTest do
       assert RateLimit.check(connect_info_2) == {:error, :rate_limit}
     end
 
+    test "shares a bucket between an IPv4 peer and its IPv4-mapped IPv6 form" do
+      token = unique_token()
+      {a, b, c, d} = ip = unique_ip()
+      mapped_ip = {0, 0, 0, 0, 0, 0xFFFF, a * 256 + b, c * 256 + d}
+
+      assert RateLimit.check(build_connect_info(ip, token)) == :ok
+      assert RateLimit.check(build_connect_info(mapped_ip, token)) == {:error, :rate_limit}
+    end
+
     test "handles missing x-authorization header" do
       connect_info = %{
         peer_data: %{address: unique_ip()},

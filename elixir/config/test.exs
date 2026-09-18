@@ -168,7 +168,8 @@ config :portal, Portal.Microsoft.Graph.APIClient,
   token_base_url: "https://login.microsoftonline.com",
   applications: [
     entra: [client_id: "test_client_id", client_secret: "test_client_secret"],
-    intune: [client_id: "test_intune_client_id", client_secret: "test_intune_client_secret"]
+    intune: [client_id: "test_intune_client_id", client_secret: "test_intune_client_secret"],
+    windows_updates: [client_id: "test_windows_updates_client_id", client_secret: nil]
   ],
   req_opts: [
     plug: {Req.Test, Portal.Microsoft.Graph.APIClient},
@@ -219,6 +220,14 @@ config :portal, :client_session_queue, enabled: false
 config :portal, :gateway_session_queue, enabled: false
 config :portal, :policy_authorization_queue, enabled: false
 config :portal, :revocation_endpoint_queue, enabled: false
+
+config :portal, Portal.OSReleases, reload_every: false
+
+config :portal, Portal.OSReleases.Sync,
+  req_opts: [
+    plug: {Req.Test, Portal.OSReleases.Sync},
+    retry: false
+  ]
 
 config :portal, Portal.ComponentVersions,
   fetch_from_url: false,
@@ -419,3 +428,14 @@ config :phoenix, :plug_init_mode, :runtime
 
 config :sentry,
   environment_name: :test
+
+# Test-only destinations; production ad configuration comes from runtime env vars.
+config :portal, Portal.Analytics.OpenAI,
+  api_key: nil,
+  pixel_id: "test-openai-pixel",
+  endpoint: "https://bzr.openai.com/v1/events",
+  req_opts: [retry: false]
+
+config :portal, Portal.Analytics.GoogleAds,
+  endpoint: "https://datamanager.googleapis.com/v1/events:ingest",
+  req_opts: [retry: false]

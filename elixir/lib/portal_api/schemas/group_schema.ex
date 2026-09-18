@@ -5,7 +5,8 @@ defmodule PortalAPI.Schemas.Group do
     require OpenApiSpex
     alias OpenApiSpex.Schema
 
-    @derive {PortalAPI.JSON.Encoder, for: Portal.Group, internal: [:account_id, :type]}
+    @derive {PortalAPI.JSON.Encoder,
+             for: Portal.Group, internal: [:account_id, :nested_group_idp_ids, :type]}
     OpenApiSpex.schema(%{
       title: "Group",
       description: "Group",

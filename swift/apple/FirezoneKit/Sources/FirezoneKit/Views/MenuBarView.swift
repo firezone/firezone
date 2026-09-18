@@ -5,6 +5,7 @@
 //
 
 #if os(macOS)
+  import Foundation
   import NetworkExtension
   import SwiftUI
 

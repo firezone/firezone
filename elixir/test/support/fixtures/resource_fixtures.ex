@@ -50,6 +50,7 @@ defmodule Portal.ResourceFixtures do
         :address,
         :address_description,
         :type,
+        :device_membership_criteria,
         :ip_stack
       ])
       |> Ecto.Changeset.cast_embed(:filters, with: &filter_changeset/2)
@@ -192,58 +193,80 @@ defmodule Portal.ResourceFixtures do
   end
 
   @doc """
-  Generate a static device pool resource and optionally attach devices to it.
+  Generate a device pool resource that lists its devices.
   """
-  def static_device_pool_resource_fixture(attrs \\ %{}) do
+  def device_pool_resource_fixture(attrs \\ %{}) do
     attrs = Enum.into(attrs, %{})
-    account = Map.get(attrs, :account) || account_fixture()
     devices = Map.get(attrs, :devices, [])
-    unique_num = System.unique_integer([:positive, :monotonic])
-
-    resource =
-      resource_fixture(
-        attrs
-        |> Map.delete(:devices)
-        |> Map.put(:account, account)
-        |> Map.put(:type, :static_device_pool)
-        |> Map.put_new(:name, "Device Pool #{unique_num}")
-        |> Map.delete(:site)
-        |> Map.delete(:address)
-      )
-
-    Enum.each(devices, fn device ->
-      %Portal.StaticDevicePoolMember{}
-      |> Ecto.Changeset.cast(
-        %{
-          account_id: account.id,
-          resource_id: resource.id,
-          device_id: device.id
-        },
-        [:account_id, :resource_id, :device_id]
-      )
-      |> Portal.StaticDevicePoolMember.changeset()
-      |> Portal.Repo.insert!()
-    end)
-
-    resource
-  end
-
-  @doc """
-  Generate a dynamic device pool resource. The pattern (`:address`) defaults to
-  `*.devices.example.com` if not provided.
-  """
-  def dynamic_device_pool_resource_fixture(attrs \\ %{}) do
-    attrs = Enum.into(attrs, %{})
-    account = Map.get(attrs, :account) || account_fixture()
     unique_num = System.unique_integer([:positive, :monotonic])
 
     resource_fixture(
       attrs
-      |> Map.put(:account, account)
-      |> Map.put(:type, :dynamic_device_pool)
-      |> Map.put_new(:name, "Dynamic Device Pool #{unique_num}")
-      |> Map.put_new(:address, "*.devices.example.com")
+      |> Map.delete(:devices)
+      |> Map.put(:type, :device_pool)
+      |> Map.put_new(
+        :device_membership_criteria,
+        Portal.Resource.DeviceMembershipCriteria.devices(Enum.map(devices, & &1.id))
+      )
+      |> Map.put_new(:name, "Device Pool #{unique_num}")
       |> Map.delete(:site)
+      |> Map.delete(:address)
+    )
+  end
+
+  @doc """
+  Generate a device pool resource holding each actor's own devices, the `Your devices`
+  pool every account gets at sign-up.
+  """
+  def own_devices_pool_resource_fixture(attrs \\ %{}) do
+    attrs = Enum.into(attrs, %{})
+    unique_num = System.unique_integer([:positive, :monotonic])
+
+    resource_fixture(
+      attrs
+      |> Map.put(:type, :device_pool)
+      |> Map.put_new(
+        :device_membership_criteria,
+        Portal.Resource.DeviceMembershipCriteria.own_devices()
+      )
+      |> Map.put_new(:name, "Own Devices Pool #{unique_num}")
+      |> Map.delete(:site)
+      |> Map.delete(:address)
+    )
+  end
+
+  def all_devices_pool_resource_fixture(attrs \\ %{}) do
+    attrs = Enum.into(attrs, %{})
+    unique_num = System.unique_integer([:positive, :monotonic])
+
+    resource_fixture(
+      attrs
+      |> Map.put(:type, :device_pool)
+      |> Map.put_new(
+        :device_membership_criteria,
+        Portal.Resource.DeviceMembershipCriteria.all_devices()
+      )
+      |> Map.put_new(:name, "All Devices Pool #{unique_num}")
+      |> Map.delete(:site)
+      |> Map.delete(:address)
+    )
+  end
+
+  def actor_group_pool_resource_fixture(attrs) do
+    attrs = Enum.into(attrs, %{})
+    {group, attrs} = Map.pop!(attrs, :group)
+    unique_num = System.unique_integer([:positive, :monotonic])
+
+    resource_fixture(
+      attrs
+      |> Map.put(:type, :device_pool)
+      |> Map.put_new(
+        :device_membership_criteria,
+        Portal.Resource.DeviceMembershipCriteria.actor_group(group.id)
+      )
+      |> Map.put_new(:name, "Group Pool #{unique_num}")
+      |> Map.delete(:site)
+      |> Map.delete(:address)
     )
   end
 

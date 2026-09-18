@@ -158,12 +158,6 @@ defmodule Portal.SafeTest do
       assert Safe.permit(:read, Portal.Resource, :account_user) == :ok
     end
 
-    test "StaticDevicePoolMember: admin and api_client all actions, every type may read" do
-      assert Safe.permit(:delete, Portal.StaticDevicePoolMember, :account_admin_user) == :ok
-      assert Safe.permit(:delete, Portal.StaticDevicePoolMember, :api_client) == :ok
-      assert Safe.permit(:read, Portal.StaticDevicePoolMember, :account_user) == :ok
-    end
-
     test "Policy: admin and api_client all actions, every type may read" do
       assert Safe.permit(:delete, Portal.Policy, :account_admin_user) == :ok
       assert Safe.permit(:delete, Portal.Policy, :api_client) == :ok

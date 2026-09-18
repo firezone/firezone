@@ -10,18 +10,22 @@ import { Socket } from "phoenix";
 import { LiveSocket } from "phoenix_live_view";
 import topbar from "../vendor/topbar";
 import Hooks from "./hooks";
+import { DismissableBanner } from "./hooks/dismissable_banner";
 import { ThemeToggle } from "./hooks/theme";
 import { SidebarCollapse } from "./hooks/sidebar_collapse";
 import { DatetimeRangeFilter } from "./hooks/datetime_range_filter";
+import { PostureJsonEditor } from "./hooks/posture_json_editor";
 import {
   PageSizePreference,
   getPageSizePreference,
 } from "./hooks/page_size_preference";
 import "./event_listeners";
 
+Hooks.DismissableBanner = DismissableBanner;
 Hooks.ThemeToggle = ThemeToggle;
 Hooks.SidebarCollapse = SidebarCollapse;
 Hooks.DatetimeRangeFilter = DatetimeRangeFilter;
+Hooks.PostureJsonEditor = PostureJsonEditor;
 Hooks.PageSizePreference = PageSizePreference;
 
 // Read CSRF token from the meta tag and use it in the LiveSocket params

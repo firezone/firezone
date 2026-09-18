@@ -31,6 +31,7 @@ defmodule Portal.Google.Directory do
     field :sync_all_domains, :boolean, default: true, read_after_writes: true
 
     field :webhook_secret, :string, redact: true
+    field :webhook_received_at, :utc_datetime_usec
     field :users_channel_id, :string
     field :users_resource_id, :string
     field :channel_expires_at, :utc_datetime_usec

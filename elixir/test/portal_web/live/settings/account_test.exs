@@ -30,6 +30,55 @@ defmodule PortalWeb.Settings.AccountTest do
     end
   end
 
+  describe "limits banner" do
+    for {flags, message} <- [
+          {%{users_limit_exceeded: true}, "users."},
+          {%{users_limit_exceeded: true, seats_limit_exceeded: true},
+           "users, monthly active users."}
+        ] do
+      test "renders a complete warning for #{message}", %{
+        conn: conn,
+        account: account,
+        actor: actor
+      } do
+        account =
+          update_account(
+            account,
+            Map.put(unquote(Macro.escape(flags)), :metadata, %{
+              stripe: %{customer_id: "cus_test", product_name: "Enterprise"}
+            })
+          )
+
+        {:ok, _lv, html} =
+          conn
+          |> authorize_conn(actor)
+          |> live(~p"/#{account}/settings/account")
+
+        alerts = html |> Floki.parse_document!() |> Floki.find("[role=alert]")
+        text = alerts |> Floki.text() |> String.replace(~r/\s+/, " ")
+
+        assert text =~ "Your account has exceeded the following limits: #{unquote(message)}"
+        assert text =~ "Please check your billing information to continue using Firezone."
+
+        assert Floki.find(alerts, "a[href='/#{account.slug}/settings/account']") != []
+      end
+    end
+
+    test "does not show a warning when no limits are exceeded", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/account")
+
+      refute html =~ "Your account has exceeded the following limits:"
+      refute html =~ "check your billing information"
+    end
+  end
+
   describe "billing plan UI" do
     test "shows manage plan button for non-enterprise provisioned account", %{
       conn: conn,
@@ -152,7 +201,7 @@ defmodule PortalWeb.Settings.AccountTest do
         |> form("form[phx-submit='submit_account_name']", %{account: %{name: "ab"}})
         |> render_change()
 
-      assert html =~ "should be at least 3 character(s)"
+      assert html =~ "too short"
     end
 
     test "saves updated account name", %{conn: conn, account: account, actor: actor} do
@@ -244,6 +293,118 @@ defmodule PortalWeb.Settings.AccountTest do
       assert length(recipients) == 2
       assert email.subject == "Firezone Account Scheduled for Deletion"
       assert email.text_body =~ Calendar.strftime(account.scheduled_deletion_at, "%B %-d, %Y")
+    end
+
+    test "prompts for feedback after scheduling deletion", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/account")
+
+      render_click(lv, "confirm_delete_account")
+      render_click(lv, "update_slug_confirmation", %{"slug_confirmation" => account.slug})
+
+      html =
+        lv
+        |> form("form[phx-submit='delete_account']", %{slug_confirmation: account.slug})
+        |> render_submit()
+
+      assert html =~ "Sorry Firezone didn&#39;t work out"
+      assert html =~ "Anything you&#39;d like to share about your experience?"
+
+      html =
+        lv
+        |> form("#deletion-feedback-form", %{
+          account: %{metadata: %{deletion_feedback: "  Too hard to set up  "}}
+        })
+        |> render_submit()
+
+      refute html =~ "Sorry Firezone didn&#39;t work out"
+      assert fetch_account!(account.id).metadata.deletion_feedback == "Too hard to set up"
+    end
+
+    test "skipping the feedback prompt stores nothing", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/account")
+
+      render_click(lv, "confirm_delete_account")
+      render_click(lv, "update_slug_confirmation", %{"slug_confirmation" => account.slug})
+
+      lv
+      |> form("form[phx-submit='delete_account']", %{slug_confirmation: account.slug})
+      |> render_submit()
+
+      html = render_click(lv, "skip_deletion_feedback")
+
+      refute html =~ "Sorry Firezone didn&#39;t work out"
+      refute fetch_account!(account.id).metadata.deletion_feedback
+    end
+
+    test "submitting empty feedback closes the prompt without storing", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/account")
+
+      render_click(lv, "confirm_delete_account")
+      render_click(lv, "update_slug_confirmation", %{"slug_confirmation" => account.slug})
+
+      lv
+      |> form("form[phx-submit='delete_account']", %{slug_confirmation: account.slug})
+      |> render_submit()
+
+      html =
+        lv
+        |> form("#deletion-feedback-form", %{
+          account: %{metadata: %{deletion_feedback: "   "}}
+        })
+        |> render_submit()
+
+      refute html =~ "Sorry Firezone didn&#39;t work out"
+      refute fetch_account!(account.id).metadata.deletion_feedback
+    end
+
+    test "shows an error when feedback is longer than 2000 characters", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/account")
+
+      render_click(lv, "confirm_delete_account")
+      render_click(lv, "update_slug_confirmation", %{"slug_confirmation" => account.slug})
+
+      lv
+      |> form("form[phx-submit='delete_account']", %{slug_confirmation: account.slug})
+      |> render_submit()
+
+      html =
+        lv
+        |> form("#deletion-feedback-form", %{
+          account: %{metadata: %{deletion_feedback: String.duplicate("a", 2001)}}
+        })
+        |> render_submit()
+
+      assert html =~ "Sorry Firezone didn&#39;t work out"
+      assert html =~ "should be at most 2000 character(s)"
+      refute fetch_account!(account.id).metadata.deletion_feedback
     end
 
     test "sends aborted deletion email when cancellation restores the account", %{

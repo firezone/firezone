@@ -5,10 +5,10 @@ use crate::messages::{
     RelaysPresence, SecretKey, SnownetCapabilities, WarnOnInvalidFilter,
 };
 use connlib_model::{ClientId, GatewayId, IceCandidate, IpStack, ResourceId, Site, SiteId};
-use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
+use ip_network::IpNetwork;
 use serde::{Deserialize, Serialize};
 use serde_with::{DurationSeconds, VecSkipError, serde_as};
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+use std::net::{Ipv4Addr, Ipv6Addr};
 use std::time::Duration;
 
 pub use crate::messages::Authorization;
@@ -65,42 +65,18 @@ fn internet_resource_name() -> String {
     "Internet Resource".to_string()
 }
 
+/// A pool of devices the portal admits by its membership criteria.
+///
+/// Members are never sent: a packet to a tunnel address asks the portal for access with
+/// [`EgressMessages::RequestAccess`], and the portal answers with the pool it granted.
 #[serde_as]
 #[derive(Debug, Deserialize)]
-pub struct ResourceDescriptionStaticDevicePool {
+pub struct ResourceDescriptionDevicePool {
     pub id: ResourceId,
     pub name: String,
-    #[serde(default)]
-    pub devices: Vec<DevicePoolMember>,
     #[serde_as(as = "VecSkipError<_, WarnOnInvalidFilter>")]
     #[serde(default)]
     pub filters: Vec<Filter>,
-}
-
-#[derive(Debug, Clone, Deserialize, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct DevicePoolMember {
-    #[serde(rename = "client_id", alias = "id")]
-    pub id: ClientId,
-    pub ipv4: Ipv4Network,
-    pub ipv6: Ipv6Network,
-}
-
-impl DevicePoolMember {
-    /// Returns `true` if `ip` belongs to this member.
-    pub fn contains(&self, ip: IpAddr) -> bool {
-        match ip {
-            IpAddr::V4(ip) => self.ipv4.contains(ip),
-            IpAddr::V6(ip) => self.ipv6.contains(ip),
-        }
-    }
-}
-
-#[derive(Debug, Deserialize)]
-pub struct ResourceDescriptionDynamicDevicePool {
-    pub id: ResourceId,
-    pub name: String,
-    /// DNS pattern for the pool (e.g. `*.devices.example.com`).
-    pub address: String,
 }
 
 /// Description of an internet resource.
@@ -124,8 +100,7 @@ pub enum ResourceDescription {
     Dns(serde_json::Value),
     Cidr(serde_json::Value),
     Internet(serde_json::Value),
-    StaticDevicePool(serde_json::Value),
-    DynamicDevicePool(serde_json::Value),
+    DevicePool(serde_json::Value),
     #[serde(other)]
     Unknown, // Important for forwards-compatibility with future resource types.
 }
@@ -178,10 +153,10 @@ pub struct AuthorizationCreationFailed {
     pub violated_properties: Vec<ViolatedProperty>,
 }
 
-/// Sent by the portal once both peers in a static-device-pool flow agree to
-/// connect. The recipient is the target device when `resource` is `Some` (and
-/// must apply the filters / expiry to its inbound authorization) and the
-/// initiating device when it is `None`.
+/// Sent by the portal once both peers in a device pool flow agree to connect.
+/// The recipient is the target device when `resource` is `Some` (and must apply
+/// the filters / expiry to its inbound authorization) and the initiating device
+/// when `resource_id` is `Some`.
 #[serde_as]
 #[derive(Debug, Deserialize, Clone)]
 pub struct ClientDeviceAccessAuthorized {
@@ -196,6 +171,11 @@ pub struct ClientDeviceAccessAuthorized {
     pub ice_role: IceRole,
     #[serde(default)]
     pub use_iceless: bool,
+
+    /// The pool the portal picked for the flow we asked about. `None` on the
+    /// receiving side.
+    #[serde(default)]
+    pub resource_id: Option<ResourceId>,
 
     /// The resource authorising this connection on the receiving side, as the
     /// portal's minimal `{id, filters}` view. `None` on the initiating side.
@@ -270,7 +250,7 @@ pub struct ClientAccessAuthorizationExpiryUpdated {
     pub expires_at: Duration,
 }
 
-/// Portal's denial of an authorization request toward a static device pool peer.
+/// Portal's denial of a device access request.
 ///
 /// Either or both of `ipv4` / `ipv6` may be absent depending on the denial reason.
 #[derive(Debug, Deserialize, Clone)]
@@ -289,19 +269,17 @@ pub struct ClientIceCandidateError {
     pub reason: FailReason,
 }
 
-/// Portal's response when a dynamic device pool domain is resolved.
+/// Portal's response when a device name is resolved.
 #[derive(Debug, Deserialize, Clone)]
-pub struct DevicePoolDomainResolved {
-    pub resource_id: ResourceId,
+pub struct DeviceDomainResolved {
     pub domain: String,
     pub ipv4: Ipv4Addr,
     pub ipv6: Ipv6Addr,
 }
 
-/// Portal's response when a dynamic device pool domain cannot be resolved.
+/// Portal's response when a device name cannot be resolved.
 #[derive(Debug, Deserialize, Clone)]
-pub struct DevicePoolDomainResolutionFailed {
-    pub resource_id: ResourceId,
+pub struct DeviceDomainResolutionFailed {
     pub domain: String,
     pub reason: FailReason,
 }
@@ -365,8 +343,8 @@ pub enum IngressMessages {
     ClientDeviceAccessDenied(ClientDeviceAccessDenied),
     ClientIceCandidateError(ClientIceCandidateError),
 
-    DevicePoolDomainResolved(DevicePoolDomainResolved),
-    DevicePoolDomainResolutionFailed(DevicePoolDomainResolutionFailed),
+    DeviceDomainResolved(DeviceDomainResolved),
+    DeviceDomainResolutionFailed(DeviceDomainResolutionFailed),
 
     /// A resource's filters have changed while at least one authorization
     /// referencing it remains active.
@@ -404,17 +382,24 @@ pub struct ClientIceCandidates {
 #[serde(rename_all = "snake_case", tag = "event", content = "payload")]
 // enum_variant_names: These are the names in the portal!
 pub enum EgressMessages {
-    RequestAuthorization {
-        resource_id: ResourceId,
-        #[serde(rename = "connected_gateway_ids")]
-        preferred_gateways: Vec<GatewayId>,
+    /// Asks for access through the named resources, most preferred first.
+    ///
+    /// A packet for a device in the tunnel range names every pool whose filters permit
+    /// it and carries the device's address; the portal grants the first pool that holds
+    /// the device and answers with [`ClientDeviceAccessAuthorized`] or
+    /// [`ClientDeviceAccessDenied`]. Any other packet names the matching resources,
+    /// and the portal answers with [`AuthorizationCreated`] or
+    /// [`AuthorizationCreationFailed`].
+    RequestAccess {
+        resource_ids: Vec<ResourceId>,
         #[serde(skip_serializing_if = "Option::is_none")]
         ipv4: Option<Ipv4Addr>,
         #[serde(skip_serializing_if = "Option::is_none")]
         ipv6: Option<Ipv6Addr>,
+        #[serde(rename = "connected_gateway_ids")]
+        preferred_gateways: Vec<GatewayId>,
     },
-    ResolveDevicePoolDomain {
-        resource_id: ResourceId,
+    ResolveDeviceDomain {
         domain: String,
     },
     NoRelays {},
@@ -895,42 +880,34 @@ mod tests {
     }
 
     #[test]
-    fn serialize_request_authorization_message() {
-        let message = EgressMessages::RequestAuthorization {
-            resource_id: "f16ecfa0-a94f-4bfd-a2ef-1cc1f2ef3da3".parse().unwrap(),
-            preferred_gateways: Vec::new(),
+    fn serialize_request_access_message_for_resources() {
+        let message = EgressMessages::RequestAccess {
+            resource_ids: vec![
+                "f16ecfa0-a94f-4bfd-a2ef-1cc1f2ef3da3".parse().unwrap(),
+                "73037362-715d-4a83-a749-f18eadd970e6".parse().unwrap(),
+            ],
             ipv4: None,
             ipv6: None,
+            preferred_gateways: Vec::new(),
         };
-        let expected_json = r#"{"event":"request_authorization","payload":{"resource_id":"f16ecfa0-a94f-4bfd-a2ef-1cc1f2ef3da3","connected_gateway_ids":[]}}"#;
+        let expected_json = r#"{"event":"request_access","payload":{"resource_ids":["f16ecfa0-a94f-4bfd-a2ef-1cc1f2ef3da3","73037362-715d-4a83-a749-f18eadd970e6"],"connected_gateway_ids":[]}}"#;
         let actual_json = serde_json::to_string(&message).unwrap();
 
         assert_eq!(actual_json, expected_json);
     }
 
     #[test]
-    fn serialize_request_authorization_message_with_ipv4() {
-        let message = EgressMessages::RequestAuthorization {
-            resource_id: "f16ecfa0-a94f-4bfd-a2ef-1cc1f2ef3da3".parse().unwrap(),
-            preferred_gateways: Vec::new(),
+    fn serialize_request_access_message_for_a_device() {
+        let message = EgressMessages::RequestAccess {
+            resource_ids: vec![
+                "f16ecfa0-a94f-4bfd-a2ef-1cc1f2ef3da3".parse().unwrap(),
+                "73037362-715d-4a83-a749-f18eadd970e6".parse().unwrap(),
+            ],
             ipv4: Some(Ipv4Addr::new(100, 65, 0, 1)),
             ipv6: None,
-        };
-        let expected_json = r#"{"event":"request_authorization","payload":{"resource_id":"f16ecfa0-a94f-4bfd-a2ef-1cc1f2ef3da3","connected_gateway_ids":[],"ipv4":"100.65.0.1"}}"#;
-        let actual_json = serde_json::to_string(&message).unwrap();
-
-        assert_eq!(actual_json, expected_json);
-    }
-
-    #[test]
-    fn serialize_request_authorization_message_with_ipv6() {
-        let message = EgressMessages::RequestAuthorization {
-            resource_id: "f16ecfa0-a94f-4bfd-a2ef-1cc1f2ef3da3".parse().unwrap(),
             preferred_gateways: Vec::new(),
-            ipv4: None,
-            ipv6: Some("fd00:2021:1111::1".parse().unwrap()),
         };
-        let expected_json = r#"{"event":"request_authorization","payload":{"resource_id":"f16ecfa0-a94f-4bfd-a2ef-1cc1f2ef3da3","connected_gateway_ids":[],"ipv6":"fd00:2021:1111::1"}}"#;
+        let expected_json = r#"{"event":"request_access","payload":{"resource_ids":["f16ecfa0-a94f-4bfd-a2ef-1cc1f2ef3da3","73037362-715d-4a83-a749-f18eadd970e6"],"ipv4":"100.65.0.1","connected_gateway_ids":[]}}"#;
         let actual_json = serde_json::to_string(&message).unwrap();
 
         assert_eq!(actual_json, expected_json);
@@ -955,96 +932,46 @@ mod tests {
     }
 
     #[test]
-    fn can_deserialize_static_device_pool_resource() {
+    fn can_deserialize_device_pool_resource() {
         let resources = r#"[
             {
-                "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-                "type": "static_device_pool",
-                "name": "IoT Devices",
-                "devices": [
+                "id": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
+                "type": "device_pool",
+                "name": "Employee Laptops",
+                "filters": [
                     {
-                        "client_id": "a3632404-4b03-4468-9fc0-4a4c82415ade",
-                        "ipv4": "100.64.1.38/32",
-                        "ipv6": "fd00:2021:1111::125/128"
-                    },
-                    {
-                        "client_id": "75fb9102-2651-49eb-9b0b-80f4eee182cb",
-                        "ipv4": "100.64.23.121/32",
-                        "ipv6": "fd00:2021:1111::1777/128"
+                        "protocol": "tcp",
+                        "port_range_start": 22,
+                        "port_range_end": 22
                     }
-                ],
-                "filters": []
+                ]
             }
         ]"#;
 
         let parsed = serde_json::from_str::<Vec<ResourceDescription>>(resources).unwrap();
 
-        assert!(matches!(
-            parsed[0],
-            ResourceDescription::StaticDevicePool(_)
-        ));
-
-        let ResourceDescription::StaticDevicePool(json) = &parsed[0] else {
-            panic!("Expected StaticDevicePool");
+        let ResourceDescription::DevicePool(json) = &parsed[0] else {
+            panic!("Expected DevicePool");
         };
-        let desc = ResourceDescriptionStaticDevicePool::deserialize(json).unwrap();
-        assert_eq!(desc.name, "IoT Devices");
+        let desc = ResourceDescriptionDevicePool::deserialize(json).unwrap();
+        assert_eq!(desc.name, "Employee Laptops");
         assert_eq!(
-            desc.devices,
-            vec![
-                DevicePoolMember {
-                    id: "a3632404-4b03-4468-9fc0-4a4c82415ade".parse().unwrap(),
-                    ipv4: "100.64.1.38/32".parse().unwrap(),
-                    ipv6: "fd00:2021:1111::125/128".parse().unwrap(),
-                },
-                DevicePoolMember {
-                    id: "75fb9102-2651-49eb-9b0b-80f4eee182cb".parse().unwrap(),
-                    ipv4: "100.64.23.121/32".parse().unwrap(),
-                    ipv6: "fd00:2021:1111::1777/128".parse().unwrap(),
-                },
-            ]
+            desc.filters,
+            vec![Filter::Tcp(crate::messages::PortRange::single(22))]
         );
     }
 
     #[test]
-    fn can_deserialize_dynamic_device_pool_resource() {
-        let resources = r#"[
-            {
-                "id": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
-                "type": "dynamic_device_pool",
-                "name": "Employee Laptops",
-                "address": "*.laptops.example.com"
-            }
-        ]"#;
-
-        let parsed = serde_json::from_str::<Vec<ResourceDescription>>(resources).unwrap();
-
-        assert!(matches!(
-            parsed[0],
-            ResourceDescription::DynamicDevicePool(_)
-        ));
-
-        let ResourceDescription::DynamicDevicePool(json) = &parsed[0] else {
-            panic!("Expected DynamicDevicePool");
-        };
-        let desc = ResourceDescriptionDynamicDevicePool::deserialize(json).unwrap();
-        assert_eq!(desc.name, "Employee Laptops");
-        assert_eq!(desc.address, "*.laptops.example.com");
-    }
-
-    #[test]
-    fn resolve_device_pool_domain_serialises_correctly() {
-        let msg = EgressMessages::ResolveDevicePoolDomain {
-            resource_id: "b2c3d4e5-f6a7-8901-bcde-f12345678901".parse().unwrap(),
-            domain: "device-42.laptops.example.com".to_owned(),
+    fn resolve_device_domain_serialises_correctly() {
+        let msg = EgressMessages::ResolveDeviceDomain {
+            domain: "device-42.firezone.network".to_owned(),
         };
 
         let actual = serde_json::to_value(&msg).unwrap();
         let expected = serde_json::json!({
-            "event": "resolve_device_pool_domain",
+            "event": "resolve_device_domain",
             "payload": {
-                "resource_id": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
-                "domain": "device-42.laptops.example.com",
+                "domain": "device-42.firezone.network",
             }
         });
 
@@ -1052,20 +979,19 @@ mod tests {
     }
 
     #[test]
-    fn can_deserialize_device_pool_domain_resolved() {
+    fn can_deserialize_device_domain_resolved() {
         let json = serde_json::json!({
-            "event": "device_pool_domain_resolved",
+            "event": "device_domain_resolved",
             "payload": {
-                "resource_id": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
-                "domain": "device-42.laptops.example.com",
+                "domain": "device-42.firezone.network",
                 "ipv4": "100.64.0.42",
                 "ipv6": "fd00:2021:1111::42"
             }
         });
 
         let msg: IngressMessages = serde_json::from_value(json).unwrap();
-        let IngressMessages::DevicePoolDomainResolved(resolved) = msg else {
-            panic!("expected DevicePoolDomainResolved")
+        let IngressMessages::DeviceDomainResolved(resolved) = msg else {
+            panic!("expected DeviceDomainResolved")
         };
         assert_eq!(resolved.ipv4, "100.64.0.42".parse::<Ipv4Addr>().unwrap());
         assert_eq!(
@@ -1092,12 +1018,11 @@ mod tests {
     }
 
     #[test]
-    fn can_deserialize_device_pool_domain_resolution_failed() {
+    fn can_deserialize_device_domain_resolution_failed() {
         let json = serde_json::json!({
-            "event": "device_pool_domain_resolution_failed",
+            "event": "device_domain_resolution_failed",
             "payload": {
-                "resource_id": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
-                "domain": "device-42.laptops.example.com",
+                "domain": "device-42.firezone.network",
                 "reason": "not_found"
             }
         });
@@ -1105,7 +1030,7 @@ mod tests {
         let msg: IngressMessages = serde_json::from_value(json).unwrap();
         assert!(matches!(
             msg,
-            IngressMessages::DevicePoolDomainResolutionFailed(_)
+            IngressMessages::DeviceDomainResolutionFailed(_)
         ));
     }
 

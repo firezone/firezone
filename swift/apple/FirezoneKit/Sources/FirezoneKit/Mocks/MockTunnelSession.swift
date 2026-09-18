@@ -125,6 +125,19 @@
           Log.warning("MockTunnelSession: failed to encode state updates: \(error)")
           responseHandler(nil)
         }
+      case .getStatus:
+        // Named by the portal, or up and waiting on it, like the provider. A mock
+        // session is never asked while stopped, so that answer does not arise.
+        let status: TunnelStatus =
+          accountSlug != nil || actorName != nil
+          ? .connected(accountSlug: accountSlug, actorName: actorName)
+          : .connecting
+        do {
+          responseHandler(try PropertyListEncoder().encode(status))
+        } catch {
+          Log.warning("MockTunnelSession: failed to encode the status: \(error)")
+          responseHandler(nil)
+        }
       case .getLogFolderSize:
         // The provider answers with the raw bytes of an `Int64`.
         responseHandler(withUnsafeBytes(of: providerLogFolderSize) { Data($0) })

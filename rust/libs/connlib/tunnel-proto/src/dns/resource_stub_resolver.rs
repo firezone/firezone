@@ -56,7 +56,7 @@ pub(crate) enum ResolveStrategy {
     /// The query is for a non-Resource, forward it locally to an upstream or system resolver.
     RecurseLocal,
     /// The query is for a DNS resource but for a type that we don't intercept (i.e. SRV, TXT, ...), forward it to the site that hosts the DNS resource and resolve it there.
-    RecurseSite(ResourceId),
+    RecurseSite(Vec<ResourceId>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -394,19 +394,18 @@ impl ResourceStubResolver {
                 self.get_or_assign_aaaa_records(domain.clone(), resources)
             }
             (RecordType::SRV | RecordType::TXT, resources) => {
-                let Some(resource) = resources.iter().max_by(|r1, r2| {
-                    let by_pattern = r1.pattern.cmp(&r2.pattern).reverse();
-                    let by_id = r1.id.cmp(&r2.id);
-
-                    by_pattern.then(by_id)
-                }) else {
+                let resource_ids = resources
+                    .iter()
+                    .sorted_by(|r1, r2| r1.pattern.cmp(&r2.pattern).then_with(|| r2.id.cmp(&r1.id)))
+                    .map(|resource| resource.id)
+                    .collect_vec();
+                if resource_ids.is_empty() {
                     return ResolveStrategy::RecurseLocal;
-                };
-                let multiple_resources = resources.len() > 1;
+                }
 
-                tracing::debug!(%qtype, rid = %resource.id, ?multiple_resources, "Forwarding query for DNS resource to corresponding site");
+                tracing::debug!(%qtype, ?resource_ids, "Forwarding query for DNS resource to corresponding site");
 
-                return ResolveStrategy::RecurseSite(resource.id);
+                return ResolveStrategy::RecurseSite(resource_ids);
             }
             (RecordType::PTR, _) => {
                 let Some(fqdn) = self.resource_address_name_by_reservse_dns(&domain) else {

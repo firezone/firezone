@@ -4,9 +4,9 @@ defmodule Portal.Entra.WebhookSync do
   identities, groups, and memberships of an Entra directory.
 
   Notifications carry no resource data, so the worker re-reads the object from
-  Graph and writes it with a fresh `synced_at`. The sync-state tables then make
-  a slower full sync skip anything this worker wrote after that sync started,
-  so the newer webhook read wins over the older full-sync read.
+  Graph and writes it with a fresh `synced_at`. Jobs for one directory run one
+  at a time (see `Portal.DirectorySync`), so a notification that arrives during
+  a full sync is applied by a fresh read after that sync finished.
 
   Users are only updated when this directory already has an identity for them,
   and groups only when the directory already tracks them (or syncs all
@@ -16,8 +16,8 @@ defmodule Portal.Entra.WebhookSync do
 
   use Oban.Worker, queue: :entra_webhook, max_attempts: 3
 
+  alias Portal.DirectorySync
   alias Portal.Entra
-  alias Portal.DirectorySync.Lock
   alias Portal.Microsoft.Graph.APIClient
   alias __MODULE__.Database
   require Logger
@@ -31,23 +31,24 @@ defmodule Portal.Entra.WebhookSync do
     keys: [:directory_id, :resource, :resource_id]
   ]
 
-  # A full sync reads Graph long before it writes, so a notification waits
-  # for the directory lock instead of interleaving with one.
-  @snooze_seconds 30
-
   @impl Oban.Worker
   def new(args, opts), do: super(args, Keyword.put_new(opts, :unique, @unique))
 
   @impl Oban.Worker
-  def perform(%Oban.Job{
-        args: %{
-          "account_id" => account_id,
-          "directory_id" => directory_id,
-          "resource" => resource,
-          "resource_id" => resource_id,
-          "change_type" => change_type
-        }
-      }) do
+  def timeout(_job), do: DirectorySync.webhook_timeout()
+
+  @impl Oban.Worker
+  def perform(
+        %Oban.Job{
+          args: %{
+            "account_id" => account_id,
+            "directory_id" => directory_id,
+            "resource" => resource,
+            "resource_id" => resource_id,
+            "change_type" => change_type
+          }
+        } = job
+      ) do
     case Entra.Subscriptions.get_directory(account_id, directory_id) do
       nil ->
         Logger.info("Entra directory not eligible for webhooks, skipping notification",
@@ -57,20 +58,13 @@ defmodule Portal.Entra.WebhookSync do
         :ok
 
       directory ->
-        apply_with_lock(directory, resource, resource_id, change_type)
+        DirectorySync.run_alone(:entra, directory.id, job, fn ->
+          apply_notification(directory, resource, resource_id, change_type)
+        end)
     end
   end
 
   def perform(_), do: :ok
-
-  defp apply_with_lock(directory, resource, resource_id, change_type) do
-    fun = fn -> apply_notification(directory, resource, resource_id, change_type) end
-
-    case Lock.try_run(:entra, directory.id, fun) do
-      {:ok, result} -> result
-      :busy -> {:snooze, @snooze_seconds}
-    end
-  end
 
   defp apply_notification(directory, resource, resource_id, change_type) do
     Logger.info("Applying Entra change notification",
@@ -83,46 +77,42 @@ defmodule Portal.Entra.WebhookSync do
     apply_change(directory, resource, resource_id, change_type)
   end
 
-  defp apply_change(directory, "user", user_id, change_type) do
+  # A notification is only a ping: the object is always re-read, so a queued
+  # deletion that Graph has since undone refreshes the object instead.
+  defp apply_change(directory, "user", user_id, _change_type) do
     case Database.get_identity(directory.account_id, Entra.Sync.issuer(directory), user_id) do
       nil -> :ok
-      identity when change_type == "deleted" -> remove_identity(directory, identity)
       identity -> refresh_identity(directory, identity, user_id)
     end
   end
 
-  defp apply_change(directory, "group", group_id, change_type) do
-    group = Database.get_group(directory.account_id, directory.id, group_id)
+  defp apply_change(directory, "group", group_id, _change_type) do
+    access_token = Entra.Sync.get_access_token!(directory)
+    synced_at = DateTime.utc_now()
 
-    cond do
-      change_type == "deleted" ->
-        remove_group(directory, group)
+    case fetch_group(directory, access_token, group_id) do
+      {:ok, id, name} ->
+        fetched =
+          if tracked_group?(directory, id) do
+            resync_group(directory, access_token, synced_at, id, name, %{})
+          else
+            %{}
+          end
 
-      is_nil(group) and not directory.sync_all_groups ->
-        :ok
+        # An untracked child still changes the transitive members of every
+        # tracked group above it.
+        resync_stored_parents(directory, access_token, synced_at, id, fetched)
 
-      true ->
-        access_token = Entra.Sync.get_access_token!(directory)
-        synced_at = DateTime.utc_now()
-
-        case APIClient.get_group(access_token, group_id) do
-          {:ok, %Req.Response{status: 200, body: %{"id" => id, "displayName" => name}}}
-          when is_binary(id) and is_binary(name) ->
-            resync_group(directory, access_token, synced_at, id, name)
-            resync_parent_groups(directory, access_token, synced_at, id)
-            Portal.Policy.reconnect_orphaned_policies(directory.account_id)
-            :ok
-
-          {:ok, %Req.Response{status: 404}} ->
-            remove_group(directory, group)
-
-          {:ok, response} ->
-            raise Entra.SyncError, error: response, directory_id: directory.id, step: :get_group
-
-          {:error, error} ->
-            raise Entra.SyncError, error: error, directory_id: directory.id, step: :get_group
-        end
+      # Graph cannot name the former parents of a deleted group, so they come
+      # from the nesting each tracked group recorded while its members were
+      # fresh.
+      :not_found ->
+        remove_group(directory, Database.get_group(directory.account_id, directory.id, group_id))
+        resync_stored_parents(directory, access_token, synced_at, group_id, %{})
     end
+
+    Portal.Policy.reconnect_orphaned_policies(directory.account_id)
+    :ok
   end
 
   defp apply_change(directory, resource, _resource_id, _change_type) do
@@ -177,9 +167,7 @@ defmodule Portal.Entra.WebhookSync do
   end
 
   defp remove_identity(directory, identity) do
-    Database.delete_identity(identity)
-    Database.delete_actor_directory_memberships(directory.account_id, directory.id, identity.actor_id)
-    Entra.Sync.delete_actors_without_identities(directory)
+    {:ok, _} = DirectorySync.remove_identity(directory.id, identity)
 
     Logger.info("Removed identity from Entra change notification",
       entra_directory_id: directory.id,
@@ -189,50 +177,44 @@ defmodule Portal.Entra.WebhookSync do
     :ok
   end
 
-  defp resync_group(directory, access_token, synced_at, group_id, group_name) do
+  defp resync_group(directory, access_token, synced_at, group_id, group_name, fetched) do
     Entra.Sync.batch_upsert_groups(directory, synced_at, [%{idp_id: group_id, name: group_name}])
+    Entra.Sync.sync_group_members(directory, access_token, synced_at, group_id, group_name, fetched)
+  end
 
-    Entra.Sync.sync_group_members(directory, access_token, synced_at, group_id, group_name)
+  # Parents come from the nesting recorded at sync time, not from Graph. One
+  # cache serves the whole job, so a group under several parents is read once.
+  defp resync_stored_parents(directory, access_token, synced_at, group_id, fetched) do
+    directory
+    |> Entra.Sync.parents_of(group_id)
+    |> Enum.reduce(fetched, &resync_stored_parent(directory, access_token, synced_at, &1, &2))
+  end
 
-    case Database.get_group(directory.account_id, directory.id, group_id) do
-      nil ->
-        :ok
+  defp resync_stored_parent(directory, access_token, synced_at, parent, fetched) do
+    case fetch_group(directory, access_token, parent.idp_id) do
+      {:ok, id, name} ->
+        resync_group(directory, access_token, synced_at, id, name, fetched)
 
-      group ->
-        {deleted, _} = Database.delete_unsynced_group_memberships(group, synced_at)
-
-        Logger.debug("Resynced group from Entra change notification",
-          entra_directory_id: directory.id,
-          group_id: group_id,
-          deleted_memberships: deleted
-        )
-
-        :ok
+      :not_found ->
+        remove_group(directory, parent)
+        fetched
     end
   end
 
-  # A member change on a nested group changes the transitive members of every
-  # group above it, but Graph only notifies about the group that changed.
-  defp resync_parent_groups(directory, access_token, synced_at, group_id) do
-    APIClient.stream_group_transitive_member_of_groups(access_token, group_id)
-    |> Stream.each(fn
+  defp fetch_group(directory, access_token, group_id) do
+    case APIClient.get_group(access_token, group_id) do
+      {:ok, %Req.Response{status: 200, body: %{"id" => id, "displayName" => name}}}
+      when is_binary(id) and is_binary(name) ->
+        {:ok, id, name}
+
+      {:ok, %Req.Response{status: 404}} ->
+        :not_found
+
+      {:ok, response} ->
+        raise Entra.SyncError, error: response, directory_id: directory.id, step: :get_group
+
       {:error, error} ->
-        raise Entra.SyncError,
-          error: error,
-          directory_id: directory.id,
-          step: :stream_group_transitive_member_of_groups
-
-      parents when is_list(parents) ->
-        Enum.each(parents, &resync_parent_group(directory, access_token, synced_at, &1))
-    end)
-    |> Stream.run()
-  end
-
-  defp resync_parent_group(directory, access_token, synced_at, parent) do
-    with id when is_binary(id) <- parent["id"],
-         name when is_binary(name) <- parent["displayName"],
-         true <- tracked_group?(directory, id) do
-      resync_group(directory, access_token, synced_at, id, name)
+        raise Entra.SyncError, error: error, directory_id: directory.id, step: :get_group
     end
   end
 
@@ -277,43 +259,6 @@ defmodule Portal.Entra.WebhookSync do
       )
       |> Safe.unscoped()
       |> Safe.one()
-    end
-
-    def delete_identity(identity) do
-      from(i in Portal.ExternalIdentity,
-        where: i.account_id == ^identity.account_id,
-        where: i.id == ^identity.id
-      )
-      |> Safe.unscoped()
-      |> Safe.delete_all()
-    end
-
-    def delete_actor_directory_memberships(account_id, directory_id, actor_id) do
-      from(m in Portal.Membership,
-        join: g in Portal.Group,
-        on: m.group_id == g.id and m.account_id == g.account_id,
-        where: m.account_id == ^account_id,
-        where: m.actor_id == ^actor_id,
-        where: g.directory_id == ^directory_id
-      )
-      |> Safe.unscoped()
-      |> Safe.delete_all()
-    end
-
-    def delete_unsynced_group_memberships(group, synced_at) do
-      from(m in Portal.Membership,
-        where: m.account_id == ^group.account_id,
-        where: m.group_id == ^group.id,
-        where:
-          fragment(
-            "NOT EXISTS (SELECT 1 FROM membership_sync_states mss WHERE mss.membership_id = ? AND mss.account_id = ? AND mss.synced_at >= ?)",
-            m.id,
-            m.account_id,
-            ^synced_at
-          )
-      )
-      |> Safe.unscoped()
-      |> Safe.delete_all()
     end
 
     def delete_group(group) do

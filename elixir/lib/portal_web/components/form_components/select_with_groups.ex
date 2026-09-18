@@ -221,9 +221,9 @@ defmodule PortalWeb.Components.FormComponents.SelectWithGroups do
         class={[
           "hidden",
           "absolute mt-2 pb-1 px-1 space-y-0.5 z-30",
-          "w-full bg-white",
+          "w-full bg-elevated",
           input_border_class(),
-          "border border-neutral-200 rounded-sm shadow-sm",
+          "border border-border rounded-sm shadow-sm",
           "overflow-hidden"
         ]}
         role="listbox"
@@ -231,7 +231,7 @@ defmodule PortalWeb.Components.FormComponents.SelectWithGroups do
         aria-orientation="vertical"
       >
         <div class="max-h-72 overflow-y-auto overflow-x-hidden">
-          <div class="bg-white p-2 sticky top-1 z-40">
+          <div class="bg-elevated p-2 sticky top-1 z-40">
             <input
               name={"search_query-#{@id}"}
               id={"select-#{@id}-search-input"}
@@ -247,7 +247,7 @@ defmodule PortalWeb.Components.FormComponents.SelectWithGroups do
           </div>
 
           <div>
-            <div class={["hidden only:block", "py-2 px-2", "text-sm text-neutral-400"]}>
+            <div class={["hidden only:block", "py-2 px-2", "text-sm text-subtle"]}>
               <%= if @no_search_results == [] do %>
                 Nothing has been found.
               <% else %>
@@ -256,7 +256,7 @@ defmodule PortalWeb.Components.FormComponents.SelectWithGroups do
             </div>
             <div
               :for={{group, group_options} <- @options}
-              class={["py-2 px-4", "w-full", "text-sm text-neutral-400"]}
+              class={["py-2 px-4", "w-full", "text-sm text-subtle"]}
             >
               <div>
                 {render_slot(@options_group, group)}
@@ -269,13 +269,13 @@ defmodule PortalWeb.Components.FormComponents.SelectWithGroups do
                   class={[
                     "block",
                     "w-full py-2 px-4",
-                    "text-sm text-neutral-800",
+                    "text-sm text-body",
                     "rounded",
-                    "hover:bg-neutral-100",
-                    "focus:outline-hidden focus:bg-neutral-100",
+                    "hover:bg-raised",
+                    "focus:outline-hidden focus:bg-raised",
                     value != @value && "cursor-pointer",
                     value == @value &&
-                      "bg-neutral-200 focus:bg-neutral-200 hover:bg-neutral-200"
+                      "bg-brand-muted focus:bg-brand-muted hover:bg-brand-muted"
                   ]}
                 >
                   <input
@@ -294,7 +294,7 @@ defmodule PortalWeb.Components.FormComponents.SelectWithGroups do
                     }
                     class="flex items-center"
                   >
-                    <div class="text-gray-800">
+                    <div class="text-body">
                       {render_slot(@option, slot_assigns)}
                     </div>
                     <div :if={value == @value} class="ml-auto">
@@ -308,7 +308,7 @@ defmodule PortalWeb.Components.FormComponents.SelectWithGroups do
 
           <div
             :if={Map.get(@metadata, :next_page_cursor)}
-            class="py-2 px-4 text-sm text-neutral-400"
+            class="py-2 px-4 text-sm text-subtle"
           >
             <span class="font-semibold">{@metadata.count - @metadata.limit}</span>
             more options available. Use the search to refine the list.
@@ -390,9 +390,9 @@ defmodule PortalWeb.Components.FormComponents.SelectWithGroups do
             "hidden",
             "absolute",
             "mt-2 pb-1 px-1 space-y-0.5 z-20",
-            "w-full bg-white",
+            "w-full bg-elevated",
             input_border_class(),
-            "border border-neutral-200 rounded-sm shadow-sm",
+            "border border-border rounded-sm shadow-sm",
             "overflow-hidden"
           ]}
           role="listbox"
@@ -403,7 +403,7 @@ defmodule PortalWeb.Components.FormComponents.SelectWithGroups do
             "max-h-72",
             "overflow-y-auto overflow-x-hidden"
           ]}>
-            <div class="bg-white p-2 sticky top-1 z-40">
+            <div class="bg-elevated p-2 sticky top-1 z-40">
               <input
                 name={"search_query-#{@id}"}
                 id={"select-" <> @id <> "-search-input"}
@@ -424,7 +424,7 @@ defmodule PortalWeb.Components.FormComponents.SelectWithGroups do
               <div class={[
                 "hidden only:block",
                 "py-2 px-2",
-                "text-sm text-neutral-400"
+                "text-sm text-subtle"
               ]}>
                 <%= if @no_search_results == [] do %>
                   Nothing has been found.
@@ -437,7 +437,7 @@ defmodule PortalWeb.Components.FormComponents.SelectWithGroups do
                 class={[
                   "py-2 px-4",
                   "w-full",
-                  "text-sm text-neutral-400"
+                  "text-sm text-subtle"
                 ]}
               >
                 <div>
@@ -451,12 +451,12 @@ defmodule PortalWeb.Components.FormComponents.SelectWithGroups do
                     class={[
                       "block",
                       "w-full py-2 px-4",
-                      "text-sm text-neutral-800",
+                      "text-sm text-body",
                       "rounded",
-                      "hover:bg-neutral-100",
-                      "focus:outline-hidden focus:bg-neutral-100",
+                      "hover:bg-raised",
+                      "focus:outline-hidden focus:bg-raised",
                       value != @value && "cursor-pointer",
-                      value == @value && "bg-neutral-200 focus:bg-neutral-200 hover:bg-neutral-200"
+                      value == @value && "bg-brand-muted focus:bg-brand-muted hover:bg-brand-muted"
                     ]}
                   >
                     <input
@@ -477,7 +477,7 @@ defmodule PortalWeb.Components.FormComponents.SelectWithGroups do
                       }
                       class={["flex items-center"]}
                     >
-                      <div class={["text-gray-800"]}>
+                      <div class={["text-body"]}>
                         {render_slot(@option, slot_assigns)}
                       </div>
                       <div :if={value == @value} class="ml-auto">
@@ -492,7 +492,7 @@ defmodule PortalWeb.Components.FormComponents.SelectWithGroups do
             <div
               :if={Map.get(@metadata, :next_page_cursor)}
               class={[
-                "py-2 px-4 text-sm text-neutral-400"
+                "py-2 px-4 text-sm text-subtle"
               ]}
             >
               <span class="font-semibold">{@metadata.count - @metadata.limit}</span>
@@ -516,14 +516,14 @@ defmodule PortalWeb.Components.FormComponents.SelectWithGroups do
   def input_class,
     do: [
       "block p-2 w-full",
-      "text-sm bg-neutral-50",
-      "text-neutral-900 disabled:text-neutral-400",
+      "text-sm bg-input",
+      "text-heading disabled:text-muted",
       input_border_class()
     ]
 
   def input_border_class,
     do: [
-      "border border-neutral-300 rounded-sm"
+      "border border-input-border rounded-sm"
     ]
 
   def input_has_errors_class,
