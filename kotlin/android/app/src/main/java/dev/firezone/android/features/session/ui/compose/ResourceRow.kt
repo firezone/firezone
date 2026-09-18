@@ -18,6 +18,7 @@ import dev.firezone.android.features.session.ui.isInternetResource
 import dev.firezone.android.tunnel.model.Resource
 import dev.firezone.android.tunnel.model.ResourceType
 import dev.firezone.android.tunnel.model.StatusEnum
+import dev.firezone.android.ui.theme.FirezoneTheme
 
 @Composable
 fun ResourceRow(

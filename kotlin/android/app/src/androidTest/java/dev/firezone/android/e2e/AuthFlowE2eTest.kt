@@ -25,11 +25,11 @@ import dev.firezone.android.core.presentation.MainActivity
 import dev.firezone.android.features.auth.AUTH_CALLBACK_SCHEME
 import dev.firezone.android.features.auth.PendingAuthSession
 import dev.firezone.android.features.auth.ui.AuthActivity
-import dev.firezone.android.features.session.ui.SessionActivity
 import dev.firezone.android.tunnel.FakeSession
 import dev.firezone.android.tunnel.FakeSessionFactory
 import dev.firezone.android.tunnel.TestRestrictions
 import dev.firezone.android.tunnel.awaitResumed
+import dev.firezone.android.tunnel.awaitTextOnScreen
 import dev.firezone.android.tunnel.finishAllActivities
 import dev.firezone.android.tunnel.grantNotificationPermission
 import dev.firezone.android.tunnel.grantVpnConsent
@@ -167,7 +167,7 @@ class AuthFlowE2eTest {
 
     // Where the handoff lands. A test that returns before it does leaves the launch in flight, and
     // it then arrives after the Hilt component is torn down and takes the whole process with it.
-    private fun awaitSessionScreen() = awaitResumed(SessionActivity::class.java)
+    private fun awaitSessionScreen() = awaitTextOnScreen("Resources")
 
     private fun authTabIntent(): Matcher<Intent> =
         allOf(

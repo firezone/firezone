@@ -265,7 +265,7 @@ class DeviceTrustE2eTest {
         text: String,
         substring: Boolean = false,
     ) = await("\"$text\" on screen") {
-        // The splash screen is a View, so there are moments with no Compose content at all,
+        // There are moments between activities with no Compose content at all,
         // which `fetchSemanticsNodes` reports as an error rather than as an empty screen.
         runCatching {
             composeRule.onAllNodesWithText(text, substring = substring).fetchSemanticsNodes().isNotEmpty()

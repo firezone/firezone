@@ -8,7 +8,9 @@ import android.content.Intent
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
 import androidx.test.runner.lifecycle.Stage
+import androidx.test.uiautomator.By
 import androidx.test.uiautomator.UiDevice
+import androidx.test.uiautomator.Until
 import dev.firezone.android.core.presentation.MainActivity
 import java.io.File
 import java.util.concurrent.TimeUnit
@@ -87,6 +89,19 @@ fun awaitResumed(activity: Class<out Activity>) {
         }
 
         Thread.sleep(50)
+    }
+}
+
+// Reads the accessibility tree rather than Compose's own test rule, which has no deadline of its
+// own and waits for a composition that an Activity of the browser's can keep from ever settling.
+fun awaitTextOnScreen(text: String) {
+    val found =
+        UiDevice
+            .getInstance(InstrumentationRegistry.getInstrumentation())
+            .wait(Until.hasObject(By.text(text)), TimeUnit.SECONDS.toMillis(20))
+
+    if (found != true) {
+        throw AssertionError("Timed out waiting for \"$text\" on screen, showing ${resumedActivity()}")
     }
 }
 

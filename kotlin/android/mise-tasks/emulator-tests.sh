@@ -11,6 +11,8 @@ APP_PACKAGE="dev.firezone.android"
 RUNNER="${APP_PACKAGE}.test/dev.firezone.android.core.HiltTestRunner"
 # The app's own directory is the one place the runner can write and `run-as` can read.
 COVERAGE_ON_DEVICE="/data/data/${APP_PACKAGE}/coverage.ec"
+# Comfortably longer than the suite takes, and short enough to leave the job time to report.
+SUITE_TIMEOUT="15m"
 
 find_apk() {
     find "$APK_DIR" -type f -name "$1" -exec ls -t {} + 2>/dev/null | head -1
@@ -52,12 +54,25 @@ while [ $# -gt 0 ]; do
 done
 
 echo "==> Running the tests..."
-# Guarded because bash 3.2, which macOS still ships, treats an empty array as unset.
-result="$(adb shell am instrument -w \
-    -e coverage true -e coverageFile "$COVERAGE_ON_DEVICE" \
-    ${filter[@]+"${filter[@]}"} "$RUNNER")"
+log="$(mktemp)"
+trap 'rm -f "$log"' EXIT
 
-echo "$result"
+# Streamed rather than captured, so that a run which stops making progress still says how far it
+# got, and given a deadline of its own so that it says so rather than sitting until the job's
+# timeout kills it and takes the output with it.
+# Guarded because bash 3.2, which macOS still ships, treats an empty array as unset.
+if ! timeout "$SUITE_TIMEOUT" adb shell am instrument -w \
+    -e coverage true -e coverageFile "$COVERAGE_ON_DEVICE" \
+    ${filter[@]+"${filter[@]}"} "$RUNNER" | tee "$log"; then
+    echo >&2
+    echo "error: the instrumented run did not finish within ${SUITE_TIMEOUT}" >&2
+    # What the app was doing when it stopped, which is the only thing the run itself cannot say.
+    echo "==> The last of the log:" >&2
+    adb logcat -d -t 400 >&2 || true
+    exit 1
+fi
+
+result="$(cat "$log")"
 
 # `am instrument` reports failures in its output and exits 0 regardless.
 case "$result" in
