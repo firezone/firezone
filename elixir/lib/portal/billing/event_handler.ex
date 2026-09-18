@@ -19,23 +19,9 @@ defmodule Portal.Billing.EventHandler do
   defp process_event_with_lock(event) do
     customer_id = extract_customer_id(event)
 
-    result = Database.with_customer_lock(customer_id, fn ->
+    Database.with_customer_lock(customer_id, fn ->
       process_event(event, customer_id)
     end)
-
-    # Dispatch only after the billing transaction has committed.
-    case result do
-      {:ok, {processed_event, %Portal.Account{} = account}} ->
-        Portal.Analytics.subscription_created(
-          account,
-          get_in(event, ["data", "object", "id"]),
-          event["created"]
-        )
-        {:ok, processed_event}
-
-      {:ok, {processed_event, nil}} -> {:ok, processed_event}
-      other -> other
-    end
   end
 
   defp process_event(event, customer_id) do
@@ -44,8 +30,17 @@ defmodule Portal.Billing.EventHandler do
          :ok <- process_event_by_type(event),
          :ok <- record_processed_event(event, customer_id) do
       account = Database.account_by_customer_id(customer_id)
-      conversion = if team_enrollment?(event, previous_account, account), do: account
-      {:ok, {event, conversion}}
+      result =
+        if team_enrollment?(event, previous_account, account) do
+          Portal.Analytics.subscription_created(account, get_in(event, ["data", "object", "id"]), event["created"])
+        else
+          :ok
+        end
+
+      case result do
+        :ok -> {:ok, event}
+        {:error, _} = error -> error
+      end
     else
       {:skip, reason} ->
         Logger.info("Skipping stripe event", reason: inspect(reason))

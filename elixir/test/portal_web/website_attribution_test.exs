@@ -88,4 +88,32 @@ defmodule PortalWeb.WebsiteAttributionTest do
     assert WebsiteAttribution.fetch(get_session(result))["marketing"]["marketing_allowed"]
   end
 
+  test "direct Google IDs survive regional defaults, URL cleanup, and the next signup page", %{conn: conn} do
+    first = conn |> put_req_header("x-geo-location-region", "US")
+      |> get("/sign_up?gclid=direct-click&gbraid=app-click&wbraid=web-click&utm_source=google")
+    assert redirected_to(first) == "/sign_up?utm_source=google"
+    marketing = WebsiteAttribution.fetch(get_session(first))["marketing"]
+    assert Map.take(marketing, ~w[gclid gbraid wbraid]) == %{"gclid" => "direct-click", "gbraid" => "app-click", "wbraid" => "web-click"}
+    second = first |> recycle() |> put_req_header("x-geo-location-region", "US") |> get("/sign_up/email")
+    assert WebsiteAttribution.fetch(get_session(second))["marketing"]["gclid"] == "direct-click"
+    denied = second |> recycle() |> put_req_header("x-geo-location-region", "DE") |> get("/sign_up/email")
+    refute Map.has_key?(WebsiteAttribution.fetch(get_session(denied))["marketing"], "gclid")
+  end
+
+  test "direct IDs do not override consent or GPC", %{conn: conn} do
+    for {country, query, gpc} <- [{"DE", "gclid=ignored", "0"}, {"US", "fz_mktg=false&gclid=ignored", "0"}, {"US", "fz_mktg=true&gclid=ignored", "1"}] do
+      result = conn |> put_req_header("x-geo-location-region", country) |> put_req_header("sec-gpc", gpc) |> get("/sign_up?" <> query)
+      assert redirected_to(result) == "/sign_up"
+      marketing = WebsiteAttribution.fetch(get_session(result))["marketing"]
+      refute marketing["marketing_allowed"]
+      refute Map.has_key?(marketing, "gclid")
+    end
+  end
+
+  test "prefixed click IDs work with saved consent and take precedence over direct IDs", %{conn: conn} do
+    conn = init_test_session(conn, website_attribution: %{"marketing" => %{"marketing_allowed" => true, "captured_at" => System.os_time(:second)}})
+    result = get(conn, "/sign_up?fz_gclid=handoff&gclid=direct")
+    assert WebsiteAttribution.fetch(get_session(result))["marketing"]["gclid"] == "handoff"
+  end
+
 end
