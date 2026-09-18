@@ -11,7 +11,7 @@ use crate::assertions::*;
 use crate::flux_capacitor::FluxCapacitor;
 use crate::probe::{DnsNatObservation, FlowId, ProbeId, ProbeObservation, Remote};
 use crate::resource as client;
-use crate::transition::{Invalidates, Transition};
+use crate::transition::Transition;
 use bufferpool::BufferPool;
 use connlib_model::{ClientId, ClientOrGatewayId, GatewayId, PublicKey, RelayId, ResourceId};
 use dns_types::ResponseCode;
@@ -188,15 +188,6 @@ impl TunnelTest {
         let now = state.flux_capacitor.now();
         let utc_now = state.flux_capacitor.now();
         let mut application_probe = None;
-
-        for _ in state
-            .icmp_flows
-            .extract_if(.., |flow_id, _| !ref_state.icmp_flows.contains_key(flow_id))
-        {}
-        for _ in state
-            .udp_flows
-            .extract_if(.., |flow_id, _| !ref_state.udp_flows.contains_key(flow_id))
-        {}
 
         // Act: Apply the transition
         match transition {
@@ -795,17 +786,18 @@ impl TunnelTest {
         }
     }
 
-    pub fn invalidate(state: &mut TunnelTest, what: Invalidates) {
-        if what.contains(Invalidates::PROBES) {
-            for client in state.clients.values_mut() {
-                client.exec_mut(|c| c.clear_probe_observations());
-            }
-            for gateway in state.gateways.values_mut() {
-                gateway.exec_mut(|g| g.clear_probe_observations());
-            }
+    /// Drops the bookkeeping that `transition` makes stale before it is applied.
+    ///
+    /// Runs after the reference model invalidated, so the flows it dropped are known.
+    pub fn invalidate(state: &mut TunnelTest, ref_state: &ReferenceState, transition: &Transition) {
+        for client in state.clients.values_mut() {
+            client.exec_mut(|c| c.clear_probe_observations());
+        }
+        for gateway in state.gateways.values_mut() {
+            gateway.exec_mut(|g| g.clear_probe_observations());
         }
 
-        if what.contains(Invalidates::PACKETS) {
+        if transition.clears_packets() {
             for client in state.clients.values_mut() {
                 client.exec_mut(|c| c.clear_packets());
             }
@@ -813,6 +805,15 @@ impl TunnelTest {
                 gateway.exec_mut(|g| g.clear_packets());
             }
         }
+
+        for _ in state
+            .icmp_flows
+            .extract_if(.., |flow_id, _| !ref_state.icmp_flows.contains_key(flow_id))
+        {}
+        for _ in state
+            .udp_flows
+            .extract_if(.., |flow_id, _| !ref_state.udp_flows.contains_key(flow_id))
+        {}
     }
 
     fn send_icmp_probe(
