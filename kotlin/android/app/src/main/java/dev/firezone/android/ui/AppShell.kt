@@ -33,24 +33,26 @@ import dev.firezone.android.features.permission.certificate.ui.compose.Certifica
 import dev.firezone.android.features.permission.notification.ui.compose.NotificationPermissionScreen
 import dev.firezone.android.features.permission.ui.CertificatePermissionViewModel
 import dev.firezone.android.features.permission.vpn.ui.compose.VpnPermissionScreen
-import dev.firezone.android.features.session.ui.SessionActivity
+import dev.firezone.android.features.session.ui.SessionRoute
 import dev.firezone.android.features.settings.ui.SettingsActivity
 import dev.firezone.android.features.signin.ui.compose.SignInScreen
 import dev.firezone.android.features.splash.ui.SplashViewModel
 
-// Where the launch waits while the check decides, and where the permission destinations hand
-// control back to. The system splash covers it on launch; it has nothing of its own to draw.
+// Where the launch waits while the check decides. The system splash covers it; it has nothing
+// of its own to draw.
 private const val ROUTE_DECIDING = "deciding"
 private const val ROUTE_SIGN_IN = "sign-in"
+private const val ROUTE_SESSION = "session"
 private const val ROUTE_VPN_PERMISSION = "vpn-permission"
 private const val ROUTE_NOTIFICATION_PERMISSION = "notification-permission"
 private const val ROUTE_CERTIFICATE_PERMISSION = "certificate-permission"
 
 /**
- * Decides where a launch belongs and holds the destinations it can reach.
+ * Decides where the app belongs and holds the destinations it can reach.
  *
- * The check outlives any one of them, since the permission screens hand control back to be re-read,
- * so it lives here rather than in a destination of its own.
+ * Every one of them is somewhere the app *is* rather than somewhere it went, so they replace each
+ * other instead of stacking up and the check that picks between them lives here rather than in a
+ * destination of its own.
  */
 @Composable
 internal fun AppShell(
@@ -61,14 +63,15 @@ internal fun AppShell(
     viewModel: SplashViewModel = hiltViewModel(),
 ) {
     val navController = rememberNavController()
-    val context = LocalContext.current
     val activity = LocalActivity.current ?: return
     val action by viewModel.actionStateFlow.collectAsStateWithLifecycle()
     // Connect on start applies to the launch, not to every return to the shell.
     var isInitialLaunch by rememberSaveable { mutableStateOf(true) }
+    // What a destination calls once it has done its part and the app needs placing again.
+    val recheck = { viewModel.checkTunnelState(activity) }
 
-    // The permission destinations hand control back when they are done, and the answer can change
-    // while the app is in the background, so the check runs on every resume rather than once.
+    // The answer can change while the app is in the background, so the check runs on every resume
+    // rather than once at launch.
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
         viewModel.checkTunnelState(activity, isInitialLaunch)
         isInitialLaunch = false
@@ -80,27 +83,23 @@ internal fun AppShell(
 
         when (destination) {
             is SplashViewModel.ViewAction.NavigateToVpnPermission -> {
-                navController.navigateOnce(ROUTE_VPN_PERMISSION)
+                navController.replaceWith(ROUTE_VPN_PERMISSION)
             }
 
             is SplashViewModel.ViewAction.NavigateToNotificationPermission -> {
-                navController.navigateOnce(ROUTE_NOTIFICATION_PERMISSION)
+                navController.replaceWith(ROUTE_NOTIFICATION_PERMISSION)
             }
 
             is SplashViewModel.ViewAction.NavigateToCertificatePermission -> {
-                navController.navigateOnce(ROUTE_CERTIFICATE_PERMISSION)
+                navController.replaceWith(ROUTE_CERTIFICATE_PERMISSION)
             }
 
             is SplashViewModel.ViewAction.NavigateToSignIn -> {
-                navController.navigateOnce(ROUTE_SIGN_IN)
+                navController.replaceWith(ROUTE_SIGN_IN)
             }
 
             is SplashViewModel.ViewAction.NavigateToSession -> {
-                context.startActivity(
-                    Intent(context, SessionActivity::class.java).apply {
-                        flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
-                    },
-                )
+                navController.replaceWith(ROUTE_SESSION)
             }
         }
 
@@ -110,11 +109,17 @@ internal fun AppShell(
     NavHost(navController = navController, startDestination = ROUTE_DECIDING, modifier = modifier) {
         composable(ROUTE_DECIDING) { }
         composable(ROUTE_SIGN_IN) { SignInRoute(onSignInLaunched) }
-        composable(ROUTE_VPN_PERMISSION) { VpnPermissionRoute(navController) }
+        composable(ROUTE_SESSION) { SessionRoute(onSessionEnded = recheck) }
+        composable(ROUTE_VPN_PERMISSION) { VpnPermissionRoute(onGranted = recheck) }
         composable(ROUTE_NOTIFICATION_PERMISSION) {
-            NotificationPermissionRoute(navController, onNotificationPermissionRequested)
+            NotificationPermissionRoute(
+                onRequested = {
+                    onNotificationPermissionRequested()
+                    recheck()
+                },
+            )
         }
-        composable(ROUTE_CERTIFICATE_PERMISSION) { CertificatePermissionRoute(navController) }
+        composable(ROUTE_CERTIFICATE_PERMISSION) { CertificatePermissionRoute(onSelected = recheck) }
     }
 }
 
@@ -133,7 +138,7 @@ private fun SignInRoute(onSignInLaunched: () -> Unit) {
 
 @Composable
 private fun CertificatePermissionRoute(
-    navController: NavHostController,
+    onSelected: () -> Unit,
     viewModel: CertificatePermissionViewModel = hiltViewModel(),
 ) {
     val activity = LocalActivity.current ?: return
@@ -146,7 +151,7 @@ private fun CertificatePermissionRoute(
                     error =
                         when (outcome) {
                             CertificatePermissionViewModel.Outcome.Selected -> {
-                                navController.popBackStack()
+                                onSelected()
                                 null
                             }
 
@@ -166,12 +171,12 @@ private fun CertificatePermissionRoute(
 }
 
 @Composable
-private fun VpnPermissionRoute(navController: NavHostController) {
+private fun VpnPermissionRoute(onGranted: () -> Unit) {
     val context = LocalContext.current
     val consent =
         rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
             if (VpnService.prepare(context) == null) {
-                navController.popBackStack()
+                onGranted()
             }
         }
 
@@ -179,7 +184,7 @@ private fun VpnPermissionRoute(navController: NavHostController) {
         onRequestPermission = {
             val request = VpnService.prepare(context)
             if (request == null) {
-                navController.popBackStack()
+                onGranted()
             } else {
                 consent.launch(request)
             }
@@ -188,16 +193,12 @@ private fun VpnPermissionRoute(navController: NavHostController) {
 }
 
 @Composable
-private fun NotificationPermissionRoute(
-    navController: NavHostController,
-    onNotificationPermissionRequested: () -> Unit,
-) {
+private fun NotificationPermissionRoute(onRequested: () -> Unit) {
     val context = LocalContext.current
 
     // Denying is not a failure: either answer counts as having asked, and the flow moves on.
     val done = {
-        onNotificationPermissionRequested()
-        navController.popBackStack()
+        onRequested()
         Unit
     }
     val request = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { done() }
@@ -217,5 +218,16 @@ private fun NotificationPermissionRoute(
     )
 }
 
-// The splash check runs again on every resume, so it can ask for the same destination twice.
-private fun NavHostController.navigateOnce(route: String) = navigate(route) { launchSingleTop = true }
+// Nothing here is reached by going forwards, so nothing should be left behind to go back to:
+// replacing the destination keeps the back stack one deep, which is what lets back close the app.
+// The check runs again on every resume, so asking for the destination already on screen is normal
+// and must not tear it down and rebuild it.
+private fun NavHostController.replaceWith(route: String) {
+    val current = currentDestination?.route ?: return
+
+    if (current == route) {
+        return
+    }
+
+    navigate(route) { popUpTo(current) { inclusive = true } }
+}

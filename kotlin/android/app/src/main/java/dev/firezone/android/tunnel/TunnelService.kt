@@ -125,7 +125,7 @@ class TunnelService : VpnService() {
     private val _connectedDevicesState = MutableStateFlow<List<ConnectedDevice>>(emptyList())
     private val _actorNameState = MutableStateFlow<String?>(null)
 
-    // A `StateFlow` replays its current value to every new collector, so a newly bound SessionActivity catches up on its own.
+    // A `StateFlow` replays its current value to every new collector, so a newly bound session screen catches up on its own.
     val serviceState: StateFlow<State> = _serviceState.asStateFlow()
     val resourcesState: StateFlow<List<Resource>> = _resourcesState.asStateFlow()
     val connectedDevicesState: StateFlow<List<ConnectedDevice>> = _connectedDevicesState.asStateFlow()
@@ -152,7 +152,7 @@ class TunnelService : VpnService() {
             _serviceState.value = value
         }
 
-    // For binding the SessionActivity view to this service
+    // For binding the session screen to this service
     private val binder = LocalBinder()
 
     inner class LocalBinder : Binder() {
@@ -160,7 +160,7 @@ class TunnelService : VpnService() {
     }
 
     // The system binds with `SERVICE_INTERFACE` to obtain `VpnService`'s own binder, which is what
-    // it transacts on to dispatch `onRevoke`. Only the SessionActivity's bind gets `LocalBinder`.
+    // it transacts on to dispatch `onRevoke`. Only the session screen's bind gets `LocalBinder`.
     override fun onBind(intent: Intent): IBinder? =
         if (intent.action == VpnService.SERVICE_INTERFACE) {
             super.onBind(intent)
