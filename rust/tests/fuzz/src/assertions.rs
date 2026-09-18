@@ -104,10 +104,8 @@ pub(crate) fn assert_probes(
                     continue;
                 };
             }
-            ExpectedOutcome::RoundTripCompleted {
-                remote: expected_remote,
-                ..
-            } => {
+            ExpectedOutcome::RoundTripCompleted(route) => {
+                let expected_remote = route.remote();
                 let ([received_request], [received_response]) =
                     (received_requests.as_slice(), received_responses.as_slice())
                 else {
