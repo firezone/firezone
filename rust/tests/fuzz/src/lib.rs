@@ -38,6 +38,7 @@ pub mod tunnel_proto {
     pub use super::arb::Generator;
     pub use super::flux_capacitor::FluxCapacitor;
     pub use super::reference::ReferenceState;
+    pub use super::stub_portal::StubPortal;
     pub use super::sut::TunnelTest;
 
     /// Initializes an error-detecting subscriber for the current fuzz case.

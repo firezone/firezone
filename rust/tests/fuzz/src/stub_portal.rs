@@ -12,10 +12,11 @@ use tunnel_proto::dns;
 use tunnel_proto::messages::{UpstreamDo53, UpstreamDoH, gateway};
 
 use crate::resource::{self as client, DevicePoolResource};
+use crate::transition::Transition;
 
 /// Stub implementation of the portal.
 #[derive(Clone, derive_more::Debug)]
-pub(crate) struct StubPortal {
+pub struct StubPortal {
     clients: BTreeMap<ClientId, StubClient>,
     gateways_by_site: BTreeMap<SiteId, SmallVec<[(GatewayId, Ipv4Addr, Ipv6Addr); 3]>>,
     regular_sites: SmallVec<[Site; 3]>,
@@ -169,6 +170,72 @@ impl StubPortal {
         }
     }
 
+    /// Applies the portal-side effect of `transition`.
+    pub fn apply(&mut self, transition: &Transition) {
+        match transition {
+            Transition::RemoveResource(id) => {
+                self.revoke_peer_policy_authorizations_for_pool(*id);
+            }
+            Transition::ChangeCidrResourceAddress {
+                resource,
+                new_address,
+            } => {
+                self.change_address_of_cidr_resource(resource.id, *new_address);
+            }
+            Transition::MoveResourceToNewSite { resource, new_site } => {
+                self.move_resource_to_new_site(resource.id(), new_site.clone());
+            }
+            Transition::ChangeFiltersOfResource {
+                resource,
+                new_filters,
+            } => {
+                self.change_filters_of_resource(resource.id(), new_filters.clone());
+            }
+            Transition::ChangeResourceType {
+                old_resource: _,
+                new_resource,
+            } => {
+                self.revoke_peer_policy_authorizations_for_pool(new_resource.id());
+                self.replace_resource(new_resource.clone());
+            }
+            Transition::UpdateDevicePoolMembers {
+                pool_id,
+                members,
+                revoked: _,
+            } => {
+                self.set_pool_members(*pool_id, members.clone());
+            }
+            Transition::UpdateUpstreamDo53Servers(servers) => {
+                self.upstream_do53 = servers.clone();
+            }
+            Transition::UpdateUpstreamDoHServers(servers) => {
+                self.upstream_doh = servers.clone();
+            }
+            Transition::UpdateUpstreamSearchDomain(domain) => {
+                self.search_domain = domain.clone();
+            }
+            Transition::AddResource(_) => {}
+            Transition::SetInternetResourceState { .. } => {}
+            Transition::SendIcmpPacketOnNewFlow { .. } => {}
+            Transition::SendIcmpPacketOnExistingFlow { .. } => {}
+            Transition::SendUdpPacketOnNewFlow { .. } => {}
+            Transition::SendUdpPacketOnExistingFlow { .. } => {}
+            Transition::ConnectTcp { .. } => {}
+            Transition::SendDnsQuery { .. } => {}
+            Transition::SendDnsResourcePtrQuery { .. } => {}
+            Transition::UpdateSystemDnsServers { .. } => {}
+            Transition::RoamClient { .. } => {}
+            Transition::ReconnectPortal { .. } => {}
+            Transition::RestartClient { .. } => {}
+            Transition::DeployNewRelays(_) => {}
+            Transition::PartitionRelaysFromPortal => {}
+            Transition::Idle => {}
+            Transition::RebootRelaysWhilePartitioned(_) => {}
+            Transition::DeauthorizeWhileGatewayIsPartitioned(_) => {}
+            Transition::UpdateDnsRecords { .. } => {}
+        }
+    }
+
     /// The tunnel IPs assigned to each client, in client order.
     ///
     /// Used by the structured generator to materialize client hosts.
@@ -256,7 +323,7 @@ impl StubPortal {
         });
     }
 
-    pub(crate) fn revoke_peer_policy_authorizations_for_pool(&mut self, pool: ResourceId) {
+    fn revoke_peer_policy_authorizations_for_pool(&mut self, pool: ResourceId) {
         for _ in self
             .peer_policy_authorizations
             .extract_if(.., |authorization| authorization.pool == pool)
@@ -306,7 +373,7 @@ impl StubPortal {
             .collect()
     }
 
-    pub(crate) fn set_pool_members(&mut self, pool: ResourceId, members: BTreeSet<ClientId>) {
+    fn set_pool_members(&mut self, pool: ResourceId, members: BTreeSet<ClientId>) {
         if !self.device_pool_resources.contains_key(&pool) {
             tracing::error!(%pool, "Unknown device pool");
             return;
@@ -353,24 +420,12 @@ impl StubPortal {
         self.search_domain.clone()
     }
 
-    pub(crate) fn set_search_domain(&mut self, search_domain: Option<DomainName>) {
-        self.search_domain = search_domain;
-    }
-
     pub(crate) fn upstream_do53(&self) -> &[UpstreamDo53] {
         &self.upstream_do53
     }
 
-    pub(crate) fn set_upstream_do53(&mut self, upstream_do53: Vec<UpstreamDo53>) {
-        self.upstream_do53 = upstream_do53;
-    }
-
     pub(crate) fn upstream_doh(&self) -> &[UpstreamDoH] {
         &self.upstream_doh
-    }
-
-    pub(crate) fn set_upstream_doh(&mut self, upstream_doh: Vec<UpstreamDoH>) {
-        self.upstream_doh = upstream_doh;
     }
 
     pub(crate) fn resource_selector(&self) -> u32 {
@@ -463,11 +518,7 @@ impl StubPortal {
             .map(|(gid, _, _)| *gid)
     }
 
-    pub(crate) fn change_address_of_cidr_resource(
-        &mut self,
-        rid: ResourceId,
-        new_address: IpNetwork,
-    ) {
+    fn change_address_of_cidr_resource(&mut self, rid: ResourceId, new_address: IpNetwork) {
         if let Some(resource) = self.cidr_resources.get_mut(&rid) {
             resource.address = new_address;
             return;
@@ -476,7 +527,7 @@ impl StubPortal {
         tracing::error!(%rid, "Unknown resource");
     }
 
-    pub(crate) fn change_filters_of_resource(
+    fn change_filters_of_resource(
         &mut self,
         rid: ResourceId,
         new_filters: Vec<tunnel_proto::messages::Filter>,
@@ -499,7 +550,7 @@ impl StubPortal {
         tracing::error!(%rid, "Unknown resource");
     }
 
-    pub(crate) fn replace_resource(&mut self, new_resource: client::Resource) {
+    fn replace_resource(&mut self, new_resource: client::Resource) {
         let id = new_resource.id();
 
         self.cidr_resources.remove(&id);
@@ -551,7 +602,7 @@ impl StubPortal {
         Some(self.device_pool_resources.get(&pool_id)?.filters.clone())
     }
 
-    pub(crate) fn move_resource_to_new_site(&mut self, rid: ResourceId, site: Site) {
+    fn move_resource_to_new_site(&mut self, rid: ResourceId, site: Site) {
         if let Some(resource) = self.cidr_resources.get_mut(&rid) {
             self.sites_by_resource.insert(rid, site.id);
             resource.sites = vec![site];

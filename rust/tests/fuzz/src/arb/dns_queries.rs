@@ -7,6 +7,7 @@ use tunnel_proto::dns;
 use super::context::Generator;
 use super::packets::{host_in_v4, host_in_v6};
 use crate::reference::ReferenceState;
+use crate::stub_portal::StubPortal;
 use crate::transition::{DnsQuery, DnsTransport, IpFamily, Transition};
 
 #[derive(Clone)]
@@ -40,9 +41,9 @@ enum DnsNameSpec {
     },
 }
 
-pub(super) fn targets(state: &ReferenceState) -> Vec<DnsQueryTarget> {
-    let servers = state.reachable_dns_servers();
-    let labels = state.portal.device_labels();
+pub(super) fn targets(state: &ReferenceState, portal: &StubPortal) -> Vec<DnsQueryTarget> {
+    let servers = state.reachable_dns_servers(portal);
+    let labels = portal.device_labels();
 
     state
         .all_domains()
@@ -60,22 +61,19 @@ pub(super) fn targets(state: &ReferenceState) -> Vec<DnsQueryTarget> {
                     },
                 })
         })
-        .chain(
-            state
-                .wildcard_dns_resources()
-                .into_iter()
-                .flat_map(|(client_id, resource)| {
-                    servers.iter().filter(move |(id, _)| *id == client_id).map(
-                        move |(_, dns_server)| DnsQueryTarget {
-                            client_id,
-                            dns_server: dns_server.clone(),
-                            name: DnsNameSpec::Wildcard {
-                                base: resource.address.trim_start_matches("*.").to_owned(),
-                            },
+        .chain(state.wildcard_dns_resources(portal).into_iter().flat_map(
+            |(client_id, resource)| {
+                servers.iter().filter(move |(id, _)| *id == client_id).map(
+                    move |(_, dns_server)| DnsQueryTarget {
+                        client_id,
+                        dns_server: dns_server.clone(),
+                        name: DnsNameSpec::Wildcard {
+                            base: resource.address.trim_start_matches("*.").to_owned(),
                         },
-                    )
-                }),
-        )
+                    },
+                )
+            },
+        ))
         .chain(servers.iter().cloned().flat_map(|(client_id, dns_server)| {
             let base = dns::DEVICE_DOMAIN.to_owned();
             [
