@@ -11,7 +11,13 @@ use connlib_model::{
 use ip_network::IpNetwork;
 use itertools::Itertools as _;
 use serde_json::{Value, json};
-use tunnel_proto::messages::{Filter, client::ResourceDescription};
+use tunnel_proto::messages::{
+    Filter,
+    client::{
+        ResourceDescription, ResourceDescriptionCidr, ResourceDescriptionDevicePool,
+        ResourceDescriptionDns, ResourceDescriptionInternet,
+    },
+};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) enum Resource {
@@ -54,6 +60,225 @@ pub(crate) struct DevicePoolResource {
     pub(crate) id: ResourceId,
     pub(crate) name: String,
     pub(crate) filters: Vec<Filter>,
+}
+
+// Exhaustive conversions keep the reference fields aligned with the Portal messages.
+const _: fn(ResourceDescriptionDns) -> DnsResource = |description| {
+    let ResourceDescriptionDns {
+        id,
+        address,
+        name,
+        address_description,
+        sites,
+        ip_stack,
+        filters,
+    } = description;
+
+    DnsResource {
+        id,
+        address,
+        name,
+        address_description,
+        sites,
+        ip_stack: ip_stack.unwrap_or(IpStack::Dual),
+        filters,
+    }
+};
+
+const _: fn(ResourceDescriptionCidr) -> CidrResource = |description| {
+    let ResourceDescriptionCidr {
+        id,
+        address,
+        name,
+        address_description,
+        sites,
+        filters,
+    } = description;
+
+    CidrResource {
+        id,
+        address,
+        name,
+        address_description,
+        sites,
+        filters,
+    }
+};
+
+const _: fn(ResourceDescriptionDevicePool) -> DevicePoolResource = |description| {
+    let ResourceDescriptionDevicePool { id, name, filters } = description;
+
+    DevicePoolResource { id, name, filters }
+};
+
+const _: fn(ResourceDescriptionInternet) -> InternetResource = |description| {
+    let ResourceDescriptionInternet { name, id, sites } = description;
+
+    InternetResource { name, id, sites }
+};
+
+const _: fn(ResourceDescription) -> bool = |description| match description {
+    ResourceDescription::Dns(_) => true,
+    ResourceDescription::Cidr(_) => true,
+    ResourceDescription::DevicePool(_) => true,
+    ResourceDescription::Internet(_) => false,
+    ResourceDescription::Unknown => false,
+};
+
+/// An edit of the resource with `old.id()`; any number of fields, including the type, may differ.
+#[derive(Debug, Clone)]
+pub(crate) struct ResourceEdit {
+    pub(crate) old: Resource,
+    pub(crate) new: Resource,
+}
+
+pub(crate) enum EditEffect<'a> {
+    /// Only fields the data plane never acts on changed.
+    Metadata,
+    /// The gateway swaps the resource's filters in place; clients reconnect to it.
+    Filters {
+        resource_id: ResourceId,
+        affects_tcp: bool,
+    },
+    /// The gateway revokes all access to the resource; clients reconnect to it.
+    Access {
+        resource_id: ResourceId,
+        affects_tcp: bool,
+        forgets_dns_records_under: Option<&'a str>,
+    },
+    /// The pool's filters change the client's routes but keep its peer authorizations.
+    DevicePoolRouting,
+    /// The resource is removed and re-added as a different type.
+    Type {
+        old: &'a Resource,
+        new: &'a Resource,
+        forgets_dns_records_under: Option<&'a str>,
+    },
+}
+
+pub(crate) fn classify<'a>(old: &'a Resource, new: &'a Resource) -> EditEffect<'a> {
+    debug_assert_eq!(old.id(), new.id());
+
+    match (old, new) {
+        (Resource::Dns(old), Resource::Dns(new)) => {
+            let DnsResource {
+                id,
+                address,
+                name: _,
+                address_description: _,
+                sites,
+                ip_stack,
+                filters,
+            } = old;
+            let DnsResource {
+                id: _,
+                address: new_address,
+                name: _,
+                address_description: _,
+                sites: new_sites,
+                ip_stack: new_ip_stack,
+                filters: new_filters,
+            } = new;
+
+            if address != new_address || sites != new_sites || ip_stack != new_ip_stack {
+                return EditEffect::Access {
+                    resource_id: *id,
+                    affects_tcp: true,
+                    forgets_dns_records_under: (address != new_address).then_some(new_address),
+                };
+            }
+
+            if filters != new_filters {
+                return EditEffect::Filters {
+                    resource_id: *id,
+                    affects_tcp: true,
+                };
+            }
+
+            EditEffect::Metadata
+        }
+        (Resource::Cidr(old), Resource::Cidr(new)) => {
+            let CidrResource {
+                id,
+                address,
+                name: _,
+                address_description: _,
+                sites,
+                filters,
+            } = old;
+            let CidrResource {
+                id: _,
+                address: new_address,
+                name: _,
+                address_description: _,
+                sites: new_sites,
+                filters: new_filters,
+            } = new;
+
+            if address != new_address || sites != new_sites {
+                return EditEffect::Access {
+                    resource_id: *id,
+                    affects_tcp: false,
+                    forgets_dns_records_under: None,
+                };
+            }
+
+            if filters != new_filters {
+                return EditEffect::Filters {
+                    resource_id: *id,
+                    affects_tcp: false,
+                };
+            }
+
+            EditEffect::Metadata
+        }
+        (Resource::Internet(old), Resource::Internet(new)) => {
+            let InternetResource { name: _, id, sites } = old;
+            let InternetResource {
+                name: _,
+                id: _,
+                sites: new_sites,
+            } = new;
+
+            if sites != new_sites {
+                return EditEffect::Access {
+                    resource_id: *id,
+                    affects_tcp: false,
+                    forgets_dns_records_under: None,
+                };
+            }
+
+            EditEffect::Metadata
+        }
+        (Resource::DevicePool(old), Resource::DevicePool(new)) => {
+            let DevicePoolResource {
+                id: _,
+                name: _,
+                filters,
+            } = old;
+            let DevicePoolResource {
+                id: _,
+                name: _,
+                filters: new_filters,
+            } = new;
+
+            if filters != new_filters {
+                return EditEffect::DevicePoolRouting;
+            }
+
+            EditEffect::Metadata
+        }
+        _ => EditEffect::Type {
+            old,
+            new,
+            forgets_dns_records_under: match new {
+                Resource::Dns(new) => Some(&new.address),
+                Resource::Cidr(_) => None,
+                Resource::Internet(_) => None,
+                Resource::DevicePool(_) => None,
+            },
+        },
+    }
 }
 
 impl Resource {
@@ -102,10 +327,6 @@ impl Resource {
         }
     }
 
-    pub(crate) fn is_exclusively_at(&self, site: &Site) -> bool {
-        self.sites().len() == 1 && self.sites().first() == Some(site)
-    }
-
     pub(crate) fn filters(&self) -> &[Filter] {
         match self {
             Resource::Dns(r) => &r.filters,
@@ -124,88 +345,55 @@ impl Resource {
         Ok(site)
     }
 
-    pub(crate) fn has_different_address(&self, other: &Resource) -> bool {
-        match (self, other) {
-            (Resource::Dns(a), Resource::Dns(b)) => a.address != b.address,
-            (Resource::Cidr(a), Resource::Cidr(b)) => a.address != b.address,
-            (Resource::Internet(_), Resource::Internet(_)) => false,
-            (Resource::DevicePool(_), Resource::DevicePool(_)) => false,
-            _ => true,
-        }
-    }
-
-    pub(crate) fn has_different_ip_stack(&self, other: &Resource) -> bool {
-        match (self, other) {
-            (Resource::Dns(a), Resource::Dns(b)) => a.ip_stack != b.ip_stack,
-            _ => false,
-        }
-    }
-
-    pub(crate) fn has_different_site(&self, other: &Resource) -> bool {
-        self.sites() != other.sites()
-    }
-
-    pub(crate) fn has_different_filters(&self, other: &Resource) -> bool {
-        self.filters() != other.filters()
-    }
-
-    pub(crate) fn with_new_site(self, site: Site) -> Self {
-        match self {
-            Resource::Dns(r) => Self::Dns(DnsResource {
-                sites: vec![site],
-                ..r
-            }),
-            Resource::Cidr(r) => Self::Cidr(CidrResource {
-                sites: vec![site],
-                ..r
-            }),
-            Resource::Internet(r) => Self::Internet(InternetResource {
-                sites: vec![site],
-                ..r
-            }),
-            Resource::DevicePool(r) => Self::DevicePool(r),
-        }
-    }
-
-    pub(crate) fn with_new_filters(self, filters: Vec<Filter>) -> Self {
-        match self {
-            Resource::Dns(r) => Self::Dns(DnsResource { filters, ..r }),
-            Resource::Cidr(r) => Self::Cidr(CidrResource { filters, ..r }),
-            Resource::DevicePool(r) => Self::DevicePool(DevicePoolResource { filters, ..r }),
-            Resource::Internet(_) => self,
-        }
-    }
-
     /// Converts the reference resource into the portal message consumed by the SUT.
     pub(crate) fn into_description(self) -> ResourceDescription {
         match self {
-            Resource::Dns(r) => ResourceDescription::Dns(json!({
-                "id": r.id,
-                "address": r.address,
-                "name": r.name,
-                "address_description": r.address_description,
-                "gateway_groups": sites_json(r.sites),
-                "ip_stack": ip_stack_json(r.ip_stack),
-                "filters": filters_json(r.filters),
+            Resource::Dns(DnsResource {
+                id,
+                address,
+                name,
+                address_description,
+                sites,
+                ip_stack,
+                filters,
+            }) => ResourceDescription::Dns(json!({
+                "id": id,
+                "address": address,
+                "name": name,
+                "address_description": address_description,
+                "gateway_groups": sites_json(sites),
+                "ip_stack": ip_stack_json(ip_stack),
+                "filters": filters_json(filters),
             })),
-            Resource::Cidr(r) => ResourceDescription::Cidr(json!({
-                "id": r.id,
-                "address": r.address.to_string(),
-                "name": r.name,
-                "address_description": r.address_description,
-                "gateway_groups": sites_json(r.sites),
-                "filters": filters_json(r.filters),
+            Resource::Cidr(CidrResource {
+                id,
+                address,
+                name,
+                address_description,
+                sites,
+                filters,
+            }) => ResourceDescription::Cidr(json!({
+                "id": id,
+                "address": address.to_string(),
+                "name": name,
+                "address_description": address_description,
+                "gateway_groups": sites_json(sites),
+                "filters": filters_json(filters),
             })),
-            Resource::Internet(r) => ResourceDescription::Internet(json!({
-                "id": r.id,
-                "name": r.name,
-                "gateway_groups": sites_json(r.sites),
-            })),
-            Resource::DevicePool(r) => ResourceDescription::DevicePool(json!({
-                "id": r.id,
-                "name": r.name,
-                "filters": filters_json(r.filters),
-            })),
+            Resource::Internet(InternetResource { name, id, sites }) => {
+                ResourceDescription::Internet(json!({
+                    "id": id,
+                    "name": name,
+                    "gateway_groups": sites_json(sites),
+                }))
+            }
+            Resource::DevicePool(DevicePoolResource { id, name, filters }) => {
+                ResourceDescription::DevicePool(json!({
+                "id": id,
+                "name": name,
+                "filters": filters_json(filters),
+                }))
+            }
         }
     }
 

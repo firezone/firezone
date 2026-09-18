@@ -219,86 +219,62 @@ impl TunnelTest {
                     });
                 }
             }
-            Transition::ChangeCidrResourceAddress {
-                resource,
-                new_address,
-            } => {
-                let new_resource = client::Resource::Cidr(client::CidrResource {
-                    address: new_address,
-                    ..resource
-                });
-
-                for (client_id, client) in &mut state.clients {
-                    if let Some(gateway) = portal
-                        .gateway_for_resource(new_resource.id())
-                        .and_then(|gid| state.gateways.get_mut(gid))
-                    {
-                        gateway.exec_mut(|g| g.remove_access(client_id, &new_resource.id(), now));
-                    }
-                    client.exec_mut(|c| {
-                        c.sut
-                            .add_resource(new_resource.clone().into_description(), now)
-                    });
+            Transition::EditResource(edit) => {
+                enum GatewayAction {
+                    None,
+                    Update,
+                    RemoveAllAccess,
                 }
-            }
-            Transition::MoveResourceToNewSite { resource, new_site } => {
-                let resource_id = resource.id();
-                let new_resource = resource.with_new_site(new_site);
 
-                for (client_id, client) in &mut state.clients {
-                    for gateway in state.gateways.values_mut() {
-                        gateway.exec_mut(|gateway| {
-                            gateway.record_resource_disabled(*client_id, resource_id)
-                        });
+                let resource_id = edit.old.id();
+                let updated = &edit.new;
+                let (gateway_action, dns_address) = match client::classify(&edit.old, updated) {
+                    client::EditEffect::Metadata => (GatewayAction::None, None),
+                    client::EditEffect::Filters { .. } => (GatewayAction::Update, None),
+                    client::EditEffect::Access {
+                        forgets_dns_records_under,
+                        ..
+                    } => (GatewayAction::RemoveAllAccess, forgets_dns_records_under),
+                    client::EditEffect::DevicePoolRouting => (GatewayAction::None, None),
+                    client::EditEffect::Type {
+                        forgets_dns_records_under,
+                        ..
+                    } => (GatewayAction::RemoveAllAccess, forgets_dns_records_under),
+                };
+
+                match gateway_action {
+                    GatewayAction::None => {}
+                    GatewayAction::Update => {
+                        let resource = portal.map_client_resource_to_gateway_resource(resource_id);
+
+                        for gateway in state.gateways.values_mut() {
+                            gateway
+                                .exec_mut(|gateway| gateway.sut.update_resource(resource.clone()));
+                        }
                     }
-                    client.exec_mut(|c| {
-                        c.sut
-                            .add_resource(new_resource.clone().into_description(), now)
-                    });
+                    GatewayAction::RemoveAllAccess => {
+                        for client_id in state.clients.keys() {
+                            for gateway in state.gateways.values_mut() {
+                                gateway.exec_mut(|gateway| {
+                                    gateway.remove_access(client_id, &resource_id, now)
+                                });
+                            }
+                        }
+                    }
                 }
-            }
-            Transition::ChangeFiltersOfResource {
-                resource,
-                new_filters,
-            } => {
-                let resource_id = resource.id();
-                let new_resource = resource.with_new_filters(new_filters);
-
-                for (client_id, client) in &mut state.clients {
-                    for gateway in state.gateways.values_mut() {
-                        gateway.exec_mut(|gateway| {
-                            gateway.record_resource_disabled(*client_id, resource_id)
-                        });
-                    }
-                    client.exec_mut(|c| {
-                        c.sut
-                            .add_resource(new_resource.clone().into_description(), now)
-                    });
-                }
-            }
-            Transition::ChangeResourceType {
-                old_resource,
-                new_resource,
-            } => {
-                debug_assert_eq!(old_resource.id(), new_resource.id());
-
-                for (client_id, client) in &mut state.clients {
-                    for gateway in state.gateways.values_mut() {
-                        gateway.exec_mut(|gateway| {
-                            gateway.remove_access(client_id, &old_resource.id(), now)
-                        });
-                    }
-
+                for client in state.clients.values_mut() {
                     client.exec_mut(|client| {
-                        if let client::Resource::Dns(resource) = &new_resource {
-                            client
+                        if let Some(address) = dns_address {
+                            for _ in client
                                 .dns_records
-                                .retain(|domain, _| !is_subdomain(domain, &resource.address));
+                                .extract_if(|domain, _| is_subdomain(domain, address))
+                            {
+                            }
                         }
 
                         client
                             .sut
-                            .add_resource(new_resource.clone().into_description(), now);
+                            .add_resource(updated.clone().into_description(), now);
                     });
                 }
             }
@@ -773,6 +749,7 @@ impl TunnelTest {
             assert_search_domain_is_valid(portal, sut_client);
             assert_routes_are_valid(ref_client, sut_client);
             assert_resource_list(ref_client, sut_client);
+            assert_dns_resource_record_cache(ref_client, sut_client);
         }
     }
 

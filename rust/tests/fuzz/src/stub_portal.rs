@@ -1,6 +1,5 @@
 use connlib_model::{ClientId, GatewayId, ResourceId, Site, SiteId};
 use dns_types::DomainName;
-use ip_network::IpNetwork;
 use itertools::Itertools;
 use smallvec::SmallVec;
 use std::{
@@ -176,27 +175,12 @@ impl StubPortal {
             Transition::RemoveResource(id) => {
                 self.revoke_peer_policy_authorizations_for_pool(*id);
             }
-            Transition::ChangeCidrResourceAddress {
-                resource,
-                new_address,
-            } => {
-                self.change_address_of_cidr_resource(resource.id, *new_address);
-            }
-            Transition::MoveResourceToNewSite { resource, new_site } => {
-                self.move_resource_to_new_site(resource.id(), new_site.clone());
-            }
-            Transition::ChangeFiltersOfResource {
-                resource,
-                new_filters,
-            } => {
-                self.change_filters_of_resource(resource.id(), new_filters.clone());
-            }
-            Transition::ChangeResourceType {
-                old_resource: _,
-                new_resource,
-            } => {
-                self.revoke_peer_policy_authorizations_for_pool(new_resource.id());
-                self.replace_resource(new_resource.clone());
+            Transition::EditResource(edit) => {
+                if let client::EditEffect::Type { .. } = client::classify(&edit.old, &edit.new) {
+                    self.revoke_peer_policy_authorizations_for_pool(edit.old.id());
+                }
+
+                self.replace_resource(edit.new.clone());
             }
             Transition::UpdateDevicePoolMembers {
                 pool_id,
@@ -518,38 +502,6 @@ impl StubPortal {
             .map(|(gid, _, _)| *gid)
     }
 
-    fn change_address_of_cidr_resource(&mut self, rid: ResourceId, new_address: IpNetwork) {
-        if let Some(resource) = self.cidr_resources.get_mut(&rid) {
-            resource.address = new_address;
-            return;
-        }
-
-        tracing::error!(%rid, "Unknown resource");
-    }
-
-    fn change_filters_of_resource(
-        &mut self,
-        rid: ResourceId,
-        new_filters: Vec<tunnel_proto::messages::Filter>,
-    ) {
-        if let Some(resource) = self.cidr_resources.get_mut(&rid) {
-            resource.filters = new_filters;
-            return;
-        }
-
-        if let Some(resource) = self.dns_resources.get_mut(&rid) {
-            resource.filters = new_filters;
-            return;
-        }
-
-        if let Some(resource) = self.device_pool_resources.get_mut(&rid) {
-            resource.filters = new_filters;
-            return;
-        }
-
-        tracing::error!(%rid, "Unknown resource");
-    }
-
     fn replace_resource(&mut self, new_resource: client::Resource) {
         let id = new_resource.id();
 
@@ -585,7 +537,7 @@ impl StubPortal {
                 self.device_pool_resources.insert(id, resource);
             }
             client::Resource::Internet(_) => {
-                unreachable!("only user-editable resource types can replace one another")
+                unreachable!("the Portal API does not allow editing the Internet Resource")
             }
         }
 
@@ -600,24 +552,6 @@ impl StubPortal {
         pool_id: ResourceId,
     ) -> Option<Vec<tunnel_proto::messages::Filter>> {
         Some(self.device_pool_resources.get(&pool_id)?.filters.clone())
-    }
-
-    fn move_resource_to_new_site(&mut self, rid: ResourceId, site: Site) {
-        if let Some(resource) = self.cidr_resources.get_mut(&rid) {
-            self.sites_by_resource.insert(rid, site.id);
-            resource.sites = vec![site];
-            return;
-        }
-
-        if let Some(resource) = self.dns_resources.get_mut(&rid) {
-            self.sites_by_resource.insert(rid, site.id);
-            resource.sites = vec![site];
-            return;
-        }
-
-        if self.internet_resource.id == rid {
-            tracing::error!("Internet Resource cannot change site");
-        }
     }
 }
 

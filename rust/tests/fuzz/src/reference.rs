@@ -126,76 +126,7 @@ impl ReferenceState {
                     });
                 }
             }
-            Transition::ChangeCidrResourceAddress {
-                resource,
-                new_address,
-            } => {
-                let new_resource = client::CidrResource {
-                    address: *new_address,
-                    ..resource.clone()
-                };
-
-                for client in state.clients.values_mut() {
-                    client.exec_mut(|c| c.add_cidr_resource(new_resource.clone()));
-                }
-            }
-            Transition::MoveResourceToNewSite { resource, new_site } => {
-                for client in state.clients.values_mut() {
-                    client.exec_mut(|c| match resource.clone().with_new_site(new_site.clone()) {
-                        client::Resource::Dns(r) => c.add_dns_resource(r),
-                        client::Resource::Cidr(r) => c.add_cidr_resource(r),
-                        client::Resource::Internet(_) => {
-                            tracing::error!("Internet Resource cannot move site");
-                        }
-                        client::Resource::DevicePool(_) => {}
-                    })
-                }
-            }
-            Transition::ChangeFiltersOfResource {
-                resource,
-                new_filters,
-            } => {
-                let new_resource = resource.clone().with_new_filters(new_filters.clone());
-
-                for client in state.clients.values_mut() {
-                    client.exec_mut(|c| match &new_resource {
-                        client::Resource::Dns(r) => c.add_dns_resource(r.clone()),
-                        client::Resource::Cidr(r) => c.add_cidr_resource(r.clone()),
-                        client::Resource::DevicePool(r) => c.add_device_pool_resource(r.clone()),
-                        client::Resource::Internet(_) => unreachable!(),
-                    })
-                }
-            }
-            Transition::ChangeResourceType {
-                old_resource: _,
-                new_resource,
-            } => {
-                for client in state.clients.values_mut() {
-                    client.exec_mut(|client| {
-                        client.remove_resource(&new_resource.id());
-
-                        match new_resource {
-                            client::Resource::Dns(resource) => {
-                                client
-                                    .dns_records
-                                    .retain(|domain, _| !is_subdomain(domain, &resource.address));
-                                client.add_dns_resource(resource.clone());
-                            }
-                            client::Resource::Cidr(resource) => {
-                                client.add_cidr_resource(resource.clone())
-                            }
-                            client::Resource::DevicePool(resource) => {
-                                client.add_device_pool_resource(resource.clone())
-                            }
-                            client::Resource::Internet(_) => {
-                                unreachable!(
-                                    "only user-editable resource types can replace one another"
-                                )
-                            }
-                        }
-                    });
-                }
-            }
+            Transition::EditResource(edit) => state.apply_resource_edit(edit),
             Transition::UpdateDevicePoolMembers {
                 pool_id: _,
                 members: _,
@@ -504,6 +435,55 @@ impl ReferenceState {
         };
 
         state
+    }
+
+    fn apply_resource_edit(&mut self, edit: &client::ResourceEdit) {
+        let effect = client::classify(&edit.old, &edit.new);
+        let updated = &edit.new;
+
+        for client in self.clients.values_mut() {
+            client.exec_mut(|client| {
+                let forgets_dns_records_under = match effect {
+                    client::EditEffect::Metadata => {
+                        client.update_resource_metadata(updated.clone());
+                        return;
+                    }
+                    client::EditEffect::Filters { .. } => None,
+                    client::EditEffect::Access {
+                        forgets_dns_records_under,
+                        ..
+                    } => forgets_dns_records_under,
+                    client::EditEffect::DevicePoolRouting => None,
+                    client::EditEffect::Type {
+                        forgets_dns_records_under,
+                        ..
+                    } => {
+                        client.remove_resource(&updated.id());
+
+                        forgets_dns_records_under
+                    }
+                };
+
+                if let Some(address) = forgets_dns_records_under {
+                    for _ in client
+                        .dns_records
+                        .extract_if(.., |domain, _| is_subdomain(domain, address))
+                    {
+                    }
+                }
+
+                match updated {
+                    client::Resource::Dns(resource) => client.add_dns_resource(resource.clone()),
+                    client::Resource::Cidr(resource) => client.add_cidr_resource(resource.clone()),
+                    client::Resource::Internet(resource) => {
+                        client.add_internet_resource(resource.clone())
+                    }
+                    client::Resource::DevicePool(resource) => {
+                        client.add_device_pool_resource(resource.clone())
+                    }
+                }
+            });
+        }
     }
 
     /// Drops the bookkeeping that `transition` makes stale before it is applied.
@@ -1039,12 +1019,18 @@ impl ReferenceState {
         let unique_domains = self
             .gateways
             .values()
-            .flat_map(|g| g.inner().dns_records().domains_iter())
+            .flat_map(|gateway| gateway.inner().dns_records().domains_iter())
             .chain(self.global_dns_records.domains_iter())
-            .filter(|d| {
-                self.clients.values().any(|c| {
-                    c.inner()
-                        .dns_resource_by_domain(d, |_| true, |_| true)
+            .chain(
+                self.clients
+                    .values()
+                    .flat_map(|client| client.inner().dns_records.keys().cloned()),
+            )
+            .filter(|domain| {
+                self.clients.values().any(|client| {
+                    client
+                        .inner()
+                        .dns_resource_by_domain(domain, |_| true, |_| true)
                         .is_some()
                 })
             })
@@ -1147,10 +1133,7 @@ impl ReferenceState {
             .collect()
     }
 
-    /// Resources that have configurable traffic filters and exist on at least one client.
-    ///
-    /// Used by `Transition::ChangeFiltersOfResource`.
-    pub(crate) fn resources_with_filters_on_any_client(
+    pub(crate) fn editable_resources_on_any_client(
         &self,
         portal: &StubPortal,
     ) -> Vec<client::Resource> {
@@ -1158,14 +1141,14 @@ impl ReferenceState {
             .all_resources()
             .into_iter()
             .filter(|resource| {
-                let has_filters = match resource {
+                let is_editable = match resource {
                     client::Resource::Cidr(_) => true,
                     client::Resource::Dns(_) => true,
                     client::Resource::DevicePool(_) => true,
                     client::Resource::Internet(_) => false,
                 };
 
-                has_filters
+                is_editable
                     && self
                         .clients
                         .values()
@@ -1174,76 +1157,15 @@ impl ReferenceState {
             .collect()
     }
 
-    pub(crate) fn replaceable_resources_on_any_client(
-        &self,
-        portal: &StubPortal,
-    ) -> Vec<client::Resource> {
-        self.resources_with_filters_on_any_client(portal)
-            .into_iter()
-            .filter(|resource| match resource {
-                client::Resource::Cidr(_) => true,
-                client::Resource::Dns(_) => true,
-                client::Resource::DevicePool(_) => true,
-                client::Resource::Internet(_) => false,
-            })
-            .collect()
-    }
-
-    pub(crate) fn cidr_and_dns_resources_on_any_client(
-        &self,
-        portal: &StubPortal,
-    ) -> Vec<client::Resource> {
-        portal
-            .all_resources()
-            .into_iter()
-            .filter(|resource| {
-                let is_cidr_or_dns = match resource {
-                    client::Resource::Cidr(_) => true,
-                    client::Resource::Dns(_) => true,
-                    client::Resource::Internet(_) => false,
-                    client::Resource::DevicePool(_) => false,
-                };
-
-                is_cidr_or_dns
-                    && self
-                        .clients
-                        .values()
-                        .any(|client| client.inner().has_resource(resource.id()))
-            })
-            .collect()
-    }
-
-    pub(crate) fn cidr_resources_on_any_client(
-        &self,
-        portal: &StubPortal,
-    ) -> Vec<client::CidrResource> {
-        portal
-            .all_resources()
-            .into_iter()
-            .filter_map(|r| match r {
-                client::Resource::Cidr(r) => Some(r),
-                client::Resource::Dns(_) => None,
-                client::Resource::Internet(_) => None,
-                client::Resource::DevicePool(_) => None,
-            })
-            .filter(|resource| {
-                self.clients
-                    .values()
-                    .any(|client| client.inner().has_resource(resource.id))
-            })
-            .collect()
-    }
-
-    pub(crate) fn wildcard_dns_resources(
+    pub(crate) fn dns_resources_on_any_client(
         &self,
         portal: &StubPortal,
     ) -> Vec<(ClientId, client::DnsResource)> {
-        let wildcard_resources = portal
+        let dns_resources = portal
             .all_resources()
             .into_iter()
             .filter_map(|r| match r {
-                client::Resource::Dns(r) if r.address.starts_with("*.") => Some(r),
-                client::Resource::Dns(_) => None,
+                client::Resource::Dns(r) => Some(r),
                 client::Resource::Cidr(_) => None,
                 client::Resource::Internet(_) => None,
                 client::Resource::DevicePool(_) => None,
@@ -1253,7 +1175,7 @@ impl ReferenceState {
         self.clients
             .iter()
             .flat_map(|(client_id, client)| {
-                wildcard_resources
+                dns_resources
                     .iter()
                     .filter(|r| client.inner().has_resource(r.id))
                     .map(move |r| (*client_id, r.clone()))
