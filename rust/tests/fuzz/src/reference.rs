@@ -675,9 +675,10 @@ impl ReferenceState {
                 return ExpectedOutcome::RoundTripCompleted(Route::Gateway(gateway));
             }
 
-            // Without a pool the client has no route for an unknown tunnel IP. With one it
-            // answers with an ICMP error either way: by itself when no pool permits the
-            // protocol, otherwise after the portal denies an address that is no client's.
+            // The portal answers a request for a tunnel IP that no client holds with "not
+            // found", and connlib turns that into an ICMP error. It sends the same error
+            // without asking when none of its pools permits the protocol, and has no route
+            // at all without a pool.
             let Some(peer) = self.client_ip_to_id().get(&ip).copied() else {
                 if self.clients[&origin].inner().device_pool_ids().is_empty() {
                     return ExpectedOutcome::Dropped;
