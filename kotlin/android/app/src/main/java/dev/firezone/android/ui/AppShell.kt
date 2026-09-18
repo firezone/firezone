@@ -9,6 +9,8 @@ import android.os.Build
 import androidx.activity.compose.LocalActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -106,7 +108,18 @@ internal fun AppShell(
         onLaunchResolved()
     }
 
-    NavHost(navController = navController, startDestination = ROUTE_DECIDING, modifier = modifier) {
+    NavHost(
+        navController = navController,
+        startDestination = ROUTE_DECIDING,
+        modifier = modifier,
+        // One destination replacing another is not travel, so there is nothing to animate between
+        // them. Leaving the default transitions on animates from an entry that the same navigation
+        // has already popped, which leaves the composition running long after the screen settles.
+        enterTransition = { EnterTransition.None },
+        exitTransition = { ExitTransition.None },
+        popEnterTransition = { EnterTransition.None },
+        popExitTransition = { ExitTransition.None },
+    ) {
         composable(ROUTE_DECIDING) { }
         composable(ROUTE_SIGN_IN) { SignInRoute(onSignInLaunched) }
         composable(ROUTE_SESSION) { SessionRoute(onSessionEnded = recheck) }

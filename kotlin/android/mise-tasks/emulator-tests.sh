@@ -52,12 +52,17 @@ while [ $# -gt 0 ]; do
 done
 
 echo "==> Running the tests..."
-# Guarded because bash 3.2, which macOS still ships, treats an empty array as unset.
-result="$(adb shell am instrument -w \
-    -e coverage true -e coverageFile "$COVERAGE_ON_DEVICE" \
-    ${filter[@]+"${filter[@]}"} "$RUNNER")"
+log="$(mktemp)"
+trap 'rm -f "$log"' EXIT
 
-echo "$result"
+# Streamed rather than captured, so that a run which never finishes still says how far it got, and
+# `timeout_msec` so that a test which hangs fails by name instead of taking the whole job with it.
+# Guarded because bash 3.2, which macOS still ships, treats an empty array as unset.
+adb shell am instrument -w \
+    -e coverage true -e coverageFile "$COVERAGE_ON_DEVICE" -e timeout_msec 120000 \
+    ${filter[@]+"${filter[@]}"} "$RUNNER" | tee "$log"
+
+result="$(cat "$log")"
 
 # `am instrument` reports failures in its output and exits 0 regardless.
 case "$result" in
