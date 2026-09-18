@@ -79,6 +79,8 @@ internal fun AppShell(
         isInitialLaunch = false
     }
 
+    // Every destination change happens here, because a destination cannot navigate away from
+    // itself: replacing it disposes the caller part-way through the call that asked for it.
     LaunchedEffect(action) {
         val destination = action ?: return@LaunchedEffect
         viewModel.clearAction()
@@ -122,12 +124,7 @@ internal fun AppShell(
     ) {
         composable(ROUTE_DECIDING) { }
         composable(ROUTE_SIGN_IN) { SignInRoute(onSignInLaunched) }
-        // The tunnel is down and the session is over, so the app belongs on the sign-in screen.
-        // Asking the check instead would race the service's own shutdown, which goes on reporting
-        // itself running for a moment after it stops.
-        composable(ROUTE_SESSION) {
-            SessionRoute(onSessionEnded = { navController.replaceWith(ROUTE_SIGN_IN) })
-        }
+        composable(ROUTE_SESSION) { SessionRoute(onSessionEnded = viewModel::sessionEnded) }
         composable(ROUTE_VPN_PERMISSION) { VpnPermissionRoute(onGranted = recheck) }
         composable(ROUTE_NOTIFICATION_PERMISSION) {
             NotificationPermissionRoute(

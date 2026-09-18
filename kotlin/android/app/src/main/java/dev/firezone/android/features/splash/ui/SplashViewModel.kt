@@ -152,6 +152,11 @@ internal class SplashViewModel
         /** The portal the certificate is meant for, which a policy may scope its answer to. */
         private fun apiUri(): Uri? = runCatching { Uri.parse(repo.getConfigSync().apiUrl) }.getOrNull()
 
+        /** Where a session that has ended leaves the app, without re-deciding and racing its shutdown. */
+        internal fun sessionEnded() {
+            actionMutableStateFlow.value = ViewAction.NavigateToSignIn
+        }
+
         internal fun clearAction() {
             actionMutableStateFlow.value = null
         }

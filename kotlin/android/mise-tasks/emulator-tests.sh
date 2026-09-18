@@ -11,6 +11,8 @@ APP_PACKAGE="dev.firezone.android"
 RUNNER="${APP_PACKAGE}.test/dev.firezone.android.core.HiltTestRunner"
 # The app's own directory is the one place the runner can write and `run-as` can read.
 COVERAGE_ON_DEVICE="/data/data/${APP_PACKAGE}/coverage.ec"
+# Comfortably longer than the suite takes, and short enough to leave the job time to report.
+SUITE_TIMEOUT="15m"
 
 find_apk() {
     find "$APK_DIR" -type f -name "$1" -exec ls -t {} + 2>/dev/null | head -1
@@ -55,12 +57,17 @@ echo "==> Running the tests..."
 log="$(mktemp)"
 trap 'rm -f "$log"' EXIT
 
-# Streamed rather than captured, so that a run which never finishes still says how far it got, and
-# `timeout_msec` so that a test which hangs fails by name instead of taking the whole job with it.
+# Streamed rather than captured, so that a run which stops making progress still says how far it
+# got, and given a deadline of its own so that it says so rather than sitting until the job's
+# timeout kills it and takes the output with it.
 # Guarded because bash 3.2, which macOS still ships, treats an empty array as unset.
-adb shell am instrument -w \
-    -e coverage true -e coverageFile "$COVERAGE_ON_DEVICE" -e timeout_msec 120000 \
-    ${filter[@]+"${filter[@]}"} "$RUNNER" | tee "$log"
+if ! timeout "$SUITE_TIMEOUT" adb shell am instrument -w \
+    -e coverage true -e coverageFile "$COVERAGE_ON_DEVICE" \
+    ${filter[@]+"${filter[@]}"} "$RUNNER" | tee "$log"; then
+    echo >&2
+    echo "error: the instrumented run did not finish within ${SUITE_TIMEOUT}" >&2
+    exit 1
+fi
 
 result="$(cat "$log")"
 
