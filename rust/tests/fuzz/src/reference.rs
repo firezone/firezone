@@ -119,6 +119,8 @@ impl ReferenceState {
                 }
             }
             Transition::RemoveResource(id) => {
+                state.portal.revoke_peer_policy_authorizations_for_pool(*id);
+
                 for client in state.clients.values_mut() {
                     client.exec_mut(|client| {
                         client.remove_resource(id);
@@ -181,6 +183,10 @@ impl ReferenceState {
                 old_resource: _,
                 new_resource,
             } => {
+                state
+                    .portal
+                    .revoke_peer_policy_authorizations_for_pool(new_resource.id());
+
                 state.portal.replace_resource(new_resource.clone());
 
                 for client in state.clients.values_mut() {
@@ -212,16 +218,21 @@ impl ReferenceState {
             Transition::UpdateDevicePoolMembers {
                 pool_id,
                 members,
-                removed,
+                revoked,
             } => {
                 state.portal.set_pool_members(*pool_id, members.clone());
 
-                // The portal revokes every grant towards a device that left, which also
-                // drops that device's own grants through the pool.
-                for (client_id, client) in &mut state.clients {
-                    let peers = (!removed.contains(client_id)).then_some(removed);
-
-                    client.exec_mut(|c| c.forget_pool_grants(*pool_id, peers));
+                for authorization in revoked {
+                    if let Some(client) = state.clients.get_mut(&authorization.initiator) {
+                        client.exec_mut(|client| {
+                            client.reject_peer_pool(authorization.target, authorization.pool)
+                        });
+                    }
+                    if let Some(client) = state.clients.get_mut(&authorization.target) {
+                        client.exec_mut(|client| {
+                            client.reject_peer_pool(authorization.initiator, authorization.pool)
+                        });
+                    }
                 }
             }
             Transition::SetInternetResourceState {
@@ -431,12 +442,12 @@ impl ReferenceState {
                     client.readd_all_resources();
                 });
 
-                // The peers lose their connections to the roaming client, and their grants
+                // The peers lose their connections to the roaming client, and their authorizations
                 // towards it with them.
                 if !all_iceless {
                     for (id, peer) in &mut state.clients {
                         if id != client_id {
-                            peer.exec_mut(|peer| peer.forget_peer_grants(*client_id));
+                            peer.exec_mut(|peer| peer.forget_peer_authorizations(*client_id));
                         }
                     }
                 }
@@ -507,7 +518,7 @@ impl ReferenceState {
                     if id == client_id {
                         client.exec_mut(|c| c.restart(*key, now));
                     } else {
-                        client.exec_mut(|c| c.forget_peer_grants(*client_id));
+                        client.exec_mut(|c| c.forget_peer_authorizations(*client_id));
                     }
                 }
             }
@@ -582,7 +593,7 @@ impl ReferenceState {
         sent_at: Instant,
     ) -> ExpectedOutcome {
         // A retained flow completes its round trip; asking the portal again only refreshes
-        // the grant a peer that reconnected since took from us.
+        // the authorization a peer that reconnected since took from us.
         if let Route::Peer(peer) = route {
             let _ = self.pool_towards_peer(origin, peer, request.protocol());
         }
@@ -689,13 +700,12 @@ impl ReferenceState {
                 };
             };
 
-            let pool = match self.pool_towards_peer(origin, peer, protocol) {
-                Ok(pool) => pool,
-                Err(outcome) => return outcome,
-            };
+            if let Err(outcome) = self.pool_towards_peer(origin, peer, protocol) {
+                return outcome;
+            }
             if !self.clients[&peer]
                 .inner()
-                .strict_resource_filter_allows(pool, protocol)
+                .inbound_peer_filter_allows(origin, protocol)
             {
                 return ExpectedOutcome::Rejected {
                     by: RejectionRemote::Client(peer),
@@ -806,10 +816,8 @@ impl ReferenceState {
         (!resolves_for_source).then_some(RejectionResponse::Unreachable)
     }
 
-    /// The pool a packet from `origin` to `peer` travels through, asking the portal for a
-    /// grant when none fits.
-    ///
-    /// A peer we connect to anew drops its grants towards us, as we may have reset.
+    /// The pool a packet from `origin` to `peer` travels through, asking the portal for an
+    /// authorization when none fits.
     fn pool_towards_peer(
         &mut self,
         origin: ClientId,
@@ -817,13 +825,13 @@ impl ReferenceState {
         protocol: Protocol,
     ) -> Result<ResourceId, ExpectedOutcome> {
         let client = self.clients[&origin].inner();
-        let granted = client.granted_pools(peer).collect::<Vec<_>>();
-        if granted.is_empty() && client.device_pool_ids().is_empty() {
+        let authorized = client.authorized_pools_towards(peer).collect::<Vec<_>>();
+        if authorized.is_empty() && client.device_pool_ids().is_empty() {
             return Err(ExpectedOutcome::Dropped);
         }
 
         let candidates = client.candidate_pools(protocol);
-        if let Some(pool) = candidates.iter().find(|pool| granted.contains(pool)) {
+        if let Some(pool) = candidates.iter().find(|pool| authorized.contains(pool)) {
             return Ok(*pool);
         }
 
@@ -837,13 +845,23 @@ impl ReferenceState {
         self.clients
             .get_mut(&origin)
             .unwrap()
-            .exec_mut(|client| client.record_grant(peer, pool));
-        self.clients
-            .get_mut(&peer)
-            .unwrap()
-            .exec_mut(|peer| peer.forget_peer_grants(origin));
+            .exec_mut(|client| client.record_outbound_peer_authorization(peer, pool));
+        self.apply_peer_authorization(origin, peer, pool);
 
         Ok(pool)
+    }
+
+    /// Records a portal policy authorization and installs its inbound half on `peer`.
+    ///
+    /// A peer we connect to anew drops its outbound authorizations towards us, as we may have reset.
+    fn apply_peer_authorization(&mut self, origin: ClientId, peer: ClientId, pool: ResourceId) {
+        self.portal
+            .record_peer_policy_authorization(origin, peer, pool);
+
+        self.clients.get_mut(&peer).unwrap().exec_mut(|peer| {
+            peer.forget_outbound_peer_authorizations(origin);
+            peer.add_inbound_peer_pool(origin, pool);
+        });
     }
 
     fn trace_requirement(
@@ -1287,14 +1305,12 @@ impl ReferenceState {
         self.clients.keys().copied().collect()
     }
 
-    /// Every pool that lists its members and some client holds, with its current list.
-    pub(crate) fn listed_device_pools_on_any_client(
-        &self,
-    ) -> Vec<(ResourceId, BTreeSet<ClientId>)> {
+    /// Returns every listed pool that some client holds.
+    pub(crate) fn listed_device_pool_ids_on_any_client(&self) -> Vec<ResourceId> {
         self.portal
-            .listed_pools()
+            .listed_pool_ids()
             .into_iter()
-            .filter(|(pool, _)| self.clients.values().any(|c| c.inner().has_resource(*pool)))
+            .filter(|pool| self.clients.values().any(|c| c.inner().has_resource(*pool)))
             .collect()
     }
 

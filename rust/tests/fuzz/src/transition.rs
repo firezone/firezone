@@ -11,6 +11,7 @@ use super::{
     reference::PrivateKey,
     resource::{CidrResource, Resource},
     sim_net::Host,
+    stub_portal::PeerAuthorization,
 };
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -39,12 +40,12 @@ pub enum Transition {
         old_resource: Resource,
         new_resource: Resource,
     },
-    /// Replaces the member list of a pool that lists its members; `removed` are the
-    /// clients that were listed before and are not any more.
+    /// Replaces the member list of a pool that lists its members; `revoked` are the
+    /// portal's peer authorizations through it towards a client that left.
     UpdateDevicePoolMembers {
         pool_id: ResourceId,
         members: BTreeSet<ClientId>,
-        removed: BTreeSet<ClientId>,
+        revoked: Vec<PeerAuthorization>,
     },
     SetInternetResourceState {
         client_id: ClientId,
@@ -202,10 +203,14 @@ impl Transition {
                 Route::Gateway(_) => false,
                 Route::Peer(_) => !is_device_pool(old_resource) && !is_device_pool(new_resource),
             },
-            Transition::UpdateDevicePoolMembers { removed, .. } => match route {
+            Transition::UpdateDevicePoolMembers { revoked, .. } => match route {
                 Route::Resource { .. } => true,
                 Route::Gateway(_) => true,
-                Route::Peer(peer) => !removed.contains(&peer) && !removed.contains(&client_id),
+                Route::Peer(peer) => !revoked.iter().any(|authorization| {
+                    let parties = (authorization.initiator, authorization.target);
+
+                    parties == (client_id, peer) || parties == (peer, client_id)
+                }),
             },
             Transition::SetInternetResourceState {
                 client_id: changed, ..
