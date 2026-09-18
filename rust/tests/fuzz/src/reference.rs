@@ -675,8 +675,9 @@ impl ReferenceState {
                 return ExpectedOutcome::RoundTripCompleted(Route::Gateway(gateway));
             }
 
-            // A tunnel IP that is neither a connected gateway nor a peer makes the client
-            // ask the portal through its permitting pools, which denies the address.
+            // Without a pool the client has no route for an unknown tunnel IP. With one it
+            // answers with an ICMP error either way: by itself when no pool permits the
+            // protocol, otherwise after the portal denies an address that is no client's.
             let Some(peer) = self.client_ip_to_id().get(&ip).copied() else {
                 if self.clients[&origin].inner().device_pool_ids().is_empty() {
                     return ExpectedOutcome::Dropped;
