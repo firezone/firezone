@@ -277,8 +277,19 @@ fn arb_resource_edit(
 
     let mut new = old.clone();
 
+    // Each arm names every field of its resource, so a new field fails to compile here
+    // until it has an edit in the list below.
     match &mut new {
         Resource::Dns(resource) => {
+            let DnsResource {
+                id: _,
+                address: _,
+                name: _,
+                address_description: _,
+                sites,
+                ip_stack: _,
+                filters: _,
+            } = &*resource;
             type Edit = fn(&mut Generator, &ReferenceState, &StubPortal, &mut DnsResource);
 
             let edits = [
@@ -290,7 +301,7 @@ fn arb_resource_edit(
                     r.address_description =
                         arb_different_address_description(g, &r.address_description)
                 }),
-                has_alternative_site(&resource.sites, portal)
+                has_alternative_site(sites, portal)
                     .then_some(|g, _, portal, r| r.sites = arb_different_site(g, &r.sites, portal)),
                 Some(|g, _, _, r| r.ip_stack = arb_different_ip_stack_kind(g, r.ip_stack)),
                 Some(|g, _, _, r| r.filters = arb_different_filters(g, &r.filters)),
@@ -302,6 +313,14 @@ fn arb_resource_edit(
             edits[g.choose_index(edits.len())](g, state, portal, resource);
         }
         Resource::Cidr(resource) => {
+            let CidrResource {
+                id: _,
+                address: _,
+                name: _,
+                address_description: _,
+                sites,
+                filters: _,
+            } = &*resource;
             type Edit = fn(&mut Generator, &ReferenceState, &StubPortal, &mut CidrResource);
 
             let edits = [
@@ -313,7 +332,7 @@ fn arb_resource_edit(
                     r.address_description =
                         arb_different_address_description(g, &r.address_description)
                 }),
-                has_alternative_site(&resource.sites, portal)
+                has_alternative_site(sites, portal)
                     .then_some(|g, _, portal, r| r.sites = arb_different_site(g, &r.sites, portal)),
                 Some(|g, _, _, r| r.filters = arb_different_filters(g, &r.filters)),
             ]
@@ -324,6 +343,11 @@ fn arb_resource_edit(
             edits[g.choose_index(edits.len())](g, state, portal, resource);
         }
         Resource::DevicePool(resource) => {
+            let DevicePoolResource {
+                id: _,
+                name: _,
+                filters: _,
+            } = &*resource;
             type Edit = fn(&mut Generator, &mut DevicePoolResource);
 
             let edits: [Edit; 2] = [
