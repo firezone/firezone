@@ -20,8 +20,12 @@ mod values;
 pub use context::Generator;
 
 impl Generator<'_> {
-    pub fn initial_state(&mut self) -> (ReferenceState, StubPortal) {
-        topology::generate(self)
+    pub fn portal(&mut self) -> StubPortal {
+        topology::arb_stub_portal(self)
+    }
+
+    pub fn reference_state(&mut self, portal: &StubPortal) -> ReferenceState {
+        topology::generate(self, portal)
     }
 
     pub fn transition(&mut self, state: &ReferenceState, portal: &StubPortal) -> Transition {

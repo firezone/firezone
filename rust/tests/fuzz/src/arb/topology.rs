@@ -27,12 +27,11 @@ use crate::resource::{CidrResource, DevicePoolResource, DnsResource, InternetRes
 use crate::sim_net::{EdgeConfig, Expiry, FilterMode, Host, Mapping, RoutingTable};
 use crate::stub_portal::{PoolMembers, StubPortal};
 
-pub(super) fn generate(g: &mut Generator) -> (ReferenceState, StubPortal) {
-    let portal = arb_stub_portal(g);
-    let clients = arb_clients(g, &portal);
-    let gateways = arb_gateways(g, &portal);
+pub(super) fn generate(g: &mut Generator, portal: &StubPortal) -> ReferenceState {
+    let clients = arb_clients(g, portal);
+    let gateways = arb_gateways(g, portal);
     let relays = arb_relays(g);
-    let dns_resource_records = arb_dns_resource_records(g, &portal);
+    let dns_resource_records = arb_dns_resource_records(g, portal);
     let icmp_error_hosts =
         arb_icmp_error_hosts(g, &clients, &dns_resource_records, portal.upstream_do53());
     let tcp_resources = arb_tcp_resources(g, &dns_resource_records, &icmp_error_hosts);
@@ -57,7 +56,7 @@ pub(super) fn generate(g: &mut Generator) -> (ReferenceState, StubPortal) {
         network
     });
 
-    let reference = ReferenceState::from_parts(
+    ReferenceState::from_parts(
         clients,
         gateways,
         relays,
@@ -65,9 +64,7 @@ pub(super) fn generate(g: &mut Generator) -> (ReferenceState, StubPortal) {
         tcp_resources,
         icmp_error_hosts,
         network,
-    );
-
-    (reference, portal)
+    )
 }
 
 pub(super) fn pick_site<'a>(g: &mut Generator, sites: &'a [Site]) -> &'a Site {
@@ -126,7 +123,7 @@ pub(super) fn arb_dns_record_set(g: &mut Generator) -> BTreeSet<OwnedRecordData>
         .collect::<BTreeSet<_>>()
 }
 
-fn arb_stub_portal(g: &mut Generator) -> StubPortal {
+pub(super) fn arb_stub_portal(g: &mut Generator) -> StubPortal {
     let internet_site = Site {
         id: g.fresh_site_id(),
         name: "Internet".to_owned(),
