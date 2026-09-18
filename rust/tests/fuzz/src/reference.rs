@@ -780,8 +780,9 @@ impl ReferenceState {
             return Some(RejectionResponse::Unreachable);
         }
 
-        // The gateway evaluates every authorized route to the destination, so a broader
-        // CIDR authorization can permit traffic that the selected resource's filter rejects.
+        // Only a client that ignores resource filters sends traffic the selected resource
+        // rejects. The gateway checks every route it authorized for the client instead, so
+        // a broader CIDR resource on the same gateway can still permit it.
         let allowed_by_another_cidr = dst.ip_addr().is_some_and(|ip| {
             client
                 .connected_cidr_resources_allowing(ip, protocol)
