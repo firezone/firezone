@@ -69,7 +69,7 @@ internal fun AppShell(
     val action by viewModel.actionStateFlow.collectAsStateWithLifecycle()
     // Connect on start applies to the launch, not to every return to the shell.
     var isInitialLaunch by rememberSaveable { mutableStateOf(true) }
-    // What a destination calls once it has done its part and the app needs placing again.
+    // What a permission gate calls once it has been answered and the app needs placing again.
     val recheck = { viewModel.checkTunnelState(activity) }
 
     // The answer can change while the app is in the background, so the check runs on every resume
@@ -122,7 +122,12 @@ internal fun AppShell(
     ) {
         composable(ROUTE_DECIDING) { }
         composable(ROUTE_SIGN_IN) { SignInRoute(onSignInLaunched) }
-        composable(ROUTE_SESSION) { SessionRoute(onSessionEnded = recheck) }
+        // The tunnel is down and the session is over, so the app belongs on the sign-in screen.
+        // Asking the check instead would race the service's own shutdown, which goes on reporting
+        // itself running for a moment after it stops.
+        composable(ROUTE_SESSION) {
+            SessionRoute(onSessionEnded = { navController.replaceWith(ROUTE_SIGN_IN) })
+        }
         composable(ROUTE_VPN_PERMISSION) { VpnPermissionRoute(onGranted = recheck) }
         composable(ROUTE_NOTIFICATION_PERMISSION) {
             NotificationPermissionRoute(
