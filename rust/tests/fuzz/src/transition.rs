@@ -133,14 +133,22 @@ impl Transition {
     /// Bookkeeping that is stale once this transition is applied.
     pub fn invalidates(&self) -> Invalidates {
         match self {
-            Transition::AddResource(_) => Invalidates::ALL,
-            Transition::RemoveResource(_) => Invalidates::ALL,
-            Transition::ChangeCidrResourceAddress { .. } => Invalidates::ALL,
-            Transition::MoveResourceToNewSite { .. } => Invalidates::ALL,
-            Transition::ChangeFiltersOfResource { .. } => Invalidates::ALL,
-            Transition::ChangeResourceType { .. } => Invalidates::ALL,
-            Transition::UpdateDevicePoolMembers { .. } => Invalidates::ALL,
-            Transition::SetInternetResourceState { .. } => Invalidates::ALL,
+            Transition::AddResource(_) => Invalidates::PROBES | Invalidates::PACKETS,
+            Transition::RemoveResource(_) => Invalidates::PROBES | Invalidates::PACKETS,
+            Transition::ChangeCidrResourceAddress { .. } => {
+                Invalidates::PROBES | Invalidates::PACKETS
+            }
+            Transition::MoveResourceToNewSite { .. } => Invalidates::PROBES | Invalidates::PACKETS,
+            Transition::ChangeFiltersOfResource { .. } => {
+                Invalidates::PROBES | Invalidates::PACKETS
+            }
+            Transition::ChangeResourceType { .. } => Invalidates::PROBES | Invalidates::PACKETS,
+            Transition::UpdateDevicePoolMembers { .. } => {
+                Invalidates::PROBES | Invalidates::PACKETS
+            }
+            Transition::SetInternetResourceState { .. } => {
+                Invalidates::PROBES | Invalidates::PACKETS
+            }
             Transition::SendIcmpPacketOnNewFlow { .. } => Invalidates::PROBES,
             Transition::SendIcmpPacketOnExistingFlow { .. } => Invalidates::PROBES,
             Transition::SendUdpPacketOnNewFlow { .. } => Invalidates::PROBES,
@@ -159,7 +167,9 @@ impl Transition {
             Transition::PartitionRelaysFromPortal => Invalidates::PROBES,
             Transition::Idle => Invalidates::PROBES,
             Transition::RebootRelaysWhilePartitioned(_) => Invalidates::PROBES,
-            Transition::DeauthorizeWhileGatewayIsPartitioned(_) => Invalidates::ALL,
+            Transition::DeauthorizeWhileGatewayIsPartitioned(_) => {
+                Invalidates::PROBES | Invalidates::PACKETS
+            }
             Transition::UpdateDnsRecords { .. } => Invalidates::PROBES,
         }
     }
@@ -367,7 +377,6 @@ impl Invalidates {
     /// Packet-level expectations that accumulate across transitions: DNS queries
     /// and responses, TCP connections and rejections.
     pub const PACKETS: Self = Self(1 << 1);
-    pub const ALL: Self = Self(Self::PROBES.0 | Self::PACKETS.0);
 
     pub fn contains(self, other: Self) -> bool {
         self.0 & other.0 == other.0
