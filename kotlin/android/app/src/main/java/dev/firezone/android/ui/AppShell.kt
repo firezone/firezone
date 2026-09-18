@@ -46,11 +46,17 @@ private const val ROUTE_VPN_PERMISSION = "vpn-permission"
 private const val ROUTE_NOTIFICATION_PERMISSION = "notification-permission"
 private const val ROUTE_CERTIFICATE_PERMISSION = "certificate-permission"
 
+/**
+ * Decides where a launch belongs and holds the destinations it can reach.
+ *
+ * The check outlives any one of them, since the permission screens hand control back to be re-read,
+ * so it lives here rather than in a destination of its own.
+ */
 @Composable
-internal fun AppNavHost(
+internal fun AppShell(
     onNotificationPermissionRequested: () -> Unit,
     onSignInLaunched: () -> Unit,
-    onDestinationReached: () -> Unit,
+    onLaunchResolved: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: SplashViewModel = hiltViewModel(),
 ) {
@@ -58,7 +64,7 @@ internal fun AppNavHost(
     val context = LocalContext.current
     val activity = LocalActivity.current ?: return
     val action by viewModel.actionStateFlow.collectAsStateWithLifecycle()
-    // Connect on start applies to the launch, not to every return to this host.
+    // Connect on start applies to the launch, not to every return to the shell.
     var isInitialLaunch by rememberSaveable { mutableStateOf(true) }
 
     // The permission destinations hand control back when they are done, and the answer can change
@@ -98,7 +104,7 @@ internal fun AppNavHost(
             }
         }
 
-        onDestinationReached()
+        onLaunchResolved()
     }
 
     NavHost(navController = navController, startDestination = ROUTE_DECIDING, modifier = modifier) {

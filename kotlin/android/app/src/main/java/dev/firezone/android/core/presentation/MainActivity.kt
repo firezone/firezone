@@ -7,7 +7,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import dagger.hilt.android.AndroidEntryPoint
 import dev.firezone.android.core.data.Repository
-import dev.firezone.android.ui.AppNavHost
+import dev.firezone.android.ui.AppShell
 import dev.firezone.android.ui.theme.FirezoneTheme
 import javax.inject.Inject
 
@@ -29,10 +29,10 @@ internal class MainActivity : AppCompatActivity() {
 
         setContent {
             FirezoneTheme {
-                AppNavHost(
+                AppShell(
                     onNotificationPermissionRequested = repository::setNotificationPermissionRequested,
                     onSignInLaunched = ::finish,
-                    onDestinationReached = { hasDestination = true },
+                    onLaunchResolved = { hasDestination = true },
                 )
             }
         }
