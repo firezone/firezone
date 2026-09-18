@@ -130,37 +130,37 @@ pub enum Transition {
 }
 
 impl Transition {
-    /// Returns whether assertions should discard stale packets before applying this transition.
-    pub fn should_clear_packets(&self) -> bool {
+    /// Bookkeeping that is stale once this transition is applied.
+    pub fn invalidates(&self) -> Invalidates {
         match self {
-            Transition::AddResource(_) => true,
-            Transition::RemoveResource(_) => true,
-            Transition::ChangeCidrResourceAddress { .. } => true,
-            Transition::MoveResourceToNewSite { .. } => true,
-            Transition::ChangeFiltersOfResource { .. } => true,
-            Transition::ChangeResourceType { .. } => true,
-            Transition::UpdateDevicePoolMembers { .. } => true,
-            Transition::SetInternetResourceState { .. } => true,
-            Transition::SendIcmpPacketOnNewFlow { .. } => false,
-            Transition::SendIcmpPacketOnExistingFlow { .. } => false,
-            Transition::SendUdpPacketOnNewFlow { .. } => false,
-            Transition::SendUdpPacketOnExistingFlow { .. } => false,
-            Transition::ConnectTcp { .. } => false,
-            Transition::SendDnsQuery { .. } => false,
-            Transition::SendDnsResourcePtrQuery { .. } => false,
-            Transition::UpdateSystemDnsServers { .. } => false,
-            Transition::UpdateUpstreamDo53Servers(_) => false,
-            Transition::UpdateUpstreamDoHServers(_) => false,
-            Transition::UpdateUpstreamSearchDomain(_) => false,
-            Transition::RoamClient { .. } => false,
-            Transition::ReconnectPortal { .. } => false,
-            Transition::RestartClient { .. } => false,
-            Transition::DeployNewRelays(_) => false,
-            Transition::PartitionRelaysFromPortal => false,
-            Transition::Idle => false,
-            Transition::RebootRelaysWhilePartitioned(_) => false,
-            Transition::DeauthorizeWhileGatewayIsPartitioned(_) => true,
-            Transition::UpdateDnsRecords { .. } => false,
+            Transition::AddResource(_) => Invalidates::ALL,
+            Transition::RemoveResource(_) => Invalidates::ALL,
+            Transition::ChangeCidrResourceAddress { .. } => Invalidates::ALL,
+            Transition::MoveResourceToNewSite { .. } => Invalidates::ALL,
+            Transition::ChangeFiltersOfResource { .. } => Invalidates::ALL,
+            Transition::ChangeResourceType { .. } => Invalidates::ALL,
+            Transition::UpdateDevicePoolMembers { .. } => Invalidates::ALL,
+            Transition::SetInternetResourceState { .. } => Invalidates::ALL,
+            Transition::SendIcmpPacketOnNewFlow { .. } => Invalidates::PROBES,
+            Transition::SendIcmpPacketOnExistingFlow { .. } => Invalidates::PROBES,
+            Transition::SendUdpPacketOnNewFlow { .. } => Invalidates::PROBES,
+            Transition::SendUdpPacketOnExistingFlow { .. } => Invalidates::PROBES,
+            Transition::ConnectTcp { .. } => Invalidates::PROBES,
+            Transition::SendDnsQuery { .. } => Invalidates::PROBES,
+            Transition::SendDnsResourcePtrQuery { .. } => Invalidates::PROBES,
+            Transition::UpdateSystemDnsServers { .. } => Invalidates::PROBES,
+            Transition::UpdateUpstreamDo53Servers(_) => Invalidates::PROBES,
+            Transition::UpdateUpstreamDoHServers(_) => Invalidates::PROBES,
+            Transition::UpdateUpstreamSearchDomain(_) => Invalidates::PROBES,
+            Transition::RoamClient { .. } => Invalidates::PROBES,
+            Transition::ReconnectPortal { .. } => Invalidates::PROBES,
+            Transition::RestartClient { .. } => Invalidates::PROBES,
+            Transition::DeployNewRelays(_) => Invalidates::PROBES,
+            Transition::PartitionRelaysFromPortal => Invalidates::PROBES,
+            Transition::Idle => Invalidates::PROBES,
+            Transition::RebootRelaysWhilePartitioned(_) => Invalidates::PROBES,
+            Transition::DeauthorizeWhileGatewayIsPartitioned(_) => Invalidates::ALL,
+            Transition::UpdateDnsRecords { .. } => Invalidates::PROBES,
         }
     }
 
@@ -353,5 +353,31 @@ impl PartialEq for Destination {
             (Self::IpAddr(l0), Self::IpAddr(r0)) => l0 == r0,
             _ => false,
         }
+    }
+}
+
+/// Bookkeeping recorded by the reference model and the system under test that a
+/// [`Transition`] makes stale.
+#[derive(Debug, Clone, Copy)]
+pub struct Invalidates(u8);
+
+impl Invalidates {
+    /// The probes recorded for the previous transition and their observations.
+    pub const PROBES: Self = Self(1 << 0);
+    /// Packet-level expectations that accumulate across transitions: DNS queries
+    /// and responses, TCP connections and rejections.
+    pub const PACKETS: Self = Self(1 << 1);
+    pub const ALL: Self = Self(Self::PROBES.0 | Self::PACKETS.0);
+
+    pub fn contains(self, other: Self) -> bool {
+        self.0 & other.0 == other.0
+    }
+}
+
+impl std::ops::BitOr for Invalidates {
+    type Output = Self;
+
+    fn bitor(self, rhs: Self) -> Self {
+        Self(self.0 | rhs.0)
     }
 }
