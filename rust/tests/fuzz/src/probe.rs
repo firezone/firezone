@@ -227,7 +227,6 @@ pub(crate) struct ReceivedRequest {
 #[derive(Debug, Clone)]
 pub(crate) struct ReceivedResponse {
     pub(crate) id: ProbeId,
-    pub(crate) at: Instant,
     pub(crate) client: ClientId,
     pub(crate) packet: IpPacket,
 }
