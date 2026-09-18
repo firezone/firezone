@@ -117,7 +117,7 @@ pub struct RefClient {
 
     /// Per peer, the pools the portal authorised us to reach it through.
     #[debug(skip)]
-    pub(crate) peer_pools: BTreeMap<ClientId, BTreeSet<ResourceId>>,
+    peer_pools: BTreeMap<ClientId, BTreeSet<ResourceId>>,
 
     resource_selector: u32,
 }
@@ -295,6 +295,14 @@ impl RefClient {
     /// Drops every grant towards `peer`, as the connection to it is gone.
     pub(crate) fn forget_peer_grants(&mut self, peer: ClientId) {
         self.peer_pools.remove(&peer);
+    }
+
+    pub(crate) fn granted_pools(&self, peer: ClientId) -> impl Iterator<Item = ResourceId> + '_ {
+        self.peer_pools.get(&peer).into_iter().flatten().copied()
+    }
+
+    pub(crate) fn record_grant(&mut self, peer: ClientId, pool: ResourceId) {
+        self.peer_pools.entry(peer).or_default().insert(pool);
     }
 
     pub(crate) fn candidate_pools(&self, protocol: Protocol) -> Vec<ResourceId> {

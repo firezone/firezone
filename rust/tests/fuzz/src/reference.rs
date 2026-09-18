@@ -666,11 +666,10 @@ impl ReferenceState {
 
         if let Some(ip) = dst.ip_addr().filter(|ip| tunnel_proto::is_peer(*ip)) {
             let connected_gateway = self.portal.gateway_by_ip(ip).filter(|gateway| {
-                self.gateways.contains_key(gateway)
-                    && self.clients[&origin]
-                        .inner()
-                        .connected_resources()
-                        .any(|resource| self.portal.gateway_for_resource(resource) == Some(gateway))
+                self.clients[&origin]
+                    .inner()
+                    .connected_resources()
+                    .any(|resource| self.deployed_gateway_for(resource) == Some(*gateway))
             });
             if let Some(gateway) = connected_gateway {
                 return ExpectedOutcome::RoundTripCompleted(Route::Gateway(gateway));
@@ -706,74 +705,21 @@ impl ReferenceState {
             return ExpectedOutcome::RoundTripCompleted(Route::Peer(peer));
         }
 
-        let portal = &self.portal;
-        let gateways = &self.gateways;
-        let deployed_gateway_for = |resource| {
-            portal
-                .gateway_for_resource(resource)
-                .copied()
-                .filter(|gateway| gateways.contains_key(gateway))
-        };
-        let client = self.clients.get_mut(&origin).unwrap();
-
-        let Some(resource) = client.inner().resource_by_dst(src, dst, protocol) else {
-            return ExpectedOutcome::Dropped;
-        };
-        let strictly_allowed = client
-            .inner()
-            .strict_resource_filter_allows(resource, protocol);
-        if !strictly_allowed && !client.inner().malicious_behaviour.ignore_resource_filters {
-            return ExpectedOutcome::Rejected {
-                by: RejectionRemote::Local,
-                response: RejectionResponse::Prohibited,
-            };
-        }
-        let Some(gateway) = deployed_gateway_for(resource) else {
-            return ExpectedOutcome::Dropped;
+        let (resource, gateway) = match self.select_resource(origin, src, dst, protocol) {
+            Ok(selected) => selected,
+            Err(outcome) => return outcome,
         };
         if let Destination::DomainName { .. } = dst {
-            client.exec_mut(|client| {
+            self.clients.get_mut(&origin).unwrap().exec_mut(|client| {
                 client.prepare_dns_resource_connection(resource, &self.global_dns_records)
             });
         }
+        let rejection = self.gateway_verdict(origin, gateway, resource, src, dst, protocol);
 
-        let is_internet_resource = client.inner().internet_resource() == Some(resource);
-        // The gateway evaluates every authorized route to the destination, so a broader
-        // CIDR authorization can permit traffic that the selected resource's filter rejects.
-        let allowed_by_another_cidr = dst.ip_addr().is_some_and(|ip| {
-            client
-                .inner()
-                .connected_cidr_resources_allowing(ip, protocol)
-                .any(|cidr| deployed_gateway_for(cidr) == Some(gateway))
-        });
-        let resolves_for_source = match dst {
-            Destination::DomainName { name, .. } => {
-                let required_record = if src.is_ipv4() {
-                    RecordType::A
-                } else {
-                    RecordType::AAAA
-                };
-
-                client
-                    .inner()
-                    .dns_resource_resolution(resource, name)
-                    .is_some_and(|records| records.contains(&required_record))
-            }
-            Destination::IpAddr(_) => true,
-        };
-        let rejection = if is_internet_resource && dst.ip_addr().is_some_and(is_resource_proxy) {
-            Some(RejectionResponse::Prohibited)
-        } else if is_internet_resource && dst.ip_addr().is_some_and(internet_resource_rejects) {
-            Some(RejectionResponse::Unreachable)
-        } else if !strictly_allowed && !allowed_by_another_cidr {
-            Some(RejectionResponse::Prohibited)
-        } else if !resolves_for_source {
-            Some(RejectionResponse::Unreachable)
-        } else {
-            None
-        };
-
-        client.exec_mut(|client| client.connect_to_resource(resource, dst.clone()));
+        self.clients
+            .get_mut(&origin)
+            .unwrap()
+            .exec_mut(|client| client.connect_to_resource(resource, dst.clone()));
 
         match rejection {
             Some(response) => ExpectedOutcome::Rejected {
@@ -782,6 +728,80 @@ impl ReferenceState {
             },
             None => ExpectedOutcome::RoundTripCompleted(Route::Resource { resource, gateway }),
         }
+    }
+
+    /// The resource `origin` sends a packet through and the gateway serving it.
+    fn select_resource(
+        &self,
+        origin: ClientId,
+        src: IpAddr,
+        dst: &Destination,
+        protocol: Protocol,
+    ) -> Result<(ResourceId, GatewayId), ExpectedOutcome> {
+        let client = self.clients[&origin].inner();
+
+        let Some(resource) = client.resource_by_dst(src, dst, protocol) else {
+            return Err(ExpectedOutcome::Dropped);
+        };
+        if !client.strict_resource_filter_allows(resource, protocol)
+            && !client.malicious_behaviour.ignore_resource_filters
+        {
+            return Err(ExpectedOutcome::Rejected {
+                by: RejectionRemote::Local,
+                response: RejectionResponse::Prohibited,
+            });
+        }
+        let Some(gateway) = self.deployed_gateway_for(resource) else {
+            return Err(ExpectedOutcome::Dropped);
+        };
+
+        Ok((resource, gateway))
+    }
+
+    /// Why `gateway` rejects a packet from `origin` for `resource`, if it does.
+    fn gateway_verdict(
+        &self,
+        origin: ClientId,
+        gateway: GatewayId,
+        resource: ResourceId,
+        src: IpAddr,
+        dst: &Destination,
+        protocol: Protocol,
+    ) -> Option<RejectionResponse> {
+        let client = self.clients[&origin].inner();
+        let is_internet_resource = client.internet_resource() == Some(resource);
+
+        if is_internet_resource && dst.ip_addr().is_some_and(is_resource_proxy) {
+            return Some(RejectionResponse::Prohibited);
+        }
+        if is_internet_resource && dst.ip_addr().is_some_and(internet_resource_rejects) {
+            return Some(RejectionResponse::Unreachable);
+        }
+
+        // The gateway evaluates every authorized route to the destination, so a broader
+        // CIDR authorization can permit traffic that the selected resource's filter rejects.
+        let allowed_by_another_cidr = dst.ip_addr().is_some_and(|ip| {
+            client
+                .connected_cidr_resources_allowing(ip, protocol)
+                .any(|cidr| self.deployed_gateway_for(cidr) == Some(gateway))
+        });
+        if !client.strict_resource_filter_allows(resource, protocol) && !allowed_by_another_cidr {
+            return Some(RejectionResponse::Prohibited);
+        }
+
+        let Destination::DomainName { name, .. } = dst else {
+            return None;
+        };
+        let required_record = if src.is_ipv4() {
+            RecordType::A
+        } else {
+            RecordType::AAAA
+        };
+        let resolves_for_source = client
+            .dns_resource_resolution(resource, name)
+            .is_some_and(|records| records.contains(&required_record));
+
+        (!resolves_for_source).then_some(RejectionResponse::Unreachable)
     }
 
     /// The pool a packet from `origin` to `peer` travels through, asking the portal for a
@@ -795,16 +815,13 @@ impl ReferenceState {
         protocol: Protocol,
     ) -> Result<ResourceId, ExpectedOutcome> {
         let client = self.clients[&origin].inner();
-        let granted = client.peer_pools.get(&peer);
-        if granted.is_none_or(|granted| granted.is_empty()) && client.device_pool_ids().is_empty() {
+        let granted = client.granted_pools(peer).collect::<Vec<_>>();
+        if granted.is_empty() && client.device_pool_ids().is_empty() {
             return Err(ExpectedOutcome::Dropped);
         }
 
         let candidates = client.candidate_pools(protocol);
-        if let Some(pool) = candidates
-            .iter()
-            .find(|pool| granted.is_some_and(|granted| granted.contains(pool)))
-        {
+        if let Some(pool) = candidates.iter().find(|pool| granted.contains(pool)) {
             return Ok(*pool);
         }
 
@@ -815,9 +832,10 @@ impl ReferenceState {
             });
         };
 
-        self.clients.get_mut(&origin).unwrap().exec_mut(|client| {
-            client.peer_pools.entry(peer).or_default().insert(pool);
-        });
+        self.clients
+            .get_mut(&origin)
+            .unwrap()
+            .exec_mut(|client| client.record_grant(peer, pool));
         self.clients
             .get_mut(&peer)
             .unwrap()
@@ -921,6 +939,13 @@ impl ReferenceState {
                     .is_some_and(|gateway| self.gateways.contains_key(gateway))
             })
             .collect()
+    }
+
+    fn deployed_gateway_for(&self, resource: ResourceId) -> Option<GatewayId> {
+        self.portal
+            .gateway_for_resource(resource)
+            .copied()
+            .filter(|gateway| self.gateways.contains_key(gateway))
     }
 
     pub(crate) fn icmp_flows(&self) -> Vec<(FlowId, Seq)> {
