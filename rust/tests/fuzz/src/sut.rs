@@ -11,7 +11,7 @@ use crate::assertions::*;
 use crate::flux_capacitor::FluxCapacitor;
 use crate::probe::{DnsNatObservation, FlowId, ProbeId, ProbeObservation, Remote};
 use crate::resource as client;
-use crate::transition::Transition;
+use crate::transition::{Invalidates, Transition};
 use bufferpool::BufferPool;
 use connlib_model::{ClientId, ClientOrGatewayId, GatewayId, PublicKey, RelayId, ResourceId};
 use dns_types::ResponseCode;
@@ -795,21 +795,23 @@ impl TunnelTest {
         }
     }
 
-    pub fn clear_packets(state: &mut TunnelTest) {
-        for client in state.clients.values_mut() {
-            client.exec_mut(|c| c.clear_packets());
+    pub fn invalidate(state: &mut TunnelTest, what: Invalidates) {
+        if what.contains(Invalidates::PROBES) {
+            for client in state.clients.values_mut() {
+                client.exec_mut(|c| c.clear_probe_observations());
+            }
+            for gateway in state.gateways.values_mut() {
+                gateway.exec_mut(|g| g.clear_probe_observations());
+            }
         }
-        for gateway in state.gateways.values_mut() {
-            gateway.exec_mut(|g| g.clear_packets());
-        }
-    }
 
-    pub fn clear_probe_observations(state: &mut TunnelTest) {
-        for client in state.clients.values_mut() {
-            client.exec_mut(|c| c.clear_probe_observations());
-        }
-        for gateway in state.gateways.values_mut() {
-            gateway.exec_mut(|g| g.clear_probe_observations());
+        if what.contains(Invalidates::PACKETS) {
+            for client in state.clients.values_mut() {
+                client.exec_mut(|c| c.clear_packets());
+            }
+            for gateway in state.gateways.values_mut() {
+                gateway.exec_mut(|g| g.clear_packets());
+            }
         }
     }
 

@@ -534,14 +534,16 @@ impl ReferenceState {
         state
     }
 
-    pub fn clear_packets(state: &mut ReferenceState) {
-        for client in state.clients.values_mut() {
-            client.exec_mut(|c| c.clear_packets())
+    pub fn invalidate(state: &mut ReferenceState, what: Invalidates) {
+        if what.contains(Invalidates::PROBES) {
+            state.expected_probes.clear();
         }
-    }
 
-    pub fn clear_expected_probes(state: &mut ReferenceState) {
-        state.expected_probes.clear();
+        if what.contains(Invalidates::PACKETS) {
+            for client in state.clients.values_mut() {
+                client.exec_mut(|c| c.clear_packets())
+            }
+        }
     }
 
     fn record_icmp_probe(
