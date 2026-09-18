@@ -18,7 +18,7 @@
          for the mark but not for the wordmark beside it. -->
     <style name="AppTheme.Starting" parent="Theme.SplashScreen">
         <item name="windowSplashScreenBackground">@color/portal_canvas</item>
-        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_firezone_logo</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_splash_logo</item>
         <item name="postSplashScreenTheme">@style/AppTheme.Base</item>
     </style>
 
