@@ -53,6 +53,34 @@ while [ $# -gt 0 ]; do
     esac
 done
 
+# What the device was doing when a run stopped, which is the one thing the run cannot report about
+# itself. Unfiltered `logcat` is mostly SystemUI and wifi chatter, so ask for the parts that answer
+# whether the app is gone, wedged or merely waiting.
+report_device_state() {
+    echo "==> What is running:" >&2
+    adb shell ps -A 2>/dev/null | grep -E "PID|firezone" >&2 || true
+
+    echo "==> What is on screen:" >&2
+    adb shell dumpsys activity activities 2>/dev/null | grep -E "mResumedActivity|mFocusedApp|ResumedActivity" >&2 || true
+
+    # SIGQUIT makes the runtime write every thread's stack to the log, which says whether the main
+    # thread is blocked and on what.
+    local pid
+    pid="$(adb shell pidof "$APP_PACKAGE" 2>/dev/null | tr -d '\r')"
+    if [ -n "$pid" ]; then
+        echo "==> Thread stacks of ${APP_PACKAGE} (pid ${pid}):" >&2
+        adb shell kill -3 "$pid" >/dev/null 2>&1 || true
+        sleep 5
+        adb logcat -d -b main -s art:* -t 600 >&2 || true
+    else
+        echo "    ${APP_PACKAGE} is not running" >&2
+    fi
+
+    echo "==> What the app and the runner logged:" >&2
+    adb logcat -d -t 2000 2>/dev/null \
+        | grep -Ei "firezone|TestRunner|AndroidRuntime|ANR |am_anr|Instrumentation" >&2 || true
+}
+
 echo "==> Running the tests..."
 log="$(mktemp)"
 trap 'rm -f "$log"' EXIT
@@ -66,9 +94,7 @@ if ! timeout "$SUITE_TIMEOUT" adb shell am instrument -w \
     ${filter[@]+"${filter[@]}"} "$RUNNER" | tee "$log"; then
     echo >&2
     echo "error: the instrumented run did not finish within ${SUITE_TIMEOUT}" >&2
-    # What the app was doing when it stopped, which is the only thing the run itself cannot say.
-    echo "==> The last of the log:" >&2
-    adb logcat -d -t 400 >&2 || true
+    report_device_state
     exit 1
 fi
 
