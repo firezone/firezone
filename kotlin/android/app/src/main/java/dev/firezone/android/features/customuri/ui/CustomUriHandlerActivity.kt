@@ -39,7 +39,7 @@ class CustomUriHandlerActivity : AppCompatActivity(R.layout.activity_custom_uri_
                     action?.let {
                         when (it) {
                             CustomUriViewModel.ViewAction.AuthFlowComplete -> {
-                                TunnelService.start(this@CustomUriHandlerActivity)
+                                TunnelService.start(this@CustomUriHandlerActivity, TunnelService.StartSource.AUTH_CALLBACK)
                                 startActivity(mainActivityHandoffIntent(this@CustomUriHandlerActivity))
                             }
 

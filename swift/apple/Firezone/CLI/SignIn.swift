@@ -31,7 +31,7 @@ enum SignIn {
   /// What to do about not having a token, written out so it can be followed as-is.
   static func instructions(authBaseURL: String, accountSlug: String) -> String {
     let url = signInURL(authBaseURL: authBaseURL, accountSlug: accountSlug)
-    let command = CommandLine.arguments.first ?? "firezone-cli"
+    let command = CommandLine.arguments.first ?? "firezone"
 
     return """
       No token found. To sign in:
@@ -44,11 +44,11 @@ enum SignIn {
 
         3. Run:
 
-           pbpaste | \(command)
+           pbpaste | \(command) connect
 
       A token can also be set in FIREZONE_TOKEN, or read from a file:
 
-           \(command) < token
+           \(command) connect < token
 
       The token is saved to the Keychain, so later runs don't need one.
       """

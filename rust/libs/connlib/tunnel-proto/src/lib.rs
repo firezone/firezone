@@ -72,15 +72,15 @@ pub enum ClientEvent {
         conn_id: ClientOrGatewayId,
         candidates: BTreeSet<IceCandidate>,
     },
-    ResourceConnectionIntent {
-        resource: ResourceId,
-        preferred_gateways: Vec<GatewayId>,
-        /// Set for connection intents to a specific device pool member;
-        /// `None` for intents to a gateway-routed resource.
+    /// Requests access through the candidate resources, most preferred first.
+    RequestAccess {
+        resource_ids: Vec<ResourceId>,
+        /// The target device's tunnel address when requesting access through device pools.
         ip: Option<IpAddr>,
+        preferred_gateways: Vec<GatewayId>,
     },
-    DevicePoolDomainQueried {
-        resource_id: ResourceId,
+    /// A DNS query for a device name asks the portal to resolve it.
+    DeviceDomainQueried {
         domain: DomainName,
     },
     /// The list of resources or connected device peers has changed; UI clients

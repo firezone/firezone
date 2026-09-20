@@ -64,9 +64,11 @@ jobs:
       matrix:
         fuzz-target: ${{ fromJSON(needs.targets.outputs.targets) }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 75
+    # No job-level budget: the phases below carry their own, and a job that runs
+    # out of time is cancelled, discarding what the phases that did finish found.
     permissions:
       contents: read
+      pull-requests: read # to find this target's open corpus PR
       security-events: write # trivy SARIF upload from setup-mise
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -77,10 +79,64 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - uses: ./.github/actions/free-disk-space
-      - name: Grow, minimize and re-baseline the corpus
-        run: mise run //rust/tests/fuzz:grow ${{ matrix.fuzz-target }}
-      # A step of `grow` can fail on a corpus that already carries a crashing
-      # input, and what the run discovered on top of it is worth pushing anyway.
+      # A corpus PR that has not been reviewed yet still holds the discoveries
+      # of every night since it was opened. Growing what the default branch
+      # carries would rediscover them from scratch, and the push below would
+      # then overwrite the only copy.
+      - name: Seed from the open corpus pull request
+        if: ${{ github.ref_name == github.event.repository.default_branch }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TARGET: ${{ matrix.fuzz-target }}
+        run: |
+          set -euo pipefail
+
+          branch="chore/fuzz-corpora-$TARGET"
+
+          if [ -z "$(gh pr list --head "$branch" --state open --json number --jq '.[].number')" ]; then
+            echo "No open corpus pull request for $TARGET; growing what $GITHUB_REF_NAME carries."
+            exit 0
+          fi
+
+          git fetch --depth 1 origin "$branch"
+
+          # Both, rather than the branch alone: it was grown from an earlier
+          # default branch and has no way of carrying what landed there since.
+          mise run //rust/tests/fuzz:unpack-corpus "$TARGET"
+          git show "FETCH_HEAD:rust/tests/fuzz/corpora/$TARGET.tar.gz" >"$RUNNER_TEMP/$TARGET.tar.gz"
+          mise run //rust/tests/fuzz:unpack-corpus "$TARGET" "$RUNNER_TEMP/$TARGET.tar.gz"
+      # The phases `grow` runs locally, one step each: each carries its own
+      # budget and each runs whatever the one before it did, so neither an
+      # overrun nor a failure costs the night what the other phases found.
+      - name: Fuzz for new coverage
+        # `-fork` re-merges the whole seed corpus before discovering anything
+        # and `-max_total_time` does not bound that startup, so the budget below
+        # is what caps this phase. `-ignore_crashes=1` keeps a crash in fork
+        # mode from ending the run at the first failing input it finds.
+        timeout-minutes: 45
+        run: mise run //rust/tests/fuzz:fuzz ${{ matrix.fuzz-target }} -ignore_crashes=1 -fork="$(nproc)" -max_total_time=1800
+      - name: Minimize the corpus
+        if: ${{ !cancelled() }}
+        timeout-minutes: 20
+        run: mise run //rust/tests/fuzz:cmin ${{ matrix.fuzz-target }}
+      - name: Measure coverage
+        if: ${{ !cancelled() }}
+        timeout-minutes: 25
+        run: mise run //rust/tests/fuzz:coverage ${{ matrix.fuzz-target }}
+      - name: Refresh the uncovered-region ceiling
+        if: ${{ !cancelled() }}
+        timeout-minutes: 10
+        run: mise run //rust/tests/fuzz:update-baseline ${{ matrix.fuzz-target }}
+      # After the measurement: these inputs crash the target by definition, so a
+      # `coverage` run that included them could not produce a profile and the
+      # ceiling would go unrefreshed for the night.
+      - name: Keep the failing inputs
+        if: ${{ !cancelled() }}
+        run: mise run //rust/tests/fuzz:save-crashes ${{ matrix.fuzz-target }}
+      - name: Pack the corpus
+        if: ${{ !cancelled() }}
+        timeout-minutes: 10
+        run: mise run //rust/tests/fuzz:pack-corpus ${{ matrix.fuzz-target }}
       - name: Save corpus and coverage baseline
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

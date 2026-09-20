@@ -2,15 +2,20 @@
 <!--
   Sparse MSIX manifest for Firezone.
 
-  This package does NOT carry the Firezone payload binary; it merely
+  This package does NOT carry the Firezone payload binaries; it merely
   registers a kernel-tracked package identity for the existing
-  `Firezone.exe` at the MSI install location (an "external location"
-  sparse package). The tunnel-service binary is intentionally absent
-  from the `<Applications>` list: SCM-launched services with an
-  embedded `<msix>` identity claim hang on startup, and we don't need
-  the tunnel service to *have* the identity — only to grant access on
-  its pipe to processes that do (via `Trustee::from_package_family_name`
-  at runtime).
+  `Firezone.exe` and `cli\firezone.exe` at the MSI install location (an
+  "external location" sparse package). The tunnel-service binary is
+  intentionally absent from the `<Applications>` list: SCM-launched
+  services with an embedded `<msix>` identity claim hang on startup, and
+  we don't need the tunnel service to *have* the identity, only to grant
+  access on its pipe to processes that do (via
+  `Trustee::from_package_family_name` at runtime).
+
+  Each `Executable` below is resolved against the external location, and
+  only the binaries listed here can ever gain identity. So an EXE that
+  talks to one of the pipes has to appear in this list *and* embed a
+  matching `<msix>` claim in its own SXS manifest.
 -->
 <Package
   xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
@@ -67,6 +72,19 @@
       <uap:VisualElements
         DisplayName="Firezone"
         Description="Firezone GUI Client"
+        BackgroundColor="transparent"
+        Square150x150Logo="Assets\Square150x150Logo.png"
+        Square44x44Logo="Assets\Square44x44Logo.png"
+        AppListEntry="none"/>
+    </Application>
+
+    <Application Id="FirezoneCli"
+                 Executable="cli\firezone.exe"
+                 uap10:TrustLevel="mediumIL"
+                 uap10:RuntimeBehavior="win32App">
+      <uap:VisualElements
+        DisplayName="Firezone CLI"
+        Description="Firezone command-line client"
         BackgroundColor="transparent"
         Square150x150Logo="Assets\Square150x150Logo.png"
         Square44x44Logo="Assets\Square44x44Logo.png"

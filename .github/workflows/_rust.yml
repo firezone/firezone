@@ -57,15 +57,6 @@ jobs:
         name: cargo shear
         shell: bash
 
-  monitor-static-analysis:
-    needs: [static-analysis]
-    if: "!cancelled() && needs.static-analysis.result == 'failure' && github.event_name == 'merge_group'"
-    runs-on: ubuntu-latest
-    steps:
-      - run: gh run cancel ${{ github.run_id }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
   test:
     name: test-${{ matrix.runs-on }}
     strategy:
@@ -157,6 +148,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - uses: ./.github/actions/free-disk-space
+      - name: Unpack committed corpus
+        run: mise run //rust/tests/fuzz:unpack-corpus ${{ matrix.fuzz-target }}
       - name: Replay committed corpus
         run: mise run //rust/tests/fuzz:coverage ${{ matrix.fuzz-target }}
       - name: Enforce uncovered-region ceiling

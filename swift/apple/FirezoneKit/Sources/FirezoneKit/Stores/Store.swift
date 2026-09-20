@@ -946,12 +946,6 @@ public final class Store: ObservableObject {
       }
 
       actorName = state.actorName
-
-      // Caching the account we reached keeps the next sign-in URL and the admin portal
-      // link pointing at it, but an MDM profile forcing one is the admin's answer.
-      if let accountSlug = state.accountSlug, !configuration.isAccountSlugForced {
-        configuration.accountSlug = accountSlug
-      }
     }
 
     await showNotificationsForUnreachableResources(

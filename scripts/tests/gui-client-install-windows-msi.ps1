@@ -1,7 +1,8 @@
 # Install canary for the Windows MSI. Verifies that the sparse
 # MSIX registers, the package is queryable by the runner's user,
-# and a freshly-launched `Firezone.exe` carries the package
-# identity that the tunnel-pipe DACL pins access to.
+# and that a freshly-launched `Firezone.exe` and the `firezone`
+# CLI both carry the package identity the pipe DACLs pin access
+# to.
 #
 # PowerShell rather than bash because MSYS2's process spawn drops
 # the kernel's SXS-manifest -> registered-package identity
@@ -50,6 +51,22 @@ $installDir = "C:\Program Files\Firezone"
 Assert-ValidSignature "$installDir\Firezone.exe"
 Assert-ValidSignature "$installDir\firezone-client-tunnel.exe"
 Assert-ValidSignature "$installDir\register-sparse.exe"
+Assert-ValidSignature "$installDir\cli\firezone.exe"
+
+Write-Output "==> Checking the CLI directory is on the machine PATH..."
+$machinePath = [Environment]::GetEnvironmentVariable("Path", "Machine")
+if (($machinePath -split ";") -notcontains "$installDir\cli") {
+    Write-Error "Machine PATH does not contain $installDir\cli: $machinePath"
+    exit 1
+}
+
+Write-Output "==> Checking the CLI is not a copy of the GUI..."
+$cliHash = (Get-FileHash -LiteralPath "$installDir\cli\firezone.exe").Hash
+$guiHash = (Get-FileHash -LiteralPath "$installDir\Firezone.exe").Hash
+if ($cliHash -eq $guiHash) {
+    Write-Error "firezone.exe and Firezone.exe are the same binary ($cliHash)"
+    exit 1
+}
 
 Write-Output "==> Checking the tunnel service is running..."
 $null = sc.exe query FirezoneClientTunnelService | Select-String "RUNNING"
@@ -75,6 +92,24 @@ for ($i = 1; $i -le 15; $i++) {
 }
 if (-not $pfn) {
     Write-Error "Get-AppxPackage Firezone.Client.GUI returned nothing after 30s"
+    exit 1
+}
+
+# `firezone.exe` embeds an MSIX identity claim, so the kernel refuses to
+# start it at all (`APPMODEL_ERROR_NO_PACKAGE`) unless the sparse package
+# lists it as an `<Application>` at exactly this path. Starting it is
+# therefore the check that it carries the package identity the GUI's pipe
+# DACL grants access to.
+Write-Output '==> Checking `firezone --help` runs...'
+# The MSI edited the machine PATH after this process started, so pick it up.
+$env:Path = "$machinePath;" + [Environment]::GetEnvironmentVariable("Path", "User")
+$cliHelp = firezone --help | Out-String
+if ($LASTEXITCODE -ne 0) {
+    Write-Error "``firezone --help`` exited with ${LASTEXITCODE}: $cliHelp"
+    exit 1
+}
+if ($cliHelp -notmatch "Usage: firezone \[") {
+    Write-Error "``firezone --help`` printed no usage line: $cliHelp"
     exit 1
 }
 

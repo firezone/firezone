@@ -249,6 +249,24 @@ fn name(fd: RawFd) -> io::Result<String> {
     Ok(String::from_utf8_lossy(&tunnel_name[..(tunnel_name_len - 1) as usize]).to_string())
 }
 
+/// How many descriptors [`search_for_tun_fd`] may scan.
+///
+/// The utun descriptor's number depends on how many others the extension already
+/// holds, so a fixed bound puts it out of reach once the process holds more than
+/// that many. `RLIMIT_NOFILE` is the highest number the kernel can hand out, and
+/// is what `getdtablesize` reports.
+#[cfg(any(target_os = "macos", target_os = "ios"))]
+fn fd_table_size() -> RawFd {
+    /// Applies when `getdtablesize` reports something unusable, and matches the
+    /// bound the scan used before it consulted the limit at all.
+    const FALLBACK: RawFd = 1024;
+
+    // SAFETY: `getdtablesize` takes no arguments and only reads process state.
+    let size = unsafe { libc::getdtablesize() };
+
+    if size <= 0 { FALLBACK } else { size }
+}
+
 #[cfg(any(target_os = "macos", target_os = "ios"))]
 fn search_for_tun_fd() -> io::Result<RawFd> {
     const CTL_NAME: &[u8] = b"com.apple.net.utun_control";
@@ -278,8 +296,8 @@ fn search_for_tun_fd() -> io::Result<RawFd> {
     //
     // Credit to Jason Donenfeld (@zx2c4) for this technique. See docs/NOTICE.txt for attribution.
     // https://github.com/WireGuard/wireguard-apple/blob/master/Sources/WireGuardKit/WireGuardAdapter.swift
-    for fd in 0..1024 {
-        tracing::debug!("Checking fd {}", fd);
+    for fd in 0..fd_table_size() {
+        tracing::trace!("Checking fd {}", fd);
 
         // initialize empty sockaddr_ctl to be populated by getpeername
         let mut addr = sockaddr_ctl {

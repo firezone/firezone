@@ -107,7 +107,6 @@ config :portal, Portal.ChangeLogs.Consumer,
     gateway_tokens
     policies
     resources
-    static_device_pool_members
     client_tokens
     one_time_passcodes
     api_tokens
@@ -160,7 +159,6 @@ config :portal, Portal.Changes.Consumer,
     sites
     policies
     resources
-    static_device_pool_members
     client_tokens
     google_auth_providers
     entra_auth_providers
@@ -177,6 +175,11 @@ config :portal, Portal.Changes.Consumer,
     defender_posture_providers
     santa_posture_providers
     sentinelone_posture_providers
+    intune_devices
+    iru_devices
+    defender_devices
+    santa_devices
+    sentinelone_devices
     relay_tokens
     portal_sessions
   ],
@@ -225,6 +228,10 @@ config :portal, Portal.Microsoft.Graph.APIClient,
     intune: [
       client_id: System.get_env("INTUNE_SYNC_CLIENT_ID"),
       client_secret: System.get_env("INTUNE_SYNC_CLIENT_SECRET")
+    ],
+    windows_updates: [
+      client_id: System.get_env("WINDOWS_UPDATES_CLIENT_ID"),
+      client_secret: System.get_env("WINDOWS_UPDATES_CLIENT_SECRET")
     ]
   ],
   req_opts: [
@@ -388,6 +395,9 @@ config :portal, Portal.Billing,
 config :portal, Portal.Crl.Sync, req_opts: []
 
 config :portal, Portal.Ocsp.Sync, req_opts: []
+
+config :portal, Portal.OSReleases, reload_every: :timer.minutes(10)
+config :portal, Portal.OSReleases.Sync, req_opts: []
 
 config :portal, Portal.ComponentVersions,
   firezone_releases_url: "https://www.firezone.dev/api/releases",

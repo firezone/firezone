@@ -23,7 +23,7 @@ defmodule PortalAPI.Schemas.ContractTest do
     %{
       schema: PortalAPI.Schemas.Resource.Schema,
       struct: Portal.Resource,
-      omittable: [:ip_stack, :site_id]
+      omittable: [:device_membership_criteria, :ip_stack, :site_id]
     },
     %{
       schema: PortalAPI.Schemas.Client.GetSchema,

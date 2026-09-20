@@ -6,15 +6,16 @@ use std::{
 
 use connlib_model::{ClientId, GatewayId, RelayId, Site, SiteId};
 use dns_types::{DomainName, OwnedRecordData};
-use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
+use ip_network::IpNetwork;
 use smallvec::SmallVec;
 use tunnel_proto::MaliciousBehaviour;
-use tunnel_proto::messages::{Filter, PortRange, UpstreamDo53, client::DevicePoolMember};
+use tunnel_proto::messages::{Filter, PortRange, UpstreamDo53};
 
 use super::context::Generator;
 use super::values::{
-    arb_address_description, arb_cidr_resource_address, arb_domain_name_string, arb_filters,
-    arb_ip_stack_kind, arb_more_specific_subnet, arb_system_dns_servers, arb_upstream_do53_servers,
+    arb_address_description, arb_cidr_resource_address, arb_dns_resource_address,
+    arb_domain_matching_dns_resource, arb_domain_name_string, arb_filters, arb_ip_stack_kind,
+    arb_more_specific_subnet, arb_system_dns_servers, arb_upstream_do53_servers,
     arb_upstream_doh_servers,
 };
 use crate::dns_records::DnsRecords;
@@ -23,19 +24,15 @@ use crate::os::SimulatedOs;
 use crate::ref_client::RefClient;
 use crate::ref_gateway::RefGateway;
 use crate::reference::ReferenceState;
-use crate::resource::{
-    CidrResource, DnsResource, DynamicDevicePoolResource, InternetResource,
-    StaticDevicePoolResource,
-};
+use crate::resource::{CidrResource, DevicePoolResource, DnsResource, InternetResource};
 use crate::sim_net::{EdgeConfig, Expiry, FilterMode, Host, Mapping, RoutingTable};
-use crate::stub_portal::StubPortal;
+use crate::stub_portal::{PoolMembers, StubPortal};
 
-pub(super) fn generate(g: &mut Generator) -> ReferenceState {
-    let portal = arb_stub_portal(g);
-    let clients = arb_clients(g, &portal);
-    let gateways = arb_gateways(g, &portal);
+pub(super) fn generate(g: &mut Generator, portal: &StubPortal) -> ReferenceState {
+    let clients = arb_clients(g, portal);
+    let gateways = arb_gateways(g, portal);
     let relays = arb_relays(g);
-    let dns_resource_records = arb_dns_resource_records(g, &portal);
+    let dns_resource_records = arb_dns_resource_records(g, portal);
     let icmp_error_hosts =
         arb_icmp_error_hosts(g, &clients, &dns_resource_records, portal.upstream_do53());
     let tcp_resources = arb_tcp_resources(g, &dns_resource_records, &icmp_error_hosts);
@@ -64,7 +61,6 @@ pub(super) fn generate(g: &mut Generator) -> ReferenceState {
         clients,
         gateways,
         relays,
-        portal,
         global_dns_records,
         tcp_resources,
         icmp_error_hosts,
@@ -128,7 +124,7 @@ pub(super) fn arb_dns_record_set(g: &mut Generator) -> BTreeSet<OwnedRecordData>
         .collect::<BTreeSet<_>>()
 }
 
-fn arb_stub_portal(g: &mut Generator) -> StubPortal {
+pub(super) fn arb_stub_portal(g: &mut Generator) -> StubPortal {
     let internet_site = Site {
         id: g.fresh_site_id(),
         name: "Internet".to_owned(),
@@ -149,9 +145,9 @@ fn arb_stub_portal(g: &mut Generator) -> StubPortal {
 
     let cidr_resources = arb_cidr_resources(g, &regular_sites, &upstream_do53);
     let dns_resources = arb_dns_resources(g, &regular_sites);
-    let device_pool_resources = (0..g.count(0, 2))
-        .map(|_| arb_dynamic_device_pool_resource(g))
-        .collect::<SmallVec<[_; 2]>>();
+    let device_pool_resources = (0..g.count(0, 3))
+        .map(|_| arb_device_pool_resource(g, &clients))
+        .collect::<SmallVec<[_; 3]>>();
 
     let internet_resource = arb_internet_resource(g, &internet_site);
 
@@ -165,9 +161,6 @@ fn arb_stub_portal(g: &mut Generator) -> StubPortal {
         })
         .collect::<BTreeMap<_, _>>();
 
-    let static_device_pool_resources = (0..g.count(0, 3))
-        .map(|_| arb_static_device_pool_resource(g, &clients))
-        .collect::<SmallVec<[_; 3]>>();
     let search_domain = arb_search_domain(g, &dns_resources);
 
     StubPortal::new(
@@ -175,10 +168,10 @@ fn arb_stub_portal(g: &mut Generator) -> StubPortal {
         gateways_by_site,
         regular_sites,
         g.u32(),
+        g.u32(),
         cidr_resources,
         dns_resources,
         device_pool_resources,
-        static_device_pool_resources,
         internet_resource,
         search_domain,
         upstream_do53,
@@ -199,15 +192,9 @@ fn arb_cidr_resource(g: &mut Generator, site: &Site) -> CidrResource {
 }
 
 fn arb_dns_resource(g: &mut Generator, site: &Site) -> DnsResource {
-    let base = arb_domain_name_string(g, 2, 3);
-    let address = match g.choose_index(3) {
-        0 => base,                 // non-wildcard
-        1 => format!("*.{base}"),  // single star
-        _ => format!("**.{base}"), // double star
-    };
     DnsResource {
         id: g.fresh_resource_id(),
-        address,
+        address: arb_dns_resource_address(g),
         name: g.lower_ascii(4, 10),
         address_description: arb_address_description(g),
         sites: vec![site.clone()],
@@ -224,43 +211,28 @@ fn arb_internet_resource(g: &mut Generator, site: &Site) -> InternetResource {
     }
 }
 
-fn arb_dynamic_device_pool_resource(g: &mut Generator) -> DynamicDevicePoolResource {
-    let base = arb_domain_name_string(g, 2, 3);
-    DynamicDevicePoolResource {
-        id: g.fresh_resource_id(),
-        name: g.lower_ascii(4, 10),
-        address: format!("*.{base}"),
-        filters: arb_filters(g),
-    }
-}
-
-fn arb_static_device_pool_resource(
+fn arb_device_pool_resource(
     g: &mut Generator,
     clients: &[(ClientId, Ipv4Addr, Ipv6Addr)],
-) -> StaticDevicePoolResource {
-    let n_online_members = g.count(0, 2);
-    let n_offline_members = g.count(0, 2);
-    let online_members = clients
-        .iter()
-        .take(n_online_members)
-        .map(|(id, ipv4, ipv6)| DevicePoolMember {
-            id: *id,
-            ipv4: Ipv4Network::new(*ipv4, 32).unwrap(),
-            ipv6: Ipv6Network::new(*ipv6, 128).unwrap(),
-        });
-    let offline_members = (0..n_offline_members).map(|_| DevicePoolMember {
-        id: g.fresh_client_id(),
-        ipv4: Ipv4Network::new(g.tunnel_ip4(), 32).unwrap(),
-        ipv6: Ipv6Network::new(g.tunnel_ip6(), 128).unwrap(),
-    });
-    let devices = online_members.chain(offline_members).collect();
-
-    StaticDevicePoolResource {
+) -> (DevicePoolResource, PoolMembers) {
+    let resource = DevicePoolResource {
         id: g.fresh_resource_id(),
         name: g.lower_ascii(4, 10),
         filters: arb_filters(g),
-        devices,
-    }
+    };
+    let members = if g.bool() {
+        PoolMembers::AllClients
+    } else {
+        PoolMembers::Listed(
+            clients
+                .iter()
+                .filter(|_| g.bool())
+                .map(|(id, _, _)| *id)
+                .collect(),
+        )
+    };
+
+    (resource, members)
 }
 
 fn arb_cidr_resources(
@@ -332,19 +304,10 @@ fn arb_dns_resources(g: &mut Generator, sites: &[Site]) -> SmallVec<[DnsResource
             let site = pick_site(g, sites);
             let resource = arb_dns_resource(g, site);
             let sibling = g.flip(50).then(|| {
-                let address = if let Some(base) = resource.address.strip_prefix("**.") {
-                    match g.choose_index(3) {
-                        0 => resource.address.clone(),
-                        1 => format!("*.{base}"),
-                        _ => format!("{}.{base}", g.lower_ascii(3, 6)),
-                    }
-                } else if let Some(base) = resource.address.strip_prefix("*.") {
-                    match g.choose_index(2) {
-                        0 => resource.address.clone(),
-                        _ => format!("{}.{base}", g.lower_ascii(3, 6)),
-                    }
-                } else {
+                let address = if g.bool() {
                     resource.address.clone()
+                } else {
+                    arb_domain_matching_dns_resource(g, &resource.address).to_string()
                 };
 
                 DnsResource {
@@ -383,7 +346,12 @@ fn arb_search_domain(g: &mut Generator, dns_resources: &[DnsResource]) -> Option
 fn arb_clients(g: &mut Generator, portal: &StubPortal) -> BTreeMap<ClientId, Host<RefClient>> {
     portal
         .client_tunnel_ips()
-        .map(|(id, tun4, tun6)| (id, arb_client_host(g, id, tun4, tun6)))
+        .map(|(id, tun4, tun6)| {
+            (
+                id,
+                arb_client_host(g, id, tun4, tun6, portal.resource_selector()),
+            )
+        })
         .collect::<BTreeMap<_, _>>()
 }
 
@@ -392,6 +360,7 @@ fn arb_client_host(
     id: ClientId,
     tun4: Ipv4Addr,
     tun6: Ipv6Addr,
+    resource_selector: u32,
 ) -> Host<RefClient> {
     let key = g.fresh_private_key();
     let system_dns = arb_system_dns_servers(g);
@@ -412,6 +381,7 @@ fn arb_client_host(
             send_untracked_icmp_errors,
         },
         os,
+        resource_selector,
     );
 
     let (ip4, ip6) = arb_socket_ip_stack(g);
@@ -516,27 +486,25 @@ fn arb_site_specific_dns_records(
 }
 
 fn arb_records_for_dns_resource(g: &mut Generator, address: &str) -> DnsRecords {
-    match address.split_once('.') {
-        Some(("*", base)) => arb_subdomain_records(g, base.to_owned()),
-        Some(("**", base)) => arb_subdomain_records(g, base.to_owned()),
-        _ => DnsRecords::from([(address.parse::<DomainName>().unwrap(), arb_resolved_ips(g))]),
-    }
+    let n = if address.contains('*') || address.contains('?') {
+        g.count(1, 3)
+    } else {
+        1
+    };
+
+    (0..n)
+        .map(|_| {
+            (
+                arb_domain_matching_dns_resource(g, address),
+                arb_resolved_ips(g),
+            )
+        })
+        .collect()
 }
 
 fn merge_dns_records(mut records: DnsRecords, next: DnsRecords) -> DnsRecords {
     records.merge(next);
     records
-}
-
-fn arb_subdomain_records(g: &mut Generator, base: String) -> DnsRecords {
-    let n = g.count(1, 3);
-    (0..n)
-        .map(|_| {
-            let label = g.lower_ascii(3, 6);
-            let domain = format!("{label}.{base}").parse::<DomainName>().unwrap();
-            (domain, arb_resolved_ips(g))
-        })
-        .collect::<DnsRecords>()
 }
 
 fn arb_resolved_ips(g: &mut Generator) -> BTreeSet<OwnedRecordData> {

@@ -9,6 +9,8 @@ defmodule PortalWeb.JSONComponents do
 
   import PortalWeb.CoreComponents
 
+  alias Phoenix.LiveView.JS
+
   alias PortalWeb.Logs.JSONDiff
 
   @token_regex ~r/"(?:\\.|[^"\\])*"|-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?|\b(?:true|false|null)\b/
@@ -21,11 +23,15 @@ defmodule PortalWeb.JSONComponents do
 
   A blob rendered under a heading of its own needs no `label`; without one the
   header row is dropped rather than left blank.
+
+  `collapsed` starts the blob hidden behind its header, which then toggles it
+  the way an expandable row in a panel does. It needs a `label`.
   """
   attr :id, :string, required: true
   attr :value, :any, required: true
   attr :label, :string, default: nil
   attr :hint, :string, default: nil
+  attr :collapsed, :boolean, default: false
 
   def json_view(assigns) do
     encoded = JSONDiff.pretty(assigns.value)
@@ -34,13 +40,32 @@ defmodule PortalWeb.JSONComponents do
 
     ~H"""
     <section id={@id} phx-hook="CopyClipboard">
-      <div :if={@label || @hint} class="mb-3 flex items-center justify-between gap-3">
+      <div
+        :if={@label || @hint}
+        class={[
+          "mb-3 flex items-center justify-between gap-3",
+          @collapsed && "-mx-2 px-2 py-1.5 rounded cursor-pointer select-none hover:bg-raised"
+        ]}
+        phx-click={@collapsed && toggle_json_view(@id)}
+        role={@collapsed && "button"}
+        tabindex={@collapsed && "0"}
+        phx-keydown={@collapsed && toggle_json_view(@id)}
+        phx-key={@collapsed && "Enter"}
+      >
         <h3 class="text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)]">
           {@label}
         </h3>
-        <span :if={@hint} class="text-[10px] text-[var(--text-tertiary)]">{@hint}</span>
+        <span class="flex items-center gap-2 text-[10px] text-[var(--text-tertiary)]">
+          <span :if={@hint}>{@hint}</span>
+          <span :if={@collapsed} id={"#{@id}-expand"} class="flex items-center gap-1">
+            Click to expand <.icon name="ri-arrow-down-s-line" class="h-4 w-4" />
+          </span>
+          <span :if={@collapsed} id={"#{@id}-collapse"} class="hidden items-center gap-1">
+            Click to collapse <.icon name="ri-arrow-up-s-line" class="h-4 w-4" />
+          </span>
+        </span>
       </div>
-      <div class="relative">
+      <div id={"#{@id}-body"} class={["relative", @collapsed && "hidden"]}>
         <pre class="max-h-96 overflow-auto rounded border border-[var(--border)] bg-[var(--surface-raised)] p-4 pr-24 text-xs leading-5"><code id={"#{@id}-code"} class="block min-w-max" phx-no-format><span :for={token <- @tokens} class={token_class(token.kind)}><%= token.text %></span></code></pre>
         <button
           type="button"
@@ -58,6 +83,14 @@ defmodule PortalWeb.JSONComponents do
       </div>
     </section>
     """
+  end
+
+  defp toggle_json_view(id) do
+    JS.toggle_class("hidden", to: "##{id}-body")
+    |> JS.toggle_class("hidden", to: "##{id}-expand")
+    |> JS.toggle_class("hidden", to: "##{id}-collapse")
+    |> JS.toggle_class("flex", to: "##{id}-expand")
+    |> JS.toggle_class("flex", to: "##{id}-collapse")
   end
 
   @doc """

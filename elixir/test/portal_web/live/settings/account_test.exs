@@ -30,6 +30,55 @@ defmodule PortalWeb.Settings.AccountTest do
     end
   end
 
+  describe "limits banner" do
+    for {flags, message} <- [
+          {%{users_limit_exceeded: true}, "users."},
+          {%{users_limit_exceeded: true, seats_limit_exceeded: true},
+           "users, monthly active users."}
+        ] do
+      test "renders a complete warning for #{message}", %{
+        conn: conn,
+        account: account,
+        actor: actor
+      } do
+        account =
+          update_account(
+            account,
+            Map.put(unquote(Macro.escape(flags)), :metadata, %{
+              stripe: %{customer_id: "cus_test", product_name: "Enterprise"}
+            })
+          )
+
+        {:ok, _lv, html} =
+          conn
+          |> authorize_conn(actor)
+          |> live(~p"/#{account}/settings/account")
+
+        alerts = html |> Floki.parse_document!() |> Floki.find("[role=alert]")
+        text = alerts |> Floki.text() |> String.replace(~r/\s+/, " ")
+
+        assert text =~ "Your account has exceeded the following limits: #{unquote(message)}"
+        assert text =~ "Please check your billing information to continue using Firezone."
+
+        assert Floki.find(alerts, "a[href='/#{account.slug}/settings/account']") != []
+      end
+    end
+
+    test "does not show a warning when no limits are exceeded", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/account")
+
+      refute html =~ "Your account has exceeded the following limits:"
+      refute html =~ "check your billing information"
+    end
+  end
+
   describe "billing plan UI" do
     test "shows manage plan button for non-enterprise provisioned account", %{
       conn: conn,

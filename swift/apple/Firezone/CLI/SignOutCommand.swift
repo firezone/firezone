@@ -16,17 +16,15 @@ extension FirezoneCLI {
       abstract: "Sign out and remove the stored token."
     )
 
+    @OptionGroup var global: GlobalOptions
+
     @MainActor
     func run() async throws {
-      Log.useCLIOutput()
+      Log.useCLIOutput(debug: global.debug)
 
-      let factory = NETunnelProviderManagerFactory()
-      guard let vpnManager = try await VPNConfigurationManager.load(using: factory) else {
-        throw CLIError("No VPN configuration found")
-      }
+      let vpnManager = try await VPNProfile.load()
 
       try await IPCClient.signOut(session: VPNProfile.session(for: vpnManager))
-      Log.info("Signed out successfully")
     }
   }
 }

@@ -2,11 +2,11 @@ use super::{
     QueryId,
     dns_records::DnsRecords,
     icmp_error_hosts::IcmpErrorHosts,
-    probe::{ExpectedOutcome, PacketRoute, RejectionRemote, RejectionResponse, Remote},
+    probe::{ExpectedOutcome, RejectionResponse, Remote, Route},
     reference::PrivateKey,
     resource::{
-        CidrResource, DnsResource, DynamicDevicePoolResource, InternetResource, Resource,
-        StaticDevicePoolResource,
+        CidrResource, DevicePoolResource, DnsResource, EditEffect, InternetResource, Resource,
+        classify,
     },
     sim_client::SimClient,
     sim_net::ExecMutScope,
@@ -118,11 +118,15 @@ pub struct RefClient {
     #[debug(skip)]
     client_send_times: BTreeMap<ClientId, BTreeSet<Instant>>,
 
-    /// Per dynamic device pool, the peer addresses this client resolved through it.
-    ///
-    /// Only these are requested through the pool; any other tunnel address is unroutable.
+    /// Per peer, the pools the portal authorised us to reach it through.
     #[debug(skip)]
-    resolved_dynamic_peers: BTreeMap<ResourceId, BTreeSet<IpAddr>>,
+    outbound_peer_authorizations: BTreeMap<ClientId, BTreeSet<ResourceId>>,
+
+    /// Per peer, the pools through which the portal authorised it to reach us.
+    #[debug(skip)]
+    inbound_peer_authorizations: BTreeMap<ClientId, BTreeSet<ResourceId>>,
+
+    resource_selector: u32,
 }
 
 impl RefClient {
@@ -139,6 +143,7 @@ impl RefClient {
         internet_resource_active: bool,
         malicious_behaviour: MaliciousBehaviour,
         os: crate::os::SimulatedOs,
+        resource_selector: u32,
     ) -> Self {
         Self {
             id,
@@ -149,6 +154,7 @@ impl RefClient {
             internet_resource_active,
             malicious_behaviour,
             os,
+            resource_selector,
             dns_records: Default::default(),
             connected_cidr_resources: Default::default(),
             connected_dns_resources: Default::default(),
@@ -164,7 +170,8 @@ impl RefClient {
             connection_resets: Default::default(),
             gateway_send_times: Default::default(),
             client_send_times: Default::default(),
-            resolved_dynamic_peers: Default::default(),
+            outbound_peer_authorizations: Default::default(),
+            inbound_peer_authorizations: Default::default(),
         }
     }
 
@@ -275,7 +282,114 @@ impl RefClient {
         }
 
         self.resources.retain(|r| r.id() != *resource);
-        self.resolved_dynamic_peers.remove(resource);
+        self.remove_pool_authorizations(*resource);
+    }
+
+    /// Records a pool through which `peer` may reach us.
+    pub(crate) fn add_inbound_peer_pool(&mut self, peer: ClientId, pool: ResourceId) {
+        self.inbound_peer_authorizations
+            .entry(peer)
+            .or_default()
+            .insert(pool);
+    }
+
+    /// Drops a rejected pool in both directions for `peer`.
+    pub(crate) fn reject_peer_pool(&mut self, peer: ClientId, pool: ResourceId) {
+        remove_peer_pool(&mut self.outbound_peer_authorizations, peer, pool);
+        remove_peer_pool(&mut self.inbound_peer_authorizations, peer, pool);
+    }
+
+    /// Drops all active authorizations through `pool`.
+    fn remove_pool_authorizations(&mut self, pool: ResourceId) {
+        remove_pool(&mut self.outbound_peer_authorizations, pool);
+        remove_pool(&mut self.inbound_peer_authorizations, pool);
+    }
+
+    /// Drops our outbound authorizations towards `peer` when it connects to us anew.
+    pub(crate) fn forget_outbound_peer_authorizations(&mut self, peer: ClientId) {
+        self.outbound_peer_authorizations.remove(&peer);
+    }
+
+    /// Drops every authorization involving `peer`, as the connection to it is gone.
+    pub(crate) fn forget_peer_authorizations(&mut self, peer: ClientId) {
+        self.outbound_peer_authorizations.remove(&peer);
+        self.inbound_peer_authorizations.remove(&peer);
+    }
+
+    /// Checks whether any active inbound authorization from `peer` permits `protocol`.
+    pub(crate) fn inbound_peer_filter_allows(&self, peer: ClientId, protocol: Protocol) -> bool {
+        self.inbound_peer_authorizations
+            .get(&peer)
+            .is_some_and(|pools| {
+                pools
+                    .iter()
+                    .any(|pool| self.strict_resource_filter_allows(*pool, protocol))
+            })
+    }
+
+    pub(crate) fn authorized_pools_towards(
+        &self,
+        peer: ClientId,
+    ) -> impl Iterator<Item = ResourceId> + '_ {
+        self.outbound_peer_authorizations
+            .get(&peer)
+            .into_iter()
+            .flatten()
+            .copied()
+    }
+
+    pub(crate) fn record_outbound_peer_authorization(&mut self, peer: ClientId, pool: ResourceId) {
+        self.outbound_peer_authorizations
+            .entry(peer)
+            .or_default()
+            .insert(pool);
+    }
+
+    pub(crate) fn candidate_pools(&self, protocol: Protocol) -> Vec<ResourceId> {
+        self.device_pool_ids()
+            .into_iter()
+            .filter(|pool| self.resource_filter_allows(*pool, protocol))
+            .sorted_by_key(|pool| {
+                (
+                    filter_breadth(self.pool_filters(*pool).unwrap()),
+                    std::cmp::Reverse(*pool),
+                )
+            })
+            .collect()
+    }
+
+    /// The device pools this client holds, by id.
+    pub(crate) fn device_pool_ids(&self) -> Vec<ResourceId> {
+        self.resources
+            .iter()
+            .filter_map(|r| match r {
+                Resource::DevicePool(pool) => Some(pool.id),
+                Resource::Dns(_) => None,
+                Resource::Cidr(_) => None,
+                Resource::Internet(_) => None,
+            })
+            .sorted()
+            .collect()
+    }
+
+    fn pool_filters(&self, pool: ResourceId) -> Option<&[Filter]> {
+        self.resources.iter().find_map(|r| match r {
+            Resource::DevicePool(p) if p.id == pool => Some(p.filters.as_slice()),
+            Resource::DevicePool(_) => None,
+            Resource::Dns(_) => None,
+            Resource::Cidr(_) => None,
+            Resource::Internet(_) => None,
+        })
+    }
+
+    pub(crate) fn update_resource_metadata(&mut self, resource: Resource) {
+        let existing = self
+            .resources
+            .iter_mut()
+            .find(|existing| existing.id() == resource.id())
+            .expect("an edited resource must exist on the client");
+
+        *existing = resource;
     }
 
     pub(crate) fn connected_resources(&self) -> impl Iterator<Item = ResourceId> + '_ {
@@ -291,7 +405,6 @@ impl RefClient {
 
     pub(crate) fn restart(&mut self, key: PrivateKey, now: Instant) {
         self.routes.clear();
-        self.resolved_dynamic_peers.clear();
 
         self.key = key;
 
@@ -367,6 +480,9 @@ impl RefClient {
         self.connected_dns_resources.clear();
         self.dns_resource_resolutions.clear();
         self.connected_internet_resource = false;
+        // Peer authorizations in both directions go with their connections.
+        self.outbound_peer_authorizations.clear();
+        self.inbound_peer_authorizations.clear();
 
         for status in self.site_status.values_mut() {
             *status = ResourceStatus::Unknown;
@@ -390,9 +506,7 @@ impl RefClient {
         let rid = r.id();
 
         if let Some(existing) = self.resources.iter().find(|existing| existing.id() == rid)
-            && (existing.has_different_address(&r)
-                || existing.has_different_site(&r)
-                || existing.has_different_filters(&r))
+            && !matches!(classify(existing, &r), EditEffect::Metadata)
         {
             self.remove_resource(&existing.id());
         }
@@ -410,10 +524,7 @@ impl RefClient {
         let rid = r.id();
 
         if let Some(existing) = self.resources.iter().find(|existing| existing.id() == rid)
-            && (existing.has_different_address(&r)
-                || existing.has_different_ip_stack(&r)
-                || existing.has_different_site(&r)
-                || existing.has_different_filters(&r))
+            && !matches!(classify(existing, &r), EditEffect::Metadata)
         {
             self.remove_resource(&existing.id());
         }
@@ -425,8 +536,8 @@ impl RefClient {
         }
     }
 
-    pub(crate) fn add_dynamic_device_pool_resource(&mut self, r: DynamicDevicePoolResource) {
-        let r = Resource::DynamicDevicePool(r);
+    pub(crate) fn add_device_pool_resource(&mut self, r: DevicePoolResource) {
+        let r = Resource::DevicePool(r);
         let rid = r.id();
 
         match self
@@ -434,27 +545,10 @@ impl RefClient {
             .iter()
             .position(|existing| existing.id() == rid)
         {
-            Some(index) if self.resources[index].has_different_address(&r) => {
-                self.remove_resource(&rid);
-                self.resources.push(r);
-            }
-            // A filter change keeps the pool's resolutions: the client updates its routes in place.
+            // A filter change keeps the pool's authorizations: the client updates its routes in place.
             Some(index) => self.resources[index] = r,
             None => self.resources.push(r),
         }
-    }
-
-    pub(crate) fn add_static_device_pool_resource(&mut self, r: StaticDevicePoolResource) {
-        let r = Resource::StaticDevicePool(r);
-        let rid = r.id();
-
-        if let Some(existing) = self.resources.iter().find(|existing| existing.id() == rid)
-            && (existing.has_different_address(&r) || existing.has_different_filters(&r))
-        {
-            self.remove_resource(&existing.id());
-        }
-
-        self.resources.push(r);
     }
 
     /// Re-adds all resources in the order they have been initially added.
@@ -464,12 +558,7 @@ impl RefClient {
                 Resource::Dns(d) => self.add_dns_resource(d),
                 Resource::Cidr(c) => self.add_cidr_resource(c),
                 Resource::Internet(i) => self.add_internet_resource(i),
-                Resource::DynamicDevicePool(d) => {
-                    self.add_dynamic_device_pool_resource(d);
-                }
-                Resource::StaticDevicePool(s) => {
-                    self.add_static_device_pool_resource(s);
-                }
+                Resource::DevicePool(d) => self.add_device_pool_resource(d),
             }
         }
     }
@@ -544,235 +633,73 @@ impl RefClient {
         }
     }
 
-    #[tracing::instrument(level = "debug", skip_all, fields(dst, resource, gateway, peer))]
-    pub(crate) fn on_packet(
-        &mut self,
-        dst: Destination,
-        route: PacketRoute,
-        now: Instant,
-    ) -> ExpectedOutcome {
-        match route {
-            PacketRoute::Drop => ExpectedOutcome::Dropped,
-            PacketRoute::Peer(remote_id) => {
-                tracing::Span::current().record("peer", tracing::field::display(remote_id));
+    pub(crate) fn note_sent(&mut self, remote: Option<Remote>, now: Instant) {
+        match remote {
+            Some(Remote::Gateway(gateway)) => {
+                self.gateway_send_times
+                    .entry(gateway)
+                    .or_default()
+                    .insert(now);
+            }
+            Some(Remote::Client(client)) => {
                 self.client_send_times
-                    .entry(remote_id)
+                    .entry(client)
                     .or_default()
                     .insert(now);
-
-                ExpectedOutcome::RoundTripCompleted {
-                    remote: Remote::Client(remote_id),
-                    resource: None,
-                }
             }
-            PacketRoute::PeerRejectedByPeer(remote_id) => {
-                tracing::Span::current().record("peer", tracing::field::display(remote_id));
-                self.client_send_times
-                    .entry(remote_id)
-                    .or_default()
-                    .insert(now);
-
-                ExpectedOutcome::Rejected {
-                    by: RejectionRemote::Client(remote_id),
-                    response: RejectionResponse::Prohibited,
-                }
-            }
-            PacketRoute::RejectedByClient => ExpectedOutcome::Rejected {
-                by: RejectionRemote::Local,
-                response: RejectionResponse::Prohibited,
-            },
-            PacketRoute::Gateway(gateway) => {
-                tracing::Span::current().record("gateway", tracing::field::display(gateway));
-                self.gateway_send_times
-                    .entry(gateway)
-                    .or_default()
-                    .insert(now);
-
-                ExpectedOutcome::RoundTripCompleted {
-                    remote: Remote::Gateway(gateway),
-                    resource: None,
-                }
-            }
-            PacketRoute::Resource { resource, gateway } => {
-                tracing::Span::current().record("resource", tracing::field::display(resource));
-                tracing::Span::current().record("gateway", tracing::field::display(gateway));
-                self.connect_to_resource(resource, dst);
-                self.set_resource_online(resource);
-                self.gateway_send_times
-                    .entry(gateway)
-                    .or_default()
-                    .insert(now);
-
-                ExpectedOutcome::RoundTripCompleted {
-                    remote: Remote::Gateway(gateway),
-                    resource: Some(resource),
-                }
-            }
-            PacketRoute::ResourceRejectedByGateway { resource, gateway } => {
-                tracing::Span::current().record("resource", tracing::field::display(resource));
-                tracing::Span::current().record("gateway", tracing::field::display(gateway));
-                self.connect_to_resource(resource, dst);
-                self.set_resource_online(resource);
-                self.gateway_send_times
-                    .entry(gateway)
-                    .or_default()
-                    .insert(now);
-
-                ExpectedOutcome::Rejected {
-                    by: RejectionRemote::Gateway(gateway),
-                    response: RejectionResponse::Prohibited,
-                }
-            }
-            PacketRoute::ResourceUnreachableByGateway { resource, gateway } => {
-                tracing::Span::current().record("resource", tracing::field::display(resource));
-                tracing::Span::current().record("gateway", tracing::field::display(gateway));
-                self.connect_to_resource(resource, dst);
-                self.set_resource_online(resource);
-                self.gateway_send_times
-                    .entry(gateway)
-                    .or_default()
-                    .insert(now);
-
-                ExpectedOutcome::Rejected {
-                    by: RejectionRemote::Gateway(gateway),
-                    response: RejectionResponse::Unreachable,
-                }
-            }
+            None => {}
         }
     }
 
-    pub(crate) fn on_connect_tcp(
+    pub(crate) fn expect_tcp_outcome(
         &mut self,
         src: IpAddr,
         dst: Destination,
-        route: PacketRoute,
         sport: SPort,
         dport: DPort,
+        outcome: ExpectedOutcome,
     ) {
-        match route {
-            PacketRoute::Drop => {}
-            PacketRoute::Gateway(_) => {}
-            PacketRoute::Peer(_) => {}
-            PacketRoute::RejectedByClient => {
-                self.expected_tcp_rejections
-                    .insert((sport, dport), RejectionResponse::Prohibited);
-            }
-            PacketRoute::PeerRejectedByPeer(_) => {
-                self.expected_tcp_rejections
-                    .insert((sport, dport), RejectionResponse::Prohibited);
-            }
-            PacketRoute::Resource {
-                resource,
-                gateway: _,
-            } => {
-                self.connect_to_resource(resource, dst.clone());
-                self.set_resource_online(resource);
-
+        match outcome {
+            ExpectedOutcome::Dropped => {}
+            ExpectedOutcome::RoundTripCompleted(Route::Resource { resource, .. }) => {
                 self.expected_tcp_connections
                     .insert((src, dst, sport, dport), resource);
             }
-            PacketRoute::ResourceRejectedByGateway {
-                resource,
-                gateway: _,
-            } => {
-                self.connect_to_resource(resource, dst);
-                self.set_resource_online(resource);
+            ExpectedOutcome::RoundTripCompleted(Route::Gateway(_)) => {}
+            ExpectedOutcome::RoundTripCompleted(Route::Peer(_)) => {}
+            ExpectedOutcome::Rejected { response, .. } => {
                 self.expected_tcp_rejections
-                    .insert((sport, dport), RejectionResponse::Prohibited);
-            }
-            PacketRoute::ResourceUnreachableByGateway {
-                resource,
-                gateway: _,
-            } => {
-                self.connect_to_resource(resource, dst);
-                self.set_resource_online(resource);
-                self.expected_tcp_rejections
-                    .insert((sport, dport), RejectionResponse::Unreachable);
+                    .insert((sport, dport), response);
             }
         }
     }
 
-    pub(crate) fn route_for_packet(
+    pub(crate) fn connected_cidr_resources_allowing(
         &self,
-        src: IpAddr,
-        dst: &Destination,
+        ip: IpAddr,
         protocol: Protocol,
-        gateway_by_resource: impl Fn(ResourceId) -> Option<GatewayId>,
-        gateway_by_ip: impl Fn(IpAddr) -> Option<GatewayId>,
-        client_by_ip: impl Fn(IpAddr) -> Option<ClientId>,
-    ) -> PacketRoute {
-        if dst.ip_addr().is_some_and(|ip| ip.is_multicast()) {
-            return PacketRoute::Drop;
-        }
+    ) -> impl Iterator<Item = ResourceId> + '_ {
+        self.resources.iter().filter_map(move |resource| {
+            let Resource::Cidr(cidr) = resource else {
+                return None;
+            };
+            let allows = self.connected_cidr_resources.contains(&cidr.id)
+                && cidr.address.contains(ip)
+                && protocol_filter_allows(&cidr.filters, protocol);
 
-        // Peer tunnel IPs first mean client-to-client device-pool routing. A
-        // tunnel IP without a matching pool may still belong to a gateway.
-        if let Some(ip) = dst.ip_addr().filter(|ip| tunnel_proto::is_peer(*ip)) {
-            let pools = self.device_pools_by_tun_ip(ip);
-
-            if !pools.is_empty() {
-                let allowed = pools
-                    .iter()
-                    .any(|(_, filters)| protocol_filter_allows(filters, protocol));
-
-                if allowed {
-                    return client_by_ip(ip).map_or(PacketRoute::Drop, PacketRoute::Peer);
-                }
-
-                if !self.malicious_behaviour.ignore_resource_filters {
-                    return PacketRoute::RejectedByClient;
-                }
-
-                return client_by_ip(ip)
-                    .map(PacketRoute::PeerRejectedByPeer)
-                    .unwrap_or(PacketRoute::Drop);
-            }
-
-            return gateway_by_ip(ip).map_or(PacketRoute::Drop, PacketRoute::Gateway);
-        }
-
-        // Resource selection is the one deliberate classifier in the oracle.
-        // `resource_by_dst` has small, independently tested precedence rules for
-        // overlapping resources; applying a transition does not classify again.
-        let Some(resource) = self.resource_by_dst(src, dst, protocol) else {
-            return PacketRoute::Drop;
-        };
-        let strictly_allowed = self.strict_resource_filter_allows(resource, protocol);
-
-        if !strictly_allowed && !self.malicious_behaviour.ignore_resource_filters {
-            return PacketRoute::RejectedByClient;
-        }
-        let Some(gateway) = gateway_by_resource(resource) else {
-            return PacketRoute::Drop;
-        };
-
-        if self.internet_resource().is_some_and(|id| id == resource) {
-            match dst.ip_addr() {
-                Some(ip) if is_resource_proxy(ip) => {
-                    return PacketRoute::ResourceRejectedByGateway { resource, gateway };
-                }
-                Some(ip) if internet_resource_rejects(ip) => {
-                    return PacketRoute::ResourceUnreachableByGateway { resource, gateway };
-                }
-                Some(_) => {}
-                None => {}
-            }
-        }
-
-        if strictly_allowed {
-            return PacketRoute::Resource { resource, gateway };
-        }
-
-        PacketRoute::ResourceRejectedByGateway { resource, gateway }
+            allows.then_some(cidr.id)
+        })
     }
 
-    fn connect_to_resource(&mut self, resource: ResourceId, destination: Destination) {
+    pub(crate) fn connect_to_resource(&mut self, resource: ResourceId, destination: Destination) {
         match destination {
             Destination::DomainName { .. } => {
                 self.connected_dns_resources.insert(resource);
             }
             Destination::IpAddr(_) => self.connect_to_internet_or_cidr_resource(resource),
         }
+
+        self.set_resource_online(resource);
     }
 
     fn set_resource_online(&mut self, rid: ResourceId) {
@@ -817,7 +744,7 @@ impl RefClient {
         global_dns_records: &DnsRecords,
         icmp_error_hosts: &IcmpErrorHosts,
     ) {
-        if self.is_dynamic_device_pool_dns_query(query) {
+        if self.is_device_dns_query(query) {
             self.expect_dns_response(query);
             return;
         }
@@ -946,22 +873,8 @@ impl RefClient {
         }
     }
 
-    fn is_dynamic_device_pool_dns_query(&self, query: &DnsQuery) -> bool {
-        self.is_device_pool_domain(&query.domain)
-    }
-
-    /// Returns whether a dynamic device pool claims the domain.
-    ///
-    /// Device pools resolve ahead of DNS resources, so a domain matching both is
-    /// answered from the pool and never resolves to a resource's proxy IPs.
-    fn is_device_pool_domain(&self, domain: &DomainName) -> bool {
-        self.resources.iter().any(|resource| match resource {
-            Resource::DynamicDevicePool(pool) => dns::is_subdomain(domain, &pool.address),
-            Resource::Dns(_) => false,
-            Resource::Cidr(_) => false,
-            Resource::Internet(_) => false,
-            Resource::StaticDevicePool(_) => false,
-        })
+    fn is_device_dns_query(&self, query: &DnsQuery) -> bool {
+        is_device_domain(&query.domain)
     }
 
     pub(crate) fn ipv4_cidr_resource_dsts(&self) -> Vec<(Ipv4Network, Vec<Filter>)> {
@@ -1009,7 +922,7 @@ impl RefClient {
             .flatten()
     }
 
-    fn resource_by_dst(
+    pub(crate) fn resource_by_dst(
         &self,
         src: IpAddr,
         destination: &Destination,
@@ -1043,7 +956,7 @@ impl RefClient {
         self.filter_allows(filters, proto)
     }
 
-    fn strict_resource_filter_allows(&self, rid: ResourceId, proto: Protocol) -> bool {
+    pub(crate) fn strict_resource_filter_allows(&self, rid: ResourceId, proto: Protocol) -> bool {
         self.resources
             .iter()
             .find(|r| r.id() == rid)
@@ -1060,111 +973,36 @@ impl RefClient {
         protocol_filter_allows(filters, proto)
     }
 
-    /// Every device pool that routes to the peer at `ip`, with its filter set.
-    ///
-    /// A static pool routes to the members it names, a dynamic one to the peers it resolved.
-    fn device_pools_by_tun_ip(
-        &self,
-        ip: IpAddr,
-    ) -> Vec<(ResourceId, Vec<tunnel_proto::messages::Filter>)> {
-        let dynamic = self.dynamic_device_pools().into_iter().filter(|(id, _)| {
-            self.resolved_dynamic_peers
-                .get(id)
-                .is_some_and(|ips| ips.contains(&ip))
-        });
-
-        self.resources
-            .iter()
-            .filter_map(|r| {
-                let Resource::StaticDevicePool(pool) = r else {
-                    return None;
-                };
-
-                let matches = pool.devices.iter().any(|d| match ip {
-                    IpAddr::V4(v4) => d.ipv4.contains(v4),
-                    IpAddr::V6(v6) => d.ipv6.contains(v6),
-                });
-
-                matches.then(|| (pool.id, pool.filters.clone()))
-            })
-            .chain(dynamic)
-            .collect()
-    }
-
-    /// Records that a name lookup through `pool` resolved to the peer at `ipv4` / `ipv6`.
-    pub(crate) fn note_device_pool_resolution(
-        &mut self,
-        pool: ResourceId,
-        ipv4: Ipv4Addr,
-        ipv6: Ipv6Addr,
-    ) {
-        let resolved = self.resolved_dynamic_peers.entry(pool).or_default();
-        resolved.insert(IpAddr::V4(ipv4));
-        resolved.insert(IpAddr::V6(ipv6));
-    }
-
-    /// The dynamic device pool the SUT resolves `domain` through: the lowest one matching it.
-    pub(crate) fn dynamic_device_pool_by_domain(&self, domain: &DomainName) -> Option<ResourceId> {
-        self.resources
-            .iter()
-            .filter_map(|resource| match resource {
-                Resource::DynamicDevicePool(pool) if dns::is_subdomain(domain, &pool.address) => {
-                    Some(pool.id)
-                }
-                Resource::DynamicDevicePool(_) => None,
-                Resource::Dns(_) => None,
-                Resource::Cidr(_) => None,
-                Resource::Internet(_) => None,
-                Resource::StaticDevicePool(_) => None,
-            })
-            .min()
-    }
-
-    /// Every peer address resolved through a dynamic pool, with that pool's filter set.
-    pub(crate) fn resolved_dynamic_peers(
-        &self,
-    ) -> Vec<(IpAddr, Vec<tunnel_proto::messages::Filter>)> {
-        self.dynamic_device_pools()
-            .into_iter()
-            .flat_map(|(id, filters)| {
-                self.resolved_dynamic_peers
-                    .get(&id)
-                    .into_iter()
-                    .flatten()
-                    .map(move |ip| (*ip, filters.clone()))
-            })
-            .collect()
-    }
-
-    /// Every dynamic device pool with its filter set.
-    fn dynamic_device_pools(&self) -> Vec<(ResourceId, Vec<tunnel_proto::messages::Filter>)> {
-        let mut pools = self
-            .resources
-            .iter()
-            .filter_map(|r| match r {
-                Resource::DynamicDevicePool(pool) => Some((pool.id, pool.filters.clone())),
-                Resource::Dns(_) => None,
-                Resource::Cidr(_) => None,
-                Resource::Internet(_) => None,
-                Resource::StaticDevicePool(_) => None,
-            })
-            .collect::<Vec<_>>();
-        pools.sort_by_key(|(id, _)| *id);
-
-        pools
-    }
-
     pub(crate) fn dns_resource_by_domain_and_proto(
         &self,
         domain: &DomainName,
         src: IpAddr,
         proto: Protocol,
     ) -> Option<DnsResource> {
-        self.dns_resource_by_domain(
+        let mut candidates = self.dns_resources_by_domain(
             domain,
             |resource| resource.ip_stack.supports_ip(src),
             |resource| protocol_filter_allows(&resource.filters, proto),
-        )
+        );
+        candidates.sort_by(|left, right| {
+            filter_breadth(&left.filters)
+                .cmp(&filter_breadth(&right.filters))
+                .then_with(|| {
+                    dns::Pattern::new(&left.address)
+                        .unwrap()
+                        .cmp(&dns::Pattern::new(&right.address).unwrap())
+                })
+                .then_with(|| right.id.cmp(&left.id))
+        });
+        let ids = candidates
+            .iter()
+            .filter(|resource| self.filter_allows(&resource.filters, proto))
+            .map(|resource| resource.id)
+            .collect_vec();
+        let selected = self
+            .select_gateway_resource(&ids)
+            .or_else(|| candidates.first().map(|r| r.id))?;
+        candidates.into_iter().find(|r| r.id == selected)
     }
 
     pub(crate) fn dns_resource_by_domain(
@@ -1173,13 +1011,24 @@ impl RefClient {
         eligible: impl Fn(&DnsResource) -> bool,
         preferred: impl Fn(&DnsResource) -> bool,
     ) -> Option<DnsResource> {
+        self.dns_resources_by_domain(domain, eligible, preferred)
+            .into_iter()
+            .next()
+    }
+
+    fn dns_resources_by_domain(
+        &self,
+        domain: &DomainName,
+        eligible: impl Fn(&DnsResource) -> bool,
+        preferred: impl Fn(&DnsResource) -> bool,
+    ) -> Vec<DnsResource> {
         self.resources
             .iter()
             .cloned()
             .filter_map(|r| r.into_dns())
             .filter(|r| dns::is_subdomain(domain, &r.address))
             .filter(|r| eligible(r))
-            .max_by(|r1, r2| {
+            .sorted_by(|r1, r2| {
                 let by_preference = match (preferred(r1), preferred(r2)) {
                     (true, true) => Ordering::Equal,
                     (false, false) => Ordering::Equal,
@@ -1192,7 +1041,25 @@ impl RefClient {
                     .reverse();
                 let by_id = r1.id.cmp(&r2.id);
 
-                by_preference.then(by_pattern).then(by_id)
+                by_preference.then(by_pattern).then(by_id).reverse()
+            })
+            .collect()
+    }
+
+    /// Prefers existing connections, then applies the portal's sampled candidate index.
+    fn select_gateway_resource(&self, candidates: &[ResourceId]) -> Option<ResourceId> {
+        if candidates.is_empty() {
+            return None;
+        }
+
+        candidates
+            .iter()
+            .copied()
+            .find(|candidate| self.connected_resources().any(|id| id == *candidate))
+            .or_else(|| {
+                candidates
+                    .get(self.resource_selector as usize % candidates.len())
+                    .copied()
             })
     }
 
@@ -1220,7 +1087,7 @@ impl RefClient {
                 self.dns_resource_by_domain(domain, |_| true, |_| true)
                     .is_some()
             })
-            .filter(|(domain, _)| !self.is_device_pool_domain(domain))
+            .filter(|(domain, _)| !is_device_domain(domain))
             .map(|(domain, ips)| (domain.clone(), ips.clone()))
     }
 
@@ -1309,7 +1176,21 @@ impl RefClient {
         ip: IpAddr,
         proto: Protocol,
     ) -> Option<ResourceId> {
-        self.cidr_resource_by_ip(ip, |r| protocol_filter_allows(&r.filters, proto))
+        let mut candidates =
+            self.cidr_resources_by_ip(ip, |r| protocol_filter_allows(&r.filters, proto));
+        candidates.sort_by(|left, right| {
+            filter_breadth(&left.filters)
+                .cmp(&filter_breadth(&right.filters))
+                .then_with(|| right.address.netmask().cmp(&left.address.netmask()))
+                .then_with(|| right.id.cmp(&left.id))
+        });
+        let ids = candidates
+            .iter()
+            .filter(|resource| self.filter_allows(&resource.filters, proto))
+            .map(|resource| resource.id)
+            .collect_vec();
+        self.select_gateway_resource(&ids)
+            .or_else(|| candidates.first().map(|r| r.id))
     }
 
     pub(crate) fn cidr_resource_by_ip(
@@ -1317,8 +1198,17 @@ impl RefClient {
         ip: IpAddr,
         predicate: impl Fn(&CidrResource) -> bool,
     ) -> Option<ResourceId> {
-        let r = self
-            .resources
+        self.cidr_resources_by_ip(ip, predicate)
+            .first()
+            .map(|r| r.id)
+    }
+
+    fn cidr_resources_by_ip(
+        &self,
+        ip: IpAddr,
+        predicate: impl Fn(&CidrResource) -> bool,
+    ) -> Vec<CidrResource> {
+        self.resources
             .iter()
             .cloned()
             .filter_map(|r| r.into_cidr())
@@ -1333,11 +1223,9 @@ impl RefClient {
                 let by_netmask = r1.address.netmask().cmp(&r2.address.netmask());
                 let by_id = r1.id.cmp(&r2.id);
 
-                by_predicate.then(by_netmask).then(by_id)
+                by_predicate.then(by_netmask).then(by_id).reverse()
             })
-            .next_back()?;
-
-        Some(r.id)
+            .collect()
     }
 
     pub(crate) fn resolved_ip4_for_non_resources(
@@ -1391,7 +1279,16 @@ impl RefClient {
             return None;
         }
 
-        self.upstream_dns_server_via_resource(&query.dns_server)
+        self.upstream_dns_server_via_resource(&query.dns_server)?;
+        let dns::Upstream::Do53 { server } = query.dns_server else {
+            return None;
+        };
+        let protocol = match query.transport {
+            DnsTransport::Udp { .. } => Protocol::Udp(server.port()),
+            DnsTransport::Tcp => Protocol::Tcp(server.port()),
+        };
+        self.cidr_resource_by_ip_and_proto(server.ip(), protocol)
+            .or_else(|| self.active_internet_resource())
     }
 
     fn is_local_dns_resource_query(&self, query: &DnsQuery) -> bool {
@@ -1468,8 +1365,7 @@ impl RefClient {
                 Resource::Dns(_) => None,
                 Resource::Cidr(_) => None,
                 Resource::Internet(_) => None,
-                Resource::StaticDevicePool(_) => None,
-                Resource::DynamicDevicePool(_) => None,
+                Resource::DevicePool(_) => None,
             })
             .any(|dns| {
                 dns::is_subdomain(domain, &dns.address)
@@ -1530,10 +1426,12 @@ impl RefClient {
             return None;
         }
 
-        Some(
-            self.dns_resource_by_domain(&query.domain, |_| true, |_| true)?
-                .id,
-        )
+        let candidates = self
+            .dns_resources_by_domain(&query.domain, |_| true, |_| true)
+            .into_iter()
+            .map(|r| r.id)
+            .collect_vec();
+        self.select_gateway_resource(&candidates)
     }
 
     pub(crate) fn all_resource_ids(&self) -> Vec<ResourceId> {
@@ -1562,8 +1460,7 @@ impl RefClient {
         self.resources.iter().find_map(|r| match r {
             Resource::Dns(_) => None,
             Resource::Cidr(_) => None,
-            Resource::StaticDevicePool(_) => None,
-            Resource::DynamicDevicePool(_) => None,
+            Resource::DevicePool(_) => None,
             Resource::Internet(internet_resource) => Some(internet_resource.id),
         })
     }
@@ -1627,13 +1524,74 @@ impl RefClient {
     }
 }
 
+fn remove_peer_pool(
+    authorizations: &mut BTreeMap<ClientId, BTreeSet<ResourceId>>,
+    peer: ClientId,
+    pool: ResourceId,
+) {
+    let Some(pools) = authorizations.get_mut(&peer) else {
+        return;
+    };
+
+    pools.remove(&pool);
+    if pools.is_empty() {
+        authorizations.remove(&peer);
+    }
+}
+
+fn remove_pool(authorizations: &mut BTreeMap<ClientId, BTreeSet<ResourceId>>, pool: ResourceId) {
+    for pools in authorizations.values_mut() {
+        pools.remove(&pool);
+    }
+    for _ in authorizations.extract_if(.., |_, pools| pools.is_empty()) {}
+}
+
 /// Applies the reference model's independent interpretation of resource filters.
-fn protocol_filter_allows(filters: &[Filter], protocol: Protocol) -> bool {
+/// Whether the SUT answers `domain` from the portal instead of DNS.
+///
+/// Device names resolve ahead of DNS resources, so a name matching both is answered
+/// from the portal and never resolves to a resource's proxy IPs.
+fn is_device_domain(domain: &DomainName) -> bool {
+    dns::device_slug(domain).is_some()
+}
+
+pub(crate) fn protocol_filter_allows(filters: &[Filter], protocol: Protocol) -> bool {
     match protocol {
         Protocol::Tcp(port) => tcp_filter_allows(filters, port),
         Protocol::Udp(port) => udp_filter_allows(filters, port),
         Protocol::IcmpEcho(_) => icmp_filter_allows(filters),
     }
+}
+
+fn filter_breadth(filters: &[Filter]) -> u32 {
+    if filters.is_empty() {
+        return u32::MAX;
+    }
+
+    let count_ports = |extract: fn(&Filter) -> Option<(u16, u16)>| {
+        let mut ranges = filters.iter().filter_map(extract).collect_vec();
+        ranges.sort_unstable();
+
+        let mut next = 0u32;
+        let mut count = 0u32;
+        for (start, end) in ranges {
+            let first = u32::from(start).max(next);
+            let end = u32::from(end);
+            if first <= end {
+                count += end - first + 1;
+                next = end + 1;
+            }
+        }
+        count
+    };
+
+    count_ports(|filter| match filter {
+        Filter::Tcp(range) => Some((range.start(), range.end())),
+        Filter::Udp(_) | Filter::Icmp => None,
+    }) + count_ports(|filter| match filter {
+        Filter::Udp(range) => Some((range.start(), range.end())),
+        Filter::Tcp(_) | Filter::Icmp => None,
+    }) + u32::from(filters.iter().any(|filter| matches!(filter, Filter::Icmp)))
 }
 
 /// Checks if a set of [`Filter`]s allows the given TCP port.
@@ -1667,7 +1625,7 @@ impl ExecMutScope for RefClient {
     fn enter(&self) -> Self::Guard {}
 }
 
-fn internet_resource_rejects(addr: IpAddr) -> bool {
+pub(crate) fn internet_resource_rejects(addr: IpAddr) -> bool {
     match addr {
         IpAddr::V4(addr) => {
             addr.is_private()
@@ -1695,7 +1653,7 @@ fn is_reserved(addr: Ipv4Addr) -> bool {
     matches!(addr.octets(), [240..=255, _, _, _])
 }
 
-fn is_resource_proxy(addr: IpAddr) -> bool {
+pub(crate) fn is_resource_proxy(addr: IpAddr) -> bool {
     match addr {
         IpAddr::V4(addr) => tunnel_proto::IPV4_RESOURCES.contains(addr),
         IpAddr::V6(addr) => tunnel_proto::IPV6_RESOURCES.contains(addr),
@@ -1738,93 +1696,4 @@ fn default_routes_v6() -> Vec<IpNetwork> {
             .unwrap(),
         ),
     ]
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use tunnel_proto::messages::PortRange;
-
-    #[test]
-    fn packet_route_makes_overlapping_resource_precedence_explicit() {
-        let client_id = ClientId::from_u128(1);
-        let broad_id = ResourceId::from_u128(2);
-        let specific_id = ResourceId::from_u128(3);
-        let broad_gateway = GatewayId::from_u128(4);
-        let specific_gateway = GatewayId::from_u128(5);
-        let site = Site {
-            id: SiteId::from_u128(6),
-            name: "site".to_owned(),
-        };
-        let mut client = RefClient::new(
-            client_id,
-            PrivateKey([0; 32]),
-            "100.96.0.1".parse().unwrap(),
-            "fd00:2021:1111:8000::1".parse().unwrap(),
-            Vec::new(),
-            false,
-            MaliciousBehaviour::default(),
-            crate::os::SimulatedOs::Linux,
-        );
-        client.add_cidr_resource(CidrResource {
-            id: broad_id,
-            address: "10.0.0.0/8".parse().unwrap(),
-            name: "broad".to_owned(),
-            address_description: None,
-            sites: vec![site.clone()],
-            filters: vec![Filter::Icmp],
-        });
-        client.add_cidr_resource(CidrResource {
-            id: specific_id,
-            address: "10.0.0.0/24".parse().unwrap(),
-            name: "specific".to_owned(),
-            address_description: None,
-            sites: vec![site],
-            filters: vec![Filter::Udp(PortRange::single(80))],
-        });
-
-        let dst = Destination::IpAddr("10.0.0.1".parse().unwrap());
-        let route = |client: &RefClient, protocol| {
-            client.route_for_packet(
-                "100.96.0.1".parse().unwrap(),
-                &dst,
-                protocol,
-                |resource| match resource {
-                    id if id == broad_id => Some(broad_gateway),
-                    id if id == specific_id => Some(specific_gateway),
-                    _ => None,
-                },
-                |_| None,
-                |_| None,
-            )
-        };
-
-        assert_eq!(
-            route(&client, Protocol::IcmpEcho(1)),
-            PacketRoute::Resource {
-                resource: broad_id,
-                gateway: broad_gateway,
-            }
-        );
-        assert_eq!(
-            route(&client, Protocol::Udp(80)),
-            PacketRoute::Resource {
-                resource: specific_id,
-                gateway: specific_gateway,
-            }
-        );
-        assert_eq!(
-            route(&client, Protocol::Udp(81)),
-            PacketRoute::RejectedByClient
-        );
-
-        client.malicious_behaviour.ignore_resource_filters = true;
-        assert_eq!(
-            route(&client, Protocol::Udp(81)),
-            PacketRoute::ResourceRejectedByGateway {
-                resource: specific_id,
-                gateway: specific_gateway,
-            }
-        );
-    }
 }

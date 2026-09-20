@@ -270,12 +270,14 @@ jobs:
           set -euo pipefail
 
           # The clients built the merge commit, not the branch checked out here.
-          git fetch --depth=1 origin "$GITHUB_SHA"
+          # Two deep, so that its first parent, the branch's merge target, comes along.
+          git fetch --depth=2 origin "$GITHUB_SHA"
 
           # `mise exec` puts `uv` on PATH: the shims the mise action sets up are
           # regenerated before it installs, not after.
           mise exec -- uv run scripts/prepare-store-screenshots.py
-          mise exec -- uv run scripts/settle-screenshots.py --baseline "$GITHUB_SHA" \
+          mise exec -- uv run scripts/settle-screenshots.py \
+            --baseline "$GITHUB_SHA" --merge-target "$GITHUB_SHA^1" \
             rust/gui-client/screenshots kotlin/android/screenshots swift/apple/screenshots
       - name: Set up GnuPG for the screenshot commit
         uses: ./.github/actions/setup-gpg
@@ -295,7 +297,11 @@ jobs:
           git config --local user.signingkey "${{ steps.setup-gpg.outputs.key_id }}"
           git config --local commit.gpgsign true
 
-          git add -A rust/gui-client/screenshots kotlin/android/screenshots swift/apple/screenshots
+          # The images only: an artifact holds everything that sits in the directory
+          # it was uploaded from, as the merge commit has it, and the Play Store
+          # listing beside the Android screens is kept by hand on the branch.
+          git add -A -- 'rust/gui-client/screenshots/*.png' \
+            'kotlin/android/screenshots/*.png' 'swift/apple/screenshots/*.png'
           if git diff --cached --quiet; then
             echo "The screenshots are unchanged; nothing to push."
             exit 0
@@ -357,16 +363,6 @@ jobs:
       id-token: write # OIDC auth
       security-events: write # trivy SARIF upload from setup-mise
 
-  monitor-kotlin:
-    needs: [kotlin]
-    if: "!cancelled() && needs.kotlin.result == 'failure' && github.event_name == 'merge_group'"
-    runs-on: ubuntu-latest
-    permissions:
-      actions: write # gh run cancel
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - run: gh run cancel ${{ github.run_id }}
-
   swift:
     needs: planner
     if: contains(needs.planner.outputs.jobs_to_run, 'swift')
@@ -377,16 +373,6 @@ jobs:
       contents: write # release draft and build artifact uploads
       id-token: write # OIDC auth
       security-events: write # trivy SARIF upload from setup-mise
-
-  monitor-swift:
-    needs: [swift]
-    if: "!cancelled() && needs.swift.result == 'failure' && github.event_name == 'merge_group'"
-    runs-on: ubuntu-latest
-    permissions:
-      actions: write # gh run cancel
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - run: gh run cancel ${{ github.run_id }}
 
   elixir:
     needs: planner
@@ -399,16 +385,6 @@ jobs:
       checks: write # dorny/test-reporter
       pull-requests: write # breaking OpenAPI changes comment
 
-  monitor-elixir:
-    needs: [elixir]
-    if: "!cancelled() && needs.elixir.result == 'failure' && github.event_name == 'merge_group'"
-    runs-on: ubuntu-latest
-    permissions:
-      actions: write # gh run cancel
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - run: gh run cancel ${{ github.run_id }}
-
   rust:
     needs: planner
     if: contains(needs.planner.outputs.jobs_to_run, 'rust')
@@ -419,16 +395,6 @@ jobs:
       id-token: write # OIDC auth
       security-events: write # trivy SARIF upload from setup-mise
 
-  monitor-rust:
-    needs: [rust]
-    if: "!cancelled() && needs.rust.result == 'failure' && github.event_name == 'merge_group'"
-    runs-on: ubuntu-latest
-    permissions:
-      actions: write # gh run cancel
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - run: gh run cancel ${{ github.run_id }}
-
   tauri:
     needs: planner
     if: contains(needs.planner.outputs.jobs_to_run, 'tauri')
@@ -438,16 +404,6 @@ jobs:
       contents: write # release draft and build artifact uploads
       id-token: write # OIDC auth
       security-events: write # trivy SARIF upload from setup-mise
-
-  monitor-tauri:
-    needs: [tauri]
-    if: "!cancelled() && needs.tauri.result == 'failure' && github.event_name == 'merge_group'"
-    runs-on: ubuntu-latest
-    permissions:
-      actions: write # gh run cancel
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - run: gh run cancel ${{ github.run_id }}
 
   nix:
     needs: planner
@@ -461,16 +417,6 @@ jobs:
       # Build only x86_64 on PRs to control cost; both systems elsewhere.
       systems: ${{ github.event_name == 'pull_request' && '["x86_64-linux"]' || '["x86_64-linux", "aarch64-linux"]' }}
 
-  monitor-nix:
-    needs: [nix]
-    if: "!cancelled() && needs.nix.result == 'failure' && github.event_name == 'merge_group'"
-    runs-on: ubuntu-latest
-    permissions:
-      actions: write # gh run cancel
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - run: gh run cancel ${{ github.run_id }}
-
   codeql:
     needs: planner
     if: contains(needs.planner.outputs.jobs_to_run, 'codeql')
@@ -481,16 +427,6 @@ jobs:
       contents: read
       security-events: write # upload CodeQL results
 
-  monitor-codeql:
-    needs: [codeql]
-    if: "!cancelled() && needs.codeql.result == 'failure' && github.event_name == 'merge_group'"
-    runs-on: ubuntu-latest
-    permissions:
-      actions: write # gh run cancel
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - run: gh run cancel ${{ github.run_id }}
-
   control-plane:
     needs: planner
     if: contains(needs.planner.outputs.jobs_to_run, 'control-plane')
@@ -500,16 +436,6 @@ jobs:
       id-token: write # OIDC auth
       packages: write # push Docker images to GHCR
       security-events: write # upload Trivy SARIF results
-
-  monitor-control-plane:
-    needs: [control-plane]
-    if: "!cancelled() && needs.control-plane.result == 'failure' && github.event_name == 'merge_group'"
-    runs-on: ubuntu-latest
-    permissions:
-      actions: write # gh run cancel
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - run: gh run cancel ${{ github.run_id }}
 
   data-plane:
     needs: planner
@@ -527,16 +453,6 @@ jobs:
       profile: ${{ inputs.profile || 'debug' }}
       stage: ${{ inputs.stage || 'debug' }}
 
-  monitor-data-plane:
-    needs: [data-plane]
-    if: "!cancelled() && needs.data-plane.result == 'failure' && github.event_name == 'merge_group'"
-    runs-on: ubuntu-latest
-    permissions:
-      actions: write # gh run cancel
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - run: gh run cancel ${{ github.run_id }}
-
   loadtest:
     needs: planner
     if: contains(needs.planner.outputs.jobs_to_run, 'loadtest')
@@ -545,16 +461,6 @@ jobs:
     permissions:
       contents: read
       id-token: write # OIDC auth for Azure Storage uploads
-
-  monitor-loadtest:
-    needs: [loadtest]
-    if: "!cancelled() && needs.loadtest.result == 'failure' && github.event_name == 'merge_group'"
-    runs-on: ubuntu-latest
-    permissions:
-      actions: write # gh run cancel
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - run: gh run cancel ${{ github.run_id }}
 
   integration-tests:
     uses: ./.github/workflows/_integration_tests.yml

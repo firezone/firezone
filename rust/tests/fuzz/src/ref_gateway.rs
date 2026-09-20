@@ -5,7 +5,7 @@ use chrono::{DateTime, Utc};
 use connlib_model::GatewayId;
 use std::{
     collections::BTreeSet,
-    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
+    net::{Ipv4Addr, Ipv6Addr, SocketAddr},
     time::Instant,
 };
 use tunnel_proto::{GatewayState, IpConfig};
@@ -60,13 +60,6 @@ impl RefGateway {
         });
 
         SimGateway::new(id, sut, tcp_resources, self.site_specific_dns_records, now)
-    }
-
-    pub(crate) fn tunnel_ip_for(&self, dst: IpAddr) -> IpAddr {
-        match dst {
-            IpAddr::V4(_) => self.tunnel_ip4.into(),
-            IpAddr::V6(_) => self.tunnel_ip6.into(),
-        }
     }
 
     pub fn dns_records(&self) -> &DnsRecords {

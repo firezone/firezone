@@ -23,7 +23,7 @@ jobs:
       contents: write # release-drafter needs to create/update releases
     env:
       # mark:next-apple-version
-      RELEASE_NAME: apple-client-1.5.20
+      RELEASE_NAME: apple-client-1.5.21
     steps:
       - name: Set release metadata
         id: release-metadata
@@ -326,10 +326,10 @@ jobs:
             build-script: scripts/build/ios-appstore.sh
             upload-script: scripts/upload/app-store-connect.sh
             # mark:next-apple-version
-            artifact-file: "firezone-ios-client-1.5.20.ipa"
+            artifact-file: "firezone-ios-client-1.5.21.ipa"
             platform: iOS
             # mark:next-apple-version
-            release-name: apple-client-1.5.20
+            release-name: apple-client-1.5.21
 
           - job_name: build-macos-appstore
             rust-targets: aarch64-apple-darwin x86_64-apple-darwin
@@ -343,11 +343,11 @@ jobs:
             build-script: scripts/build/macos-standalone.sh
             upload-script: scripts/upload/github-release.sh
             # mark:next-apple-version
-            artifact-file: "firezone-macos-client-1.5.20.dmg"
+            artifact-file: "firezone-macos-client-1.5.21.dmg"
             # mark:next-apple-version
-            pkg-artifact-file: "firezone-macos-client-1.5.20.pkg"
+            pkg-artifact-file: "firezone-macos-client-1.5.21.pkg"
             # mark:next-apple-version
-            release-name: apple-client-1.5.20
+            release-name: apple-client-1.5.21
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

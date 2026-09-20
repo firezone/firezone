@@ -15,6 +15,7 @@ defmodule PortalWeb.Policies do
   alias Portal.{Changes.Change, Policy, Authentication, PubSub}
   alias Phoenix.LiveView.AsyncResult
   alias __MODULE__.Database
+  alias PortalWeb.Policies.Postures
 
   @tod_pending_empty %{"on" => "", "off" => "", "days" => []}
   import Ecto.Changeset
@@ -309,7 +310,7 @@ defmodule PortalWeb.Policies do
             </div>
           </:col>
           <:col :let={policy} label="Conditions" class="w-28 lg:w-72">
-            <%= if length(policy.conditions) > 0 do %>
+            <%= if policy.conditions != [] or policy.postures do %>
               <span class="lg:hidden text-xs text-body">
                 {length(policy.conditions)} condition{if length(policy.conditions) != 1, do: "s"}
               </span>
@@ -319,6 +320,12 @@ defmodule PortalWeb.Policies do
                     {condition_short_label(condition.property)}
                   </span>
                 <% end %>
+                <span
+                  :if={policy.postures}
+                  class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-raised text-body border border-border"
+                >
+                  Posture
+                </span>
               </div>
             <% else %>
               <span class="text-xs text-muted">—</span>
@@ -355,6 +362,7 @@ defmodule PortalWeb.Policies do
         subject={@subject}
         panel={policy_panel_state(assigns)}
         conditions_state={policy_conditions_state(assigns)}
+        postures={@policy_postures}
         confirm_state={policy_confirm_state(assigns)}
         policy_authorizations={@policy_authorizations}
         policy_authorizations_page={@policy_authorizations_page}
@@ -397,7 +405,8 @@ defmodule PortalWeb.Policies do
   defp policy_confirm_state(assigns) do
     %{
       confirm_disable_policy: assigns.policy_confirm.disable?,
-      confirm_delete_policy: assigns.policy_confirm.delete?
+      confirm_delete_policy: assigns.policy_confirm.delete?,
+      confirm_breaking_change: not is_nil(assigns.policy_confirm.breaking_params)
     }
   end
 
@@ -428,8 +437,10 @@ defmodule PortalWeb.Policies do
       },
       policy_confirm: %{
         disable?: false,
-        delete?: false
-      }
+        delete?: false,
+        breaking_params: nil
+      },
+      policy_postures: Postures.for_account(socket.assigns.account)
     ]
   end
 
@@ -455,7 +466,36 @@ defmodule PortalWeb.Policies do
       form: form,
       selected_resource: policy.resource,
       tab: :overview
-    }) ++ init_condition_assigns(policy, socket)
+    }) ++
+      init_condition_assigns(policy, socket) ++
+      [policy_postures: Postures.for_account(socket.assigns.account, policy.postures)]
+  end
+
+  defp edit_changeset(socket, params) do
+    socket.assigns.selected_policy
+    |> change_policy(params)
+    |> validate_internet_resource_allowed(socket.assigns.subject)
+    |> Policy.default_flow_log_uploads_for_internet_resource(params, socket.assigns.subject)
+  end
+
+  # The same set the policies hook treats as breaking: saving it revokes every
+  # authorization the policy granted.
+  defp breaking_change?(changeset) do
+    Enum.any?(~w[group_id resource_id conditions postures flow_log_uploads_enabled]a, &Map.has_key?(changeset.changes, &1))
+  end
+
+  defp update_policy(socket, changeset) do
+    case Database.update_policy(changeset, socket.assigns.subject) do
+      {:ok, updated} ->
+        {:noreply,
+         socket
+         |> put_flash(:success, "Policy updated successfully.")
+         |> reload_live_table!("policies")
+         |> push_patch(to: live_table_path(socket, ~p"/#{socket.assigns.account}/policies/#{updated.id}"))}
+
+      {:error, changeset} ->
+        {:noreply, merge_state(socket, :policy_panel, form: to_form(changeset))}
+    end
   end
 
   defp merge_state(socket, key, attrs) do
@@ -595,11 +635,16 @@ defmodule PortalWeb.Policies do
     {:noreply, push_patch(socket, to: live_table_path(socket, ~p"/#{socket.assigns.account}/policies/new"))}
   end
 
+  def handle_event("postures_" <> _rest = event, params, socket) do
+    {:noreply, update(socket, :policy_postures, &Postures.handle_event(event, params, &1))}
+  end
+
   def handle_event("change_policy_form", %{"policy" => params}, socket) do
     params =
       params
       |> map_condition_params(empty_values: :drop)
       |> maybe_drop_unsupported_conditions(socket)
+      |> Postures.maybe_drop_unsupported(socket.assigns.policy_postures)
 
     changeset =
       if socket.assigns.live_action == :new do
@@ -617,6 +662,7 @@ defmodule PortalWeb.Policies do
       params
       |> map_condition_params(empty_values: :drop)
       |> maybe_drop_unsupported_conditions(socket)
+      |> Postures.maybe_drop_unsupported(socket.assigns.policy_postures)
 
     if socket.assigns.live_action == :new do
       case create_policy(params, socket.assigns.subject) do
@@ -631,28 +677,26 @@ defmodule PortalWeb.Policies do
           {:noreply, merge_state(socket, :policy_panel, form: to_form(changeset))}
       end
     else
-      policy = socket.assigns.selected_policy
+      changeset = edit_changeset(socket, params)
 
-      changeset =
-        change_policy(policy, params)
-        |> validate_internet_resource_allowed(socket.assigns.subject)
-        |> Policy.default_flow_log_uploads_for_internet_resource(
-          params,
-          socket.assigns.subject
-        )
-
-      case Database.update_policy(changeset, socket.assigns.subject) do
-        {:ok, updated} ->
-          {:noreply,
-           socket
-           |> put_flash(:success, "Policy updated successfully.")
-           |> reload_live_table!("policies")
-           |> push_patch(to: live_table_path(socket, ~p"/#{socket.assigns.account}/policies/#{updated.id}"))}
-
-        {:error, changeset} ->
-          {:noreply, merge_state(socket, :policy_panel, form: to_form(changeset))}
+      if changeset.valid? and breaking_change?(changeset) do
+        {:noreply, merge_state(socket, :policy_confirm, breaking_params: params)}
+      else
+        update_policy(socket, changeset)
       end
     end
+  end
+
+  def handle_event("save_policy_breaking_change", _params, socket) do
+    params = socket.assigns.policy_confirm.breaking_params
+
+    socket
+    |> merge_state(:policy_confirm, breaking_params: nil)
+    |> update_policy(edit_changeset(socket, params))
+  end
+
+  def handle_event("cancel_policy_breaking_change", _params, socket) do
+    {:noreply, merge_state(socket, :policy_confirm, breaking_params: nil)}
   end
 
   def handle_event("toggle_conditions_dropdown", _params, socket) do
@@ -887,7 +931,7 @@ defmodule PortalWeb.Policies do
 
   defp new_policy(attrs, %Authentication.Subject{} = subject) do
     %Policy{}
-    |> cast(attrs, ~w[description group_id resource_id flow_log_uploads_enabled]a)
+    |> cast(attrs, ~w[description group_id resource_id flow_log_uploads_enabled postures]a)
     |> validate_required(~w[group_id resource_id]a)
     |> cast_embed(:conditions, with: &Portal.Policies.Condition.changeset/3)
     |> Policy.changeset()
@@ -904,7 +948,7 @@ defmodule PortalWeb.Policies do
 
   defp change_policy(%Policy{} = policy, attrs \\ %{}) do
     policy
-    |> cast(attrs, ~w[description group_id resource_id flow_log_uploads_enabled]a)
+    |> cast(attrs, ~w[description group_id resource_id flow_log_uploads_enabled postures]a)
     |> validate_required(~w[group_id resource_id]a)
     |> cast_embed(:conditions, with: &Portal.Policies.Condition.changeset/3)
     |> Policy.changeset()

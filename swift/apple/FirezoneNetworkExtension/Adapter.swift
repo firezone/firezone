@@ -272,8 +272,6 @@ actor Adapter {
         isInternetResourceActive: internetResourceEnabled,
         tlsIdentity: tlsIdentity
       )
-    } catch let error as ConnlibError {
-      throw AdapterError.connlibConnectError(error.message())
     } catch {
       throw AdapterError.connlibConnectError(String(describing: error))
     }
@@ -377,6 +375,13 @@ actor Adapter {
     await eventLoopTask?.wait(timeout: .seconds(15))
 
     pendingUnreachableResources.removeAll()
+  }
+
+  /// Whether the portal has named this session yet.
+  func tunnelStatus() -> TunnelStatus {
+    guard accountSlug != nil || actorName != nil else { return .connecting }
+
+    return .connected(accountSlug: accountSlug, actorName: actorName)
   }
 
   /// Returns state changes and consumes fresh notifications in one UI polling operation.

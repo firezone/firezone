@@ -26,7 +26,6 @@ defmodule Portal.Changes.Consumer do
     "sites" => Hooks.Sites,
     "policies" => Hooks.Policies,
     "resources" => Hooks.Resources,
-    "static_device_pool_members" => Hooks.StaticDevicePoolMembers,
     "client_tokens" => Hooks.ClientTokens,
     "portal_sessions" => Hooks.PortalSessions,
     "google_auth_providers" => Hooks.AuthProviders,
@@ -44,7 +43,12 @@ defmodule Portal.Changes.Consumer do
     "iru_posture_providers" => Hooks.IruPostureProviders,
     "defender_posture_providers" => Hooks.DefenderPostureProviders,
     "santa_posture_providers" => Hooks.SantaPostureProviders,
-    "sentinelone_posture_providers" => Hooks.SentinelOnePostureProviders
+    "sentinelone_posture_providers" => Hooks.SentinelOnePostureProviders,
+    "intune_devices" => Hooks.IntuneDevices,
+    "iru_devices" => Hooks.IruDevices,
+    "defender_devices" => Hooks.DefenderDevices,
+    "santa_devices" => Hooks.SantaDevices,
+    "sentinelone_devices" => Hooks.SentinelOneDevices
   }
 
   @impl true
