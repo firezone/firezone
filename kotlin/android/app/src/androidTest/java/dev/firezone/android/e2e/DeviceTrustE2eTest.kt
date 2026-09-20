@@ -3,7 +3,6 @@ package dev.firezone.android.e2e
 
 import android.content.SharedPreferences
 import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
-import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.test.platform.app.InstrumentationRegistry
@@ -23,6 +22,8 @@ import dev.firezone.android.tunnel.FakeSession
 import dev.firezone.android.tunnel.FakeSessionFactory
 import dev.firezone.android.tunnel.TestRestrictions
 import dev.firezone.android.tunnel.TunnelService
+import dev.firezone.android.tunnel.awaitTextOnScreen
+import dev.firezone.android.tunnel.isTextOnScreen
 import dev.firezone.android.tunnel.finishAllActivities
 import dev.firezone.android.tunnel.grantNotificationPermission
 import dev.firezone.android.tunnel.grantVpnConsent
@@ -34,8 +35,8 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
-import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -167,7 +168,7 @@ class DeviceTrustE2eTest {
         launchApp()
 
         awaitText("Select your client certificate")
-        assertTrue("the required certificate can be skipped", composeRule.onAllNodesWithText("Skip").fetchSemanticsNodes().isEmpty())
+        assertFalse("the required certificate can be skipped", isTextOnScreen("Skip"))
     }
 
     @Test
@@ -264,13 +265,7 @@ class DeviceTrustE2eTest {
     private fun awaitText(
         text: String,
         substring: Boolean = false,
-    ) = await("\"$text\" on screen") {
-        // There are moments between activities with no Compose content at all,
-        // which `fetchSemanticsNodes` reports as an error rather than as an empty screen.
-        runCatching {
-            composeRule.onAllNodesWithText(text, substring = substring).fetchSemanticsNodes().isNotEmpty()
-        }.getOrDefault(false)
-    }
+    ) = awaitTextOnScreen(text, substring)
 
     private fun await(
         what: String,

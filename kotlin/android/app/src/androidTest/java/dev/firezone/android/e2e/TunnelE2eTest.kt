@@ -7,7 +7,6 @@ import android.content.Context
 import android.content.SharedPreferences
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
-import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.test.core.app.ApplicationProvider
@@ -25,6 +24,7 @@ import dev.firezone.android.tunnel.TunnelNotification
 import dev.firezone.android.tunnel.UNASSIGNABLE_IPV6
 import dev.firezone.android.tunnel.benchController
 import dev.firezone.android.tunnel.engineeringWiki
+import dev.firezone.android.tunnel.awaitTextOnScreen
 import dev.firezone.android.tunnel.finishAllActivities
 import dev.firezone.android.tunnel.grantNotificationPermission
 import dev.firezone.android.tunnel.grantVpnConsent
@@ -287,13 +287,7 @@ class TunnelE2eTest {
     private fun awaitText(
         text: String,
         substring: Boolean = false,
-    ) = await("\"$text\" on screen") {
-        // There are moments between activities with no Compose content at all, which
-        // `fetchSemanticsNodes` reports as an error rather than as an empty screen.
-        runCatching {
-            composeRule.onAllNodesWithText(text, substring = substring).fetchSemanticsNodes().isNotEmpty()
-        }.getOrDefault(false)
-    }
+    ) = awaitTextOnScreen(text, substring)
 
     private fun awaitDisconnectedNotification(): String? {
         await("the disconnected notification") { disconnectedNotification() != null }

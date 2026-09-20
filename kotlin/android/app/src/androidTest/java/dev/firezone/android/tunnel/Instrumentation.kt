@@ -92,18 +92,33 @@ fun awaitResumed(activity: Class<out Activity>) {
     }
 }
 
-// Reads the accessibility tree rather than Compose's own test rule, which has no deadline of its
-// own and waits for a composition that an Activity of the browser's can keep from ever settling.
-fun awaitTextOnScreen(text: String) {
+// Reads the accessibility tree rather than Compose's own test rule. The rule waits for the
+// composition to go idle and has no deadline of its own, and idleness is driven by frames, so an
+// emulator that stops producing them leaves the wait with nothing to end it.
+fun awaitTextOnScreen(
+    text: String,
+    substring: Boolean = false,
+) {
     val found =
         UiDevice
             .getInstance(InstrumentationRegistry.getInstrumentation())
-            .wait(Until.hasObject(By.text(text)), TimeUnit.SECONDS.toMillis(20))
+            .wait(Until.hasObject(selector(text, substring)), TimeUnit.SECONDS.toMillis(20))
 
     if (found != true) {
         throw AssertionError("Timed out waiting for \"$text\" on screen, showing ${resumedActivity()}")
     }
 }
+
+/** Whether [text] is on screen now, for asserting that something is absent. */
+fun isTextOnScreen(
+    text: String,
+    substring: Boolean = false,
+): Boolean = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation()).hasObject(selector(text, substring))
+
+private fun selector(
+    text: String,
+    substring: Boolean,
+) = if (substring) By.textContains(text) else By.text(text)
 
 private fun isResumed(activity: Class<out Activity>): Boolean {
     var resumed = false
