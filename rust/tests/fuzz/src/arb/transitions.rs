@@ -10,14 +10,16 @@ use super::topology::{
 };
 use super::values::{
     arb_address_description, arb_cidr_resource_address, arb_compatible_upstream_do53_servers,
-    arb_different_cidr_resource_address, arb_different_filters, arb_domain_name_string,
-    arb_ip_stack_kind, arb_system_dns_servers, arb_upstream_doh_servers,
+    arb_different_address_description, arb_different_cidr_resource_address,
+    arb_different_dns_resource_address, arb_different_filters, arb_different_ip_stack_kind,
+    arb_dns_resource_address, arb_ip_stack_kind, arb_system_dns_servers, arb_upstream_doh_servers,
 };
 use super::{dns_queries, packets};
 use crate::probe::FlowId;
 use crate::reference::ReferenceState;
-use crate::resource::{CidrResource, DevicePoolResource, DnsResource, Resource};
+use crate::resource::{CidrResource, DevicePoolResource, DnsResource, Resource, ResourceEdit};
 use crate::sim_net::{EdgeConfig, Host};
+use crate::stub_portal::StubPortal;
 use crate::transition::{Seq, Transition};
 
 #[derive(Clone, Copy, Debug)]
@@ -34,10 +36,7 @@ enum TransitionKind {
     Idle,
     // State-gated.
     AddResource,
-    ChangeCidrResourceAddress,
-    MoveResourceToNewSite,
-    ChangeFiltersOfResource,
-    ChangeResourceType,
+    EditResource,
     RemoveResource,
     ReconnectPortal,
     RestartClient,
@@ -56,17 +55,18 @@ enum ExistingFlow {
     Icmp(FlowId, Seq),
 }
 
-pub(super) fn generate(g: &mut Generator, state: &ReferenceState) -> Transition {
-    let addable_resources = state.resources_unknown_to_all_clients();
-    let cidr_resources = state.cidr_resources_on_any_client();
-    let move_resources = move_resource_candidates(state);
-    let filter_resources = state.resources_with_filters_on_any_client();
-    let replaceable_resources = state.replaceable_resources_on_any_client();
+pub(super) fn generate(
+    g: &mut Generator,
+    state: &ReferenceState,
+    portal: &StubPortal,
+) -> Transition {
+    let addable_resources = state.resources_unknown_to_all_clients(portal);
+    let editable_resources = state.editable_resources_on_any_client(portal);
     let removable_resources = state.removable_resource_ids();
-    let deauthorizable_resources = state.deauthorizable_resource_ids();
+    let deauthorizable_resources = state.deauthorizable_resource_ids(portal);
     let client_ids = state.all_client_ids();
     let dns_record_domains = state.dns_resource_domains();
-    let packet_targets = packets::targets(state);
+    let packet_targets = packets::targets(state, portal);
     let existing_flows = iter::empty()
         .chain(state.udp_flows().into_iter().map(ExistingFlow::Udp))
         .chain(
@@ -76,8 +76,8 @@ pub(super) fn generate(g: &mut Generator, state: &ReferenceState) -> Transition 
                 .map(|(flow_id, seq)| ExistingFlow::Icmp(flow_id, seq)),
         )
         .collect::<Vec<_>>();
-    let dns_query_targets = dns_queries::targets(state);
-    let listed_device_pools = state.listed_device_pools_on_any_client();
+    let dns_query_targets = dns_queries::targets(state, portal);
+    let listed_device_pools = state.listed_device_pool_ids_on_any_client(portal);
 
     // Build the legal action list. Data-plane actions stay more frequent because
     // they drive most of the tunnel state machine; libFuzzer chooses the concrete
@@ -95,10 +95,7 @@ pub(super) fn generate(g: &mut Generator, state: &ReferenceState) -> Transition 
         Some((K::RebootRelaysWhilePartitioned, 1)),
         Some((K::Idle, 1)),
         (!addable_resources.is_empty()).then_some((K::AddResource, 5)),
-        (!cidr_resources.is_empty()).then_some((K::ChangeCidrResourceAddress, 1)),
-        (!move_resources.is_empty()).then_some((K::MoveResourceToNewSite, 1)),
-        (!filter_resources.is_empty()).then_some((K::ChangeFiltersOfResource, 1)),
-        (!replaceable_resources.is_empty()).then_some((K::ChangeResourceType, 2)),
+        (!editable_resources.is_empty()).then_some((K::EditResource, 7)),
         (!removable_resources.is_empty()).then_some((K::RemoveResource, 1)),
         (!deauthorizable_resources.is_empty())
             .then_some((K::DeauthorizeWhileGatewayIsPartitioned, 1)),
@@ -113,7 +110,7 @@ pub(super) fn generate(g: &mut Generator, state: &ReferenceState) -> Transition 
     ]
     .into_iter()
     .flatten()
-    .collect::<SmallVec<[_; 24]>>();
+    .collect::<SmallVec<[_; 21]>>();
 
     // Weighted pick over the legal list.
     let kind = weighted_choose(g, &legal);
@@ -130,7 +127,7 @@ pub(super) fn generate(g: &mut Generator, state: &ReferenceState) -> Transition 
             Transition::UpdateUpstreamDoHServers(arb_upstream_doh_servers(g))
         }
         K::UpdateUpstreamSearchDomain => {
-            let domains = state.portal.dns_resources();
+            let domains = portal.dns_resources();
             let candidates = domains
                 .filter_map(|r| {
                     let (_, s) = r.address.split_once('.')?;
@@ -163,7 +160,7 @@ pub(super) fn generate(g: &mut Generator, state: &ReferenceState) -> Transition 
         K::DeployNewRelays => {
             // An ICEless connection survives relay deployment changes. Keeping one deployed
             // relay out of `connected` exercises refreshing an unmentioned live allocation.
-            let retained = if state.portal.iceless() && state.relays.len() >= 2 {
+            let retained = if portal.iceless() && state.relays.len() >= 2 {
                 let index = g.choose_index(state.relays.len());
                 let (relay_id, relay) = state.relays.iter().nth(index).unwrap();
 
@@ -198,34 +195,9 @@ pub(super) fn generate(g: &mut Generator, state: &ReferenceState) -> Transition 
             let resource = addable_resources[g.choose_index(addable_resources.len())].clone();
             Transition::AddResource(resource)
         }
-        K::ChangeCidrResourceAddress => {
-            let resource = cidr_resources[g.choose_index(cidr_resources.len())].clone();
-            let new_address = arb_different_cidr_resource_address(g, resource.address);
-            Transition::ChangeCidrResourceAddress {
-                resource,
-                new_address,
-            }
-        }
-        K::MoveResourceToNewSite => {
-            let (resource, new_site) = move_resources[g.choose_index(move_resources.len())].clone();
-            Transition::MoveResourceToNewSite { resource, new_site }
-        }
-        K::ChangeFiltersOfResource => {
-            let resource = filter_resources[g.choose_index(filter_resources.len())].clone();
-            let new_filters = arb_different_filters(g, resource.filters());
-            Transition::ChangeFiltersOfResource {
-                resource,
-                new_filters,
-            }
-        }
-        K::ChangeResourceType => {
-            let old_resource =
-                replaceable_resources[g.choose_index(replaceable_resources.len())].clone();
-            let new_resource = arb_resource_with_different_type(g, state, &old_resource);
-            Transition::ChangeResourceType {
-                old_resource,
-                new_resource,
-            }
+        K::EditResource => {
+            let resource = editable_resources[g.choose_index(editable_resources.len())].clone();
+            Transition::EditResource(arb_resource_edit(g, state, portal, resource))
         }
         K::RemoveResource => {
             let id = removable_resources[g.choose_index(removable_resources.len())];
@@ -278,39 +250,139 @@ pub(super) fn generate(g: &mut Generator, state: &ReferenceState) -> Transition 
             dns_queries::generate(g, target, state)
         }
         K::UpdateDevicePoolMembers => {
-            let (pool_id, old_members) =
-                listed_device_pools[g.choose_index(listed_device_pools.len())].clone();
+            let pool_id = listed_device_pools[g.choose_index(listed_device_pools.len())];
             let members = packets::arb_pool_members(g, state);
-            let removed = old_members.difference(&members).copied().collect();
+            let revoked = portal.peer_authorizations_revoked_by(pool_id, &members);
 
             Transition::UpdateDevicePoolMembers {
                 pool_id,
                 members,
-                removed,
+                revoked,
             }
         }
     }
 }
 
-fn move_resource_candidates(state: &ReferenceState) -> Vec<(Resource, Site)> {
-    let sites = state.regular_sites();
+fn arb_resource_edit(
+    g: &mut Generator,
+    state: &ReferenceState,
+    portal: &StubPortal,
+    old: Resource,
+) -> ResourceEdit {
+    if g.flip(25) {
+        let new = arb_resource_with_different_type(g, portal, &old);
 
-    state
-        .cidr_and_dns_resources_on_any_client()
-        .into_iter()
-        .flat_map(|resource| {
-            let candidate = resource.clone();
-            sites
-                .iter()
-                .filter(move |site| !candidate.is_exclusively_at(site))
-                .map(move |site| (resource.clone(), site.clone()))
-        })
-        .collect::<Vec<_>>()
+        return ResourceEdit { old, new };
+    }
+
+    let mut new = old.clone();
+
+    // Each arm names every field of its resource and edits it through that binding, so a
+    // new field fails to compile until it has an edit here or is ignored explicitly.
+    match &mut new {
+        Resource::Dns(DnsResource {
+            id: _,
+            address,
+            name,
+            address_description,
+            sites,
+            ip_stack,
+            filters,
+        }) => {
+            let edits: [Option<Box<dyn FnOnce(&mut Generator) + '_>>; 6] = [
+                Some(Box::new(|g| {
+                    *address = arb_different_dns_resource_address(g, address, state)
+                })),
+                Some(Box::new(|g| *name = arb_different_name(g, name))),
+                Some(Box::new(|g| {
+                    *address_description = arb_different_address_description(g, address_description)
+                })),
+                has_alternative_site(sites, portal)
+                    .then_some(Box::new(|g| *sites = arb_different_site(g, sites, portal))),
+                Some(Box::new(|g| {
+                    *ip_stack = arb_different_ip_stack_kind(g, *ip_stack)
+                })),
+                Some(Box::new(|g| *filters = arb_different_filters(g, filters))),
+            ];
+            let mut edits = edits.into_iter().flatten().collect::<SmallVec<[_; 6]>>();
+
+            edits.swap_remove(g.choose_index(edits.len()))(g);
+        }
+        Resource::Cidr(CidrResource {
+            id: _,
+            address,
+            name,
+            address_description,
+            sites,
+            filters,
+        }) => {
+            let edits: [Option<Box<dyn FnOnce(&mut Generator) + '_>>; 5] = [
+                Some(Box::new(|g| {
+                    *address = arb_different_cidr_resource_address(g, *address)
+                })),
+                Some(Box::new(|g| *name = arb_different_name(g, name))),
+                Some(Box::new(|g| {
+                    *address_description = arb_different_address_description(g, address_description)
+                })),
+                has_alternative_site(sites, portal)
+                    .then_some(Box::new(|g| *sites = arb_different_site(g, sites, portal))),
+                Some(Box::new(|g| *filters = arb_different_filters(g, filters))),
+            ];
+            let mut edits = edits.into_iter().flatten().collect::<SmallVec<[_; 5]>>();
+
+            edits.swap_remove(g.choose_index(edits.len()))(g);
+        }
+        Resource::DevicePool(DevicePoolResource {
+            id: _,
+            name,
+            filters,
+        }) => {
+            let mut edits = SmallVec::<[Box<dyn FnOnce(&mut Generator) + '_>; 2]>::from_buf([
+                Box::new(|g| *name = arb_different_name(g, name)),
+                Box::new(|g| *filters = arb_different_filters(g, filters)),
+            ]);
+
+            edits.swap_remove(g.choose_index(edits.len()))(g);
+        }
+        Resource::Internet(_) => {
+            unreachable!("the Portal API does not allow editing the Internet Resource")
+        }
+    }
+
+    ResourceEdit { old, new }
+}
+
+fn has_alternative_site(current: &[Site], portal: &StubPortal) -> bool {
+    portal
+        .regular_sites()
+        .iter()
+        .any(|site| current.len() != 1 || current.first() != Some(site))
+}
+
+fn arb_different_site(g: &mut Generator, current: &[Site], portal: &StubPortal) -> Vec<Site> {
+    let sites = portal
+        .regular_sites()
+        .iter()
+        .filter(|site| current.len() != 1 || current.first() != Some(*site))
+        .collect::<SmallVec<[_; 3]>>();
+    let site = sites[g.choose_index(sites.len())];
+
+    vec![site.clone()]
+}
+
+fn arb_different_name(g: &mut Generator, current: &str) -> String {
+    let name = g.lower_ascii(4, 10);
+
+    if name != current {
+        return name;
+    }
+
+    format!("{name}-changed")
 }
 
 fn arb_resource_with_different_type(
     g: &mut Generator,
-    state: &ReferenceState,
+    portal: &StubPortal,
     resource: &Resource,
 ) -> Resource {
     #[derive(Clone, Copy)]
@@ -333,7 +405,7 @@ fn arb_resource_with_different_type(
         .sites()
         .first()
         .cloned()
-        .unwrap_or_else(|| pick_site(g, state.regular_sites()).clone());
+        .unwrap_or_else(|| pick_site(g, portal.regular_sites()).clone());
     let id = resource.id();
     let name = resource.name().to_owned();
     let filters = resource.filters().to_vec();
@@ -347,24 +419,15 @@ fn arb_resource_with_different_type(
             sites: vec![site],
             filters,
         }),
-        ResourceType::Dns => {
-            let base = arb_domain_name_string(g, 2, 3);
-            let address = match g.choose_index(3) {
-                0 => base,
-                1 => format!("*.{base}"),
-                _ => format!("**.{base}"),
-            };
-
-            Resource::Dns(DnsResource {
-                id,
-                address,
-                name,
-                address_description: arb_address_description(g),
-                sites: vec![site],
-                ip_stack: arb_ip_stack_kind(g),
-                filters,
-            })
-        }
+        ResourceType::Dns => Resource::Dns(DnsResource {
+            id,
+            address: arb_dns_resource_address(g),
+            name,
+            address_description: arb_address_description(g),
+            sites: vec![site],
+            ip_stack: arb_ip_stack_kind(g),
+            filters,
+        }),
         ResourceType::DevicePool => Resource::DevicePool(DevicePoolResource { id, name, filters }),
     }
 }

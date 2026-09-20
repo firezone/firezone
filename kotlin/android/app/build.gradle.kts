@@ -275,7 +275,7 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-process:2.11.0")
 
     // Navigation
-    implementation("androidx.navigation:navigation-compose:2.9.7")
+    implementation("androidx.navigation:navigation-compose:2.10.0")
 
     // Hilt
     implementation("com.google.dagger:hilt-android:2.60.1")
@@ -337,7 +337,7 @@ dependencies {
     implementation(cargo.rustls.platform.verifier)
 
     // Sentry
-    implementation("io.sentry:sentry-android:8.53.0")
+    implementation("io.sentry:sentry-android:8.54.0")
 
     // Compose
     val composeBom = platform("androidx.compose:compose-bom:2026.08.00")
@@ -351,14 +351,14 @@ dependencies {
     implementation("androidx.activity:activity-compose:1.13.0")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.11.0")
     // Immutable collections give Compose stable (skippable) parameter types.
-    implementation("org.jetbrains.kotlinx:kotlinx-collections-immutable:0.5.1")
+    implementation("org.jetbrains.kotlinx:kotlinx-collections-immutable:0.5.2")
 
     // Slack's Compose lint checks. Lint check JARs are built against a lint API major
     // version (`lint = AGP + 23`): AGP 9.3 is lint 32.x, and 1.5.2 is built against lint
     // 32.2.x, so it loads. 1.5.0 rewrote ComposeViewModelForwarding to flag forwarding
     // inside nested blocks; our UI model that wraps a resource is named `ResourceUiModel`
     // (not `*ViewModel`) so the check doesn't mistake it for a real ViewModel.
-    lintChecks("com.slack.lint.compose:compose-lint-checks:1.5.5")
+    lintChecks("com.slack.lint.compose:compose-lint-checks:1.6.0")
 
     // Screenshots. Roborazzi draws Compose through Robolectric's native graphics, so the
     // screens render on the JVM without an emulator.
@@ -367,8 +367,8 @@ dependencies {
     // `createComposeRule` launches `androidx.activity.ComponentActivity`, and Robolectric
     // resolves activities against the debug manifest, which this artifact declares it in.
     debugImplementation("androidx.compose.ui:ui-test-manifest")
-    testImplementation("io.github.takahirom.roborazzi:roborazzi:1.72.0")
-    testImplementation("io.github.takahirom.roborazzi:roborazzi-compose:1.72.0")
+    testImplementation("io.github.takahirom.roborazzi:roborazzi:1.73.0")
+    testImplementation("io.github.takahirom.roborazzi:roborazzi-compose:1.73.0")
     testImplementation("org.robolectric:robolectric:4.16.1")
 }
 

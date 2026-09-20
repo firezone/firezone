@@ -1,5 +1,4 @@
 //! Provides the fuzz harness for connlib's tunnel state machine.
-#![allow(dead_code)]
 #![allow(clippy::unwrap_used, clippy::unwrap_in_result)]
 #![allow(clippy::print_stdout, clippy::print_stderr)]
 
@@ -39,8 +38,8 @@ pub mod tunnel_proto {
     pub use super::arb::Generator;
     pub use super::flux_capacitor::FluxCapacitor;
     pub use super::reference::ReferenceState;
+    pub use super::stub_portal::StubPortal;
     pub use super::sut::TunnelTest;
-    pub use super::transition::Transition;
 
     /// Initializes an error-detecting subscriber for the current fuzz case.
     ///
@@ -58,7 +57,7 @@ pub mod tunnel_proto {
         });
 
         tracing_subscriber::registry()
-            .with(PanicOnErrorEvents::new(0))
+            .with(PanicOnErrorEvents::new())
             .with(log_layer)
             .set_default()
     }
