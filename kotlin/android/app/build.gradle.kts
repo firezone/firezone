@@ -275,7 +275,7 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-process:2.11.0")
 
     // Navigation
-    implementation("androidx.navigation:navigation-compose:2.10.0")
+    implementation("androidx.navigation:navigation-compose:2.10.1")
 
     // Hilt
     implementation("com.google.dagger:hilt-android:2.60.1")
@@ -293,7 +293,7 @@ dependencies {
     androidTestImplementation("androidx.test.espresso:espresso-intents:3.7.0")
     androidTestImplementation("androidx.test.uiautomator:uiautomator:2.4.0")
     // Mints the test certificates; the platform offers no way to build one.
-    androidTestImplementation("org.bouncycastle:bcpkix-jdk18on:1.85")
+    androidTestImplementation("org.bouncycastle:bcpkix-jdk18on:1.86")
     // Unit Tests
     testImplementation("com.google.dagger:hilt-android-testing:2.60.1")
 
@@ -320,7 +320,7 @@ dependencies {
     androidTestImplementation("androidx.test.ext:junit:1.3.0")
 
     // Import the BoM for the Firebase platform
-    implementation(platform("com.google.firebase:firebase-bom:34.18.0"))
+    implementation(platform("com.google.firebase:firebase-bom:34.19.0"))
 
     // Add the dependencies for the Crashlytics and Analytics libraries
     // When using the BoM, you don't specify versions in Firebase library dependencies
@@ -337,10 +337,10 @@ dependencies {
     implementation(cargo.rustls.platform.verifier)
 
     // Sentry
-    implementation("io.sentry:sentry-android:8.54.0")
+    implementation("io.sentry:sentry-android:8.56.0")
 
     // Compose
-    val composeBom = platform("androidx.compose:compose-bom:2026.08.00")
+    val composeBom = platform("androidx.compose:compose-bom:2026.09.00")
     implementation(composeBom)
     androidTestImplementation(composeBom)
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
@@ -367,8 +367,8 @@ dependencies {
     // `createComposeRule` launches `androidx.activity.ComponentActivity`, and Robolectric
     // resolves activities against the debug manifest, which this artifact declares it in.
     debugImplementation("androidx.compose.ui:ui-test-manifest")
-    testImplementation("io.github.takahirom.roborazzi:roborazzi:1.73.0")
-    testImplementation("io.github.takahirom.roborazzi:roborazzi-compose:1.73.0")
+    testImplementation("io.github.takahirom.roborazzi:roborazzi:1.74.0")
+    testImplementation("io.github.takahirom.roborazzi:roborazzi-compose:1.74.0")
     testImplementation("org.robolectric:robolectric:4.16.1")
 }
 
