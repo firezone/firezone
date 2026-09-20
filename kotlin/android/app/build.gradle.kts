@@ -348,7 +348,7 @@ dependencies {
     implementation("io.sentry:sentry-android:8.54.0")
 
     // Compose
-    val composeBom = platform("androidx.compose:compose-bom:2026.08.00")
+    val composeBom = platform("androidx.compose:compose-bom:2026.09.00")
     implementation(composeBom)
     androidTestImplementation(composeBom)
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
