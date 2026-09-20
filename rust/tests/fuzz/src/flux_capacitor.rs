@@ -31,18 +31,13 @@ impl FluxCapacitor {
     const SMALL_TICK: Duration = Duration::from_millis(10);
     const LARGE_TICK: Duration = Duration::from_millis(100);
 
-    #[expect(private_bounds)]
-    pub(crate) fn now<T>(&self) -> T
+    pub fn now<T>(&self) -> T
     where
         T: PickNow,
     {
         let (now, utc_now) = *self.now.lock().unwrap();
 
         T::pick_now(now, utc_now)
-    }
-
-    pub fn now_instant(&self) -> Instant {
-        self.now()
     }
 
     pub(crate) fn small_tick(&self) {
@@ -88,23 +83,12 @@ impl FluxCapacitor {
         }
     }
 
-    pub(crate) fn reset(&self) {
-        let elapsed = self.elapsed();
-
-        {
-            let mut guard = self.now.lock().unwrap();
-
-            guard.0 -= elapsed;
-            guard.1 -= elapsed;
-        }
-    }
-
     fn elapsed(&self) -> Duration {
         self.now::<Instant>().duration_since(self.start)
     }
 }
 
-trait PickNow {
+pub trait PickNow {
     fn pick_now(now: Instant, utc_now: DateTime<Utc>) -> Self;
 }
 

@@ -18,7 +18,7 @@ CURRENT_PROJECT_VERSION = 0
 #include? "dynamic_build_number.xcconfig"
 
 // mark:next-apple-version
-MARKETING_VERSION=1.5.20
+MARKETING_VERSION=1.5.21
 
 // Keep telemetry off unless an official release build explicitly opts in. This
 // also covers CI jobs that invoke `xcodebuild` directly instead of a release script.

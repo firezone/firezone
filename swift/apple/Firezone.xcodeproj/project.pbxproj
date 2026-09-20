@@ -23,6 +23,8 @@
 		8D0000012D4100000004 /* NetworkPathUpdates.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D0000012D41000000A2 /* NetworkPathUpdates.swift */; };
 		8D0000012D4100000005 /* ProviderCommand.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D0000012D41000000B1 /* ProviderCommand.swift */; };
 		8D0000012D4100000006 /* ProviderCommand.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D0000012D41000000B1 /* ProviderCommand.swift */; };
+		8D0000012D4100000007 /* ConnlibError+Description.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D0000012D41000000C1 /* ConnlibError+Description.swift */; };
+		8D0000012D4100000008 /* ConnlibError+Description.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D0000012D41000000C1 /* ConnlibError+Description.swift */; };
 		8D41B9A52D15DD6800D16065 /* TunnelLogArchive.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D41B9A42D15DD6800D16065 /* TunnelLogArchive.swift */; };
 		8D41B9A62D15DD6800D16065 /* TunnelLogArchive.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D41B9A42D15DD6800D16065 /* TunnelLogArchive.swift */; };
 		8D5047F82CE6AA22009802E9 /* FirezoneKit in Frameworks */ = {isa = PBXBuildFile; productRef = 8D5047F72CE6AA22009802E9 /* FirezoneKit */; };
@@ -53,6 +55,10 @@
 		FZ0CLI012E80000000000008 /* ConnectCommand.swift in Sources */ = {isa = PBXBuildFile; fileRef = FZ0CLI012E80000000000016 /* ConnectCommand.swift */; platformFilters = (macos, ); };
 		FZ0CLI012E80000000000009 /* SignOutCommand.swift in Sources */ = {isa = PBXBuildFile; fileRef = FZ0CLI012E80000000000017 /* SignOutCommand.swift */; platformFilters = (macos, ); };
 		FZ0CLI012E8000000000000A /* ExtensionCommand.swift in Sources */ = {isa = PBXBuildFile; fileRef = FZ0CLI012E80000000000018 /* ExtensionCommand.swift */; platformFilters = (macos, ); };
+		FZ0CLI012E8000000000000B /* StatusCommand.swift in Sources */ = {isa = PBXBuildFile; fileRef = FZ0CLI012E80000000000019 /* StatusCommand.swift */; platformFilters = (macos, ); };
+		FZ0CLI012E8000000000000C /* ResourcesCommand.swift in Sources */ = {isa = PBXBuildFile; fileRef = FZ0CLI012E8000000000001A /* ResourcesCommand.swift */; platformFilters = (macos, ); };
+		FZ0CLI012E8000000000000D /* InternetResourceCommand.swift in Sources */ = {isa = PBXBuildFile; fileRef = FZ0CLI012E8000000000001B /* InternetResourceCommand.swift */; platformFilters = (macos, ); };
+		FZ0CLI012E8000000000000E /* DisconnectCommand.swift in Sources */ = {isa = PBXBuildFile; fileRef = FZ0CLI012E8000000000001C /* DisconnectCommand.swift */; platformFilters = (macos, ); };
 		FZ0CLI012E80000000000007 /* TunnelSupervisor.swift in Sources */ = {isa = PBXBuildFile; fileRef = FZ0CLI012E80000000000015 /* TunnelSupervisor.swift */; platformFilters = (macos, ); };
 		FZ0CLI012E80000000000003 /* ArgumentParser in Frameworks */ = {isa = PBXBuildFile; productRef = FZ0CLI012E80000000000030 /* ArgumentParser */; platformFilters = (macos, ); };
 		FZUIT0012E90000000000001 /* AppScreenshotTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FZUIT0012E90000000000010 /* AppScreenshotTests.swift */; };
@@ -131,6 +137,7 @@
 		6FFECD5B2AD6998400E00273 /* SystemConfiguration.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SystemConfiguration.framework; path = System/Library/Frameworks/SystemConfiguration.framework; sourceTree = SDKROOT; };
 		8D0000012D41000000A2 /* NetworkPathUpdates.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkPathUpdates.swift; sourceTree = "<group>"; };
 		8D0000012D41000000B1 /* ProviderCommand.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderCommand.swift; sourceTree = "<group>"; };
+		8D0000012D41000000C1 /* ConnlibError+Description.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ConnlibError+Description.swift"; sourceTree = "<group>"; };
 		8D1D405C2CFF6F5200E669F9 /* Firezone.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Firezone.entitlements; sourceTree = "<group>"; };
 		8D1D405D2CFF6F5D00E669F9 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		8D41B9A42D15DD6800D16065 /* TunnelLogArchive.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TunnelLogArchive.swift; sourceTree = "<group>"; };
@@ -162,6 +169,12 @@
 		FZ0CLI012E80000000000016 /* ConnectCommand.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectCommand.swift; sourceTree = "<group>"; };
 		FZ0CLI012E80000000000017 /* SignOutCommand.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SignOutCommand.swift; sourceTree = "<group>"; };
 		FZ0CLI012E80000000000018 /* ExtensionCommand.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExtensionCommand.swift; sourceTree = "<group>"; };
+		FZ0CLI012E80000000000019 /* StatusCommand.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusCommand.swift; sourceTree = "<group>"; };
+		FZ0CLI012E8000000000001A /* ResourcesCommand.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResourcesCommand.swift; sourceTree = "<group>"; };
+		FZ0CLI012E8000000000001B /* InternetResourceCommand.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InternetResourceCommand.swift; sourceTree = "<group>"; };
+		FZ0CLI012E8000000000001C /* DisconnectCommand.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DisconnectCommand.swift; sourceTree = "<group>"; };
+		FZ0CLI012E8000000000001D /* firezone-cli */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = "firezone-cli"; sourceTree = "<group>"; };
+		FZ0CLI012E8000000000001E /* firezone */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = firezone; sourceTree = "<group>"; };
 		FZ0CLI012E80000000000015 /* TunnelSupervisor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TunnelSupervisor.swift; sourceTree = "<group>"; };
 		FZUIT0012E90000000000010 /* AppScreenshotTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppScreenshotTests.swift; sourceTree = "<group>"; };
 		FZUIT0012E90000000000012 /* ScreenshotDelivery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenshotDelivery.swift; sourceTree = "<group>"; };
@@ -227,6 +240,7 @@
 				6C09DC14A4A04715A37BC04C /* Channel.swift */,
 				8D0000012D41000000A2 /* NetworkPathUpdates.swift */,
 				8D0000012D41000000B1 /* ProviderCommand.swift */,
+				8D0000012D41000000C1 /* ConnlibError+Description.swift */,
 				E14DC5E933BD4F63A844A8A6 /* SessionEventLoop.swift */,
 				05CF1CF6290B1CEE00CF4755 /* FirezoneNetworkExtension.entitlements */,
 				8D5047E82CE6A8F4009802E9 /* main.swift */,
@@ -355,6 +369,12 @@
 				FZ0CLI012E80000000000016 /* ConnectCommand.swift */,
 				FZ0CLI012E80000000000017 /* SignOutCommand.swift */,
 				FZ0CLI012E80000000000018 /* ExtensionCommand.swift */,
+				FZ0CLI012E80000000000019 /* StatusCommand.swift */,
+				FZ0CLI012E8000000000001A /* ResourcesCommand.swift */,
+				FZ0CLI012E8000000000001B /* InternetResourceCommand.swift */,
+				FZ0CLI012E8000000000001C /* DisconnectCommand.swift */,
+				FZ0CLI012E8000000000001E /* firezone */,
+				FZ0CLI012E8000000000001D /* firezone-cli */,
 				FZ0CLI012E80000000000015 /* TunnelSupervisor.swift */,
 			);
 			path = CLI;
@@ -617,7 +637,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "set -eu\nif [ \"${PLATFORM_NAME}\" != \"macosx\" ]; then\n  exit 0\nfi\n# The headless client is the app's own binary under another name, so that it runs\n# with the app's identity and sees the app's VPN configuration.\nln -sf \"${EXECUTABLE_NAME}\" \"${TARGET_BUILD_DIR}/${EXECUTABLE_FOLDER_PATH}/firezone-cli\"\n";
+			shellScript = "set -eu\nif [ \"${PLATFORM_NAME}\" != \"macosx\" ]; then\n  exit 0\nfi\n# The headless client is the app's own binary under another name, so that it runs\n# with the app's identity and sees the app's VPN configuration.\nln -sf \"${EXECUTABLE_NAME}\" \"${TARGET_BUILD_DIR}/${EXECUTABLE_FOLDER_PATH}/firezone-cli\"\n# A directory of its own so that only the CLI goes on the PATH, not everything in\n# Contents/MacOS. Wrapper scripts rather than symlinks: macOS derives an app's bundle\n# from the path its binary was launched through, and only Contents/MacOS counts.\n# Not the resources build phase: that is shared with iOS, whose bundle is flat, so\n# `firezone` would land on the app's own `Firezone` executable.\nbin=\"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/bin\"\nmkdir -p \"${bin}\"\n/usr/bin/install -m 0755 \"${SRCROOT}/Firezone/CLI/firezone\" \"${SRCROOT}/Firezone/CLI/firezone-cli\" \"${bin}\"\n";
 		};
 		8D40C0B72DD1335C00ACF8D7 /* Generate build number */ = {
 			isa = PBXShellScriptBuildPhase;
@@ -715,6 +735,7 @@
 				146C8E809FF744D18C053A79 /* Channel.swift in Sources */,
 				8D0000012D4100000003 /* NetworkPathUpdates.swift in Sources */,
 				8D0000012D4100000005 /* ProviderCommand.swift in Sources */,
+				8D0000012D4100000007 /* ConnlibError+Description.swift in Sources */,
 				C4B08E1145E04823BC25E00D /* SessionEventLoop.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -731,6 +752,7 @@
 				C1892134991C462C8E137DE3 /* Channel.swift in Sources */,
 				8D0000012D4100000004 /* NetworkPathUpdates.swift in Sources */,
 				8D0000012D4100000006 /* ProviderCommand.swift in Sources */,
+				8D0000012D4100000008 /* ConnlibError+Description.swift in Sources */,
 				6571861AB9324D6A9395BDB3 /* SessionEventLoop.swift in Sources */,
 				858AA13A09A55E3B1DD5DEDA /* Adapter.swift in Sources */,
 				CCC04BEF428B758D9BB5F842 /* connlib.swift in Sources */,
@@ -751,6 +773,10 @@
 				FZ0CLI012E80000000000008 /* ConnectCommand.swift in Sources */,
 				FZ0CLI012E80000000000009 /* SignOutCommand.swift in Sources */,
 				FZ0CLI012E8000000000000A /* ExtensionCommand.swift in Sources */,
+				FZ0CLI012E8000000000000B /* StatusCommand.swift in Sources */,
+				FZ0CLI012E8000000000000C /* ResourcesCommand.swift in Sources */,
+				FZ0CLI012E8000000000000D /* InternetResourceCommand.swift in Sources */,
+				FZ0CLI012E8000000000000E /* DisconnectCommand.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

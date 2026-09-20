@@ -22,6 +22,7 @@ thiserror = { workspace = true }
 
 [dev-dependencies]
 divan = { workspace = true }
+test-case = { workspace = true }
 test-strategy = { workspace = true }
 
 [[bench]]

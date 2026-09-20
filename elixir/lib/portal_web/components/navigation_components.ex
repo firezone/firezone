@@ -238,15 +238,13 @@ defmodule PortalWeb.NavigationComponents do
             >
               Sites
             </.sidebar_item>
-            <%!-- Signposts the rename for admins who knew this page as Clients. --%>
             <.sidebar_item
               current_path={@current_path}
               navigate={~p"/#{@account}/devices"}
               icon="ri-computer-line"
               badge="NEW"
             >
-              <span class="line-through decoration-[1.3px]">Clients</span>
-              <span class="ml-0.5">Devices</span>
+              Devices
             </.sidebar_item>
           </ul>
         </div>
@@ -497,6 +495,7 @@ defmodule PortalWeb.NavigationComponents do
           navigate={~p"/#{@account}/settings/device_posture"}
           tab_path="settings/device_posture"
           icon="ri-shield-star-fill"
+          badge="NEW"
         >
           Device Posture
         </.settings_tab>
@@ -803,6 +802,7 @@ defmodule PortalWeb.NavigationComponents do
   """
   attr :path, :string, required: true
   attr :fragment, :string, required: false, default: ""
+  attr :class, :string, default: nil
   slot :inner_block, required: true
   attr :rest, :global
 
@@ -810,13 +810,11 @@ defmodule PortalWeb.NavigationComponents do
     ~H"""
     <.link
       href={"https://www.firezone.dev#{@path}?utm_source=product##{@fragment}"}
-      class={link_style()}
+      class={@class || link_style()}
       target="_blank"
       rel="noopener noreferrer"
       {@rest}
-    >
-      {render_slot(@inner_block)}
-    </.link>
+    >{render_slot(@inner_block)}</.link>
     """
   end
 

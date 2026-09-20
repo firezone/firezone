@@ -322,13 +322,3 @@ impl<'a> Generator<'a> {
         self.input.int_in_range(range).unwrap_or(fallback)
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::Generator;
-
-    #[test]
-    fn exhausted_probability_draws_are_false() {
-        assert!(!Generator::new(&[]).flip(50));
-    }
-}

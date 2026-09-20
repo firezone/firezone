@@ -89,7 +89,7 @@ class AuthActivity : AppCompatActivity(R.layout.activity_auth) {
     }
 
     private fun completeAuthFlow() {
-        TunnelService.start(this)
+        TunnelService.start(this, TunnelService.StartSource.AUTH_TAB)
         startActivity(mainActivityHandoffIntent(this))
         finish()
     }

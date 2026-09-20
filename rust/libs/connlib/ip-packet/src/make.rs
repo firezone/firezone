@@ -246,6 +246,11 @@ fn icmp_dest_unreachable(
     icmpv4: crate::icmpv4::DestUnreachableHeader,
     icmpv6: crate::icmpv6::DestUnreachableCode,
 ) -> Result<IpPacket> {
+    anyhow::ensure!(
+        original_packet.icmp_error()?.is_none(),
+        "Cannot generate an ICMP error in response to another ICMP error"
+    );
+
     let src = original_packet.source();
     let dst = original_packet.destination();
 
@@ -475,6 +480,38 @@ mod tests {
         );
         assert_eq!(icmp_error.source(), IpAddr::V6(Ipv6Addr::LOCALHOST));
         assert!(matches!(icmp_error.icmp_error(), Ok(Some(_))));
+    }
+
+    #[test_case::test_case("10.0.0.1", "10.0.0.2"; "ipv4")]
+    #[test_case::test_case("fd00::1", "fd00::2"; "ipv6")]
+    fn errors_can_quote_echo_replies_but_cannot_generate_more_errors(src: &str, dst: &str) {
+        let src = src.parse::<IpAddr>().unwrap();
+        let dst = dst.parse::<IpAddr>().unwrap();
+        let reply = icmp_reply_packet(src, dst, 7, 42, &[]).unwrap();
+        let error = icmp_dest_unreachable_prohibited(&reply).unwrap();
+
+        let (failed, _) = error.icmp_error().unwrap().unwrap();
+        assert_eq!(failed.src(), src);
+        assert_eq!(failed.dst(), dst);
+        assert_eq!(failed.src_proto(), crate::Protocol::IcmpEcho(42));
+        assert!(icmp_dest_unreachable_prohibited(&error).is_err());
+        assert!(icmp_dest_unreachable_network(&error).is_err());
+    }
+
+    #[test_case::test_case("10.0.0.1", "10.0.0.2", 3; "ipv4_missing_quote")]
+    #[test_case::test_case("10.0.0.1", "10.0.0.2", 12; "ipv4_unsupported")]
+    #[test_case::test_case("fd00::1", "fd00::2", 1; "ipv6_missing_quote")]
+    #[test_case::test_case("fd00::1", "fd00::2", 4; "ipv6_unsupported")]
+    fn unsupported_icmp_errors_cannot_generate_more_errors(src: &str, dst: &str, error_type: u8) {
+        let src = src.parse::<IpAddr>().unwrap();
+        let dst = dst.parse::<IpAddr>().unwrap();
+        let mut packet = icmp_request_packet(src, dst, 7, 42, &[]).unwrap();
+        packet.payload_mut()[0] = error_type;
+        packet.compute_checksums();
+
+        assert!(packet.icmp_error().is_err());
+        assert!(icmp_dest_unreachable_prohibited(&packet).is_err());
+        assert!(icmp_dest_unreachable_network(&packet).is_err());
     }
 
     fn payload(max_size: usize) -> impl Strategy<Value = Vec<u8>> {

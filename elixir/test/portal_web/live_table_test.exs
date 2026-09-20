@@ -3,6 +3,24 @@ defmodule PortalWeb.LiveTableTest do
   import PortalWeb.LiveTable
   import Portal.SubjectFixtures
 
+  test "paginator displays capped counts and row ranges beyond the cap" do
+    metadata = %Portal.Repo.OffsetPaginator.Metadata{
+      count: 10_000,
+      count_limited: true,
+      offset: 10_000,
+      limit: 50,
+      previous_offset: 9950,
+      next_offset: 10_050
+    }
+
+    html = render_component(&paginator/1, id: "logs", metadata: metadata, rows_count: 50)
+
+    assert html
+           |> Floki.parse_fragment!()
+           |> Floki.text()
+           |> String.replace(~r/[\s]+/, " ") =~ "Showing 10001—10050 of 10,000+"
+  end
+
   describe "<.live_table /> component" do
     setup do
       assigns = %{

@@ -122,7 +122,7 @@ internal class SplashViewModel
 
             // If this is the initial launch and connectOnStart is true, try to connect
             if (isInitialLaunch && connectOnStart) {
-                TunnelService.start(activity)
+                TunnelService.start(activity, TunnelService.StartSource.CONNECT_ON_START)
                 actionMutableStateFlow.value = ViewAction.NavigateToSession
                 return
             }

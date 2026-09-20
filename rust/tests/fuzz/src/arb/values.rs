@@ -1,7 +1,9 @@
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
 use connlib_model::IpStack;
+use dns_types::DomainName;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
+use tunnel_proto::dns;
 use tunnel_proto::messages::{Filter, PortRange, UpstreamDo53, UpstreamDoH};
 
 use super::context::Generator;
@@ -79,11 +81,53 @@ pub(super) fn arb_address_description(g: &mut Generator) -> Option<String> {
     }
 }
 
+pub(super) fn arb_different_address_description(
+    g: &mut Generator,
+    current: &Option<String>,
+) -> Option<String> {
+    let description = arb_address_description(g);
+
+    if &description != current {
+        return description;
+    }
+
+    match current {
+        Some(_) => None,
+        None => Some("changed".to_owned()),
+    }
+}
+
 pub(super) fn arb_ip_stack_kind(g: &mut Generator) -> IpStack {
     match g.choose_index(3) {
         0 => IpStack::Dual,
         1 => IpStack::Ipv4Only,
         _ => IpStack::Ipv6Only,
+    }
+}
+
+pub(super) fn arb_different_ip_stack_kind(g: &mut Generator, current: IpStack) -> IpStack {
+    match current {
+        IpStack::Dual => {
+            if g.bool() {
+                IpStack::Ipv4Only
+            } else {
+                IpStack::Ipv6Only
+            }
+        }
+        IpStack::Ipv4Only => {
+            if g.bool() {
+                IpStack::Dual
+            } else {
+                IpStack::Ipv6Only
+            }
+        }
+        IpStack::Ipv6Only => {
+            if g.bool() {
+                IpStack::Dual
+            } else {
+                IpStack::Ipv4Only
+            }
+        }
     }
 }
 
@@ -152,6 +196,72 @@ pub(super) fn arb_different_cidr_resource_address(
             IpNetwork::V4(Ipv4Network::new(Ipv4Addr::new(192, 0, 3, 1), 32).unwrap())
         }
     }
+}
+
+pub(super) fn arb_dns_resource_address(g: &mut Generator) -> String {
+    let base = arb_domain_name_string(g, 2, 3);
+    match g.choose_index(9) {
+        0 => base,
+        1 => format!("*.{base}"),
+        2 => format!("**.{base}"),
+        3 => format!("?.{base}"),
+        4 => format!("{}?.{base}", g.lower_ascii(2, 4)),
+        5 => format!("{}*.{base}", g.lower_ascii(2, 4)),
+        6 => format!("{}?*.{base}", g.lower_ascii(2, 4)),
+        7 => format!("{}.**.{base}", g.lower_ascii(2, 4)),
+        _ => format!("**.{}.**.{base}", g.lower_ascii(2, 4)),
+    }
+}
+
+pub(super) fn arb_domain_matching_dns_resource(g: &mut Generator, address: &str) -> DomainName {
+    let domain = address
+        .split('.')
+        .flat_map(|label| match label {
+            "**" => (0..g.count(1, 2))
+                .map(|_| g.lower_ascii(2, 4))
+                .collect::<Vec<_>>(),
+            _ => vec![
+                label
+                    .chars()
+                    .map(|character| match character {
+                        '*' => g.lower_ascii(1, 3),
+                        '?' => g.lower_ascii(1, 1),
+                        literal => literal.to_string(),
+                    })
+                    .collect::<Vec<_>>()
+                    .concat(),
+            ],
+        })
+        .collect::<Vec<_>>()
+        .join(".")
+        .parse::<DomainName>()
+        .expect("generated DNS resource patterns contain valid domain labels");
+
+    debug_assert!(dns::is_subdomain(&domain, address));
+
+    domain
+}
+
+pub(super) fn arb_different_dns_resource_address(
+    g: &mut Generator,
+    current: &str,
+    state: &ReferenceState,
+) -> String {
+    let domains = state.dns_resource_domains();
+    if !domains.is_empty() && g.flip(50) {
+        let address = domains[g.choose_index(domains.len())].to_string();
+        if address != current {
+            return address;
+        }
+    }
+
+    let address = arb_dns_resource_address(g);
+
+    if address != current {
+        return address;
+    }
+
+    "changed.invalid".to_owned()
 }
 
 pub(super) fn arb_more_specific_subnet(

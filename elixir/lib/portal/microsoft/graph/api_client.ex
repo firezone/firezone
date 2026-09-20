@@ -8,36 +8,73 @@ defmodule Portal.Microsoft.Graph.APIClient do
   require Logger
 
   @entra_user_select_fields "id,displayName,mail,userPrincipalName,givenName,surname,accountEnabled"
-  @applications [:entra, :intune]
+  @applications [:entra, :intune, :windows_updates]
   @page_size "999"
 
   @doc """
   Gets an access token using the OAuth2 client credentials flow.
   """
-  def get_access_token(application, tenant_id) when application in @applications do
-    config = config()
+  def get_access_token(application, tenant_id) when application in @applications and is_binary(tenant_id) do
     application_config = application_config(application)
-    token_endpoint = "#{config[:token_base_url]}/#{tenant_id}/oauth2/v2.0/token"
 
     with {:ok, credential} <- client_credential(application_config) do
-      # Request access token to read what our app is set up to do (.default scope)
-      payload =
-        %{
-          "client_id" => application_config[:client_id],
-          "scope" => "https://graph.microsoft.com/.default",
-          "grant_type" => "client_credentials"
-        }
-        |> Map.merge(credential)
-        |> URI.encode_query()
-
-      Req.post(
-        token_endpoint,
-        [
-          headers: [{"Content-Type", "application/x-www-form-urlencoded"}],
-          body: payload
-        ] ++ req_opts()
-      )
+      request_token(application_config, credential, tenant_id)
     end
+  end
+
+  @doc """
+  Gets an access token for an application that lives in Firezone's own tenant.
+
+  The tenant is not configured: the federated assertion the portal's identity
+  mints names it. Environments that authenticate with a secret instead, dev and
+  test, name it as `tenant_id` on the application.
+  """
+  def get_access_token(application) when application in @applications do
+    application_config = application_config(application)
+
+    with {:ok, credential} <- client_credential(application_config),
+         {:ok, tenant_id} <- own_tenant_id(application_config, credential) do
+      request_token(application_config, credential, tenant_id)
+    end
+  end
+
+  defp request_token(application_config, credential, tenant_id) do
+    token_endpoint = "#{config()[:token_base_url]}/#{tenant_id}/oauth2/v2.0/token"
+
+    # Request access token to read what our app is set up to do (.default scope)
+    payload =
+      %{
+        "client_id" => application_config[:client_id],
+        "scope" => "https://graph.microsoft.com/.default",
+        "grant_type" => "client_credentials"
+      }
+      |> Map.merge(credential)
+      |> URI.encode_query()
+
+    Req.post(
+      token_endpoint,
+      [
+        headers: [{"Content-Type", "application/x-www-form-urlencoded"}],
+        body: payload
+      ] ++ req_opts()
+    )
+  end
+
+  defp own_tenant_id(application_config, credential) do
+    case {application_config[:tenant_id], credential} do
+      {tenant_id, _credential} when is_binary(tenant_id) and tenant_id != "" -> {:ok, tenant_id}
+      {_none, %{"client_assertion" => assertion}} -> {:ok, jwt_claim!(assertion, "tid")}
+      {_none, _secret} -> {:error, :tenant_unknown}
+    end
+  end
+
+  defp jwt_claim!(jwt, claim) do
+    [_header, payload, _signature] = String.split(jwt, ".")
+
+    payload
+    |> Base.url_decode64!(padding: false)
+    |> JSON.decode!()
+    |> Map.fetch!(claim)
   end
 
   def client_id(application) when application in @applications do
@@ -77,6 +114,14 @@ defmodule Portal.Microsoft.Graph.APIClient do
      }}
   rescue
     exception -> {:error, exception}
+  end
+
+  @doc """
+  Streams the Windows Update for Business catalog: every Windows product Microsoft
+  services, each with the revisions (builds) it has shipped.
+  """
+  def stream_windows_update_products(access_token) do
+    stream_pages("/beta/admin/windows/updates/products", "$expand=revisions", access_token)
   end
 
   @doc """

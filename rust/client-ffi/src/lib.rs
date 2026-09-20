@@ -406,14 +406,20 @@ fn find_tun_fd() -> Result<RawFd, ConnlibError> {
 #[uniffi::export]
 impl Session {
     pub fn disconnect(&self) {
+        tracing::debug!("Received disconnect command");
+
         self.inner.stop();
     }
 
     pub fn set_internet_resource_state(&self, active: bool) {
+        tracing::debug!(active, "Received set_internet_resource_state command");
+
         self.inner.set_internet_resource_state(active);
     }
 
     pub fn set_dns(&self, dns_servers: Vec<String>) {
+        tracing::debug!(?dns_servers, "Received set_dns command");
+
         let dns_servers = dns_servers
             .into_iter()
             .filter_map(|server| {
@@ -428,10 +434,14 @@ impl Session {
     }
 
     pub fn reset(&self, reason: String) {
+        tracing::debug!(%reason, "Received reset command");
+
         self.inner.reset(reason)
     }
 
     pub fn set_tun(&self, fd: RawFd) -> Result<(), ConnlibError> {
+        tracing::debug!("Received set_tun command");
+
         let runtime = self.runtime.as_ref().context("No runtime")?;
         // SAFETY: FD must be open.
         let tun = unsafe {
@@ -704,6 +714,16 @@ struct Logger {
 
 static LOGGER: OnceLock<Logger> = OnceLock::new();
 
+/// Serialises [`configure_logger`], which entry points call from whichever thread
+/// the platform hands them.
+///
+/// [`LOGGER`] is only filled in once the install has succeeded, so concurrent
+/// callers would otherwise both find it empty and race to install a global
+/// subscriber. The loser of that race leaves the process with a subscriber no
+/// [`Logger`] describes, which fails every later call and denies [`connect`] the
+/// flow-log spool root for good.
+static CONFIGURE_LOGGER: parking_lot::Mutex<()> = parking_lot::Mutex::new(());
+
 /// Installs the logger, or re-applies `log_filter` when it is already installed.
 ///
 /// A session is not the only thing that logs: the network extension is woken
@@ -720,6 +740,8 @@ pub fn configure_logger(
     log_filter: String,
     flow_logs_dir: Option<String>,
 ) -> Result<(), ConnlibError> {
+    let _guard = CONFIGURE_LOGGER.lock();
+
     if let Some(logger) = LOGGER.get() {
         logger
             .reload_handle

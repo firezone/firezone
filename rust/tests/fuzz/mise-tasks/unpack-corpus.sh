@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-#MISE description="Unpack a fuzz target's committed corpus"
-#MISE raw=true
+#MISE description="Unpack a fuzz target's committed corpus into its working directory"
 #USAGE arg "<target>"
+#USAGE arg "[archive]"
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 target="${usage_target:?}"
-archive="corpora/$target.tar.gz"
+archive="${usage_archive:-corpora/$target.tar.gz}"
 corpus="corpus/$target"
 
 if tar -tzf "$archive" | grep -Eq '(^/|(^|/)\.\.(/|$))'; then

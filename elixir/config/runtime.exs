@@ -162,7 +162,8 @@ if config_env() == :prod do
     endpoint: "https://graph.microsoft.com",
     applications: [
       entra: [client_id: env_var_to_config!(:entra_sync_client_id), client_secret: nil],
-      intune: [client_id: env_var_to_config!(:intune_sync_client_id), client_secret: nil]
+      intune: [client_id: env_var_to_config!(:intune_sync_client_id), client_secret: nil],
+      windows_updates: [client_id: env_var_to_config!(:windows_updates_client_id), client_secret: nil]
     ]
 
   # Defender for Endpoint uses its own app registration, granted Machine.Read.All
@@ -249,6 +250,9 @@ if config_env() == :prod do
   oban_crontab = [
     # Delete expired policy_authorizations every minute
     {"* * * * *", Portal.Workers.DeleteExpiredPolicyAuthorizations},
+
+    # Delete policy_authorizations whose device postures stopped holding
+    {"*/15 * * * *", Portal.Workers.DeleteStalePostureAuthorizations},
 
     # Refresh cached certificate revocation lists hourly
     {"15 */2 * * *", Portal.Crl.Scheduler},
@@ -354,6 +358,9 @@ if config_env() == :prod do
 
     # Check for outdated gateways - Sundays at 9am
     {"0 9 * * 0", Portal.Workers.OutdatedGateways},
+
+    # Refresh the operating system release feeds daily
+    {"30 4 * * *", Portal.OSReleases.Sync},
 
     # Delete expired tokens every 5 minutes
     {"*/5 * * * *", Portal.Workers.DeleteExpiredClientTokens},

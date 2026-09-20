@@ -280,8 +280,8 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-process:2.11.0")
 
     // Navigation
-    implementation("androidx.navigation:navigation-fragment-ktx:2.9.7")
-    implementation("androidx.navigation:navigation-ui-ktx:2.9.7")
+    implementation("androidx.navigation:navigation-fragment-ktx:2.10.1")
+    implementation("androidx.navigation:navigation-ui-ktx:2.10.1")
 
     // Hilt
     implementation("com.google.dagger:hilt-android:2.60.1")
@@ -294,13 +294,13 @@ dependencies {
     androidTestImplementation("com.google.dagger:hilt-android-testing:2.60.1")
     kspAndroidTest("com.google.dagger:hilt-android-compiler:2.60.1")
     androidTestImplementation("androidx.test:runner:1.7.0")
-    androidTestImplementation("androidx.navigation:navigation-testing:2.9.7")
+    androidTestImplementation("androidx.navigation:navigation-testing:2.10.1")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.7.0")
     androidTestImplementation("androidx.test.espresso:espresso-contrib:3.7.0")
     androidTestImplementation("androidx.test.espresso:espresso-intents:3.7.0")
     androidTestImplementation("androidx.test.uiautomator:uiautomator:2.4.0")
     // Mints the test certificates; the platform offers no way to build one.
-    androidTestImplementation("org.bouncycastle:bcpkix-jdk18on:1.85")
+    androidTestImplementation("org.bouncycastle:bcpkix-jdk18on:1.86")
     // Unit Tests
     testImplementation("com.google.dagger:hilt-android-testing:2.60.1")
 
@@ -328,7 +328,7 @@ dependencies {
     androidTestImplementation("androidx.fragment:fragment-testing:1.9.0")
 
     // Import the BoM for the Firebase platform
-    implementation(platform("com.google.firebase:firebase-bom:34.18.0"))
+    implementation(platform("com.google.firebase:firebase-bom:34.19.0"))
 
     // Add the dependencies for the Crashlytics and Analytics libraries
     // When using the BoM, you don't specify versions in Firebase library dependencies
@@ -345,10 +345,10 @@ dependencies {
     implementation(cargo.rustls.platform.verifier)
 
     // Sentry
-    implementation("io.sentry:sentry-android:8.53.0")
+    implementation("io.sentry:sentry-android:8.56.0")
 
     // Compose
-    val composeBom = platform("androidx.compose:compose-bom:2026.08.00")
+    val composeBom = platform("androidx.compose:compose-bom:2026.09.00")
     implementation(composeBom)
     androidTestImplementation(composeBom)
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
@@ -359,14 +359,14 @@ dependencies {
     implementation("androidx.activity:activity-compose:1.13.0")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.11.0")
     // Immutable collections give Compose stable (skippable) parameter types.
-    implementation("org.jetbrains.kotlinx:kotlinx-collections-immutable:0.5.1")
+    implementation("org.jetbrains.kotlinx:kotlinx-collections-immutable:0.5.2")
 
     // Slack's Compose lint checks. Lint check JARs are built against a lint API major
     // version (`lint = AGP + 23`): AGP 9.3 is lint 32.x, and 1.5.2 is built against lint
     // 32.2.x, so it loads. 1.5.0 rewrote ComposeViewModelForwarding to flag forwarding
     // inside nested blocks; our UI model that wraps a resource is named `ResourceUiModel`
     // (not `*ViewModel`) so the check doesn't mistake it for a real ViewModel.
-    lintChecks("com.slack.lint.compose:compose-lint-checks:1.5.5")
+    lintChecks("com.slack.lint.compose:compose-lint-checks:1.6.0")
 
     // Screenshots. Roborazzi draws Compose through Robolectric's native graphics, so the
     // screens render on the JVM without an emulator.
@@ -375,8 +375,8 @@ dependencies {
     // `createComposeRule` launches `androidx.activity.ComponentActivity`, and Robolectric
     // resolves activities against the debug manifest, which this artifact declares it in.
     debugImplementation("androidx.compose.ui:ui-test-manifest")
-    testImplementation("io.github.takahirom.roborazzi:roborazzi:1.72.0")
-    testImplementation("io.github.takahirom.roborazzi:roborazzi-compose:1.72.0")
+    testImplementation("io.github.takahirom.roborazzi:roborazzi:1.74.0")
+    testImplementation("io.github.takahirom.roborazzi:roborazzi-compose:1.74.0")
     testImplementation("org.robolectric:robolectric:4.16.1")
 }
 

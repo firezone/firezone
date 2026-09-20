@@ -4,7 +4,7 @@
 //! opened grant a return-traffic exemption from the inbound filter, so
 //! revoking or expiring an authorization cuts off peer-opened flows.
 
-use ip_packet::{IpPacket, Protocol};
+use ip_packet::{Icmpv4Type, Icmpv6Type, IpPacket, Protocol};
 use std::collections::BTreeMap;
 use std::net::IpAddr;
 use std::time::{Duration, Instant};
@@ -29,6 +29,10 @@ impl ConnTrack {
     /// that the peer opened are ignored: those flows must keep passing the
     /// inbound filter, so that they stop once their authorization is gone.
     pub(crate) fn record_outbound_as_originator(&mut self, packet: &IpPacket, now: Instant) {
+        if is_echo_reply(packet) {
+            return;
+        }
+
         let Ok(local) = packet.source_protocol() else {
             return;
         };
@@ -43,7 +47,10 @@ impl ConnTrack {
             peer_ip: packet.destination(),
         };
 
-        if self.received.contains_key(&key) && !self.initiated.contains_key(&key) {
+        if !is_echo_request(packet)
+            && self.received.contains_key(&key)
+            && !self.initiated.contains_key(&key)
+        {
             return;
         }
 
@@ -52,6 +59,10 @@ impl ConnTrack {
 
     /// Record an inbound packet of a flow the *peer* opened to us.
     pub(crate) fn record_inbound(&mut self, packet: &IpPacket, now: Instant) {
+        if is_echo_reply(packet) {
+            return;
+        }
+
         let Ok(local) = packet.destination_protocol() else {
             return;
         };
@@ -72,6 +83,10 @@ impl ConnTrack {
 
     /// Returns `true` if the packet is the reply to a flow *we* opened.
     pub(crate) fn is_return_traffic(&self, packet: &IpPacket) -> bool {
+        if is_echo_request(packet) {
+            return false;
+        }
+
         let Ok(peer) = packet.source_protocol() else {
             return false;
         };
@@ -155,11 +170,11 @@ impl ConnTrack {
             peer_ip: packet.destination(),
         };
 
-        if self.initiated.contains_key(&key) {
+        if !is_echo_reply(packet) && self.initiated.contains_key(&key) {
             return Some(Originator::Us);
         }
 
-        if self.received.contains_key(&key) {
+        if !is_echo_request(packet) && self.received.contains_key(&key) {
             return Some(Originator::Peer);
         }
 
@@ -198,6 +213,24 @@ fn ttl(key: &Key) -> Duration {
         Protocol::Udp(_) => UDP_TTL,
         Protocol::IcmpEcho(_) => ICMP_TTL,
     }
+}
+
+fn is_echo_request(packet: &IpPacket) -> bool {
+    packet
+        .as_icmpv4()
+        .is_some_and(|icmp| matches!(icmp.icmp_type(), Icmpv4Type::EchoRequest(_)))
+        || packet
+            .as_icmpv6()
+            .is_some_and(|icmp| matches!(icmp.icmp_type(), Icmpv6Type::EchoRequest(_)))
+}
+
+fn is_echo_reply(packet: &IpPacket) -> bool {
+    packet
+        .as_icmpv4()
+        .is_some_and(|icmp| matches!(icmp.icmp_type(), Icmpv4Type::EchoReply(_)))
+        || packet
+            .as_icmpv6()
+            .is_some_and(|icmp| matches!(icmp.icmp_type(), Icmpv6Type::EchoReply(_)))
 }
 
 #[cfg(test)]
@@ -336,6 +369,55 @@ mod tests {
         let reply =
             make::icmp_reply_packet(ip(10, 0, 0, 2), ip(10, 0, 0, 1), 1, 42, &[]).expect("valid");
         assert!(ct.is_return_traffic(&reply));
+    }
+
+    #[test_case::test_case("10.0.0.1", "10.0.0.2"; "ipv4")]
+    #[test_case::test_case("fd00::1", "fd00::2"; "ipv6")]
+    fn opposite_echo_requests_with_the_same_identifier_are_independent(local: &str, peer: &str) {
+        let local = local.parse::<IpAddr>().unwrap();
+        let peer = peer.parse::<IpAddr>().unwrap();
+        let mut ct = ConnTrack::default();
+        let now = Instant::now();
+        let inbound = make::icmp_request_packet(peer, local, 1, 42, &[]).unwrap();
+        let outbound = make::icmp_request_packet(local, peer, 2, 42, &[]).unwrap();
+        let our_reply = make::icmp_reply_packet(local, peer, 1, 42, &[]).unwrap();
+        let peer_reply = make::icmp_reply_packet(peer, local, 2, 42, &[]).unwrap();
+        ct.record_inbound(&inbound, now);
+
+        assert_eq!(ct.outbound_flow_originator(&outbound), None);
+        ct.record_outbound_as_originator(&outbound, now);
+
+        assert_eq!(ct.outbound_flow_originator(&outbound), Some(Originator::Us));
+        assert_eq!(
+            ct.outbound_flow_originator(&our_reply),
+            Some(Originator::Peer)
+        );
+        assert!(ct.is_return_traffic(&peer_reply));
+        assert!(!ct.is_return_traffic(&inbound));
+
+        let error = make::icmp_dest_unreachable_prohibited(&our_reply).unwrap();
+        assert!(ct.is_known_inbound_flow(&error));
+        assert!(!ct.is_known_outbound_error(&error));
+        let error = make::icmp_dest_unreachable_prohibited(&peer_reply).unwrap();
+        assert!(ct.is_known_outbound_error(&error));
+        assert!(!ct.is_known_inbound_flow(&error));
+    }
+
+    #[test_case::test_case("10.0.0.1", "10.0.0.2"; "ipv4")]
+    #[test_case::test_case("fd00::1", "fd00::2"; "ipv6")]
+    fn echo_replies_do_not_open_flows(local: &str, peer: &str) {
+        let local = local.parse::<IpAddr>().unwrap();
+        let peer = peer.parse::<IpAddr>().unwrap();
+        let mut ct = ConnTrack::default();
+        let now = Instant::now();
+        let outbound = make::icmp_reply_packet(local, peer, 1, 42, &[]).unwrap();
+        let inbound = make::icmp_reply_packet(peer, local, 1, 42, &[]).unwrap();
+
+        ct.record_outbound_as_originator(&outbound, now);
+        ct.record_inbound(&inbound, now);
+
+        assert!(!ct.is_return_traffic(&inbound));
+        assert_eq!(ct.outbound_flow_originator(&outbound), None);
     }
 
     #[test]

@@ -2,9 +2,13 @@ defmodule Portal.Changes.Hooks.ResourcesTest do
   use Portal.DataCase, async: true
   import Portal.Changes.Hooks.Resources
   import Portal.AccountFixtures
+  import Portal.ActorFixtures
+  import Portal.DeviceFixtures
+  import Portal.GroupFixtures
   import Portal.ResourceFixtures
   import Portal.PolicyAuthorizationFixtures
   alias Portal.Changes.Change
+  alias Portal.Resource.DeviceMembershipCriteria
   alias Portal.PolicyAuthorization
   alias Portal.Resource
   alias Portal.PubSub
@@ -102,6 +106,173 @@ defmodule Portal.Changes.Hooks.ResourcesTest do
 
       assert :ok = on_update(0, old_data, data)
       refute Repo.get_by(PolicyAuthorization, id: policy_authorization.id)
+    end
+
+    test "criteria change deletes every authorization of the pool" do
+      account = account_fixture()
+      actor = actor_fixture(account: account)
+      initiator = client_fixture(account: account, actor: actor)
+      own = client_fixture(account: account, actor: actor)
+      stranger = client_fixture(account: account)
+      pool = device_pool_resource_fixture(account: account, devices: [own, stranger])
+      other_pool = device_pool_resource_fixture(account: account, devices: [own])
+
+      own_pa = policy_authorization_fixture(account: account, resource: pool, client: initiator, gateway: own)
+
+      stranger_pa =
+        policy_authorization_fixture(account: account, resource: pool, client: initiator, gateway: stranger)
+
+      other_pa =
+        policy_authorization_fixture(account: account, resource: other_pool, client: initiator, gateway: own)
+
+      old_data = %{
+        "id" => pool.id,
+        "account_id" => account.id,
+        "type" => "device_pool",
+        "device_membership_criteria" => DeviceMembershipCriteria.to_map(pool.device_membership_criteria)
+      }
+
+      data =
+        Map.put(
+          old_data,
+          "device_membership_criteria",
+          DeviceMembershipCriteria.to_map(DeviceMembershipCriteria.own_devices())
+        )
+
+      assert :ok = on_update(0, old_data, data)
+      refute Repo.get_by(PolicyAuthorization, id: own_pa.id)
+      refute Repo.get_by(PolicyAuthorization, id: stranger_pa.id)
+      assert Repo.get_by(PolicyAuthorization, id: other_pa.id)
+
+      assert :ok = on_update(1, data, Map.put(data, "name", "Renamed"))
+      assert Repo.get_by(PolicyAuthorization, id: other_pa.id)
+    end
+
+    test "editing the devices a pool names touches only the devices that left" do
+      account = account_fixture()
+      initiator = client_fixture(account: account)
+      staying = client_fixture(account: account)
+      leaving = client_fixture(account: account)
+      joining = client_fixture(account: account)
+      pool = device_pool_resource_fixture(account: account, devices: [staying, leaving])
+      other_pool = device_pool_resource_fixture(account: account, devices: [staying])
+
+      staying_pa =
+        policy_authorization_fixture(account: account, resource: pool, client: initiator, gateway: staying)
+
+      leaving_pa =
+        policy_authorization_fixture(account: account, resource: pool, client: initiator, gateway: leaving)
+
+      other_pa =
+        policy_authorization_fixture(account: account, resource: other_pool, client: initiator, gateway: staying)
+
+      old_data = %{
+        "id" => pool.id,
+        "account_id" => account.id,
+        "type" => "device_pool",
+        "device_membership_criteria" => DeviceMembershipCriteria.to_map(pool.device_membership_criteria)
+      }
+
+      data =
+        Map.put(
+          old_data,
+          "device_membership_criteria",
+          DeviceMembershipCriteria.to_map(DeviceMembershipCriteria.devices([staying.id, joining.id]))
+        )
+
+      assert :ok = on_update(0, old_data, data)
+
+      refute Repo.get_by(PolicyAuthorization, id: leaving_pa.id)
+      assert Repo.get_by(PolicyAuthorization, id: staying_pa.id)
+      assert Repo.get_by(PolicyAuthorization, id: other_pa.id)
+    end
+
+    test "adding devices to a listed pool keeps every connection through it" do
+      account = account_fixture()
+      initiator = client_fixture(account: account)
+      staying = client_fixture(account: account)
+      joining = client_fixture(account: account)
+      pool = device_pool_resource_fixture(account: account, devices: [staying])
+
+      staying_pa =
+        policy_authorization_fixture(account: account, resource: pool, client: initiator, gateway: staying)
+
+      old_data = %{
+        "id" => pool.id,
+        "account_id" => account.id,
+        "type" => "device_pool",
+        "device_membership_criteria" => DeviceMembershipCriteria.to_map(pool.device_membership_criteria)
+      }
+
+      data =
+        Map.put(
+          old_data,
+          "device_membership_criteria",
+          DeviceMembershipCriteria.to_map(DeviceMembershipCriteria.devices([staying.id, joining.id]))
+        )
+
+      assert :ok = on_update(0, old_data, data)
+      assert Repo.get_by(PolicyAuthorization, id: staying_pa.id)
+    end
+
+    test "deleting a device keeps the other members of the pools that listed it connected" do
+      account = account_fixture()
+      initiator = client_fixture(account: account)
+      staying = client_fixture(account: account)
+      leaving = client_fixture(account: account)
+      pool = device_pool_resource_fixture(account: account, devices: [staying, leaving])
+
+      staying_pa =
+        policy_authorization_fixture(account: account, resource: pool, client: initiator, gateway: staying)
+
+      old_data = %{
+        "id" => pool.id,
+        "account_id" => account.id,
+        "type" => "device_pool",
+        "device_membership_criteria" => DeviceMembershipCriteria.to_map(pool.device_membership_criteria)
+      }
+
+      data =
+        Map.put(
+          old_data,
+          "device_membership_criteria",
+          DeviceMembershipCriteria.to_map(DeviceMembershipCriteria.devices([staying.id]))
+        )
+
+      Repo.delete!(leaving)
+
+      assert :ok = on_update(0, old_data, data)
+      assert Repo.get_by(PolicyAuthorization, id: staying_pa.id)
+    end
+
+    test "switching the group a pool follows deletes every authorization of the pool" do
+      account = account_fixture()
+      group = group_fixture(account: account)
+      initiator = client_fixture(account: account)
+      member = client_fixture(account: account)
+      pool = actor_group_pool_resource_fixture(account: account, group: group)
+
+      authorization =
+        policy_authorization_fixture(account: account, resource: pool, client: initiator, gateway: member)
+
+      old_data = %{
+        "id" => pool.id,
+        "account_id" => account.id,
+        "type" => "device_pool",
+        "device_membership_criteria" => DeviceMembershipCriteria.to_map(pool.device_membership_criteria)
+      }
+
+      data =
+        Map.put(
+          old_data,
+          "device_membership_criteria",
+          DeviceMembershipCriteria.to_map(
+            DeviceMembershipCriteria.actor_group(group_fixture(account: account).id)
+          )
+        )
+
+      assert :ok = on_update(0, old_data, data)
+      refute Repo.get_by(PolicyAuthorization, id: authorization.id)
     end
   end
 

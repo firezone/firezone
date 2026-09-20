@@ -18,6 +18,7 @@ backoff = { workspace = true }
 bin-shared = { workspace = true }
 chrono = { workspace = true }
 clap = { workspace = true, features = ["derive", "env"] }
+client-ipc = { workspace = true }
 client-shared = { workspace = true }
 connlib-model = { workspace = true }
 derive_more = { workspace = true, features = ["debug"] }
@@ -26,6 +27,7 @@ fd-lock = { workspace = true }
 flow-log-upload = { workspace = true }
 flow-log-writer = { workspace = true }
 futures = { workspace = true }
+gui-ipc = { workspace = true }
 hex = { workspace = true }
 humantime = { workspace = true }
 ip-packet = { workspace = true }
@@ -70,6 +72,7 @@ tracing-subscriber = { workspace = true, features = ["env-filter"] }
 tunnel-bypass-resolver = { workspace = true }
 url = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
+windows-package-identity = { workspace = true }
 x509-keystore = { workspace = true }
 zip = { workspace = true, features = ["deflate", "time"] }
 
@@ -81,10 +84,8 @@ tauri = { workspace = true, features = ["tray-icon"] }
 dbus-secret-service-keyring-store = { workspace = true }
 dirs = { workspace = true }
 ksni = { workspace = true } # Tray icon for Linux.
-libc = { workspace = true }
 mimalloc = { workspace = true }
 nix = { workspace = true, features = ["user"] }
-sd-notify = { workspace = true }
 tracing-journald = { workspace = true }
 
 [target.'cfg(target_os = "macos")'.dependencies]
@@ -137,14 +138,15 @@ features = [
 
 [build-dependencies]
 anyhow = { workspace = true }
-sha2 = { workspace = true }
 tauri-build = { workspace = true, features = [] }
+windows-package-identity = { workspace = true }
 
 [target.'cfg(target_os = "windows")'.build-dependencies]
 embed-resource = { workspace = true }
 
 [dev-dependencies]
 bin-shared = { workspace = true, features = ["test"] }
+client-ipc = { workspace = true, features = ["test"] }
 tempfile = { workspace = true }
 
 [lints]

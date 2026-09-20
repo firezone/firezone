@@ -15,6 +15,7 @@ dmg_dir="$temp_dir/dmg"
 dmg_path="$temp_dir/Firezone.dmg"
 staging_dmg_path="$temp_dir/staging.dmg"
 staging_pkg_path="$temp_dir/staging.pkg"
+component_pkg_path="$temp_dir/component.pkg"
 git_sha=${GITHUB_SHA:-$(git rev-parse HEAD)}
 # CI sets this for every build that is not a release, so nothing it builds reports.
 no_telemetry=${FIREZONE_NO_TELEMETRY:-false}
@@ -54,11 +55,17 @@ xcodebuild build \
     -sdk macosx \
     -destination 'platform=macOS'
 
-# We also publish a pkg file for MDMs that don't like our DMG (Intune error 0x87D30139)
+# We also publish a pkg file for MDMs that don't like our DMG (Intune error 0x87D30139).
+# pkgbuild rather than productbuild --component so that the package can carry the
+# postinstall script that puts the headless client on the PATH.
+pkgbuild \
+    --component "$temp_dir/Firezone.app" \
+    --install-location /Applications \
+    --scripts scripts/build/macos-pkg-scripts \
+    "$component_pkg_path"
 productbuild \
     --sign "$installer_code_sign_identity" \
-    --component "$temp_dir/Firezone.app" \
-    /Applications \
+    --package "$component_pkg_path" \
     "$staging_pkg_path"
 
 # Create disk image

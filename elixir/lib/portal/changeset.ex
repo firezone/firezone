@@ -235,13 +235,14 @@ defmodule Portal.Changeset do
     end
   end
 
+  # idna reports a disallowed character with an exit, not an exception.
   def try_encode_domain(domain) do
     charlist = String.to_charlist(domain)
 
     try do
       {:ok, :idna.encode(charlist, [{:uts46, true}]) |> to_string()}
     catch
-      error -> error
+      _kind, _reason -> :error
     end
   end
 

@@ -13,11 +13,15 @@ This list drives both pull-request CI and the nightly discovery matrix.
 ## Corpora
 
 Each target's corpus is committed as one deterministic archive under `corpora/<target>.tar.gz`.
-The mise tasks unpack it into the ignored `corpus/<target>` directory before invoking `cargo-fuzz`.
+`unpack-corpus` materializes it into the ignored `corpus/<target>` directory, which is the working copy from there on.
+`fuzz` unpacks first because it starts from the committed inputs; `cmin` and `coverage` read the directory as it stands, so that what `cmin` drops stays dropped.
+Unpack explicitly before running either from a fresh checkout.
 Pull-request CI only replays these inputs, making fuzz regression and coverage checks deterministic.
 It never performs random coverage discovery.
 
 The nightly `fuzz-nightly.yml` workflow runs every target from `targets.json` on `main`, minimizes and repacks the grown corpora, refreshes their coverage baselines, and opens a bot PR per target, so a corpus that carries a crashing input only holds up its own review.
+Where that PR is still open, the run seeds from it as well as from `main`, so a night's discoveries survive until someone reviews them.
+Each phase is a step of its own there, carrying its own time budget, so one that overruns ends up costing only itself.
 Dispatching it manually takes an optional `target` input to work on one entry of `targets.json` instead of all of them, and on a branch other than `main` it pushes the result back to that branch instead of opening a PR.
 
 Tunnel inputs are decoded positionally with `arbitrary::Unstructured`.
@@ -59,6 +63,7 @@ A fuzz job's findings arrive in the corpus instead, under the `crash-` name libF
 Replay a committed corpus and check its uncovered-region ceiling:
 
 ```console
+mise run //rust/tests/fuzz:unpack-corpus ip-packet
 mise run //rust/tests/fuzz:coverage ip-packet
 mise run //rust/tests/fuzz:coverage-check ip-packet
 ```
@@ -77,10 +82,10 @@ It fuzzes past a crash rather than stopping at the first, and runs its remaining
 mise run //rust/tests/fuzz:grow tunnel-proto
 ```
 
-This runs what the nightly workflow runs, so commit both the repacked corpus and the refreshed baseline.
+This runs the same phases as the nightly workflow, so commit both the repacked corpus and the refreshed baseline.
 Expect it to take a while: it fuzzes for 30 minutes before the remaining steps even start.
 
-It spreads that across three quarters of the cores, leaving you some to work with, and across all of them when `CI` is set.
+It spreads that across three quarters of the cores, leaving you some to work with.
 Pass libFuzzer arguments to override both the parallelism and the duration, e.g. `-fork=8 -max_total_time=300`.
 Be wary of shortening it much for `tunnel-proto`: `-fork` re-merges the whole seed corpus before it discovers anything, `-max_total_time` does not bound that startup, and a short budget is spent entirely inside it.
 
@@ -99,5 +104,6 @@ mise run //rust/tests/fuzz:pack-corpus tunnel-proto
 For a local browsable report:
 
 ```console
+mise run //rust/tests/fuzz:unpack-corpus tunnel-proto
 mise run //rust/tests/fuzz:coverage-report tunnel-proto
 ```

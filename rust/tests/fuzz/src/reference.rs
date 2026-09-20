@@ -1,11 +1,11 @@
 use super::dns_records::DnsRecords;
 use super::icmp_error_hosts::IcmpErrorHosts;
 use super::probe::{
-    ExpectedOutcome, ExpectedProbe, FlowId, FlowRoute, IcmpFlow, KnownLoss, PacketRoute, ProbeId,
-    ProbeRequest, RejectionRemote, Remote, TraceRequirement, UdpFlow,
+    ExpectedOutcome, ExpectedProbe, FlowId, IcmpFlow, KnownLoss, ProbeId, ProbeRequest,
+    RejectionRemote, RejectionResponse, Remote, Route, TraceRequirement, UdpFlow,
 };
 use super::{ref_client::*, ref_gateway::*, sim_net::*, stub_portal::StubPortal, transition::*};
-use connlib_model::{ClientId, GatewayId, RelayId, ResourceId, Site, StaticSecret};
+use connlib_model::{ClientId, GatewayId, RelayId, ResourceId, StaticSecret};
 use dns_types::{DomainName, RecordType};
 use ip_network::{Ipv4Network, Ipv6Network};
 use ip_packet::Protocol;
@@ -33,8 +33,6 @@ pub struct ReferenceState {
     pub(crate) clients: BTreeMap<ClientId, Host<RefClient>>,
     pub(crate) gateways: BTreeMap<GatewayId, Host<RefGateway>>,
     pub(crate) relays: BTreeMap<RelayId, Host<u64>>,
-
-    pub(crate) portal: StubPortal,
 
     /// All IP addresses a domain resolves to in our test.
     ///
@@ -68,7 +66,6 @@ impl ReferenceState {
         clients: BTreeMap<ClientId, Host<RefClient>>,
         gateways: BTreeMap<GatewayId, Host<RefGateway>>,
         relays: BTreeMap<RelayId, Host<u64>>,
-        portal: StubPortal,
         global_dns_records: DnsRecords,
         tcp_resources: BTreeMap<DomainName, BTreeSet<SocketAddr>>,
         icmp_error_hosts: IcmpErrorHosts,
@@ -78,7 +75,6 @@ impl ReferenceState {
             clients,
             gateways,
             relays,
-            portal,
             global_dns_records,
             tcp_resources,
             icmp_error_hosts,
@@ -92,15 +88,12 @@ impl ReferenceState {
     /// Apply the transition to our reference state.
     ///
     /// Here is where we implement the "expected" logic.
-    pub fn apply(mut state: Self, transition: &Transition, now: Instant) -> Self {
-        let iceless = state.portal.iceless();
-        for _ in state.icmp_flows.extract_if(.., |_, flow| {
-            !transition.retains_flow(flow.client_id, flow.route, iceless)
-        }) {}
-        for _ in state.udp_flows.extract_if(.., |_, flow| {
-            !transition.retains_flow(flow.client_id, flow.route, iceless)
-        }) {}
-
+    pub fn apply(
+        mut state: Self,
+        portal: &StubPortal,
+        transition: &Transition,
+        now: Instant,
+    ) -> Self {
         match transition {
             Transition::AddResource(resource) => {
                 for client in state.clients.values_mut() {
@@ -120,11 +113,8 @@ impl ReferenceState {
                         }
                         client::Resource::Cidr(r) => client.add_cidr_resource(r.clone()),
                         client::Resource::Internet(r) => client.add_internet_resource(r.clone()),
-                        client::Resource::StaticDevicePool(r) => {
-                            client.add_static_device_pool_resource(r.clone());
-                        }
-                        client::Resource::DynamicDevicePool(r) => {
-                            client.add_dynamic_device_pool_resource(r.clone());
+                        client::Resource::DevicePool(r) => {
+                            client.add_device_pool_resource(r.clone());
                         }
                     });
                 }
@@ -136,115 +126,23 @@ impl ReferenceState {
                     });
                 }
             }
-            Transition::ChangeCidrResourceAddress {
-                resource,
-                new_address,
+            Transition::EditResource(edit) => state.apply_resource_edit(edit),
+            Transition::UpdateDevicePoolMembers {
+                pool_id: _,
+                members: _,
+                revoked,
             } => {
-                state
-                    .portal
-                    .change_address_of_cidr_resource(resource.id, *new_address);
-
-                let new_resource = client::CidrResource {
-                    address: *new_address,
-                    ..resource.clone()
-                };
-
-                for client in state.clients.values_mut() {
-                    client.exec_mut(|c| c.add_cidr_resource(new_resource.clone()));
-                }
-            }
-            Transition::MoveResourceToNewSite { resource, new_site } => {
-                state
-                    .portal
-                    .move_resource_to_new_site(resource.id(), new_site.clone());
-
-                for client in state.clients.values_mut() {
-                    client.exec_mut(|c| match resource.clone().with_new_site(new_site.clone()) {
-                        client::Resource::Dns(r) => c.add_dns_resource(r),
-                        client::Resource::Cidr(r) => c.add_cidr_resource(r),
-                        client::Resource::Internet(_) => {
-                            tracing::error!("Internet Resource cannot move site");
-                        }
-                        client::Resource::StaticDevicePool(_)
-                        | client::Resource::DynamicDevicePool(_) => {}
-                    })
-                }
-            }
-            Transition::ChangeFiltersOfResource {
-                resource,
-                new_filters,
-            } => {
-                state
-                    .portal
-                    .change_filters_of_resource(resource.id(), new_filters.clone());
-
-                let new_resource = resource.clone().with_new_filters(new_filters.clone());
-
-                for client in state.clients.values_mut() {
-                    client.exec_mut(|c| match &new_resource {
-                        client::Resource::Dns(r) => c.add_dns_resource(r.clone()),
-                        client::Resource::Cidr(r) => c.add_cidr_resource(r.clone()),
-                        client::Resource::StaticDevicePool(r) => {
-                            c.add_static_device_pool_resource(r.clone());
-                        }
-                        client::Resource::DynamicDevicePool(r) => {
-                            c.add_dynamic_device_pool_resource(r.clone());
-                        }
-                        client::Resource::Internet(_) => unreachable!(),
-                    })
-                }
-            }
-            Transition::ChangeResourceType {
-                old_resource: _,
-                new_resource,
-            } => {
-                state.portal.replace_resource(new_resource.clone());
-
-                for client in state.clients.values_mut() {
-                    client.exec_mut(|client| {
-                        client.remove_resource(&new_resource.id());
-
-                        match new_resource {
-                            client::Resource::Dns(resource) => {
-                                client
-                                    .dns_records
-                                    .retain(|domain, _| !is_subdomain(domain, &resource.address));
-                                client.add_dns_resource(resource.clone());
-                            }
-                            client::Resource::Cidr(resource) => {
-                                client.add_cidr_resource(resource.clone())
-                            }
-                            client::Resource::StaticDevicePool(resource) => {
-                                client.add_static_device_pool_resource(resource.clone())
-                            }
-                            client::Resource::Internet(_) => {
-                                unreachable!(
-                                    "only user-editable resource types can replace one another"
-                                )
-                            }
-                            client::Resource::DynamicDevicePool(_) => {
-                                unreachable!(
-                                    "only user-editable resource types can replace one another"
-                                )
-                            }
-                        }
-                    });
-                }
-            }
-            Transition::UpdateStaticDevicePool {
-                pool_id,
-                new_devices,
-            } => {
-                let Some(new_pool) = state
-                    .portal
-                    .update_static_device_pool_members(*pool_id, new_devices.clone())
-                else {
-                    tracing::error!(%pool_id, "Unknown static device pool");
-                    return state;
-                };
-
-                for client in state.clients.values_mut() {
-                    client.exec_mut(|c| c.add_static_device_pool_resource(new_pool.clone()));
+                for authorization in revoked {
+                    if let Some(client) = state.clients.get_mut(&authorization.initiator) {
+                        client.exec_mut(|client| {
+                            client.reject_peer_pool(authorization.target, authorization.pool)
+                        });
+                    }
+                    if let Some(client) = state.clients.get_mut(&authorization.target) {
+                        client.exec_mut(|client| {
+                            client.reject_peer_pool(authorization.initiator, authorization.pool)
+                        });
+                    }
                 }
             }
             Transition::SetInternetResourceState {
@@ -254,25 +152,12 @@ impl ReferenceState {
                 client.set_internet_resource_state(*active);
             }),
             Transition::SendDnsQuery { client_id, query } => {
-                let upstream_do53 = state.portal.upstream_do53();
+                let upstream_do53 = portal.upstream_do53();
                 let global_dns_records = &state.global_dns_records;
                 let icmp_error_hosts = &state.icmp_error_hosts;
-                let resolved_device = matches!(query.r_type, RecordType::A | RecordType::AAAA)
-                    .then(|| {
-                        state
-                            .portal
-                            .resolve_device_pool_domain(&query.domain.to_string())
-                    })
-                    .flatten();
 
                 state.clients.get_mut(client_id).unwrap().exec_mut(|c| {
                     c.on_dns_query(query, upstream_do53, global_dns_records, icmp_error_hosts);
-
-                    if let Some((ipv4, ipv6)) = resolved_device
-                        && let Some(pool) = c.dynamic_device_pool_by_domain(&query.domain)
-                    {
-                        c.note_device_pool_resolution(pool, ipv4, ipv6);
-                    }
                 });
             }
             Transition::SendDnsResourcePtrQuery {
@@ -296,6 +181,7 @@ impl ReferenceState {
                 probe_id,
             } => {
                 let outcome = state.record_probe(
+                    portal,
                     *probe_id,
                     *client_id,
                     ProbeRequest::Icmp {
@@ -308,14 +194,14 @@ impl ReferenceState {
                 );
 
                 match outcome {
-                    ExpectedOutcome::RoundTripCompleted { remote, resource } => {
+                    ExpectedOutcome::RoundTripCompleted(route) => {
                         let flow = IcmpFlow {
                             client_id: *client_id,
                             src: *src,
                             dst: dst.clone(),
                             identifier: *identifier,
                             next_seq: Seq(seq.0.wrapping_add(1)),
-                            route: FlowRoute::from_remote(remote, resource),
+                            route,
                         };
                         let previous = state.icmp_flows.insert(*flow_id, flow);
                         assert!(previous.is_none(), "ICMP flow IDs must be unique");
@@ -340,7 +226,7 @@ impl ReferenceState {
                     flow.clone()
                 };
 
-                match state.record_icmp_probe(*probe_id, &flow, *seq, now) {
+                match state.record_icmp_probe(portal, *probe_id, &flow, *seq, now) {
                     ExpectedOutcome::RoundTripCompleted { .. } => {}
                     ExpectedOutcome::Dropped => {
                         panic!("reused ICMP route must complete a round trip")
@@ -360,6 +246,7 @@ impl ReferenceState {
                 probe_id,
             } => {
                 let outcome = state.record_probe(
+                    portal,
                     *probe_id,
                     *client_id,
                     ProbeRequest::Udp {
@@ -372,14 +259,14 @@ impl ReferenceState {
                 );
 
                 match outcome {
-                    ExpectedOutcome::RoundTripCompleted { remote, resource } => {
+                    ExpectedOutcome::RoundTripCompleted(route) => {
                         let flow = UdpFlow {
                             client_id: *client_id,
                             src: *src,
                             dst: dst.clone(),
                             sport: *sport,
                             dport: *dport,
-                            route: FlowRoute::from_remote(remote, resource),
+                            route,
                         };
                         let previous = state.udp_flows.insert(*flow_id, flow);
                         assert!(previous.is_none(), "UDP flow IDs must be unique");
@@ -395,7 +282,7 @@ impl ReferenceState {
                     .expect("reused UDP flow must exist")
                     .clone();
 
-                match state.record_udp_probe(*probe_id, &flow, now) {
+                match state.record_udp_probe(portal, *probe_id, &flow, now) {
                     ExpectedOutcome::RoundTripCompleted { .. } => {}
                     ExpectedOutcome::Dropped => {
                         panic!("reused UDP route must complete a round trip")
@@ -412,19 +299,14 @@ impl ReferenceState {
                 sport,
                 dport,
             } => {
-                let route = state.route_for_application_packet(
-                    *client_id,
-                    *src,
-                    dst,
-                    Protocol::Tcp(dport.0),
-                );
+                let outcome = state.dispatch(portal, *client_id, *src, dst, Protocol::Tcp(dport.0));
 
                 state
                     .clients
                     .get_mut(client_id)
                     .unwrap()
                     .exec_mut(|client| {
-                        client.on_connect_tcp(*src, dst.clone(), route, *sport, *dport);
+                        client.expect_tcp_outcome(*src, dst.clone(), *sport, *dport, outcome);
                     });
             }
             Transition::UpdateSystemDnsServers { servers } => {
@@ -432,15 +314,9 @@ impl ReferenceState {
                     client.exec_mut(|client| client.set_system_dns_resolvers(servers));
                 }
             }
-            Transition::UpdateUpstreamDo53Servers(servers) => {
-                state.portal.set_upstream_do53(servers.clone());
-            }
-            Transition::UpdateUpstreamDoHServers(servers) => {
-                state.portal.set_upstream_doh(servers.clone());
-            }
-            Transition::UpdateUpstreamSearchDomain(domain) => {
-                state.portal.set_search_domain(domain.clone());
-            }
+            Transition::UpdateUpstreamDo53Servers(_) => {}
+            Transition::UpdateUpstreamDoHServers(_) => {}
+            Transition::UpdateUpstreamSearchDomain(_) => {}
             Transition::RoamClient {
                 client_id,
                 ip4,
@@ -452,7 +328,7 @@ impl ReferenceState {
                 // With ICE-less connections, a roam re-keys in place and keeps
                 // the connection alive, so we only reset when the portal hands
                 // out classic ICE flows.
-                let all_iceless = state.portal.iceless();
+                let all_iceless = portal.iceless();
 
                 let client = state.clients.get_mut(client_id).unwrap();
                 state.network.remove_host(client);
@@ -471,6 +347,16 @@ impl ReferenceState {
                     }
                     client.readd_all_resources();
                 });
+
+                // The peers lose their connections to the roaming client, and their authorizations
+                // towards it with them.
+                if !all_iceless {
+                    for (id, peer) in &mut state.clients {
+                        if id != client_id {
+                            peer.exec_mut(|peer| peer.forget_peer_authorizations(*client_id));
+                        }
+                    }
+                }
             }
             Transition::ReconnectPortal { client_id } => {
                 // Reconnecting to the portal should have no noticeable impact on the data plane.
@@ -491,13 +377,12 @@ impl ReferenceState {
                 // the connection: the WG session idles until the relays return
                 // and probes revive the path. Classic ICE flows disconnect for
                 // every pairing that cannot fall back to a direct path.
-                if !state.portal.iceless() {
+                if !portal.iceless() {
                     let gateway_edges = state
                         .gateways
                         .iter()
                         .map(|(id, g)| (*id, (g.edge_config(), g.ip6.is_some())))
                         .collect::<BTreeMap<_, _>>();
-                    let portal = &state.portal;
 
                     for client in state.clients.values_mut() {
                         let client_edge = client.edge_config();
@@ -534,9 +419,13 @@ impl ReferenceState {
                 }
             }
             Transition::RestartClient { client_id, key } => {
-                state.clients.get_mut(client_id).unwrap().exec_mut(|c| {
-                    c.restart(*key, now);
-                })
+                for (id, client) in &mut state.clients {
+                    if id == client_id {
+                        client.exec_mut(|c| c.restart(*key, now));
+                    } else {
+                        client.exec_mut(|c| c.forget_peer_authorizations(*client_id));
+                    }
+                }
             }
             Transition::UpdateDnsRecords { domain, records } => {
                 state
@@ -548,91 +437,159 @@ impl ReferenceState {
         state
     }
 
-    pub fn clear_packets(state: &mut ReferenceState) {
-        for client in state.clients.values_mut() {
-            client.exec_mut(|c| c.clear_packets())
+    fn apply_resource_edit(&mut self, edit: &client::ResourceEdit) {
+        let effect = client::classify(&edit.old, &edit.new);
+        let updated = &edit.new;
+
+        for client in self.clients.values_mut() {
+            client.exec_mut(|client| {
+                let forgets_dns_records_under = match effect {
+                    client::EditEffect::Metadata => {
+                        client.update_resource_metadata(updated.clone());
+                        return;
+                    }
+                    client::EditEffect::Filters { .. } => None,
+                    client::EditEffect::Access {
+                        forgets_dns_records_under,
+                        ..
+                    } => forgets_dns_records_under,
+                    client::EditEffect::DevicePoolRouting => None,
+                    client::EditEffect::Type {
+                        forgets_dns_records_under,
+                        ..
+                    } => {
+                        client.remove_resource(&updated.id());
+
+                        forgets_dns_records_under
+                    }
+                };
+
+                if let Some(address) = forgets_dns_records_under {
+                    for _ in client
+                        .dns_records
+                        .extract_if(.., |domain, _| is_subdomain(domain, address))
+                    {
+                    }
+                }
+
+                match updated {
+                    client::Resource::Dns(resource) => client.add_dns_resource(resource.clone()),
+                    client::Resource::Cidr(resource) => client.add_cidr_resource(resource.clone()),
+                    client::Resource::Internet(resource) => {
+                        client.add_internet_resource(resource.clone())
+                    }
+                    client::Resource::DevicePool(resource) => {
+                        client.add_device_pool_resource(resource.clone())
+                    }
+                }
+            });
         }
     }
 
-    pub fn clear_expected_probes(state: &mut ReferenceState) {
+    /// Drops the bookkeeping that `transition` makes stale before it is applied.
+    pub fn invalidate(state: &mut ReferenceState, portal: &StubPortal, transition: &Transition) {
         state.expected_probes.clear();
+
+        if transition.clears_packets() {
+            for client in state.clients.values_mut() {
+                client.exec_mut(|c| c.clear_packets())
+            }
+        }
+
+        let iceless = portal.iceless();
+        for _ in state.icmp_flows.extract_if(.., |_, flow| {
+            !transition.retains_flow(flow.client_id, flow.route, iceless)
+        }) {}
+        for _ in state.udp_flows.extract_if(.., |_, flow| {
+            !transition.retains_flow(flow.client_id, flow.route, iceless)
+        }) {}
     }
 
     fn record_icmp_probe(
         &mut self,
+        portal: &StubPortal,
         id: ProbeId,
         flow: &IcmpFlow,
         seq: Seq,
         sent_at: Instant,
     ) -> ExpectedOutcome {
-        let outcome = self
-            .clients
-            .get_mut(&flow.client_id)
-            .unwrap()
-            .exec_mut(|client| {
-                client.on_packet(flow.dst.clone(), flow.route.packet_route(), sent_at)
-            });
+        let request = ProbeRequest::Icmp {
+            src: flow.src,
+            dst: flow.dst.clone(),
+            seq,
+            identifier: flow.identifier,
+        };
 
-        self.record_expected_probe(
-            id,
-            flow.client_id,
-            ProbeRequest::Icmp {
-                src: flow.src,
-                dst: flow.dst.clone(),
-                seq,
-                identifier: flow.identifier,
-            },
-            sent_at,
-            outcome,
-        )
+        self.record_flow_probe(portal, id, flow.client_id, flow.route, request, sent_at)
     }
 
     fn record_udp_probe(
         &mut self,
+        portal: &StubPortal,
         id: ProbeId,
         flow: &UdpFlow,
         sent_at: Instant,
     ) -> ExpectedOutcome {
-        let outcome = self
-            .clients
-            .get_mut(&flow.client_id)
-            .unwrap()
-            .exec_mut(|client| {
-                client.on_packet(flow.dst.clone(), flow.route.packet_route(), sent_at)
-            });
+        let request = ProbeRequest::Udp {
+            src: flow.src,
+            dst: flow.dst.clone(),
+            sport: flow.sport,
+            dport: flow.dport,
+        };
+
+        self.record_flow_probe(portal, id, flow.client_id, flow.route, request, sent_at)
+    }
+
+    fn record_flow_probe(
+        &mut self,
+        portal: &StubPortal,
+        id: ProbeId,
+        origin: ClientId,
+        route: Route,
+        request: ProbeRequest,
+        sent_at: Instant,
+    ) -> ExpectedOutcome {
+        // A retained flow completes its round trip; asking the portal again only refreshes
+        // the authorization a peer that reconnected since took from us.
+        if let Route::Peer(peer) = route {
+            let _ = self.pool_towards_peer(portal, origin, peer, request.protocol());
+        }
+
+        self.clients.get_mut(&origin).unwrap().exec_mut(|client| {
+            if let Route::Resource { resource, .. } = route {
+                client.connect_to_resource(resource, request.destination().clone());
+            }
+            client.note_sent(Some(route.remote()), sent_at);
+        });
 
         self.record_expected_probe(
             id,
-            flow.client_id,
-            ProbeRequest::Udp {
-                src: flow.src,
-                dst: flow.dst.clone(),
-                sport: flow.sport,
-                dport: flow.dport,
-            },
+            origin,
+            request,
             sent_at,
-            outcome,
+            ExpectedOutcome::RoundTripCompleted(route),
         )
     }
 
     fn record_probe(
         &mut self,
+        portal: &StubPortal,
         id: ProbeId,
         origin: ClientId,
         request: ProbeRequest,
         sent_at: Instant,
     ) -> ExpectedOutcome {
-        let route = self.route_for_application_packet(
+        let outcome = self.dispatch(
+            portal,
             origin,
             request.source(),
             request.destination(),
             request.protocol(),
         );
-        let outcome = self
-            .clients
+        self.clients
             .get_mut(&origin)
             .unwrap()
-            .exec_mut(|client| client.on_packet(request.destination().clone(), route, sent_at));
+            .exec_mut(|client| client.note_sent(outcome.remote(), sent_at));
 
         self.record_expected_probe(id, origin, request, sent_at, outcome)
     }
@@ -663,47 +620,208 @@ impl ReferenceState {
         outcome
     }
 
-    fn route_for_application_packet(
+    /// Follows a packet from `origin` to its destination: the client picks where it goes,
+    /// the portal supplies the gateway or pool, and the remote end accepts or rejects it.
+    fn dispatch(
         &mut self,
+        portal: &StubPortal,
         origin: ClientId,
-        source: IpAddr,
-        destination: &Destination,
+        src: IpAddr,
+        dst: &Destination,
         protocol: Protocol,
-    ) -> PacketRoute {
-        let route = self.route_for_packet(origin, source, destination, protocol);
-        let Destination::DomainName { name, .. } = destination else {
-            return route;
+    ) -> ExpectedOutcome {
+        if dst.ip_addr().is_some_and(|ip| ip.is_multicast()) {
+            return ExpectedOutcome::Dropped;
+        }
+
+        if let Some(ip) = dst.ip_addr().filter(|ip| tunnel_proto::is_peer(*ip)) {
+            let connected_gateway = portal.gateway_by_ip(ip).filter(|gateway| {
+                self.clients[&origin]
+                    .inner()
+                    .connected_resources()
+                    .any(|resource| self.deployed_gateway_for(portal, resource) == Some(*gateway))
+            });
+            if let Some(gateway) = connected_gateway {
+                return ExpectedOutcome::RoundTripCompleted(Route::Gateway(gateway));
+            }
+
+            // The portal answers a request for a tunnel IP that no client holds with "not
+            // found", and connlib turns that into an ICMP error. It sends the same error
+            // without asking when none of its pools permits the protocol, and has no route
+            // at all without a pool.
+            let Some(peer) = self.client_ip_to_id().get(&ip).copied() else {
+                if self.clients[&origin].inner().device_pool_ids().is_empty() {
+                    return ExpectedOutcome::Dropped;
+                }
+
+                return ExpectedOutcome::Rejected {
+                    by: RejectionRemote::Local,
+                    response: RejectionResponse::Prohibited,
+                };
+            };
+
+            if let Err(outcome) = self.pool_towards_peer(portal, origin, peer, protocol) {
+                return outcome;
+            }
+            if !self.clients[&peer]
+                .inner()
+                .inbound_peer_filter_allows(origin, protocol)
+            {
+                return ExpectedOutcome::Rejected {
+                    by: RejectionRemote::Client(peer),
+                    response: RejectionResponse::Prohibited,
+                };
+            }
+
+            return ExpectedOutcome::RoundTripCompleted(Route::Peer(peer));
+        }
+
+        let (resource, gateway) = match self.select_resource(portal, origin, src, dst, protocol) {
+            Ok(selected) => selected,
+            Err(outcome) => return outcome,
         };
-        let (resource, gateway) = match route {
-            PacketRoute::Resource { resource, gateway } => (resource, Some(gateway)),
-            PacketRoute::ResourceRejectedByGateway { resource, .. } => (resource, None),
-            PacketRoute::Drop => return route,
-            PacketRoute::RejectedByClient => return route,
-            PacketRoute::ResourceUnreachableByGateway { .. } => return route,
-            PacketRoute::Gateway(_) => return route,
-            PacketRoute::Peer(_) => return route,
-            PacketRoute::PeerRejectedByPeer(_) => return route,
+        if let Destination::DomainName { .. } = dst {
+            self.clients.get_mut(&origin).unwrap().exec_mut(|client| {
+                client.prepare_dns_resource_connection(resource, &self.global_dns_records)
+            });
+        }
+        let rejection = self.gateway_verdict(portal, origin, gateway, resource, src, dst, protocol);
+
+        self.clients
+            .get_mut(&origin)
+            .unwrap()
+            .exec_mut(|client| client.connect_to_resource(resource, dst.clone()));
+
+        match rejection {
+            Some(response) => ExpectedOutcome::Rejected {
+                by: RejectionRemote::Gateway(gateway),
+                response,
+            },
+            None => ExpectedOutcome::RoundTripCompleted(Route::Resource { resource, gateway }),
+        }
+    }
+
+    /// The resource `origin` sends a packet through and the gateway serving it.
+    fn select_resource(
+        &self,
+        portal: &StubPortal,
+        origin: ClientId,
+        src: IpAddr,
+        dst: &Destination,
+        protocol: Protocol,
+    ) -> Result<(ResourceId, GatewayId), ExpectedOutcome> {
+        let client = self.clients[&origin].inner();
+
+        let Some(resource) = client.resource_by_dst(src, dst, protocol) else {
+            return Err(ExpectedOutcome::Dropped);
+        };
+        if !client.strict_resource_filter_allows(resource, protocol)
+            && !client.malicious_behaviour.ignore_resource_filters
+        {
+            return Err(ExpectedOutcome::Rejected {
+                by: RejectionRemote::Local,
+                response: RejectionResponse::Prohibited,
+            });
+        }
+        let Some(gateway) = self.deployed_gateway_for(portal, resource) else {
+            return Err(ExpectedOutcome::Dropped);
         };
 
-        let required_record = if source.is_ipv4() {
+        Ok((resource, gateway))
+    }
+
+    /// Why `gateway` rejects a packet from `origin` for `resource`, if it does.
+    fn gateway_verdict(
+        &self,
+        portal: &StubPortal,
+        origin: ClientId,
+        gateway: GatewayId,
+        resource: ResourceId,
+        src: IpAddr,
+        dst: &Destination,
+        protocol: Protocol,
+    ) -> Option<RejectionResponse> {
+        let client = self.clients[&origin].inner();
+        let is_internet_resource = client.internet_resource() == Some(resource);
+
+        if is_internet_resource && dst.ip_addr().is_some_and(is_resource_proxy) {
+            return Some(RejectionResponse::Prohibited);
+        }
+        if is_internet_resource && dst.ip_addr().is_some_and(internet_resource_rejects) {
+            return Some(RejectionResponse::Unreachable);
+        }
+
+        // Only a client that ignores resource filters sends traffic the selected resource
+        // rejects. The gateway checks every route it authorized for the client instead, so
+        // a broader CIDR resource on the same gateway can still permit it.
+        let allowed_by_another_cidr = dst.ip_addr().is_some_and(|ip| {
+            client
+                .connected_cidr_resources_allowing(ip, protocol)
+                .any(|cidr| self.deployed_gateway_for(portal, cidr) == Some(gateway))
+        });
+        if !client.strict_resource_filter_allows(resource, protocol) && !allowed_by_another_cidr {
+            return Some(RejectionResponse::Prohibited);
+        }
+
+        let Destination::DomainName { name, .. } = dst else {
+            return None;
+        };
+        let required_record = if src.is_ipv4() {
             RecordType::A
         } else {
             RecordType::AAAA
         };
-        let has_compatible_record = self.clients.get_mut(&origin).unwrap().exec_mut(|client| {
-            client.prepare_dns_resource_connection(resource, &self.global_dns_records);
-            client
-                .dns_resource_resolution(resource, name)
-                .is_some_and(|records| records.contains(&required_record))
-        });
-        let Some(gateway) = gateway else {
-            return route;
-        };
-        if has_compatible_record {
-            return route;
+        let resolves_for_source = client
+            .dns_resource_resolution(resource, name)
+            .is_some_and(|records| records.contains(&required_record));
+
+        (!resolves_for_source).then_some(RejectionResponse::Unreachable)
+    }
+
+    /// The pool a packet from `origin` to `peer` travels through, asking the portal for an
+    /// authorization when none fits.
+    fn pool_towards_peer(
+        &mut self,
+        portal: &StubPortal,
+        origin: ClientId,
+        peer: ClientId,
+        protocol: Protocol,
+    ) -> Result<ResourceId, ExpectedOutcome> {
+        let client = self.clients[&origin].inner();
+        let authorized = client.authorized_pools_towards(peer).collect::<Vec<_>>();
+        if authorized.is_empty() && client.device_pool_ids().is_empty() {
+            return Err(ExpectedOutcome::Dropped);
         }
 
-        PacketRoute::ResourceUnreachableByGateway { resource, gateway }
+        let candidates = client.candidate_pools(protocol);
+        if let Some(pool) = candidates.iter().find(|pool| authorized.contains(pool)) {
+            return Ok(*pool);
+        }
+
+        let Some(pool) = portal.pick_device_pool(&candidates, peer) else {
+            return Err(ExpectedOutcome::Rejected {
+                by: RejectionRemote::Local,
+                response: RejectionResponse::Prohibited,
+            });
+        };
+
+        self.clients
+            .get_mut(&origin)
+            .unwrap()
+            .exec_mut(|client| client.record_outbound_peer_authorization(peer, pool));
+        self.apply_peer_authorization(origin, peer, pool);
+
+        Ok(pool)
+    }
+
+    /// Installs the inbound half of a peer authorization on `peer`.
+    ///
+    /// A peer we connect to anew drops its outbound authorizations towards us, as we may have reset.
+    fn apply_peer_authorization(&mut self, origin: ClientId, peer: ClientId, pool: ResourceId) {
+        self.clients.get_mut(&peer).unwrap().exec_mut(|peer| {
+            peer.forget_outbound_peer_authorizations(origin);
+            peer.add_inbound_peer_pool(origin, pool);
+        });
     }
 
     fn trace_requirement(
@@ -714,20 +832,15 @@ impl ReferenceState {
     ) -> TraceRequirement {
         let known_loss = match outcome {
             ExpectedOutcome::Dropped => None,
-            ExpectedOutcome::RoundTripCompleted {
-                remote: Remote::Client(client),
-                ..
-            } if self
-                .clients
-                .get(&client)
-                .unwrap()
-                .inner()
-                .has_reset_connections_within_ice_timeout(sent_at) =>
+            ExpectedOutcome::RoundTripCompleted(Route::Peer(client))
+                if self.clients[&client]
+                    .inner()
+                    .has_reset_connections_within_ice_timeout(sent_at) =>
             {
                 Some(KnownLoss::ConnectionReset)
             }
-            ExpectedOutcome::RoundTripCompleted { remote, .. } => self
-                .can_drop_during_rekey(origin, remote, sent_at)
+            ExpectedOutcome::RoundTripCompleted(route) => self
+                .can_drop_during_rekey(origin, route.remote(), sent_at)
                 .then_some(KnownLoss::WireGuardRekey),
             ExpectedOutcome::Rejected {
                 by: RejectionRemote::Local,
@@ -754,7 +867,7 @@ impl ReferenceState {
     }
 
     fn can_drop_during_rekey(&self, origin: ClientId, remote: Remote, sent_at: Instant) -> bool {
-        let client = self.clients.get(&origin).unwrap().inner();
+        let client = self.clients[&origin].inner();
 
         match remote {
             Remote::Gateway(gateway) => client
@@ -794,52 +907,22 @@ impl ReferenceState {
             .collect()
     }
 
-    pub(crate) fn deauthorizable_resource_ids(&self) -> Vec<ResourceId> {
+    pub(crate) fn deauthorizable_resource_ids(&self, portal: &StubPortal) -> Vec<ResourceId> {
         self.removable_resource_ids()
             .into_iter()
             .filter(|resource| {
-                self.portal
+                portal
                     .gateway_for_resource(*resource)
                     .is_some_and(|gateway| self.gateways.contains_key(gateway))
             })
             .collect()
     }
 
-    pub(crate) fn route_for_packet(
-        &self,
-        client_id: ClientId,
-        src: IpAddr,
-        dst: &Destination,
-        protocol: Protocol,
-    ) -> PacketRoute {
-        let Some(client) = self.clients.get(&client_id) else {
-            return PacketRoute::Drop;
-        };
-        let clients_by_ip = self.client_ip_to_id();
-        let connected_gateways = client
-            .inner()
-            .connected_resources()
-            .filter_map(|resource| self.portal.gateway_for_resource(resource).copied())
+    fn deployed_gateway_for(&self, portal: &StubPortal, resource: ResourceId) -> Option<GatewayId> {
+        portal
+            .gateway_for_resource(resource)
+            .copied()
             .filter(|gateway| self.gateways.contains_key(gateway))
-            .collect::<BTreeSet<_>>();
-
-        client.inner().route_for_packet(
-            src,
-            dst,
-            protocol,
-            |resource| {
-                self.portal
-                    .gateway_for_resource(resource)
-                    .copied()
-                    .filter(|gateway| self.gateways.contains_key(gateway))
-            },
-            |ip| {
-                self.portal
-                    .gateway_by_ip(ip)
-                    .filter(|gateway| connected_gateways.contains(gateway))
-            },
-            |ip| clients_by_ip.get(&ip).copied(),
-        )
     }
 
     pub(crate) fn icmp_flows(&self) -> Vec<(FlowId, Seq)> {
@@ -936,12 +1019,18 @@ impl ReferenceState {
         let unique_domains = self
             .gateways
             .values()
-            .flat_map(|g| g.inner().dns_records().domains_iter())
+            .flat_map(|gateway| gateway.inner().dns_records().domains_iter())
             .chain(self.global_dns_records.domains_iter())
-            .filter(|d| {
-                self.clients.values().any(|c| {
-                    c.inner()
-                        .dns_resource_by_domain(d, |_| true, |_| true)
+            .chain(
+                self.clients
+                    .values()
+                    .flat_map(|client| client.inner().dns_records.keys().cloned()),
+            )
+            .filter(|domain| {
+                self.clients.values().any(|client| {
+                    client
+                        .inner()
+                        .dns_resource_by_domain(domain, |_| true, |_| true)
                         .is_some()
                 })
             })
@@ -950,15 +1039,18 @@ impl ReferenceState {
         Vec::from_iter(unique_domains)
     }
 
-    pub(crate) fn reachable_dns_servers(&self) -> Vec<(ClientId, dns::Upstream)> {
-        let upstream_do53 = self.portal.upstream_do53();
+    pub(crate) fn reachable_dns_servers(
+        &self,
+        portal: &StubPortal,
+    ) -> Vec<(ClientId, dns::Upstream)> {
+        let upstream_do53 = portal.upstream_do53();
 
         self.clients
             .iter()
             .flat_map(|(client_id, client)| {
                 client
                     .inner()
-                    .expected_dns_servers(self.portal.upstream_do53(), self.portal.upstream_doh())
+                    .expected_dns_servers(portal.upstream_do53(), portal.upstream_doh())
                     .into_iter()
                     .filter(|s| match s {
                         tunnel_proto::dns::Upstream::Do53 {
@@ -978,7 +1070,7 @@ impl ReferenceState {
                             .inner()
                             .upstream_dns_server_via_resource(server)
                             .is_none_or(|resource| {
-                                self.portal
+                                portal
                                     .gateway_for_resource(resource)
                                     .is_some_and(|gateway| self.gateways.contains_key(gateway))
                             })
@@ -1026,8 +1118,11 @@ impl ReferenceState {
             .collect()
     }
 
-    pub(crate) fn resources_unknown_to_all_clients(&self) -> Vec<client::Resource> {
-        self.portal
+    pub(crate) fn resources_unknown_to_all_clients(
+        &self,
+        portal: &StubPortal,
+    ) -> Vec<client::Resource> {
+        portal
             .all_resources()
             .into_iter()
             .filter(|resource| {
@@ -1038,23 +1133,22 @@ impl ReferenceState {
             .collect()
     }
 
-    /// Resources that have configurable traffic filters and exist on at least one client.
-    ///
-    /// Used by `Transition::ChangeFiltersOfResource`.
-    pub(crate) fn resources_with_filters_on_any_client(&self) -> Vec<client::Resource> {
-        self.portal
+    pub(crate) fn editable_resources_on_any_client(
+        &self,
+        portal: &StubPortal,
+    ) -> Vec<client::Resource> {
+        portal
             .all_resources()
             .into_iter()
             .filter(|resource| {
-                let has_filters = match resource {
+                let is_editable = match resource {
                     client::Resource::Cidr(_) => true,
                     client::Resource::Dns(_) => true,
-                    client::Resource::StaticDevicePool(_) => true,
+                    client::Resource::DevicePool(_) => true,
                     client::Resource::Internet(_) => false,
-                    client::Resource::DynamicDevicePool(_) => true,
                 };
 
-                has_filters
+                is_editable
                     && self
                         .clients
                         .values()
@@ -1063,79 +1157,25 @@ impl ReferenceState {
             .collect()
     }
 
-    pub(crate) fn replaceable_resources_on_any_client(&self) -> Vec<client::Resource> {
-        self.resources_with_filters_on_any_client()
-            .into_iter()
-            .filter(|resource| match resource {
-                client::Resource::Cidr(_) => true,
-                client::Resource::Dns(_) => true,
-                client::Resource::StaticDevicePool(_) => true,
-                client::Resource::Internet(_) => false,
-                client::Resource::DynamicDevicePool(_) => false,
-            })
-            .collect()
-    }
-
-    pub(crate) fn cidr_and_dns_resources_on_any_client(&self) -> Vec<client::Resource> {
-        self.portal
-            .all_resources()
-            .into_iter()
-            .filter(|resource| {
-                let is_cidr_or_dns = match resource {
-                    client::Resource::Cidr(_) => true,
-                    client::Resource::Dns(_) => true,
-                    client::Resource::Internet(_) => false,
-                    client::Resource::StaticDevicePool(_) => false,
-                    client::Resource::DynamicDevicePool(_) => false,
-                };
-
-                is_cidr_or_dns
-                    && self
-                        .clients
-                        .values()
-                        .any(|client| client.inner().has_resource(resource.id()))
-            })
-            .collect()
-    }
-
-    pub(crate) fn cidr_resources_on_any_client(&self) -> Vec<client::CidrResource> {
-        self.portal
+    pub(crate) fn dns_resources_on_any_client(
+        &self,
+        portal: &StubPortal,
+    ) -> Vec<(ClientId, client::DnsResource)> {
+        let dns_resources = portal
             .all_resources()
             .into_iter()
             .filter_map(|r| match r {
-                client::Resource::Cidr(r) => Some(r),
-                client::Resource::Dns(_) => None,
-                client::Resource::Internet(_) => None,
-                client::Resource::StaticDevicePool(_) => None,
-                client::Resource::DynamicDevicePool(_) => None,
-            })
-            .filter(|resource| {
-                self.clients
-                    .values()
-                    .any(|client| client.inner().has_resource(resource.id))
-            })
-            .collect()
-    }
-
-    pub(crate) fn wildcard_dns_resources(&self) -> Vec<(ClientId, client::DnsResource)> {
-        let wildcard_resources = self
-            .portal
-            .all_resources()
-            .into_iter()
-            .filter_map(|r| match r {
-                client::Resource::Dns(r) if r.address.starts_with("*.") => Some(r),
-                client::Resource::Dns(_) => None,
+                client::Resource::Dns(r) => Some(r),
                 client::Resource::Cidr(_) => None,
                 client::Resource::Internet(_) => None,
-                client::Resource::StaticDevicePool(_) => None,
-                client::Resource::DynamicDevicePool(_) => None,
+                client::Resource::DevicePool(_) => None,
             })
             .collect::<Vec<_>>();
 
         self.clients
             .iter()
             .flat_map(|(client_id, client)| {
-                wildcard_resources
+                dns_resources
                     .iter()
                     .filter(|r| client.inner().has_resource(r.id))
                     .map(move |r| (*client_id, r.clone()))
@@ -1143,11 +1183,10 @@ impl ReferenceState {
             .collect()
     }
 
-    pub(crate) fn regular_sites(&self) -> &[Site] {
-        self.portal.regular_sites()
-    }
-
-    pub(crate) fn connected_gateway_ipv4_ips(&self) -> Vec<(ClientId, Ipv4Network)> {
+    pub(crate) fn connected_gateway_ipv4_ips(
+        &self,
+        portal: &StubPortal,
+    ) -> Vec<(ClientId, Ipv4Network)> {
         self.clients
             .iter()
             .flat_map(|(id, client)| {
@@ -1155,7 +1194,7 @@ impl ReferenceState {
                     .inner()
                     .connected_resources()
                     .filter_map(|r| {
-                        let gateway = self.portal.gateway_for_resource(r)?;
+                        let gateway = portal.gateway_for_resource(r)?;
                         let gateway_host = self.gateways.get(gateway)?;
 
                         Some((*id, gateway_host.inner().tunnel_ip4.into()))
@@ -1165,7 +1204,10 @@ impl ReferenceState {
             .collect()
     }
 
-    pub(crate) fn connected_gateway_ipv6_ips(&self) -> Vec<(ClientId, Ipv6Network)> {
+    pub(crate) fn connected_gateway_ipv6_ips(
+        &self,
+        portal: &StubPortal,
+    ) -> Vec<(ClientId, Ipv6Network)> {
         self.clients
             .iter()
             .flat_map(|(id, client)| {
@@ -1173,7 +1215,7 @@ impl ReferenceState {
                     .inner()
                     .connected_resources()
                     .filter_map(|r| {
-                        let gateway = self.portal.gateway_for_resource(r)?;
+                        let gateway = portal.gateway_for_resource(r)?;
                         let gateway_host = self.gateways.get(gateway)?;
 
                         Some((*id, gateway_host.inner().tunnel_ip6.into()))
@@ -1187,55 +1229,25 @@ impl ReferenceState {
         self.clients.keys().copied().collect()
     }
 
-    pub(crate) fn static_device_pools_on_any_client(
+    /// Returns every listed pool that some client holds.
+    pub(crate) fn listed_device_pool_ids_on_any_client(
         &self,
-    ) -> Vec<client::StaticDevicePoolResource> {
-        let pools = self
-            .portal
-            .all_resources()
+        portal: &StubPortal,
+    ) -> Vec<ResourceId> {
+        portal
+            .listed_pool_ids()
             .into_iter()
-            .filter_map(|r| match r {
-                client::Resource::StaticDevicePool(p) => Some(p),
-                client::Resource::Dns(_) => None,
-                client::Resource::Cidr(_) => None,
-                client::Resource::Internet(_) => None,
-                client::Resource::DynamicDevicePool(_) => None,
-            });
-
-        pools
-            .filter(|p| self.clients.values().any(|c| c.inner().has_resource(p.id)))
-            .collect()
-    }
-
-    /// Eligible `(client, device-pool resource, reachable DNS server)` triples
-    /// for generating a device-pool DNS query transition.
-    ///
-    /// Pre-filters to the client × pool × reachable-dns cross-product so we
-    /// never emit a no-op transition because the sampled client can't reach
-    /// the sampled DNS server.
-    pub(crate) fn device_pool_query_targets(
-        &self,
-    ) -> Vec<(ClientId, client::DynamicDevicePoolResource, dns::Upstream)> {
-        let resources_on_client = self.device_pool_resources_on_client();
-        let dns_servers = self.reachable_dns_servers();
-
-        resources_on_client
-            .into_iter()
-            .flat_map(|(client_id, resource)| {
-                dns_servers
-                    .iter()
-                    .filter(move |(dns_client_id, _)| *dns_client_id == client_id)
-                    .map(move |(_, server)| (client_id, resource.clone(), server.clone()))
-            })
+            .filter(|pool| self.clients.values().any(|c| c.inner().has_resource(*pool)))
             .collect()
     }
 
     /// Generates `(src_client_id, dst_ip)` tuples for both tunnel IP families of every online
-    /// client reachable from `src_client_id` via a device pool, paired with the pool
-    /// filters that authorize the route.
-    ///
-    /// A static pool reaches its members; a dynamic pool reaches the peers resolved through it.
-    pub(crate) fn pool_routed_other_client_tun_ips(&self) -> Vec<(ClientId, IpAddr, Vec<Filter>)> {
+    /// client `src_client_id` may reach through a device pool it holds, paired with the
+    /// pool filters that authorize the route.
+    pub(crate) fn pool_routed_other_client_tun_ips(
+        &self,
+        portal: &StubPortal,
+    ) -> Vec<(ClientId, IpAddr, Vec<Filter>)> {
         let online_ips_by_id = self
             .clients
             .iter()
@@ -1252,41 +1264,28 @@ impl ReferenceState {
             .iter()
             .flat_map(|(src_id, src_client)| {
                 let src_id = *src_id;
-                let (own_v4, own_v6) = online_ips_by_id[&src_id];
-                let static_targets = src_client
+                let online_ips_by_id = &online_ips_by_id;
+
+                src_client
                     .inner()
                     .all_resources()
                     .into_iter()
                     .filter_map(|r| match r {
-                        client::Resource::StaticDevicePool(p) => {
-                            let ips = p
-                                .devices
-                                .iter()
-                                .filter_map(|d| online_ips_by_id.get(&d.id).copied())
-                                .flat_map(|(v4, v6)| [v4, v6])
-                                .collect::<Vec<_>>();
-
-                            Some((p.filters, ips))
-                        }
-                        client::Resource::DynamicDevicePool(_) => None,
+                        client::Resource::DevicePool(p) => Some((p.id, p.filters)),
                         client::Resource::Dns(_) => None,
                         client::Resource::Cidr(_) => None,
                         client::Resource::Internet(_) => None,
                     })
-                    .collect::<Vec<_>>();
-                let dynamic_targets = src_client
-                    .inner()
-                    .resolved_dynamic_peers()
-                    .into_iter()
-                    .map(|(ip, filters)| (filters, vec![ip]));
-
-                static_targets
-                    .into_iter()
-                    .chain(dynamic_targets)
-                    .filter(|(filters, _)| pool_filters_allow_icmp_or_udp(filters))
-                    .flat_map(|(filters, ips)| ips.into_iter().map(move |ip| (ip, filters.clone())))
-                    .filter(move |(ip, _)| *ip != own_v4 && *ip != own_v6)
-                    .map(move |(ip, filters)| (src_id, ip, filters))
+                    .filter(|(_, filters)| pool_filters_allow_icmp_or_udp(filters))
+                    .flat_map(move |(pool, filters)| {
+                        portal
+                            .pool_members(pool)
+                            .into_iter()
+                            .filter(move |member| *member != src_id)
+                            .filter_map(move |member| online_ips_by_id.get(&member).copied())
+                            .flat_map(|(v4, v6)| [v4, v6])
+                            .map(move |ip| (src_id, ip, filters.clone()))
+                    })
             })
             .collect()
     }
@@ -1299,33 +1298,6 @@ impl ReferenceState {
                 let ip4 = IpAddr::V4(c.inner().tunnel_ip4);
                 let ip6 = IpAddr::V6(c.inner().tunnel_ip6);
                 [(ip4, *id), (ip6, *id)]
-            })
-            .collect()
-    }
-
-    fn device_pool_resources_on_client(
-        &self,
-    ) -> Vec<(ClientId, client::DynamicDevicePoolResource)> {
-        let device_pool_resources = self
-            .portal
-            .all_resources()
-            .into_iter()
-            .filter_map(|r| match r {
-                client::Resource::DynamicDevicePool(r) => Some(r),
-                client::Resource::Dns(_) => None,
-                client::Resource::Cidr(_) => None,
-                client::Resource::Internet(_) => None,
-                client::Resource::StaticDevicePool(_) => None,
-            })
-            .collect::<Vec<_>>();
-
-        self.clients
-            .iter()
-            .flat_map(|(client_id, client)| {
-                device_pool_resources
-                    .iter()
-                    .filter(|r| client.inner().has_resource(r.id))
-                    .map(move |r| (*client_id, r.clone()))
             })
             .collect()
     }

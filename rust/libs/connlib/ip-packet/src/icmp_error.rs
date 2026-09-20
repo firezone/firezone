@@ -214,8 +214,10 @@ fn extract_l4_proto(payload: &[u8], protocol: IpProtocol) -> Result<Layer4Protoc
             let icmp_type =
                 Icmpv4Type::from_wire(header.ty().0, header.code(), header.rest_of_hdr());
 
-            let Icmpv4Type::EchoRequest(echo_header) = icmp_type else {
-                bail!("Original packet was not any ICMP echo request but {icmp_type:?}")
+            let (Icmpv4Type::EchoRequest(echo_header) | Icmpv4Type::EchoReply(echo_header)) =
+                icmp_type
+            else {
+                bail!("Original packet was not an ICMP echo packet but {icmp_type:?}")
             };
 
             Layer4Protocol::Icmp {
@@ -230,8 +232,10 @@ fn extract_l4_proto(payload: &[u8], protocol: IpProtocol) -> Result<Layer4Protoc
             let icmp_type =
                 Icmpv6Type::from_wire(header.ty().0, header.code(), header.rest_of_hdr());
 
-            let Icmpv6Type::EchoRequest(echo_header) = icmp_type else {
-                bail!("Original packet was not any ICMP echo request but {icmp_type:?}")
+            let (Icmpv6Type::EchoRequest(echo_header) | Icmpv6Type::EchoReply(echo_header)) =
+                icmp_type
+            else {
+                bail!("Original packet was not an ICMP echo packet but {icmp_type:?}")
             };
 
             Layer4Protocol::Icmp {

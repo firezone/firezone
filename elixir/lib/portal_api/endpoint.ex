@@ -66,6 +66,16 @@ defmodule PortalAPI.Endpoint do
     longpoll: false,
     drainer: []
 
+  socket "/client/v3", PortalAPI.Client.V3.Socket,
+    websocket: [
+      check_origin: :conn,
+      connect_info: [:trace_context_headers, :user_agent, :peer_data, :x_headers, :uri],
+      error_handler: {PortalAPI.Sockets, :handle_error, []},
+      timeout: :timer.seconds(37)
+    ],
+    longpoll: false,
+    drainer: []
+
   socket "/relay", PortalAPI.Relay.Socket,
     websocket: [
       check_origin: :conn,
@@ -77,21 +87,10 @@ defmodule PortalAPI.Endpoint do
     drainer: []
 
   plug :fetch_user_agent
-  plug :redirect_to_rest_api_url
 
   plug PortalAPI.Plugs.RescueRouterErrors
 
   plug Sentry.PlugContext
-
-  # Ingestion has its own configured hostname and is not part of the REST API.
-  def redirect_to_rest_api_url(%Plug.Conn{path_info: ["ingestion" | _]} = conn, _opts), do: conn
-
-  def redirect_to_rest_api_url(%Plug.Conn{} = conn, _opts) do
-    case Portal.Config.get_env(:portal, :rest_api_url) do
-      nil -> conn
-      rest_api_url -> redirect_to_canonical_host(conn, URI.parse(rest_api_url))
-    end
-  end
 
   def fetch_user_agent(%Plug.Conn{} = conn, _opts) do
     case Plug.Conn.get_req_header(conn, "user-agent") do
@@ -114,30 +113,5 @@ defmodule PortalAPI.Endpoint do
     else
       conn
     end
-  end
-
-  defp redirect_to_canonical_host(%Plug.Conn{host: host} = conn, %URI{host: host}), do: conn
-
-  defp redirect_to_canonical_host(conn, %URI{scheme: scheme, host: host, port: port}) do
-    query =
-      if conn.query_string == "" do
-        nil
-      else
-        conn.query_string
-      end
-
-    location =
-      URI.to_string(%URI{
-        scheme: scheme,
-        host: host,
-        port: port,
-        path: conn.request_path,
-        query: query
-      })
-
-    conn
-    |> put_resp_header("location", location)
-    |> send_resp(308, "")
-    |> halt()
   end
 end

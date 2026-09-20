@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  WiX fragment for the `firezone` CLI. Pulled into the main MSI via
+  `tauri.conf.json:fragmentPaths`. Installs the built `firezone-cli.exe`
+  as `firezone.exe` in a `cli` subdirectory of INSTALLDIR and appends
+  that subdirectory to the system PATH.
+
+  A subdirectory rather than INSTALLDIR itself, for two reasons: the
+  filesystem is case-insensitive, so the installed `firezone.exe` and
+  the GUI's `Firezone.exe` cannot share a directory; and putting
+  INSTALLDIR on the PATH would also expose the tunnel service and the
+  sparse-package helper as commands.
+
+  The CLI reaches the GUI over a pipe whose DACL grants access by
+  package identity, so `win_files/AppxManifest.xml` has to list
+  `cli\firezone.exe` as an `<Application>`: that is the installed
+  path, which the kernel resolves against the MSI install directory.
+-->
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Fragment>
+    <DirectoryRef Id="INSTALLDIR">
+      <Directory Id="CliFolder" Name="cli">
+        <Component Id="FirezoneCli" Guid="12ac688f-3421-4b7e-9732-d33a88123fe2">
+          <File Id="FirezoneCliExe" Name="firezone.exe"
+                Source="../../firezone-cli.exe" KeyPath="yes" />
+          <Environment Id="FirezoneCliPath" Name="PATH" Value="[INSTALLDIR]cli"
+                       Part="last" Action="set" System="yes" Permanent="no" />
+        </Component>
+      </Directory>
+    </DirectoryRef>
+  </Fragment>
+</Wix>

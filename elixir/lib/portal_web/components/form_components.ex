@@ -67,6 +67,7 @@ defmodule PortalWeb.FormComponents do
                 pattern placeholder readonly required rows size step)
 
   attr :class, :string, default: "", doc: "the custom classes to be added to the input"
+  attr :suffix, :string, default: nil, doc: "static text shown after the input, e.g. a domain"
 
   slot :inner_block
 
@@ -350,10 +351,17 @@ defmodule PortalWeb.FormComponents do
             "disabled:opacity-40 disabled:cursor-not-allowed",
             @errors == [] && "border-input-border focus:border-border-focus focus:ring-border-focus/30",
             @errors != [] && "border-error focus:border-error focus:ring-error/30",
+            @suffix && "rounded-r-none",
             @class
           ]}
           {@rest}
         />
+        <span
+          :if={@suffix}
+          class="inline-flex items-center px-3 rounded-r border border-l-0 border-input-border bg-raised text-sm text-subtle whitespace-nowrap"
+        >
+          {@suffix}
+        </span>
         <.field_errors errors={@errors} name={@name} inline={@inline_errors} beside={@beside_errors} />
       </div>
     </div>
@@ -395,6 +403,7 @@ defmodule PortalWeb.FormComponents do
 
   defp field_row_class(%{beside_errors: true}), do: "relative flex flex-row items-center"
   defp field_row_class(%{inline_errors: true}), do: "flex flex-row items-center"
+  defp field_row_class(%{suffix: suffix}) when not is_nil(suffix), do: "flex items-stretch"
   defp field_row_class(_assigns), do: nil
 
   defp field_width_class(%{beside_errors: true}), do: "min-w-0 flex-1"

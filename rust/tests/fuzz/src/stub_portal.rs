@@ -1,20 +1,21 @@
 use connlib_model::{ClientId, GatewayId, ResourceId, Site, SiteId};
 use dns_types::DomainName;
-use ip_network::IpNetwork;
 use itertools::Itertools;
 use smallvec::SmallVec;
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     iter,
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
 };
-use tunnel_proto::messages::{UpstreamDo53, UpstreamDoH, client::DevicePoolMember, gateway};
+use tunnel_proto::dns;
+use tunnel_proto::messages::{UpstreamDo53, UpstreamDoH, gateway};
 
-use crate::resource::{self as client, DynamicDevicePoolResource, StaticDevicePoolResource};
+use crate::resource::{self as client, DevicePoolResource};
+use crate::transition::Transition;
 
 /// Stub implementation of the portal.
 #[derive(Clone, derive_more::Debug)]
-pub(crate) struct StubPortal {
+pub struct StubPortal {
     clients: BTreeMap<ClientId, StubClient>,
     gateways_by_site: BTreeMap<SiteId, SmallVec<[(GatewayId, Ipv4Addr, Ipv6Addr); 3]>>,
     regular_sites: SmallVec<[Site; 3]>,
@@ -25,8 +26,11 @@ pub(crate) struct StubPortal {
     // TODO: Maybe these should use the `messages` types to cover the conversions and to model that that is what we receive from the portal?
     cidr_resources: BTreeMap<ResourceId, client::CidrResource>,
     dns_resources: BTreeMap<ResourceId, client::DnsResource>,
-    device_pool_resources: BTreeMap<ResourceId, DynamicDevicePoolResource>,
-    static_device_pool_resources: BTreeMap<ResourceId, StaticDevicePoolResource>,
+    device_pool_resources: BTreeMap<ResourceId, DevicePoolResource>,
+    /// The portal's membership criteria per pool, evaluated when a client asks for access.
+    pool_members: BTreeMap<ResourceId, PoolMembers>,
+    /// The peer subset of the portal's persisted policy authorizations.
+    peer_policy_authorizations: BTreeSet<PeerAuthorization>,
     internet_resource: client::InternetResource,
 
     search_domain: Option<DomainName>,
@@ -37,20 +41,37 @@ pub(crate) struct StubPortal {
     #[debug(skip)]
     gateway_selector: u32,
 
+    /// Stable index used to pick a resource candidate (`index % len`).
+    resource_selector: u32,
+
     /// Whether the portal hands out ICE-less flows. Sampled once per test case
     /// and applied to every connection, modelling a portal-wide rollout toggle
     /// rather than a per-peer capability.
     iceless: bool,
 }
 
+/// Which clients a device pool admits.
+#[derive(Clone, Debug)]
+pub(crate) enum PoolMembers {
+    AllClients,
+    Listed(BTreeSet<ClientId>),
+}
+
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub struct PeerAuthorization {
+    pub(crate) initiator: ClientId,
+    pub(crate) target: ClientId,
+    pub(crate) pool: ResourceId,
+}
+
 #[derive(Clone, Debug)]
 struct StubClient {
     ipv4: Ipv4Addr,
     ipv6: Ipv6Addr,
-    /// Label under which this client is registered as a device in dynamic device pools.
+    /// The slug this client is reached at under the device domain.
     ///
-    /// In production the portal maps each device to a tunnel IP; in the test harness
-    /// we assign one stable label per client (e.g. `device0`) and use it for all pools.
+    /// In production the portal derives it from the device name; in the test harness
+    /// we assign one stable label per client (e.g. `device0`).
     device_label: String,
 }
 
@@ -60,10 +81,10 @@ impl StubPortal {
         gateways_by_site: BTreeMap<SiteId, SmallVec<[(GatewayId, Ipv4Addr, Ipv6Addr); 3]>>,
         regular_sites: SmallVec<[Site; 3]>,
         gateway_selector: u32,
+        resource_selector: u32,
         cidr_resources: impl IntoIterator<Item = client::CidrResource>,
         dns_resources: impl IntoIterator<Item = client::DnsResource>,
-        device_pool_resources: impl IntoIterator<Item = DynamicDevicePoolResource>,
-        static_device_pool_resources: impl IntoIterator<Item = StaticDevicePoolResource>,
+        device_pool_resources: impl IntoIterator<Item = (DevicePoolResource, PoolMembers)>,
         internet_resource: client::InternetResource,
         search_domain: Option<DomainName>,
         upstream_do53: Vec<UpstreamDo53>,
@@ -77,14 +98,10 @@ impl StubPortal {
             .into_iter()
             .map(|r| (r.id, r))
             .collect::<BTreeMap<_, _>>();
-        let device_pool_resources = device_pool_resources
+        let (device_pool_resources, pool_members) = device_pool_resources
             .into_iter()
-            .map(|r| (r.id, r))
-            .collect::<BTreeMap<_, _>>();
-        let static_device_pool_resources = static_device_pool_resources
-            .into_iter()
-            .map(|r| (r.id, r))
-            .collect::<BTreeMap<_, _>>();
+            .map(|(r, members)| ((r.id, r.clone()), (r.id, members)))
+            .unzip::<_, _, BTreeMap<_, _>, BTreeMap<_, _>>();
 
         let cidr_sites = cidr_resources.iter().map(|(id, r)| {
             (
@@ -135,18 +152,71 @@ impl StubPortal {
             gateways_by_site,
             regular_sites,
             gateway_selector,
+            resource_selector,
             sites_by_resource: BTreeMap::from_iter(
                 cidr_sites.chain(dns_sites).chain(internet_site),
             ),
             cidr_resources,
             dns_resources,
             device_pool_resources,
-            static_device_pool_resources,
+            pool_members,
+            peer_policy_authorizations: Default::default(),
             internet_resource,
             search_domain,
             upstream_do53,
             upstream_doh,
             iceless: false,
+        }
+    }
+
+    /// Applies the portal-side effect of `transition`.
+    pub fn apply(&mut self, transition: &Transition) {
+        match transition {
+            Transition::RemoveResource(id) => {
+                self.revoke_peer_policy_authorizations_for_pool(*id);
+            }
+            Transition::EditResource(edit) => {
+                if let client::EditEffect::Type { .. } = client::classify(&edit.old, &edit.new) {
+                    self.revoke_peer_policy_authorizations_for_pool(edit.old.id());
+                }
+
+                self.replace_resource(edit.new.clone());
+            }
+            Transition::UpdateDevicePoolMembers {
+                pool_id,
+                members,
+                revoked: _,
+            } => {
+                self.set_pool_members(*pool_id, members.clone());
+            }
+            Transition::UpdateUpstreamDo53Servers(servers) => {
+                self.upstream_do53 = servers.clone();
+            }
+            Transition::UpdateUpstreamDoHServers(servers) => {
+                self.upstream_doh = servers.clone();
+            }
+            Transition::UpdateUpstreamSearchDomain(domain) => {
+                self.search_domain = domain.clone();
+            }
+            Transition::AddResource(_) => {}
+            Transition::SetInternetResourceState { .. } => {}
+            Transition::SendIcmpPacketOnNewFlow { .. } => {}
+            Transition::SendIcmpPacketOnExistingFlow { .. } => {}
+            Transition::SendUdpPacketOnNewFlow { .. } => {}
+            Transition::SendUdpPacketOnExistingFlow { .. } => {}
+            Transition::ConnectTcp { .. } => {}
+            Transition::SendDnsQuery { .. } => {}
+            Transition::SendDnsResourcePtrQuery { .. } => {}
+            Transition::UpdateSystemDnsServers { .. } => {}
+            Transition::RoamClient { .. } => {}
+            Transition::ReconnectPortal { .. } => {}
+            Transition::RestartClient { .. } => {}
+            Transition::DeployNewRelays(_) => {}
+            Transition::PartitionRelaysFromPortal => {}
+            Transition::Idle => {}
+            Transition::RebootRelaysWhilePartitioned(_) => {}
+            Transition::DeauthorizeWhileGatewayIsPartitioned(_) => {}
+            Transition::UpdateDnsRecords { .. } => {}
         }
     }
 
@@ -191,18 +261,112 @@ impl StubPortal {
             .collect()
     }
 
-    /// Resolves a device-pool domain (e.g. `device0.pool.example.com`) to the
-    /// tunnel IPv4 + IPv6 of the matching client, if the label corresponds to a known
-    /// device.
-    pub(crate) fn resolve_device_pool_domain(&self, domain: &str) -> Option<(Ipv4Addr, Ipv6Addr)> {
-        let label = domain.split_once('.')?.0;
+    /// Resolves a device name (e.g. `device0.firezone.network`) to the matching client's
+    /// tunnel IPv4 + IPv6, if the slug corresponds to a known device.
+    pub(crate) fn resolve_device_domain(
+        &self,
+        domain: &DomainName,
+    ) -> Option<(Ipv4Addr, Ipv6Addr)> {
+        let slug = dns::device_slug(domain)?;
 
-        let client = self
-            .clients
-            .values()
-            .find(|c| c.device_label.as_str() == label)?;
+        let client = self.clients.values().find(|c| c.device_label == slug)?;
 
         Some((client.ipv4, client.ipv6))
+    }
+
+    pub(crate) fn client_by_ip(&self, ip: IpAddr) -> Option<ClientId> {
+        self.clients
+            .iter()
+            .find(|(_, c)| IpAddr::V4(c.ipv4) == ip || IpAddr::V6(c.ipv6) == ip)
+            .map(|(id, _)| *id)
+    }
+
+    /// The pool the portal picks for a flow from a client holding `held` to `target`:
+    /// the first by id that admits the target and permits the protocol.
+    /// The first of the pools the client named, in its order, that holds the target.
+    pub(crate) fn pick_device_pool(
+        &self,
+        candidates: &[ResourceId],
+        target: ClientId,
+    ) -> Option<ResourceId> {
+        candidates.iter().copied().find(|pool| {
+            self.device_pool_resources.contains_key(pool) && self.is_pool_member(*pool, target)
+        })
+    }
+
+    pub(crate) fn record_peer_policy_authorization(
+        &mut self,
+        initiator: ClientId,
+        target: ClientId,
+        pool: ResourceId,
+    ) {
+        self.peer_policy_authorizations.insert(PeerAuthorization {
+            initiator,
+            target,
+            pool,
+        });
+    }
+
+    fn revoke_peer_policy_authorizations_for_pool(&mut self, pool: ResourceId) {
+        for _ in self
+            .peer_policy_authorizations
+            .extract_if(.., |authorization| authorization.pool == pool)
+        {}
+    }
+
+    fn is_pool_member(&self, pool: ResourceId, client: ClientId) -> bool {
+        match self.pool_members.get(&pool) {
+            Some(PoolMembers::AllClients) => self.clients.contains_key(&client),
+            Some(PoolMembers::Listed(members)) => members.contains(&client),
+            None => false,
+        }
+    }
+
+    /// The clients a pool admits.
+    pub(crate) fn pool_members(&self, pool: ResourceId) -> Vec<ClientId> {
+        self.clients
+            .keys()
+            .copied()
+            .filter(|client| self.is_pool_member(pool, *client))
+            .collect()
+    }
+
+    /// Returns every pool that lists its members.
+    pub(crate) fn listed_pool_ids(&self) -> Vec<ResourceId> {
+        self.pool_members
+            .iter()
+            .filter_map(|(pool, members)| match members {
+                PoolMembers::Listed(_) => Some(*pool),
+                PoolMembers::AllClients => None,
+            })
+            .collect()
+    }
+
+    /// The peer authorizations through `pool` that setting its members to `members` revokes.
+    pub(crate) fn peer_authorizations_revoked_by(
+        &self,
+        pool: ResourceId,
+        members: &BTreeSet<ClientId>,
+    ) -> Vec<PeerAuthorization> {
+        self.peer_policy_authorizations
+            .iter()
+            .filter(|authorization| {
+                authorization.pool == pool && !members.contains(&authorization.target)
+            })
+            .copied()
+            .collect()
+    }
+
+    fn set_pool_members(&mut self, pool: ResourceId, members: BTreeSet<ClientId>) {
+        if !self.device_pool_resources.contains_key(&pool) {
+            tracing::error!(%pool, "Unknown device pool");
+            return;
+        }
+
+        for authorization in self.peer_authorizations_revoked_by(pool, &members) {
+            self.peer_policy_authorizations.remove(&authorization);
+        }
+        self.pool_members.insert(pool, PoolMembers::Listed(members));
     }
 
     pub(crate) fn all_resources(&self) -> Vec<client::Resource> {
@@ -220,13 +384,7 @@ impl StubPortal {
                 self.device_pool_resources
                     .values()
                     .cloned()
-                    .map(client::Resource::DynamicDevicePool),
-            )
-            .chain(
-                self.static_device_pool_resources
-                    .values()
-                    .cloned()
-                    .map(client::Resource::StaticDevicePool),
+                    .map(client::Resource::DevicePool),
             )
             .chain(iter::once(client::Resource::Internet(
                 self.internet_resource.clone(),
@@ -246,27 +404,23 @@ impl StubPortal {
         self.search_domain.clone()
     }
 
-    pub(crate) fn set_search_domain(&mut self, search_domain: Option<DomainName>) {
-        self.search_domain = search_domain;
-    }
-
     pub(crate) fn upstream_do53(&self) -> &[UpstreamDo53] {
         &self.upstream_do53
-    }
-
-    pub(crate) fn set_upstream_do53(&mut self, upstream_do53: Vec<UpstreamDo53>) {
-        self.upstream_do53 = upstream_do53;
     }
 
     pub(crate) fn upstream_doh(&self) -> &[UpstreamDoH] {
         &self.upstream_doh
     }
 
-    pub(crate) fn set_upstream_doh(&mut self, upstream_doh: Vec<UpstreamDoH>) {
-        self.upstream_doh = upstream_doh;
+    pub(crate) fn resource_selector(&self) -> u32 {
+        self.resource_selector
     }
 
-    /// Picks, which gateway and site we should connect to for the given resource.
+    pub(crate) fn pick_resource(&self, candidates: &[ResourceId]) -> Option<ResourceId> {
+        select_by_index(candidates, self.resource_selector).copied()
+    }
+
+    /// Picks the gateway and site to connect to for the given resource.
     pub(crate) fn handle_connection_intent(
         &self,
         resource: ResourceId,
@@ -277,7 +431,7 @@ impl StubPortal {
             .get(&resource)
             .expect("resource to be known");
 
-        let gateways = self.gateways_by_site.get(site_id).unwrap();
+        let gateways = &self.gateways_by_site[site_id];
         let (gateway, _, _) =
             select_by_index(gateways, self.gateway_selector).expect("site to have a gateway");
 
@@ -348,53 +502,12 @@ impl StubPortal {
             .map(|(gid, _, _)| *gid)
     }
 
-    pub(crate) fn change_address_of_cidr_resource(
-        &mut self,
-        rid: ResourceId,
-        new_address: IpNetwork,
-    ) {
-        if let Some(resource) = self.cidr_resources.get_mut(&rid) {
-            resource.address = new_address;
-            return;
-        }
-
-        tracing::error!(%rid, "Unknown resource");
-    }
-
-    pub(crate) fn change_filters_of_resource(
-        &mut self,
-        rid: ResourceId,
-        new_filters: Vec<tunnel_proto::messages::Filter>,
-    ) {
-        if let Some(resource) = self.cidr_resources.get_mut(&rid) {
-            resource.filters = new_filters;
-            return;
-        }
-
-        if let Some(resource) = self.dns_resources.get_mut(&rid) {
-            resource.filters = new_filters;
-            return;
-        }
-
-        if let Some(resource) = self.static_device_pool_resources.get_mut(&rid) {
-            resource.filters = new_filters;
-            return;
-        }
-
-        if let Some(resource) = self.device_pool_resources.get_mut(&rid) {
-            resource.filters = new_filters;
-            return;
-        }
-
-        tracing::error!(%rid, "Unknown resource");
-    }
-
-    pub(crate) fn replace_resource(&mut self, new_resource: client::Resource) {
+    fn replace_resource(&mut self, new_resource: client::Resource) {
         let id = new_resource.id();
 
         self.cidr_resources.remove(&id);
         self.dns_resources.remove(&id);
-        self.static_device_pool_resources.remove(&id);
+        self.device_pool_resources.remove(&id);
         self.sites_by_resource.remove(&id);
 
         match new_resource {
@@ -416,60 +529,29 @@ impl StubPortal {
                 self.sites_by_resource.insert(id, site.id);
                 self.dns_resources.insert(id, resource);
             }
-            client::Resource::StaticDevicePool(resource) => {
-                self.static_device_pool_resources.insert(id, resource);
+            client::Resource::DevicePool(resource) => {
+                // A resource turned into a pool admits everyone until its members change.
+                self.pool_members
+                    .entry(id)
+                    .or_insert(PoolMembers::AllClients);
+                self.device_pool_resources.insert(id, resource);
             }
             client::Resource::Internet(_) => {
-                unreachable!("only user-editable resource types can replace one another")
+                unreachable!("the Portal API does not allow editing the Internet Resource")
             }
-            client::Resource::DynamicDevicePool(_) => {
-                unreachable!("only user-editable resource types can replace one another")
-            }
+        }
+
+        if !self.device_pool_resources.contains_key(&id) {
+            self.pool_members.remove(&id);
         }
     }
 
-    /// Replaces the member list of an existing static device pool.
-    ///
-    /// Returns the updated pool, or `None` if no pool with `pool_id` exists.
-    pub(crate) fn update_static_device_pool_members(
-        &mut self,
-        pool_id: ResourceId,
-        new_devices: Vec<DevicePoolMember>,
-    ) -> Option<StaticDevicePoolResource> {
-        let pool = self.static_device_pool_resources.get_mut(&pool_id)?;
-        pool.devices = new_devices;
-        Some(pool.clone())
-    }
-
-    /// The filters of a static or dynamic device pool.
+    /// The filters of a device pool.
     pub(crate) fn device_pool_filters(
         &self,
         pool_id: ResourceId,
     ) -> Option<Vec<tunnel_proto::messages::Filter>> {
-        let filters = match self.static_device_pool_resources.get(&pool_id) {
-            Some(pool) => &pool.filters,
-            None => &self.device_pool_resources.get(&pool_id)?.filters,
-        };
-
-        Some(filters.clone())
-    }
-
-    pub(crate) fn move_resource_to_new_site(&mut self, rid: ResourceId, site: Site) {
-        if let Some(resource) = self.cidr_resources.get_mut(&rid) {
-            self.sites_by_resource.insert(rid, site.id);
-            resource.sites = vec![site];
-            return;
-        }
-
-        if let Some(resource) = self.dns_resources.get_mut(&rid) {
-            self.sites_by_resource.insert(rid, site.id);
-            resource.sites = vec![site];
-            return;
-        }
-
-        if self.internet_resource.id == rid {
-            tracing::error!("Internet Resource cannot change site");
-        }
+        Some(self.device_pool_resources.get(&pool_id)?.filters.clone())
     }
 }
 

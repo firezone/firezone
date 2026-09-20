@@ -311,7 +311,7 @@ defmodule PortalWeb.SitesTest do
 
       # Currently defaults to Debian/Ubuntu instructions
       assert html =~ "Add the Firezone APT repository"
-      assert html =~ "sudo firezone gateway authenticate"
+      assert html =~ "sudo firezone-gateway authenticate"
       assert html =~ "Use this token when prompted"
 
       html = render_click(lv, "deploy_tab_selected", %{"tab" => "systemd-instructions"})
@@ -924,7 +924,8 @@ defmodule PortalWeb.SitesTest do
           account_id: account.id,
           site_id: site.id,
           type: :gateway,
-          name: "bare-gw"
+          name: "bare-gw",
+          slug: "bare-gw"
         })
 
       {:ok, lv, _html} =
@@ -983,7 +984,8 @@ defmodule PortalWeb.SitesTest do
           account_id: account.id,
           site_id: site.id,
           type: :gateway,
-          name: "bare-gw"
+          name: "bare-gw",
+          slug: "bare-gw"
         })
 
       {:ok, lv, _html} =
@@ -1014,7 +1016,8 @@ defmodule PortalWeb.SitesTest do
           account_id: account.id,
           site_id: site.id,
           type: :gateway,
-          name: "deployed-gw"
+          name: "deployed-gw",
+          slug: "deployed-gw"
         })
 
       token = gateway_token_fixture(gateway: gateway)

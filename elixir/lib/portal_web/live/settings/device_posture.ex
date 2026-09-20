@@ -664,64 +664,6 @@ defmodule PortalWeb.Settings.DevicePosture do
             </.link>
           </div>
 
-          <div
-            :if={not Enum.empty?(@providers)}
-            id="device-posture-summary"
-            class="flex flex-wrap items-center gap-2 px-6 py-2.5 border-b border-border shrink-0"
-          >
-            <.dual_badge type="primary">
-              <:left>{@devices_count}</:left>
-              <:right>Devices synced</:right>
-            </.dual_badge>
-            <.dual_badge :if={@has_intune?} type="success">
-              <:left>{@compliant_count}</:left>
-              <:right>Compliant</:right>
-            </.dual_badge>
-            <.dual_badge :if={@has_intune?} type="danger">
-              <:left>{@noncompliant_count}</:left>
-              <:right>Not compliant</:right>
-            </.dual_badge>
-            <.dual_badge :if={@has_intune? and @in_grace_period_count > 0} type="warning">
-              <:left>{@in_grace_period_count}</:left>
-              <:right>In grace period</:right>
-            </.dual_badge>
-            <.dual_badge :if={@has_iru?} type="success">
-              <:left>{@encrypted_count}</:left>
-              <:right>FileVault on</:right>
-            </.dual_badge>
-            <.dual_badge :if={@has_iru?} type="danger">
-              <:left>{@unencrypted_count}</:left>
-              <:right>FileVault off</:right>
-            </.dual_badge>
-            <.dual_badge :if={@has_defender?} type="success">
-              <:left>{@sensor_active_count}</:left>
-              <:right>Sensor active</:right>
-            </.dual_badge>
-            <.dual_badge :if={@has_defender? and @sensor_inactive_count > 0} type="danger">
-              <:left>{@sensor_inactive_count}</:left>
-              <:right>Sensor inactive</:right>
-            </.dual_badge>
-            <.dual_badge :if={@has_santa?} type="success">
-              <:left>{@lockdown_count}</:left>
-              <:right>Santa Lockdown</:right>
-            </.dual_badge>
-            <.dual_badge :if={@has_santa?} type="warning">
-              <:left>{@monitor_count}</:left>
-              <:right>Santa Monitor</:right>
-            </.dual_badge>
-            <.dual_badge :if={@has_sentinelone?} type="success">
-              <:left>{@sentinelone_active_count}</:left>
-              <:right>S1 agent active</:right>
-            </.dual_badge>
-            <.dual_badge
-              :if={@has_sentinelone? and @sentinelone_inactive_count > 0}
-              type="danger"
-            >
-              <:left>{@sentinelone_inactive_count}</:left>
-              <:right>S1 agent inactive</:right>
-            </.dual_badge>
-          </div>
-
           <div class="flex-1 overflow-auto">
             <%= if Enum.empty?(@providers) do %>
               <div class="flex flex-col items-center justify-center h-full gap-3 text-subtle">
@@ -1182,7 +1124,16 @@ defmodule PortalWeb.Settings.DevicePosture do
               <.icon name="ri-loop-left-line" class="w-3.5 h-3.5 shrink-0" /> Sync Now
             </button>
             <div class="my-1 border-t border-border"></div>
+            <.link
+              :if={@provider.is_disabled and @provider.disabled_reason == "Sync error"}
+              patch={~p"/#{@account}/settings/device_posture/#{@provider.type}/#{@provider.id}/edit"}
+              class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-raised transition-colors text-body"
+            >
+              <.icon name="ri-flashlight-line" class="w-3.5 h-3.5 shrink-0" />
+              Re-verify to enable
+            </.link>
             <button
+              :if={not (@provider.is_disabled and @provider.disabled_reason == "Sync error")}
               type="button"
               phx-click="toggle"
               phx-value-id={@provider.id}
@@ -1756,39 +1707,9 @@ defmodule PortalWeb.Settings.DevicePosture do
         fn {id, _key, n}, acc -> Map.update(acc, id, n, &(&1 + n)) end
       )
 
-    by_compliance = group_counts(intune_counts)
-    by_filevault = group_counts(iru_counts)
-    by_health = group_counts(defender_counts)
-    by_santa_mode = group_counts(santa_counts)
-    by_sentinelone_activity = group_counts(sentinelone_counts)
     providers = Database.list_providers(subject, by_provider)
 
-    assign(socket,
-      providers: providers,
-      has_intune?: Enum.any?(providers, &(&1.type == "intune")),
-      has_iru?: Enum.any?(providers, &(&1.type == "iru")),
-      has_defender?: Enum.any?(providers, &(&1.type == "defender")),
-      has_santa?: Enum.any?(providers, &(&1.type == "santa")),
-      has_sentinelone?: Enum.any?(providers, &(&1.type == "sentinelone")),
-      devices_count: by_provider |> Map.values() |> Enum.sum(),
-      compliant_count: Map.get(by_compliance, "compliant", 0),
-      noncompliant_count: Map.get(by_compliance, "noncompliant", 0),
-      in_grace_period_count: Map.get(by_compliance, "inGracePeriod", 0),
-      encrypted_count: Map.get(by_filevault, true, 0),
-      unencrypted_count: Map.get(by_filevault, false, 0),
-      sensor_active_count: Map.get(by_health, "Active", 0),
-      # Defender has five ways of saying a sensor stopped reporting, so the
-      # badge counts everything that is not "Active" rather than one of them.
-      sensor_inactive_count: by_health |> Map.drop(["Active", nil]) |> Map.values() |> Enum.sum(),
-      lockdown_count: Map.get(by_santa_mode, "LOCKDOWN", 0),
-      monitor_count: Map.get(by_santa_mode, "MONITOR", 0),
-      sentinelone_active_count: Map.get(by_sentinelone_activity, true, 0),
-      sentinelone_inactive_count: Map.get(by_sentinelone_activity, false, 0)
-    )
-  end
-
-  defp group_counts(counts) do
-    Enum.reduce(counts, %{}, fn {_id, key, n}, acc -> Map.update(acc, key, n, &(&1 + n)) end)
+    assign(socket, providers: providers)
   end
 
   defp clear_panel(socket) do

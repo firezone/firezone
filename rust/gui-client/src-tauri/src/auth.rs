@@ -240,6 +240,14 @@ impl Auth {
         Ok(token)
     }
 
+    /// Signs in with a token obtained outside the browser flow, replacing any stored one.
+    ///
+    /// Performs I/O.
+    pub fn sign_in_with_token(&mut self, token: &SecretString) {
+        self.save_token(token);
+        self.state = State::SignedIn;
+    }
+
     fn save_token(&self, token: &SecretString) {
         // This MUST be the only place the GUI can call `set_password`.
         if let Err(e) = self

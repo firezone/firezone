@@ -34,6 +34,7 @@ import dev.firezone.android.tunnel.resumedActivity
 import dev.firezone.android.tunnel.startTunnelService
 import dev.firezone.android.tunnel.stopTunnelService
 import dev.firezone.android.tunnel.tunInterface
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
@@ -116,7 +117,8 @@ class TunnelE2eTest {
     }
 
     @Test
-    fun signingInReachesTheProfileMenuAndTheStoredAccount() {
+    fun signingInReachesTheProfileMenuAndLeavesTheConfiguredAccount() {
+        runBlocking { repo.saveSettings(repo.getConfigSync().copy(accountSlug = CONFIGURED_SLUG)).first() }
         val session = signInAndConnect()
 
         session.emit(Event.ConnectedToPortal(accountSlug = ACCOUNT_SLUG, actorName = ACTOR_NAME))
@@ -127,7 +129,8 @@ class TunnelE2eTest {
         composeRule.onNodeWithText("J").performClick()
         awaitText(ACTOR_NAME)
 
-        await("the account slug to be stored") { repo.getConfigSync().accountSlug == ACCOUNT_SLUG }
+        // The name on screen comes from the same event, so a slug it saved would be here too.
+        assertEquals(CONFIGURED_SLUG, repo.getConfigSync().accountSlug)
     }
 
     @Test
@@ -343,6 +346,7 @@ class TunnelE2eTest {
 
     private companion object {
         const val TOKEN = "stored-token"
+        const val CONFIGURED_SLUG = "configured-account"
         const val TIMEOUT_MS = 20_000L
     }
 }

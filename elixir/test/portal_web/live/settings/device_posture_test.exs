@@ -146,7 +146,6 @@ defmodule PortalWeb.Settings.DevicePostureTest do
     assert html =~ "Device Posture"
     assert html =~ "No posture provider configured."
     assert html =~ "Add posture provider"
-    refute html =~ "Devices synced"
     refute html =~ "Upgrade to Unlock"
   end
 
@@ -262,7 +261,7 @@ defmodule PortalWeb.Settings.DevicePostureTest do
     end
   end
 
-  test "summarises synced devices by compliance state", %{
+  test "counts the synced devices per provider", %{
     conn: conn,
     account: account,
     actor: actor
@@ -280,13 +279,7 @@ defmodule PortalWeb.Settings.DevicePostureTest do
       |> authorize_conn(actor)
       |> live(~p"/#{account}/settings/device_posture")
 
-    summary = lv |> element("#device-posture-summary") |> render()
-
-    assert summary =~ "Devices synced"
-    assert summary =~ ~r/5.*Devices synced/s
-    assert summary =~ ~r/2.*Compliant/s
-    assert summary =~ ~r/1.*Not compliant/s
-    assert summary =~ ~r/1.*In grace period/s
+    assert render(lv) =~ ~r/tabular-nums">\s*5\s*<\/td>/
   end
 
   test "uses the signed Microsoft consent flow and creates the verified provider", %{
@@ -1188,7 +1181,7 @@ defmodule PortalWeb.Settings.DevicePostureTest do
     {:ok, lv, _html} =
       conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/device_posture")
 
-    assert lv |> element("#device-posture-summary") |> render() =~ ~r/0.*Devices synced/s
+    assert render(lv) =~ ~r/tabular-nums">\s*0\s*<\/td>/
 
     intune_device_fixture(provider: provider)
 
@@ -1199,7 +1192,7 @@ defmodule PortalWeb.Settings.DevicePostureTest do
       struct: %{provider | synced_at: DateTime.utc_now()}
     })
 
-    assert lv |> element("#device-posture-summary") |> render() =~ ~r/1.*Devices synced/s
+    assert render(lv) =~ ~r/tabular-nums">\s*1\s*<\/td>/
   end
 
   test "replaces the Iru token only when a new one is typed", %{
@@ -1361,14 +1354,6 @@ defmodule PortalWeb.Settings.DevicePostureTest do
     assert html =~ "Santa (Workshop)"
     assert html =~ "Production S1"
     assert html =~ "SentinelOne"
-
-    summary = lv |> element("#device-posture-summary") |> render()
-    assert summary =~ ~r/1.*FileVault off/s
-    assert summary =~ ~r/1.*Sensor active/s
-    assert summary =~ ~r/1.*Sensor inactive/s
-    assert summary =~ ~r/1.*Santa Lockdown/s
-    assert summary =~ ~r/2.*S1 agent active/s
-    assert summary =~ ~r/1.*S1 agent inactive/s
   end
 
   describe "verified fields" do

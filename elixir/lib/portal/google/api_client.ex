@@ -413,9 +413,48 @@ defmodule Portal.Google.APIClient do
 
   @doc """
   Fetches one user by Google user id or primary email.
+
+  Newly created users can temporarily lack suspended/archived flags. Retry these
+  responses every ten seconds for five minutes, then return an error so callers
+  do not mistake an incomplete user for an inactive one. In-flight requests retain
+  the normal HTTP timeout and retry policy.
   """
   def get_user(access_token, user_key) do
-    get("/admin/directory/v1/users/#{URI.encode(user_key)}", access_token)
+    config = Portal.Config.fetch_env!(:portal, __MODULE__)
+    timeout = Keyword.get(config, :user_flags_retry_timeout, :timer.minutes(5))
+    deadline = System.monotonic_time(:millisecond) + timeout
+    get_user_with_flags(access_token, user_key, deadline)
+  end
+
+  defp get_user_with_flags(access_token, user_key, deadline) do
+    case get("/admin/directory/v1/users/#{URI.encode(user_key)}", access_token) do
+      {:ok, %Req.Response{status: 200, body: user}} = result when is_map(user) ->
+        if user_flags_present?(user) do
+          result
+        else
+          retry_user_with_flags(access_token, user_key, deadline)
+        end
+
+      result ->
+        result
+    end
+  end
+
+  defp retry_user_with_flags(access_token, user_key, deadline) do
+    remaining = deadline - System.monotonic_time(:millisecond)
+
+    if remaining > 0 do
+      Logger.warning("Retrying Google user with missing suspended/archived flags",
+        google_user_id: user_key
+      )
+
+      config = Portal.Config.fetch_env!(:portal, __MODULE__)
+      delay = Keyword.get(config, :user_flags_retry_delay, :timer.seconds(10))
+      Process.sleep(min(delay, remaining))
+      get_user_with_flags(access_token, user_key, deadline)
+    else
+      {:error, {:missing_user_flags, user_key}}
+    end
   end
 
   @doc """
@@ -520,7 +559,7 @@ defmodule Portal.Google.APIClient do
       })
 
     stream_pages("/admin/directory/v1/users", query, access_token, "users")
-    |> Stream.map(&filter_active_google_users_result/1)
+    |> Stream.map(&filter_active_google_users_result(&1, access_token))
   end
 
   @doc """
@@ -613,7 +652,10 @@ defmodule Portal.Google.APIClient do
 
     case result do
       {:ok, chunks} ->
-        {:ok, chunks |> Enum.reverse() |> List.flatten() |> Enum.filter(&active_google_user?/1)}
+        case filter_active_google_users_result(chunks |> Enum.reverse() |> List.flatten(), access_token) do
+          {:error, _} = error -> error
+          users -> {:ok, users}
+        end
 
       {:error, _} = error ->
         error
@@ -848,30 +890,46 @@ defmodule Portal.Google.APIClient do
     path = "/admin/directory/v1/users"
 
     stream_pages(path, query, access_token, "users")
-    |> Stream.map(&filter_org_unit_members_result/1)
+    |> Stream.map(&filter_org_unit_members_result(&1, access_token))
   end
 
-  defp filter_org_unit_members_result({:error, {:missing_key, _msg, _body}}), do: []
-  defp filter_org_unit_members_result(result), do: filter_active_google_users_result(result)
+  defp filter_org_unit_members_result({:error, {:missing_key, _msg, _body}}, _access_token), do: []
+  defp filter_org_unit_members_result(result, access_token),
+    do: filter_active_google_users_result(result, access_token)
 
-  defp filter_active_google_users_result(users) when is_list(users) do
-    Enum.filter(users, &active_google_user?/1)
+  defp filter_active_google_users_result(users, access_token) when is_list(users) do
+    Enum.reduce_while(users, [], fn user, acc ->
+      case resolve_user_flags(user, access_token) do
+        {:ok, %{"suspended" => true}} -> {:cont, acc}
+        {:ok, %{"archived" => true}} -> {:cont, acc}
+        {:ok, user} -> {:cont, [user | acc]}
+
+        :deleted -> {:cont, acc}
+        {:error, _} = error -> {:halt, error}
+      end
+    end)
+    |> case do
+      {:error, _} = error -> error
+      users -> Enum.reverse(users)
+    end
   end
 
-  defp filter_active_google_users_result(other), do: other
+  defp filter_active_google_users_result(other, _access_token), do: other
 
-  defp active_google_user?(user) do
-    case {Map.fetch(user, "suspended"), Map.fetch(user, "archived")} do
-      {{:ok, suspended}, {:ok, archived}} ->
-        suspended != true and archived != true
+  defp user_flags_present?(user),
+    do: Map.has_key?(user, "suspended") and Map.has_key?(user, "archived")
 
-      _ ->
-        Logger.error("Skipping Google user with missing suspended/archived flags",
-          google_user_id: Map.get(user, "id", "unknown"),
-          google_user_email: Map.get(user, "primaryEmail", Map.get(user, "email", "unknown"))
-        )
-
-        false
+  defp resolve_user_flags(user, access_token) do
+    cond do
+      user_flags_present?(user) -> {:ok, user}
+      is_binary(user["id"]) ->
+        case get_user(access_token, user["id"]) do
+          {:ok, %Req.Response{status: 200, body: resolved}} -> {:ok, resolved}
+          {:ok, %Req.Response{status: status}} when status in [404, 412] -> :deleted
+          {:ok, response} -> {:error, response}
+          {:error, _} = error -> error
+        end
+      true -> {:error, {:missing_user_flags, Map.get(user, "id", "unknown")}}
     end
   end
 

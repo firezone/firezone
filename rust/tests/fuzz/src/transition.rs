@@ -1,16 +1,16 @@
-use connlib_model::{ClientId, RelayId, ResourceId, Site};
+use connlib_model::{ClientId, RelayId, ResourceId};
 use dns_types::{DomainName, OwnedRecordData, RecordType};
-use ip_network::IpNetwork;
 use tunnel_proto::{
     dns,
-    messages::{Filter, UpstreamDo53, UpstreamDoH, client::DevicePoolMember},
+    messages::{UpstreamDo53, UpstreamDoH},
 };
 
 use super::{
-    probe::{FlowId, FlowRoute, ProbeId},
+    probe::{FlowId, ProbeId, Route},
     reference::PrivateKey,
-    resource::{CidrResource, Resource},
+    resource::{EditEffect, Resource, ResourceEdit, classify},
     sim_net::Host,
+    stub_portal::PeerAuthorization,
 };
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -23,25 +23,13 @@ use std::{
 pub enum Transition {
     AddResource(Resource),
     RemoveResource(ResourceId),
-    ChangeCidrResourceAddress {
-        resource: CidrResource,
-        new_address: IpNetwork,
-    },
-    MoveResourceToNewSite {
-        resource: Resource,
-        new_site: Site,
-    },
-    ChangeFiltersOfResource {
-        resource: Resource,
-        new_filters: Vec<Filter>,
-    },
-    ChangeResourceType {
-        old_resource: Resource,
-        new_resource: Resource,
-    },
-    UpdateStaticDevicePool {
+    EditResource(ResourceEdit),
+    /// Replaces the member list of a pool that lists its members; `revoked` are the
+    /// portal's peer authorizations through it towards a client that left.
+    UpdateDevicePoolMembers {
         pool_id: ResourceId,
-        new_devices: Vec<DevicePoolMember>,
+        members: BTreeSet<ClientId>,
+        revoked: Vec<PeerAuthorization>,
     },
     SetInternetResourceState {
         client_id: ClientId,
@@ -127,16 +115,15 @@ pub enum Transition {
 }
 
 impl Transition {
-    /// Returns whether assertions should discard stale packets before applying this transition.
-    pub fn should_clear_packets(&self) -> bool {
+    /// Whether the packet-level expectations that accumulate across transitions (DNS
+    /// queries and responses, TCP connections and rejections) are stale once this
+    /// transition is applied.
+    pub fn clears_packets(&self) -> bool {
         match self {
             Transition::AddResource(_) => true,
             Transition::RemoveResource(_) => true,
-            Transition::ChangeCidrResourceAddress { .. } => true,
-            Transition::MoveResourceToNewSite { .. } => true,
-            Transition::ChangeFiltersOfResource { .. } => true,
-            Transition::ChangeResourceType { .. } => true,
-            Transition::UpdateStaticDevicePool { .. } => true,
+            Transition::EditResource(edit) => classify(&edit.old, &edit.new).clears_packets(),
+            Transition::UpdateDevicePoolMembers { .. } => true,
             Transition::SetInternetResourceState { .. } => true,
             Transition::SendIcmpPacketOnNewFlow { .. } => false,
             Transition::SendIcmpPacketOnExistingFlow { .. } => false,
@@ -162,49 +149,28 @@ impl Transition {
     }
 
     /// Returns whether a flow remains predictable across this transition.
-    pub(crate) fn retains_flow(
-        &self,
-        client_id: ClientId,
-        route: FlowRoute,
-        iceless: bool,
-    ) -> bool {
+    pub(crate) fn retains_flow(&self, client_id: ClientId, route: Route, iceless: bool) -> bool {
         match self {
             Transition::AddResource(_) => match route {
-                FlowRoute::Resource { .. } => false,
-                FlowRoute::Gateway(_) => true,
-                FlowRoute::Peer(_) => true,
+                Route::Resource { .. } => false,
+                Route::Gateway(_) => true,
+                Route::Peer(_) => true,
             },
             Transition::RemoveResource(resource) => match route {
-                FlowRoute::Resource { resource: used, .. } => used != *resource,
-                FlowRoute::Gateway(_) => false,
-                FlowRoute::Peer(_) => false,
+                Route::Resource { resource: used, .. } => used != *resource,
+                Route::Gateway(_) => false,
+                Route::Peer(_) => false,
             },
-            Transition::ChangeCidrResourceAddress { .. } => match route {
-                FlowRoute::Resource { .. } => false,
-                FlowRoute::Gateway(_) => false,
-                FlowRoute::Peer(_) => true,
+            Transition::EditResource(edit) => classify(&edit.old, &edit.new).retains_flow(route),
+            Transition::UpdateDevicePoolMembers { revoked, .. } => match route {
+                Route::Resource { .. } => true,
+                Route::Gateway(_) => true,
+                Route::Peer(peer) => !revoked.iter().any(|authorization| {
+                    let parties = (authorization.initiator, authorization.target);
+
+                    parties == (client_id, peer) || parties == (peer, client_id)
+                }),
             },
-            Transition::MoveResourceToNewSite { resource, .. } => match route {
-                FlowRoute::Resource { resource: used, .. } => used != resource.id(),
-                FlowRoute::Gateway(_) => false,
-                FlowRoute::Peer(_) => true,
-            },
-            Transition::ChangeFiltersOfResource { resource, .. } => match route {
-                FlowRoute::Resource { .. } => false,
-                FlowRoute::Gateway(_) => false,
-                FlowRoute::Peer(_) => !is_device_pool(resource),
-            },
-            Transition::ChangeResourceType {
-                old_resource,
-                new_resource,
-            } => match route {
-                FlowRoute::Resource { .. } => false,
-                FlowRoute::Gateway(_) => false,
-                FlowRoute::Peer(_) => {
-                    !is_device_pool(old_resource) && !is_device_pool(new_resource)
-                }
-            },
-            Transition::UpdateStaticDevicePool { .. } => !route.is_peer(),
             Transition::SetInternetResourceState {
                 client_id: changed, ..
             } => client_id != *changed,
@@ -222,27 +188,27 @@ impl Transition {
             Transition::RoamClient {
                 client_id: changed, ..
             } => match route {
-                FlowRoute::Resource { .. } => iceless || client_id != *changed,
-                FlowRoute::Gateway(_) => iceless || client_id != *changed,
-                FlowRoute::Peer(peer) => iceless || (client_id != *changed && peer != *changed),
+                Route::Resource { .. } => iceless || client_id != *changed,
+                Route::Gateway(_) => iceless || client_id != *changed,
+                Route::Peer(peer) => iceless || (client_id != *changed && peer != *changed),
             },
             Transition::ReconnectPortal { .. } => true,
             Transition::RestartClient {
                 client_id: restarted,
                 ..
             } => match route {
-                FlowRoute::Resource { .. } => client_id != *restarted,
-                FlowRoute::Gateway(_) => client_id != *restarted,
-                FlowRoute::Peer(peer) => client_id != *restarted && peer != *restarted,
+                Route::Resource { .. } => client_id != *restarted,
+                Route::Gateway(_) => client_id != *restarted,
+                Route::Peer(peer) => client_id != *restarted && peer != *restarted,
             },
             Transition::DeployNewRelays(_) => iceless,
             Transition::PartitionRelaysFromPortal => false,
             Transition::Idle => true,
             Transition::RebootRelaysWhilePartitioned(_) => false,
             Transition::DeauthorizeWhileGatewayIsPartitioned(resource) => match route {
-                FlowRoute::Resource { resource: used, .. } => used != *resource,
-                FlowRoute::Gateway(_) => false,
-                FlowRoute::Peer(_) => false,
+                Route::Resource { resource: used, .. } => used != *resource,
+                Route::Gateway(_) => false,
+                Route::Peer(_) => false,
             },
             Transition::UpdateDnsRecords { .. } => true,
         }
@@ -254,8 +220,46 @@ fn is_device_pool(resource: &Resource) -> bool {
         Resource::Dns(_) => false,
         Resource::Cidr(_) => false,
         Resource::Internet(_) => false,
-        Resource::StaticDevicePool(_) => true,
-        Resource::DynamicDevicePool(_) => true,
+        Resource::DevicePool(_) => true,
+    }
+}
+
+impl EditEffect<'_> {
+    fn clears_packets(&self) -> bool {
+        match self {
+            EditEffect::Metadata => false,
+            EditEffect::Filters { affects_tcp, .. } => *affects_tcp,
+            EditEffect::Access { affects_tcp, .. } => *affects_tcp,
+            EditEffect::DevicePoolRouting => false,
+            EditEffect::Type { old, .. } => match old {
+                Resource::Dns(_) => true,
+                Resource::Cidr(_) => false,
+                Resource::Internet(_) => false,
+                Resource::DevicePool(_) => false,
+            },
+        }
+    }
+
+    fn retains_flow(&self, route: Route) -> bool {
+        match (self, route) {
+            (EditEffect::Metadata, _) => true,
+            (
+                EditEffect::Filters { resource_id, .. } | EditEffect::Access { resource_id, .. },
+                Route::Resource { resource, .. },
+            ) => resource != *resource_id,
+            (EditEffect::Filters { .. } | EditEffect::Access { .. }, Route::Gateway(_)) => false,
+            (EditEffect::Filters { .. } | EditEffect::Access { .. }, Route::Peer(_)) => true,
+            (EditEffect::DevicePoolRouting, Route::Resource { .. }) => true,
+            (EditEffect::DevicePoolRouting, Route::Gateway(_)) => true,
+            (EditEffect::DevicePoolRouting, Route::Peer(_)) => false,
+            (EditEffect::Type { old, .. }, Route::Resource { resource, .. }) => {
+                resource != old.id()
+            }
+            (EditEffect::Type { .. }, Route::Gateway(_)) => false,
+            (EditEffect::Type { old, new, .. }, Route::Peer(_)) => {
+                !is_device_pool(old) && !is_device_pool(new)
+            }
+        }
     }
 }
 
