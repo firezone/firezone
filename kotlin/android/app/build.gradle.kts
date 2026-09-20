@@ -377,7 +377,7 @@ dependencies {
     debugImplementation("androidx.compose.ui:ui-test-manifest")
     testImplementation("io.github.takahirom.roborazzi:roborazzi:1.74.0")
     testImplementation("io.github.takahirom.roborazzi:roborazzi-compose:1.74.0")
-    testImplementation("org.robolectric:robolectric:4.16.1")
+    testImplementation("org.robolectric:robolectric:4.17")
 }
 
 roborazzi {
