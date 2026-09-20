@@ -16,7 +16,8 @@ serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 serde_with = { workspace = true }
 socket-factory = { workspace = true }
-tokio = { workspace = true, features = ["rt", "net", "time"] }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["rt", "net", "sync", "time"] }
 tracing = { workspace = true }
 tunnel-bypass-resolver = { workspace = true }
 url = { workspace = true }

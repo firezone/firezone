@@ -2781,6 +2781,7 @@ dependencies = [
  "serde_with",
  "socket-factory",
  "tempfile",
+ "thiserror 2.0.20",
  "tokio",
  "tracing",
  "tunnel-bypass-resolver",

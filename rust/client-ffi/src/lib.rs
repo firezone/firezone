@@ -647,7 +647,7 @@ fn connect(
     // The uploader lives and dies with the session (idle, it would only poll
     // and dial); registered so `drain_flow_logs` nudges it instead of racing it.
     let uploader = flow_logs_dir.clone().map(|dir| {
-        let uploader = flow_log_upload::spawn(dir, tcp_socket_factory.clone());
+        let (uploader, _) = flow_log_upload::spawn(dir, tcp_socket_factory.clone());
 
         *lock_uploader() = Some(uploader.clone());
 
@@ -889,7 +889,7 @@ fn do_drain_flow_logs(spool_dir: String, tcp: Arc<dyn SocketFactory<TcpSocket>>)
         return;
     }
 
-    let one_shot = flow_log_upload::spawn(PathBuf::from(spool_dir), tcp);
+    let (one_shot, _) = flow_log_upload::spawn(PathBuf::from(spool_dir), tcp);
     *uploader = Some(one_shot.clone());
     drop(uploader);
 

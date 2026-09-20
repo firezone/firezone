@@ -24,12 +24,13 @@
 
 use std::{
     collections::BinaryHeap,
+    ops::ControlFlow,
     path::{Path, PathBuf},
     sync::{Arc, mpsc},
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
-use anyhow::{Context as _, Result};
+use anyhow::{Context as _, ErrorExt as _, Result};
 use backoff::{ExponentialBackoff, ExponentialBackoffBuilder};
 use base64::Engine as _;
 use bytes::Bytes;
@@ -38,6 +39,7 @@ use http::StatusCode;
 use serde::{Deserialize, Serialize};
 use serde_with::{DurationSeconds, serde_as};
 use socket_factory::{SocketFactory, TcpSocket};
+use tokio::sync::oneshot;
 
 mod ingest;
 
@@ -153,8 +155,16 @@ impl Uploader {
 
 /// Spawns the uploader thread with an immediate first pass queued; it prunes
 /// the spool on start and re-reads the persisted config each pass.
-pub fn spawn(spool_root: PathBuf, socket_factory: Arc<dyn SocketFactory<TcpSocket>>) -> Uploader {
+///
+/// The returned receiver resolves if the thread gives up because the spool's
+/// config cannot be read, and with an error if the thread exits for any other
+/// reason.
+pub fn spawn(
+    spool_root: PathBuf,
+    socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
+) -> (Uploader, oneshot::Receiver<UploadConfigUnreadable>) {
     let (commands, inbox) = mpsc::channel();
+    let (unreadable_tx, unreadable_rx) = oneshot::channel();
 
     let uploader = Uploader { commands };
     uploader.nudge();
@@ -170,13 +180,18 @@ pub fn spawn(spool_root: PathBuf, socket_factory: Arc<dyn SocketFactory<TcpSocke
                 let _keep_alive = keep_alive;
 
                 prune(&spool_root);
-                run(&spool_root, socket_factory, &inbox);
+                run(&spool_root, socket_factory, &inbox, unreadable_tx);
             }
         })
         .expect("Failed to spawn flow-log uploader thread");
 
-    uploader
+    (uploader, unreadable_rx)
 }
+
+/// The upload config could not be read, so no flow log will ever be uploaded.
+#[derive(Debug, thiserror::Error)]
+#[error("Flow-log upload config is unreadable")]
+pub struct UploadConfigUnreadable(#[source] anyhow::Error);
 
 /// The uploader's event loop: sleeps until the next interval or an earlier
 /// [`Command`], then acts on whichever arrived.
@@ -184,6 +199,7 @@ fn run(
     spool_root: &Path,
     socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
     commands: &mpsc::Receiver<Command>,
+    unreadable_config: oneshot::Sender<UploadConfigUnreadable>,
 ) {
     let runtime = match tokio::runtime::Builder::new_current_thread()
         .enable_all()
@@ -203,7 +219,18 @@ fn run(
     loop {
         match commands.recv_timeout(delay) {
             Ok(Command::Upload) | Err(mpsc::RecvTimeoutError::Timeout) => {
-                delay = runtime.block_on(upload_pass(spool_root, socket_factory.clone()));
+                match runtime.block_on(upload_pass(spool_root, socket_factory.clone())) {
+                    ControlFlow::Continue(next) => delay = next,
+                    ControlFlow::Break(e) => {
+                        tracing::error!(
+                            spool_root = %spool_root.display(),
+                            "Giving up on flow-log uploads; the spool must be readable by the user we run as: {e:#}"
+                        );
+                        let _ = unreadable_config.send(UploadConfigUnreadable(e));
+
+                        return;
+                    }
+                }
             }
             Ok(Command::Shutdown { done }) => {
                 let _ = done.send(());
@@ -216,26 +243,35 @@ fn run(
     }
 }
 
-/// Runs one upload pass; returns how long to wait before the next.
+/// Runs one upload pass; returns how long to wait before the next or the error
+/// that retrying cannot fix.
 async fn upload_pass(
     spool_root: &Path,
     socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
-) -> Duration {
+) -> ControlFlow<anyhow::Error, Duration> {
     match load_upload_config(spool_root).await {
         Ok(Some(config)) => match upload_pending(spool_root, &config, socket_factory).await {
-            Ok(true) => CATCHUP_POLL,
-            Ok(false) => config.interval,
+            Ok(true) => ControlFlow::Continue(CATCHUP_POLL),
+            Ok(false) => ControlFlow::Continue(config.interval),
             Err(e) => {
                 tracing::error!("Flow-log upload pass failed: {e:#}");
-                config.interval
+
+                ControlFlow::Continue(config.interval)
             }
         },
-        Ok(None) => DISABLED_POLL,
+        Ok(None) => ControlFlow::Continue(DISABLED_POLL),
+        Err(e) if is_permission_denied(&e) => ControlFlow::Break(e),
         Err(e) => {
             tracing::error!("Failed to load flow-log upload config: {e:#}");
-            DISABLED_POLL
+
+            ControlFlow::Continue(DISABLED_POLL)
         }
     }
+}
+
+fn is_permission_denied(e: &anyhow::Error) -> bool {
+    e.any_downcast_ref::<std::io::Error>()
+        .is_some_and(|e| e.kind() == std::io::ErrorKind::PermissionDenied)
 }
 
 /// Removes authorization directories whose token has expired or is missing, since
@@ -1164,7 +1200,7 @@ mod tests {
     #[test]
     fn stop_acks_after_queued_passes_before_the_timeout() {
         let root = tempfile::tempdir().unwrap();
-        let uploader = spawn(root.path().to_owned(), Arc::new(socket_factory::tcp));
+        let (uploader, _) = spawn(root.path().to_owned(), Arc::new(socket_factory::tcp));
 
         assert!(uploader.stop(Some(Duration::from_secs(10))));
     }
@@ -1172,7 +1208,7 @@ mod tests {
     #[test]
     fn stop_without_flush_returns_immediately() {
         let root = tempfile::tempdir().unwrap();
-        let uploader = spawn(root.path().to_owned(), Arc::new(socket_factory::tcp));
+        let (uploader, _) = spawn(root.path().to_owned(), Arc::new(socket_factory::tcp));
 
         assert!(!uploader.stop(None));
     }
@@ -1180,7 +1216,7 @@ mod tests {
     #[test]
     fn nudge_reports_whether_the_thread_is_alive() {
         let root = tempfile::tempdir().unwrap();
-        let uploader = spawn(root.path().to_owned(), Arc::new(socket_factory::tcp));
+        let (uploader, _) = spawn(root.path().to_owned(), Arc::new(socket_factory::tcp));
 
         assert!(uploader.nudge());
         assert!(uploader.stop(Some(Duration::from_secs(10))));
@@ -1194,5 +1230,24 @@ mod tests {
             );
             std::thread::sleep(Duration::from_millis(10));
         }
+    }
+
+    #[test]
+    fn only_permission_denied_ends_the_uploader() {
+        assert!(is_permission_denied(&config_read_error(
+            std::io::ErrorKind::PermissionDenied
+        )));
+        assert!(!is_permission_denied(&config_read_error(
+            std::io::ErrorKind::StorageFull
+        )));
+        assert!(!is_permission_denied(&config_read_error(
+            std::io::ErrorKind::ReadOnlyFilesystem
+        )));
+    }
+
+    fn config_read_error(kind: std::io::ErrorKind) -> anyhow::Error {
+        Result::<()>::Err(std::io::Error::from(kind).into())
+            .context("Failed to read upload config")
+            .unwrap_err()
     }
 }
