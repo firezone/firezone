@@ -195,29 +195,10 @@ fn activate(dns_config: &[IpAddr], search_domain: Option<DomainName>) -> Result<
 /// Sets our DNS servers in the registry so `ipconfig` and WSL will notice them
 /// Fixes #6777
 fn set_nameservers_on_interface(dns_config: &[IpAddr]) -> Result<()> {
-    let hklm = winreg::RegKey::predef(winreg::enums::HKEY_LOCAL_MACHINE);
     let ipv4_nameservers = itertools::join(dns_config.iter().filter(|addr| addr.is_ipv4()), ";");
     let ipv6_nameservers = itertools::join(dns_config.iter().filter(|addr| addr.is_ipv6()), ";");
 
-    tracing::debug!(ipv4_nameservers);
-
-    let key = hklm.open_subkey_with_flags(
-        Path::new(&format!(
-            r"SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces\{{{TUNNEL_UUID}}}"
-        )),
-        winreg::enums::KEY_WRITE,
-    )?;
-    key.set_value("NameServer", &ipv4_nameservers)?;
-
-    tracing::debug!(ipv6_nameservers);
-
-    let key = hklm.open_subkey_with_flags(
-        Path::new(&format!(
-            r"SYSTEM\CurrentControlSet\Services\Tcpip6\Parameters\Interfaces\{{{TUNNEL_UUID}}}"
-        )),
-        winreg::enums::KEY_WRITE,
-    )?;
-    key.set_value("NameServer", &ipv6_nameservers)?;
+    set_on_tunnel_interfaces("NameServer", &ipv4_nameservers, &ipv6_nameservers)?;
 
     Ok(())
 }
@@ -225,40 +206,40 @@ fn set_nameservers_on_interface(dns_config: &[IpAddr]) -> Result<()> {
 /// Sets (or unsets) the search domain on the tunnel interface.
 ///
 /// If `search_domain` is `None`, the search domain is unset.
-/// If we cannot open any of the keys, we no-op.
-/// Some systems might have IPv4 or IPv6 disabled and we don't want to fail in that case.
 fn set_search_domain_on_interface(search_domain: Option<DomainName>) -> Result<()> {
-    let hklm = winreg::RegKey::predef(winreg::enums::HKEY_LOCAL_MACHINE);
     let search_list = search_domain.map(|d| d.to_string()).unwrap_or_default(); // Default to empty string in order to "unset" the search domain.
 
-    if let Ok(key) = hklm
-        .open_subkey_with_flags(
-            Path::new(&format!(
-                r"SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces\{{{TUNNEL_UUID}}}"
-            )),
-            winreg::enums::KEY_WRITE,
-        )
-        .context("Failed to open IPv4 tunnel interface registry key")
-        .inspect_err(|e| tracing::debug!("{e:#}"))
-    {
-        key.set_value("SearchList", &search_list)?;
-    }
+    set_on_tunnel_interfaces("SearchList", &search_list, &search_list)?;
 
-    if let Ok(key) = hklm
-        .open_subkey_with_flags(
-            Path::new(&format!(
-                r"SYSTEM\CurrentControlSet\Services\Tcpip6\Parameters\Interfaces\{{{TUNNEL_UUID}}}"
-            )),
-            winreg::enums::KEY_WRITE,
-        )
-        .context("Failed to open IPv6 tunnel interface registry key")
-        .inspect_err(|e| tracing::debug!("{e:#}"))
-    {
-        key.set_value("SearchList", &search_list)?;
+    Ok(())
+}
+
+/// Sets a value on the tunnel interface's registry key of each IP family.
+///
+/// A missing interface key means the IP family is disabled on this system, so we skip it.
+fn set_on_tunnel_interfaces(name: &str, ipv4: &str, ipv6: &str) -> Result<()> {
+    let hklm = winreg::RegKey::predef(winreg::enums::HKEY_LOCAL_MACHINE);
+
+    for (interfaces, value) in [(TCPIP_INTERFACES, ipv4), (TCPIP6_INTERFACES, ipv6)] {
+        let path = Path::new(interfaces).join(format!("{{{TUNNEL_UUID}}}"));
+
+        let key = match hklm.open_subkey_with_flags(&path, winreg::enums::KEY_WRITE) {
+            Ok(key) => key,
+            Err(e) if e.kind() == io::ErrorKind::NotFound => {
+                tracing::debug!(path = %path.display(), "Skipping disabled IP family");
+                continue;
+            }
+            Err(e) => return Err(e).with_context(|| format!("Failed to open {}", path.display())),
+        };
+
+        key.set_value(name, &value)?;
     }
 
     Ok(())
 }
+
+const TCPIP_INTERFACES: &str = r"SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces";
+const TCPIP6_INTERFACES: &str = r"SYSTEM\CurrentControlSet\Services\Tcpip6\Parameters\Interfaces";
 
 /// Returns the registry path we can use to set NRPT rules when Group Policy is not in effect.
 fn local_nrpt_path() -> &'static Path {
