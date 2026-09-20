@@ -2,9 +2,6 @@
 package dev.firezone.android.e2e
 
 import android.content.SharedPreferences
-import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
-import androidx.compose.ui.test.onNodeWithText
-import androidx.compose.ui.test.performClick
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
 import androidx.test.runner.lifecycle.Stage
@@ -23,6 +20,7 @@ import dev.firezone.android.tunnel.FakeSessionFactory
 import dev.firezone.android.tunnel.TestRestrictions
 import dev.firezone.android.tunnel.TunnelService
 import dev.firezone.android.tunnel.awaitTextOnScreen
+import dev.firezone.android.tunnel.clickTextOnScreen
 import dev.firezone.android.tunnel.finishAllActivities
 import dev.firezone.android.tunnel.grantNotificationPermission
 import dev.firezone.android.tunnel.grantVpnConsent
@@ -51,9 +49,6 @@ import javax.inject.Inject
 class DeviceTrustE2eTest {
     @get:Rule(order = 0)
     val hiltRule = HiltAndroidRule(this)
-
-    @get:Rule(order = 1)
-    val composeRule = createEmptyComposeRule()
 
     @Inject
     lateinit var repo: Repository
@@ -85,7 +80,7 @@ class DeviceTrustE2eTest {
         launchApp()
 
         awaitText("Sign In")
-        composeRule.onNodeWithText("Sign In").performClick()
+        clickTextOnScreen("Sign In")
 
         await("the browser sign-in to open") { authActivityExists() }
         assertEquals("a session was opened without a token", 0, FakeSessionFactory.opened)
@@ -109,7 +104,7 @@ class DeviceTrustE2eTest {
         launchApp()
 
         awaitText("Sign In")
-        composeRule.onNodeWithText("Sign In").performClick()
+        clickTextOnScreen("Sign In")
 
         await("the browser sign-in to open") { authActivityExists() }
         assertEquals("a session was opened without any credential", 0, FakeSessionFactory.opened)
@@ -182,7 +177,7 @@ class DeviceTrustE2eTest {
         launchApp()
 
         awaitText("Select your client certificate")
-        composeRule.onNodeWithText("Select certificate").performClick()
+        clickTextOnScreen("Select certificate")
 
         awaitText("Sign In")
 
@@ -209,12 +204,12 @@ class DeviceTrustE2eTest {
         launchApp()
 
         awaitText("Select your client certificate")
-        composeRule.onNodeWithText("Select certificate").performClick()
+        clickTextOnScreen("Select certificate")
 
         awaitText("'$OTHER_ALIAS' is not a Firezone device certificate.", substring = true)
         assertNull(repo.getX509CertificateAliasSync(TestRestrictions.bundle))
 
-        composeRule.onNodeWithText("Select certificate").performClick()
+        clickTextOnScreen("Select certificate")
 
         awaitText("Sign In")
 

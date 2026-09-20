@@ -109,6 +109,20 @@ fun awaitTextOnScreen(
     }
 }
 
+/** Taps whatever carries [text], once it is there. */
+fun clickTextOnScreen(
+    text: String,
+    substring: Boolean = false,
+) {
+    awaitTextOnScreen(text, substring)
+
+    UiDevice
+        .getInstance(InstrumentationRegistry.getInstrumentation())
+        .findObject(selector(text, substring))
+        ?.click()
+        ?: throw AssertionError("\"$text\" left the screen before it could be tapped")
+}
+
 /** Whether [text] is on screen now, for asserting that something is absent. */
 fun isTextOnScreen(
     text: String,
