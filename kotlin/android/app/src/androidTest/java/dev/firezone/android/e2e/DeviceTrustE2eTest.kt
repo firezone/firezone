@@ -23,10 +23,10 @@ import dev.firezone.android.tunnel.FakeSessionFactory
 import dev.firezone.android.tunnel.TestRestrictions
 import dev.firezone.android.tunnel.TunnelService
 import dev.firezone.android.tunnel.awaitTextOnScreen
-import dev.firezone.android.tunnel.isTextOnScreen
 import dev.firezone.android.tunnel.finishAllActivities
 import dev.firezone.android.tunnel.grantNotificationPermission
 import dev.firezone.android.tunnel.grantVpnConsent
+import dev.firezone.android.tunnel.isTextOnScreen
 import dev.firezone.android.tunnel.launchApp
 import dev.firezone.android.tunnel.resumedActivity
 import dev.firezone.android.tunnel.startTunnelService

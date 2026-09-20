@@ -22,9 +22,9 @@ import dev.firezone.android.tunnel.FakeSessionFactory
 import dev.firezone.android.tunnel.TestRestrictions
 import dev.firezone.android.tunnel.TunnelNotification
 import dev.firezone.android.tunnel.UNASSIGNABLE_IPV6
+import dev.firezone.android.tunnel.awaitTextOnScreen
 import dev.firezone.android.tunnel.benchController
 import dev.firezone.android.tunnel.engineeringWiki
-import dev.firezone.android.tunnel.awaitTextOnScreen
 import dev.firezone.android.tunnel.finishAllActivities
 import dev.firezone.android.tunnel.grantNotificationPermission
 import dev.firezone.android.tunnel.grantVpnConsent
