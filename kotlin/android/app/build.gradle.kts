@@ -300,7 +300,7 @@ dependencies {
     androidTestImplementation("androidx.test.espresso:espresso-intents:3.7.0")
     androidTestImplementation("androidx.test.uiautomator:uiautomator:2.4.0")
     // Mints the test certificates; the platform offers no way to build one.
-    androidTestImplementation("org.bouncycastle:bcpkix-jdk18on:1.85")
+    androidTestImplementation("org.bouncycastle:bcpkix-jdk18on:1.86")
     // Unit Tests
     testImplementation("com.google.dagger:hilt-android-testing:2.60.1")
 
