@@ -85,17 +85,6 @@ pub struct RefClient {
     /// The current record kinds resolved by a connected gateway for each DNS resource domain.
     #[debug(skip)]
     dns_resource_resolutions: BTreeMap<(ResourceId, DomainName), BTreeSet<RecordType>>,
-    /// Resources whose authorization the Gateway revoked without the client knowing.
-    ///
-    /// The Gateway rejects the next packet for such a resource and sends a
-    /// `no_authorization` event, upon which the client requests a fresh authorization.
-    #[debug(skip)]
-    gateway_revoked_authorizations: BTreeSet<ResourceId>,
-
-    /// Receiver grants survive client-side resets until revoked or closed with goodbye.
-    /// The portal selects a fixed gateway per site.
-    #[debug(skip)]
-    gateway_authorizations: BTreeMap<SiteId, BTreeSet<ResourceId>>,
 
     /// The [`ResourceStatus`] of each site.
     #[debug(skip)]
@@ -170,8 +159,6 @@ impl RefClient {
             connected_cidr_resources: Default::default(),
             connected_dns_resources: Default::default(),
             dns_resource_resolutions: Default::default(),
-            gateway_revoked_authorizations: Default::default(),
-            gateway_authorizations: Default::default(),
             connected_internet_resource: Default::default(),
             expected_tcp_connections: Default::default(),
             expected_tcp_rejections: Default::default(),
@@ -229,7 +216,6 @@ impl RefClient {
     }
 
     pub(crate) fn disconnect_resource(&mut self, resource: &ResourceId) {
-        let was_connected = self.connected_resources().contains(resource);
         for _ in self.routes.extract_if(.., |(r, _)| r == resource) {}
 
         self.discard_authorization(resource);
@@ -258,9 +244,6 @@ impl RefClient {
             );
 
             self.site_status.remove(&site.id);
-            if was_connected {
-                self.gateway_authorizations.remove(&site.id);
-            }
         }
     }
 
@@ -283,43 +266,6 @@ impl RefClient {
                 .push((resource.id(), Ipv6Network::DEFAULT_ROUTE.into()));
         } else {
             self.disconnect_resource(&resource.id());
-        }
-    }
-
-    /// Models the Gateway losing its authorization for `resource` without the client knowing,
-    /// e.g. because it expired or the portal revoked it.
-    pub(crate) fn revoke_gateway_authorization(
-        &mut self,
-        resource: ResourceId,
-        gateway_for_resource: impl Fn(ResourceId) -> Option<GatewayId>,
-        now: Instant,
-    ) {
-        let Ok(site) = self.site_for_resource(resource) else {
-            return;
-        };
-        let Some(authorizations) = self.gateway_authorizations.get_mut(&site.id) else {
-            return;
-        };
-        if !authorizations.remove(&resource) {
-            return;
-        }
-        let last_authorization_on_gateway = authorizations.is_empty();
-        let Some(gateway) = gateway_for_resource(resource) else {
-            return;
-        };
-
-        if last_authorization_on_gateway {
-            self.gateway_authorizations.remove(&site.id);
-            // The Gateway closes the connection with a `goodbye`; the client resets its
-            // state and the next packet requests a new authorization right away.
-            self.reset_connections_to_gateways(
-                &BTreeSet::from([gateway]),
-                gateway_for_resource,
-                now,
-            );
-        } else if self.connected_resources().contains(&resource) {
-            // The Gateway rejects the next packet with a `no_authorization` event.
-            self.gateway_revoked_authorizations.insert(resource);
         }
     }
 
@@ -472,13 +418,6 @@ impl RefClient {
     }
 
     pub(crate) fn restart(&mut self, key: PrivateKey, now: Instant) {
-        let connected_sites = self
-            .connected_resources()
-            .filter_map(|resource| self.site_for_resource(resource).ok().map(|site| site.id))
-            .collect::<BTreeSet<_>>();
-        for site in connected_sites {
-            self.gateway_authorizations.remove(&site);
-        }
         self.routes.clear();
 
         self.key = key;
@@ -553,7 +492,6 @@ impl RefClient {
         // Peer authorizations in both directions go with their connections.
         self.outbound_peer_authorizations.clear();
         self.inbound_peer_authorizations.clear();
-        self.gateway_revoked_authorizations.clear();
 
         for status in self.site_status.values_mut() {
             *status = ResourceStatus::Unknown;
@@ -763,7 +701,6 @@ impl RefClient {
     }
 
     pub(crate) fn connect_to_resource(&mut self, resource: ResourceId, destination: Destination) {
-        self.record_gateway_authorization(resource);
         match destination {
             Destination::DomainName { .. } => {
                 self.connected_dns_resources.insert(resource);
@@ -774,33 +711,8 @@ impl RefClient {
         self.set_resource_online(resource);
     }
 
-    pub(crate) fn is_gateway_authorization_revoked(&self, resource: ResourceId) -> bool {
-        self.gateway_revoked_authorizations.contains(&resource)
-    }
-
-    /// Requests fresh access after the Gateway rejected a packet with `no_authorization`.
-    pub(crate) fn restore_gateway_authorization(&mut self, resource: ResourceId) {
-        if self.malicious_behaviour.ignore_no_authorization_events {
-            return;
-        }
-
-        self.gateway_revoked_authorizations.remove(&resource);
-        self.record_gateway_authorization(resource);
-    }
-
-    fn record_gateway_authorization(&mut self, resource: ResourceId) {
-        let Ok(site) = self.site_for_resource(resource) else {
-            return;
-        };
-        self.gateway_authorizations
-            .entry(site.id)
-            .or_default()
-            .insert(resource);
-    }
-
     /// The client no longer holds an authorization for `resource`; the next packet requests a new one.
     fn discard_authorization(&mut self, resource: &ResourceId) {
-        self.gateway_revoked_authorizations.remove(resource);
         self.connected_cidr_resources.remove(resource);
         self.connected_dns_resources.remove(resource);
 
@@ -827,7 +739,6 @@ impl RefClient {
     }
 
     fn connect_to_internet_or_cidr_resource(&mut self, rid: ResourceId) {
-        self.record_gateway_authorization(rid);
         if self.internet_resource_active
             && let Some(internet) = self.internet_resource()
             && internet == rid
@@ -861,7 +772,6 @@ impl RefClient {
             self.prepare_dns_resource_connection(resource, global_dns_records);
             self.set_resource_online(resource);
             self.connected_dns_resources.insert(resource);
-            self.record_gateway_authorization(resource);
             self.expect_dns_response(query);
 
             return;

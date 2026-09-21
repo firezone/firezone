@@ -94,6 +94,11 @@ impl ReferenceState {
         transition: &Transition,
         now: Instant,
     ) -> Self {
+        // The portal has already applied `transition`, but the SUT only records the grants
+        // it hands out afterwards. Sweeping here therefore sees this transition's
+        // revocations against the authorizations both sides last agreed on.
+        state.close_unauthorized_gateway_connections(portal, now);
+
         match transition {
             Transition::AddResource(resource) => {
                 for client in state.clients.values_mut() {
@@ -121,17 +126,10 @@ impl ReferenceState {
             }
             Transition::RemoveResource(id) => {
                 for client in state.clients.values_mut() {
-                    client.exec_mut(|client| {
-                        client.revoke_gateway_authorization(
-                            *id,
-                            |resource| portal.gateway_for_resource(resource).copied(),
-                            now,
-                        );
-                        client.remove_resource(id);
-                    });
+                    client.exec_mut(|client| client.remove_resource(id));
                 }
             }
-            Transition::EditResource(edit) => state.apply_resource_edit(edit, portal, now),
+            Transition::EditResource(edit) => state.apply_resource_edit(edit),
             Transition::UpdateDevicePoolMembers {
                 pool_id: _,
                 members: _,
@@ -447,14 +445,7 @@ impl ReferenceState {
             }
             Transition::DeauthorizeWhileGatewayIsPartitioned(resource) => {
                 for client in state.clients.values_mut() {
-                    client.exec_mut(|client| {
-                        client.revoke_gateway_authorization(
-                            *resource,
-                            |resource| portal.gateway_for_resource(resource).copied(),
-                            now,
-                        );
-                        client.remove_resource(resource);
-                    })
+                    client.exec_mut(|client| client.remove_resource(resource));
                 }
             }
             Transition::ExpirePeerAuthorizations {
@@ -468,17 +459,7 @@ impl ReferenceState {
                     }
                 });
             }
-            Transition::RevokeGatewayAuthorization(resource) => {
-                for client in state.clients.values_mut() {
-                    client.exec_mut(|client| {
-                        client.revoke_gateway_authorization(
-                            *resource,
-                            |r| portal.gateway_for_resource(r).copied(),
-                            now,
-                        )
-                    })
-                }
-            }
+            Transition::RevokeGatewayAuthorization(_) => {}
             Transition::RestartClient { client_id, key } => {
                 for (id, client) in &mut state.clients {
                     if id == client_id {
@@ -498,36 +479,36 @@ impl ReferenceState {
         state
     }
 
-    fn apply_resource_edit(
-        &mut self,
-        edit: &client::ResourceEdit,
-        portal: &StubPortal,
-        now: Instant,
-    ) {
-        let effect = client::classify(&edit.old, &edit.new);
-        let updated = &edit.new;
-        let previous_gateway = edit
-            .old
-            .site()
-            .ok()
-            .and_then(|site| portal.gateway_for_site(site.id));
-        let gateway_for_resource = |resource: ResourceId| {
-            if resource == updated.id() {
-                return previous_gateway;
+    /// A Gateway left without a single authorization for a Client closes the connection
+    /// with a `goodbye`, upon which the Client resets its state for that Gateway.
+    fn close_unauthorized_gateway_connections(&mut self, portal: &StubPortal, now: Instant) {
+        let gateway_for_resource =
+            |resource: ResourceId| portal.gateway_for_resource(resource).copied();
+
+        for (id, client) in &mut self.clients {
+            let authorized = portal.gateways_authorized_for(*id);
+            let closed = client
+                .inner()
+                .connected_resources()
+                .filter_map(gateway_for_resource)
+                .filter(|gateway| !authorized.contains(gateway))
+                .collect::<BTreeSet<_>>();
+
+            if closed.is_empty() {
+                continue;
             }
 
-            portal.gateway_for_resource(resource).copied()
-        };
+            client
+                .exec_mut(|c| c.reset_connections_to_gateways(&closed, gateway_for_resource, now));
+        }
+    }
+
+    fn apply_resource_edit(&mut self, edit: &client::ResourceEdit) {
+        let effect = client::classify(&edit.old, &edit.new);
+        let updated = &edit.new;
 
         for client in self.clients.values_mut() {
             client.exec_mut(|client| {
-                if matches!(
-                    effect,
-                    client::EditEffect::Access { .. } | client::EditEffect::Type { .. }
-                ) {
-                    client.revoke_gateway_authorization(updated.id(), gateway_for_resource, now);
-                }
-
                 let forgets_dns_records_under = match effect {
                     client::EditEffect::Metadata => {
                         client.update_resource_metadata(updated.clone());
@@ -789,17 +770,11 @@ impl ReferenceState {
             });
         }
         let rejection = self.gateway_verdict(portal, origin, gateway, resource, src, dst, protocol);
-        let revoked = self.clients[&origin]
-            .inner()
-            .is_gateway_authorization_revoked(resource);
 
-        self.clients.get_mut(&origin).unwrap().exec_mut(|client| {
-            if revoked {
-                client.restore_gateway_authorization(resource);
-            } else {
-                client.connect_to_resource(resource, dst.clone());
-            }
-        });
+        self.clients
+            .get_mut(&origin)
+            .unwrap()
+            .exec_mut(|client| client.connect_to_resource(resource, dst.clone()));
 
         match rejection {
             Some(response) => ExpectedOutcome::Rejected {
@@ -852,9 +827,11 @@ impl ReferenceState {
     ) -> Option<RejectionResponse> {
         let client = self.clients[&origin].inner();
 
-        // The Gateway lost its authorization: it rejects this packet and tells us to
-        // request a new authorization, which the next packet will do.
-        if client.is_gateway_authorization_revoked(resource) {
+        // The Gateway lost its authorization while the client still believes it holds one:
+        // it rejects this packet and tells the client to request a new authorization.
+        if client.connected_resources().contains(&resource)
+            && !portal.holds_gateway_authorization(origin, resource)
+        {
             return Some(RejectionResponse::Prohibited);
         }
 
@@ -1063,16 +1040,13 @@ impl ReferenceState {
         expirable
     }
 
-    /// Resources whose authorization can be revoked on the Gateway, i.e. some client is
-    /// connected to them and thus the Gateway actually holds an authorization.
+    /// Resources a Gateway currently holds an authorization for.
     pub(crate) fn revocable_resource_ids(&self, portal: &StubPortal) -> Vec<ResourceId> {
+        let authorized = portal.authorized_resources();
+
         self.deauthorizable_resource_ids(portal)
             .into_iter()
-            .filter(|resource| {
-                self.clients
-                    .values()
-                    .any(|client| client.inner().connected_resources().any(|r| r == *resource))
-            })
+            .filter(|resource| authorized.contains(resource))
             .collect()
     }
 

@@ -1396,6 +1396,7 @@ impl TunnelTest {
                     .expect("request must name resources");
                 let (gateway_id, site_id) =
                     portal.handle_connection_intent(resource_id, preferred_gateways);
+                portal.record_gateway_authorization(src, gateway_id, resource_id);
                 let gateway = self.gateways.get_mut(&gateway_id).expect("unknown gateway");
                 let resource = portal.map_client_resource_to_gateway_resource(resource_id);
 
