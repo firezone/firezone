@@ -506,6 +506,18 @@ impl ReferenceState {
     ) {
         let effect = client::classify(&edit.old, &edit.new);
         let updated = &edit.new;
+        let previous_gateway = edit
+            .old
+            .site()
+            .ok()
+            .and_then(|site| portal.gateway_for_site(site.id));
+        let gateway_for_resource = |resource: ResourceId| {
+            if resource == updated.id() {
+                return previous_gateway;
+            }
+
+            portal.gateway_for_resource(resource).copied()
+        };
 
         for client in self.clients.values_mut() {
             client.exec_mut(|client| {
@@ -513,11 +525,7 @@ impl ReferenceState {
                     effect,
                     client::EditEffect::Access { .. } | client::EditEffect::Type { .. }
                 ) {
-                    client.revoke_gateway_authorization(
-                        updated.id(),
-                        |resource| portal.gateway_for_resource(resource).copied(),
-                        now,
-                    );
+                    client.revoke_gateway_authorization(updated.id(), gateway_for_resource, now);
                 }
 
                 let forgets_dns_records_under = match effect {

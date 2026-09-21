@@ -496,6 +496,13 @@ impl StubPortal {
         Some(gid)
     }
 
+    pub(crate) fn gateway_for_site(&self, sid: SiteId) -> Option<GatewayId> {
+        let gateways = self.gateways_by_site.get(&sid)?;
+        let (gid, _, _) = select_by_index(gateways, self.gateway_selector)?;
+
+        Some(*gid)
+    }
+
     pub(crate) fn gateway_by_ip(&self, ip: IpAddr) -> Option<GatewayId> {
         self.gateways_by_site
             .values()
