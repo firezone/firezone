@@ -476,16 +476,15 @@ impl Eventloop {
                 {
                     Ok(()) => {}
                     Err(e)
-                        if e.any_downcast_ref::<std::io::Error>()
-                            .is_some_and(|io| io.kind() == std::io::ErrorKind::StorageFull) =>
+                        if e.any_downcast_ref::<io::Error>()
+                            .is_some_and(|err| err.kind() == io::ErrorKind::StorageFull) =>
                     {
                         tracing::debug!("{e:#}");
                     }
                     // A spool we cannot write is a misconfiguration that no retry fixes.
                     Err(e)
-                        if e.any_downcast_ref::<std::io::Error>().is_some_and(|io| {
-                            io.kind() == std::io::ErrorKind::PermissionDenied
-                        }) =>
+                        if e.any_downcast_ref::<io::Error>()
+                            .is_some_and(|err| err.kind() == io::ErrorKind::PermissionDenied) =>
                     {
                         return Err(e);
                     }
