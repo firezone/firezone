@@ -40,10 +40,12 @@ from PIL import Image, ImageChops
 # while the menu is untouched, and a date that really changed reaches 246 across
 # an area no larger.
 #
-# Over every re-render this gallery has produced, a block of invisible wobble
-# averages at most 2 and the smallest real change averages 8.
+# Over every re-render this gallery has produced, the smallest real change
+# averages 8 across a block. Invisible wobble reaches 5: the title bar's material
+# draws a window title a shade heavier, darkening every pixel of it by nine levels
+# and leaving the rest of the screen alone.
 BLOCK = 8
-BLOCK_TOLERANCE = 4
+BLOCK_TOLERANCE = 6
 
 
 def committed(revision: str, path: str) -> bytes | None:

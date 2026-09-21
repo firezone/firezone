@@ -18,6 +18,7 @@ import dev.firezone.android.RequiresManagedDevice
 import dev.firezone.android.tunnel.TestRestrictions
 import dev.firezone.android.tunnel.finishAllActivities
 import dev.firezone.android.tunnel.grantNotificationPermission
+import dev.firezone.android.tunnel.grantVpnConsent
 import dev.firezone.android.tunnel.launchApp
 import dev.firezone.android.tunnel.photographScreen
 import org.junit.After
@@ -52,6 +53,7 @@ class ManagedKeyChainTest {
     @Before
     fun setUp() {
         hiltRule.inject()
+        grantVpnConsent()
         grantNotificationPermission()
         finishAllActivities()
         preferences.edit().clear().commit()

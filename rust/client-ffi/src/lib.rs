@@ -241,6 +241,14 @@ impl DisconnectError {
         self.0.user_message()
     }
 
+    /// Returns whether the error is worded for the user.
+    ///
+    /// Such an error is product copy rather than a diagnostic and must not be reported as
+    /// telemetry.
+    pub fn is_user_facing(&self) -> bool {
+        self.0.is_user_facing()
+    }
+
     /// Returns the error with its full cause chain, for the logs.
     pub fn log_message(&self) -> String {
         self.0.log_message()

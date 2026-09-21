@@ -14,7 +14,6 @@ import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
-import dev.firezone.android.core.ApplicationMode
 import dev.firezone.android.core.Log
 import dev.firezone.android.core.data.Repository
 import dev.firezone.android.core.data.TokenStore
@@ -41,7 +40,6 @@ internal class SplashViewModel
         private val repo: Repository,
         private val tokenStore: TokenStore,
         private val applicationRestrictions: Bundle,
-        private val applicationMode: ApplicationMode,
         private val certificateAccess: CertificateAccess,
         private val keyChain: KeyChain,
     ) : ViewModel() {
@@ -70,7 +68,7 @@ internal class SplashViewModel
             isInitialLaunch: Boolean,
         ) {
             // If we don't have VPN permission, we can't continue.
-            if (!hasVpnPermissions(activity) && applicationMode != ApplicationMode.TESTING) {
+            if (!hasVpnPermissions(activity)) {
                 actionMutableStateFlow.value = ViewAction.NavigateToVpnPermission
                 return
             }

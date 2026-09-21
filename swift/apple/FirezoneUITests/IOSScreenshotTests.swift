@@ -131,9 +131,7 @@
       let app = launchApp(scenario: "connected")
       defer { app.terminate() }
 
-      try waitFor(app.buttons["Settings"], on: "settings")
-      app.buttons["Settings"].tap()
-      try waitFor(app.navigationBars["Settings"], on: "settings")
+      try openSettings(in: app, on: "settings")
 
       for tab in Self.settingsTabs {
         try selectTab(tab.label, showing: tab.showing, in: app)
@@ -149,9 +147,7 @@
         let app = launchApp(scenario: scenario)
         defer { app.terminate() }
 
-        try waitFor(app.buttons["Settings"], on: scenario)
-        app.buttons["Settings"].tap()
-        try waitFor(app.navigationBars["Settings"], on: scenario)
+        try openSettings(in: app, on: scenario)
         try selectTab("Device Trust", showing: Self.certificateAnchor, in: app)
         deliver(app, as: scenario, in: appearance)
       }
@@ -199,10 +195,8 @@
     /// content carries.
     ///
     /// SwiftUI has drawn the iOS tab bar as different controls across releases, so
-    /// the first kind that answers to `label` wins. A press that lands while the
-    /// sheet is still arriving is dropped without a word, so it is repeated until
-    /// the content it asks for is on screen. The tab's own selected trait would be
-    /// the cheaper signal, but these controls do not report it.
+    /// the first kind that answers to `label` wins. The tab's own selected trait
+    /// would be the cheaper signal, but these controls do not report it.
     private func selectTab(
       _ label: String, showing anchor: String, in app: XCUIApplication
     ) throws {
@@ -215,13 +209,34 @@
         throw IOSScreenshotError.tabNotFound(label)
       }
 
-      for _ in 0..<3 {
-        tab.tap()
+      guard tap(tab, until: app.descendants(matching: .any)[anchor]) else {
+        throw IOSScreenshotError.tabDidNotOpen(label)
+      }
+    }
 
-        if app.descendants(matching: .any)[anchor].waitForExistence(timeout: 10) { return }
+    /// Opens the Settings sheet from the button the session screen's toolbar carries.
+    private func openSettings(in app: XCUIApplication, on screen: String) throws {
+      let button = app.buttons["Settings"]
+      try waitFor(button, on: screen)
+
+      guard tap(button, until: app.navigationBars["Settings"]) else {
+        throw IOSScreenshotError.screenDidNotAppear(screen)
+      }
+    }
+
+    /// Presses `control` until `anchor` is on screen, and says whether it ever was.
+    ///
+    /// A press that lands while the screen it asks for is still arriving is dropped
+    /// without a word, as is one a banner SpringBoard laid over the app caught, and
+    /// both leave the wait that follows with nothing to wait for.
+    private func tap(_ control: XCUIElement, until anchor: XCUIElement) -> Bool {
+      for _ in 0..<3 {
+        control.tap()
+
+        if anchor.waitForExistence(timeout: 10) { return true }
       }
 
-      throw IOSScreenshotError.tabDidNotOpen(label)
+      return false
     }
 
     /// Opens the account menu and waits for `item`, one of the controls it holds.

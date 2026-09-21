@@ -1,7 +1,6 @@
 // Licensed under Apache 2.0 (C) 2024 Firezone, Inc.
 package dev.firezone.android.tunnel
 
-import NetworkMonitor
 import android.app.ActivityManager
 import android.content.BroadcastReceiver
 import android.content.Context

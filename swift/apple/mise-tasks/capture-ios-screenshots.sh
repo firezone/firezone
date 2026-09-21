@@ -42,11 +42,15 @@ for appearance in light dark; do
 
   echo "Photographing the iOS screens in ${appearance}..."
   # xcodebuild forwards TEST_RUNNER_-prefixed variables with the prefix stripped.
+  # Only what failed is repeated: a press the app dropped lands the second time,
+  # and a screen that is broken fails twice.
   TEST_RUNNER_SCREENSHOT_APPEARANCE="${appearance}" \
     xcodebuild test-without-building \
       -xctestrun "${XCTESTRUN}" \
       -destination "id=${UDID}" \
-      -resultBundlePath "${RESULT_BUNDLE}"
+      -resultBundlePath "${RESULT_BUNDLE}" \
+      -retry-tests-on-failure \
+      -test-iterations 2
 
   "${SCRIPT_DIR}/export-screenshots.sh" "${RESULT_BUNDLE}" "${OUTPUT_DIR}"
 done
