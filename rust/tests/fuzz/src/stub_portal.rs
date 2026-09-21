@@ -184,8 +184,8 @@ impl StubPortal {
     }
 
     /// Drops the bookkeeping that `transition` makes stale before it is applied.
-    pub fn invalidate(&mut self) {
-        self.closed_gateway_connections.clear();
+    pub fn invalidate(portal: &mut StubPortal, _transition: &Transition) {
+        portal.closed_gateway_connections.clear();
     }
 
     /// Applies the portal-side effect of `transition`.

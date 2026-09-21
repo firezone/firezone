@@ -6,7 +6,7 @@ use std::time::Instant;
 
 use chrono::{DateTime, Utc};
 use fuzz::tunnel_proto::{
-    FluxCapacitor, Generator, ReferenceState, TunnelTest, init_fuzz_subscriber,
+    FluxCapacitor, Generator, ReferenceState, StubPortal, TunnelTest, init_fuzz_subscriber,
 };
 use libfuzzer_sys::fuzz_target;
 
@@ -34,7 +34,7 @@ fuzz_target!(|data: &[u8]| {
 
         tracing::debug!("Applying transition {applied}: {transition:?}");
 
-        portal.invalidate();
+        StubPortal::invalidate(&mut portal, &transition);
         ReferenceState::invalidate(&mut reference, &portal, &transition);
         TunnelTest::invalidate(&mut tunnel, &reference, &transition);
 
