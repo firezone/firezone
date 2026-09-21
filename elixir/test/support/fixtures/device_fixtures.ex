@@ -197,52 +197,6 @@ defmodule Portal.DeviceFixtures do
   end
 
   @doc """
-  Generate a client (same as client_fixture, kept for compatibility).
-  """
-  def online_client_fixture(attrs \\ %{}) do
-    client_fixture(attrs)
-  end
-
-  @doc """
-  Generate a client with device identifiers.
-  """
-  def client_with_device_ids_fixture(attrs \\ %{}) do
-    unique_num = System.unique_integer([:positive, :monotonic])
-
-    attrs =
-      attrs
-      |> Map.put_new(:device_serial, "SN#{unique_num}")
-      |> Map.put_new(:device_uuid, "UUID-#{unique_num}")
-      |> Map.put_new(:identifier_for_vendor, "IFV-#{unique_num}")
-
-    client_fixture(attrs)
-  end
-
-  @doc """
-  Generate a mobile client with Firebase installation ID.
-  """
-  def mobile_client_fixture(attrs \\ %{}) do
-    unique_num = System.unique_integer([:positive, :monotonic])
-
-    attrs =
-      attrs
-      |> Map.put_new(:firebase_installation_id, "firebase_#{unique_num}")
-
-    client_fixture(attrs)
-  end
-
-  @doc """
-  Create multiple clients for the same actor.
-  """
-  def actor_clients_fixture(actor, count \\ 3, attrs \\ %{}) do
-    account = actor.account || Portal.Repo.preload(actor, :account).account
-
-    for _ <- 1..count do
-      client_fixture(Map.merge(attrs, %{actor: actor, account: account}))
-    end
-  end
-
-  @doc """
   Verify a device (sets verified_at timestamp).
   """
   def verify_device(device) do
@@ -407,49 +361,6 @@ defmodule Portal.DeviceFixtures do
       |> Portal.Repo.update!()
 
     Portal.Repo.preload(gateway, :site)
-  end
-
-  @doc """
-  Generate an online gateway with last seen information.
-  """
-  def online_gateway_fixture(attrs \\ %{}) do
-    attrs =
-      attrs
-      |> Map.put_new(:last_seen_at, DateTime.utc_now())
-      |> Map.put_new(:last_seen_user_agent, "Firezone-Gateway/1.0.0")
-      |> Map.put_new(:last_seen_version, "1.0.0")
-      |> Map.put_new(:last_seen_remote_ip, {100, 64, 0, 1})
-
-    gateway_fixture(attrs)
-  end
-
-  @doc """
-  Generate a gateway with location information.
-  """
-  def gateway_with_location_fixture(attrs \\ %{}) do
-    attrs =
-      attrs
-      |> Map.put_new(:last_seen_at, DateTime.utc_now())
-      |> Map.put_new(:last_seen_user_agent, "Firezone-Gateway/1.3.0")
-      |> Map.put_new(:last_seen_version, "1.3.0")
-      |> Map.put_new(:last_seen_remote_ip, {100, 64, 0, 1})
-      |> Map.put_new(:last_seen_remote_ip_location_region, "US-CA")
-      |> Map.put_new(:last_seen_remote_ip_location_city, "San Francisco")
-      |> Map.put_new(:last_seen_remote_ip_location_lat, 37.7749)
-      |> Map.put_new(:last_seen_remote_ip_location_lon, -122.4194)
-
-    gateway_fixture(attrs)
-  end
-
-  @doc """
-  Create multiple gateways for the same site.
-  """
-  def site_gateways_fixture(site, count \\ 3, attrs \\ %{}) do
-    account = site.account || Portal.Repo.preload(site, :account).account
-
-    for _ <- 1..count do
-      gateway_fixture(Map.merge(attrs, %{site: site, account: account}))
-    end
   end
 
   ##############################################################################

@@ -357,28 +357,6 @@ defmodule PortalWeb.PageComponents do
     """
   end
 
-  slot :action, required: false, doc: "A slot for action to the right of the title"
-
-  slot :content, required: false, doc: "A slot for content of the section" do
-    attr :flash, :any, doc: "The flash to be displayed above the content"
-  end
-
-  def danger_zone(assigns) do
-    ~H"""
-    <.section :if={length(@action) > 0}>
-      <:title>Danger Zone</:title>
-
-      <:action :for={action <- @action} :if={not Enum.empty?(@action)}>
-        {render_slot(action)}
-      </:action>
-
-      <:content :for={content <- @content}>
-        {render_slot(content)}
-      </:content>
-    </.section>
-    """
-  end
-
   @doc """
   Renders a page header with icon, title, description, action, and stats slots.
 

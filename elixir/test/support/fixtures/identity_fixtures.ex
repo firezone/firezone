@@ -105,24 +105,6 @@ defmodule Portal.IdentityFixtures do
   end
 
   @doc """
-  Generate an identity with full profile information.
-  """
-  def identity_with_full_profile_fixture(attrs \\ %{}) do
-    unique_num = System.unique_integer([:positive, :monotonic])
-
-    attrs =
-      attrs
-      |> Enum.into(%{})
-      |> Map.put_new(:middle_name, "Middle")
-      |> Map.put_new(:nickname, "nickname#{unique_num}")
-      |> Map.put_new(:preferred_username, "preferred#{unique_num}")
-      |> Map.put_new(:profile, "https://example.com/profile/user#{unique_num}")
-      |> Map.put_new(:picture, "https://example.com/avatar/user#{unique_num}.jpg")
-
-    identity_fixture(attrs)
-  end
-
-  @doc """
   Generate a synced identity (from directory sync).
   """
   def synced_identity_fixture(attrs \\ %{}) do
@@ -147,62 +129,6 @@ defmodule Portal.IdentityFixtures do
       |> Map.put_new(:directory, directory)
 
     identity_fixture(attrs)
-  end
-
-  @doc """
-  Generate an identity with a Firezone-hosted avatar.
-  """
-  def identity_with_avatar_fixture(attrs \\ %{}) do
-    unique_num = System.unique_integer([:positive, :monotonic])
-
-    attrs =
-      attrs
-      |> Enum.into(%{})
-      |> Map.put_new(
-        :firezone_avatar_url,
-        "https://storage.example.com/avatars/#{unique_num}.jpg"
-      )
-
-    identity_fixture(attrs)
-  end
-
-  @doc """
-  Generate an identity for a specific provider.
-  """
-  def identity_for_provider_fixture(issuer, attrs \\ %{}) do
-    unique_num = System.unique_integer([:positive, :monotonic])
-
-    attrs =
-      attrs
-      |> Enum.into(%{})
-      |> Map.put(:issuer, issuer)
-      |> Map.put_new(:idp_id, "#{issuer}_user_#{unique_num}")
-
-    identity_fixture(attrs)
-  end
-
-  @doc """
-  Create multiple identities for the same actor (multi-IdP scenario).
-  """
-  def actor_identities_fixture(actor, count \\ 3, attrs \\ %{}) do
-    attrs = Enum.into(attrs, %{})
-    account = actor.account || Portal.Repo.preload(actor, :account).account
-
-    for i <- 1..count do
-      unique_num = System.unique_integer([:positive, :monotonic])
-
-      identity_fixture(
-        Map.merge(
-          %{
-            actor: actor,
-            account: account,
-            issuer: "https://auth#{i}.example.com",
-            idp_id: "idp_user_#{unique_num}"
-          },
-          attrs
-        )
-      )
-    end
   end
 
   defp account_and_directory(%{directory: directory} = attrs) do

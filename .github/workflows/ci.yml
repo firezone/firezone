@@ -336,6 +336,18 @@ jobs:
 
           gh pr comment "$PR_NUMBER" --body "Re-rendered $count screenshots: $(numfmt --to=iec-i --suffix=B "$on_disk") of PNGs, stored in git as $(numfmt --to=iec-i --suffix=B "$stored")."
 
+  # Callers can live outside elixir/ (templates, release scripts, etc.), so run
+  # this cheap check on every change rather than using the Elixir path filter.
+  elixir-dead-code:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-mise
+        with:
+          install: "false"
+      - name: Check Elixir dead-code exceptions
+        run: mise run //:elixir:dead-code --check
+
   shell:
     name: shell-tests
     runs-on: ubuntu-24.04

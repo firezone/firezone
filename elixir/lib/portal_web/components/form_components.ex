@@ -659,7 +659,7 @@ defmodule PortalWeb.FormComponents do
   ### Buttons ###
 
   @doc """
-  Base button type to be used directly or by the specialized button types above. e.g. edit_button, delete_button, etc.
+  Base button type to be used directly or by specialized button components such as `add_button`.
 
   If a navigate, href, or patch path is provided, an <a> tag will be used, otherwise a <button> tag will be used.
 
@@ -1019,27 +1019,6 @@ defmodule PortalWeb.FormComponents do
   end
 
   @doc """
-  Render a delete button.
-
-  ## Examples
-
-    <.delete_button path={Routes.user_path(@conn, :edit, @user.id)}/>
-      Edit user
-    </.delete_button>
-  """
-  slot :inner_block, required: true
-  attr :rest, :global, doc: "the arbitrary HTML attributes to add to the flash container"
-  attr :size, :string, default: "md", doc: "The size of the button"
-
-  def delete_button(assigns) do
-    ~H"""
-    <.button style="danger" size={@size} icon="ri-delete-bin-fill" {@rest}>
-      {render_slot(@inner_block)}
-    </.button>
-    """
-  end
-
-  @doc """
   Renders an add button.
 
   ## Examples
@@ -1068,26 +1047,6 @@ defmodule PortalWeb.FormComponents do
   def add_button(%{patch: patch} = assigns) when not is_nil(patch) do
     ~H"""
     <.button style="primary" class={@class} patch={@patch} icon="ri-add-line">
-      {render_slot(@inner_block)}
-    </.button>
-    """
-  end
-
-  @doc """
-  Renders an edit button.
-
-  ## Examples
-
-    <.edit_button path={Routes.user_path(@conn, :edit, @user.id)}/>
-      Edit user
-    </.edit_button>
-  """
-  attr :navigate, :any, required: true, doc: "Path to navigate to"
-  slot :inner_block, required: true
-
-  def edit_button(assigns) do
-    ~H"""
-    <.button style="primary" navigate={@navigate} icon="ri-pencil-fill">
       {render_slot(@inner_block)}
     </.button>
     """

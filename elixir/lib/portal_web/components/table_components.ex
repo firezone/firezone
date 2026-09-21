@@ -207,79 +207,6 @@ defmodule PortalWeb.TableComponents do
   end
 
   @doc ~S"""
-  Renders a table with groups and generic styling.
-
-  The component is expecting the rows data to be in the form of a list
-  of tuples, where the first element of a given tuple is the group and
-  the second element of the tuple is a list of elements under that group
-
-  ## Examples
-
-      <.table_with_groups id="users" rows={@grouped_users}>
-        <:col label="user group"></:col>
-        <:col :let={user} label="id"><%= user.id %></:col>
-        <:col :let={user} label="username"><%= user.username %></:col>
-      </.table>
-  """
-
-  attr :id, :string, required: true
-  attr :groups, :list, required: true
-  attr :group_id, :any, default: nil, doc: "the function for generating the group id"
-
-  attr :row_id, :any, default: nil, doc: "the function for generating the row id"
-
-  attr :group_items, :any,
-    required: true,
-    doc: "a mapper which is used to get list of rows for a group"
-
-  attr :row_item, :any,
-    default: &Function.identity/1,
-    doc: "the function for mapping each row before calling the :col and :action slots"
-
-  slot :col, required: true do
-    attr :label, :string
-    attr :class, :string
-  end
-
-  slot :group, required: true
-
-  slot :action, doc: "the slot for showing user actions in the last table column"
-  slot :empty, doc: "the slot for showing a message or content when there are no rows"
-
-  def table_with_groups(assigns) do
-    assigns =
-      with %{rows: %Phoenix.LiveView.LiveStream{}} <- assigns do
-        assign(assigns, row_id: assigns.row_id || fn {id, _item} -> id end)
-      end
-
-    ~H"""
-    <table class="w-full text-sm text-left text-body" id={@id}>
-      <.table_header table_id={@id} columns={@col} actions={@action} />
-
-      <tbody :for={group <- @groups} data-group-id={@group_id && @group_id.(group)}>
-        <tr class="bg-raised">
-          <td class="px-4 py-2" colspan={length(@col) + 1}>
-            {render_slot(@group, group)}
-          </td>
-        </tr>
-
-        <.table_row
-          :for={row <- @group_items.(group)}
-          columns={@col}
-          actions={@action}
-          row={row}
-          id={@row_id && @row_id.(row)}
-          mapper={@row_item}
-        />
-      </tbody>
-    </table>
-    <div :if={Enum.empty?(@groups)}>
-      {render_slot(@empty)}
-    </div>
-    """
-  end
-
-  @doc ~S"""
   Renders a table with 2 columns and generic styling.
 
   The component will likely be used when displaying the properties of an
@@ -365,18 +292,4 @@ defmodule PortalWeb.TableComponents do
     """
   end
 
-  @doc ~S"""
-  This component is meant to be used with the table component.  It renders a
-  <.link> component that has a specific style for actions in a table.
-  """
-  attr :navigate, :string, required: true
-  slot :inner_block
-
-  def action_link(assigns) do
-    ~H"""
-    <.link navigate={@navigate} class="block py-2 px-4 hover:bg-neutral-100">
-      {render_slot(@inner_block)}
-    </.link>
-    """
-  end
 end

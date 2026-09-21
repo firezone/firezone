@@ -87,18 +87,6 @@ defmodule Portal.AccountFixtures do
   end
 
   @doc """
-  Generate an account with an Enterprise plan.
-  """
-  def enterprise_account_fixture(attrs \\ %{}) do
-    account = account_fixture(attrs)
-
-    account
-    |> cast(%{metadata: %{stripe: %{product_name: "Enterprise"}}}, [])
-    |> cast_embed(:metadata)
-    |> Repo.update!()
-  end
-
-  @doc """
   Generate a disabled account.
   """
   def disabled_account_fixture(attrs \\ %{}) do
