@@ -489,21 +489,12 @@ impl ReferenceState {
         resource: ResourceId,
         now: Instant,
     ) {
-        let gateway_for_resource =
-            |resource: ResourceId| portal.gateway_for_resource(resource).copied();
-
-        for (id, gateway) in portal.gateway_connections_closed_by(resource) {
-            let Some(client) = self.clients.get_mut(&id) else {
+        for closed in portal.gateway_connections_closed_by(resource) {
+            let Some(client) = self.clients.get_mut(&closed.client) else {
                 continue;
             };
 
-            client.exec_mut(|c| {
-                c.reset_connections_to_gateways(
-                    &BTreeSet::from([gateway]),
-                    gateway_for_resource,
-                    now,
-                )
-            });
+            client.exec_mut(|c| c.close_gateway_connection(closed.gateway, &closed.resources, now));
         }
     }
 

@@ -69,6 +69,14 @@ pub struct PeerAuthorization {
     pub(crate) pool: ResourceId,
 }
 
+/// A Gateway connection the portal left with nothing, and what the Client reached
+/// through it.
+pub(crate) struct ClosedGatewayConnection {
+    pub(crate) client: ClientId,
+    pub(crate) gateway: GatewayId,
+    pub(crate) resources: BTreeSet<ResourceId>,
+}
+
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 struct GatewayAuthorization {
     gateway: GatewayId,
@@ -355,12 +363,12 @@ impl StubPortal {
             .collect()
     }
 
-    /// The Gateways that revoking `resource` left with nothing for a Client. They close
-    /// the connection with a `goodbye`.
+    /// The connections that revoking `resource` left a Gateway with nothing on. It closes
+    /// them with a `goodbye`.
     pub(crate) fn gateway_connections_closed_by(
         &self,
         resource: ResourceId,
-    ) -> BTreeSet<(ClientId, GatewayId)> {
+    ) -> Vec<ClosedGatewayConnection> {
         self.gateway_policy_authorizations
             .iter()
             .filter(|((_, candidate), authorization)| {
@@ -368,6 +376,22 @@ impl StubPortal {
             })
             .map(|((client, _), authorization)| (*client, authorization.gateway))
             .filter(|(client, gateway)| !self.holds_any_gateway_authorization(*client, *gateway))
+            .map(|(client, gateway)| ClosedGatewayConnection {
+                client,
+                resources: self.resources_on_gateway(client, gateway),
+                gateway,
+            })
+            .collect()
+    }
+
+    /// Everything `client` was authorized to reach through `gateway`, revoked or not.
+    fn resources_on_gateway(&self, client: ClientId, gateway: GatewayId) -> BTreeSet<ResourceId> {
+        self.gateway_policy_authorizations
+            .iter()
+            .filter(|((candidate, _), authorization)| {
+                *candidate == client && authorization.gateway == gateway
+            })
+            .map(|((_, resource), _)| *resource)
             .collect()
     }
 

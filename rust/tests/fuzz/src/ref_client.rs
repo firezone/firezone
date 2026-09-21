@@ -457,6 +457,29 @@ impl RefClient {
             affected.push(internet);
         }
 
+        self.discard_connections(affected, now);
+    }
+
+    /// The Gateway closed the connection, so everything we reached through it is gone.
+    pub(crate) fn close_gateway_connection(
+        &mut self,
+        gateway: GatewayId,
+        resources: &BTreeSet<ResourceId>,
+        now: Instant,
+    ) {
+        self.gateway_send_times.remove(&gateway);
+
+        let connected = self.connected_resources().collect::<BTreeSet<_>>();
+        let affected = resources
+            .iter()
+            .copied()
+            .filter(|resource| connected.contains(resource))
+            .collect();
+
+        self.discard_connections(affected, now);
+    }
+
+    fn discard_connections(&mut self, affected: Vec<ResourceId>, now: Instant) {
         if affected.is_empty() {
             return;
         }
