@@ -86,7 +86,6 @@ class AlwaysOnVpnE2eTest {
 
         TestDpc.setAlwaysOnVpn(null, lockdown = false)
 
-        awaitCommand(session, "disconnect")
         await("the tunnel service to stop") { !TunnelService.isRunning(context) }
     }
 
