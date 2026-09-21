@@ -7,6 +7,7 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 internal const val AUTH_CALLBACK_SCHEME = "firezone-fd0020211111"
+internal const val AUTH_CALLBACK_HOST = "handle_client_sign_in_callback"
 
 @Singleton
 internal class PendingAuthSession
@@ -114,7 +115,6 @@ internal class PendingAuthSession
         }
 
         private companion object {
-            const val AUTH_CALLBACK_HOST = "handle_client_sign_in_callback"
             const val QUERY_CLIENT_STATE = "state"
             const val QUERY_CLIENT_AUTH_FRAGMENT = "fragment"
         }

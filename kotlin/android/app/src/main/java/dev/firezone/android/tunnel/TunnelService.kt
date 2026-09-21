@@ -32,10 +32,9 @@ import dev.firezone.android.core.x509.X509IdentityException
 import dev.firezone.android.tunnel.model.Cidr
 import dev.firezone.android.tunnel.model.ConnectedDevice
 import dev.firezone.android.tunnel.model.Resource
-import dev.firezone.android.tunnel.model.ResourceType
 import dev.firezone.android.tunnel.model.Site
-import dev.firezone.android.tunnel.model.StatusEnum
 import dev.firezone.android.tunnel.model.isInternetResource
+import dev.firezone.android.tunnel.model.toModel
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -779,9 +778,9 @@ class TunnelService : VpnService() {
                         event.use { event ->
                             when (event) {
                                 is Event.ResourcesUpdated -> {
-                                    tunnelResources = event.resources.map { convertResource(it) }
+                                    tunnelResources = event.resources.map { it.toModel() }
                                     tunnelConnectedDevices =
-                                        event.connectedDevices.map { convertConnectedDevice(it) }
+                                        event.connectedDevices.map { it.toModel() }
                                     resourcesUpdated()
                                 }
 
@@ -869,60 +868,6 @@ class TunnelService : VpnService() {
         }
     }
 
-    private fun convertConnectedDevice(device: uniffi.connlib.ConnectedDevice): ConnectedDevice =
-        ConnectedDevice(
-            id = device.id,
-            name = device.name,
-            tunIpv4 = device.tunIpv4,
-            tunIpv6 = device.tunIpv6,
-            pools = device.pools,
-        )
-
-    private fun convertResource(resource: uniffi.connlib.Resource): Resource =
-        when (resource) {
-            is uniffi.connlib.Resource.Dns -> {
-                resource.resource.let { r ->
-                    Resource(
-                        ResourceType.DNS,
-                        r.id,
-                        r.address,
-                        r.addressDescription,
-                        r.sites.map { it.toModel() },
-                        r.name,
-                        r.status.toModel(),
-                    )
-                }
-            }
-
-            is uniffi.connlib.Resource.Cidr -> {
-                resource.resource.let { r ->
-                    Resource(
-                        ResourceType.CIDR,
-                        r.id,
-                        r.address,
-                        r.addressDescription,
-                        r.sites.map { it.toModel() },
-                        r.name,
-                        r.status.toModel(),
-                    )
-                }
-            }
-
-            is uniffi.connlib.Resource.Internet -> {
-                resource.resource.let { r ->
-                    Resource(
-                        ResourceType.Internet,
-                        r.id,
-                        null,
-                        null,
-                        r.sites.map { it.toModel() },
-                        r.name,
-                        r.status.toModel(),
-                    )
-                }
-            }
-        }
-
     companion object {
         enum class State {
             CONNECTING,
@@ -1006,14 +951,3 @@ class TunnelService : VpnService() {
         }
     }
 }
-
-// UniFFI → Model type conversions
-
-private fun uniffi.connlib.Site.toModel() = Site(id = id, name = name)
-
-private fun uniffi.connlib.ResourceStatus.toModel() =
-    when (this) {
-        uniffi.connlib.ResourceStatus.UNKNOWN -> StatusEnum.UNKNOWN
-        uniffi.connlib.ResourceStatus.ONLINE -> StatusEnum.ONLINE
-        uniffi.connlib.ResourceStatus.OFFLINE -> StatusEnum.OFFLINE
-    }

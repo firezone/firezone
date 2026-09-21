@@ -9,6 +9,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.lifecycleScope
 import dagger.hilt.android.AndroidEntryPoint
+import dev.firezone.android.core.DebugOverrides
 import dev.firezone.android.core.data.Repository
 import dev.firezone.android.ui.AppShell
 import dev.firezone.android.ui.theme.FirezoneTheme
@@ -25,6 +26,9 @@ internal class MainActivity : AppCompatActivity() {
     private var hasDestination = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // Before the screens that read them exist.
+        DebugOverrides.configure(this)
+
         // The system splash stands in for a screen of our own: holding it until the launch knows
         // where it is going is what keeps the app from drawing a second one behind it.
         installSplashScreen().setKeepOnScreenCondition { !hasDestination }
