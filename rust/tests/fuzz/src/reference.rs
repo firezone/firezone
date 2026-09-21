@@ -94,11 +94,6 @@ impl ReferenceState {
         transition: &Transition,
         now: Instant,
     ) -> Self {
-        // The portal has already applied `transition`, but the SUT only records the grants
-        // it hands out afterwards. Sweeping here therefore sees this transition's
-        // revocations against the authorizations both sides last agreed on.
-        state.close_unauthorized_gateway_connections(portal, now);
-
         match transition {
             Transition::AddResource(resource) => {
                 for client in state.clients.values_mut() {
@@ -128,8 +123,12 @@ impl ReferenceState {
                 for client in state.clients.values_mut() {
                     client.exec_mut(|client| client.remove_resource(id));
                 }
+                state.close_gateway_connections(portal, *id, now);
             }
-            Transition::EditResource(edit) => state.apply_resource_edit(edit),
+            Transition::EditResource(edit) => {
+                state.apply_resource_edit(edit);
+                state.close_gateway_connections(portal, edit.new.id(), now);
+            }
             Transition::UpdateDevicePoolMembers {
                 pool_id: _,
                 members: _,
@@ -447,6 +446,7 @@ impl ReferenceState {
                 for client in state.clients.values_mut() {
                     client.exec_mut(|client| client.remove_resource(resource));
                 }
+                state.close_gateway_connections(portal, *resource, now);
             }
             Transition::ExpirePeerAuthorizations {
                 client,
@@ -459,7 +459,9 @@ impl ReferenceState {
                     }
                 });
             }
-            Transition::RevokeGatewayAuthorization(_) => {}
+            Transition::RevokeGatewayAuthorization(resource) => {
+                state.close_gateway_connections(portal, *resource, now);
+            }
             Transition::RestartClient { client_id, key } => {
                 for (id, client) in &mut state.clients {
                     if id == client_id {
@@ -479,12 +481,18 @@ impl ReferenceState {
         state
     }
 
-    /// A Gateway that closed its connection makes the Client reset its state for it.
-    fn close_unauthorized_gateway_connections(&mut self, portal: &StubPortal, now: Instant) {
+    /// A Gateway that revoking `resource` left with nothing closes the connection with a
+    /// `goodbye`, upon which the Client resets its state for that Gateway.
+    fn close_gateway_connections(
+        &mut self,
+        portal: &StubPortal,
+        resource: ResourceId,
+        now: Instant,
+    ) {
         let gateway_for_resource =
             |resource: ResourceId| portal.gateway_for_resource(resource).copied();
 
-        for (id, gateway) in portal.closed_gateway_connections() {
+        for (id, gateway) in portal.gateway_connections_closed_by(resource) {
             let Some(client) = self.clients.get_mut(&id) else {
                 continue;
             };

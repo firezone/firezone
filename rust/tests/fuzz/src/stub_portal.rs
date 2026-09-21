@@ -362,22 +362,28 @@ impl StubPortal {
             .collect()
     }
 
-    /// The Gateways with nothing left for a Client. They close the connection with a
-    /// `goodbye`.
-    pub(crate) fn closed_gateway_connections(&self) -> BTreeSet<(ClientId, GatewayId)> {
-        let mut held = BTreeSet::new();
-        let mut lost = BTreeSet::new();
+    /// The Gateways that revoking `resource` left with nothing for a Client. They close
+    /// the connection with a `goodbye`.
+    pub(crate) fn gateway_connections_closed_by(
+        &self,
+        resource: ResourceId,
+    ) -> BTreeSet<(ClientId, GatewayId)> {
+        self.gateway_policy_authorizations
+            .iter()
+            .filter(|((_, candidate), authorization)| {
+                *candidate == resource && authorization.revoked
+            })
+            .map(|((client, _), authorization)| (*client, authorization.gateway))
+            .filter(|(client, gateway)| !self.holds_any_gateway_authorization(*client, *gateway))
+            .collect()
+    }
 
-        for ((client, _), authorization) in &self.gateway_policy_authorizations {
-            let connection = (*client, authorization.gateway);
-
-            match authorization.revoked {
-                true => lost.insert(connection),
-                false => held.insert(connection),
-            };
-        }
-
-        &lost - &held
+    fn holds_any_gateway_authorization(&self, client: ClientId, gateway: GatewayId) -> bool {
+        self.gateway_policy_authorizations
+            .iter()
+            .any(|((candidate, _), authorization)| {
+                *candidate == client && authorization.gateway == gateway && !authorization.revoked
+            })
     }
 
     fn revoke_gateway_policy_authorizations_for_resource(&mut self, resource: ResourceId) {
