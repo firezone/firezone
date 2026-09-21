@@ -3,7 +3,7 @@
 #[global_allocator]
 static ALLOC: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
-use crate::eventloop::{Eventloop, PHOENIX_TOPIC};
+use crate::eventloop::{Eventloop, PHOENIX_TOPIC, SpoolNotWritable};
 use anyhow::{Context, ErrorExt, Result, bail};
 use backoff::ExponentialBackoffBuilder;
 use bin_shared::{
@@ -98,6 +98,12 @@ fn main() -> ExitCode {
             let exit_code = if needs_new_token(&e) {
                 tracing::info!(
                     "Replace the token in `/etc/firezone/gateway-token` and start the service again"
+                );
+
+                ExitCode::from(EX_CONFIG)
+            } else if e.any_is::<SpoolNotWritable>() {
+                tracing::info!(
+                    "Make `{FLOW_LOGS_DIR}` writable by the user the service runs as and start the service again"
                 );
 
                 ExitCode::from(EX_CONFIG)

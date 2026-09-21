@@ -365,21 +365,12 @@ impl Eventloop {
             IngressMessages::CreateAuthorization(msg) => {
                 let token = &msg.flow_logs_ingest_token;
 
-                if token.claims().uploads_enabled {
-                    match flow_log_writer::write_token(&self.flow_logs_dir, token.as_str())
-                        .context("Failed to persist flow-log ingest token")
-                    {
-                        Ok(()) => {}
-                        Err(e)
-                            if e.any_downcast_ref::<std::io::Error>()
-                                .is_some_and(|io| io.kind() == std::io::ErrorKind::StorageFull) =>
-                        {
-                            tracing::debug!("{e:#}");
-                        }
-                        Err(e) => {
-                            tracing::warn!("{e:#}");
-                        }
-                    }
+                if token.claims().uploads_enabled
+                    && let Err(e) =
+                        flow_log_writer::write_token(&self.flow_logs_dir, token.as_str())
+                            .context("Failed to persist flow-log ingest token")
+                {
+                    report_spool_failure(e)?;
                 }
 
                 if let Err(snownet::NoTurnServers {}) = tunnel.state_mut().create_authorization(
@@ -466,7 +457,7 @@ impl Eventloop {
                     .state_mut()
                     .set_flow_logs_enabled(flow_logs.upload_enabled() || self.local_flow_logs);
 
-                match flow_log_upload::configure_uploads(
+                if let Err(e) = flow_log_upload::configure_uploads(
                     &self.flow_logs_dir,
                     &flow_logs.api_url,
                     flow_logs.upload_interval_secs,
@@ -474,23 +465,7 @@ impl Eventloop {
                 )
                 .context("Failed to persist flow-log upload config")
                 {
-                    Ok(()) => {}
-                    Err(e)
-                        if e.any_downcast_ref::<io::Error>()
-                            .is_some_and(|err| err.kind() == io::ErrorKind::StorageFull) =>
-                    {
-                        tracing::debug!("{e:#}");
-                    }
-                    // A spool we cannot write is a misconfiguration that no retry fixes.
-                    Err(e)
-                        if e.any_downcast_ref::<io::Error>()
-                            .is_some_and(|err| err.kind() == io::ErrorKind::PermissionDenied) =>
-                    {
-                        return Err(e);
-                    }
-                    Err(e) => {
-                        tracing::warn!("{e:#}");
-                    }
+                    report_spool_failure(e)?;
                 }
 
                 tunnel
@@ -704,6 +679,30 @@ async fn phoenix_channel_event_loop(
     }
 }
 
+#[derive(Debug, thiserror::Error)]
+#[error("Flow-log spool is not writable")]
+pub struct SpoolNotWritable;
+
+/// Decides what a failure touching the flow-log spool means.
+///
+/// A spool we cannot write is a misconfiguration that no retry fixes, so we surface it to the
+/// operator instead of logging it on every message. A full disk is transient.
+fn report_spool_failure(e: anyhow::Error) -> Result<()> {
+    let kind = e.any_downcast_ref::<io::Error>().map(io::Error::kind);
+
+    if kind == Some(io::ErrorKind::PermissionDenied) {
+        return Err(e.context(SpoolNotWritable));
+    }
+
+    if kind == Some(io::ErrorKind::StorageFull) {
+        tracing::debug!("{e:#}");
+    } else {
+        tracing::warn!("{e:#}");
+    }
+
+    Ok(())
+}
+
 fn lookup_to_ips(lookup: &Lookup) -> impl Iterator<Item = IpAddr> + '_ {
     lookup
         .answers()
@@ -719,4 +718,26 @@ async fn resolve_portal_host_ips(resolver: &TokioResolver, host: String) -> Vec<
         .inspect_err(|e| tracing::debug!(%host, "{e:#}"))
         .map(|ips| ips.iter().collect())
         .unwrap_or_default()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_a_permission_error_stops_the_gateway() {
+        assert!(spool_failure_is_fatal(io::ErrorKind::PermissionDenied));
+        assert!(!spool_failure_is_fatal(io::ErrorKind::StorageFull));
+        assert!(!spool_failure_is_fatal(io::ErrorKind::ReadOnlyFilesystem));
+    }
+
+    fn spool_failure_is_fatal(kind: io::ErrorKind) -> bool {
+        let error = anyhow::Error::new(io::Error::from(kind))
+            .context("Failed to persist flow-log upload config");
+
+        match report_spool_failure(error) {
+            Ok(()) => false,
+            Err(e) => e.any_is::<SpoolNotWritable>(),
+        }
+    }
 }
