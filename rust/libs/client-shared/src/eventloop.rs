@@ -131,6 +131,16 @@ impl DisconnectError {
         e.to_string()
     }
 
+    /// Returns whether the error is worded for the user.
+    ///
+    /// Such an error is product copy rather than a diagnostic and must not be reported as
+    /// telemetry.
+    pub fn is_user_facing(&self) -> bool {
+        self.0
+            .any_downcast_ref::<phoenix_channel::Error>()
+            .is_some()
+    }
+
     /// Returns the error with its full cause chain, for the logs.
     pub fn log_message(&self) -> String {
         format!("{:#}", self.0)

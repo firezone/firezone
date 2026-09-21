@@ -698,8 +698,15 @@ impl<I: GuiIntegration> Controller<I> {
                 user_msg,
                 log_msg,
                 requires_sign_in,
+                is_user_facing,
             } => {
-                tracing::error!("Connlib disconnected: {log_msg}");
+                // A user-facing message is product copy, not a diagnostic, so it stays out of
+                // telemetry: `ERROR` and `WARN` both become telemetry events.
+                if is_user_facing {
+                    tracing::info!("Connlib disconnected: {log_msg}");
+                } else {
+                    tracing::error!("Connlib disconnected: {log_msg}");
+                }
 
                 if requires_sign_in {
                     self.sign_out().await?;
