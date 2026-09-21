@@ -302,7 +302,7 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
         |> live(~p"/#{account}/settings/directory_sync")
 
       assert html =~ "Directory Sync"
-      assert html =~ "No directories configured."
+      assert html =~ "No directories yet"
       assert html =~ "Add a directory"
     end
 
@@ -350,7 +350,7 @@ defmodule PortalWeb.Settings.DirectorySyncTest do
 
       assert html =~ "Automate User &amp; Group Management"
       assert html =~ "Upgrade to Unlock"
-      refute html =~ "No directories configured."
+      refute html =~ "No directories yet"
     end
 
     test "toggles, syncs, and deletes a directory", %{conn: conn, account: account, actor: actor} do

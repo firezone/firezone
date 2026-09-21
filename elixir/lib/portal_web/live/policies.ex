@@ -8,7 +8,6 @@ defmodule PortalWeb.Policies do
       maybe_drop_unsupported_conditions: 2,
       policy_panel: 1,
       policy_status_badge: 1,
-      resource_type_badge_class: 1,
       condition_short_label: 1
     ]
 
@@ -271,7 +270,7 @@ defmodule PortalWeb.Policies do
               <%= if policy.group do %>
                 {policy.group.name} — {policy.resource.name}
               <% else %>
-                <span class="text-amber-600">(Group deleted)</span> — {policy.resource.name}
+                <span class="text-warning">(Group deleted)</span> — {policy.resource.name}
               <% end %>
             </div>
             <div class="font-mono text-[10px] text-subtle mt-0.5">
@@ -293,13 +292,13 @@ defmodule PortalWeb.Policies do
                 </.link>
               </div>
             <% else %>
-              <span class="text-xs text-muted italic">Group deleted</span>
+              <span class="text-xs text-subtle italic">Group deleted</span>
             <% end %>
           </:col>
           <:col :let={policy} label="Resource" class="w-36 lg:w-72">
             <div class="flex items-center gap-2">
-              <span class={resource_type_badge_class(policy.resource.type)}>
-                {policy.resource.type}
+              <span class={type_badge_class(policy.resource.type)}>
+                {resource_type_label(policy.resource.type)}
               </span>
               <.link
                 navigate={~p"/#{@account}/resources/#{policy.resource_id}"}
@@ -328,7 +327,7 @@ defmodule PortalWeb.Policies do
                 </span>
               </div>
             <% else %>
-              <span class="text-xs text-muted">—</span>
+              <span class="text-xs text-subtle">—</span>
             <% end %>
           </:col>
           <:empty>

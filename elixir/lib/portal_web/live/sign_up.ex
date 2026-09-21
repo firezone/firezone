@@ -640,7 +640,7 @@ defmodule PortalWeb.SignUp do
   defp step_header_variant("brand"), do: "bg-brand/10 border-brand/20"
 
   defp step_header_variant("error"),
-    do: "bg-rose-50 dark:bg-rose-950/30 border-rose-200 dark:border-rose-800"
+    do: "bg-danger/10 border-danger/20"
 
   defp terms_notice(assigns) do
     ~H"""
@@ -683,7 +683,7 @@ defmodule PortalWeb.SignUp do
   end
 
   defp method_button_arrow_style do
-    "w-5 h-5 text-muted group-hover:text-brand group-hover:translate-x-0.5 transition-all shrink-0"
+    "w-5 h-5 text-subtle group-hover:text-brand group-hover:translate-x-0.5 transition-all shrink-0"
   end
 
   defp email_sent(assigns) do
@@ -751,16 +751,16 @@ defmodule PortalWeb.SignUp do
     <div class="rounded border border-border bg-raised p-4 mb-4">
       <dl class="space-y-3">
         <div class="flex justify-between items-baseline">
-          <dt class="text-xs font-medium text-body">Account Name</dt>
-          <dd class="text-sm text-heading">{@account.name}</dd>
+          <dt class="text-xs font-medium text-subtle">Account Name</dt>
+          <dd class="text-sm text-body font-medium">{@account.name}</dd>
         </div>
         <div class="flex justify-between items-baseline">
-          <dt class="text-xs font-medium text-body">Account Slug</dt>
-          <dd class="text-sm text-heading">{@account.slug}</dd>
+          <dt class="text-xs font-medium text-subtle">Account Slug</dt>
+          <dd class="text-sm text-body font-medium">{@account.slug}</dd>
         </div>
         <div class="flex justify-between items-baseline">
-          <dt class="text-xs font-medium text-body">Sign In URL</dt>
-          <dd class="text-sm">
+          <dt class="text-xs font-medium text-subtle">Sign In URL</dt>
+          <dd class="text-sm text-body font-medium">
             <.link class={[link_style()]} href={~p"/#{@account}"}>
               {url(~p"/#{@account}")}
             </.link>
@@ -840,10 +840,10 @@ defmodule PortalWeb.SignUp do
           <span class="text-sm text-body">Verifying your sign-up link</span>
         </li>
         <li class="flex items-center gap-3">
-          <span class="shrink-0 w-5 h-5 bg-page text-muted rounded-full flex items-center justify-center text-xs font-semibold">
+          <span class="shrink-0 w-5 h-5 bg-page text-subtle rounded-full flex items-center justify-center text-xs font-semibold">
             2
           </span>
-          <span class="text-sm text-muted">Creating your account</span>
+          <span class="text-sm text-subtle">Creating your account</span>
         </li>
       </ol>
     </div>
@@ -853,11 +853,11 @@ defmodule PortalWeb.SignUp do
   defp sign_up_error(assigns) do
     ~H"""
     <.step_header title="Something went wrong" subtitle="We weren't able to complete your sign up." variant="error">
-      <:icon><.icon name="ri-error-warning-line" class="w-5 h-5 text-rose-500" /></:icon>
+      <:icon><.icon name="ri-error-warning-line" class="w-5 h-5 text-danger" /></:icon>
     </.step_header>
 
-    <div class="rounded border border-rose-200 dark:border-rose-800 bg-rose-50 dark:bg-rose-950/30 p-4 mb-6">
-      <p class="text-sm text-rose-700 dark:text-rose-400">{@error_message}</p>
+    <div class="rounded border border-danger/30 bg-danger-light p-4 mb-6">
+      <p class="text-sm text-danger">{@error_message}</p>
     </div>
 
     <div class="rounded border border-border bg-raised p-4 mb-6">

@@ -2542,11 +2542,11 @@ defmodule Portal.Repo.Seeds do
         }
       })
       |> put_change(:limits, %{
-        users_count: 100,
+        users_count: nil,
         monthly_active_users_count: 100,
-        service_accounts_count: 10,
-        sites_count: 3,
-        account_admin_users_count: 5,
+        service_accounts_count: nil,
+        sites_count: nil,
+        account_admin_users_count: nil,
         # The OpenAPI fuzzer (scripts/tests/openapi-fuzz.sh) sends hundreds of
         # requests per second at this account.
         api_refill_rate: 10_000,

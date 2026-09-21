@@ -22,8 +22,9 @@
   --color-heading: var(--text-primary);
   --color-body: var(--text-secondary);
   --color-subtle: var(--text-tertiary);
-  --color-muted: var(--text-muted);
+  --color-disabled: var(--text-disabled);
   --color-inverse: var(--text-inverse);
+  --color-link: var(--link);
 
   /* BACKGROUND */
   --color-page: var(--canvas);
@@ -51,6 +52,12 @@
   --color-neutral-status: var(--neutral-status);
   --color-neutral-status-light: var(--neutral-status-light);
 
+  /* TOASTS */
+  --color-toast-success: var(--toast-bg-success);
+  --color-toast-info: var(--toast-bg-info);
+  --color-toast-warn: var(--toast-bg-warn);
+  --color-toast-error: var(--toast-bg-error);
+
   /* CONTROLS */
   --color-input: var(--control-bg);
   --color-input-border: var(--control-border);
@@ -64,9 +71,19 @@
   --color-badge-cidr-text: var(--badge-cidr-text);
   --color-badge-device-pool: var(--badge-device-pool-bg);
   --color-badge-device-pool-text: var(--badge-device-pool-text);
+  --color-badge-accent: var(--badge-accent-bg);
+  --color-badge-admin: var(--badge-admin-bg);
+  --color-badge-accent-text: var(--badge-accent-text);
 
   /* ICONS */
   --color-icon: var(--icon-bg);
+
+  /* SIDE NAVBAR */
+  --color-brand-wash: var(--brand-wash);
+
+  /* FILTERS */
+  --color-filter-active: var(--filter-active-bg);
+  --color-filter-text: var(--filter-active-text);
 }
 
 /* Start: This may not be needed after UI refactor */
@@ -177,23 +194,26 @@ html {
 
   /* Text */
   --text-primary: oklch(20.77% 0.0398 265.75);
-  --text-secondary: oklch(44.55% 0.0374 257.28);
-  --text-tertiary: oklch(59.6% 0.0404 252.26);
-  --text-muted: oklch(75.17% 0.019 245.46);
+  --text-secondary: oklch(37.23% 0.0374 257.28);
+  --text-tertiary: oklch(53.7% 0.0404 252.26);
+  --text-disabled: oklch(75.17% 0.019 245.46);
   --text-inverse: oklch(98.42% 0.0034 247.86);
 
+  /* Links — brand violet, lightened for dark surfaces */
+  --link: oklch(48.06% 0.2976 276);
+
   /* Status */
-  --success: oklch(62.71% 0.1699 149.21);
+  --success: oklch(48.1% 0.1699 149.21);
   --success-light: oklch(62.71% 0.1699 149.21 / 10%);
-  --info: oklch(54.61% 0.2152 262.88);
+  --info: oklch(52.5% 0.2152 262.88);
   --info-light: oklch(54.61% 0.2152 262.88 / 8%);
-  --warning: oklch(66.58% 0.1574 58.32);
+  --warning: oklch(52.3% 0.1574 58.32);
   --warning-light: oklch(66.58% 0.1574 58.32 / 10%);
-  --neutral-status: oklch(55.44% 0.0407 257.42);
+  --neutral-status: oklch(50.5% 0.0407 257.42);
   --neutral-status-light: oklch(55.44% 0.0407 257.42 / 12%);
-  --danger: oklch(57.71% 0.2152 27.33);
+  --danger: oklch(52.9% 0.2152 27.33);
   --danger-light: oklch(57.71% 0.2152 27.33 / 10%);
-  --error: oklch(57.71% 0.2152 27.33);
+  --error: oklch(52.9% 0.2152 27.33);
   --error-light: oklch(93.56% 0.0309 17.72);
 
   /* Toast backgrounds (opaque — used when flash floats over page content) */
@@ -213,12 +233,22 @@ html {
   --badge-ip-bg: oklch(98.19% 0.0181 155.83);
   --badge-ip-text: oklch(52.73% 0.1371 150.07);
   --badge-cidr-bg: oklch(97.96% 0.0158 73.68);
-  --badge-cidr-text: oklch(58.23% 0.1574 48.48);
+  --badge-cidr-text: oklch(56.8% 0.1574 48.48);
   --badge-device-pool-bg: oklch(98.36% 0.0142 180.72);
   --badge-device-pool-text: oklch(51.09% 0.0861 186.39);
+  --badge-accent-bg: oklch(56.76% 0.2532 287.59);
+  --badge-accent-text: oklch(100% 0 0);
+  --badge-admin-bg: oklch(77.69% 0.154 56.87);
 
   /* Icons */
   --icon-bg: oklch(98.42% 0.0034 247.86);
+
+  /* Side Navbar */
+  --brand-wash: oklch(71.74% 0.192 48.75 / 20%);
+
+  /* Filters */
+  --filter-active-bg: oklch(54.02% 0.02 260);
+  --filter-active-text: oklch(98.42% 0.0034 247.86);
 }
 
 /* Theme toggle: show only the icon/checkmark matching the active theme */
@@ -268,10 +298,13 @@ html[data-theme="system"] .theme-check-system {
 
   /* Text */
   --text-primary: oklch(96.83% 0.0069 247.9);
-  --text-secondary: oklch(71.07% 0.0351 256.79);
-  --text-tertiary: oklch(49.17% 0.045 251.05);
-  --text-muted: oklch(36.07% 0.0404 250.33);
+  --text-secondary: oklch(81.02% 0.0351 256.79);
+  --text-tertiary: oklch(66.2% 0.045 251.05);
+  --text-disabled: oklch(58% 0.0404 250.33);
   --text-inverse: oklch(20.77% 0.0398 265.75);
+
+  /* Links */
+  --link: oklch(66.2% 0.16 276);
 
   /* Brand */
   --brand: oklch(77.69% 0.154 56.87);
@@ -281,11 +314,15 @@ html[data-theme="system"] .theme-check-system {
   --brand-hover: oklch(82.64% 0.1259 64.15);
 
   /* Status */
+  --success: oklch(69.1% 0.1699 149.21);
   --success-light: oklch(80.03% 0.1821 151.71 / 10%);
   --info: oklch(71.37% 0.1434 254.62);
   --info-light: oklch(71.37% 0.1434 254.62 / 10%);
+  --warning: oklch(72% 0.1574 58.32);
   --warning-light: oklch(83.69% 0.1644 84.43 / 10%);
+  --neutral-status: oklch(69.6% 0.0407 257.42);
   --neutral-status-light: oklch(55.44% 0.0407 257.42 / 16%);
+  --danger: oklch(71.5% 0.2152 27.33);
   --danger-light: oklch(57.71% 0.2152 27.33 / 12%);
   --error: oklch(71.06% 0.1661 22.22);
   --error-light: oklch(71.06% 0.1661 22.22 / 10%);
@@ -301,8 +338,28 @@ html[data-theme="system"] .theme-check-system {
   --control-border: oklch(96.83% 0.0069 247.9 / 12%);
   --control-focus: oklch(77.69% 0.154 56.87);
 
+  /* Badge variants — translucent tints, not the light theme's near-white fills */
+  --badge-dns-bg: oklch(70% 0.2172 264.38 / 15%);
+  --badge-dns-text: oklch(74.8% 0.2172 264.38);
+  --badge-ip-bg: oklch(70% 0.1371 150.07 / 15%);
+  --badge-ip-text: oklch(70.6% 0.1371 150.07);
+  --badge-cidr-bg: oklch(70% 0.1574 48.48 / 15%);
+  --badge-cidr-text: oklch(72.3% 0.1574 48.48);
+  --badge-device-pool-bg: oklch(70% 0.0861 186.39 / 15%);
+  --badge-device-pool-text: oklch(71.1% 0.0861 186.39);
+  --badge-accent-bg: oklch(93.52% 0.0356 298.01);
+  --badge-accent-text: oklch(20.77% 0.0398 265.75);
+  --badge-admin-bg: oklch(77.69% 0.1549 56.87);
+
   /* Icons */
   --icon-bg: oklch(92.88% 0.0126 255.51);
+
+  /* Side Navbar */
+  --brand-wash: oklch(77.69% 0.154 56.87 / 25%);
+
+  /* Filters */
+  --filter-active-bg: oklch(55.44% 0.0407 257.42 / 40%);
+  --filter-active-text: oklch(98.42% 0.0034 247.86);
 }
 
 /* ----------------------------------------------------------------------------

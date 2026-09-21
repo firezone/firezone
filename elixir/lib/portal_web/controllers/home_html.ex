@@ -48,7 +48,7 @@ defmodule PortalWeb.HomeHTML do
         </div>
         <.icon
           name="ri-arrow-right-s-line"
-          class="w-5.5 h-5.5 text-muted group-hover:text-brand group-hover:translate-x-0.5 transition-all shrink-0"
+          class="w-5.5 h-5.5 text-subtle group-hover:text-brand group-hover:translate-x-0.5 transition-all shrink-0"
         />
       </a>
 
@@ -57,7 +57,7 @@ defmodule PortalWeb.HomeHTML do
         class="w-full flex items-center gap-3 px-4 py-3.5 rounded border-2 border-border bg-surface hover:border-brand transition-all duration-150 group"
       >
         <div class="w-10 h-10 rounded shrink-0 flex items-center justify-center bg-violet-500/10 dark:bg-violet-400/10">
-          <.icon name="ri-team-line" class="w-5 h-5 text-violet-500 dark:text-violet-400" />
+          <.icon name="ri-team-line" class="w-5 h-5 text-link" />
         </div>
         <div class="flex-1 min-w-0">
           <p class="text-sm font-semibold text-heading group-hover:text-brand transition-colors">
@@ -69,7 +69,7 @@ defmodule PortalWeb.HomeHTML do
         </div>
         <.icon
           name="ri-arrow-right-s-line"
-          class="w-5.5 h-5.5 text-muted group-hover:text-brand group-hover:translate-x-0.5 transition-all shrink-0"
+          class="w-5.5 h-5.5 text-subtle group-hover:text-brand group-hover:translate-x-0.5 transition-all shrink-0"
         />
       </a>
 
@@ -77,8 +77,8 @@ defmodule PortalWeb.HomeHTML do
         href={~p"/sign_in?#{@params}"}
         class="w-full flex items-center gap-3 px-4 py-3.5 rounded border-2 border-border bg-surface hover:border-brand transition-all duration-150 group"
       >
-        <div class="w-10 h-10 rounded shrink-0 flex items-center justify-center bg-slate-100 dark:bg-slate-800">
-          <.icon name="ri-terminal-line" class="w-5 h-5 text-slate-500 dark:text-slate-400" />
+        <div class="w-10 h-10 rounded shrink-0 flex items-center justify-center bg-raised">
+          <.icon name="ri-terminal-line" class="w-5 h-5 text-subtle" />
         </div>
         <div class="flex-1 min-w-0">
           <p class="text-sm font-semibold text-heading group-hover:text-brand transition-colors">
@@ -90,7 +90,7 @@ defmodule PortalWeb.HomeHTML do
         </div>
         <.icon
           name="ri-arrow-right-s-line"
-          class="w-5.5 h-5.5 text-muted group-hover:text-brand group-hover:translate-x-0.5 transition-all shrink-0"
+          class="w-5.5 h-5.5 text-subtle group-hover:text-brand group-hover:translate-x-0.5 transition-all shrink-0"
         />
       </a>
     </div>
@@ -118,7 +118,7 @@ defmodule PortalWeb.HomeHTML do
     <div :if={@accounts != []}>
       <div class="flex items-center gap-3 mb-3">
         <div class="flex-1 h-px bg-border"></div>
-        <span class="text-xs font-medium text-muted uppercase tracking-widest">
+        <span class="text-xs font-medium text-subtle uppercase tracking-widest">
           Recently signed in
         </span>
         <div class="flex-1 h-px bg-border"></div>

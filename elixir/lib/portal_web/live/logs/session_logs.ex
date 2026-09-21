@@ -130,7 +130,7 @@ defmodule PortalWeb.Logs.SessionLogs do
             />
           </:col>
           <:col :let={row} label="Context" class="w-40">
-            <div class="flex items-center gap-2 text-xs text-[var(--text-secondary)]">
+            <div class="flex items-center gap-2 text-xs text-body">
               <.session_context_icon context={row.context} user_agent={ua(row)} />
               <span class="truncate">{context_label(row.context)}</span>
             </div>
@@ -142,18 +142,18 @@ defmodule PortalWeb.Logs.SessionLogs do
             <.ip_cell ip={subject_field(row, "ip")} />
           </:col>
           <:col :let={row} label="Location" class="w-48">
-            <span class="block truncate text-xs text-[var(--text-secondary)]">
+            <span class="block truncate text-xs text-body">
               {row_location(row)}
             </span>
           </:col>
           <:empty>
             <div class="flex flex-col items-center gap-3 py-16">
-              <div class="w-9 h-9 rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] flex items-center justify-center">
-                <.icon name="ri-login-circle-line" class="w-5 h-5 text-[var(--text-tertiary)]" />
+              <div class="w-9 h-9 rounded-lg border border-border bg-raised flex items-center justify-center">
+                <.icon name="ri-login-circle-line" class="w-5 h-5 text-subtle" />
               </div>
               <div class="text-center">
-                <p class="text-sm font-medium text-[var(--text-primary)]">No sessions</p>
-                <p class="text-xs text-[var(--text-tertiary)] mt-0.5">
+                <p class="text-sm font-medium text-heading">No sessions</p>
+                <p class="text-xs text-subtle mt-0.5">
                   Client, Gateway, and Portal sessions will appear here as they're created.
                 </p>
               </div>
@@ -171,9 +171,9 @@ defmodule PortalWeb.Logs.SessionLogs do
             <.session_context_icon
               context={@selected_log.context}
               user_agent={ua(@selected_log)}
-              class="w-4 h-4 text-[var(--text-secondary)]"
+              class="w-4 h-4 text-body"
             />
-            <span class="text-sm font-semibold text-[var(--text-primary)] truncate">
+            <span class="text-sm font-semibold text-heading truncate">
               {device_label(@selected_log)}
             </span>
           <% end %>
@@ -194,7 +194,7 @@ defmodule PortalWeb.Logs.SessionLogs do
           />
 
           <section class="flex flex-col">
-            <div class="text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)] mb-2">
+            <div class="text-[10px] font-semibold tracking-widest uppercase text-subtle mb-2">
               Location
             </div>
             <.location_map
@@ -206,9 +206,9 @@ defmodule PortalWeb.Logs.SessionLogs do
                   <div class="flex items-center gap-2 min-w-0">
                     <.icon
                       name="ri-map-pin-line"
-                      class="w-3.5 h-3.5 shrink-0 text-[var(--text-tertiary)]"
+                      class="w-3.5 h-3.5 shrink-0 text-subtle"
                     />
-                    <span class="text-[var(--text-primary)] truncate">
+                    <span class="text-heading truncate">
                       {location_caption(@selected_log)}
                     </span>
                   </div>
@@ -217,7 +217,7 @@ defmodule PortalWeb.Logs.SessionLogs do
                       is_number(subject_field(@selected_log, "ip_lat")) and
                         is_number(subject_field(@selected_log, "ip_lon"))
                     }
-                    class="font-mono text-[10px] text-[var(--text-tertiary)] tabular-nums shrink-0"
+                    class="font-mono text-[10px] text-subtle tabular-nums shrink-0"
                   >
                     {format_coord(subject_field(@selected_log, "ip_lat"))}, {format_coord(
                       subject_field(@selected_log, "ip_lon")
@@ -242,20 +242,20 @@ defmodule PortalWeb.Logs.SessionLogs do
                 />
               </.detail_row>
               <.detail_row label="Log ID">
-                <span class="font-mono text-[11px] text-[var(--text-secondary)] break-all">
+                <span class="font-mono text-[11px] text-body break-all">
                   {@selected_log.log_id}
                 </span>
               </.detail_row>
             </dl>
           </section>
 
-          <div class="border-t border-[var(--border)]"></div>
+          <div class="border-t border-border"></div>
 
           <section>
             <.section_heading label="Identifiers" />
             <dl class="space-y-2.5">
               <.detail_row :if={subject_field(@selected_log, "actor_id")} label="Actor ID">
-                <span class="font-mono text-[11px] text-[var(--text-secondary)] break-all">
+                <span class="font-mono text-[11px] text-body break-all">
                   {subject_field(@selected_log, "actor_id")}
                 </span>
               </.detail_row>
@@ -263,25 +263,25 @@ defmodule PortalWeb.Logs.SessionLogs do
                 :if={subject_field(@selected_log, "auth_provider_id")}
                 label="Auth provider ID"
               >
-                <span class="font-mono text-[11px] text-[var(--text-secondary)] break-all">
+                <span class="font-mono text-[11px] text-body break-all">
                   {subject_field(@selected_log, "auth_provider_id")}
                 </span>
               </.detail_row>
             </dl>
           </section>
 
-          <div class="border-t border-[var(--border)]"></div>
+          <div class="border-t border-border"></div>
 
           <section>
             <.section_heading label="Source" />
             <dl class="space-y-2.5">
               <.detail_row :if={subject_field(@selected_log, "ip")} label="IP address">
-                <span class="font-mono text-xs text-[var(--text-primary)]">
+                <span class="font-mono text-xs text-heading">
                   {subject_field(@selected_log, "ip")}
                 </span>
               </.detail_row>
               <.detail_row :if={ua(@selected_log)} label="User agent">
-                <span class="font-mono text-xs text-[var(--text-secondary)] break-all">
+                <span class="font-mono text-xs text-body break-all">
                   {ua(@selected_log)}
                 </span>
               </.detail_row>

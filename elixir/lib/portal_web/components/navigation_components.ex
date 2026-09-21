@@ -181,7 +181,7 @@ defmodule PortalWeb.NavigationComponents do
         <span
           :if={@subject.actor.type == :account_admin_user}
           data-sidebar-label
-          class="ml-2 shrink-0 text-[9px] font-bold tracking-wider uppercase px-1.5 py-0.5 rounded bg-brand-muted text-brand transition-[max-width,opacity] duration-200 max-w-xs opacity-100"
+          class="ml-auto shrink-0 text-[9px] font-bold tracking-wider uppercase px-1.5 py-0.5 rounded bg-badge-admin text-primary-800 transition-[max-width,opacity] duration-200 max-w-xs opacity-100"
         >
           ADMIN
         </span>
@@ -279,7 +279,7 @@ defmodule PortalWeb.NavigationComponents do
         <div>
           <p
             data-sidebar-group-label
-            class="px-2 mb-1 text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)]"
+            class="px-2 mb-1 text-[10px] font-semibold tracking-widest uppercase text-subtle"
           >
             Audit
           </p>
@@ -303,12 +303,18 @@ defmodule PortalWeb.NavigationComponents do
           navigate={~p"/#{@account}/settings/account"}
           data-sidebar-nav-item
           class={[
-            "flex items-center gap-2.5 px-2 py-1.5 rounded text-sm transition-colors",
-            settings_active? && "bg-brand-muted text-brand font-medium",
+            "relative flex items-center gap-2.5 px-2 py-1.5 rounded overflow-hidden text-sm transition-colors",
+            settings_active? && "bg-brand-wash text-heading font-medium",
             not settings_active? &&
               "text-body hover:text-heading hover:bg-raised"
           ]}
         >
+          <span
+            :if={settings_active?}
+            class="absolute inset-y-0 left-0 w-[3px] bg-brand"
+            aria-hidden="true"
+          >
+          </span>
           <.icon name="ri-settings-3-line" class="w-4 h-4 shrink-0" />
           <span
             data-sidebar-label
@@ -316,12 +322,7 @@ defmodule PortalWeb.NavigationComponents do
           >
             Settings
           </span>
-          <span
-            data-sidebar-badge
-            class="ml-auto px-1 py-px rounded text-[9px] font-semibold tracking-wider bg-brand-muted text-brand"
-          >
-            NEW
-          </span>
+          <.new_badge class="ml-auto" data-sidebar-badge />
         </.link>
       </div>
 
@@ -372,12 +373,18 @@ defmodule PortalWeb.NavigationComponents do
         navigate={@navigate}
         data-sidebar-nav-item
         class={[
-          "flex items-center gap-2.5 px-2 py-1.5 rounded text-sm transition-colors",
-          @active? && "bg-brand-muted text-brand font-medium",
+          "relative flex items-center gap-2.5 px-2 py-1.5 rounded overflow-hidden text-sm transition-colors",
+          @active? && "bg-brand-wash text-heading font-medium",
           not @active? &&
             "text-body hover:text-heading hover:bg-raised"
         ]}
       >
+        <span
+          :if={@active?}
+          class="absolute inset-y-0 left-0 w-[3px] bg-brand"
+          aria-hidden="true"
+        >
+        </span>
         <.icon name={@icon} class="w-4 h-4 shrink-0" />
         <span
           data-sidebar-label
@@ -385,13 +392,7 @@ defmodule PortalWeb.NavigationComponents do
         >
           {render_slot(@inner_block)}
         </span>
-        <span
-          :if={@badge}
-          data-sidebar-badge
-          class="ml-auto px-1 py-px rounded text-[9px] font-semibold tracking-wider bg-brand-muted text-brand"
-        >
-          {@badge}
-        </span>
+        <.new_badge :if={@badge} label={@badge} class="ml-auto" data-sidebar-badge />
       </.link>
     </li>
     """
@@ -560,13 +561,7 @@ defmodule PortalWeb.NavigationComponents do
     >
       <.icon name={@icon} class="w-4 h-4 shrink-0" />
       {render_slot(@inner_block)}
-      <span
-        :if={@badge}
-        data-settings-tab-badge
-        class="px-1 py-px rounded text-[9px] font-semibold tracking-wider bg-brand-muted text-brand"
-      >
-        {@badge}
-      </span>
+      <.new_badge :if={@badge} label={@badge} data-settings-tab-badge />
     </.link>
     """
   end

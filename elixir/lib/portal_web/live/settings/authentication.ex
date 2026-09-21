@@ -884,9 +884,9 @@ defmodule PortalWeb.Settings.Authentication do
     <%!-- Dim the cells, not the row: opacity on the row also dims the actions menu. --%>
     <tr class={[
       "border-b transition-colors",
-      @is_pending_toggle && "border-amber-200 bg-amber-50",
-      @is_pending_delete && "border-red-200 bg-red-50",
-      @is_pending_revoke && "border-orange-200 bg-orange-50",
+      @is_pending_toggle && "border-warning/30 bg-warning-light",
+      @is_pending_delete && "border-danger/30 bg-danger-light",
+      @is_pending_revoke && "border-warning/30 bg-warning-light",
       !@is_pending_toggle && !@is_pending_delete && !@is_pending_revoke &&
         "border-border hover:bg-raised",
       @provider.is_disabled && !@is_pending_toggle && !@is_pending_delete && !@is_pending_revoke &&
@@ -899,9 +899,9 @@ defmodule PortalWeb.Settings.Authentication do
             <div class="flex items-center gap-1.5">
               <span class={[
                 "text-sm font-medium",
-                @is_pending_toggle && "text-amber-900",
-                @is_pending_delete && "text-red-900",
-                @is_pending_revoke && "text-orange-900",
+                @is_pending_toggle && "text-warning",
+                @is_pending_delete && "text-danger",
+                @is_pending_revoke && "text-warning",
                 !@is_pending_toggle && !@is_pending_delete && !@is_pending_revoke &&
                   "text-heading"
               ]}>
@@ -927,7 +927,7 @@ defmodule PortalWeb.Settings.Authentication do
                   Map.get(@provider, :is_legacy) && !@is_pending_toggle && !@is_pending_delete &&
                     !@is_pending_revoke
                 }
-                class="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-yellow-100 text-yellow-700"
+                class="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-warning-light text-warning"
               >
                 Legacy
               </span>
@@ -935,7 +935,7 @@ defmodule PortalWeb.Settings.Authentication do
             <div class="font-mono text-[10px] text-subtle mt-0.5">{@provider.id}</div>
             <p
               :if={@type == "x509" and not @has_trust_anchors?}
-              class="flex items-start gap-1.5 mt-1.5 max-w-md text-xs text-amber-600 dark:text-amber-400"
+              class="flex items-start gap-1.5 mt-1.5 max-w-md text-xs text-warning"
             >
               <.icon name="ri-error-warning-line" class="w-3.5 h-3.5 shrink-0 mt-0.5" />
               <span>

@@ -145,12 +145,12 @@ defmodule PortalWeb.Logs.ChangeLogs do
             />
           </:col>
           <:col :let={row} field={{:change_logs, :log_id}} label="Log ID" class="w-52">
-            <span class="font-mono text-[10px] text-[var(--text-tertiary)] break-all">
+            <span class="font-mono text-[10px] text-subtle break-all">
               {row.change_log.log_id}
             </span>
           </:col>
           <:col :let={row} label="Object" class="w-44">
-            <span class="font-mono text-xs text-[var(--text-primary)]">
+            <span class="font-mono text-xs text-heading">
               {row.change_log.object}
             </span>
           </:col>
@@ -165,12 +165,12 @@ defmodule PortalWeb.Logs.ChangeLogs do
           </:col>
           <:empty>
             <div class="flex flex-col items-center gap-3 py-16">
-              <div class="w-9 h-9 rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] flex items-center justify-center">
-                <.icon name="ri-history-line" class="w-5 h-5 text-[var(--text-tertiary)]" />
+              <div class="w-9 h-9 rounded-lg border border-border bg-raised flex items-center justify-center">
+                <.icon name="ri-history-line" class="w-5 h-5 text-subtle" />
               </div>
               <div class="text-center">
-                <p class="text-sm font-medium text-[var(--text-primary)]">No change logs</p>
-                <p class="text-xs text-[var(--text-tertiary)] mt-0.5">
+                <p class="text-sm font-medium text-heading">No change logs</p>
+                <p class="text-xs text-subtle mt-0.5">
                   Configuration changes will appear here as they happen.
                 </p>
               </div>
@@ -186,7 +186,7 @@ defmodule PortalWeb.Logs.ChangeLogs do
         <:title>
           <%= if @selected_change_log do %>
             <.op_label op={@selected_change_log.operation} />
-            <span class="font-mono text-sm font-semibold text-[var(--text-primary)] truncate">
+            <span class="font-mono text-sm font-semibold text-heading truncate">
               {@selected_change_log.object}
             </span>
           <% end %>
@@ -202,14 +202,14 @@ defmodule PortalWeb.Logs.ChangeLogs do
 
           <section class="flex flex-col">
             <div class="flex items-center justify-between mb-2">
-              <div class="text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)]">
+              <div class="text-[10px] font-semibold tracking-widest uppercase text-subtle">
                 Diff
               </div>
-              <div class="text-[10px] text-[var(--text-tertiary)]">
+              <div class="text-[10px] text-subtle">
                 {diff_change_count(@selected_change_log)}
               </div>
             </div>
-            <div class="rounded border border-[var(--border)] bg-[var(--surface)] p-3 max-h-[600px] overflow-auto">
+            <div class="rounded border border-border bg-surface p-3 max-h-[600px] overflow-auto">
               <div class="json-diff">
                 <JSONDiff.diff
                   old={@selected_change_log.before}
@@ -220,7 +220,7 @@ defmodule PortalWeb.Logs.ChangeLogs do
           </section>
 
           <section :if={not is_nil(@selected_change_log.subject)} class="flex flex-col">
-            <div class="text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)] mb-2">
+            <div class="text-[10px] font-semibold tracking-widest uppercase text-subtle mb-2">
               Location
             </div>
             <.location_map
@@ -232,14 +232,14 @@ defmodule PortalWeb.Logs.ChangeLogs do
                   <div class="flex items-center gap-2 min-w-0">
                     <.icon
                       name="ri-map-pin-line"
-                      class="w-3.5 h-3.5 shrink-0 text-[var(--text-tertiary)]"
+                      class="w-3.5 h-3.5 shrink-0 text-subtle"
                     />
-                    <span class="text-[var(--text-primary)] truncate">
+                    <span class="text-heading truncate">
                       {change_log_location_caption(@selected_change_log)}
                     </span>
                     <span
                       :if={subject_field(@selected_change_log, "ip")}
-                      class="font-mono text-[10px] text-[var(--text-tertiary)] shrink-0"
+                      class="font-mono text-[10px] text-subtle shrink-0"
                     >
                       · {subject_field(@selected_change_log, "ip")}
                     </span>
@@ -249,7 +249,7 @@ defmodule PortalWeb.Logs.ChangeLogs do
                       is_number(subject_field(@selected_change_log, "ip_lat")) and
                         is_number(subject_field(@selected_change_log, "ip_lon"))
                     }
-                    class="font-mono text-[10px] text-[var(--text-tertiary)] tabular-nums shrink-0"
+                    class="font-mono text-[10px] text-subtle tabular-nums shrink-0"
                   >
                     {format_coord(subject_field(@selected_change_log, "ip_lat"))}, {format_coord(
                       subject_field(@selected_change_log, "ip_lon")
@@ -274,20 +274,20 @@ defmodule PortalWeb.Logs.ChangeLogs do
                 />
               </.detail_row>
               <.detail_row label="Log ID">
-                <span class="font-mono text-[11px] text-[var(--text-secondary)] break-all">
+                <span class="font-mono text-[11px] text-body break-all">
                   {@selected_change_log.log_id}
                 </span>
               </.detail_row>
             </dl>
           </section>
 
-          <div class="border-t border-[var(--border)]"></div>
+          <div class="border-t border-border"></div>
 
           <section>
             <.section_heading label="Identifiers" />
             <dl class="space-y-2.5">
               <.detail_row :if={subject_field(@selected_change_log, "actor_id")} label="Actor ID">
-                <span class="font-mono text-[11px] text-[var(--text-secondary)] break-all">
+                <span class="font-mono text-[11px] text-body break-all">
                   {subject_field(@selected_change_log, "actor_id")}
                 </span>
               </.detail_row>
@@ -295,20 +295,20 @@ defmodule PortalWeb.Logs.ChangeLogs do
                 :if={subject_field(@selected_change_log, "auth_provider_id")}
                 label="Auth provider ID"
               >
-                <span class="font-mono text-[11px] text-[var(--text-secondary)] break-all">
+                <span class="font-mono text-[11px] text-body break-all">
                   {subject_field(@selected_change_log, "auth_provider_id")}
                 </span>
               </.detail_row>
             </dl>
           </section>
 
-          <div class="border-t border-[var(--border)]"></div>
+          <div class="border-t border-border"></div>
 
           <section>
             <.section_heading label="Source" />
             <dl class="space-y-2.5">
               <.detail_row :if={subject_field(@selected_change_log, "ip")} label="IP address">
-                <span class="font-mono text-xs text-[var(--text-primary)]">
+                <span class="font-mono text-xs text-heading">
                   {subject_field(@selected_change_log, "ip")}
                 </span>
               </.detail_row>
@@ -316,7 +316,7 @@ defmodule PortalWeb.Logs.ChangeLogs do
                 :if={subject_field(@selected_change_log, "user_agent")}
                 label="User agent"
               >
-                <span class="font-mono text-xs text-[var(--text-secondary)] break-all">
+                <span class="font-mono text-xs text-body break-all">
                   {subject_field(@selected_change_log, "user_agent")}
                 </span>
               </.detail_row>
@@ -355,7 +355,7 @@ defmodule PortalWeb.Logs.ChangeLogs do
 
   defp changes_cell(%{op: :update} = assigns) do
     ~H"""
-    <span class="text-xs text-[var(--text-secondary)]">
+    <span class="text-xs text-body">
       {@count} field{if @count != 1, do: "s"}
     </span>
     """
@@ -363,7 +363,7 @@ defmodule PortalWeb.Logs.ChangeLogs do
 
   defp changes_cell(assigns) do
     ~H"""
-    <span class="text-xs text-[var(--text-muted)]">-</span>
+    <span class="text-xs text-subtle">-</span>
     """
   end
 

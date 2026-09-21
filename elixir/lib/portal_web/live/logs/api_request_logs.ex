@@ -137,12 +137,12 @@ defmodule PortalWeb.Logs.APIRequestLogs do
             <.method_badge method={row.log.method} />
           </:col>
           <:col :let={row} label="Path">
-            <span class="font-mono text-xs text-[var(--text-primary)] break-all">
+            <span class="font-mono text-xs text-heading break-all">
               {row.log.path}
             </span>
           </:col>
           <:col :let={row} label="Size" class="w-20 text-right tabular-nums">
-            <span class="text-xs text-[var(--text-secondary)]">
+            <span class="text-xs text-body">
               {format_size(row.log.content_length)}
             </span>
           </:col>
@@ -156,18 +156,18 @@ defmodule PortalWeb.Logs.APIRequestLogs do
             <.ip_cell ip={row.log.ip} />
           </:col>
           <:col :let={row} label="Location" class="w-48">
-            <span class="block truncate text-xs text-[var(--text-secondary)]">
+            <span class="block truncate text-xs text-body">
               {row_location(row.log)}
             </span>
           </:col>
           <:empty>
             <div class="flex flex-col items-center gap-3 py-16">
-              <div class="w-9 h-9 rounded-lg border border-[var(--border)] bg-[var(--surface-raised)] flex items-center justify-center">
-                <.icon name="ri-terminal-box-line" class="w-5 h-5 text-[var(--text-tertiary)]" />
+              <div class="w-9 h-9 rounded-lg border border-border bg-raised flex items-center justify-center">
+                <.icon name="ri-terminal-box-line" class="w-5 h-5 text-subtle" />
               </div>
               <div class="text-center">
-                <p class="text-sm font-medium text-[var(--text-primary)]">No API requests</p>
-                <p class="text-xs text-[var(--text-tertiary)] mt-0.5">
+                <p class="text-sm font-medium text-heading">No API requests</p>
+                <p class="text-xs text-subtle mt-0.5">
                   Authenticated REST API calls will appear here as they happen.
                 </p>
               </div>
@@ -183,7 +183,7 @@ defmodule PortalWeb.Logs.APIRequestLogs do
         <:title>
           <%= if @selected_log do %>
             <.method_badge method={@selected_log.log.method} />
-            <span class="font-mono text-sm font-semibold text-[var(--text-primary)] truncate">
+            <span class="font-mono text-sm font-semibold text-heading truncate">
               {@selected_log.log.path}
             </span>
           <% end %>
@@ -197,23 +197,23 @@ defmodule PortalWeb.Logs.APIRequestLogs do
           />
 
           <section class="flex flex-col">
-            <div class="text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)] mb-2">
+            <div class="text-[10px] font-semibold tracking-widest uppercase text-subtle mb-2">
               Request
             </div>
-            <div class="rounded border border-[var(--border)] bg-[var(--surface)] p-4 grid grid-cols-2 gap-4">
+            <div class="rounded border border-border bg-surface p-4 grid grid-cols-2 gap-4">
               <div>
-                <div class="text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)] mb-0.5">
+                <div class="text-[10px] font-semibold tracking-widest uppercase text-subtle mb-0.5">
                   Body size
                 </div>
-                <div class="text-sm text-[var(--text-primary)] tabular-nums">
+                <div class="text-sm text-heading tabular-nums">
                   {format_size(@selected_log.log.content_length)}
                 </div>
               </div>
               <div class="min-w-0">
-                <div class="text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)] mb-0.5">
+                <div class="text-[10px] font-semibold tracking-widest uppercase text-subtle mb-0.5">
                   Request ID
                 </div>
-                <div class="font-mono text-[11px] text-[var(--text-secondary)] break-all">
+                <div class="font-mono text-[11px] text-body break-all">
                   {@selected_log.log.request_id}
                 </div>
               </div>
@@ -221,7 +221,7 @@ defmodule PortalWeb.Logs.APIRequestLogs do
           </section>
 
           <section class="flex flex-col">
-            <div class="text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)] mb-2">
+            <div class="text-[10px] font-semibold tracking-widest uppercase text-subtle mb-2">
               Location
             </div>
             <.location_map lat={@selected_log.log.ip_lat} lon={@selected_log.log.ip_lon}>
@@ -230,14 +230,14 @@ defmodule PortalWeb.Logs.APIRequestLogs do
                   <div class="flex items-center gap-2 min-w-0">
                     <.icon
                       name="ri-map-pin-line"
-                      class="w-3.5 h-3.5 shrink-0 text-[var(--text-tertiary)]"
+                      class="w-3.5 h-3.5 shrink-0 text-subtle"
                     />
-                    <span class="text-[var(--text-primary)] truncate">
+                    <span class="text-heading truncate">
                       {api_location_caption(@selected_log.log)}
                     </span>
                     <span
                       :if={@selected_log.log.ip}
-                      class="font-mono text-[10px] text-[var(--text-tertiary)] shrink-0"
+                      class="font-mono text-[10px] text-subtle shrink-0"
                     >
                       · {format_ip(@selected_log.log.ip)}
                     </span>
@@ -246,7 +246,7 @@ defmodule PortalWeb.Logs.APIRequestLogs do
                     :if={
                       is_number(@selected_log.log.ip_lat) and is_number(@selected_log.log.ip_lon)
                     }
-                    class="font-mono text-[10px] text-[var(--text-tertiary)] tabular-nums shrink-0"
+                    class="font-mono text-[10px] text-subtle tabular-nums shrink-0"
                   >
                     {format_coord(@selected_log.log.ip_lat)}, {format_coord(
                       @selected_log.log.ip_lon
@@ -271,49 +271,49 @@ defmodule PortalWeb.Logs.APIRequestLogs do
                 />
               </.detail_row>
               <.detail_row label="Log ID">
-                <span class="font-mono text-[11px] text-[var(--text-secondary)] break-all">
+                <span class="font-mono text-[11px] text-body break-all">
                   {@selected_log.log.log_id}
                 </span>
               </.detail_row>
             </dl>
           </section>
 
-          <div class="border-t border-[var(--border)]"></div>
+          <div class="border-t border-border"></div>
 
           <section>
             <.section_heading label="Identifiers" />
             <dl class="space-y-2.5">
               <.detail_row label="Actor ID">
-                <span class="font-mono text-[11px] text-[var(--text-secondary)] break-all">
+                <span class="font-mono text-[11px] text-body break-all">
                   {@selected_log.log.actor_id}
                 </span>
               </.detail_row>
               <.detail_row label="Token ID">
-                <span class="font-mono text-[11px] text-[var(--text-secondary)] break-all">
+                <span class="font-mono text-[11px] text-body break-all">
                   {@selected_log.log.api_token_id}
                 </span>
               </.detail_row>
             </dl>
           </section>
 
-          <div class="border-t border-[var(--border)]"></div>
+          <div class="border-t border-border"></div>
 
           <section>
             <.section_heading label="Source" />
             <dl class="space-y-2.5">
               <.detail_row :if={@selected_log.log.ip_city} label="City">
-                <span class="text-xs text-[var(--text-primary)]">
+                <span class="text-xs text-heading">
                   {@selected_log.log.ip_city}
                 </span>
               </.detail_row>
               <.detail_row :if={@selected_log.log.ip_region} label="Region">
-                <span class="text-xs text-[var(--text-primary)]">
+                <span class="text-xs text-heading">
                   {Portal.Geo.country_common_name!(@selected_log.log.ip_region) ||
                     @selected_log.log.ip_region}
                 </span>
               </.detail_row>
               <.detail_row :if={@selected_log.log.user_agent} label="User agent">
-                <span class="font-mono text-xs text-[var(--text-secondary)] break-all">
+                <span class="font-mono text-xs text-body break-all">
                   {@selected_log.log.user_agent}
                 </span>
               </.detail_row>
@@ -331,8 +331,8 @@ defmodule PortalWeb.Logs.APIRequestLogs do
   defp actor_display(%{actor: nil} = assigns) do
     ~H"""
     <div class="min-w-0">
-      <div class="text-xs text-[var(--text-tertiary)] italic">Deleted actor</div>
-      <div class="font-mono text-[10px] text-[var(--text-tertiary)] truncate">{@actor_id}</div>
+      <div class="text-xs text-subtle italic">Deleted actor</div>
+      <div class="font-mono text-[10px] text-subtle truncate">{@actor_id}</div>
     </div>
     """
   end
@@ -342,16 +342,16 @@ defmodule PortalWeb.Logs.APIRequestLogs do
     <div class="min-w-0">
       <div
         :if={@actor.name not in [nil, ""]}
-        class="text-sm font-medium text-[var(--text-primary)] truncate"
+        class="text-sm font-medium text-heading truncate"
       >
         {@actor.name}
       </div>
-      <div :if={@actor.email not in [nil, ""]} class="text-xs text-[var(--text-tertiary)] truncate">
+      <div :if={@actor.email not in [nil, ""]} class="text-xs text-subtle truncate">
         {@actor.email}
       </div>
       <div
         :if={@actor.name in [nil, ""] and @actor.email in [nil, ""]}
-        class="font-mono text-[10px] text-[var(--text-tertiary)] truncate"
+        class="font-mono text-[10px] text-subtle truncate"
       >
         {@actor_id}
       </div>
@@ -366,7 +366,7 @@ defmodule PortalWeb.Logs.APIRequestLogs do
     assigns = assign(assigns, icon: icon, label: label)
 
     ~H"""
-    <div class="flex items-center gap-2 text-xs text-[var(--text-secondary)]" title={@user_agent}>
+    <div class="flex items-center gap-2 text-xs text-body" title={@user_agent}>
       <.icon name={@icon} class="w-4 h-4 shrink-0" />
       <span class="truncate">{@label}</span>
     </div>

@@ -163,7 +163,7 @@ defmodule PortalWeb.FormComponents do
           class={[
             "bg-input",
             "border border-input-border text-heading rounded-sm",
-            "checked:bg-accent-500 checked:hover:bg-accent-500",
+            "checked:bg-accent checked:hover:bg-accent",
             @class
           ]}
           {@rest}
@@ -277,7 +277,7 @@ defmodule PortalWeb.FormComponents do
         name={@name}
         class={[
           "block rounded-md text-sm px-3 py-2",
-          "bg-input text-heading placeholder:text-muted",
+          "bg-input text-heading placeholder:text-subtle",
           "border",
           "outline-none transition-colors",
           "focus:ring-1",
@@ -344,7 +344,7 @@ defmodule PortalWeb.FormComponents do
             "block",
             field_width_class(assigns),
             "px-3 py-2 rounded text-sm",
-            "bg-input text-heading placeholder:text-muted",
+            "bg-input text-heading placeholder:text-subtle",
             "border",
             "outline-none transition-colors",
             "focus:ring-1",
@@ -1164,7 +1164,7 @@ defmodule PortalWeb.FormComponents do
   def button_style("disabled") do
     button_style() ++
       [
-        "text-muted",
+        "text-disabled",
         "border border-border",
         "cursor-not-allowed"
       ]
@@ -1190,7 +1190,7 @@ defmodule PortalWeb.FormComponents do
   end
 
   defp action_button_base do
-    ["flex items-center gap-2", "rounded", "w-full", "bg-surface", "transition-colors"]
+    ["flex items-center gap-2", "rounded", "w-full", "transition-colors"]
   end
 
   def button_size(size) do

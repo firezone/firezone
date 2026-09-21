@@ -91,7 +91,7 @@ defmodule PortalWeb.Devices.Components do
           <.icon
             :if={trust_state(@device)}
             name={trust_state(@device).icon}
-            class="h-2.5 w-2.5 text-neutral-500"
+            class="h-2.5 w-2.5 text-subtle"
             title={trust_state(@device).title}
           />
         </div>
@@ -140,7 +140,7 @@ defmodule PortalWeb.Devices.Components do
 
   def version(%{current: nil} = assigns) do
     ~H"""
-    <span class="text-xs text-muted">—</span>
+    <span class="text-xs text-subtle">—</span>
     """
   end
 
@@ -547,7 +547,7 @@ defmodule PortalWeb.Devices.Components do
             phx-click="change_policy_authorizations_page"
             phx-value-page={@page - 1}
             disabled={@page == 1}
-            class="flex items-center gap-1 text-xs transition-colors disabled:text-muted disabled:cursor-not-allowed text-body hover:enabled:text-heading"
+            class="flex items-center gap-1 text-xs transition-colors disabled:text-disabled disabled:cursor-not-allowed text-body hover:enabled:text-heading"
           >
             <.icon name="ri-arrow-left-s-line" class="w-4 h-4" /> Previous
           </button>
@@ -556,7 +556,7 @@ defmodule PortalWeb.Devices.Components do
             phx-click="change_policy_authorizations_page"
             phx-value-page={@page + 1}
             disabled={not @has_next}
-            class="flex items-center gap-1 text-xs transition-colors disabled:text-muted disabled:cursor-not-allowed text-body hover:enabled:text-heading"
+            class="flex items-center gap-1 text-xs transition-colors disabled:text-disabled disabled:cursor-not-allowed text-body hover:enabled:text-heading"
           >
             Next <.icon name="ri-arrow-right-s-line" class="w-4 h-4" />
           </button>
@@ -914,7 +914,7 @@ defmodule PortalWeb.Devices.Components do
 
   def serial_cell(%{serial: nil} = assigns) do
     ~H"""
-    <span class="text-xs text-muted">—</span>
+    <span class="text-xs text-subtle">—</span>
     """
   end
 
@@ -1021,7 +1021,7 @@ defmodule PortalWeb.Devices.Components do
     ~H"""
     <.popover>
       <:target>
-        <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium text-muted bg-raised">
+        <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium text-subtle bg-raised">
           <.icon name="ri-question-line" class="w-2.5 h-2.5" /> Unknown
         </span>
       </:target>
@@ -1187,7 +1187,7 @@ defmodule PortalWeb.Devices.Components do
   def device_danger_zone(assigns) do
     ~H"""
     <section>
-      <h3 class="text-[10px] font-semibold tracking-widest uppercase text-error/60 mb-3">
+      <h3 class="text-[10px] font-semibold tracking-widest uppercase text-error mb-3">
         Danger Zone
       </h3>
       <button
@@ -1258,7 +1258,7 @@ defmodule PortalWeb.Devices.Components do
     </span>
     <span
       :if={is_nil(@trust)}
-      class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium text-muted bg-raised"
+      class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium text-subtle bg-raised"
     >
       Unverified
     </span>

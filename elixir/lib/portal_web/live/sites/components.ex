@@ -269,7 +269,7 @@ defmodule PortalWeb.Sites.Components do
         <span class={[
           "tabular-nums px-1.5 py-0.5 rounded text-[10px] font-semibold",
           if(@tab == :gateways,
-            do: "bg-brand-muted text-brand",
+            do: "bg-brand-wash text-heading",
             else: "bg-raised text-subtle"
           )
         ]}>
@@ -292,7 +292,7 @@ defmodule PortalWeb.Sites.Components do
         <span class={[
           "tabular-nums px-1.5 py-0.5 rounded text-[10px] font-semibold",
           if(@tab == :resources,
-            do: "bg-brand-muted text-brand",
+            do: "bg-brand-wash text-heading",
             else: "bg-raised text-subtle"
           )
         ]}>
@@ -314,7 +314,7 @@ defmodule PortalWeb.Sites.Components do
         Legacy tokens
         <span class={[
           "tabular-nums px-1.5 py-0.5 rounded text-[10px] font-semibold",
-          if(@tab == :tokens, do: "bg-brand-muted text-brand", else: "bg-raised text-subtle")
+          if(@tab == :tokens, do: "bg-brand-wash text-heading", else: "bg-raised text-subtle")
         ]}>
           {length(@gateway_tokens)}
         </span>
@@ -742,9 +742,14 @@ defmodule PortalWeb.Sites.Components do
             navigate={~p"/#{@account}/resources/#{resource.id}"}
             class="flex items-center gap-3 px-5 py-3 hover:bg-raised transition-colors group"
           >
-            <span class={type_badge_class(resource.type)}>
-              {resource.type}
-            </span>
+            <div class={[
+              "shrink-0 flex",
+              type_badge_col_class(Enum.map(@resources, & &1.type))
+            ]}>
+              <span class={type_badge_class(resource.type)}>
+                {resource_type_label(resource.type)}
+              </span>
+            </div>
             <div class="flex-1 min-w-0">
               <p class="text-sm font-medium text-heading truncate group-hover:text-brand transition-colors">
                 {resource.name}
@@ -995,19 +1000,19 @@ defmodule PortalWeb.Sites.Components do
       <dl class="space-y-2.5">
         <div>
           <dt class="text-[10px] text-subtle mb-0.5">Name</dt>
-          <dd class="text-xs text-body truncate" title={@site.name}>
+          <dd class="text-xs text-body truncate font-medium" title={@site.name}>
             {@site.name}
           </dd>
         </div>
         <div>
           <dt class="text-[10px] text-subtle mb-0.5">Health threshold</dt>
-          <dd class="text-xs text-body">
+          <dd class="text-xs text-body font-medium">
             {@site.health_threshold}
           </dd>
         </div>
         <div>
           <dt class="text-[10px] text-subtle mb-0.5">ID</dt>
-          <dd class="font-mono text-[11px] text-body break-all">
+          <dd class="font-mono text-[11px] text-body break-all font-medium">
             {@site.id}
           </dd>
         </div>
@@ -1021,7 +1026,7 @@ defmodule PortalWeb.Sites.Components do
   def site_danger_zone(assigns) do
     ~H"""
     <section>
-      <h3 class="text-[10px] font-semibold tracking-widest uppercase text-error/60 mb-3">
+      <h3 class="text-[10px] font-semibold tracking-widest uppercase text-error mb-3">
         Danger Zone
       </h3>
       <button
@@ -1505,7 +1510,7 @@ defmodule PortalWeb.Sites.Components do
         for={@resource_form[:address_description].id}
         class="block text-xs font-medium text-body mb-1.5"
       >
-        Address Description <span class="text-muted font-normal">(optional)</span>
+        Address Description <span class="text-subtle font-normal">(optional)</span>
       </label>
       <.input
         field={@resource_form[:address_description]}
@@ -1729,7 +1734,7 @@ defmodule PortalWeb.Sites.Components do
           name={"resource[filters][#{@protocol}][ports]"}
           value={@ports}
           placeholder="All ports"
-          class="w-full px-3 py-2 text-sm rounded-md border font-mono bg-input text-heading placeholder:text-muted outline-none transition-colors border-input-border focus:border-border-focus focus:ring-1 focus:ring-border-focus/30"
+          class="w-full px-3 py-2 text-sm rounded-md border font-mono bg-input text-heading placeholder:text-subtle outline-none transition-colors border-input-border focus:border-border-focus focus:ring-1 focus:ring-border-focus/30"
         />
       </div>
       <span :if={@protocol == :icmp} class="flex-1 text-xs text-subtle italic">
@@ -1926,20 +1931,4 @@ defmodule PortalWeb.Sites.Components do
     sudo ip6tables -t nat -C POSTROUTING -o w+ -j MASQUERADE > /dev/null 2>&1 || sudo ip6tables -t nat -A POSTROUTING -o w+ -j MASQUERADE
     """
   end
-
-  defp type_badge_class(:dns),
-    do:
-      "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-medium tracking-wider uppercase bg-badge-dns text-badge-dns-text"
-
-  defp type_badge_class(:ip),
-    do:
-      "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-medium tracking-wider uppercase bg-badge-ip text-badge-ip-text"
-
-  defp type_badge_class(:cidr),
-    do:
-      "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-medium tracking-wider uppercase bg-badge-cidr text-badge-cidr-text"
-
-  defp type_badge_class(_),
-    do:
-      "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-medium tracking-wider uppercase bg-raised text-body"
 end

@@ -31,7 +31,7 @@ defmodule PortalWeb.Logs.Components do
         <span
           id={"#{@id_prefix}-#{@log_id}"}
           data-tz-mode={@tz_mode}
-          class="text-xs text-[var(--text-primary)] tabular-nums underline underline-offset-2 decoration-1 decoration-dotted"
+          class="text-xs text-heading tabular-nums underline underline-offset-2 decoration-1 decoration-dotted"
         >
           {PortalWeb.Format.short_datetime(@timestamp, @display_tz)}
         </span>
@@ -54,8 +54,8 @@ defmodule PortalWeb.Logs.Components do
 
   def actor_cell(%{subject: nil} = assigns) do
     ~H"""
-    <span class="inline-flex items-center gap-1.5 text-xs text-[var(--text-tertiary)] italic">
-      <span class="w-1.5 h-1.5 rounded-full shrink-0 bg-[var(--text-muted)]"></span> system
+    <span class="inline-flex items-center gap-1.5 text-xs text-subtle italic">
+      <span class="w-1.5 h-1.5 rounded-full shrink-0 bg-subtle"></span> system
     </span>
     """
   end
@@ -69,22 +69,22 @@ defmodule PortalWeb.Logs.Components do
 
     ~H"""
     <div :if={@name not in [nil, ""]} class="min-w-0">
-      <div class="text-sm font-medium text-[var(--text-primary)] truncate">{@name}</div>
-      <div :if={@email not in [nil, ""]} class="text-xs text-[var(--text-tertiary)] truncate">
+      <div class="text-sm font-medium text-heading truncate">{@name}</div>
+      <div :if={@email not in [nil, ""]} class="text-xs text-subtle truncate">
         {@email}
       </div>
     </div>
     <span
       :if={@name in [nil, ""] and @email not in [nil, ""]}
-      class="text-sm text-[var(--text-secondary)] truncate"
+      class="text-sm text-body truncate"
     >
       {@email}
     </span>
     <span
       :if={@name in [nil, ""] and @email in [nil, ""]}
-      class="inline-flex items-center gap-1.5 text-xs text-[var(--text-tertiary)] italic"
+      class="inline-flex items-center gap-1.5 text-xs text-subtle italic"
     >
-      <span class="w-1.5 h-1.5 rounded-full shrink-0 bg-[var(--text-muted)]"></span> system
+      <span class="w-1.5 h-1.5 rounded-full shrink-0 bg-subtle"></span> system
     </span>
     """
   end
@@ -99,7 +99,7 @@ defmodule PortalWeb.Logs.Components do
     assigns = assign(assigns, :ip, format_ip(assigns.ip))
 
     ~H"""
-    <span class="block truncate font-mono text-xs text-[var(--text-secondary)]">
+    <span class="block truncate font-mono text-xs text-body">
       {@ip || "-"}
     </span>
     """
@@ -121,8 +121,8 @@ defmodule PortalWeb.Logs.Components do
   def flow_client_cell(assigns) do
     ~H"""
     <div class="min-w-0">
-      <div class="truncate text-xs text-[var(--text-primary)]">{@device_name}</div>
-      <div class="truncate font-mono text-xs text-[var(--text-tertiary)]">
+      <div class="truncate text-xs text-heading">{@device_name}</div>
+      <div class="truncate font-mono text-xs text-subtle">
         {format_ip(@ip) || "-"}
       </div>
     </div>
@@ -141,8 +141,8 @@ defmodule PortalWeb.Logs.Components do
 
     ~H"""
     <div class="min-w-0">
-      <div class="truncate text-xs text-[var(--text-primary)]">{@name}</div>
-      <div class="flex min-w-0 items-center gap-1.5 font-mono text-xs text-[var(--text-tertiary)]">
+      <div class="truncate text-xs text-heading">{@name}</div>
+      <div class="flex min-w-0 items-center gap-1.5 font-mono text-xs text-subtle">
         <span class="shrink-0 uppercase">{@protocol}</span>
         <span class="shrink-0">·</span>
         <span class="truncate">{@endpoint}</span>
@@ -195,7 +195,7 @@ defmodule PortalWeb.Logs.Components do
   def detail_row(assigns) do
     ~H"""
     <div>
-      <dt class="text-[10px] text-[var(--text-tertiary)] mb-0.5">{@label}</dt>
+      <dt class="text-[10px] text-subtle mb-0.5">{@label}</dt>
       <dd>{render_slot(@inner_block)}</dd>
     </div>
     """
@@ -210,10 +210,10 @@ defmodule PortalWeb.Logs.Components do
   def section_heading(assigns) do
     ~H"""
     <div class="mb-3 flex items-center justify-between gap-3">
-      <h3 class="text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)]">
+      <h3 class="text-[10px] font-semibold tracking-widest uppercase text-subtle">
         {@label}
       </h3>
-      <span :if={@hint} class="text-[10px] text-[var(--text-tertiary)]">{@hint}</span>
+      <span :if={@hint} class="text-[10px] text-subtle">{@hint}</span>
     </div>
     """
   end
@@ -235,7 +235,7 @@ defmodule PortalWeb.Logs.Components do
       id={@id}
       class={[
         "absolute inset-y-0 right-0 z-10 flex flex-col w-full lg:w-3/4 xl:w-2/3",
-        "bg-[var(--surface-overlay)] border-l border-[var(--border-strong)]",
+        "bg-elevated border-l border-border-strong",
         "shadow-[-4px_0px_20px_rgba(0,0,0,0.07)]",
         "transition-transform duration-200 ease-in-out",
         if(@open?, do: "translate-x-0", else: "translate-x-full")
@@ -244,19 +244,19 @@ defmodule PortalWeb.Logs.Components do
       phx-key="Escape"
     >
       <div :if={@open?} class="flex flex-col h-full overflow-hidden">
-        <div class="shrink-0 px-5 pt-4 pb-3 border-b border-[var(--border)] bg-[var(--surface-overlay)] flex items-center justify-between gap-3">
+        <div class="shrink-0 px-5 pt-4 pb-3 border-b border-border bg-elevated flex items-center justify-between gap-3">
           <div class="flex items-center gap-3 min-w-0">
             {render_slot(@title)}
           </div>
           <button
             phx-click="close_panel"
-            class="shrink-0 flex items-center justify-center w-7 h-7 rounded text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-raised)] transition-colors"
+            class="shrink-0 flex items-center justify-center w-7 h-7 rounded text-subtle hover:text-heading hover:bg-raised transition-colors"
             title="Close (Esc)"
           >
             <CoreComponents.icon name="ri-close-line" class="w-4 h-4" />
           </button>
         </div>
-        <div class="flex flex-1 min-h-0 divide-x divide-[var(--border)]">
+        <div class="flex flex-1 min-h-0 divide-x divide-border">
           {render_slot(@inner_block)}
         </div>
       </div>
@@ -272,7 +272,7 @@ defmodule PortalWeb.Logs.Components do
 
   def show_panel_sidebar(assigns) do
     ~H"""
-    <div class="w-80 shrink-0 overflow-y-auto p-5 space-y-5 bg-[var(--surface-overlay)]">
+    <div class="w-80 shrink-0 overflow-y-auto p-5 space-y-5 bg-elevated">
       {render_slot(@inner_block)}
     </div>
     """
@@ -301,10 +301,10 @@ defmodule PortalWeb.Logs.Components do
 
     ~H"""
     <section class="flex flex-col">
-      <div class="text-[10px] font-semibold tracking-widest uppercase text-[var(--text-tertiary)] mb-2">
+      <div class="text-[10px] font-semibold tracking-widest uppercase text-subtle mb-2">
         Actor
       </div>
-      <div class="rounded border border-[var(--border)] bg-[var(--surface)] p-4">
+      <div class="rounded border border-border bg-surface p-4">
         <div class="flex items-start gap-3">
           <div class={[
             "shrink-0 w-10 h-10 rounded-full flex items-center justify-center",
@@ -320,7 +320,7 @@ defmodule PortalWeb.Logs.Components do
               <div class="flex items-center gap-2 flex-wrap">
                 <span
                   :if={@name not in [nil, ""]}
-                  class="text-sm font-semibold text-[var(--text-primary)] truncate"
+                  class="text-sm font-semibold text-heading truncate"
                 >
                   {@name}
                 </span>
@@ -328,19 +328,19 @@ defmodule PortalWeb.Logs.Components do
               </div>
               <div
                 :if={@email not in [nil, ""]}
-                class="mt-1 flex items-center gap-1.5 text-xs text-[var(--text-secondary)] min-w-0"
+                class="mt-1 flex items-center gap-1.5 text-xs text-body min-w-0"
               >
                 <CoreComponents.icon
                   name="ri-mail-line"
-                  class="w-3.5 h-3.5 shrink-0 text-[var(--text-tertiary)]"
+                  class="w-3.5 h-3.5 shrink-0 text-subtle"
                 />
                 <span class="truncate">{@email}</span>
               </div>
             <% else %>
-              <div class="text-sm italic text-[var(--text-tertiary)]">Deleted actor</div>
+              <div class="text-sm italic text-subtle">Deleted actor</div>
               <div
                 :if={@fallback_id not in [nil, ""]}
-                class="mt-1 font-mono text-[10px] text-[var(--text-tertiary)] break-all"
+                class="mt-1 font-mono text-[10px] text-subtle break-all"
               >
                 {@fallback_id}
               </div>
@@ -476,7 +476,7 @@ defmodule PortalWeb.Logs.Components do
   Optional `caption` slot renders below the map (city, region, coordinates).
 
   The land paths are inlined at compile time and painted via `fill="currentColor"`
-  so the parent's `text-[var(--text-tertiary)]` class controls the color and
+  so the parent's `text-subtle` class controls the color and
   the map themes correctly in both light and dark mode.
   """
   attr :lat, :any, required: true
@@ -494,11 +494,11 @@ defmodule PortalWeb.Logs.Components do
       |> assign(:land_svg, @world_map_paths)
 
     ~H"""
-    <div class="rounded border border-[var(--border)] overflow-hidden bg-[var(--surface-raised)]">
+    <div class="rounded border border-border overflow-hidden bg-raised">
       <svg
         viewBox="0 0 1000 500"
         preserveAspectRatio="xMidYMid meet"
-        class="w-full block aspect-[2/1] text-[var(--text-tertiary)]"
+        class="w-full block aspect-[2/1] text-subtle"
         role="img"
         aria-label="Location map"
       >
@@ -515,14 +515,14 @@ defmodule PortalWeb.Logs.Components do
         <circle cx={@marker_x} cy={@marker_y} r="7" fill="var(--brand)" />
         <circle cx={@marker_x} cy={@marker_y} r="2.5" fill="white" />
       </svg>
-      <div :if={@caption != []} class="px-3 py-2 border-t border-[var(--border)] bg-[var(--surface)]">
+      <div :if={@caption != []} class="px-3 py-2 border-t border-border bg-surface">
         {render_slot(@caption)}
       </div>
       <a
         href={"https://www.google.com/maps/place/#{@lat},#{@lon}"}
         target="_blank"
         rel="noopener noreferrer"
-        class="flex items-center justify-center gap-1 px-3 py-2 border-t border-[var(--border)] text-[11px] text-[var(--text-secondary)] hover:text-[var(--brand)] hover:bg-[var(--surface)] transition-colors"
+        class="flex items-center justify-center gap-1 px-3 py-2 border-t border-border text-[11px] text-body hover:text-brand hover:bg-surface transition-colors"
       >
         <CoreComponents.icon name="ri-external-link-line" class="w-3 h-3" />
         View on Google Maps
@@ -533,12 +533,12 @@ defmodule PortalWeb.Logs.Components do
 
   def location_map(assigns) do
     ~H"""
-    <div class="rounded border border-dashed border-[var(--border)] bg-[var(--surface-raised)] overflow-hidden">
+    <div class="rounded border border-dashed border-border bg-raised overflow-hidden">
       <div class="aspect-[2/1] flex flex-col items-center justify-center gap-2 text-center">
-        <CoreComponents.icon name="ri-map-pin-line" class="w-6 h-6 text-[var(--text-tertiary)]" />
-        <p class="text-xs text-[var(--text-tertiary)]">Location unknown</p>
+        <CoreComponents.icon name="ri-map-pin-line" class="w-6 h-6 text-subtle" />
+        <p class="text-xs text-subtle">Location unknown</p>
       </div>
-      <div :if={@caption != []} class="px-3 py-2 border-t border-[var(--border)] bg-[var(--surface)]">
+      <div :if={@caption != []} class="px-3 py-2 border-t border-border bg-surface">
         {render_slot(@caption)}
       </div>
     </div>

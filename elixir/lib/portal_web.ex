@@ -154,6 +154,7 @@ defmodule PortalWeb do
       import PortalWeb.TableComponents
       import PortalWeb.PageComponents
       import PortalWeb.JSONComponents
+      import PortalWeb.ResourceTypeComponents
     end
   end
 

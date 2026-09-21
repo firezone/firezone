@@ -180,7 +180,7 @@ defmodule PortalWeb.Components.FormComponents.SelectWithGroups do
           "bg-raised hover:bg-surface",
           "border-border hover:border-border-emphasis",
           (@disabled && "cursor-not-allowed opacity-60") || "cursor-pointer",
-          @errors != [] && "border-rose-400"
+          @errors != [] && "border-danger"
         ]}
         phx-click={
           JS.toggle_class("hidden", to: "#select-#{@id}-backdrop")
@@ -517,7 +517,7 @@ defmodule PortalWeb.Components.FormComponents.SelectWithGroups do
     do: [
       "block p-2 w-full",
       "text-sm bg-input",
-      "text-heading disabled:text-muted",
+      "text-heading disabled:text-disabled",
       input_border_class()
     ]
 
@@ -528,7 +528,7 @@ defmodule PortalWeb.Components.FormComponents.SelectWithGroups do
 
   def input_has_errors_class,
     do: [
-      "border border-rose-400 focus:border-rose-400"
+      "border border-danger focus:border-danger"
     ]
 
   @impl true

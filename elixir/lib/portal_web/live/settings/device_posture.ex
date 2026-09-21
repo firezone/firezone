@@ -666,14 +666,24 @@ defmodule PortalWeb.Settings.DevicePosture do
 
           <div class="flex-1 overflow-auto">
             <%= if Enum.empty?(@providers) do %>
-              <div class="flex flex-col items-center justify-center h-full gap-3 text-subtle">
-                <p class="text-sm">No posture provider configured.</p>
-                <.link
-                  patch={~p"/#{@account}/settings/device_posture/new"}
-                  class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
-                >
-                  <.icon name="ri-add-line" class="w-3 h-3" /> Add posture provider
-                </.link>
+              <div class="flex items-center justify-center h-full">
+                <div class="flex flex-col items-center gap-3 py-16">
+                  <div class="w-9 h-9 rounded-lg border border-border bg-raised flex items-center justify-center">
+                    <.icon name="ri-shield-star-line" class="w-5 h-5 text-subtle" />
+                  </div>
+                  <div class="text-center">
+                    <p class="text-sm font-medium text-heading">No posture providers yet</p>
+                    <p class="text-xs text-subtle mt-0.5">
+                      Add a posture provider to allow device health checks before granting access.
+                    </p>
+                  </div>
+                  <.link
+                    patch={~p"/#{@account}/settings/device_posture/new"}
+                    class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
+                  >
+                    <.icon name="ri-add-line" class="w-3 h-3" /> Add posture provider
+                  </.link>
+                </div>
               </div>
             <% else %>
               <table class="w-full text-sm border-collapse">
@@ -1396,7 +1406,7 @@ defmodule PortalWeb.Settings.DevicePosture do
       <div
         :if={@verified?}
         id="provider-verification-status"
-        class="flex items-center text-green-700 bg-green-100 px-4 py-2 rounded-sm"
+        class="flex items-center text-success bg-success-light px-4 py-2 rounded-sm"
       >
         <.icon name="ri-checkbox-circle-line" class="h-5 w-5 mr-2" />
         <span class="font-medium">Verified</span>
