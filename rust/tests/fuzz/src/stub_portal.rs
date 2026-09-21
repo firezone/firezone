@@ -32,10 +32,10 @@ pub struct StubPortal {
     /// The peer subset of the portal's persisted policy authorizations.
     peer_policy_authorizations: BTreeSet<PeerAuthorization>,
     /// The Gateway subset of the portal's persisted policy authorizations.
-    gateway_policy_authorizations: BTreeSet<GatewayAuthorization>,
-    /// The Gateways left without a single authorization for a Client by the transition
-    /// just applied. Such a Gateway closes the connection with a `goodbye`.
-    closed_gateway_connections: BTreeSet<(ClientId, GatewayId)>,
+    ///
+    /// A revoked one is kept, because the Gateway that held it is what decides whether
+    /// it has anything left for the Client.
+    gateway_policy_authorizations: BTreeMap<(ClientId, ResourceId), GatewayAuthorization>,
     internet_resource: client::InternetResource,
 
     search_domain: Option<DomainName>,
@@ -71,9 +71,8 @@ pub struct PeerAuthorization {
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 struct GatewayAuthorization {
-    client: ClientId,
     gateway: GatewayId,
-    resource: ResourceId,
+    revoked: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -174,18 +173,12 @@ impl StubPortal {
             pool_members,
             peer_policy_authorizations: Default::default(),
             gateway_policy_authorizations: Default::default(),
-            closed_gateway_connections: Default::default(),
             internet_resource,
             search_domain,
             upstream_do53,
             upstream_doh,
             iceless: false,
         }
-    }
-
-    /// Drops the bookkeeping that `transition` makes stale before it is applied.
-    pub fn invalidate(portal: &mut StubPortal, _transition: &Transition) {
-        portal.closed_gateway_connections.clear();
     }
 
     /// Applies the portal-side effect of `transition`.
@@ -356,45 +349,44 @@ impl StubPortal {
         resource: ResourceId,
     ) -> bool {
         self.gateway_policy_authorizations
-            .iter()
-            .any(|authorization| {
-                authorization.client == client && authorization.resource == resource
-            })
+            .get(&(client, resource))
+            .is_some_and(|authorization| !authorization.revoked)
     }
 
     /// Resources some Gateway currently holds an authorization for.
     pub(crate) fn authorized_resources(&self) -> BTreeSet<ResourceId> {
         self.gateway_policy_authorizations
             .iter()
-            .map(|authorization| authorization.resource)
+            .filter(|(_, authorization)| !authorization.revoked)
+            .map(|((_, resource), _)| *resource)
             .collect()
     }
 
-    /// The Gateways that closed their connection in the transition just applied.
-    pub(crate) fn closed_gateway_connections(
-        &self,
-    ) -> impl Iterator<Item = (ClientId, GatewayId)> + '_ {
-        self.closed_gateway_connections.iter().copied()
+    /// The Gateways with nothing left for a Client. They close the connection with a
+    /// `goodbye`.
+    pub(crate) fn closed_gateway_connections(&self) -> BTreeSet<(ClientId, GatewayId)> {
+        let mut held = BTreeSet::new();
+        let mut lost = BTreeSet::new();
+
+        for ((client, _), authorization) in &self.gateway_policy_authorizations {
+            let connection = (*client, authorization.gateway);
+
+            match authorization.revoked {
+                true => lost.insert(connection),
+                false => held.insert(connection),
+            };
+        }
+
+        &lost - &held
     }
 
     fn revoke_gateway_policy_authorizations_for_resource(&mut self, resource: ResourceId) {
-        let revoked = self
+        for (_, authorization) in self
             .gateway_policy_authorizations
-            .extract_if(.., |authorization| authorization.resource == resource)
-            .collect::<Vec<_>>();
-
-        for GatewayAuthorization {
-            client, gateway, ..
-        } in revoked
+            .iter_mut()
+            .filter(|((_, candidate), _)| *candidate == resource)
         {
-            let holds_another = self
-                .gateway_policy_authorizations
-                .iter()
-                .any(|a| a.client == client && a.gateway == gateway);
-
-            if !holds_another {
-                self.closed_gateway_connections.insert((client, gateway));
-            }
+            authorization.revoked = true;
         }
     }
 
@@ -528,12 +520,13 @@ impl StubPortal {
             select_by_index(gateways, self.gateway_selector).expect("site to have a gateway");
         let gateway = *gateway;
 
-        self.gateway_policy_authorizations
-            .insert(GatewayAuthorization {
-                client,
+        self.gateway_policy_authorizations.insert(
+            (client, resource),
+            GatewayAuthorization {
                 gateway,
-                resource,
-            });
+                revoked: false,
+            },
+        );
 
         (gateway, site_id)
     }
