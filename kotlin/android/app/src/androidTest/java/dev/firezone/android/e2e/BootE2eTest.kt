@@ -4,10 +4,12 @@ package dev.firezone.android.e2e
 import android.app.Notification
 import android.app.NotificationManager
 import android.content.Context
+import android.content.Intent
 import android.content.SharedPreferences
 import androidx.test.platform.app.InstrumentationRegistry
 import dagger.hilt.android.testing.HiltAndroidRule
 import dagger.hilt.android.testing.HiltAndroidTest
+import dev.firezone.android.core.BootReceiver
 import dev.firezone.android.core.data.Repository
 import dev.firezone.android.core.data.TokenStore
 import dev.firezone.android.tunnel.FakeDisconnectError
@@ -16,7 +18,6 @@ import dev.firezone.android.tunnel.FakeSessionFactory
 import dev.firezone.android.tunnel.TestRestrictions
 import dev.firezone.android.tunnel.TunnelNotification
 import dev.firezone.android.tunnel.TunnelService
-import dev.firezone.android.tunnel.broadcastBootCompleted
 import dev.firezone.android.tunnel.finishAllActivities
 import dev.firezone.android.tunnel.grantNotificationPermission
 import dev.firezone.android.tunnel.grantVpnConsent
@@ -70,7 +71,7 @@ class BootE2eTest {
         tokenStore.save(TOKEN)
         configureStartOnLogin(true)
 
-        broadcastBootCompleted()
+        boot()
 
         val session = awaitSession()
         assertEquals(TOKEN, session.config.token)
@@ -82,7 +83,7 @@ class BootE2eTest {
         tokenStore.save(TOKEN)
         configureStartOnLogin(false)
 
-        broadcastBootCompleted()
+        boot()
 
         assertNeverWithin("a session was opened") { FakeSessionFactory.opened > 0 }
         assertFalse(TunnelService.isRunning(context))
@@ -94,7 +95,7 @@ class BootE2eTest {
         configureStartOnLogin(true)
         revokeVpnConsent()
 
-        broadcastBootCompleted()
+        boot()
 
         assertEquals(
             "Firezone is no longer allowed to set up a VPN on this device. Open Firezone to grant the permission again.",
@@ -109,7 +110,7 @@ class BootE2eTest {
         tokenStore.save(TOKEN)
         configureStartOnLogin(true)
 
-        broadcastBootCompleted()
+        boot()
         val session = awaitSession()
 
         session.emit(Event.Disconnected(FakeDisconnectError(signInRequired = false, text = "the portal hung up")))
@@ -117,6 +118,12 @@ class BootE2eTest {
         // The notification, if any, is posted before the service stops itself.
         await("the tunnel service to stop") { !TunnelService.isRunning(context) }
         assertNull(notificationText(TunnelNotification.DISCONNECTED_NOTIFICATION_ID))
+    }
+
+    // The boot broadcast is protected, and the shell is not allowed to send it either, so the
+    // intent goes to the receiver the manifest names by hand.
+    private fun boot() {
+        BootReceiver().onReceive(context, Intent(Intent.ACTION_BOOT_COMPLETED))
     }
 
     private fun configureStartOnLogin(startOnLogin: Boolean) {
