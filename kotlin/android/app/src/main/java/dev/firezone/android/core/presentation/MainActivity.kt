@@ -8,6 +8,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope // For launching coroutines
 import dagger.hilt.android.AndroidEntryPoint
 import dev.firezone.android.R
+import dev.firezone.android.core.DebugOverrides
 import dev.firezone.android.core.data.Repository
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -16,6 +17,13 @@ import javax.inject.Inject
 internal class MainActivity : AppCompatActivity(R.layout.activity_main) {
     @Inject
     lateinit var repository: Repository
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        // Before the screens that read them exist.
+        DebugOverrides.configure(this)
+
+        super.onCreate(savedInstanceState)
+    }
 
     override fun onResume() {
         super.onResume()

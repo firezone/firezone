@@ -10,11 +10,11 @@ import dagger.hilt.android.testing.HiltAndroidRule
 import dagger.hilt.android.testing.HiltAndroidTest
 import dev.firezone.android.core.data.Repository
 import dev.firezone.android.core.data.TokenStore
-import dev.firezone.android.tunnel.ACCOUNT_SLUG
-import dev.firezone.android.tunnel.ACTOR_NAME
 import dev.firezone.android.tunnel.FakeDisconnectError
 import dev.firezone.android.tunnel.FakeSession
 import dev.firezone.android.tunnel.FakeSessionFactory
+import dev.firezone.android.tunnel.MOCK_ACCOUNT_SLUG
+import dev.firezone.android.tunnel.MOCK_ACTOR_NAME
 import dev.firezone.android.tunnel.TestRestrictions
 import dev.firezone.android.tunnel.TunnelNotification
 import dev.firezone.android.tunnel.UNASSIGNABLE_IPV6
@@ -115,13 +115,13 @@ class TunnelE2eTest {
         runBlocking { repo.saveSettings(repo.getConfigSync().copy(accountSlug = CONFIGURED_SLUG)).first() }
         val session = signInAndConnect()
 
-        session.emit(Event.ConnectedToPortal(accountSlug = ACCOUNT_SLUG, actorName = ACTOR_NAME))
+        session.emit(Event.ConnectedToPortal(accountSlug = MOCK_ACCOUNT_SLUG, actorName = MOCK_ACTOR_NAME))
         launchApp()
 
         // The top bar shows the initial; the name itself is behind the menu.
         awaitText("J")
         clickTextOnScreen("J")
-        awaitText(ACTOR_NAME)
+        awaitText(MOCK_ACTOR_NAME)
 
         // The name on screen comes from the same event, so a slug it saved would be here too.
         assertEquals(CONFIGURED_SLUG, repo.getConfigSync().accountSlug)
@@ -193,7 +193,7 @@ class TunnelE2eTest {
     @Test
     fun signingOutDiscardsToken() {
         val session = signInAndConnect()
-        session.emit(Event.ConnectedToPortal(accountSlug = ACCOUNT_SLUG, actorName = ACTOR_NAME))
+        session.emit(Event.ConnectedToPortal(accountSlug = MOCK_ACCOUNT_SLUG, actorName = MOCK_ACTOR_NAME))
         launchApp()
 
         awaitText("J")
