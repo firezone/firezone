@@ -51,26 +51,16 @@ jobs:
         with:
           sccache-azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
       # AGP 9 only creates unit test components for the tested build type (debug).
-      # The report task runs the tests, so it stands in for them rather than following them.
-      - name: Run unit tests and report coverage
-        run: ./gradlew createDebugUnitTestCoverageReport -Pandroid.injected.build.abi=x86_64
-      # AGP writes the report under a variant path this pins nothing to, so failing here names
-      # what it did write instead of leaving Coveralls to upload nothing.
-      - name: Find the coverage report
-        run: |
-          report=$(find app/build/reports/coverage -name '*.xml' | head -1)
-
-          if [ -z "$report" ]; then
-            echo "No coverage report was written. What is under app/build/reports:"
-            find app/build/reports -name '*.xml'
-            exit 1
-          fi
-
-          echo "COVERAGE_REPORT=kotlin/android/${report}" >> "$GITHUB_ENV"
+      - name: Run unit tests
+        run: ./gradlew testDebugUnitTest copyJacocoCli collectDebugClasses -Pandroid.injected.build.abi=x86_64
+      # AGP's own report task counts every class the compiler emitted, generated code included, so
+      # the execution data is reported the same way as the emulator suites' instead.
+      - name: Report coverage
+        run: ./mise-tasks/coverage-report.sh app/build/jacoco-cli app/build/debug-classes app/build/outputs/unit_test_code_coverage
       - uses: coverallsapp/github-action@8d6379e14d29928660c4ba802d8e85393440b329 # v2.3.8
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          file: ${{ env.COVERAGE_REPORT }}
+          file: kotlin/android/coverage.xml
           format: jacoco
           # A JaCoCo report locates a file by its package, so without the source root in
           # front of it nothing Coveralls is given resolves to a file in the repository.
@@ -189,37 +179,7 @@ jobs:
       # The build hands over the JaCoCo that wrote the execution data, which is the only one that
       # can read it, so no version is named here.
       - name: Report on the execution data
-        run: |
-          jacoco_cli=$(find jacoco-cli -name '*.jar' | head -1)
-
-          mapfile -t execution_data < <(find execution-data -name '*.ec')
-
-          if [ ${#execution_data[@]} -eq 0 ]; then
-            echo "No suite recorded any execution data. What was downloaded:"
-            find execution-data
-            exit 1
-          fi
-
-          set -o pipefail
-          java -jar "$jacoco_cli" report "${execution_data[@]}" \
-            --classfiles classes \
-            --sourcefiles app/src/main/java \
-            --xml coverage.xml 2>&1 | tee report.log
-
-          # A class whose bytecode JaCoCo cannot match has its execution data dropped and is
-          # reported as uncovered, so a mismatch understates the result instead of failing.
-          if grep -q 'does not match' report.log; then
-            echo "The classes above were not the ones the tests ran against, so their coverage was dropped."
-            exit 1
-          fi
-
-          # A report that resolved no classes still writes valid XML, so it is worth saying so
-          # here rather than uploading an empty one.
-          if ! grep -q '<counter' coverage.xml; then
-            echo "The report counted nothing. The classes it was given:"
-            find classes -name '*.class' | head
-            exit 1
-          fi
+        run: ./mise-tasks/coverage-report.sh jacoco-cli classes execution-data
       - uses: coverallsapp/github-action@8d6379e14d29928660c4ba802d8e85393440b329 # v2.3.8
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
