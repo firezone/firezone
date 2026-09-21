@@ -90,12 +90,12 @@ internal class SettingsActivity : AppCompatActivity() {
             }
         }
 
+        viewModel.populateFieldsFromConfig()
         viewModel.deleteLogZip(this@SettingsActivity)
     }
 
     override fun onResume() {
         super.onResume()
-        viewModel.populateFieldsFromConfig()
         viewModel.onViewResume(applicationContext)
         // The administrator can install or revoke the certificate while this screen is open.
         deviceTrustViewModel.loadDetails()
