@@ -51,8 +51,15 @@ class FakeSession(
     }
 
     suspend fun awaitCommand(command: String) {
-        while (commands.receive() != command) {
+        while (true) {
             // Skip the commands the service sends on its own, such as the initial resource state.
+            val next =
+                commands.receiveCatching().getOrNull()
+                    ?: throw AssertionError("The session was closed while waiting for '$command'")
+
+            if (next == command) {
+                return
+            }
         }
     }
 
