@@ -2776,6 +2776,8 @@ dependencies = [
  "flow-log-spool",
  "http",
  "http-client",
+ "opentelemetry",
+ "otel-instruments",
  "serde",
  "serde_json",
  "serde_with",
@@ -2798,6 +2800,8 @@ dependencies = [
  "chrono",
  "flow-log-spool",
  "nix 0.31.3",
+ "opentelemetry",
+ "otel-instruments",
  "serde",
  "serde_json",
  "tempfile",
@@ -5920,6 +5924,27 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a106d1259c23fac8e543272398ae0e3c0b8d33c88ed73d0cc71b0f1d902618"
 dependencies = [
  "portable-atomic",
+]
+
+[[package]]
+name = "portal-metrics"
+version = "0.1.0"
+dependencies = [
+ "anyhow-ext",
+ "bytes",
+ "http",
+ "http-client",
+ "opentelemetry",
+ "otel-instruments",
+ "parking_lot",
+ "secrecy",
+ "serde",
+ "serde_json",
+ "socket-factory",
+ "tokio",
+ "tracing",
+ "tunnel-bypass-resolver",
+ "url",
 ]
 
 [[package]]

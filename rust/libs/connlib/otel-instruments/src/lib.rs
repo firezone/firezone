@@ -120,7 +120,7 @@ pub fn flow_log_errors() -> Counter<u64> {
 pub enum FlowLogError {
     /// The spool cannot be written because of a permission error.
     SpoolNotWritable,
-    /// The volume holding the spool is full.
+    /// The spool is full, either the volume or the budget the writer keeps to.
     SpoolFull,
     /// Writing to the spool failed for any other reason.
     SpoolWriteFailed,
@@ -128,9 +128,9 @@ pub enum FlowLogError {
     ReportDropped,
     /// A spooled report could not be read back and was discarded.
     ReportCorrupt,
-    /// An upload did not reach the portal.
+    /// An upload did not get through to the portal, or the portal failed to take it.
     UploadFailed,
-    /// The portal rejected an upload.
+    /// The portal refused an upload.
     UploadRejected,
 }
 

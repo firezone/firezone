@@ -63,6 +63,7 @@ use std::{
     hash::{Hash as _, Hasher as _},
     path::{Path, PathBuf},
     sync::{
+        LazyLock,
         atomic::{AtomicU64, Ordering},
         mpsc,
     },
@@ -74,6 +75,8 @@ use anyhow::{Context as _, ErrorExt as _};
 use base64::Engine as _;
 use chrono::DateTime;
 use flow_log_spool::serialize;
+use opentelemetry::metrics::Counter;
+use otel_instruments::FlowLogError;
 use tracing::field::{Field, Visit};
 use tracing_subscriber::registry::LookupSpan;
 
@@ -131,6 +134,7 @@ where
     let layer = FlowLogLayer {
         tx: tx.clone(),
         dropped: AtomicU64::new(0),
+        errors: otel_instruments::flow_log_errors(),
     }
     .with_filter(
         tracing_subscriber::filter::Targets::new().with_target("flow_logs", tracing::Level::TRACE),
@@ -145,6 +149,9 @@ where
         },
     )
 }
+
+/// Recorded by [`write_token`], which no long-lived component owns.
+static SPOOL_ERRORS: LazyLock<Counter<u64>> = LazyLock::new(otel_instruments::flow_log_errors);
 
 /// Persists an authorization's ingest token where the uploader expects it.
 ///
@@ -179,8 +186,12 @@ pub fn write_token(spool_root: &Path, token: &str) -> anyhow::Result<()> {
         .context("Token has a missing or invalid policy_authorization_id")?;
 
     let dir = spool_root.join(&role).join(&authz_id);
-    create_dir_secure(&dir).context("Failed to create authorization directory")?;
-    atomicfs::write(dir.join("token"), token).context("Failed to write token file")?;
+    create_dir_secure(&dir)
+        .inspect_err(|e| record_spool_error(&SPOOL_ERRORS, e.kind()))
+        .context("Failed to create authorization directory")?;
+    atomicfs::write(dir.join("token"), token)
+        .inspect_err(|e| record_spool_error(&SPOOL_ERRORS, e.kind()))
+        .context("Failed to write token file")?;
 
     Ok(())
 }
@@ -275,6 +286,7 @@ struct FlowLogLayer {
     tx: mpsc::SyncSender<Command>,
     /// How many reports were dropped because the writer thread's queue was full.
     dropped: AtomicU64,
+    errors: Counter<u64>,
 }
 
 impl<S> tracing_subscriber::Layer<S> for FlowLogLayer
@@ -298,6 +310,9 @@ where
         match self.tx.try_send(Command::Write(report)) {
             Ok(()) => {}
             Err(mpsc::TrySendError::Full(_)) => {
+                self.errors
+                    .add(1, &FlowLogError::ReportDropped.attributes());
+
                 let dropped = self.dropped.fetch_add(1, Ordering::Relaxed) + 1;
 
                 if dropped == 1 || dropped.is_multiple_of(1_000) {
@@ -305,6 +320,9 @@ where
                 }
             }
             Err(mpsc::TrySendError::Disconnected(_)) => {
+                self.errors
+                    .add(1, &FlowLogError::ReportDropped.attributes());
+
                 tracing::debug!("Flow-log writer thread is gone; dropping report");
             }
         }
@@ -451,13 +469,18 @@ struct Spool {
     /// When the disk-full circuit breaker re-arms, if it is tripped.
     disk_full_until: Option<Instant>,
     dropped: u64,
+    errors: Counter<u64>,
 }
 
 impl Spool {
     fn new(root: &Path) -> Self {
+        let errors = otel_instruments::flow_log_errors();
+
         // The volume can only be queried through a path that exists, and the
         // spool root is the writer's to create either way.
         if let Err(e) = create_dir_secure(root) {
+            record_spool_error(&errors, e.kind());
+
             tracing::warn!(root = %root.display(), "Failed to create flow-log spool root: {e}");
         }
 
@@ -472,6 +495,7 @@ impl Spool {
             counted_at: Instant::now(),
             disk_full_until: None,
             dropped: 0,
+            errors,
         }
     }
 
@@ -490,7 +514,7 @@ impl Spool {
             return;
         }
 
-        match write_report(&self.root, report) {
+        match write_report(&self.root, report, &self.errors) {
             Outcome::Written { bytes } => self.spooled += clusters_for(bytes, self.cluster),
             Outcome::DiskFull => self.disk_full_until = Some(now + DISK_FULL_COOLDOWN),
             Outcome::Skipped => {}
@@ -511,6 +535,8 @@ impl Spool {
     }
 
     fn drop_report(&mut self, reason: &'static str) {
+        self.errors.add(1, &FlowLogError::SpoolFull.attributes());
+
         self.dropped += 1;
 
         if self.dropped == 1 || self.dropped.is_multiple_of(1_000) {
@@ -535,7 +561,7 @@ enum Outcome {
     Skipped,
 }
 
-fn write_report(root: &Path, report: &Report) -> Outcome {
+fn write_report(root: &Path, report: &Report, errors: &Counter<u64>) -> Outcome {
     let dir = root.join(&report.role).join(&report.authz_id);
 
     if !dir.join("token").exists() {
@@ -547,6 +573,8 @@ fn write_report(root: &Path, report: &Report) -> Outcome {
     let contents = match serialize(&serde_json::Value::Object(report.payload.clone())) {
         Ok(contents) => contents,
         Err(e) => {
+            errors.add(1, &FlowLogError::SpoolWriteFailed.attributes());
+
             tracing::warn!("Failed to serialize flow-log report: {e:#}");
 
             return Outcome::Skipped;
@@ -558,7 +586,10 @@ fn write_report(root: &Path, report: &Report) -> Outcome {
         "{:010}-{}.{suffix}.json",
         report.flow_start, report.identity
     ));
-    match atomicfs::write(&path, &contents).context("Failed to write flow-log report") {
+    match atomicfs::write(&path, &contents)
+        .inspect_err(|e| record_spool_error(errors, e.kind()))
+        .context("Failed to write flow-log report")
+    {
         Ok(()) => Outcome::Written {
             bytes: contents.len() as u64,
         },
@@ -576,6 +607,17 @@ fn write_report(root: &Path, report: &Report) -> Outcome {
             Outcome::Skipped
         }
     }
+}
+
+#[allow(clippy::wildcard_enum_match_arm)] // Intentional catch-all for other IO errors
+fn record_spool_error(errors: &Counter<u64>, kind: std::io::ErrorKind) {
+    let error = match kind {
+        std::io::ErrorKind::PermissionDenied => FlowLogError::SpoolNotWritable,
+        std::io::ErrorKind::StorageFull => FlowLogError::SpoolFull,
+        _ => FlowLogError::SpoolWriteFailed,
+    };
+
+    errors.add(1, &error.attributes());
 }
 
 /// What a report of `bytes` costs the spool.
