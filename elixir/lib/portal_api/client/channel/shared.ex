@@ -2795,7 +2795,7 @@ defmodule PortalAPI.Client.Channel.Shared do
       "initiator_device_id" => initiator_client.id,
       "responder_device_id" => responder_device_id,
       # Whether the authorizing policy allows this flow's logs to be uploaded
-      # (policies.flow_log_uploads_enabled AND the global flow_logs feature).
+      # (policies.flow_log_uploads_enabled).
       # Devices honor it and the ingest endpoint enforces it, so the token can
       # always be minted while uploads stay policy-gated. The claim name is the
       # data-plane contract: connlib parses it as a required field.
