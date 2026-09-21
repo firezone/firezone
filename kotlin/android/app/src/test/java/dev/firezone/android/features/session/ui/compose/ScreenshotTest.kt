@@ -18,10 +18,15 @@ import com.github.takahirom.roborazzi.roborazziSystemPropertyOutputDirectory
 import dev.firezone.android.R
 import dev.firezone.android.STORE_SCREENSHOT_QUALIFIERS
 import dev.firezone.android.core.data.Favorites
+import dev.firezone.android.core.data.ResourceState
 import dev.firezone.android.features.session.ui.ResourceUiModel
+import dev.firezone.android.tunnel.mockConnectedDevices
+import dev.firezone.android.tunnel.mockResources
 import dev.firezone.android.tunnel.model.ConnectedDevice
+import dev.firezone.android.tunnel.model.toModel
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.persistentListOf
+import kotlinx.collections.immutable.toImmutableList
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -143,3 +148,11 @@ private fun SessionScreenSample(
         onEndSession = {},
     )
 }
+
+// The deployment `MockFixtures` describes, converted the way the service converts a real one, so
+// the galleries and the mock launch cannot drift apart.
+private val sampleResources: ImmutableList<ResourceUiModel> =
+    mockResources.map { ResourceUiModel(it.toModel(), ResourceState.ENABLED) }.toImmutableList()
+
+private val sampleConnectedDevices: ImmutableList<ConnectedDevice> =
+    mockConnectedDevices.map { it.toModel() }.toImmutableList()

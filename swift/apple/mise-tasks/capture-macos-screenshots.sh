@@ -22,10 +22,14 @@ cd "${APPLE_DIR}"
 rm -rf "${RESULT_BUNDLE}"
 
 echo "Photographing the macOS screens..."
+# Only what failed is repeated: a press the app dropped lands the second time,
+# and a screen that is broken fails twice.
 xcodebuild test-without-building \
     -xctestrun "${XCTESTRUN}" \
     -destination "platform=macOS,arch=$(uname -m)" \
-    -resultBundlePath "${RESULT_BUNDLE}"
+    -resultBundlePath "${RESULT_BUNDLE}" \
+    -retry-tests-on-failure \
+    -test-iterations 2
 
 # SwiftUI lays a window out with the release it runs on, so the gallery keeps a
 # directory per release.

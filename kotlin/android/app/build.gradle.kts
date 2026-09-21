@@ -2,6 +2,7 @@ import com.android.build.api.artifact.ScopedArtifact
 import com.android.build.api.variant.ScopedArtifacts
 import com.google.firebase.crashlytics.buildtools.gradle.CrashlyticsExtension
 import org.gradle.process.ExecOperations
+import org.gradle.testing.jacoco.plugins.JacocoTaskExtension
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import java.io.File
 import java.util.Properties
@@ -158,6 +159,15 @@ android {
     testOptions {
         unitTests {
             isIncludeAndroidResources = true
+            // Robolectric loads the app's classes through a sandbox loader that gives them no code
+            // location, and the JaCoCo agent skips those by default, so nothing a Robolectric test
+            // executes was counted. The JDK's own location-less classes cannot be instrumented.
+            all { test ->
+                test.extensions.configure<JacocoTaskExtension> {
+                    isIncludeNoLocationClasses = true
+                    excludes = listOf("jdk.internal.*")
+                }
+            }
         }
     }
 
@@ -251,6 +261,8 @@ abstract class CollectClasses
                     "**/*Args\$*.class",
                     "**/*Directions*.class",
                     "**/BuildConfig.class",
+                    // Preview scaffolding from the debug source set, which no build ships.
+                    "**/*Sample*.class",
                 )
             }
         }

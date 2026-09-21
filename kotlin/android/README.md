@@ -85,6 +85,35 @@ directly. For example:
 export PATH="$HOME/.cargo/bin:$PATH"
 ```
 
+## Running against a mock
+
+Debug builds can stand in for connlib, the portal, or both, so the UI can be
+driven without a gateway, a portal or a granted VPN permission. They are two
+boolean extras on the normal launch, read by `MainActivity` before anything
+that depends on them:
+
+| Extra            | What it stands in for                                                         |
+| ---------------- | ----------------------------------------------------------------------------- |
+| `mockTunnel`     | connlib: the session reports the fixtures the end-to-end tests assert against |
+| `skipPortalAuth` | the portal: signing in answers its own request instead of opening a browser   |
+
+In Android Studio, put them in **Run → Edit Configurations → Launch Flags** on
+the app configuration:
+
+```
+--ez mockTunnel true --ez skipPortalAuth true
+```
+
+Or by hand:
+
+```bash
+adb shell am start -n dev.firezone.android/.core.presentation.MainActivity \
+  --ez mockTunnel true --ez skipPortalAuth true
+```
+
+Either extra can be set to `false` to exercise the real half: `mockTunnel true
+skipPortalAuth false` runs the mocked tunnel against a real sign-in.
+
 ## Managed test device
 
 The `managed-device:*` tasks drive the test Device Policy Controller in `dpc/`
