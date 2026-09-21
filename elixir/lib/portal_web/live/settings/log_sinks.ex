@@ -341,7 +341,7 @@ defmodule PortalWeb.Settings.LogSinks do
                   <div class="text-center">
                     <p class="text-sm font-medium text-heading">No log sinks yet</p>
                     <p class="text-xs text-subtle mt-0.5">
-                      Forward flow and audit logs to an external destination.
+                      Forward audit logs to an external destination.
                     </p>
                   </div>
                   <.link
