@@ -1,4 +1,6 @@
 // Licensed under Apache 2.0 (C) 2024 Firezone, Inc.
+package dev.firezone.android.tunnel
+
 import android.net.ConnectivityManager
 import android.net.LinkProperties
 import android.net.Network
