@@ -45,20 +45,21 @@ defmodule PortalAPI.MetricsController do
   # is a successful (empty) export.
   defp flat_map_field(container, key, fun) when is_map(container) do
     case Map.get(container, key, []) do
-      elements when is_list(elements) ->
-        Enum.reduce_while(elements, {:ok, []}, fn element, {:ok, acc} ->
-          case fun.(element) do
-            {:ok, data_points} -> {:cont, {:ok, acc ++ data_points}}
-            :error -> {:halt, :error}
-          end
-        end)
-
-      _other ->
-        :error
+      elements when is_list(elements) -> flat_map(elements, fun)
+      _other -> :error
     end
   end
 
   defp flat_map_field(_container, _key, _fun), do: :error
+
+  defp flat_map(elements, fun) do
+    Enum.reduce_while(elements, {:ok, []}, fn element, {:ok, acc} ->
+      case fun.(element) do
+        {:ok, data_points} -> {:cont, {:ok, acc ++ data_points}}
+        :error -> {:halt, :error}
+      end
+    end)
+  end
 
   # Histograms and summaries are exported by nobody here, so they are skipped
   # rather than failing the request they arrive in.
