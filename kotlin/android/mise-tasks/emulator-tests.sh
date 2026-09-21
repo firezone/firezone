@@ -11,8 +11,6 @@ APP_PACKAGE="dev.firezone.android"
 RUNNER="${APP_PACKAGE}.test/dev.firezone.android.core.HiltTestRunner"
 # The app's own directory is the one place the runner can write and `run-as` can read.
 COVERAGE_ON_DEVICE="/data/data/${APP_PACKAGE}/coverage.ec"
-# Comfortably longer than the suite takes, and short enough to leave the job time to report.
-SUITE_TIMEOUT="15m"
 
 find_apk() {
     find "$APK_DIR" -type f -name "$1" -exec ls -t {} + 2>/dev/null | head -1
@@ -53,52 +51,13 @@ while [ $# -gt 0 ]; do
     esac
 done
 
-# What the device was doing when a run stopped, which is the one thing the run cannot report about
-# itself. Unfiltered `logcat` is mostly SystemUI and wifi chatter, so ask for the parts that answer
-# whether the app is gone, wedged or merely waiting.
-report_device_state() {
-    echo "==> What is running:" >&2
-    adb shell ps -A 2>/dev/null | grep -E "PID|firezone" >&2 || true
-
-    echo "==> What is on screen:" >&2
-    adb shell dumpsys activity activities 2>/dev/null | grep -E "mResumedActivity|mFocusedApp|ResumedActivity" >&2 || true
-
-    # SIGQUIT makes the runtime write every thread's stack to the log, which says whether the main
-    # thread is blocked and on what.
-    local pid
-    pid="$(adb shell pidof "$APP_PACKAGE" 2>/dev/null | tr -d '\r')"
-    if [ -n "$pid" ]; then
-        echo "==> Thread stacks of ${APP_PACKAGE} (pid ${pid}):" >&2
-        adb shell kill -3 "$pid" >/dev/null 2>&1 || true
-        sleep 5
-        adb logcat -d -b main -s art:* -t 600 >&2 || true
-    else
-        echo "    ${APP_PACKAGE} is not running" >&2
-    fi
-
-    echo "==> What the app and the runner logged:" >&2
-    adb logcat -d -t 2000 2>/dev/null \
-        | grep -Ei "firezone|TestRunner|AndroidRuntime|ANR |am_anr|Instrumentation" >&2 || true
-}
-
 echo "==> Running the tests..."
-log="$(mktemp)"
-trap 'rm -f "$log"' EXIT
-
-# Streamed rather than captured, so that a run which stops making progress still says how far it
-# got, and given a deadline of its own so that it says so rather than sitting until the job's
-# timeout kills it and takes the output with it.
 # Guarded because bash 3.2, which macOS still ships, treats an empty array as unset.
-if ! timeout "$SUITE_TIMEOUT" adb shell am instrument -w \
+result="$(adb shell am instrument -w \
     -e coverage true -e coverageFile "$COVERAGE_ON_DEVICE" \
-    ${filter[@]+"${filter[@]}"} "$RUNNER" | tee "$log"; then
-    echo >&2
-    echo "error: the instrumented run did not finish within ${SUITE_TIMEOUT}" >&2
-    report_device_state
-    exit 1
-fi
+    ${filter[@]+"${filter[@]}"} "$RUNNER")"
 
-result="$(cat "$log")"
+echo "$result"
 
 # `am instrument` reports failures in its output and exits 0 regardless.
 case "$result" in
