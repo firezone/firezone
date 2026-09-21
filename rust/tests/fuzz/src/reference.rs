@@ -123,11 +123,11 @@ impl ReferenceState {
                 for client in state.clients.values_mut() {
                     client.exec_mut(|client| client.remove_resource(id));
                 }
-                state.close_gateway_connections(portal, *id, now);
+                state.expect_gateway_connections_closed(portal, *id, now);
             }
             Transition::EditResource(edit) => {
                 state.apply_resource_edit(edit);
-                state.close_gateway_connections(portal, edit.new.id(), now);
+                state.expect_gateway_connections_closed(portal, edit.new.id(), now);
             }
             Transition::UpdateDevicePoolMembers {
                 pool_id: _,
@@ -446,7 +446,7 @@ impl ReferenceState {
                 for client in state.clients.values_mut() {
                     client.exec_mut(|client| client.remove_resource(resource));
                 }
-                state.close_gateway_connections(portal, *resource, now);
+                state.expect_gateway_connections_closed(portal, *resource, now);
             }
             Transition::ExpirePeerAuthorizations {
                 client,
@@ -460,7 +460,7 @@ impl ReferenceState {
                 });
             }
             Transition::RevokeGatewayAuthorization(resource) => {
-                state.close_gateway_connections(portal, *resource, now);
+                state.expect_gateway_connections_closed(portal, *resource, now);
             }
             Transition::RestartClient { client_id, key } => {
                 for (id, client) in &mut state.clients {
@@ -482,8 +482,8 @@ impl ReferenceState {
     }
 
     /// A Gateway that revoking `resource` left with nothing closes the connection with a
-    /// `goodbye`, upon which the Client resets its state for that Gateway.
-    fn close_gateway_connections(
+    /// `goodbye`, so we expect the Client to reset its state for that Gateway.
+    fn expect_gateway_connections_closed(
         &mut self,
         portal: &StubPortal,
         resource: ResourceId,
