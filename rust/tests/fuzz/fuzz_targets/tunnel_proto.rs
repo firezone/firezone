@@ -34,6 +34,7 @@ fuzz_target!(|data: &[u8]| {
 
         tracing::debug!("Applying transition {applied}: {transition:?}");
 
+        portal.invalidate();
         ReferenceState::invalidate(&mut reference, &portal, &transition);
         TunnelTest::invalidate(&mut tunnel, &reference, &transition);
 

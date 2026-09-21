@@ -183,10 +183,13 @@ impl StubPortal {
         }
     }
 
+    /// Drops the bookkeeping that `transition` makes stale before it is applied.
+    pub fn invalidate(&mut self) {
+        self.closed_gateway_connections.clear();
+    }
+
     /// Applies the portal-side effect of `transition`.
     pub fn apply(&mut self, transition: &Transition) {
-        self.closed_gateway_connections.clear();
-
         match transition {
             Transition::RemoveResource(id) => {
                 self.revoke_peer_policy_authorizations_for_pool(*id);
@@ -339,20 +342,6 @@ impl StubPortal {
             target,
             pool,
         });
-    }
-
-    pub(crate) fn record_gateway_authorization(
-        &mut self,
-        client: ClientId,
-        gateway: GatewayId,
-        resource: ResourceId,
-    ) {
-        self.gateway_policy_authorizations
-            .insert(GatewayAuthorization {
-                client,
-                gateway,
-                resource,
-            });
     }
 
     /// Whether a Gateway still holds an authorization for `client` to reach `resource`.
@@ -517,22 +506,31 @@ impl StubPortal {
         select_by_index(candidates, self.resource_selector).copied()
     }
 
-    /// Picks the gateway and site to connect to for the given resource.
-    pub(crate) fn handle_connection_intent(
-        &self,
+    /// Authorizes `client` to reach `resource`, naming the Gateway that serves it.
+    pub(crate) fn request_access(
+        &mut self,
+        client: ClientId,
         resource: ResourceId,
         _connected_gateway_ids: Vec<GatewayId>,
     ) -> (GatewayId, SiteId) {
-        let site_id = self
+        let site_id = *self
             .sites_by_resource
             .get(&resource)
             .expect("resource to be known");
 
-        let gateways = &self.gateways_by_site[site_id];
+        let gateways = &self.gateways_by_site[&site_id];
         let (gateway, _, _) =
             select_by_index(gateways, self.gateway_selector).expect("site to have a gateway");
+        let gateway = *gateway;
 
-        (*gateway, *site_id)
+        self.gateway_policy_authorizations
+            .insert(GatewayAuthorization {
+                client,
+                gateway,
+                resource,
+            });
+
+        (gateway, site_id)
     }
 
     pub(crate) fn map_client_resource_to_gateway_resource(
