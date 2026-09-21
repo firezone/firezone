@@ -20,6 +20,8 @@ class FakeDisconnectError(
 ) : DisconnectError(NoHandle) {
     override fun userMessage(): String = text
 
+    override fun isUserFacing(): Boolean = false
+
     override fun logMessage(): String = text
 
     override fun requiresSignIn(): Boolean = signInRequired

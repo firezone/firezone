@@ -98,6 +98,9 @@ pub enum ServerMsg {
         user_msg: String,
         log_msg: String,
         requires_sign_in: bool,
+        /// An older Tunnel service does not send this; `false` keeps its disconnects diagnostic.
+        #[serde(default)]
+        is_user_facing: bool,
     },
     AllGatewaysOffline {
         resource_id: ResourceId,
@@ -681,6 +684,7 @@ impl<'a> Handler<'a> {
                     user_msg: error.user_message(),
                     log_msg: error.log_message(),
                     requires_sign_in: error.requires_sign_in(),
+                    is_user_facing: error.is_user_facing(),
                 })
                 .await?
             }

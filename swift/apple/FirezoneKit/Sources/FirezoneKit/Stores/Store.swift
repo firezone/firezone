@@ -327,11 +327,6 @@ public final class Store: ObservableObject {
           try manager().session()?.fetchLastDisconnectError { error in
             guard let error else { return }
 
-            // Logged before it is classified: every early return in the provider's
-            // `startTunnel` reports a `PacketTunnelProviderError`, which carries
-            // neither a reason nor an id and would otherwise be dropped silently.
-            Log.error(error)
-
             let nsError = error as NSError
 
             guard nsError.domain == ConnlibError.errorDomain,
@@ -339,6 +334,11 @@ public final class Store: ObservableObject {
               let reason = nsError.userInfo["reason"] as? String,
               let id = nsError.userInfo["id"] as? String
             else {
+              // Every early return in the provider's `startTunnel` reports a
+              // `PacketTunnelProviderError`, which carries neither a reason nor an id and
+              // would otherwise be dropped silently.
+              Log.error(error)
+
               // Deduplicated on the error itself, since only connlib mints an id.
               let id = "\(nsError.domain):\(nsError.code)"
               let message = error.localizedDescription
@@ -351,6 +351,10 @@ public final class Store: ObservableObject {
 
               return
             }
+
+            // Every `ConnlibError` is worded for the user, so it is product copy rather than
+            // a diagnostic and must not be reported as telemetry.
+            Log.info(reason)
 
             // Only show the alert if we haven't shown this specific error before
             Task { @MainActor in
