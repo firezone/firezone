@@ -6,7 +6,6 @@ import android.app.ActivityManager
 import android.content.Context
 import android.content.Intent
 import android.os.UserHandle
-import android.permission.PermissionManager
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
 import androidx.test.runner.lifecycle.Stage
@@ -49,9 +48,10 @@ fun revokeNotificationPermission() {
     try {
         val userId = UserHandle::class.java.getMethod("myUserId").invoke(null) as Int
 
-        PermissionManager::class.java
+        Class
+            .forName("android.permission.PermissionManager")
             .getMethod("revokePostNotificationPermissionWithoutKillForTest", String::class.java, Int::class.javaPrimitiveType)
-            .invoke(context.getSystemService(PermissionManager::class.java), context.packageName, userId)
+            .invoke(context.getSystemService("permission"), context.packageName, userId)
     } finally {
         instrumentation.uiAutomation.dropShellPermissionIdentity()
     }
