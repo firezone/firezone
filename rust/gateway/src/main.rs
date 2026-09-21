@@ -259,8 +259,7 @@ async fn try_main(cli: Cli) -> Result<()> {
         clock.now(),
     );
 
-    let (_, flow_log_upload_failure) =
-        flow_log_upload::spawn(flow_logs_dir.clone(), Arc::new(tcp_socket_factory));
+    flow_log_upload::spawn(flow_logs_dir.clone(), Arc::new(tcp_socket_factory));
 
     let max_partition_time = cli
         .max_partition_time
@@ -315,7 +314,6 @@ async fn try_main(cli: Cli) -> Result<()> {
         resolver,
         flow_logs_dir,
         cli.flow_logs,
-        flow_log_upload_failure,
         account_slug,
     )?
     .run()

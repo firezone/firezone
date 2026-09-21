@@ -4,7 +4,6 @@ use dns_types::DomainName;
 use telemetry::analytics;
 
 use clock::Clock;
-use flow_log_upload::UploadConfigUnreadable;
 use hickory_resolver::TokioResolver;
 use hickory_resolver::lookup::Lookup;
 use hickory_resolver::proto::rr::RecordType;
@@ -13,12 +12,12 @@ use std::collections::BTreeSet;
 use std::future::{self, Future, poll_fn};
 use std::net::{IpAddr, SocketAddr, SocketAddrV4, SocketAddrV6};
 use std::ops::ControlFlow;
-use std::pin::{Pin, pin};
+use std::pin::pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
 use std::{io, mem};
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::mpsc;
 use tunnel::messages::gateway::{
     Authorization, ClientIceCandidates, ClientsIceCandidates, EgressMessages, IngressMessages,
     InitGateway, RejectAccess,
@@ -47,9 +46,6 @@ pub struct Eventloop {
 
     /// The `--flow-logs` flag.
     local_flow_logs: bool,
-
-    /// Resolves if the flow-log uploader gave up on an unreadable config.
-    flow_log_upload_failure: Option<oneshot::Receiver<UploadConfigUnreadable>>,
 
     account_slug: account_slug::Cache,
 
@@ -91,7 +87,6 @@ impl Eventloop {
         resolver: TokioResolver,
         flow_logs_dir: std::path::PathBuf,
         local_flow_logs: bool,
-        flow_log_upload_failure: oneshot::Receiver<UploadConfigUnreadable>,
         account_slug: account_slug::Cache,
     ) -> Result<Self> {
         let (portal_event_tx, portal_event_rx) = mpsc::channel(128);
@@ -112,7 +107,6 @@ impl Eventloop {
             resolver,
             flow_logs_dir,
             local_flow_logs,
-            flow_log_upload_failure: Some(flow_log_upload_failure),
             account_slug,
             resolve_tasks: futures_bounded::FuturesTupleSet::new(
                 || futures_bounded::Delay::tokio(DNS_RESOLUTION_TIMEOUT),
@@ -134,7 +128,6 @@ enum CombinedEvent {
     Portal(Option<Result<PortalEvent, phoenix_channel::Error>>),
     DomainResolved((Result<Vec<IpAddr>, Arc<anyhow::Error>>, ResolveDnsRequest)),
     Clock(clock::Event),
-    FlowLogUploadFailed(UploadConfigUnreadable),
 }
 
 impl Eventloop {
@@ -212,7 +205,6 @@ impl Eventloop {
 
                 Ok(ControlFlow::Continue(()))
             }
-            CombinedEvent::FlowLogUploadFailed(e) => Err(e).context("Flow-log uploader gave up"),
             CombinedEvent::SigIntTerm => {
                 tracing::info!("Received SIGINT/SIGTERM");
 
@@ -240,18 +232,6 @@ impl Eventloop {
             });
 
             return Poll::Ready(CombinedEvent::DomainResolved((result, trigger)));
-        }
-
-        if let Some(failure) = self.flow_log_upload_failure.as_mut()
-            && let Poll::Ready(result) = Pin::new(failure).poll(cx)
-        {
-            // Polling a `oneshot::Receiver` again after it resolved panics.
-            self.flow_log_upload_failure = None;
-
-            // An error means the uploader exited without hitting this failure.
-            if let Ok(e) = result {
-                return Poll::Ready(CombinedEvent::FlowLogUploadFailed(e));
-            }
         }
 
         if let Poll::Ready(()) = self.sigint.poll_recv(cx) {
@@ -500,6 +480,14 @@ impl Eventloop {
                             .is_some_and(|io| io.kind() == std::io::ErrorKind::StorageFull) =>
                     {
                         tracing::debug!("{e:#}");
+                    }
+                    // A spool we cannot write is a misconfiguration that no retry fixes.
+                    Err(e)
+                        if e.any_downcast_ref::<std::io::Error>().is_some_and(|io| {
+                            io.kind() == std::io::ErrorKind::PermissionDenied
+                        }) =>
+                    {
+                        return Err(e);
                     }
                     Err(e) => {
                         tracing::warn!("{e:#}");
