@@ -185,23 +185,16 @@ impl StubPortal {
     pub fn apply(&mut self, transition: &Transition) {
         match transition {
             Transition::RemoveResource(id) => {
-                self.revoke_peer_policy_authorizations_for_pool(*id);
-                self.revoke_gateway_policy_authorizations_for_resource(*id);
+                self.revoke_policy_authorizations(*id);
             }
             Transition::EditResource(edit) => {
-                let effect = client::classify(&edit.old, &edit.new);
-
-                if let client::EditEffect::Type { .. } = effect {
-                    self.revoke_peer_policy_authorizations_for_pool(edit.old.id());
-                }
-
                 // An edit that changes who may reach what invalidates the authorizations
-                // the Gateways hold; the Clients ask for new ones.
+                // the resource granted; the Clients ask for new ones.
                 if matches!(
-                    effect,
+                    client::classify(&edit.old, &edit.new),
                     client::EditEffect::Access { .. } | client::EditEffect::Type { .. }
                 ) {
-                    self.revoke_gateway_policy_authorizations_for_resource(edit.old.id());
+                    self.revoke_policy_authorizations(edit.old.id());
                 }
 
                 self.replace_resource(edit.new.clone());
@@ -240,10 +233,10 @@ impl StubPortal {
             Transition::Idle => {}
             Transition::RebootRelaysWhilePartitioned(_) => {}
             Transition::DeauthorizeWhileGatewayIsPartitioned(resource) => {
-                self.revoke_gateway_policy_authorizations_for_resource(*resource);
+                self.revoke_policy_authorizations(*resource);
             }
             Transition::RevokeGatewayAuthorization(resource) => {
-                self.revoke_gateway_policy_authorizations_for_resource(*resource);
+                self.revoke_policy_authorizations(*resource);
             }
             Transition::ExpirePeerAuthorizations { .. } => {}
             Transition::UpdateDnsRecords { .. } => {}
@@ -386,7 +379,13 @@ impl StubPortal {
             })
     }
 
-    fn revoke_gateway_policy_authorizations_for_resource(&mut self, resource: ResourceId) {
+    /// Revokes every authorization `resource` granted, to a peer or through a Gateway.
+    fn revoke_policy_authorizations(&mut self, resource: ResourceId) {
+        for _ in self
+            .peer_policy_authorizations
+            .extract_if(.., |authorization| authorization.pool == resource)
+        {}
+
         for (_, authorization) in self
             .gateway_policy_authorizations
             .iter_mut()
@@ -394,13 +393,6 @@ impl StubPortal {
         {
             authorization.revoked = true;
         }
-    }
-
-    fn revoke_peer_policy_authorizations_for_pool(&mut self, pool: ResourceId) {
-        for _ in self
-            .peer_policy_authorizations
-            .extract_if(.., |authorization| authorization.pool == pool)
-        {}
     }
 
     fn is_pool_member(&self, pool: ResourceId, client: ClientId) -> bool {
