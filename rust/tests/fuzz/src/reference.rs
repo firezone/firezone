@@ -123,11 +123,11 @@ impl ReferenceState {
                 for client in state.clients.values_mut() {
                     client.exec_mut(|client| client.remove_resource(id));
                 }
-                state.expect_gateway_connections_closed(portal, *id, now);
+                state.expect_gateway_connections_closed(portal, *id);
             }
             Transition::EditResource(edit) => {
                 state.apply_resource_edit(edit);
-                state.expect_gateway_connections_closed(portal, edit.new.id(), now);
+                state.expect_gateway_connections_closed(portal, edit.new.id());
             }
             Transition::UpdateDevicePoolMembers {
                 pool_id: _,
@@ -446,7 +446,7 @@ impl ReferenceState {
                 for client in state.clients.values_mut() {
                     client.exec_mut(|client| client.remove_resource(resource));
                 }
-                state.expect_gateway_connections_closed(portal, *resource, now);
+                state.expect_gateway_connections_closed(portal, *resource);
             }
             Transition::ExpirePeerAuthorizations {
                 client,
@@ -460,7 +460,7 @@ impl ReferenceState {
                 });
             }
             Transition::RevokeGatewayAuthorization(resource) => {
-                state.expect_gateway_connections_closed(portal, *resource, now);
+                state.expect_gateway_connections_closed(portal, *resource);
             }
             Transition::RestartClient { client_id, key } => {
                 for (id, client) in &mut state.clients {
@@ -483,18 +483,13 @@ impl ReferenceState {
 
     /// A Gateway that revoking `resource` left with nothing closes the connection with a
     /// `goodbye`, so we expect the Client to reset its state for that Gateway.
-    fn expect_gateway_connections_closed(
-        &mut self,
-        portal: &StubPortal,
-        resource: ResourceId,
-        now: Instant,
-    ) {
+    fn expect_gateway_connections_closed(&mut self, portal: &StubPortal, resource: ResourceId) {
         for closed in portal.gateway_connections_closed_by(resource) {
             let Some(client) = self.clients.get_mut(&closed.client) else {
                 continue;
             };
 
-            client.exec_mut(|c| c.close_gateway_connection(closed.gateway, &closed.resources, now));
+            client.exec_mut(|c| c.close_gateway_connection(closed.gateway, &closed.resources));
         }
     }
 

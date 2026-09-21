@@ -457,15 +457,22 @@ impl RefClient {
             affected.push(internet);
         }
 
-        self.discard_connections(affected, now);
+        if affected.is_empty() {
+            return;
+        }
+
+        self.connection_resets.push(now);
+        self.discard_connections(affected);
     }
 
     /// The Gateway closed the connection, so everything we reached through it is gone.
+    ///
+    /// Only the connection to that Gateway goes; the ICE state towards our peers, which
+    /// `connection_resets` tracks, is untouched.
     pub(crate) fn close_gateway_connection(
         &mut self,
         gateway: GatewayId,
         resources: &BTreeSet<ResourceId>,
-        now: Instant,
     ) {
         self.gateway_send_times.remove(&gateway);
 
@@ -476,16 +483,10 @@ impl RefClient {
             .filter(|resource| connected.contains(resource))
             .collect();
 
-        self.discard_connections(affected, now);
+        self.discard_connections(affected);
     }
 
-    fn discard_connections(&mut self, affected: Vec<ResourceId>, now: Instant) {
-        if affected.is_empty() {
-            return;
-        }
-
-        self.connection_resets.push(now);
-
+    fn discard_connections(&mut self, affected: Vec<ResourceId>) {
         for resource in affected {
             self.discard_authorization(&resource);
             self.dns_resource_resolutions
