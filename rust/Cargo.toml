@@ -46,6 +46,7 @@ members = [
     "libs/known-dirs",
     "libs/logging",
     "libs/otel-attributes",
+    "libs/portal-metrics",
     "libs/telemetry",
     "libs/tunnel-bypass-resolver",
     "libs/windows-security",
@@ -183,6 +184,7 @@ parking_lot = "0.12.5"
 path-agent = { path = "libs/connlib/path-agent" }
 phoenix-channel = { path = "libs/connlib/phoenix-channel" }
 png = "0.18.1"
+portal-metrics = { path = "libs/portal-metrics" }
 proc-macro2 = "1.0.106"
 proptest = "1.9.0"
 quinn-udp = { version = "0.6.0", features = ["fast-apple-datapath"] }

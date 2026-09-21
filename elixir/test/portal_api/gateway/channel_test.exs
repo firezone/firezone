@@ -362,6 +362,28 @@ defmodule PortalAPI.Gateway.ChannelTest do
              }
     end
 
+    test "init carries the metrics reporting config", %{
+      account: account,
+      gateway: gateway,
+      site: site,
+      token: token
+    } do
+      join_channel(gateway, site, token)
+
+      assert_push "init", %{
+        metrics: %{
+          api_url: "https://metrics.firezone.dev/",
+          report_interval_secs: 300,
+          token: metrics_token
+        }
+      }
+
+      assert {:ok, claims} = Portal.MetricsToken.verify(metrics_token)
+      assert claims["account_id"] == account.id
+      assert claims["gateway_id"] == gateway.id
+      assert claims["site_id"] == site.id
+    end
+
     test "init includes inbound authorizations from the hydrated cache", %{
       account: account,
       actor: actor,

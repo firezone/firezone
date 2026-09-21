@@ -492,6 +492,10 @@ config :portal,
   flow_logs_api_url: "https://flow-api.firezone.dev/",
   flow_logs_upload_interval_secs: 60
 
+config :portal,
+  metrics_api_url: "https://metrics.firezone.dev/",
+  metrics_report_interval_secs: 300
+
 config :portal, country_code_blocklist: []
 
 config :portal, PortalWeb.Plugs.PutSecurityHeaders,

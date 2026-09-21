@@ -13,6 +13,7 @@ use bin_shared::{
 use clap::Parser;
 
 use hickory_resolver::config::ResolveHosts;
+use opentelemetry::metrics::MeterProvider;
 use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_sdk::metrics::SdkMeterProvider;
 use phoenix_channel::LoginUrl;
@@ -200,38 +201,46 @@ async fn try_main(cli: Cli) -> Result<()> {
         }
     }
 
-    if let Some(backend) = cli.metrics {
-        let resource = telemetry::otel::default_resource_with([
-            otel_attributes::service_name!(),
-            otel_attributes::service_version!(),
-            telemetry::otel::service_instance_id(firezone_id.clone()),
-        ]);
+    let resource_attributes = [
+        otel_attributes::service_name!(),
+        otel_attributes::service_version!(),
+        telemetry::otel::service_instance_id(firezone_id.clone()),
+    ];
+    let resource = telemetry::otel::default_resource_with(resource_attributes.clone());
 
-        match (backend, cli.otlp_grpc_endpoint) {
-            (MetricsExporter::Sentry, _) => {
-                // Sentry has name and version already configured via the global SDK parameters.
+    let exporter: Box<dyn MeterProvider + Send + Sync> = match (cli.metrics, cli.otlp_grpc_endpoint)
+    {
+        (Some(MetricsExporter::Sentry), _) => {
+            // Sentry has name and version already configured via the global SDK parameters.
 
-                opentelemetry::global::set_meter_provider(SentryMeterProvider::default());
-            }
-            (MetricsExporter::Stdout, _) => opentelemetry::global::set_meter_provider(
-                SdkMeterProvider::builder()
-                    .with_periodic_exporter(opentelemetry_stdout::MetricExporter::default())
-                    .with_resource(resource)
-                    .build(),
-            ),
-            (MetricsExporter::OtelCollector, Some(endpoint)) => {
-                opentelemetry::global::set_meter_provider(
-                    SdkMeterProvider::builder()
-                        .with_periodic_exporter(tonic_otlp_exporter(endpoint)?)
-                        .with_resource(resource)
-                        .build(),
-                )
-            }
-            (MetricsExporter::OtelCollector, None) => opentelemetry::global::set_meter_provider(
-                SdkMeterProvider::builder().with_resource(resource).build(),
-            ),
+            Box::new(SentryMeterProvider::default())
         }
-    }
+        (Some(MetricsExporter::Stdout), _) => Box::new(
+            SdkMeterProvider::builder()
+                .with_periodic_exporter(opentelemetry_stdout::MetricExporter::default())
+                .with_resource(resource)
+                .build(),
+        ),
+        (Some(MetricsExporter::OtelCollector), Some(endpoint)) => Box::new(
+            SdkMeterProvider::builder()
+                .with_periodic_exporter(tonic_otlp_exporter(endpoint)?)
+                .with_resource(resource)
+                .build(),
+        ),
+        (Some(MetricsExporter::OtelCollector), None) => {
+            Box::new(SdkMeterProvider::builder().with_resource(resource).build())
+        }
+        (None, _) => Box::new(SdkMeterProvider::builder().with_resource(resource).build()),
+    };
+
+    // Reporting to the portal observes the instruments regardless of where else
+    // they are exported to, so it wraps whichever exporter is configured.
+    let (meter_provider, portal_metrics) = portal_metrics::spawn(
+        exporter,
+        resource_attributes.to_vec(),
+        Arc::new(tcp_socket_factory),
+    );
+    opentelemetry::global::set_meter_provider(meter_provider);
 
     let login = LoginUrl::gateway(
         cli.api_url,
@@ -315,6 +324,7 @@ async fn try_main(cli: Cli) -> Result<()> {
         flow_logs_dir,
         cli.flow_logs,
         account_slug,
+        portal_metrics,
     )?
     .run()
     .await

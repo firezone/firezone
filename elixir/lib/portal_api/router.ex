@@ -112,6 +112,28 @@ defmodule PortalAPI.Router do
     post "/flow_logs", FlowLogController, :create
   end
 
+  # OTLP/HTTP with JSON encoding, served on its own hostname, so the path is the
+  # one the OTLP spec mandates rather than a portal-flavoured one.
+  pipeline :metrics do
+    plug :accepts, ["json"]
+    plug PortalAPI.Plugs.IngestionRateLimit
+    plug PortalAPI.Plugs.MetricsAuth
+
+    # Reports are a few hundred bytes. The OTLP spec only recommends a 64 MiB
+    # ceiling, which is far more than a gateway ever needs to send.
+    plug Plug.Parsers,
+      parsers: [Portal.Parsers.JSON],
+      pass: ["*/*"],
+      json_decoder: Phoenix.json_library(),
+      length: 1_000_000
+  end
+
+  scope "/v1", PortalAPI do
+    pipe_through :metrics
+
+    post "/metrics", MetricsController, :create
+  end
+
   # URL versioning was tried (a /v1 prefix scope duplicating every route
   # below) and rolled back before ever shipping as the documented surface -
   # see git history if reviving it. Versioning strategy is deliberately
@@ -224,13 +246,19 @@ defmodule PortalAPI.Router do
 
   def redirect_to_rest_api_url(%Plug.Conn{} = conn, _opts) do
     rest_api_url = Portal.Config.get_env(:portal, :rest_api_url)
-    flow_api_host = URI.parse(Portal.Config.get_env(:portal, :flow_logs_api_url)).host
 
-    if rest_api_url && conn.host != flow_api_host do
+    if rest_api_url && conn.host not in ingestion_hosts() do
       redirect_to_canonical_host(conn, URI.parse(rest_api_url))
     else
       conn
     end
+  end
+
+  defp ingestion_hosts do
+    [:flow_logs_api_url, :metrics_api_url]
+    |> Enum.map(&Portal.Config.get_env(:portal, &1))
+    |> Enum.reject(&is_nil/1)
+    |> Enum.map(&URI.parse(&1).host)
   end
 
   defp redirect_to_canonical_host(%Plug.Conn{host: host} = conn, %URI{host: host}), do: conn

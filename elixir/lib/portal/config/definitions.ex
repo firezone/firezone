@@ -223,6 +223,25 @@ defmodule Portal.Config.Definitions do
   )
 
   @doc """
+  The base URL gateways report OpenTelemetry metrics to.
+  """
+  defconfig(:metrics_api_url, :string,
+    default: "https://metrics.firezone.dev/",
+    changeset: fn changeset, key ->
+      changeset
+      |> Portal.Changeset.validate_uri(key, require_trailing_slash: true)
+      |> Portal.Changeset.normalize_url(key)
+    end
+  )
+
+  @doc """
+  How often, in seconds, gateways report metrics to the portal.
+
+  Set to `0` to disable metrics reporting entirely.
+  """
+  defconfig(:metrics_report_interval_secs, :integer, default: 300)
+
+  @doc """
   Access key ID for Firezone's AWS account, used to assume customer IAM roles
   for Amazon S3 log sinks.
   """

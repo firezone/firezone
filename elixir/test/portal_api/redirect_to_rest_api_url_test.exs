@@ -42,6 +42,17 @@ defmodule PortalAPI.RedirectToRestApiUrlTest do
       assert result == conn
     end
 
+    test "passes metrics exports through on the dedicated host" do
+      Portal.Config.put_env_override(:rest_api_url, "https://rest-api.firezone.dev/")
+
+      conn = conn(:post, "https://metrics.firezone.dev/v1/metrics", "")
+
+      result = call(conn)
+
+      refute result.halted
+      assert result == conn
+    end
+
     test "passes other requests through on the configured flow API host" do
       Portal.Config.put_env_override(:rest_api_url, "https://rest-api.firezone.dev/")
       Portal.Config.put_env_override(:flow_logs_api_url, "https://flow-api.firez.one/")
