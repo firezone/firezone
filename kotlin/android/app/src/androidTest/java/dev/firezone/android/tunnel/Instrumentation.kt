@@ -5,6 +5,7 @@ import android.app.Activity
 import android.app.ActivityManager
 import android.content.Context
 import android.content.Intent
+import android.os.UserHandle
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
 import androidx.test.runner.lifecycle.Stage
@@ -26,6 +27,37 @@ fun grantVpnConsent() {
 // nothing the tunnel posts on disconnect ever reaches the shade.
 fun grantNotificationPermission() {
     shell("pm grant ${packageName()} android.permission.POST_NOTIFICATIONS")
+}
+
+// Back to the state of a fresh install, where `VpnService.prepare` hands out the consent dialog.
+fun revokeVpnConsent() {
+    shell("appops set ${packageName()} ACTIVATE_VPN default")
+}
+
+// `pm revoke` kills the process it takes a runtime permission from, and that process is the test.
+// The platform keeps one door open for tests, behind permissions only the shell holds.
+fun revokeNotificationPermission() {
+    val instrumentation = InstrumentationRegistry.getInstrumentation()
+    val context = instrumentation.targetContext
+
+    instrumentation.uiAutomation.adoptShellPermissionIdentity(
+        "android.permission.REVOKE_RUNTIME_PERMISSIONS",
+        "android.permission.REVOKE_POST_NOTIFICATIONS_WITHOUT_KILL",
+    )
+
+    try {
+        val userId = UserHandle::class.java.getMethod("myUserId").invoke(null) as Int
+
+        Class
+            .forName("android.permission.PermissionManager")
+            .getMethod("revokePostNotificationPermissionWithoutKillForTest", String::class.java, Int::class.javaPrimitiveType)
+            .invoke(context.getSystemService("permission"), context.packageName, userId)
+    } finally {
+        instrumentation.uiAutomation.dropShellPermissionIdentity()
+    }
+
+    // Once the user has answered the dialog, the system answers for them from then on.
+    shell("pm clear-permission-flags ${packageName()} android.permission.POST_NOTIFICATIONS user-set user-fixed")
 }
 
 // The same entry point the splash screen uses, so `startedByUser` is set

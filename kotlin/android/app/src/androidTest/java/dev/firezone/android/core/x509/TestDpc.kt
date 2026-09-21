@@ -13,8 +13,8 @@ import java.util.concurrent.TimeUnit
  * Drives the test Device Policy Controller in `dpc/`, which owns the device in the `managed`
  * emulator suite.
  *
- * Installing a key pair is an owner-only API, which is the one thing standing between a test and
- * the KeyChain states it wants to pin. The DPC takes its instructions as ordered broadcasts and
+ * Installing a key pair and naming an always-on VPN are owner-only APIs, which is the one thing
+ * standing between a test and the device states it wants to pin. The DPC takes its instructions as ordered broadcasts and
  * reports back through the broadcast's result.
  */
 object TestDpc {
@@ -55,6 +55,23 @@ object TestDpc {
                 }
             },
             "answer the chooser with '$alias'",
+        )
+    }
+
+    /** Makes [packageName] the always-on VPN, or clears the always-on VPN when `null`. */
+    fun setAlwaysOnVpn(
+        packageName: String?,
+        lockdown: Boolean,
+    ) {
+        provision(
+            Intent("dev.firezone.dpc.SET_ALWAYS_ON_VPN")
+                .putExtra("lockdown", lockdown)
+                .apply {
+                    if (packageName != null) {
+                        putExtra("package", packageName)
+                    }
+                },
+            "make '$packageName' the always-on VPN",
         )
     }
 
