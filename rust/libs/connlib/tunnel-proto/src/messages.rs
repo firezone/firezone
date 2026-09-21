@@ -257,6 +257,26 @@ impl FlowLogsConfig {
     }
 }
 
+/// Where, and how often, to report metrics to the portal.
+///
+/// The token is opaque to the data plane: it is sent as-is in the
+/// `Authorization` header and the portal reads the reporting device out of it.
+#[derive(Debug, Deserialize, Clone)]
+pub struct MetricsConfig {
+    /// Base URL metrics are POSTed to.
+    pub api_url: String,
+    /// Authorizes the reports and attributes them to this device.
+    pub token: secrecy::SecretString,
+    /// How often, in seconds, to report metrics. `0` disables reporting.
+    pub report_interval_secs: u64,
+}
+
+impl MetricsConfig {
+    pub fn reporting_enabled(&self) -> bool {
+        self.report_interval_secs > 0
+    }
+}
+
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 pub struct UpstreamDoH {
     pub url: DoHUrl,

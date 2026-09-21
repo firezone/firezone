@@ -101,6 +101,55 @@ pub fn tunnel_errors() -> Counter<u64> {
         .build()
 }
 
+/// Errors encountered while recording, spooling or uploading flow logs.
+///
+/// Reported to the portal, so the kinds are a closed set: see [`FlowLogError`].
+pub const FLOW_LOG_ERRORS: &str = "flow_logs.errors";
+
+/// Number of flow-log errors by kind.
+pub fn flow_log_errors() -> Counter<u64> {
+    meter()
+        .u64_counter(FLOW_LOG_ERRORS)
+        .with_description("Number of errors encountered while recording, spooling or uploading flow logs.")
+        .with_unit("{error}")
+        .build()
+}
+
+/// Why a flow log did not make it to the portal.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FlowLogError {
+    /// The spool cannot be written because of a permission error.
+    SpoolNotWritable,
+    /// The volume holding the spool is full.
+    SpoolFull,
+    /// Writing to the spool failed for any other reason.
+    SpoolWriteFailed,
+    /// A report was discarded because the writer could not keep up.
+    ReportDropped,
+    /// A spooled report could not be read back and was discarded.
+    ReportCorrupt,
+    /// An upload did not reach the portal.
+    UploadFailed,
+    /// The portal rejected an upload.
+    UploadRejected,
+}
+
+impl FlowLogError {
+    pub fn attributes(self) -> [KeyValue; 1] {
+        let kind = match self {
+            FlowLogError::SpoolNotWritable => "spool_not_writable",
+            FlowLogError::SpoolFull => "spool_full",
+            FlowLogError::SpoolWriteFailed => "spool_write_failed",
+            FlowLogError::ReportDropped => "report_dropped",
+            FlowLogError::ReportCorrupt => "report_corrupt",
+            FlowLogError::UploadFailed => "upload_failed",
+            FlowLogError::UploadRejected => "upload_rejected",
+        };
+
+        [KeyValue::new("error.type", kind)]
+    }
+}
+
 /// Number of portal connection hiccups by cause.
 pub fn portal_connection_hiccups() -> Counter<u64> {
     meter()

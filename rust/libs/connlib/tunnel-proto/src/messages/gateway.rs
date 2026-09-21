@@ -1,8 +1,8 @@
 //! Gateway related messages that are needed within connlib
 
 use crate::messages::{
-    Filter, FlowLogsConfig, IceCredentials, IngestToken, Interface, Key, Relay, RelaysPresence,
-    SecretKey, SnownetCapabilities, WarnOnInvalidFilter,
+    Filter, FlowLogsConfig, IceCredentials, IngestToken, Interface, Key, MetricsConfig, Relay,
+    RelaysPresence, SecretKey, SnownetCapabilities, WarnOnInvalidFilter,
 };
 use connlib_model::{ClientId, IceCandidate, ResourceId};
 use ip_network::IpNetwork;
@@ -94,6 +94,8 @@ pub struct InitGateway {
     #[serde(default)]
     pub authorizations: Vec<Authorization>,
     pub flow_logs: FlowLogsConfig,
+    #[serde(default)]
+    pub metrics: Option<MetricsConfig>,
 }
 
 #[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
