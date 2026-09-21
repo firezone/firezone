@@ -331,17 +331,22 @@ impl StubPortal {
         })
     }
 
-    pub(crate) fn record_peer_policy_authorization(
+    /// Authorizes `initiator` to reach `target`, naming the pool that admits it.
+    pub(crate) fn request_peer_access(
         &mut self,
         initiator: ClientId,
         target: ClientId,
-        pool: ResourceId,
-    ) {
+        candidates: &[ResourceId],
+    ) -> Option<ResourceId> {
+        let pool = self.pick_device_pool(candidates, target)?;
+
         self.peer_policy_authorizations.insert(PeerAuthorization {
             initiator,
             target,
             pool,
         });
+
+        Some(pool)
     }
 
     /// Whether a Gateway still holds an authorization for `client` to reach `resource`.
@@ -507,7 +512,7 @@ impl StubPortal {
     }
 
     /// Authorizes `client` to reach `resource`, naming the Gateway that serves it.
-    pub(crate) fn request_access(
+    pub(crate) fn request_resource_access(
         &mut self,
         client: ClientId,
         resource: ResourceId,

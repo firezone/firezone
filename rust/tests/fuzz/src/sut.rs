@@ -1395,7 +1395,7 @@ impl TunnelTest {
                     .pick_resource(&resource_ids)
                     .expect("request must name resources");
                 let (gateway_id, site_id) =
-                    portal.request_access(src, resource_id, preferred_gateways);
+                    portal.request_resource_access(src, resource_id, preferred_gateways);
                 let gateway = self.gateways.get_mut(&gateway_id).expect("unknown gateway");
                 let resource = portal.map_client_resource_to_gateway_resource(resource_id);
 
@@ -1513,11 +1513,10 @@ impl TunnelTest {
                     .copied()
                     .filter(|pool| held.contains(pool))
                     .collect::<Vec<_>>();
-                let Some(pool) = portal.pick_device_pool(&candidates, remote_id) else {
+                let Some(pool) = portal.request_peer_access(src, remote_id, &candidates) else {
                     deny_device_access(&mut self.clients, src, ipv4, ipv6, FailReason::Forbidden);
                     return Ok(());
                 };
-                portal.record_peer_policy_authorization(src, remote_id, pool);
                 let filters = portal.device_pool_filters(pool).unwrap_or_default();
 
                 let src_client = self.clients.get(&src).expect("unknown source client");
