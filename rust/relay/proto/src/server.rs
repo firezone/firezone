@@ -408,7 +408,7 @@ where
                 }
             }
             None => {
-                tracing::warn!(target: "relay", ?message, "Unable to authenticate error response, message did not contain a `Username` attribute");
+                tracing::debug!(target: "relay", client_message = ?message, "Unable to authenticate error response, message did not contain a `Username` attribute");
 
                 AuthenticatedMessage::new_dangerous_unauthenticated(error_response)
             }
@@ -898,7 +898,7 @@ where
     ) -> Result<VerifiedUsername, Message<Attribute>> {
         let message_integrity = request.message_integrity().ok_or_else(|| {
             let (error_response, msg) = make_error_response(Unauthorized, request);
-            tracing::warn!(target: "relay", "{msg}: Missing `MessageIntegrity` attribute");
+            tracing::debug!(target: "relay", "{msg}: Missing `MessageIntegrity` attribute");
 
             error_response
         })?;
