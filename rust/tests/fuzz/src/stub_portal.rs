@@ -33,6 +33,9 @@ pub struct StubPortal {
     peer_policy_authorizations: BTreeSet<PeerAuthorization>,
     /// The Gateway subset of the portal's persisted policy authorizations.
     gateway_policy_authorizations: BTreeSet<GatewayAuthorization>,
+    /// The Gateways left without a single authorization for a Client by the transition
+    /// just applied. Such a Gateway closes the connection with a `goodbye`.
+    closed_gateway_connections: BTreeSet<(ClientId, GatewayId)>,
     internet_resource: client::InternetResource,
 
     search_domain: Option<DomainName>,
@@ -171,6 +174,7 @@ impl StubPortal {
             pool_members,
             peer_policy_authorizations: Default::default(),
             gateway_policy_authorizations: Default::default(),
+            closed_gateway_connections: Default::default(),
             internet_resource,
             search_domain,
             upstream_do53,
@@ -181,6 +185,8 @@ impl StubPortal {
 
     /// Applies the portal-side effect of `transition`.
     pub fn apply(&mut self, transition: &Transition) {
+        self.closed_gateway_connections.clear();
+
         match transition {
             Transition::RemoveResource(id) => {
                 self.revoke_peer_policy_authorizations_for_pool(*id);
@@ -362,15 +368,6 @@ impl StubPortal {
             })
     }
 
-    /// The Gateways still holding at least one authorization for `client`.
-    pub(crate) fn gateways_authorized_for(&self, client: ClientId) -> BTreeSet<GatewayId> {
-        self.gateway_policy_authorizations
-            .iter()
-            .filter(|authorization| authorization.client == client)
-            .map(|authorization| authorization.gateway)
-            .collect()
-    }
-
     /// Resources some Gateway currently holds an authorization for.
     pub(crate) fn authorized_resources(&self) -> BTreeSet<ResourceId> {
         self.gateway_policy_authorizations
@@ -379,11 +376,32 @@ impl StubPortal {
             .collect()
     }
 
+    /// The Gateways that closed their connection in the transition just applied.
+    pub(crate) fn closed_gateway_connections(
+        &self,
+    ) -> impl Iterator<Item = (ClientId, GatewayId)> + '_ {
+        self.closed_gateway_connections.iter().copied()
+    }
+
     fn revoke_gateway_policy_authorizations_for_resource(&mut self, resource: ResourceId) {
-        for _ in self
+        let revoked = self
             .gateway_policy_authorizations
             .extract_if(.., |authorization| authorization.resource == resource)
-        {}
+            .collect::<Vec<_>>();
+
+        for GatewayAuthorization {
+            client, gateway, ..
+        } in revoked
+        {
+            let holds_another = self
+                .gateway_policy_authorizations
+                .iter()
+                .any(|a| a.client == client && a.gateway == gateway);
+
+            if !holds_another {
+                self.closed_gateway_connections.insert((client, gateway));
+            }
+        }
     }
 
     fn revoke_peer_policy_authorizations_for_pool(&mut self, pool: ResourceId) {

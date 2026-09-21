@@ -479,27 +479,23 @@ impl ReferenceState {
         state
     }
 
-    /// A Gateway left without a single authorization for a Client closes the connection
-    /// with a `goodbye`, upon which the Client resets its state for that Gateway.
+    /// A Gateway that closed its connection makes the Client reset its state for it.
     fn close_unauthorized_gateway_connections(&mut self, portal: &StubPortal, now: Instant) {
         let gateway_for_resource =
             |resource: ResourceId| portal.gateway_for_resource(resource).copied();
 
-        for (id, client) in &mut self.clients {
-            let authorized = portal.gateways_authorized_for(*id);
-            let closed = client
-                .inner()
-                .connected_resources()
-                .filter_map(gateway_for_resource)
-                .filter(|gateway| !authorized.contains(gateway))
-                .collect::<BTreeSet<_>>();
-
-            if closed.is_empty() {
+        for (id, gateway) in portal.closed_gateway_connections() {
+            let Some(client) = self.clients.get_mut(&id) else {
                 continue;
-            }
+            };
 
-            client
-                .exec_mut(|c| c.reset_connections_to_gateways(&closed, gateway_for_resource, now));
+            client.exec_mut(|c| {
+                c.reset_connections_to_gateways(
+                    &BTreeSet::from([gateway]),
+                    gateway_for_resource,
+                    now,
+                )
+            });
         }
     }
 
