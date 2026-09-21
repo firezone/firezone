@@ -233,8 +233,8 @@ async fn try_main(cli: Cli) -> Result<()> {
         (None, _) => Box::new(SdkMeterProvider::builder().with_resource(resource).build()),
     };
 
-    // Reporting to the portal observes the instruments regardless of where else
-    // they are exported to, so it wraps whichever exporter is configured.
+    // Portal reporting observes the instruments themselves, so it wraps whichever
+    // exporter is configured rather than being one.
     let (meter_provider, portal_metrics) = portal_metrics::spawn(
         exporter,
         resource_attributes.to_vec(),

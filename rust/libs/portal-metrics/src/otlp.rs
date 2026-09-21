@@ -130,6 +130,10 @@ struct Attribute {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
+#[expect(
+    clippy::enum_variant_names,
+    reason = "The variants are the field names of OTLP's `AnyValue`."
+)]
 enum AnyValue {
     StringValue(String),
     IntValue(String),

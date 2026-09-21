@@ -7,6 +7,7 @@ use clock::Clock;
 use hickory_resolver::TokioResolver;
 use hickory_resolver::lookup::Lookup;
 use hickory_resolver::proto::rr::RecordType;
+use otel_instruments::FlowLogError;
 use phoenix_channel::{PhoenixChannel, PublicKeyParam};
 use std::collections::BTreeSet;
 use std::future::{self, Future, poll_fn};
@@ -61,7 +62,10 @@ pub struct Eventloop {
     logged_permission_denied: bool,
 
     tunnel_errors: opentelemetry::metrics::Counter<u64>,
+    flow_log_errors: opentelemetry::metrics::Counter<u64>,
     dns_lookup_duration: opentelemetry::metrics::Histogram<f64>,
+
+    portal_metrics: portal_metrics::Reporter,
 }
 
 enum PortalCommand {
@@ -88,6 +92,7 @@ impl Eventloop {
         flow_logs_dir: std::path::PathBuf,
         local_flow_logs: bool,
         account_slug: account_slug::Cache,
+        portal_metrics: portal_metrics::Reporter,
     ) -> Result<Self> {
         let (portal_event_tx, portal_event_rx) = mpsc::channel(128);
         let (portal_cmd_tx, portal_cmd_rx) = mpsc::channel(128);
@@ -114,7 +119,9 @@ impl Eventloop {
             ),
             logged_permission_denied: false,
             tunnel_errors: otel_instruments::tunnel_errors(),
+            flow_log_errors: otel_instruments::flow_log_errors(),
             dns_lookup_duration: otel_instruments::dns_lookup_duration(),
+            portal_metrics,
             portal_event_rx,
             portal_cmd_tx,
             sigint: signals::Terminate::new()?,
@@ -451,6 +458,7 @@ impl Eventloop {
                 relays,
                 authorizations,
                 flow_logs,
+                metrics,
             }) => {
                 if let Some(account_slug) = account_slug {
                     telemetry::set_account_slug(account_slug.clone());
@@ -479,12 +487,16 @@ impl Eventloop {
                         if e.any_downcast_ref::<std::io::Error>()
                             .is_some_and(|io| io.kind() == std::io::ErrorKind::StorageFull) =>
                     {
+                        self.flow_log_errors.add(1, &spool_error(&e).attributes());
                         tracing::debug!("{e:#}");
                     }
                     Err(e) => {
+                        self.flow_log_errors.add(1, &spool_error(&e).attributes());
                         tracing::warn!("{e:#}");
                     }
                 }
+
+                configure_portal_metrics(&self.portal_metrics, metrics);
 
                 tunnel
                     .state_mut()
@@ -694,6 +706,36 @@ async fn phoenix_channel_event_loop(
                 break;
             }
         }
+    }
+}
+
+/// Seeds the reporter with the portal's metrics config.
+fn configure_portal_metrics(
+    reporter: &portal_metrics::Reporter,
+    metrics: Option<messages::MetricsConfig>,
+) {
+    let Some(metrics) = metrics.filter(messages::MetricsConfig::reporting_enabled) else {
+        reporter.disable();
+
+        return;
+    };
+
+    if let Err(e) = reporter.configure(&portal_metrics::Config {
+        api_url: metrics.api_url,
+        token: metrics.token,
+        interval: Duration::from_secs(metrics.report_interval_secs),
+    }) {
+        tracing::warn!("Failed to configure metrics reporting: {e:#}");
+    }
+}
+
+/// Classifies a failed flow-log spool write for the portal's error counter.
+fn spool_error(e: &anyhow::Error) -> FlowLogError {
+    match e.any_downcast_ref::<io::Error>().map(io::Error::kind) {
+        Some(io::ErrorKind::PermissionDenied) => FlowLogError::SpoolNotWritable,
+        Some(io::ErrorKind::StorageFull) => FlowLogError::SpoolFull,
+        Some(_) => FlowLogError::SpoolWriteFailed,
+        None => FlowLogError::SpoolWriteFailed,
     }
 }
 

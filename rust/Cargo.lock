@@ -2529,6 +2529,7 @@ dependencies = [
  "otel-attributes",
  "otel-instruments",
  "phoenix-channel",
+ "portal-metrics",
  "resolv-conf",
  "rpassword",
  "rustls",

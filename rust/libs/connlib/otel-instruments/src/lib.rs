@@ -110,7 +110,9 @@ pub const FLOW_LOG_ERRORS: &str = "flow_logs.errors";
 pub fn flow_log_errors() -> Counter<u64> {
     meter()
         .u64_counter(FLOW_LOG_ERRORS)
-        .with_description("Number of errors encountered while recording, spooling or uploading flow logs.")
+        .with_description(
+            "Number of errors encountered while recording, spooling or uploading flow logs.",
+        )
         .with_unit("{error}")
         .build()
 }

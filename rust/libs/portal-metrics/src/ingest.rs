@@ -65,7 +65,10 @@ async fn connect(
     url: &Url,
     socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
 ) -> Result<HttpClient> {
-    let host = url.host_str().context("Metrics URL has no host")?.to_owned();
+    let host = url
+        .host_str()
+        .context("Metrics URL has no host")?
+        .to_owned();
 
     let addresses = tunnel_bypass_resolver::resolve(&host).await?;
 

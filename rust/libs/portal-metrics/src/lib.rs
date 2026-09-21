@@ -125,10 +125,7 @@ pub fn spawn(
         })
         .expect("Failed to spawn portal metrics thread");
 
-    (
-        RecordingMeterProvider::new(inner, registry),
-        reporter,
-    )
+    (RecordingMeterProvider::new(inner, registry), reporter)
 }
 
 /// The reporter's event loop: sleeps until the next report is due or a new config

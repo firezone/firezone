@@ -28,7 +28,10 @@ pub struct RecordingMeterProvider {
 }
 
 impl RecordingMeterProvider {
-    pub(crate) fn new(inner: Box<dyn MeterProvider + Send + Sync>, registry: Arc<Registry>) -> Self {
+    pub(crate) fn new(
+        inner: Box<dyn MeterProvider + Send + Sync>,
+        registry: Arc<Registry>,
+    ) -> Self {
         Self { inner, registry }
     }
 }
