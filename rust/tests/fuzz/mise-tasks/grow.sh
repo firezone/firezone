@@ -12,15 +12,11 @@ if [ -n "${usage_libfuzzer_args:-}" ]; then
     # `usage` joins variadic arguments as a shell-escaped string.
     eval "set -- $usage_libfuzzer_args"
 else
-    # CI has the machine to itself. A developer is still using theirs during the
-    # half hour this takes, so leave them a quarter of the cores.
-    if [ -n "${CI:-}" ]; then
-        fork="$(nproc)"
-    else
-        fork="$(($(nproc) * 3 / 4))"
-        if [ "$fork" -lt 1 ]; then
-            fork=1
-        fi
+    # A developer is still using their machine during the half hour this takes,
+    # so leave them a quarter of the cores.
+    fork="$(($(nproc) * 3 / 4))"
+    if [ "$fork" -lt 1 ]; then
+        fork=1
     fi
 
     # `-fork` re-merges the whole seed corpus before it discovers anything, and

@@ -6,6 +6,7 @@ use super::{
         SubmittedRequest, TraceRequirement,
     },
     ref_client::RefClient,
+    resource::Resource,
     sim_client::SimClient,
     sim_gateway::SimGateway,
     stub_portal::StubPortal,
@@ -24,6 +25,7 @@ use std::{
 };
 use tracing::{Level, Subscriber};
 use tracing_subscriber::Layer;
+use tunnel_proto::dns;
 
 /// Compares each expected application probe with all endpoint observations.
 pub(crate) fn assert_probes(
@@ -104,10 +106,8 @@ pub(crate) fn assert_probes(
                     continue;
                 };
             }
-            ExpectedOutcome::RoundTripCompleted {
-                remote: expected_remote,
-                ..
-            } => {
+            ExpectedOutcome::RoundTripCompleted(route) => {
+                let expected_remote = route.remote();
                 let ([received_request], [received_response]) =
                     (received_requests.as_slice(), received_responses.as_slice())
                 else {
@@ -392,7 +392,7 @@ fn assert_received_request(
         tracing::error!(target: "assertions", id = ?expected.id, "Probe payload changed in transit");
     }
 
-    let ref_client = ref_clients.get(&expected.origin).unwrap();
+    let ref_client = &ref_clients[&expected.origin];
     let expected_source = ref_client.tunnel_ip_for(received_request.packet.source());
     if received_request.packet.source() != expected_source {
         tracing::error!(target: "assertions", id = ?expected.id, "Received request has the wrong source");
@@ -746,6 +746,34 @@ pub(crate) fn assert_resource_list(ref_client: &RefClient, sim_client: &SimClien
     }
 }
 
+pub(crate) fn assert_dns_resource_record_cache(ref_client: &RefClient, sim_client: &SimClient) {
+    let addresses = ref_client
+        .all_resources()
+        .into_iter()
+        .filter_map(|resource| match resource {
+            Resource::Dns(resource) => Some((resource.id, resource.address)),
+            Resource::Cidr(_) => None,
+            Resource::DevicePool(_) => None,
+            Resource::Internet(_) => None,
+        })
+        .collect::<BTreeMap<_, _>>();
+
+    for record in &sim_client.dns_resource_record_cache {
+        for (pattern, resource_id) in &record.resources {
+            let Some(address) = addresses.get(resource_id) else {
+                continue;
+            };
+
+            if pattern.to_string() != *address {
+                tracing::error!(target: "assertions", %resource_id, domain = %record.domain, cached_pattern = %pattern, current_address = %address, "DNS record cache has an obsolete resource pattern");
+            }
+            if !dns::is_subdomain(&record.domain, address) {
+                tracing::error!(target: "assertions", %resource_id, domain = %record.domain, current_address = %address, "DNS record cache associates a domain with a non-matching resource");
+            }
+        }
+    }
+}
+
 fn assert_resource_definition(expected: &ResourceView, actual: &ResourceView) {
     use ResourceView::*;
 
@@ -1025,15 +1053,13 @@ fn assert_destination_is_dns_resource(
 pub(crate) struct PanicOnErrorEvents<S> {
     subscriber: PhantomData<S>,
     has_seen_error: AtomicBool,
-    index: u32,
 }
 
 impl<S> PanicOnErrorEvents<S> {
-    pub(crate) fn new(index: u32) -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             subscriber: PhantomData,
             has_seen_error: Default::default(),
-            index,
         }
     }
 }
@@ -1041,7 +1067,7 @@ impl<S> PanicOnErrorEvents<S> {
 impl<S> Drop for PanicOnErrorEvents<S> {
     fn drop(&mut self) {
         if self.has_seen_error.load(Ordering::SeqCst) {
-            panic!("Testcase {} failed", self.index);
+            panic!("Testcase failed");
         }
     }
 }

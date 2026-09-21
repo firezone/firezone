@@ -3,10 +3,9 @@ use anyhow::{Context as _, Result, bail};
 use connlib_model::{ClientId, GatewayId, RelayId};
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
-use relay_proto::AddressFamily;
 use snownet::Transmit;
 use std::{
-    collections::{BTreeMap, HashSet},
+    collections::BTreeMap,
     iter,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
     time::{Duration, Instant},
@@ -24,9 +23,6 @@ pub(crate) struct Host<T> {
     pub(crate) ip4: Option<Ipv4Addr>,
     pub(crate) ip6: Option<Ipv6Addr>,
     pub(crate) port: u16,
-
-    #[debug(skip)]
-    allocated_ports: HashSet<(u16, AddressFamily)>,
 
     // The latency of incoming and outgoing packets.
     latency: Duration,
@@ -337,7 +333,6 @@ impl<T> Host<T> {
             ip6: None,
             port,
             span: Span::none(),
-            allocated_ports: HashSet::default(),
             latency,
             edge,
             offline: false,
@@ -366,14 +361,6 @@ impl<T> Host<T> {
         };
 
         Some(SocketAddr::new(ip, self.port))
-    }
-
-    pub(crate) fn allocate_port(&mut self, port: u16, family: AddressFamily) {
-        self.allocated_ports.insert((port, family));
-    }
-
-    pub(crate) fn deallocate_port(&mut self, port: u16, family: AddressFamily) {
-        self.allocated_ports.remove(&(port, family));
     }
 
     pub(crate) fn update_interface(&mut self, ip4: Option<Ipv4Addr>, ip6: Option<Ipv6Addr>) {
@@ -477,44 +464,36 @@ impl<T> Host<T>
 where
     T: PollTimeout,
 {
-    pub(crate) fn poll_timeout(&mut self) -> Option<(Instant, &'static str)> {
+    pub(crate) fn poll_timeout(&mut self) -> Option<Instant> {
         iter::empty()
             .chain(self.inner.poll_timeout())
-            .chain(
-                self.inbox
-                    .next_transmit()
-                    .map(|instant| (instant, "inbox transmit")),
-            )
-            .min_by_key(|(instant, _)| *instant)
+            .chain(self.inbox.next_transmit())
+            .min()
     }
 }
 
 pub(crate) trait PollTimeout {
-    fn poll_timeout(&mut self) -> Option<(Instant, &'static str)>;
+    fn poll_timeout(&mut self) -> Option<Instant>;
 }
 
 impl PollTimeout for SimClient {
-    fn poll_timeout(&mut self) -> Option<(Instant, &'static str)> {
+    fn poll_timeout(&mut self) -> Option<Instant> {
         iter::empty()
-            .chain(self.sut.poll_timeout())
-            .chain(
-                self.tcp_dns_client
-                    .poll_timeout()
-                    .map(|instant| (instant, "Application TCP DNS client")),
-            )
-            .min_by_key(|(instant, _)| *instant)
+            .chain(self.sut.poll_timeout().map(|(instant, _)| instant))
+            .chain(self.tcp_dns_client.poll_timeout())
+            .min()
     }
 }
 
 impl PollTimeout for SimGateway {
-    fn poll_timeout(&mut self) -> Option<(Instant, &'static str)> {
-        self.sut.poll_timeout()
+    fn poll_timeout(&mut self) -> Option<Instant> {
+        self.sut.poll_timeout().map(|(instant, _)| instant)
     }
 }
 
 impl PollTimeout for SimRelay {
-    fn poll_timeout(&mut self) -> Option<(Instant, &'static str)> {
-        self.sut.poll_timeout().map(|instant| (instant, ""))
+    fn poll_timeout(&mut self) -> Option<Instant> {
+        self.sut.poll_timeout()
     }
 }
 
@@ -539,7 +518,6 @@ where
             ip6: self.ip6,
             span,
             port: self.port,
-            allocated_ports: self.allocated_ports.clone(),
             latency: self.latency,
             edge: self.edge.clone(),
             offline: self.offline,
@@ -616,13 +594,6 @@ impl RoutingTable {
 
     pub(crate) fn host_by_ip(&self, ip: IpAddr) -> Option<HostId> {
         self.routes.exact_match(ip).copied()
-    }
-
-    pub(crate) fn overlaps_with(&self, other: &Self) -> bool {
-        other
-            .routes
-            .iter()
-            .any(|(route, _)| self.routes.exact_match(route).is_some())
     }
 }
 
