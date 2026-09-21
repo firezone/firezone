@@ -98,6 +98,8 @@ pub enum ServerMsg {
         user_msg: String,
         log_msg: String,
         requires_sign_in: bool,
+        /// An older Tunnel service does not send this; `false` keeps its disconnects diagnostic.
+        #[serde(default)]
         is_user_facing: bool,
     },
     AllGatewaysOffline {
