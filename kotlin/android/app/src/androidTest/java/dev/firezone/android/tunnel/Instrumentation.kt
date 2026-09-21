@@ -12,6 +12,7 @@ import androidx.test.runner.lifecycle.Stage
 import androidx.test.uiautomator.By
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.Until
+import dev.firezone.android.core.BootReceiver
 import dev.firezone.android.core.presentation.MainActivity
 import java.io.File
 import java.util.concurrent.TimeUnit
@@ -58,6 +59,12 @@ fun revokeNotificationPermission() {
 
     // Once the user has answered the dialog, the system answers for them from then on.
     shell("pm clear-permission-flags ${packageName()} android.permission.POST_NOTIFICATIONS user-set user-fixed")
+}
+
+// What the system sends once per boot. The shell may send protected broadcasts, so this reaches
+// the receiver the way the real one does, through the manifest.
+fun broadcastBootCompleted() {
+    shell("am broadcast -a ${Intent.ACTION_BOOT_COMPLETED} -n ${packageName()}/${BootReceiver::class.java.name}")
 }
 
 // The same entry point the splash screen uses, so `startedByUser` is set
