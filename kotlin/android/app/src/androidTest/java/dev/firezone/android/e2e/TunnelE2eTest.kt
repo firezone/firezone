@@ -5,11 +5,6 @@ import android.app.Notification
 import android.app.NotificationManager
 import android.content.Context
 import android.content.SharedPreferences
-import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
-import androidx.compose.ui.test.onAllNodesWithText
-import androidx.compose.ui.test.onNodeWithText
-import androidx.compose.ui.test.performClick
 import androidx.test.core.app.ApplicationProvider
 import dagger.hilt.android.testing.HiltAndroidRule
 import dagger.hilt.android.testing.HiltAndroidTest
@@ -23,7 +18,9 @@ import dev.firezone.android.tunnel.FakeSessionFactory
 import dev.firezone.android.tunnel.TestRestrictions
 import dev.firezone.android.tunnel.TunnelNotification
 import dev.firezone.android.tunnel.UNASSIGNABLE_IPV6
+import dev.firezone.android.tunnel.awaitTextOnScreen
 import dev.firezone.android.tunnel.benchController
+import dev.firezone.android.tunnel.clickTextOnScreen
 import dev.firezone.android.tunnel.engineeringWiki
 import dev.firezone.android.tunnel.finishAllActivities
 import dev.firezone.android.tunnel.grantNotificationPermission
@@ -56,9 +53,6 @@ import javax.inject.Inject
 class TunnelE2eTest {
     @get:Rule(order = 0)
     val hiltRule = HiltAndroidRule(this)
-
-    @get:Rule(order = 1)
-    val composeRule = createEmptyComposeRule()
 
     @Inject
     lateinit var repo: Repository
@@ -97,7 +91,7 @@ class TunnelE2eTest {
         launchApp()
 
         awaitText("Engineering wiki")
-        composeRule.onNodeWithText("wiki.example.com").assertIsDisplayed()
+        awaitTextOnScreen("wiki.example.com")
     }
 
     @Test
@@ -113,7 +107,7 @@ class TunnelE2eTest {
         launchApp()
 
         awaitText("bench-controller-01")
-        composeRule.onNodeWithText("Connected Devices").assertIsDisplayed()
+        awaitTextOnScreen("Connected Devices")
     }
 
     @Test
@@ -126,7 +120,7 @@ class TunnelE2eTest {
 
         // The top bar shows the initial; the name itself is behind the menu.
         awaitText("J")
-        composeRule.onNodeWithText("J").performClick()
+        clickTextOnScreen("J")
         awaitText(ACTOR_NAME)
 
         // The name on screen comes from the same event, so a slug it saved would be here too.
@@ -162,9 +156,9 @@ class TunnelE2eTest {
         launchApp()
 
         awaitText("Internet Resource", substring = true)
-        composeRule.onNodeWithText("Internet Resource", substring = true).performClick()
+        clickTextOnScreen("Internet Resource", substring = true)
         awaitText("Enable this resource")
-        composeRule.onNodeWithText("Enable this resource").performClick()
+        clickTextOnScreen("Enable this resource")
 
         runBlocking { withTimeout(TIMEOUT_MS) { session.awaitCommand("setInternetResourceState=true") } }
     }
@@ -203,9 +197,9 @@ class TunnelE2eTest {
         launchApp()
 
         awaitText("J")
-        composeRule.onNodeWithText("J").performClick()
+        clickTextOnScreen("J")
         awaitText("Sign Out")
-        composeRule.onNodeWithText("Sign Out").performClick()
+        clickTextOnScreen("Sign Out")
 
         await("the token to be cleared") { tokenStore.get() == null }
         assertNull(tokenStore.get())
@@ -287,13 +281,7 @@ class TunnelE2eTest {
     private fun awaitText(
         text: String,
         substring: Boolean = false,
-    ) = await("\"$text\" on screen") {
-        // The splash screen is a View, so there are moments with no Compose content at all, which
-        // `fetchSemanticsNodes` reports as an error rather than as an empty screen.
-        runCatching {
-            composeRule.onAllNodesWithText(text, substring = substring).fetchSemanticsNodes().isNotEmpty()
-        }.getOrDefault(false)
-    }
+    ) = awaitTextOnScreen(text, substring)
 
     private fun awaitDisconnectedNotification(): String? {
         await("the disconnected notification") { disconnectedNotification() != null }

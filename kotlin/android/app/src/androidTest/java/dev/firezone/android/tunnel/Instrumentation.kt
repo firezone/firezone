@@ -8,7 +8,9 @@ import android.content.Intent
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
 import androidx.test.runner.lifecycle.Stage
+import androidx.test.uiautomator.By
 import androidx.test.uiautomator.UiDevice
+import androidx.test.uiautomator.Until
 import dev.firezone.android.core.presentation.MainActivity
 import java.io.File
 import java.util.concurrent.TimeUnit
@@ -89,6 +91,48 @@ fun awaitResumed(activity: Class<out Activity>) {
         Thread.sleep(50)
     }
 }
+
+// Reads the accessibility tree rather than Compose's own test rule. The rule waits for the
+// composition to go idle and has no deadline of its own, and idleness is driven by frames, so an
+// emulator that stops producing them leaves the wait with nothing to end it.
+fun awaitTextOnScreen(
+    text: String,
+    substring: Boolean = false,
+) {
+    val found =
+        UiDevice
+            .getInstance(InstrumentationRegistry.getInstrumentation())
+            .wait(Until.hasObject(selector(text, substring)), TimeUnit.SECONDS.toMillis(20))
+
+    if (found != true) {
+        throw AssertionError("Timed out waiting for \"$text\" on screen, showing ${resumedActivity()}")
+    }
+}
+
+/** Taps whatever carries [text], once it is there. */
+fun clickTextOnScreen(
+    text: String,
+    substring: Boolean = false,
+) {
+    awaitTextOnScreen(text, substring)
+
+    UiDevice
+        .getInstance(InstrumentationRegistry.getInstrumentation())
+        .findObject(selector(text, substring))
+        ?.click()
+        ?: throw AssertionError("\"$text\" left the screen before it could be tapped")
+}
+
+/** Whether [text] is on screen now, for asserting that something is absent. */
+fun isTextOnScreen(
+    text: String,
+    substring: Boolean = false,
+): Boolean = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation()).hasObject(selector(text, substring))
+
+private fun selector(
+    text: String,
+    substring: Boolean,
+) = if (substring) By.textContains(text) else By.text(text)
 
 private fun isResumed(activity: Class<out Activity>): Boolean {
     var resumed = false
