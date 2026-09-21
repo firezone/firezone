@@ -152,12 +152,7 @@ jobs:
           # An image without Play Services boots faster, and a device owner can only be
           # set while a device carries no accounts, which the managed suite's DPC needs.
           target: default
-          # No snapshot either way: writing one puts the renderer through a second pass at
-          # shutdown for a device nothing reuses, and reading one starts the run on state
-          # some other job left behind.
-          emulator-options: >-
-            -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-            -no-snapshot-save -no-snapshot-load
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           # `script` is not a `run:` step, so it does not pick up the workflow's
           # `working-directory` default and starts at the repository root.
           script: ${{ matrix.script }}
