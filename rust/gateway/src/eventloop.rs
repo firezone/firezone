@@ -373,12 +373,19 @@ impl Eventloop {
             IngressMessages::CreateAuthorization(msg) => {
                 let token = &msg.flow_logs_ingest_token;
 
-                if token.claims().uploads_enabled
-                    && let Err(e) =
-                        flow_log_writer::write_token(&self.flow_logs_dir, token.as_str())
-                            .context("Failed to persist flow-log ingest token")
-                {
-                    record_flow_log_error(&self.flow_log_token_errors, &e);
+                if token.claims().uploads_enabled {
+                    match flow_log_writer::write_token(&self.flow_logs_dir, token.as_str())
+                        .context("Failed to persist flow-log ingest token")
+                    {
+                        Ok(()) => {}
+                        Err(ref e) if let Some(io) = e.any_downcast_ref::<io::Error>() => {
+                            self.flow_log_token_errors
+                                .add(1, &[otel_attributes::io_error_type(io)]);
+
+                            tracing::debug!("{e:#}");
+                        }
+                        Err(e) => tracing::debug!("{e:#}"),
+                    }
                 }
 
                 if let Err(snownet::NoTurnServers {}) = tunnel.state_mut().create_authorization(
@@ -466,7 +473,7 @@ impl Eventloop {
                     .state_mut()
                     .set_flow_logs_enabled(flow_logs.upload_enabled() || self.local_flow_logs);
 
-                if let Err(e) = flow_log_upload::configure_uploads(
+                match flow_log_upload::configure_uploads(
                     &self.flow_logs_dir,
                     &flow_logs.api_url,
                     flow_logs.upload_interval_secs,
@@ -474,7 +481,14 @@ impl Eventloop {
                 )
                 .context("Failed to persist flow-log upload config")
                 {
-                    record_flow_log_error(&self.flow_log_config_errors, &e);
+                    Ok(()) => {}
+                    Err(ref e) if let Some(io) = e.any_downcast_ref::<io::Error>() => {
+                        self.flow_log_config_errors
+                            .add(1, &[otel_attributes::io_error_type(io)]);
+
+                        tracing::debug!("{e:#}");
+                    }
+                    Err(e) => tracing::debug!("{e:#}"),
                 }
 
                 configure_portal_metrics(&self.portal_metrics, metrics);
@@ -708,17 +722,6 @@ fn configure_portal_metrics(
     }) {
         tracing::warn!("Failed to configure metrics reporting: {e:#}");
     }
-}
-
-/// Logs a failure to write the flow-log spool and counts it by IO error kind.
-fn record_flow_log_error(errors: &opentelemetry::metrics::Counter<u64>, e: &anyhow::Error) {
-    tracing::debug!("{e:#}");
-
-    let Some(io) = e.any_downcast_ref::<io::Error>() else {
-        return;
-    };
-
-    errors.add(1, &[otel_attributes::io_error_type(io)]);
 }
 
 fn lookup_to_ips(lookup: &Lookup) -> impl Iterator<Item = IpAddr> + '_ {
