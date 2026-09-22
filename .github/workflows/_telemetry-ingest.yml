@@ -1,4 +1,4 @@
-name: Build control plane
+name: Build telemetry ingest
 run-name: Triggered from ${{ github.event_name }} by ${{ github.actor }}
 on:
   workflow_call:
@@ -14,23 +14,8 @@ permissions:
   security-events: write # upload Trivy SARIF results
 
 jobs:
-  control-plane:
-    name: ${{ matrix.image_name }}
+  telemetry-ingest:
     runs-on: ubuntu-24.04
-    strategy:
-      fail-fast: ${{ github.event_name == 'merge_group' }}
-      matrix:
-        include:
-          - image_name: portal
-            target: runtime
-            build-args: |
-              APPLICATION_NAME=portal
-              GIT_SHA=${{ inputs.sha }}
-          - image_name: elixir
-            target: compiler
-            build-args: |
-              APPLICATION_NAME=portal
-              GIT_SHA=${{ inputs.sha }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -45,7 +30,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         with:
-          images: ${{ steps.login.outputs.registry }}/firezone/${{matrix.image_name }}
+          images: ${{ steps.login.outputs.registry }}/firezone/telemetry-ingest
           tags: |
             type=raw,value=${{ inputs.sha }}
       - name: Sanitize github.ref_name
@@ -55,59 +40,57 @@ jobs:
           CACHE_TAG="${REF//[\/_=]/-}"
           echo "CACHE_TAG=$CACHE_TAG" >> "$GITHUB_ENV"
       # PRs & non-main branches: read-only cache
-      - name: Build and push control plane images (read-only cache)
+      - name: Build and push telemetry ingest image (read-only cache)
         if: ${{ github.ref != 'refs/heads/main' }}
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
-          build-args: ${{ matrix.build-args }}
-          target: ${{ matrix.target }}
+          target: runtime
           no-cache-filters: runtime
-          context: elixir
+          context: rust
+          file: rust/telemetry-ingest/Dockerfile
           cache-from: |
-            type=gha,scope=${{ matrix.image_name }}:${{ env.CACHE_TAG }}
-            type=gha,scope=${{ matrix.image_name }}:main
+            type=gha,scope=telemetry-ingest:${{ env.CACHE_TAG }}
+            type=gha,scope=telemetry-ingest:main
           # no cache-to here -> read-only
           push: true
           tags: |
-            ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ inputs.sha }}
-            ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ env.CACHE_TAG }}
+            ${{ steps.login.outputs.registry }}/firezone/telemetry-ingest:${{ inputs.sha }}
+            ${{ steps.login.outputs.registry }}/firezone/telemetry-ingest:${{ env.CACHE_TAG }}
           labels: |
             org.opencontainers.image.revision=${{ inputs.sha }}
 
       # main: read/write cache
-      - name: Build and push control plane images (read/write cache)
+      - name: Build and push telemetry ingest image (read/write cache)
         if: ${{ github.ref == 'refs/heads/main' }}
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
-          build-args: ${{ matrix.build-args }}
-          target: ${{ matrix.target }}
+          target: runtime
           no-cache-filters: runtime
-          context: elixir
+          context: rust
+          file: rust/telemetry-ingest/Dockerfile
           cache-from: |
-            type=gha,scope=${{ matrix.image_name }}:${{ env.CACHE_TAG }}
-            type=gha,scope=${{ matrix.image_name }}:main
+            type=gha,scope=telemetry-ingest:${{ env.CACHE_TAG }}
+            type=gha,scope=telemetry-ingest:main
           cache-to: |
-            type=gha,scope=${{ matrix.image_name }}:${{ env.CACHE_TAG }},mode=max,ignore-error=true
+            type=gha,scope=telemetry-ingest:${{ env.CACHE_TAG }},mode=max,ignore-error=true
           push: true
           tags: |
-            ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ inputs.sha }}
-            ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ env.CACHE_TAG }}
+            ${{ steps.login.outputs.registry }}/firezone/telemetry-ingest:${{ inputs.sha }}
+            ${{ steps.login.outputs.registry }}/firezone/telemetry-ingest:${{ env.CACHE_TAG }}
           labels: |
             org.opencontainers.image.revision=${{ inputs.sha }}
 
       - name: Run Trivy vulnerability scanner
-        if: ${{ matrix.image_name == 'portal' }}
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
-          image-ref: ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ inputs.sha }}
+          image-ref: ${{ steps.login.outputs.registry }}/firezone/telemetry-ingest:${{ inputs.sha }}
           format: sarif
           output: trivy-results.sarif
           ignore-unfixed: true
           vuln-type: os,library
           severity: CRITICAL,HIGH
       - name: Upload Trivy scan results to GitHub Security tab
-        if: ${{ matrix.image_name == 'portal' }}
         uses: github/codeql-action/upload-sarif@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4.37.7
         with:
           sarif_file: trivy-results.sarif
-          category: trivy-portal
+          category: trivy-telemetry-ingest
