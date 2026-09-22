@@ -101,53 +101,49 @@ pub fn tunnel_errors() -> Counter<u64> {
         .build()
 }
 
-/// Errors encountered while recording, spooling or uploading flow logs.
-///
-/// Reported to the portal, so the kinds are a closed set: see [`FlowLogError`].
-pub const FLOW_LOG_ERRORS: &str = "flow_logs.errors";
+/// Failures to write the flow-log upload config the portal sends.
+pub const FLOW_LOG_CONFIG_ERRORS: &str = "flow_logs.config.errors";
 
-/// Number of flow-log errors by kind.
-pub fn flow_log_errors() -> Counter<u64> {
+/// Failures to write an authorization's flow-log ingest token.
+pub const FLOW_LOG_TOKEN_ERRORS: &str = "flow_logs.token.errors";
+
+/// Failures to spool a flow-log report.
+pub const FLOW_LOG_REPORT_ERRORS: &str = "flow_logs.report.errors";
+
+/// Number of failures to write the flow-log upload config, by IO error kind.
+///
+/// Without the config, nothing is ever uploaded.
+pub fn flow_log_config_errors() -> Counter<u64> {
+    flow_log_errors(
+        FLOW_LOG_CONFIG_ERRORS,
+        "Number of failures to write the flow-log upload config.",
+    )
+}
+
+/// Number of failures to write a flow-log ingest token, by IO error kind.
+///
+/// Reports of an authorization whose token never landed are not spooled.
+pub fn flow_log_token_errors() -> Counter<u64> {
+    flow_log_errors(
+        FLOW_LOG_TOKEN_ERRORS,
+        "Number of failures to write a flow-log ingest token.",
+    )
+}
+
+/// Number of failures to spool a flow-log report, by IO error kind.
+pub fn flow_log_report_errors() -> Counter<u64> {
+    flow_log_errors(
+        FLOW_LOG_REPORT_ERRORS,
+        "Number of failures to spool a flow-log report.",
+    )
+}
+
+fn flow_log_errors(name: &'static str, description: &'static str) -> Counter<u64> {
     meter()
-        .u64_counter(FLOW_LOG_ERRORS)
-        .with_description(
-            "Number of errors encountered while recording, spooling or uploading flow logs.",
-        )
+        .u64_counter(name)
+        .with_description(description)
         .with_unit("{error}")
         .build()
-}
-
-/// Why a flow log did not make it to the portal.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum FlowLogError {
-    /// The spool cannot be written because of a permission error.
-    SpoolNotWritable,
-    /// The spool is full, either the volume or the budget the writer keeps to.
-    SpoolFull,
-}
-
-impl FlowLogError {
-    /// Classifies an IO failure, if it is one we report.
-    #[expect(
-        clippy::wildcard_enum_match_arm,
-        reason = "`io::ErrorKind` is non-exhaustive; every other kind goes unreported."
-    )]
-    pub fn from_io_kind(kind: std::io::ErrorKind) -> Option<Self> {
-        match kind {
-            std::io::ErrorKind::PermissionDenied => Some(FlowLogError::SpoolNotWritable),
-            std::io::ErrorKind::StorageFull => Some(FlowLogError::SpoolFull),
-            _ => None,
-        }
-    }
-
-    pub fn attributes(self) -> [KeyValue; 1] {
-        let kind = match self {
-            FlowLogError::SpoolNotWritable => "spool_not_writable",
-            FlowLogError::SpoolFull => "spool_full",
-        };
-
-        [KeyValue::new("error.type", kind)]
-    }
 }
 
 /// Number of portal connection hiccups by cause.

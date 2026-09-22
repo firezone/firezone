@@ -6,9 +6,9 @@ defmodule Portal.OTLPFixtures do
   @doc """
   Verbatim output of the gateway's exporter, which pins our decoder to it.
 
-  The gateway reports the flow-log error counter and nothing else, with the
-  resource stripped because the token the report is authorized with already
-  identifies the gateway.
+  The gateway reports the allow-listed flow-log error counters and nothing
+  else, with the resource stripped because the token the report is authorized
+  with already identifies the gateway.
   """
   def gateway_export do
     %{
@@ -25,16 +25,18 @@ defmodule Portal.OTLPFixtures do
               },
               "metrics" => [
                 %{
-                  "name" => "flow_logs.errors",
-                  "description" =>
-                    "Number of errors encountered while recording, spooling or uploading flow logs.",
+                  "name" => "flow_logs.report.errors",
+                  "description" => "Number of failures to spool a flow-log report.",
                   "unit" => "{error}",
                   "metadata" => [],
                   "sum" => %{
                     "dataPoints" => [
                       %{
                         "attributes" => [
-                          %{"key" => "error.type", "value" => %{"stringValue" => "spool_full"}}
+                          %{
+                            "key" => "error.type",
+                            "value" => %{"stringValue" => "io::ErrorKind::PermissionDenied"}
+                          }
                         ],
                         "startTimeUnixNano" => "1000000000",
                         "timeUnixNano" => "2000000000",

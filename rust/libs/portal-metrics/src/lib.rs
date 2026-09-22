@@ -36,7 +36,11 @@ use url::Url;
 mod ingest;
 
 /// The counters the portal accepts.
-const ALLOW_LIST: &[&str] = &[otel_instruments::FLOW_LOG_ERRORS];
+const ALLOW_LIST: &[&str] = &[
+    otel_instruments::FLOW_LOG_CONFIG_ERRORS,
+    otel_instruments::FLOW_LOG_TOKEN_ERRORS,
+    otel_instruments::FLOW_LOG_REPORT_ERRORS,
+];
 
 /// How often to re-check for a config while reporting is unconfigured.
 const DISABLED_POLL: Duration = Duration::from_secs(60);
@@ -83,9 +87,10 @@ pub fn spawn(socket_factory: Arc<dyn SocketFactory<TcpSocket>>) -> (Reader, Repo
 }
 
 /// Where, and how often, to report metrics to the portal.
+#[derive(Clone)]
 pub struct Config {
     /// Base URL metrics are POSTed to.
-    pub api_url: String,
+    pub api_url: Url,
     /// Authorizes the reports; sent as-is in the `Authorization` header.
     pub token: SecretString,
     /// How often to report.
@@ -98,7 +103,7 @@ pub struct Config {
 /// counts keep accumulating across portal reconnects.
 #[derive(Clone)]
 pub struct Reporter {
-    endpoint: Arc<Mutex<Option<Endpoint>>>,
+    endpoint: Arc<Mutex<Option<Config>>>,
     wakeups: Arc<Notify>,
 }
 
@@ -117,13 +122,7 @@ impl Reporter {
             "Metrics report interval must not be zero"
         );
 
-        let url = ingest::metrics_endpoint(&config.api_url)?;
-
-        *self.endpoint.lock() = Some(Endpoint {
-            url,
-            token: config.token.clone(),
-            interval: config.interval,
-        });
+        *self.endpoint.lock() = Some(config.clone());
         self.wakeups.notify_one();
 
         Ok(())
@@ -244,14 +243,14 @@ async fn report_pass(
 }
 
 async fn report(
-    endpoint: &Endpoint,
+    endpoint: &Config,
     request: &ExportMetricsServiceRequest,
     socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
 ) -> Result<()> {
     let body = serde_json::to_vec(request).context("Failed to serialize metrics report")?;
 
     ingest::report(
-        &endpoint.url,
+        &endpoint.api_url,
         &endpoint.token,
         Bytes::from(body),
         socket_factory,
@@ -299,14 +298,6 @@ fn export_request(reader: &Reader) -> Result<ExportMetricsServiceRequest> {
     Ok(request)
 }
 
-/// The portal's config, with its endpoint already validated.
-#[derive(Clone)]
-struct Endpoint {
-    url: Url,
-    token: SecretString,
-    interval: Duration,
-}
-
 #[cfg(test)]
 mod tests {
     use opentelemetry::{KeyValue, metrics::MeterProvider as _};
@@ -323,13 +314,17 @@ mod tests {
         let meter = provider.meter("connlib");
 
         meter
-            .u64_counter(otel_instruments::FLOW_LOG_ERRORS)
-            .with_description(
-                "Number of errors encountered while recording, spooling or uploading flow logs.",
-            )
+            .u64_counter(otel_instruments::FLOW_LOG_REPORT_ERRORS)
+            .with_description("Number of failures to spool a flow-log report.")
             .with_unit("{error}")
             .build()
-            .add(3, &[KeyValue::new("error.type", "spool_full")]);
+            .add(
+                3,
+                &[KeyValue::new(
+                    "error.type",
+                    "io::ErrorKind::PermissionDenied",
+                )],
+            );
         meter
             .u64_counter("connlib.network.packets")
             .build()
@@ -351,15 +346,15 @@ mod tests {
                             "droppedAttributesCount": 0
                         },
                         "metrics": [{
-                            "name": "flow_logs.errors",
-                            "description": "Number of errors encountered while recording, spooling or uploading flow logs.",
+                            "name": "flow_logs.report.errors",
+                            "description": "Number of failures to spool a flow-log report.",
                             "unit": "{error}",
                             "metadata": [],
                             "sum": {
                                 "dataPoints": [{
                                     "attributes": [{
                                         "key": "error.type",
-                                        "value": { "stringValue": "spool_full" }
+                                        "value": { "stringValue": "io::ErrorKind::PermissionDenied" }
                                     }],
                                     "startTimeUnixNano": "1000000000",
                                     "timeUnixNano": "2000000000",
@@ -385,7 +380,7 @@ mod tests {
         let provider = meter_provider(&reader);
         let counter = provider
             .meter("connlib")
-            .u64_counter(otel_instruments::FLOW_LOG_ERRORS)
+            .u64_counter(otel_instruments::FLOW_LOG_REPORT_ERRORS)
             .build();
 
         counter.add(3, &[]);

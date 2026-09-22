@@ -15,23 +15,17 @@ const METRICS_PATH: &str = "/v1/metrics";
 /// How much of a rejected report's body to log.
 const MAX_LOGGED_BODY: usize = 512;
 
-/// Builds the OTLP metrics endpoint from the portal's base API URL.
-pub fn metrics_endpoint(base_url: &str) -> Result<Url> {
-    let url = Url::parse(base_url)
-        .and_then(|base| base.join(METRICS_PATH))
-        .with_context(|| format!("Invalid metrics API URL `{base_url}`"))?;
-
-    Ok(url)
-}
-
 /// POSTs one OTLP/HTTP JSON report, authorized by `token`.
 pub async fn report(
-    url: &Url,
+    api_url: &Url,
     token: &SecretString,
     body: Bytes,
     socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
 ) -> Result<()> {
-    let http = connect(url, socket_factory).await?;
+    let url = api_url
+        .join(METRICS_PATH)
+        .with_context(|| format!("Invalid metrics API URL `{api_url}`"))?;
+    let http = connect(&url, socket_factory).await?;
 
     let request = http::Request::builder()
         .method(http::Method::POST)

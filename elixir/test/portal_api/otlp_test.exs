@@ -11,9 +11,9 @@ defmodule PortalAPI.OTLPTest do
 
       assert data_points == [
                %{
-                 name: "flow_logs.errors",
+                 name: "flow_logs.report.errors",
                  value: 3,
-                 attributes: %{"error.type" => "spool_full"},
+                 attributes: %{"error.type" => "io::ErrorKind::PermissionDenied"},
                  time_unix_nano: 2_000_000_000
                }
              ]

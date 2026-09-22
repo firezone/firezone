@@ -264,7 +264,7 @@ impl FlowLogsConfig {
 #[derive(Debug, Deserialize, Clone)]
 pub struct MetricsConfig {
     /// Base URL metrics are POSTed to.
-    pub api_url: String,
+    pub api_url: url::Url,
     /// Authorizes the reports and attributes them to this device.
     pub token: secrecy::SecretString,
     /// How often, in seconds, to report metrics. `0` disables reporting.

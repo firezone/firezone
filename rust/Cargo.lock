@@ -2812,6 +2812,7 @@ dependencies = [
  "flow-log-spool",
  "nix 0.31.3",
  "opentelemetry",
+ "otel-attributes",
  "otel-instruments",
  "serde",
  "serde_json",
@@ -8902,6 +8903,7 @@ dependencies = [
  "test-strategy",
  "thiserror 2.0.20",
  "tracing",
+ "url",
 ]
 
 [[package]]

@@ -75,7 +75,6 @@ use base64::Engine as _;
 use chrono::DateTime;
 use flow_log_spool::serialize;
 use opentelemetry::metrics::Counter;
-use otel_instruments::FlowLogError;
 use tracing::field::{Field, Visit};
 use tracing_subscriber::registry::LookupSpan;
 
@@ -458,14 +457,12 @@ struct Spool {
 
 impl Spool {
     fn new(root: &Path) -> Self {
-        let errors = otel_instruments::flow_log_errors();
+        let errors = otel_instruments::flow_log_report_errors();
 
         // The volume can only be queried through a path that exists, and the
         // spool root is the writer's to create either way.
         if let Err(e) = create_dir_secure(root) {
-            if let Some(error) = FlowLogError::from_io_kind(e.kind()) {
-                errors.add(1, &error.attributes());
-            }
+            errors.add(1, &[otel_attributes::io_error_type(&e)]);
 
             tracing::warn!(root = %root.display(), "Failed to create flow-log spool root: {e}");
         }
@@ -510,20 +507,16 @@ impl Spool {
     /// A write that failed because the disk is full fails the same way until
     /// something frees space, so the spool backs off instead of retrying.
     fn handle_failed_write(&mut self, e: &anyhow::Error, now: Instant) {
-        let kind = e.any_downcast_ref::<std::io::Error>().map(|e| e.kind());
+        tracing::debug!("{e:#}");
 
-        if let Some(error) = kind.and_then(FlowLogError::from_io_kind) {
-            self.errors.add(1, &error.attributes());
-        }
+        let Some(io) = e.any_downcast_ref::<std::io::Error>() else {
+            return;
+        };
 
-        match kind {
-            Some(std::io::ErrorKind::StorageFull) => {
-                tracing::debug!("{e:#}");
+        self.errors.add(1, &[otel_attributes::io_error_type(io)]);
 
-                self.disk_full_until = Some(now + DISK_FULL_COOLDOWN);
-            }
-            Some(_) => tracing::warn!("{e:#}"),
-            None => tracing::warn!("{e:#}"),
+        if io.kind() == std::io::ErrorKind::StorageFull {
+            self.disk_full_until = Some(now + DISK_FULL_COOLDOWN);
         }
     }
 

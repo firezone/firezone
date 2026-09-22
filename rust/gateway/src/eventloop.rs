@@ -7,7 +7,6 @@ use clock::Clock;
 use hickory_resolver::TokioResolver;
 use hickory_resolver::lookup::Lookup;
 use hickory_resolver::proto::rr::RecordType;
-use otel_instruments::FlowLogError;
 use phoenix_channel::{PhoenixChannel, PublicKeyParam};
 use std::collections::BTreeSet;
 use std::future::{self, Future, poll_fn};
@@ -62,7 +61,8 @@ pub struct Eventloop {
     logged_permission_denied: bool,
 
     tunnel_errors: opentelemetry::metrics::Counter<u64>,
-    flow_log_errors: opentelemetry::metrics::Counter<u64>,
+    flow_log_config_errors: opentelemetry::metrics::Counter<u64>,
+    flow_log_token_errors: opentelemetry::metrics::Counter<u64>,
     dns_lookup_duration: opentelemetry::metrics::Histogram<f64>,
 
     portal_metrics: portal_metrics::Reporter,
@@ -119,7 +119,8 @@ impl Eventloop {
             ),
             logged_permission_denied: false,
             tunnel_errors: otel_instruments::tunnel_errors(),
-            flow_log_errors: otel_instruments::flow_log_errors(),
+            flow_log_config_errors: otel_instruments::flow_log_config_errors(),
+            flow_log_token_errors: otel_instruments::flow_log_token_errors(),
             dns_lookup_duration: otel_instruments::dns_lookup_duration(),
             portal_metrics,
             portal_event_rx,
@@ -377,7 +378,7 @@ impl Eventloop {
                         flow_log_writer::write_token(&self.flow_logs_dir, token.as_str())
                             .context("Failed to persist flow-log ingest token")
                 {
-                    report_spool_failure(&self.flow_log_errors, &e);
+                    record_flow_log_error(&self.flow_log_token_errors, &e);
                 }
 
                 if let Err(snownet::NoTurnServers {}) = tunnel.state_mut().create_authorization(
@@ -473,7 +474,7 @@ impl Eventloop {
                 )
                 .context("Failed to persist flow-log upload config")
                 {
-                    report_spool_failure(&self.flow_log_errors, &e);
+                    record_flow_log_error(&self.flow_log_config_errors, &e);
                 }
 
                 configure_portal_metrics(&self.portal_metrics, metrics);
@@ -709,20 +710,15 @@ fn configure_portal_metrics(
     }
 }
 
-/// Logs a failure to write the flow-log spool, counting the kinds the portal is
-/// told about.
-fn report_spool_failure(errors: &opentelemetry::metrics::Counter<u64>, e: &anyhow::Error) {
-    let kind = e.any_downcast_ref::<io::Error>().map(io::Error::kind);
+/// Logs a failure to write the flow-log spool and counts it by IO error kind.
+fn record_flow_log_error(errors: &opentelemetry::metrics::Counter<u64>, e: &anyhow::Error) {
+    tracing::debug!("{e:#}");
 
-    if let Some(error) = kind.and_then(FlowLogError::from_io_kind) {
-        errors.add(1, &error.attributes());
-    }
+    let Some(io) = e.any_downcast_ref::<io::Error>() else {
+        return;
+    };
 
-    match kind {
-        Some(io::ErrorKind::StorageFull) => tracing::debug!("{e:#}"),
-        Some(_) => tracing::warn!("{e:#}"),
-        None => tracing::warn!("{e:#}"),
-    }
+    errors.add(1, &[otel_attributes::io_error_type(io)]);
 }
 
 fn lookup_to_ips(lookup: &Lookup) -> impl Iterator<Item = IpAddr> + '_ {
