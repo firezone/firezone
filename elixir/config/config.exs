@@ -493,7 +493,7 @@ config :portal,
   flow_logs_upload_interval_secs: 60
 
 config :portal,
-  metrics_api_url: "https://metrics.firezone.dev/",
+  metrics_api_url: "https://telemetry.firezone.dev/",
   metrics_report_interval_secs: 300
 
 config :portal, country_code_blocklist: []

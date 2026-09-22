@@ -381,7 +381,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       join_channel(gateway, site, token)
 
       assert_push "configure_metrics", %{
-        api_url: "https://metrics.firezone.dev/",
+        api_url: "https://telemetry.firezone.dev/",
         report_interval_secs: 300,
         meters: [
           "flow_logs.config.errors",

@@ -38,8 +38,7 @@ defmodule PortalAPI.ApiSpec do
   # /mcp is the Model Context Protocol endpoint. It speaks JSON-RPC rather than
   # REST and derives its tools from this very spec, so publishing it as an API
   # operation would be circular.
-  # /v1/metrics is the OTLP metrics endpoint, whose contract is the OTLP spec.
-  @excluded_prefixes ["/openapi", "/swaggerui", "/integrations", "/mcp", "/v1/metrics"]
+  @excluded_prefixes ["/openapi", "/swaggerui", "/integrations", "/mcp"]
 
   defp api_paths do
     Router

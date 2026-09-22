@@ -226,7 +226,7 @@ defmodule Portal.Config.Definitions do
   The base URL gateways report OpenTelemetry metrics to.
   """
   defconfig(:metrics_api_url, :string,
-    default: "https://metrics.firezone.dev/",
+    default: "https://telemetry.firezone.dev/",
     changeset: fn changeset, key ->
       changeset
       |> Portal.Changeset.validate_uri(key, require_trailing_slash: true)
@@ -235,7 +235,7 @@ defmodule Portal.Config.Definitions do
   )
 
   @doc """
-  How often, in seconds, gateways report metrics to the portal.
+  How often, in seconds, gateways report metrics.
 
   Set to `0` to disable metrics reporting entirely.
   """

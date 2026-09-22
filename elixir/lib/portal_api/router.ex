@@ -112,28 +112,6 @@ defmodule PortalAPI.Router do
     post "/flow_logs", FlowLogController, :create
   end
 
-  # OTLP/HTTP with JSON encoding, served on its own hostname, so the path is the
-  # one the OTLP spec mandates rather than a portal-flavoured one.
-  pipeline :metrics do
-    plug :accepts, ["json"]
-    plug PortalAPI.Plugs.IngestionRateLimit
-    plug PortalAPI.Plugs.MetricsAuth
-
-    # Reports are a few hundred bytes. The OTLP spec only recommends a 64 MiB
-    # ceiling, which is far more than a gateway ever needs to send.
-    plug Plug.Parsers,
-      parsers: [Portal.Parsers.JSON],
-      pass: ["*/*"],
-      json_decoder: Phoenix.json_library(),
-      length: 1_000_000
-  end
-
-  scope "/v1", PortalAPI do
-    pipe_through :metrics
-
-    post "/metrics", MetricsController, :create
-  end
-
   # URL versioning was tried (a /v1 prefix scope duplicating every route
   # below) and rolled back before ever shipping as the documented surface -
   # see git history if reviving it. Versioning strategy is deliberately
@@ -255,7 +233,7 @@ defmodule PortalAPI.Router do
   end
 
   defp ingestion_hosts do
-    [:flow_logs_api_url, :metrics_api_url]
+    [:flow_logs_api_url]
     |> Enum.map(&Portal.Config.get_env(:portal, &1))
     |> Enum.reject(&is_nil/1)
     |> Enum.map(&URI.parse(&1).host)

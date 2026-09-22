@@ -12,12 +12,6 @@ defmodule PortalAPI.ApiSpecTest do
     assert get_in(spec, ["components", "schemas", "FlowLogIngestRequest"])
   end
 
-  test "does not publish the OTLP metrics path" do
-    spec = PortalAPI.ApiSpec.spec() |> OpenApiSpex.OpenApi.to_map()
-
-    refute Map.has_key?(spec["paths"], "/v1/metrics")
-  end
-
   test "problem response examples match their HTTP status" do
     spec = PortalAPI.ApiSpec.spec() |> OpenApiSpex.OpenApi.to_map()
 
