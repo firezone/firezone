@@ -25,7 +25,7 @@ use relay_proto::{
     auth::{AccountId, generate_password, hash_account_id},
 };
 use std::net::{Ipv4Addr, SocketAddr};
-use std::time::Instant;
+use std::time::{Duration, Instant, SystemTime};
 use stun_codec::rfc5389::attributes::{MessageIntegrity, Nonce, Realm, Username};
 use stun_codec::{Message, MessageDecoder, MessageEncoder};
 use uuid::Uuid;
@@ -46,8 +46,11 @@ fuzz_target!(|input: Input<'_>| {
     server.set_accounts([AccountId::from(Uuid::nil())]);
     let client = ClientSocket::new(CLIENT);
     let now = Instant::now();
+    // Fixed rather than `SystemTime::now`: the expiry checked against this is
+    // fuzzer-controlled, so the verdict must not depend on when the target runs.
+    let now_utc = SystemTime::UNIX_EPOCH + Duration::from_secs(1_700_000_000);
 
-    let nonce = issued_nonce(&mut server, client, now);
+    let nonce = issued_nonce(&mut server, client, now, now_utc);
 
     let datagram = match input.parse {
         false => input.datagram.to_vec(),
@@ -61,7 +64,7 @@ fuzz_target!(|input: Input<'_>| {
         },
     };
 
-    server.handle_client_input(&datagram, client, now);
+    server.handle_client_input(&datagram, client, now, now_utc);
 });
 
 /// Replaces the fields a fuzzer cannot guess, leaving the rest of the message alone.
@@ -127,7 +130,12 @@ fn account_bound_username(username: &Username) -> Option<Username> {
 }
 
 /// Obtains a nonce the way a client does, by provoking a `401` and reading it back.
-fn issued_nonce(server: &mut Server<StdRng>, client: ClientSocket, now: Instant) -> Nonce {
+fn issued_nonce(
+    server: &mut Server<StdRng>,
+    client: ClientSocket,
+    now: Instant,
+    now_utc: SystemTime,
+) -> Nonce {
     let mut allocate = Message::<Attribute>::new(
         stun_codec::MessageClass::Request,
         stun_codec::rfc5766::methods::ALLOCATE,
@@ -138,7 +146,7 @@ fn issued_nonce(server: &mut Server<StdRng>, client: ClientSocket, now: Instant)
     let bytes = MessageEncoder::new()
         .encode_into_bytes(allocate)
         .expect("a well-formed ALLOCATE encodes");
-    server.handle_client_input(&bytes, client, now);
+    server.handle_client_input(&bytes, client, now, now_utc);
 
     let Some(Command::SendMessage { payload, .. }) = server.next_command() else {
         panic!("the relay answers an unauthenticated ALLOCATE");
