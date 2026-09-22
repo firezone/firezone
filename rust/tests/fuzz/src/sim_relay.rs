@@ -9,13 +9,15 @@ use snownet::{RelaySocket, Transmit};
 use std::{
     collections::HashSet,
     net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
-    time::Instant,
+    time::{Duration, Instant, SystemTime},
 };
 use uuid::Uuid;
 
 pub(crate) struct SimRelay {
     pub(crate) sut: relay_proto::Server<StdRng>,
     pub(crate) allocations: HashSet<(AddressFamily, AllocationPort)>,
+
+    created_at: SystemTime,
 }
 
 pub(crate) fn map_explode<'a>(
@@ -36,7 +38,12 @@ pub(crate) fn map_explode<'a>(
 }
 
 impl SimRelay {
-    pub(crate) fn new(seed: u64, ip4: Option<Ipv4Addr>, ip6: Option<Ipv6Addr>) -> Self {
+    pub(crate) fn new(
+        seed: u64,
+        ip4: Option<Ipv4Addr>,
+        ip6: Option<Ipv6Addr>,
+        created_at: SystemTime,
+    ) -> Self {
         let mut sut = relay_proto::Server::new(
             IpStack::from((ip4, ip6)),
             rand::rngs::StdRng::seed_from_u64(seed),
@@ -48,6 +55,7 @@ impl SimRelay {
         Self {
             sut,
             allocations: Default::default(),
+            created_at,
         }
     }
 
@@ -82,7 +90,12 @@ impl SimRelay {
         }
     }
 
-    pub(crate) fn receive(&mut self, transmit: Transmit, now: Instant) -> Option<Transmit> {
+    pub(crate) fn receive(
+        &mut self,
+        transmit: Transmit,
+        now: Instant,
+        now_utc: SystemTime,
+    ) -> Option<Transmit> {
         let dst = transmit.dst;
         let payload = transmit.payload;
         let sender = transmit.src.unwrap();
@@ -91,7 +104,7 @@ impl SimRelay {
             .matching_listen_socket(dst, self.sut.public_address())
             .is_some_and(|s| s == dst)
         {
-            return self.handle_client_input(payload, ClientSocket::new(sender), now);
+            return self.handle_client_input(payload, ClientSocket::new(sender), now, now_utc);
         }
 
         self.handle_peer_traffic(
@@ -106,8 +119,11 @@ impl SimRelay {
         mut payload: Buffer<Vec<u8>>,
         client: ClientSocket,
         now: Instant,
+        now_utc: SystemTime,
     ) -> Option<Transmit> {
-        let (port, peer) = self.sut.handle_client_input(&payload, client, now)?;
+        let (port, peer) = self
+            .sut
+            .handle_client_input(&payload, client, now, now_utc)?;
 
         payload.shift_start_right(4);
 
@@ -176,14 +192,18 @@ impl SimRelay {
     }
 
     fn make_credentials(&self, username: &str, auth_secret: &SecretString) -> (String, String) {
-        // Constant rather than `SystemTime::now`: the timestamp lands in the
-        // username, and with it in the target's comparison coverage, which must
-        // not differ between two runs over the same input. The relay verifies it
-        // against the real wall clock, hence the distant date.
-        const EXPIRY: u64 = 4102444800; // 2100-01-01T00:00:00Z
+        // Deliberately out of reach: a run simulates ~2h at most, so nothing expires.
+        // Shortening it would cover the relay's expiry and re-auth paths, which nothing
+        // does today, but the reference model needs to predict that first.
+        const VALIDITY: Duration = Duration::from_secs(24 * 60 * 60);
+
+        let secs = (self.created_at + VALIDITY)
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .expect("expiry must be later than UNIX_EPOCH")
+            .as_secs();
 
         let username = format!(
-            "{EXPIRY}:{}:{username}",
+            "{secs}:{}:{username}",
             relay_proto::auth::hash_account_id(&relay_proto::auth::AccountId::from(Uuid::nil()))
         );
         let password = relay_proto::auth::generate_password(auth_secret, &username);

@@ -28,7 +28,7 @@ use std::net::SocketAddr;
 use std::{
     collections::{BTreeMap, BTreeSet},
     net::IpAddr,
-    time::{Duration, Instant},
+    time::{Duration, Instant, SystemTime},
 };
 use tracing::debug_span;
 use tunnel_proto::dns::is_subdomain;
@@ -133,7 +133,10 @@ impl TunnelTest {
             .relays
             .iter()
             .map(|(rid, relay)| {
-                let relay = relay.map(SimRelay::new, debug_span!("relay", %rid));
+                let relay = relay.map(
+                    |seed, ip4, ip6| SimRelay::new(seed, ip4, ip6, flux_capacitor.now()),
+                    debug_span!("relay", %rid),
+                );
 
                 (*rid, relay)
             })
@@ -1176,10 +1179,12 @@ impl TunnelTest {
             }
         }
 
+        let now_utc = self.flux_capacitor.now::<SystemTime>();
+
         // Handle all relay `Transmit`s.
         for relay in self.relays.values_mut() {
             while let Some(transmit) = relay.poll_inbox(now) {
-                let Some(reply) = relay.exec_mut(|r| r.receive(transmit, now)) else {
+                let Some(reply) = relay.exec_mut(|r| r.receive(transmit, now, now_utc)) else {
                     continue;
                 };
 
@@ -1646,6 +1651,7 @@ impl TunnelTest {
     }
 
     fn deploy_new_relays(&mut self, new_relays: BTreeMap<RelayId, Host<u64>>, now: Instant) {
+        let now_utc = self.flux_capacitor.now::<SystemTime>();
         let disconnected = self
             .relays
             .keys()
@@ -1658,7 +1664,10 @@ impl TunnelTest {
             .map(|(relay_id, relay)| {
                 (
                     relay_id,
-                    relay.map(SimRelay::new, debug_span!("relay", %relay_id)),
+                    relay.map(
+                        |seed, ip4, ip6| SimRelay::new(seed, ip4, ip6, now_utc),
+                        debug_span!("relay", %relay_id),
+                    ),
                 )
             })
             .collect::<BTreeMap<_, _>>();
@@ -1691,13 +1700,23 @@ impl TunnelTest {
         new_relays: BTreeMap<RelayId, Host<u64>>,
         now: Instant,
     ) {
+        let now_utc = self.flux_capacitor.now::<SystemTime>();
+
         for relay in self.relays.values() {
             self.network.remove_host(relay);
         }
 
         let online = new_relays
             .into_iter()
-            .map(|(rid, relay)| (rid, relay.map(SimRelay::new, debug_span!("relay", %rid))))
+            .map(|(rid, relay)| {
+                (
+                    rid,
+                    relay.map(
+                        |seed, ip4, ip6| SimRelay::new(seed, ip4, ip6, now_utc),
+                        debug_span!("relay", %rid),
+                    ),
+                )
+            })
             .collect::<BTreeMap<_, _>>();
 
         for (rid, relay) in &online {
