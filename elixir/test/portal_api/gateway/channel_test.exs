@@ -107,16 +107,15 @@ defmodule PortalAPI.Gateway.ChannelTest do
     }
   end
 
-  # Mirrors what Portal.Changes.Hooks.Devices builds from a WAL row: the
-  # latest-session columns still hold what the last flush persisted, and virtual
-  # fields and associations are not in the row at all.
   defp put_meters(account, meters) do
     account
-    |> Ecto.Changeset.change()
-    |> Ecto.Changeset.put_embed(:config, %{meters: meters})
+    |> Ecto.Changeset.change(meters: meters)
     |> Portal.Repo.update!()
   end
 
+  # Mirrors what Portal.Changes.Hooks.Devices builds from a WAL row: the
+  # latest-session columns still hold what the last flush persisted, and virtual
+  # fields and associations are not in the row at all.
   defp broadcast_struct(gateway) do
     Portal.SchemaHelpers.struct_from_params(
       Portal.Device,
@@ -374,6 +373,8 @@ defmodule PortalAPI.Gateway.ChannelTest do
       site: site,
       token: token
     } do
+      put_meters(account, ["custom.meter", "other.meter"])
+
       gateway =
         gateway_fixture(account: account, site: site, last_seen_version: "1.6.2")
         |> fetch_device!()
@@ -383,11 +384,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       assert_push "configure_metrics", %{
         api_url: "https://telemetry.firezone.dev/",
         report_interval_secs: 300,
-        meters: [
-          "flow_logs.config.errors",
-          "flow_logs.token.errors",
-          "flow_logs.report.errors"
-        ],
+        meters: ["custom.meter", "other.meter"],
         token: metrics_token
       }
 
@@ -399,20 +396,18 @@ defmodule PortalAPI.Gateway.ChannelTest do
       assert claims["site_name"] == site.name
     end
 
-    test "sends the meters configured on the account", %{
+    test "sends an empty meter list when the account has none configured", %{
       account: account,
       site: site,
       token: token
     } do
-      put_meters(account, ["custom.meter", "other.meter"])
-
       gateway =
         gateway_fixture(account: account, site: site, last_seen_version: "1.6.2")
         |> fetch_device!()
 
       join_channel(gateway, site, token)
 
-      assert_push "configure_metrics", %{meters: ["custom.meter", "other.meter"]}
+      assert_push "configure_metrics", %{meters: []}
     end
 
     test "still initializes a Gateway when no metrics signing key is configured", %{

@@ -847,11 +847,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
     }
   end
 
-  defp meters(%Portal.Account{config: %Portal.Accounts.Config{meters: meters}})
-       when is_list(meters),
-       do: meters
-
-  defp meters(%Portal.Account{}), do: Portal.Accounts.Config.default_meters()
+  defp meters(%Portal.Account{meters: meters}), do: meters || []
 
   defp reinitialize_gateway(socket) do
     {:ok, relays} = select_relays(socket)
