@@ -39,7 +39,7 @@ pub(crate) struct SimClient {
     /// The DNS records created on the client as a result of received DNS responses.
     ///
     /// This contains results from both, queries to DNS resources and non-resources.
-    pub(crate) dns_records: HashMap<DomainName, Vec<IpAddr>>,
+    pub(crate) dns_records: BTreeMap<DomainName, Vec<IpAddr>>,
 
     /// The current DNS resource records emitted by the client.
     ///

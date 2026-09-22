@@ -270,7 +270,7 @@ impl TunnelTest {
                         if let Some(address) = dns_address {
                             for _ in client
                                 .dns_records
-                                .extract_if(|domain, _| is_subdomain(domain, address))
+                                .extract_if(.., |domain, _| is_subdomain(domain, address))
                             {
                             }
                         }
