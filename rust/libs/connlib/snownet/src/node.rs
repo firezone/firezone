@@ -196,13 +196,19 @@ where
         let public_key = &(&private_key).into();
         let index = IndexLfsr::new(&mut rng);
         let allocations = Allocations::new(&mut rng);
+        let rate_limiter = Arc::new(RateLimiter::new_at(
+            public_key,
+            HANDSHAKE_RATE_LIMIT,
+            now,
+            &mut rng,
+        ));
 
         Self {
             rng,
             private_key,
             public_key: *public_key,
             index,
-            rate_limiter: Arc::new(RateLimiter::new_at(public_key, HANDSHAKE_RATE_LIMIT, now)),
+            rate_limiter,
             buffered_transmits: TransmitBuffer::default(),
             pending_events: VecDeque::default(),
             last_now: now,
@@ -263,6 +269,7 @@ where
             &self.public_key,
             HANDSHAKE_RATE_LIMIT,
             now,
+            &mut self.rng,
         ));
 
         tracing::debug!(%num_connections, "Closed all connections as part of reconnecting");
