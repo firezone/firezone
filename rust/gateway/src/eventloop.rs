@@ -372,21 +372,12 @@ impl Eventloop {
             IngressMessages::CreateAuthorization(msg) => {
                 let token = &msg.flow_logs_ingest_token;
 
-                if token.claims().uploads_enabled {
-                    match flow_log_writer::write_token(&self.flow_logs_dir, token.as_str())
-                        .context("Failed to persist flow-log ingest token")
-                    {
-                        Ok(()) => {}
-                        Err(e)
-                            if e.any_downcast_ref::<std::io::Error>()
-                                .is_some_and(|io| io.kind() == std::io::ErrorKind::StorageFull) =>
-                        {
-                            tracing::debug!("{e:#}");
-                        }
-                        Err(e) => {
-                            tracing::warn!("{e:#}");
-                        }
-                    }
+                if token.claims().uploads_enabled
+                    && let Err(e) =
+                        flow_log_writer::write_token(&self.flow_logs_dir, token.as_str())
+                            .context("Failed to persist flow-log ingest token")
+                {
+                    report_spool_failure(&self.flow_log_errors, &e);
                 }
 
                 if let Err(snownet::NoTurnServers {}) = tunnel.state_mut().create_authorization(
@@ -474,7 +465,7 @@ impl Eventloop {
                     .state_mut()
                     .set_flow_logs_enabled(flow_logs.upload_enabled() || self.local_flow_logs);
 
-                match flow_log_upload::configure_uploads(
+                if let Err(e) = flow_log_upload::configure_uploads(
                     &self.flow_logs_dir,
                     &flow_logs.api_url,
                     flow_logs.upload_interval_secs,
@@ -482,24 +473,7 @@ impl Eventloop {
                 )
                 .context("Failed to persist flow-log upload config")
                 {
-                    Ok(()) => {}
-                    Err(e)
-                        if e.any_downcast_ref::<std::io::Error>()
-                            .is_some_and(|io| io.kind() == std::io::ErrorKind::StorageFull) =>
-                    {
-                        if let Some(error) = spool_error(&e) {
-                            self.flow_log_errors.add(1, &error.attributes());
-                        }
-
-                        tracing::debug!("{e:#}");
-                    }
-                    Err(e) => {
-                        if let Some(error) = spool_error(&e) {
-                            self.flow_log_errors.add(1, &error.attributes());
-                        }
-
-                        tracing::warn!("{e:#}");
-                    }
+                    report_spool_failure(&self.flow_log_errors, &e);
                 }
 
                 configure_portal_metrics(&self.portal_metrics, metrics);
@@ -735,13 +709,19 @@ fn configure_portal_metrics(
     }
 }
 
-/// Classifies a failed flow-log spool write for the portal's error counter.
-fn spool_error(e: &anyhow::Error) -> Option<FlowLogError> {
-    match e.any_downcast_ref::<io::Error>().map(io::Error::kind) {
-        Some(io::ErrorKind::PermissionDenied) => Some(FlowLogError::SpoolNotWritable),
-        Some(io::ErrorKind::StorageFull) => Some(FlowLogError::SpoolFull),
-        Some(_) => None,
-        None => None,
+/// Logs a failure to write the flow-log spool, counting the kinds the portal is
+/// told about.
+fn report_spool_failure(errors: &opentelemetry::metrics::Counter<u64>, e: &anyhow::Error) {
+    let kind = e.any_downcast_ref::<io::Error>().map(io::Error::kind);
+
+    if let Some(error) = kind.and_then(FlowLogError::from_io_kind) {
+        errors.add(1, &error.attributes());
+    }
+
+    match kind {
+        Some(io::ErrorKind::StorageFull) => tracing::debug!("{e:#}"),
+        Some(_) => tracing::warn!("{e:#}"),
+        None => tracing::warn!("{e:#}"),
     }
 }
 

@@ -63,7 +63,6 @@ use std::{
     hash::{Hash as _, Hasher as _},
     path::{Path, PathBuf},
     sync::{
-        LazyLock,
         atomic::{AtomicU64, Ordering},
         mpsc,
     },
@@ -149,9 +148,6 @@ where
     )
 }
 
-/// Recorded by [`write_token`], which no long-lived component owns.
-static SPOOL_ERRORS: LazyLock<Counter<u64>> = LazyLock::new(otel_instruments::flow_log_errors);
-
 /// Persists an authorization's ingest token where the uploader expects it.
 ///
 /// The spool path derives from the token's (unverified) `role` and
@@ -185,12 +181,8 @@ pub fn write_token(spool_root: &Path, token: &str) -> anyhow::Result<()> {
         .context("Token has a missing or invalid policy_authorization_id")?;
 
     let dir = spool_root.join(&role).join(&authz_id);
-    create_dir_secure(&dir)
-        .inspect_err(|e| record_spool_error(&SPOOL_ERRORS, e.kind()))
-        .context("Failed to create authorization directory")?;
-    atomicfs::write(dir.join("token"), token)
-        .inspect_err(|e| record_spool_error(&SPOOL_ERRORS, e.kind()))
-        .context("Failed to write token file")?;
+    create_dir_secure(&dir).context("Failed to create authorization directory")?;
+    atomicfs::write(dir.join("token"), token).context("Failed to write token file")?;
 
     Ok(())
 }
@@ -471,7 +463,9 @@ impl Spool {
         // The volume can only be queried through a path that exists, and the
         // spool root is the writer's to create either way.
         if let Err(e) = create_dir_secure(root) {
-            record_spool_error(&errors, e.kind());
+            if let Some(error) = FlowLogError::from_io_kind(e.kind()) {
+                errors.add(1, &error.attributes());
+            }
 
             tracing::warn!(root = %root.display(), "Failed to create flow-log spool root: {e}");
         }
@@ -506,10 +500,30 @@ impl Spool {
             return;
         }
 
-        match write_report(&self.root, report, &self.errors) {
-            Outcome::Written { bytes } => self.spooled += clusters_for(bytes, self.cluster),
-            Outcome::DiskFull => self.disk_full_until = Some(now + DISK_FULL_COOLDOWN),
-            Outcome::Skipped => {}
+        match write_report(&self.root, report) {
+            Ok(Outcome::Written { bytes }) => self.spooled += clusters_for(bytes, self.cluster),
+            Ok(Outcome::Skipped) => {}
+            Err(e) => self.handle_failed_write(&e, now),
+        }
+    }
+
+    /// A write that failed because the disk is full fails the same way until
+    /// something frees space, so the spool backs off instead of retrying.
+    fn handle_failed_write(&mut self, e: &anyhow::Error, now: Instant) {
+        let kind = e.any_downcast_ref::<std::io::Error>().map(|e| e.kind());
+
+        if let Some(error) = kind.and_then(FlowLogError::from_io_kind) {
+            self.errors.add(1, &error.attributes());
+        }
+
+        match kind {
+            Some(std::io::ErrorKind::StorageFull) => {
+                tracing::debug!("{e:#}");
+
+                self.disk_full_until = Some(now + DISK_FULL_COOLDOWN);
+            }
+            Some(_) => tracing::warn!("{e:#}"),
+            None => tracing::warn!("{e:#}"),
         }
     }
 
@@ -544,20 +558,17 @@ enum Outcome {
     Written {
         bytes: u64,
     },
-    /// The disk is full, so every write after this one fails the same way until
-    /// something frees space.
-    DiskFull,
     /// Nothing was written, for a reason particular to this report.
     Skipped,
 }
 
-fn write_report(root: &Path, report: &Report, errors: &Counter<u64>) -> Outcome {
+fn write_report(root: &Path, report: &Report) -> anyhow::Result<Outcome> {
     let dir = root.join(&report.role).join(&report.authz_id);
 
     if !dir.join("token").exists() {
         tracing::debug!(authz_id = %report.authz_id, "No ingest token on disk for authorization; not spooling report");
 
-        return Outcome::Skipped;
+        return Ok(Outcome::Skipped);
     }
 
     let contents = match serialize(&serde_json::Value::Object(report.payload.clone())) {
@@ -565,7 +576,7 @@ fn write_report(root: &Path, report: &Report, errors: &Counter<u64>) -> Outcome 
         Err(e) => {
             tracing::warn!("Failed to serialize flow-log report: {e:#}");
 
-            return Outcome::Skipped;
+            return Ok(Outcome::Skipped);
         }
     };
 
@@ -574,38 +585,13 @@ fn write_report(root: &Path, report: &Report, errors: &Counter<u64>) -> Outcome 
         "{:010}-{}.{suffix}.json",
         report.flow_start, report.identity
     ));
-    match atomicfs::write(&path, &contents)
-        .inspect_err(|e| record_spool_error(errors, e.kind()))
-        .context("Failed to write flow-log report")
-    {
-        Ok(()) => Outcome::Written {
-            bytes: contents.len() as u64,
-        },
-        Err(e)
-            if e.any_downcast_ref::<std::io::Error>()
-                .is_some_and(|io| io.kind() == std::io::ErrorKind::StorageFull) =>
-        {
-            tracing::debug!(path = %path.display(), "{e:#}");
 
-            Outcome::DiskFull
-        }
-        Err(e) => {
-            tracing::warn!(path = %path.display(), "{e:#}");
+    atomicfs::write(&path, &contents)
+        .with_context(|| format!("Failed to write flow-log report to {}", path.display()))?;
 
-            Outcome::Skipped
-        }
-    }
-}
-
-#[allow(clippy::wildcard_enum_match_arm)] // Intentional catch-all for other IO errors
-fn record_spool_error(errors: &Counter<u64>, kind: std::io::ErrorKind) {
-    let error = match kind {
-        std::io::ErrorKind::PermissionDenied => FlowLogError::SpoolNotWritable,
-        std::io::ErrorKind::StorageFull => FlowLogError::SpoolFull,
-        _ => return,
-    };
-
-    errors.add(1, &error.attributes());
+    Ok(Outcome::Written {
+        bytes: contents.len() as u64,
+    })
 }
 
 /// What a report of `bytes` costs the spool.

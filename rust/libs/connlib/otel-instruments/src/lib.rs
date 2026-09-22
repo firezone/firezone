@@ -127,6 +127,19 @@ pub enum FlowLogError {
 }
 
 impl FlowLogError {
+    /// Classifies an IO failure, if it is one we report.
+    #[expect(
+        clippy::wildcard_enum_match_arm,
+        reason = "`io::ErrorKind` is non-exhaustive; every other kind goes unreported."
+    )]
+    pub fn from_io_kind(kind: std::io::ErrorKind) -> Option<Self> {
+        match kind {
+            std::io::ErrorKind::PermissionDenied => Some(FlowLogError::SpoolNotWritable),
+            std::io::ErrorKind::StorageFull => Some(FlowLogError::SpoolFull),
+            _ => None,
+        }
+    }
+
     pub fn attributes(self) -> [KeyValue; 1] {
         let kind = match self {
             FlowLogError::SpoolNotWritable => "spool_not_writable",

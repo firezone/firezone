@@ -12,12 +12,14 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
 use std::{
-    sync::{Arc, Weak, mpsc},
+    pin::pin,
+    sync::{Arc, Weak},
     time::Duration,
 };
 
 use anyhow::{Context as _, Result};
 use bytes::Bytes;
+use futures::future;
 use opentelemetry_proto::tonic::{
     collector::metrics::v1::ExportMetricsServiceRequest, metrics::v1::ResourceMetrics,
 };
@@ -28,6 +30,7 @@ use opentelemetry_sdk::{
 use parking_lot::Mutex;
 use secrecy::SecretString;
 use socket_factory::{SocketFactory, TcpSocket};
+use tokio::sync::Notify;
 use url::Url;
 
 mod ingest;
@@ -47,22 +50,32 @@ const MAX_RETAINED: usize = 6;
 /// Installing the reader on the process' meter provider is up to the caller.
 pub fn spawn(socket_factory: Arc<dyn SocketFactory<TcpSocket>>) -> (Reader, Reporter) {
     let reader = Reader::default();
-    let (wakeups, inbox) = mpsc::channel();
-
     let reporter = Reporter {
         endpoint: Arc::new(Mutex::new(None)),
-        wakeups,
+        wakeups: Arc::new(Notify::new()),
     };
 
     std::thread::Builder::new()
         .name("portal-metrics".to_owned())
         .spawn({
-            // The thread holds a handle too, so dropping the caller's detaches
-            // rather than stops it.
             let reporter = reporter.clone();
             let reader = reader.clone();
 
-            move || run(&reporter, &reader, &socket_factory, &inbox)
+            move || {
+                let runtime = match tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                {
+                    Ok(runtime) => runtime,
+                    Err(e) => {
+                        tracing::error!("Failed to build portal metrics runtime: {e:#}");
+
+                        return;
+                    }
+                };
+
+                runtime.block_on(run(&reporter, &reader, &socket_factory));
+            }
         })
         .expect("Failed to spawn portal metrics thread");
 
@@ -86,7 +99,7 @@ pub struct Config {
 #[derive(Clone)]
 pub struct Reporter {
     endpoint: Arc<Mutex<Option<Endpoint>>>,
-    wakeups: mpsc::Sender<()>,
+    wakeups: Arc<Notify>,
 }
 
 impl Reporter {
@@ -111,7 +124,7 @@ impl Reporter {
             token: config.token.clone(),
             interval: config.interval,
         });
-        let _ = self.wakeups.send(());
+        self.wakeups.notify_one();
 
         Ok(())
     }
@@ -161,39 +174,25 @@ impl MetricReader for Reader {
     }
 }
 
-/// The reporter's event loop: sleeps until the next report is due or a new config
-/// arrives, whichever comes first.
-fn run(
+/// The reporter's event loop: waits for the next report to fall due or for a
+/// new config to arrive, whichever comes first.
+async fn run(
     reporter: &Reporter,
     reader: &Reader,
     socket_factory: &Arc<dyn SocketFactory<TcpSocket>>,
-    wakeups: &mpsc::Receiver<()>,
 ) {
-    let runtime = match tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-    {
-        Ok(runtime) => runtime,
-        Err(e) => {
-            tracing::error!("Failed to build portal metrics runtime: {e:#}");
-            return;
-        }
-    };
-
     tracing::info!("Portal metrics reporter started");
 
     let mut retained = Vec::new();
     let mut delay = DISABLED_POLL;
 
     loop {
-        match wakeups.recv_timeout(delay) {
-            Ok(()) => {}
-            Err(mpsc::RecvTimeoutError::Timeout) => {}
-            // Unreachable while the thread holds its own handle.
-            Err(mpsc::RecvTimeoutError::Disconnected) => return,
-        }
+        let configured = pin!(reporter.wakeups.notified());
+        let due = pin!(tokio::time::sleep(delay));
 
-        delay = runtime.block_on(report_pass(reporter, reader, socket_factory, &mut retained));
+        future::select(configured, due).await;
+
+        delay = report_pass(reporter, reader, socket_factory, &mut retained).await;
     }
 }
 
