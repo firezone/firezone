@@ -117,6 +117,7 @@ ebpf-shared = { path = "relay/ebpf-shared" }
 embed-resource = "3.0"
 etc-hosts-dns-client = { path = "libs/connlib/etc-hosts-dns-client" }
 eventloop-budget = { path = "libs/eventloop-budget" }
+fastrand = "2.3.0"
 fd-lock = "4.0.4"
 filetime = "0.2.29"
 flow-log-spool = { path = "libs/flow-log-spool" }
@@ -187,7 +188,6 @@ proc-macro2 = "1.0.106"
 proptest = "1.9.0"
 quinn-udp = { version = "0.6.0", features = ["fast-apple-datapath"] }
 quote = "1.0.45"
-fastrand = "2.3.0"
 rand = "0.10.1"
 rangemap = "1.7.1"
 rcgen = { version = "0.14.9", default-features = false, features = ["ring"] }
