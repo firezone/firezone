@@ -48,6 +48,7 @@ dns-over-tcp = { workspace = true }
 dns-types = { workspace = true }
 fastrand = { workspace = true }
 flow-tracker = { workspace = true }
+fuzz-entropy = { workspace = true }
 hex = { workspace = true }
 ip-packet = { workspace = true, features = ["arbitrary"] }
 ip_network = { workspace = true }

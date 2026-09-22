@@ -3044,6 +3044,7 @@ dependencies = [
  "dns-types",
  "fastrand",
  "flow-tracker",
+ "fuzz-entropy",
  "hex",
  "ip-packet",
  "ip_network",
@@ -3064,6 +3065,13 @@ dependencies = [
  "tunnel-proto",
  "uuid",
  "x509-claims",
+]
+
+[[package]]
+name = "fuzz-entropy"
+version = "0.1.0"
+dependencies = [
+ "rand 0.10.2",
 ]
 
 [[package]]

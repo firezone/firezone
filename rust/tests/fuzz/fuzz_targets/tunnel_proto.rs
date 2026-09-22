@@ -14,7 +14,7 @@ use libfuzzer_sys::fuzz_target;
 const MAX_TRANSITIONS: usize = 20;
 
 fuzz_target!(|data: &[u8]| {
-    fuzz::entropy::reset();
+    fuzz_entropy::reset();
 
     let _guard = init_fuzz_subscriber();
 
