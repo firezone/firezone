@@ -84,6 +84,22 @@ defmodule Portal.MetricsTokenTest do
       assert MetricsToken.mint(account, gateway_id, site) == {:error, :no_signing_key}
     end
 
+    test "accepts a PEM whose newlines arrived escaped", %{
+      account: account,
+      site: site,
+      gateway_id: gateway_id
+    } do
+      escaped =
+        Portal.Config.fetch_env!(:portal, :metrics_token_private_key)
+        |> String.replace("\n", "\\n")
+
+      Portal.Config.put_env_override(:portal, :metrics_token_private_key, escaped)
+
+      {:ok, token} = MetricsToken.mint(account, gateway_id, site)
+
+      assert {true, _jwt, _jws} = verify(token)
+    end
+
     test "does not verify against another key", %{
       account: account,
       site: site,

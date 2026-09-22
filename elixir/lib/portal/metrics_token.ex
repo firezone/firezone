@@ -62,10 +62,14 @@ defmodule Portal.MetricsToken do
 
   defp signing_key do
     case Portal.Config.fetch_env!(:portal, :metrics_token_private_key) do
-      pem when is_binary(pem) and pem != "" -> {:ok, JOSE.JWK.from_pem(pem)}
+      pem when is_binary(pem) and pem != "" -> {:ok, JOSE.JWK.from_pem(unescape_newlines(pem))}
       _unconfigured -> {:error, :no_signing_key}
     end
   end
+
+  # The release reads its environment through `docker run --env-file`, which
+  # cannot carry embedded newlines, so a deployed PEM arrives with them escaped.
+  defp unescape_newlines(pem), do: String.replace(pem, "\\n", "\n")
 
   defp key_id, do: Portal.Config.fetch_env!(:portal, :metrics_token_key_id)
 end
