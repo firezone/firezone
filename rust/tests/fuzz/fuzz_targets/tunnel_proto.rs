@@ -14,6 +14,8 @@ use libfuzzer_sys::fuzz_target;
 const MAX_TRANSITIONS: usize = 20;
 
 fuzz_target!(|data: &[u8]| {
+    fuzz::entropy::reset();
+
     let _guard = init_fuzz_subscriber();
 
     seed_fastrand(data);

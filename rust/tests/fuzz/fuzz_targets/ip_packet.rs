@@ -7,6 +7,8 @@ use ip_packet::{Ecn, IcmpError, IpPacket, IpPacketBuf, Protocol};
 use libfuzzer_sys::fuzz_target;
 
 fuzz_target!(|input: Input| {
+    fuzz::entropy::reset();
+
     if input.data.len() > ip_packet::MAX_IP_SIZE {
         return;
     }

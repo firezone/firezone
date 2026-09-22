@@ -42,6 +42,8 @@ struct Input<'a> {
 }
 
 fuzz_target!(|input: Input<'_>| {
+    fuzz::entropy::reset();
+
     let mut server = Server::new(RELAY_IP, StdRng::seed_from_u64(0), 3478, 49152..=65535);
     server.set_accounts([AccountId::from(Uuid::nil())]);
     let client = ClientSocket::new(CLIENT);
