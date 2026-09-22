@@ -59,9 +59,6 @@ pub struct Server<R> {
     /// Bi-directional mapping between allocations and usernames.
     ///
     /// We only allow a single allocation per user in order to clean up lingering allocations in case the sender roams.
-    ///
-    /// Ordered rather than hashed so lookups don't depend on the per-process hash seed.
-    /// Pinning the seed instead is not an option: usernames come from clients.
     allocations_by_username: BiBTreeMap<String, AllocationPort>,
 
     clients_by_allocation: HashMap<AllocationPort, ClientSocket>,
