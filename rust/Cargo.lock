@@ -3042,6 +3042,7 @@ dependencies = [
  "derive_more",
  "dns-over-tcp",
  "dns-types",
+ "fastrand",
  "flow-tracker",
  "hex",
  "ip-packet",

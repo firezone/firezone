@@ -187,6 +187,7 @@ proc-macro2 = "1.0.106"
 proptest = "1.9.0"
 quinn-udp = { version = "0.6.0", features = ["fast-apple-datapath"] }
 quote = "1.0.45"
+fastrand = "2.3.0"
 rand = "0.10.1"
 rangemap = "1.7.1"
 rcgen = { version = "0.14.9", default-features = false, features = ["ring"] }

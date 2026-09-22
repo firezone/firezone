@@ -2,6 +2,7 @@
 
 //! Exercises the connlib tunnel state machine with coverage-guided fuzzing.
 
+use std::hash::{DefaultHasher, Hash as _, Hasher as _};
 use std::time::Instant;
 
 use chrono::{DateTime, Utc};
@@ -14,6 +15,14 @@ const MAX_TRANSITIONS: usize = 20;
 
 fuzz_target!(|data: &[u8]| {
     let _guard = init_fuzz_subscriber();
+
+    // `is` draws STUN transaction IDs and the ICE control tie breaker from
+    // `fastrand`'s thread-local generator, which nothing else seeds, so without
+    // this the same input covers something different on every execution. Seeded
+    // from the input rather than a constant so different inputs still differ.
+    let mut hasher = DefaultHasher::new();
+    data.hash(&mut hasher);
+    fastrand::seed(hasher.finish());
 
     let now = Instant::now();
     let utc_start = DateTime::<Utc>::from_timestamp(0, 0).expect("0 is a valid UNIX timestamp");
