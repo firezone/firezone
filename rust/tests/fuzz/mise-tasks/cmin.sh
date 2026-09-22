@@ -15,9 +15,10 @@ target="${usage_target:?}"
 set -- -use_counters=0
 
 # The merge truncates inputs to the length limit it is given, so it has to be
-# the one the target executes them at.
+# the one the target executes them at. `fuzz` pairs this with `-len_control=0`,
+# which governs how mutation grows an input and has nothing to merge.
 if [ "$target" = "tunnel-proto" ] || [ "$target" = "relay-proto" ]; then
-    set -- -max_len=8192 -len_control=0 "$@"
+    set -- -max_len=8192 "$@"
 fi
 
 ./interruptible.sh cargo fuzz cmin --sanitizer none --target x86_64-unknown-linux-gnu --fuzz-dir . --target-dir ../../target "$target" -- "$@"
