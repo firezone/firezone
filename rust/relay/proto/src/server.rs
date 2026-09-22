@@ -10,7 +10,7 @@ use crate::auth::{self, AuthenticatedMessage, FIREZONE, MessageIntegrityExt, Non
 use crate::net_ext::IpAddrExt;
 use crate::{ClientSocket, IpStack, PeerSocket, SOFTWARE};
 use anyhow::Result;
-use bimap::BiMap;
+use bimap::BiBTreeMap;
 use bytecodec::EncodeExt;
 use core::fmt;
 use logging::err_with_src;
@@ -59,7 +59,10 @@ pub struct Server<R> {
     /// Bi-directional mapping between allocations and usernames.
     ///
     /// We only allow a single allocation per user in order to clean up lingering allocations in case the sender roams.
-    allocations_by_username: BiMap<Username, AllocationPort>,
+    ///
+    /// Ordered rather than hashed so lookups don't depend on the per-process hash seed.
+    /// Pinning the seed instead is not an option: usernames come from clients.
+    allocations_by_username: BiBTreeMap<String, AllocationPort>,
 
     clients_by_allocation: HashMap<AllocationPort, ClientSocket>,
     /// Redundant mapping so we can look route data with a single lookup.
@@ -138,7 +141,7 @@ pub enum Command {
     },
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 pub struct AllocationPort(u16);
 
 impl AllocationPort {
@@ -592,7 +595,7 @@ where
         })?;
 
         if let Some((_, previous_allocation)) =
-            self.allocations_by_username.remove_by_left(&username)
+            self.allocations_by_username.remove_by_left(username.name())
         {
             tracing::info!(target: "relay", %previous_allocation, %sender, "Username already has an allocation");
             self.delete_allocation(previous_allocation);
@@ -663,7 +666,7 @@ where
 
         self.clients_by_allocation.insert(allocation.port, sender);
         self.allocations_by_username
-            .insert(username, allocation.port);
+            .insert(username.name().to_owned(), allocation.port);
         self.allocations.insert(sender, allocation);
         self.allocations_up_down_counter.add(1, &[]);
 
