@@ -94,8 +94,6 @@ pub struct InitGateway {
     #[serde(default)]
     pub authorizations: Vec<Authorization>,
     pub flow_logs: FlowLogsConfig,
-    #[serde(default)]
-    pub metrics: Option<MetricsConfig>,
 }
 
 #[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
@@ -127,6 +125,7 @@ pub enum IngressMessages {
     RelaysPresence(RelaysPresence),
     ResourceUpdated(ResourceDescription),
     CreateAuthorization(CreateAuthorization),
+    ConfigureMetrics(MetricsConfig),
     /// OBSOLETE - safe to remove this when <https://github.com/firezone/firezone/pull/13714> is deployed to production.
     AccessAuthorizationExpiryUpdated(AccessAuthorizationExpiryUpdated),
 }
@@ -337,6 +336,23 @@ mod tests {
         assert_eq!(init.flow_logs.api_url, "https://flow-api.firezone.dev");
         assert_eq!(init.flow_logs.upload_interval_secs, 60);
         assert_eq!(init.flow_logs.upload_batch_size, 1000);
+    }
+
+    #[test]
+    fn can_deserialize_configure_metrics_message() {
+        let json = r#"{"event":"configure_metrics","ref":null,"topic":"gateway","payload":{"api_url":"https://metrics.firezone.dev/","token":"opaque-token","report_interval_secs":300,"reported_metrics":["flow_logs.config.errors","flow_logs.report.errors"]}}"#;
+
+        let message = serde_json::from_str::<IngressMessages>(json).unwrap();
+
+        let IngressMessages::ConfigureMetrics(config) = message else {
+            panic!("expected ConfigureMetrics");
+        };
+        assert_eq!(config.api_url.as_str(), "https://metrics.firezone.dev/");
+        assert_eq!(config.report_interval_secs, 300);
+        assert_eq!(
+            config.reported_metrics,
+            ["flow_logs.config.errors", "flow_logs.report.errors"]
+        );
     }
 
     #[test]

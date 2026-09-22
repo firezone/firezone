@@ -793,7 +793,6 @@ defmodule PortalAPI.Gateway.Channel.Shared do
   defp init(socket, account, relays) do
     push(socket, "init", %{
       flow_logs: flow_logs_config(),
-      metrics: metrics_config(account, socket.assigns.gateway),
       authorizations: Views.PolicyAuthorization.render_many(socket.assigns.cache),
       account_slug: account.slug,
       interface: Views.Interface.render(socket.assigns.gateway),
@@ -810,6 +809,8 @@ defmodule PortalAPI.Gateway.Channel.Shared do
         ipv6_masquerade_enabled: true
       }
     })
+
+    push(socket, "configure_metrics", metrics_config(account, socket.assigns.gateway))
   end
 
   defp flow_logs_config do
@@ -824,7 +825,8 @@ defmodule PortalAPI.Gateway.Channel.Shared do
     %{
       api_url: Portal.Config.fetch_env!(:portal, :metrics_api_url),
       token: Portal.MetricsToken.mint(account, gateway.id, gateway.site_id),
-      report_interval_secs: Portal.Config.fetch_env!(:portal, :metrics_report_interval_secs)
+      report_interval_secs: Portal.Config.fetch_env!(:portal, :metrics_report_interval_secs),
+      reported_metrics: Portal.Config.fetch_env!(:portal, :metrics_reported_metrics)
     }
   end
 

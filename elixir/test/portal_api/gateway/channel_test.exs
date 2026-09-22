@@ -362,7 +362,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
              }
     end
 
-    test "init carries the metrics reporting config", %{
+    test "sends the metrics reporting config after join", %{
       account: account,
       gateway: gateway,
       site: site,
@@ -370,12 +370,15 @@ defmodule PortalAPI.Gateway.ChannelTest do
     } do
       join_channel(gateway, site, token)
 
-      assert_push "init", %{
-        metrics: %{
-          api_url: "https://metrics.firezone.dev/",
-          report_interval_secs: 300,
-          token: metrics_token
-        }
+      assert_push "configure_metrics", %{
+        api_url: "https://metrics.firezone.dev/",
+        report_interval_secs: 300,
+        reported_metrics: [
+          "flow_logs.config.errors",
+          "flow_logs.token.errors",
+          "flow_logs.report.errors"
+        ],
+        token: metrics_token
       }
 
       assert {:ok, claims} = Portal.MetricsToken.verify(metrics_token)

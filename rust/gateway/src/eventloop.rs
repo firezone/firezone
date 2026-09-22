@@ -457,7 +457,6 @@ impl Eventloop {
                 relays,
                 authorizations,
                 flow_logs,
-                metrics,
             }) => {
                 if let Some(account_slug) = account_slug {
                     telemetry::set_account_slug(account_slug.clone());
@@ -490,8 +489,6 @@ impl Eventloop {
                     }
                     Err(e) => tracing::debug!("{e:#}"),
                 }
-
-                configure_portal_metrics(&self.portal_metrics, metrics);
 
                 tunnel
                     .state_mut()
@@ -565,6 +562,9 @@ impl Eventloop {
 
                     tokio::time::sleep(Duration::from_millis(100)).await;
                 }
+            }
+            IngressMessages::ConfigureMetrics(config) => {
+                configure_portal_metrics(&self.portal_metrics, config);
             }
             IngressMessages::ResourceUpdated(resource_description) => {
                 tunnel.state_mut().update_resource(resource_description);
@@ -705,20 +705,18 @@ async fn phoenix_channel_event_loop(
 }
 
 /// Seeds the reporter with the portal's metrics config.
-fn configure_portal_metrics(
-    reporter: &portal_metrics::Reporter,
-    metrics: Option<messages::MetricsConfig>,
-) {
-    let Some(metrics) = metrics.filter(messages::MetricsConfig::reporting_enabled) else {
+fn configure_portal_metrics(reporter: &portal_metrics::Reporter, metrics: messages::MetricsConfig) {
+    if !metrics.reporting_enabled() {
         reporter.disable();
 
         return;
-    };
+    }
 
     if let Err(e) = reporter.configure(&portal_metrics::Config {
         api_url: metrics.api_url,
         token: metrics.token,
         interval: Duration::from_secs(metrics.report_interval_secs),
+        reported_metrics: BTreeSet::from_iter(metrics.reported_metrics),
     }) {
         tracing::warn!("Failed to configure metrics reporting: {e:#}");
     }

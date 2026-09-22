@@ -242,7 +242,8 @@ if config_env() == :prod do
 
   config :portal,
     metrics_api_url: env_var_to_config!(:metrics_api_url),
-    metrics_report_interval_secs: env_var_to_config!(:metrics_report_interval_secs)
+    metrics_report_interval_secs: env_var_to_config!(:metrics_report_interval_secs),
+    metrics_reported_metrics: env_var_to_config!(:metrics_reported_metrics)
 
   config :portal, Portal.S3.APIClient,
     access_key_id: env_var_to_config!(:log_sinks_aws_access_key_id),

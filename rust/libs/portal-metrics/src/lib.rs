@@ -1,17 +1,18 @@
-//! Reports an allow-listed set of OpenTelemetry counters to the portal.
+//! Reports the OpenTelemetry counters the portal asks for to the portal.
 //!
 //! [`spawn`] returns a [`Reader`] to install on the process' meter provider and
-//! a thread that collects from it on the portal's cadence, POSTing the
-//! allow-listed deltas as OTLP/HTTP with JSON encoding.
+//! a thread that collects from it on the portal's cadence, POSTing the deltas of
+//! the [`Config::reported_metrics`] as OTLP/HTTP with JSON encoding.
 //!
-//! The portal's config arrives long after start-up, in its `init` message, and
-//! only ever lives in memory. Until it does, nothing is collected, so the SDK
-//! keeps accumulating and counts recorded before the first
-//! [`Reporter::configure`] are still reported afterwards.
+//! The portal's config arrives long after start-up and only ever lives in
+//! memory. Until it does, nothing is collected, so the SDK keeps accumulating
+//! and counts recorded before the first [`Reporter::configure`] are still
+//! reported afterwards.
 
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
 use std::{
+    collections::BTreeSet,
     pin::pin,
     sync::{Arc, Weak},
     time::Duration,
@@ -34,13 +35,6 @@ use tokio::sync::Notify;
 use url::Url;
 
 mod ingest;
-
-/// The counters the portal accepts.
-const ALLOW_LIST: &[&str] = &[
-    otel_instruments::FLOW_LOG_CONFIG_ERRORS,
-    otel_instruments::FLOW_LOG_TOKEN_ERRORS,
-    otel_instruments::FLOW_LOG_REPORT_ERRORS,
-];
 
 /// How often to re-check for a config while reporting is unconfigured.
 const DISABLED_POLL: Duration = Duration::from_secs(60);
@@ -86,7 +80,7 @@ pub fn spawn(socket_factory: Arc<dyn SocketFactory<TcpSocket>>) -> (Reader, Repo
     (reader, reporter)
 }
 
-/// Where, and how often, to report metrics to the portal.
+/// What, where, and how often, to report metrics to the portal.
 #[derive(Clone)]
 pub struct Config {
     /// Base URL metrics are POSTed to.
@@ -95,6 +89,8 @@ pub struct Config {
     pub token: SecretString,
     /// How often to report.
     pub interval: Duration,
+    /// Names of the metrics that may be reported.
+    pub reported_metrics: BTreeSet<String>,
 }
 
 /// Handle to the spawned reporter thread.
@@ -120,6 +116,10 @@ impl Reporter {
         anyhow::ensure!(
             !config.interval.is_zero(),
             "Metrics report interval must not be zero"
+        );
+        anyhow::ensure!(
+            !config.reported_metrics.is_empty(),
+            "Metrics report must cover at least one metric"
         );
 
         *self.endpoint.lock() = Some(config.clone());
@@ -209,7 +209,7 @@ async fn report_pass(
         return DISABLED_POLL;
     };
 
-    let mut request = match export_request(reader) {
+    let mut request = match export_request(reader, &endpoint.reported_metrics) {
         Ok(request) => request,
         Err(e) => {
             tracing::warn!("Failed to collect metrics: {e:#}");
@@ -266,8 +266,19 @@ async fn report(
 }
 
 /// Collects the deltas since the previous pass as an OTLP request of the
-/// allow-listed metrics, stripped of the resource describing us.
-fn export_request(reader: &Reader) -> Result<ExportMetricsServiceRequest> {
+/// `reported_metrics`, stripped of the resource describing us.
+///
+/// Collecting drains the SDK's deltas, so with nothing to report we must not
+/// collect at all: the counts would be discarded rather than carried into the
+/// next pass.
+fn export_request(
+    reader: &Reader,
+    reported_metrics: &BTreeSet<String>,
+) -> Result<ExportMetricsServiceRequest> {
+    if reported_metrics.is_empty() {
+        return Ok(ExportMetricsServiceRequest::default());
+    }
+
     let mut collected = data::ResourceMetrics::default();
     reader
         .collect(&mut collected)
@@ -283,7 +294,7 @@ fn export_request(reader: &Reader) -> Result<ExportMetricsServiceRequest> {
         for scope_metrics in &mut resource_metrics.scope_metrics {
             scope_metrics
                 .metrics
-                .retain(|metric| ALLOW_LIST.contains(&metric.name.as_str()));
+                .retain(|metric| reported_metrics.contains(&metric.name));
         }
 
         resource_metrics
@@ -308,7 +319,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn exports_the_allow_listed_counters_as_otlp_json() {
+    fn exports_the_reported_counters_as_otlp_json() {
         let reader = Reader::default();
         let provider = meter_provider(&reader);
         let meter = provider.meter("connlib");
@@ -330,7 +341,11 @@ mod tests {
             .build()
             .add(7, &[]);
 
-        let mut request = export_request(&reader).unwrap();
+        let mut request = export_request(
+            &reader,
+            &reported_metrics(&[otel_instruments::FLOW_LOG_REPORT_ERRORS]),
+        )
+        .unwrap();
         fix_timestamps(&mut request);
 
         assert_eq!(
@@ -383,11 +398,13 @@ mod tests {
             .u64_counter(otel_instruments::FLOW_LOG_REPORT_ERRORS)
             .build();
 
+        let reported = reported_metrics(&[otel_instruments::FLOW_LOG_REPORT_ERRORS]);
+
         counter.add(3, &[]);
-        export_request(&reader).unwrap();
+        export_request(&reader, &reported).unwrap();
         counter.add(1, &[]);
 
-        let request = serde_json::to_value(export_request(&reader).unwrap()).unwrap();
+        let request = serde_json::to_value(export_request(&reader, &reported).unwrap()).unwrap();
 
         assert_eq!(
             request
@@ -395,6 +412,64 @@ mod tests {
                 .unwrap(),
             1
         );
+    }
+
+    #[test]
+    fn an_empty_report_does_not_drain_the_recorded_counts() {
+        let reader = Reader::default();
+        let provider = meter_provider(&reader);
+        let counter = provider
+            .meter("connlib")
+            .u64_counter(otel_instruments::FLOW_LOG_REPORT_ERRORS)
+            .build();
+        let reported = reported_metrics(&[otel_instruments::FLOW_LOG_REPORT_ERRORS]);
+
+        counter.add(3, &[]);
+        export_request(&reader, &BTreeSet::default()).unwrap();
+
+        let request = serde_json::to_value(export_request(&reader, &reported).unwrap()).unwrap();
+
+        assert_eq!(
+            request
+                .pointer("/resourceMetrics/0/scopeMetrics/0/metrics/0/sum/dataPoints/0/asInt")
+                .unwrap(),
+            3
+        );
+    }
+
+    #[test]
+    fn a_config_that_can_never_report_is_rejected() {
+        let (_reader, reporter) = (Reader::default(), test_reporter());
+
+        reporter
+            .configure(&test_config(Duration::from_secs(60), &[]))
+            .unwrap_err();
+        reporter
+            .configure(&test_config(
+                Duration::ZERO,
+                &[otel_instruments::FLOW_LOG_REPORT_ERRORS],
+            ))
+            .unwrap_err();
+    }
+
+    fn test_reporter() -> Reporter {
+        Reporter {
+            endpoint: Arc::new(Mutex::new(None)),
+            wakeups: Arc::new(Notify::new()),
+        }
+    }
+
+    fn test_config(interval: Duration, reported: &[&str]) -> Config {
+        Config {
+            api_url: "https://metrics.firezone.dev/".parse().unwrap(),
+            token: SecretString::from("token"),
+            interval,
+            reported_metrics: reported_metrics(reported),
+        }
+    }
+
+    fn reported_metrics(names: &[&str]) -> BTreeSet<String> {
+        names.iter().map(|name| (*name).to_owned()).collect()
     }
 
     fn meter_provider(reader: &Reader) -> SdkMeterProvider {

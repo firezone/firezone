@@ -242,6 +242,19 @@ defmodule Portal.Config.Definitions do
   defconfig(:metrics_report_interval_secs, :integer, default: 300)
 
   @doc """
+  The names of the OpenTelemetry metrics gateways may report to the portal.
+
+  Anything a gateway records that is not listed here stays on the gateway.
+  """
+  defconfig(:metrics_reported_metrics, {:array, ",", :string},
+    default: [
+      "flow_logs.config.errors",
+      "flow_logs.token.errors",
+      "flow_logs.report.errors"
+    ]
+  )
+
+  @doc """
   Access key ID for Firezone's AWS account, used to assume customer IAM roles
   for Amazon S3 log sinks.
   """
