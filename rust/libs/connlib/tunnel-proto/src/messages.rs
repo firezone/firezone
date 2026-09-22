@@ -277,8 +277,9 @@ pub struct MetricsConfig {
 }
 
 impl MetricsConfig {
+    /// Naming no metrics disables reporting as surely as a zero interval does.
     pub fn reporting_enabled(&self) -> bool {
-        self.report_interval_secs > 0
+        self.report_interval_secs > 0 && !self.reported_metrics.is_empty()
     }
 }
 

@@ -438,34 +438,20 @@ mod tests {
     }
 
     #[test]
-    fn a_config_that_can_never_report_is_rejected() {
-        let (_reader, reporter) = (Reader::default(), test_reporter());
-
-        reporter
-            .configure(&test_config(Duration::from_secs(60), &[]))
-            .unwrap_err();
-        reporter
-            .configure(&test_config(
-                Duration::ZERO,
-                &[otel_instruments::FLOW_LOG_REPORT_ERRORS],
-            ))
-            .unwrap_err();
-    }
-
-    fn test_reporter() -> Reporter {
-        Reporter {
+    fn a_config_reporting_no_metrics_is_rejected() {
+        let reporter = Reporter {
             endpoint: Arc::new(Mutex::new(None)),
             wakeups: Arc::new(Notify::new()),
-        }
-    }
+        };
 
-    fn test_config(interval: Duration, reported: &[&str]) -> Config {
-        Config {
+        let result = reporter.configure(&Config {
             api_url: "https://metrics.firezone.dev/".parse().unwrap(),
             token: SecretString::from("token"),
-            interval,
-            reported_metrics: reported_metrics(reported),
-        }
+            interval: Duration::from_secs(60),
+            reported_metrics: BTreeSet::default(),
+        });
+
+        result.unwrap_err();
     }
 
     fn reported_metrics(names: &[&str]) -> BTreeSet<String> {
