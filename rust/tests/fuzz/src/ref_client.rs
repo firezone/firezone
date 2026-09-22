@@ -299,10 +299,11 @@ impl RefClient {
         remove_peer_pool(&mut self.inbound_peer_authorizations, peer, pool);
     }
 
-    pub(crate) fn has_inbound_peer_pool(&self, peer: ClientId, pool: ResourceId) -> bool {
+    /// Whether we hold any authorization at all for `peer` to reach us.
+    pub(crate) fn has_inbound_peer_authorization(&self, peer: ClientId) -> bool {
         self.inbound_peer_authorizations
             .get(&peer)
-            .is_some_and(|pools| pools.contains(&pool))
+            .is_some_and(|pools| !pools.is_empty())
     }
 
     pub(crate) fn inbound_peer_pools(

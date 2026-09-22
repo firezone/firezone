@@ -722,7 +722,7 @@ impl ReferenceState {
             };
             if !self.clients[&peer]
                 .inner()
-                .has_inbound_peer_pool(origin, pool)
+                .has_inbound_peer_authorization(origin)
             {
                 if !self.clients[&origin]
                     .inner()

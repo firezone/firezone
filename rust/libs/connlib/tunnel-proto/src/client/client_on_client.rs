@@ -290,12 +290,18 @@ impl ClientOnClient {
             tracing::debug!(filtered_packet = ?packet, "{e:#}");
             let reply = ip_packet::make::icmp_dest_unreachable_prohibited(&packet)
                 .context("Failed to build ICMP prohibited reply")?;
-            let no_authorization = packet.destination_protocol().ok().map(|protocol| {
-                p2p_control::no_authorization::NoAuthorization {
+            // Holding no authorization at all is the only case the peer can fix by
+            // requesting a new one. Our filters denying the traffic is not, so we answer
+            // with the ICMP error alone and stay quiet.
+            let no_authorization = self
+                .resources
+                .is_empty()
+                .then(|| packet.destination_protocol().ok())
+                .flatten()
+                .map(|protocol| p2p_control::no_authorization::NoAuthorization {
                     dst: packet.destination(),
                     protocol: protocol.into(),
-                }
-            });
+                });
 
             return Ok(InboundResult::Filtered {
                 reply,
