@@ -5,9 +5,20 @@ defmodule Portal.Accounts.Config do
   alias Portal.Types.IPPort
   alias Portal.Accounts.Config
 
+  @default_meters [
+    "flow_logs.config.errors",
+    "flow_logs.token.errors",
+    "flow_logs.report.errors"
+  ]
+
   @primary_key false
   embedded_schema do
     field :search_domain, :string
+
+    # Ops-set, so deliberately absent from `changeset/2`'s cast list: the
+    # settings LiveViews `cast_embed(:config)` with that changeset, and anything
+    # it casts an account admin can set through a crafted form post.
+    field :meters, {:array, :string}, default: @default_meters
 
     embeds_one :clients_upstream_dns, ClientsUpstreamDns,
       primary_key: false,
@@ -32,6 +43,9 @@ defmodule Portal.Accounts.Config do
         on_replace: :update
     end
   end
+
+  @doc "The meters a Gateway reports unless ops override them for the account."
+  def default_meters, do: @default_meters
 
   @doc """
   Returns a default config with defaults set

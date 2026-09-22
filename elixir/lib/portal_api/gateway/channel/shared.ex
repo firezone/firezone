@@ -810,6 +810,10 @@ defmodule PortalAPI.Gateway.Channel.Shared do
       }
     })
 
+    push_metrics_config(socket, account)
+  end
+
+  defp push_metrics_config(socket, account) do
     if Portal.Version.gateway_supports_metrics_config?(socket.assigns.gateway) do
       push(socket, "configure_metrics", metrics_config(account, socket.assigns.gateway))
     end
@@ -828,9 +832,15 @@ defmodule PortalAPI.Gateway.Channel.Shared do
       api_url: Portal.Config.fetch_env!(:portal, :metrics_api_url),
       token: Portal.MetricsToken.mint(account, gateway.id, gateway.site_id),
       report_interval_secs: Portal.Config.fetch_env!(:portal, :metrics_report_interval_secs),
-      reported_metrics: Portal.Config.fetch_env!(:portal, :metrics_reported_metrics)
+      meters: meters(account)
     }
   end
+
+  defp meters(%Portal.Account{config: %Portal.Accounts.Config{meters: meters}})
+       when is_list(meters),
+       do: meters
+
+  defp meters(%Portal.Account{}), do: Portal.Accounts.Config.default_meters()
 
   defp reinitialize_gateway(socket) do
     {:ok, relays} = select_relays(socket)
@@ -851,7 +861,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
   defp handle_change(
          %Change{
            op: :update,
-           old_struct: %Portal.Account{slug: old_slug},
+           old_struct: %Portal.Account{slug: old_slug} = old_account,
            struct: %Portal.Account{slug: slug} = account
          },
          socket
@@ -859,9 +869,16 @@ defmodule PortalAPI.Gateway.Channel.Shared do
     account = SchemaHelpers.merge_broadcast(socket.assigns.account, account)
     socket = assign(socket, :account, account)
 
-    if old_slug != slug do
-      {:ok, relays} = select_relays(socket)
-      init(socket, account, relays)
+    cond do
+      old_slug != slug ->
+        {:ok, relays} = select_relays(socket)
+        init(socket, account, relays)
+
+      meters(old_account) != meters(account) ->
+        push_metrics_config(socket, account)
+
+      true ->
+        :ok
     end
 
     {:noreply, socket}

@@ -716,7 +716,7 @@ fn configure_portal_metrics(reporter: &portal_metrics::Reporter, metrics: messag
         api_url: metrics.api_url,
         token: metrics.token,
         interval: Duration::from_secs(metrics.report_interval_secs),
-        reported_metrics: BTreeSet::from_iter(metrics.reported_metrics),
+        meters: BTreeSet::from_iter(metrics.meters),
     }) {
         tracing::warn!("Failed to configure metrics reporting: {e:#}");
     }

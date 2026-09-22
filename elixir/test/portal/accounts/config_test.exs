@@ -21,6 +21,41 @@ defmodule Portal.Accounts.ConfigTest do
     })
   end
 
+  describe "meters" do
+    test "defaults to the flow-log error meters" do
+      assert %Config{}.meters == [
+               "flow_logs.config.errors",
+               "flow_logs.token.errors",
+               "flow_logs.report.errors"
+             ]
+
+      assert Config.default_meters() == %Config{}.meters
+      assert Config.default_config().meters == %Config{}.meters
+      assert Config.ensure_defaults(nil).meters == %Config{}.meters
+    end
+
+    test "falls back to the default when the stored JSON has no meters key" do
+      config = Ecto.embedded_load(Config, %{"search_domain" => "example.com"}, :json)
+
+      assert config.meters == Config.default_meters()
+      assert Config.ensure_defaults(config).meters == Config.default_meters()
+    end
+
+    test "is not castable, so account admins cannot set it" do
+      changeset = Config.changeset(%Config{}, %{"meters" => ["evil.meter"]})
+
+      assert changeset.valid?
+      refute Map.has_key?(changeset.changes, :meters)
+      assert Ecto.Changeset.apply_changes(changeset).meters == Config.default_meters()
+
+      config = %Config{meters: ["ops.meter"]}
+
+      assert Config.changeset(config, %{"meters" => ["evil.meter"]})
+             |> Ecto.Changeset.apply_changes()
+             |> Map.fetch!(:meters) == ["ops.meter"]
+    end
+  end
+
   describe "changeset/2 upstream resolver limit" do
     test "accepts up to 8 resolvers" do
       assert custom_dns_changeset(8).valid?

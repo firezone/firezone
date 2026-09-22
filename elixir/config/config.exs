@@ -494,12 +494,7 @@ config :portal,
 
 config :portal,
   metrics_api_url: "https://metrics.firezone.dev/",
-  metrics_report_interval_secs: 300,
-  metrics_reported_metrics: [
-    "flow_logs.config.errors",
-    "flow_logs.token.errors",
-    "flow_logs.report.errors"
-  ]
+  metrics_report_interval_secs: 300
 
 config :portal, country_code_blocklist: []
 

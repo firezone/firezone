@@ -340,7 +340,7 @@ mod tests {
 
     #[test]
     fn can_deserialize_configure_metrics_message() {
-        let json = r#"{"event":"configure_metrics","ref":null,"topic":"gateway","payload":{"api_url":"https://metrics.firezone.dev/","token":"opaque-token","report_interval_secs":300,"reported_metrics":["flow_logs.config.errors","flow_logs.report.errors"]}}"#;
+        let json = r#"{"event":"configure_metrics","ref":null,"topic":"gateway","payload":{"api_url":"https://metrics.firezone.dev/","token":"opaque-token","report_interval_secs":300,"meters":["flow_logs.config.errors","flow_logs.report.errors"]}}"#;
 
         let message = serde_json::from_str::<IngressMessages>(json).unwrap();
 
@@ -350,7 +350,7 @@ mod tests {
         assert_eq!(config.api_url.as_str(), "https://metrics.firezone.dev/");
         assert_eq!(config.report_interval_secs, 300);
         assert_eq!(
-            config.reported_metrics,
+            config.meters,
             ["flow_logs.config.errors", "flow_logs.report.errors"]
         );
     }

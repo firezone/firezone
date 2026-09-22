@@ -260,7 +260,7 @@ impl FlowLogsConfig {
 /// What, where, and how often, to report metrics to the portal.
 ///
 /// The portal decides which metrics a device reports; anything outside
-/// [`MetricsConfig::reported_metrics`] stays local.
+/// [`MetricsConfig::meters`] stays local.
 ///
 /// The token is opaque to the data plane: it is sent as-is in the
 /// `Authorization` header and the portal reads the reporting device out of it.
@@ -273,13 +273,13 @@ pub struct MetricsConfig {
     /// How often, in seconds, to report metrics. `0` disables reporting.
     pub report_interval_secs: u64,
     /// Names of the metrics that may be reported.
-    pub reported_metrics: Vec<String>,
+    pub meters: Vec<String>,
 }
 
 impl MetricsConfig {
     /// Naming no metrics disables reporting as surely as a zero interval does.
     pub fn reporting_enabled(&self) -> bool {
-        self.report_interval_secs > 0 && !self.reported_metrics.is_empty()
+        self.report_interval_secs > 0 && !self.meters.is_empty()
     }
 }
 

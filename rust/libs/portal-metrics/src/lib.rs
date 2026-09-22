@@ -2,7 +2,7 @@
 //!
 //! [`spawn`] returns a [`Reader`] to install on the process' meter provider and
 //! a thread that collects from it on the portal's cadence, POSTing the deltas of
-//! the [`Config::reported_metrics`] as OTLP/HTTP with JSON encoding.
+//! the [`Config::meters`] as OTLP/HTTP with JSON encoding.
 //!
 //! The portal's config arrives long after start-up and only ever lives in
 //! memory. Until it does, nothing is collected, so the SDK keeps accumulating
@@ -90,7 +90,7 @@ pub struct Config {
     /// How often to report.
     pub interval: Duration,
     /// Names of the metrics that may be reported.
-    pub reported_metrics: BTreeSet<String>,
+    pub meters: BTreeSet<String>,
 }
 
 /// Handle to the spawned reporter thread.
@@ -118,7 +118,7 @@ impl Reporter {
             "Metrics report interval must not be zero"
         );
         anyhow::ensure!(
-            !config.reported_metrics.is_empty(),
+            !config.meters.is_empty(),
             "Metrics report must cover at least one metric"
         );
 
@@ -209,7 +209,7 @@ async fn report_pass(
         return DISABLED_POLL;
     };
 
-    let mut request = match export_request(reader, &endpoint.reported_metrics) {
+    let mut request = match export_request(reader, &endpoint.meters) {
         Ok(request) => request,
         Err(e) => {
             tracing::warn!("Failed to collect metrics: {e:#}");
@@ -266,16 +266,16 @@ async fn report(
 }
 
 /// Collects the deltas since the previous pass as an OTLP request of the
-/// `reported_metrics`, stripped of the resource describing us.
+/// `meters`, stripped of the resource describing us.
 ///
 /// Collecting drains the SDK's deltas, so with nothing to report we must not
 /// collect at all: the counts would be discarded rather than carried into the
 /// next pass.
 fn export_request(
     reader: &Reader,
-    reported_metrics: &BTreeSet<String>,
+    meters: &BTreeSet<String>,
 ) -> Result<ExportMetricsServiceRequest> {
-    if reported_metrics.is_empty() {
+    if meters.is_empty() {
         return Ok(ExportMetricsServiceRequest::default());
     }
 
@@ -294,7 +294,7 @@ fn export_request(
         for scope_metrics in &mut resource_metrics.scope_metrics {
             scope_metrics
                 .metrics
-                .retain(|metric| reported_metrics.contains(&metric.name));
+                .retain(|metric| meters.contains(&metric.name));
         }
 
         resource_metrics
@@ -343,7 +343,7 @@ mod tests {
 
         let mut request = export_request(
             &reader,
-            &reported_metrics(&[otel_instruments::FLOW_LOG_REPORT_ERRORS]),
+            &meters(&[otel_instruments::FLOW_LOG_REPORT_ERRORS]),
         )
         .unwrap();
         fix_timestamps(&mut request);
@@ -398,13 +398,13 @@ mod tests {
             .u64_counter(otel_instruments::FLOW_LOG_REPORT_ERRORS)
             .build();
 
-        let reported = reported_metrics(&[otel_instruments::FLOW_LOG_REPORT_ERRORS]);
+        let meters = meters(&[otel_instruments::FLOW_LOG_REPORT_ERRORS]);
 
         counter.add(3, &[]);
-        export_request(&reader, &reported).unwrap();
+        export_request(&reader, &meters).unwrap();
         counter.add(1, &[]);
 
-        let request = serde_json::to_value(export_request(&reader, &reported).unwrap()).unwrap();
+        let request = serde_json::to_value(export_request(&reader, &meters).unwrap()).unwrap();
 
         assert_eq!(
             request
@@ -422,12 +422,12 @@ mod tests {
             .meter("connlib")
             .u64_counter(otel_instruments::FLOW_LOG_REPORT_ERRORS)
             .build();
-        let reported = reported_metrics(&[otel_instruments::FLOW_LOG_REPORT_ERRORS]);
+        let meters = meters(&[otel_instruments::FLOW_LOG_REPORT_ERRORS]);
 
         counter.add(3, &[]);
         export_request(&reader, &BTreeSet::default()).unwrap();
 
-        let request = serde_json::to_value(export_request(&reader, &reported).unwrap()).unwrap();
+        let request = serde_json::to_value(export_request(&reader, &meters).unwrap()).unwrap();
 
         assert_eq!(
             request
@@ -448,13 +448,13 @@ mod tests {
             api_url: "https://metrics.firezone.dev/".parse().unwrap(),
             token: SecretString::from("token"),
             interval: Duration::from_secs(60),
-            reported_metrics: BTreeSet::default(),
+            meters: BTreeSet::default(),
         });
 
         result.unwrap_err();
     }
 
-    fn reported_metrics(names: &[&str]) -> BTreeSet<String> {
+    fn meters(names: &[&str]) -> BTreeSet<String> {
         names.iter().map(|name| (*name).to_owned()).collect()
     }
 

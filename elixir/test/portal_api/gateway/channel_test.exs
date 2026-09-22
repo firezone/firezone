@@ -110,6 +110,13 @@ defmodule PortalAPI.Gateway.ChannelTest do
   # Mirrors what Portal.Changes.Hooks.Devices builds from a WAL row: the
   # latest-session columns still hold what the last flush persisted, and virtual
   # fields and associations are not in the row at all.
+  defp put_meters(account, meters) do
+    account
+    |> Ecto.Changeset.change()
+    |> Ecto.Changeset.put_embed(:config, %{meters: meters})
+    |> Portal.Repo.update!()
+  end
+
   defp broadcast_struct(gateway) do
     Portal.SchemaHelpers.struct_from_params(
       Portal.Device,
@@ -376,7 +383,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       assert_push "configure_metrics", %{
         api_url: "https://metrics.firezone.dev/",
         report_interval_secs: 300,
-        reported_metrics: [
+        meters: [
           "flow_logs.config.errors",
           "flow_logs.token.errors",
           "flow_logs.report.errors"
@@ -388,6 +395,22 @@ defmodule PortalAPI.Gateway.ChannelTest do
       assert claims["account_id"] == account.id
       assert claims["gateway_id"] == gateway.id
       assert claims["site_id"] == site.id
+    end
+
+    test "sends the meters configured on the account", %{
+      account: account,
+      site: site,
+      token: token
+    } do
+      put_meters(account, ["custom.meter", "other.meter"])
+
+      gateway =
+        gateway_fixture(account: account, site: site, last_seen_version: "1.6.2")
+        |> fetch_device!()
+
+      join_channel(gateway, site, token)
+
+      assert_push "configure_metrics", %{meters: ["custom.meter", "other.meter"]}
     end
 
     test "does not send the metrics reporting config to a Gateway that predates it", %{
@@ -1553,6 +1576,34 @@ defmodule PortalAPI.Gateway.ChannelTest do
       assert_push "init", payload
 
       assert payload.account_slug == "new-slug"
+    end
+
+    test "resends the metrics config when the account meters change", %{
+      account: account,
+      site: site,
+      token: token
+    } do
+      gateway =
+        gateway_fixture(account: account, site: site, last_seen_version: "1.6.2")
+        |> fetch_device!()
+
+      socket = join_channel(gateway, site, token)
+      assert_push "init", _init_payload
+      assert_push "configure_metrics", _payload
+
+      updated = put_meters(account, ["custom.meter"])
+
+      send(socket.channel_pid, %Changes.Change{
+        lsn: System.unique_integer([:positive, :monotonic]),
+        op: :update,
+        old_struct: account,
+        struct: updated
+      })
+
+      :sys.get_state(socket.channel_pid)
+
+      assert_push "configure_metrics", %{meters: ["custom.meter"]}
+      refute_push "init", _payload
     end
 
     test "resends init when gateway tunnel IPs change", %{
