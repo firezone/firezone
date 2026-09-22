@@ -815,7 +815,11 @@ defmodule PortalAPI.Gateway.Channel.Shared do
 
   defp push_metrics_config(socket, account) do
     if Portal.Version.gateway_supports_metrics_config?(socket.assigns.gateway) do
-      push(socket, "configure_metrics", metrics_config(account, socket.assigns.gateway))
+      push(
+        socket,
+        "configure_metrics",
+        metrics_config(account, socket.assigns.gateway, socket.assigns.site)
+      )
     end
   end
 
@@ -827,10 +831,10 @@ defmodule PortalAPI.Gateway.Channel.Shared do
     }
   end
 
-  defp metrics_config(account, gateway) do
+  defp metrics_config(account, gateway, site) do
     %{
       api_url: Portal.Config.fetch_env!(:portal, :metrics_api_url),
-      token: Portal.MetricsToken.mint(account, gateway.id, gateway.site_id),
+      token: Portal.MetricsToken.mint(account, gateway.id, site),
       report_interval_secs: Portal.Config.fetch_env!(:portal, :metrics_report_interval_secs),
       meters: meters(account)
     }

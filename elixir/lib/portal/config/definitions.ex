@@ -242,6 +242,17 @@ defmodule Portal.Config.Definitions do
   defconfig(:metrics_report_interval_secs, :integer, default: 300)
 
   @doc """
+  Ed25519 private key, PKCS#8 PEM encoded, gateway metrics tokens are signed with.
+  """
+  defconfig(:metrics_token_private_key, :string, default: nil, sensitive: true)
+
+  @doc """
+  Identifier of the metrics token signing key, sent as the `kid` JWT header so
+  the ingest service can pick the matching public key during a key rotation.
+  """
+  defconfig(:metrics_token_key_id, :string, default: nil)
+
+  @doc """
   Access key ID for Firezone's AWS account, used to assume customer IAM roles
   for Amazon S3 log sinks.
   """

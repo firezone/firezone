@@ -391,10 +391,12 @@ defmodule PortalAPI.Gateway.ChannelTest do
         token: metrics_token
       }
 
-      assert {:ok, claims} = Portal.MetricsToken.verify(metrics_token)
+      assert %JOSE.JWT{fields: claims} = JOSE.JWT.peek_payload(metrics_token)
       assert claims["account_id"] == account.id
+      assert claims["account_slug"] == account.slug
       assert claims["gateway_id"] == gateway.id
       assert claims["site_id"] == site.id
+      assert claims["site_name"] == site.name
     end
 
     test "sends the meters configured on the account", %{

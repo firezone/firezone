@@ -2,110 +2,90 @@ defmodule Portal.MetricsTokenTest do
   use Portal.DataCase, async: true
 
   import Portal.AccountFixtures
+  import Portal.SiteFixtures
+
   alias Portal.MetricsToken
 
-  describe "mint/3 and verify/1" do
-    setup do
-      %{account: account_fixture(), gateway_id: Ecto.UUID.generate(), site_id: Ecto.UUID.generate()}
+  @public_key_pem """
+  -----BEGIN PUBLIC KEY-----
+  MCowBQYDK2VwAyEA+c0qSLTrAWZ1bJG2CEjLwys12haCmpjhnQLkucVQZxA=
+  -----END PUBLIC KEY-----
+  """
+
+  setup do
+    account = account_fixture()
+
+    %{
+      account: account,
+      site: site_fixture(account: account),
+      gateway_id: Ecto.UUID.generate()
+    }
+  end
+
+  defp verify(token) do
+    @public_key_pem
+    |> JOSE.JWK.from_pem()
+    |> JOSE.JWT.verify_strict(["EdDSA"], token)
+  end
+
+  describe "mint/3" do
+    test "signs with EdDSA and names the configured key", %{
+      account: account,
+      site: site,
+      gateway_id: gateway_id
+    } do
+      Portal.Config.put_env_override(:portal, :metrics_token_key_id, "2026-09")
+
+      token = MetricsToken.mint(account, gateway_id, site)
+
+      assert %JOSE.JWS{alg: {:jose_jws_alg_eddsa, :EdDSA}, fields: fields} =
+               JOSE.JWT.peek_protected(token)
+
+      assert fields["kid"] == "2026-09"
     end
 
-    test "round-trips the attribution claims", %{
+    test "carries the attribution the ingest service needs", %{
       account: account,
-      gateway_id: gateway_id,
-      site_id: site_id
+      site: site,
+      gateway_id: gateway_id
     } do
-      token = MetricsToken.mint(account, gateway_id, site_id)
+      token = MetricsToken.mint(account, gateway_id, site)
 
-      assert {:ok, claims} = MetricsToken.verify(token)
+      assert {true, %JOSE.JWT{fields: claims}, _jws} = verify(token)
+
       assert claims["account_id"] == account.id
+      assert claims["account_slug"] == account.slug
       assert claims["gateway_id"] == gateway_id
-      assert claims["site_id"] == site_id
+      assert claims["site_id"] == site.id
+      assert claims["site_name"] == site.name
+
+      assert Map.keys(claims) |> Enum.sort() ==
+               ~w[account_id account_slug exp gateway_id iat site_id site_name]
     end
 
     test "stamps exp 7 days after minting", %{
       account: account,
-      gateway_id: gateway_id,
-      site_id: site_id
+      site: site,
+      gateway_id: gateway_id
     } do
-      token = MetricsToken.mint(account, gateway_id, site_id)
+      token = MetricsToken.mint(account, gateway_id, site)
 
-      assert {:ok, claims} = MetricsToken.verify(token)
+      assert {true, %JOSE.JWT{fields: claims}, _jws} = verify(token)
       assert claims["exp"] == claims["iat"] + 604_800
     end
 
-    test "rejects a token signed with the wrong key", %{
+    test "does not verify against another key", %{
       account: account,
-      gateway_id: gateway_id,
-      site_id: site_id
+      site: site,
+      gateway_id: gateway_id
     } do
-      impostor = %{account | ingest_signing_key: :crypto.strong_rand_bytes(32)}
+      token = MetricsToken.mint(account, gateway_id, site)
 
-      token = MetricsToken.mint(impostor, gateway_id, site_id)
+      {_, other_public_key} = JOSE.JWK.generate_key({:okp, :Ed25519}) |> JOSE.JWK.to_public_map()
 
-      assert {:error, :invalid} = MetricsToken.verify(token)
-    end
-
-    test "rejects a tampered token", %{
-      account: account,
-      gateway_id: gateway_id,
-      site_id: site_id
-    } do
-      token = MetricsToken.mint(account, gateway_id, site_id)
-
-      assert {:error, :invalid} = MetricsToken.verify(token <> "x")
-    end
-  end
-
-  describe "verify/1 edge cases" do
-    test "rejects an unknown account" do
-      account = %Portal.Account{
-        id: Ecto.UUID.generate(),
-        ingest_signing_key: :crypto.strong_rand_bytes(32)
-      }
-
-      token = MetricsToken.mint(account, Ecto.UUID.generate(), Ecto.UUID.generate())
-
-      assert {:error, :invalid} = MetricsToken.verify(token)
-    end
-
-    test "rejects an expired token" do
-      account = account_fixture()
-
-      expired =
-        account.ingest_signing_key
-        |> JOSE.JWK.from_oct()
-        |> JOSE.JWT.sign(%{"alg" => "HS256"}, %{
-          "account_id" => account.id,
-          "gateway_id" => Ecto.UUID.generate(),
-          "site_id" => Ecto.UUID.generate(),
-          "exp" => DateTime.to_unix(DateTime.utc_now()) - 1
-        })
-        |> JOSE.JWS.compact()
-        |> elem(1)
-
-      assert {:error, :expired} = MetricsToken.verify(expired)
-    end
-
-    test "rejects a malformed token" do
-      assert {:error, :malformed} = MetricsToken.verify("not-a-jwt")
-      assert {:error, :malformed} = MetricsToken.verify(nil)
-      assert {:error, :malformed} = MetricsToken.verify(123)
-    end
-
-    test "rejects a token presenting a different algorithm" do
-      account = account_fixture()
-
-      forged =
-        account.ingest_signing_key
-        |> JOSE.JWK.from_oct()
-        |> JOSE.JWT.sign(%{"alg" => "HS512"}, %{
-          "account_id" => account.id,
-          "exp" => 9_999_999_999
-        })
-        |> JOSE.JWS.compact()
-        |> elem(1)
-
-      assert {:error, :invalid} = MetricsToken.verify(forged)
+      assert {false, _jwt, _jws} =
+               JOSE.JWK.from_map(other_public_key)
+               |> JOSE.JWT.verify_strict(["EdDSA"], token)
     end
   end
 end

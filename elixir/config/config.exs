@@ -494,7 +494,14 @@ config :portal,
 
 config :portal,
   metrics_api_url: "https://telemetry.firezone.dev/",
-  metrics_report_interval_secs: 300
+  metrics_report_interval_secs: 300,
+  metrics_token_key_id: "dev",
+  # Throw-away key for dev and test only; production keys come from Key Vault.
+  metrics_token_private_key: """
+  -----BEGIN PRIVATE KEY-----
+  MC4CAQAwBQYDK2VwBCIEIGLZO5mePS0T9HCiYRgxoyylxUwIyYiVMQHuIpd5kwv+
+  -----END PRIVATE KEY-----
+  """
 
 config :portal, country_code_blocklist: []
 
