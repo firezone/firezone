@@ -10,10 +10,11 @@ bytes = { workspace = true }
 http = { workspace = true }
 http-client = { workspace = true }
 opentelemetry = { workspace = true, features = ["metrics"] }
+opentelemetry-proto = { workspace = true }
+opentelemetry_sdk = { workspace = true, features = ["metrics", "experimental_metrics_custom_reader"] }
 otel-instruments = { workspace = true }
 parking_lot = { workspace = true }
 secrecy = { workspace = true }
-serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 socket-factory = { workspace = true }
 tokio = { workspace = true, features = ["rt", "net", "time"] }

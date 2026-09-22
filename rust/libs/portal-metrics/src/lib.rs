@@ -1,46 +1,75 @@
 //! Reports an allow-listed set of OpenTelemetry counters to the portal.
 //!
-//! Which metrics pipeline a binary runs is a deployment choice, so reporting to
-//! the portal cannot be another exporter on it. [`RecordingMeterProvider`]
-//! decorates whichever [`MeterProvider`] is installed and mirrors the counters on
-//! [`ALLOW_LIST`] into an in-process registry instead.
+//! [`spawn`] returns a [`Reader`] to install on the process' [`SdkMeterProvider`]
+//! and a thread that collects from it on the portal's cadence, POSTing the
+//! allow-listed deltas as OTLP/HTTP with JSON encoding.
 //!
-//! [`spawn`] runs a thread that drains that registry on the portal's cadence and
-//! POSTs the deltas as OTLP/HTTP with JSON encoding. The portal's config arrives
-//! long after start-up, in its `init` message, and only ever lives in memory; the
-//! registry accumulates until then, so counts recorded before the first
+//! The portal's config arrives long after start-up, in its `init` message, and
+//! only ever lives in memory. Until it does, nothing is collected, so the SDK
+//! keeps accumulating and counts recorded before the first
 //! [`Reporter::configure`] are still reported afterwards.
 
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
 use std::{
-    sync::{Arc, mpsc},
-    time::{Duration, SystemTime},
+    sync::{Arc, Weak, mpsc},
+    time::Duration,
 };
 
 use anyhow::{Context as _, Result};
 use bytes::Bytes;
-use opentelemetry::{KeyValue, metrics::MeterProvider};
+use opentelemetry_proto::tonic::{
+    collector::metrics::v1::ExportMetricsServiceRequest, metrics::v1::ResourceMetrics,
+};
+use opentelemetry_sdk::{
+    error::OTelSdkResult,
+    metrics::{
+        InstrumentKind, ManualReader, Pipeline, Temporality, data, reader::MetricReader,
+    },
+};
 use parking_lot::Mutex;
 use secrecy::SecretString;
 use socket_factory::{SocketFactory, TcpSocket};
 use url::Url;
 
 mod ingest;
-mod otlp;
-mod provider;
-mod registry;
-
-pub use provider::RecordingMeterProvider;
-
-use otlp::ExportMetricsServiceRequest;
-use registry::{Registry, Sample};
 
 /// The counters the portal accepts.
 const ALLOW_LIST: &[&str] = &[otel_instruments::FLOW_LOG_ERRORS];
 
 /// How often to re-check for a config while reporting is unconfigured.
 const DISABLED_POLL: Duration = Duration::from_secs(60);
+
+/// How many undelivered collections to carry into the next report.
+const MAX_RETAINED: usize = 6;
+
+/// Spawns the thread reporting to the portal what is collected from the returned
+/// [`Reader`].
+///
+/// Installing the reader on the process' meter provider is up to the caller.
+pub fn spawn(socket_factory: Arc<dyn SocketFactory<TcpSocket>>) -> (Reader, Reporter) {
+    let reader = Reader::default();
+    let (wakeups, inbox) = mpsc::channel();
+
+    let reporter = Reporter {
+        endpoint: Arc::new(Mutex::new(None)),
+        wakeups,
+    };
+
+    std::thread::Builder::new()
+        .name("portal-metrics".to_owned())
+        .spawn({
+            // The thread holds a handle too, so dropping the caller's detaches
+            // rather than stops it.
+            let reporter = reporter.clone();
+            let reader = reader.clone();
+
+            move || run(&reporter, &reader, &socket_factory, &inbox)
+        })
+        .expect("Failed to spawn portal metrics thread");
+
+    (reader, reporter)
+}
 
 /// Where, and how often, to report metrics to the portal.
 pub struct Config {
@@ -95,45 +124,51 @@ impl Reporter {
     }
 }
 
-/// Wraps `inner` in a [`RecordingMeterProvider`] and spawns the thread reporting
-/// what it records.
+/// The [`MetricReader`](opentelemetry_sdk::metrics::reader::MetricReader) the
+/// portal is reported from.
 ///
-/// Installing the returned provider is up to the caller. `resource` are the OTLP
-/// resource attributes every report carries.
-pub fn spawn(
-    inner: Box<dyn MeterProvider + Send + Sync>,
-    resource: Vec<KeyValue>,
-    socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
-) -> (RecordingMeterProvider, Reporter) {
-    let registry = Arc::new(Registry::default());
-    let (wakeups, inbox) = mpsc::channel();
+/// Collecting yields the counts since the previous collection, which is what a
+/// report carries.
+#[derive(Clone, Debug)]
+pub struct Reader(Arc<ManualReader>);
 
-    let reporter = Reporter {
-        endpoint: Arc::new(Mutex::new(None)),
-        wakeups,
-    };
+impl Default for Reader {
+    fn default() -> Self {
+        Self(Arc::new(
+            ManualReader::builder()
+                .with_temporality(Temporality::Delta)
+                .build(),
+        ))
+    }
+}
 
-    std::thread::Builder::new()
-        .name("portal-metrics".to_owned())
-        .spawn({
-            // The thread holds a handle too, so dropping the caller's detaches
-            // rather than stops it.
-            let reporter = reporter.clone();
-            let registry = registry.clone();
+impl MetricReader for Reader {
+    fn register_pipeline(&self, pipeline: Weak<Pipeline>) {
+        self.0.register_pipeline(pipeline);
+    }
 
-            move || run(&reporter, &registry, &resource, &socket_factory, &inbox)
-        })
-        .expect("Failed to spawn portal metrics thread");
+    fn collect(&self, rm: &mut data::ResourceMetrics) -> OTelSdkResult {
+        self.0.collect(rm)
+    }
 
-    (RecordingMeterProvider::new(inner, registry), reporter)
+    fn force_flush(&self) -> OTelSdkResult {
+        self.0.force_flush()
+    }
+
+    fn shutdown_with_timeout(&self, timeout: Duration) -> OTelSdkResult {
+        self.0.shutdown_with_timeout(timeout)
+    }
+
+    fn temporality(&self, kind: InstrumentKind) -> Temporality {
+        self.0.temporality(kind)
+    }
 }
 
 /// The reporter's event loop: sleeps until the next report is due or a new config
 /// arrives, whichever comes first.
 fn run(
     reporter: &Reporter,
-    registry: &Registry,
-    resource: &[KeyValue],
+    reader: &Reader,
     socket_factory: &Arc<dyn SocketFactory<TcpSocket>>,
     wakeups: &mpsc::Receiver<()>,
 ) {
@@ -150,7 +185,7 @@ fn run(
 
     tracing::info!("Portal metrics reporter started");
 
-    let mut interval_start = SystemTime::now();
+    let mut retained = Vec::new();
     let mut delay = DISABLED_POLL;
 
     loop {
@@ -163,52 +198,54 @@ fn run(
 
         delay = runtime.block_on(report_pass(
             reporter,
-            registry,
-            resource,
+            reader,
             socket_factory,
-            &mut interval_start,
+            &mut retained,
         ));
     }
 }
 
 /// Runs one report pass; returns how long to wait before the next.
 ///
-/// The registry is only drained once there is somewhere to report to, and a pass
-/// that fails to deliver folds its samples back in for the next one to retry.
+/// Nothing is collected until there is somewhere to report to, and a pass that
+/// fails to deliver retains its collection for the next one to send along.
 async fn report_pass(
     reporter: &Reporter,
-    registry: &Registry,
-    resource: &[KeyValue],
+    reader: &Reader,
     socket_factory: &Arc<dyn SocketFactory<TcpSocket>>,
-    interval_start: &mut SystemTime,
+    retained: &mut Vec<ResourceMetrics>,
 ) -> Duration {
     let Some(endpoint) = reporter.endpoint.lock().clone() else {
         return DISABLED_POLL;
     };
 
-    let now = SystemTime::now();
-    let samples = registry.drain();
+    let mut request = match export_request(reader) {
+        Ok(request) => request,
+        Err(e) => {
+            tracing::warn!("Failed to collect metrics: {e:#}");
 
-    if samples.is_empty() {
-        *interval_start = now;
+            return endpoint.interval;
+        }
+    };
 
+    request.resource_metrics.splice(..0, retained.drain(..));
+
+    if request.resource_metrics.is_empty() {
         return endpoint.interval;
     }
 
-    match report(
-        &endpoint,
-        resource,
-        &samples,
-        *interval_start,
-        now,
-        socket_factory.clone(),
-    )
-    .await
-    {
-        Ok(()) => *interval_start = now,
+    match report(&endpoint, &request, socket_factory.clone()).await {
+        Ok(()) => {}
         Err(e) => {
             tracing::warn!("Failed to report metrics to portal: {e:#}");
-            registry.fold_back(samples);
+
+            *retained = request.resource_metrics;
+            let excess = retained.len().saturating_sub(MAX_RETAINED);
+
+            if excess > 0 {
+                tracing::debug!(%excess, "Dropping undelivered metrics");
+                retained.drain(..excess);
+            }
         }
     }
 
@@ -217,14 +254,10 @@ async fn report_pass(
 
 async fn report(
     endpoint: &Endpoint,
-    resource: &[KeyValue],
-    samples: &[Sample],
-    start: SystemTime,
-    end: SystemTime,
+    request: &ExportMetricsServiceRequest,
     socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
 ) -> Result<()> {
-    let request = ExportMetricsServiceRequest::new(resource, samples, start, end);
-    let body = serde_json::to_vec(&request).context("Failed to serialize metrics report")?;
+    let body = serde_json::to_vec(request).context("Failed to serialize metrics report")?;
 
     ingest::report(
         &endpoint.url,
@@ -234,9 +267,41 @@ async fn report(
     )
     .await?;
 
-    tracing::debug!(series = samples.len(), "Reported metrics to portal");
+    tracing::debug!(
+        collections = request.resource_metrics.len(),
+        "Reported metrics to portal"
+    );
 
     Ok(())
+}
+
+/// Collects the deltas since the previous pass as an OTLP request of the
+/// allow-listed metrics.
+fn export_request(reader: &Reader) -> Result<ExportMetricsServiceRequest> {
+    let mut collected = data::ResourceMetrics::default();
+    reader
+        .collect(&mut collected)
+        .context("Failed to collect metrics")?;
+
+    let mut request = ExportMetricsServiceRequest::from(&collected);
+
+    for resource_metrics in &mut request.resource_metrics {
+        for scope_metrics in &mut resource_metrics.scope_metrics {
+            scope_metrics
+                .metrics
+                .retain(|metric| ALLOW_LIST.contains(&metric.name.as_str()));
+        }
+
+        resource_metrics
+            .scope_metrics
+            .retain(|scope_metrics| !scope_metrics.metrics.is_empty());
+    }
+
+    request
+        .resource_metrics
+        .retain(|resource_metrics| !resource_metrics.scope_metrics.is_empty());
+
+    Ok(request)
 }
 
 /// The portal's config, with its endpoint already validated.
@@ -245,4 +310,133 @@ struct Endpoint {
     url: Url,
     token: SecretString,
     interval: Duration,
+}
+
+#[cfg(test)]
+mod tests {
+    use opentelemetry::{KeyValue, metrics::MeterProvider as _};
+    use opentelemetry_proto::tonic::metrics::v1::metric::Data;
+    use opentelemetry_sdk::{Resource, metrics::SdkMeterProvider};
+    use serde_json::json;
+
+    use super::*;
+
+    #[test]
+    fn exports_the_allow_listed_counters_as_otlp_json() {
+        let reader = Reader::default();
+        let provider = meter_provider(&reader);
+        let meter = provider.meter("connlib");
+
+        meter
+            .u64_counter(otel_instruments::FLOW_LOG_ERRORS)
+            .with_description("Number of errors encountered while recording, spooling or uploading flow logs.")
+            .with_unit("{error}")
+            .build()
+            .add(3, &[KeyValue::new("error.type", "spool_full")]);
+        meter
+            .u64_counter("connlib.network.packets")
+            .build()
+            .add(7, &[]);
+
+        let mut request = export_request(&reader).unwrap();
+        fix_timestamps(&mut request);
+
+        assert_eq!(
+            serde_json::to_value(&request).unwrap(),
+            json!({
+                "resourceMetrics": [{
+                    "resource": {
+                        "attributes": [{
+                            "key": "service.name",
+                            "value": { "stringValue": "firezone-gateway" }
+                        }],
+                        "droppedAttributesCount": 0,
+                        "entityRefs": []
+                    },
+                    "scopeMetrics": [{
+                        "scope": {
+                            "name": "connlib",
+                            "version": "",
+                            "attributes": [],
+                            "droppedAttributesCount": 0
+                        },
+                        "metrics": [{
+                            "name": "flow_logs.errors",
+                            "description": "Number of errors encountered while recording, spooling or uploading flow logs.",
+                            "unit": "{error}",
+                            "metadata": [],
+                            "sum": {
+                                "dataPoints": [{
+                                    "attributes": [{
+                                        "key": "error.type",
+                                        "value": { "stringValue": "spool_full" }
+                                    }],
+                                    "startTimeUnixNano": "1000000000",
+                                    "timeUnixNano": "2000000000",
+                                    "exemplars": [],
+                                    "flags": 0,
+                                    "asInt": 3
+                                }],
+                                "aggregationTemporality": 1,
+                                "isMonotonic": true
+                            }
+                        }],
+                        "schemaUrl": ""
+                    }],
+                    "schemaUrl": ""
+                }]
+            })
+        );
+    }
+
+    #[test]
+    fn a_collection_reports_only_what_was_recorded_since_the_previous_one() {
+        let reader = Reader::default();
+        let provider = meter_provider(&reader);
+        let counter = provider
+            .meter("connlib")
+            .u64_counter(otel_instruments::FLOW_LOG_ERRORS)
+            .build();
+
+        counter.add(3, &[]);
+        export_request(&reader).unwrap();
+        counter.add(1, &[]);
+
+        let request = serde_json::to_value(export_request(&reader).unwrap()).unwrap();
+
+        assert_eq!(
+            request
+                .pointer("/resourceMetrics/0/scopeMetrics/0/metrics/0/sum/dataPoints/0/asInt")
+                .unwrap(),
+            1
+        );
+    }
+
+    fn meter_provider(reader: &Reader) -> SdkMeterProvider {
+        SdkMeterProvider::builder()
+            .with_reader(reader.clone())
+            .with_resource(
+                Resource::builder_empty()
+                    .with_attribute(KeyValue::new("service.name", "firezone-gateway"))
+                    .build(),
+            )
+            .build()
+    }
+
+    fn fix_timestamps(request: &mut ExportMetricsServiceRequest) {
+        for resource_metrics in &mut request.resource_metrics {
+            for scope_metrics in &mut resource_metrics.scope_metrics {
+                for metric in &mut scope_metrics.metrics {
+                    let Some(Data::Sum(sum)) = metric.data.as_mut() else {
+                        continue;
+                    };
+
+                    for data_point in &mut sum.data_points {
+                        data_point.start_time_unix_nano = 1_000_000_000;
+                        data_point.time_unix_nano = 2_000_000_000;
+                    }
+                }
+            }
+        }
+    }
 }
