@@ -6,6 +6,7 @@ license = { workspace = true }
 publish = false
 
 [dependencies]
+fastrand = { workspace = true }
 rand = { workspace = true }
 
 [lints]

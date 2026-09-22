@@ -1,4 +1,4 @@
-//! Pins the entropy the process draws from libc.
+//! Pins the generators the process draws from.
 //!
 //! `std` seeds every `HashMap`'s hasher once per thread from `getrandom`, so the
 //! number of key comparisons a lookup makes, and with it the coverage an input
@@ -8,6 +8,11 @@
 //! `std` draws at the first `HashMap`, which can happen before the first
 //! iteration. `std` treats a short read as a failure and falls back to another
 //! source, so the entire buffer has to be filled.
+//!
+//! `fastrand`'s thread-local generator seeds itself from the clock instead, out
+//! of reach of the interposed symbol, and `is` draws STUN transaction IDs, the
+//! ICE control tie breaker and the ICE credentials from it. [`reset`] therefore
+//! rewinds that one too.
 
 use std::ffi::{c_uint, c_void};
 use std::sync::Mutex;
@@ -18,9 +23,11 @@ const SEED: u64 = 0;
 
 static RNG: Mutex<Option<StdRng>> = Mutex::new(None);
 
-/// Rewinds the stream interposed [`getrandom`] draws from.
+/// Rewinds the streams an iteration draws from.
 pub fn reset() {
     with_rng(|rng| *rng = StdRng::seed_from_u64(SEED));
+
+    fastrand::seed(SEED);
 }
 
 /// # Safety

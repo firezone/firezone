@@ -3042,7 +3042,6 @@ dependencies = [
  "derive_more",
  "dns-over-tcp",
  "dns-types",
- "fastrand",
  "flow-tracker",
  "fuzz-entropy",
  "hex",
@@ -3071,6 +3070,7 @@ dependencies = [
 name = "fuzz-entropy"
 version = "0.1.0"
 dependencies = [
+ "fastrand",
  "rand 0.10.2",
 ]
 

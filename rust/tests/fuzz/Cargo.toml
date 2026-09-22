@@ -46,7 +46,6 @@ connlib-model = { workspace = true }
 derive_more = { workspace = true, features = ["debug"] }
 dns-over-tcp = { workspace = true }
 dns-types = { workspace = true }
-fastrand = { workspace = true }
 flow-tracker = { workspace = true }
 fuzz-entropy = { workspace = true }
 hex = { workspace = true }
