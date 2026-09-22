@@ -487,11 +487,17 @@ impl Eventloop {
                         if e.any_downcast_ref::<std::io::Error>()
                             .is_some_and(|io| io.kind() == std::io::ErrorKind::StorageFull) =>
                     {
-                        self.flow_log_errors.add(1, &spool_error(&e).attributes());
+                        if let Some(error) = spool_error(&e) {
+                            self.flow_log_errors.add(1, &error.attributes());
+                        }
+
                         tracing::debug!("{e:#}");
                     }
                     Err(e) => {
-                        self.flow_log_errors.add(1, &spool_error(&e).attributes());
+                        if let Some(error) = spool_error(&e) {
+                            self.flow_log_errors.add(1, &error.attributes());
+                        }
+
                         tracing::warn!("{e:#}");
                     }
                 }
@@ -730,12 +736,12 @@ fn configure_portal_metrics(
 }
 
 /// Classifies a failed flow-log spool write for the portal's error counter.
-fn spool_error(e: &anyhow::Error) -> FlowLogError {
+fn spool_error(e: &anyhow::Error) -> Option<FlowLogError> {
     match e.any_downcast_ref::<io::Error>().map(io::Error::kind) {
-        Some(io::ErrorKind::PermissionDenied) => FlowLogError::SpoolNotWritable,
-        Some(io::ErrorKind::StorageFull) => FlowLogError::SpoolFull,
-        Some(_) => FlowLogError::SpoolWriteFailed,
-        None => FlowLogError::SpoolWriteFailed,
+        Some(io::ErrorKind::PermissionDenied) => Some(FlowLogError::SpoolNotWritable),
+        Some(io::ErrorKind::StorageFull) => Some(FlowLogError::SpoolFull),
+        Some(_) => None,
+        None => None,
     }
 }
 

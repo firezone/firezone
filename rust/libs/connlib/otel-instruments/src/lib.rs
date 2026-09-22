@@ -124,16 +124,6 @@ pub enum FlowLogError {
     SpoolNotWritable,
     /// The spool is full, either the volume or the budget the writer keeps to.
     SpoolFull,
-    /// Writing to the spool failed for any other reason.
-    SpoolWriteFailed,
-    /// A report was discarded because the writer could not keep up.
-    ReportDropped,
-    /// A spooled report could not be read back and was discarded.
-    ReportCorrupt,
-    /// An upload did not get through to the portal, or the portal failed to take it.
-    UploadFailed,
-    /// The portal refused an upload.
-    UploadRejected,
 }
 
 impl FlowLogError {
@@ -141,11 +131,6 @@ impl FlowLogError {
         let kind = match self {
             FlowLogError::SpoolNotWritable => "spool_not_writable",
             FlowLogError::SpoolFull => "spool_full",
-            FlowLogError::SpoolWriteFailed => "spool_write_failed",
-            FlowLogError::ReportDropped => "report_dropped",
-            FlowLogError::ReportCorrupt => "report_corrupt",
-            FlowLogError::UploadFailed => "upload_failed",
-            FlowLogError::UploadRejected => "upload_rejected",
         };
 
         [KeyValue::new("error.type", kind)]

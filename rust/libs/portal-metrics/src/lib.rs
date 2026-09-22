@@ -23,9 +23,7 @@ use opentelemetry_proto::tonic::{
 };
 use opentelemetry_sdk::{
     error::OTelSdkResult,
-    metrics::{
-        InstrumentKind, ManualReader, Pipeline, Temporality, data, reader::MetricReader,
-    },
+    metrics::{InstrumentKind, ManualReader, Pipeline, Temporality, data, reader::MetricReader},
 };
 use parking_lot::Mutex;
 use secrecy::SecretString;
@@ -196,12 +194,7 @@ fn run(
             Err(mpsc::RecvTimeoutError::Disconnected) => return,
         }
 
-        delay = runtime.block_on(report_pass(
-            reporter,
-            reader,
-            socket_factory,
-            &mut retained,
-        ));
+        delay = runtime.block_on(report_pass(reporter, reader, socket_factory, &mut retained));
     }
 }
 
@@ -276,7 +269,7 @@ async fn report(
 }
 
 /// Collects the deltas since the previous pass as an OTLP request of the
-/// allow-listed metrics.
+/// allow-listed metrics, stripped of the resource describing us.
 fn export_request(reader: &Reader) -> Result<ExportMetricsServiceRequest> {
     let mut collected = data::ResourceMetrics::default();
     reader
@@ -286,6 +279,10 @@ fn export_request(reader: &Reader) -> Result<ExportMetricsServiceRequest> {
     let mut request = ExportMetricsServiceRequest::from(&collected);
 
     for resource_metrics in &mut request.resource_metrics {
+        // The portal identifies the reporting gateway from the token the report is
+        // authorized with, so the payload must not repeat it.
+        resource_metrics.resource = None;
+
         for scope_metrics in &mut resource_metrics.scope_metrics {
             scope_metrics
                 .metrics
@@ -329,7 +326,9 @@ mod tests {
 
         meter
             .u64_counter(otel_instruments::FLOW_LOG_ERRORS)
-            .with_description("Number of errors encountered while recording, spooling or uploading flow logs.")
+            .with_description(
+                "Number of errors encountered while recording, spooling or uploading flow logs.",
+            )
             .with_unit("{error}")
             .build()
             .add(3, &[KeyValue::new("error.type", "spool_full")]);
@@ -345,14 +344,7 @@ mod tests {
             serde_json::to_value(&request).unwrap(),
             json!({
                 "resourceMetrics": [{
-                    "resource": {
-                        "attributes": [{
-                            "key": "service.name",
-                            "value": { "stringValue": "firezone-gateway" }
-                        }],
-                        "droppedAttributesCount": 0,
-                        "entityRefs": []
-                    },
+                    "resource": null,
                     "scopeMetrics": [{
                         "scope": {
                             "name": "connlib",

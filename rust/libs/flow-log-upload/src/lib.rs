@@ -25,7 +25,7 @@
 use std::{
     collections::BinaryHeap,
     path::{Path, PathBuf},
-    sync::{Arc, LazyLock, mpsc},
+    sync::{Arc, mpsc},
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
@@ -35,8 +35,6 @@ use base64::Engine as _;
 use bytes::Bytes;
 use flow_log_spool::deserialize;
 use http::StatusCode;
-use opentelemetry::metrics::Counter;
-use otel_instruments::FlowLogError;
 use serde::{Deserialize, Serialize};
 use serde_with::{DurationSeconds, serde_as};
 use socket_factory::{SocketFactory, TcpSocket};
@@ -59,10 +57,6 @@ const MAX_UPLOAD_RETRY: Duration = Duration::from_secs(5 * 60);
 const CONFIG_FILE: &str = "upload.json";
 const START_SUFFIX: &str = ".start.json";
 const END_SUFFIX: &str = ".end.json";
-
-/// Recorded from the free functions of an upload pass, none of which is owned by
-/// a long-lived component.
-static ERRORS: LazyLock<Counter<u64>> = LazyLock::new(otel_instruments::flow_log_errors);
 
 /// The portal's upload config, persisted into the spool root so an uploader that
 /// runs independently of the session can read it.
@@ -488,8 +482,6 @@ async fn upload_pending(
     let mut client = match IngestClient::connect(url, socket_factory).await {
         Ok(client) => client,
         Err(e) => {
-            ERRORS.add(1, &FlowLogError::UploadFailed.attributes());
-
             tracing::info!("Failed to open flow-log ingest connection: {e:#}");
             return Ok(false);
         }
@@ -695,15 +687,11 @@ fn read_report(path: &Path) -> Result<Option<serde_json::Value>> {
     match deserialize(&bytes) {
         Ok(payload) => Ok(Some(payload)),
         Err(e @ flow_log_spool::Error::Malformed(_)) => {
-            ERRORS.add(1, &FlowLogError::ReportCorrupt.attributes());
-
             tracing::error!(?path, "Corrupt flow-log report, deleting: {e}");
             let _ = std::fs::remove_file(path);
             Ok(None)
         }
         Err(e @ flow_log_spool::Error::ChecksumMismatch { .. }) => {
-            ERRORS.add(1, &FlowLogError::ReportCorrupt.attributes());
-
             tracing::warn!(?path, "Flow-log report failed its checksum, deleting: {e}");
             let _ = std::fs::remove_file(path);
             Ok(None)
@@ -731,8 +719,6 @@ async fn submit(client: &mut IngestClient, token: &str, batch: &[Pending]) -> Re
         let response = match client.send(token, body.clone()).await {
             Ok(response) => response,
             Err(e) => {
-                ERRORS.add(1, &FlowLogError::UploadFailed.attributes());
-
                 tracing::info!("Flow-log upload request failed: {e:#}");
                 // A closed connection won't recover by retrying; defer to the next pass.
                 if client.is_closed() || !sleep_backoff(&mut backoff).await {
@@ -759,8 +745,6 @@ async fn submit(client: &mut IngestClient, token: &str, batch: &[Pending]) -> Re
                 // Not a failure; keep retrying the same batch without spending the budget.
             }
             ResponseAction::Retry => {
-                ERRORS.add(1, &FlowLogError::UploadFailed.attributes());
-
                 tracing::info!(%status, "Flow-log upload transient failure; backing off");
                 if !sleep_backoff(&mut backoff).await {
                     return Ok(BatchOutcome::Spooled);
@@ -768,8 +752,6 @@ async fn submit(client: &mut IngestClient, token: &str, batch: &[Pending]) -> Re
             }
             ResponseAction::Redirect => client.follow_redirect(&response).await?,
             ResponseAction::Defer => {
-                ERRORS.add(1, &FlowLogError::UploadRejected.attributes());
-
                 let body = body_string(&response);
                 tracing::info!(%status, %body, "Flow-log upload rejected; keeping the batch");
                 return Ok(BatchOutcome::Spooled);
@@ -833,8 +815,6 @@ async fn partition(
     batch: &[Pending],
 ) -> Result<BatchOutcome> {
     if batch.len() <= 1 {
-        ERRORS.add(1, &FlowLogError::UploadRejected.attributes());
-
         tracing::warn!("A single flow exceeds the upload size limit; keeping it");
         return Ok(BatchOutcome::Spooled);
     }

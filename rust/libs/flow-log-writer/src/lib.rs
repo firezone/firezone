@@ -134,7 +134,6 @@ where
     let layer = FlowLogLayer {
         tx: tx.clone(),
         dropped: AtomicU64::new(0),
-        errors: otel_instruments::flow_log_errors(),
     }
     .with_filter(
         tracing_subscriber::filter::Targets::new().with_target("flow_logs", tracing::Level::TRACE),
@@ -286,7 +285,6 @@ struct FlowLogLayer {
     tx: mpsc::SyncSender<Command>,
     /// How many reports were dropped because the writer thread's queue was full.
     dropped: AtomicU64,
-    errors: Counter<u64>,
 }
 
 impl<S> tracing_subscriber::Layer<S> for FlowLogLayer
@@ -310,9 +308,6 @@ where
         match self.tx.try_send(Command::Write(report)) {
             Ok(()) => {}
             Err(mpsc::TrySendError::Full(_)) => {
-                self.errors
-                    .add(1, &FlowLogError::ReportDropped.attributes());
-
                 let dropped = self.dropped.fetch_add(1, Ordering::Relaxed) + 1;
 
                 if dropped == 1 || dropped.is_multiple_of(1_000) {
@@ -320,9 +315,6 @@ where
                 }
             }
             Err(mpsc::TrySendError::Disconnected(_)) => {
-                self.errors
-                    .add(1, &FlowLogError::ReportDropped.attributes());
-
                 tracing::debug!("Flow-log writer thread is gone; dropping report");
             }
         }
@@ -535,8 +527,6 @@ impl Spool {
     }
 
     fn drop_report(&mut self, reason: &'static str) {
-        self.errors.add(1, &FlowLogError::SpoolFull.attributes());
-
         self.dropped += 1;
 
         if self.dropped == 1 || self.dropped.is_multiple_of(1_000) {
@@ -573,8 +563,6 @@ fn write_report(root: &Path, report: &Report, errors: &Counter<u64>) -> Outcome 
     let contents = match serialize(&serde_json::Value::Object(report.payload.clone())) {
         Ok(contents) => contents,
         Err(e) => {
-            errors.add(1, &FlowLogError::SpoolWriteFailed.attributes());
-
             tracing::warn!("Failed to serialize flow-log report: {e:#}");
 
             return Outcome::Skipped;
@@ -614,7 +602,7 @@ fn record_spool_error(errors: &Counter<u64>, kind: std::io::ErrorKind) {
     let error = match kind {
         std::io::ErrorKind::PermissionDenied => FlowLogError::SpoolNotWritable,
         std::io::ErrorKind::StorageFull => FlowLogError::SpoolFull,
-        _ => FlowLogError::SpoolWriteFailed,
+        _ => return,
     };
 
     errors.add(1, &error.attributes());
