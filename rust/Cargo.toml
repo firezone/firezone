@@ -58,6 +58,7 @@ members = [
     "relay/ebpf-turn-router",
     "relay/proto",
     "relay/server",
+    "telemetry-ingest",
     "tests/fuzz",
     "tests/gui-smoke-test",
     "tests/http-test-server",
@@ -188,6 +189,7 @@ png = "0.18.1"
 portal-metrics = { path = "libs/portal-metrics" }
 proc-macro2 = "1.0.106"
 proptest = "1.9.0"
+prost = { version = "0.14.3", default-features = false, features = ["std"] }
 quinn-udp = { version = "0.6.0", features = ["fast-apple-datapath"] }
 quote = "1.0.45"
 rand = "0.10.1"

@@ -22,15 +22,24 @@ jobs:
       matrix:
         include:
           - image_name: portal
+            context: elixir
+            file: elixir/Dockerfile
             target: runtime
             build-args: |
               APPLICATION_NAME=portal
               GIT_SHA=${{ inputs.sha }}
           - image_name: elixir
+            context: elixir
+            file: elixir/Dockerfile
             target: compiler
             build-args: |
               APPLICATION_NAME=portal
               GIT_SHA=${{ inputs.sha }}
+          - image_name: telemetry-ingest
+            context: rust
+            file: rust/telemetry-ingest/Dockerfile
+            target: runtime
+            build-args: ""
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -62,7 +71,8 @@ jobs:
           build-args: ${{ matrix.build-args }}
           target: ${{ matrix.target }}
           no-cache-filters: runtime
-          context: elixir
+          context: ${{ matrix.context }}
+          file: ${{ matrix.file }}
           cache-from: |
             type=gha,scope=${{ matrix.image_name }}:${{ env.CACHE_TAG }}
             type=gha,scope=${{ matrix.image_name }}:main
@@ -82,7 +92,8 @@ jobs:
           build-args: ${{ matrix.build-args }}
           target: ${{ matrix.target }}
           no-cache-filters: runtime
-          context: elixir
+          context: ${{ matrix.context }}
+          file: ${{ matrix.file }}
           cache-from: |
             type=gha,scope=${{ matrix.image_name }}:${{ env.CACHE_TAG }}
             type=gha,scope=${{ matrix.image_name }}:main
@@ -96,7 +107,7 @@ jobs:
             org.opencontainers.image.revision=${{ inputs.sha }}
 
       - name: Run Trivy vulnerability scanner
-        if: ${{ matrix.image_name == 'portal' }}
+        if: ${{ matrix.image_name != 'elixir' }}
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ inputs.sha }}
@@ -106,8 +117,8 @@ jobs:
           vuln-type: os,library
           severity: CRITICAL,HIGH
       - name: Upload Trivy scan results to GitHub Security tab
-        if: ${{ matrix.image_name == 'portal' }}
+        if: ${{ matrix.image_name != 'elixir' }}
         uses: github/codeql-action/upload-sarif@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4.37.7
         with:
           sarif_file: trivy-results.sarif
-          category: trivy-portal
+          category: trivy-${{ matrix.image_name }}
