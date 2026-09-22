@@ -22,10 +22,6 @@ defmodule PortalWeb.HomeHTML do
   defp get_started(assigns) do
     ~H"""
     <div class="mb-10 text-center">
-      <div class="flex lg:hidden items-center justify-center gap-2 mb-8">
-        <img src="/images/logo.svg" class="h-5 w-auto" alt="Firezone Logo" />
-        <span class="text-sm font-semibold text-heading">Firezone</span>
-      </div>
       <h1 class="text-2xl font-bold text-heading tracking-tight">Let's get started!</h1>
       <p class="text-sm text-body mt-2">Which best describes why you're here?</p>
     </div>
@@ -101,9 +97,6 @@ defmodule PortalWeb.HomeHTML do
     ~H"""
     <%!-- Branded header --%>
     <div class="flex items-center gap-3 mb-8">
-      <div class="w-10 h-10 rounded bg-brand/10 border border-brand/20 flex items-center justify-center shrink-0 lg:hidden">
-        <img src="/images/logo.svg" class="h-5 w-auto" alt="Firezone Logo" />
-      </div>
       <div>
         <h1 class="text-xl font-bold text-heading tracking-tight">
           Sign in to Firezone

@@ -84,6 +84,11 @@
   /* FILTERS */
   --color-filter-active: var(--filter-active-bg);
   --color-filter-text: var(--filter-active-text);
+
+  /* SHOWCASE */
+  --color-showcase: var(--showcase-bg);
+  --color-showcase-text: var(--showcase-text);
+  --color-showcase-icon: var(--showcase-icon);
 }
 
 /* Start: This may not be needed after UI refactor */
@@ -120,7 +125,7 @@ html {
 .dot-grid {
   background-image: radial-gradient(
     circle,
-    rgba(255, 255, 255, 0.18) 1px,
+    color-mix(in oklch, var(--showcase-text) 18%, transparent) 1px,
     transparent 1px
   );
   background-size: 24px 24px;
@@ -249,6 +254,11 @@ html {
   /* Filters */
   --filter-active-bg: oklch(54.02% 0.02 260);
   --filter-active-text: oklch(98.42% 0.0034 247.86);
+
+  /* Showcase — stays dark in both themes, so its content stays light */
+  --showcase-bg: oklch(48.8% 0.243 264.376);
+  --showcase-text: oklch(100% 0 0);
+  --showcase-icon: oklch(88.2% 0.059 254.128);
 }
 
 /* Theme toggle: show only the icon/checkmark matching the active theme */
@@ -360,6 +370,9 @@ html[data-theme="system"] .theme-check-system {
   /* Filters */
   --filter-active-bg: oklch(55.44% 0.0407 257.42 / 40%);
   --filter-active-text: oklch(98.42% 0.0034 247.86);
+
+  /* Showcase */
+  --showcase-bg: oklch(28.2% 0.091 267.935);
 }
 
 /* ----------------------------------------------------------------------------
