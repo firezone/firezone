@@ -663,6 +663,37 @@ impl TunnelTest {
                     tracing::error!(%rid, "No gateway for resource");
                 }
             }
+            Transition::ExpirePeerAuthorizations {
+                client,
+                peer,
+                pools,
+            } => {
+                state.clients.get_mut(&peer).unwrap().exec_mut(|receiver| {
+                    for pool in pools {
+                        receiver.sut.update_access_authorization_expiry(
+                            client,
+                            pool,
+                            Duration::ZERO,
+                            now,
+                        );
+                    }
+                });
+            }
+            Transition::RevokeGatewayAuthorization(rid) => {
+                if let Some(gid) = portal.gateway_for_resource(rid)
+                    && let Some(gateway) = state.gateways.get_mut(gid)
+                {
+                    let client_ids = state.clients.keys().copied().collect::<Vec<_>>();
+
+                    gateway.exec_mut(|g| {
+                        for client_id in client_ids {
+                            g.sut.remove_access(&client_id, &rid, now);
+                        }
+                    });
+                } else {
+                    tracing::error!(%rid, "No gateway for resource");
+                }
+            }
             Transition::RestartClient { client_id, key } => {
                 // Cleanly shut down the client.
                 let client = state.clients.get_mut(&client_id).unwrap();
@@ -1369,7 +1400,7 @@ impl TunnelTest {
                     .pick_resource(&resource_ids)
                     .expect("request must name resources");
                 let (gateway_id, site_id) =
-                    portal.handle_connection_intent(resource_id, preferred_gateways);
+                    portal.request_resource_access(src, resource_id, preferred_gateways);
                 let gateway = self.gateways.get_mut(&gateway_id).expect("unknown gateway");
                 let resource = portal.map_client_resource_to_gateway_resource(resource_id);
 
@@ -1487,11 +1518,10 @@ impl TunnelTest {
                     .copied()
                     .filter(|pool| held.contains(pool))
                     .collect::<Vec<_>>();
-                let Some(pool) = portal.pick_device_pool(&candidates, remote_id) else {
+                let Some(pool) = portal.request_peer_access(src, remote_id, &candidates) else {
                     deny_device_access(&mut self.clients, src, ipv4, ipv6, FailReason::Forbidden);
                     return Ok(());
                 };
-                portal.record_peer_policy_authorization(src, remote_id, pool);
                 let filters = portal.device_pool_filters(pool).unwrap_or_default();
 
                 let src_client = self.clients.get(&src).expect("unknown source client");

@@ -121,12 +121,14 @@ impl ReferenceState {
             }
             Transition::RemoveResource(id) => {
                 for client in state.clients.values_mut() {
-                    client.exec_mut(|client| {
-                        client.remove_resource(id);
-                    });
+                    client.exec_mut(|client| client.remove_resource(id));
                 }
+                state.expect_gateway_connections_closed(portal, *id);
             }
-            Transition::EditResource(edit) => state.apply_resource_edit(edit),
+            Transition::EditResource(edit) => {
+                state.apply_resource_edit(edit);
+                state.expect_gateway_connections_closed(portal, edit.new.id());
+            }
             Transition::UpdateDevicePoolMembers {
                 pool_id: _,
                 members: _,
@@ -231,6 +233,10 @@ impl ReferenceState {
                     ExpectedOutcome::Dropped => {
                         panic!("reused ICMP route must complete a round trip")
                     }
+                    ExpectedOutcome::Rejected {
+                        by: RejectionRemote::Gateway(_),
+                        response: RejectionResponse::Unreachable,
+                    } => {}
                     ExpectedOutcome::Rejected { .. } => {
                         panic!("reused ICMP route must complete a round trip")
                     }
@@ -287,6 +293,10 @@ impl ReferenceState {
                     ExpectedOutcome::Dropped => {
                         panic!("reused UDP route must complete a round trip")
                     }
+                    ExpectedOutcome::Rejected {
+                        by: RejectionRemote::Gateway(_),
+                        response: RejectionResponse::Unreachable,
+                    } => {}
                     ExpectedOutcome::Rejected { .. } => {
                         panic!("reused UDP route must complete a round trip")
                     }
@@ -381,42 +391,76 @@ impl ReferenceState {
                     let gateway_edges = state
                         .gateways
                         .iter()
-                        .map(|(id, g)| (*id, (g.edge_config(), g.ip6.is_some())))
+                        .map(|(id, g)| (*id, (g.edge_config(), g.ip4.is_some(), g.ip6.is_some())))
+                        .collect::<BTreeMap<_, _>>();
+                    let client_edges = state
+                        .clients
+                        .iter()
+                        .map(|(id, c)| (*id, (c.edge_config(), c.ip4.is_some(), c.ip6.is_some())))
                         .collect::<BTreeMap<_, _>>();
 
-                    for client in state.clients.values_mut() {
+                    for (client_id, client) in state.clients.iter_mut() {
                         let client_edge = client.edge_config();
+                        let client_has_ip4 = client.ip4.is_some();
                         let client_has_ip6 = client.ip6.is_some();
                         let unreachable_gateways = gateway_edges
                             .iter()
-                            .filter(|(_, (gateway_edge, gateway_has_ip6))| {
+                            .filter(|(_, (gateway_edge, gateway_has_ip4, gateway_has_ip6))| {
                                 !direct_path_possible(
                                     client_edge,
                                     *gateway_edge,
+                                    client_has_ip4 && *gateway_has_ip4,
                                     client_has_ip6 && *gateway_has_ip6,
                                 )
                             })
                             .map(|(id, _)| *id)
                             .collect::<BTreeSet<_>>();
 
-                        if unreachable_gateways.is_empty() {
-                            continue;
-                        }
+                        let unreachable_clients = client_edges
+                            .iter()
+                            .filter(|(id, (peer_edge, peer_has_ip4, peer_has_ip6))| {
+                                *id != client_id
+                                    && !direct_path_possible(
+                                        client_edge,
+                                        *peer_edge,
+                                        client_has_ip4 && *peer_has_ip4,
+                                        client_has_ip6 && *peer_has_ip6,
+                                    )
+                            })
+                            .map(|(id, _)| *id);
 
                         client.exec_mut(|c| {
                             c.reset_connections_to_gateways(
                                 &unreachable_gateways,
                                 |rid| portal.gateway_for_resource(rid).copied(),
                                 now,
-                            )
+                            );
+                            for peer in unreachable_clients {
+                                c.forget_peer_authorizations(peer);
+                            }
                         });
                     }
                 }
             }
             Transition::DeauthorizeWhileGatewayIsPartitioned(resource) => {
                 for client in state.clients.values_mut() {
-                    client.exec_mut(|client| client.remove_resource(resource))
+                    client.exec_mut(|client| client.remove_resource(resource));
                 }
+                state.expect_gateway_connections_closed(portal, *resource);
+            }
+            Transition::ExpirePeerAuthorizations {
+                client,
+                peer,
+                pools,
+            } => {
+                state.clients.get_mut(peer).unwrap().exec_mut(|receiver| {
+                    for pool in pools {
+                        receiver.expire_inbound_peer_pool(*client, *pool);
+                    }
+                });
+            }
+            Transition::RevokeGatewayAuthorization(resource) => {
+                state.expect_gateway_connections_closed(portal, *resource);
             }
             Transition::RestartClient { client_id, key } => {
                 for (id, client) in &mut state.clients {
@@ -435,6 +479,18 @@ impl ReferenceState {
         };
 
         state
+    }
+
+    /// A Gateway that revoking `resource` left with nothing closes the connection with a
+    /// `goodbye`, so we expect the Client to reset its state for that Gateway.
+    fn expect_gateway_connections_closed(&mut self, portal: &StubPortal, resource: ResourceId) {
+        for closed in portal.gateway_connections_closed_by(resource) {
+            let Some(client) = self.clients.get_mut(&closed.client) else {
+                continue;
+            };
+
+            client.exec_mut(|c| c.close_gateway_connection(closed.gateway, &closed.resources));
+        }
     }
 
     fn apply_resource_edit(&mut self, edit: &client::ResourceEdit) {
@@ -660,8 +716,26 @@ impl ReferenceState {
                 };
             };
 
-            if let Err(outcome) = self.pool_towards_peer(portal, origin, peer, protocol) {
-                return outcome;
+            let pool = match self.pool_towards_peer(portal, origin, peer, protocol) {
+                Ok(pool) => pool,
+                Err(outcome) => return outcome,
+            };
+            if !self.clients[&peer]
+                .inner()
+                .has_inbound_peer_authorization(origin)
+            {
+                if !self.clients[&origin]
+                    .inner()
+                    .malicious_behaviour
+                    .ignore_no_authorization_events
+                {
+                    self.apply_peer_authorization(origin, peer, pool);
+                }
+
+                return ExpectedOutcome::Rejected {
+                    by: RejectionRemote::Client(peer),
+                    response: RejectionResponse::Prohibited,
+                };
             }
             if !self.clients[&peer]
                 .inner()
@@ -742,6 +816,15 @@ impl ReferenceState {
         protocol: Protocol,
     ) -> Option<RejectionResponse> {
         let client = self.clients[&origin].inner();
+
+        // The Gateway lost its authorization while the client still believes it holds one:
+        // it rejects this packet and tells the client to request a new authorization.
+        if client.connected_resources().contains(&resource)
+            && !portal.holds_gateway_authorization(origin, resource)
+        {
+            return Some(RejectionResponse::Prohibited);
+        }
+
         let is_internet_resource = client.internet_resource() == Some(resource);
 
         if is_internet_resource && dst.ip_addr().is_some_and(is_resource_proxy) {
@@ -915,6 +998,45 @@ impl ReferenceState {
                     .gateway_for_resource(*resource)
                     .is_some_and(|gateway| self.gateways.contains_key(gateway))
             })
+            .collect()
+    }
+
+    /// Peer authorizations a receiving client can expire while the sender keeps its own.
+    pub(crate) fn expirable_peer_authorizations(
+        &self,
+    ) -> Vec<(ClientId, ClientId, BTreeSet<ResourceId>)> {
+        let mut expirable = Vec::new();
+
+        for (peer, state) in &self.clients {
+            for (client, pools) in state.inner().inbound_peer_pools() {
+                let pools = pools
+                    .into_iter()
+                    .filter(|pool| {
+                        self.clients[&client]
+                            .inner()
+                            .authorized_pools_towards(*peer)
+                            .any(|authorized| authorized == *pool)
+                    })
+                    .collect::<BTreeSet<_>>();
+
+                if pools.is_empty() {
+                    continue;
+                }
+
+                expirable.push((client, *peer, pools));
+            }
+        }
+
+        expirable
+    }
+
+    /// Resources a Gateway currently holds an authorization for.
+    pub(crate) fn revocable_resource_ids(&self, portal: &StubPortal) -> Vec<ResourceId> {
+        let authorized = portal.authorized_resources();
+
+        self.deauthorizable_resource_ids(portal)
+            .into_iter()
+            .filter(|resource| authorized.contains(resource))
             .collect()
     }
 

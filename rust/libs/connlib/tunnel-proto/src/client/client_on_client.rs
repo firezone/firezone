@@ -1,9 +1,9 @@
-use crate::IpConfig;
 use crate::conn_track::{ConnTrack, Originator};
 use crate::expiring_map::{ExpiringMap, NEVER_EXPIRES_TTL};
 use crate::filter_engine::FilterEngine;
 use crate::messages::{Filter, IngestToken};
 use crate::routing_table::{RouteEntry, RoutingTable};
+use crate::{IpConfig, p2p_control};
 use anyhow::{Context, Result};
 use connlib_model::{ClientId, ResourceId};
 use ip_packet::IpPacket;
@@ -56,7 +56,10 @@ pub(crate) enum InboundResult {
     Send(IpPacket),
     /// Drop the original packet and send the included ICMP destination
     /// unreachable (prohibited) reply back to the peer.
-    Filtered(IpPacket),
+    Filtered {
+        reply: IpPacket,
+        no_authorization: Option<p2p_control::no_authorization::NoAuthorization>,
+    },
 }
 
 impl ClientOnClient {
@@ -287,7 +290,23 @@ impl ClientOnClient {
             tracing::debug!(filtered_packet = ?packet, "{e:#}");
             let reply = ip_packet::make::icmp_dest_unreachable_prohibited(&packet)
                 .context("Failed to build ICMP prohibited reply")?;
-            return Ok(InboundResult::Filtered(reply));
+            // Holding no authorization at all is the only case the peer can fix by
+            // requesting a new one. Our filters denying the traffic is not, so we answer
+            // with the ICMP error alone and stay quiet.
+            let no_authorization = self
+                .resources
+                .is_empty()
+                .then(|| packet.destination_protocol().ok())
+                .flatten()
+                .map(|protocol| p2p_control::no_authorization::NoAuthorization {
+                    dst: packet.destination(),
+                    protocol: protocol.into(),
+                });
+
+            return Ok(InboundResult::Filtered {
+                reply,
+                no_authorization,
+            });
         }
 
         // The packet passed our filters, record as successful inbound packet.
@@ -749,6 +768,6 @@ mod tests {
     }
 
     fn is_filtered(result: InboundResult) -> bool {
-        matches!(result, InboundResult::Filtered(_))
+        matches!(result, InboundResult::Filtered { .. })
     }
 }
