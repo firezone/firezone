@@ -8,6 +8,14 @@ defmodule Portal.Repo.Migrations.AddSlugToDevices do
   agree. The backfill runs through a temporary procedure that commits per batch, keyed
   on `slug IS NULL`, so it resumes where it left off after a crash. The unique index is
   created first so the collision probe is an index lookup.
+
+  A portal that predates the column inserts devices without a slug while this runs. The
+  check constraint is added after the bulk backfill, because Postgres enforces it on every
+  later update too, and the session updates of rows the backfill has not reached must not
+  fail. From the constraint on, no row without a slug can land. A second backfill pass then
+  sweeps the rows that landed between the last batch and the constraint, so the validation
+  cannot fail. Each step is safe to run again, so a run that stopped partway is repeated
+  from the top.
   """
   use Ecto.Migration
 
@@ -138,10 +146,16 @@ defmodule Portal.Repo.Migrations.AddSlugToDevices do
     """)
 
     execute("CALL backfill_device_slugs()")
+
+    # Dropped first so a run that stopped after adding it can be repeated.
+    execute("ALTER TABLE devices DROP CONSTRAINT IF EXISTS devices_slug_not_null")
+    execute("ALTER TABLE devices ADD CONSTRAINT devices_slug_not_null CHECK (slug IS NOT NULL) NOT VALID")
+
+    # Sweeps the rows that landed between the last batch and the constraint.
+    execute("CALL backfill_device_slugs()")
     execute("DROP PROCEDURE backfill_device_slugs()")
 
     # A validated check constraint lets SET NOT NULL skip its own table scan.
-    execute("ALTER TABLE devices ADD CONSTRAINT devices_slug_not_null CHECK (slug IS NOT NULL) NOT VALID")
     execute("ALTER TABLE devices VALIDATE CONSTRAINT devices_slug_not_null")
     execute("ALTER TABLE devices ALTER COLUMN slug SET NOT NULL")
     execute("ALTER TABLE devices DROP CONSTRAINT devices_slug_not_null")
