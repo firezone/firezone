@@ -364,10 +364,13 @@ defmodule PortalAPI.Gateway.ChannelTest do
 
     test "sends the metrics reporting config after join", %{
       account: account,
-      gateway: gateway,
       site: site,
       token: token
     } do
+      gateway =
+        gateway_fixture(account: account, site: site, last_seen_version: "1.6.2")
+        |> fetch_device!()
+
       join_channel(gateway, site, token)
 
       assert_push "configure_metrics", %{
@@ -385,6 +388,21 @@ defmodule PortalAPI.Gateway.ChannelTest do
       assert claims["account_id"] == account.id
       assert claims["gateway_id"] == gateway.id
       assert claims["site_id"] == site.id
+    end
+
+    test "does not send the metrics reporting config to a Gateway that predates it", %{
+      account: account,
+      site: site,
+      token: token
+    } do
+      gateway =
+        gateway_fixture(account: account, site: site, last_seen_version: "1.6.1")
+        |> fetch_device!()
+
+      join_channel(gateway, site, token)
+
+      assert_push "init", _init_payload
+      refute_push "configure_metrics", _payload
     end
 
     test "init includes inbound authorizations from the hydrated cache", %{

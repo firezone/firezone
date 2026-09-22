@@ -810,7 +810,9 @@ defmodule PortalAPI.Gateway.Channel.Shared do
       }
     })
 
-    push(socket, "configure_metrics", metrics_config(account, socket.assigns.gateway))
+    if Portal.Version.gateway_supports_metrics_config?(socket.assigns.gateway) do
+      push(socket, "configure_metrics", metrics_config(account, socket.assigns.gateway))
+    end
   end
 
   defp flow_logs_config do

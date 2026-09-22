@@ -253,6 +253,27 @@ defmodule Portal.VersionTest do
     end
   end
 
+  describe "gateway_supports_metrics_config?/1" do
+    test "requires 1.6.2" do
+      refute Portal.Version.gateway_supports_metrics_config?(%Portal.Device{
+               type: :gateway,
+               last_seen_version: "1.6.1"
+             })
+
+      assert Portal.Version.gateway_supports_metrics_config?(%Portal.Device{
+               type: :gateway,
+               last_seen_version: "1.6.2"
+             })
+    end
+
+    test "is false for a Gateway that has not reported a version" do
+      refute Portal.Version.gateway_supports_metrics_config?(%Portal.Device{
+               type: :gateway,
+               last_seen_version: nil
+             })
+    end
+  end
+
   describe "supports_device_access?/1" do
     test "uses component-specific minimum versions" do
       cases = [
