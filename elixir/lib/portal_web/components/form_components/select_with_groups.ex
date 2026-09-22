@@ -381,7 +381,10 @@ defmodule PortalWeb.Components.FormComponents.SelectWithGroups do
             end
           }
         >
-          <.icon name="ri-arrow-down-s-line" class="w-5 h-5" />
+          <.icon
+            name="ri-arrow-down-s-line"
+            class={["w-5 h-5", if(@disabled, do: "text-muted", else: "text-body")]}
+          />
         </div>
 
         <div
