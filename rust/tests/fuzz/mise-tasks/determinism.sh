@@ -55,9 +55,11 @@ second="$(replay "$work/single")"
 
 status=0
 
-# Every copy is the same input, so everything after the first covers what the
-# first one did, and libFuzzer should keep exactly one.
-if [ "$kept" -ne 1 ]; then
+# The second execution is allowed to differ from the first: initialization that
+# happens once, and the first reuse of a pooled allocation, are both coverage the
+# first execution cannot show. From the third on, the copies are indistinguishable
+# unless an execution left state behind for the next one.
+if [ "$kept" -gt 2 ]; then
     echo "error: $target kept $kept of $copies identical inputs, so an execution left state behind for the next one" >&2
     echo "  $repeated" >&2
     status=1
