@@ -154,6 +154,8 @@ jobs:
         run: mise run //rust/tests/fuzz:coverage ${{ matrix.fuzz-target }}
       - name: Enforce uncovered-region ceiling
         run: mise run -q //rust/tests/fuzz:coverage-check ${{ matrix.fuzz-target }}
+      - name: Check the target executes an input the same way twice
+        run: mise run //rust/tests/fuzz:determinism ${{ matrix.fuzz-target }}
       - name: Export lcov for Coveralls
         run: mise run -q //rust/tests/fuzz:lcov ${{ matrix.fuzz-target }} > lcov-${{ matrix.fuzz-target }}.info
       - uses: coverallsapp/github-action@8d6379e14d29928660c4ba802d8e85393440b329 # v2.3.8

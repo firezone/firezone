@@ -20,6 +20,7 @@ Unpack explicitly before running either from a fresh checkout.
 Fuzzing keeps the counters, because they are what lets libFuzzer notice progress inside a loop.
 Pull-request CI only replays these inputs, making fuzz regression and coverage checks deterministic.
 It never performs random coverage discovery.
+It also runs `determinism`, which fails a target that executes one input differently twice: a target that does that grows its corpus with inputs that cover nothing new, because libFuzzer cannot tell the two apart.
 
 The nightly `fuzz-nightly.yml` workflow runs every target from `targets.json` on `main`, minimizes and repacks the grown corpora, refreshes their coverage baselines, and opens a bot PR per target, so a corpus that carries a crashing input only holds up its own review.
 Where that PR is still open, the run seeds from it as well as from `main`, so a night's discoveries survive until someone reviews them.
