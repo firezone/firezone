@@ -16,13 +16,7 @@ const MAX_TRANSITIONS: usize = 20;
 fuzz_target!(|data: &[u8]| {
     let _guard = init_fuzz_subscriber();
 
-    // `is` draws STUN transaction IDs and the ICE control tie breaker from
-    // `fastrand`'s thread-local generator, which nothing else seeds, so without
-    // this the same input covers something different on every execution. Seeded
-    // from the input rather than a constant so different inputs still differ.
-    let mut hasher = DefaultHasher::new();
-    data.hash(&mut hasher);
-    fastrand::seed(hasher.finish());
+    seed_fastrand(data);
 
     let now = Instant::now();
     let utc_start = DateTime::<Utc>::from_timestamp(0, 0).expect("0 is a valid UNIX timestamp");
@@ -52,3 +46,18 @@ fuzz_target!(|data: &[u8]| {
         TunnelTest::check_invariants(&tunnel, &reference, &portal);
     }
 });
+
+/// Seeds the generator `is` draws its identifiers from.
+///
+/// `is` takes STUN transaction IDs, the ICE control tie breaker and the ICE
+/// credentials from `fastrand`'s thread-local generator, which nothing else
+/// seeds and whose state carries across iterations, so the same input would
+/// cover something different on every execution. The seed comes from the input
+/// rather than a constant so that different inputs still get different
+/// identifiers.
+fn seed_fastrand(data: &[u8]) {
+    let mut hasher = DefaultHasher::new();
+    data.hash(&mut hasher);
+
+    fastrand::seed(hasher.finish());
+}
