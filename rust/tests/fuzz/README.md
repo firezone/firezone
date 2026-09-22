@@ -15,6 +15,8 @@ This list drives both pull-request CI and the nightly discovery matrix.
 Each target's corpus is committed as one deterministic archive under `corpora/<target>.tar.gz`.
 `unpack-corpus` materializes it into the ignored `corpus/<target>` directory, which is the working copy from there on.
 `fuzz` unpacks first because it starts from the committed inputs; `cmin` and `coverage` read the directory as it stands, so that what `cmin` drops stays dropped.
+`cmin` selects on edges rather than hit counts, so what stays committed is bounded by the coverage a corpus actually adds instead of by how often its inputs happen to re-run the same code.
+Fuzzing keeps the counters, because they are what lets libFuzzer notice progress inside a loop.
 Unpack explicitly before running either from a fresh checkout.
 Pull-request CI only replays these inputs, making fuzz regression and coverage checks deterministic.
 It never performs random coverage discovery.
