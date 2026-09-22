@@ -415,6 +415,24 @@ defmodule PortalAPI.Gateway.ChannelTest do
       assert_push "configure_metrics", %{meters: ["custom.meter", "other.meter"]}
     end
 
+    test "still initializes a Gateway when no metrics signing key is configured", %{
+      account: account,
+      site: site,
+      token: token
+    } do
+      Portal.Config.put_env_override(:portal, :metrics_token_private_key, "")
+
+      gateway =
+        gateway_fixture(account: account, site: site, last_seen_version: "1.6.2")
+        |> fetch_device!()
+
+      socket = join_channel(gateway, site, token)
+
+      assert_push "init", _init_payload
+      refute_push "configure_metrics", _payload
+      assert Process.alive?(socket.channel_pid)
+    end
+
     test "does not send the metrics reporting config to a Gateway that predates it", %{
       account: account,
       site: site,

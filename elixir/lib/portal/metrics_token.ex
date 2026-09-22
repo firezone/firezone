@@ -27,8 +27,12 @@ defmodule Portal.MetricsToken do
 
   @doc """
   Mint a token attributing metrics reports to `gateway_id` in `account`.
+
+  Errs when no signing key is configured, so that a deployment without one
+  reports no metrics rather than failing to serve gateways.
   """
-  @spec mint(Account.t(), Ecto.UUID.t(), Site.t()) :: String.t()
+  @spec mint(Account.t(), Ecto.UUID.t(), Site.t()) ::
+          {:ok, String.t()} | {:error, :no_signing_key}
   def mint(%Account{id: account_id, slug: account_slug}, gateway_id, %Site{
         id: site_id,
         name: site_name
@@ -45,16 +49,22 @@ defmodule Portal.MetricsToken do
       "exp" => issued_at + @token_lifetime_seconds
     }
 
-    signing_key()
-    |> JOSE.JWT.sign(%{"alg" => "EdDSA", "kid" => key_id()}, claims)
-    |> JOSE.JWS.compact()
-    |> elem(1)
+    with {:ok, signing_key} <- signing_key() do
+      token =
+        signing_key
+        |> JOSE.JWT.sign(%{"alg" => "EdDSA", "kid" => key_id()}, claims)
+        |> JOSE.JWS.compact()
+        |> elem(1)
+
+      {:ok, token}
+    end
   end
 
   defp signing_key do
-    :portal
-    |> Portal.Config.fetch_env!(:metrics_token_private_key)
-    |> JOSE.JWK.from_pem()
+    case Portal.Config.fetch_env!(:portal, :metrics_token_private_key) do
+      pem when is_binary(pem) and pem != "" -> {:ok, JOSE.JWK.from_pem(pem)}
+      _unconfigured -> {:error, :no_signing_key}
+    end
   end
 
   defp key_id, do: Portal.Config.fetch_env!(:portal, :metrics_token_key_id)

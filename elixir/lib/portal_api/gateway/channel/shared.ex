@@ -815,11 +815,18 @@ defmodule PortalAPI.Gateway.Channel.Shared do
 
   defp push_metrics_config(socket, account) do
     if Portal.Version.gateway_supports_metrics_config?(socket.assigns.gateway) do
-      push(
-        socket,
-        "configure_metrics",
-        metrics_config(account, socket.assigns.gateway, socket.assigns.site)
-      )
+      gateway = socket.assigns.gateway
+
+      case Portal.MetricsToken.mint(account, gateway.id, socket.assigns.site) do
+        {:ok, token} ->
+          push(socket, "configure_metrics", metrics_config(account, token))
+
+        {:error, :no_signing_key} ->
+          Logger.warning("Not configuring gateway metrics: no signing key is configured",
+            account_id: account.id,
+            gateway_id: gateway.id
+          )
+      end
     end
   end
 
@@ -831,10 +838,10 @@ defmodule PortalAPI.Gateway.Channel.Shared do
     }
   end
 
-  defp metrics_config(account, gateway, site) do
+  defp metrics_config(account, token) do
     %{
       api_url: Portal.Config.fetch_env!(:portal, :metrics_api_url),
-      token: Portal.MetricsToken.mint(account, gateway.id, site),
+      token: token,
       report_interval_secs: Portal.Config.fetch_env!(:portal, :metrics_report_interval_secs),
       meters: meters(account)
     }

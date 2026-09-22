@@ -36,7 +36,7 @@ defmodule Portal.MetricsTokenTest do
     } do
       Portal.Config.put_env_override(:portal, :metrics_token_key_id, "2026-09")
 
-      token = MetricsToken.mint(account, gateway_id, site)
+      {:ok, token} = MetricsToken.mint(account, gateway_id, site)
 
       assert %JOSE.JWS{alg: {:jose_jws_alg_eddsa, :EdDSA}, fields: fields} =
                JOSE.JWT.peek_protected(token)
@@ -49,7 +49,7 @@ defmodule Portal.MetricsTokenTest do
       site: site,
       gateway_id: gateway_id
     } do
-      token = MetricsToken.mint(account, gateway_id, site)
+      {:ok, token} = MetricsToken.mint(account, gateway_id, site)
 
       assert {true, %JOSE.JWT{fields: claims}, _jws} = verify(token)
 
@@ -68,10 +68,20 @@ defmodule Portal.MetricsTokenTest do
       site: site,
       gateway_id: gateway_id
     } do
-      token = MetricsToken.mint(account, gateway_id, site)
+      {:ok, token} = MetricsToken.mint(account, gateway_id, site)
 
       assert {true, %JOSE.JWT{fields: claims}, _jws} = verify(token)
       assert claims["exp"] == claims["iat"] + 604_800
+    end
+
+    test "errs when no signing key is configured", %{
+      account: account,
+      site: site,
+      gateway_id: gateway_id
+    } do
+      Portal.Config.put_env_override(:portal, :metrics_token_private_key, "")
+
+      assert MetricsToken.mint(account, gateway_id, site) == {:error, :no_signing_key}
     end
 
     test "does not verify against another key", %{
@@ -79,7 +89,7 @@ defmodule Portal.MetricsTokenTest do
       site: site,
       gateway_id: gateway_id
     } do
-      token = MetricsToken.mint(account, gateway_id, site)
+      {:ok, token} = MetricsToken.mint(account, gateway_id, site)
 
       {_, other_public_key} = JOSE.JWK.generate_key({:okp, :Ed25519}) |> JOSE.JWK.to_public_map()
 
