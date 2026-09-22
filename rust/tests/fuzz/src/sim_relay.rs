@@ -9,15 +9,13 @@ use snownet::{RelaySocket, Transmit};
 use std::{
     collections::HashSet,
     net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
-    time::{Duration, Instant, SystemTime},
+    time::Instant,
 };
 use uuid::Uuid;
 
 pub(crate) struct SimRelay {
     pub(crate) sut: relay_proto::Server<StdRng>,
     pub(crate) allocations: HashSet<(AddressFamily, AllocationPort)>,
-
-    created_at: SystemTime,
 }
 
 pub(crate) fn map_explode<'a>(
@@ -50,7 +48,6 @@ impl SimRelay {
         Self {
             sut,
             allocations: Default::default(),
-            created_at: SystemTime::now(),
         }
     }
 
@@ -179,17 +176,14 @@ impl SimRelay {
     }
 
     fn make_credentials(&self, username: &str, auth_secret: &SecretString) -> (String, String) {
-        const ONE_HOUR: Duration = Duration::from_secs(60 * 60);
-
-        let expiry = self.created_at + ONE_HOUR;
-
-        let secs = expiry
-            .duration_since(SystemTime::UNIX_EPOCH)
-            .expect("expiry must be later than UNIX_EPOCH")
-            .as_secs();
+        // Constant rather than `SystemTime::now`: the timestamp lands in the
+        // username, and with it in the target's comparison coverage, which must
+        // not differ between two runs over the same input. The relay verifies it
+        // against the real wall clock, hence the distant date.
+        const EXPIRY: u64 = 4102444800; // 2100-01-01T00:00:00Z
 
         let username = format!(
-            "{secs}:{}:{username}",
+            "{EXPIRY}:{}:{username}",
             relay_proto::auth::hash_account_id(&relay_proto::auth::AccountId::from(Uuid::nil()))
         );
         let password = relay_proto::auth::generate_password(auth_secret, &username);
