@@ -2,6 +2,7 @@ defmodule PortalAPI.MetricsControllerTest do
   use PortalAPI.ConnCase, async: true
 
   import Portal.AccountFixtures
+  import Portal.OTLPFixtures
 
   alias Portal.MetricsToken
 
@@ -18,50 +19,9 @@ defmodule PortalAPI.MetricsControllerTest do
     post(conn, "/v1/metrics", body)
   end
 
-  # An OTLP/JSON ExportMetricsServiceRequest carrying a single counter: 64-bit
-  # values and timestamps are decimal strings, keys are lowerCamelCase.
-  defp export_request do
-    %{
-      "resourceMetrics" => [
-        %{
-          "resource" => %{
-            "attributes" => [
-              %{"key" => "service.name", "value" => %{"stringValue" => "firezone-gateway"}}
-            ]
-          },
-          "scopeMetrics" => [
-            %{
-              "scope" => %{"name" => "firezone_gateway", "version" => "1.5.0"},
-              "metrics" => [
-                %{
-                  "name" => "firezone.gateway.packets",
-                  "unit" => "{packet}",
-                  "sum" => %{
-                    "dataPoints" => [
-                      %{
-                        "startTimeUnixNano" => "1758412800000000000",
-                        "timeUnixNano" => "1758412860000000000",
-                        "asInt" => "1234",
-                        "attributes" => [
-                          %{"key" => "direction", "value" => %{"stringValue" => "rx"}}
-                        ]
-                      }
-                    ],
-                    "aggregationTemporality" => 2,
-                    "isMonotonic" => true
-                  }
-                }
-              ]
-            }
-          ]
-        }
-      ]
-    }
-  end
-
   describe "create/2" do
     test "accepts an export request", %{conn: conn, account: account} do
-      conn = conn |> authorize(account) |> post_metrics(export_request())
+      conn = conn |> authorize(account) |> post_metrics(gateway_export())
 
       assert json_response(conn, 200) == %{}
     end
@@ -127,7 +87,7 @@ defmodule PortalAPI.MetricsControllerTest do
     end
 
     test "returns 401 when the Authorization header is missing", %{conn: conn} do
-      conn = post_metrics(conn, export_request())
+      conn = post_metrics(conn, gateway_export())
 
       assert %{"status" => 401} = json_response(conn, 401)
     end
@@ -138,7 +98,7 @@ defmodule PortalAPI.MetricsControllerTest do
       conn =
         conn
         |> put_req_header("authorization", "Bearer " <> token <> "x")
-        |> post_metrics(export_request())
+        |> post_metrics(gateway_export())
 
       assert %{"status" => 401} = json_response(conn, 401)
     end
@@ -151,7 +111,7 @@ defmodule PortalAPI.MetricsControllerTest do
       conn =
         conn
         |> put_req_header("authorization", "Bearer " <> token)
-        |> post_metrics(export_request())
+        |> post_metrics(gateway_export())
 
       assert %{"status" => 401} = json_response(conn, 401)
     end
@@ -172,7 +132,7 @@ defmodule PortalAPI.MetricsControllerTest do
       conn =
         conn
         |> put_req_header("authorization", "Bearer " <> expired)
-        |> post_metrics(export_request())
+        |> post_metrics(gateway_export())
 
       assert %{"status" => 401} = json_response(conn, 401)
     end

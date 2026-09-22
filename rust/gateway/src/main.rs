@@ -218,9 +218,10 @@ async fn try_main(cli: Cli) -> Result<()> {
         }
         (Some(MetricsExporter::OtelCollector), None) => meter_provider,
         (None, _) => meter_provider,
-    };
+    }
+    .build();
 
-    opentelemetry::global::set_meter_provider(meter_provider.build());
+    opentelemetry::global::set_meter_provider(meter_provider);
 
     let login = LoginUrl::gateway(
         cli.api_url,

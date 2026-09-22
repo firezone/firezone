@@ -1,7 +1,7 @@
 //! Reports an allow-listed set of OpenTelemetry counters to the portal.
 //!
-//! [`spawn`] returns a [`Reader`] to install on the process' [`SdkMeterProvider`]
-//! and a thread that collects from it on the portal's cadence, POSTing the
+//! [`spawn`] returns a [`Reader`] to install on the process' meter provider and
+//! a thread that collects from it on the portal's cadence, POSTing the
 //! allow-listed deltas as OTLP/HTTP with JSON encoding.
 //!
 //! The portal's config arrives long after start-up, in its `init` message, and
@@ -122,8 +122,7 @@ impl Reporter {
     }
 }
 
-/// The [`MetricReader`](opentelemetry_sdk::metrics::reader::MetricReader) the
-/// portal is reported from.
+/// The [`MetricReader`] the portal is reported from.
 ///
 /// Collecting yields the counts since the previous collection, which is what a
 /// report carries.
