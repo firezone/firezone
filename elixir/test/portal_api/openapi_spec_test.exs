@@ -52,6 +52,65 @@ defmodule PortalAPI.OpenAPISpecTest do
     assert failures == [], Enum.join(failures, "\n\n")
   end
 
+  test "documented posture example is accepted by the policy parser", %{spec: spec} do
+    example = spec.components.schemas["PolicyPostureNode"].example
+    assert {:ok, %Portal.Policies.Postures{}} = Portal.Policies.Postures.cast(example)
+  end
+
+  test "posture schemas enforce node shapes, typed operators, and values", %{spec: spec} do
+    schema = %Reference{"$ref": "#/components/schemas/PolicyPostureNode"}
+    boolean = %{"field" => "intune.enrolled", "op" => "is", "value" => true}
+    version = %{"field" => "firezone.last_seen_version", "op" => "gte", "value" => "@latest"}
+
+    for valid <- [
+          boolean,
+          version,
+          %{"and" => [boolean, %{"or" => [version, %{"not" => boolean}]}]},
+          %{"field" => "santa.tags", "op" => "contains_any_of", "value" => ["managed"]},
+          %{"field" => "defender.risk_score", "op" => "is_in", "value" => ["Low", "None"], "rows" => "all"},
+          %{"field" => "iru.filevault_enabled", "op" => "is", "value" => true},
+          %{"field" => "sentinelone.enrolled", "op" => "is", "value" => true},
+          %{"field" => "intune.last_sync_at", "op" => "within_last", "value" => "PT24H"},
+          %{"field" => "firezone.ipv4", "op" => "is_in_cidr", "value" => ["10.0.0.0/8"]},
+          %{"field" => "firezone.hostname", "op" => "exists"},
+          %{"field" => "firezone.hostname", "op" => "exists", "value" => nil}
+        ] do
+      assert {:ok, _} = Portal.Policies.Postures.cast(valid)
+      OpenApiSpex.TestAssertions.assert_raw_schema(valid, schema, spec)
+    end
+
+    for invalid <- [
+          %{},
+          %{"and" => []},
+          %{"and" => [boolean], "or" => [boolean]},
+          %{"and" => [boolean], "field" => "intune.enrolled", "op" => "is", "value" => true},
+          %{"not" => []},
+          %{"field" => "intune.enrolled", "value" => true},
+          %{"field" => "intune.enrolled", "op" => "is"},
+          %{"field" => "intune.enrolled", "op" => "is", "value" => 1},
+          %{"field" => "intune.enrolled", "op" => "gt", "value" => true},
+          %{"field" => "jamf.enrolled", "op" => "is", "value" => true},
+          %{"field" => "santa.tags", "op" => "contains_any_of", "value" => []},
+          %{"field" => "firezone.hostname", "op" => "exists", "value" => "unexpected"},
+          Map.put(version, "rows", "all"),
+          Map.put(boolean, "unknown", true)
+        ] do
+      assert {:error, _} = Portal.Policies.Postures.cast(invalid)
+      assert_raise ExUnit.AssertionError, fn ->
+        OpenApiSpex.TestAssertions.assert_raw_schema(invalid, schema, spec)
+      end
+    end
+  end
+
+  test "postures are documented and nullable on every policy payload", %{spec: spec} do
+    for name <- ~w[PolicyCreateParams PolicyUpdateParams Policy] do
+      schema = spec.components.schemas[name].properties.postures
+      OpenApiSpex.TestAssertions.assert_raw_schema(nil, schema, spec)
+      OpenApiSpex.TestAssertions.assert_raw_schema(schema.example, schema, spec)
+      assert schema.description =~ "posture"
+    end
+  end
+
   defp example_error(example, title, spec) do
     ref = %Reference{"$ref": "#/components/schemas/#{title}"}
     media_example_error(example, ref, spec)

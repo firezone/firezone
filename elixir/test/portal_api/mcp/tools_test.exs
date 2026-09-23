@@ -158,6 +158,29 @@ defmodule PortalAPI.MCP.ToolsTest do
     assert address == ["string", "null"]
   end
 
+  test "policy tools advertise nullable recursive postures without truncating the grammar", %{tools: tools} do
+    for name <- ~w[create_policy update_policy] do
+      tool = fetch(tools, name)
+      schema = tool.input_schema
+      postures = get_in(schema, ["properties", "policy", "properties", "postures"])
+      [node, nullable] = postures["anyOf"]
+
+      assert %{"anyOf" => [_, %{"type" => "null"}]} = nullable
+      [conjunction, disjunction, negation, leaf] = node["oneOf"]
+      assert conjunction["additionalProperties"] == false
+      assert conjunction["required"] == ["and"]
+      assert disjunction["required"] == ["or"]
+      assert get_in(conjunction, ["properties", "and", "items", "$ref"]) == "#/$defs/PolicyPostureNode"
+      assert get_in(negation, ["properties", "not", "$ref"]) == "#/$defs/PolicyPostureNode"
+      assert Enum.all?(leaf["oneOf"], &(&1["additionalProperties"] == false))
+      assert Enum.any?(leaf["oneOf"], &(get_in(&1, ["properties", "rows", "default"]) == "any"))
+      assert schema["$defs"]["PolicyPostureNode"] == node
+      assert node["description"] =~ "firezone.last_seen_version"
+      assert node["description"] =~ "sentinelone.enrolled"
+      assert tool.description =~ "device_posture"
+    end
+  end
+
   test "descriptions carry the summary, the body notes, and the route", %{tools: tools} do
     description = fetch(tools, "create_resource").description
 

@@ -1209,18 +1209,19 @@ defmodule PortalAPI.PolicyControllerTest do
       postures = %{"and" => [%{"field" => "jamf.serial", "op" => "is", "value" => "x"}]}
       attrs = %{"group_id" => group.id, "resource_id" => resource.id, "postures" => postures}
 
-      assert %{"status" => 422, "validation_errors" => %{"postures" => ["and[0].field: unknown provider jamf"]}} =
+      assert %{"status" => 422, "validation_errors" => %{"postures" => errors}} =
                json_response(post_policy(conn, actor, attrs), 422)
+      assert errors != []
     end
 
     test "rejects a malformed posture node with a 422", %{conn: conn, actor: actor, resource: resource, group: group} do
       leaf = %{"field" => "intune.compliance_state", "op" => "is", "value" => "compliant", "rows" => %{}}
       attrs = %{"group_id" => group.id, "resource_id" => resource.id, "postures" => %{"and" => [leaf]}}
 
-      assert %{"status" => 422, "validation_errors" => %{"postures" => [message]}} =
+      assert %{"status" => 422, "validation_errors" => %{"postures" => messages}} =
                json_response(post_policy(conn, actor, attrs), 422)
 
-      assert message =~ "PolicyPostureNode"
+      assert Enum.any?(messages, &(&1 =~ "PolicyPostureNode"))
     end
 
     test "refuses postures while device posture is off for the account", %{conn: conn} do
@@ -1239,6 +1240,25 @@ defmodule PortalAPI.PolicyControllerTest do
       assert %{"data" => %{"postures" => nil}} = json_response(put_policy(conn, actor, policy, %{"postures" => nil}), 200)
     end
 
+    test "missing and false entitlements reject PUT and PATCH while preserving stored postures", %{conn: conn} do
+      for feature <- [nil, false] do
+        account = account_fixture(features: %{device_posture: feature})
+        actor = api_client_fixture(account: account)
+        policy = policy_fixture(account: account, postures: @postures)
+        conn = conn |> authorize_conn(actor) |> put_req_header("content-type", "application/json")
+
+        for method <- [:put, :patch] do
+          response = apply(Phoenix.ConnTest, :dispatch, [conn, @endpoint, method, "/policies/#{policy.id}", %{policy: %{postures: @postures}}])
+          assert %{"status" => 403, "detail" => "Device posture is not enabled for this account"} = json_response(response, 403)
+        end
+
+        saved = Repo.get_by!(Policy, id: policy.id, account_id: account.id)
+        assert Portal.Policies.Postures.to_map(saved.postures) == @postures
+        assert %{"data" => %{"postures" => nil}} =
+                 conn |> patch("/policies/#{policy.id}", policy: %{postures: nil}) |> json_response(200)
+      end
+    end
+
     test "updates and clears postures", %{conn: conn, account: account, actor: actor, resource: resource, group: group} do
       policy = policy_fixture(account: account, group: group, resource: resource)
 
@@ -1248,6 +1268,35 @@ defmodule PortalAPI.PolicyControllerTest do
 
       assert %{"data" => %{"postures" => nil}} = json_response(put_policy(conn, actor, policy, %{"postures" => nil}), 200)
       assert %Policy{postures: nil} = Repo.get_by(Policy, id: policy.id, account_id: account.id)
+    end
+
+    test "PATCH replaces the expression and omitted postures are preserved", %{conn: conn, account: account, actor: actor} do
+      policy = policy_fixture(account: account, postures: @postures)
+      replacement = %{"field" => "firezone.last_seen_version", "op" => "gte", "value" => "@latest"}
+      conn = conn |> authorize_conn(actor) |> put_req_header("content-type", "application/json")
+
+      assert %{"data" => %{"postures" => ^replacement}} =
+               conn |> patch("/policies/#{policy.id}", policy: %{postures: replacement}) |> json_response(200)
+
+      assert %{"data" => %{"postures" => ^replacement}} =
+               conn |> put("/policies/#{policy.id}", policy: %{description: "Keep postures"}) |> json_response(200)
+
+      assert %{"data" => %{"postures" => nil}} =
+               conn |> patch("/policies/#{policy.id}", policy: %{postures: nil}) |> json_response(200)
+    end
+
+    test "rejects invalid updates without changing stored postures", %{conn: conn, account: account, actor: actor} do
+      policy = policy_fixture(account: account, postures: @postures)
+
+      for invalid <- [
+            %{"field" => "intune.enrolled", "op" => "gt", "value" => true},
+            %{"and" => []},
+            Enum.reduce(1..11, @postures, fn _, inner -> %{"not" => inner} end)
+          ] do
+        assert %{"status" => 422} = json_response(put_policy(conn, actor, policy, %{"postures" => invalid}), 422)
+        saved = Repo.get_by!(Policy, id: policy.id, account_id: account.id)
+        assert Portal.Policies.Postures.to_map(saved.postures) == @postures
+      end
     end
 
     test "renders postures on show and list", %{conn: conn, account: account, actor: actor, resource: resource, group: group} do

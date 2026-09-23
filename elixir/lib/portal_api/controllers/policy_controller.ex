@@ -80,6 +80,25 @@ defmodule PortalAPI.PolicyController do
 
     A Policy is enabled by default. Pass `is_disabled: true` to create it \
     disabled, so it grants no access until enabled.
+
+    Enterprise accounts with the `device_posture` entitlement can include
+    `policy.postures`, a boolean expression of `and`, `or`, `not`, and typed
+    provider-field comparisons. Postures and all `policy.conditions` must hold
+    together. For example:
+
+    ```json
+    {"policy": {"group_id": "00000000-0000-0000-0000-000000000001",
+      "resource_id": "00000000-0000-0000-0000-000000000002",
+      "postures": {"and": [
+        {"field": "intune.enrolled", "op": "is", "value": true},
+        {"field": "intune.compliance_state", "op": "is", "value": "compliant"}
+      ]}}}
+    ```
+
+    Omit `postures` or use null for no posture requirement. Non-null postures
+    without the entitlement return 403. Invalid expressions return 422 with
+    details in `validation_errors.postures`. See `PolicyPostureNode` for the
+    complete field catalog, operator types, platform behavior, and limits.
     """,
     parameters: [],
     request_body:
@@ -126,6 +145,19 @@ defmodule PortalAPI.PolicyController do
 
     A Policy is enabled or disabled through the `is_disabled` field. Disabling \
     a Policy stops it granting access without deleting it.
+
+    Set `policy.postures` to replace the entire device posture expression.
+    Omit it to preserve existing postures. Send `{"policy":{"postures":null}}`
+    to remove the posture requirement; clearing is allowed even after an
+    account downgrade. Other policy attributes, including `conditions`, are
+    unchanged when omitted. Conditions and postures must both hold.
+
+    Non-null postures require the `device_posture` entitlement (Enterprise)
+    or return 403. Invalid expressions return 422 with a path in
+    `validation_errors.postures`. See `PolicyPostureNode` for the expression
+    grammar, complete field catalog, operator types, platform behavior, and
+    limits. Changing postures revokes this policy's active authorizations,
+    interrupting affected connections until they are reauthorized.
     """,
     parameters: [
       id: [
