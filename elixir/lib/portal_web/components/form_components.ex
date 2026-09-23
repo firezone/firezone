@@ -484,6 +484,8 @@ defmodule PortalWeb.FormComponents do
     attr :type, :string, doc: "The button type (button, submit, reset)"
   end
 
+  attr :target, :any, default: nil
+
   def modal(assigns) do
     ~H"""
     <dialog
@@ -496,11 +498,13 @@ defmodule PortalWeb.FormComponents do
       ]}
       phx-hook="Modal"
       phx-on-close={@on_close}
+      phx-target={@target}
     >
       <div class="flex items-center justify-center min-h-screen p-4">
         <div
           class="relative bg-elevated border border-border rounded-md shadow-sm w-full max-w-2xl"
           phx-click-away={@on_close}
+          phx-target={@target}
         >
           <div
             :if={@title != []}
@@ -519,6 +523,7 @@ defmodule PortalWeb.FormComponents do
               class="text-subtle bg-transparent hover:text-heading ml-2"
               type="button"
               phx-click={@on_close}
+              phx-target={@target}
             >
               <.icon name="ri-close-line" class="h-4 w-4" />
               <span class="sr-only">Close modal</span>

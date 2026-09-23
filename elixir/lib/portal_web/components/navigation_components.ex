@@ -18,6 +18,8 @@ defmodule PortalWeb.NavigationComponents do
     <header class="flex items-center justify-between h-14 px-6 border-b border-border bg-surface shrink-0 z-30">
       <div class="flex items-center gap-2 text-sm text-body"></div>
       <div class="flex items-center gap-3">
+        <.live_component module={PortalWeb.SupportForm} id="support" subject={@subject} />
+        <span aria-hidden="true" class="text-subtle hidden md:block">|</span>
         <a
           target="_blank"
           href="https://www.firezone.dev/kb?utm_source=product"
@@ -26,6 +28,7 @@ defmodule PortalWeb.NavigationComponents do
         >
           Docs
         </a>
+        <span aria-hidden="true" class="text-subtle hidden md:block">|</span>
         <a
           target="_blank"
           href="https://firezone.statuspage.io"
