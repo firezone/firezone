@@ -12,6 +12,8 @@ target="${usage_target:?}"
 source ./helpers.sh
 
 export AFL_FUZZER_LOOPCOUNT=1 AFL_NO_UI=1 AFL_SKIP_CPUFREQ=1 AFL_AUTORESUME=1
+# Each worker calibrates the full corpus before its discovery time budget starts.
+export AFL_FAST_CAL=1
 ulimit -c 0
 max_length=4096
 if [ "$target" = tunnel-proto ] || [ "$target" = relay-proto ]; then
