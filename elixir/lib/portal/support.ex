@@ -20,7 +20,7 @@ defmodule Portal.Support do
       email =
         Portal.Mailer.default_email()
         |> to("support@firezone.dev")
-        |> subject("Portal support request")
+        |> subject("In-portal feedback submission")
         |> text_body("""
         Account ID: #{subject.account.id}
         Actor ID: #{subject.actor.id}

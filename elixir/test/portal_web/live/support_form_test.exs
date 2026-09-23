@@ -21,7 +21,7 @@ defmodule PortalWeb.SupportFormTest do
     url: url
   } do
     assert view |> form("#support-form", support: %{message: "Please help"}) |> render_submit() =~
-             "Your support request has been sent."
+             "Your feedback has been sent."
 
     assert_receive {:email, email}
     assert email.to == [{"", "support@firezone.dev"}]

@@ -24,11 +24,11 @@ defmodule PortalWeb.SupportForm do
         phx-hook="SupportForm"
         phx-target={@myself}
         class="text-sm text-body hover:text-heading"
-      >Support</button>
+      >Feedback</button>
       <.modal :if={@open?} id="support-modal" on_close="close" target={@myself}>
-        <:title>Contact support</:title>
+        <:title>Submit feedback</:title>
         <:body>
-          <p :if={@sent?} role="status">Your support request has been sent.</p>
+          <p :if={@sent?} role="status">Your feedback has been sent.</p>
           <.form
             :if={!@sent?}
             for={@form}
@@ -38,10 +38,11 @@ defmodule PortalWeb.SupportForm do
             phx-submit="submit"
             class="space-y-4"
           >
+            <p class="text-sm text-body">We read every submission.</p>
             <.input
               field={@form[:message]}
               type="textarea"
-              label="How can we help?"
+              label="What would you like to tell us?"
               maxlength="1000"
               required
               rows="6"
@@ -67,7 +68,7 @@ defmodule PortalWeb.SupportForm do
             phx-disable-with="Sending…"
             class="ml-auto"
           >
-            Send request
+            Submit feedback
           </.button>
         </:footer>
       </.modal>
@@ -129,7 +130,7 @@ defmodule PortalWeb.SupportForm do
              assign(socket, error: "Please upload a PNG, JPEG, GIF, or WebP image up to 2 MB.")}
 
           {:error, _} ->
-            {:noreply, assign(socket, error: "We couldn't send your request. Please try again.")}
+            {:noreply, assign(socket, error: "We couldn't send your feedback. Please try again.")}
         end
     end
   end
