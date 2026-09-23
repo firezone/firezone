@@ -2,6 +2,7 @@ defmodule PortalAPI.Client.DeviceTrustTest do
   use Portal.DataCase, async: true
   use Oban.Testing, repo: Portal.Repo
 
+  import Portal.RevocationFixtures
   import Portal.AccountFixtures
   import Portal.SubjectFixtures
   import Portal.TrustAnchorFixtures
@@ -114,7 +115,6 @@ defmodule PortalAPI.Client.DeviceTrustTest do
       assert DeviceTrust.attest(connect_info, subject) == {:error, :no_device_identifiers}
     end
 
-
     test "rejects a cert whose only identifier exceeds the length bound", %{
       pki: pki,
       subject: subject
@@ -225,7 +225,7 @@ defmodule PortalAPI.Client.DeviceTrustTest do
       subject: subject
     } do
       leaf = leaf(pki, :rsa)
-      ocsp_endpoint(account, pki)
+      ocsp_endpoint_fixture(account: account, issuer_der: pki.ca_der)
 
       Repo.insert!(%Portal.OcspStatus{
         account_id: account.id,
@@ -251,7 +251,7 @@ defmodule PortalAPI.Client.DeviceTrustTest do
       subject: subject
     } do
       leaf = leaf(pki, :rsa)
-      ocsp_endpoint(account, pki)
+      ocsp_endpoint_fixture(account: account, issuer_der: pki.ca_der)
 
       assert {:ok, _verified} = DeviceTrust.attest(connect_info(leaf), subject)
     end
@@ -262,7 +262,7 @@ defmodule PortalAPI.Client.DeviceTrustTest do
       subject: subject
     } do
       leaf = leaf(pki, :rsa)
-      ocsp_endpoint(account, pki)
+      ocsp_endpoint_fixture(account: account, issuer_der: pki.ca_der)
 
       Repo.insert!(%Portal.OcspStatus{
         account_id: account.id,
@@ -633,18 +633,6 @@ defmodule PortalAPI.Client.DeviceTrustTest do
       assert DeviceTrust.normalize_identifier(:last_attested_device_uuid, over_bound) == nil
       assert DeviceTrust.normalize_identifier(:last_attested_mdm_device_id, over_bound) == nil
     end
-  end
-
-  defp ocsp_endpoint(account, pki) do
-    Repo.insert!(%Portal.RevocationEndpoint{
-      account_id: account.id,
-      issuer: Portal.Crypto.X509.subject(pki.ca_der),
-      distribution_point: "http://ocsp.example.test",
-      crl_urls: [],
-      ocsp_urls: ["http://ocsp.example.test"],
-      inserted_at: DateTime.utc_now(),
-      updated_at: DateTime.utc_now()
-    })
   end
 
   defp configure_attestation_host do

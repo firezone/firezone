@@ -2,6 +2,8 @@ defmodule Portal.Crl.SyncTest do
   use Portal.DataCase, async: true
   use Oban.Testing, repo: Portal.Repo
 
+  import Portal.RevocationFixtures
+  import Portal.DeviceFixtures
   import Portal.AccountFixtures
   import Portal.TrustAnchorFixtures
   import Portal.DeviceTrustFixtures
@@ -25,7 +27,7 @@ defmodule Portal.Crl.SyncTest do
   describe "perform/1" do
     test "caches every serial the CRL revokes", %{account: account, pki: pki} do
       leaf = leaf(pki, :rsa)
-      endpoint = endpoint_fixture(account, pki.ca_der)
+      endpoint = revocation_endpoint_fixture(account: account, issuer_der: pki.ca_der)
       stub_crl(crl(pki.ca, revoked: [leaf], number: 9))
 
       assert perform(endpoint) == {:ok, :refreshed}
@@ -41,7 +43,7 @@ defmodule Portal.Crl.SyncTest do
     test "replaces the previous set rather than merging into it", %{account: account, pki: pki} do
       first = leaf(pki, :rsa)
       second = leaf(pki, :ec)
-      endpoint = endpoint_fixture(account, pki.ca_der)
+      endpoint = revocation_endpoint_fixture(account: account, issuer_der: pki.ca_der)
 
       stub_crl(crl(pki.ca, revoked: [first]))
       assert perform(endpoint) == {:ok, :refreshed}
@@ -58,7 +60,7 @@ defmodule Portal.Crl.SyncTest do
       # against either. Only the intermediate signs the list covering it.
       trust_anchor_fixture(account: account, certs: [pki.intermediate_der])
       leaf = leaf(pki, :via_intermediate)
-      endpoint = endpoint_fixture(account, pki.intermediate_der)
+      endpoint = revocation_endpoint_fixture(account: account, issuer_der: pki.intermediate_der)
       stub_crl(crl(pki.intermediate, revoked: [leaf]))
 
       assert perform(endpoint) == {:ok, :refreshed}
@@ -67,7 +69,7 @@ defmodule Portal.Crl.SyncTest do
     end
 
     test "refuses a CRL signed by anyone else", %{account: account, pki: pki} do
-      endpoint = endpoint_fixture(account, pki.ca_der)
+      endpoint = revocation_endpoint_fixture(account: account, issuer_der: pki.ca_der)
       stub_crl(crl(pki.untrusted_ca, revoked: [leaf(pki, :untrusted)]))
 
       assert failure(endpoint) =~ "crl_issuer_mismatch"
@@ -81,7 +83,7 @@ defmodule Portal.Crl.SyncTest do
       # The address came from a certificate, so whatever answers it has to be
       # that certificate issuer's list and not another CA's.
       trust_anchor_fixture(account: account, certs: [pki.intermediate_der])
-      endpoint = endpoint_fixture(account, pki.ca_der)
+      endpoint = revocation_endpoint_fixture(account: account, issuer_der: pki.ca_der)
       stub_crl(crl(pki.intermediate, revoked: [leaf(pki, :via_intermediate)]))
 
       assert failure(endpoint) =~ "crl_issuer_mismatch"
@@ -96,7 +98,7 @@ defmodule Portal.Crl.SyncTest do
       # stamp one purely to name itself, and rejecting those would leave the
       # cache empty, which reads as nothing being revoked.
       leaf = leaf(pki, :rsa)
-      endpoint = endpoint_fixture(account, pki.ca_der)
+      endpoint = revocation_endpoint_fixture(account: account, issuer_der: pki.ca_der)
       stub_crl(crl(pki.ca, revoked: [leaf], idp: [distribution_point: @crl_url]))
 
       assert perform(endpoint) == {:ok, :refreshed}
@@ -104,7 +106,7 @@ defmodule Portal.Crl.SyncTest do
     end
 
     test "refuses a list belonging to another partition", %{account: account, pki: pki} do
-      endpoint = endpoint_fixture(account, pki.ca_der)
+      endpoint = revocation_endpoint_fixture(account: account, issuer_der: pki.ca_der)
 
       stub_crl(
         crl(pki.ca,
@@ -118,7 +120,7 @@ defmodule Portal.Crl.SyncTest do
     end
 
     test "refuses a list scoped to CA certificates", %{account: account, pki: pki} do
-      endpoint = endpoint_fixture(account, pki.ca_der)
+      endpoint = revocation_endpoint_fixture(account: account, issuer_der: pki.ca_der)
       stub_crl(crl(pki.ca, revoked: [leaf(pki, :rsa)], idp: [only_ca_certs: true]))
 
       assert failure(endpoint) =~ "only_ca_certs"
@@ -126,7 +128,7 @@ defmodule Portal.Crl.SyncTest do
     end
 
     test "refuses an indirect list", %{account: account, pki: pki} do
-      endpoint = endpoint_fixture(account, pki.ca_der)
+      endpoint = revocation_endpoint_fixture(account: account, issuer_der: pki.ca_der)
       stub_crl(crl(pki.ca, revoked: [leaf(pki, :rsa)], idp: [indirect: true]))
 
       assert failure(endpoint) =~ "indirect"
@@ -145,7 +147,7 @@ defmodule Portal.Crl.SyncTest do
         inserted_at: DateTime.utc_now()
       })
 
-      endpoint = endpoint_fixture(account, pki.ca_der)
+      endpoint = revocation_endpoint_fixture(account: account, issuer_der: pki.ca_der)
       stub_crl(crl(pki.ca, revoked: [leaf(pki, :rsa)]))
 
       assert perform(endpoint) == {:ok, :refreshed}
@@ -160,7 +162,12 @@ defmodule Portal.Crl.SyncTest do
       pki: pki
     } do
       leaf = leaf(pki, :rsa)
-      endpoint = endpoint_fixture(account, pki.ca_der, crl_urls: [@crl_url, @mirror_url])
+      endpoint =
+        revocation_endpoint_fixture(
+          account: account,
+          issuer_der: pki.ca_der,
+          crl_urls: [@crl_url, @mirror_url]
+        )
       body = crl(pki.ca, revoked: [leaf])
 
       Req.Test.stub(Sync, fn conn ->
@@ -179,7 +186,12 @@ defmodule Portal.Crl.SyncTest do
       account: account,
       pki: pki
     } do
-      endpoint = endpoint_fixture(account, pki.ca_der, crl_urls: [@crl_url, @mirror_url])
+      endpoint =
+        revocation_endpoint_fixture(
+          account: account,
+          issuer_der: pki.ca_der,
+          crl_urls: [@crl_url, @mirror_url]
+        )
       stub_crl(crl(pki.untrusted_ca, revoked: [leaf(pki, :untrusted)]))
 
       # Alternates serve the same bytes, so a rejected list is rejected at all
@@ -191,14 +203,19 @@ defmodule Portal.Crl.SyncTest do
       account: account,
       pki: pki
     } do
-      endpoint = endpoint_fixture(account, pki.ca_der, crl_urls: ["ldap://dc.corp.test/CN=CA"])
+      endpoint =
+        revocation_endpoint_fixture(
+          account: account,
+          issuer_der: pki.ca_der,
+          crl_urls: ["ldap://dc.corp.test/CN=CA"]
+        )
 
       assert failure(endpoint) =~ "unsupported_url_scheme"
     end
 
     test "keeps the cached list when the CA is unreachable", %{account: account, pki: pki} do
       leaf = leaf(pki, :rsa)
-      endpoint = endpoint_fixture(account, pki.ca_der)
+      endpoint = revocation_endpoint_fixture(account: account, issuer_der: pki.ca_der)
 
       stub_crl(crl(pki.ca, revoked: [leaf]))
       assert perform(endpoint) == {:ok, :refreshed}
@@ -211,7 +228,7 @@ defmodule Portal.Crl.SyncTest do
     end
 
     test "refuses a body that is not a CRL at all", %{account: account, pki: pki} do
-      endpoint = endpoint_fixture(account, pki.ca_der)
+      endpoint = revocation_endpoint_fixture(account: account, issuer_der: pki.ca_der)
       stub_crl("not a crl")
 
       assert failure(endpoint) =~ "crl_issuer_mismatch"
@@ -222,8 +239,14 @@ defmodule Portal.Crl.SyncTest do
       pki: pki
     } do
       leaf = leaf(pki, :rsa)
-      device = attested_device(account, pki, leaf)
-      endpoint = endpoint_fixture(account, pki.ca_der)
+      device =
+        attested_client_fixture(
+          account: account,
+          issuer_der: pki.ca_der,
+          certificate: leaf,
+          token: Portal.TokenFixtures.client_token_fixture(account: account)
+        )
+      endpoint = revocation_endpoint_fixture(account: account, issuer_der: pki.ca_der)
       issuer = X509.subject(pki.ca_der)
       serial = cert_serial_hex(leaf)
 
@@ -243,8 +266,14 @@ defmodule Portal.Crl.SyncTest do
       pki: pki
     } do
       leaf = leaf(pki, :rsa)
-      device = attested_device(account, pki, leaf, issuer_der: pki.untrusted_ca_der)
-      endpoint = endpoint_fixture(account, pki.ca_der)
+      device =
+        attested_client_fixture(
+          account: account,
+          issuer_der: pki.untrusted_ca_der,
+          certificate: leaf,
+          token: Portal.TokenFixtures.client_token_fixture(account: account)
+        )
+      endpoint = revocation_endpoint_fixture(account: account, issuer_der: pki.ca_der)
 
       Portal.PG.register(device.id)
       stub_crl(crl(pki.ca, revoked: [leaf]))
@@ -255,8 +284,14 @@ defmodule Portal.Crl.SyncTest do
 
     test "does not notify again for a serial already cached", %{account: account, pki: pki} do
       leaf = leaf(pki, :rsa)
-      device = attested_device(account, pki, leaf)
-      endpoint = endpoint_fixture(account, pki.ca_der)
+      device =
+        attested_client_fixture(
+          account: account,
+          issuer_der: pki.ca_der,
+          certificate: leaf,
+          token: Portal.TokenFixtures.client_token_fixture(account: account)
+        )
+      endpoint = revocation_endpoint_fixture(account: account, issuer_der: pki.ca_der)
 
       stub_crl(crl(pki.ca, revoked: [leaf]))
       assert perform(endpoint) == {:ok, :refreshed}
@@ -271,7 +306,7 @@ defmodule Portal.Crl.SyncTest do
     test "applies the delta on top of the complete list", %{account: account, pki: pki} do
       on_list = leaf(pki, :rsa)
       on_delta = leaf(pki, :ec)
-      endpoint = endpoint_fixture(account, pki.ca_der)
+      endpoint = revocation_endpoint_fixture(account: account, issuer_der: pki.ca_der)
 
       stub_paths(%{
         "/ca.crl" => crl(pki.ca, revoked: [on_list], number: 9, freshest: @delta_url),
@@ -292,7 +327,7 @@ defmodule Portal.Crl.SyncTest do
     test "un-revokes a certificate the delta takes off the list", %{account: account, pki: pki} do
       released = leaf(pki, :rsa)
       still_revoked = leaf(pki, :ec)
-      endpoint = endpoint_fixture(account, pki.ca_der)
+      endpoint = revocation_endpoint_fixture(account: account, issuer_der: pki.ca_der)
 
       stub_paths(%{
         "/ca.crl" =>
@@ -312,7 +347,7 @@ defmodule Portal.Crl.SyncTest do
       pki: pki
     } do
       on_delta = leaf(pki, :ec)
-      endpoint = endpoint_fixture(account, pki.ca_der)
+      endpoint = revocation_endpoint_fixture(account: account, issuer_der: pki.ca_der)
 
       stub_paths(%{
         "/ca.crl" => crl(pki.ca, number: 9, freshest: @delta_url),
@@ -335,7 +370,7 @@ defmodule Portal.Crl.SyncTest do
     } do
       on_list = leaf(pki, :rsa)
       on_delta = leaf(pki, :ec)
-      endpoint = endpoint_fixture(account, pki.ca_der)
+      endpoint = revocation_endpoint_fixture(account: account, issuer_der: pki.ca_der)
 
       stub_paths(%{
         "/ca.crl" => crl(pki.ca, revoked: [on_list], number: 9, freshest: @delta_url),
@@ -350,7 +385,7 @@ defmodule Portal.Crl.SyncTest do
 
     test "refuses a complete list served at the delta's address", %{account: account, pki: pki} do
       on_list = leaf(pki, :rsa)
-      endpoint = endpoint_fixture(account, pki.ca_der)
+      endpoint = revocation_endpoint_fixture(account: account, issuer_der: pki.ca_der)
 
       stub_paths(%{
         "/ca.crl" => crl(pki.ca, revoked: [on_list], number: 9, freshest: @delta_url),
@@ -364,7 +399,7 @@ defmodule Portal.Crl.SyncTest do
     end
 
     test "refuses a delta served at the complete list's address", %{account: account, pki: pki} do
-      endpoint = endpoint_fixture(account, pki.ca_der)
+      endpoint = revocation_endpoint_fixture(account: account, issuer_der: pki.ca_der)
       stub_crl(crl(pki.ca, revoked: [leaf(pki, :rsa)], delta: 1))
 
       # A delta lists only what changed, so caching it as the whole set would
@@ -378,7 +413,7 @@ defmodule Portal.Crl.SyncTest do
       pki: pki
     } do
       on_list = leaf(pki, :rsa)
-      endpoint = endpoint_fixture(account, pki.ca_der)
+      endpoint = revocation_endpoint_fixture(account: account, issuer_der: pki.ca_der)
 
       stub_paths(%{"/ca.crl" => crl(pki.ca, revoked: [on_list], number: 9, freshest: @delta_url)})
 
@@ -393,7 +428,7 @@ defmodule Portal.Crl.SyncTest do
     end
 
     test "forgets the delta once the list stops naming one", %{account: account, pki: pki} do
-      endpoint = endpoint_fixture(account, pki.ca_der)
+      endpoint = revocation_endpoint_fixture(account: account, issuer_der: pki.ca_der)
 
       stub_paths(%{
         "/ca.crl" => crl(pki.ca, number: 9, freshest: @delta_url),
@@ -419,7 +454,7 @@ defmodule Portal.Crl.SyncTest do
     } do
       base_only = leaf(pki, :rsa)
       delta_only = leaf(pki, :ec)
-      endpoint = endpoint_fixture(account, pki.ca_der)
+      endpoint = revocation_endpoint_fixture(account: account, issuer_der: pki.ca_der)
 
       base = crl(pki.ca, revoked: [base_only], number: 5, freshest: @delta_url)
       stub_paths(%{
@@ -442,7 +477,7 @@ defmodule Portal.Crl.SyncTest do
     end
 
     test "refuses a delta older than the list it sits on", %{account: account, pki: pki} do
-      endpoint = endpoint_fixture(account, pki.ca_der)
+      endpoint = revocation_endpoint_fixture(account: account, issuer_der: pki.ca_der)
 
       base = crl(pki.ca, revoked: [leaf(pki, :rsa)], number: 11, freshest: @delta_url)
 
@@ -461,7 +496,7 @@ defmodule Portal.Crl.SyncTest do
     test "refuses a list older than the one already cached", %{account: account, pki: pki} do
       first = leaf(pki, :rsa)
       second = leaf(pki, :ec)
-      endpoint = endpoint_fixture(account, pki.ca_der)
+      endpoint = revocation_endpoint_fixture(account: account, issuer_der: pki.ca_der)
 
       stub_crl(crl(pki.ca, revoked: [first, second], number: 9))
       assert perform(endpoint) == {:ok, :refreshed}
@@ -475,7 +510,7 @@ defmodule Portal.Crl.SyncTest do
     end
 
     test "refuses a list that has already expired", %{account: account, pki: pki} do
-      endpoint = endpoint_fixture(account, pki.ca_der)
+      endpoint = revocation_endpoint_fixture(account: account, issuer_der: pki.ca_der)
       stub_crl(crl(pki.ca, revoked: [leaf(pki, :rsa)], validity: {-30, -1}))
 
       assert failure(endpoint) =~ "crl_expired"
@@ -483,7 +518,7 @@ defmodule Portal.Crl.SyncTest do
     end
 
     test "does nothing when the endpoint is gone", %{account: account, pki: pki} do
-      endpoint = endpoint_fixture(account, pki.ca_der)
+      endpoint = revocation_endpoint_fixture(account: account, issuer_der: pki.ca_der)
       Repo.delete_all(Portal.RevocationEndpoint)
 
       assert perform(endpoint) == {:ok, :deleted}
@@ -495,7 +530,12 @@ defmodule Portal.Crl.SyncTest do
       account: account,
       pki: pki
     } do
-      endpoint = endpoint_fixture(account, pki.ca_der, crl_urls: ["ldap://crl.example.test/ca"])
+      endpoint =
+        revocation_endpoint_fixture(
+          account: account,
+          issuer_der: pki.ca_der,
+          crl_urls: ["ldap://crl.example.test/ca"]
+        )
 
       failure(endpoint)
 
@@ -506,7 +546,7 @@ defmodule Portal.Crl.SyncTest do
     end
 
     test "a timeout only starts the clock", %{account: account, pki: pki} do
-      endpoint = endpoint_fixture(account, pki.ca_der)
+      endpoint = revocation_endpoint_fixture(account: account, issuer_der: pki.ca_der)
       Req.Test.stub(Sync, fn conn -> Req.Test.transport_error(conn, :timeout) end)
 
       failure(endpoint)
@@ -517,7 +557,7 @@ defmodule Portal.Crl.SyncTest do
     end
 
     test "a day of timeouts stops the fetching", %{account: account, pki: pki} do
-      endpoint = endpoint_fixture(account, pki.ca_der)
+      endpoint = revocation_endpoint_fixture(account: account, issuer_der: pki.ca_der)
       Req.Test.stub(Sync, fn conn -> Req.Test.transport_error(conn, :timeout) end)
 
       failure(endpoint)
@@ -533,7 +573,7 @@ defmodule Portal.Crl.SyncTest do
     end
 
     test "a list that comes back clears the streak", %{account: account, pki: pki} do
-      endpoint = endpoint_fixture(account, pki.ca_der)
+      endpoint = revocation_endpoint_fixture(account: account, issuer_der: pki.ca_der)
       Req.Test.stub(Sync, fn conn -> Req.Test.transport_error(conn, :timeout) end)
       failure(endpoint)
 
@@ -546,7 +586,7 @@ defmodule Portal.Crl.SyncTest do
     end
 
     test "a disabled endpoint is never scheduled again", %{account: account, pki: pki} do
-      endpoint_fixture(account, pki.ca_der)
+      revocation_endpoint_fixture(account: account, issuer_der: pki.ca_der)
       Repo.update_all(Portal.RevocationEndpoint, set: [is_disabled: true])
 
       assert {:ok, :scheduled} = Portal.Crl.Scheduler.perform(%Oban.Job{args: %{}})
@@ -573,33 +613,6 @@ defmodule Portal.Crl.SyncTest do
 
     assert Repo.one!(Portal.RevocationEndpoint).crl_error
     log
-  end
-
-  defp attested_device(account, pki, leaf, attrs \\ []) do
-    issuer_der = Keyword.get(attrs, :issuer_der, pki.ca_der)
-    token = Portal.TokenFixtures.client_token_fixture(account: account)
-
-    Portal.DeviceFixtures.client_fixture(
-      account: account,
-      last_attested_cert_issuer: X509.subject(issuer_der),
-      last_attested_cert_serial: cert_serial_hex(leaf)
-    )
-    |> Ecto.Changeset.change(client_token_id: token.id)
-    |> Repo.update!()
-  end
-
-  defp endpoint_fixture(account, issuer_der, attrs \\ []) do
-    issuer = X509.subject(issuer_der)
-    crl_urls = Keyword.get(attrs, :crl_urls, [@crl_url])
-
-    Repo.insert!(%Portal.RevocationEndpoint{
-      account_id: account.id,
-      issuer: issuer,
-      distribution_point: Keyword.get(attrs, :distribution_point, List.first(crl_urls)),
-      crl_urls: crl_urls,
-      inserted_at: DateTime.utc_now(),
-      updated_at: DateTime.utc_now()
-    })
   end
 
   defp stub_crl(body) do

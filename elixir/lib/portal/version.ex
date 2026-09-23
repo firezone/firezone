@@ -25,10 +25,6 @@ defmodule Portal.Version do
 
   def fetch_version(_user_agent), do: {:error, :invalid_user_agent}
 
-  def fetch_gateway_version(_user_agent) do
-    {:error, :invalid_user_agent}
-  end
-
   @site_payload_min_versions %{
     apple: "1.5.11",
     headless: "1.5.6",

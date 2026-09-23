@@ -128,13 +128,6 @@ defmodule PortalWeb.Session.Redirector do
   end
 
   @doc """
-  Alias for gui_client_signed_in for backward compatibility.
-  """
-  def client_signed_in(conn, account, actor_name, identifier, token, state) do
-    gui_client_signed_in(conn, account, actor_name, identifier, token, state)
-  end
-
-  @doc """
   Shows the token to the headless client user.
 
   Renders a page displaying the token with a copy button for the user to

@@ -707,62 +707,6 @@ defmodule PortalWeb.NavigationComponents do
   end
 
   @doc """
-  Renders breadcrumbs section. For entries `<.breadcrumb />` component should be used.
-  """
-  attr :account, :any,
-    required: false,
-    default: nil,
-    doc: "Account assign which will be used to fetch the home path."
-
-  slot :inner_block, required: true, doc: "Breadcrumb entries"
-
-  def breadcrumbs(assigns) do
-    ~H"""
-    <nav class="py-3 px-4" aria-label="Breadcrumb">
-      <ol class="inline-flex items-center space-x-1 md:space-x-2">
-        <li class="inline-flex items-center">
-          <.link
-            navigate={if @account, do: ~p"/#{@account}/sites", else: @home_path}
-            class="inline-flex items-center text-body hover:text-heading"
-          >
-            <.icon name="ri-home-2-fill" class="w-3.5 h-3.5 mr-2" /> Home
-          </.link>
-
-          {render_slot(@inner_block)}
-        </li>
-      </ol>
-    </nav>
-    """
-  end
-
-  @doc """
-  Renders a single breadcrumb entry. Should be wrapped in <.breadcrumbs> component.
-  """
-  slot :inner_block, required: true, doc: "The label for the breadcrumb entry."
-  attr :path, :string, default: nil, doc: "The path for the breadcrumb entry."
-
-  def breadcrumb(assigns) do
-    ~H"""
-    <li class="inline-flex items-center">
-      <div class="flex items-center text-subtle">
-        <.icon name="ri-arrow-right-s-fill" class="w-3.5 h-3.5" />
-        <.link
-          :if={not is_nil(@path)}
-          navigate={@path}
-          class="ml-1 text-body hover:text-heading md:ml-2"
-        >
-          {render_slot(@inner_block)}
-        </.link>
-
-        <span :if={is_nil(@path)} class="ml-1 text-sm text-heading md:ml-2">
-          {render_slot(@inner_block)}
-        </span>
-      </div>
-    </li>
-    """
-  end
-
-  @doc """
   Renders a back navigation link.
 
   ## Examples

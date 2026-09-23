@@ -2,6 +2,7 @@ defmodule Portal.Okta.WebhookSyncTest do
   use Portal.DataCase, async: true
   use Oban.Testing, repo: Portal.Repo
 
+  import Portal.ActorFixtures
   import Portal.AccountFixtures
   import Portal.GroupFixtures
   import Portal.IdentityFixtures
@@ -41,7 +42,13 @@ defmodule Portal.Okta.WebhookSyncTest do
 
   describe "user events" do
     test "updates an existing identity", %{directory: directory} = ctx do
-      identity = directory_identity(ctx, "user-1", name: "Old Name", email: "old@example.com")
+      identity =
+        directory_identity_fixture(
+          directory: ctx.directory,
+          idp_id: "user-1",
+          name: "Old Name",
+          email: "old@example.com"
+        )
 
       stub_okta(
         users: %{"user-1" => okta_user("user-1", "New", "Name", "new@example.com")},
@@ -76,7 +83,7 @@ defmodule Portal.Okta.WebhookSyncTest do
 
     test "moves a user's memberships when their groups change",
          %{account: account, directory: directory, base_directory: base_directory} = ctx do
-      identity = directory_identity(ctx, "user-1")
+      identity = directory_identity_fixture(directory: ctx.directory, idp_id: "user-1")
       actor = Actor |> Repo.get_by!(id: identity.actor_id) |> Repo.preload(:account)
       old = group_fixture(account: account, directory: base_directory, idp_id: "group-old")
       new = group_fixture(account: account, directory: base_directory, idp_id: "group-new")
@@ -96,7 +103,7 @@ defmodule Portal.Okta.WebhookSyncTest do
 
     test "removes a user Okta deactivated with their memberships and directory actor",
          %{account: account, directory: directory, base_directory: base_directory} = ctx do
-      identity = directory_identity(ctx, "user-1")
+      identity = directory_identity_fixture(directory: ctx.directory, idp_id: "user-1")
       actor = mark_created_by_directory(identity.actor_id, directory)
       group = group_fixture(account: account, directory: base_directory, idp_id: "group-1")
       membership_fixture(actor: actor, group: group)
@@ -116,7 +123,7 @@ defmodule Portal.Okta.WebhookSyncTest do
     end
 
     test "removes a user Okta no longer returns", %{directory: directory} = ctx do
-      identity = directory_identity(ctx, "user-1")
+      identity = directory_identity_fixture(directory: ctx.directory, idp_id: "user-1")
       stub_okta(users: %{})
 
       assert :ok = perform_job(WebhookSync, user_args(directory, "user-1"))
@@ -125,7 +132,7 @@ defmodule Portal.Okta.WebhookSyncTest do
     end
 
     test "removes a user no application is assigned to", %{directory: directory} = ctx do
-      identity = directory_identity(ctx, "user-1")
+      identity = directory_identity_fixture(directory: ctx.directory, idp_id: "user-1")
 
       stub_okta(
         users: %{"user-1" => okta_user("user-1", "Alice", "Smith", "alice@example.com")},
@@ -160,7 +167,7 @@ defmodule Portal.Okta.WebhookSyncTest do
     end
 
     test "fails on unexpected Okta errors", %{directory: directory} = ctx do
-      directory_identity(ctx, "user-1")
+      directory_identity_fixture(directory: ctx.directory, idp_id: "user-1")
 
       Req.Test.stub(APIClient, fn conn ->
         if String.ends_with?(conn.request_path, "/oauth2/v1/token") do
@@ -183,8 +190,8 @@ defmodule Portal.Okta.WebhookSyncTest do
     test "renames a tracked group and resyncs its members",
          %{account: account, directory: directory, base_directory: base_directory} = ctx do
       group = group_fixture(account: account, directory: base_directory, idp_id: "group-1", name: "Old")
-      alice = directory_identity(ctx, "user-alice")
-      carol = directory_identity(ctx, "user-carol")
+      alice = directory_identity_fixture(directory: ctx.directory, idp_id: "user-alice")
+      carol = directory_identity_fixture(directory: ctx.directory, idp_id: "user-carol")
       carol_actor = Actor |> Repo.get_by!(id: carol.actor_id) |> Repo.preload(:account)
       membership_fixture(actor: carol_actor, group: group)
 
@@ -213,7 +220,7 @@ defmodule Portal.Okta.WebhookSyncTest do
 
     test "creates a group an application was assigned with its members",
          %{directory: directory} = ctx do
-      alice = directory_identity(ctx, "user-alice")
+      alice = directory_identity_fixture(directory: ctx.directory, idp_id: "user-alice")
 
       stub_okta(
         groups: %{"group-1" => {"Engineering", ["user-alice"]}},
@@ -231,7 +238,7 @@ defmodule Portal.Okta.WebhookSyncTest do
     test "deletes a tracked group no application is assigned to",
          %{account: account, directory: directory, base_directory: base_directory} = ctx do
       group = group_fixture(account: account, directory: base_directory, idp_id: "group-1")
-      carol = directory_identity(ctx, "user-carol")
+      carol = directory_identity_fixture(directory: ctx.directory, idp_id: "user-carol")
       carol_actor = Actor |> Repo.get_by!(id: carol.actor_id) |> Repo.preload(:account)
       membership_fixture(actor: carol_actor, group: group)
 
@@ -253,7 +260,7 @@ defmodule Portal.Okta.WebhookSyncTest do
   end
 
   test "removes a user whose Okta record has no status", %{directory: directory} = ctx do
-    directory_identity(ctx, "user-1")
+    directory_identity_fixture(directory: ctx.directory, idp_id: "user-1")
     user = okta_user("user-1", "Ada", "Lovelace", "ada@example.com") |> Map.delete("status")
     stub_okta(users: %{"user-1" => user}, apps_for: %{"user-1" => ["app-1"]})
 
@@ -295,7 +302,7 @@ defmodule Portal.Okta.WebhookSyncTest do
     end
 
   test "snoozes while a full sync for the directory is executing", %{directory: directory} = ctx do
-    identity = directory_identity(ctx, "user-1")
+    identity = directory_identity_fixture(directory: ctx.directory, idp_id: "user-1")
     stub_okta(users: %{})
     executing_job(Sync.new(%{account_id: directory.account_id, directory_id: directory.id}))
 
@@ -304,7 +311,7 @@ defmodule Portal.Okta.WebhookSyncTest do
     assert Repo.get_by(ExternalIdentity, id: identity.id)
   end
 
-  test "skips disabled directories", %{account: account} = ctx do
+  test "skips disabled directories", %{account: account} do
     directory =
       okta_directory_fixture(
         account: account,
@@ -313,7 +320,7 @@ defmodule Portal.Okta.WebhookSyncTest do
         is_disabled: true
       )
 
-    identity = directory_identity(%{ctx | directory: directory}, "user-1")
+    identity = directory_identity_fixture(directory: directory, idp_id: "user-1")
     stub_okta(users: %{})
 
     assert :ok = perform_job(WebhookSync, user_args(directory, "user-1"))
@@ -337,26 +344,6 @@ defmodule Portal.Okta.WebhookSyncTest do
       resource: "group",
       resource_id: group_id
     }
-  end
-
-  defp directory_identity(ctx, idp_id, attrs \\ []) do
-    attrs
-    |> Enum.into(%{})
-    |> Map.merge(%{
-      account: ctx.account,
-      directory: Repo.get_by!(Portal.Directory, id: ctx.directory.id),
-      issuer: Sync.issuer(ctx.directory),
-      idp_id: idp_id
-    })
-    |> identity_fixture()
-  end
-
-  defp mark_created_by_directory(actor_id, directory) do
-    Actor
-    |> Repo.get_by!(id: actor_id)
-    |> Ecto.Changeset.change(created_by_directory_id: directory.id)
-    |> Repo.update!()
-    |> Repo.preload(:account)
   end
 
   defp okta_user(id, first, last, email, status \\ "ACTIVE") do

@@ -1,6 +1,7 @@
 defmodule PortalWeb.Settings.TrustAnchors.IndexTest do
   use PortalWeb.ConnCase, async: true
 
+  import Portal.RevocationFixtures
   import Portal.AccountFixtures
   import Portal.ActorFixtures
   import Portal.TrustAnchorFixtures
@@ -11,19 +12,6 @@ defmodule PortalWeb.Settings.TrustAnchors.IndexTest do
   defp certificate_der(certificate) do
     {:ok, [{_type, der, _headers}]} = X509.pem_decode(certificate.pem)
     der
-  end
-
-  defp endpoint_fixture(account, issuer, attrs \\ []) do
-    Repo.insert!(%Portal.RevocationEndpoint{
-      account_id: account.id,
-      issuer: issuer,
-      distribution_point: "http://crl.test.invalid/ec-ca.crl",
-      crl_urls: Keyword.get(attrs, :crl_urls, ["http://crl.test.invalid/ec-ca.crl"]),
-      crl_number: Keyword.get(attrs, :crl_number),
-      crl_error: Keyword.get(attrs, :crl_error),
-      inserted_at: DateTime.utc_now(),
-      updated_at: DateTime.utc_now()
-    })
   end
 
   defp open_certificates_tab(lv) do
@@ -47,17 +35,6 @@ defmodule PortalWeb.Settings.TrustAnchors.IndexTest do
 
   defp assert_timestamp_popover(popovers, datetime) do
     assert DateTime.to_iso8601(datetime) in popovers
-  end
-
-  defp revocation_fixture(account, issuer, serial) do
-    Repo.insert!(%Portal.CrlRevocation{
-      account_id: account.id,
-      issuer: issuer,
-      distribution_point: "http://crl.test.invalid/ec-ca.crl",
-      serial: serial,
-      revoked_at: DateTime.utc_now() |> DateTime.truncate(:second),
-      inserted_at: DateTime.utc_now()
-    })
   end
 
   setup do
@@ -290,8 +267,19 @@ defmodule PortalWeb.Settings.TrustAnchors.IndexTest do
       trust_anchor: trust_anchor,
       issuer: issuer
     } do
-      endpoint_fixture(account, issuer, crl_number: 42)
-      revocation_fixture(account, issuer, "AABBCC")
+      revocation_endpoint_fixture(
+        account: account,
+        issuer: issuer,
+        distribution_point: "http://crl.test.invalid/ec-ca.crl",
+        crl_urls: ["http://crl.test.invalid/ec-ca.crl"],
+        crl_number: 42
+      )
+      crl_revocation_fixture(
+        account: account,
+        issuer: issuer,
+        serial: "AABBCC",
+        distribution_point: "http://crl.test.invalid/ec-ca.crl"
+      )
 
       {:ok, lv, _html} =
         conn
@@ -314,7 +302,13 @@ defmodule PortalWeb.Settings.TrustAnchors.IndexTest do
       trust_anchor: trust_anchor,
       issuer: issuer
     } do
-      endpoint_fixture(account, issuer, crl_error: "unsupported_url_scheme")
+      revocation_endpoint_fixture(
+        account: account,
+        issuer: issuer,
+        distribution_point: "http://crl.test.invalid/ec-ca.crl",
+        crl_urls: ["http://crl.test.invalid/ec-ca.crl"],
+        crl_error: "unsupported_url_scheme"
+      )
 
       {:ok, lv, _html} =
         conn
@@ -344,7 +338,12 @@ defmodule PortalWeb.Settings.TrustAnchors.IndexTest do
         ocsp_checked_at: ~U[2026-01-10 03:04:05.100005Z]
       }
 
-      endpoint_fixture(account, issuer)
+      revocation_endpoint_fixture(
+        account: account,
+        issuer: issuer,
+        distribution_point: "http://crl.test.invalid/ec-ca.crl",
+        crl_urls: ["http://crl.test.invalid/ec-ca.crl"]
+      )
       |> Ecto.Changeset.change(Map.put(timestamps, :ocsp_urls, ["http://ocsp.test.invalid"]))
       |> Repo.update!()
 
@@ -410,7 +409,12 @@ defmodule PortalWeb.Settings.TrustAnchors.IndexTest do
       trust_anchor: trust_anchor,
       issuer: issuer
     } do
-      endpoint_fixture(account_fixture(), issuer)
+      revocation_endpoint_fixture(
+        account: account_fixture(),
+        issuer: issuer,
+        distribution_point: "http://crl.test.invalid/ec-ca.crl",
+        crl_urls: ["http://crl.test.invalid/ec-ca.crl"]
+      )
 
       {:ok, lv, _html} =
         conn
@@ -435,7 +439,13 @@ defmodule PortalWeb.Settings.TrustAnchors.IndexTest do
       actor: actor,
       issuer: issuer
     } do
-      endpoint_fixture(account, issuer, crl_error: "connection refused")
+      revocation_endpoint_fixture(
+        account: account,
+        issuer: issuer,
+        distribution_point: "http://crl.test.invalid/ec-ca.crl",
+        crl_urls: ["http://crl.test.invalid/ec-ca.crl"],
+        crl_error: "connection refused"
+      )
       |> Ecto.Changeset.change(errored_at: DateTime.utc_now())
       |> Repo.update!()
 
@@ -454,7 +464,13 @@ defmodule PortalWeb.Settings.TrustAnchors.IndexTest do
       actor: actor,
       issuer: issuer
     } do
-      endpoint_fixture(account, issuer, crl_error: "connection refused")
+      revocation_endpoint_fixture(
+        account: account,
+        issuer: issuer,
+        distribution_point: "http://crl.test.invalid/ec-ca.crl",
+        crl_urls: ["http://crl.test.invalid/ec-ca.crl"],
+        crl_error: "connection refused"
+      )
       |> Ecto.Changeset.change(
         errored_at: DateTime.utc_now(),
         is_disabled: true,
@@ -477,7 +493,12 @@ defmodule PortalWeb.Settings.TrustAnchors.IndexTest do
       actor: actor,
       issuer: issuer
     } do
-      endpoint_fixture(account, issuer)
+      revocation_endpoint_fixture(
+        account: account,
+        issuer: issuer,
+        distribution_point: "http://crl.test.invalid/ec-ca.crl",
+        crl_urls: ["http://crl.test.invalid/ec-ca.crl"]
+      )
 
       {:ok, _lv, html} =
         conn
@@ -494,7 +515,13 @@ defmodule PortalWeb.Settings.TrustAnchors.IndexTest do
       trust_anchor: trust_anchor,
       issuer: issuer
     } do
-      endpoint_fixture(account, issuer, crl_error: "connection refused")
+      revocation_endpoint_fixture(
+        account: account,
+        issuer: issuer,
+        distribution_point: "http://crl.test.invalid/ec-ca.crl",
+        crl_urls: ["http://crl.test.invalid/ec-ca.crl"],
+        crl_error: "connection refused"
+      )
       |> Ecto.Changeset.change(
         errored_at: DateTime.utc_now(),
         is_disabled: true,

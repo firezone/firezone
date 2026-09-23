@@ -61,4 +61,39 @@ defmodule Portal.SantaFixtures do
     |> Portal.Santa.Device.changeset(device_attrs)
     |> Portal.Repo.insert!()
   end
+
+  @doc "Build a santa API response payload for sync tests."
+  def santa_api_host_fixture(overrides \\ %{}) do
+    Map.merge(
+      %{
+        "uuid" => "host-1",
+        "serial" => "SERIAL-1",
+        "machineModel" => "MacBookPro18,3",
+        "hostname" => "macbook",
+        "osVersion" => "15.6",
+        "osBuild" => "24G84",
+        "osType" => "OS_TYPE_MACOS",
+        "sipStatus" => 1,
+        "primaryUser" => "alice@example.com",
+        "primaryUserLocked" => true,
+        "primaryUserGroups" => ["engineering", "admins"],
+        "santaVersion" => "2026.7",
+        "santanetdVersion" => "2026.7.1",
+        "lastSeenClientMode" => "LOCKDOWN",
+        "lastSync" => "2026-08-26T18:10:00.123456Z",
+        "ruleSyncTime" => "2026-08-26T18:09:00Z",
+        "lastPreflightTime" => "2026-08-26T18:08:00Z",
+        "lastPreflightIp" => "wKgBAQ==",
+        "tags" => ["global", "production"],
+        "tagsLocked" => true,
+        "tagsTruncated" => false,
+        "configuredClientMode" => "LOCKDOWN",
+        "temporaryMonitorModeEndTime" => "2026-08-27T18:00:00Z",
+        "createdAt" => "2026-01-02T03:04:05Z",
+        "temporaryAdminModeEndTime" => "2026-08-26T19:00:00Z",
+        "temporaryAdminModeUser" => "alice"
+      },
+      Enum.into(overrides, %{})
+    )
+  end
 end

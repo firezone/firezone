@@ -13,19 +13,6 @@ defmodule PortalWeb.CoreComponents do
   use PortalWeb, :verified_routes
   alias Phoenix.LiveView.JS
 
-  attr :text, :string, default: "Welcome to Firezone."
-
-  def hero_logo(assigns) do
-    ~H"""
-    <div class="mb-6">
-      <img src={~p"/images/logo.svg"} class="mx-auto h-24" alt="Firezone Logo" />
-      <p class="text-center mt-4 text-3xl">
-        {@text}
-      </p>
-    </div>
-    """
-  end
-
   def logo(assigns) do
     ~H"""
     <a href={~p"/"} class="flex items-center mb-6 text-2xl">
@@ -37,32 +24,12 @@ defmodule PortalWeb.CoreComponents do
     """
   end
 
-  attr :account, :any, required: true
-  attr :device, :any, required: true
-  attr :class, :any, default: nil
-
-  def device_link(assigns) do
-    assigns = assign(assigns, :path, device_path(assigns.account, assigns.device))
-
-    ~H"""
-    <.link navigate={@path} class={@class}>
-      {device_name(@device)}
-    </.link>
-    """
-  end
-
   def device_name(%Portal.Device{type: :gateway, site: %Portal.Site{name: site_name}, name: name})
       when not is_nil(site_name) do
     "#{site_name}-#{name}"
   end
 
   def device_name(%Portal.Device{name: name}) when not is_nil(name), do: name
-
-  defp device_path(account, %Portal.Device{type: :client, id: id}),
-    do: ~p"/#{account}/devices/#{id}"
-
-  defp device_path(account, %Portal.Device{type: :gateway}),
-    do: ~p"/#{account}"
 
   @doc """
   Renders an inline code tag with formatting.
@@ -434,34 +401,6 @@ defmodule PortalWeb.CoreComponents do
     >
       <.icon name="ri-alert-line" class="h-4 w-4 flex-none" />
       {render_slot(@inner_block)}
-    </p>
-    """
-  end
-
-  @doc """
-  Generates an error message for a form where it's not related to a specific field but rather to the form itself,
-  eg. when there is an internal error during API call or one fields not rendered as a form field is invalid.
-
-  ### Examples
-
-      <.base_error form={@form} field={:base} />
-  """
-  attr :form, :any, required: true, doc: "the form"
-  attr :field, :atom, doc: "field name"
-  attr :rest, :global
-
-  def base_error(assigns) do
-    assigns = assign_new(assigns, :error, fn -> assigns.form.errors[assigns.field] end)
-
-    ~H"""
-    <p
-      :if={@error}
-      data-validation-error-for={"#{@form.id}[#{@field}]"}
-      class="mt-3 mb-3 flex gap-3 text-m leading-6 text-danger"
-      {@rest}
-    >
-      <.icon name="ri-alert-line" class="mt-0.5 h-5 w-5 flex-none" />
-      {translate_error(@error)}
     </p>
     """
   end
@@ -970,94 +909,6 @@ defmodule PortalWeb.CoreComponents do
   end
 
   attr :account, :any, required: true
-  attr :actor, :any, required: true
-
-  def actor_link(%{actor: %Portal.Actor{type: :api_client}} = assigns) do
-    ~H"""
-    <.link class={link_style()} navigate={~p"/#{@account}/settings/api_clients"}>
-      {assigns.actor.name}
-    </.link>
-    """
-  end
-
-  def actor_link(assigns) do
-    ~H"""
-    <.link class={link_style()} navigate={~p"/#{@account}/actors/#{@actor}"}>
-      {assigns.actor.name}
-    </.link>
-    """
-  end
-
-  @doc """
-  Renders a group as a badge with optional directory icon.
-  Used in contexts like policies list where we need a compact badge representation.
-
-  When group is nil (orphaned policy), displays a warning badge indicating the group is unavailable.
-  """
-  attr :account, :any, required: true
-  attr :group, :any, default: nil
-  attr :class, :string, default: nil
-  attr :return_to, :string, default: nil
-
-  def group_badge(%{group: nil} = assigns) do
-    ~H"""
-    <span class={[
-      "inline-flex items-center rounded-sm border border-primary-300 bg-primary-50 overflow-hidden mr-1",
-      @class
-    ]}>
-      <span class="inline-flex items-center justify-center py-0.5 px-1.5 text-primary-600 bg-primary-100 border-r border-primary-300">
-        <.icon name="ri-error-warning-line" class="h-3.5 w-3.5" />
-      </span>
-      <span class="text-xs truncate min-w-0 py-0.5 pl-1.5 pr-2.5 text-primary-700">
-        Group deleted
-      </span>
-    </span>
-    """
-  end
-
-  def group_badge(assigns) do
-    # Build the navigate URL with return_to if provided
-    assigns =
-      if assigns[:return_to] do
-        assign(
-          assigns,
-          :navigate_url,
-          ~p"/#{assigns.account}/groups/#{assigns.group}?#{[return_to: assigns.return_to]}"
-        )
-      else
-        assign(assigns, :navigate_url, ~p"/#{assigns.account}/groups/#{assigns.group}")
-      end
-
-    ~H"""
-    <span
-      class={[
-        "inline-flex items-center rounded-sm border border-border-strong overflow-hidden mr-1",
-        @class
-      ]}
-      data-group-id={@group.id}
-    >
-      <span class={~w[
-          inline-flex items-center justify-center
-          py-0.5 px-1.5
-          text-body
-          bg-raised
-          border-r
-          border-border-strong
-        ]}>
-        <.provider_icon provider={provider_type_from_group(@group)} size="xs" />
-      </span>
-      <.link
-        title={"View Group \"#{@group.name}\""}
-        navigate={@navigate_url}
-        class="text-xs truncate min-w-0 py-0.5 pl-1.5 pr-2.5 text-heading bg-surface"
-      >
-        {@group.name}
-      </.link>
-    </span>
-    """
-  end
-
-  attr :account, :any, required: true
   attr :group, :any, required: true
   attr :class, :string, default: nil
   attr :return_to, :string, default: nil
@@ -1175,37 +1026,6 @@ defmodule PortalWeb.CoreComponents do
     |> assign(:display_remote_ip_location_lon, s.last_seen_remote_ip_location_lon)
   end
 
-  @doc """
-  Helps to pluralize a word based on a cardinal number.
-
-  Cardinal numbers indicate an amount—how many of something we have: one, two, three, four, five.
-
-  Typically for English you want to set `one` and `other` options. The `other` option is used for all
-  other numbers that are not `one`. For example, if you want to pluralize the word "file" you would
-  set `one` to "file" and `other` to "files".
-  """
-  attr :number, :integer, required: true
-
-  attr :zero, :string, required: false
-  attr :one, :string, required: false
-  attr :two, :string, required: false
-  attr :few, :string, required: false
-  attr :many, :string, required: false
-  attr :other, :string, required: true
-
-  attr :rest, :global
-
-  def cardinal_number(assigns) do
-    opts = Map.take(assigns, [:zero, :one, :two, :few, :many, :other])
-    assigns = Map.put(assigns, :opts, opts)
-
-    ~H"""
-    <span data-value={@number} {@rest}>
-      {PortalWeb.Format.cardinal_pluralize(@number, @opts)}
-    </span>
-    """
-  end
-
   ## JS Commands
 
   def show(js \\ %JS{}, selector) do
@@ -1248,17 +1068,6 @@ defmodule PortalWeb.CoreComponents do
     else
       Gettext.dgettext(PortalWeb.Gettext, "errors", msg, opts)
     end
-  end
-
-  @doc """
-  Translates the errors for a field from a keyword list of errors.
-  """
-  def translate_errors(errors, field) when is_list(errors) or is_map(errors) do
-    for {^field, {msg, opts}} <- errors, do: translate_error({msg, opts})
-  end
-
-  def translate_errors(errors, _field) when is_nil(errors) do
-    []
   end
 
   @doc """
@@ -1674,22 +1483,6 @@ defmodule PortalWeb.CoreComponents do
   defp provider_icon_wrapper_size("md"), do: "size-8"
   defp provider_icon_wrapper_size("lg"), do: "size-10"
   defp provider_icon_wrapper_size("xl"), do: "size-12"
-
-  def feature_name(%{feature: :idp_sync} = assigns) do
-    ~H"""
-    Automatically sync users and groups
-    """
-  end
-
-  def feature_name(%{feature: :policy_conditions} = assigns) do
-    ~H"""
-    Specify access-time conditions when creating policies
-    """
-  end
-
-  def feature_name(assigns) do
-    ~H""
-  end
 
   def mailto_support(account, subject, email_subject) do
     body =

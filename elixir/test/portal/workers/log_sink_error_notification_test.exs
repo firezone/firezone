@@ -20,24 +20,12 @@ defmodule Portal.Workers.LogSinkErrorNotificationTest do
     def enqueue(:failing_email), do: {:error, :injected_failure}
   end
 
-  defp errored_sink_fixture(account, attrs \\ %{}) do
-    attrs
-    |> Enum.into(%{
-      account: account,
-      is_disabled: true,
-      disabled_reason: "Sync error",
-      error_message: "Splunk HEC returned HTTP 403: Invalid token (code 4)",
-      errored_at: DateTime.utc_now()
-    })
-    |> splunk_log_sink_fixture()
-  end
-
   describe "perform/1" do
     test "sends a detailed email to admins and increments error_email_count" do
       account = account_fixture(features: %{log_sinks: true})
       session_log_fixture(account: account)
       admin = admin_actor_fixture(account: account)
-      sink = errored_sink_fixture(account, name: "SOC Splunk")
+      sink = errored_splunk_log_sink_fixture(account: account, name: "SOC Splunk")
 
       now = DateTime.utc_now()
 
@@ -103,10 +91,7 @@ defmodule Portal.Workers.LogSinkErrorNotificationTest do
       admin_actor_fixture(account: account)
 
       sink =
-        errored_sink_fixture(account,
-          error_email_count: 2,
-          last_error_email_at: hours_ago(21)
-        )
+        errored_splunk_log_sink_fixture(account: account, error_email_count: 2, last_error_email_at: hours_ago(21))
 
       assert :ok = perform_job(LogSinkErrorNotification, %{})
       assert [_email] = collect_queued_emails(account.id)
@@ -123,7 +108,7 @@ defmodule Portal.Workers.LogSinkErrorNotificationTest do
       account = account_fixture(features: %{log_sinks: true})
       admin_actor_fixture(account: account)
 
-      sink = errored_sink_fixture(account, error_email_count: 0)
+      sink = errored_splunk_log_sink_fixture(account: account, error_email_count: 0)
 
       log =
         capture_log(fn ->
@@ -141,7 +126,7 @@ defmodule Portal.Workers.LogSinkErrorNotificationTest do
       account = team_account_fixture(features: %{log_sinks: true})
       admin_actor_fixture(account: account)
 
-      sink = errored_sink_fixture(account, error_email_count: 0)
+      sink = errored_splunk_log_sink_fixture(account: account, error_email_count: 0)
 
       assert :ok = perform_job(LogSinkErrorNotification, %{})
 
@@ -154,10 +139,30 @@ defmodule Portal.Workers.LogSinkErrorNotificationTest do
       session_log_fixture(account: account)
       admin_actor_fixture(account: account)
 
-      three_days_fresh = errored_sink_fixture(account, error_email_count: 3, last_error_email_at: hours_ago(24))
-      three_days_due = errored_sink_fixture(account, error_email_count: 3, last_error_email_at: hours_ago(71))
-      weekly_fresh = errored_sink_fixture(account, error_email_count: 7, last_error_email_at: hours_ago(120))
-      weekly_due = errored_sink_fixture(account, error_email_count: 7, last_error_email_at: hours_ago(167))
+      three_days_fresh =
+        errored_splunk_log_sink_fixture(
+          account: account,
+          error_email_count: 3,
+          last_error_email_at: hours_ago(24)
+        )
+      three_days_due =
+        errored_splunk_log_sink_fixture(
+          account: account,
+          error_email_count: 3,
+          last_error_email_at: hours_ago(71)
+        )
+      weekly_fresh =
+        errored_splunk_log_sink_fixture(
+          account: account,
+          error_email_count: 7,
+          last_error_email_at: hours_ago(120)
+        )
+      weekly_due =
+        errored_splunk_log_sink_fixture(
+          account: account,
+          error_email_count: 7,
+          last_error_email_at: hours_ago(167)
+        )
 
       assert :ok = perform_job(LogSinkErrorNotification, %{})
 
@@ -174,7 +179,8 @@ defmodule Portal.Workers.LogSinkErrorNotificationTest do
       admin_actor_fixture(account: account)
 
       sink =
-        errored_sink_fixture(account,
+        errored_splunk_log_sink_fixture(
+          account: account,
           error_email_count: 10,
           last_error_email_at: hours_ago(24 * 30)
         )
@@ -212,7 +218,7 @@ defmodule Portal.Workers.LogSinkErrorNotificationTest do
       account = account_fixture(features: %{log_sinks: true})
       session_log_fixture(account: account)
       admin_actor_fixture(account: account)
-      sink = errored_sink_fixture(account)
+      sink = errored_splunk_log_sink_fixture(account: account)
 
       assert :ok = perform_job(LogSinkErrorNotification, %{})
 

@@ -69,50 +69,6 @@ defmodule PortalWeb.Devices.Components do
     """
   end
 
-  def device_os_name_and_version(assigns) do
-    assigns = assign(assigns, :user_agent, device_user_agent(assigns.device))
-
-    ~H"""
-    <span>
-      {os_name_and_version(@user_agent)}
-    </span>
-    """
-  end
-
-  def device_as_icon(assigns) do
-    ~H"""
-    <.popover placement="right">
-      <:target>
-        <.device_os_icon device={@device} />
-      </:target>
-      <:content>
-        <div>
-          {@device.name}
-          <.icon
-            :if={trust_state(@device)}
-            name={trust_state(@device).icon}
-            class="h-2.5 w-2.5 text-subtle"
-            title={trust_state(@device).title}
-          />
-        </div>
-        <div>
-          <.device_os_name_and_version device={@device} />
-        </div>
-        <div>
-          <span>Last started:</span>
-          <.relative_datetime
-            datetime={@device.last_seen_at}
-            popover={false}
-          />
-        </div>
-        <div>
-          <.connection_status schema={@device} />
-        </div>
-      </:content>
-    </.popover>
-    """
-  end
-
   def os_icon_name(nil), do: "ri-computer-line"
   def os_icon_name("Windows/" <> _), do: "icon-os-windows"
   def os_icon_name("Mac OS/" <> _), do: "icon-os-macos"

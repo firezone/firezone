@@ -167,32 +167,6 @@ defmodule Portal.ResourceFixtures do
   end
 
   @doc """
-  Generate a resource with a specific protocol filter.
-  """
-  def tcp_resource_fixture(attrs \\ %{}) do
-    ports = Map.get(attrs, :ports, ["80", "443"])
-
-    attrs =
-      attrs
-      |> Map.put(:filters, [%{protocol: :tcp, ports: ports}])
-
-    resource_fixture(attrs)
-  end
-
-  @doc """
-  Generate a resource with UDP filter.
-  """
-  def udp_resource_fixture(attrs \\ %{}) do
-    ports = Map.get(attrs, :ports, ["53"])
-
-    attrs =
-      attrs
-      |> Map.put(:filters, [%{protocol: :udp, ports: ports}])
-
-    resource_fixture(attrs)
-  end
-
-  @doc """
   Generate a device pool resource that lists its devices.
   """
   def device_pool_resource_fixture(attrs \\ %{}) do
