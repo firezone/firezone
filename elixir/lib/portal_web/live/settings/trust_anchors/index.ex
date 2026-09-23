@@ -867,42 +867,19 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
         />
       </div>
 
-      <div :if={@input_mode == :upload} class="space-y-2">
-        <.label>Chain file(s)</.label>
-        <.live_file_input
-          upload={@uploads.cert_file}
-          class="block w-full text-xs text-subtle file:mr-3 file:cursor-pointer file:rounded file:border file:border-border-strong file:bg-surface file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-body file:transition-colors hover:file:bg-raised hover:file:text-heading"
-        />
-        <p class="text-xs text-subtle">
+      <.file_upload
+        :if={@input_mode == :upload}
+        upload={@uploads.cert_file}
+        label="Chain file(s)"
+        cancel_event="cancel_upload"
+        error_message={&upload_error_to_string/1}
+        errors={@certs_errors}
+      >
+        <:hint>
           Accepts .pem, .crt, .cer, .der, or .txt, up to 1&nbsp;MB each. Select multiple files to upload
           a root and intermediate CA separately; a DER file holds a single certificate.
-        </p>
-        <div
-          :for={entry <- @uploads.cert_file.entries}
-          class="flex flex-col gap-0.5"
-        >
-          <div class="flex items-center gap-2 text-xs text-body">
-            <.icon name="ri-file-line" class="w-3.5 h-3.5 shrink-0" />
-            <span class="truncate">{entry.client_name}</span>
-            <progress value={entry.progress} max="100" class="w-16">{entry.progress}%</progress>
-            <button
-              type="button"
-              phx-click="cancel_upload"
-              phx-value-ref={entry.ref}
-              class="text-error"
-            >
-              <.icon name="ri-close-line" class="w-3.5 h-3.5" />
-            </button>
-          </div>
-          <.error :for={err <- upload_errors(@uploads.cert_file, entry)} inline>
-            {upload_error_to_string(err)}
-          </.error>
-        </div>
-        <.error :for={msg <- @certs_errors}>{msg}</.error>
-        <.error :for={err <- upload_errors(@uploads.cert_file)}>
-          {upload_error_to_string(err)}
-        </.error>
-      </div>
+        </:hint>
+      </.file_upload>
     </div>
     """
   end

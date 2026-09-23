@@ -8,6 +8,71 @@ defmodule PortalWeb.FormComponents do
   import PortalWeb.CoreComponents,
     only: [icon: 1, error: 1, label: 1, translate_error: 1, provider_icon: 1]
 
+  @doc """
+  Renders a themed LiveView file picker with upload progress, removal, and errors.
+  The upload configuration controls accepted file types, sizes, and file count.
+  """
+  attr :upload, Phoenix.LiveView.UploadConfig, required: true
+  attr :label, :string, required: true
+  attr :cancel_event, :string, required: true
+  attr :target, :any, default: nil
+  attr :error_message, :any, required: true
+  attr :errors, :list, default: []
+  slot :hint
+
+  def file_upload(assigns) do
+    ~H"""
+    <div class="space-y-2">
+      <.label for={@upload.ref}>{@label}</.label>
+      <div class="group relative flex items-center gap-3 rounded border border-input-border bg-input p-1 pl-3 text-sm text-body focus-within:border-brand focus-within:ring-2 focus-within:ring-brand/30">
+        <span class="min-w-0 flex-1 truncate" aria-hidden="true">
+          {if @upload.entries == [],
+            do: "No file selected",
+            else: Enum.map_join(@upload.entries, ", ", & &1.client_name)}
+        </span>
+        <span
+          aria-hidden="true"
+          class={button_style("primary") ++ button_size("md") ++ ["shrink-0 group-hover:bg-brand-dark"]}
+        >
+          Browse
+        </span>
+        <.live_file_input
+          upload={@upload}
+          aria-describedby={@hint != [] && "#{@upload.ref}-hint"}
+          class="absolute inset-0 z-10 h-full w-full cursor-pointer opacity-0"
+        />
+      </div>
+      <p :if={@hint != []} id={"#{@upload.ref}-hint"} class="text-xs text-subtle">
+        {render_slot(@hint)}
+      </p>
+      <div :for={entry <- @upload.entries} class="space-y-1">
+        <div class="flex items-center gap-3 rounded border border-border bg-surface px-3 py-2 text-sm text-body">
+          <.icon name="ri-file-line" class="h-4 w-4 shrink-0 text-subtle" />
+          <span class="min-w-0 flex-1 truncate">{entry.client_name}</span>
+          <progress
+            value={entry.progress}
+            max="100"
+            aria-label={"Upload progress for #{entry.client_name}"}
+            class="h-1.5 w-16 shrink-0 overflow-hidden rounded bg-raised accent-brand [&::-webkit-progress-bar]:bg-raised [&::-webkit-progress-value]:bg-brand [&::-moz-progress-bar]:bg-brand"
+          >{entry.progress}%</progress>
+          <.icon_button
+            icon="ri-close-line"
+            title={"Remove #{entry.client_name}"}
+            size="sm"
+            phx-click={@cancel_event}
+            phx-target={@target}
+            phx-value-ref={entry.ref}
+            class="shrink-0"
+          />
+        </div>
+        <.error :for={error <- upload_errors(@upload, entry)} role="alert">{@error_message.(error)}</.error>
+      </div>
+      <.error :for={error <- upload_errors(@upload)} role="alert">{@error_message.(error)}</.error>
+      <.error :for={error <- @errors}>{error}</.error>
+    </div>
+    """
+  end
+
   ### Inputs ###
 
   @doc """

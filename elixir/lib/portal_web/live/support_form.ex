@@ -47,28 +47,29 @@ defmodule PortalWeb.SupportForm do
               rows="6"
             />
             <p class="text-sm text-subtle">Up to 1,000 characters.</p>
-            <label for={@uploads.screenshot.ref} class="block text-sm">Screenshot (optional)</label>
-            <.live_file_input upload={@uploads.screenshot} />
-            <p class="text-sm text-subtle">One PNG, JPEG, GIF, or WebP image, up to 2 MB.</p>
-            <p :for={error <- upload_errors(@uploads.screenshot)} role="alert">
-              {upload_error(error)}
-            </p>
-            <div :for={entry <- @uploads.screenshot.entries}>
-              <span>{entry.client_name}</span>
-              <button
-                type="button"
-                phx-click="cancel-upload"
-                phx-target={@myself}
-                phx-value-ref={entry.ref}
-              >Remove</button>
-              <p :for={error <- upload_errors(@uploads.screenshot, entry)} role="alert">
-                {upload_error(error)}
-              </p>
-            </div>
-            <p :if={@error} role="alert" class="text-danger">{@error}</p>
-            <.button type="submit" phx-disable-with="Sending…">Send request</.button>
+            <.file_upload
+              upload={@uploads.screenshot}
+              label="Screenshot (optional)"
+              cancel_event="cancel-upload"
+              target={@myself}
+              error_message={&upload_error/1}
+            >
+              <:hint>One PNG, JPEG, GIF, or WebP image, up to 2 MB.</:hint>
+            </.file_upload>
+            <.error :if={@error} role="alert">{@error}</.error>
           </.form>
         </:body>
+        <:footer :if={!@sent?}>
+          <.button
+            type="submit"
+            form="support-form"
+            style="primary"
+            phx-disable-with="Sending…"
+            class="ml-auto"
+          >
+            Send request
+          </.button>
+        </:footer>
       </.modal>
     </div>
     """
