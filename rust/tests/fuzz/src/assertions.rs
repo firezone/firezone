@@ -1,7 +1,7 @@
 use super::{
     icmp_error_hosts::IcmpErrorHosts,
     probe::{
-        DnsNatObservation, ExpectedOutcome, ExpectedProbe, ProbeId, ProbeObservation,
+        DnsNatObservation, ExpectedOutcome, ExpectedProbe, KnownLoss, ProbeId, ProbeObservation,
         ProbeProtocol, ProbeRequest, ReceivedRequest, ReceivedResponse, RejectionResponse, Remote,
         SubmittedRequest, TraceRequirement,
     },
@@ -134,12 +134,12 @@ fn assert_probes(
             received_requests.as_slice(),
             received_responses.as_slice(),
         ) {
-            (TraceRequirement::ExactOrSubmissionOnly(reason), [], []) => {
+            (TraceRequirement::ExactOrLoss(reason), [], []) => {
                 tracing::debug!(target: "assertions", id = ?expected.id, ?reason, "Probe has only its request submission where loss is allowed");
                 continue;
             }
             (TraceRequirement::Exact, _, _) => {}
-            (TraceRequirement::ExactOrSubmissionOnly(_), _, _) => {}
+            (TraceRequirement::ExactOrLoss(_), _, _) => {}
         }
 
         match expected.outcome {
@@ -151,21 +151,33 @@ fn assert_probes(
             }
             ExpectedOutcome::RoundTripCompleted(route) => {
                 let expected_remote = route.remote();
-                let ([received_request], [received_response]) =
-                    (received_requests.as_slice(), received_responses.as_slice())
-                else {
-                    tracing::error!(target: "assertions", id = ?expected.id, ?probe_observations, "Completed round trip does not have exactly one received request and one received response");
+                let [received_request] = received_requests.as_slice() else {
+                    tracing::error!(target: "assertions", id = ?expected.id, ?probe_observations, "Completed round trip does not have exactly one received request");
                     continue;
                 };
 
                 if received_request.remote != expected_remote {
                     tracing::error!(target: "assertions", id = ?expected.id, ?expected_remote, actual = ?received_request.remote, "Probe request was received by the wrong remote");
                 }
+                assert_received_request(expected, submitted_request, received_request, ref_clients);
+
+                let [received_response] = received_responses.as_slice() else {
+                    if received_responses.is_empty()
+                        && expected.trace_requirement
+                            == TraceRequirement::ExactOrLoss(KnownLoss::WireGuardRekey)
+                    {
+                        tracing::debug!(target: "assertions", id = ?expected.id, "Probe response was lost during rekeying");
+                        continue;
+                    }
+
+                    tracing::error!(target: "assertions", id = ?expected.id, ?probe_observations, "Completed round trip does not have exactly one received response");
+                    continue;
+                };
+
                 if received_response.client != expected.origin {
                     tracing::error!(target: "assertions", id = ?expected.id, expected = ?expected.origin, actual = ?received_response.client, "Probe response was received by the wrong client");
                 }
 
-                assert_received_request(expected, submitted_request, received_request, ref_clients);
                 assert_received_response(
                     expected,
                     submitted_request,

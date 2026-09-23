@@ -930,7 +930,7 @@ impl ReferenceState {
         };
 
         match known_loss {
-            Some(loss) => TraceRequirement::ExactOrSubmissionOnly(loss),
+            Some(loss) => TraceRequirement::ExactOrLoss(loss),
             None => TraceRequirement::Exact,
         }
     }
