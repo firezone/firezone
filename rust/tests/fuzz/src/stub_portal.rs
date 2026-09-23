@@ -10,6 +10,7 @@ use std::{
 use tunnel_proto::dns;
 use tunnel_proto::messages::{UpstreamDo53, UpstreamDoH, gateway};
 
+use crate::reference::ReferenceState;
 use crate::resource::{self as client, DevicePoolResource};
 use crate::transition::Transition;
 
@@ -190,12 +191,21 @@ impl StubPortal {
     }
 
     /// Applies the portal-side effect of `transition`.
-    pub fn apply(&mut self, transition: &Transition) {
+    pub fn apply(&mut self, transition: &Transition, reference: &ReferenceState) {
         match transition {
             Transition::RemoveResource(id) => {
                 self.revoke_policy_authorizations(*id);
             }
             Transition::EditResource(edit) => {
+                if matches!(
+                    client::classify(&edit.old, &edit.new),
+                    client::EditEffect::Filters { .. }
+                        | client::EditEffect::Access { .. }
+                        | client::EditEffect::Type { .. }
+                ) {
+                    self.revoke_disconnected_gateway_authorizations(edit.old.id(), reference);
+                }
+
                 // An edit that changes who may reach what invalidates the authorizations
                 // the resource granted; the Clients ask for new ones.
                 if matches!(
@@ -401,6 +411,40 @@ impl StubPortal {
             .any(|((candidate, _), authorization)| {
                 *candidate == client && authorization.gateway == gateway && !authorization.revoked
             })
+    }
+
+    /// Revokes grants lost when an edit disconnects the last resource on a Gateway.
+    fn revoke_disconnected_gateway_authorizations(
+        &mut self,
+        resource: ResourceId,
+        reference: &ReferenceState,
+    ) {
+        let Some(gateway) = self.gateway_for_resource(resource).copied() else {
+            return;
+        };
+
+        for (client_id, client) in &reference.clients {
+            let connected = client
+                .inner()
+                .connected_resources()
+                .collect::<BTreeSet<_>>();
+            if !connected.contains(&resource)
+                || connected.iter().any(|candidate| {
+                    *candidate != resource
+                        && self.gateway_for_resource(*candidate) == Some(&gateway)
+                })
+            {
+                continue;
+            }
+
+            for (_, authorization) in self.gateway_policy_authorizations.iter_mut().filter(
+                |((candidate, _), authorization)| {
+                    candidate == client_id && authorization.gateway == gateway
+                },
+            ) {
+                authorization.revoked = true;
+            }
+        }
     }
 
     /// Revokes every authorization `resource` granted, to a peer or through a Gateway.
