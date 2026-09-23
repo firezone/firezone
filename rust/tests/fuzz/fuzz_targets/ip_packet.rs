@@ -9,14 +9,12 @@ use libfuzzer_sys::fuzz_target;
 fuzz_target!(|input: Input| {
     seeded_rng::reset(0);
 
-    run(input);
+    scopeguard::defer! {
+        // SAFETY: Packet allocation runs only on the fuzzing thread. This guard
+        // is declared before any packets or simulation state, so they drop first.
+        unsafe { ip_packet::reset_buffer_pool() };
+    }
 
-    // SAFETY: Packet allocation runs only on the fuzzing thread, and run has
-    // returned after dropping all packets and simulation state.
-    unsafe { ip_packet::reset_buffer_pool() };
-});
-
-fn run(input: Input<'_>) {
     if input.data.len() > ip_packet::MAX_IP_SIZE {
         return;
     }
@@ -140,7 +138,7 @@ fn run(input: Input<'_>) {
 
         make_and_parse_icmp_errors(&packet, input.translate_dst, input.translate_port);
     }
-}
+});
 
 /// Builds ICMP destination-unreachable errors from the packet and parses them back.
 fn make_and_parse_icmp_errors(packet: &IpPacket, translate_dst: IpAddr, translate_port: u16) {

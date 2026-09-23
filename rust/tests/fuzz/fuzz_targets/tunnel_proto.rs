@@ -15,14 +15,12 @@ const MAX_TRANSITIONS: usize = 20;
 fuzz_target!(|data: &[u8]| {
     seeded_rng::reset(0);
 
-    run(data);
+    scopeguard::defer! {
+        // SAFETY: Packet allocation runs only on the fuzzing thread. This guard
+        // is declared before any packets or simulation state, so they drop first.
+        unsafe { ip_packet::reset_buffer_pool() };
+    }
 
-    // SAFETY: Packet allocation runs only on the fuzzing thread, and run has
-    // returned after dropping all packets and simulation state.
-    unsafe { ip_packet::reset_buffer_pool() };
-});
-
-fn run(data: &[u8]) {
     let _guard = init_fuzz_subscriber();
 
     let now = Instant::now();
@@ -52,4 +50,4 @@ fn run(data: &[u8]) {
         tunnel = TunnelTest::apply(tunnel, &reference, &mut portal, transition);
         TunnelTest::check_invariants(&tunnel, &reference, &portal);
     }
-}
+});

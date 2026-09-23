@@ -205,6 +205,7 @@ rustls-native-certs = "0.8.1"
 rustls-pki-types = "1.14.1"
 rustls-platform-verifier = "0.7.0"
 sadness-generator = "0.7.0"
+scopeguard = "1.2.0"
 sd-notify = "0.5.0" # This is a pure Rust re-implementation, so it isn't vulnerable to CVE-2024-3094
 secrecy = "0.10.3"
 seeded-rng = { path = "tests/seeded-rng" }

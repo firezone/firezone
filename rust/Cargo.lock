@@ -3052,6 +3052,7 @@ dependencies = [
  "libfuzzer-sys",
  "rand 0.10.2",
  "relay-proto",
+ "scopeguard",
  "secrecy",
  "seeded-rng",
  "serde_json",
