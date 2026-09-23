@@ -85,18 +85,32 @@ impl ReferenceState {
         }
     }
 
-    /// Apply the transition to our reference state.
+    /// Drops the bookkeeping that `transition` makes stale before it is applied.
+    pub fn invalidate(&mut self, transition: &Transition, portal: &StubPortal) {
+        self.expected_probes.clear();
+
+        if transition.clears_packets() {
+            for client in self.clients.values_mut() {
+                client.exec_mut(|c| c.clear_packets())
+            }
+        }
+
+        let iceless = portal.iceless();
+        for _ in self.icmp_flows.extract_if(.., |_, flow| {
+            !transition.retains_flow(flow.client_id, flow.route, iceless)
+        }) {}
+        for _ in self.udp_flows.extract_if(.., |_, flow| {
+            !transition.retains_flow(flow.client_id, flow.route, iceless)
+        }) {}
+    }
+
+    /// Applies the transition to the reference state.
     ///
     /// Here is where we implement the "expected" logic.
-    pub fn apply(
-        mut state: Self,
-        portal: &StubPortal,
-        transition: &Transition,
-        now: Instant,
-    ) -> Self {
+    pub fn apply(mut self, transition: &Transition, portal: &StubPortal, now: Instant) -> Self {
         match transition {
             Transition::AddResource(resource) => {
-                for client in state.clients.values_mut() {
+                for client in self.clients.values_mut() {
                     client.exec_mut(|client| match resource {
                         client::Resource::Dns(r) => {
                             client.add_dns_resource(r.clone());
@@ -120,14 +134,14 @@ impl ReferenceState {
                 }
             }
             Transition::RemoveResource(id) => {
-                for client in state.clients.values_mut() {
+                for client in self.clients.values_mut() {
                     client.exec_mut(|client| client.remove_resource(id));
                 }
-                state.expect_gateway_connections_closed(portal, *id);
+                self.expect_gateway_connections_closed(portal, *id);
             }
             Transition::EditResource(edit) => {
-                state.apply_resource_edit(edit);
-                state.expect_gateway_connections_closed(portal, edit.new.id());
+                self.apply_resource_edit(edit);
+                self.expect_gateway_connections_closed(portal, edit.new.id());
             }
             Transition::UpdateDevicePoolMembers {
                 pool_id: _,
@@ -135,12 +149,12 @@ impl ReferenceState {
                 revoked,
             } => {
                 for authorization in revoked {
-                    if let Some(client) = state.clients.get_mut(&authorization.initiator) {
+                    if let Some(client) = self.clients.get_mut(&authorization.initiator) {
                         client.exec_mut(|client| {
                             client.reject_peer_pool(authorization.target, authorization.pool)
                         });
                     }
-                    if let Some(client) = state.clients.get_mut(&authorization.target) {
+                    if let Some(client) = self.clients.get_mut(&authorization.target) {
                         client.exec_mut(|client| {
                             client.reject_peer_pool(authorization.initiator, authorization.pool)
                         });
@@ -150,15 +164,15 @@ impl ReferenceState {
             Transition::SetInternetResourceState {
                 client_id: client,
                 active,
-            } => state.clients.get_mut(client).unwrap().exec_mut(|client| {
+            } => self.clients.get_mut(client).unwrap().exec_mut(|client| {
                 client.set_internet_resource_state(*active);
             }),
             Transition::SendDnsQuery { client_id, query } => {
                 let upstream_do53 = portal.upstream_do53();
-                let global_dns_records = &state.global_dns_records;
-                let icmp_error_hosts = &state.icmp_error_hosts;
+                let global_dns_records = &self.global_dns_records;
+                let icmp_error_hosts = &self.icmp_error_hosts;
 
-                state.clients.get_mut(client_id).unwrap().exec_mut(|c| {
+                self.clients.get_mut(client_id).unwrap().exec_mut(|c| {
                     c.on_dns_query(query, upstream_do53, global_dns_records, icmp_error_hosts);
                 });
             }
@@ -169,7 +183,7 @@ impl ReferenceState {
                 transport,
                 ..
             } => {
-                state.clients.get_mut(client_id).unwrap().exec_mut(|c| {
+                self.clients.get_mut(client_id).unwrap().exec_mut(|c| {
                     c.on_dns_resource_ptr_query(dns_server, *query_id, *transport);
                 });
             }
@@ -182,7 +196,7 @@ impl ReferenceState {
                 identifier,
                 probe_id,
             } => {
-                let outcome = state.record_probe(
+                let outcome = self.record_probe(
                     portal,
                     *probe_id,
                     *client_id,
@@ -205,7 +219,7 @@ impl ReferenceState {
                             next_seq: Seq(seq.0.wrapping_add(1)),
                             route,
                         };
-                        let previous = state.icmp_flows.insert(*flow_id, flow);
+                        let previous = self.icmp_flows.insert(*flow_id, flow);
                         assert!(previous.is_none(), "ICMP flow IDs must be unique");
                     }
                     ExpectedOutcome::Dropped => {}
@@ -218,7 +232,7 @@ impl ReferenceState {
                 probe_id,
             } => {
                 let flow = {
-                    let flow = state
+                    let flow = self
                         .icmp_flows
                         .get_mut(flow_id)
                         .expect("reused ICMP flow must exist");
@@ -228,7 +242,7 @@ impl ReferenceState {
                     flow.clone()
                 };
 
-                match state.record_icmp_probe(portal, *probe_id, &flow, *seq, now) {
+                match self.record_icmp_probe(portal, *probe_id, &flow, *seq, now) {
                     ExpectedOutcome::RoundTripCompleted { .. } => {}
                     ExpectedOutcome::Dropped => {
                         panic!("reused ICMP route must complete a round trip")
@@ -251,7 +265,7 @@ impl ReferenceState {
                 dport,
                 probe_id,
             } => {
-                let outcome = state.record_probe(
+                let outcome = self.record_probe(
                     portal,
                     *probe_id,
                     *client_id,
@@ -274,7 +288,7 @@ impl ReferenceState {
                             dport: *dport,
                             route,
                         };
-                        let previous = state.udp_flows.insert(*flow_id, flow);
+                        let previous = self.udp_flows.insert(*flow_id, flow);
                         assert!(previous.is_none(), "UDP flow IDs must be unique");
                     }
                     ExpectedOutcome::Dropped => {}
@@ -282,13 +296,13 @@ impl ReferenceState {
                 }
             }
             Transition::SendUdpPacketOnExistingFlow { flow_id, probe_id } => {
-                let flow = state
+                let flow = self
                     .udp_flows
                     .get(flow_id)
                     .expect("reused UDP flow must exist")
                     .clone();
 
-                match state.record_udp_probe(portal, *probe_id, &flow, now) {
+                match self.record_udp_probe(portal, *probe_id, &flow, now) {
                     ExpectedOutcome::RoundTripCompleted { .. } => {}
                     ExpectedOutcome::Dropped => {
                         panic!("reused UDP route must complete a round trip")
@@ -309,18 +323,14 @@ impl ReferenceState {
                 sport,
                 dport,
             } => {
-                let outcome = state.dispatch(portal, *client_id, *src, dst, Protocol::Tcp(dport.0));
+                let outcome = self.dispatch(portal, *client_id, *src, dst, Protocol::Tcp(dport.0));
 
-                state
-                    .clients
-                    .get_mut(client_id)
-                    .unwrap()
-                    .exec_mut(|client| {
-                        client.expect_tcp_outcome(*src, dst.clone(), *sport, *dport, outcome);
-                    });
+                self.clients.get_mut(client_id).unwrap().exec_mut(|client| {
+                    client.expect_tcp_outcome(*src, dst.clone(), *sport, *dport, outcome);
+                });
             }
             Transition::UpdateSystemDnsServers { servers } => {
-                for client in state.clients.values_mut() {
+                for client in self.clients.values_mut() {
                     client.exec_mut(|client| client.set_system_dns_resolvers(servers));
                 }
             }
@@ -340,12 +350,12 @@ impl ReferenceState {
                 // out classic ICE flows.
                 let all_iceless = portal.iceless();
 
-                let client = state.clients.get_mut(client_id).unwrap();
-                state.network.remove_host(client);
+                let client = self.clients.get_mut(client_id).unwrap();
+                self.network.remove_host(client);
                 client.ip4.clone_from(ip4);
                 client.ip6.clone_from(ip6);
                 client.migrate_nat(*nat_ip4);
-                let added = state.network.add_host(*client_id, client);
+                let added = self.network.add_host(*client_id, client);
                 debug_assert!(added);
 
                 // When roaming, we are not connected to any resource and wait for the next packet to re-establish a connection.
@@ -361,7 +371,7 @@ impl ReferenceState {
                 // The peers lose their connections to the roaming client, and their authorizations
                 // towards it with them.
                 if !all_iceless {
-                    for (id, peer) in &mut state.clients {
+                    for (id, peer) in &mut self.clients {
                         if id != client_id {
                             peer.exec_mut(|peer| peer.forget_peer_authorizations(*client_id));
                         }
@@ -371,15 +381,14 @@ impl ReferenceState {
             Transition::ReconnectPortal { client_id } => {
                 // Reconnecting to the portal should have no noticeable impact on the data plane.
                 // We do re-add all resources though so depending on the order they are added in, overlapping CIDR resources may change.
-                state
-                    .clients
+                self.clients
                     .get_mut(client_id)
                     .unwrap()
                     .exec_mut(|c| c.readd_all_resources());
             }
-            Transition::DeployNewRelays(new_relays) => state.deploy_new_relays(new_relays),
+            Transition::DeployNewRelays(new_relays) => self.deploy_new_relays(new_relays),
             Transition::RebootRelaysWhilePartitioned(new_relays) => {
-                state.reboot_relays_while_partitioned(new_relays)
+                self.reboot_relays_while_partitioned(new_relays)
             }
             Transition::Idle => {}
             Transition::PartitionRelaysFromPortal => {
@@ -388,18 +397,18 @@ impl ReferenceState {
                 // and probes revive the path. Classic ICE flows disconnect for
                 // every pairing that cannot fall back to a direct path.
                 if !portal.iceless() {
-                    let gateway_edges = state
+                    let gateway_edges = self
                         .gateways
                         .iter()
                         .map(|(id, g)| (*id, (g.edge_config(), g.ip4.is_some(), g.ip6.is_some())))
                         .collect::<BTreeMap<_, _>>();
-                    let client_edges = state
+                    let client_edges = self
                         .clients
                         .iter()
                         .map(|(id, c)| (*id, (c.edge_config(), c.ip4.is_some(), c.ip6.is_some())))
                         .collect::<BTreeMap<_, _>>();
 
-                    for (client_id, client) in state.clients.iter_mut() {
+                    for (client_id, client) in self.clients.iter_mut() {
                         let client_edge = client.edge_config();
                         let client_has_ip4 = client.ip4.is_some();
                         let client_has_ip6 = client.ip6.is_some();
@@ -443,27 +452,27 @@ impl ReferenceState {
                 }
             }
             Transition::DeauthorizeWhileGatewayIsPartitioned(resource) => {
-                for client in state.clients.values_mut() {
+                for client in self.clients.values_mut() {
                     client.exec_mut(|client| client.remove_resource(resource));
                 }
-                state.expect_gateway_connections_closed(portal, *resource);
+                self.expect_gateway_connections_closed(portal, *resource);
             }
             Transition::ExpirePeerAuthorizations {
                 client,
                 peer,
                 pools,
             } => {
-                state.clients.get_mut(peer).unwrap().exec_mut(|receiver| {
+                self.clients.get_mut(peer).unwrap().exec_mut(|receiver| {
                     for pool in pools {
                         receiver.expire_inbound_peer_pool(*client, *pool);
                     }
                 });
             }
             Transition::RevokeGatewayAuthorization(resource) => {
-                state.expect_gateway_connections_closed(portal, *resource);
+                self.expect_gateway_connections_closed(portal, *resource);
             }
             Transition::RestartClient { client_id, key } => {
-                for (id, client) in &mut state.clients {
+                for (id, client) in &mut self.clients {
                     if id == client_id {
                         client.exec_mut(|c| c.restart(*key, now));
                     } else {
@@ -472,13 +481,12 @@ impl ReferenceState {
                 }
             }
             Transition::UpdateDnsRecords { domain, records } => {
-                state
-                    .global_dns_records
+                self.global_dns_records
                     .replace(domain.clone(), records.clone());
             }
         };
 
-        state
+        self
     }
 
     /// A Gateway that revoking `resource` left with nothing closes the connection with a
@@ -540,25 +548,6 @@ impl ReferenceState {
                 }
             });
         }
-    }
-
-    /// Drops the bookkeeping that `transition` makes stale before it is applied.
-    pub fn invalidate(state: &mut ReferenceState, portal: &StubPortal, transition: &Transition) {
-        state.expected_probes.clear();
-
-        if transition.clears_packets() {
-            for client in state.clients.values_mut() {
-                client.exec_mut(|c| c.clear_packets())
-            }
-        }
-
-        let iceless = portal.iceless();
-        for _ in state.icmp_flows.extract_if(.., |_, flow| {
-            !transition.retains_flow(flow.client_id, flow.route, iceless)
-        }) {}
-        for _ in state.udp_flows.extract_if(.., |_, flow| {
-            !transition.retains_flow(flow.client_id, flow.route, iceless)
-        }) {}
     }
 
     fn record_icmp_probe(
