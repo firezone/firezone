@@ -116,7 +116,7 @@ pub enum Transition {
         peer: ClientId,
         pools: BTreeSet<ResourceId>,
     },
-    /// Delivers a peer grant revocation only to the receiving client.
+    /// Revokes one of several peer grants on the receiver while the sender retains its grant.
     RevokePeerAuthorization {
         client: ClientId,
         peer: ClientId,

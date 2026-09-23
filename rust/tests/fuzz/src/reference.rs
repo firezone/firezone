@@ -149,14 +149,25 @@ impl ReferenceState {
                 revoked,
             } => {
                 for authorization in revoked {
+                    let filters = portal
+                        .device_pool_filters(authorization.pool)
+                        .unwrap_or_default();
                     if let Some(client) = self.clients.get_mut(&authorization.initiator) {
                         client.exec_mut(|client| {
-                            client.reject_peer_pool(authorization.target, authorization.pool)
+                            client.reject_peer_pool(
+                                authorization.target,
+                                authorization.pool,
+                                filters.clone(),
+                            )
                         });
                     }
                     if let Some(client) = self.clients.get_mut(&authorization.target) {
                         client.exec_mut(|client| {
-                            client.reject_peer_pool(authorization.initiator, authorization.pool)
+                            client.reject_peer_pool(
+                                authorization.initiator,
+                                authorization.pool,
+                                filters,
+                            )
                         });
                     }
                 }
@@ -474,7 +485,7 @@ impl ReferenceState {
             Transition::RevokePeerAuthorization { client, peer, pool } => {
                 let filters = portal.device_pool_filters(*pool).unwrap_or_default();
                 self.clients.get_mut(peer).unwrap().exec_mut(|receiver| {
-                    receiver.revoke_inbound_peer_pool(*client, *pool, filters);
+                    receiver.reject_peer_pool(*client, *pool, filters);
                 });
             }
             Transition::RevokeGatewayAuthorization(resource) => {

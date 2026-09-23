@@ -14,10 +14,11 @@ use std::time::Instant;
 /// Peer-level state of a connection with another Client.
 ///
 /// Contrary to peer-level state of a connection with a Gateway,
-/// we need to track two different things here:
+/// we need to track three different things here:
 ///
 /// 1. Traffic filters of resources that give the _remote_ Client access to our TUN device.
 /// 2. Outbound layer-4 connections so we can allow return traffic back in.
+/// 3. Revoked inbound grants so denied traffic that they permitted can request fresh access.
 ///
 /// Doing both of these ensures that event Clients which have access to each other via
 /// different device pools can only access what they have been granted access to.
@@ -33,6 +34,7 @@ pub(crate) struct ClientOnClient {
     /// When this map is empty, no inbound traffic from this peer is admitted
     /// unless it matches a recorded outbound flow (return traffic).
     resources: ExpiringMap<ResourceId, ResourceOnClient>,
+    /// Filters of revoked grants, retained until this peer receives them again.
     rejected_resources: BTreeMap<ResourceId, FilterEngine>,
     /// Cached OR of every resource's filters; recomputed whenever `resources` changes.
     inbound_filter: FilterEngine,
