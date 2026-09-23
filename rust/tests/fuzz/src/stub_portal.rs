@@ -240,7 +240,7 @@ impl StubPortal {
             Transition::SendUdpPacketOnNewFlow { .. } => {}
             Transition::SendUdpPacketOnExistingFlow { .. } => {}
             Transition::ConnectTcp { .. } => {}
-            Transition::SendDnsQuery { .. } => {}
+            Transition::SendDnsQueries(_) => {}
             Transition::SendDnsResourcePtrQuery { .. } => {}
             Transition::UpdateSystemDnsServers { .. } => {}
             Transition::RoamClient { .. } => {}

@@ -167,14 +167,16 @@ impl ReferenceState {
             } => self.clients.get_mut(client).unwrap().exec_mut(|client| {
                 client.set_internet_resource_state(*active);
             }),
-            Transition::SendDnsQuery { client_id, query } => {
+            Transition::SendDnsQueries(queries) => {
                 let upstream_do53 = portal.upstream_do53();
                 let global_dns_records = &self.global_dns_records;
                 let icmp_error_hosts = &self.icmp_error_hosts;
 
-                self.clients.get_mut(client_id).unwrap().exec_mut(|c| {
-                    c.on_dns_query(query, upstream_do53, global_dns_records, icmp_error_hosts);
-                });
+                for (client_id, query) in queries {
+                    self.clients.get_mut(client_id).unwrap().exec_mut(|c| {
+                        c.on_dns_query(query, upstream_do53, global_dns_records, icmp_error_hosts);
+                    });
+                }
             }
             Transition::SendDnsResourcePtrQuery {
                 client_id,
