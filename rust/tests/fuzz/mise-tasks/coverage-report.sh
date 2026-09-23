@@ -8,7 +8,9 @@ cd "$(dirname "$0")/.."
 
 target="${usage_target:?}"
 profile="coverage/$target/coverage.profdata"
-binary="../../target/x86_64-unknown-linux-gnu/release/$target"
+# shellcheck source=rust/tests/fuzz/helpers.sh
+source ./helpers.sh
+binary="$coverage_binary"
 report_dir="coverage/$target/html"
 llvm_cov="$(rustc --print sysroot)/lib/rustlib/x86_64-unknown-linux-gnu/bin/llvm-cov"
 

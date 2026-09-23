@@ -1,10 +1,14 @@
 #!/usr/bin/env bash
-#MISE description="Reduce a crashing input of a fuzz target"
-#MISE depends=["install-toolchain"]
+#MISE description="Reduce a crashing input with AFL++"
+#MISE depends=["install-afl"]
 #MISE raw=true
 #USAGE arg "<target>"
 #USAGE arg "<testcase>"
 set -euo pipefail
 cd "$(dirname "$0")/.."
-
-./interruptible.sh cargo fuzz tmin --sanitizer none --target x86_64-unknown-linux-gnu --fuzz-dir . --target-dir ../../target "${usage_target:?}" "${usage_testcase:?}"
+target="${usage_target:?}"
+# shellcheck source=rust/tests/fuzz/helpers.sh
+source ./helpers.sh
+build_afl
+AFL_FUZZER_LOOPCOUNT=1 cargo afl tmin -i "${usage_testcase:?}" \
+    -o "${usage_testcase}.minimized" -t 10000 -m none -- "$afl_binary"

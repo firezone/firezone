@@ -84,7 +84,7 @@ pub(super) fn generate(
     let listed_device_pools = state.listed_device_pool_ids_on_any_client(portal);
 
     // Build the legal action list. Data-plane actions stay more frequent because
-    // they drive most of the tunnel state machine; libFuzzer chooses the concrete
+    // they drive most of the tunnel state machine; the fuzzer chooses the concrete
     // destination, protocol and fields from subsequent bytes.
     use TransitionKind as K;
 

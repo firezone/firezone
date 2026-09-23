@@ -5,9 +5,6 @@ edition = { workspace = true }
 license = { workspace = true }
 publish = false
 
-[package.metadata]
-cargo-fuzz = true
-
 [[bin]]
 name = "ip-packet"
 path = "fuzz_targets/ip_packet.rs"
@@ -37,6 +34,7 @@ doc = false
 bench = false
 
 [dependencies]
+afl = { workspace = true }
 anyhow = { workspace = true }
 arbitrary = { workspace = true, features = ["derive"] }
 bufferpool = { workspace = true }
@@ -53,10 +51,10 @@ ip_network = { workspace = true }
 ip_network_table = { workspace = true }
 itertools = { workspace = true, features = ["use_std"] }
 l3-tcp = { workspace = true }
-libfuzzer-sys = { workspace = true }
 rand = { workspace = true }
 relay-proto = { workspace = true }
 secrecy = { workspace = true, features = ["serde"] }
+seeded-rng = { workspace = true }
 serde_json = { workspace = true }
 sha2 = { workspace = true }
 smallvec = { workspace = true }

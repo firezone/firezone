@@ -1,5 +1,3 @@
-#![no_main]
-
 //! Drives the relay's message handling with arbitrary datagrams.
 //!
 //! `handle_client_input` is what the relay calls on every datagram, so anything
@@ -18,7 +16,6 @@
 
 use arbitrary::Arbitrary;
 use bytecodec::{DecodeExt as _, EncodeExt as _};
-use libfuzzer_sys::fuzz_target;
 use rand::{SeedableRng as _, rngs::StdRng};
 use relay_proto::{
     Attribute, ClientSocket, Command, Server,
@@ -41,7 +38,23 @@ struct Input<'a> {
     datagram: &'a [u8],
 }
 
-fuzz_target!(|input: Input<'_>| {
+fn main() -> anyhow::Result<()> {
+    fuzz::run(|data| {
+        if data.len() < Input::size_hint(0).0 {
+            return;
+        }
+
+        let Ok(input) = Input::arbitrary_take_rest(arbitrary::Unstructured::new(data)) else {
+            return;
+        };
+
+        test(input);
+    })?;
+
+    Ok(())
+}
+
+fn test(input: Input<'_>) {
     let mut server = Server::new(RELAY_IP, StdRng::seed_from_u64(0), 3478, 49152..=65535);
     server.set_accounts([AccountId::from(Uuid::nil())]);
     let client = ClientSocket::new(CLIENT);
@@ -65,7 +78,7 @@ fuzz_target!(|input: Input<'_>| {
     };
 
     server.handle_client_input(&datagram, client, now, now_utc);
-});
+}
 
 /// Replaces the fields a fuzzer cannot guess, leaving the rest of the message alone.
 fn repair(datagram: &[u8], nonce: Option<&Nonce>, server: &Server<StdRng>) -> Option<Vec<u8>> {

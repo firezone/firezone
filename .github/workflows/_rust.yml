@@ -142,6 +142,12 @@ jobs:
       - uses: ./.github/actions/setup-rust-sccache
         with:
           azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
+      # cargo-afl compiles its bundled runtime during mise installation.
+      - name: Install fuzzing toolchain
+        run: |
+          RUSTUP_TOOLCHAIN="$(sed -n 's/^RUSTUP_TOOLCHAIN = "\(.*\)"/\1/p' tests/fuzz/mise.toml)"
+          export RUSTUP_TOOLCHAIN
+          bash tests/fuzz/mise-tasks/install-toolchain.sh
       - uses: ./.github/actions/setup-mise
         with:
           install_args: --cd rust/tests/fuzz

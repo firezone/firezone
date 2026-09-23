@@ -1,23 +1,66 @@
 #!/usr/bin/env bash
-#MISE description="Run a fuzz target with its target-specific defaults; extra args are passed to libFuzzer"
-#MISE depends=["install-toolchain", "unpack-corpus {{usage.target}}"]
+#MISE description="Discover coverage with AFL++; extra args are passed to each worker"
+#MISE depends=["install-afl", "unpack-corpus {{usage.target}}"]
 #MISE raw=true
 #USAGE arg "<target>"
-#USAGE arg "[libfuzzer_args]…" var=#true
+#USAGE flag "--workers <workers>" default="1"
+#USAGE flag "--seconds <seconds>" default="60"
+#USAGE arg "[afl_args]…" var=#true
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 target="${usage_target:?}"
+# shellcheck source=rust/tests/fuzz/helpers.sh
+source ./helpers.sh
+workers="${usage_workers:-1}"
+seconds="${usage_seconds:-60}"
+[[ "$workers" =~ ^[1-9][0-9]*$ && "$seconds" =~ ^[1-9][0-9]*$ ]] || {
+    echo "workers and seconds must be positive integers" >&2
+    exit 1
+}
+eval "set -- ${usage_afl_args:-}"
+build_afl
 
-if [ -n "${usage_libfuzzer_args:-}" ]; then
-    # `usage` joins variadic arguments as a shell-escaped string.
-    eval "set -- $usage_libfuzzer_args"
-else
-    set -- -max_total_time=60
+# Every discovery input starts from the forkserver's memory snapshot. Replay
+# uses an ordinary in-process loop because it does not select inputs by coverage.
+export AFL_FUZZER_LOOPCOUNT=1 AFL_NO_UI=1 AFL_SKIP_CPUFREQ=1
+ulimit -c 0
+max_length=4096
+if [ "$target" = tunnel-proto ] || [ "$target" = relay-proto ]; then
+    max_length=8192
 fi
+output="afl-output/$target"
+mkdir -p "$output"
+pids=()
+# shellcheck disable=SC2317
+cleanup() {
+    trap - EXIT INT TERM HUP
+    for pid in "${pids[@]}"; do kill -TERM -- "-$pid" 2>/dev/null || true; done
+    for pid in "${pids[@]}"; do wait "$pid" 2>/dev/null || true; done
+    collect_findings all
+}
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM HUP
 
-if [ "$target" = "tunnel-proto" ] || [ "$target" = "relay-proto" ]; then
-    set -- -max_len=8192 -len_control=0 "$@"
-fi
-
-./interruptible.sh cargo fuzz run --sanitizer none --target x86_64-unknown-linux-gnu --fuzz-dir . --target-dir ../../target "$target" -- "$@"
+# Separate process groups let cancellation stop cargo-afl and all its children.
+set -m
+for ((worker = 0; worker < workers; worker++)); do
+    name="worker-$worker"
+    mode=-S
+    [ "$worker" -ne 0 ] || mode=-M
+    input="corpus/$target"
+    # Resume a previous campaign without discarding queues or crash artifacts.
+    [ ! -d "$output/$name/queue" ] || input=-
+    cargo afl fuzz -i "$input" -o "$output" "$mode" "$name" \
+        -V "$seconds" -G "$max_length" -t 10000 -m none "$@" -- "$afl_binary" \
+        >"$output/$name.log" 2>&1 &
+    pids+=("$!")
+done
+set +m
+status=0
+for pid in "${pids[@]}"; do wait "$pid" || status=$?; done
+for ((worker = 0; worker < workers; worker++)); do
+    tail -n 20 "$output/worker-$worker.log"
+done
+exit "$status"

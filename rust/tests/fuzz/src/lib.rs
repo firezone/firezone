@@ -16,6 +16,7 @@ mod ref_client;
 mod ref_gateway;
 mod reference;
 mod resource;
+mod runner;
 mod sim_client;
 mod sim_gateway;
 mod sim_net;
@@ -24,6 +25,8 @@ mod stub_portal;
 mod sut;
 mod tcp;
 mod transition;
+
+pub use runner::run;
 
 type QueryId = u16;
 

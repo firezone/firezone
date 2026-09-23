@@ -1,5 +1,3 @@
-#![no_main]
-
 //! Exercises the X.509 client identity parser with arbitrary DER.
 //!
 //! Every claim the clients and the portal act on is asserted against the certificate it
@@ -8,13 +6,28 @@
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use arbitrary::Arbitrary;
-use libfuzzer_sys::fuzz_target;
 use sha2::{Digest as _, Sha256};
 use x509_claims::{
     Claim, DEVICE_CERTIFICATE_COMMON_NAME, ParsedCertificate, ValidationError, parse_certificate,
 };
 
-fuzz_target!(|input: Input| {
+fn main() -> anyhow::Result<()> {
+    fuzz::run(|data| {
+        if data.len() < Input::size_hint(0).0 {
+            return;
+        }
+
+        let Ok(input) = Input::arbitrary_take_rest(arbitrary::Unstructured::new(data)) else {
+            return;
+        };
+
+        test(input);
+    })?;
+
+    Ok(())
+}
+
+fn test(input: Input<'_>) {
     let Some(certificate) = parse_certificate(input.der, instant(input.seconds_since_epoch)) else {
         return;
     };
@@ -35,9 +48,9 @@ fuzz_target!(|input: Input| {
     assert_detail_fields_are_labelled(&certificate);
     assert_device_certificate_follows_from_the_common_name(&certificate);
     assert_parsing_is_deterministic(&certificate, input.der, input.seconds_since_epoch);
-});
+}
 
-/// The certificate comes last so that it takes the rest of the input: libFuzzer's
+/// The certificate comes last so that it takes the rest of the input: the fuzzer's
 /// mutations then apply to the DER instead of to the parameters in front of it.
 #[derive(Arbitrary, Debug)]
 struct Input<'a> {

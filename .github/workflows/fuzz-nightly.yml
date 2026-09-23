@@ -73,6 +73,12 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-rust-sccache
+      # cargo-afl compiles its bundled runtime during mise installation.
+      - name: Install fuzzing toolchain
+        run: |
+          RUSTUP_TOOLCHAIN="$(sed -n 's/^RUSTUP_TOOLCHAIN = "\(.*\)"/\1/p' tests/fuzz/mise.toml)"
+          export RUSTUP_TOOLCHAIN
+          bash tests/fuzz/mise-tasks/install-toolchain.sh
       - uses: ./.github/actions/setup-mise
         with:
           install_args: --cd rust/tests/fuzz
@@ -108,13 +114,13 @@ jobs:
       # The phases `grow` runs locally, one step each: each carries its own
       # budget and each runs whatever the one before it did, so neither an
       # overrun nor a failure costs the night what the other phases found.
+      # This runner is disposable. Bypass Ubuntu's crash-reporting pipe so AFL
+      # receives crashing children promptly instead of classifying them as hangs.
+      - name: Configure crash reporting for AFL++
+        run: sudo sysctl -w kernel.core_pattern=core
       - name: Fuzz for new coverage
-        # `-fork` re-merges the whole seed corpus before discovering anything
-        # and `-max_total_time` does not bound that startup, so the budget below
-        # is what caps this phase. `-ignore_crashes=1` keeps a crash in fork
-        # mode from ending the run at the first failing input it finds.
         timeout-minutes: 45
-        run: mise run //rust/tests/fuzz:fuzz ${{ matrix.fuzz-target }} -ignore_crashes=1 -fork="$(nproc)" -max_total_time=1800
+        run: mise run //rust/tests/fuzz:fuzz ${{ matrix.fuzz-target }} --workers "$(nproc)" --seconds 1800
       - name: Minimize the corpus
         if: ${{ !cancelled() }}
         timeout-minutes: 20
