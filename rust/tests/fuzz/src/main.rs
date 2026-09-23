@@ -1,15 +1,25 @@
-//! Runs AFL++ targets and replays their saved inputs.
+//! Runs the protocol fuzz targets and replays their saved inputs.
 #![allow(clippy::print_stdout, clippy::print_stderr)]
 
 use std::{path::PathBuf, time::Instant};
 
 use anyhow::Context as _;
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 
-/// Runs an AFL++ target or replays saved inputs in the current process.
-pub fn run(target: impl Fn(&[u8]) + std::panic::RefUnwindSafe) -> anyhow::Result<()> {
+mod targets;
+
+fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
-    if !cli.replay {
+    let target: fn(&[u8]) = match cli.target {
+        Target::IpPacket => targets::ip_packet::test,
+        Target::RelayProto => targets::relay_proto::test,
+        Target::TunnelProto => {
+            targets::tunnel_proto::init_clock();
+            targets::tunnel_proto::test
+        }
+        Target::X509Claims => targets::x509_claims::test,
+    };
+    if cli.replay.is_empty() {
         seeded_rng::reset(0);
 
         #[cfg(fuzzing)]
@@ -23,7 +33,7 @@ pub fn run(target: impl Fn(&[u8]) + std::panic::RefUnwindSafe) -> anyhow::Result
         anyhow::bail!("build with `cargo afl build` to fuzz, or pass --replay PATH...");
     }
 
-    let inputs = load_inputs(cli.paths)?;
+    let inputs = load_inputs(cli.replay)?;
     seeded_rng::reset(0);
 
     let started = Instant::now();
@@ -48,17 +58,25 @@ pub fn run(target: impl Fn(&[u8]) + std::panic::RefUnwindSafe) -> anyhow::Result
 #[derive(Parser)]
 #[command(about = "Runs an AFL++ target or replays saved inputs")]
 struct Cli {
-    /// Replays saved inputs in one process rather than starting the forkserver.
-    #[arg(long, requires = "paths")]
-    replay: bool,
+    /// Protocol or parser to exercise.
+    #[arg(value_enum)]
+    target: Target,
+
+    /// Replays input files or corpus directories in one process.
+    #[arg(long, value_name = "PATH", num_args = 1..)]
+    replay: Vec<PathBuf>,
 
     /// Replays the entire corpus this many times.
     #[arg(long, default_value_t = 1, requires = "replay", value_parser = clap::value_parser!(u64).range(1..))]
     repeat: u64,
+}
 
-    /// Input files or directories containing corpus files.
-    #[arg(value_name = "PATH", requires = "replay")]
-    paths: Vec<PathBuf>,
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
+enum Target {
+    IpPacket,
+    RelayProto,
+    TunnelProto,
+    X509Claims,
 }
 
 fn load_inputs(paths: Vec<PathBuf>) -> anyhow::Result<Vec<(PathBuf, Vec<u8>)>> {
@@ -101,29 +119,31 @@ mod tests {
     use super::*;
 
     #[test]
-    fn no_arguments_selects_fuzzing() {
-        let cli = Cli::try_parse_from(["target"]).unwrap();
+    fn target_without_replay_selects_fuzzing() {
+        let cli = Cli::try_parse_from(["fuzz", "tunnel-proto"]).unwrap();
 
-        assert!(!cli.replay);
+        assert_eq!(cli.target, Target::TunnelProto);
+        assert!(cli.replay.is_empty());
         assert_eq!(cli.repeat, 1);
-        assert!(cli.paths.is_empty());
     }
 
     #[test]
     fn replay_requires_inputs_and_positive_repeats() {
         for args in [
-            vec!["target", "--replay"],
-            vec!["target", "--replay", "--repeat", "0", "corpus"],
-            vec!["target", "--repeat", "3"],
-            vec!["target", "corpus"],
+            vec!["fuzz"],
+            vec!["fuzz", "unknown"],
+            vec!["fuzz", "ip-packet", "--replay"],
+            vec!["fuzz", "ip-packet", "--replay", "corpus", "--repeat", "0"],
+            vec!["fuzz", "ip-packet", "--repeat", "3"],
         ] {
             assert!(Cli::try_parse_from(args).is_err());
         }
-        let cli = Cli::try_parse_from(["target", "--replay", "--repeat", "3", "corpus"]).unwrap();
+        let cli = Cli::try_parse_from(["fuzz", "ip-packet", "--replay", "corpus", "--repeat", "3"])
+            .unwrap();
 
-        assert!(cli.replay);
+        assert_eq!(cli.target, Target::IpPacket);
         assert_eq!(cli.repeat, 3);
-        assert_eq!(cli.paths, vec![PathBuf::from("corpus")]);
+        assert_eq!(cli.replay, vec![PathBuf::from("corpus")]);
     }
 
     #[test]

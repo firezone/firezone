@@ -13,6 +13,6 @@ build_replay
 shopt -s nullglob
 for artifact in "artifacts/$target"/crashes-* "artifacts/$target"/hangs-*; do
     echo "::group::Scenario for ${artifact##*/}"
-    RUST_LOG="${RUST_LOG:-debug}" "$replay_binary" --replay "$artifact" || true
+    RUST_LOG="${RUST_LOG:-debug}" "$replay_binary" "$target" --replay "$artifact" || true
     echo "::endgroup::"
 done

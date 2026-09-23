@@ -53,7 +53,7 @@ for ((worker = 0; worker < workers; worker++)); do
     # Resume a previous campaign without discarding queues or crash artifacts.
     [ ! -d "$output/$name/queue" ] || input=-
     cargo afl fuzz -i "$input" -o "$output" "$mode" "$name" \
-        -V "$seconds" -G "$max_length" -t 10000 -m none "$@" -- "$afl_binary" \
+        -V "$seconds" -G "$max_length" -t 10000 -m none "$@" -- "$afl_binary" "$target" \
         >"$output/$name.log" 2>&1 &
     pids+=("$!")
 done

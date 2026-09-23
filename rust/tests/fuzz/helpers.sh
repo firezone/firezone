@@ -3,23 +3,41 @@
 # shellcheck disable=SC2034
 # Shared paths for the discovery, replay, and source-coverage builds.
 fuzz_target_dir="${FUZZ_TARGET_DIR:-$PWD/../../target}"
-afl_binary="$fuzz_target_dir/afl/x86_64-unknown-linux-gnu/release/${target:?}"
-replay_binary="$fuzz_target_dir/fuzz-replay/x86_64-unknown-linux-gnu/release/${target:?}"
-coverage_binary="$fuzz_target_dir/fuzz-coverage/x86_64-unknown-linux-gnu/release/${target:?}"
+afl_binary="$fuzz_target_dir/afl/x86_64-unknown-linux-gnu/release/fuzz"
+replay_binary="$fuzz_target_dir/fuzz-replay/x86_64-unknown-linux-gnu/release/fuzz"
+coverage_binary="$fuzz_target_dir/fuzz-coverage/x86_64-unknown-linux-gnu/release/fuzz"
 
 build_afl() {
-    cargo afl build --locked --release -p fuzz --bin "$target" \
+    cargo afl build --locked --release -p fuzz --bin fuzz \
         --target x86_64-unknown-linux-gnu --target-dir "$fuzz_target_dir/afl"
 }
 
 build_replay() {
-    RUSTFLAGS="${RUSTFLAGS:-} --cfg no_fuzzing" cargo build --locked --release -p fuzz --bin "$target" \
+    RUSTFLAGS="${RUSTFLAGS:-} --cfg no_fuzzing" cargo build --locked --release -p fuzz --bin fuzz \
         --target x86_64-unknown-linux-gnu --target-dir "$fuzz_target_dir/fuzz-replay"
+}
+
+# Scope a target's coverage to its workspace dependencies and test harness.
+coverage_sources() {
+    local packages crates directories directory
+    packages="$(cargo tree --locked -p "${target:?}" --edges normal --prefix none --format '{p}' \
+        --target x86_64-unknown-linux-gnu | cut -d ' ' -f 1 | sort -u | jq -Rsc 'split("\n")[:-1]')"
+    crates="$(mise run -q //rust:workspace-crates)"
+    directories="$(jq -r --argjson packages "$packages" \
+        '.[] | select(.name as $name | $packages | index($name)) | .dir' <<<"$crates")"
+    [ -n "$directories" ] || return 1
+    while IFS= read -r directory; do
+        find "$directory" -type f -name '*.rs'
+    done <<<"$directories"
+    printf '%s\n' "$PWD/src/main.rs" "$PWD/src/targets/${target//-/_}.rs" "$PWD/../seeded-rng/src/lib.rs"
+    if [ "$target" = tunnel-proto ]; then
+        find "$PWD/src" -type f -name '*.rs' ! -path "$PWD/src/targets/*" ! -name main.rs
+    fi
 }
 
 collect_findings() {
     local input name kind
-    mkdir -p "corpus/$target" "artifacts/$target"
+    mkdir -p "corpus/${target:?}" "artifacts/$target"
     shopt -s nullglob
     if [ "${1:-all}" = all ]; then
         for input in "afl-output/$target"/*/queue/id:*; do

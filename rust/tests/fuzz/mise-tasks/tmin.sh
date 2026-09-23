@@ -11,4 +11,4 @@ target="${usage_target:?}"
 source ./helpers.sh
 build_afl
 AFL_FUZZER_LOOPCOUNT=1 cargo afl tmin -i "${usage_testcase:?}" \
-    -o "${usage_testcase}.minimized" -t 10000 -m none -- "$afl_binary"
+    -o "${usage_testcase}.minimized" -t 10000 -m none -- "$afl_binary" "$target"

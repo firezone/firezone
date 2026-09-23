@@ -38,23 +38,15 @@ struct Input<'a> {
     datagram: &'a [u8],
 }
 
-fn main() -> anyhow::Result<()> {
-    fuzz_runner::run(|data| {
-        if data.len() < Input::size_hint(0).0 {
-            return;
-        }
+pub fn test(data: &[u8]) {
+    if data.len() < Input::size_hint(0).0 {
+        return;
+    }
 
-        let Ok(input) = Input::arbitrary_take_rest(arbitrary::Unstructured::new(data)) else {
-            return;
-        };
+    let Ok(input) = Input::arbitrary_take_rest(arbitrary::Unstructured::new(data)) else {
+        return;
+    };
 
-        test(input);
-    })?;
-
-    Ok(())
-}
-
-fn test(input: Input<'_>) {
     let mut server = Server::new(RELAY_IP, StdRng::seed_from_u64(0), 3478, 49152..=65535);
     server.set_accounts([AccountId::from(Uuid::nil())]);
     let client = ClientSocket::new(CLIENT);

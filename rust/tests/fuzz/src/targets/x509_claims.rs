@@ -11,23 +11,15 @@ use x509_claims::{
     Claim, DEVICE_CERTIFICATE_COMMON_NAME, ParsedCertificate, ValidationError, parse_certificate,
 };
 
-fn main() -> anyhow::Result<()> {
-    fuzz_runner::run(|data| {
-        if data.len() < Input::size_hint(0).0 {
-            return;
-        }
+pub fn test(data: &[u8]) {
+    if data.len() < Input::size_hint(0).0 {
+        return;
+    }
 
-        let Ok(input) = Input::arbitrary_take_rest(arbitrary::Unstructured::new(data)) else {
-            return;
-        };
+    let Ok(input) = Input::arbitrary_take_rest(arbitrary::Unstructured::new(data)) else {
+        return;
+    };
 
-        test(input);
-    })?;
-
-    Ok(())
-}
-
-fn test(input: Input<'_>) {
     let Some(certificate) = parse_certificate(input.der, instant(input.seconds_since_epoch)) else {
         return;
     };

@@ -3,23 +3,15 @@ use std::net::IpAddr;
 use arbitrary::Arbitrary;
 use ip_packet::{Ecn, IcmpError, IpPacket, IpPacketBuf, Protocol};
 
-fn main() -> anyhow::Result<()> {
-    fuzz_runner::run(|data| {
-        if data.len() < Input::size_hint(0).0 {
-            return;
-        }
+pub fn test(data: &[u8]) {
+    if data.len() < Input::size_hint(0).0 {
+        return;
+    }
 
-        let Ok(input) = Input::arbitrary_take_rest(arbitrary::Unstructured::new(data)) else {
-            return;
-        };
+    let Ok(input) = Input::arbitrary_take_rest(arbitrary::Unstructured::new(data)) else {
+        return;
+    };
 
-        test(input);
-    })?;
-
-    Ok(())
-}
-
-fn test(input: Input<'_>) {
     if input.data.len() > ip_packet::MAX_IP_SIZE {
         return;
     }

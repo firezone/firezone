@@ -8,6 +8,7 @@
 - `x509-claims`: parses arbitrary DER as a client identity certificate and exercises everything derived from it.
 
 [targets.json](targets.json) drives both pull-request CI and the nightly discovery matrix.
+The single `fuzz` executable selects a target with its first argument; each target retains its own corpus and coverage ceiling.
 
 ## Execution
 
@@ -21,6 +22,7 @@ Corpus replay and source-coverage measurement use an ordinary optimized Rust bin
 This avoids both fork overhead and AFL's coverage-feedback instrumentation on the CI path where no inputs are selected or mutated.
 The same target function and assertions run in both modes.
 Persistent replay can retain state between inputs, so it does not establish discovery determinism.
+Replay calls the target directly so any failing input fails the command and each completed batch exits normally to flush its LLVM profile.
 
 ## Setup
 
@@ -71,6 +73,7 @@ Their logs and `fuzzer_stats` remain in `afl-output/<target>`.
 Replay preloads and sorts the corpus, then reports completed iterations and iterations per second, excluding loading and compilation time.
 `--repeat` repeats the entire corpus in the same process.
 Builds use separate `rust/target/afl`, `rust/target/fuzz-replay`, and `rust/target/fuzz-coverage` directories; `FUZZ_TARGET_DIR` overrides their parent directory.
+Each build produces a `fuzz` executable, invoked as `fuzz <target>` for discovery or `fuzz <target> --replay <paths>...` for replay.
 
 ## Reproducing a crash
 
@@ -98,7 +101,8 @@ Pull-request CI only replays committed inputs and checks the existing uncovered-
 Coverage replay uses up to one worker per 100 inputs, capped by available CPUs; set `FUZZ_REPLAY_WORKERS=1` for a single worker.
 An increase in covered regions passes without updating that ceiling.
 An increase in uncovered regions fails.
-Coverage includes every linked workspace crate, not only the crate sharing the target's name.
+Coverage includes the selected crate, its workspace dependencies, and its test harness.
+The tunnel target also includes the simulation library.
 A failing replay identifies the input and does not replace the previous profile.
 
 The [nightly workflow](../../../.github/workflows/fuzz-nightly.yml) runs parallel AFL++ workers for 30 minutes per target, minimizes the combined corpus, measures source coverage, refreshes the ceiling, then adds crashes and packs the corpus.

@@ -10,4 +10,4 @@ target="${usage_target:?}"
 # shellcheck source=../helpers.sh
 source ./helpers.sh
 build_replay
-RUST_LOG="${RUST_LOG:-debug}" "$replay_binary" --replay "${usage_testcase:?}"
+RUST_LOG="${RUST_LOG:-debug}" "$replay_binary" "$target" --replay "${usage_testcase:?}"

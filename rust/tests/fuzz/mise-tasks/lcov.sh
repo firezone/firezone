@@ -18,11 +18,9 @@ if [ ! -f "$profile" ]; then
     exit 1
 fi
 
-# Fuzz builds instrument every dependency, including a from-source standard
-# library. Their regions would otherwise dominate what we report to Coveralls.
+sources="$(coverage_sources)"
+mapfile -t sources <<<"$sources"
 "$llvm_cov" export \
     -format=lcov \
     -instr-profile="$profile" \
-    -ignore-filename-regex="^${CARGO_HOME:-$HOME/.cargo}/" \
-    -ignore-filename-regex="^${RUSTUP_HOME:-$HOME/.rustup}/" \
-    "$binary"
+    "$binary" "${sources[@]}"

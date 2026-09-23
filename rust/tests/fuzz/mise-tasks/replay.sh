@@ -10,4 +10,4 @@ target="${usage_target:?}"
 # shellcheck source=../helpers.sh
 source ./helpers.sh
 build_replay
-"$replay_binary" --replay --repeat "${usage_repeat:-1}" "corpus/$target"
+"$replay_binary" "$target" --replay "corpus/$target" --repeat "${usage_repeat:-1}"
