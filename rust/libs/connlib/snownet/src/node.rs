@@ -108,6 +108,7 @@ pub struct Node<TId, RId> {
     last_now: Instant,
 
     buffer_pool: BufferPool<Vec<u8>>,
+    packet_pool: ip_packet::IpPacketPool,
 
     connection_count: Gauge<u64>,
 
@@ -211,6 +212,7 @@ where
             connections: Default::default(),
             buffered_candidates: Default::default(),
             buffer_pool: BufferPool::new(ip_packet::MAX_FZ_PAYLOAD, "snownet"),
+            packet_pool: ip_packet::IpPacketPool::new("snownet-ip"),
             connection_count: otel_instruments::connection_count(),
             unix_now: now,
             unix_ts,
@@ -361,7 +363,7 @@ where
 
         let mut agent = if use_iceless {
             tracing::debug!(%cid, "Using iceless path-agent for connection");
-            Agent::path()
+            Agent::path(self.packet_pool.clone())
         } else {
             tracing::debug!(%cid, "Using ICE agent for connection");
             Agent::ice(new_agent(ice_role))
@@ -884,6 +886,7 @@ where
             },
             disconnected_at: None,
             buffer_pool: self.buffer_pool.clone(),
+            packet_pool: self.packet_pool.clone(),
             last_proactive_handshake_sent_at: None,
             first_handshake_completed_at: None,
             default_ice_config,
@@ -1381,6 +1384,7 @@ struct Connection<RId> {
 
     #[debug(skip)]
     buffer_pool: BufferPool<Vec<u8>>,
+    packet_pool: ip_packet::IpPacketPool,
 
     poll_timeout_cache: TimeoutCache,
 }
@@ -1875,7 +1879,7 @@ where
             ControlFlow::Continue(packet) => packet,
         };
 
-        let mut ip_packet = IpPacketBuf::new();
+        let mut ip_packet = IpPacketBuf::new(&self.packet_pool);
 
         let control_flow = match self.tunnel.decapsulate_at(
             Some(from.ip()),

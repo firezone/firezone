@@ -608,7 +608,9 @@ mod tests {
     }
 
     fn udp_trigger(payload: u8) -> IpPacket {
+        let pool = ip_packet::IpPacketPool::new("test");
         ip_packet::make::udp_packet(
+            &pool,
             Ipv4Addr::LOCALHOST,
             Ipv4Addr::LOCALHOST,
             1,

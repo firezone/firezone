@@ -165,6 +165,7 @@ where
         .build()
         .context("Failed to create runtime")?
         .block_on(async move {
+            let pool = ip_packet::IpPacketPool::new("tun-ip");
             let fd = AsyncFd::with_interest(fd, tokio::io::Interest::READABLE)?;
             let mut batch = PacketBatch::default();
 
@@ -175,7 +176,7 @@ where
                 // channel item feeds a whole read burst into the state loop instead of
                 // one packet.
                 loop {
-                    let mut ip_packet_buf = IpPacketBuf::new();
+                    let mut ip_packet_buf = IpPacketBuf::new(&pool);
 
                     let len = match guard
                         .try_io(|fd| read(fd.get_ref().as_raw_fd(), &mut ip_packet_buf))

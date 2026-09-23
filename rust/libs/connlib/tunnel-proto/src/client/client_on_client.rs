@@ -288,7 +288,7 @@ impl ClientOnClient {
 
         if let Err(e) = self.inbound_filter.apply(packet.destination_protocol()) {
             tracing::debug!(filtered_packet = ?packet, "{e:#}");
-            let reply = ip_packet::make::icmp_dest_unreachable_prohibited(&packet)
+            let reply = ip_packet::make::icmp_dest_unreachable_prohibited(&packet.pool(), &packet)
                 .context("Failed to build ICMP prohibited reply")?;
             // Holding no authorization at all is the only case the peer can fix by
             // requesting a new one. Our filters denying the traffic is not, so we answer
@@ -446,6 +446,7 @@ mod tests {
 
     #[test]
     fn spoofed_source_is_rejected() {
+        let pool = ip_packet::IpPacketPool::new("test");
         let now = Instant::now();
         let mut peer = peer();
         peer.add_resource(
@@ -457,6 +458,7 @@ mod tests {
         );
 
         let spoofed = make::udp_packet(
+            &pool,
             IpAddr::V4(Ipv4Addr::new(100, 64, 0, 99)),
             our_v4(),
             40000,
@@ -470,6 +472,7 @@ mod tests {
 
     #[test]
     fn spoofed_destination_is_rejected() {
+        let pool = ip_packet::IpPacketPool::new("test");
         let now = Instant::now();
         let mut peer = peer();
         peer.add_resource(
@@ -481,6 +484,7 @@ mod tests {
         );
 
         let spoofed = make::udp_packet(
+            &pool,
             peer_v4(),
             IpAddr::V4(Ipv4Addr::new(100, 64, 0, 99)),
             40000,
@@ -494,23 +498,25 @@ mod tests {
 
     #[test]
     fn icmp_error_for_known_flow_is_forwarded() {
+        let pool = ip_packet::IpPacketPool::new("test");
         let now = Instant::now();
         let mut peer = peer();
 
-        let outbound = make::udp_packet(our_v4(), peer_v4(), 8080, 80, &[]).unwrap();
+        let outbound = make::udp_packet(&pool, our_v4(), peer_v4(), 8080, 80, &[]).unwrap();
         peer.record_outbound_as_originator(&outbound, now);
-        let icmp = make::icmp_dest_unreachable_prohibited(&outbound).unwrap();
+        let icmp = make::icmp_dest_unreachable_prohibited(&pool, &outbound).unwrap();
 
         assert!(is_send(peer.ensure_allowed_inbound(icmp, now).unwrap()));
     }
 
     #[test]
     fn icmp_error_for_unknown_flow_is_rejected() {
+        let pool = ip_packet::IpPacketPool::new("test");
         let now = Instant::now();
         let mut peer = peer();
 
-        let stray = make::udp_packet(our_v4(), peer_v4(), 8080, 80, &[]).unwrap();
-        let icmp = make::icmp_dest_unreachable_prohibited(&stray).unwrap();
+        let stray = make::udp_packet(&pool, our_v4(), peer_v4(), 8080, 80, &[]).unwrap();
+        let icmp = make::icmp_dest_unreachable_prohibited(&pool, &stray).unwrap();
 
         assert!(peer.ensure_allowed_inbound(icmp, now).is_err());
     }
@@ -535,13 +541,14 @@ mod tests {
 
     #[test]
     fn our_reply_admitted_for_flow_we_opened_without_authorization() {
+        let pool = ip_packet::IpPacketPool::new("test");
         let now = Instant::now();
         let mut peer = peer();
 
-        let outbound = make::udp_packet(our_v4(), peer_v4(), 8080, 80, &[]).unwrap();
+        let outbound = make::udp_packet(&pool, our_v4(), peer_v4(), 8080, 80, &[]).unwrap();
         peer.record_outbound_as_originator(&outbound, now);
 
-        let reply = make::udp_packet(peer_v4(), our_v4(), 80, 8080, &[]).unwrap();
+        let reply = make::udp_packet(&pool, peer_v4(), our_v4(), 80, 8080, &[]).unwrap();
         assert!(is_send(peer.ensure_allowed_inbound(reply, now).unwrap()));
     }
 
@@ -688,7 +695,9 @@ mod tests {
     }
 
     fn tcp_packet_to_us(dst_port: u16) -> IpPacket {
+        let pool = ip_packet::IpPacketPool::new("test");
         make::tcp_packet(
+            &pool,
             peer_v4(),
             our_v4(),
             50000,
@@ -756,7 +765,8 @@ mod tests {
     }
 
     fn udp_to(dport: u16) -> IpPacket {
-        make::udp_packet(peer_v4(), our_v4(), 40000, dport, &[]).unwrap()
+        let pool = ip_packet::IpPacketPool::new("test");
+        make::udp_packet(&pool, peer_v4(), our_v4(), 40000, dport, &[]).unwrap()
     }
 
     fn udp_port(port: u16) -> Vec<Filter> {

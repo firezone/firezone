@@ -241,47 +241,50 @@ mod tests {
 
     #[test]
     fn records_outbound_admits_reply() {
+        let pool = ip_packet::IpPacketPool::new("test");
         let mut ct = ConnTrack::default();
         let now = Instant::now();
 
-        let outbound = make::udp_packet(ip(10, 0, 0, 1), ip(10, 0, 0, 2), 53535, 8080, &[])
+        let outbound = make::udp_packet(&pool, ip(10, 0, 0, 1), ip(10, 0, 0, 2), 53535, 8080, &[])
             .expect("valid packet");
         ct.record_outbound_as_originator(&outbound, now);
 
-        let reply = make::udp_packet(ip(10, 0, 0, 2), ip(10, 0, 0, 1), 8080, 53535, &[])
+        let reply = make::udp_packet(&pool, ip(10, 0, 0, 2), ip(10, 0, 0, 1), 8080, 53535, &[])
             .expect("valid packet");
         assert!(ct.is_return_traffic(&reply));
     }
 
     #[test]
     fn unrelated_inbound_is_not_return_traffic() {
+        let pool = ip_packet::IpPacketPool::new("test");
         let mut ct = ConnTrack::default();
         let now = Instant::now();
 
-        let outbound = make::udp_packet(ip(10, 0, 0, 1), ip(10, 0, 0, 2), 53535, 8080, &[])
+        let outbound = make::udp_packet(&pool, ip(10, 0, 0, 1), ip(10, 0, 0, 2), 53535, 8080, &[])
             .expect("valid packet");
         ct.record_outbound_as_originator(&outbound, now);
 
         // Different source port — not the reply we expected.
-        let unrelated = make::udp_packet(ip(10, 0, 0, 2), ip(10, 0, 0, 1), 9999, 53535, &[])
+        let unrelated = make::udp_packet(&pool, ip(10, 0, 0, 2), ip(10, 0, 0, 1), 9999, 53535, &[])
             .expect("valid packet");
         assert!(!ct.is_return_traffic(&unrelated));
     }
 
     #[test]
     fn peer_opened_flow_is_not_return_traffic() {
+        let pool = ip_packet::IpPacketPool::new("test");
         let mut ct = ConnTrack::default();
         let now = Instant::now();
 
-        let inbound = make::udp_packet(ip(10, 0, 0, 2), ip(10, 0, 0, 1), 40000, 80, &[])
+        let inbound = make::udp_packet(&pool, ip(10, 0, 0, 2), ip(10, 0, 0, 1), 40000, 80, &[])
             .expect("valid packet");
         ct.record_inbound(&inbound, now);
 
-        let next = make::udp_packet(ip(10, 0, 0, 2), ip(10, 0, 0, 1), 40000, 80, &[1])
+        let next = make::udp_packet(&pool, ip(10, 0, 0, 2), ip(10, 0, 0, 1), 40000, 80, &[1])
             .expect("valid packet");
         assert!(!ct.is_return_traffic(&next));
 
-        let reply = make::udp_packet(ip(10, 0, 0, 1), ip(10, 0, 0, 2), 80, 40000, &[])
+        let reply = make::udp_packet(&pool, ip(10, 0, 0, 1), ip(10, 0, 0, 2), 80, 40000, &[])
             .expect("valid packet");
         assert!(ct.is_known_inbound_flow(&reply));
     }
@@ -292,14 +295,15 @@ mod tests {
     /// into every flow they opened.
     #[test]
     fn an_error_we_may_send_is_not_one_we_would_accept() {
+        let pool = ip_packet::IpPacketPool::new("test");
         let mut ct = ConnTrack::default();
         let now = Instant::now();
 
-        let inbound = make::udp_packet(ip(10, 0, 0, 2), ip(10, 0, 0, 1), 40000, 80, &[])
+        let inbound = make::udp_packet(&pool, ip(10, 0, 0, 2), ip(10, 0, 0, 1), 40000, 80, &[])
             .expect("valid packet");
         ct.record_inbound(&inbound, now);
 
-        let error = make::icmp_dest_unreachable_network(&inbound).expect("valid packet");
+        let error = make::icmp_dest_unreachable_network(&pool, &inbound).expect("valid packet");
 
         assert!(ct.is_known_outbound_error(&error));
         assert!(!ct.is_known_inbound_flow(&error));
@@ -307,10 +311,11 @@ mod tests {
 
     #[test]
     fn continued_traffic_keeps_initiated_flow_alive() {
+        let pool = ip_packet::IpPacketPool::new("test");
         let mut ct = ConnTrack::default();
         let start = Instant::now();
 
-        let outbound = make::udp_packet(ip(10, 0, 0, 1), ip(10, 0, 0, 2), 53535, 8080, &[])
+        let outbound = make::udp_packet(&pool, ip(10, 0, 0, 1), ip(10, 0, 0, 2), 53535, 8080, &[])
             .expect("valid packet");
         ct.record_outbound_as_originator(&outbound, start);
 
@@ -318,70 +323,75 @@ mod tests {
 
         ct.handle_timeout(start + UDP_TTL + Duration::from_secs(1));
 
-        let reply = make::udp_packet(ip(10, 0, 0, 2), ip(10, 0, 0, 1), 8080, 53535, &[])
+        let reply = make::udp_packet(&pool, ip(10, 0, 0, 2), ip(10, 0, 0, 1), 8080, 53535, &[])
             .expect("valid packet");
         assert!(ct.is_return_traffic(&reply));
     }
 
     #[test]
     fn reply_to_peer_opened_flow_does_not_create_exemption() {
+        let pool = ip_packet::IpPacketPool::new("test");
         let mut ct = ConnTrack::default();
         let now = Instant::now();
 
-        let inbound = make::udp_packet(ip(10, 0, 0, 2), ip(10, 0, 0, 1), 40000, 80, &[])
+        let inbound = make::udp_packet(&pool, ip(10, 0, 0, 2), ip(10, 0, 0, 1), 40000, 80, &[])
             .expect("valid packet");
         ct.record_inbound(&inbound, now);
 
-        let reply = make::udp_packet(ip(10, 0, 0, 1), ip(10, 0, 0, 2), 80, 40000, &[])
+        let reply = make::udp_packet(&pool, ip(10, 0, 0, 1), ip(10, 0, 0, 2), 80, 40000, &[])
             .expect("valid packet");
         ct.record_outbound_as_originator(&reply, now);
 
-        let next = make::udp_packet(ip(10, 0, 0, 2), ip(10, 0, 0, 1), 40000, 80, &[1])
+        let next = make::udp_packet(&pool, ip(10, 0, 0, 2), ip(10, 0, 0, 1), 40000, 80, &[1])
             .expect("valid packet");
         assert!(!ct.is_return_traffic(&next));
     }
 
     #[test]
     fn entries_expire_after_ttl() {
+        let pool = ip_packet::IpPacketPool::new("test");
         let mut ct = ConnTrack::default();
         let start = Instant::now();
 
-        let outbound = make::udp_packet(ip(10, 0, 0, 1), ip(10, 0, 0, 2), 53535, 8080, &[])
+        let outbound = make::udp_packet(&pool, ip(10, 0, 0, 1), ip(10, 0, 0, 2), 53535, 8080, &[])
             .expect("valid packet");
         ct.record_outbound_as_originator(&outbound, start);
 
         ct.handle_timeout(start + UDP_TTL + Duration::from_secs(1));
 
-        let reply = make::udp_packet(ip(10, 0, 0, 2), ip(10, 0, 0, 1), 8080, 53535, &[])
+        let reply = make::udp_packet(&pool, ip(10, 0, 0, 2), ip(10, 0, 0, 1), 8080, 53535, &[])
             .expect("valid packet");
         assert!(!ct.is_return_traffic(&reply));
     }
 
     #[test]
     fn icmp_echo_reply_admitted_via_identifier() {
+        let pool = ip_packet::IpPacketPool::new("test");
         let mut ct = ConnTrack::default();
         let now = Instant::now();
 
         let request =
-            make::icmp_request_packet(ip(10, 0, 0, 1), ip(10, 0, 0, 2), 1, 42, &[]).expect("valid");
+            make::icmp_request_packet(&pool, ip(10, 0, 0, 1), ip(10, 0, 0, 2), 1, 42, &[])
+                .expect("valid");
         ct.record_outbound_as_originator(&request, now);
 
-        let reply =
-            make::icmp_reply_packet(ip(10, 0, 0, 2), ip(10, 0, 0, 1), 1, 42, &[]).expect("valid");
+        let reply = make::icmp_reply_packet(&pool, ip(10, 0, 0, 2), ip(10, 0, 0, 1), 1, 42, &[])
+            .expect("valid");
         assert!(ct.is_return_traffic(&reply));
     }
 
     #[test_case::test_case("10.0.0.1", "10.0.0.2"; "ipv4")]
     #[test_case::test_case("fd00::1", "fd00::2"; "ipv6")]
     fn opposite_echo_requests_with_the_same_identifier_are_independent(local: &str, peer: &str) {
+        let pool = ip_packet::IpPacketPool::new("test");
         let local = local.parse::<IpAddr>().unwrap();
         let peer = peer.parse::<IpAddr>().unwrap();
         let mut ct = ConnTrack::default();
         let now = Instant::now();
-        let inbound = make::icmp_request_packet(peer, local, 1, 42, &[]).unwrap();
-        let outbound = make::icmp_request_packet(local, peer, 2, 42, &[]).unwrap();
-        let our_reply = make::icmp_reply_packet(local, peer, 1, 42, &[]).unwrap();
-        let peer_reply = make::icmp_reply_packet(peer, local, 2, 42, &[]).unwrap();
+        let inbound = make::icmp_request_packet(&pool, peer, local, 1, 42, &[]).unwrap();
+        let outbound = make::icmp_request_packet(&pool, local, peer, 2, 42, &[]).unwrap();
+        let our_reply = make::icmp_reply_packet(&pool, local, peer, 1, 42, &[]).unwrap();
+        let peer_reply = make::icmp_reply_packet(&pool, peer, local, 2, 42, &[]).unwrap();
         ct.record_inbound(&inbound, now);
 
         assert_eq!(ct.outbound_flow_originator(&outbound), None);
@@ -395,10 +405,10 @@ mod tests {
         assert!(ct.is_return_traffic(&peer_reply));
         assert!(!ct.is_return_traffic(&inbound));
 
-        let error = make::icmp_dest_unreachable_prohibited(&our_reply).unwrap();
+        let error = make::icmp_dest_unreachable_prohibited(&pool, &our_reply).unwrap();
         assert!(ct.is_known_inbound_flow(&error));
         assert!(!ct.is_known_outbound_error(&error));
-        let error = make::icmp_dest_unreachable_prohibited(&peer_reply).unwrap();
+        let error = make::icmp_dest_unreachable_prohibited(&pool, &peer_reply).unwrap();
         assert!(ct.is_known_outbound_error(&error));
         assert!(!ct.is_known_inbound_flow(&error));
     }
@@ -406,12 +416,13 @@ mod tests {
     #[test_case::test_case("10.0.0.1", "10.0.0.2"; "ipv4")]
     #[test_case::test_case("fd00::1", "fd00::2"; "ipv6")]
     fn echo_replies_do_not_open_flows(local: &str, peer: &str) {
+        let pool = ip_packet::IpPacketPool::new("test");
         let local = local.parse::<IpAddr>().unwrap();
         let peer = peer.parse::<IpAddr>().unwrap();
         let mut ct = ConnTrack::default();
         let now = Instant::now();
-        let outbound = make::icmp_reply_packet(local, peer, 1, 42, &[]).unwrap();
-        let inbound = make::icmp_reply_packet(peer, local, 1, 42, &[]).unwrap();
+        let outbound = make::icmp_reply_packet(&pool, local, peer, 1, 42, &[]).unwrap();
+        let inbound = make::icmp_reply_packet(&pool, peer, local, 1, 42, &[]).unwrap();
 
         ct.record_outbound_as_originator(&outbound, now);
         ct.record_inbound(&inbound, now);
@@ -422,15 +433,18 @@ mod tests {
 
     #[test]
     fn ipv4_and_ipv6_flows_with_same_ports_do_not_alias() {
+        let pool = ip_packet::IpPacketPool::new("test");
         let mut ct = ConnTrack::default();
         let now = Instant::now();
 
-        let v4_outbound = make::udp_packet(ip(10, 0, 0, 1), ip(10, 0, 0, 2), 5353, 5353, &[])
-            .expect("valid packet");
+        let v4_outbound =
+            make::udp_packet(&pool, ip(10, 0, 0, 1), ip(10, 0, 0, 2), 5353, 5353, &[])
+                .expect("valid packet");
         ct.record_outbound_as_originator(&v4_outbound, now);
 
         // A v6 reply on the same port pair must NOT count as return traffic.
         let v6_reply = make::udp_packet(
+            &pool,
             IpAddr::V6(Ipv6Addr::new(0xfd, 0, 0, 0, 0, 0, 0, 2)),
             IpAddr::V6(Ipv6Addr::new(0xfd, 0, 0, 0, 0, 0, 0, 1)),
             5353,
@@ -443,20 +457,21 @@ mod tests {
 
     #[test]
     fn outbound_originator_follows_who_opened_the_flow() {
+        let pool = ip_packet::IpPacketPool::new("test");
         let mut ct = ConnTrack::default();
         let now = Instant::now();
 
-        let ours = make::udp_packet(ip(10, 0, 0, 1), ip(10, 0, 0, 2), 53535, 8080, &[])
+        let ours = make::udp_packet(&pool, ip(10, 0, 0, 1), ip(10, 0, 0, 2), 53535, 8080, &[])
             .expect("valid packet");
         ct.record_outbound_as_originator(&ours, now);
         assert_eq!(ct.outbound_flow_originator(&ours), Some(Originator::Us));
 
-        let inbound = make::udp_packet(ip(10, 0, 0, 2), ip(10, 0, 0, 1), 40000, 80, &[])
+        let inbound = make::udp_packet(&pool, ip(10, 0, 0, 2), ip(10, 0, 0, 1), 40000, 80, &[])
             .expect("valid packet");
         ct.record_inbound(&inbound, now);
 
         // Our reply belongs to the peer's flow, not to one we opened.
-        let reply = make::udp_packet(ip(10, 0, 0, 1), ip(10, 0, 0, 2), 80, 40000, &[])
+        let reply = make::udp_packet(&pool, ip(10, 0, 0, 1), ip(10, 0, 0, 2), 80, 40000, &[])
             .expect("valid packet");
         ct.record_outbound_as_originator(&reply, now);
         assert_eq!(ct.outbound_flow_originator(&reply), Some(Originator::Peer));

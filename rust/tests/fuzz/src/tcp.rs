@@ -30,7 +30,7 @@ pub struct Server {
 
 impl Client {
     pub fn new(now: Instant, os: SimulatedOs) -> Self {
-        let mut device = l3_tcp::InMemoryDevice::default();
+        let mut device = l3_tcp::InMemoryDevice::new("fuzz-tcp");
         let interface = l3_tcp::create_interface(&mut device);
 
         Self {
@@ -139,7 +139,7 @@ impl Client {
 
 impl Server {
     pub fn new(now: Instant) -> Self {
-        let mut device = l3_tcp::InMemoryDevice::default();
+        let mut device = l3_tcp::InMemoryDevice::new("fuzz-tcp");
         let interface = l3_tcp::create_interface(&mut device);
 
         Self {

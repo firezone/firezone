@@ -12,8 +12,8 @@ use crate::retransmit::PairRetransmit;
 use crate::score::pair_score;
 
 /// Iceless path selection for a single WireGuard connection.
-#[derive(Default)]
 pub struct PathAgent {
+    packet_pool: ip_packet::IpPacketPool,
     locals: Vec<Candidate>,
     remotes: Vec<Candidate>,
     pairs: BTreeMap<(SocketAddr, SocketAddr), PairState>,
@@ -232,8 +232,25 @@ const PRIMARY_HYSTERESIS_FRACTION: f64 = 0.2;
 const PRIMARY_HYSTERESIS_FLOOR: Duration = Duration::from_millis(10);
 
 impl PathAgent {
-    pub fn new() -> Self {
-        Self::default()
+    pub fn new(packet_pool: ip_packet::IpPacketPool) -> Self {
+        Self {
+            packet_pool,
+            locals: Default::default(),
+            remotes: Default::default(),
+            pairs: Default::default(),
+            primary: None,
+            has_session: false,
+            outbound_init: None,
+            unanswered_rekeys: 0,
+            peer_rekeys: 0,
+            responder: Default::default(),
+            forwarded_response: None,
+            pending_transmits: Default::default(),
+            last_now: None,
+            events: Default::default(),
+            peer_reflexive_addrs: Default::default(),
+            next_pair_id: 0,
+        }
     }
 
     /// Returns whether the candidate was newly added (`false` if already known).
@@ -401,7 +418,7 @@ impl PathAgent {
         let remotes = std::mem::take(&mut self.remotes);
         let had_session = self.has_session;
 
-        *self = Self::new();
+        *self = Self::new(self.packet_pool.clone());
 
         self.has_session = had_session;
 
@@ -765,7 +782,9 @@ impl PathAgent {
                     local: pair.0,
                     remote: pair.1,
                     payload: Payload::Plaintext(Box::new(crate::icmpv6::build_echo_reply(
-                        probe.id, probe.seq,
+                        &self.packet_pool,
+                        probe.id,
+                        probe.seq,
                     ))),
                 });
 
@@ -966,7 +985,9 @@ impl PathAgent {
                 local: *local,
                 remote: *remote,
                 payload: Payload::Plaintext(Box::new(crate::icmpv6::build_echo_request(
-                    state.id, seq,
+                    &self.packet_pool,
+                    state.id,
+                    seq,
                 ))),
             });
 
@@ -1131,7 +1152,7 @@ mod tests {
     fn inflight_probes_stay_capped_while_hunting_forever() {
         let mut a = PathAgent {
             has_session: true,
-            ..Default::default()
+            ..PathAgent::new(ip_packet::IpPacketPool::new("test"))
         };
 
         let pair: (SocketAddr, SocketAddr) = (

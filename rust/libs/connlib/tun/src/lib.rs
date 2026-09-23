@@ -248,7 +248,9 @@ mod tests {
 
     #[test]
     fn batches_return_to_the_pool_empty() {
+        let pool = ip_packet::IpPacketPool::new("test");
         let packet = ip_packet::make::udp_packet(
+            &pool,
             std::net::Ipv4Addr::LOCALHOST,
             std::net::Ipv4Addr::LOCALHOST,
             1234,

@@ -291,7 +291,12 @@ pub struct IcmpErrorPrototype {
 
 impl IcmpErrorPrototype {
     /// Turns this prototype into an actual ICMP error IP packet, targeting the given IPv4/IPv6 address, depending on the original Resource address.
-    pub fn into_packet(self, dst_v4: Ipv4Addr, dst_v6: Ipv6Addr) -> Result<IpPacket> {
+    pub fn into_packet(
+        self,
+        pool: &ip_packet::IpPacketPool,
+        dst_v4: Ipv4Addr,
+        dst_v6: Ipv6Addr,
+    ) -> Result<IpPacket> {
         // First, translate the failed packet as if it would have directly originated from the client (without our NAT applied).
         let original_packet = self
             .failed_packet
@@ -302,12 +307,26 @@ impl IcmpErrorPrototype {
             IpAddr::V4(inside_dst) => {
                 let icmp_type = self.icmp_error.into_icmp_v4_type()?;
 
-                ip_packet::make::icmpv4_packet(inside_dst, dst_v4, 20, icmp_type, &original_packet)?
+                ip_packet::make::icmpv4_packet(
+                    pool,
+                    inside_dst,
+                    dst_v4,
+                    20,
+                    icmp_type,
+                    &original_packet,
+                )?
             }
             IpAddr::V6(inside_dst) => {
                 let icmp_type = self.icmp_error.into_icmp_v6_type()?;
 
-                ip_packet::make::icmpv6_packet(inside_dst, dst_v6, 20, icmp_type, &original_packet)?
+                ip_packet::make::icmpv6_packet(
+                    pool,
+                    inside_dst,
+                    dst_v6,
+                    20,
+                    icmp_type,
+                    &original_packet,
+                )?
             }
         };
 

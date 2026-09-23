@@ -532,6 +532,7 @@ impl SimGateway {
     ) -> Option<Transmit> {
         let reply = icmp_error.unwrap_or_else(|| {
             ip_packet::make::icmp_reply_packet(
+                &packet.pool(),
                 packet.destination(),
                 packet.source(),
                 echo.seq,

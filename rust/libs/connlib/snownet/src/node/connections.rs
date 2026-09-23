@@ -568,7 +568,7 @@ mod tests {
         let now = Instant::now();
 
         let mut conn = new_connection(12345, 1, [1u8; 32]);
-        conn.agent = crate::agent::Agent::path();
+        conn.agent = crate::agent::Agent::path(ip_packet::IpPacketPool::new("test"));
         connections.insert_established(1, conn.index, conn);
 
         connections.reset_for_roam(now);
@@ -679,6 +679,7 @@ mod tests {
             first_handshake_completed_at: None,
             buffer: Default::default(),
             buffer_pool: BufferPool::new(0, "test"),
+            packet_pool: ip_packet::IpPacketPool::new("test"),
             default_ice_config: IceConfig::client_default(),
             idle_ice_config: IceConfig::client_idle(),
             poll_timeout_cache: Default::default(),

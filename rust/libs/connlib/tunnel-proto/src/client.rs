@@ -121,6 +121,7 @@ enum UpstreamQuery {
 ///
 /// Gateways only accept incoming connections.
 pub struct ClientState {
+    packet_pool: ip_packet::IpPacketPool,
     /// Manages wireguard tunnels to gateways and clients.
     node: Node<ClientOrGatewayId, RelayId>,
     /// All gateways we are connected to and the associated, connection-specific state.
@@ -209,6 +210,7 @@ impl ClientState {
         unix_ts: Duration,
     ) -> Self {
         Self {
+            packet_pool: ip_packet::IpPacketPool::new("client-ip"),
             outbound_authorizations: Default::default(),
             routing_tables: RoutingTables::default(),
             resources_by_id: Default::default(),
@@ -412,8 +414,11 @@ impl ClientState {
         self.forget_outbound_authorizations(cid);
 
         if self.clients.remove(&cid).is_some() {
-            self.node
-                .close_connection(ClientOrGatewayId::Client(cid), p2p_control::goodbye(), now);
+            self.node.close_connection(
+                ClientOrGatewayId::Client(cid),
+                p2p_control::goodbye(&self.packet_pool),
+                now,
+            );
         }
     }
 
@@ -443,7 +448,8 @@ impl ClientState {
 
         self.clients.clear();
         self.gateways.clear();
-        self.node.close_all(p2p_control::goodbye(), now);
+        self.node
+            .close_all(p2p_control::goodbye(&self.packet_pool), now);
     }
 
     /// Updates the NAT for all domains resolved by the stub resolver on the corresponding gateway.
@@ -521,6 +527,7 @@ impl ClientState {
                 .unwrap_or_default();
 
             match self.dns_resource_nat.update(
+                &self.packet_pool,
                 domain.clone(),
                 *gid,
                 *rid,
@@ -857,8 +864,12 @@ impl ClientState {
                             &mut self.pending_peer_packets,
                         );
                         if let Some(event) = no_authorization.and_then(|rejection| {
-                            self.authorization_rejections
-                                .on_rejected(cid, rejection, now)
+                            self.authorization_rejections.on_rejected(
+                                &self.packet_pool,
+                                cid,
+                                rejection,
+                                now,
+                            )
                         }) {
                             encapsulate_and_queue(
                                 event,
@@ -961,8 +972,12 @@ impl ClientState {
     ) {
         match transport {
             dns::Transport::Udp => {
-                self.buffered_packets
-                    .extend(into_udp_dns_packet(local, remote, response));
+                self.buffered_packets.extend(into_udp_dns_packet(
+                    &self.packet_pool,
+                    local,
+                    remote,
+                    response,
+                ));
             }
             dns::Transport::Tcp => {
                 unwrap_or_warn!(
@@ -1957,8 +1972,12 @@ impl ClientState {
         if let Some(response) =
             self.handle_dns_query(message, local, remote, upstream, dns::Transport::Udp, now)
         {
-            self.buffered_packets
-                .extend(into_udp_dns_packet(local, remote, response));
+            self.buffered_packets.extend(into_udp_dns_packet(
+                &self.packet_pool,
+                local,
+                remote,
+                response,
+            ));
         };
     }
 
@@ -2000,6 +2019,7 @@ impl ClientState {
 
                 let response_bytes = response.into_bytes(MAX_UDP_PAYLOAD);
                 let maybe_packet = ip_packet::make::udp_packet(
+                    &self.packet_pool,
                     packet.destination(),
                     packet.source(),
                     datagram.destination_port(),
@@ -2151,8 +2171,12 @@ impl ClientState {
 
                 match transport {
                     dns::Transport::Udp => {
-                        self.buffered_packets
-                            .extend(into_udp_dns_packet(local, remote, response));
+                        self.buffered_packets.extend(into_udp_dns_packet(
+                            &self.packet_pool,
+                            local,
+                            remote,
+                            response,
+                        ));
                     }
                     dns::Transport::Tcp => {
                         unwrap_or_warn!(
@@ -2665,7 +2689,7 @@ impl ClientState {
 
             self.node.close_connection(
                 ClientOrGatewayId::Gateway(gid),
-                p2p_control::goodbye(),
+                p2p_control::goodbye(&self.packet_pool),
                 now,
             );
             self.update_site_status_by_gateway(&gid, ResourceStatus::Unknown, now);
@@ -2698,7 +2722,7 @@ fn internet_resource(
 /// Generate an ICMP "administratively prohibited" error for `packet` and
 /// buffer it for delivery back to the TUN device.
 fn reply_with_icmp_prohibited(buffered_packets: &mut VecDeque<IpPacket>, packet: IpPacket) {
-    match ip_packet::make::icmp_dest_unreachable_prohibited(&packet) {
+    match ip_packet::make::icmp_dest_unreachable_prohibited(&packet.pool(), &packet) {
         Ok(reply) => buffered_packets.push_back(reply),
         Err(e) => tracing::debug!("Failed to create ICMP prohibited error: {e:#}"),
     }
@@ -2901,12 +2925,13 @@ fn gateway_by_resource_mut<'p>(
 }
 
 fn into_udp_dns_packet(
+    pool: &ip_packet::IpPacketPool,
     from: SocketAddr,
     dst: SocketAddr,
     message: dns_types::Response,
 ) -> Option<IpPacket> {
     let bytes = message.into_bytes(MAX_UDP_PAYLOAD);
-    ip_packet::make::udp_packet(from.ip(), dst.ip(), from.port(), dst.port(), &bytes)
+    ip_packet::make::udp_packet(pool, from.ip(), dst.ip(), from.port(), dst.port(), &bytes)
         .inspect_err(|e| tracing::warn!("Failed to create IP packet for DNS response: {e:#}"))
         .ok()
 }
@@ -2987,11 +3012,13 @@ mod tests {
 
     #[test]
     fn does_not_queue_device_access_intent_for_packet_to_own_tun_ipv4() {
+        let pool = ip_packet::IpPacketPool::new("test");
         let mut state = ClientState::for_test();
         let tun_ipv4 = Ipv4Addr::new(100, 82, 80, 16);
         state.update_interface_config(interface(tun_ipv4, Ipv6Addr::LOCALHOST));
 
-        let packet = ip_packet::make::udp_packet(tun_ipv4, tun_ipv4, 137, 137, &[1]).unwrap();
+        let packet =
+            ip_packet::make::udp_packet(&pool, tun_ipv4, tun_ipv4, 137, 137, &[1]).unwrap();
 
         assert_eq!(
             state
@@ -3005,11 +3032,13 @@ mod tests {
 
     #[test]
     fn does_not_queue_device_access_intent_for_packet_to_own_tun_ipv6() {
+        let pool = ip_packet::IpPacketPool::new("test");
         let mut state = ClientState::for_test();
         let tun_ipv6 = Ipv6Addr::new(0xfd00, 0x2021, 0x1111, 0, 0, 0, 0, 1);
         state.update_interface_config(interface(Ipv4Addr::LOCALHOST, tun_ipv6));
 
-        let packet = ip_packet::make::udp_packet(tun_ipv6, tun_ipv6, 137, 137, &[1]).unwrap();
+        let packet =
+            ip_packet::make::udp_packet(&pool, tun_ipv6, tun_ipv6, 137, 137, &[1]).unwrap();
 
         assert_eq!(
             state
@@ -3023,6 +3052,7 @@ mod tests {
 
     #[test]
     fn packet_to_a_tunnel_address_asks_for_device_access_through_permitting_pools() {
+        let pool = ip_packet::IpPacketPool::new("test");
         let mut state = ClientState::for_test();
         let now = Instant::now();
         state.update_interface_config(interface(own_tun_ipv4(), own_tun_ipv6()));
@@ -3035,7 +3065,8 @@ mod tests {
         while state.poll_event().is_some() {}
 
         let packet =
-            ip_packet::make::udp_packet(own_tun_ipv4(), device_tun_ipv4(), 1234, 53, &[1]).unwrap();
+            ip_packet::make::udp_packet(&pool, own_tun_ipv4(), device_tun_ipv4(), 1234, 53, &[1])
+                .unwrap();
         state
             .handle_tun_input(packet, now, &mut snownet::TransmitBuffer::new())
             .unwrap();
@@ -3062,6 +3093,7 @@ mod tests {
 
     #[test]
     fn packet_to_a_tunnel_address_no_pool_permits_is_prohibited_locally() {
+        let pool = ip_packet::IpPacketPool::new("test");
         let mut state = ClientState::for_test();
         let now = Instant::now();
         state.update_interface_config(interface(own_tun_ipv4(), own_tun_ipv6()));
@@ -3070,7 +3102,8 @@ mod tests {
         while state.poll_packets().is_some() {}
 
         let packet =
-            ip_packet::make::udp_packet(own_tun_ipv4(), device_tun_ipv4(), 1234, 53, &[1]).unwrap();
+            ip_packet::make::udp_packet(&pool, own_tun_ipv4(), device_tun_ipv4(), 1234, 53, &[1])
+                .unwrap();
         state
             .handle_tun_input(packet, now, &mut snownet::TransmitBuffer::new())
             .unwrap();
@@ -3084,6 +3117,7 @@ mod tests {
 
     #[test]
     fn denied_device_flow_is_answered_and_asked_again_on_the_next_packet() {
+        let pool = ip_packet::IpPacketPool::new("test");
         let mut state = ClientState::for_test();
         let now = Instant::now();
         state.update_interface_config(interface(own_tun_ipv4(), own_tun_ipv6()));
@@ -3092,7 +3126,8 @@ mod tests {
         while state.poll_packets().is_some() {}
 
         let packet = || {
-            ip_packet::make::udp_packet(own_tun_ipv4(), device_tun_ipv4(), 1234, 53, &[1]).unwrap()
+            ip_packet::make::udp_packet(&pool, own_tun_ipv4(), device_tun_ipv4(), 1234, 53, &[1])
+                .unwrap()
         };
 
         state

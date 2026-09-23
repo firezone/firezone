@@ -105,8 +105,10 @@ pub fn recv(
         .block_on(async move {
             let fd = AsyncFd::with_interest(fd, Interest::READABLE)?;
 
-            let mut bufs: Vec<IpPacketBuf> =
-                (0..MAX_BATCH_SIZE).map(|_| IpPacketBuf::new()).collect();
+            let pool = ip_packet::IpPacketPool::new("tun-ip");
+            let mut bufs: Vec<IpPacketBuf> = (0..MAX_BATCH_SIZE)
+                .map(|_| IpPacketBuf::new(&pool))
+                .collect();
             let mut lens = [0usize; MAX_BATCH_SIZE];
 
             'recv: loop {
@@ -139,8 +141,8 @@ pub fn recv(
                         continue; // Empty or truncated datagram.
                     }
 
-                    // `Default` refills the slot with a fresh buffer from the pool.
-                    let buf = std::mem::take(buf);
+                    // Refill the slot before handing the received buffer to the state loop.
+                    let buf = std::mem::replace(buf, IpPacketBuf::new(&pool));
 
                     match IpPacket::new(buf, len).context("Failed to parse IP packet") {
                         Ok(packet) => {

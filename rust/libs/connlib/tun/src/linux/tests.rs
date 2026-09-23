@@ -48,7 +48,7 @@ fn coalesced_tcp_packet_roundtrips_through_virtio_gso() {
     );
     assert_eq!(packet.len(), 20 + 20 + 250);
 
-    let roundtripped = split(&buf).unwrap();
+    let roundtripped = split(&ip_packet::IpPacketPool::new("test"), &buf).unwrap();
     assert_eq!(roundtripped.len(), segments.len());
 
     for (original, roundtripped) in segments.iter().zip(&roundtripped) {
@@ -89,7 +89,7 @@ fn coalesced_udp_packet_roundtrips_through_virtio_gso() {
         }
     );
 
-    let roundtripped = split(&buf).unwrap();
+    let roundtripped = split(&ip_packet::IpPacketPool::new("test"), &buf).unwrap();
     assert_eq!(roundtripped.len(), datagrams.len());
 
     for (original, roundtripped) in datagrams.iter().zip(&roundtripped) {
@@ -128,7 +128,7 @@ fn completes_offloaded_checksum_of_non_gso_packet() {
     buf[virtio::VNET_HDR_LEN + 26..virtio::VNET_HDR_LEN + 28]
         .copy_from_slice(&pseudo.to_be_bytes());
 
-    let out = split(&buf).unwrap();
+    let out = split(&ip_packet::IpPacketPool::new("test"), &buf).unwrap();
     let [completed] = out.as_slice() else {
         panic!("expected one packet")
     };
@@ -177,7 +177,7 @@ fn ipv4_packet(id: u16, protocol: IpProtocol, l4_header: impl Emit, payload: &[u
     let mut bytes = (ipv4, l4_header).to_vec();
     bytes.extend_from_slice(payload);
 
-    let mut buf = IpPacketBuf::new();
+    let mut buf = IpPacketBuf::new(&ip_packet::IpPacketPool::new("test"));
     buf.buf()[..bytes.len()].copy_from_slice(&bytes);
     let mut packet = IpPacket::new(buf, bytes.len()).unwrap();
     packet.compute_checksums();

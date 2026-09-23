@@ -91,7 +91,7 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
         assert!(MIN_PORT >= 49152, "Must use ephemeral port range");
         assert!(MIN_PORT < MAX_PORT, "Port range must not have length 0");
 
-        let mut device = InMemoryDevice::default();
+        let mut device = InMemoryDevice::new("dns-tcp-client");
         let interface = create_interface(&mut device);
 
         Self {
@@ -678,6 +678,7 @@ mod tests {
 
     #[test]
     fn handles_icmp_error_for_pending_query() {
+        let pool = ip_packet::IpPacketPool::new("test");
         let _guard = logging::test("trace");
 
         let now = Instant::now();
@@ -690,7 +691,8 @@ mod tests {
         client.handle_timeout(now);
 
         let packet = client.poll_outbound().unwrap();
-        let icmp_error_response = ip_packet::make::icmp_dest_unreachable_network(&packet).unwrap();
+        let icmp_error_response =
+            ip_packet::make::icmp_dest_unreachable_network(&pool, &packet).unwrap();
 
         client.handle_inbound(icmp_error_response);
 
@@ -708,6 +710,7 @@ mod tests {
 
     #[test]
     fn consumes_icmp_error_for_reset_connection() {
+        let pool = ip_packet::IpPacketPool::new("test");
         let _guard = logging::test("trace");
 
         let now = Instant::now();
@@ -719,7 +722,8 @@ mod tests {
         client.handle_timeout(now);
 
         let packet = client.poll_outbound().unwrap();
-        let icmp_error_response = ip_packet::make::icmp_dest_unreachable_network(&packet).unwrap();
+        let icmp_error_response =
+            ip_packet::make::icmp_dest_unreachable_network(&pool, &packet).unwrap();
 
         client.reset();
         while client.poll_query_result().is_some() {} // Drain the `Aborted` results.
@@ -733,6 +737,7 @@ mod tests {
 
     #[test]
     fn consumes_late_packet_for_reset_connection() {
+        let pool = ip_packet::IpPacketPool::new("test");
         let _guard = logging::test("trace");
 
         let now = Instant::now();
@@ -748,6 +753,7 @@ mod tests {
         while client.poll_query_result().is_some() {} // Drain the `Aborted` results.
 
         let late_packet = ip_packet::make::tcp_packet(
+            &pool,
             server.ip(),
             local.ip(),
             server.port(),

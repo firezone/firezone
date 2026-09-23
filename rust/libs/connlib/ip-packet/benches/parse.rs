@@ -6,7 +6,7 @@
 
 #![allow(clippy::unwrap_used)]
 
-use ip_packet::{IpPacket, IpPacketBuf};
+use ip_packet::{IpPacket, IpPacketBuf, IpPacketPool};
 
 fn main() {
     divan::main()
@@ -43,8 +43,9 @@ const JUMBO_PAYLOAD_LEN: usize = 1200;
 /// Parses a fresh buffer into an [`IpPacket`], validating its layout.
 #[divan::bench(args = KINDS)]
 fn parse(bencher: divan::Bencher, kind: Kind) {
+    let pool = IpPacketPool::new("bench");
     bencher
-        .with_inputs(|| kind.buf())
+        .with_inputs(|| kind.buf(&pool))
         .bench_values(|(buf, len)| divan::black_box(IpPacket::new(buf, len).unwrap()));
 }
 
@@ -57,7 +58,8 @@ fn parse(bencher: divan::Bencher, kind: Kind) {
 /// accessors out of the loop.
 #[divan::bench(args = KINDS)]
 fn route(bencher: divan::Bencher, kind: Kind) {
-    let (buf, len) = kind.buf();
+    let pool = IpPacketPool::new("bench");
+    let (buf, len) = kind.buf(&pool);
     let packet = IpPacket::new(buf, len).unwrap();
 
     bencher.bench_local(|| {
@@ -77,7 +79,8 @@ fn route(bencher: divan::Bencher, kind: Kind) {
 /// The packet is black-boxed inside the timed closure, see [`route`].
 #[divan::bench(args = KINDS)]
 fn payload_len(bencher: divan::Bencher, kind: Kind) {
-    let (buf, len) = kind.buf();
+    let pool = IpPacketPool::new("bench");
+    let (buf, len) = kind.buf(&pool);
     let packet = IpPacket::new(buf, len).unwrap();
 
     bencher.bench_local(|| divan::black_box(divan::black_box(&packet).layer4_payload_len()));
@@ -86,17 +89,18 @@ fn payload_len(bencher: divan::Bencher, kind: Kind) {
 /// Reads the ECN codepoint from an already-parsed packet.
 #[divan::bench(args = KINDS)]
 fn ecn(bencher: divan::Bencher, kind: Kind) {
-    let (buf, len) = kind.buf();
+    let pool = IpPacketPool::new("bench");
+    let (buf, len) = kind.buf(&pool);
     let packet = IpPacket::new(buf, len).unwrap();
 
     bencher.bench_local(|| divan::black_box(divan::black_box(&packet).ecn()));
 }
 
 impl Kind {
-    fn buf(self) -> (IpPacketBuf, usize) {
+    fn buf(self, pool: &IpPacketPool) -> (IpPacketBuf, usize) {
         let bytes = self.bytes();
 
-        let mut buf = IpPacketBuf::new();
+        let mut buf = IpPacketBuf::new(pool);
         buf.buf()[..bytes.len()].copy_from_slice(&bytes);
 
         (buf, bytes.len())

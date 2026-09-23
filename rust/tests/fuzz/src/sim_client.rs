@@ -29,6 +29,7 @@ use tunnel_proto::{
 
 /// Simulation state for a particular client.
 pub(crate) struct SimClient {
+    packet_pool: ip_packet::IpPacketPool,
     id: ClientId,
 
     pub(crate) sut: ClientState,
@@ -88,6 +89,7 @@ impl SimClient {
         sut.set_flow_logs_enabled(true);
 
         Self {
+            packet_pool: ip_packet::IpPacketPool::new("fuzz-client-ip"),
             id,
             sut,
             malicious_behaviour,
@@ -220,9 +222,15 @@ impl SimClient {
         match dns_transport {
             DnsTransport::Udp { local_port } => {
                 let query_bytes = query.into_bytes();
-                let packet =
-                    ip_packet::make::udp_packet(src, sentinel, local_port, 53, &query_bytes)
-                        .unwrap();
+                let packet = ip_packet::make::udp_packet(
+                    &self.packet_pool,
+                    src,
+                    sentinel,
+                    local_port,
+                    53,
+                    &query_bytes,
+                )
+                .unwrap();
 
                 self.sent_udp_dns_queries
                     .insert((upstream, query_id, local_port), packet.clone());
@@ -584,6 +592,7 @@ impl SimClient {
         now: Instant,
     ) -> Option<Transmit> {
         let reply = ip_packet::make::icmp_reply_packet(
+            &self.packet_pool,
             packet.destination(),
             packet.source(),
             echo.seq,

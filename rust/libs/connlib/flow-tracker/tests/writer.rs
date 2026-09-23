@@ -177,9 +177,24 @@ fn tracked_packets_spool_open_and_completed_reports() {
 
     let client_ip = "100.64.0.1".parse::<Ipv4Addr>().unwrap();
     let resource_ip = "10.0.0.5".parse::<Ipv4Addr>().unwrap();
-    let request =
-        ip_packet::make::udp_packet(client_ip, resource_ip, 1234, 5201, b"hello").unwrap();
-    let reply = ip_packet::make::udp_packet(resource_ip, client_ip, 5201, 1234, b"world!").unwrap();
+    let request = ip_packet::make::udp_packet(
+        &ip_packet::IpPacketPool::new("test"),
+        client_ip,
+        resource_ip,
+        1234,
+        5201,
+        b"hello",
+    )
+    .unwrap();
+    let reply = ip_packet::make::udp_packet(
+        &ip_packet::IpPacketPool::new("test"),
+        resource_ip,
+        client_ip,
+        5201,
+        1234,
+        b"world!",
+    )
+    .unwrap();
 
     spool.observe(|| {
         {
@@ -484,6 +499,7 @@ fn syn_ack() -> ip_packet::make::TcpFlags {
 
 fn tcp_packet(flags: ip_packet::make::TcpFlags, payload: &[u8]) -> IpPacket {
     ip_packet::make::tcp_packet(
+        &ip_packet::IpPacketPool::new("test"),
         "100.64.0.1".parse::<Ipv4Addr>().unwrap(),
         "10.0.0.5".parse::<Ipv4Addr>().unwrap(),
         1234,
@@ -498,6 +514,7 @@ fn tcp_packet(flags: ip_packet::make::TcpFlags, payload: &[u8]) -> IpPacket {
 /// (responder-to-initiator) orientation.
 fn tcp_return_packet(flags: ip_packet::make::TcpFlags, payload: &[u8]) -> IpPacket {
     ip_packet::make::tcp_packet(
+        &ip_packet::IpPacketPool::new("test"),
         "10.0.0.5".parse::<Ipv4Addr>().unwrap(),
         "100.64.0.1".parse::<Ipv4Addr>().unwrap(),
         443,

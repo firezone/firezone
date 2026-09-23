@@ -479,7 +479,7 @@ fn a_new_candidate_clears_the_primary_and_reprobes() {
 
 #[test]
 fn roam_recovers_the_data_path_via_probes_without_a_handshake() {
-    let mut a = PathAgent::new();
+    let mut a = PathAgent::new(ip_packet::IpPacketPool::new("test"));
     let t0 = Instant::now();
     a.add_local_candidate(Candidate::host(addr(1)), t0);
     a.add_remote_candidate(Candidate::host(addr(9)), t0);
@@ -521,7 +521,7 @@ fn roam_recovers_the_data_path_via_probes_without_a_handshake() {
 
 #[test]
 fn invalidated_relay_primary_fails_over_to_remote_relay_and_back() {
-    let mut a = PathAgent::new();
+    let mut a = PathAgent::new(ip_packet::IpPacketPool::new("test"));
     let t0 = Instant::now();
 
     let local_relay = Candidate::relayed(addr(2), addr(2));
@@ -611,7 +611,7 @@ fn signaled_candidate_promotes_a_peer_reflexive_remote_in_place() {
     // the peer's real candidate for that same address, it must promote the
     // existing pair in place — keeping its primary/RTT/schedule — not treat it
     // as new, which would overwrite the pair's `PairState` and re-probe.
-    let mut a = PathAgent::new();
+    let mut a = PathAgent::new(ip_packet::IpPacketPool::new("test"));
     let t0 = Instant::now();
     a.add_local_candidate(Candidate::host(addr(1)), t0);
 
@@ -787,7 +787,7 @@ impl AgentExt for PathAgent {
 // --- shared fixtures ---
 
 fn agent_with_relay_pairs() -> PathAgent {
-    let mut a = PathAgent::new();
+    let mut a = PathAgent::new(ip_packet::IpPacketPool::new("test"));
     let now = Instant::now();
     a.add_local_candidate(Candidate::host(addr(1)), now);
     a.add_local_candidate(Candidate::relayed(addr(2), addr(2)), now);
@@ -938,11 +938,25 @@ fn reject_all() -> Tunn {
 }
 
 fn build_echo_request(id: u16, seq: u16) -> IpPacket {
-    ip_packet::make::icmp_request_packet(IpAddr::V6(PROBE_SRC), IpAddr::V6(PROBE_DST), seq, id, &[])
-        .expect("magic addresses always fit")
+    ip_packet::make::icmp_request_packet(
+        &ip_packet::IpPacketPool::new("test"),
+        IpAddr::V6(PROBE_SRC),
+        IpAddr::V6(PROBE_DST),
+        seq,
+        id,
+        &[],
+    )
+    .expect("magic addresses always fit")
 }
 
 fn build_echo_reply(id: u16, seq: u16) -> IpPacket {
-    ip_packet::make::icmp_reply_packet(IpAddr::V6(PROBE_SRC), IpAddr::V6(PROBE_DST), seq, id, &[])
-        .expect("magic addresses always fit")
+    ip_packet::make::icmp_reply_packet(
+        &ip_packet::IpPacketPool::new("test"),
+        IpAddr::V6(PROBE_SRC),
+        IpAddr::V6(PROBE_DST),
+        seq,
+        id,
+        &[],
+    )
+    .expect("magic addresses always fit")
 }

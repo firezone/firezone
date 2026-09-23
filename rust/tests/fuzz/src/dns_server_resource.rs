@@ -78,6 +78,7 @@ impl UdpDnsServerResource {
 
             self.outbound_packets.push_back(
                 ip_packet::make::udp_packet(
+                    &packet.pool(),
                     packet.destination(),
                     packet.source(),
                     udp.destination_port(),

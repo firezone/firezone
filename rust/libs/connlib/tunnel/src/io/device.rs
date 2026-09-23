@@ -171,9 +171,15 @@ mod tests {
         drop(send_rx);
         device.set_tun(Box::new(test_tun));
 
-        let packet =
-            ip_packet::make::udp_packet(Ipv4Addr::LOCALHOST, Ipv4Addr::LOCALHOST, 1234, 5678, &[])
-                .unwrap();
+        let packet = ip_packet::make::udp_packet(
+            &ip_packet::IpPacketPool::new("test"),
+            Ipv4Addr::LOCALHOST,
+            Ipv4Addr::LOCALHOST,
+            1234,
+            5678,
+            &[],
+        )
+        .unwrap();
 
         device.queue(packet);
         device.flush_batch();
@@ -197,9 +203,15 @@ mod tests {
         let (test_tun, mut send_rx, _send_tx) = TestTun::new();
         device.set_tun(Box::new(test_tun));
 
-        let packet =
-            ip_packet::make::udp_packet(Ipv4Addr::LOCALHOST, Ipv4Addr::LOCALHOST, 1234, 5678, &[1])
-                .unwrap();
+        let packet = ip_packet::make::udp_packet(
+            &ip_packet::IpPacketPool::new("test"),
+            Ipv4Addr::LOCALHOST,
+            Ipv4Addr::LOCALHOST,
+            1234,
+            5678,
+            &[1],
+        )
+        .unwrap();
 
         // We cycle 3 times to ensure we can send and flush again repeatedly.
         for _ in 0..3 {
@@ -295,7 +307,9 @@ mod tests {
     }
 
     fn test_packet(dst_port: u16) -> IpPacket {
+        let pool = ip_packet::IpPacketPool::new("test");
         ip_packet::make::udp_packet(
+            &pool,
             Ipv4Addr::LOCALHOST,
             Ipv4Addr::LOCALHOST,
             1234,

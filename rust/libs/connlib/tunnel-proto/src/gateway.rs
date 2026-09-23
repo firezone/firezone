@@ -31,6 +31,7 @@ pub const TUN_DNS_PORT: u16 = 53535;
 ///
 /// Internally, this composes a [`snownet::Node`] with firezone's policy engine around resources.
 pub struct GatewayState {
+    packet_pool: ip_packet::IpPacketPool,
     /// Manages wireguard tunnels to clients.
     node: Node<ClientId, RelayId>,
     /// All clients we are connected to and the associated, connection-specific state.
@@ -77,6 +78,7 @@ impl DnsResourceNatEntry {
 impl GatewayState {
     pub fn new(seed: [u8; 32], now: Instant, unix_ts: Duration) -> Self {
         Self {
+            packet_pool: ip_packet::IpPacketPool::new("gateway-ip"),
             peers: Default::default(),
             node: Node::new(seed, now, unix_ts),
             portal: Default::default(),
@@ -107,7 +109,8 @@ impl GatewayState {
 
         self.flow_tracker.close_all(now);
         self.peers.clear();
-        self.node.close_all(p2p_control::goodbye(), now);
+        self.node
+            .close_all(p2p_control::goodbye(&self.packet_pool), now);
     }
 
     /// Handles packets received on the TUN device.
@@ -185,9 +188,12 @@ impl GatewayState {
 
         if let Some(fz_p2p_control) = packet.as_fz_p2p_control() {
             let immediate_response = match fz_p2p_control.event_type() {
-                p2p_control::ASSIGNED_IPS_EVENT => {
-                    handle_assigned_ips_event(fz_p2p_control, peer, &mut self.buffered_events)
-                }
+                p2p_control::ASSIGNED_IPS_EVENT => handle_assigned_ips_event(
+                    &self.packet_pool,
+                    fz_p2p_control,
+                    peer,
+                    &mut self.buffered_events,
+                ),
                 p2p_control::GOODBYE_EVENT => {
                     self.peers.remove(&cid);
                     self.node.remove_connection(cid, "received `goodbye`", now);
@@ -240,8 +246,12 @@ impl GatewayState {
                 )?;
 
                 if let Some(event) = no_authorization.and_then(|rejection| {
-                    self.authorization_rejections
-                        .on_rejected(cid, rejection, now)
+                    self.authorization_rejections.on_rejected(
+                        &self.packet_pool,
+                        cid,
+                        rejection,
+                        now,
+                    )
                 }) {
                     encrypt_packet(
                         event,
@@ -259,7 +269,8 @@ impl GatewayState {
 
     pub fn cleanup_connection(&mut self, id: &ClientId, now: Instant) {
         self.peers.remove(id);
-        self.node.close_connection(*id, p2p_control::goodbye(), now);
+        self.node
+            .close_connection(*id, p2p_control::goodbye(&self.packet_pool), now);
     }
 
     pub fn add_ice_candidate(
@@ -292,7 +303,7 @@ impl GatewayState {
         if peer.is_empty() {
             self.peers.remove(cid);
             self.node
-                .close_connection(*cid, p2p_control::goodbye(), now);
+                .close_connection(*cid, p2p_control::goodbye(&self.packet_pool), now);
         }
 
         tracing::debug!("Access removed");
@@ -443,7 +454,12 @@ impl GatewayState {
                 dns_resource_nat::NatStatus::Inactive
             });
 
-        let packet = dns_resource_nat::domain_status(req.resource, req.domain, nat_status)?;
+        let packet = dns_resource_nat::domain_status(
+            &self.packet_pool,
+            req.resource,
+            req.domain,
+            nat_status,
+        )?;
 
         encrypt_packet(
             packet,
@@ -486,7 +502,8 @@ impl GatewayState {
         for (id, _) in removed_peers {
             tracing::debug!(cid = %id, "Access to last resource for Client removed");
 
-            self.node.close_connection(id, p2p_control::goodbye(), now);
+            self.node
+                .close_connection(id, p2p_control::goodbye(&self.packet_pool), now);
         }
 
         self.next_periodic_tick = Some(now + Duration::from_secs(1));
@@ -643,6 +660,7 @@ impl GatewayState {
 }
 
 fn handle_assigned_ips_event(
+    pool: &ip_packet::IpPacketPool,
     fz_p2p_control: FzP2pControlSlice,
     peer: &ClientOnGateway,
     buffered_events: &mut VecDeque<GatewayEvent>,
@@ -659,6 +677,7 @@ fn handle_assigned_ips_event(
         tracing::warn!(cid = %peer.id(), rid = %req.resource, domain = %req.domain, "Received `AssignedIpsEvent` for resource that is not allowed");
 
         let packet = dns_resource_nat::domain_status(
+            pool,
             req.resource,
             req.domain,
             dns_resource_nat::NatStatus::Inactive,

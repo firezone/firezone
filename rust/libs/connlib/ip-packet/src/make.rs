@@ -1,6 +1,6 @@
 //! Factory module for making all kinds of packets.
 
-use crate::{IpPacket, IpPacketBuf, Ipv6HeaderSlice, MAX_IP_SIZE, UdpSlice};
+use crate::{IpPacket, IpPacketBuf, IpPacketPool, Ipv6HeaderSlice, MAX_IP_SIZE, UdpSlice};
 use anyhow::{Context as _, Result, bail};
 use ingot::icmp::{IcmpV4, IcmpV6};
 use ingot::ip::{IpProtocol, Ipv4, Ipv6};
@@ -9,7 +9,11 @@ use ingot::types::{Emit, HeaderLen};
 use ingot::udp::Udp;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
-pub fn fz_p2p_control(header: [u8; 8], control_payload: &[u8]) -> Result<IpPacket> {
+pub fn fz_p2p_control(
+    pool: &IpPacketPool,
+    header: [u8; 8],
+    control_payload: &[u8],
+) -> Result<IpPacket> {
     let ip_payload_size = header.len() + control_payload.len();
 
     let ipv6 = Ipv6 {
@@ -24,7 +28,7 @@ pub fn fz_p2p_control(header: [u8; 8], control_payload: &[u8]) -> Result<IpPacke
     let packet_size = Ipv6HeaderSlice::LEN + ip_payload_size;
     anyhow::ensure!(packet_size <= crate::MAX_IP_SIZE);
 
-    let mut packet_buf = IpPacketBuf::new();
+    let mut packet_buf = IpPacketBuf::new(pool);
     let buf = packet_buf.buf();
 
     let rest = ipv6.emit_prefix(&mut buf[..packet_size]).with_context(|| {
@@ -39,6 +43,7 @@ pub fn fz_p2p_control(header: [u8; 8], control_payload: &[u8]) -> Result<IpPacke
 }
 
 pub fn icmp_request_packet(
+    pool: &IpPacketPool,
     src: IpAddr,
     dst: impl Into<IpAddr>,
     seq: u16,
@@ -51,17 +56,28 @@ pub fn icmp_request_packet(
     };
 
     match (src, dst.into()) {
-        (IpAddr::V4(src), IpAddr::V4(dst)) => {
-            icmpv4_packet(src, dst, 64, crate::Icmpv4Type::EchoRequest(echo), payload)
-        }
-        (IpAddr::V6(src), IpAddr::V6(dst)) => {
-            icmpv6_packet(src, dst, 64, crate::Icmpv6Type::EchoRequest(echo), payload)
-        }
+        (IpAddr::V4(src), IpAddr::V4(dst)) => icmpv4_packet(
+            pool,
+            src,
+            dst,
+            64,
+            crate::Icmpv4Type::EchoRequest(echo),
+            payload,
+        ),
+        (IpAddr::V6(src), IpAddr::V6(dst)) => icmpv6_packet(
+            pool,
+            src,
+            dst,
+            64,
+            crate::Icmpv6Type::EchoRequest(echo),
+            payload,
+        ),
         _ => bail!(IpVersionMismatch),
     }
 }
 
 pub fn icmp_reply_packet(
+    pool: &IpPacketPool,
     src: IpAddr,
     dst: impl Into<IpAddr>,
     seq: u16,
@@ -74,18 +90,29 @@ pub fn icmp_reply_packet(
     };
 
     match (src, dst.into()) {
-        (IpAddr::V4(src), IpAddr::V4(dst)) => {
-            icmpv4_packet(src, dst, 64, crate::Icmpv4Type::EchoReply(echo), payload)
-        }
-        (IpAddr::V6(src), IpAddr::V6(dst)) => {
-            icmpv6_packet(src, dst, 64, crate::Icmpv6Type::EchoReply(echo), payload)
-        }
+        (IpAddr::V4(src), IpAddr::V4(dst)) => icmpv4_packet(
+            pool,
+            src,
+            dst,
+            64,
+            crate::Icmpv4Type::EchoReply(echo),
+            payload,
+        ),
+        (IpAddr::V6(src), IpAddr::V6(dst)) => icmpv6_packet(
+            pool,
+            src,
+            dst,
+            64,
+            crate::Icmpv6Type::EchoReply(echo),
+            payload,
+        ),
         _ => bail!(IpVersionMismatch),
     }
 }
 
 /// Creates an ICMP packet with the given type.
 pub fn icmpv4_packet(
+    pool: &IpPacketPool,
     src: Ipv4Addr,
     dst: Ipv4Addr,
     ttl: u8,
@@ -101,11 +128,12 @@ pub fn icmpv4_packet(
         rest_of_hdr,
     };
 
-    ipv4_packet(src, dst, ttl, IpProtocol::ICMP, icmp, payload)
+    ipv4_packet(pool, src, dst, ttl, IpProtocol::ICMP, icmp, payload)
 }
 
 /// Creates an ICMPv6 packet with the given type.
 pub fn icmpv6_packet(
+    pool: &IpPacketPool,
     src: Ipv6Addr,
     dst: Ipv6Addr,
     hop_limit: u8,
@@ -121,10 +149,19 @@ pub fn icmpv6_packet(
         rest_of_hdr,
     };
 
-    ipv6_packet(src, dst, hop_limit, IpProtocol::ICMP_V6, icmp, payload)
+    ipv6_packet(
+        pool,
+        src,
+        dst,
+        hop_limit,
+        IpProtocol::ICMP_V6,
+        icmp,
+        payload,
+    )
 }
 
 pub fn tcp_packet<IP>(
+    pool: &IpPacketPool,
     saddr: IP,
     daddr: IP,
     sport: u16,
@@ -135,7 +172,7 @@ pub fn tcp_packet<IP>(
 where
     IP: Into<IpAddr>,
 {
-    tcp_packet_with_options(saddr, daddr, sport, dport, 0, flags, &[], payload)
+    tcp_packet_with_options(pool, saddr, daddr, sport, dport, 0, flags, &[], payload)
 }
 
 /// Creates a TCP packet with the given options.
@@ -143,6 +180,7 @@ where
 /// The length of `options` must be a multiple of 4.
 #[expect(clippy::too_many_arguments, reason = "TCP headers have many fields.")]
 pub fn tcp_packet_with_options<IP>(
+    pool: &IpPacketPool,
     saddr: IP,
     daddr: IP,
     sport: u16,
@@ -180,10 +218,10 @@ where
 
     match (saddr.into(), daddr.into()) {
         (IpAddr::V4(src), IpAddr::V4(dst)) => {
-            ipv4_packet(src, dst, 64, IpProtocol::TCP, tcp, payload)
+            ipv4_packet(pool, src, dst, 64, IpProtocol::TCP, tcp, payload)
         }
         (IpAddr::V6(src), IpAddr::V6(dst)) => {
-            ipv6_packet(src, dst, 64, IpProtocol::TCP, tcp, payload)
+            ipv6_packet(pool, src, dst, 64, IpProtocol::TCP, tcp, payload)
         }
         _ => bail!(IpVersionMismatch),
     }
@@ -197,6 +235,7 @@ pub struct TcpFlags {
 }
 
 pub fn udp_packet<SIP, DIP>(
+    pool: &IpPacketPool,
     saddr: SIP,
     daddr: DIP,
     sport: u16,
@@ -216,25 +255,33 @@ where
 
     match (saddr.into(), daddr.into()) {
         (IpAddr::V4(src), IpAddr::V4(dst)) => {
-            ipv4_packet(src, dst, 64, IpProtocol::UDP, udp, payload)
+            ipv4_packet(pool, src, dst, 64, IpProtocol::UDP, udp, payload)
         }
         (IpAddr::V6(src), IpAddr::V6(dst)) => {
-            ipv6_packet(src, dst, 64, IpProtocol::UDP, udp, payload)
+            ipv6_packet(pool, src, dst, 64, IpProtocol::UDP, udp, payload)
         }
         _ => bail!(IpVersionMismatch),
     }
 }
 
-pub fn icmp_dest_unreachable_prohibited(original_packet: &IpPacket) -> Result<IpPacket> {
+pub fn icmp_dest_unreachable_prohibited(
+    pool: &IpPacketPool,
+    original_packet: &IpPacket,
+) -> Result<IpPacket> {
     icmp_dest_unreachable(
+        pool,
         original_packet,
         crate::icmpv4::DestUnreachableHeader::FilterProhibited,
         crate::icmpv6::DestUnreachableCode::Prohibited,
     )
 }
 
-pub fn icmp_dest_unreachable_network(original_packet: &IpPacket) -> Result<IpPacket> {
+pub fn icmp_dest_unreachable_network(
+    pool: &IpPacketPool,
+    original_packet: &IpPacket,
+) -> Result<IpPacket> {
     icmp_dest_unreachable(
+        pool,
         original_packet,
         crate::icmpv4::DestUnreachableHeader::Network,
         crate::icmpv6::DestUnreachableCode::Address,
@@ -242,6 +289,7 @@ pub fn icmp_dest_unreachable_network(original_packet: &IpPacket) -> Result<IpPac
 }
 
 fn icmp_dest_unreachable(
+    pool: &IpPacketPool,
     original_packet: &IpPacket,
     icmpv4: crate::icmpv4::DestUnreachableHeader,
     icmpv6: crate::icmpv6::DestUnreachableCode,
@@ -256,10 +304,10 @@ fn icmp_dest_unreachable(
 
     let icmp_error = match (src, dst) {
         (IpAddr::V4(src), IpAddr::V4(dst)) => {
-            icmpv4_unreachable(dst, src, original_packet, icmpv4)?
+            icmpv4_unreachable(pool, dst, src, original_packet, icmpv4)?
         }
         (IpAddr::V6(src), IpAddr::V6(dst)) => {
-            icmpv6_unreachable(dst, src, original_packet, icmpv6)?
+            icmpv6_unreachable(pool, dst, src, original_packet, icmpv6)?
         }
         (IpAddr::V4(_), IpAddr::V6(_)) => {
             bail!("Invalid IP packet: Inconsistent IP address versions")
@@ -273,6 +321,7 @@ fn icmp_dest_unreachable(
 }
 
 fn icmpv4_unreachable(
+    pool: &IpPacketPool,
     src: Ipv4Addr,
     dst: Ipv4Addr,
     original_packet: &IpPacket,
@@ -290,6 +339,7 @@ fn icmpv4_unreachable(
     let error_payload = &payload[..actual_payload_len];
 
     icmpv4_packet(
+        pool,
         src,
         dst,
         20,
@@ -299,6 +349,7 @@ fn icmpv4_unreachable(
 }
 
 fn icmpv6_unreachable(
+    pool: &IpPacketPool,
     src: Ipv6Addr,
     dst: Ipv6Addr,
     original_packet: &IpPacket,
@@ -313,6 +364,7 @@ fn icmpv6_unreachable(
     let error_payload = &payload[..actual_payload_len];
 
     icmpv6_packet(
+        pool,
         src,
         dst,
         20,
@@ -324,6 +376,7 @@ fn icmpv6_unreachable(
 /// Creates an IPv4 packet with the given transport header and payload,
 /// computing all checksums.
 fn ipv4_packet(
+    pool: &IpPacketPool,
     src: Ipv4Addr,
     dst: Ipv4Addr,
     ttl: u8,
@@ -348,7 +401,7 @@ fn ipv4_packet(
         ..Default::default()
     };
 
-    let mut packet_buf = IpPacketBuf::new();
+    let mut packet_buf = IpPacketBuf::new(pool);
 
     emit_packet(packet_buf.buf(), total_len, ipv4, transport_header, payload)?;
 
@@ -361,6 +414,7 @@ fn ipv4_packet(
 /// Creates an IPv6 packet with the given transport header and payload,
 /// computing all checksums.
 fn ipv6_packet(
+    pool: &IpPacketPool,
     src: Ipv6Addr,
     dst: Ipv6Addr,
     hop_limit: u8,
@@ -385,7 +439,7 @@ fn ipv6_packet(
         ..Default::default()
     };
 
-    let mut packet_buf = IpPacketBuf::new();
+    let mut packet_buf = IpPacketBuf::new(pool);
 
     emit_packet(packet_buf.buf(), total_len, ipv6, transport_header, payload)?;
 
@@ -439,7 +493,9 @@ mod tests {
         #[strategy(payload(MAX_IP_SIZE - Ipv4HeaderSlice::MIN_LEN - UdpSlice::HEADER_LEN))]
         payload: Vec<u8>,
     ) {
+        let pool = IpPacketPool::new("test");
         let unreachable_packet = udp_packet(
+            &pool,
             Ipv4Addr::new(10, 0, 0, 1),
             Ipv4Addr::LOCALHOST,
             0,
@@ -448,7 +504,7 @@ mod tests {
         )
         .unwrap();
 
-        let icmp_error = icmp_dest_unreachable_network(&unreachable_packet).unwrap();
+        let icmp_error = icmp_dest_unreachable_network(&pool, &unreachable_packet).unwrap();
 
         assert_eq!(
             icmp_error.destination(),
@@ -463,7 +519,9 @@ mod tests {
         #[strategy(payload(MAX_IP_SIZE - Ipv6HeaderSlice::LEN - UdpSlice::HEADER_LEN))]
         payload: Vec<u8>,
     ) {
+        let pool = IpPacketPool::new("test");
         let unreachable_packet = udp_packet(
+            &pool,
             Ipv6Addr::new(1, 0, 0, 0, 0, 0, 0, 1),
             Ipv6Addr::LOCALHOST,
             0,
@@ -472,7 +530,7 @@ mod tests {
         )
         .unwrap();
 
-        let icmp_error = icmp_dest_unreachable_network(&unreachable_packet).unwrap();
+        let icmp_error = icmp_dest_unreachable_network(&pool, &unreachable_packet).unwrap();
 
         assert_eq!(
             icmp_error.destination(),
@@ -485,17 +543,18 @@ mod tests {
     #[test_case::test_case("10.0.0.1", "10.0.0.2"; "ipv4")]
     #[test_case::test_case("fd00::1", "fd00::2"; "ipv6")]
     fn errors_can_quote_echo_replies_but_cannot_generate_more_errors(src: &str, dst: &str) {
+        let pool = IpPacketPool::new("test");
         let src = src.parse::<IpAddr>().unwrap();
         let dst = dst.parse::<IpAddr>().unwrap();
-        let reply = icmp_reply_packet(src, dst, 7, 42, &[]).unwrap();
-        let error = icmp_dest_unreachable_prohibited(&reply).unwrap();
+        let reply = icmp_reply_packet(&pool, src, dst, 7, 42, &[]).unwrap();
+        let error = icmp_dest_unreachable_prohibited(&pool, &reply).unwrap();
 
         let (failed, _) = error.icmp_error().unwrap().unwrap();
         assert_eq!(failed.src(), src);
         assert_eq!(failed.dst(), dst);
         assert_eq!(failed.src_proto(), crate::Protocol::IcmpEcho(42));
-        assert!(icmp_dest_unreachable_prohibited(&error).is_err());
-        assert!(icmp_dest_unreachable_network(&error).is_err());
+        assert!(icmp_dest_unreachable_prohibited(&pool, &error).is_err());
+        assert!(icmp_dest_unreachable_network(&pool, &error).is_err());
     }
 
     #[test_case::test_case("10.0.0.1", "10.0.0.2", 3; "ipv4_missing_quote")]
@@ -503,15 +562,16 @@ mod tests {
     #[test_case::test_case("fd00::1", "fd00::2", 1; "ipv6_missing_quote")]
     #[test_case::test_case("fd00::1", "fd00::2", 4; "ipv6_unsupported")]
     fn unsupported_icmp_errors_cannot_generate_more_errors(src: &str, dst: &str, error_type: u8) {
+        let pool = IpPacketPool::new("test");
         let src = src.parse::<IpAddr>().unwrap();
         let dst = dst.parse::<IpAddr>().unwrap();
-        let mut packet = icmp_request_packet(src, dst, 7, 42, &[]).unwrap();
+        let mut packet = icmp_request_packet(&pool, src, dst, 7, 42, &[]).unwrap();
         packet.payload_mut()[0] = error_type;
         packet.compute_checksums();
 
         assert!(packet.icmp_error().is_err());
-        assert!(icmp_dest_unreachable_prohibited(&packet).is_err());
-        assert!(icmp_dest_unreachable_network(&packet).is_err());
+        assert!(icmp_dest_unreachable_prohibited(&pool, &packet).is_err());
+        assert!(icmp_dest_unreachable_network(&pool, &packet).is_err());
     }
 
     fn payload(max_size: usize) -> impl Strategy<Value = Vec<u8>> {

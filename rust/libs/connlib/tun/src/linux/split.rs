@@ -32,27 +32,34 @@ const INLINE_SEGMENTS: usize = (u16::MAX as usize / ip_packet::MAX_IP_SIZE).next
 ///
 /// The returned `SmallVec` holds a super packet of MTU-sized segments inline; only
 /// smaller (and thus more) segments spill to the heap.
-pub fn split(buf: &[u8]) -> Result<SmallVec<[IpPacket; INLINE_SEGMENTS]>> {
+pub fn split(
+    pool: &ip_packet::IpPacketPool,
+    buf: &[u8],
+) -> Result<SmallVec<[IpPacket; INLINE_SEGMENTS]>> {
     let (hdr, packet) = VirtioNetHdr::parse(buf).context("Read is too short for virtio hdr")?;
 
     match hdr.gso_type {
         VIRTIO_NET_HDR_GSO_NONE => {
-            let packet = copy_single(&hdr, packet)?;
+            let packet = copy_single(pool, &hdr, packet)?;
 
             Ok(smallvec::smallvec![packet])
         }
         VIRTIO_NET_HDR_GSO_TCPV4 | VIRTIO_NET_HDR_GSO_TCPV6 | VIRTIO_NET_HDR_GSO_UDP_L4 => {
-            split_gso(&hdr, packet)
+            split_gso(pool, &hdr, packet)
         }
         other => bail!("Unsupported GSO type: {other:#x}"),
     }
 }
 
 /// Copies a non-GSO packet into an [`IpPacket`], completing a partial checksum if necessary.
-fn copy_single(hdr: &VirtioNetHdr, packet: &[u8]) -> Result<IpPacket> {
+fn copy_single(
+    pool: &ip_packet::IpPacketPool,
+    hdr: &VirtioNetHdr,
+    packet: &[u8],
+) -> Result<IpPacket> {
     let len = packet.len();
 
-    let mut ip_packet_buf = IpPacketBuf::new();
+    let mut ip_packet_buf = IpPacketBuf::new(pool);
     let dst = ip_packet_buf.buf();
     ensure!(len <= dst.len(), "Packet too large (len: {len})");
     dst[..len].copy_from_slice(packet);
@@ -93,7 +100,11 @@ fn complete_partial_checksum(packet: &mut [u8], start: usize, offset: usize) -> 
 }
 
 /// Splits a TSO / USO super packet into individual, fully check-summed segments.
-fn split_gso(hdr: &VirtioNetHdr, packet: &[u8]) -> Result<SmallVec<[IpPacket; INLINE_SEGMENTS]>> {
+fn split_gso(
+    pool: &ip_packet::IpPacketPool,
+    hdr: &VirtioNetHdr,
+    packet: &[u8],
+) -> Result<SmallVec<[IpPacket; INLINE_SEGMENTS]>> {
     let gso_size = hdr.gso_size as usize;
     ensure!(gso_size > 0, "gso_size must not be zero");
 
@@ -136,7 +147,7 @@ fn split_gso(hdr: &VirtioNetHdr, packet: &[u8]) -> Result<SmallVec<[IpPacket; IN
     for (index, segment) in payload.chunks(gso_size).enumerate() {
         let len = headers_len + segment.len();
 
-        let mut ip_packet_buf = IpPacketBuf::new();
+        let mut ip_packet_buf = IpPacketBuf::new(pool);
         let buf = ip_packet_buf.buf();
         ensure!(len <= buf.len(), "Segment too large (len: {len})");
 

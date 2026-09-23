@@ -30,6 +30,7 @@ impl DnsResourceNat {
     /// Returns the packets that can be sent right away because the NAT is already confirmed.
     pub fn update(
         &mut self,
+        pool: &ip_packet::IpPacketPool,
         domain: DomainName,
         gid: GatewayId,
         rid: ResourceId,
@@ -46,6 +47,7 @@ impl DnsResourceNat {
                 buffered_packets.extend(packets_for_domain);
 
                 let assigned_ips = p2p_control::dns_resource_nat::assigned_ips(
+                    pool,
                     rid,
                     domain.clone(),
                     proxy_ips.to_vec(),
@@ -330,10 +332,12 @@ mod tests {
 
     #[test]
     fn no_recreate_nat_for_failed_response() {
+        let pool = ip_packet::IpPacketPool::new("test");
         let mut dns_resource_nat = DnsResourceNat::default();
 
         dns_resource_nat
             .update(
+                &pool,
                 EXAMPLE_COM.to_vec(),
                 GID,
                 RID,
@@ -355,6 +359,7 @@ mod tests {
 
         dns_resource_nat
             .update(
+                &pool,
                 EXAMPLE_COM.to_vec(),
                 GID,
                 RID,
@@ -368,10 +373,12 @@ mod tests {
 
     #[test]
     fn recreate_failed_nat() {
+        let pool = ip_packet::IpPacketPool::new("test");
         let mut dns_resource_nat = DnsResourceNat::default();
 
         dns_resource_nat
             .update(
+                &pool,
                 EXAMPLE_COM.to_vec(),
                 GID,
                 RID,
@@ -393,6 +400,7 @@ mod tests {
 
         dns_resource_nat
             .update(
+                &pool,
                 EXAMPLE_COM.to_vec(),
                 GID,
                 RID,
@@ -405,7 +413,7 @@ mod tests {
 
         // Should buffer packets if we are coming from `Failed`.
         let packet =
-            ip_packet::make::udp_packet(Ipv4Addr::LOCALHOST, Ipv4Addr::LOCALHOST, 0, 0, &[])
+            ip_packet::make::udp_packet(&pool, Ipv4Addr::LOCALHOST, Ipv4Addr::LOCALHOST, 0, 0, &[])
                 .unwrap();
 
         let maybe_packet = dns_resource_nat.handle_outgoing(
@@ -421,10 +429,12 @@ mod tests {
 
     #[test]
     fn buffer_packets_until_nat_is_active() {
+        let pool = ip_packet::IpPacketPool::new("test");
         let mut dns_resource_nat = DnsResourceNat::default();
 
         dns_resource_nat
             .update(
+                &pool,
                 EXAMPLE_COM.to_vec(),
                 GID,
                 RID,
@@ -435,7 +445,7 @@ mod tests {
             .unwrap();
 
         let packet =
-            ip_packet::make::udp_packet(Ipv4Addr::LOCALHOST, Ipv4Addr::LOCALHOST, 0, 0, &[])
+            ip_packet::make::udp_packet(&pool, Ipv4Addr::LOCALHOST, Ipv4Addr::LOCALHOST, 0, 0, &[])
                 .unwrap();
 
         let maybe_packet = dns_resource_nat.handle_outgoing(
@@ -462,10 +472,12 @@ mod tests {
 
     #[test]
     fn dont_buffer_packets_upon_recreate() {
+        let pool = ip_packet::IpPacketPool::new("test");
         let mut dns_resource_nat = DnsResourceNat::default();
 
         dns_resource_nat
             .update(
+                &pool,
                 EXAMPLE_COM.to_vec(),
                 GID,
                 RID,
@@ -486,6 +498,7 @@ mod tests {
         dns_resource_nat.recreate(EXAMPLE_COM.to_vec());
         dns_resource_nat
             .update(
+                &pool,
                 EXAMPLE_COM.to_vec(),
                 GID,
                 RID,
@@ -496,7 +509,7 @@ mod tests {
             .unwrap();
 
         let app_packet =
-            ip_packet::make::udp_packet(Ipv4Addr::LOCALHOST, Ipv4Addr::LOCALHOST, 0, 0, &[])
+            ip_packet::make::udp_packet(&pool, Ipv4Addr::LOCALHOST, Ipv4Addr::LOCALHOST, 0, 0, &[])
                 .unwrap();
 
         let maybe_packet = dns_resource_nat.handle_outgoing(
@@ -513,10 +526,12 @@ mod tests {
 
     #[test]
     fn forwards_buffered_packets_when_nat_already_confirmed() {
+        let pool = ip_packet::IpPacketPool::new("test");
         let mut dns_resource_nat = DnsResourceNat::default();
 
         dns_resource_nat
             .update(
+                &pool,
                 EXAMPLE_COM.to_vec(),
                 GID,
                 RID,
@@ -535,11 +550,12 @@ mod tests {
         );
 
         let packet =
-            ip_packet::make::udp_packet(Ipv4Addr::LOCALHOST, Ipv4Addr::LOCALHOST, 0, 0, &[])
+            ip_packet::make::udp_packet(&pool, Ipv4Addr::LOCALHOST, Ipv4Addr::LOCALHOST, 0, 0, &[])
                 .unwrap();
 
         let packets = dns_resource_nat
             .update(
+                &pool,
                 EXAMPLE_COM.to_vec(),
                 GID,
                 RID,
@@ -554,11 +570,13 @@ mod tests {
 
     #[test]
     fn resend_intent_after_2_seconds() {
+        let pool = ip_packet::IpPacketPool::new("test");
         let mut dns_resource_nat = DnsResourceNat::default();
         let mut now = Instant::now();
 
         dns_resource_nat
             .update(
+                &pool,
                 EXAMPLE_COM.to_vec(),
                 GID,
                 RID,
@@ -571,6 +589,7 @@ mod tests {
 
         dns_resource_nat
             .update(
+                &pool,
                 EXAMPLE_COM.to_vec(),
                 GID,
                 RID,
@@ -585,6 +604,7 @@ mod tests {
 
         dns_resource_nat
             .update(
+                &pool,
                 EXAMPLE_COM.to_vec(),
                 GID,
                 RID,
@@ -598,11 +618,13 @@ mod tests {
 
     #[test]
     fn resend_intent_on_outgoing_packet_after_2s() {
+        let pool = ip_packet::IpPacketPool::new("test");
         let mut dns_resource_nat = DnsResourceNat::default();
         let mut now = Instant::now();
 
         dns_resource_nat
             .update(
+                &pool,
                 EXAMPLE_COM.to_vec(),
                 GID,
                 RID,
@@ -616,7 +638,7 @@ mod tests {
         now += Duration::from_secs(2);
 
         let app_packet =
-            ip_packet::make::udp_packet(Ipv4Addr::LOCALHOST, Ipv4Addr::LOCALHOST, 0, 0, &[])
+            ip_packet::make::udp_packet(&pool, Ipv4Addr::LOCALHOST, Ipv4Addr::LOCALHOST, 0, 0, &[])
                 .unwrap();
 
         let maybe_packet =
@@ -628,10 +650,12 @@ mod tests {
 
     #[test]
     fn create_nat_for_two_resources_sharing_domain() {
+        let pool = ip_packet::IpPacketPool::new("test");
         let mut dns_resource_nat = DnsResourceNat::default();
 
         dns_resource_nat
             .update(
+                &pool,
                 EXAMPLE_COM.to_vec(),
                 GID,
                 RID,
@@ -653,6 +677,7 @@ mod tests {
 
         dns_resource_nat
             .update(
+                &pool,
                 EXAMPLE_COM.to_vec(),
                 GID,
                 RID2,

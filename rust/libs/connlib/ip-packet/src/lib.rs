@@ -38,10 +38,6 @@ use ingot::tcp::{TcpRef, ValidTcp};
 use ingot::types::{HeaderLen as _, HeaderParse as _, NetworkRepr as _, NextLayer as _};
 use ingot::udp::{UdpRef, ValidUdp};
 use std::net::IpAddr;
-use std::sync::LazyLock;
-
-static BUFFER_POOL: LazyLock<BufferPool<Vec<u8>>> =
-    LazyLock::new(|| BufferPool::new(MAX_FZ_PAYLOAD, "ip-packet"));
 
 /// The maximum size of an IP packet we can handle.
 pub const MAX_IP_SIZE: usize = 1280;
@@ -130,22 +126,34 @@ pub enum Layer4Protocol {
     Icmp { seq: u16, id: u16 },
 }
 
+/// A pool of buffers sized for IP packets and their tunnel headers.
+///
+/// Clones share the same pool. Buffers keep the pool alive until they are dropped.
+#[derive(Clone)]
+pub struct IpPacketPool(BufferPool<Vec<u8>>);
+
+impl IpPacketPool {
+    pub fn new(tag: &'static str) -> Self {
+        Self(BufferPool::new(MAX_FZ_PAYLOAD, tag))
+    }
+}
+
+impl std::fmt::Debug for IpPacketPool {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("IpPacketPool").finish()
+    }
+}
+
 /// A buffer for reading a new [`IpPacket`] from the network.
 pub struct IpPacketBuf {
     inner: Buffer<Vec<u8>>,
 }
 
-impl Default for IpPacketBuf {
-    fn default() -> Self {
-        Self {
-            inner: BUFFER_POOL.pull(),
-        }
-    }
-}
-
 impl IpPacketBuf {
-    pub fn new() -> Self {
-        Self::default()
+    pub fn new(pool: &IpPacketPool) -> Self {
+        Self {
+            inner: pool.0.pull(),
+        }
     }
 
     pub fn buf(&mut self) -> &mut [u8] {
@@ -248,6 +256,11 @@ impl std::fmt::Debug for IpPacket {
 }
 
 impl IpPacket {
+    /// Returns the pool this packet's buffer belongs to.
+    pub fn pool(&self) -> IpPacketPool {
+        IpPacketPool(self.buf.pool())
+    }
+
     /// Parses and validates the first `len` bytes of `buf` as an IP packet.
     ///
     /// All layout invariants are checked here, once: header lengths and length
@@ -1194,10 +1207,55 @@ mod tests {
     use super::*;
 
     #[test]
+    fn packet_pools_are_independent_and_clones_share_buffers() {
+        let first = IpPacketPool::new("first");
+        let second = IpPacketPool::new("second");
+        let mut buf = IpPacketBuf::new(&first);
+        assert_eq!(buf.buf().len(), MAX_FZ_PAYLOAD);
+        let ptr = buf.buf().as_ptr();
+        drop(buf);
+
+        let mut other = IpPacketBuf::new(&second);
+        assert_ne!(other.buf().as_ptr(), ptr);
+        let cloned = first.clone();
+        drop(first);
+        let mut reused = IpPacketBuf::new(&cloned);
+        assert_eq!(reused.buf().as_ptr(), ptr);
+    }
+
+    #[test]
+    fn packet_keeps_its_pool_alive() {
+        let pool = IpPacketPool::new("test");
+        let packet = crate::make::udp_packet(
+            &pool,
+            Ipv4Addr::LOCALHOST,
+            Ipv4Addr::LOCALHOST,
+            1,
+            2,
+            b"payload",
+        )
+        .unwrap();
+        let ptr = packet.buf.as_ptr();
+        drop(pool);
+
+        let pool = packet.pool();
+        drop(packet);
+        let mut reused = IpPacketBuf::new(&pool);
+        assert_eq!(reused.buf().as_ptr(), ptr);
+    }
+
+    #[test]
     fn udp_packet_payload() {
-        let udp_packet =
-            crate::make::udp_packet(Ipv4Addr::LOCALHOST, Ipv4Addr::LOCALHOST, 0, 0, b"foobar")
-                .unwrap();
+        let pool = crate::IpPacketPool::new("test");
+        let udp_packet = crate::make::udp_packet(
+            &pool,
+            Ipv4Addr::LOCALHOST,
+            Ipv4Addr::LOCALHOST,
+            0,
+            0,
+            b"foobar",
+        )
+        .unwrap();
 
         let ip_payload = udp_packet.payload();
         let udp_payload = &ip_payload[UdpSlice::HEADER_LEN..];
@@ -1207,8 +1265,9 @@ mod tests {
 
     #[test]
     fn ipv4_ecn() {
-        let p =
-            crate::make::udp_packet(Ipv4Addr::LOCALHOST, Ipv4Addr::LOCALHOST, 0, 0, &[]).unwrap();
+        let pool = crate::IpPacketPool::new("test");
+        let p = crate::make::udp_packet(&pool, Ipv4Addr::LOCALHOST, Ipv4Addr::LOCALHOST, 0, 0, &[])
+            .unwrap();
 
         assert_eq!(p.clone().with_ecn(Ecn::NonEct).ecn(), Ecn::NonEct);
         assert_eq!(p.clone().with_ecn(Ecn::Ect0).ecn(), Ecn::Ect0);
@@ -1218,8 +1277,9 @@ mod tests {
 
     #[test]
     fn ipv6_ecn() {
-        let p =
-            crate::make::udp_packet(Ipv6Addr::LOCALHOST, Ipv6Addr::LOCALHOST, 0, 0, &[]).unwrap();
+        let pool = crate::IpPacketPool::new("test");
+        let p = crate::make::udp_packet(&pool, Ipv6Addr::LOCALHOST, Ipv6Addr::LOCALHOST, 0, 0, &[])
+            .unwrap();
 
         assert_eq!(p.clone().with_ecn(Ecn::NonEct).ecn(), Ecn::NonEct);
         assert_eq!(p.clone().with_ecn(Ecn::Ect1).ecn(), Ecn::Ect1);
@@ -1229,8 +1289,9 @@ mod tests {
 
     #[test]
     fn ip4_checksum_after_ecn_is_correct() {
-        let p =
-            crate::make::udp_packet(Ipv4Addr::LOCALHOST, Ipv4Addr::LOCALHOST, 0, 0, &[]).unwrap();
+        let pool = crate::IpPacketPool::new("test");
+        let p = crate::make::udp_packet(&pool, Ipv4Addr::LOCALHOST, Ipv4Addr::LOCALHOST, 0, 0, &[])
+            .unwrap();
 
         let p_with_ecn = p.with_ecn(Ecn::Ect0);
 
@@ -1242,7 +1303,8 @@ mod tests {
 
     #[test]
     fn ecn_from_transport_happy_path() {
-        let p = crate::make::udp_packet(Ipv4Addr::LOCALHOST, Ipv4Addr::LOCALHOST, 0, 0, &[])
+        let pool = crate::IpPacketPool::new("test");
+        let p = crate::make::udp_packet(&pool, Ipv4Addr::LOCALHOST, Ipv4Addr::LOCALHOST, 0, 0, &[])
             .unwrap()
             .with_ecn(Ecn::Ect0);
 
@@ -1253,7 +1315,8 @@ mod tests {
 
     #[test]
     fn ecn_from_transport_no_clear_ect() {
-        let p = crate::make::udp_packet(Ipv4Addr::LOCALHOST, Ipv4Addr::LOCALHOST, 0, 0, &[])
+        let pool = crate::IpPacketPool::new("test");
+        let p = crate::make::udp_packet(&pool, Ipv4Addr::LOCALHOST, Ipv4Addr::LOCALHOST, 0, 0, &[])
             .unwrap()
             .with_ecn(Ecn::Ect0);
 
@@ -1271,8 +1334,10 @@ mod tests {
     /// One possibility for the future might be to use dedicated `Error` types.
     #[test]
     fn all_as_functions_should_return_option() {
+        let pool = crate::IpPacketPool::new("test");
         let mut p =
-            crate::make::udp_packet(Ipv4Addr::LOCALHOST, Ipv4Addr::LOCALHOST, 0, 0, &[]).unwrap();
+            crate::make::udp_packet(&pool, Ipv4Addr::LOCALHOST, Ipv4Addr::LOCALHOST, 0, 0, &[])
+                .unwrap();
 
         let _: Option<_> = p.as_udp();
         let _: Option<_> = p.as_udp_mut();
@@ -1287,8 +1352,10 @@ mod tests {
 
     #[test]
     fn src_is_updated() {
+        let pool = crate::IpPacketPool::new("test");
         let mut p =
-            crate::make::udp_packet(Ipv4Addr::LOCALHOST, Ipv4Addr::LOCALHOST, 0, 0, &[]).unwrap();
+            crate::make::udp_packet(&pool, Ipv4Addr::LOCALHOST, Ipv4Addr::LOCALHOST, 0, 0, &[])
+                .unwrap();
 
         p.set_src(IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1))).unwrap();
 
@@ -1297,8 +1364,10 @@ mod tests {
 
     #[test]
     fn dst_is_updated() {
+        let pool = crate::IpPacketPool::new("test");
         let mut p =
-            crate::make::udp_packet(Ipv4Addr::LOCALHOST, Ipv4Addr::LOCALHOST, 0, 0, &[]).unwrap();
+            crate::make::udp_packet(&pool, Ipv4Addr::LOCALHOST, Ipv4Addr::LOCALHOST, 0, 0, &[])
+                .unwrap();
 
         p.set_dst(IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1))).unwrap();
 

@@ -22,8 +22,8 @@ impl Agent {
         Self::Ice(agent)
     }
 
-    pub(crate) fn path() -> Self {
-        Self::Path(path_agent::PathAgent::new())
+    pub(crate) fn path(pool: ip_packet::IpPacketPool) -> Self {
+        Self::Path(path_agent::PathAgent::new(pool))
     }
 
     pub(crate) fn is_iceless(&self) -> bool {

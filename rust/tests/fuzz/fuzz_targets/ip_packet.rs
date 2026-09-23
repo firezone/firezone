@@ -11,7 +11,8 @@ fuzz_target!(|input: Input| {
         return;
     }
 
-    let mut buf = IpPacketBuf::new();
+    let pool = ip_packet::IpPacketPool::new("fuzz-ip");
+    let mut buf = IpPacketBuf::new(&pool);
     let len = input.data.len();
     buf.buf()[..len].copy_from_slice(&input.data[..len]);
 
@@ -134,7 +135,7 @@ fuzz_target!(|input: Input| {
 
 /// Builds ICMP destination-unreachable errors from the packet and parses them back.
 fn make_and_parse_icmp_errors(packet: &IpPacket, translate_dst: IpAddr, translate_port: u16) {
-    type MakeError = fn(&IpPacket) -> anyhow::Result<IpPacket>;
+    type MakeError = fn(&ip_packet::IpPacketPool, &IpPacket) -> anyhow::Result<IpPacket>;
     type IsCode = fn(&IcmpError) -> bool;
 
     let cases: [(MakeError, IsCode); 2] = [
@@ -149,7 +150,7 @@ fn make_and_parse_icmp_errors(packet: &IpPacket, translate_dst: IpAddr, translat
     ];
 
     for (make_error, is_code) in cases {
-        let Ok(error_packet) = make_error(packet) else {
+        let Ok(error_packet) = make_error(&packet.pool(), packet) else {
             continue;
         };
 

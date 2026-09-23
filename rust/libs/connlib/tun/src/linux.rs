@@ -196,6 +196,7 @@ where
             let mut buf = vec![0u8; READ_BUFFER_SIZE];
             let mut batch = PacketBatch::default();
             let mut overflow = VecDeque::new();
+            let pool = ip_packet::IpPacketPool::new("tun-ip");
 
             loop {
                 // Without the explicit wake-up on `closed`, this task would idle in
@@ -241,7 +242,7 @@ where
                         Err(_would_block) => break, // FD is drained; hand off what we have.
                     };
 
-                    match split::split(&buf[..len]) {
+                    match split::split(&pool, &buf[..len]) {
                         Ok(mut segments) => {
                             batch_size_histogram
                                 .record(segments.len() as u64, &recv_metric_attributes());

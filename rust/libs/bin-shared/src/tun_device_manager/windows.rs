@@ -525,6 +525,7 @@ fn drop_attributes_without_error() -> [KeyValue; 3] {
 }
 
 fn recv_worker(packet_tx: tun::InboundTx, session: Weak<wintun::Session>) {
+    let pool = ip_packet::IpPacketPool::new("tun-ip");
     let mut batch = tun::PacketBatch::default();
 
     'recv: loop {
@@ -548,7 +549,7 @@ fn recv_worker(packet_tx: tun::InboundTx, session: Weak<wintun::Session>) {
             }
         };
 
-        if let Some(packet) = parse_packet(&pkt)
+        if let Some(packet) = parse_packet(&pool, &pkt)
             && push_or_start_new_batch(&mut batch, packet, &packet_tx).is_err()
         {
             break 'recv;
@@ -559,7 +560,7 @@ fn recv_worker(packet_tx: tun::InboundTx, session: Weak<wintun::Session>) {
         loop {
             match session.try_receive() {
                 Ok(Some(pkt)) => {
-                    if let Some(packet) = parse_packet(&pkt)
+                    if let Some(packet) = parse_packet(&pool, &pkt)
                         && push_or_start_new_batch(&mut batch, packet, &packet_tx).is_err()
                     {
                         break 'recv;
@@ -611,8 +612,8 @@ fn push_or_start_new_batch(
         })
 }
 
-fn parse_packet(pkt: &wintun::Packet) -> Option<IpPacket> {
-    let mut ip_packet_buf = IpPacketBuf::new();
+fn parse_packet(pool: &ip_packet::IpPacketPool, pkt: &wintun::Packet) -> Option<IpPacket> {
+    let mut ip_packet_buf = IpPacketBuf::new(pool);
 
     let src = pkt.bytes();
     let dst = ip_packet_buf.buf();

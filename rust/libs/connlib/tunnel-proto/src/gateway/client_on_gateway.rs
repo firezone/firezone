@@ -337,9 +337,9 @@ impl ClientOnGateway {
 
             let reply = match error.any_downcast_ref::<InternetResourceRejectedAddress>() {
                 Some(InternetResourceRejectedAddress(_)) => {
-                    ip_packet::make::icmp_dest_unreachable_network(&packet)?
+                    ip_packet::make::icmp_dest_unreachable_network(&packet.pool(), &packet)?
                 }
-                None => ip_packet::make::icmp_dest_unreachable_prohibited(&packet)?,
+                None => ip_packet::make::icmp_dest_unreachable_prohibited(&packet.pool(), &packet)?,
             };
 
             let no_authorization = error
@@ -415,14 +415,14 @@ impl ClientOnGateway {
             tracing::debug!(%dst, "No translation entry");
 
             return Ok(TranslateOutboundResult::IcmpError {
-                reply: ip_packet::make::icmp_dest_unreachable_network(&packet)?,
+                reply: ip_packet::make::icmp_dest_unreachable_network(&packet.pool(), &packet)?,
                 no_authorization: None,
             });
         };
 
         let Some(resolved_ip) = state.resolved_ip else {
             return Ok(TranslateOutboundResult::IcmpError {
-                reply: ip_packet::make::icmp_dest_unreachable_network(&packet)?,
+                reply: ip_packet::make::icmp_dest_unreachable_network(&packet.pool(), &packet)?,
                 no_authorization: None,
             });
         };
@@ -435,7 +435,7 @@ impl ClientOnGateway {
             );
 
             return Ok(TranslateOutboundResult::IcmpError {
-                reply: ip_packet::make::icmp_dest_unreachable_network(&packet)?,
+                reply: ip_packet::make::icmp_dest_unreachable_network(&packet.pool(), &packet)?,
                 no_authorization: None,
             });
         }
@@ -464,7 +464,7 @@ impl ClientOnGateway {
                 tracing::debug!(error = ?prototype.error(), dst = %prototype.outside_dst(), proxy_ip = %prototype.inside_dst(), "ICMP Error");
 
                 let icmp_error = prototype
-                    .into_packet(self.client_tun.v4, self.client_tun.v6)
+                    .into_packet(&packet.pool(), self.client_tun.v4, self.client_tun.v6)
                     .context("Failed to create ICMP error")?;
 
                 return Ok(icmp_error);
@@ -764,6 +764,7 @@ mod tests {
 
     #[test]
     fn gateway_filters_expire_individually() {
+        let pool = ip_packet::IpPacketPool::new("test");
         let mut peer = ClientOnGateway::new(client_id(), client_tun(), gateway_tun());
         let now = Instant::now();
         let then = now + Duration::from_secs(10);
@@ -790,6 +791,7 @@ mod tests {
         );
 
         let tcp_packet = ip_packet::make::tcp_packet(
+            &pool,
             client_tun_ipv4(),
             cidr_v4_resource().hosts().next().unwrap(),
             5401,
@@ -800,6 +802,7 @@ mod tests {
         .unwrap();
 
         let udp_packet = ip_packet::make::udp_packet(
+            &pool,
             client_tun_ipv4(),
             cidr_v4_resource().hosts().next().unwrap(),
             5401,
@@ -864,9 +867,11 @@ mod tests {
 
     #[test]
     fn allows_packets_for_and_from_gateway_tun_ip() {
+        let pool = ip_packet::IpPacketPool::new("test");
         let mut peer = ClientOnGateway::new(client_id(), client_tun(), gateway_tun());
 
         let request = ip_packet::make::tcp_packet(
+            &pool,
             client_tun_ipv4(),
             gateway_tun_ipv4(),
             5401,
@@ -877,6 +882,7 @@ mod tests {
         .unwrap();
 
         let response = ip_packet::make::tcp_packet(
+            &pool,
             gateway_tun_ipv4(),
             client_tun_ipv4(),
             80,
@@ -895,6 +901,7 @@ mod tests {
 
     #[test]
     fn dns_and_cidr_filters_dot_mix() {
+        let pool = ip_packet::IpPacketPool::new("test");
         let mut peer = ClientOnGateway::new(client_id(), client_tun(), gateway_tun());
         peer.add_resource(foo_dns_resource(), None, Instant::now());
         peer.add_resource(bar_cidr_resource(), None, Instant::now());
@@ -909,6 +916,7 @@ mod tests {
         assert_eq!(bar_contained_ip(), foo_real_ip1());
 
         let pkt = ip_packet::make::udp_packet(
+            &pool,
             client_tun_ipv4(),
             bar_contained_ip(),
             1,
@@ -920,6 +928,7 @@ mod tests {
         assert!(peer.translate_outbound(pkt, Instant::now()).is_ok());
 
         let pkt = ip_packet::make::udp_packet(
+            &pool,
             client_tun_ipv4(),
             bar_contained_ip(),
             1,
@@ -934,6 +943,7 @@ mod tests {
         ));
 
         let pkt = ip_packet::make::udp_packet(
+            &pool,
             client_tun_ipv4(),
             proxy_ip4_1(),
             1,
@@ -948,6 +958,7 @@ mod tests {
         ));
 
         let pkt = ip_packet::make::udp_packet(
+            &pool,
             client_tun_ipv4(),
             proxy_ip4_1(),
             1,
@@ -961,6 +972,7 @@ mod tests {
 
     #[test]
     fn internet_resource_doesnt_allow_all_traffic_for_dns_resources() {
+        let pool = ip_packet::IpPacketPool::new("test");
         let mut peer = ClientOnGateway::new(client_id(), client_tun(), gateway_tun());
         peer.add_resource(foo_dns_resource(), None, Instant::now());
         peer.add_resource(internet_resource(), None, Instant::now());
@@ -973,6 +985,7 @@ mod tests {
         .unwrap();
 
         let pkt = ip_packet::make::udp_packet(
+            &pool,
             client_tun_ipv4(),
             proxy_ip4_1(),
             1,
@@ -984,6 +997,7 @@ mod tests {
         assert!(peer.translate_outbound(pkt, Instant::now()).is_ok());
 
         let pkt = ip_packet::make::udp_packet(
+            &pool,
             client_tun_ipv4(),
             proxy_ip4_1(),
             1,
@@ -998,6 +1012,7 @@ mod tests {
         ));
 
         let pkt = ip_packet::make::udp_packet(
+            &pool,
             client_tun_ipv4(),
             "1.1.1.1".parse::<Ipv4Addr>().unwrap(),
             1,
@@ -1011,10 +1026,12 @@ mod tests {
 
     #[test]
     fn internet_resource_does_not_allow_traffic_to_another_client() {
+        let pool = ip_packet::IpPacketPool::new("test");
         let mut peer = ClientOnGateway::new(client_id(), client_tun(), gateway_tun());
         peer.add_resource(internet_resource(), None, Instant::now());
 
         let request = ip_packet::make::udp_packet(
+            &pool,
             client_tun_ipv4(),
             other_client_tun_ipv4(),
             5401,
@@ -1031,11 +1048,13 @@ mod tests {
 
     #[test]
     fn internet_resource_does_not_allow_traffic_from_another_client() {
+        let pool = ip_packet::IpPacketPool::new("test");
         let now = Instant::now();
         let mut peer = ClientOnGateway::new(client_id(), client_tun(), gateway_tun());
         peer.add_resource(internet_resource(), None, now);
 
         let hairpinned = ip_packet::make::udp_packet(
+            &pool,
             other_client_tun_ipv4(),
             client_tun_ipv4(),
             80,
@@ -1056,6 +1075,7 @@ mod tests {
 
     #[test]
     fn dns_resource_packet_is_dropped_after_nat_session_expires() {
+        let pool = ip_packet::IpPacketPool::new("test");
         let _guard = logging::test("trace");
 
         let mut peer = ClientOnGateway::new(client_id(), client_tun(), gateway_tun());
@@ -1069,6 +1089,7 @@ mod tests {
         .unwrap();
 
         let request = ip_packet::make::udp_packet(
+            &pool,
             client_tun_ipv4(),
             proxy_ip4_1(),
             1,
@@ -1085,6 +1106,7 @@ mod tests {
         ));
 
         let response = ip_packet::make::udp_packet(
+            &pool,
             foo_real_ip1(),
             client_tun_ipv4(),
             foo_allowed_port(),
@@ -1099,6 +1121,7 @@ mod tests {
         peer.translate_inbound(response, now).unwrap();
 
         let response = ip_packet::make::udp_packet(
+            &pool,
             foo_real_ip1(),
             client_tun_ipv4(),
             foo_allowed_port(),
@@ -1122,6 +1145,7 @@ mod tests {
 
     #[test]
     fn setting_up_dns_resource_nat_does_not_clear_existing_nat_session() {
+        let pool = ip_packet::IpPacketPool::new("test");
         let _guard = logging::test("trace");
 
         let now = Instant::now();
@@ -1138,6 +1162,7 @@ mod tests {
 
         {
             let request = ip_packet::make::udp_packet(
+                &pool,
                 client_tun_ipv4(),
                 proxy_ip4_1(),
                 1,
@@ -1163,6 +1188,7 @@ mod tests {
             assert!(matches!(result, TranslateOutboundResult::Send(_)));
 
             let response = ip_packet::make::udp_packet(
+                &pool,
                 foo_real_ip1(),
                 client_tun_ipv4(),
                 foo_allowed_port(),
@@ -1176,6 +1202,7 @@ mod tests {
 
         {
             let request = ip_packet::make::udp_packet(
+                &pool,
                 client_tun_ipv4(),
                 proxy_ip4_1(),
                 2, // Using a new source port
@@ -1197,6 +1224,7 @@ mod tests {
             );
 
             let response = ip_packet::make::udp_packet(
+                &pool,
                 foo_real_ip2(),
                 client_tun_ipv4(),
                 foo_allowed_port(),
@@ -1211,6 +1239,7 @@ mod tests {
 
     #[test]
     fn setting_up_dns_resource_nat_with_new_proxy_ips_resets_state() {
+        let pool = ip_packet::IpPacketPool::new("test");
         let _guard = logging::test("trace");
 
         let now = Instant::now();
@@ -1227,6 +1256,7 @@ mod tests {
         .unwrap();
 
         let request = ip_packet::make::udp_packet(
+            &pool,
             client_tun_ipv4(),
             proxy_ip4_1(),
             1,
@@ -1263,6 +1293,7 @@ mod tests {
 
     #[test]
     fn setup_dns_resource_nat_ipv4_only_adds_ipv6_translation_state_entries() {
+        let pool = ip_packet::IpPacketPool::new("test");
         let _guard = logging::test("trace");
 
         let now = Instant::now();
@@ -1278,6 +1309,7 @@ mod tests {
         .unwrap();
 
         let request = ip_packet::make::udp_packet(
+            &pool,
             client_tun_ipv6(),
             proxy_ip6_1(),
             1,
@@ -1311,6 +1343,7 @@ mod tests {
     // existing TranslationState (and its resolved IP) is preserved.
     #[test]
     fn multiple_resources_can_share_same_proxy_ip() {
+        let pool = ip_packet::IpPacketPool::new("test");
         let _guard = logging::test("trace");
 
         let now = Instant::now();
@@ -1337,6 +1370,7 @@ mod tests {
 
         // A UDP/80 packet is permitted by foo_dns_resource's filter.
         let udp_request = ip_packet::make::udp_packet(
+            &pool,
             client_tun_ipv4(),
             proxy_ip4_1(),
             1,
@@ -1359,6 +1393,7 @@ mod tests {
             unreachable!("proxy_ip4_1 is always IPv4")
         };
         let tcp_request = ip_packet::make::tcp_packet(
+            &pool,
             client_tun_ipv4(),
             proxy_ip4_1,
             2,
@@ -1406,6 +1441,7 @@ mod tests {
 
     #[test]
     fn no_translate_outbound_icmp_error() {
+        let pool = ip_packet::IpPacketPool::new("test");
         let _guard = logging::test("trace");
 
         let now = Instant::now();
@@ -1413,7 +1449,8 @@ mod tests {
         let mut peer = ClientOnGateway::new(client_id(), client_tun(), gateway_tun());
 
         let icmp_unreachable = ip_packet::make::icmp_dest_unreachable_network(
-            &ip_packet::make::udp_packet(proxy_ip4_1(), client_tun_ipv4(), 443, 50000, &[])
+            &pool,
+            &ip_packet::make::udp_packet(&pool, proxy_ip4_1(), client_tun_ipv4(), 443, 50000, &[])
                 .unwrap(),
         )
         .unwrap();
@@ -1627,6 +1664,7 @@ mod proptests {
         #[strategy(any::<u16>())] sport: u16,
         #[strategy(any::<Vec<u8>>())] payload: Vec<u8>,
     ) {
+        let pool = ip_packet::IpPacketPool::new("test");
         // This test could be extended to test multiple src
         let mut peer = ClientOnGateway::new(
             client_id,
@@ -1648,11 +1686,17 @@ mod proptests {
             };
 
             let packet = match protocol {
-                Protocol::Tcp { dport } => {
-                    tcp_packet(src, *dest, sport, *dport, TcpFlags::default(), &payload)
-                }
-                Protocol::Udp { dport } => udp_packet(src, *dest, sport, *dport, &payload),
-                Protocol::Icmp => icmp_request_packet(src, *dest, 1, 0, &[]),
+                Protocol::Tcp { dport } => tcp_packet(
+                    &pool,
+                    src,
+                    *dest,
+                    sport,
+                    *dport,
+                    TcpFlags::default(),
+                    &payload,
+                ),
+                Protocol::Udp { dport } => udp_packet(&pool, src, *dest, sport, *dport, &payload),
+                Protocol::Icmp => icmp_request_packet(&pool, src, *dest, 1, 0, &[]),
             }
             .unwrap();
             assert!(
@@ -1675,6 +1719,7 @@ mod proptests {
         #[strategy(any::<u16>())] sport: u16,
         #[strategy(any::<Vec<u8>>())] payload: Vec<u8>,
     ) {
+        let pool = ip_packet::IpPacketPool::new("test");
         let (resource_addr, dest) = config;
         let src = if dest.is_ipv4() {
             client_v4.into()
@@ -1706,11 +1751,17 @@ mod proptests {
 
         for (_, protocol) in protocol_config {
             let packet = match protocol {
-                Protocol::Tcp { dport } => {
-                    tcp_packet(src, dest, sport, dport, TcpFlags::default(), &payload)
-                }
-                Protocol::Udp { dport } => udp_packet(src, dest, sport, dport, &payload),
-                Protocol::Icmp => icmp_request_packet(src, dest, 1, 0, &[]),
+                Protocol::Tcp { dport } => tcp_packet(
+                    &pool,
+                    src,
+                    dest,
+                    sport,
+                    dport,
+                    TcpFlags::default(),
+                    &payload,
+                ),
+                Protocol::Udp { dport } => udp_packet(&pool, src, dest, sport, dport, &payload),
+                Protocol::Icmp => icmp_request_packet(&pool, src, dest, 1, 0, &[]),
             }
             .unwrap();
 
@@ -1732,6 +1783,7 @@ mod proptests {
         #[strategy(any::<u16>())] sport: u16,
         #[strategy(any::<Vec<u8>>())] payload: Vec<u8>,
     ) {
+        let pool = ip_packet::IpPacketPool::new("test");
         let (resource_addr, dest) = config;
         let src = if dest.is_ipv4() {
             client_v4.into()
@@ -1749,11 +1801,17 @@ mod proptests {
             gateway_tun(),
         );
         let packet = match protocol {
-            Protocol::Tcp { dport } => {
-                tcp_packet(src, dest, sport, dport, TcpFlags::default(), &payload)
-            }
-            Protocol::Udp { dport } => udp_packet(src, dest, sport, dport, &payload),
-            Protocol::Icmp => icmp_request_packet(src, dest, 1, 0, &[]),
+            Protocol::Tcp { dport } => tcp_packet(
+                &pool,
+                src,
+                dest,
+                sport,
+                dport,
+                TcpFlags::default(),
+                &payload,
+            ),
+            Protocol::Udp { dport } => udp_packet(&pool, src, dest, sport, dport, &payload),
+            Protocol::Icmp => icmp_request_packet(&pool, src, dest, 1, 0, &[]),
         }
         .unwrap();
 
@@ -1789,6 +1847,7 @@ mod proptests {
         #[strategy(any::<u16>())] sport: u16,
         #[strategy(any::<Vec<u8>>())] payload: Vec<u8>,
     ) {
+        let pool = ip_packet::IpPacketPool::new("test");
         let (resource_addr, dest) = config;
         let src = if dest.is_ipv4() {
             client_v4.into()
@@ -1808,20 +1867,32 @@ mod proptests {
         );
 
         let packet_allowed = match protocol_allowed {
-            Protocol::Tcp { dport } => {
-                tcp_packet(src, dest, sport, dport, TcpFlags::default(), &payload)
-            }
-            Protocol::Udp { dport } => udp_packet(src, dest, sport, dport, &payload),
-            Protocol::Icmp => icmp_request_packet(src, dest, 1, 0, &[]),
+            Protocol::Tcp { dport } => tcp_packet(
+                &pool,
+                src,
+                dest,
+                sport,
+                dport,
+                TcpFlags::default(),
+                &payload,
+            ),
+            Protocol::Udp { dport } => udp_packet(&pool, src, dest, sport, dport, &payload),
+            Protocol::Icmp => icmp_request_packet(&pool, src, dest, 1, 0, &[]),
         }
         .unwrap();
 
         let packet_rejected = match protocol_removed {
-            Protocol::Tcp { dport } => {
-                tcp_packet(src, dest, sport, dport, TcpFlags::default(), &payload)
-            }
-            Protocol::Udp { dport } => udp_packet(src, dest, sport, dport, &payload),
-            Protocol::Icmp => icmp_request_packet(src, dest, 1, 0, &[]),
+            Protocol::Tcp { dport } => tcp_packet(
+                &pool,
+                src,
+                dest,
+                sport,
+                dport,
+                TcpFlags::default(),
+                &payload,
+            ),
+            Protocol::Udp { dport } => udp_packet(&pool, src, dest, sport, dport, &payload),
+            Protocol::Icmp => icmp_request_packet(&pool, src, dest, 1, 0, &[]),
         }
         .unwrap();
 

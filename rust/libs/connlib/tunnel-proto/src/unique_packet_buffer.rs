@@ -123,7 +123,9 @@ mod tests {
     }
 
     fn tcp_syn_packet(seq: u32, ts_val: u32, ts_echo: u32) -> Result<IpPacket> {
+        let pool = ip_packet::IpPacketPool::new("test");
         ip_packet::make::tcp_packet_with_options(
+            &pool,
             Ipv4Addr::UNSPECIFIED,
             Ipv4Addr::UNSPECIFIED,
             0,

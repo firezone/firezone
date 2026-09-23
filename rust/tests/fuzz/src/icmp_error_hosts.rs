@@ -61,7 +61,7 @@ pub(crate) fn icmp_error_reply(packet: &IpPacket, error: IcmpError) -> Result<Ip
                 }
             };
 
-            ip_packet::make::icmpv4_packet(src, dst, 20, icmp_type, payload)?
+            ip_packet::make::icmpv4_packet(&packet.pool(), src, dst, 20, icmp_type, payload)?
         }
         (IpAddr::V6(src), IpAddr::V6(dst)) => {
             let icmp_type = match error {
@@ -80,7 +80,7 @@ pub(crate) fn icmp_error_reply(packet: &IpPacket, error: IcmpError) -> Result<Ip
                 }
             };
 
-            ip_packet::make::icmpv6_packet(src, dst, 20, icmp_type, payload)?
+            ip_packet::make::icmpv6_packet(&packet.pool(), src, dst, 20, icmp_type, payload)?
         }
         (IpAddr::V6(_), IpAddr::V4(_)) => bail!("Invalid IP combination"),
         (IpAddr::V4(_), IpAddr::V6(_)) => bail!("Invalid IP combination"),

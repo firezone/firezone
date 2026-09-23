@@ -20,6 +20,7 @@ const MAX_PENDING_QUERIES: usize = 1024;
 
 /// A sans-io DNS-over-UDP client.
 pub struct Client<const MIN_PORT: u16 = 49152, const MAX_PORT: u16 = 65535> {
+    packet_pool: ip_packet::IpPacketPool,
     source_ips: Option<(Ipv4Addr, Ipv6Addr)>,
 
     pending_queries_by_local_port: BTreeMap<u16, PendingQuery>,
@@ -69,6 +70,7 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
         assert!(MIN_PORT < MAX_PORT, "Port range must not have length 0");
 
         Self {
+            packet_pool: ip_packet::IpPacketPool::new("dns-udp-client"),
             source_ips: None,
             rng: StdRng::from_seed(seed),
             pending_queries_by_local_port: Default::default(),
@@ -125,9 +127,15 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
 
         let payload = message.into_bytes();
 
-        let ip_packet =
-            ip_packet::make::udp_packet(local_ip, server.ip(), local_port, server.port(), &payload)
-                .context("Failed to make IP packet")?;
+        let ip_packet = ip_packet::make::udp_packet(
+            &self.packet_pool,
+            local_ip,
+            server.ip(),
+            local_port,
+            server.port(),
+            &payload,
+        )
+        .context("Failed to make IP packet")?;
 
         self.scheduled_queries.push_back(ip_packet);
 
@@ -441,6 +449,7 @@ mod tests {
 
     #[test]
     fn handles_icmp_error_for_pending_query() {
+        let pool = ip_packet::IpPacketPool::new("test");
         let mut client = create_test_client();
         let now = Instant::now();
         let server = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(8, 8, 8, 8)), 53);
@@ -449,7 +458,8 @@ mod tests {
         let token = client.send_query(server, query.clone(), now).unwrap();
 
         let packet = client.poll_outbound().unwrap();
-        let icmp_error_response = ip_packet::make::icmp_dest_unreachable_network(&packet).unwrap();
+        let icmp_error_response =
+            ip_packet::make::icmp_dest_unreachable_network(&pool, &packet).unwrap();
 
         client.handle_inbound(icmp_error_response);
 
@@ -486,6 +496,7 @@ mod tests {
 
     #[test]
     fn owns_outbound_matches_only_pending_queries() {
+        let pool = ip_packet::IpPacketPool::new("test");
         let mut client = create_test_client();
         let now = Instant::now();
         let server = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(8, 8, 8, 8)), 53);
@@ -494,6 +505,7 @@ mod tests {
         let query_packet = client.poll_outbound().unwrap();
 
         let unrelated_packet = ip_packet::make::udp_packet(
+            &pool,
             IpAddr::V4(Ipv4Addr::new(10, 0, 0, 2)),
             IpAddr::V4(Ipv4Addr::new(8, 8, 8, 8)),
             50000,
@@ -530,9 +542,11 @@ mod tests {
         local: SocketAddr,
         query: &dns_types::Query,
     ) -> IpPacket {
+        let pool = ip_packet::IpPacketPool::new("test");
         let response = dns_types::Response::no_error(query).into_bytes(512);
 
         ip_packet::make::udp_packet(
+            &pool,
             server.ip(),
             local.ip(),
             server.port(),

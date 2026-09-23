@@ -174,6 +174,13 @@ impl Buffer<Vec<u8>> {
 }
 
 impl<B> Buffer<B> {
+    /// Returns a handle to the pool this buffer belongs to.
+    pub fn pool(&self) -> BufferPool<B> {
+        BufferPool {
+            inner: self.pool.clone(),
+        }
+    }
+
     fn storage(&self) -> &B {
         self.inner
             .as_ref()

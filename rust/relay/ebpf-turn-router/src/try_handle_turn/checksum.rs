@@ -43,6 +43,7 @@ mod tests {
 
     #[test]
     fn recompute_udp_checksum() {
+        let pool = ip_packet::IpPacketPool::new("test");
         let old_src_ip = Ipv4Addr::new(172, 28, 0, 100);
         let old_dst_ip = Ipv4Addr::new(172, 28, 0, 101);
         let old_src_port = 45088;
@@ -54,6 +55,7 @@ mod tests {
         let channel_data_len = 0x0040;
 
         let incoming_ip_packet = ip_packet::make::udp_packet(
+            &pool,
             old_src_ip,
             old_dst_ip,
             old_src_port,
@@ -72,6 +74,7 @@ mod tests {
         );
 
         let outgoing_ip_packet = ip_packet::make::udp_packet(
+            &pool,
             new_src_ip,
             new_dst_ip,
             new_src_port,

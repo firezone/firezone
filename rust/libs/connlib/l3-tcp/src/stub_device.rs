@@ -1,15 +1,24 @@
 use std::collections::VecDeque;
 
-use ip_packet::{IpPacket, IpPacketBuf};
+use ip_packet::{IpPacket, IpPacketBuf, IpPacketPool};
 
 /// A in-memory device for [`smoltcp`] that is entirely backed by buffers.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct InMemoryDevice {
+    packet_pool: IpPacketPool,
     inbound_packets: VecDeque<IpPacket>,
     outbound_packets: VecDeque<IpPacket>,
 }
 
 impl InMemoryDevice {
+    pub fn new(tag: &'static str) -> Self {
+        Self {
+            packet_pool: IpPacketPool::new(tag),
+            inbound_packets: VecDeque::new(),
+            outbound_packets: VecDeque::new(),
+        }
+    }
+
     pub fn receive(&mut self, packet: IpPacket) {
         self.inbound_packets.push_back(packet);
     }
@@ -37,6 +46,7 @@ impl smoltcp::phy::Device for InMemoryDevice {
         };
         let tx_token = SmolTxToken {
             outbound_packets: &mut self.outbound_packets,
+            packet_pool: &self.packet_pool,
         };
 
         Some((rx_token, tx_token))
@@ -45,6 +55,7 @@ impl smoltcp::phy::Device for InMemoryDevice {
     fn transmit(&mut self, _timestamp: smoltcp::time::Instant) -> Option<Self::TxToken<'_>> {
         Some(SmolTxToken {
             outbound_packets: &mut self.outbound_packets,
+            packet_pool: &self.packet_pool,
         })
     }
 
@@ -58,6 +69,7 @@ impl smoltcp::phy::Device for InMemoryDevice {
 }
 
 pub struct SmolTxToken<'a> {
+    packet_pool: &'a IpPacketPool,
     outbound_packets: &'a mut VecDeque<IpPacket>,
 }
 
@@ -75,7 +87,7 @@ impl smoltcp::phy::TxToken for SmolTxToken<'_> {
             return f(&mut buf);
         }
 
-        let mut ip_packet_buf = IpPacketBuf::new();
+        let mut ip_packet_buf = IpPacketBuf::new(self.packet_pool);
         let result = f(ip_packet_buf.buf());
 
         // smoltcp is configured to compute checksums but the TCP checksums of the

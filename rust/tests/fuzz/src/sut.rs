@@ -40,6 +40,7 @@ use tunnel_proto::{ClientEvent, GatewayEvent, dns, messages::Interface};
 ///
 /// The fuzzer manipulates this using [`Transition`]s and we assert it against [`ReferenceState`].
 pub struct TunnelTest {
+    packet_pool: ip_packet::IpPacketPool,
     flux_capacitor: FluxCapacitor,
 
     pub(crate) clients: BTreeMap<ClientId, Host<SimClient>>,
@@ -166,6 +167,7 @@ impl TunnelTest {
         }
 
         let mut this = Self {
+            packet_pool: ip_packet::IpPacketPool::new("fuzz-ip"),
             flux_capacitor,
             network: ref_state.network.clone(),
             client_portal_offline_until: None,
@@ -780,6 +782,7 @@ impl TunnelTest {
         buffered_transmits: &mut BufferedTransmits,
     ) {
         let packet = ip_packet::make::icmp_request_packet(
+            &self.packet_pool,
             flow.src,
             flow.dst,
             seq.0,
@@ -802,6 +805,7 @@ impl TunnelTest {
         buffered_transmits: &mut BufferedTransmits,
     ) {
         let packet = ip_packet::make::udp_packet(
+            &self.packet_pool,
             flow.src,
             flow.dst,
             flow.sport.0,

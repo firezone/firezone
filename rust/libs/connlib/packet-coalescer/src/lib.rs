@@ -934,6 +934,7 @@ mod tests {
     }
 
     fn ipv4_packet(protocol: IpProtocol, l4_header: impl Emit, payload: &[u8]) -> IpPacket {
+        let pool = ip_packet::IpPacketPool::new("test");
         let total_len = Ipv4::MINIMUM_LENGTH + l4_header.packet_length() + payload.len();
         let ipv4 = Ipv4 {
             ihl: 5,
@@ -948,7 +949,7 @@ mod tests {
         let mut bytes = (ipv4, l4_header).to_vec();
         bytes.extend_from_slice(payload);
 
-        let mut buf = IpPacketBuf::new();
+        let mut buf = IpPacketBuf::new(&pool);
         buf.buf()[..bytes.len()].copy_from_slice(&bytes);
         let mut packet =
             IpPacket::new(buf, bytes.len()).expect("constructed test packet must be valid");

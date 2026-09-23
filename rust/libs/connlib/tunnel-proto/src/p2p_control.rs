@@ -27,6 +27,7 @@ pub mod dns_resource_nat {
 
     /// Construct a new [`AssignedIps`] event.
     pub fn assigned_ips(
+        pool: &ip_packet::IpPacketPool,
         resource: ResourceId,
         domain: DomainName,
         proxy_ips: Vec<IpAddr>,
@@ -44,6 +45,7 @@ pub mod dns_resource_nat {
         .context("Failed to serialize `AssignedIps` event")?;
 
         let ip_packet = ip_packet::make::fz_p2p_control(
+            pool,
             [ASSIGNED_IPS_EVENT.into_u8(), 0, 0, 0, 0, 0, 0, 0],
             &payload,
         )
@@ -54,6 +56,7 @@ pub mod dns_resource_nat {
 
     /// Construct a new [`DomainStatus`] event.
     pub fn domain_status(
+        pool: &ip_packet::IpPacketPool,
         resource: ResourceId,
         domain: DomainName,
         status: NatStatus,
@@ -66,6 +69,7 @@ pub mod dns_resource_nat {
         .context("Failed to serialize `DomainStatus` event")?;
 
         let ip_packet = ip_packet::make::fz_p2p_control(
+            pool,
             [DOMAIN_STATUS_EVENT.into_u8(), 0, 0, 0, 0, 0, 0, 0],
             &payload,
         )
@@ -139,7 +143,9 @@ pub mod dns_resource_nat {
 
         #[test]
         fn assigned_ips_serde_roundtrip() {
+            let pool = ip_packet::IpPacketPool::new("test");
             let packet = assigned_ips(
+                &pool,
                 ResourceId::from_u128(101),
                 domain("example.com"),
                 eight_proxy_ips(),
@@ -156,7 +162,9 @@ pub mod dns_resource_nat {
 
         #[test]
         fn domain_status_serde_roundtrip() {
+            let pool = ip_packet::IpPacketPool::new("test");
             let packet = domain_status(
+                &pool,
                 ResourceId::from_u128(101),
                 domain("example.com"),
                 NatStatus::Active,
@@ -173,8 +181,10 @@ pub mod dns_resource_nat {
 
         #[test]
         fn domain_status_ignored_unknown_nat_status() {
+            let pool = ip_packet::IpPacketPool::new("test");
             let payload = r#"{"resource":"00000000-0000-0000-0000-000000000065","domain":"example.com","status":"what_is_this"}"#;
             let packet = ip_packet::make::fz_p2p_control(
+                &pool,
                 [DOMAIN_STATUS_EVENT.into_u8(), 0, 0, 0, 0, 0, 0, 0],
                 payload.as_bytes(),
             )
@@ -217,8 +227,8 @@ pub mod dns_resource_nat {
     }
 }
 
-pub fn goodbye() -> IpPacket {
-    ip_packet::make::fz_p2p_control([GOODBYE_EVENT.into_u8(), 0, 0, 0, 0, 0, 0, 0], &[])
+pub fn goodbye(pool: &ip_packet::IpPacketPool) -> IpPacket {
+    ip_packet::make::fz_p2p_control(pool, [GOODBYE_EVENT.into_u8(), 0, 0, 0, 0, 0, 0, 0], &[])
         .expect("should always be able to make a `goodbye` packet")
 }
 
@@ -235,11 +245,16 @@ pub mod no_authorization {
     /// The sender resolves the destination against its routes and requests fresh access
     /// for matching grants on the peer that sent the event. ICMP errors remain independent
     /// so rejected application traffic can stop while authorization is refreshed.
-    pub fn event(dst: IpAddr, protocol: Protocol) -> Result<IpPacket> {
+    pub fn event(
+        pool: &ip_packet::IpPacketPool,
+        dst: IpAddr,
+        protocol: Protocol,
+    ) -> Result<IpPacket> {
         let payload = serde_json::to_vec(&NoAuthorization { dst, protocol })
             .context("Failed to serialize `NoAuthorization` event")?;
 
         let ip_packet = ip_packet::make::fz_p2p_control(
+            pool,
             [NO_AUTHORIZATION_EVENT.into_u8(), 0, 0, 0, 0, 0, 0, 0],
             &payload,
         )
@@ -299,7 +314,9 @@ pub mod no_authorization {
 
         #[test]
         fn no_authorization_serde_roundtrip() {
+            let pool = ip_packet::IpPacketPool::new("test");
             let packet = event(
+                &pool,
                 IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1)),
                 Protocol::Tcp { dst_port: 443 },
             )
@@ -314,7 +331,8 @@ pub mod no_authorization {
 
         #[test]
         fn no_authorization_serde_roundtrip_icmp_ipv6() {
-            let packet = event(IpAddr::V6(Ipv6Addr::LOCALHOST), Protocol::Icmp).unwrap();
+            let pool = ip_packet::IpPacketPool::new("test");
+            let packet = event(&pool, IpAddr::V6(Ipv6Addr::LOCALHOST), Protocol::Icmp).unwrap();
 
             let slice = packet.as_fz_p2p_control().unwrap();
             let no_authorization = decode(slice).unwrap();

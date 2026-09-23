@@ -14,6 +14,7 @@ pub(crate) struct AuthorizationRejections {
 impl AuthorizationRejections {
     pub(crate) fn on_rejected(
         &mut self,
+        pool: &ip_packet::IpPacketPool,
         client: ClientId,
         rejection: NoAuthorization,
         now: Instant,
@@ -27,7 +28,7 @@ impl AuthorizationRejections {
             return None;
         }
 
-        let event = no_authorization::event(rejection.dst, rejection.protocol)
+        let event = no_authorization::event(pool, rejection.dst, rejection.protocol)
             .inspect_err(|e| tracing::trace!("Failed to create `NoAuthorization` event: {e:#}"))
             .ok()?;
         self.recently_notified
@@ -55,21 +56,35 @@ mod tests {
     #[test_case::test_case(1999, false; "within two seconds")]
     #[test_case::test_case(2000, true; "after two seconds")]
     fn retries_on_rejected_traffic(milliseconds: u64, expected: bool) {
+        let pool = ip_packet::IpPacketPool::new("test");
         let mut rejections = AuthorizationRejections::default();
         let now = Instant::now();
         let client = ClientId::from_u128(1);
         let rejection = rejection("10.0.0.1", 443);
 
-        assert!(rejections.on_rejected(client, rejection, now).is_some());
-        assert!(rejections.on_rejected(client, rejection, now).is_none());
-        let retry =
-            rejections.on_rejected(client, rejection, now + Duration::from_millis(milliseconds));
+        assert!(
+            rejections
+                .on_rejected(&pool, client, rejection, now)
+                .is_some()
+        );
+        assert!(
+            rejections
+                .on_rejected(&pool, client, rejection, now)
+                .is_none()
+        );
+        let retry = rejections.on_rejected(
+            &pool,
+            client,
+            rejection,
+            now + Duration::from_millis(milliseconds),
+        );
 
         assert_eq!(retry.is_some(), expected);
     }
 
     #[test]
     fn limits_each_client_and_ip_independently_of_ports() {
+        let pool = ip_packet::IpPacketPool::new("test");
         let mut rejections = AuthorizationRejections::default();
         let now = Instant::now();
         let client = ClientId::from_u128(1);
@@ -78,14 +93,26 @@ mod tests {
         let other_port = rejection("10.0.0.1", 80);
         let other_ip = rejection("10.0.0.2", 443);
 
-        assert!(rejections.on_rejected(client, first, now).is_some());
-        assert!(rejections.on_rejected(client, other_port, now).is_none());
-        assert!(rejections.on_rejected(client, other_ip, now).is_some());
-        assert!(rejections.on_rejected(other_client, first, now).is_some());
+        assert!(rejections.on_rejected(&pool, client, first, now).is_some());
+        assert!(
+            rejections
+                .on_rejected(&pool, client, other_port, now)
+                .is_none()
+        );
+        assert!(
+            rejections
+                .on_rejected(&pool, client, other_ip, now)
+                .is_some()
+        );
+        assert!(
+            rejections
+                .on_rejected(&pool, other_client, first, now)
+                .is_some()
+        );
 
         assert!(
             rejections
-                .on_rejected(client, first, now + Duration::from_secs(1))
+                .on_rejected(&pool, client, first, now + Duration::from_secs(1))
                 .is_none()
         );
         let expires_at = rejections.poll_timeout().unwrap();
@@ -94,7 +121,7 @@ mod tests {
         assert_eq!(rejections.poll_timeout(), None);
 
         let event = rejections
-            .on_rejected(client, other_port, expires_at)
+            .on_rejected(&pool, client, other_port, expires_at)
             .unwrap();
         assert_eq!(
             no_authorization::decode(event.as_fz_p2p_control().unwrap()).unwrap(),

@@ -42,7 +42,7 @@ pub struct Query {
 
 impl Server {
     pub fn new(now: Instant) -> Self {
-        let mut device = InMemoryDevice::default();
+        let mut device = InMemoryDevice::new("dns-tcp-server");
         let interface = create_interface(&mut device);
 
         Self {
