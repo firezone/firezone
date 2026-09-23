@@ -44,6 +44,7 @@ enum TransitionKind {
     DeauthorizeWhileGatewayIsPartitioned,
     RevokeGatewayAuthorization,
     ExpirePeerAuthorizations,
+    RevokePeerAuthorization,
     UpdateDnsRecords,
     SendPacket,
     SendPacketOnExistingFlow,
@@ -68,9 +69,19 @@ pub(super) fn generate(
     let deauthorizable_resources = state.deauthorizable_resource_ids(portal);
     let revocable_resources = state.revocable_resource_ids(portal);
     let expirable_peers = state.expirable_peer_authorizations();
+    let revocable_peers = expirable_peers
+        .iter()
+        .filter(|(_, _, pools)| pools.len() > 1)
+        .cloned()
+        .collect::<Vec<_>>();
     let client_ids = state.all_client_ids();
     let dns_record_domains = state.dns_resource_domains();
     let packet_targets = packets::targets(state, portal);
+    let revoked_peer_targets = packets::revoked_peer_targets(state);
+    if !revoked_peer_targets.is_empty() {
+        let target = revoked_peer_targets[g.choose_index(revoked_peer_targets.len())].clone();
+        return packets::generate(g, target);
+    }
     let existing_flows = iter::empty()
         .chain(state.udp_flows().into_iter().map(ExistingFlow::Udp))
         .chain(
@@ -105,6 +116,7 @@ pub(super) fn generate(
             .then_some((K::DeauthorizeWhileGatewayIsPartitioned, 1)),
         (!revocable_resources.is_empty()).then_some((K::RevokeGatewayAuthorization, 2)),
         (!expirable_peers.is_empty()).then_some((K::ExpirePeerAuthorizations, 2)),
+        (!revocable_peers.is_empty()).then_some((K::RevokePeerAuthorization, 2)),
         (!client_ids.is_empty()).then_some((K::ReconnectPortal, 1)),
         (!client_ids.is_empty()).then_some((K::RestartClient, 1)),
         (!client_ids.is_empty()).then_some((K::SetInternetResourceState, 1)),
@@ -116,7 +128,7 @@ pub(super) fn generate(
     ]
     .into_iter()
     .flatten()
-    .collect::<SmallVec<[_; 21]>>();
+    .collect::<SmallVec<[_; 22]>>();
 
     // Weighted pick over the legal list.
     let kind = weighted_choose(g, &legal);
@@ -220,6 +232,15 @@ pub(super) fn generate(
                 client,
                 peer,
                 pools,
+            }
+        }
+        K::RevokePeerAuthorization => {
+            let (client, peer, pools) = &revocable_peers[g.choose_index(revocable_peers.len())];
+            let pool = *pools.iter().nth(g.choose_index(pools.len())).unwrap();
+            Transition::RevokePeerAuthorization {
+                client: *client,
+                peer: *peer,
+                pool,
             }
         }
         K::RevokeGatewayAuthorization => {

@@ -110,11 +110,17 @@ pub enum Transition {
     /// Models an authorization expiring on the Gateway or the portal's `reject_access` message.
     /// The Client recovers through the Gateway's `no_authorization` p2p control event.
     RevokeGatewayAuthorization(ResourceId),
-    /// Expires inbound grants at the receiving client while the sender retains its grants.
+    /// Expires inbound authorizations at the receiving client while the sender retains its own.
     ExpirePeerAuthorizations {
         client: ClientId,
         peer: ClientId,
         pools: BTreeSet<ResourceId>,
+    },
+    /// Revokes one of several peer authorizations on the receiver while the sender retains its own.
+    RevokePeerAuthorization {
+        client: ClientId,
+        peer: ClientId,
+        pool: ResourceId,
     },
     UpdateDnsRecords {
         domain: DomainName,
@@ -154,6 +160,7 @@ impl Transition {
             Transition::DeauthorizeWhileGatewayIsPartitioned(_) => true,
             Transition::RevokeGatewayAuthorization(_) => true,
             Transition::ExpirePeerAuthorizations { .. } => true,
+            Transition::RevokePeerAuthorization { .. } => true,
             Transition::UpdateDnsRecords { .. } => false,
         }
     }
@@ -226,6 +233,14 @@ impl Transition {
                 Route::Peer(_) => true,
             },
             Transition::ExpirePeerAuthorizations { client, peer, .. } => match route {
+                Route::Peer(remote) => {
+                    !((client_id == *client && remote == *peer)
+                        || (client_id == *peer && remote == *client))
+                }
+                Route::Resource { .. } => true,
+                Route::Gateway(_) => true,
+            },
+            Transition::RevokePeerAuthorization { client, peer, .. } => match route {
                 Route::Peer(remote) => {
                     !((client_id == *client && remote == *peer)
                         || (client_id == *peer && remote == *client))

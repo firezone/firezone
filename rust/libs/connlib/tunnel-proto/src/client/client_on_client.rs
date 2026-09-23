@@ -8,21 +8,21 @@ use anyhow::{Context, Result};
 use connlib_model::{ClientId, ResourceId};
 use ip_packet::IpPacket;
 use smallvec::SmallVec;
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::time::Instant;
 
 /// Peer-level state of a connection with another Client.
 ///
 /// Contrary to peer-level state of a connection with a Gateway,
-/// we need to track two different things here:
+/// we need to track three different things here:
 ///
 /// 1. Traffic filters of resources that give the _remote_ Client access to our TUN device.
 /// 2. Outbound layer-4 connections so we can allow return traffic back in.
+/// 3. Revoked inbound authorizations so denied traffic they permitted can request fresh access.
 ///
-/// Doing both of these ensures that event Clients which have access to each other via
-/// different device pools can only access what they have been granted access to.
-/// Most importantly, accessing another client does not allow any inbound traffic that
-/// isn't the return traffic of packets that we have sent.
+/// Inbound authorizations and flow tracking limit traffic from the remote Client to
+/// authorized packets and replies to flows we opened. Revoked authorizations let us
+/// request fresh access when a previously permitted packet is denied.
 pub(crate) struct ClientOnClient {
     id: ClientId,
     local_tun: IpConfig,
@@ -33,6 +33,8 @@ pub(crate) struct ClientOnClient {
     /// When this map is empty, no inbound traffic from this peer is admitted
     /// unless it matches a recorded outbound flow (return traffic).
     resources: ExpiringMap<ResourceId, ResourceOnClient>,
+    /// Filters of revoked authorizations, retained until this peer receives them again.
+    rejected_resources: BTreeMap<ResourceId, FilterEngine>,
     /// Cached OR of every resource's filters; recomputed whenever `resources` changes.
     inbound_filter: FilterEngine,
     /// Tracks outbound flows so legitimate return traffic is admitted.
@@ -43,7 +45,7 @@ pub(crate) struct ClientOnClient {
     inbound_resources: InboundResources,
 }
 
-/// An inbound resource: filters granted by a resource for traffic from the remote peer.
+/// An inbound resource: filters applied to authorized traffic from the remote peer.
 #[derive(Debug)]
 struct ResourceOnClient {
     filters: Vec<Filter>,
@@ -75,6 +77,7 @@ impl ClientOnClient {
             remote_tun,
             remote_name,
             resources: ExpiringMap::default(),
+            rejected_resources: BTreeMap::default(),
             // No resources -> no allowed inbound traffic by default.
             inbound_filter: FilterEngine::DenyAll,
             conn_track: ConnTrack::default(),
@@ -133,6 +136,7 @@ impl ClientOnClient {
             now,
             ttl,
         );
+        self.rejected_resources.remove(&resource_id);
         self.recompute_inbound_filter();
     }
 
@@ -140,8 +144,10 @@ impl ClientOnClient {
     pub(crate) fn retain_authorizations(&mut self, retain: &BTreeSet<ResourceId>) {
         let mut any_removed = false;
 
-        for (resource_id, _) in self.resources.extract_if(|rid, _| !retain.contains(rid)) {
+        for (resource_id, resource) in self.resources.extract_if(|rid, _| !retain.contains(rid)) {
             tracing::info!(%resource_id, "Revoking peer authorization on resync");
+            self.rejected_resources
+                .insert(resource_id, FilterEngine::new(&resource.filters));
             any_removed = true;
         }
 
@@ -179,11 +185,13 @@ impl ClientOnClient {
 
     /// Drop a previously-active resource.
     pub(crate) fn remove_resource(&mut self, resource_id: &ResourceId) {
-        let Some(_entry) = self.resources.remove(resource_id) else {
+        let Some(entry) = self.resources.remove(resource_id) else {
             return;
         };
 
         tracing::info!(%resource_id, "Revoking peer authorization");
+        self.rejected_resources
+            .insert(*resource_id, FilterEngine::new(&entry.value.filters));
         self.recompute_inbound_filter();
     }
 
@@ -229,8 +237,10 @@ impl ClientOnClient {
 
         while let Some(event) = self.resources.poll_event() {
             match event {
-                crate::expiring_map::Event::EntryExpired { key, .. } => {
+                crate::expiring_map::Event::EntryExpired { key, value } => {
                     tracing::info!(rid = %key, "Resource authorization expired, revoking");
+                    self.rejected_resources
+                        .insert(key, FilterEngine::new(&value.filters));
                     any_expired = true;
                 }
             }
@@ -290,12 +300,11 @@ impl ClientOnClient {
             tracing::debug!(filtered_packet = ?packet, "{e:#}");
             let reply = ip_packet::make::icmp_dest_unreachable_prohibited(&packet)
                 .context("Failed to build ICMP prohibited reply")?;
-            // Holding no authorization at all is the only case the peer can fix by
-            // requesting a new one. Our filters denying the traffic is not, so we answer
-            // with the ICMP error alone and stay quiet.
-            let no_authorization = self
-                .resources
-                .is_empty()
+            let previously_allowed = self
+                .rejected_resources
+                .values()
+                .any(|filter| filter.apply(packet.destination_protocol()).is_ok());
+            let no_authorization = (self.resources.is_empty() || previously_allowed)
                 .then(|| packet.destination_protocol().ok())
                 .flatten()
                 .map(|protocol| p2p_control::no_authorization::NoAuthorization {

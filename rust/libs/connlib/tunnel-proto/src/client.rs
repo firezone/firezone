@@ -1167,12 +1167,6 @@ impl ClientState {
             return Ok(());
         };
 
-        // A peer connecting to us anew may have reset since we were authorized to access it,
-        // taking our inbound authorization with it, so our next flow asks the portal again.
-        if authorization.is_some() {
-            self.forget_outbound_authorizations(cid);
-        }
-
         self.node.upsert_connection(
             ClientOrGatewayId::Client(cid),
             client_key,

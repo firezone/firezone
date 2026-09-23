@@ -708,6 +708,13 @@ impl TunnelTest {
                     }
                 });
             }
+            Transition::RevokePeerAuthorization { client, peer, pool } => {
+                self.clients.get_mut(&peer).unwrap().exec_mut(|receiver| {
+                    receiver
+                        .sut
+                        .handle_reject_client_device_access(client, pool);
+                });
+            }
             Transition::RevokeGatewayAuthorization(rid) => {
                 if let Some(gid) = portal.gateway_for_resource(rid)
                     && let Some(gateway) = self.gateways.get_mut(gid)

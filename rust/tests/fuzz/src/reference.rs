@@ -149,14 +149,25 @@ impl ReferenceState {
                 revoked,
             } => {
                 for authorization in revoked {
+                    let filters = portal
+                        .device_pool_filters(authorization.pool)
+                        .unwrap_or_default();
                     if let Some(client) = self.clients.get_mut(&authorization.initiator) {
                         client.exec_mut(|client| {
-                            client.reject_peer_pool(authorization.target, authorization.pool)
+                            client.reject_peer_pool(
+                                authorization.target,
+                                authorization.pool,
+                                filters.clone(),
+                            )
                         });
                     }
                     if let Some(client) = self.clients.get_mut(&authorization.target) {
                         client.exec_mut(|client| {
-                            client.reject_peer_pool(authorization.initiator, authorization.pool)
+                            client.reject_peer_pool(
+                                authorization.initiator,
+                                authorization.pool,
+                                filters,
+                            )
                         });
                     }
                 }
@@ -466,8 +477,15 @@ impl ReferenceState {
             } => {
                 self.clients.get_mut(peer).unwrap().exec_mut(|receiver| {
                     for pool in pools {
-                        receiver.expire_inbound_peer_pool(*client, *pool);
+                        let filters = portal.device_pool_filters(*pool).unwrap_or_default();
+                        receiver.revoke_inbound_peer_pool(*client, *pool, filters);
                     }
+                });
+            }
+            Transition::RevokePeerAuthorization { client, peer, pool } => {
+                let filters = portal.device_pool_filters(*pool).unwrap_or_default();
+                self.clients.get_mut(peer).unwrap().exec_mut(|receiver| {
+                    receiver.reject_peer_pool(*client, *pool, filters);
                 });
             }
             Transition::RevokeGatewayAuthorization(resource) => {
@@ -713,25 +731,20 @@ impl ReferenceState {
             };
             if !self.clients[&peer]
                 .inner()
-                .has_inbound_peer_authorization(origin)
+                .inbound_peer_filter_allows(origin, protocol)
             {
-                if !self.clients[&origin]
-                    .inner()
-                    .malicious_behaviour
-                    .ignore_no_authorization_events
+                let receiver = self.clients[&peer].inner();
+                let no_authorization = !receiver.has_inbound_peer_authorization(origin)
+                    || receiver.rejected_inbound_peer_filter_allows(origin, protocol);
+                if no_authorization
+                    && !self.clients[&origin]
+                        .inner()
+                        .malicious_behaviour
+                        .ignore_no_authorization_events
                 {
                     self.apply_peer_authorization(origin, peer, pool);
                 }
 
-                return ExpectedOutcome::Rejected {
-                    by: RejectionRemote::Client(peer),
-                    response: RejectionResponse::Prohibited,
-                };
-            }
-            if !self.clients[&peer]
-                .inner()
-                .inbound_peer_filter_allows(origin, protocol)
-            {
                 return ExpectedOutcome::Rejected {
                     by: RejectionRemote::Client(peer),
                     response: RejectionResponse::Prohibited,
@@ -889,11 +902,8 @@ impl ReferenceState {
     }
 
     /// Installs the inbound half of a peer authorization on `peer`.
-    ///
-    /// A peer we connect to anew drops its outbound authorizations towards us, as we may have reset.
     fn apply_peer_authorization(&mut self, origin: ClientId, peer: ClientId, pool: ResourceId) {
         self.clients.get_mut(&peer).unwrap().exec_mut(|peer| {
-            peer.forget_outbound_peer_authorizations(origin);
             peer.add_inbound_peer_pool(origin, pool);
         });
     }
@@ -935,7 +945,7 @@ impl ReferenceState {
         };
 
         match known_loss {
-            Some(loss) => TraceRequirement::ExactOrSubmissionOnly(loss),
+            Some(loss) => TraceRequirement::ExactOrLoss(loss),
             None => TraceRequirement::Exact,
         }
     }
