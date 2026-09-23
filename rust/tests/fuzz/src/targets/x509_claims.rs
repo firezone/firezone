@@ -11,15 +11,7 @@ use x509_claims::{
     Claim, DEVICE_CERTIFICATE_COMMON_NAME, ParsedCertificate, ValidationError, parse_certificate,
 };
 
-pub fn test(data: &[u8]) {
-    if data.len() < Input::size_hint(0).0 {
-        return;
-    }
-
-    let Ok(input) = Input::arbitrary_take_rest(arbitrary::Unstructured::new(data)) else {
-        return;
-    };
-
+pub fn test(input: Input<'_>) {
     let Some(certificate) = parse_certificate(input.der, instant(input.seconds_since_epoch)) else {
         return;
     };
@@ -45,7 +37,7 @@ pub fn test(data: &[u8]) {
 /// The certificate comes last so that it takes the rest of the input: the fuzzer's
 /// mutations then apply to the DER instead of to the parameters in front of it.
 #[derive(Arbitrary, Debug)]
-struct Input<'a> {
+pub struct Input<'a> {
     /// Instants are `u32` seconds so that offsetting the epoch by one can neither overflow
     /// [`SystemTime`] nor exceed the `i64` timestamp the parser compares it against.
     seconds_since_epoch: u32,

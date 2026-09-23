@@ -3,15 +3,7 @@ use std::net::IpAddr;
 use arbitrary::Arbitrary;
 use ip_packet::{Ecn, IcmpError, IpPacket, IpPacketBuf, Protocol};
 
-pub fn test(data: &[u8]) {
-    if data.len() < Input::size_hint(0).0 {
-        return;
-    }
-
-    let Ok(input) = Input::arbitrary_take_rest(arbitrary::Unstructured::new(data)) else {
-        return;
-    };
-
+pub fn test(input: Input<'_>) {
     if input.data.len() > ip_packet::MAX_IP_SIZE {
         return;
     }
@@ -300,7 +292,7 @@ fn checksum_matches(stored: u16, expected: u16) -> bool {
 }
 
 #[derive(Arbitrary, Debug)]
-struct Input<'a> {
+pub struct Input<'a> {
     data: &'a [u8],
     translate_dst: IpAddr,
     translate_port: u16,

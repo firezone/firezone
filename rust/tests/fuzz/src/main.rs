@@ -4,6 +4,7 @@
 use std::{path::PathBuf, sync::LazyLock, time::Instant};
 
 use anyhow::Context as _;
+use arbitrary::{Arbitrary, Unstructured};
 use clap::{Parser, ValueEnum};
 
 mod seeded_rng;
@@ -18,10 +19,10 @@ fn main() -> anyhow::Result<()> {
     LazyLock::force(&START_TIME);
 
     let target: fn(&[u8]) = match cli.target {
-        Target::IpPacket => targets::ip_packet::test,
-        Target::RelayProto => targets::relay_proto::test,
+        Target::IpPacket => |data| with_input(data, targets::ip_packet::test),
+        Target::RelayProto => |data| with_input(data, targets::relay_proto::test),
         Target::TunnelProto => targets::tunnel_proto::test,
-        Target::X509Claims => targets::x509_claims::test,
+        Target::X509Claims => |data| with_input(data, targets::x509_claims::test),
     };
     if cli.replay.is_empty() {
         cfg_select! {
@@ -55,6 +56,18 @@ fn main() -> anyhow::Result<()> {
     );
 
     Ok(())
+}
+
+fn with_input<'a, T: Arbitrary<'a>>(data: &'a [u8], test: fn(T)) {
+    if data.len() < T::size_hint(0).0 {
+        return;
+    }
+
+    let Ok(input) = T::arbitrary_take_rest(Unstructured::new(data)) else {
+        return;
+    };
+
+    test(input);
 }
 
 #[derive(Parser)]

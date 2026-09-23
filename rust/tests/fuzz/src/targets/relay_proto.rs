@@ -30,7 +30,7 @@ use uuid::Uuid;
 const RELAY_IP: Ipv4Addr = Ipv4Addr::new(10, 0, 0, 1);
 const CLIENT: SocketAddr = SocketAddr::new(std::net::IpAddr::V4(Ipv4Addr::new(10, 0, 0, 2)), 51820);
 #[derive(Arbitrary, Debug)]
-struct Input<'a> {
+pub struct Input<'a> {
     /// Decode the datagram as a STUN message and re-encode it before handing it over.
     parse: bool,
     /// Give the message a nonce the relay issued and a matching HMAC.
@@ -38,15 +38,7 @@ struct Input<'a> {
     datagram: &'a [u8],
 }
 
-pub fn test(data: &[u8]) {
-    if data.len() < Input::size_hint(0).0 {
-        return;
-    }
-
-    let Ok(input) = Input::arbitrary_take_rest(arbitrary::Unstructured::new(data)) else {
-        return;
-    };
-
+pub fn test(input: Input<'_>) {
     let mut server = Server::new(RELAY_IP, StdRng::seed_from_u64(0), 3478, 49152..=65535);
     server.set_accounts([AccountId::from(Uuid::nil())]);
     let client = ClientSocket::new(CLIENT);
