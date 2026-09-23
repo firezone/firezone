@@ -341,6 +341,18 @@ impl RefClient {
             })
     }
 
+    pub(crate) fn rejected_inbound_peer_pools(
+        &self,
+    ) -> impl Iterator<Item = (ClientId, ResourceId, &[Filter])> + '_ {
+        self.rejected_inbound_peer_authorizations
+            .iter()
+            .flat_map(|(peer, pools)| {
+                pools
+                    .iter()
+                    .map(move |(pool, filters)| (*peer, *pool, filters.as_slice()))
+            })
+    }
+
     /// Whether we hold any authorization at all for `peer` to reach us.
     pub(crate) fn has_inbound_peer_authorization(&self, peer: ClientId) -> bool {
         self.inbound_peer_authorizations
