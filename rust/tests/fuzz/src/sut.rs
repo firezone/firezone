@@ -440,9 +440,9 @@ impl TunnelTest {
                     .unwrap()
                     .exec_mut(|sim| sim.connect_tcp(src, dst, sport, dport));
             }
-            Transition::SendDnsQuery {
-                client_id,
-                query:
+            Transition::SendDnsQueries(queries) => {
+                for (
+                    client_id,
                     DnsQuery {
                         domain,
                         r_type,
@@ -450,13 +450,15 @@ impl TunnelTest {
                         query_id,
                         transport,
                     },
-            } => {
-                let client = self.clients.get_mut(&client_id).unwrap();
-                let transmit = client.exec_mut(|sim| {
-                    sim.send_dns_query_for(domain, r_type, query_id, dns_server, transport, now)
-                });
+                ) in queries
+                {
+                    let client = self.clients.get_mut(&client_id).unwrap();
+                    let transmit = client.exec_mut(|sim| {
+                        sim.send_dns_query_for(domain, r_type, query_id, dns_server, transport, now)
+                    });
 
-                buffered_transmits.push_from(transmit, client, now);
+                    buffered_transmits.push_from(transmit, client, now);
+                }
             }
             Transition::SendDnsResourcePtrQuery {
                 client_id,
