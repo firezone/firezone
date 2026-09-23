@@ -116,6 +116,12 @@ pub enum Transition {
         peer: ClientId,
         pools: BTreeSet<ResourceId>,
     },
+    /// Delivers a peer grant revocation only to the receiving client.
+    RevokePeerAuthorization {
+        client: ClientId,
+        peer: ClientId,
+        pool: ResourceId,
+    },
     UpdateDnsRecords {
         domain: DomainName,
         records: BTreeSet<OwnedRecordData>,
@@ -154,6 +160,7 @@ impl Transition {
             Transition::DeauthorizeWhileGatewayIsPartitioned(_) => true,
             Transition::RevokeGatewayAuthorization(_) => true,
             Transition::ExpirePeerAuthorizations { .. } => true,
+            Transition::RevokePeerAuthorization { .. } => true,
             Transition::UpdateDnsRecords { .. } => false,
         }
     }
@@ -226,6 +233,14 @@ impl Transition {
                 Route::Peer(_) => true,
             },
             Transition::ExpirePeerAuthorizations { client, peer, .. } => match route {
+                Route::Peer(remote) => {
+                    !((client_id == *client && remote == *peer)
+                        || (client_id == *peer && remote == *client))
+                }
+                Route::Resource { .. } => true,
+                Route::Gateway(_) => true,
+            },
+            Transition::RevokePeerAuthorization { client, peer, .. } => match route {
                 Route::Peer(remote) => {
                     !((client_id == *client && remote == *peer)
                         || (client_id == *peer && remote == *client))

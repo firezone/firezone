@@ -466,8 +466,15 @@ impl ReferenceState {
             } => {
                 self.clients.get_mut(peer).unwrap().exec_mut(|receiver| {
                     for pool in pools {
-                        receiver.expire_inbound_peer_pool(*client, *pool);
+                        let filters = portal.device_pool_filters(*pool).unwrap_or_default();
+                        receiver.revoke_inbound_peer_pool(*client, *pool, filters);
                     }
+                });
+            }
+            Transition::RevokePeerAuthorization { client, peer, pool } => {
+                let filters = portal.device_pool_filters(*pool).unwrap_or_default();
+                self.clients.get_mut(peer).unwrap().exec_mut(|receiver| {
+                    receiver.revoke_inbound_peer_pool(*client, *pool, filters);
                 });
             }
             Transition::RevokeGatewayAuthorization(resource) => {
@@ -713,25 +720,20 @@ impl ReferenceState {
             };
             if !self.clients[&peer]
                 .inner()
-                .has_inbound_peer_authorization(origin)
+                .inbound_peer_filter_allows(origin, protocol)
             {
-                if !self.clients[&origin]
-                    .inner()
-                    .malicious_behaviour
-                    .ignore_no_authorization_events
+                let receiver = self.clients[&peer].inner();
+                let no_authorization = !receiver.has_inbound_peer_authorization(origin)
+                    || receiver.rejected_inbound_peer_filter_allows(origin, protocol);
+                if no_authorization
+                    && !self.clients[&origin]
+                        .inner()
+                        .malicious_behaviour
+                        .ignore_no_authorization_events
                 {
                     self.apply_peer_authorization(origin, peer, pool);
                 }
 
-                return ExpectedOutcome::Rejected {
-                    by: RejectionRemote::Client(peer),
-                    response: RejectionResponse::Prohibited,
-                };
-            }
-            if !self.clients[&peer]
-                .inner()
-                .inbound_peer_filter_allows(origin, protocol)
-            {
                 return ExpectedOutcome::Rejected {
                     by: RejectionRemote::Client(peer),
                     response: RejectionResponse::Prohibited,

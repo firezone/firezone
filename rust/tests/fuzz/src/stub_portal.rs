@@ -257,6 +257,13 @@ impl StubPortal {
                 self.revoke_policy_authorizations(*resource);
             }
             Transition::ExpirePeerAuthorizations { .. } => {}
+            Transition::RevokePeerAuthorization { client, peer, pool } => {
+                self.peer_policy_authorizations.remove(&PeerAuthorization {
+                    initiator: *client,
+                    target: *peer,
+                    pool: *pool,
+                });
+            }
             Transition::UpdateDnsRecords { .. } => {}
         }
     }

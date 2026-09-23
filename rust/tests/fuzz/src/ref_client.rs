@@ -125,6 +125,8 @@ pub struct RefClient {
     /// Per peer, the pools through which the portal authorised it to reach us.
     #[debug(skip)]
     inbound_peer_authorizations: BTreeMap<ClientId, BTreeSet<ResourceId>>,
+    #[debug(skip)]
+    rejected_inbound_peer_authorizations: BTreeMap<ClientId, BTreeMap<ResourceId, Vec<Filter>>>,
 
     resource_selector: u32,
 }
@@ -172,6 +174,7 @@ impl RefClient {
             client_send_times: Default::default(),
             outbound_peer_authorizations: Default::default(),
             inbound_peer_authorizations: Default::default(),
+            rejected_inbound_peer_authorizations: Default::default(),
         }
     }
 
@@ -286,6 +289,9 @@ impl RefClient {
             .entry(peer)
             .or_default()
             .insert(pool);
+        if let Some(rejected) = self.rejected_inbound_peer_authorizations.get_mut(&peer) {
+            rejected.remove(&pool);
+        }
     }
 
     /// Drops a rejected pool in both directions for `peer`.
@@ -295,8 +301,39 @@ impl RefClient {
     }
 
     /// Expires the inbound authorization `peer` holds towards us through `pool`.
-    pub(crate) fn expire_inbound_peer_pool(&mut self, peer: ClientId, pool: ResourceId) {
+    pub(crate) fn revoke_inbound_peer_pool(
+        &mut self,
+        peer: ClientId,
+        pool: ResourceId,
+        filters: Vec<Filter>,
+    ) {
+        if !self
+            .inbound_peer_authorizations
+            .get(&peer)
+            .is_some_and(|pools| pools.contains(&pool))
+        {
+            return;
+        }
+
         remove_peer_pool(&mut self.inbound_peer_authorizations, peer, pool);
+        self.rejected_inbound_peer_authorizations
+            .entry(peer)
+            .or_default()
+            .insert(pool, filters);
+    }
+
+    pub(crate) fn rejected_inbound_peer_filter_allows(
+        &self,
+        peer: ClientId,
+        protocol: Protocol,
+    ) -> bool {
+        self.rejected_inbound_peer_authorizations
+            .get(&peer)
+            .is_some_and(|pools| {
+                pools
+                    .values()
+                    .any(|filters| protocol_filter_allows(filters, protocol))
+            })
     }
 
     /// Whether we hold any authorization at all for `peer` to reach us.
@@ -324,6 +361,7 @@ impl RefClient {
     pub(crate) fn forget_peer_authorizations(&mut self, peer: ClientId) {
         self.outbound_peer_authorizations.remove(&peer);
         self.inbound_peer_authorizations.remove(&peer);
+        self.rejected_inbound_peer_authorizations.remove(&peer);
     }
 
     /// Checks whether any active inbound authorization from `peer` permits `protocol`.
@@ -512,6 +550,7 @@ impl RefClient {
         // Peer authorizations in both directions go with their connections.
         self.outbound_peer_authorizations.clear();
         self.inbound_peer_authorizations.clear();
+        self.rejected_inbound_peer_authorizations.clear();
 
         for status in self.site_status.values_mut() {
             *status = ResourceStatus::Unknown;
