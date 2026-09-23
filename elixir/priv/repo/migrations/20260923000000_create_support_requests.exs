@@ -7,7 +7,7 @@ defmodule Portal.Repo.Migrations.CreateSupportRequests do
         null: false
       )
 
-      add(:inserted_at, :utc_datetime_usec, null: false)
+      add(:inserted_at, :timestamptz, null: false)
     end
   end
 end

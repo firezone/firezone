@@ -155,7 +155,9 @@ defmodule PortalWeb.SupportForm do
     deliver_feedback(socket.assigns.subject, params, socket.assigns.url)
   end
 
+  # sobelow_skip ["Traversal.FileModule"]
   defp submit(socket, params, [_entry]) do
+    # `path` is LiveView's own temp upload path, not a client-supplied filename.
     socket
     |> consume_uploaded_entries(:screenshot, fn %{path: path}, _entry ->
       result =
