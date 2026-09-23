@@ -23,7 +23,7 @@ Committed corpora serve as regression tests and starting points for further disc
 Minimization retains inputs that contribute edge coverage; differences in execution counts alone do not justify retaining an input.
 AFL edge coverage guides discovery and minimization, while LLVM source coverage measures how much of the code the corpus exercises.
 
-Pull-request CI replays the committed corpora and rejects increases in uncovered source regions.
+Pull-request CI checks that discovery coverage is stable within and across forkservers, replays the committed corpora, and rejects increases in uncovered source regions.
 The [nightly workflow](../../../.github/workflows/fuzz-nightly.yml) grows and minimizes corpora, refreshes coverage ceilings, and retains failing inputs for regression testing.
 On the default branch it proposes corpus PRs; dispatching it on another branch pushes results back to that branch.
 Use that workflow when changes require new inputs or coverage baselines, including changes to how the tunnel generator interprets existing inputs.

@@ -153,6 +153,8 @@ jobs:
         run: mise run //rust/tests/fuzz:unpack-corpus ${{ matrix.fuzz-target }}
       - name: Replay committed corpus
         run: mise run //rust/tests/fuzz:coverage ${{ matrix.fuzz-target }}
+      - name: Check discovery determinism
+        run: mise run //rust/tests/fuzz:determinism ${{ matrix.fuzz-target }}
       - name: Enforce uncovered-region ceiling
         run: mise run -q //rust/tests/fuzz:coverage-check ${{ matrix.fuzz-target }}
       - name: Export lcov for Coveralls
