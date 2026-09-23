@@ -26,9 +26,12 @@ defmodule PortalWeb.SupportForm do
         class="text-sm text-body hover:text-heading"
       >Feedback</button>
       <.modal :if={@open?} id="support-modal" on_close="close" target={@myself}>
-        <:title>Submit feedback</:title>
+        <:title>{if @sent?, do: "Thank you for your feedback", else: "Submit feedback"}</:title>
         <:body>
-          <p :if={@sent?} role="status">Your feedback has been sent.</p>
+          <div :if={@sent?} role="status" class="space-y-3">
+            <p>Your feedback has been sent.</p>
+            <p>We read every submission. We may follow up with questions or clarifications.</p>
+          </div>
           <.form
             :if={!@sent?}
             for={@form}
@@ -38,11 +41,10 @@ defmodule PortalWeb.SupportForm do
             phx-submit="submit"
             class="space-y-4"
           >
-            <p class="text-sm text-body">We read every submission.</p>
             <.input
               field={@form[:message]}
               type="textarea"
-              label="What would you like to tell us?"
+              label="What would you like to see improved?"
               maxlength="1000"
               required
               rows="6"
@@ -60,8 +62,19 @@ defmodule PortalWeb.SupportForm do
             <.error :if={@error} role="alert">{@error}</.error>
           </.form>
         </:body>
-        <:footer :if={!@sent?}>
+        <:footer>
           <.button
+            :if={@sent?}
+            type="button"
+            style="primary"
+            phx-click="close"
+            phx-target={@myself}
+            class="ml-auto"
+          >
+            Done
+          </.button>
+          <.button
+            :if={!@sent?}
             type="submit"
             form="support-form"
             style="primary"

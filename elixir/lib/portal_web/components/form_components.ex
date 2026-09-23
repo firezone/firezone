@@ -584,15 +584,13 @@ defmodule PortalWeb.FormComponents do
               />
               {render_slot(@title)}
             </h3>
-            <button
-              class="text-subtle bg-transparent hover:text-heading ml-2"
-              type="button"
+            <.icon_button
+              icon="ri-close-line"
+              title="Close modal"
+              class="ml-2 shrink-0"
               phx-click={@on_close}
               phx-target={@target}
-            >
-              <.icon name="ri-close-line" class="h-4 w-4" />
-              <span class="sr-only">Close modal</span>
-            </button>
+            />
           </div>
           <div class="p-4 md:p-5 text-body text-base">
             {render_slot(@body)}

@@ -139,7 +139,7 @@ defmodule PortalWeb.SupportFormTest do
 
   test "closing resets the form", %{view: view} do
     view |> form("#support-form", support: %{message: "Draft"}) |> render_change()
-    view |> element("#support-modal button", "Close modal") |> render_click()
+    view |> element("#support-modal button[aria-label='Close modal']") |> render_click()
     refute has_element?(view, "#support-modal")
   end
 end
