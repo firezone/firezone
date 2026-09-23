@@ -16,8 +16,12 @@ use opentelemetry::{
 ///
 /// The buffers are stored in a queue ([`SegQueue`]) and taken from the front and push to the back.
 /// This minimizes contention even under high load where buffers are constantly needed and returned.
+/// The `test-utils` feature adds synchronization to support replacing the shared pool.
 pub struct BufferPool<B> {
+    #[cfg(not(feature = "test-utils"))]
     inner: Arc<PoolInner<B>>,
+    #[cfg(feature = "test-utils")]
+    inner: Arc<std::sync::Mutex<Arc<PoolInner<B>>>>,
 }
 
 impl<B> Clone for BufferPool<B> {
@@ -59,6 +63,41 @@ struct PoolInner<B> {
     counter: UpDownCounter<i64>,
 }
 
+impl<B> PoolInner<B>
+where
+    B: Buf,
+{
+    fn new(capacity: usize, tag: &'static str, buffer_counter: UpDownCounter<i64>) -> Self {
+        let attributes = [
+            KeyValue::new("system.buffer.pool.name", tag),
+            KeyValue::new("system.buffer.pool.buffer_size", capacity as i64),
+        ];
+
+        Self {
+            queue: SegQueue::new(),
+
+            // TODO: It would be nice to eventually create a fixed amount of buffers upfront.
+            // This however means that getting a buffer can fail which would require us to implement back-pressure.
+            new_buffer_fn: Box::new({
+                let counter = buffer_counter.clone();
+                let attributes = attributes.clone();
+
+                move || {
+                    counter.add(1, &attributes);
+
+                    B::with_capacity(capacity)
+                }
+            }),
+            capacity,
+            tag,
+            capacity_of: B::capacity,
+            reset: B::reset,
+            attributes,
+            counter: buffer_counter,
+        }
+    }
+}
+
 impl<B> Drop for PoolInner<B> {
     fn drop(&mut self) {
         let mut num_buffers = 0;
@@ -84,52 +123,54 @@ where
         Self::with_counter(capacity, tag, otel_instruments::buffer_count_with(meter))
     }
 
+    /// Replaces the shared pool with an empty pool, including fresh queue state.
+    ///
+    /// All clones of this pool use the replacement. Outstanding buffers remain
+    /// valid and return to the old pool when dropped.
+    #[cfg(feature = "test-utils")]
+    pub fn reset(&self) {
+        let mut inner = self.inner.lock().expect("buffer pool lock poisoned");
+
+        // Draining buffers preserves the queue's position within its blocks,
+        // making allocation paths depend on earlier uses of the pool.
+        let replacement = Arc::new(PoolInner::new(
+            inner.capacity,
+            inner.tag,
+            inner.counter.clone(),
+        ));
+        let old = std::mem::replace(&mut *inner, replacement);
+
+        // Buffer destructors may access the pool.
+        drop(inner);
+        drop(old);
+    }
+
+    pub fn pull(&self) -> Buffer<B> {
+        #[cfg(feature = "test-utils")]
+        let pool = self
+            .inner
+            .lock()
+            .expect("buffer pool lock poisoned")
+            .clone();
+        #[cfg(not(feature = "test-utils"))]
+        let pool = self.inner.clone();
+
+        Buffer {
+            inner: Some(pool.queue.pop().unwrap_or_else(|| (pool.new_buffer_fn)())),
+            pool,
+        }
+    }
+
     fn with_counter(
         capacity: usize,
         tag: &'static str,
         buffer_counter: UpDownCounter<i64>,
     ) -> Self {
-        let attributes = [
-            KeyValue::new("system.buffer.pool.name", tag),
-            KeyValue::new("system.buffer.pool.buffer_size", capacity as i64),
-        ];
+        let inner = Arc::new(PoolInner::new(capacity, tag, buffer_counter));
+        #[cfg(feature = "test-utils")]
+        let inner = Arc::new(std::sync::Mutex::new(inner));
 
-        Self {
-            inner: Arc::new(PoolInner {
-                queue: SegQueue::new(),
-
-                // TODO: It would be nice to eventually create a fixed amount of buffers upfront.
-                // This however means that getting a buffer can fail which would require us to implement back-pressure.
-                new_buffer_fn: Box::new({
-                    let counter = buffer_counter.clone();
-                    let attributes = attributes.clone();
-
-                    move || {
-                        counter.add(1, &attributes);
-
-                        B::with_capacity(capacity)
-                    }
-                }),
-                capacity,
-                tag,
-                capacity_of: B::capacity,
-                reset: B::reset,
-                attributes,
-                counter: buffer_counter,
-            }),
-        }
-    }
-
-    pub fn pull(&self) -> Buffer<B> {
-        Buffer {
-            inner: Some(
-                self.inner
-                    .queue
-                    .pop()
-                    .unwrap_or_else(|| (self.inner.new_buffer_fn)()),
-            ),
-            pool: self.inner.clone(),
-        }
+        Self { inner }
     }
 }
 
@@ -405,6 +446,39 @@ mod tests {
     };
 
     use super::*;
+
+    #[cfg(feature = "test-utils")]
+    #[test]
+    fn reset_updates_cloned_pools_and_isolates_outstanding_buffers() {
+        let pool = BufferPool::<Vec<u8>>::new(8, "test");
+        let clone = pool.clone();
+        let outstanding = pool.pull_initialised(b"old");
+        drop(pool.pull_initialised(b"idle"));
+
+        clone.reset();
+
+        assert_eq!(&outstanding[..], b"old");
+        drop(outstanding);
+        assert_eq!(&pool.pull()[..], &[0; 8]);
+    }
+
+    #[cfg(feature = "test-utils")]
+    #[test]
+    fn reset_preserves_the_meter_and_accounts_for_discarded_buffers() {
+        let (provider, exporter) = init_meter_provider();
+        let pool = BufferPool::<Vec<u8>>::with_meter(8, "test", &provider.meter("connlib"));
+        drop(pool.pull());
+        provider.force_flush().unwrap();
+        assert_eq!(get_num_buffers(&exporter), 1);
+
+        pool.reset();
+
+        provider.force_flush().unwrap();
+        assert_eq!(get_num_buffers(&exporter), 0);
+        let _buffer = pool.pull();
+        provider.force_flush().unwrap();
+        assert_eq!(get_num_buffers(&exporter), 1);
+    }
 
     #[test]
     fn buffer_can_be_cloned() {
