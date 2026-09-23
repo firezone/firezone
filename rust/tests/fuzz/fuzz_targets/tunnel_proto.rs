@@ -10,15 +10,16 @@ use fuzz::tunnel_proto::{
 const MAX_TRANSITIONS: usize = 20;
 
 fn main() -> anyhow::Result<()> {
-    fuzz::run(test)?;
+    // Forked inputs share the same clock anchor, including its subsecond offset.
+    let now = Instant::now();
+    fuzz::run(|data| test(data, now))?;
 
     Ok(())
 }
 
-fn test(data: &[u8]) {
+fn test(data: &[u8], now: Instant) {
     let _guard = init_fuzz_subscriber();
 
-    let now = Instant::now();
     let utc_start = DateTime::<Utc>::from_timestamp(0, 0).expect("0 is a valid UNIX timestamp");
     let flux_capacitor = FluxCapacitor::new(now, utc_start);
     let mut generator = Generator::new(data);

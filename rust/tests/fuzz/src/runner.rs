@@ -3,7 +3,7 @@ use std::{ffi::OsString, path::PathBuf, time::Instant};
 use anyhow::Context as _;
 
 /// Runs an AFL++ target or replays saved inputs in the current process.
-pub fn run(target: fn(&[u8])) -> anyhow::Result<()> {
+pub fn run(target: impl Fn(&[u8]) + std::panic::RefUnwindSafe) -> anyhow::Result<()> {
     let mut args = std::env::args_os().skip(1);
     let Some(mode) = args.next() else {
         seeded_rng::reset(0);

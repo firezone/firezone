@@ -13,6 +13,8 @@
 
 [AFL++](https://github.com/AFLplusplus/AFLplusplus) discovers inputs with a forkserver and one input per child (`AFL_FUZZER_LOOPCOUNT=1`).
 Every child inherits the same parent memory, so buffer-pool, RNG, and hash-map state from an earlier input cannot affect the next input.
+The tunnel target captures its simulation clock anchor before starting the forkserver, including the subsecond offset that affects timer comparisons.
+Separate parent processes can still start with different clock anchors.
 This does not rewind external state such as the wall clock.
 
 Corpus replay and source-coverage measurement use an ordinary optimized Rust binary and execute batches of inputs in one process.
