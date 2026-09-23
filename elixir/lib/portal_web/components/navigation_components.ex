@@ -45,7 +45,7 @@ defmodule PortalWeb.NavigationComponents do
             data-popover-target-id="theme-dropdown"
             data-popover-trigger="click"
             data-popover-placement="bottom"
-            class="p-2 rounded text-body hover:text-heading hover:bg-raised transition-colors"
+            class="flex items-center justify-center p-2 rounded text-body hover:text-heading hover:bg-raised transition-colors"
             aria-label="Change theme"
           >
             <.icon name="ri-sun-line" class="theme-icon-light w-4 h-4" />
