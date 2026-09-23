@@ -232,6 +232,7 @@ defmodule PortalAPI.Schemas.Policy do
         },
         postures: %Schema{
           example: Policy.PostureNode.schema().example,
+          nullable: true,
           anyOf: [Policy.PostureNode, %Schema{type: :object, nullable: true, enum: [nil]}],
           description:
             "Device posture expression required in addition to every entry in conditions. " <>
@@ -292,6 +293,7 @@ defmodule PortalAPI.Schemas.Policy do
         },
         postures: %Schema{
           example: Policy.PostureNode.schema().example,
+          nullable: true,
           anyOf: [Policy.PostureNode, %Schema{type: :object, nullable: true, enum: [nil]}],
           description:
             "Replaces the entire device posture expression; it is not merged. Omit to preserve " <>
@@ -371,6 +373,7 @@ defmodule PortalAPI.Schemas.Policy do
         },
         postures: %Schema{
           example: Policy.PostureNode.schema().example,
+          nullable: true,
           anyOf: [Policy.PostureNode, %Schema{type: :object, nullable: true, enum: [nil]}],
           description:
             "The stored device posture expression, or null when none is required. " <>

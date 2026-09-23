@@ -85,6 +85,9 @@ defmodule PortalAPI.OpenAPISpecTest do
           %{"and" => [boolean], "or" => [boolean]},
           %{"and" => [boolean], "field" => "intune.enrolled", "op" => "is", "value" => true},
           %{"not" => []},
+          %{"not" => nil},
+          %{"and" => [nil]},
+          %{"or" => [nil]},
           %{"field" => "intune.enrolled", "value" => true},
           %{"field" => "intune.enrolled", "op" => "is"},
           %{"field" => "intune.enrolled", "op" => "is", "value" => 1},
@@ -108,6 +111,7 @@ defmodule PortalAPI.OpenAPISpecTest do
       OpenApiSpex.TestAssertions.assert_raw_schema(nil, schema, spec)
       OpenApiSpex.TestAssertions.assert_raw_schema(schema.example, schema, spec)
       assert schema.description =~ "posture"
+      assert schema.nullable == true
     end
   end
 

@@ -163,8 +163,8 @@ defmodule PortalAPI.MCP.ToolsTest do
       tool = fetch(tools, name)
       schema = tool.input_schema
       postures = get_in(schema, ["properties", "policy", "properties", "postures"])
-      [node, nullable] = postures["anyOf"]
-
+      assert [expression, %{"type" => "null"}] = postures["anyOf"]
+      [node, nullable] = expression["anyOf"]
       assert %{"anyOf" => [_, %{"type" => "null"}]} = nullable
       [conjunction, disjunction, negation, leaf] = node["oneOf"]
       assert conjunction["additionalProperties"] == false

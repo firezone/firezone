@@ -653,7 +653,8 @@
                   ]
                 }
               ]
-            }
+            },
+            "nullable": true
           },
           "resource_id": {
             "description": "Resource ID",
@@ -7715,7 +7716,8 @@
                   ]
                 }
               ]
-            }
+            },
+            "nullable": true
           },
           "resource_id": {
             "description": "Resource ID",
@@ -10526,7 +10528,8 @@
                   ]
                 }
               ]
-            }
+            },
+            "nullable": true
           },
           "resource_id": {
             "description": "Resource ID",
