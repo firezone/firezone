@@ -6,6 +6,7 @@ use std::{
 use connlib_model::ClientId;
 use dns_types::DomainName;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
+use ip_packet::Protocol;
 use tunnel_proto::messages::{Filter, PortRange};
 
 use super::context::Generator;
@@ -48,6 +49,12 @@ pub(super) enum PacketTarget {
         src: IpAddr,
         dst: IpAddr,
         filters: Vec<Filter>,
+    },
+    RevokedPeer {
+        client_id: ClientId,
+        src: IpAddr,
+        dst: IpAddr,
+        protocol: Protocol,
     },
 }
 
@@ -183,6 +190,73 @@ pub(super) fn targets(state: &ReferenceState, portal: &StubPortal) -> Vec<Packet
         .collect::<Vec<_>>()
 }
 
+pub(super) fn revoked_peer_targets(state: &ReferenceState) -> Vec<PacketTarget> {
+    state
+        .clients
+        .iter()
+        .flat_map(|(peer_id, receiver)| {
+            let receiver = receiver.inner();
+
+            receiver
+                .rejected_inbound_peer_pools()
+                .filter_map(move |(client_id, pool, filters)| {
+                    let sender = state.clients.get(&client_id)?.inner();
+                    if !receiver.has_inbound_peer_authorization(client_id)
+                        || !sender
+                            .authorized_pools_towards(*peer_id)
+                            .any(|id| id == pool)
+                    {
+                        return None;
+                    }
+
+                    let protocol = revoked_protocols(filters).into_iter().find(|protocol| {
+                        sender.candidate_pools(*protocol).contains(&pool)
+                            && !receiver.inbound_peer_filter_allows(client_id, *protocol)
+                    })?;
+
+                    Some([
+                        PacketTarget::RevokedPeer {
+                            client_id,
+                            src: sender.tunnel_ip4.into(),
+                            dst: receiver.tunnel_ip4.into(),
+                            protocol,
+                        },
+                        PacketTarget::RevokedPeer {
+                            client_id,
+                            src: sender.tunnel_ip6.into(),
+                            dst: receiver.tunnel_ip6.into(),
+                            protocol,
+                        },
+                    ])
+                })
+                .flatten()
+        })
+        .collect()
+}
+
+fn revoked_protocols(filters: &[Filter]) -> Vec<Protocol> {
+    if filters.is_empty() {
+        return vec![Protocol::IcmpEcho(0), Protocol::Udp(12345)];
+    }
+
+    filters
+        .iter()
+        .flat_map(|filter| match filter {
+            Filter::Icmp => vec![Protocol::IcmpEcho(0)],
+            Filter::Udp(range) => {
+                let start = *range.as_range().start();
+                let end = *range.as_range().end();
+                [start, start + (end - start) / 2, end]
+                    .into_iter()
+                    .filter(|port| *port != 53)
+                    .map(Protocol::Udp)
+                    .collect()
+            }
+            Filter::Tcp(_) => Vec::new(),
+        })
+        .collect()
+}
+
 pub(super) fn generate(g: &mut Generator, target: PacketTarget) -> Transition {
     match target {
         PacketTarget::Cidr {
@@ -237,6 +311,16 @@ pub(super) fn generate(g: &mut Generator, target: PacketTarget) -> Transition {
             dst,
             filters,
         } => arb_filtered_packet(g, client_id, src, DstSpec::Ip(dst), &filters),
+        PacketTarget::RevokedPeer {
+            client_id,
+            src,
+            dst,
+            protocol,
+        } => match protocol {
+            Protocol::IcmpEcho(_) => arb_icmp_packet(g, client_id, src, DstSpec::Ip(dst)),
+            Protocol::Udp(port) => arb_udp_packet(g, client_id, src, DstSpec::Ip(dst), port),
+            Protocol::Tcp(_) => unreachable!("TCP peer probes are not generated"),
+        },
     }
 }
 

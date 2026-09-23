@@ -187,7 +187,7 @@ pub(crate) enum RejectionResponse {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum TraceRequirement {
     Exact,
-    ExactOrSubmissionOnly(KnownLoss),
+    ExactOrLoss(KnownLoss),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -592,9 +592,7 @@ impl SimClient {
         )
         .expect("src and dst are taken from incoming packet");
 
-        let transmit = self.handle_tun_input(reply, now).unwrap()?;
-
-        Some(transmit)
+        self.encapsulate(reply, now)
     }
 
     fn record_received_request(&mut self, id: ProbeId, packet: IpPacket, at: Instant) {

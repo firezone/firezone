@@ -207,7 +207,7 @@ impl StubPortal {
                 }
 
                 // An edit that changes who may reach what invalidates the authorizations
-                // the resource granted; the Clients ask for new ones.
+                // the resource authorized; the Clients ask for new ones.
                 if matches!(
                     client::classify(&edit.old, &edit.new),
                     client::EditEffect::Access { .. } | client::EditEffect::Type { .. }
@@ -257,6 +257,13 @@ impl StubPortal {
                 self.revoke_policy_authorizations(*resource);
             }
             Transition::ExpirePeerAuthorizations { .. } => {}
+            Transition::RevokePeerAuthorization { client, peer, pool } => {
+                self.peer_policy_authorizations.remove(&PeerAuthorization {
+                    initiator: *client,
+                    target: *peer,
+                    pool: *pool,
+                });
+            }
             Transition::UpdateDnsRecords { .. } => {}
         }
     }
@@ -413,7 +420,7 @@ impl StubPortal {
             })
     }
 
-    /// Revokes grants lost when an edit disconnects the last resource on a Gateway.
+    /// Revokes authorizations lost when an edit disconnects the last resource on a Gateway.
     fn revoke_disconnected_gateway_authorizations(
         &mut self,
         resource: ResourceId,
@@ -447,7 +454,7 @@ impl StubPortal {
         }
     }
 
-    /// Revokes every authorization `resource` granted, to a peer or through a Gateway.
+    /// Revokes every authorization `resource` provided, to a peer or through a Gateway.
     fn revoke_policy_authorizations(&mut self, resource: ResourceId) {
         for _ in self
             .peer_policy_authorizations

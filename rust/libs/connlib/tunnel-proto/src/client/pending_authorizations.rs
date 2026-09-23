@@ -235,7 +235,7 @@ pub enum Trigger {
     Packet(IpPacket),
     /// A DNS query that needs to be resolved within a particular site that we aren't connected to yet.
     DnsQueryForSite(DnsQueryForSite),
-    /// The receiving peer reports that it has no authorization for our traffic.
+    /// The receiving peer reports that its authorizations reject our traffic.
     NoAuthorization,
 }
 
