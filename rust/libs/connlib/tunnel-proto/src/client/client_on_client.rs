@@ -20,10 +20,9 @@ use std::time::Instant;
 /// 2. Outbound layer-4 connections so we can allow return traffic back in.
 /// 3. Revoked inbound grants so denied traffic that they permitted can request fresh access.
 ///
-/// Doing both of these ensures that event Clients which have access to each other via
-/// different device pools can only access what they have been granted access to.
-/// Most importantly, accessing another client does not allow any inbound traffic that
-/// isn't the return traffic of packets that we have sent.
+/// Inbound grants and flow tracking limit traffic from the remote Client to
+/// authorized packets and replies to flows we opened. Revoked grants let us
+/// request fresh access when a previously permitted packet is denied.
 pub(crate) struct ClientOnClient {
     id: ClientId,
     local_tun: IpConfig,
