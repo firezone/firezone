@@ -3,15 +3,9 @@ defmodule Portal.SentinelOne.SchedulerTest do
   use Oban.Testing, repo: Portal.Repo
 
   import Portal.AccountFixtures
-  import Portal.DevicePostureFixtures
   import Portal.SentinelOneFixtures
 
   alias Portal.SentinelOne.{Scheduler, Sync}
-
-  setup do
-    enable_device_posture()
-    :ok
-  end
 
   test "enqueues a sync job for each enabled and verified provider" do
     first = sentinelone_posture_provider_fixture()
@@ -56,11 +50,4 @@ defmodule Portal.SentinelOne.SchedulerTest do
     assert job.args["posture_provider_id"] == enabled.id
   end
 
-  test "queues nothing when the global device_posture flag is off" do
-    enable_device_posture(false)
-    sentinelone_posture_provider_fixture()
-
-    assert {:ok, :skipped} = perform_job(Scheduler, %{})
-    assert all_enqueued(worker: Sync) == []
-  end
 end

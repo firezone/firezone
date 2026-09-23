@@ -26,8 +26,7 @@ defmodule PortalWeb.Settings.Account do
         service_accounts_count: Database.count_service_accounts_for_account(subject),
         users_count: Database.count_users_for_account(subject),
         active_users_count: Database.count_1m_active_users_for_account(subject),
-        sites_count: Database.count_groups_for_account(subject),
-        device_posture_enabled?: PortalWeb.NavigationComponents.device_posture_enabled?()
+        sites_count: Database.count_groups_for_account(subject)
       )
 
     {:ok, socket}
@@ -39,7 +38,6 @@ defmodule PortalWeb.Settings.Account do
       <.settings_nav
         account={@account}
         current_path={@current_path}
-        device_posture_enabled?={@device_posture_enabled?}
       >
         <:actions>
           <.button phx-click="open_edit_account" size="xs">

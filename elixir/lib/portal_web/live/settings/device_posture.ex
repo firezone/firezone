@@ -80,17 +80,6 @@ defmodule PortalWeb.Settings.DevicePosture do
   @sentinelone_verification_fields ~w[management_url api_token]a
 
   def mount(_params, _session, socket) do
-    if PortalWeb.NavigationComponents.device_posture_enabled?() do
-      mount_enabled(socket)
-    else
-      {:ok,
-       socket
-       |> put_flash(:error, @feature_disabled)
-       |> push_navigate(to: ~p"/#{socket.assigns.account}/settings/account")}
-    end
-  end
-
-  defp mount_enabled(socket) do
     if connected?(socket) do
       :ok = PubSub.Changes.subscribe(socket.assigns.subject.account.id, :posture_providers)
     end
@@ -99,7 +88,6 @@ defmodule PortalWeb.Settings.DevicePosture do
      socket
      |> assign(
        page_title: "Device Posture",
-       device_posture_enabled?: true,
        type: nil,
        provider: nil,
        form: nil,
@@ -240,7 +228,7 @@ defmodule PortalWeb.Settings.DevicePosture do
     feedback = String.trim(feedback)
 
     cond do
-      not account_feature_enabled?(socket) ->
+      Database.ensure_enabled(socket.assigns.subject) != :ok ->
         {:noreply, put_flash(socket, :error, @feature_disabled)}
 
       feedback == "" ->
@@ -451,7 +439,7 @@ defmodule PortalWeb.Settings.DevicePosture do
     provider = Enum.find(socket.assigns.providers, &(&1.id == id))
 
     cond do
-      not account_feature_enabled?(socket) ->
+      Database.ensure_enabled(socket.assigns.subject) != :ok ->
         {:noreply, put_flash(socket, :error, @feature_disabled)}
 
       is_nil(provider) ->
@@ -653,7 +641,6 @@ defmodule PortalWeb.Settings.DevicePosture do
       <.settings_nav
         account={@account}
         current_path={@current_path}
-        device_posture_enabled?={@device_posture_enabled?}
       />
 
       <%= if Portal.Account.device_posture_enabled?(@account) do %>
@@ -971,7 +958,7 @@ defmodule PortalWeb.Settings.DevicePosture do
 
   attr :account, :any, required: true
 
-  # Shown when the feature is on globally but not for this account, matching the
+  # Shown when the account lacks the feature, matching the
   # log sinks upgrade page: a blurred sample of the real table under a card.
   defp upgrade_splash(assigns) do
     ~H"""
@@ -2130,12 +2117,12 @@ defmodule PortalWeb.Settings.DevicePosture do
       }
     end
 
-    # The last line of defence: the page is unreachable and its buttons are gone
+    # The last line of defence: the page shows an upgrade teaser
     # when the feature is off, but an already-open socket must not be able to
     # write either. The account is re-read rather than taken from the subject,
     # which holds whatever the features were when the socket mounted and would
     # keep answering yes for the life of a session opened before a downgrade.
-    defp ensure_enabled(subject) do
+    def ensure_enabled(subject) do
       account =
         from(a in Portal.Account, where: a.id == ^subject.account.id)
         |> Safe.unscoped()

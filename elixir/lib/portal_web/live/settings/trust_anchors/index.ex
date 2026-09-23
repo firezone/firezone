@@ -140,7 +140,6 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
       |> assign(confirm_delete?: false)
       |> assign(revocation: [])
       |> assign(panel_tab: :overview, expanded_endpoint: nil)
-      |> assign(device_posture_enabled?: PortalWeb.NavigationComponents.device_posture_enabled?())
       |> allow_upload(:cert_file,
         accept: ~w(.pem .crt .cer .der .txt),
         max_entries: @max_upload_entries,
@@ -207,7 +206,6 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
       <.settings_nav
         account={@account}
         current_path={@current_path}
-        device_posture_enabled?={@device_posture_enabled?}
       />
 
       <div class="flex-1 flex flex-col overflow-hidden">

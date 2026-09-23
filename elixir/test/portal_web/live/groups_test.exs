@@ -222,7 +222,6 @@ defmodule PortalWeb.GroupsTest do
     end
 
     test "grants access with device postures", %{conn: conn} do
-      enable_device_posture()
       account = device_posture_account_fixture()
       actor = admin_actor_fixture(account: account)
       group = group_fixture(account: account)

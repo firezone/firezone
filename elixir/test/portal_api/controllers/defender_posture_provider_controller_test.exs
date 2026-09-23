@@ -6,7 +6,6 @@ defmodule PortalAPI.DefenderPostureProviderControllerTest do
   import Portal.DefenderFixtures
 
   setup do
-    enable_device_posture()
     account = device_posture_account_fixture()
     actor = api_client_fixture(account: account)
     %{account: account, actor: actor}

@@ -6,7 +6,6 @@ defmodule PortalAPI.DefenderDeviceControllerTest do
   import Portal.DefenderFixtures
 
   setup do
-    enable_device_posture()
     account = device_posture_account_fixture()
     actor = api_client_fixture(account: account)
     provider = defender_posture_provider_fixture(account: account)
@@ -50,8 +49,8 @@ defmodule PortalAPI.DefenderDeviceControllerTest do
     assert data["risk_score"] == "Medium"
   end
 
-  test "is forbidden when the global flag is off", %{conn: conn, actor: actor} do
-    enable_device_posture(false)
+  test "is forbidden when the account feature is off", %{conn: conn, actor: actor, account: account} do
+    disable_device_posture(account)
 
     response = conn |> authorize_conn(actor) |> get("/defender_devices") |> json_response(403)
     assert response["detail"] == "This feature is not enabled for your account."

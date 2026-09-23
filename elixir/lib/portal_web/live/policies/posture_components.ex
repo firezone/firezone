@@ -20,7 +20,7 @@ defmodule PortalWeb.Policies.PostureComponents do
   attr :state, :map, required: true
   def postures_section(assigns) do
     ~H"""
-    <div :if={@state.availability != :hidden} id={@id} class="border-t border-border pt-4">
+    <div id={@id} class="border-t border-border pt-4">
       <div class="flex items-center justify-between gap-2 mb-3">
         <h4 class="text-[10px] font-semibold tracking-widest uppercase text-subtle">
           Device posture
