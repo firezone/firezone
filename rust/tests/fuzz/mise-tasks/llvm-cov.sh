@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 #MISE description="Run the nightly toolchain's llvm-cov, e.g. to post-process coverage.profdata"
-#MISE depends=["install-toolchain"]
 #MISE raw=true
 #USAGE arg "<llvm_cov_args>" var=#true
 set -euo pipefail

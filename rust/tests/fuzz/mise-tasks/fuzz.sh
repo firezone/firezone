@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #MISE description="Discover coverage with AFL++; extra args are passed to each worker"
-#MISE depends=["install-toolchain", "unpack-corpus {{usage.target}}"]
+#MISE depends=["unpack-corpus {{usage.target}}"]
 #MISE raw=true
 #USAGE arg "<target>"
 #USAGE flag "--workers <workers>" default="1"
@@ -21,46 +21,10 @@ seconds="${usage_seconds:-60}"
 eval "set -- ${usage_afl_args:-}"
 build_afl
 
-# Every discovery input starts from the forkserver's memory snapshot. Replay
-# uses an ordinary in-process loop because it does not select inputs by coverage.
-export AFL_FUZZER_LOOPCOUNT=1 AFL_NO_UI=1 AFL_SKIP_CPUFREQ=1
-ulimit -c 0
-max_length=4096
-if [ "$target" = tunnel-proto ] || [ "$target" = relay-proto ]; then
-    max_length=8192
-fi
-output="afl-output/$target"
-mkdir -p "$output"
-pids=()
-# shellcheck disable=SC2317
-cleanup() {
-    trap - EXIT INT TERM HUP
-    for pid in "${pids[@]}"; do kill -TERM -- "-$pid" 2>/dev/null || true; done
-    for pid in "${pids[@]}"; do wait "$pid" 2>/dev/null || true; done
-    collect_findings all
-}
-trap cleanup EXIT
-trap 'exit 130' INT
-trap 'exit 143' TERM HUP
-
-# Separate process groups let cancellation stop cargo-afl and all its children.
-set -m
+trap 'collect_findings all' EXIT
+tasks=()
 for ((worker = 0; worker < workers; worker++)); do
-    name="worker-$worker"
-    mode=-S
-    [ "$worker" -ne 0 ] || mode=-M
-    input="corpus/$target"
-    # Resume a previous campaign without discarding queues or crash artifacts.
-    [ ! -d "$output/$name/queue" ] || input=-
-    cargo afl fuzz -i "$input" -o "$output" "$mode" "$name" \
-        -V "$seconds" -G "$max_length" -t 10000 -m none "$@" -- "$afl_binary" "$target" \
-        >"$output/$name.log" 2>&1 &
-    pids+=("$!")
+    [ "$worker" -eq 0 ] || tasks+=(:::)
+    tasks+=(//rust/tests/fuzz:fuzz-worker "$target" "$worker" "$seconds" "$@")
 done
-set +m
-status=0
-for pid in "${pids[@]}"; do wait "$pid" || status=$?; done
-for ((worker = 0; worker < workers; worker++)); do
-    tail -n 20 "$output/worker-$worker.log"
-done
-exit "$status"
+mise run --jobs "$workers" "${tasks[@]}"

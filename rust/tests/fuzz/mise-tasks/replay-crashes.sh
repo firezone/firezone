@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 #MISE description="Replay all crash artifacts for a fuzz target with tracing"
-#MISE depends=["install-toolchain"]
 #MISE raw=true
 #USAGE arg "<target>"
 set -euo pipefail

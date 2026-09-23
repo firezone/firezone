@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #MISE description="Replay a corpus in one process and report iterations per second"
-#MISE depends=["install-toolchain", "unpack-corpus {{usage.target}}"]
+#MISE depends=["unpack-corpus {{usage.target}}"]
 #MISE raw=true
 #USAGE arg "<target>"
 #USAGE flag "--repeat <repeat>" default="1"

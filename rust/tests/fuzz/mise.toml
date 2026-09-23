@@ -7,10 +7,10 @@ includes = ["mise-tasks"]
 binstall = false
 
 [tools]
+rust = { version = "nightly-2026-06-10", profile = "minimal", components = ["rust-src", "llvm-tools"] }
 "cargo:cargo-afl" = { version = "0.18.2", os = ["linux"] }
 
 [env]
-RUSTUP_TOOLCHAIN = "nightly-2026-06-10"
 CARGO_PROFILE_RELEASE_LTO = "false"
 # Match the assertions enabled by cargo-afl in the fast replay builds too.
 CARGO_PROFILE_RELEASE_DEBUG_ASSERTIONS = "true"

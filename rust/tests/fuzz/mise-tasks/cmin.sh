@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 #MISE description="Minimize a fuzz corpus by AFL++ edge coverage"
-#MISE depends=["install-toolchain"]
 #MISE raw=true
 #USAGE arg "<target>"
 set -euo pipefail

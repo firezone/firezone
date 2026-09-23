@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 #MISE description="Export an existing fuzz coverage profile as lcov, restricted to our own sources"
-#MISE depends=["install-toolchain"]
 #MISE raw=true
 #USAGE arg "<target>"
 set -euo pipefail

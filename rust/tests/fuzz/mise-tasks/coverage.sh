@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 #MISE description="Replay corpus batches in persistent processes and produce its LLVM coverage profile"
-#MISE depends=["install-toolchain"]
 #MISE raw=true
 #USAGE arg "<target>"
 set -euo pipefail

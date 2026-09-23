@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 #MISE description="Reduce a crashing input with AFL++"
-#MISE depends=["install-toolchain"]
 #MISE raw=true
 #USAGE arg "<target>"
 #USAGE arg "<testcase>"

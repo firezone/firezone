@@ -27,7 +27,7 @@ Replay calls the target directly so any failing input fails the command and each
 ## Setup
 
 The pinned nightly toolchain, `cargo-afl`, and build settings live in [mise.toml](mise.toml).
-Install that nightly with `rustup` before running `mise install --cd rust/tests/fuzz`, because installing `cargo-afl` compiles Rust code.
+Run `mise install --cd rust/tests/fuzz` to install the nightly with its required components, followed by `cargo-afl`.
 A C compiler and `make` are required to build the bundled AFL++ tools; the workflow's Ubuntu runners provide them.
 CI caches the AFL++ tools and runtime in `~/.local/share/afl.rs` separately from mise's tool cache.
 On a cache miss, CI reinstalls `cargo-afl` through mise to populate that directory.

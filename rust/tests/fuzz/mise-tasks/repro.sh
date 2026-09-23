@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 #MISE description="Replay one fuzz input with tracing; override RUST_LOG for more detail"
-#MISE depends=["install-toolchain"]
 #MISE raw=true
 #USAGE arg "<target>"
 #USAGE arg "<testcase>"
