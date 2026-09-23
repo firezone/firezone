@@ -8,7 +8,8 @@ replay_binary="$fuzz_target_dir/fuzz-replay/x86_64-unknown-linux-gnu/release/fuz
 coverage_binary="$fuzz_target_dir/fuzz-coverage/x86_64-unknown-linux-gnu/release/fuzz"
 
 build_afl() {
-    cargo afl build --locked --release -p fuzz --bin fuzz \
+    # Override cargo-afl's native CPU so cached crates work across CI runners.
+    RUSTFLAGS="${RUSTFLAGS:-} -C target-cpu=x86-64" cargo afl build --locked --release -p fuzz --bin fuzz \
         --target x86_64-unknown-linux-gnu --target-dir "$fuzz_target_dir/afl"
 }
 
