@@ -37,7 +37,7 @@ fuzz_target!(|data: &[u8]| {
         reference.invalidate(&transition, &portal);
         tunnel.invalidate(&transition, &reference);
 
-        portal.apply(&transition);
+        portal.apply(&transition, &reference);
         reference = reference.apply(&transition, &portal, flux_capacitor.now());
         tunnel = tunnel.apply(transition, &reference, &mut portal);
         check_invariants(&reference, &tunnel, &portal);
