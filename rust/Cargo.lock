@@ -3054,6 +3054,7 @@ dependencies = [
  "derive_more",
  "dns-over-tcp",
  "dns-types",
+ "fastrand",
  "flow-tracker",
  "hex",
  "ip-packet",
@@ -3064,7 +3065,6 @@ dependencies = [
  "rand 0.10.2",
  "relay-proto",
  "secrecy",
- "seeded-rng",
  "serde_json",
  "sha2 0.11.0",
  "smallvec",
@@ -6798,14 +6798,6 @@ checksum = "cc1f0cbffaac4852523ce30d8bd3c5cdc873501d96ff467ca09b6767bb8cd5c0"
 dependencies = [
  "core-foundation-sys",
  "libc",
-]
-
-[[package]]
-name = "seeded-rng"
-version = "0.1.0"
-dependencies = [
- "fastrand",
- "rand 0.10.2",
 ]
 
 [[package]]

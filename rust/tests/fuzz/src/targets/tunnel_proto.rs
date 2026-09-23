@@ -1,23 +1,15 @@
 //! Exercises the connlib tunnel state machine with coverage-guided fuzzing.
 
-use std::{sync::LazyLock, time::Instant};
-
 use chrono::{DateTime, Utc};
 use fuzz::tunnel_proto::{
     FluxCapacitor, Generator, TunnelTest, check_invariants, init_fuzz_subscriber,
 };
 
 const MAX_TRANSITIONS: usize = 20;
-static CLOCK_ANCHOR: LazyLock<Instant> = LazyLock::new(Instant::now);
-
-pub fn init_clock() {
-    // Forked inputs share the same clock anchor, including its subsecond offset.
-    LazyLock::force(&CLOCK_ANCHOR);
-}
 
 pub fn test(data: &[u8]) {
     let _guard = init_fuzz_subscriber();
-    let now = *CLOCK_ANCHOR;
+    let now = *crate::START_TIME;
 
     let utc_start = DateTime::<Utc>::from_timestamp(0, 0).expect("0 is a valid UNIX timestamp");
     let flux_capacitor = FluxCapacitor::new(now, utc_start);

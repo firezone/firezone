@@ -50,7 +50,7 @@ pub fn test(data: &[u8]) {
     let mut server = Server::new(RELAY_IP, StdRng::seed_from_u64(0), 3478, 49152..=65535);
     server.set_accounts([AccountId::from(Uuid::nil())]);
     let client = ClientSocket::new(CLIENT);
-    let now = Instant::now();
+    let now = *crate::START_TIME;
     // Fixed rather than `SystemTime::now`: the expiry checked against this is
     // fuzzer-controlled, so the verdict must not depend on when the target runs.
     let now_utc = SystemTime::UNIX_EPOCH + Duration::from_secs(1_700_000_000);

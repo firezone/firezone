@@ -1,40 +1,42 @@
 //! Runs the protocol fuzz targets and replays their saved inputs.
 #![allow(clippy::print_stdout, clippy::print_stderr)]
 
-use std::{path::PathBuf, time::Instant};
+use std::{path::PathBuf, sync::LazyLock, time::Instant};
 
 use anyhow::Context as _;
 use clap::{Parser, ValueEnum};
 
+mod seeded_rng;
 mod targets;
+
+static START_TIME: LazyLock<Instant> = LazyLock::new(Instant::now);
 
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
+    seeded_rng::reset(0);
+    // Forked inputs inherit the same clock anchor, including its subsecond offset.
+    LazyLock::force(&START_TIME);
+
     let target: fn(&[u8]) = match cli.target {
         Target::IpPacket => targets::ip_packet::test,
         Target::RelayProto => targets::relay_proto::test,
-        Target::TunnelProto => {
-            targets::tunnel_proto::init_clock();
-            targets::tunnel_proto::test
-        }
+        Target::TunnelProto => targets::tunnel_proto::test,
         Target::X509Claims => targets::x509_claims::test,
     };
     if cli.replay.is_empty() {
-        seeded_rng::reset(0);
+        cfg_select! {
+            fuzzing => {
+                afl::fuzz(true, target);
 
-        #[cfg(fuzzing)]
-        {
-            afl::fuzz(true, target);
-
-            return Ok(());
+                return Ok(());
+            }
+            _ => {
+                anyhow::bail!("build with `cargo afl build` to fuzz, or pass --replay PATH...");
+            }
         }
-
-        #[cfg(not(fuzzing))]
-        anyhow::bail!("build with `cargo afl build` to fuzz, or pass --replay PATH...");
     }
 
     let inputs = load_inputs(cli.replay)?;
-    seeded_rng::reset(0);
 
     let started = Instant::now();
     for _ in 0..cli.repeat {

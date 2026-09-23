@@ -14,7 +14,7 @@ The single `fuzz` executable selects a target with its first argument; each targ
 
 [AFL++](https://github.com/AFLplusplus/AFLplusplus) discovers inputs with a forkserver and one input per child (`AFL_FUZZER_LOOPCOUNT=1`).
 Every child inherits the same parent memory, so buffer-pool, RNG, and hash-map state from an earlier input cannot affect the next input.
-The tunnel target captures its simulation clock anchor before starting the forkserver, including the subsecond offset that affects timer comparisons.
+The entry point initializes the RNGs and shared clock anchor before starting the forkserver, including the subsecond offset that affects timer comparisons.
 Separate parent processes can still start with different clock anchors.
 This does not rewind external state such as the wall clock.
 
@@ -29,7 +29,8 @@ Replay calls the target directly so any failing input fails the command and each
 The pinned nightly toolchain, `cargo-afl`, and build settings live in [mise.toml](mise.toml).
 Install that nightly with `rustup` before running `mise install --cd rust/tests/fuzz`, because installing `cargo-afl` compiles Rust code.
 A C compiler and `make` are required to build the bundled AFL++ tools; the workflow's Ubuntu runners provide them.
-The discovery tasks build the AFL++ runtime for the pinned toolchain, including when mise restored only the `cargo-afl` executable from its cache.
+CI caches the AFL++ tools and runtime in `~/.local/share/afl.rs` separately from mise's tool cache.
+On a cache miss, CI reinstalls `cargo-afl` through mise to populate that directory.
 These tasks target x86-64 Linux.
 Discovery disables core files and skips the CPU-governor check.
 AFL++ requires a `kernel.core_pattern` that does not pipe crashes to an external reporter; the nightly workflow configures this on its disposable runner.

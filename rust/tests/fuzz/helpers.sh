@@ -29,9 +29,9 @@ coverage_sources() {
     while IFS= read -r directory; do
         find "$directory" -type f -name '*.rs'
     done <<<"$directories"
-    printf '%s\n' "$PWD/src/main.rs" "$PWD/src/targets/${target//-/_}.rs" "$PWD/../seeded-rng/src/lib.rs"
+    printf '%s\n' "$PWD/src/main.rs" "$PWD/src/seeded_rng.rs" "$PWD/src/targets/${target//-/_}.rs"
     if [ "$target" = tunnel-proto ]; then
-        find "$PWD/src" -type f -name '*.rs' ! -path "$PWD/src/targets/*" ! -name main.rs
+        find "$PWD/src" -type f -name '*.rs' ! -path "$PWD/src/targets/*" ! -name main.rs ! -name seeded_rng.rs
     fi
 }
 

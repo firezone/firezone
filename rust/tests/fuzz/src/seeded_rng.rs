@@ -1,4 +1,4 @@
-//! Seeds the random number generators a test process draws from.
+//! Seeds the random number generators the fuzz process draws from.
 //!
 //! `std` seeds every `HashMap`'s hasher once per thread from `getrandom`, so the
 //! number of key comparisons a lookup makes, and with it the coverage an input
