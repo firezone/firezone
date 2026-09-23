@@ -10,8 +10,8 @@ One executable exercises four targets, each with its own corpus and coverage che
 ## Execution model
 
 [AFL++](https://github.com/AFLplusplus/AFLplusplus) discovers inputs through a forkserver, running each input in a fresh child process.
-Children inherit the same initialized RNGs and clock anchor, so in-memory state left by one input cannot affect another.
-This isolation applies within a campaign; separate parent processes can have different clock anchors, and external state is not reset.
+Each parent initializes the same RNG seeds and simulation clock anchor, and children inherit that state.
+In-memory state left by one input cannot affect another; external state is not reset.
 
 Replay runs saved inputs in persistent batches for speed, using the same target functions and assertions as discovery.
 Any failing input fails the replay.

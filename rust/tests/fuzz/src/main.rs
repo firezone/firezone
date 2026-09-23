@@ -7,10 +7,11 @@ use anyhow::Context as _;
 use arbitrary::{Arbitrary, Unstructured};
 use clap::{Parser, ValueEnum};
 
+mod clock;
 mod seeded_rng;
 mod targets;
 
-static START_TIME: LazyLock<Instant> = LazyLock::new(Instant::now);
+static START_TIME: LazyLock<Instant> = LazyLock::new(clock::start_time);
 
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
