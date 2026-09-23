@@ -320,11 +320,6 @@ impl RefClient {
         remove_pool(&mut self.inbound_peer_authorizations, pool);
     }
 
-    /// Drops our outbound authorizations towards `peer` when it connects to us anew.
-    pub(crate) fn forget_outbound_peer_authorizations(&mut self, peer: ClientId) {
-        self.outbound_peer_authorizations.remove(&peer);
-    }
-
     /// Drops every authorization involving `peer`, as the connection to it is gone.
     pub(crate) fn forget_peer_authorizations(&mut self, peer: ClientId) {
         self.outbound_peer_authorizations.remove(&peer);

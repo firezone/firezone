@@ -887,11 +887,8 @@ impl ReferenceState {
     }
 
     /// Installs the inbound half of a peer authorization on `peer`.
-    ///
-    /// A peer we connect to anew drops its outbound authorizations towards us, as we may have reset.
     fn apply_peer_authorization(&mut self, origin: ClientId, peer: ClientId, pool: ResourceId) {
         self.clients.get_mut(&peer).unwrap().exec_mut(|peer| {
-            peer.forget_outbound_peer_authorizations(origin);
             peer.add_inbound_peer_pool(origin, pool);
         });
     }
