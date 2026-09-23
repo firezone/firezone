@@ -3043,7 +3043,6 @@ dependencies = [
 name = "fuzz"
 version = "0.1.0"
 dependencies = [
- "afl",
  "anyhow-ext",
  "arbitrary",
  "bufferpool",
@@ -3054,6 +3053,7 @@ dependencies = [
  "dns-over-tcp",
  "dns-types",
  "flow-tracker",
+ "fuzz-runner",
  "hex",
  "ip-packet",
  "ip_network",
@@ -3063,7 +3063,6 @@ dependencies = [
  "rand 0.10.2",
  "relay-proto",
  "secrecy",
- "seeded-rng",
  "serde_json",
  "sha2 0.11.0",
  "smallvec",
@@ -3074,6 +3073,16 @@ dependencies = [
  "tunnel-proto",
  "uuid",
  "x509-claims",
+]
+
+[[package]]
+name = "fuzz-runner"
+version = "0.1.0"
+dependencies = [
+ "afl",
+ "anyhow-ext",
+ "clap",
+ "seeded-rng",
 ]
 
 [[package]]

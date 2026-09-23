@@ -8,7 +8,7 @@ cd "$(dirname "$0")/.."
 
 target="${usage_target:?}"
 profile="coverage/$target/coverage.profdata"
-# shellcheck source=rust/tests/fuzz/helpers.sh
+# shellcheck source=../helpers.sh
 source ./helpers.sh
 binary="$coverage_binary"
 report_dir="coverage/$target/html"

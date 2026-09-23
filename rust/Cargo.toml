@@ -58,6 +58,7 @@ members = [
     "relay/proto",
     "relay/server",
     "tests/fuzz",
+    "tests/fuzz-runner",
     "tests/gui-smoke-test",
     "tests/http-test-server",
     "tests/loadtest",
@@ -128,6 +129,7 @@ flow-log-writer = { path = "libs/flow-log-writer" }
 flow-tracker = { path = "libs/connlib/flow-tracker" }
 futures = { version = "0.3.32" }
 futures-bounded = "0.3.0"
+fuzz-runner = { path = "tests/fuzz-runner" }
 glob = "0.3.3"
 gui-ipc = { path = "gui-client/src-gui-ipc" }
 hex = "0.4.3"

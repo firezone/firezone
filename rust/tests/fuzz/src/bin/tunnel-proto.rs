@@ -12,7 +12,7 @@ const MAX_TRANSITIONS: usize = 20;
 fn main() -> anyhow::Result<()> {
     // Forked inputs share the same clock anchor, including its subsecond offset.
     let now = Instant::now();
-    fuzz::run(|data| test(data, now))?;
+    fuzz_runner::run(|data| test(data, now))?;
 
     Ok(())
 }

@@ -39,7 +39,7 @@ struct Input<'a> {
 }
 
 fn main() -> anyhow::Result<()> {
-    fuzz::run(|data| {
+    fuzz_runner::run(|data| {
         if data.len() < Input::size_hint(0).0 {
             return;
         }

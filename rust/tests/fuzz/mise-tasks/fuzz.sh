@@ -10,7 +10,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 target="${usage_target:?}"
-# shellcheck source=rust/tests/fuzz/helpers.sh
+# shellcheck source=../helpers.sh
 source ./helpers.sh
 workers="${usage_workers:-1}"
 seconds="${usage_seconds:-60}"

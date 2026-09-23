@@ -1,11 +1,15 @@
-use std::{ffi::OsString, path::PathBuf, time::Instant};
+//! Runs AFL++ targets and replays their saved inputs.
+#![allow(clippy::print_stdout, clippy::print_stderr)]
+
+use std::{path::PathBuf, time::Instant};
 
 use anyhow::Context as _;
+use clap::Parser;
 
 /// Runs an AFL++ target or replays saved inputs in the current process.
 pub fn run(target: impl Fn(&[u8]) + std::panic::RefUnwindSafe) -> anyhow::Result<()> {
-    let mut args = std::env::args_os().skip(1);
-    let Some(mode) = args.next() else {
+    let cli = Cli::parse();
+    if !cli.replay {
         seeded_rng::reset(0);
 
         #[cfg(fuzzing)]
@@ -17,15 +21,13 @@ pub fn run(target: impl Fn(&[u8]) + std::panic::RefUnwindSafe) -> anyhow::Result
 
         #[cfg(not(fuzzing))]
         anyhow::bail!("build with `cargo afl build` to fuzz, or pass --replay PATH...");
-    };
+    }
 
-    anyhow::ensure!(mode == "--replay", "expected --replay [--repeat N] PATH...");
-    let (repeats, paths) = replay_args(args)?;
-    let inputs = load_inputs(paths)?;
+    let inputs = load_inputs(cli.paths)?;
     seeded_rng::reset(0);
 
     let started = Instant::now();
-    for _ in 0..repeats {
+    for _ in 0..cli.repeat {
         for (path, data) in &inputs {
             if let Err(panic) = std::panic::catch_unwind(|| target(data)) {
                 eprintln!("Replay failed for {}", path.display());
@@ -34,7 +36,7 @@ pub fn run(target: impl Fn(&[u8]) + std::panic::RefUnwindSafe) -> anyhow::Result
         }
     }
     let elapsed = started.elapsed().as_secs_f64();
-    let iterations = inputs.len() as u64 * repeats;
+    let iterations = inputs.len() as u64 * cli.repeat;
     println!(
         "Replayed {iterations} inputs in {elapsed:.6}s ({:.2} iterations/sec)",
         iterations as f64 / elapsed
@@ -43,22 +45,20 @@ pub fn run(target: impl Fn(&[u8]) + std::panic::RefUnwindSafe) -> anyhow::Result
     Ok(())
 }
 
-fn replay_args(args: impl Iterator<Item = OsString>) -> anyhow::Result<(u64, Vec<PathBuf>)> {
-    let mut args = args.peekable();
-    let repeats = if args.peek().is_some_and(|arg| arg == "--repeat") {
-        args.next();
-        let repeats = args.next().context("--repeat requires a count")?;
-        let repeats = repeats.to_str().context("invalid repeat count")?.parse()?;
-        anyhow::ensure!(repeats > 0, "repeat count must be positive");
+#[derive(Parser)]
+#[command(about = "Runs an AFL++ target or replays saved inputs")]
+struct Cli {
+    /// Replays saved inputs in one process rather than starting the forkserver.
+    #[arg(long, requires = "paths")]
+    replay: bool,
 
-        repeats
-    } else {
-        1
-    };
-    let paths = args.map(PathBuf::from).collect::<Vec<_>>();
-    anyhow::ensure!(!paths.is_empty(), "--replay requires at least one path");
+    /// Replays the entire corpus this many times.
+    #[arg(long, default_value_t = 1, requires = "replay", value_parser = clap::value_parser!(u64).range(1..))]
+    repeat: u64,
 
-    Ok((repeats, paths))
+    /// Input files or directories containing corpus files.
+    #[arg(value_name = "PATH", requires = "replay")]
+    paths: Vec<PathBuf>,
 }
 
 fn load_inputs(paths: Vec<PathBuf>) -> anyhow::Result<Vec<(PathBuf, Vec<u8>)>> {
@@ -96,16 +96,34 @@ fn load_inputs(paths: Vec<PathBuf>) -> anyhow::Result<Vec<(PathBuf, Vec<u8>)>> {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::unwrap_used)]
+
     use super::*;
 
     #[test]
+    fn no_arguments_selects_fuzzing() {
+        let cli = Cli::try_parse_from(["target"]).unwrap();
+
+        assert!(!cli.replay);
+        assert_eq!(cli.repeat, 1);
+        assert!(cli.paths.is_empty());
+    }
+
+    #[test]
     fn replay_requires_inputs_and_positive_repeats() {
-        assert!(replay_args([].into_iter()).is_err());
-        assert!(replay_args(["--repeat", "0", "corpus"].map(OsString::from).into_iter()).is_err());
-        assert_eq!(
-            replay_args(["--repeat", "3", "corpus"].map(OsString::from).into_iter()).unwrap(),
-            (3, vec![PathBuf::from("corpus")])
-        );
+        for args in [
+            vec!["target", "--replay"],
+            vec!["target", "--replay", "--repeat", "0", "corpus"],
+            vec!["target", "--repeat", "3"],
+            vec!["target", "corpus"],
+        ] {
+            assert!(Cli::try_parse_from(args).is_err());
+        }
+        let cli = Cli::try_parse_from(["target", "--replay", "--repeat", "3", "corpus"]).unwrap();
+
+        assert!(cli.replay);
+        assert_eq!(cli.repeat, 3);
+        assert_eq!(cli.paths, vec![PathBuf::from("corpus")]);
     }
 
     #[test]

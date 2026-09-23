@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
-# shellcheck disable=SC2034,SC2154
+# Variables initialized here are consumed by scripts sourcing this file.
+# shellcheck disable=SC2034
 # Shared paths for the discovery, replay, and source-coverage builds.
 fuzz_target_dir="${FUZZ_TARGET_DIR:-$PWD/../../target}"
-afl_binary="$fuzz_target_dir/afl/x86_64-unknown-linux-gnu/release/$target"
-replay_binary="$fuzz_target_dir/fuzz-replay/x86_64-unknown-linux-gnu/release/$target"
-coverage_binary="$fuzz_target_dir/fuzz-coverage/x86_64-unknown-linux-gnu/release/$target"
+afl_binary="$fuzz_target_dir/afl/x86_64-unknown-linux-gnu/release/${target:?}"
+replay_binary="$fuzz_target_dir/fuzz-replay/x86_64-unknown-linux-gnu/release/${target:?}"
+coverage_binary="$fuzz_target_dir/fuzz-coverage/x86_64-unknown-linux-gnu/release/${target:?}"
 
 build_afl() {
     cargo afl build --locked --release -p fuzz --bin "$target" \
