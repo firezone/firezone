@@ -11,7 +11,9 @@ fuzz_target!(|input: Input| {
 
     run(input);
 
-    ip_packet::reset_buffer_pool();
+    // SAFETY: Packet allocation runs only on the fuzzing thread, and run has
+    // returned after dropping all packets and simulation state.
+    unsafe { ip_packet::reset_buffer_pool() };
 });
 
 fn run(input: Input<'_>) {

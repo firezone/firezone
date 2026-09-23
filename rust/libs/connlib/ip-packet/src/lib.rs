@@ -7,6 +7,7 @@ mod fz_p2p_control;
 mod fz_p2p_control_slice;
 mod icmp;
 mod icmp_error;
+mod pool;
 mod slices;
 
 #[cfg(feature = "proptest")]
@@ -18,6 +19,7 @@ pub use fz_p2p_control_slice::FzP2pControlSlice;
 pub use icmp::{IcmpEchoHeader, Icmpv4Type, Icmpv6Type, icmpv4, icmpv6};
 pub use icmp_error::{FailedPacket, IcmpError};
 pub use ingot::ip::IpProtocol;
+pub use pool::reset_buffer_pool;
 // TODO: Temporary alias to keep the `IpNumber` name in downstream crates and
 // minimise churn; remove once call-sites are renamed to `IpProtocol`.
 pub use ingot::ip::IpProtocol as IpNumber;
@@ -27,7 +29,7 @@ pub use slices::{
 };
 
 use anyhow::{Context as _, Result, bail};
-use bufferpool::{Buffer, BufferPool};
+use bufferpool::Buffer;
 use incremental_inet_checksum::ChecksumUpdate;
 use ingot::icmp::{ValidIcmpV4, ValidIcmpV6};
 use ingot::ip::{
@@ -37,21 +39,8 @@ use ingot::ip::{
 use ingot::tcp::{TcpRef, ValidTcp};
 use ingot::types::{HeaderLen as _, HeaderParse as _, NetworkRepr as _, NextLayer as _};
 use ingot::udp::{UdpRef, ValidUdp};
+use pool::BUFFER_POOL;
 use std::net::IpAddr;
-use std::sync::LazyLock;
-
-static BUFFER_POOL: LazyLock<BufferPool<Vec<u8>>> =
-    LazyLock::new(|| BufferPool::new(MAX_FZ_PAYLOAD, "ip-packet"));
-
-/// Replaces the global buffer pool with a fresh pool for deterministic tests.
-///
-/// Tests should call this after dropping their packets so cleanup is attributed
-/// to the input that allocated them. Outstanding buffers remain valid and return
-/// to the old pool when dropped.
-#[cfg(feature = "test-utils")]
-pub fn reset_buffer_pool() {
-    BUFFER_POOL.reset();
-}
 
 /// The maximum size of an IP packet we can handle.
 pub const MAX_IP_SIZE: usize = 1280;
