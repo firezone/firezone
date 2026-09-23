@@ -14,7 +14,6 @@ const MAX_TRANSITIONS: usize = 20;
 
 fuzz_target!(|data: &[u8]| {
     seeded_rng::reset(0);
-
     scopeguard::defer! {
         // SAFETY: Packet allocation runs only on the fuzzing thread. This guard
         // is declared before any packets or simulation state, so they drop first.

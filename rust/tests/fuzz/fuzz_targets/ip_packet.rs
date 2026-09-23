@@ -8,7 +8,6 @@ use libfuzzer_sys::fuzz_target;
 
 fuzz_target!(|input: Input| {
     seeded_rng::reset(0);
-
     scopeguard::defer! {
         // SAFETY: Packet allocation runs only on the fuzzing thread. This guard
         // is declared before any packets or simulation state, so they drop first.
