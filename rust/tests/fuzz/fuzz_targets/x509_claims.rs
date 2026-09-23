@@ -15,7 +15,7 @@ use x509_claims::{
 };
 
 fuzz_target!(|input: Input| {
-    fuzz_entropy::reset();
+    seeded_rng::reset(0);
 
     let Some(certificate) = parse_certificate(input.der, instant(input.seconds_since_epoch)) else {
         return;

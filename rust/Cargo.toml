@@ -58,10 +58,10 @@ members = [
     "relay/proto",
     "relay/server",
     "tests/fuzz",
-    "tests/fuzz/entropy",
     "tests/gui-smoke-test",
     "tests/http-test-server",
     "tests/loadtest",
+    "tests/seeded-rng",
     "tools/tidy-dependabot-pr",
     "tools/uniffi-bindgen",
 ]
@@ -127,7 +127,6 @@ flow-log-writer = { path = "libs/flow-log-writer" }
 flow-tracker = { path = "libs/connlib/flow-tracker" }
 futures = { version = "0.3.32" }
 futures-bounded = "0.3.0"
-fuzz-entropy = { path = "tests/fuzz/entropy" }
 glob = "0.3.3"
 gui-ipc = { path = "gui-client/src-gui-ipc" }
 hex = "0.4.3"
@@ -208,6 +207,7 @@ rustls-platform-verifier = "0.7.0"
 sadness-generator = "0.7.0"
 sd-notify = "0.5.0" # This is a pure Rust re-implementation, so it isn't vulnerable to CVE-2024-3094
 secrecy = "0.10.3"
+seeded-rng = { path = "tests/seeded-rng" }
 semver = "1.0.28"
 sentry = { version = "0.48.0", default-features = false }
 sentry-tracing = "0.48.0"

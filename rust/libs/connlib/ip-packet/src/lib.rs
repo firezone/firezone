@@ -40,8 +40,26 @@ use ingot::udp::{UdpRef, ValidUdp};
 use std::net::IpAddr;
 use std::sync::LazyLock;
 
+#[cfg(not(feature = "test-utils"))]
 static BUFFER_POOL: LazyLock<BufferPool<Vec<u8>>> =
     LazyLock::new(|| BufferPool::new(MAX_FZ_PAYLOAD, "ip-packet"));
+
+#[cfg(feature = "test-utils")]
+static BUFFER_POOL: LazyLock<std::sync::Mutex<BufferPool<Vec<u8>>>> =
+    LazyLock::new(|| std::sync::Mutex::new(BufferPool::new(MAX_FZ_PAYLOAD, "ip-packet")));
+
+/// Replaces the global buffer pool with a fresh pool for deterministic tests.
+///
+/// Tests should call this after dropping their packets so cleanup is attributed
+/// to the input that allocated them. Outstanding buffers remain valid and return
+/// to the old pool when dropped.
+#[cfg(feature = "test-utils")]
+pub fn reset_buffer_pool() {
+    // Draining the buffers would preserve the queue's position within its blocks,
+    // making allocation paths depend on how many packets previous inputs used.
+    *BUFFER_POOL.lock().expect("buffer pool lock poisoned") =
+        BufferPool::new(MAX_FZ_PAYLOAD, "ip-packet");
+}
 
 /// The maximum size of an IP packet we can handle.
 pub const MAX_IP_SIZE: usize = 1280;
@@ -137,9 +155,12 @@ pub struct IpPacketBuf {
 
 impl Default for IpPacketBuf {
     fn default() -> Self {
-        Self {
-            inner: BUFFER_POOL.pull(),
-        }
+        #[cfg(feature = "test-utils")]
+        let pool = BUFFER_POOL.lock().expect("buffer pool lock poisoned");
+        #[cfg(not(feature = "test-utils"))]
+        let pool = &*BUFFER_POOL;
+
+        Self { inner: pool.pull() }
     }
 }
 

@@ -1,10 +1,10 @@
-//! Pins the generators the process draws from.
+//! Seeds the random number generators a test process draws from.
 //!
 //! `std` seeds every `HashMap`'s hasher once per thread from `getrandom`, so the
 //! number of key comparisons a lookup makes, and with it the coverage an input
 //! produces, differs between processes. Interposing the symbol replaces that
-//! draw with a fixed stream; [`reset`] rewinds it so every iteration sees the
-//! same sequence. The stream is seeded from the same constant at startup because
+//! draw with a seeded stream; [`reset`] restarts it with the supplied seed.
+//! The stream starts with seed zero before the first reset because
 //! `std` draws at the first `HashMap`, which can happen before the first
 //! iteration. `std` treats a short read as a failure and falls back to another
 //! source, so the entire buffer has to be filled.
@@ -19,15 +19,17 @@ use std::sync::Mutex;
 
 use rand::{Rng as _, SeedableRng as _, rngs::StdRng};
 
-const SEED: u64 = 0;
+const INITIAL_SEED: u64 = 0;
 
 static RNG: Mutex<Option<StdRng>> = Mutex::new(None);
 
-/// Rewinds the streams an iteration draws from.
-pub fn reset() {
-    with_rng(|rng| *rng = StdRng::seed_from_u64(SEED));
+/// Seeds the global entropy stream and the current thread's `fastrand` generator.
+///
+/// RNGs and hashers that have already cached their own state are not reset.
+pub fn reset(seed: u64) {
+    with_rng(|rng| *rng = StdRng::seed_from_u64(seed));
 
-    fastrand::seed(SEED);
+    fastrand::seed(seed);
 }
 
 /// # Safety
@@ -50,5 +52,5 @@ pub unsafe extern "C" fn getrandom(buf: *mut c_void, buflen: usize, _flags: c_ui
 fn with_rng<T>(op: impl FnOnce(&mut StdRng) -> T) -> T {
     let mut guard = RNG.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
 
-    op(guard.get_or_insert_with(|| StdRng::seed_from_u64(SEED)))
+    op(guard.get_or_insert_with(|| StdRng::seed_from_u64(INITIAL_SEED)))
 }

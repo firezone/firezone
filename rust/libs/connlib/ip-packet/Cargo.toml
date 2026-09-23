@@ -10,6 +10,7 @@ license = { workspace = true }
 [features]
 proptest = ["dep:proptest"]
 arbitrary = ["dep:arbitrary"]
+test-utils = []
 
 [dependencies]
 anyhow = { workspace = true }

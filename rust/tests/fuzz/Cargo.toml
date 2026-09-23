@@ -47,9 +47,8 @@ derive_more = { workspace = true, features = ["debug"] }
 dns-over-tcp = { workspace = true }
 dns-types = { workspace = true }
 flow-tracker = { workspace = true }
-fuzz-entropy = { workspace = true }
 hex = { workspace = true }
-ip-packet = { workspace = true, features = ["arbitrary"] }
+ip-packet = { workspace = true, features = ["arbitrary", "test-utils"] }
 ip_network = { workspace = true }
 ip_network_table = { workspace = true }
 itertools = { workspace = true, features = ["use_std"] }
@@ -58,6 +57,7 @@ libfuzzer-sys = { workspace = true }
 rand = { workspace = true }
 relay-proto = { workspace = true }
 secrecy = { workspace = true, features = ["serde"] }
+seeded-rng = { workspace = true }
 serde_json = { workspace = true }
 sha2 = { workspace = true }
 smallvec = { workspace = true }

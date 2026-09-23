@@ -13,8 +13,14 @@ use libfuzzer_sys::fuzz_target;
 const MAX_TRANSITIONS: usize = 20;
 
 fuzz_target!(|data: &[u8]| {
-    fuzz_entropy::reset();
+    seeded_rng::reset(0);
 
+    run(data);
+
+    ip_packet::reset_buffer_pool();
+});
+
+fn run(data: &[u8]) {
     let _guard = init_fuzz_subscriber();
 
     let now = Instant::now();
@@ -44,4 +50,4 @@ fuzz_target!(|data: &[u8]| {
         tunnel = TunnelTest::apply(tunnel, &reference, &mut portal, transition);
         TunnelTest::check_invariants(&tunnel, &reference, &portal);
     }
-});
+}
