@@ -78,6 +78,10 @@ pub(super) fn generate(
     let dns_record_domains = state.dns_resource_domains();
     let packet_targets = packets::targets(state, portal);
     let revoked_peer_targets = packets::revoked_peer_targets(state);
+    if !revoked_peer_targets.is_empty() {
+        let target = revoked_peer_targets[g.choose_index(revoked_peer_targets.len())].clone();
+        return packets::generate(g, target);
+    }
     let existing_flows = iter::empty()
         .chain(state.udp_flows().into_iter().map(ExistingFlow::Udp))
         .chain(
@@ -263,12 +267,7 @@ pub(super) fn generate(
             Transition::UpdateDnsRecords { domain, records }
         }
         K::SendPacket => {
-            let targets = if !revoked_peer_targets.is_empty() && g.flip(75) {
-                &revoked_peer_targets
-            } else {
-                &packet_targets
-            };
-            let target = targets[g.choose_index(targets.len())].clone();
+            let target = packet_targets[g.choose_index(packet_targets.len())].clone();
             packets::generate(g, target)
         }
         K::SendPacketOnExistingFlow => {

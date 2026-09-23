@@ -18,10 +18,10 @@ use std::time::Instant;
 ///
 /// 1. Traffic filters of resources that give the _remote_ Client access to our TUN device.
 /// 2. Outbound layer-4 connections so we can allow return traffic back in.
-/// 3. Revoked inbound grants so denied traffic that they permitted can request fresh access.
+/// 3. Revoked inbound authorizations so denied traffic they permitted can request fresh access.
 ///
-/// Inbound grants and flow tracking limit traffic from the remote Client to
-/// authorized packets and replies to flows we opened. Revoked grants let us
+/// Inbound authorizations and flow tracking limit traffic from the remote Client to
+/// authorized packets and replies to flows we opened. Revoked authorizations let us
 /// request fresh access when a previously permitted packet is denied.
 pub(crate) struct ClientOnClient {
     id: ClientId,
@@ -33,7 +33,7 @@ pub(crate) struct ClientOnClient {
     /// When this map is empty, no inbound traffic from this peer is admitted
     /// unless it matches a recorded outbound flow (return traffic).
     resources: ExpiringMap<ResourceId, ResourceOnClient>,
-    /// Filters of revoked grants, retained until this peer receives them again.
+    /// Filters of revoked authorizations, retained until this peer receives them again.
     rejected_resources: BTreeMap<ResourceId, FilterEngine>,
     /// Cached OR of every resource's filters; recomputed whenever `resources` changes.
     inbound_filter: FilterEngine,
@@ -45,7 +45,7 @@ pub(crate) struct ClientOnClient {
     inbound_resources: InboundResources,
 }
 
-/// An inbound resource: filters granted by a resource for traffic from the remote peer.
+/// An inbound resource: filters applied to authorized traffic from the remote peer.
 #[derive(Debug)]
 struct ResourceOnClient {
     filters: Vec<Filter>,
