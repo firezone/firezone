@@ -51,7 +51,11 @@ defmodule Portal.Google.SubscriptionsTest do
     end
 
     test "does nothing while the channel is fresh", %{account: account} do
-      directory = fresh_directory(account, 300)
+      directory =
+        subscribed_google_directory_fixture(
+          account: account,
+          channel_expires_at: DateTime.add(DateTime.utc_now(), 300, :minute)
+        )
       stub_google()
 
       assert :ok = perform_job(Subscriptions, ensure_args(directory))
@@ -66,7 +70,11 @@ defmodule Portal.Google.SubscriptionsTest do
     end
 
     test "replaces a channel that expires soon and stops the old one", %{account: account} do
-      directory = fresh_directory(account, 10)
+      directory =
+        subscribed_google_directory_fixture(
+          account: account,
+          channel_expires_at: DateTime.add(DateTime.utc_now(), 10, :minute)
+        )
       stub_google()
 
       assert :ok = perform_job(Subscriptions, ensure_args(directory))
@@ -83,7 +91,11 @@ defmodule Portal.Google.SubscriptionsTest do
     end
 
     test "renew action behaves like ensure", %{account: account} do
-      directory = fresh_directory(account, 10)
+      directory =
+        subscribed_google_directory_fixture(
+          account: account,
+          channel_expires_at: DateTime.add(DateTime.utc_now(), 10, :minute)
+        )
       stub_google()
 
       assert :ok = perform_job(Subscriptions, Map.put(ensure_args(directory), :action, "renew"))
@@ -93,7 +105,11 @@ defmodule Portal.Google.SubscriptionsTest do
     end
 
     test "keeps the new channel when the old one cannot be stopped", %{account: account} do
-      directory = fresh_directory(account, 10)
+      directory =
+        subscribed_google_directory_fixture(
+          account: account,
+          channel_expires_at: DateTime.add(DateTime.utc_now(), 10, :minute)
+        )
       stub_google(refuse_stop: ["existing-channel"])
 
       assert :ok = perform_job(Subscriptions, ensure_args(directory))
@@ -141,7 +157,11 @@ defmodule Portal.Google.SubscriptionsTest do
 
   describe "perform/1 stop" do
     test "stops the channel and clears it from the directory", %{account: account} do
-      directory = fresh_directory(account, 300)
+      directory =
+        subscribed_google_directory_fixture(
+          account: account,
+          channel_expires_at: DateTime.add(DateTime.utc_now(), 300, :minute)
+        )
       stub_google()
 
       assert :ok = perform_job(Subscriptions, stop_args(directory))
@@ -156,7 +176,11 @@ defmodule Portal.Google.SubscriptionsTest do
     end
 
     test "leaves a newer channel alone", %{account: account} do
-      directory = fresh_directory(account, 300)
+      directory =
+        subscribed_google_directory_fixture(
+          account: account,
+          channel_expires_at: DateTime.add(DateTime.utc_now(), 300, :minute)
+        )
       stub_google()
 
       args = %{stop_args(directory) | channel_id: "old-channel", resource_id: "old-resource"}
@@ -166,7 +190,11 @@ defmodule Portal.Google.SubscriptionsTest do
     end
 
     test "stops the channel as the admin it was opened with", %{account: account} do
-      directory = fresh_directory(account, 300)
+      directory =
+        subscribed_google_directory_fixture(
+          account: account,
+          channel_expires_at: DateTime.add(DateTime.utc_now(), 300, :minute)
+        )
       stub_google()
       args = %{stop_args(directory) | impersonation_email: "old-admin@example.com"}
 
@@ -181,7 +209,11 @@ defmodule Portal.Google.SubscriptionsTest do
     end
 
     test "works after the directory row is gone", %{account: account} do
-      directory = fresh_directory(account, 300)
+      directory =
+        subscribed_google_directory_fixture(
+          account: account,
+          channel_expires_at: DateTime.add(DateTime.utc_now(), 300, :minute)
+        )
       stub_google()
       args = stop_args(directory)
       Repo.delete!(directory)
@@ -192,7 +224,11 @@ defmodule Portal.Google.SubscriptionsTest do
     end
 
     test "returns an error when Google refuses so Oban retries", %{account: account} do
-      directory = fresh_directory(account, 300)
+      directory =
+        subscribed_google_directory_fixture(
+          account: account,
+          channel_expires_at: DateTime.add(DateTime.utc_now(), 300, :minute)
+        )
       stub_google(refuse_stop: ["existing-channel"])
 
       assert {:error, {:stop_channel, _response}} = perform_job(Subscriptions, stop_args(directory))
@@ -214,16 +250,6 @@ defmodule Portal.Google.SubscriptionsTest do
 
   defp ensure_args(directory) do
     %{account_id: directory.account_id, directory_id: directory.id, action: "ensure"}
-  end
-
-  defp fresh_directory(account, minutes_left) do
-    google_directory_fixture(
-      account: account,
-      webhook_secret: "secret",
-      users_channel_id: "existing-channel",
-      users_resource_id: "existing-resource",
-      channel_expires_at: DateTime.add(DateTime.utc_now(), minutes_left, :minute)
-    )
   end
 
   defp reload(directory) do

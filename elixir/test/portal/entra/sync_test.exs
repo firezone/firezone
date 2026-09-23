@@ -126,7 +126,7 @@ defmodule Portal.Entra.SyncTest do
           String.contains?(path, "/members") ->
             Req.Test.json(conn, %{
               "value" => [
-                active_entra_user(%{
+                entra_api_user_fixture(%{
                   "@odata.type" => "#microsoft.graph.user",
                   "id" => "user_alice_123",
                   "displayName" => "Alice Smith",
@@ -135,7 +135,7 @@ defmodule Portal.Entra.SyncTest do
                   "givenName" => "Alice",
                   "surname" => "Smith"
                 }),
-                active_entra_user(%{
+                entra_api_user_fixture(%{
                   "@odata.type" => "#microsoft.graph.user",
                   "id" => "user_bob_123",
                   "displayName" => "Bob Jones",
@@ -213,7 +213,7 @@ defmodule Portal.Entra.SyncTest do
           String.contains?(path, "group_sales_123/members") ->
             Req.Test.json(conn, %{
               "value" => [
-                active_entra_user(%{
+                entra_api_user_fixture(%{
                   "@odata.type" => "#microsoft.graph.user",
                   "id" => "user_carol_123",
                   "displayName" => "Carol Davis",
@@ -226,7 +226,7 @@ defmodule Portal.Entra.SyncTest do
           String.contains?(path, "group_eng_123/members") ->
             Req.Test.json(conn, %{
               "value" => [
-                active_entra_user(%{
+                entra_api_user_fixture(%{
                   "@odata.type" => "#microsoft.graph.user",
                   "id" => "user_dave_123",
                   "displayName" => "Dave Wilson",
@@ -296,7 +296,7 @@ defmodule Portal.Entra.SyncTest do
 
             Req.Test.json(conn, %{
               "value" => [
-                active_entra_user(%{
+                entra_api_user_fixture(%{
                   "@odata.type" => "#microsoft.graph.user",
                   "id" => "user_alice",
                   "displayName" => "Alice",
@@ -344,7 +344,7 @@ defmodule Portal.Entra.SyncTest do
             Req.Test.json(conn, %{
               "value" => [
                 %{"@odata.type" => "#microsoft.graph.group", "id" => "group_gone"},
-                active_entra_user(%{
+                entra_api_user_fixture(%{
                   "@odata.type" => "#microsoft.graph.user",
                   "id" => "user_alice",
                   "displayName" => "Alice",
@@ -445,7 +445,7 @@ defmodule Portal.Entra.SyncTest do
           String.contains?(path, "group_child/members") ->
             Req.Test.json(conn, %{
               "value" => [
-                active_entra_user(%{
+                entra_api_user_fixture(%{
                   "@odata.type" => "#microsoft.graph.user",
                   "id" => "user_alice",
                   "displayName" => "Alice",
@@ -504,7 +504,7 @@ defmodule Portal.Entra.SyncTest do
           String.contains?(path, "group_child/members") ->
             Req.Test.json(conn, %{
               "value" => [
-                active_entra_user(%{
+                entra_api_user_fixture(%{
                   "@odata.type" => "#microsoft.graph.user",
                   "id" => "user_ghost",
                   "displayName" => "Ghost",
@@ -1011,7 +1011,7 @@ defmodule Portal.Entra.SyncTest do
             Req.Test.json(conn, %{
               "value" => [
                 # This user should be included
-                active_entra_user(%{
+                entra_api_user_fixture(%{
                   "@odata.type" => "#microsoft.graph.user",
                   "id" => "user_123",
                   "displayName" => "Test User",
@@ -1305,7 +1305,7 @@ defmodule Portal.Entra.SyncTest do
         if String.contains?(path, "/members") do
           Req.Test.json(conn, %{
             "value" => [
-              active_entra_user(%{
+              entra_api_user_fixture(%{
                 "@odata.type" => "#microsoft.graph.user",
                 "displayName" => "User Without ID",
                 "mail" => "user@example.com"
@@ -1390,7 +1390,7 @@ defmodule Portal.Entra.SyncTest do
 
             Req.Test.json(conn, %{
               "value" => [
-                active_entra_user(%{
+                entra_api_user_fixture(%{
                   "@odata.type" => "#microsoft.graph.user",
                   "id" => "user_alice",
                   "displayName" => "Alice",
@@ -1621,7 +1621,7 @@ defmodule Portal.Entra.SyncTest do
           String.contains?(path, "group_engineering_123/members") ->
             Req.Test.json(conn, %{
               "value" => [
-                active_entra_user(%{
+                entra_api_user_fixture(%{
                   "@odata.type" => "#microsoft.graph.user",
                   "id" => "user_alice_123",
                   "displayName" => "Alice Engineer",
@@ -1630,7 +1630,7 @@ defmodule Portal.Entra.SyncTest do
                   "givenName" => "Alice",
                   "surname" => "Engineer"
                 }),
-                active_entra_user(%{
+                entra_api_user_fixture(%{
                   "@odata.type" => "#microsoft.graph.user",
                   "id" => "user_bob_123",
                   "displayName" => "Bob Engineer",
@@ -1646,7 +1646,7 @@ defmodule Portal.Entra.SyncTest do
           String.contains?(path, "group_sales_123/members") ->
             Req.Test.json(conn, %{
               "value" => [
-                active_entra_user(%{
+                entra_api_user_fixture(%{
                   "@odata.type" => "#microsoft.graph.user",
                   "id" => "user_carol_123",
                   "displayName" => "Carol Sales",
@@ -2463,7 +2463,7 @@ defmodule Portal.Entra.SyncTest do
           String.contains?(path, "group_123/members") ->
             Req.Test.json(conn, %{
               "value" => [
-                active_entra_user(%{
+                entra_api_user_fixture(%{
                   "@odata.type" => "#microsoft.graph.user",
                   "displayName" => "User Without ID",
                   "mail" => "user@example.com",
@@ -2727,7 +2727,7 @@ defmodule Portal.Entra.SyncTest do
 
           String.contains?(path, "group_123/members") ->
             duplicate_member =
-              active_entra_user(%{
+              entra_api_user_fixture(%{
                 "@odata.type" => "#microsoft.graph.user",
                 "id" => "user_123",
                 "displayName" => "Direct User",
@@ -3425,7 +3425,7 @@ defmodule Portal.Entra.SyncTest do
               %{
                 "id" => Integer.to_string(index),
                 "status" => 200,
-                "body" => active_entra_user(user)
+                "body" => entra_api_user_fixture(user)
               }
             end)
 
@@ -3444,9 +3444,5 @@ defmodule Portal.Entra.SyncTest do
     after
       0 -> acc
     end
-  end
-
-  defp active_entra_user(attrs) do
-    Map.put_new(attrs, "accountEnabled", true)
   end
 end

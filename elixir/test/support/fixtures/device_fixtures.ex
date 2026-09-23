@@ -367,6 +367,26 @@ defmodule Portal.DeviceFixtures do
   # Private helpers
   ##############################################################################
 
+  @doc "Generate a client attested by a certificate, optionally associating a client token."
+  def attested_client_fixture(attrs) do
+    attrs = Enum.into(attrs, %{})
+    certificate = Map.fetch!(attrs, :certificate)
+    issuer_der = Map.fetch!(attrs, :issuer_der)
+    {:Certificate, tbs, _algorithm, _signature} = :public_key.der_decode(:Certificate, certificate)
+
+    client =
+      attrs
+      |> Map.drop([:certificate, :issuer_der, :token])
+      |> Map.put(:last_attested_cert_issuer, Portal.Crypto.X509.subject(issuer_der))
+      |> Map.put(:last_attested_cert_serial, tbs |> elem(2) |> Integer.to_string(16))
+      |> client_fixture()
+
+    case Map.get(attrs, :token) do
+      nil -> client
+      token -> client |> Ecto.Changeset.change(client_token_id: token.id) |> Portal.Repo.update!()
+    end
+  end
+
   defp maybe_sync_device_ipv4(device, nil), do: device
   defp maybe_sync_device_ipv4(device, ipv4), do: sync_device_ipv4(device, ipv4)
 
@@ -376,5 +396,4 @@ defmodule Portal.DeviceFixtures do
   defp extract_address(nil), do: nil
   defp extract_address(%Postgrex.INET{} = address), do: address
   defp extract_address(%{address: %Postgrex.INET{} = address}), do: address
-
 end
