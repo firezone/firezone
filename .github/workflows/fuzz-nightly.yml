@@ -66,6 +66,9 @@ jobs:
     runs-on: ubuntu-24.04
     # No job-level budget: the phases below carry their own, and a job that runs
     # out of time is cancelled, discarding what the phases that did finish found.
+    env:
+      # Match pull-request builds so they share compiler-cache entries.
+      RUSTFLAGS: "--deny warnings"
     permissions:
       contents: read
       pull-requests: read # to find this target's open corpus PR
@@ -73,6 +76,8 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-rust-sccache
+        with:
+          azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
       - uses: ./.github/actions/setup-mise
         with:
           install_args: --cd rust/tests/fuzz
