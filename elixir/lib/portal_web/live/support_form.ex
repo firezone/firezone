@@ -1,6 +1,9 @@
 defmodule PortalWeb.SupportForm do
   use PortalWeb, :live_component
 
+  alias __MODULE__.Database
+  alias Portal.Mailer.FeedbackEmail
+
   @impl true
   def mount(socket) do
     {:ok,
@@ -114,7 +117,7 @@ defmodule PortalWeb.SupportForm do
   end
 
   def handle_event("submit", %{"support" => params}, socket) do
-    changeset = Portal.Support.changeset(params)
+    changeset = changeset(params)
     {completed, pending} = uploaded_entries(socket, :screenshot)
     upload = socket.assigns.uploads.screenshot
 
@@ -149,14 +152,14 @@ defmodule PortalWeb.SupportForm do
   end
 
   defp submit(socket, params, []) do
-    Portal.Support.submit(socket.assigns.subject, params, socket.assigns.url)
+    deliver_feedback(socket.assigns.subject, params, socket.assigns.url)
   end
 
   defp submit(socket, params, [_entry]) do
     socket
     |> consume_uploaded_entries(:screenshot, fn %{path: path}, _entry ->
       result =
-        Portal.Support.submit(
+        deliver_feedback(
           socket.assigns.subject,
           params,
           socket.assigns.url,
@@ -172,7 +175,7 @@ defmodule PortalWeb.SupportForm do
   end
 
   defp assign_form(socket, params, action \\ nil) do
-    changeset = %{Portal.Support.changeset(params) | action: action}
+    changeset = %{changeset(params) | action: action}
     assign(socket, form: to_form(changeset, as: :support))
   end
 
@@ -180,4 +183,97 @@ defmodule PortalWeb.SupportForm do
   defp upload_error(:too_many_files), do: "Only one screenshot is allowed."
   defp upload_error(:not_accepted), do: "Use a PNG, JPEG, GIF, or WebP image."
   defp upload_error(_), do: "The image could not be uploaded. Please try again."
+
+  defp changeset(params) do
+    {%{}, %{message: :string}}
+    |> Ecto.Changeset.cast(params, [:message])
+    |> Ecto.Changeset.validate_required([:message])
+    |> Ecto.Changeset.validate_length(:message, max: 1000)
+  end
+
+  defp deliver_feedback(subject, params, url, screenshot \\ nil) do
+    with {:ok, %{message: message}} <- Ecto.Changeset.apply_action(changeset(params), :insert),
+         :ok <- validate_url(url),
+         {:ok, attachment} <- attachment(screenshot),
+         {:ok, :reserved} <- Database.reserve(subject.account.id) do
+      subject
+      |> FeedbackEmail.feedback_email(message, url, attachment)
+      |> Portal.Mailer.deliver()
+    end
+  end
+
+  defp validate_url(url) when is_binary(url) and byte_size(url) <= 16_384 do
+    case URI.parse(url) do
+      %URI{scheme: scheme, host: host} when scheme in ["http", "https"] and is_binary(host) -> :ok
+      _ -> {:error, :invalid_url}
+    end
+  end
+
+  defp validate_url(_), do: {:error, :invalid_url}
+
+  defp attachment(nil), do: {:ok, nil}
+
+  defp attachment(data) when is_binary(data) and byte_size(data) <= 2 * 1024 * 1024 do
+    case image_type(data) do
+      {extension, type} ->
+        {:ok,
+         Swoosh.Attachment.new({:data, data},
+           filename: "screenshot.#{extension}",
+           content_type: type
+         )}
+
+      nil ->
+        {:error, :invalid_image}
+    end
+  end
+
+  defp attachment(_), do: {:error, :invalid_image}
+
+  defp image_type(<<137, "PNG\r\n", 26, "\n", _::binary>>), do: {"png", "image/png"}
+  defp image_type(<<255, 216, 255, _::binary>>), do: {"jpg", "image/jpeg"}
+
+  defp image_type(<<"GIF", version::binary-size(3), _::binary>>) when version in ["87a", "89a"],
+    do: {"gif", "image/gif"}
+
+  defp image_type(<<"RIFF", _::binary-size(4), "WEBP", _::binary>>), do: {"webp", "image/webp"}
+  defp image_type(_), do: nil
+
+  defmodule Database do
+    @moduledoc false
+    alias Portal.Safe
+
+    # Serialize reservations across nodes. Store only timestamps, never feedback or images.
+    def reserve(account_id) do
+      account_id = Ecto.UUID.dump!(account_id)
+
+      Safe.unscoped()
+      |> Safe.transaction(fn ->
+        query!("SELECT id FROM accounts WHERE id = $1 FOR UPDATE", [account_id])
+
+        query!(
+          "DELETE FROM support_requests WHERE account_id = $1 AND inserted_at <= now() - interval '24 hours'",
+          [account_id]
+        )
+
+        %{rows: [[count]]} =
+          query!("SELECT count(*) FROM support_requests WHERE account_id = $1", [account_id])
+
+        if count >= 10 do
+          {:error, :rate_limited}
+        else
+          query!(
+            "INSERT INTO support_requests (account_id, inserted_at) VALUES ($1, clock_timestamp())",
+            [account_id]
+          )
+
+          {:ok, :reserved}
+        end
+      end)
+    end
+
+    defp query!(sql, params) do
+      {:ok, result} = Safe.unscoped() |> Safe.query(sql, params)
+      result
+    end
+  end
 end

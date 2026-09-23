@@ -121,7 +121,8 @@ defmodule PortalWeb.SupportFormTest do
     view: view,
     account: account
   } do
-    for _ <- 1..10, do: assert({:ok, :reserved} = Portal.Support.Database.reserve(account.id))
+    for _ <- 1..10,
+        do: assert({:ok, :reserved} = PortalWeb.SupportForm.Database.reserve(account.id))
 
     assert view |> form("#support-form", support: %{message: "Help"}) |> render_submit() =~
              "You&#39;re doing that too frequently. Please slow down."
