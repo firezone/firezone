@@ -107,13 +107,29 @@ defmodule PortalWeb.Dev.ColorsLive do
         %{name: "badge-device-pool", class: "bg-badge-device-pool", css_var: "--badge-device-pool-bg"},
         %{name: "badge-device-pool-text", class: "bg-badge-device-pool-text", css_var: "--badge-device-pool-text"},
         %{name: "badge-accent", class: "bg-badge-accent", css_var: "--badge-accent-bg"},
-        %{name: "badge-accent-text", class: "bg-badge-accent-text", css_var: "--badge-accent-text"}
+        %{name: "badge-accent-text", class: "bg-badge-accent-text", css_var: "--badge-accent-text"},
+        %{name: "badge-admin", class: "bg-badge-admin", css_var: "--badge-admin-bg"}
       ]
     },
     %{
       label: "Icons",
       swatches: [
         %{name: "icon", class: "bg-icon", css_var: "--icon-bg"}
+      ]
+    },
+    %{
+      label: "Filters",
+      swatches: [
+        %{name: "filter-active", class: "bg-filter-active", css_var: "--filter-active-bg"},
+        %{name: "filter-text", class: "bg-filter-text", css_var: "--filter-active-text"}
+      ]
+    },
+    %{
+      label: "Showcase",
+      swatches: [
+        %{name: "showcase", class: "bg-showcase", css_var: "--showcase-bg"},
+        %{name: "showcase-text", class: "bg-showcase-text", css_var: "--showcase-text"},
+        %{name: "showcase-icon", class: "bg-showcase-icon", css_var: "--showcase-icon"}
       ]
     }
   ]
