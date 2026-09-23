@@ -6,7 +6,7 @@ use std::time::Instant;
 
 use chrono::{DateTime, Utc};
 use fuzz::tunnel_proto::{
-    FluxCapacitor, Generator, ReferenceState, TunnelTest, init_fuzz_subscriber,
+    FluxCapacitor, Generator, TunnelTest, check_invariants, init_fuzz_subscriber,
 };
 use libfuzzer_sys::fuzz_target;
 
@@ -23,7 +23,7 @@ fuzz_target!(|data: &[u8]| {
     let mut reference = generator.reference_state(&portal);
 
     let mut tunnel = TunnelTest::init_test(&reference, &mut portal, flux_capacitor.clone());
-    TunnelTest::check_invariants(&tunnel, &reference, &portal);
+    check_invariants(&reference, &tunnel, &portal);
 
     for applied in 0..MAX_TRANSITIONS {
         if generator.is_empty() {
@@ -34,12 +34,12 @@ fuzz_target!(|data: &[u8]| {
 
         tracing::debug!("Applying transition {applied}: {transition:?}");
 
-        ReferenceState::invalidate(&mut reference, &portal, &transition);
-        TunnelTest::invalidate(&mut tunnel, &reference, &transition);
+        reference.invalidate(&transition, &portal);
+        tunnel.invalidate(&transition, &reference);
 
         portal.apply(&transition);
-        reference = ReferenceState::apply(reference, &portal, &transition, flux_capacitor.now());
-        tunnel = TunnelTest::apply(tunnel, &reference, &mut portal, transition);
-        TunnelTest::check_invariants(&tunnel, &reference, &portal);
+        reference = reference.apply(&transition, &portal, flux_capacitor.now());
+        tunnel = tunnel.apply(transition, &reference, &mut portal);
+        check_invariants(&reference, &tunnel, &portal);
     }
 });

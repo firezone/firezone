@@ -36,6 +36,7 @@ pub mod tunnel_proto {
     use super::assertions::PanicOnErrorEvents;
 
     pub use super::arb::Generator;
+    pub use super::assertions::check_invariants;
     pub use super::flux_capacitor::FluxCapacitor;
     pub use super::reference::ReferenceState;
     pub use super::stub_portal::StubPortal;
