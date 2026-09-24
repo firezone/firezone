@@ -555,6 +555,11 @@ impl Drop for Session {
 
         self.inner.stop(); // Instruct the event-loop to shut down.
 
+        // Keep the runtime alive so the event-loop can gracefully close its connections.
+        runtime.block_on(async {
+            let _ = tokio::time::timeout(Duration::from_secs(1), self.inner.closed()).await;
+        });
+
         runtime.shutdown_timeout(Duration::from_secs(1)); // Ensure we don't block forever on a task in the blocking pool.
 
         // The event loop spooled its open flows on the way out; flush them.
