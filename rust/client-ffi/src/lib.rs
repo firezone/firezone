@@ -41,10 +41,14 @@ uniffi::setup_scaffolding!();
 #[derive(uniffi::Object)]
 pub struct Session {
     inner: client_shared::Session,
-    events: Mutex<client_shared::EventStream>,
+    events: Arc<EventStream>,
     runtime: Option<tokio::runtime::Runtime>,
     uploader: Option<flow_log_upload::Uploader>,
 }
+
+/// The events emitted by a [`Session`], which ends once the [`Session`] has been dropped.
+#[derive(uniffi::Object)]
+pub struct EventStream(Mutex<client_shared::EventStream>);
 
 #[derive(uniffi::Object, thiserror::Error, Debug)]
 #[error("{0:#}")]
@@ -460,9 +464,30 @@ impl Session {
 
         Ok(())
     }
+}
 
+#[uniffi::export]
+#[cfg(not(target_os = "android"))]
+impl Session {
+    /// Returns the stream of this session's events.
+    pub fn events(&self) -> Arc<EventStream> {
+        self.events.clone()
+    }
+}
+
+#[uniffi::export]
+#[cfg(target_os = "android")]
+impl Session {
     pub async fn next_event(&self) -> Option<Event> {
-        match self.events.lock().await.next().await? {
+        self.events.next().await
+    }
+}
+
+#[uniffi::export]
+impl EventStream {
+    /// Returns the next event, or `None` once the [`Session`] has shut down.
+    pub async fn next(&self) -> Option<Event> {
+        match self.0.lock().await.next().await? {
             client_shared::Event::TunInterfaceUpdated(config) => {
                 let dns = config
                     .dns_by_sentinel
@@ -554,7 +579,7 @@ impl Drop for Session {
 
         runtime.block_on(async {
             // Draining the event-stream allows us to wait for the event-loop to finish its graceful shutdown.
-            let drain = async { self.events.lock().await.drain().await };
+            let drain = async { self.events.0.lock().await.drain().await };
             let _ = tokio::time::timeout(Duration::from_secs(1), drain).await;
         });
 
@@ -677,7 +702,7 @@ fn connect(
 
     Ok(Session {
         inner: session,
-        events: Mutex::new(events),
+        events: Arc::new(EventStream(Mutex::new(events))),
         runtime: Some(runtime),
         uploader,
     })

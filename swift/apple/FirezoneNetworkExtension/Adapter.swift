@@ -260,10 +260,11 @@ actor Adapter {
 
     let tlsIdentity = try resolveTlsIdentity()
 
-    // Create the session
-    let session: Session
+    // Create the session, held only by the handoff so that the command task can own it.
+    let handoff: SessionHandoff
+    let events: EventStream
     do {
-      session = try Session.newApple(
+      let newSession = try Session.newApple(
         apiUrl: apiURL,
         token: token.description,
         deviceId: deviceId,
@@ -272,6 +273,8 @@ actor Adapter {
         isInternetResourceActive: internetResourceEnabled,
         tlsIdentity: tlsIdentity
       )
+      events = newSession.events()
+      handoff = SessionHandoff(newSession)
     } catch {
       throw AdapterError.connlibConnectError(String(describing: error))
     }
@@ -290,7 +293,8 @@ actor Adapter {
       }
 
       await runSessionEventLoop(
-        session: session,
+        handoff: handoff,
+        events: events,
         commandReceiver: commandReceiver,
         eventSender: eventSender
       )
