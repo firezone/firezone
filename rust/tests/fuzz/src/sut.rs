@@ -676,13 +676,6 @@ impl TunnelTest {
                     .get_mut(&relay)
                     .unwrap()
                     .exec_mut(|r| r.rejects_allocations = false);
-
-                for client in self.clients.values_mut() {
-                    client.exec_mut(|c| c.update_relays(iter::empty(), self.relays.iter(), now));
-                }
-                for gateway in self.gateways.values_mut() {
-                    gateway.exec_mut(|g| g.update_relays(iter::empty(), self.relays.iter(), now));
-                }
             }
             Transition::DeauthorizeWhileGatewayIsPartitioned(rid) => {
                 let authorizations = self

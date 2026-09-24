@@ -107,7 +107,7 @@ pub enum Transition {
     /// The relay runs out of ports: it answers new allocations with `508 Insufficient Capacity`
     /// while its existing allocations keep working.
     ExhaustRelayPorts(RelayId),
-    /// The relay has ports again and the portal re-sends the relays to every Client and Gateway.
+    /// The relay has ports again, without the portal telling anyone.
     FreeRelayPorts(RelayId),
     DeauthorizeWhileGatewayIsPartitioned(ResourceId),
     /// Revokes the authorization for a resource on the Gateway only, without informing the Client.

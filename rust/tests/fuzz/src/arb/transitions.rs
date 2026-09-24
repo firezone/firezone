@@ -57,12 +57,13 @@ enum TransitionKind {
 /// The transitions that open no connection.
 ///
 /// A node whose allocations are all suspended cannot open any connection, which the reference
-/// model does not predict. While no relay accepts allocations, only these are legal.
-const LEGAL_WITHOUT_ACCEPTING_RELAY: [TransitionKind; 4] = [
+/// model does not predict. While every relay is exhausted or recovering, only these are legal.
+const LEGAL_WITHOUT_HEALTHY_RELAY: [TransitionKind; 5] = [
     TransitionKind::RoamClient,
     TransitionKind::PartitionRelaysFromPortal,
     TransitionKind::RestartClient,
     TransitionKind::FreeRelayPorts,
+    TransitionKind::Idle,
 ];
 
 #[derive(Clone, Copy)]
@@ -113,6 +114,9 @@ pub(super) fn generate(
         .copied()
         .collect::<Vec<_>>();
     let exhausted_relays = state.exhausted_relays.iter().copied().collect::<Vec<_>>();
+    let has_healthy_relay = accepting_relays
+        .iter()
+        .any(|relay| !state.recovering_relays.contains_key(relay));
 
     // Build the legal action list. Data-plane actions stay more frequent because
     // they drive most of the tunnel state machine; the fuzzer chooses the concrete
@@ -145,16 +149,12 @@ pub(super) fn generate(
         (!existing_flows.is_empty()).then_some((K::SendPacketOnExistingFlow, 25)),
         (!dns_query_targets.is_empty()).then_some((K::SendDnsQueries, 10)),
         (!listed_device_pools.is_empty()).then_some((K::UpdateDevicePoolMembers, 2)),
-        // ICE-less connections migrate to a sampled relay instead of failing, which can pick an
-        // allocation whose `ALLOCATE` is still in flight and then gets rejected.
-        (!portal.iceless() && !accepting_relays.is_empty()).then_some((K::ExhaustRelayPorts, 1)),
+        (!accepting_relays.is_empty()).then_some((K::ExhaustRelayPorts, 1)),
         (!exhausted_relays.is_empty()).then_some((K::FreeRelayPorts, 1)),
     ]
     .into_iter()
     .flatten()
-    .filter(|(kind, _)| {
-        !accepting_relays.is_empty() || LEGAL_WITHOUT_ACCEPTING_RELAY.contains(kind)
-    })
+    .filter(|(kind, _)| has_healthy_relay || LEGAL_WITHOUT_HEALTHY_RELAY.contains(kind))
     .collect::<SmallVec<[_; 22]>>();
 
     // Weighted pick over the legal list.
