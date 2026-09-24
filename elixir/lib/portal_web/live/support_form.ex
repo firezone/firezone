@@ -253,18 +253,18 @@ defmodule PortalWeb.SupportForm do
         query!("SELECT id FROM accounts WHERE id = $1 FOR UPDATE", [account_id])
 
         query!(
-          "DELETE FROM support_requests WHERE account_id = $1 AND inserted_at <= now() - interval '24 hours'",
+          "DELETE FROM feedback_submissions WHERE account_id = $1 AND inserted_at <= now() - interval '24 hours'",
           [account_id]
         )
 
         %{rows: [[count]]} =
-          query!("SELECT count(*) FROM support_requests WHERE account_id = $1", [account_id])
+          query!("SELECT count(*) FROM feedback_submissions WHERE account_id = $1", [account_id])
 
         if count >= 10 do
           {:error, :rate_limited}
         else
           query!(
-            "INSERT INTO support_requests (account_id, inserted_at) VALUES ($1, clock_timestamp())",
+            "INSERT INTO feedback_submissions (account_id, inserted_at) VALUES ($1, clock_timestamp())",
             [account_id]
           )
 

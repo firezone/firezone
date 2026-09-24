@@ -5,9 +5,11 @@ defmodule Portal.Mailer.FeedbackEmail do
   import Swoosh.Email
 
   def feedback_email(%Portal.Authentication.Subject{} = subject, message, url, screenshot \\ nil) do
+    recipient = Portal.Config.fetch_env!(:portal, __MODULE__) |> Keyword.fetch!(:recipient)
+
     email =
       default_email()
-      |> to("support@firezone.dev")
+      |> to(recipient)
       |> subject("In-portal feedback submission")
       |> text_body("""
       Account ID: #{subject.account.id}

@@ -609,6 +609,8 @@ config :phoenix, :json_library, JSON
 
 config :swoosh, :api_client, Swoosh.ApiClient.Req
 
+config :portal, Portal.Mailer.FeedbackEmail, recipient: "support@firezone.dev"
+
 config :portal, Portal.Mailer,
   adapter: Portal.Mailer.NoopAdapter,
   from_email: "test@firez.one"

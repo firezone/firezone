@@ -195,7 +195,7 @@ defmodule PortalWeb.SupportFormTest do
 
       assert %{rows: [[0]]} =
                Portal.Repo.query!(
-                 "SELECT count(*) FROM support_requests WHERE account_id = $1",
+                 "SELECT count(*) FROM feedback_submissions WHERE account_id = $1",
                  [Ecto.UUID.dump!(account.id)]
                )
     end
@@ -243,7 +243,7 @@ defmodule PortalWeb.SupportFormTest do
     refute_email_sent()
 
     Portal.Repo.query!(
-      "UPDATE support_requests SET inserted_at = now() - interval '25 hours' WHERE account_id = $1",
+      "UPDATE feedback_submissions SET inserted_at = now() - interval '25 hours' WHERE account_id = $1",
       [Ecto.UUID.dump!(account.id)]
     )
 
