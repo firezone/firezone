@@ -191,6 +191,16 @@ impl ReferenceState {
                         c.on_dns_query(query, upstream_do53, global_dns_records, icmp_error_hosts);
                     });
                 }
+
+                for (client_id, _) in queries {
+                    let connected = self.clients[client_id]
+                        .inner()
+                        .connected_resources()
+                        .collect::<Vec<_>>();
+                    for resource in connected {
+                        self.select_gateway(portal, *client_id, resource);
+                    }
+                }
             }
             Transition::SendDnsResourcePtrQuery {
                 client_id,
@@ -461,11 +471,7 @@ impl ReferenceState {
                             .map(|(id, _)| *id);
 
                         client.exec_mut(|c| {
-                            c.reset_connections_to_gateways(
-                                &unreachable_gateways,
-                                |rid| portal.gateway_for_resource(rid).copied(),
-                                now,
-                            );
+                            c.fail_connections_to_gateways(&unreachable_gateways, now);
                             for peer in unreachable_clients {
                                 c.forget_peer_authorizations(peer);
                             }
@@ -709,11 +715,11 @@ impl ReferenceState {
         }
 
         if let Some(ip) = dst.ip_addr().filter(|ip| tunnel_proto::is_peer(*ip)) {
+            let client = self.clients[&origin].inner();
             let connected_gateway = portal.gateway_by_ip(ip).filter(|gateway| {
-                self.clients[&origin]
-                    .inner()
+                client
                     .connected_resources()
-                    .any(|resource| self.deployed_gateway_for(portal, resource) == Some(*gateway))
+                    .any(|resource| client.gateway_for_resource(resource) == Some(*gateway))
             });
             if let Some(gateway) = connected_gateway {
                 return ExpectedOutcome::RoundTripCompleted(Route::Gateway(gateway));
@@ -763,9 +769,12 @@ impl ReferenceState {
             return ExpectedOutcome::RoundTripCompleted(Route::Peer(peer));
         }
 
-        let (resource, gateway) = match self.select_resource(portal, origin, src, dst, protocol) {
-            Ok(selected) => selected,
+        let resource = match self.select_resource(origin, src, dst, protocol) {
+            Ok(resource) => resource,
             Err(outcome) => return outcome,
+        };
+        let Some(gateway) = self.select_gateway(portal, origin, resource) else {
+            return ExpectedOutcome::Dropped;
         };
         if let Destination::DomainName { .. } = dst {
             self.clients.get_mut(&origin).unwrap().exec_mut(|client| {
@@ -788,15 +797,14 @@ impl ReferenceState {
         }
     }
 
-    /// The resource `origin` sends a packet through and the gateway serving it.
+    /// The resource `origin` sends a packet through.
     fn select_resource(
         &self,
-        portal: &StubPortal,
         origin: ClientId,
         src: IpAddr,
         dst: &Destination,
         protocol: Protocol,
-    ) -> Result<(ResourceId, GatewayId), ExpectedOutcome> {
+    ) -> Result<ResourceId, ExpectedOutcome> {
         let client = self.clients[&origin].inner();
 
         let Some(resource) = client.resource_by_dst(src, dst, protocol) else {
@@ -810,11 +818,26 @@ impl ReferenceState {
                 response: RejectionResponse::Prohibited,
             });
         }
-        let Some(gateway) = self.deployed_gateway_for(portal, resource) else {
-            return Err(ExpectedOutcome::Dropped);
-        };
 
-        Ok((resource, gateway))
+        Ok(resource)
+    }
+
+    /// The Gateway the portal hands `origin` for `resource`, which `origin` then prefers.
+    fn select_gateway(
+        &mut self,
+        portal: &StubPortal,
+        origin: ClientId,
+        resource: ResourceId,
+    ) -> Option<GatewayId> {
+        let site = portal.site_for_resource(resource)?;
+        let client = self.clients.get_mut(&origin).unwrap();
+        let gateway = client
+            .inner()
+            .preferred_gateway(site)
+            .unwrap_or_else(|| portal.load_balanced_gateway(origin, site));
+        client.exec_mut(|c| c.prefer_gateway(site, gateway));
+
+        Some(gateway)
     }
 
     /// Why `gateway` rejects a packet from `origin` for `resource`, if it does.
@@ -853,7 +876,7 @@ impl ReferenceState {
         let allowed_by_another_cidr = dst.ip_addr().is_some_and(|ip| {
             client
                 .connected_cidr_resources_allowing(ip, protocol)
-                .any(|cidr| self.deployed_gateway_for(portal, cidr) == Some(gateway))
+                .any(|cidr| client.gateway_for_resource(cidr) == Some(gateway))
         });
         if !client.strict_resource_filter_allows(resource, protocol) && !allowed_by_another_cidr {
             return Some(RejectionResponse::Prohibited);
@@ -1003,11 +1026,7 @@ impl ReferenceState {
     pub(crate) fn deauthorizable_resource_ids(&self, portal: &StubPortal) -> Vec<ResourceId> {
         self.removable_resource_ids()
             .into_iter()
-            .filter(|resource| {
-                portal
-                    .gateway_for_resource(*resource)
-                    .is_some_and(|gateway| self.gateways.contains_key(gateway))
-            })
+            .filter(|resource| portal.site_for_resource(*resource).is_some())
             .collect()
     }
 
@@ -1048,13 +1067,6 @@ impl ReferenceState {
             .into_iter()
             .filter(|resource| authorized.contains(resource))
             .collect()
-    }
-
-    fn deployed_gateway_for(&self, portal: &StubPortal, resource: ResourceId) -> Option<GatewayId> {
-        portal
-            .gateway_for_resource(resource)
-            .copied()
-            .filter(|gateway| self.gateways.contains_key(gateway))
     }
 
     pub(crate) fn icmp_flows(&self) -> Vec<(FlowId, Seq)> {
@@ -1201,11 +1213,7 @@ impl ReferenceState {
                         client
                             .inner()
                             .upstream_dns_server_via_resource(server)
-                            .is_none_or(|resource| {
-                                portal
-                                    .gateway_for_resource(resource)
-                                    .is_some_and(|gateway| self.gateways.contains_key(gateway))
-                            })
+                            .is_none_or(|resource| portal.site_for_resource(resource).is_some())
                     })
                     .map(move |server| (*client_id, server))
             })
@@ -1315,10 +1323,7 @@ impl ReferenceState {
             .collect()
     }
 
-    pub(crate) fn connected_gateway_ipv4_ips(
-        &self,
-        portal: &StubPortal,
-    ) -> Vec<(ClientId, Ipv4Network)> {
+    pub(crate) fn connected_gateway_ipv4_ips(&self) -> Vec<(ClientId, Ipv4Network)> {
         self.clients
             .iter()
             .flat_map(|(id, client)| {
@@ -1326,8 +1331,8 @@ impl ReferenceState {
                     .inner()
                     .connected_resources()
                     .filter_map(|r| {
-                        let gateway = portal.gateway_for_resource(r)?;
-                        let gateway_host = self.gateways.get(gateway)?;
+                        let gateway = client.inner().gateway_for_resource(r)?;
+                        let gateway_host = self.gateways.get(&gateway)?;
 
                         Some((*id, gateway_host.inner().tunnel_ip4.into()))
                     })
@@ -1336,10 +1341,7 @@ impl ReferenceState {
             .collect()
     }
 
-    pub(crate) fn connected_gateway_ipv6_ips(
-        &self,
-        portal: &StubPortal,
-    ) -> Vec<(ClientId, Ipv6Network)> {
+    pub(crate) fn connected_gateway_ipv6_ips(&self) -> Vec<(ClientId, Ipv6Network)> {
         self.clients
             .iter()
             .flat_map(|(id, client)| {
@@ -1347,8 +1349,8 @@ impl ReferenceState {
                     .inner()
                     .connected_resources()
                     .filter_map(|r| {
-                        let gateway = portal.gateway_for_resource(r)?;
-                        let gateway_host = self.gateways.get(gateway)?;
+                        let gateway = client.inner().gateway_for_resource(r)?;
+                        let gateway_host = self.gateways.get(&gateway)?;
 
                         Some((*id, gateway_host.inner().tunnel_ip6.into()))
                     })
