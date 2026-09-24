@@ -104,7 +104,7 @@ defmodule PortalAPI.Schemas.Client do
           example: "johns-macbook.example.com",
           type: :string,
           nullable: true,
-          description: "Client hostname (FQDN used for dynamic device pool DNS resolution)"
+          description: "Client hostname"
         },
         last_attested_device_serial: %Schema{
           example: "GCCFX0DBQ6L5",
