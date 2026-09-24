@@ -296,10 +296,6 @@ defmodule PortalWeb.SignIn do
     """
   end
 
-  def adapter_enabled?(providers_by_adapter, adapter) do
-    Map.get(providers_by_adapter, adapter, []) != []
-  end
-
   defp auth_providers(account, module) do
     if module in [EmailOTP.AuthProvider, Userpass.AuthProvider] do
       Database.get_auth_provider(account, module)

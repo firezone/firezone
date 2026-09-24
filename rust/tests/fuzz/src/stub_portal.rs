@@ -10,6 +10,7 @@ use std::{
 use tunnel_proto::dns;
 use tunnel_proto::messages::{UpstreamDo53, UpstreamDoH, gateway};
 
+use crate::reference::ReferenceState;
 use crate::resource::{self as client, DevicePoolResource};
 use crate::transition::Transition;
 
@@ -31,6 +32,11 @@ pub struct StubPortal {
     pool_members: BTreeMap<ResourceId, PoolMembers>,
     /// The peer subset of the portal's persisted policy authorizations.
     peer_policy_authorizations: BTreeSet<PeerAuthorization>,
+    /// The Gateway subset of the portal's persisted policy authorizations.
+    ///
+    /// A revoked one is kept, because the Gateway that held it is what decides whether
+    /// it has anything left for the Client.
+    gateway_policy_authorizations: BTreeMap<(ClientId, ResourceId), GatewayAuthorization>,
     internet_resource: client::InternetResource,
 
     search_domain: Option<DomainName>,
@@ -62,6 +68,20 @@ pub struct PeerAuthorization {
     pub(crate) initiator: ClientId,
     pub(crate) target: ClientId,
     pub(crate) pool: ResourceId,
+}
+
+/// A Gateway connection the portal left with nothing, and what the Client reached
+/// through it.
+pub(crate) struct ClosedGatewayConnection {
+    pub(crate) client: ClientId,
+    pub(crate) gateway: GatewayId,
+    pub(crate) resources: BTreeSet<ResourceId>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+struct GatewayAuthorization {
+    gateway: GatewayId,
+    revoked: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -161,6 +181,7 @@ impl StubPortal {
             device_pool_resources,
             pool_members,
             peer_policy_authorizations: Default::default(),
+            gateway_policy_authorizations: Default::default(),
             internet_resource,
             search_domain,
             upstream_do53,
@@ -170,14 +191,28 @@ impl StubPortal {
     }
 
     /// Applies the portal-side effect of `transition`.
-    pub fn apply(&mut self, transition: &Transition) {
+    pub fn apply(&mut self, transition: &Transition, reference: &ReferenceState) {
         match transition {
             Transition::RemoveResource(id) => {
-                self.revoke_peer_policy_authorizations_for_pool(*id);
+                self.revoke_policy_authorizations(*id);
             }
             Transition::EditResource(edit) => {
-                if let client::EditEffect::Type { .. } = client::classify(&edit.old, &edit.new) {
-                    self.revoke_peer_policy_authorizations_for_pool(edit.old.id());
+                if matches!(
+                    client::classify(&edit.old, &edit.new),
+                    client::EditEffect::Filters { .. }
+                        | client::EditEffect::Access { .. }
+                        | client::EditEffect::Type { .. }
+                ) {
+                    self.revoke_disconnected_gateway_authorizations(edit.old.id(), reference);
+                }
+
+                // An edit that changes who may reach what invalidates the authorizations
+                // the resource authorized; the Clients ask for new ones.
+                if matches!(
+                    client::classify(&edit.old, &edit.new),
+                    client::EditEffect::Access { .. } | client::EditEffect::Type { .. }
+                ) {
+                    self.revoke_policy_authorizations(edit.old.id());
                 }
 
                 self.replace_resource(edit.new.clone());
@@ -205,7 +240,7 @@ impl StubPortal {
             Transition::SendUdpPacketOnNewFlow { .. } => {}
             Transition::SendUdpPacketOnExistingFlow { .. } => {}
             Transition::ConnectTcp { .. } => {}
-            Transition::SendDnsQuery { .. } => {}
+            Transition::SendDnsQueries(_) => {}
             Transition::SendDnsResourcePtrQuery { .. } => {}
             Transition::UpdateSystemDnsServers { .. } => {}
             Transition::RoamClient { .. } => {}
@@ -215,7 +250,20 @@ impl StubPortal {
             Transition::PartitionRelaysFromPortal => {}
             Transition::Idle => {}
             Transition::RebootRelaysWhilePartitioned(_) => {}
-            Transition::DeauthorizeWhileGatewayIsPartitioned(_) => {}
+            Transition::DeauthorizeWhileGatewayIsPartitioned(resource) => {
+                self.revoke_policy_authorizations(*resource);
+            }
+            Transition::RevokeGatewayAuthorization(resource) => {
+                self.revoke_policy_authorizations(*resource);
+            }
+            Transition::ExpirePeerAuthorizations { .. } => {}
+            Transition::RevokePeerAuthorization { client, peer, pool } => {
+                self.peer_policy_authorizations.remove(&PeerAuthorization {
+                    initiator: *client,
+                    target: *peer,
+                    pool: *pool,
+                });
+            }
             Transition::UpdateDnsRecords { .. } => {}
         }
     }
@@ -294,24 +342,132 @@ impl StubPortal {
         })
     }
 
-    pub(crate) fn record_peer_policy_authorization(
+    /// Authorizes `initiator` to reach `target`, naming the pool that admits it.
+    pub(crate) fn request_peer_access(
         &mut self,
         initiator: ClientId,
         target: ClientId,
-        pool: ResourceId,
-    ) {
+        candidates: &[ResourceId],
+    ) -> Option<ResourceId> {
+        let pool = self.pick_device_pool(candidates, target)?;
+
         self.peer_policy_authorizations.insert(PeerAuthorization {
             initiator,
             target,
             pool,
         });
+
+        Some(pool)
     }
 
-    fn revoke_peer_policy_authorizations_for_pool(&mut self, pool: ResourceId) {
+    /// Whether a Gateway still holds an authorization for `client` to reach `resource`.
+    pub(crate) fn holds_gateway_authorization(
+        &self,
+        client: ClientId,
+        resource: ResourceId,
+    ) -> bool {
+        self.gateway_policy_authorizations
+            .get(&(client, resource))
+            .is_some_and(|authorization| !authorization.revoked)
+    }
+
+    /// Resources some Gateway currently holds an authorization for.
+    pub(crate) fn authorized_resources(&self) -> BTreeSet<ResourceId> {
+        self.gateway_policy_authorizations
+            .iter()
+            .filter(|(_, authorization)| !authorization.revoked)
+            .map(|((_, resource), _)| *resource)
+            .collect()
+    }
+
+    /// The connections that revoking `resource` left a Gateway with nothing on. It closes
+    /// them with a `goodbye`.
+    pub(crate) fn gateway_connections_closed_by(
+        &self,
+        resource: ResourceId,
+    ) -> Vec<ClosedGatewayConnection> {
+        self.gateway_policy_authorizations
+            .iter()
+            .filter(|((_, candidate), authorization)| {
+                *candidate == resource && authorization.revoked
+            })
+            .map(|((client, _), authorization)| (*client, authorization.gateway))
+            .filter(|(client, gateway)| !self.holds_any_gateway_authorization(*client, *gateway))
+            .map(|(client, gateway)| ClosedGatewayConnection {
+                client,
+                resources: self.resources_on_gateway(client, gateway),
+                gateway,
+            })
+            .collect()
+    }
+
+    /// Everything `client` was authorized to reach through `gateway`, revoked or not.
+    fn resources_on_gateway(&self, client: ClientId, gateway: GatewayId) -> BTreeSet<ResourceId> {
+        self.gateway_policy_authorizations
+            .iter()
+            .filter(|((candidate, _), authorization)| {
+                *candidate == client && authorization.gateway == gateway
+            })
+            .map(|((_, resource), _)| *resource)
+            .collect()
+    }
+
+    fn holds_any_gateway_authorization(&self, client: ClientId, gateway: GatewayId) -> bool {
+        self.gateway_policy_authorizations
+            .iter()
+            .any(|((candidate, _), authorization)| {
+                *candidate == client && authorization.gateway == gateway && !authorization.revoked
+            })
+    }
+
+    /// Revokes authorizations lost when an edit disconnects the last resource on a Gateway.
+    fn revoke_disconnected_gateway_authorizations(
+        &mut self,
+        resource: ResourceId,
+        reference: &ReferenceState,
+    ) {
+        let Some(gateway) = self.gateway_for_resource(resource).copied() else {
+            return;
+        };
+
+        for (client_id, client) in &reference.clients {
+            let connected = client
+                .inner()
+                .connected_resources()
+                .collect::<BTreeSet<_>>();
+            if !connected.contains(&resource)
+                || connected.iter().any(|candidate| {
+                    *candidate != resource
+                        && self.gateway_for_resource(*candidate) == Some(&gateway)
+                })
+            {
+                continue;
+            }
+
+            for (_, authorization) in self.gateway_policy_authorizations.iter_mut().filter(
+                |((candidate, _), authorization)| {
+                    candidate == client_id && authorization.gateway == gateway
+                },
+            ) {
+                authorization.revoked = true;
+            }
+        }
+    }
+
+    /// Revokes every authorization `resource` provided, to a peer or through a Gateway.
+    fn revoke_policy_authorizations(&mut self, resource: ResourceId) {
         for _ in self
             .peer_policy_authorizations
-            .extract_if(.., |authorization| authorization.pool == pool)
+            .extract_if(.., |authorization| authorization.pool == resource)
         {}
+
+        for (_, authorization) in self
+            .gateway_policy_authorizations
+            .iter_mut()
+            .filter(|((_, candidate), _)| *candidate == resource)
+        {
+            authorization.revoked = true;
+        }
     }
 
     fn is_pool_member(&self, pool: ResourceId, client: ClientId) -> bool {
@@ -420,22 +576,32 @@ impl StubPortal {
         select_by_index(candidates, self.resource_selector).copied()
     }
 
-    /// Picks the gateway and site to connect to for the given resource.
-    pub(crate) fn handle_connection_intent(
-        &self,
+    /// Authorizes `client` to reach `resource`, naming the Gateway that serves it.
+    pub(crate) fn request_resource_access(
+        &mut self,
+        client: ClientId,
         resource: ResourceId,
         _connected_gateway_ids: Vec<GatewayId>,
     ) -> (GatewayId, SiteId) {
-        let site_id = self
+        let site_id = *self
             .sites_by_resource
             .get(&resource)
             .expect("resource to be known");
 
-        let gateways = &self.gateways_by_site[site_id];
+        let gateways = &self.gateways_by_site[&site_id];
         let (gateway, _, _) =
             select_by_index(gateways, self.gateway_selector).expect("site to have a gateway");
+        let gateway = *gateway;
 
-        (*gateway, *site_id)
+        self.gateway_policy_authorizations.insert(
+            (client, resource),
+            GatewayAuthorization {
+                gateway,
+                revoked: false,
+            },
+        );
+
+        (gateway, site_id)
     }
 
     pub(crate) fn map_client_resource_to_gateway_resource(

@@ -172,13 +172,13 @@ rec {
   # release.
   versions = {
     # mark:current-gateway-version
-    gateway = "1.6.1";
+    gateway = "1.6.2";
 
     # mark:current-headless-version
-    headless = "1.5.12";
+    headless = "1.5.13";
 
     # mark:current-gui-version
-    gui = "1.5.17";
+    gui = "1.5.18";
   };
 
   meta = {

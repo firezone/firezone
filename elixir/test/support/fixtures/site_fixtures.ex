@@ -59,13 +59,6 @@ defmodule Portal.SiteFixtures do
   end
 
   @doc """
-  Generate an account-managed site.
-  """
-  def account_site_fixture(attrs \\ %{}) do
-    site_fixture(Map.put(attrs, :managed_by, :account))
-  end
-
-  @doc """
   Generate an internet site (system-managed for internet resources).
   """
   def internet_site_fixture(attrs \\ %{}) do

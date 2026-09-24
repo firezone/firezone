@@ -1490,32 +1490,6 @@ defmodule PortalWeb.Groups do
       |> Enum.reject(&is_nil/1)
     end
 
-    def count_total_members(subject) do
-      member_counts_query =
-        from(m in Portal.Membership,
-          group_by: [m.account_id, m.group_id],
-          select: %{account_id: m.account_id, group_id: m.group_id, count: count(m.actor_id)}
-        )
-
-      from(g in Portal.Group, as: :groups)
-      |> join(:left, [groups: g], mc in subquery(member_counts_query),
-        on: mc.group_id == g.id and mc.account_id == g.account_id,
-        as: :member_counts
-      )
-      |> where(
-        [groups: g],
-        not (g.type == :managed and is_nil(g.idp_id) and g.name == "Everyone")
-      )
-      |> select([member_counts: mc], sum(coalesce(mc.count, 0)))
-      |> Safe.scoped(subject)
-      |> Safe.one()
-      |> case do
-        {:error, _} -> 0
-        nil -> 0
-        count -> count
-      end
-    end
-
     def cursor_fields do
       [
         {:groups, :asc, :inserted_at},

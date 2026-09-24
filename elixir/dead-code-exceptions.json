@@ -1,0 +1,38 @@
+[
+  {
+    "file": "elixir/.credo/check/warning/async_false_in_test.ex",
+    "name": "run_on_all_source_files"
+  },
+  {
+    "file": "elixir/.credo/check/warning/unsafe_template_html.ex",
+    "name": "run_on_all_source_files"
+  },
+  {
+    "file": "elixir/lib/openid_connect/document/cache.ex",
+    "name": "handle_cast"
+  },
+  {
+    "file": "elixir/lib/portal/repo/query.ex",
+    "name": "by_account_id"
+  },
+  {
+    "file": "elixir/lib/portal_api/mcp/capture_adapter.ex",
+    "name": "read_req_body"
+  },
+  {
+    "file": "elixir/lib/portal_api/mcp/capture_adapter.ex",
+    "name": "send_chunked"
+  },
+  {
+    "file": "elixir/lib/portal_web/protocols.ex",
+    "name": "to_param"
+  },
+  {
+    "file": "elixir/test/portal_api/controllers/integrations/okta/webhook_controller_test.exs",
+    "name": "read_req_body"
+  },
+  {
+    "file": "elixir/test/portal_api/controllers/integrations/webhook_body_error_test.exs",
+    "name": "read_req_body"
+  }
+]

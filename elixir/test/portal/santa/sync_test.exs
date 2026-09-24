@@ -18,7 +18,7 @@ defmodule Portal.Santa.SyncTest do
     provider = santa_posture_provider_fixture()
 
     stub_api([
-      host(%{
+      santa_api_host_fixture(%{
         "uuid" => "host-1",
         "hostname" => "alices-macbook",
         "serial" => "FVHHFKF7Q6L4"
@@ -123,8 +123,8 @@ defmodule Portal.Santa.SyncTest do
       assert Plug.Conn.get_req_header(conn, "authorization") == ["npsws_sk_secret"]
 
       case request["page"] do
-        1 -> Req.Test.json(conn, %{"hosts" => [host(%{"uuid" => "first"})], "more" => true})
-        2 -> Req.Test.json(conn, %{"hosts" => [host(%{"uuid" => "second"})], "more" => false})
+        1 -> Req.Test.json(conn, %{"hosts" => [santa_api_host_fixture(%{"uuid" => "first"})], "more" => true})
+        2 -> Req.Test.json(conn, %{"hosts" => [santa_api_host_fixture(%{"uuid" => "second"})], "more" => false})
       end
     end)
 
@@ -143,10 +143,10 @@ defmodule Portal.Santa.SyncTest do
     first_provider = santa_posture_provider_fixture(account: account)
     second_provider = santa_posture_provider_fixture(account: account)
 
-    stub_api([host(%{"uuid" => "shared-machine-id", "hostname" => "first-tenant-host"})])
+    stub_api([santa_api_host_fixture(%{"uuid" => "shared-machine-id", "hostname" => "first-tenant-host"})])
     assert :ok = perform_job(Sync, sync_args(first_provider))
 
-    stub_api([host(%{"uuid" => "shared-machine-id", "hostname" => "second-tenant-host"})])
+    stub_api([santa_api_host_fixture(%{"uuid" => "shared-machine-id", "hostname" => "second-tenant-host"})])
     assert :ok = perform_job(Sync, sync_args(second_provider))
 
     devices =
@@ -186,7 +186,7 @@ defmodule Portal.Santa.SyncTest do
         synced_at: ago(2, :day)
       )
 
-    stub_api([host(%{"uuid" => "current"})])
+    stub_api([santa_api_host_fixture(%{"uuid" => "current"})])
 
     assert :ok = perform_job(Sync, sync_args(provider))
 
@@ -210,7 +210,7 @@ defmodule Portal.Santa.SyncTest do
         synced_at: ago(3, :hour)
       )
 
-    stub_api([host(%{"uuid" => "current"})])
+    stub_api([santa_api_host_fixture(%{"uuid" => "current"})])
 
     assert :ok = perform_job(Sync, sync_args(provider))
     assert Repo.get_by(Device, account_id: provider.account_id, santa_id: skipped.santa_id)
@@ -227,7 +227,7 @@ defmodule Portal.Santa.SyncTest do
         synced_at: outage
       )
 
-    stub_api([host(%{"uuid" => "current"})])
+    stub_api([santa_api_host_fixture(%{"uuid" => "current"})])
 
     assert :ok = perform_job(Sync, sync_args(provider))
     assert Repo.get_by(Device, account_id: provider.account_id, santa_id: skipped.santa_id)
@@ -243,7 +243,7 @@ defmodule Portal.Santa.SyncTest do
         synced_at: ago(30, :day)
       )
 
-    stub_api([host(%{"uuid" => "current"})])
+    stub_api([santa_api_host_fixture(%{"uuid" => "current"})])
 
     assert :ok = perform_job(Sync, sync_args(provider))
     assert Repo.get_by(Device, account_id: provider.account_id, santa_id: ancient.santa_id)
@@ -264,7 +264,7 @@ defmodule Portal.Santa.SyncTest do
       request = Jason.decode!(conn.query_params["message"])
 
       case request["page"] do
-        1 -> Req.Test.json(conn, %{"hosts" => [host(%{"uuid" => "first"})], "more" => true})
+        1 -> Req.Test.json(conn, %{"hosts" => [santa_api_host_fixture(%{"uuid" => "first"})], "more" => true})
         2 -> conn |> Plug.Conn.put_status(503) |> Req.Test.json(%{"message" => "unavailable"})
       end
     end)
@@ -285,7 +285,7 @@ defmodule Portal.Santa.SyncTest do
     end
 
     invalid_provider = santa_posture_provider_fixture()
-    stub_api([host(%{"uuid" => nil})])
+    stub_api([santa_api_host_fixture(%{"uuid" => nil})])
 
     assert_raise Portal.Santa.SyncError, fn ->
       perform_job(Sync, sync_args(invalid_provider))
@@ -295,7 +295,7 @@ defmodule Portal.Santa.SyncTest do
   test "skips disabled providers and all providers when the feature is off" do
     disabled = santa_posture_provider_fixture(is_disabled: true)
     enabled = santa_posture_provider_fixture()
-    stub_api([host(%{"uuid" => "host-1"})])
+    stub_api([santa_api_host_fixture(%{"uuid" => "host-1"})])
 
     assert :ok = perform_job(Sync, sync_args(disabled))
     assert Repo.aggregate(Device, :count) == 0
@@ -311,40 +311,6 @@ defmodule Portal.Santa.SyncTest do
 
   defp sync_args(provider) do
     %{"account_id" => provider.account_id, "posture_provider_id" => provider.id}
-  end
-
-  defp host(overrides) do
-    Map.merge(
-      %{
-        "uuid" => "host-1",
-        "serial" => "SERIAL-1",
-        "machineModel" => "MacBookPro18,3",
-        "hostname" => "macbook",
-        "osVersion" => "15.6",
-        "osBuild" => "24G84",
-        "osType" => "OS_TYPE_MACOS",
-        "sipStatus" => 1,
-        "primaryUser" => "alice@example.com",
-        "primaryUserLocked" => true,
-        "primaryUserGroups" => ["engineering", "admins"],
-        "santaVersion" => "2026.7",
-        "santanetdVersion" => "2026.7.1",
-        "lastSeenClientMode" => "LOCKDOWN",
-        "lastSync" => "2026-08-26T18:10:00.123456Z",
-        "ruleSyncTime" => "2026-08-26T18:09:00Z",
-        "lastPreflightTime" => "2026-08-26T18:08:00Z",
-        "lastPreflightIp" => "wKgBAQ==",
-        "tags" => ["global", "production"],
-        "tagsLocked" => true,
-        "tagsTruncated" => false,
-        "configuredClientMode" => "LOCKDOWN",
-        "temporaryMonitorModeEndTime" => "2026-08-27T18:00:00Z",
-        "createdAt" => "2026-01-02T03:04:05Z",
-        "temporaryAdminModeEndTime" => "2026-08-26T19:00:00Z",
-        "temporaryAdminModeUser" => "alice"
-      },
-      overrides
-    )
   end
 
   defp stub_api(hosts) do

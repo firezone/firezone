@@ -4,7 +4,6 @@ services:
       FIREZONE_DNS_CONTROL: "${FIREZONE_DNS_CONTROL:-etc-resolv-conf}"
       RUST_LOG: ${RUST_LOG:-wire=trace,debug}
       FIREZONE_API_URL: ws://portal:8081
-      FZFF_ICMP_ERROR_UNREACHABLE_PROHIBITED_CREATE_NEW_FLOW: true
     init: true
     build:
       target: ${DOCKER_BUILD_TARGET:-debug}

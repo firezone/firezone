@@ -18,12 +18,12 @@ defmodule Portal.Iru.SyncTest do
     provider = iru_posture_provider_fixture()
 
     stub_api([
-      device(%{
+      iru_api_device_fixture(%{
         "device_id" => "device-1",
         "device_name" => "Alice's MacBook Air",
         "serial_number" => "FVHHFKF7Q6L4"
       }),
-      device(%{
+      iru_api_device_fixture(%{
         "device_id" => "device-2",
         "device_name" => "Bob's iPhone",
         "platform" => "iPhone",
@@ -69,7 +69,7 @@ defmodule Portal.Iru.SyncTest do
   test "folds every per-device Prism category into the device row" do
     provider = iru_posture_provider_fixture()
 
-    stub_api([device(%{"device_id" => "device-1"})],
+    stub_api([iru_api_device_fixture(%{"device_id" => "device-1"})],
       prism: %{
         "device_information" => [
           prism_row("device-1", %{
@@ -199,7 +199,7 @@ defmodule Portal.Iru.SyncTest do
   test "pages through the device list" do
     provider = iru_posture_provider_fixture()
 
-    devices = for n <- 1..305, do: device(%{"device_id" => "device-#{n}"})
+    devices = for n <- 1..305, do: iru_api_device_fixture(%{"device_id" => "device-#{n}"})
     stub_api(devices)
 
     assert :ok = perform_job(Sync, sync_args(provider))
@@ -210,7 +210,7 @@ defmodule Portal.Iru.SyncTest do
   test "leaves a refused Prism category unset and keeps the rest of the sync" do
     provider = iru_posture_provider_fixture()
 
-    stub_api([device(%{"device_id" => "device-1"})],
+    stub_api([iru_api_device_fixture(%{"device_id" => "device-1"})],
       prism: %{"filevault" => [prism_row("device-1", %{"status" => true})]},
       errors: %{"startup_settings" => 403, "activation_lock" => 404}
     )
@@ -231,14 +231,14 @@ defmodule Portal.Iru.SyncTest do
   test "clears the fields of a category the token stopped being allowed to read" do
     provider = iru_posture_provider_fixture()
 
-    stub_api([device(%{"device_id" => "device-1"})],
+    stub_api([iru_api_device_fixture(%{"device_id" => "device-1"})],
       prism: %{"filevault" => [prism_row("device-1", %{"status" => true, "key_escrowed" => true})]}
     )
 
     assert :ok = perform_job(Sync, sync_args(provider))
     assert Repo.get_by!(Device, iru_id: "device-1").filevault_enabled
 
-    stub_api([device(%{"device_id" => "device-1"})], errors: %{"filevault" => 403})
+    stub_api([iru_api_device_fixture(%{"device_id" => "device-1"})], errors: %{"filevault" => 403})
 
     assert :ok = perform_job(Sync, sync_args(provider))
 
@@ -252,7 +252,10 @@ defmodule Portal.Iru.SyncTest do
   test "clears the fields of a device a category stopped reporting" do
     provider = iru_posture_provider_fixture()
 
-    devices = [device(%{"device_id" => "device-1"}), device(%{"device_id" => "device-2"})]
+    devices = [
+      iru_api_device_fixture(%{"device_id" => "device-1"}),
+      iru_api_device_fixture(%{"device_id" => "device-2"})
+    ]
 
     stub_api(devices,
       prism: %{
@@ -276,7 +279,7 @@ defmodule Portal.Iru.SyncTest do
   test "ignores Prism rows for devices the tenant did not list" do
     provider = iru_posture_provider_fixture()
 
-    stub_api([device(%{"device_id" => "device-1"})],
+    stub_api([iru_api_device_fixture(%{"device_id" => "device-1"})],
       prism: %{
         "filevault" => [
           prism_row("device-1", %{"status" => true}),
@@ -303,7 +306,7 @@ defmodule Portal.Iru.SyncTest do
   test "raises when a device comes back without an id" do
     provider = iru_posture_provider_fixture()
 
-    stub_api([device(%{"device_id" => nil})])
+    stub_api([iru_api_device_fixture(%{"device_id" => nil})])
 
     assert_raise Portal.Iru.SyncError, fn -> perform_job(Sync, sync_args(provider)) end
   end
@@ -312,7 +315,7 @@ defmodule Portal.Iru.SyncTest do
     provider = iru_posture_provider_fixture(synced_at: ago(2, :hour))
     stale = iru_device_fixture(provider: provider, iru_id: "stale-device", synced_at: ago(2, :day))
 
-    stub_api([device(%{"device_id" => "device-1"})])
+    stub_api([iru_api_device_fixture(%{"device_id" => "device-1"})])
 
     assert :ok = perform_job(Sync, sync_args(provider))
 
@@ -329,7 +332,7 @@ defmodule Portal.Iru.SyncTest do
     skipped =
       iru_device_fixture(provider: provider, iru_id: "skipped-device", synced_at: ago(3, :hour))
 
-    stub_api([device(%{"device_id" => "device-1"})])
+    stub_api([iru_api_device_fixture(%{"device_id" => "device-1"})])
 
     assert :ok = perform_job(Sync, sync_args(provider))
 
@@ -343,7 +346,7 @@ defmodule Portal.Iru.SyncTest do
     provider = iru_posture_provider_fixture(synced_at: outage)
     skipped = iru_device_fixture(provider: provider, iru_id: "skipped-device", synced_at: outage)
 
-    stub_api([device(%{"device_id" => "device-1"})])
+    stub_api([iru_api_device_fixture(%{"device_id" => "device-1"})])
 
     assert :ok = perform_job(Sync, sync_args(provider))
 
@@ -354,7 +357,7 @@ defmodule Portal.Iru.SyncTest do
     provider = iru_posture_provider_fixture(synced_at: nil)
     ancient = iru_device_fixture(provider: provider, iru_id: "old-device", synced_at: ago(30, :day))
 
-    stub_api([device(%{"device_id" => "device-1"})])
+    stub_api([iru_api_device_fixture(%{"device_id" => "device-1"})])
 
     assert :ok = perform_job(Sync, sync_args(provider))
 
@@ -369,7 +372,7 @@ defmodule Portal.Iru.SyncTest do
         error_email_count: 2
       )
 
-    stub_api([device(%{"device_id" => "device-1"})])
+    stub_api([iru_api_device_fixture(%{"device_id" => "device-1"})])
 
     assert :ok = perform_job(Sync, sync_args(provider))
 
@@ -387,7 +390,7 @@ defmodule Portal.Iru.SyncTest do
   test "leaves a provider disabled mid-run disabled" do
     provider = iru_posture_provider_fixture()
 
-    stub_api([device(%{"device_id" => "device-1"})],
+    stub_api([iru_api_device_fixture(%{"device_id" => "device-1"})],
       on_request: fn ->
         Repo.get_by!(PostureProvider, account_id: provider.account_id, id: provider.id)
         |> Ecto.Changeset.change(is_disabled: true, disabled_reason: "Disabled by admin")
@@ -406,7 +409,7 @@ defmodule Portal.Iru.SyncTest do
   test "skips a disabled provider" do
     provider = iru_posture_provider_fixture(is_disabled: true)
 
-    stub_api([device(%{"device_id" => "device-1"})])
+    stub_api([iru_api_device_fixture(%{"device_id" => "device-1"})])
 
     assert :ok = perform_job(Sync, sync_args(provider))
     assert Repo.aggregate(Device, :count) == 0
@@ -416,7 +419,7 @@ defmodule Portal.Iru.SyncTest do
     provider = iru_posture_provider_fixture()
     enable_device_posture(false)
 
-    stub_api([device(%{"device_id" => "device-1"})])
+    stub_api([iru_api_device_fixture(%{"device_id" => "device-1"})])
 
     assert :ok = perform_job(Sync, sync_args(provider))
     assert Repo.aggregate(Device, :count) == 0
@@ -428,41 +431,6 @@ defmodule Portal.Iru.SyncTest do
 
   defp sync_args(provider) do
     %{"account_id" => provider.account_id, "posture_provider_id" => provider.id}
-  end
-
-  defp device(overrides) do
-    Map.merge(
-      %{
-        "device_id" => "device-1",
-        "device_name" => "Alice's MacBook Air",
-        "model" => "MacBook Air (M1, 2020)",
-        "serial_number" => "FVHHFKF7Q6L4",
-        "platform" => "Mac",
-        "os_version" => "14.4.1",
-        "supplemental_build_version" => "23E224",
-        "supplemental_os_version_extra" => "",
-        "last_check_in" => "2024-07-23T14:11:37.150080Z",
-        "user" => %{
-          "email" => "accuhive.admin@kandji.io",
-          "name" => "Accuhive Admin",
-          "id" => "5344c996-8823-4b37-8d6e-8515fc7c3a0a",
-          "is_archived" => false
-        },
-        "asset_tag" => "",
-        "blueprint_id" => "ab102b9d-8e9c-420d-a498-f2a1123091c7",
-        "blueprint_name" => "main hive",
-        "mdm_enabled" => true,
-        "agent_installed" => true,
-        "is_missing" => false,
-        "is_removed" => false,
-        "agent_version" => "4.5.9 (5160)",
-        "first_enrollment" => "2024-01-26 16:15:36.087016+00:00",
-        "last_enrollment" => "2024-05-13 20:09:27.374451+00:00",
-        "lost_mode_status" => "",
-        "tags" => ["accuhive_02"]
-      },
-      overrides
-    )
   end
 
   defp prism_row(device_id, attrs) do

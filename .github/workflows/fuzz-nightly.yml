@@ -66,6 +66,9 @@ jobs:
     runs-on: ubuntu-24.04
     # No job-level budget: the phases below carry their own, and a job that runs
     # out of time is cancelled, discarding what the phases that did finish found.
+    env:
+      # Match pull-request builds so they share compiler-cache entries.
+      RUSTFLAGS: "--deny warnings"
     permissions:
       contents: read
       pull-requests: read # to find this target's open corpus PR
@@ -73,11 +76,14 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-rust-sccache
+        with:
+          azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
       - uses: ./.github/actions/setup-mise
         with:
           install_args: --cd rust/tests/fuzz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - uses: ./.github/actions/setup-afl
       - uses: ./.github/actions/free-disk-space
       # A corpus PR that has not been reviewed yet still holds the discoveries
       # of every night since it was opened. Growing what the default branch
@@ -108,13 +114,14 @@ jobs:
       # The phases `grow` runs locally, one step each: each carries its own
       # budget and each runs whatever the one before it did, so neither an
       # overrun nor a failure costs the night what the other phases found.
+      # This runner is disposable. Bypass Ubuntu's crash-reporting pipe so AFL
+      # receives crashing children promptly instead of classifying them as hangs.
+      - name: Configure crash reporting for AFL++
+        run: sudo sysctl -w kernel.core_pattern=core
       - name: Fuzz for new coverage
-        # `-fork` re-merges the whole seed corpus before discovering anything
-        # and `-max_total_time` does not bound that startup, so the budget below
-        # is what caps this phase. `-ignore_crashes=1` keeps a crash in fork
-        # mode from ending the run at the first failing input it finds.
-        timeout-minutes: 45
-        run: mise run //rust/tests/fuzz:fuzz ${{ matrix.fuzz-target }} -ignore_crashes=1 -fork="$(nproc)" -max_total_time=1800
+        # AFL's time budget excludes corpus calibration and queue synchronization.
+        timeout-minutes: 60
+        run: mise run //rust/tests/fuzz:fuzz ${{ matrix.fuzz-target }} --workers "$(nproc)" --seconds 1800
       - name: Minimize the corpus
         if: ${{ !cancelled() }}
         timeout-minutes: 20

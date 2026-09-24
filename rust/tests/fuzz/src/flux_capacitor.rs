@@ -2,7 +2,7 @@ use chrono::{DateTime, Utc};
 use std::{
     fmt,
     sync::{Arc, Mutex},
-    time::{Duration, Instant},
+    time::{Duration, Instant, SystemTime},
 };
 use tracing_subscriber::fmt::{format::Writer, time::FormatTime};
 
@@ -101,5 +101,11 @@ impl PickNow for Instant {
 impl PickNow for DateTime<Utc> {
     fn pick_now(_: Instant, utc_now: DateTime<Utc>) -> Self {
         utc_now
+    }
+}
+
+impl PickNow for SystemTime {
+    fn pick_now(_: Instant, utc_now: DateTime<Utc>) -> Self {
+        utc_now.into()
     }
 }

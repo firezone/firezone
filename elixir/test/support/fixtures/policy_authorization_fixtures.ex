@@ -181,14 +181,4 @@ defmodule Portal.PolicyAuthorizationFixtures do
     )
   end
 
-  @doc """
-  Generate a policy authorization expiring soon.
-  """
-  def expiring_policy_authorization_fixture(attrs \\ %{}) do
-    attrs = Enum.into(attrs, %{})
-
-    policy_authorization_fixture(
-      Map.put(attrs, :expires_at, DateTime.add(DateTime.utc_now(), 60, :second))
-    )
-  end
 end

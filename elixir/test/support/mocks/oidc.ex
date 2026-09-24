@@ -182,16 +182,6 @@ defmodule PortalWeb.Mocks.OIDC do
     Process.put(:oidc_mock_discovery_document_overrides, overrides)
   end
 
-  @doc """
-  Clears any custom token or userinfo responses.
-  """
-  def clear_custom_responses do
-    Process.delete(:oidc_mock_token_response)
-    Process.delete(:oidc_mock_userinfo_response)
-    Process.delete(:oidc_mock_jwks_response)
-    Process.delete(:oidc_mock_discovery_document_overrides)
-  end
-
   defp handle_request(conn, test_pid, endpoint) do
     conn = fetch_conn_params(conn)
     send(test_pid, {:oidc_request, conn.request_path, conn})

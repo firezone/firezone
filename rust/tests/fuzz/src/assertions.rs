@@ -1,15 +1,17 @@
 use super::{
     icmp_error_hosts::IcmpErrorHosts,
     probe::{
-        DnsNatObservation, ExpectedOutcome, ExpectedProbe, ProbeId, ProbeObservation,
+        DnsNatObservation, ExpectedOutcome, ExpectedProbe, KnownLoss, ProbeId, ProbeObservation,
         ProbeProtocol, ProbeRequest, ReceivedRequest, ReceivedResponse, RejectionResponse, Remote,
         SubmittedRequest, TraceRequirement,
     },
     ref_client::RefClient,
+    reference::ReferenceState,
     resource::Resource,
     sim_client::SimClient,
     sim_gateway::SimGateway,
     stub_portal::StubPortal,
+    sut::TunnelTest,
     transition::Destination,
 };
 use connlib_model::{ClientId, GatewayId, ResourceId, ResourceStatus, ResourceView};
@@ -27,8 +29,49 @@ use tracing::{Level, Subscriber};
 use tracing_subscriber::Layer;
 use tunnel_proto::dns;
 
+/// Checks the simulated tunnel against the reference state.
+pub fn check_invariants(ref_state: &ReferenceState, state: &TunnelTest, portal: &StubPortal) {
+    let all_ref_clients = ref_state
+        .clients
+        .iter()
+        .map(|(id, host)| (*id, host.inner()))
+        .collect();
+    let all_sim_clients = state
+        .clients
+        .iter()
+        .map(|(id, host)| (*id, host.inner()))
+        .collect();
+    let sim_gateways = state
+        .gateways
+        .iter()
+        .map(|(id, g)| (*id, g.inner()))
+        .collect();
+    assert_probes(
+        &ref_state.expected_probes,
+        &all_ref_clients,
+        &all_sim_clients,
+        &sim_gateways,
+        &ref_state.icmp_error_hosts,
+    );
+    assert_dns_nat(&state.dns_nat_observations, &sim_gateways);
+
+    for (client_id, ref_client_host) in &ref_state.clients {
+        let ref_client = ref_client_host.inner();
+        let sut_client = state.clients[client_id].inner();
+
+        assert_tcp_connections(ref_client, sut_client);
+        assert_udp_dns_packets_properties(ref_client, sut_client);
+        assert_tcp_dns(ref_client, sut_client);
+        assert_dns_servers_are_valid(ref_client, sut_client, portal);
+        assert_search_domain_is_valid(sut_client, portal);
+        assert_routes_are_valid(ref_client, sut_client);
+        assert_resource_list(ref_client, sut_client);
+        assert_dns_resource_record_cache(ref_client, sut_client);
+    }
+}
+
 /// Compares each expected application probe with all endpoint observations.
-pub(crate) fn assert_probes(
+fn assert_probes(
     expected_probes: &BTreeMap<ProbeId, ExpectedProbe>,
     ref_clients: &BTreeMap<ClientId, &RefClient>,
     sim_clients: &BTreeMap<ClientId, &SimClient>,
@@ -91,12 +134,12 @@ pub(crate) fn assert_probes(
             received_requests.as_slice(),
             received_responses.as_slice(),
         ) {
-            (TraceRequirement::ExactOrSubmissionOnly(reason), [], []) => {
+            (TraceRequirement::ExactOrLoss(reason), [], []) => {
                 tracing::debug!(target: "assertions", id = ?expected.id, ?reason, "Probe has only its request submission where loss is allowed");
                 continue;
             }
             (TraceRequirement::Exact, _, _) => {}
-            (TraceRequirement::ExactOrSubmissionOnly(_), _, _) => {}
+            (TraceRequirement::ExactOrLoss(_), _, _) => {}
         }
 
         match expected.outcome {
@@ -108,21 +151,33 @@ pub(crate) fn assert_probes(
             }
             ExpectedOutcome::RoundTripCompleted(route) => {
                 let expected_remote = route.remote();
-                let ([received_request], [received_response]) =
-                    (received_requests.as_slice(), received_responses.as_slice())
-                else {
-                    tracing::error!(target: "assertions", id = ?expected.id, ?probe_observations, "Completed round trip does not have exactly one received request and one received response");
+                let [received_request] = received_requests.as_slice() else {
+                    tracing::error!(target: "assertions", id = ?expected.id, ?probe_observations, "Completed round trip does not have exactly one received request");
                     continue;
                 };
 
                 if received_request.remote != expected_remote {
                     tracing::error!(target: "assertions", id = ?expected.id, ?expected_remote, actual = ?received_request.remote, "Probe request was received by the wrong remote");
                 }
+                assert_received_request(expected, submitted_request, received_request, ref_clients);
+
+                let [received_response] = received_responses.as_slice() else {
+                    if received_responses.is_empty()
+                        && expected.trace_requirement
+                            == TraceRequirement::ExactOrLoss(KnownLoss::WireGuardRekey)
+                    {
+                        tracing::debug!(target: "assertions", id = ?expected.id, "Probe response was lost during rekeying");
+                        continue;
+                    }
+
+                    tracing::error!(target: "assertions", id = ?expected.id, ?probe_observations, "Completed round trip does not have exactly one received response");
+                    continue;
+                };
+
                 if received_response.client != expected.origin {
                     tracing::error!(target: "assertions", id = ?expected.id, expected = ?expected.origin, actual = ?received_response.client, "Probe response was received by the wrong client");
                 }
 
-                assert_received_request(expected, submitted_request, received_request, ref_clients);
                 assert_received_response(
                     expected,
                     submitted_request,
@@ -156,7 +211,7 @@ pub(crate) fn assert_probes(
 }
 
 /// Checks the gateway's stable DNS NAT mapping for each transport session.
-pub(crate) fn assert_dns_nat(
+fn assert_dns_nat(
     observations: &[DnsNatObservation],
     sim_gateways: &BTreeMap<GatewayId, &SimGateway>,
 ) {
@@ -626,7 +681,7 @@ fn rejection_response(packet: &IpPacket) -> Option<RejectionResponse> {
     None
 }
 
-pub(crate) fn assert_tcp_connections(ref_client: &RefClient, sim_client: &SimClient) {
+fn assert_tcp_connections(ref_client: &RefClient, sim_client: &SimClient) {
     for ((sport, dport), error) in &sim_client.failed_tcp_packets {
         let expected_rejection = ref_client
             .expected_tcp_rejections
@@ -704,7 +759,7 @@ pub(crate) fn assert_tcp_connections(ref_client: &RefClient, sim_client: &SimCli
     }
 }
 
-pub(crate) fn assert_resource_list(ref_client: &RefClient, sim_client: &SimClient) {
+fn assert_resource_list(ref_client: &RefClient, sim_client: &SimClient) {
     let expected_resources = ref_client.expected_resources();
     let actual_resources = &sim_client.observed_resource_list.resources;
     let maybe_online_resources = ref_client.maybe_online_resources();
@@ -746,7 +801,7 @@ pub(crate) fn assert_resource_list(ref_client: &RefClient, sim_client: &SimClien
     }
 }
 
-pub(crate) fn assert_dns_resource_record_cache(ref_client: &RefClient, sim_client: &SimClient) {
+fn assert_dns_resource_record_cache(ref_client: &RefClient, sim_client: &SimClient) {
     let addresses = ref_client
         .all_resources()
         .into_iter()
@@ -871,7 +926,7 @@ fn assert_resource_status(
     }
 }
 
-pub(crate) fn assert_dns_servers_are_valid(
+fn assert_dns_servers_are_valid(
     ref_client: &RefClient,
     sim_client: &SimClient,
     portal: &StubPortal,
@@ -884,7 +939,7 @@ pub(crate) fn assert_dns_servers_are_valid(
     }
 }
 
-pub(crate) fn assert_search_domain_is_valid(portal: &StubPortal, sim_client: &SimClient) {
+fn assert_search_domain_is_valid(sim_client: &SimClient, portal: &StubPortal) {
     let expected = portal.search_domain();
     let actual = sim_client.effective_search_domain();
 
@@ -893,7 +948,7 @@ pub(crate) fn assert_search_domain_is_valid(portal: &StubPortal, sim_client: &Si
     }
 }
 
-pub(crate) fn assert_routes_are_valid(ref_client: &RefClient, sim_client: &SimClient) {
+fn assert_routes_are_valid(ref_client: &RefClient, sim_client: &SimClient) {
     let expected = ref_client.expected_routes();
     let actual = sim_client.routes.clone();
 
@@ -905,7 +960,7 @@ pub(crate) fn assert_routes_are_valid(ref_client: &RefClient, sim_client: &SimCl
     }
 }
 
-pub(crate) fn assert_udp_dns_packets_properties(ref_client: &RefClient, sim_client: &SimClient) {
+fn assert_udp_dns_packets_properties(ref_client: &RefClient, sim_client: &SimClient) {
     let unexpected_dns_replies = sim_client
         .received_udp_dns_responses
         .keys()
@@ -943,7 +998,7 @@ pub(crate) fn assert_udp_dns_packets_properties(ref_client: &RefClient, sim_clie
     }
 }
 
-pub(crate) fn assert_tcp_dns(ref_client: &RefClient, sim_client: &SimClient) {
+fn assert_tcp_dns(ref_client: &RefClient, sim_client: &SimClient) {
     let unexpected_dns_responses = sim_client
         .received_tcp_dns_responses
         .iter()

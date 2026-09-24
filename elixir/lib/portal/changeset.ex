@@ -1,9 +1,8 @@
 defmodule Portal.Changeset do
   @moduledoc """
-  This module extend `Ecto.Changeset`'s with custom validations and polymorphic embeds.
+  Extends `Ecto.Changeset` with custom validations.
   """
   import Ecto.Changeset
-  alias Ecto.Changeset
 
   @special_use_ipv4_cidrs [
     %Postgrex.INET{address: {0, 0, 0, 0}, netmask: 8},
@@ -90,61 +89,6 @@ defmodule Portal.Changeset do
     end
   end
 
-  def any_field_changed?(%Ecto.Changeset{} = changeset, fields) do
-    changed_fields = Map.keys(changeset.changes)
-    Enum.any?(changed_fields, &(&1 in fields))
-  end
-
-  @doc """
-  Takes value from `value_field` and puts its hash of a given type to `hash_field`.
-  """
-  def put_hash(%Ecto.Changeset{} = changeset, value_field, type, opts) do
-    hash_field = Keyword.fetch!(opts, :to)
-    salt_field = Keyword.get(opts, :with_salt)
-    nonce_field = Keyword.get(opts, :with_nonce)
-
-    with {:ok, value} <- fetch_value(changeset, value_field),
-         {:ok, nonce} <- fetch_hash_component(changeset, nonce_field),
-         {:ok, salt} <- fetch_hash_component(changeset, salt_field) do
-      put_change(changeset, hash_field, Portal.Crypto.hash(type, nonce <> value <> salt))
-    else
-      _ -> changeset
-    end
-  end
-
-  defp fetch_value(%Ecto.Changeset{} = changeset, value_field) do
-    case fetch_change(changeset, value_field) do
-      {:ok, ""} -> :error
-      {:ok, value} when is_binary(value) -> {:ok, value}
-      _other -> :error
-    end
-  end
-
-  defp fetch_hash_component(_changeset, nil) do
-    {:ok, ""}
-  end
-
-  defp fetch_hash_component(changeset, salt_field) do
-    case fetch_change(changeset, salt_field) do
-      {:ok, salt} when is_binary(salt) -> {:ok, salt}
-      :error -> {:ok, ""}
-    end
-  end
-
-  @doc """
-  Removes change for a given field and original value from it from `changeset.params`.
-
-  Even though `changeset.params` considered to be a private field it leaks values even
-  after they are removed from a changeset if you `inspect(struct, structs: false)` or
-  just access it directly.
-  """
-  def redact_field(%Ecto.Changeset{} = changeset, field) do
-    changeset = delete_change(changeset, field)
-    %{changeset | params: Map.drop(changeset.params, field_variations(field))}
-  end
-
-  defp field_variations(field) when is_atom(field), do: [field, Atom.to_string(field)]
-
   @doc """
   Puts the change if field is not changed or its value is set to `nil`.
   """
@@ -187,14 +131,6 @@ defmodule Portal.Changeset do
   end
 
   def trim_change(%Ecto.Changeset{} = changeset, _field), do: changeset
-
-  def copy_change(%Ecto.Changeset{} = changeset, from, to) do
-    case fetch_change(changeset, from) do
-      {:ok, nil} -> changeset
-      {:ok, value} -> put_change(changeset, to, value)
-      :error -> changeset
-    end
-  end
 
   # Validations
 
@@ -244,17 +180,6 @@ defmodule Portal.Changeset do
     catch
       _kind, _reason -> :error
     end
-  end
-
-  def validate_does_not_end_with(%Ecto.Changeset{} = changeset, field, suffix, opts \\ []) do
-    validate_change(changeset, field, fn _current_field, value ->
-      if String.ends_with?(value, suffix) do
-        message = Keyword.get(opts, :message, "cannot end with #{inspect(suffix)}")
-        [{field, message}]
-      else
-        []
-      end
-    end)
   end
 
   def validate_uri(%Ecto.Changeset{} = changeset, field, opts \\ []) when is_atom(field) do
@@ -386,29 +311,6 @@ defmodule Portal.Changeset do
     end
   end
 
-  def validate_one_of(%Ecto.Changeset{} = changeset, field, validators) do
-    validate_change(changeset, field, fn current_field, _value ->
-      reduce_validators(validators, changeset, current_field)
-    end)
-  end
-
-  defp reduce_validators(validators, changeset, field) do
-    orig_errors = Enum.filter(changeset.errors, &(elem(&1, 0) == field))
-
-    Enum.reduce_while(validators, [], fn validator, errors ->
-      validated_cs = validator.(changeset, field)
-
-      new_errors =
-        Enum.filter(validated_cs.errors, &(elem(&1, 0) == field)) -- orig_errors
-
-      if Enum.empty?(new_errors) do
-        {:halt, new_errors}
-      else
-        {:cont, new_errors ++ errors}
-      end
-    end)
-  end
-
   def validate_not_in_cidr(%Ecto.Changeset{} = changeset, ip_or_cidr_field, cidr, opts \\ []) do
     validate_change(changeset, ip_or_cidr_field, fn _ip_or_cidr_field, ip_or_cidr ->
       case Portal.Types.INET.cast(ip_or_cidr) do
@@ -467,59 +369,9 @@ defmodule Portal.Changeset do
     end)
   end
 
-  @doc """
-  Validates that value in a given `value_field` equals to hash stored in `hash_field`.
-  """
-  def validate_hash(%Ecto.Changeset{} = changeset, value_field, type, hash_field: hash_field) do
-    with {:data, hash} <- fetch_field(changeset, hash_field) do
-      validate_change(changeset, value_field, fn value_field, token ->
-        hash_error(value_field, type, token, hash)
-      end)
-    else
-      {:changes, _hash} ->
-        add_error(changeset, value_field, "can't be verified", validation: :hash)
-
-      :error ->
-        add_error(changeset, value_field, "is already verified", validation: :hash)
-    end
-  end
-
-  defp hash_error(value_field, type, token, hash) do
-    if Portal.Crypto.equal?(type, token, hash) do
-      []
-    else
-      [{value_field, {"is invalid", [validation: :hash]}}]
-    end
-  end
-
-  def validate_required_one_of(%Ecto.Changeset{} = changeset, fields) do
-    if Enum.any?(fields, &(not empty?(changeset, &1))) do
-      changeset
-    else
-      Enum.reduce(
-        fields,
-        changeset,
-        &add_error(&2, &1, "one of these fields must be present: #{Enum.join(fields, ", ")}",
-          validation: :one_of,
-          one_of: fields
-        )
-      )
-    end
-  end
-
   def validate_datetime(%Ecto.Changeset{} = changeset, field, greater_than: greater_than) do
     validate_change(changeset, field, fn _current_field, value ->
       if DateTime.compare(value, greater_than) == :gt do
-        []
-      else
-        [{field, "must be greater than #{inspect(greater_than)}"}]
-      end
-    end)
-  end
-
-  def validate_date(%Ecto.Changeset{} = changeset, field, greater_than: greater_than) do
-    validate_change(changeset, field, fn _current_field, value ->
-      if Date.compare(value, greater_than) == :gt do
         []
       else
         [{field, "must be greater than #{inspect(greater_than)}"}]
@@ -574,99 +426,6 @@ defmodule Portal.Changeset do
   defp port_validation_errors(field, _port, _allow?),
     do: [{field, "port is not a number between 0 and 65535"}]
 
-  def validate_ip_type_inclusion(changeset, field, types) do
-    validate_change(changeset, field, fn _current_field, %{address: address} ->
-      type = if tuple_size(address) == 4, do: :ipv4, else: :ipv6
-
-      if type in types do
-        []
-      else
-        [{field, "is not a supported IP type"}]
-      end
-    end)
-  end
-
-  # Polymorphic embeds
-
-  @doc """
-  Changes `Ecto.Changeset` struct to convert one of `:map` fields to an embedded schema.
-
-  If embedded changeset was valid, changes would be put back as map to the changeset field
-  before the database insert. No embedded validation is performed if there already was an
-  error on `field`.
-
-  ## Why not `Ecto.Type`?
-
-  This design is chosen over custom `Ecto.Type` because it allows us to properly build `Ecto.Changeset`
-  struct and return errors in a form that will be supported by Phoenix form helpers, while the type
-  doesn't allow to return multiple errors when `c:Ecto.Type.cast/2` returns an error tuple.
-
-  ## Options
-
-    * `:with` - callback that accepts attributes as arguments and returns a changeset
-    for embedded field. Function signature: `(current_attrs, attrs) -> Ecto.Changeset.t()`.
-
-    * `:required` - if the embed is a required field, default - `false`. Only applies on
-    non-list embeds.
-  """
-  @spec cast_polymorphic_embed(
-          changeset :: Changeset.t(),
-          field :: atom(),
-          opts :: [
-            {:required, boolean()},
-            {:with, (current_attrs :: map(), attrs :: map() -> Changeset.t())}
-          ]
-        ) :: Changeset.t()
-  def cast_polymorphic_embed(changeset, field, opts) do
-    on_cast = Keyword.fetch!(opts, :with)
-    required? = Keyword.get(opts, :required, false)
-
-    # We only support singular polymorphic embeds for now
-    :map = Map.get(changeset.types, field)
-
-    if field_invalid?(changeset, field) do
-      changeset
-    else
-      data = Map.get(changeset.data, field)
-      changes = get_change(changeset, field)
-
-      if required? and is_nil(changes) and empty_value?(data) do
-        add_error(changeset, field, "can't be blank", validation: :required)
-      else
-        %Changeset{} = nested_changeset = on_cast.(data || %{}, changes || %{})
-        {changeset, original_type} = inject_embedded_changeset(changeset, field, nested_changeset)
-        prepare_changes(changeset, &dump(&1, field, original_type))
-      end
-    end
-  end
-
-  def inject_embedded_changeset(changeset, field, nested_changeset) do
-    original_type = Map.get(changeset.types, field)
-
-    embedded_type =
-      {:embed,
-       %Ecto.Embedded{
-         cardinality: :one,
-         field: field,
-         on_cast: nil,
-         on_replace: :update,
-         owner: %{},
-         related: Map.get(changeset.data, :__struct__),
-         unique: true
-       }}
-
-    nested_changeset = %{nested_changeset | action: changeset.action || :update}
-
-    changeset = %{
-      changeset
-      | types: Map.put(changeset.types, field, embedded_type),
-        valid?: changeset.valid? and nested_changeset.valid?,
-        changes: Map.put(changeset.changes, field, nested_changeset)
-    }
-
-    {changeset, original_type}
-  end
-
   def errors_to_string(%Ecto.Changeset{} = changeset, fields \\ :all) do
     errors =
       Ecto.Changeset.traverse_errors(changeset, fn {msg, opts} ->
@@ -686,32 +445,6 @@ defmodule Portal.Changeset do
     Enum.map_join(filtered_errors, "\n", fn {field, messages} ->
       "#{field}: #{Enum.join(messages, "; ")}"
     end)
-  end
-
-  defp field_invalid?(%Ecto.Changeset{} = changeset, field) do
-    Keyword.has_key?(changeset.errors, field)
-  end
-
-  defp empty_value?(term), do: is_nil(term) or term == %{}
-
-  defp dump(changeset, field, original_type) do
-    map =
-      changeset
-      |> get_change(field)
-      |> apply_action!(:dump)
-      |> Ecto.embedded_dump(:json)
-      |> atom_keys_to_string()
-
-    changeset = %{changeset | types: Map.put(changeset.types, field, original_type)}
-
-    put_change(changeset, field, map)
-  end
-
-  # We dump atoms to strings because if we persist to Postgres and read it,
-  # the map will be returned with string keys, and we want to make sure that
-  # the map handling is unified across the codebase.
-  defp atom_keys_to_string(map) do
-    for {k, v} <- map, into: %{}, do: {to_string(k), v}
   end
 
   defp safe_trim(term) when is_binary(term), do: String.trim(term)

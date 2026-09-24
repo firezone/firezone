@@ -8,7 +8,6 @@ defmodule Portal.Workers.CheckAccountLimitsTest do
   import Portal.ActorFixtures
   import Portal.OutboundEmailTestHelpers
   import Portal.ClientSessionFixtures
-  import Portal.SessionLogFixtures
 
   alias Portal.Workers.CheckAccountLimits
 
@@ -484,32 +483,5 @@ defmodule Portal.Workers.CheckAccountLimitsTest do
       account = Repo.get!(Portal.Account, account.id)
       assert account.seats_limit_exceeded
     end
-  end
-
-  # Also given a session log, since limit warnings only go to active accounts.
-  defp provisioned_account_fixture(attrs \\ %{}) do
-    account = dormant_provisioned_account_fixture(attrs)
-    session_log_fixture(account: account)
-
-    account
-  end
-
-  defp dormant_provisioned_account_fixture(attrs \\ %{}) do
-    account = account_fixture(attrs)
-
-    stripe_attrs =
-      Map.merge(
-        %{
-          customer_id: "cus_#{System.unique_integer([:positive])}",
-          subscription_id: "sub_#{System.unique_integer([:positive])}",
-          product_name: "Starter"
-        },
-        get_in(attrs, [:metadata, :stripe]) || %{}
-      )
-
-    account
-    |> Ecto.Changeset.cast(%{metadata: %{stripe: stripe_attrs}}, [])
-    |> Ecto.Changeset.cast_embed(:metadata)
-    |> Repo.update!()
   end
 end

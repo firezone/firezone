@@ -214,7 +214,7 @@ impl PendingAuthorization {
             Trigger::DnsQueryForSite(query) => {
                 self.dns_queries.enqueue(query);
             }
-            Trigger::IcmpDestinationUnreachableProhibited => {}
+            Trigger::NoAuthorization => {}
         }
     }
 
@@ -235,11 +235,8 @@ pub enum Trigger {
     Packet(IpPacket),
     /// A DNS query that needs to be resolved within a particular site that we aren't connected to yet.
     DnsQueryForSite(DnsQueryForSite),
-    /// We have received an ICMP error that is marked as "access prohibited".
-    ///
-    /// Most likely, the Gateway is filtering these packets because the Client doesn't have access (anymore).
-    #[cfg_attr(not(feature = "telemetry"), expect(dead_code))]
-    IcmpDestinationUnreachableProhibited,
+    /// The receiving peer reports that its authorizations reject our traffic.
+    NoAuthorization,
 }
 
 pub struct DnsQueryForSite {
@@ -254,9 +251,7 @@ impl Trigger {
         match self {
             Trigger::Packet(_) => "packet",
             Trigger::DnsQueryForSite(_) => "dns-query-for-site",
-            Trigger::IcmpDestinationUnreachableProhibited => {
-                "icmp-destination-unreachable-prohibited"
-            }
+            Trigger::NoAuthorization => "no-authorization",
         }
     }
 }
@@ -278,6 +273,39 @@ mod tests {
     use std::net::Ipv4Addr;
 
     use super::*;
+
+    #[test]
+    fn no_authorization_requests_access_without_buffering_traffic() {
+        let mut pending = PendingAuthorizations::default();
+        let now = Instant::now();
+        let rid = ResourceId::from_u128(1);
+
+        pending.on_not_authorized(resource_request(rid), Trigger::NoAuthorization, now);
+        assert_eq!(
+            pending.poll_authorization_requests(),
+            Some(resource_request(rid))
+        );
+        pending.on_not_authorized(
+            resource_request(rid),
+            Trigger::NoAuthorization,
+            now + Duration::from_secs(1),
+        );
+        assert_eq!(pending.poll_authorization_requests(), None);
+        pending.on_not_authorized(
+            resource_request(rid),
+            Trigger::NoAuthorization,
+            now + Duration::from_secs(2),
+        );
+        assert_eq!(
+            pending.poll_authorization_requests(),
+            Some(resource_request(rid))
+        );
+
+        let removed = pending.remove_resource_authorizations(rid).pop().unwrap();
+        let (packets, queries) = removed.into_buffers();
+        assert!(packets.into_iter().next().is_none());
+        assert!(queries.is_empty());
+    }
 
     #[test]
     fn skips_authorization_request_if_sent_within_last_two_seconds() {

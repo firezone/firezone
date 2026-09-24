@@ -19,6 +19,7 @@ use std::{
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
 };
 
+mod authorization_rejections;
 mod client;
 mod conn_track;
 pub mod dns;

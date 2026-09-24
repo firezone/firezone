@@ -1,5 +1,6 @@
 defmodule Portal.Google.APIClientTest do
   use ExUnit.Case, async: true
+  import Portal.GoogleDirectoryFixtures
 
   alias Portal.Google.APIClient
   alias Portal.TokenCache
@@ -352,7 +353,7 @@ defmodule Portal.Google.APIClientTest do
       end)
 
       Req.Test.expect(APIClient, fn conn ->
-        Req.Test.json(conn, active_google_user(%{"id" => "user1"}))
+        Req.Test.json(conn, google_api_user_fixture(%{"id" => "user1"}))
       end)
 
       assert {:ok, %Req.Response{body: %{"suspended" => false, "archived" => false}}} =
@@ -1005,8 +1006,8 @@ defmodule Portal.Google.APIClientTest do
         Req.Test.json(conn, %{
           "kind" => "admin#directory#users",
           "users" => [
-            active_google_user(%{"id" => "user1", "primaryEmail" => "user1@example.com"}),
-            active_google_user(%{"id" => "user2", "primaryEmail" => "user2@example.com"})
+            google_api_user_fixture(%{"id" => "user1", "primaryEmail" => "user1@example.com"}),
+            google_api_user_fixture(%{"id" => "user2", "primaryEmail" => "user2@example.com"})
           ]
         })
       end)
@@ -1040,12 +1041,12 @@ defmodule Portal.Google.APIClientTest do
           case current_page do
             0 ->
               %{
-                "users" => [active_google_user(%{"id" => "user1"})],
+                "users" => [google_api_user_fixture(%{"id" => "user1"})],
                 "nextPageToken" => "next_page"
               }
 
             1 ->
-              %{"users" => [active_google_user(%{"id" => "user2"})]}
+              %{"users" => [google_api_user_fixture(%{"id" => "user2"})]}
           end
 
         Req.Test.json(conn, response)
@@ -1093,7 +1094,7 @@ defmodule Portal.Google.APIClientTest do
       Req.Test.expect(APIClient, fn conn ->
         Req.Test.json(conn, %{
           "users" => [
-            active_google_user(%{"id" => "user1", "primaryEmail" => "user1@example.com"}),
+            google_api_user_fixture(%{"id" => "user1", "primaryEmail" => "user1@example.com"}),
             %{"id" => "user2", "primaryEmail" => "user2@example.com", "suspended" => true, "archived" => false},
             %{"id" => "user3", "primaryEmail" => "user3@example.com", "archived" => true, "suspended" => false}
           ]
@@ -1130,7 +1131,7 @@ defmodule Portal.Google.APIClientTest do
           build_batch_body(boundary, [
             {"HTTP/1.1 200 OK",
              JSON.encode!(
-               active_google_user(%{"id" => "user1", "primaryEmail" => "user1@example.com"})
+               google_api_user_fixture(%{"id" => "user1", "primaryEmail" => "user1@example.com"})
              )}
           ])
 
@@ -1154,7 +1155,7 @@ defmodule Portal.Google.APIClientTest do
           build_batch_body(boundary, [
             {"HTTP/1.1 200 OK",
              JSON.encode!(
-               active_google_user(%{"id" => "user1", "primaryEmail" => "user1@example.com"})
+               google_api_user_fixture(%{"id" => "user1", "primaryEmail" => "user1@example.com"})
              )}
           ])
 
@@ -1228,7 +1229,7 @@ defmodule Portal.Google.APIClientTest do
           build_batch_body(boundary, [
             {"HTTP/1.1 200 OK",
              JSON.encode!(
-               active_google_user(%{"id" => "user1", "primaryEmail" => "user1@example.com"})
+               google_api_user_fixture(%{"id" => "user1", "primaryEmail" => "user1@example.com"})
              )}
           ])
 
@@ -1261,7 +1262,7 @@ defmodule Portal.Google.APIClientTest do
           build_batch_body(boundary, [
             {"HTTP/1.1 200 OK",
              JSON.encode!(
-               active_google_user(%{"id" => "user1", "primaryEmail" => "user1@example.com"})
+               google_api_user_fixture(%{"id" => "user1", "primaryEmail" => "user1@example.com"})
              )},
             {"HTTP/1.1 403 Forbidden",
              JSON.encode!(%{"error" => %{"message" => "userRateLimitExceeded"}})}
@@ -1308,12 +1309,12 @@ defmodule Portal.Google.APIClientTest do
         second_part =
           case :counters.get(attempts, 1) do
             1 -> {"HTTP/1.1 403 Forbidden", JSON.encode!(throttled_error())}
-            2 -> {"HTTP/1.1 200 OK", JSON.encode!(active_google_user(%{"id" => "user2"}))}
+            2 -> {"HTTP/1.1 200 OK", JSON.encode!(google_api_user_fixture(%{"id" => "user2"}))}
           end
 
         body =
           build_batch_body(boundary, [
-            {"HTTP/1.1 200 OK", JSON.encode!(active_google_user(%{"id" => "user1"}))},
+            {"HTTP/1.1 200 OK", JSON.encode!(google_api_user_fixture(%{"id" => "user1"}))},
             second_part
           ])
 
@@ -1368,12 +1369,12 @@ defmodule Portal.Google.APIClientTest do
         second_part =
           case :counters.get(attempts, 1) do
             1 -> {"HTTP/1.1 500 Internal Server Error", JSON.encode!(%{"error" => "boom"})}
-            2 -> {"HTTP/1.1 200 OK", JSON.encode!(active_google_user(%{"id" => "user2"}))}
+            2 -> {"HTTP/1.1 200 OK", JSON.encode!(google_api_user_fixture(%{"id" => "user2"}))}
           end
 
         body =
           build_batch_body(boundary, [
-            {"HTTP/1.1 200 OK", JSON.encode!(active_google_user(%{"id" => "user1"}))},
+            {"HTTP/1.1 200 OK", JSON.encode!(google_api_user_fixture(%{"id" => "user1"}))},
             second_part
           ])
 
@@ -1431,7 +1432,7 @@ defmodule Portal.Google.APIClientTest do
           build_batch_body(boundary, [
             {"HTTP/1.1 200 OK",
              JSON.encode!(
-               active_google_user(%{"id" => "user1", "primaryEmail" => "user1@example.com"})
+               google_api_user_fixture(%{"id" => "user1", "primaryEmail" => "user1@example.com"})
              )},
             {"HTTP/1.1 200 OK",
              JSON.encode!(%{
@@ -1470,7 +1471,7 @@ defmodule Portal.Google.APIClientTest do
              JSON.encode!(%{"id" => "user1", "primaryEmail" => "user1@example.com"})},
             {"HTTP/1.1 200 OK",
              JSON.encode!(
-               active_google_user(%{"id" => "user2", "primaryEmail" => "user2@example.com"})
+               google_api_user_fixture(%{"id" => "user2", "primaryEmail" => "user2@example.com"})
              )}
           ])
 
@@ -1481,7 +1482,7 @@ defmodule Portal.Google.APIClientTest do
 
       Req.Test.expect(APIClient, fn conn ->
         assert conn.request_path == "/admin/directory/v1/users/user1"
-        Req.Test.json(conn, active_google_user(%{"id" => "user1"}))
+        Req.Test.json(conn, google_api_user_fixture(%{"id" => "user1"}))
       end)
 
       assert {:ok, users} = APIClient.batch_get_users(@test_access_token, ["user1", "user2"])
@@ -1503,7 +1504,7 @@ defmodule Portal.Google.APIClientTest do
               build_batch_body(boundary, [
                 {"HTTP/1.1 200 OK",
                  JSON.encode!(
-                   active_google_user(%{"id" => "user1", "primaryEmail" => "user1@example.com"})
+                   google_api_user_fixture(%{"id" => "user1", "primaryEmail" => "user1@example.com"})
                  )}
               ])
 
@@ -1595,7 +1596,7 @@ defmodule Portal.Google.APIClientTest do
         case current_page do
           0 ->
             Req.Test.json(conn, %{
-              "users" => [active_google_user(%{"id" => "user1"})],
+              "users" => [google_api_user_fixture(%{"id" => "user1"})],
               "nextPageToken" => "page2"
             })
 
@@ -1627,12 +1628,12 @@ defmodule Portal.Google.APIClientTest do
           case current_page do
             0 ->
               %{
-                "users" => [active_google_user(%{"id" => "user1"})],
+                "users" => [google_api_user_fixture(%{"id" => "user1"})],
                 "nextPageToken" => "token123"
               }
 
             1 ->
-              %{"users" => [active_google_user(%{"id" => "user2"})]}
+              %{"users" => [google_api_user_fixture(%{"id" => "user2"})]}
           end
 
         Req.Test.json(conn, response)
@@ -1688,12 +1689,6 @@ defmodule Portal.Google.APIClientTest do
       end)
 
     Enum.join(encoded_parts, "") <> "--#{boundary}--"
-  end
-
-  defp active_google_user(attrs) do
-    attrs
-    |> Map.put_new("suspended", false)
-    |> Map.put_new("archived", false)
   end
 
   defp configure_workload_identity do

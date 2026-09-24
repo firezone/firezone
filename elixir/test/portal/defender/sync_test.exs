@@ -18,11 +18,11 @@ defmodule Portal.Defender.SyncTest do
     provider = defender_posture_provider_fixture()
 
     stub_machines([
-      machine(%{
+      defender_api_machine_fixture(%{
         "id" => "machine-1",
         "computerDnsName" => "alice.contoso.com"
       }),
-      machine(%{
+      defender_api_machine_fixture(%{
         "id" => "machine-2",
         "computerDnsName" => "bob.contoso.com",
         "healthStatus" => "Inactive"
@@ -47,7 +47,7 @@ defmodule Portal.Defender.SyncTest do
   test "stores every property the machines endpoint returns" do
     provider = defender_posture_provider_fixture()
 
-    stub_machines([full_machine()])
+    stub_machines([full_defender_api_machine_fixture()])
 
     assert :ok = perform_job(Sync, sync_args(provider))
 
@@ -104,7 +104,7 @@ defmodule Portal.Defender.SyncTest do
   test "stores a numeric device group id as text" do
     provider = defender_posture_provider_fixture()
 
-    stub_machines([machine(%{"rbacGroupId" => 140})])
+    stub_machines([defender_api_machine_fixture(%{"rbacGroupId" => 140})])
 
     assert :ok = perform_job(Sync, sync_args(provider))
 
@@ -119,7 +119,7 @@ defmodule Portal.Defender.SyncTest do
 
     machines =
       Enum.map(1..1001, fn n ->
-        machine(%{"id" => "machine-#{String.pad_leading(to_string(n), 4, "0")}"})
+        defender_api_machine_fixture(%{"id" => "machine-#{String.pad_leading(to_string(n), 4, "0")}"})
       end)
 
     stub_machines(machines)
@@ -140,7 +140,7 @@ defmodule Portal.Defender.SyncTest do
       else
         conn = Plug.Conn.fetch_query_params(conn)
         send(test_pid, {:page, conn.query_params["$top"], conn.query_params["$skip"]})
-        Req.Test.json(conn, %{"value" => [machine(%{"id" => "machine-1"})]})
+        Req.Test.json(conn, %{"value" => [defender_api_machine_fixture(%{"id" => "machine-1"})]})
       end
     end)
 
@@ -178,7 +178,7 @@ defmodule Portal.Defender.SyncTest do
   test "raises when a machine comes back without an id" do
     provider = defender_posture_provider_fixture()
 
-    stub_machines([machine(%{"id" => nil})])
+    stub_machines([defender_api_machine_fixture(%{"id" => nil})])
 
     assert_raise Portal.Defender.SyncError, fn -> perform_job(Sync, sync_args(provider)) end
   end
@@ -201,7 +201,7 @@ defmodule Portal.Defender.SyncTest do
     provider = defender_posture_provider_fixture(synced_at: ago(2, :hour))
     stale = defender_device_fixture(provider: provider, synced_at: ago(2, :day))
 
-    stub_machines([machine(%{"id" => "machine-1"})])
+    stub_machines([defender_api_machine_fixture(%{"id" => "machine-1"})])
 
     assert :ok = perform_job(Sync, sync_args(provider))
 
@@ -216,7 +216,7 @@ defmodule Portal.Defender.SyncTest do
     provider = defender_posture_provider_fixture(synced_at: ago(2, :hour))
     skipped = defender_device_fixture(provider: provider, synced_at: ago(3, :hour))
 
-    stub_machines([machine(%{"id" => "machine-1"})])
+    stub_machines([defender_api_machine_fixture(%{"id" => "machine-1"})])
 
     assert :ok = perform_job(Sync, sync_args(provider))
 
@@ -230,7 +230,7 @@ defmodule Portal.Defender.SyncTest do
     provider = defender_posture_provider_fixture(synced_at: outage)
     skipped = defender_device_fixture(provider: provider, synced_at: outage)
 
-    stub_machines([machine(%{"id" => "machine-1"})])
+    stub_machines([defender_api_machine_fixture(%{"id" => "machine-1"})])
 
     assert :ok = perform_job(Sync, sync_args(provider))
 
@@ -241,7 +241,7 @@ defmodule Portal.Defender.SyncTest do
     provider = defender_posture_provider_fixture(synced_at: nil)
     ancient = defender_device_fixture(provider: provider, synced_at: ago(30, :day))
 
-    stub_machines([machine(%{"id" => "machine-1"})])
+    stub_machines([defender_api_machine_fixture(%{"id" => "machine-1"})])
 
     assert :ok = perform_job(Sync, sync_args(provider))
 
@@ -256,7 +256,7 @@ defmodule Portal.Defender.SyncTest do
         error_email_count: 2
       )
 
-    stub_machines([machine(%{"id" => "machine-1"})])
+    stub_machines([defender_api_machine_fixture(%{"id" => "machine-1"})])
 
     assert :ok = perform_job(Sync, sync_args(provider))
 
@@ -271,7 +271,7 @@ defmodule Portal.Defender.SyncTest do
   test "skips a disabled provider" do
     provider = defender_posture_provider_fixture(is_disabled: true)
 
-    stub_machines([machine(%{"id" => "machine-1"})])
+    stub_machines([defender_api_machine_fixture(%{"id" => "machine-1"})])
 
     assert :ok = perform_job(Sync, sync_args(provider))
     assert Repo.aggregate(Device, :count) == 0
@@ -281,7 +281,7 @@ defmodule Portal.Defender.SyncTest do
     downgraded = Portal.AccountFixtures.account_fixture(features: %{device_posture: false})
     provider = defender_posture_provider_fixture(account: downgraded)
 
-    stub_machines([machine(%{"id" => "machine-1"})])
+    stub_machines([defender_api_machine_fixture(%{"id" => "machine-1"})])
 
     assert :ok = perform_job(Sync, sync_args(provider))
     assert Repo.aggregate(Device, :count) == 0
@@ -291,7 +291,7 @@ defmodule Portal.Defender.SyncTest do
     provider = defender_posture_provider_fixture()
     enable_device_posture(false)
 
-    stub_machines([machine(%{"id" => "machine-1"})])
+    stub_machines([defender_api_machine_fixture(%{"id" => "machine-1"})])
 
     assert :ok = perform_job(Sync, sync_args(provider))
     assert Repo.aggregate(Device, :count) == 0
@@ -317,72 +317,5 @@ defmodule Portal.Defender.SyncTest do
         Req.Test.json(conn, %{"value" => Enum.slice(machines, skip, top)})
       end
     end)
-  end
-
-  defp machine(overrides) do
-    Map.merge(
-      %{
-        "id" => "machine-1",
-        "computerDnsName" => "alice.contoso.com",
-        "osPlatform" => "Windows11",
-        "healthStatus" => "Active",
-        "onboardingStatus" => "Onboarded",
-        "riskScore" => "Low"
-      },
-      overrides
-    )
-  end
-
-  # The example response from the List machines reference, so the mapping can be
-  # checked against the documented payload.
-  defp full_machine do
-    %{
-      "id" => "1e5bc9d7e413ddd7902c2932e418702b84d0cc07",
-      "computerDnsName" => "mymachine1.contoso.com",
-      "firstSeen" => "2018-08-02T14:55:03.7791856Z",
-      "lastSeen" => "2021-01-25T07:27:36.052313Z",
-      "osPlatform" => "Windows10",
-      "version" => "1901",
-      "osProcessor" => "x64",
-      "osArchitecture" => "64-bit",
-      "osBuild" => 19_042,
-      "lastIpAddress" => "10.166.113.46",
-      "lastExternalIpAddress" => "167.220.203.175",
-      "agentVersion" => "10.8040.19041.4046",
-      "healthStatus" => "Active",
-      "onboardingStatus" => "Onboarded",
-      "managedBy" => "Intune",
-      "managedByStatus" => "Managed",
-      "riskScore" => "High",
-      "exposureLevel" => "Low",
-      "deviceValue" => "Normal",
-      "rbacGroupName" => "The-A-Team",
-      "rbacGroupId" => 140,
-      "isAadJoined" => true,
-      "aadDeviceId" => "fd2e4d29-7072-4195-aaa5-1af139b78028",
-      "machineTags" => ["Tag1", "Tag2"],
-      "isPotentialDuplication" => false,
-      "mergedIntoMachineId" => "merged-machine-id",
-      "isExcluded" => false,
-      "exclusionReason" => nil,
-      "ipAddresses" => [
-        %{
-          "ipAddress" => "10.166.113.47",
-          "macAddress" => "8CEC4B897E73",
-          "operationalStatus" => "Up"
-        },
-        %{
-          "ipAddress" => "2a01:110:68:4:59e4:3916:3b3e:4f96",
-          "macAddress" => "8CEC4B897E73",
-          "operationalStatus" => "Up"
-        }
-      ],
-      "vmMetadata" => %{
-        "vmId" => "vm-id-value",
-        "cloudProvider" => "Azure",
-        "resourceId" => "/subscriptions/sub-id/resourceGroups/rg/vm",
-        "subscriptionId" => "sub-id"
-      }
-    }
   end
 end

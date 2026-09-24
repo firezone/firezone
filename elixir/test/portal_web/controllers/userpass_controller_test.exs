@@ -15,14 +15,6 @@ defmodule PortalWeb.UserpassControllerTest do
     {:ok, account: account, provider: provider, password_hash: password_hash}
   end
 
-  defp create_actor_with_password(attrs, password_hash) do
-    actor = actor_fixture(attrs)
-
-    actor
-    |> Ecto.Changeset.change(password_hash: password_hash)
-    |> Portal.Repo.update!()
-  end
-
   describe "sign_in/2" do
     test "redirects with error when account does not exist", %{conn: conn} do
       conn =
@@ -40,10 +32,7 @@ defmodule PortalWeb.UserpassControllerTest do
       password_hash: password_hash
     } do
       actor =
-        create_actor_with_password(
-          %{type: :account_admin_user, account: account},
-          password_hash
-        )
+        actor_fixture(type: :account_admin_user, account: account, password_hash: password_hash)
 
       conn =
         post(conn, ~p"/#{account.id}/sign_in/userpass/#{provider.id}", %{
@@ -61,10 +50,7 @@ defmodule PortalWeb.UserpassControllerTest do
       password_hash: password_hash
     } do
       actor =
-        create_actor_with_password(
-          %{type: :account_admin_user, account: account},
-          password_hash
-        )
+        actor_fixture(type: :account_admin_user, account: account, password_hash: password_hash)
 
       conn =
         post(conn, ~p"/#{account.id}/sign_in/userpass/#{provider.id}", %{
@@ -81,10 +67,7 @@ defmodule PortalWeb.UserpassControllerTest do
       password_hash: password_hash
     } do
       actor =
-        create_actor_with_password(
-          %{type: :account_admin_user, account: account},
-          password_hash
-        )
+        actor_fixture(type: :account_admin_user, account: account, password_hash: password_hash)
 
       redirect_to = ~p"/#{account}/resources"
 
@@ -104,10 +87,7 @@ defmodule PortalWeb.UserpassControllerTest do
       password_hash: password_hash
     } do
       actor =
-        create_actor_with_password(
-          %{type: :account_admin_user, account: account},
-          password_hash
-        )
+        actor_fixture(type: :account_admin_user, account: account, password_hash: password_hash)
 
       conn =
         post(conn, ~p"/#{account.id}/sign_in/userpass/#{provider.id}", %{
@@ -138,10 +118,7 @@ defmodule PortalWeb.UserpassControllerTest do
       other_account = account_fixture()
 
       actor =
-        create_actor_with_password(
-          %{type: :account_admin_user, account: account},
-          password_hash
-        )
+        actor_fixture(type: :account_admin_user, account: account, password_hash: password_hash)
 
       conn =
         post(conn, ~p"/#{account.id}/sign_in/userpass/#{provider.id}", %{
@@ -161,10 +138,7 @@ defmodule PortalWeb.UserpassControllerTest do
       prefix_account = account_fixture(slug: "#{account.slug}_other")
 
       actor =
-        create_actor_with_password(
-          %{type: :account_admin_user, account: account},
-          password_hash
-        )
+        actor_fixture(type: :account_admin_user, account: account, password_hash: password_hash)
 
       conn =
         post(conn, ~p"/#{account.id}/sign_in/userpass/#{provider.id}", %{
@@ -182,10 +156,7 @@ defmodule PortalWeb.UserpassControllerTest do
       password_hash: password_hash
     } do
       actor =
-        create_actor_with_password(
-          %{type: :account_user, account: account},
-          password_hash
-        )
+        actor_fixture(type: :account_user, account: account, password_hash: password_hash)
 
       conn =
         post(conn, ~p"/#{account.id}/sign_in/userpass/#{provider.id}", %{
@@ -203,10 +174,7 @@ defmodule PortalWeb.UserpassControllerTest do
       password_hash: password_hash
     } do
       actor =
-        create_actor_with_password(
-          %{type: :account_admin_user, account: account},
-          password_hash
-        )
+        actor_fixture(type: :account_admin_user, account: account, password_hash: password_hash)
 
       conn =
         post(conn, ~p"/#{account.id}/sign_in/userpass/#{provider.id}", %{
@@ -227,10 +195,7 @@ defmodule PortalWeb.UserpassControllerTest do
       password_hash: password_hash
     } do
       actor =
-        create_actor_with_password(
-          %{type: :account_user, account: account},
-          password_hash
-        )
+        actor_fixture(type: :account_user, account: account, password_hash: password_hash)
 
       conn =
         post(conn, ~p"/#{account.id}/sign_in/userpass/#{provider.id}", %{
@@ -251,10 +216,7 @@ defmodule PortalWeb.UserpassControllerTest do
       password_hash: password_hash
     } do
       actor =
-        create_actor_with_password(
-          %{type: :account_admin_user, account: account},
-          password_hash
-        )
+        actor_fixture(type: :account_admin_user, account: account, password_hash: password_hash)
 
       conn =
         post(conn, ~p"/#{account.id}/sign_in/userpass/#{provider.id}", %{
@@ -275,10 +237,7 @@ defmodule PortalWeb.UserpassControllerTest do
       password_hash: password_hash
     } do
       actor =
-        create_actor_with_password(
-          %{type: :account_admin_user, account: account},
-          password_hash
-        )
+        actor_fixture(type: :account_admin_user, account: account, password_hash: password_hash)
 
       conn =
         post(conn, ~p"/#{account.id}/sign_in/userpass/#{provider.id}", %{
@@ -299,10 +258,7 @@ defmodule PortalWeb.UserpassControllerTest do
       password_hash: password_hash
     } do
       actor =
-        create_actor_with_password(
-          %{type: :account_user, account: account},
-          password_hash
-        )
+        actor_fixture(type: :account_user, account: account, password_hash: password_hash)
 
       conn =
         post(conn, ~p"/#{account.id}/sign_in/userpass/#{provider.id}", %{
@@ -322,10 +278,7 @@ defmodule PortalWeb.UserpassControllerTest do
       password_hash: password_hash
     } do
       actor =
-        create_actor_with_password(
-          %{type: :account_user, account: account},
-          password_hash
-        )
+        actor_fixture(type: :account_user, account: account, password_hash: password_hash)
 
       conn =
         post(conn, ~p"/#{account.id}/sign_in/userpass/#{provider.id}", %{
@@ -350,10 +303,7 @@ defmodule PortalWeb.UserpassControllerTest do
       update_account(account, %{users_limit_exceeded: true})
 
       actor =
-        create_actor_with_password(
-          %{type: :account_user, account: account},
-          password_hash
-        )
+        actor_fixture(type: :account_user, account: account, password_hash: password_hash)
 
       conn =
         post(conn, ~p"/#{account.id}/sign_in/userpass/#{provider.id}", %{
@@ -378,10 +328,7 @@ defmodule PortalWeb.UserpassControllerTest do
       update_account(account, %{seats_limit_exceeded: true})
 
       actor =
-        create_actor_with_password(
-          %{type: :account_user, account: account},
-          password_hash
-        )
+        actor_fixture(type: :account_user, account: account, password_hash: password_hash)
 
       # Sign-in should still succeed since seats is a soft limit
       conn =
@@ -406,10 +353,7 @@ defmodule PortalWeb.UserpassControllerTest do
       update_account(account, %{users_limit_exceeded: true, sites_limit_exceeded: true})
 
       actor =
-        create_actor_with_password(
-          %{type: :account_user, account: account},
-          password_hash
-        )
+        actor_fixture(type: :account_user, account: account, password_hash: password_hash)
 
       conn =
         post(conn, ~p"/#{account.id}/sign_in/userpass/#{provider.id}", %{
@@ -432,10 +376,7 @@ defmodule PortalWeb.UserpassControllerTest do
       update_account(account, %{sites_limit_exceeded: true})
 
       actor =
-        create_actor_with_password(
-          %{type: :account_user, account: account},
-          password_hash
-        )
+        actor_fixture(type: :account_user, account: account, password_hash: password_hash)
 
       conn =
         post(conn, ~p"/#{account.id}/sign_in/userpass/#{provider.id}", %{
@@ -460,10 +401,7 @@ defmodule PortalWeb.UserpassControllerTest do
       update_account(account, %{users_limit_exceeded: true})
 
       actor =
-        create_actor_with_password(
-          %{type: :account_admin_user, account: account},
-          password_hash
-        )
+        actor_fixture(type: :account_admin_user, account: account, password_hash: password_hash)
 
       conn =
         post(conn, ~p"/#{account.id}/sign_in/userpass/#{provider.id}", %{
@@ -485,10 +423,7 @@ defmodule PortalWeb.UserpassControllerTest do
       |> Portal.Repo.update!()
 
       actor =
-        create_actor_with_password(
-          %{type: :account_admin_user, account: account},
-          password_hash
-        )
+        actor_fixture(type: :account_admin_user, account: account, password_hash: password_hash)
 
       conn =
         post(conn, ~p"/#{account.id}/sign_in/userpass/#{provider.id}", %{
@@ -510,10 +445,7 @@ defmodule PortalWeb.UserpassControllerTest do
       |> Portal.Repo.update!()
 
       actor =
-        create_actor_with_password(
-          %{type: :account_admin_user, account: account},
-          password_hash
-        )
+        actor_fixture(type: :account_admin_user, account: account, password_hash: password_hash)
 
       conn =
         post(conn, ~p"/#{account.id}/sign_in/userpass/#{provider.id}", %{
@@ -538,10 +470,7 @@ defmodule PortalWeb.UserpassControllerTest do
       |> Portal.Repo.update!()
 
       actor =
-        create_actor_with_password(
-          %{type: :account_admin_user, account: account},
-          password_hash
-        )
+        actor_fixture(type: :account_admin_user, account: account, password_hash: password_hash)
 
       conn =
         post(conn, ~p"/#{account.id}/sign_in/userpass/#{provider.id}", %{
