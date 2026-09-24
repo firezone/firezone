@@ -844,6 +844,7 @@ defmodule PortalWeb.Resources.Components do
     [
       Portal.Types.INET.to_string(device.ipv4),
       Portal.Types.INET.to_string(device.ipv6),
+      Portal.Device.fqdn(device),
       device.device_serial,
       device.device_uuid,
       device.id
@@ -999,10 +1000,10 @@ defmodule PortalWeb.Resources.Components do
               {@resource.address}
             </p>
             <p
-              :if={@resource.type == :device_pool and not lists_devices?(@resource)}
-              class="font-mono text-xs text-subtle mt-0.5 truncate"
+              :if={@resource.type == :device_pool}
+              class="text-xs italic text-subtle mt-0.5 truncate"
             >
-              &lt;slug&gt;.{Portal.Device.domain()}
+              Multiple Addresses
             </p>
           </div>
           <%!-- Right: actions --%>
@@ -1181,6 +1182,7 @@ defmodule PortalWeb.Resources.Components do
               <th class="text-left px-4 py-2 font-medium">Name</th>
               <th class="text-left px-4 py-2 font-medium">Owner</th>
               <th class="text-left px-4 py-2 font-medium">Tunnel IPv4</th>
+              <th class="text-left px-4 py-2 font-medium">Tunnel DNS Name</th>
               <th class="text-left px-4 py-2 font-medium">Status</th>
               <th class="w-6"></th>
             </tr>
@@ -1212,6 +1214,15 @@ defmodule PortalWeb.Resources.Components do
                     {device.ipv4}
                   </.copy>
                 </td>
+                <td class="px-4 py-2 text-subtle font-mono">
+                  <.copy
+                    :if={device.slug}
+                    id={"pool-member-#{device.id}-dns-name"}
+                    class="flex items-center gap-1.5"
+                  >
+                    {Portal.Device.fqdn(device)}
+                  </.copy>
+                </td>
                 <td class="px-4 py-2">
                   <.device_status_badge
                     device={device}
@@ -1230,7 +1241,7 @@ defmodule PortalWeb.Resources.Components do
                 </td>
               </tr>
               <tr :if={@expanded_id == device.id} class="border-b border-border bg-raised">
-                <td colspan="5" class="px-4 py-3">
+                <td colspan="6" class="px-4 py-3">
                   <div class="grid grid-cols-2 gap-x-8 gap-y-3 text-xs">
                     <div :if={device.actor}>
                       <p class="text-subtle font-medium mb-1">Owner</p>
@@ -1264,6 +1275,15 @@ defmodule PortalWeb.Resources.Components do
                         class="flex items-start gap-1.5 text-heading font-mono break-all"
                       >
                         {device.ipv6}
+                      </.copy>
+                    </div>
+                    <div :if={device.slug}>
+                      <p class="text-subtle font-medium mb-1">Tunnel DNS Name</p>
+                      <.copy
+                        id={"pool-member-#{device.id}-detail-dns-name"}
+                        class="flex items-start gap-1.5 text-heading font-mono break-all"
+                      >
+                        {Portal.Device.fqdn(device)}
                       </.copy>
                     </div>
                     <div :if={device.last_seen_at}>
@@ -1876,13 +1896,7 @@ defmodule PortalWeb.Resources.Components do
               {@resource.address}
             </dd>
           </div>
-          <div :if={@resource.type == :device_pool and not lists_devices?(@resource)}>
-            <dt class="text-[10px] text-subtle mb-0.5">Address</dt>
-            <dd class="font-mono text-xs text-body font-medium break-all">
-              &lt;slug&gt;.{Portal.Device.domain()}
-            </dd>
-          </div>
-          <div :if={lists_devices?(@resource)}>
+          <div :if={@resource.type == :device_pool}>
             <dt class="text-[10px] text-subtle mb-0.5">Address</dt>
             <dd class="text-xs italic text-subtle">Multiple Addresses</dd>
           </div>
@@ -2163,6 +2177,7 @@ defmodule PortalWeb.Resources.Components do
           ilike(type(d.id, :string), ^pattern) or
           ilike(type(d.ipv4, :string), ^pattern) or
           ilike(type(d.ipv6, :string), ^pattern) or
+          ilike(coalesce(d.slug, ""), ^pattern) or
           ^device_identifier_filter(pattern)
       )
     end
