@@ -172,7 +172,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         if let unsavedToken { PacketTunnelProvider.handleTokenSave(unsavedToken) }
         completionHandler(nil)
       } catch {
-        Log.error(error)
+        PacketTunnelProvider.logStartError(error)
         completionHandler(error)
       }
     }
@@ -508,6 +508,27 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       do { try token.save() } catch { Log.error(error) }
     }
   #endif
+
+  private static let connectErrorReported = OSAllocatedUnfairLock(initialState: false)
+
+  /// Captures `connlibConnectError` once per process, since failed starts retry every ~30s.
+  private static func logStartError(_ error: Error) {
+    let isRepeat =
+      if case AdapterError.connlibConnectError = error {
+        connectErrorReported.withLock { reported in
+          defer { reported = true }
+          return reported
+        }
+      } else {
+        false
+      }
+
+    if isRepeat {
+      Log.error(error.localizedDescription)
+    } else {
+      Log.error(error)
+    }
+  }
 
   /// Handle commands from the Adapter via channel.
   ///
