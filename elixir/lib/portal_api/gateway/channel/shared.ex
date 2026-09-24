@@ -23,6 +23,10 @@ defmodule PortalAPI.Gateway.Channel.Shared do
 
   @session_durability_timeout :timer.seconds(15)
 
+  # Metrics tokens expire an hour after minting, so connected gateways are sent
+  # a fresh one well before that.
+  @refresh_metrics_token_every :timer.minutes(30)
+
   # Relay credentials must be stable across reconnects so that gateways
   # don't see credential changes on every websocket connect. We use a fixed
   # far-future date rather than a dynamic offset from now.
@@ -140,6 +144,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
     socket = assign(socket, :account, account)
 
     init(socket, account, relays)
+    Process.send_after(self(), :refresh_metrics_token, @refresh_metrics_token_every)
 
     # Cache relay IDs and stamp secrets for tracking
     socket = cache_relays(socket, relays)
@@ -150,6 +155,12 @@ defmodule PortalAPI.Gateway.Channel.Shared do
   def handle_info(:prune_cache, socket) do
     Process.send_after(self(), :prune_cache, @prune_cache_every)
     {:noreply, assign(socket, cache: Cache.Gateway.prune(socket.assigns.cache))}
+  end
+
+  def handle_info(:refresh_metrics_token, socket) do
+    Process.send_after(self(), :refresh_metrics_token, @refresh_metrics_token_every)
+    push_metrics_config(socket, socket.assigns.account)
+    {:noreply, socket}
   end
 
   ####################################
@@ -815,7 +826,8 @@ defmodule PortalAPI.Gateway.Channel.Shared do
   end
 
   defp push_metrics_config(socket, account) do
-    if Portal.Version.gateway_supports_metrics_config?(socket.assigns.gateway) do
+    if Portal.Account.active?(account) and
+         Portal.Version.gateway_supports_metrics_config?(socket.assigns.gateway) do
       gateway = socket.assigns.gateway
 
       case Portal.MetricsToken.mint(account, gateway.id, socket.assigns.site) do
@@ -890,6 +902,15 @@ defmodule PortalAPI.Gateway.Channel.Shared do
     end
 
     {:noreply, socket}
+  end
+
+  # Disabling an account is broadcast as its deletion, but leaves its gateways
+  # connected. Marking it disabled here stops handing them metrics tokens.
+  defp handle_change(
+         %Change{op: :delete, old_struct: %Portal.Account{id: account_id}},
+         %{assigns: %{account: %Portal.Account{id: account_id} = account}} = socket
+       ) do
+    {:noreply, assign(socket, :account, %{account | is_disabled: true})}
   end
 
   # POLICY_AUTHORIZATIONS

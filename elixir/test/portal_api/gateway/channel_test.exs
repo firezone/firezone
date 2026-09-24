@@ -376,7 +376,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       put_meters(account, ["custom.meter", "other.meter"])
 
       gateway =
-        gateway_fixture(account: account, site: site, last_seen_version: "1.6.2")
+        gateway_fixture(account: account, site: site, last_seen_version: "1.6.3")
         |> fetch_device!()
 
       join_channel(gateway, site, token)
@@ -402,7 +402,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       token: token
     } do
       gateway =
-        gateway_fixture(account: account, site: site, last_seen_version: "1.6.2")
+        gateway_fixture(account: account, site: site, last_seen_version: "1.6.3")
         |> fetch_device!()
 
       join_channel(gateway, site, token)
@@ -418,7 +418,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       Portal.Config.put_env_override(:portal, :metrics_token_private_key, "")
 
       gateway =
-        gateway_fixture(account: account, site: site, last_seen_version: "1.6.2")
+        gateway_fixture(account: account, site: site, last_seen_version: "1.6.3")
         |> fetch_device!()
 
       socket = join_channel(gateway, site, token)
@@ -434,13 +434,57 @@ defmodule PortalAPI.Gateway.ChannelTest do
       token: token
     } do
       gateway =
-        gateway_fixture(account: account, site: site, last_seen_version: "1.6.1")
+        gateway_fixture(account: account, site: site, last_seen_version: "1.6.2")
         |> fetch_device!()
 
       join_channel(gateway, site, token)
 
       assert_push "init", _init_payload
       refute_push "configure_metrics", _payload
+    end
+
+    test "periodically resends the metrics config with a fresh token", %{
+      account: account,
+      site: site,
+      token: token
+    } do
+      gateway =
+        gateway_fixture(account: account, site: site, last_seen_version: "1.6.3")
+        |> fetch_device!()
+
+      socket = join_channel(gateway, site, token)
+      assert_push "configure_metrics", _payload
+
+      send(socket.channel_pid, :refresh_metrics_token)
+
+      assert_push "configure_metrics", %{token: refreshed}
+      assert {:ok, %{"gateway_id" => gateway_id}} = Portal.MetricsToken.verify(refreshed)
+      assert gateway_id == gateway.id
+    end
+
+    test "stops handing out metrics tokens once the account is disabled", %{
+      account: account,
+      site: site,
+      token: token
+    } do
+      gateway =
+        gateway_fixture(account: account, site: site, last_seen_version: "1.6.3")
+        |> fetch_device!()
+
+      socket = join_channel(gateway, site, token)
+      assert_push "configure_metrics", _payload
+
+      send(socket.channel_pid, %Changes.Change{
+        lsn: System.unique_integer([:positive, :monotonic]),
+        op: :delete,
+        old_struct: account
+      })
+
+      send(socket.channel_pid, :refresh_metrics_token)
+      :sys.get_state(socket.channel_pid)
+
+      refute_push "configure_metrics", _payload
+      assert Process.alive?(socket.channel_pid)
     end
 
     test "init includes inbound authorizations from the hydrated cache", %{
@@ -1599,7 +1643,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       token: token
     } do
       gateway =
-        gateway_fixture(account: account, site: site, last_seen_version: "1.6.2")
+        gateway_fixture(account: account, site: site, last_seen_version: "1.6.3")
         |> fetch_device!()
 
       socket = join_channel(gateway, site, token)

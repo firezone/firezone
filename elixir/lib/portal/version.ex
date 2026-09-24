@@ -118,12 +118,12 @@ defmodule Portal.Version do
     end
   end
 
-  # Reporting metrics requires gateway >= 1.6.2; older ones do not know the
+  # Reporting metrics requires gateway >= 1.6.3; older ones do not know the
   # `configure_metrics` event and log a warning when they receive it.
   def gateway_supports_metrics_config?(%Device{type: :gateway, last_seen_version: nil}), do: false
 
   def gateway_supports_metrics_config?(%Device{type: :gateway, last_seen_version: version}),
-    do: Version.compare(version, "1.6.2") != :lt
+    do: Version.compare(version, "1.6.3") != :lt
 
   # Two clients can only establish a peer-to-peer connection if they share the
   # same major.minor — this lets us evolve snownet's wire format on a minor cadence

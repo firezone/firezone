@@ -254,15 +254,15 @@ defmodule Portal.VersionTest do
   end
 
   describe "gateway_supports_metrics_config?/1" do
-    test "requires 1.6.2" do
+    test "requires 1.6.3" do
       refute Portal.Version.gateway_supports_metrics_config?(%Portal.Device{
                type: :gateway,
-               last_seen_version: "1.6.1"
+               last_seen_version: "1.6.2"
              })
 
       assert Portal.Version.gateway_supports_metrics_config?(%Portal.Device{
                type: :gateway,
-               last_seen_version: "1.6.2"
+               last_seen_version: "1.6.3"
              })
     end
 
