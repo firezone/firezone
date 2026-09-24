@@ -14,8 +14,8 @@ opentelemetry = { workspace = true, features = ["metrics"] }
 opentelemetry-proto = { workspace = true }
 opentelemetry_sdk = { workspace = true, features = ["metrics", "experimental_metrics_custom_reader"] }
 parking_lot = { workspace = true }
+prost = { workspace = true }
 secrecy = { workspace = true }
-serde_json = { workspace = true }
 socket-factory = { workspace = true }
 tokio = { workspace = true, features = ["rt", "net", "sync", "time"] }
 tracing = { workspace = true }

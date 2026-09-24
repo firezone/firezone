@@ -1499,18 +1499,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "const-hex"
-version = "1.19.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0e59eef12462b0f9b0a3620219be5d639afd79fe39dff0a42c3997061f9298b4"
-dependencies = [
- "cfg-if",
- "cpufeatures 0.2.17",
- "proptest",
- "serde_core",
-]
-
-[[package]]
 name = "const-oid"
 version = "0.10.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5516,12 +5504,9 @@ version = "0.32.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "56d658ba1faf63f7b9c492cfbe6e0ec365440a16132d3270c1065f7b33f1b638"
 dependencies = [
- "base64 0.22.1",
- "const-hex",
  "opentelemetry",
  "opentelemetry_sdk",
  "prost",
- "serde",
  "tonic",
  "tonic-prost",
 ]
@@ -5957,8 +5942,8 @@ dependencies = [
  "opentelemetry_sdk",
  "otel-instruments",
  "parking_lot",
+ "prost",
  "secrecy",
- "serde_json",
  "socket-factory",
  "tokio",
  "tracing",

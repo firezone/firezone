@@ -2,7 +2,7 @@
 //!
 //! [`spawn`] returns a [`Reader`] to install on the process' meter provider and
 //! a thread that collects from it on the portal's cadence, POSTing the deltas of
-//! the [`Config::meters`] as OTLP/HTTP with JSON encoding.
+//! the [`Config::meters`] as OTLP/HTTP with protobuf encoding.
 //!
 //! The portal's config arrives long after start-up and only ever lives in
 //! memory. Until it does, nothing is collected, so the SDK keeps accumulating
@@ -29,6 +29,7 @@ use opentelemetry_sdk::{
     metrics::{InstrumentKind, ManualReader, Pipeline, Temporality, data, reader::MetricReader},
 };
 use parking_lot::Mutex;
+use prost::Message as _;
 use secrecy::SecretString;
 use socket_factory::{SocketFactory, TcpSocket};
 use tokio::sync::Notify;
@@ -247,12 +248,10 @@ async fn report(
     request: &ExportMetricsServiceRequest,
     socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
 ) -> Result<()> {
-    let body = serde_json::to_vec(request).context("Failed to serialize metrics report")?;
-
     ingest::report(
         &endpoint.api_url,
         &endpoint.token,
-        Bytes::from(body),
+        Bytes::from(request.encode_to_vec()),
         socket_factory,
     )
     .await?;
@@ -312,21 +311,21 @@ fn export_request(
 #[cfg(test)]
 mod tests {
     use opentelemetry::{KeyValue, metrics::MeterProvider as _};
-    use opentelemetry_proto::tonic::metrics::v1::metric::Data;
+    use opentelemetry_proto::tonic::metrics::v1::{
+        Metric, NumberDataPoint, metric::Data, number_data_point,
+    };
     use opentelemetry_sdk::{Resource, metrics::SdkMeterProvider};
-    use serde_json::json;
 
     use super::*;
 
     #[test]
-    fn exports_the_reported_counters_as_otlp_json() {
+    fn exports_only_the_reported_counters_without_a_resource() {
         let reader = Reader::default();
         let provider = meter_provider(&reader);
         let meter = provider.meter("connlib");
 
         meter
             .u64_counter(otel_instruments::FLOW_LOG_REPORT_ERRORS)
-            .with_description("Number of failures to spool a flow-log report.")
             .with_unit("{error}")
             .build()
             .add(
@@ -341,52 +340,35 @@ mod tests {
             .build()
             .add(7, &[]);
 
-        let mut request = export_request(
+        let request = export_request(
             &reader,
             &meters(&[otel_instruments::FLOW_LOG_REPORT_ERRORS]),
         )
         .unwrap();
-        fix_timestamps(&mut request);
+        let request =
+            ExportMetricsServiceRequest::decode(request.encode_to_vec().as_slice()).unwrap();
 
-        assert_eq!(
-            serde_json::to_value(&request).unwrap(),
-            json!({
-                "resourceMetrics": [{
-                    "resource": null,
-                    "scopeMetrics": [{
-                        "scope": {
-                            "name": "connlib",
-                            "version": "",
-                            "attributes": [],
-                            "droppedAttributesCount": 0
-                        },
-                        "metrics": [{
-                            "name": "flow_logs.report.errors",
-                            "description": "Number of failures to spool a flow-log report.",
-                            "unit": "{error}",
-                            "metadata": [],
-                            "sum": {
-                                "dataPoints": [{
-                                    "attributes": [{
-                                        "key": "error.type",
-                                        "value": { "stringValue": "io::ErrorKind::PermissionDenied" }
-                                    }],
-                                    "startTimeUnixNano": "1000000000",
-                                    "timeUnixNano": "2000000000",
-                                    "exemplars": [],
-                                    "flags": 0,
-                                    "asInt": 3
-                                }],
-                                "aggregationTemporality": 1,
-                                "isMonotonic": true
-                            }
-                        }],
-                        "schemaUrl": ""
-                    }],
-                    "schemaUrl": ""
-                }]
-            })
-        );
+        let [resource_metrics] = request.resource_metrics.as_slice() else {
+            panic!("Expected one collection: {request:?}");
+        };
+        assert_eq!(resource_metrics.resource, None);
+
+        let [scope_metrics] = resource_metrics.scope_metrics.as_slice() else {
+            panic!("Expected one scope: {resource_metrics:?}");
+        };
+        assert_eq!(scope_metrics.scope.as_ref().unwrap().name, "connlib");
+
+        let [metric] = scope_metrics.metrics.as_slice() else {
+            panic!("Expected one metric: {scope_metrics:?}");
+        };
+        assert_eq!(metric.name, "flow_logs.report.errors");
+        assert_eq!(metric.unit, "{error}");
+
+        let [data_point] = sum_data_points(metric) else {
+            panic!("Expected one data point: {metric:?}");
+        };
+        assert_eq!(data_point.value, Some(number_data_point::Value::AsInt(3)));
+        assert_eq!(data_point.attributes[0].key, "error.type");
     }
 
     #[test]
@@ -404,14 +386,9 @@ mod tests {
         export_request(&reader, &meters).unwrap();
         counter.add(1, &[]);
 
-        let request = serde_json::to_value(export_request(&reader, &meters).unwrap()).unwrap();
+        let request = export_request(&reader, &meters).unwrap();
 
-        assert_eq!(
-            request
-                .pointer("/resourceMetrics/0/scopeMetrics/0/metrics/0/sum/dataPoints/0/asInt")
-                .unwrap(),
-            1
-        );
+        assert_eq!(only_int_value(&request), 1);
     }
 
     #[test]
@@ -427,14 +404,9 @@ mod tests {
         counter.add(3, &[]);
         export_request(&reader, &BTreeSet::default()).unwrap();
 
-        let request = serde_json::to_value(export_request(&reader, &meters).unwrap()).unwrap();
+        let request = export_request(&reader, &meters).unwrap();
 
-        assert_eq!(
-            request
-                .pointer("/resourceMetrics/0/scopeMetrics/0/metrics/0/sum/dataPoints/0/asInt")
-                .unwrap(),
-            3
-        );
+        assert_eq!(only_int_value(&request), 3);
     }
 
     #[test]
@@ -469,20 +441,20 @@ mod tests {
             .build()
     }
 
-    fn fix_timestamps(request: &mut ExportMetricsServiceRequest) {
-        for resource_metrics in &mut request.resource_metrics {
-            for scope_metrics in &mut resource_metrics.scope_metrics {
-                for metric in &mut scope_metrics.metrics {
-                    let Some(Data::Sum(sum)) = metric.data.as_mut() else {
-                        continue;
-                    };
+    fn sum_data_points(metric: &Metric) -> &[NumberDataPoint] {
+        let Some(Data::Sum(sum)) = &metric.data else {
+            panic!("Expected a sum: {metric:?}");
+        };
 
-                    for data_point in &mut sum.data_points {
-                        data_point.start_time_unix_nano = 1_000_000_000;
-                        data_point.time_unix_nano = 2_000_000_000;
-                    }
-                }
-            }
+        &sum.data_points
+    }
+
+    fn only_int_value(request: &ExportMetricsServiceRequest) -> i64 {
+        let metric = &request.resource_metrics[0].scope_metrics[0].metrics[0];
+
+        match sum_data_points(metric)[0].value {
+            Some(number_data_point::Value::AsInt(value)) => value,
+            ref other => panic!("Expected an integer: {other:?}"),
         }
     }
 }
