@@ -88,28 +88,14 @@ impl NatTable {
         outside_dst: IpAddr,
         now: Instant,
     ) -> Result<(Protocol, IpAddr)> {
+        if let Some(outside) = self.translate_outgoing_existing(packet, now)? {
+            return Ok(outside);
+        }
+
         let src = packet.source_protocol()?;
         let dst = packet.destination();
 
         let inside = Inside(src, dst);
-
-        if let Some(outside) = self.table.get_by_left(&inside).copied()
-            && let Some(state) = self.state_by_inside.get_mut(&inside)
-        {
-            tracing::trace!(?inside, ?outside, ?state, "Translating outgoing packet");
-
-            if packet.as_tcp().is_some_and(|tcp| tcp.rst()) {
-                state.outgoing_rst = true;
-            }
-
-            if packet.as_tcp().is_some_and(|tcp| tcp.fin()) {
-                state.outgoing_fin = true;
-            }
-
-            state.last_outgoing = now;
-
-            return Ok(outside.into_inner());
-        }
 
         // Find the first available public port, starting from the port of the to-be-mapped packet.
         // This will re-assign the same port in most cases, even after the mapping expires.
@@ -126,6 +112,34 @@ impl NatTable {
         tracing::debug!(?inside, ?outside, "New NAT session");
 
         Ok(outside.into_inner())
+    }
+
+    pub(crate) fn translate_outgoing_existing(
+        &mut self,
+        packet: &IpPacket,
+        now: Instant,
+    ) -> Result<Option<(Protocol, IpAddr)>> {
+        let inside = Inside(packet.source_protocol()?, packet.destination());
+        let Some(outside) = self.table.get_by_left(&inside).copied() else {
+            return Ok(None);
+        };
+        let Some(state) = self.state_by_inside.get_mut(&inside) else {
+            return Ok(None);
+        };
+
+        tracing::trace!(?inside, ?outside, ?state, "Translating outgoing packet");
+
+        if packet.as_tcp().is_some_and(|tcp| tcp.rst()) {
+            state.outgoing_rst = true;
+        }
+
+        if packet.as_tcp().is_some_and(|tcp| tcp.fin()) {
+            state.outgoing_fin = true;
+        }
+
+        state.last_outgoing = now;
+
+        Ok(Some(outside.into_inner()))
     }
 
     pub(crate) fn translate_incoming(
