@@ -145,6 +145,8 @@ pub(super) fn generate(
         (!existing_flows.is_empty()).then_some((K::SendPacketOnExistingFlow, 25)),
         (!dns_query_targets.is_empty()).then_some((K::SendDnsQueries, 10)),
         (!listed_device_pools.is_empty()).then_some((K::UpdateDevicePoolMembers, 2)),
+        // ICE-less connections migrate to a sampled relay instead of failing, which can pick an
+        // allocation whose `ALLOCATE` is still in flight and then gets rejected.
         (!portal.iceless() && !accepting_relays.is_empty()).then_some((K::ExhaustRelayPorts, 1)),
         (!exhausted_relays.is_empty()).then_some((K::FreeRelayPorts, 1)),
     ]
