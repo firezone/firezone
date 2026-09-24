@@ -259,10 +259,17 @@ where
             })
             .map(|(rid, _)| rid)
             .collect::<SmallVec<[_; 2]>>(); // Typically, we are only connected to 2 relays. Using a `SmallVec` here avoids allocations.
+        let suspended = self
+            .inner
+            .iter()
+            .filter(|(_, allocation)| allocation.is_suspended())
+            .map(|(rid, _)| *rid)
+            .collect();
 
         Gc {
             removed_last: !removed.is_empty() && self.inner.is_empty(),
             removed,
+            suspended,
         }
     }
 
@@ -360,6 +367,8 @@ pub(crate) struct Gc<RId> {
     pub(crate) removed: SmallVec<[RId; 2]>,
     /// Whether we removed the last remaining allocation.
     pub(crate) removed_last: bool,
+    /// The remaining allocations that are suspended and thus cannot relay anything.
+    pub(crate) suspended: SmallVec<[RId; 2]>,
 }
 
 #[cfg(test)]
