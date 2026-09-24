@@ -329,12 +329,18 @@ actor Adapter {
     }
 
     // Wait for tunnel to be ready (first tunInterfaceUpdated event)
-    try await withTaskCancellationHandler {
-      try await withCheckedThrowingContinuation { continuation in
-        self.startContinuation = continuation
+    do {
+      try await withTaskCancellationHandler {
+        try await withCheckedThrowingContinuation { continuation in
+          self.startContinuation = continuation
+        }
+      } onCancel: {
+        Task { await self.cancelStartContinuation() }
       }
-    } onCancel: {
-      Task { await self.cancelStartContinuation() }
+    } catch {
+      // Cancelling the event loop task does not interrupt `nextEvent`, so disconnect explicitly.
+      await stop()
+      throw error
     }
 
     Log.log("Adapter.start: Session started successfully")
