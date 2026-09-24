@@ -1855,7 +1855,7 @@ defmodule PortalWeb.ResourcesTest do
         |> live(~p"/#{account}/resources/#{resource.id}")
 
       refute html =~ "Tunnel IPv6"
-      assert has_element?(lv, "#pool-member-#{device.id}-dns-name-code", Portal.Device.fqdn(device))
+      refute html =~ Portal.Device.fqdn(device)
 
       html = render_click(lv, "toggle_pool_device_row", %{"id" => device.id})
       assert html =~ "Tunnel IPv6"

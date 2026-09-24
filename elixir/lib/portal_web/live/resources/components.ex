@@ -1182,7 +1182,6 @@ defmodule PortalWeb.Resources.Components do
               <th class="text-left px-4 py-2 font-medium">Name</th>
               <th class="text-left px-4 py-2 font-medium">Owner</th>
               <th class="text-left px-4 py-2 font-medium">Tunnel IPv4</th>
-              <th class="text-left px-4 py-2 font-medium">Tunnel DNS Name</th>
               <th class="text-left px-4 py-2 font-medium">Status</th>
               <th class="w-6"></th>
             </tr>
@@ -1214,15 +1213,6 @@ defmodule PortalWeb.Resources.Components do
                     {device.ipv4}
                   </.copy>
                 </td>
-                <td class="px-4 py-2 text-subtle font-mono">
-                  <.copy
-                    :if={device.slug}
-                    id={"pool-member-#{device.id}-dns-name"}
-                    class="flex items-center gap-1.5"
-                  >
-                    {Portal.Device.fqdn(device)}
-                  </.copy>
-                </td>
                 <td class="px-4 py-2">
                   <.device_status_badge
                     device={device}
@@ -1241,7 +1231,7 @@ defmodule PortalWeb.Resources.Components do
                 </td>
               </tr>
               <tr :if={@expanded_id == device.id} class="border-b border-border bg-raised">
-                <td colspan="6" class="px-4 py-3">
+                <td colspan="5" class="px-4 py-3">
                   <div class="grid grid-cols-2 gap-x-8 gap-y-3 text-xs">
                     <div :if={device.actor}>
                       <p class="text-subtle font-medium mb-1">Owner</p>
