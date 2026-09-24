@@ -149,6 +149,11 @@ impl Session {
     pub fn stop(&self) {
         let _ = self.channel.send(Command::Stop);
     }
+
+    /// Resolves once the event-loop has finished, including its graceful shutdown.
+    pub async fn closed(&self) {
+        self.channel.closed().await
+    }
 }
 
 impl EventStream {
