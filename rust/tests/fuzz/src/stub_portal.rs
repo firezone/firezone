@@ -46,7 +46,7 @@ pub struct StubPortal {
     /// Stable index used to pick a gateway within a site (`index % len`).
     #[debug(skip)]
     gateway_selector: u32,
-    /// How often each Client was handed a Gateway it did not prefer, per site.
+    /// How often each Client was handed a Gateway it did not prefer since it started, per site.
     #[debug(skip)]
     load_balanced_requests: BTreeMap<(ClientId, SiteId), u32>,
 
