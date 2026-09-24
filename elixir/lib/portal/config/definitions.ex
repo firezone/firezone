@@ -247,10 +247,21 @@ defmodule Portal.Config.Definitions do
   defconfig(:metrics_token_private_key, :string, default: nil, sensitive: true)
 
   @doc """
-  Identifier of the metrics token signing key, sent as the `kid` JWT header so
-  the ingest service can pick the matching public key during a key rotation.
+  Identifier of the metrics token signing key, sent as the `kid` JWT header.
+  Tokens naming any other key are rejected.
   """
   defconfig(:metrics_token_key_id, :string, default: nil)
+
+  @doc """
+  The Azure Monitor data collection endpoint URL gateway metrics are forwarded
+  to, as OTLP/HTTP protobuf. Reports are rejected while it is unset.
+  """
+  defconfig(:metrics_dce_endpoint, :string,
+    default: nil,
+    changeset: fn changeset, key ->
+      Portal.Changeset.validate_uri(changeset, key)
+    end
+  )
 
   @doc """
   Access key ID for Firezone's AWS account, used to assume customer IAM roles

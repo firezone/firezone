@@ -44,7 +44,7 @@ defmodule Portal.MetricsTokenTest do
       assert fields["kid"] == "2026-09"
     end
 
-    test "carries the attribution the ingest service needs", %{
+    test "carries the attribution a report is stamped with", %{
       account: account,
       site: site,
       gateway_id: gateway_id
@@ -63,7 +63,7 @@ defmodule Portal.MetricsTokenTest do
                ~w[account_id account_slug exp gateway_id iat site_id site_name]
     end
 
-    test "stamps exp 7 days after minting", %{
+    test "stamps exp one hour after minting", %{
       account: account,
       site: site,
       gateway_id: gateway_id
@@ -71,7 +71,7 @@ defmodule Portal.MetricsTokenTest do
       {:ok, token} = MetricsToken.mint(account, gateway_id, site)
 
       assert {true, %JOSE.JWT{fields: claims}, _jws} = verify(token)
-      assert claims["exp"] == claims["iat"] + 604_800
+      assert claims["exp"] == claims["iat"] + 3_600
     end
 
     test "errs when no signing key is configured", %{

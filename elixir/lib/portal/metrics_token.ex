@@ -1,29 +1,27 @@
 defmodule Portal.MetricsToken do
   @moduledoc """
-  Mints the tokens gateways report metrics with.
+  Mints and verifies the tokens gateways report metrics with.
 
-  A token is an EdDSA (Ed25519) JWT signed with Firezone's metrics signing key.
-  The `kid` header names the key so keys can be rotated with overlapping
-  validity: the ingest service keeps every currently valid public key and picks
-  the one the token names.
+  A token is an EdDSA (Ed25519) JWT signed with Firezone's metrics signing key
+  and naming that key in its `kid` header. Verification derives the public key
+  from the same configured private key, so rotating the key rejects tokens
+  minted under the old `kid` until their gateways are sent fresh ones.
 
   The claims carry the full attribution of the reporting device: account,
-  gateway and site, each with the human-readable name the ingest service turns
-  into a metric label. Attribution travels in the token so the ingest service
-  never has to reach into the portal's database.
+  gateway and site, each with a human-readable name. Attribution travels in the
+  token so the ingest endpoint can verify and attribute a report without
+  touching the database.
 
-  The portal does not verify these tokens; the ingest service does, which is why
-  the key is asymmetric.
-
-  `exp` is 7 days from minting. The exporter keeps reporting while its websocket
-  to the portal is down, so the token has to outlive a disconnect; a gateway
-  that reconnects is issued a fresh token on every `init`, so the window never
-  has to cover more than one outage.
+  `exp` is one hour from minting. Revocation is by expiry: connected gateways
+  are sent a fresh token well before theirs expires, so a gateway that loses
+  its connection to the portal stops being able to report within the hour.
+  The ingest endpoint is served by the portal, so a gateway that cannot reach
+  the portal cannot report anyway.
   """
   alias Portal.Account
   alias Portal.Site
 
-  @token_lifetime_seconds 604_800
+  @token_lifetime_seconds 3_600
 
   @doc """
   Mint a token attributing metrics reports to `gateway_id` in `account`.
@@ -59,6 +57,40 @@ defmodule Portal.MetricsToken do
       {:ok, token}
     end
   end
+
+  @doc """
+  Verify a token and return its claims.
+
+  The algorithm is pinned to EdDSA, so a token presenting another `alg`
+  (including `none`) is rejected.
+  """
+  @spec verify(term()) :: {:ok, map()} | {:error, :invalid | :expired}
+  def verify(token) when is_binary(token) do
+    with {:ok, signing_key} <- signing_key(),
+         %JOSE.JWS{fields: %{"kid" => kid}} when is_binary(kid) <- JOSE.JWT.peek_protected(token),
+         true <- kid == key_id(),
+         {true, %JOSE.JWT{fields: claims}, _jws} <-
+           JOSE.JWT.verify_strict(JOSE.JWK.to_public(signing_key), ["EdDSA"], token) do
+      verify_exp(claims)
+    else
+      _ -> {:error, :invalid}
+    end
+  rescue
+    # `peek_protected` and `verify_strict` raise on input that is not a JWS.
+    _ -> {:error, :invalid}
+  end
+
+  def verify(_token), do: {:error, :invalid}
+
+  defp verify_exp(%{"exp" => exp} = claims) when is_integer(exp) do
+    if DateTime.to_unix(DateTime.utc_now()) < exp do
+      {:ok, claims}
+    else
+      {:error, :expired}
+    end
+  end
+
+  defp verify_exp(_claims), do: {:error, :invalid}
 
   defp signing_key do
     case Portal.Config.fetch_env!(:portal, :metrics_token_private_key) do

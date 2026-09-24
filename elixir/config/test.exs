@@ -163,6 +163,12 @@ config :portal, Portal.Azure.ManagedIdentity,
     retry: false
   ]
 
+config :portal, Portal.Azure.Monitor,
+  req_opts: [
+    plug: {Req.Test, Portal.Azure.Monitor},
+    retry: false
+  ]
+
 config :portal, Portal.Microsoft.Graph.APIClient,
   endpoint: "https://graph.microsoft.com",
   token_base_url: "https://login.microsoftonline.com",

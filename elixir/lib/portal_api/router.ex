@@ -112,6 +112,21 @@ defmodule PortalAPI.Router do
     post "/flow_logs", FlowLogController, :create
   end
 
+  # OTLP/HTTP with protobuf encoding, served only on its own hostname, so the
+  # path is the one the OTLP spec mandates rather than a portal-flavoured one.
+  # Nothing here reads the body before the token is verified.
+  pipeline :metrics do
+    plug :require_metrics_host
+    plug PortalAPI.Plugs.IngestionRateLimit
+    plug PortalAPI.Plugs.MetricsAuth
+  end
+
+  scope "/v1", PortalAPI do
+    pipe_through :metrics
+
+    post "/metrics", MetricsController, :create
+  end
+
   # URL versioning was tried (a /v1 prefix scope duplicating every route
   # below) and rolled back before ever shipping as the documented surface -
   # see git history if reviving it. Versioning strategy is deliberately
@@ -232,11 +247,25 @@ defmodule PortalAPI.Router do
     end
   end
 
+  def require_metrics_host(%Plug.Conn{} = conn, _opts) do
+    if String.downcase(conn.host) == configured_host(:metrics_api_url) do
+      conn
+    else
+      PortalAPI.ProblemDetails.send(conn, 404, "Not Found")
+    end
+  end
+
   defp ingestion_hosts do
-    [:flow_logs_api_url]
-    |> Enum.map(&Portal.Config.get_env(:portal, &1))
+    [:flow_logs_api_url, :metrics_api_url]
+    |> Enum.map(&configured_host/1)
     |> Enum.reject(&is_nil/1)
-    |> Enum.map(&URI.parse(&1).host)
+  end
+
+  defp configured_host(key) do
+    case Portal.Config.get_env(:portal, key) do
+      nil -> nil
+      url -> url |> URI.parse() |> Map.fetch!(:host) |> String.downcase()
+    end
   end
 
   defp redirect_to_canonical_host(%Plug.Conn{host: host} = conn, %URI{host: host}), do: conn

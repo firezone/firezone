@@ -11,6 +11,7 @@ defmodule Portal.EndpointTest do
     Portal.Config.put_env_override(:portal, :api_external_url, "https://api.firezone.test/")
     Portal.Config.put_env_override(:portal, :rest_api_url, "https://rest-api.firezone.test/")
     Portal.Config.put_env_override(:portal, :flow_logs_api_url, "https://flow-api.firezone.test/")
+    Portal.Config.put_env_override(:portal, :metrics_api_url, "https://metrics.firezone.test/")
     Portal.Config.put_env_override(:portal, :mtls_external_url, "https://mtls.firezone.test/")
   end
 
@@ -160,7 +161,7 @@ defmodule Portal.EndpointTest do
 
   test "dispatches every API hostname to the API endpoint" do
     for host <-
-          ~w(api.firezone.test rest-api.firezone.test flow-api.firezone.test) do
+          ~w(api.firezone.test rest-api.firezone.test flow-api.firezone.test metrics.firezone.test) do
       conn = Endpoint.call(conn(:get, "https://#{host}/not-found"), [])
       assert conn.private.phoenix_endpoint == PortalAPI.Endpoint
     end

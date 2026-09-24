@@ -217,6 +217,14 @@ config :portal, Portal.Azure.ManagedIdentity,
     retry: :transient
   ]
 
+# Gateways retain undelivered reports and send them along with their next one,
+# so a failed forward is not retried here.
+config :portal, Portal.Azure.Monitor,
+  req_opts: [
+    receive_timeout: 10_000,
+    retry: false
+  ]
+
 config :portal, Portal.Microsoft.Graph.APIClient,
   endpoint: "https://graph.microsoft.com",
   token_base_url: "https://login.microsoftonline.com",
@@ -496,6 +504,7 @@ config :portal,
   metrics_api_url: "https://telemetry.firezone.dev/",
   metrics_report_interval_secs: 300,
   metrics_token_key_id: "dev",
+  metrics_dce_endpoint: nil,
   # Throw-away key for dev and test only; production keys come from Key Vault.
   metrics_token_private_key: """
   -----BEGIN PRIVATE KEY-----
