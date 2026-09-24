@@ -38,7 +38,7 @@ jobs:
         run: |
           set -e
 
-          jobs="elixir,rust,tauri,kotlin,swift,codeql,control-plane,telemetry-ingest,data-plane,loadtest,nix";
+          jobs="elixir,rust,tauri,kotlin,swift,codeql,control-plane,data-plane,loadtest,nix";
 
           # For workflow_dispatch or workflow_call, run all jobs
           if [ "${{ github.event_name }}" = "workflow_dispatch" ] || [ "${{ github.event_name }}" = "workflow_call" ]; then
@@ -122,7 +122,7 @@ jobs:
           # tauri / kotlin / swift jobs. Run the data-plane chain only for rust
           # changes outside those shims.
           if grep '^rust/' changed_files.txt | grep -qEv '^rust/(gui-client|client-ffi)/'; then
-            jobs="${jobs},control-plane,telemetry-ingest,data-plane,loadtest"
+            jobs="${jobs},control-plane,data-plane,loadtest"
           fi
 
           # Swift and Kotlin only build rust/client-ffi (the FFI shim) and its
@@ -182,7 +182,6 @@ jobs:
         tauri,
         codeql,
         control-plane,
-        telemetry-ingest,
         data-plane,
         integration-tests,
         compatibility-tests,
@@ -433,16 +432,6 @@ jobs:
     needs: planner
     if: contains(needs.planner.outputs.jobs_to_run, 'control-plane')
     uses: ./.github/workflows/_control-plane.yml
-    secrets: inherit
-    permissions:
-      id-token: write # OIDC auth
-      packages: write # push Docker images to GHCR
-      security-events: write # upload Trivy SARIF results
-
-  telemetry-ingest:
-    needs: planner
-    if: contains(needs.planner.outputs.jobs_to_run, 'telemetry-ingest')
-    uses: ./.github/workflows/_telemetry-ingest.yml
     secrets: inherit
     permissions:
       id-token: write # OIDC auth

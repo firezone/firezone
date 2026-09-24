@@ -75,15 +75,6 @@ jobs:
       packages: write # push Docker images to GHCR
       security-events: write # upload Trivy SARIF results
 
-  # Build the telemetry-ingest image for staging and production environments.
-  telemetry-ingest-image:
-    uses: ./.github/workflows/_telemetry-ingest.yml
-    secrets: inherit
-    permissions:
-      id-token: write # OIDC auth
-      packages: write # push Docker images to GHCR
-      security-events: write # upload Trivy SARIF results
-
   # Build loadtest binaries for QA environment.
   loadtest-binaries:
     uses: ./.github/workflows/_loadtest.yml
@@ -104,13 +95,7 @@ jobs:
       push_to_cache: true
 
   notify:
-    needs:
-      [
-        data-plane-prod-images,
-        control-plane-images,
-        telemetry-ingest-image,
-        loadtest-binaries,
-      ]
+    needs: [data-plane-prod-images, control-plane-images, loadtest-binaries]
     runs-on: ubuntu-24.04
     steps:
       - name: Send 'checks-passed' event

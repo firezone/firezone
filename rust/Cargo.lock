@@ -525,7 +525,6 @@ dependencies = [
  "percent-encoding",
  "pin-project-lite",
  "serde_core",
- "serde_json",
  "serde_path_to_error",
  "serde_urlencoded",
  "sha1",
@@ -6433,7 +6432,6 @@ dependencies = [
  "rustls-platform-verifier",
  "serde",
  "serde_json",
- "serde_urlencoded",
  "sync_wrapper",
  "tokio",
  "tokio-rustls",
@@ -8130,29 +8128,6 @@ dependencies = [
  "tracing-subscriber",
  "tunnel-bypass-resolver",
  "uuid",
-]
-
-[[package]]
-name = "telemetry-ingest"
-version = "0.1.0"
-dependencies = [
- "anyhow-ext",
- "axum",
- "base64 0.23.1",
- "clap",
- "futures",
- "opentelemetry-proto",
- "prost",
- "reqwest",
- "ring",
- "rustls",
- "serde",
- "serde_json",
- "tokio",
- "tower",
- "tracing",
- "tracing-subscriber",
- "url",
 ]
 
 [[package]]
