@@ -546,26 +546,17 @@ fn arb_icmp_error_hosts(
     records: &DnsRecords,
     upstream_do53: &[UpstreamDo53],
 ) -> IcmpErrorHosts {
-    let mut ips = records
+    let mut entries = records
         .ips_iter()
         .collect::<BTreeSet<_>>()
         .into_iter()
-        .collect::<Vec<_>>();
-    let num_ips = ips.len();
-    let pick = num_ips / 2;
+        .filter_map(|ip| {
+            if !g.bool() {
+                return None;
+            }
 
-    let chosen = (0..pick)
-        .map(|i| {
-            let remaining = num_ips - i;
-            let j = i + g.choose_index(remaining);
-            ips.swap(i, j);
-            ips[i]
+            Some((ip, arb_icmp_error(g)))
         })
-        .collect::<Vec<_>>();
-
-    let mut entries = chosen
-        .into_iter()
-        .map(|ip| (ip, arb_icmp_error(g)))
         .collect::<BTreeMap<_, _>>();
 
     // An upstream DNS resolver may be unreachable from the Gateways' networks;
@@ -638,4 +629,42 @@ fn arb_tcp_resources(
             (!addresses.is_empty()).then_some((domain, addresses))
         })
         .collect::<BTreeMap<_, _>>()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn each_resource_host_can_independently_return_icmp_errors() {
+        let first = "192.0.2.1".parse::<IpAddr>().unwrap();
+        let second = "192.0.2.2".parse::<IpAddr>().unwrap();
+        let domain = "example.com".parse::<DomainName>().unwrap();
+
+        for ips in [vec![first], vec![first, second]] {
+            let records = DnsRecords::from(BTreeMap::from([(
+                domain.clone(),
+                ips.iter().copied().map(dns_types::records::ip).collect(),
+            )]));
+            for mask in 0..(1 << ips.len()) {
+                let input = (0..ips.len())
+                    .flat_map(|index| {
+                        let enabled = mask & (1 << index) != 0;
+                        std::iter::once(u8::from(enabled)).chain(enabled.then_some(0))
+                    })
+                    .collect::<Vec<_>>();
+                let mut generator = Generator::new(&input);
+
+                let hosts = arb_icmp_error_hosts(&mut generator, &BTreeMap::new(), &records, &[]);
+
+                for (index, ip) in ips.iter().enumerate() {
+                    assert_eq!(
+                        hosts.icmp_error_for_ip(*ip).is_some(),
+                        mask & (1 << index) != 0,
+                        "host {ip}, selection {mask}",
+                    );
+                }
+            }
+        }
+    }
 }
