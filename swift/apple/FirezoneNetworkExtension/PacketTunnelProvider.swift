@@ -173,6 +173,8 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         completionHandler(nil)
       } catch {
         Log.error(error)
+        // The system never calls `stopTunnel` after a failed start.
+        await adapter.stop()
         completionHandler(error)
       }
     }
