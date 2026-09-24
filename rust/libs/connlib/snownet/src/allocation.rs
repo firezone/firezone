@@ -51,6 +51,12 @@ const REQUEST_MAX_ELAPSED: Duration = Duration::from_secs(8);
 /// It ain't much traffic and with a lower interval, these checks can also help in disconnecting from an unresponsive relay.
 const BINDING_INTERVAL: Duration = Duration::from_secs(25);
 
+/// How long a suspended allocation waits before its first retry.
+const SUSPENDED_RETRY_INITIAL_INTERVAL: Duration = Duration::from_secs(5);
+
+/// The longest a suspended allocation waits between two retries.
+const SUSPENDED_RETRY_MAX_INTERVAL: Duration = Duration::from_secs(60);
+
 /// Represents a TURN allocation that refreshes itself.
 ///
 /// Allocations have a lifetime and need to be continuously refreshed to stay active.
@@ -99,6 +105,9 @@ pub struct Allocation {
 
     explicit_failure: Option<FreeReason>,
 
+    /// Set once we have given up making an allocation, until one succeeds.
+    suspension: Option<Suspension>,
+
     /// Smoothed round-trip time to the relay, computed via an exponential moving
     /// average over response times. `None` until we receive the first response.
     rtt: Option<Duration>,
@@ -106,6 +115,27 @@ pub struct Allocation {
     buffer_pool: BufferPool<Vec<u8>>,
 
     rng: StdRng,
+}
+
+/// When a suspended [`Allocation`] retries next.
+#[derive(Debug, Clone, Copy)]
+struct Suspension {
+    retry_at: Instant,
+    retry_interval: Duration,
+}
+
+impl Suspension {
+    fn new(now: Instant) -> Self {
+        Self {
+            retry_at: now + SUSPENDED_RETRY_INITIAL_INTERVAL,
+            retry_interval: SUSPENDED_RETRY_INITIAL_INTERVAL,
+        }
+    }
+
+    fn back_off(&mut self, now: Instant) {
+        self.retry_interval = (self.retry_interval * 2).min(SUSPENDED_RETRY_MAX_INTERVAL);
+        self.retry_at = now + self.retry_interval;
+    }
 }
 
 #[derive(derive_more::Debug, Clone, Copy)]
@@ -256,6 +286,7 @@ impl Allocation {
             software: Software::new("snownet".to_owned())
                 .expect("description has less then 128 chars"),
             explicit_failure: Default::default(),
+            suspension: None,
             rtt: None,
             buffer_pool,
             rng: StdRng::from_seed(seed),
@@ -354,6 +385,19 @@ impl Allocation {
         message: Message<Attribute>,
         now: Instant,
     ) -> bool {
+        let handled = self.handle_message(from, local, message, now);
+        self.suspend_if_given_up(now);
+
+        handled
+    }
+
+    fn handle_message(
+        &mut self,
+        from: SocketAddr,
+        local: SocketAddr,
+        message: Message<Attribute>,
+        now: Instant,
+    ) -> bool {
         debug_assert_eq!(
             from.is_ipv4(),
             local.is_ipv4(),
@@ -430,6 +474,7 @@ impl Allocation {
                     original_request.method()
                 );
                 self.credentials = None;
+                self.suspension = None; // Without credentials, we free the allocation instead of retrying.
                 self.invalidate_allocation();
 
                 return true;
@@ -652,6 +697,9 @@ impl Allocation {
                 }
 
                 self.allocation_lifetime = Some((now, lifetime));
+                if self.suspension.take().is_some() {
+                    tracing::debug!("Suspended allocation recovered");
+                }
                 update_candidate(
                     maybe_ip4_relay_candidate,
                     &mut self.ip4_allocation,
@@ -748,6 +796,16 @@ impl Allocation {
 
     #[tracing::instrument(level = "debug", skip_all, fields(active_socket = ?self.active_socket))]
     pub fn handle_timeout(&mut self, now: Instant) {
+        if let Some(suspension) = self.suspension.as_mut()
+            && now >= suspension.retry_at
+        {
+            suspension.back_off(now);
+
+            tracing::debug!(next_retry_in = ?suspension.retry_interval, "Retrying suspended allocation");
+
+            self.refresh(now);
+        }
+
         if self
             .allocation_expires_at()
             .is_some_and(|expires_at| now >= expires_at)
@@ -843,6 +901,8 @@ impl Allocation {
             self.authenticate_and_queue(message, None, now);
         }
 
+        self.suspend_if_given_up(now);
+
         // TODO: Clean up unused channels
     }
 
@@ -874,10 +934,15 @@ impl Allocation {
             None
         };
 
+        let next_retry = self
+            .suspension
+            .map(|s| (s.retry_at, "retry suspended allocation"));
+
         iter::empty()
             .chain(next_refresh)
             .chain(next_keepalive)
             .chain(next_timeout)
+            .chain(next_retry)
             .min_by_key(|(instant, _)| *instant)
     }
 
@@ -1154,14 +1219,36 @@ impl Allocation {
 
     /// Check whether this allocation is suspended.
     ///
-    /// We call it suspended if we have given up making an allocation due to some error.
+    /// We call it suspended once we have given up making an allocation due to some error.
+    /// It stays suspended, retrying with an exponential backoff, until an allocation succeeds.
     pub(crate) fn is_suspended(&self) -> bool {
-        let no_allocation = !self.has_allocation();
-        let nothing_in_flight = self.sent_requests.is_empty();
-        let nothing_buffered = self.buffered_transmits.is_empty();
-        let waiting_on_nothing = self.poll_timeout().is_none();
+        self.suspension.is_some()
+    }
 
-        no_allocation && nothing_in_flight && nothing_buffered && waiting_on_nothing
+    #[cfg(test)]
+    pub(crate) fn set_suspended(&mut self, now: Instant) {
+        self.suspension = Some(Suspension::new(now));
+    }
+
+    /// Suspends this allocation if it has given up: it has no allocation and nothing in flight.
+    ///
+    /// Allocations that can be freed are not suspended, we disconnect from those instead.
+    fn suspend_if_given_up(&mut self, now: Instant) {
+        let given_up = !self.has_allocation()
+            && self.sent_requests.is_empty()
+            && self.buffered_transmits.is_empty();
+
+        if self.suspension.is_some()
+            || !given_up
+            || !self.has_credentials()
+            || !self.received_any_response()
+        {
+            return;
+        }
+
+        tracing::debug!("Suspending allocation");
+
+        self.suspension = Some(Suspension::new(now));
     }
 
     fn send_binding_requests(&mut self, now: Instant) {
@@ -2654,12 +2741,57 @@ mod tests {
 
     #[test]
     fn failed_allocation_is_suspended() {
-        let mut allocation = Allocation::for_test_ip4(Instant::now());
+        let mut allocation =
+            Allocation::for_test_ip4(Instant::now()).with_binding_response(PEER1, Instant::now());
 
         let allocate = allocation.next_message().unwrap();
-        allocation.handle_test_input_ip4(server_error(&allocate), Instant::now()); // This should clear the buffered channel bindings.
+        allocation.handle_test_input_ip4(server_error(&allocate), Instant::now());
 
         assert!(allocation.is_suspended())
+    }
+
+    #[test]
+    fn suspended_allocation_retries_and_recovers() {
+        let mut now = Instant::now();
+        let mut allocation = Allocation::for_test_ip4(now).with_binding_response(PEER1, now);
+        let allocate = allocation.next_message().unwrap();
+        allocation.handle_test_input_ip4(server_error(&allocate), now);
+
+        now = allocation.poll_timeout().unwrap().0;
+        allocation.handle_timeout(now);
+
+        let binding = allocation.next_message().unwrap();
+        assert_eq!(binding.method(), BINDING);
+        allocation.handle_test_input_ip4(binding_response(&binding, PEER1), now);
+        let allocate = allocation.next_message().unwrap();
+        assert_eq!(allocate.method(), ALLOCATE);
+        assert!(allocation.is_suspended(), "stays suspended while retrying");
+
+        allocation.handle_test_input_ip4(allocate_response(&allocate, &[RELAY_ADDR_IP4]), now);
+        assert!(!allocation.is_suspended());
+    }
+
+    #[test]
+    fn suspended_allocation_backs_off_exponentially_up_to_a_minute() {
+        let mut now = Instant::now();
+        let mut allocation = Allocation::for_test_ip4(now).with_binding_response(PEER1, now);
+        let allocate = allocation.next_message().unwrap();
+        allocation.handle_test_input_ip4(server_error(&allocate), now);
+
+        let mut intervals = Vec::new();
+        for _ in 0..6 {
+            let (retry_at, _) = allocation.poll_timeout().unwrap();
+            intervals.push(retry_at - now);
+
+            now = retry_at;
+            allocation.handle_timeout(now);
+            let binding = allocation.next_message().unwrap();
+            allocation.handle_test_input_ip4(binding_response(&binding, PEER1), now);
+            let allocate = allocation.next_message().unwrap();
+            allocation.handle_test_input_ip4(server_error(&allocate), now);
+        }
+
+        assert_eq!(intervals, [5, 10, 20, 40, 60, 60].map(Duration::from_secs));
     }
 
     #[test]
