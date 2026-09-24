@@ -102,11 +102,11 @@ where
 
     pub(crate) fn candidates_for_relay(
         &self,
-        id: &RId,
+        id: Option<RId>,
     ) -> impl Iterator<Item = Candidate> + use<RId> {
         let shared_candidates = self.shared_candidates();
-        let relay_candidates = self
-            .get_by_id(id)
+        let relay_candidates = id
+            .and_then(|id| self.get_by_id(&id))
             .into_iter()
             .flat_map(|allocation| allocation.current_relay_candidates());
 
@@ -187,18 +187,17 @@ where
         }
     }
 
-    /// Sample a relay for a new connection, biased towards low RTT.
+    /// Sample a relay for a connection, biased towards low RTT.
     ///
     /// We compute an inclusion threshold from the observed RTT distribution
     /// (see [`inclusion_threshold`]) and uniformly sample among the relays at
-    /// or below it. Allocations without an RTT measurement are skipped: we
-    /// don't know whether they are healthy yet. Suspended allocations are
-    /// skipped too: they cannot relay anything.
+    /// or below it. Only relays on which we currently hold an allocation are
+    /// considered: the others cannot relay anything (yet).
     pub(crate) fn sample(&mut self) -> Option<RId> {
         let candidates = self
             .inner
             .iter()
-            .filter(|(_, a)| !a.is_suspended())
+            .filter(|(_, a)| a.has_allocation())
             .filter_map(|(id, a)| Some((*id, a.rtt()?)))
             .collect::<SmallVec<[_; 8]>>();
 
@@ -213,6 +212,11 @@ where
             .filter(|(_, rtt)| *rtt <= threshold)
             .choose(&mut self.rng)
             .map(|(id, _)| *id)
+    }
+
+    /// Whether a connection may keep using this relay: it is still known and not suspended.
+    pub(crate) fn is_usable(&self, id: &RId) -> bool {
+        self.inner.get(id).is_some_and(|a| !a.is_suspended())
     }
 
     pub(crate) fn poll_timeout(&mut self) -> Option<(Instant, &'static str)> {
@@ -243,7 +247,9 @@ where
     }
 
     /// Performs garbage-collection across all our allocations.
-    pub(crate) fn gc(&mut self) -> Gc<RId> {
+    ///
+    /// Returns whether we removed the last remaining allocation.
+    pub(crate) fn gc(&mut self) -> bool {
         let removed = self
             .inner
             .extract_if(.., |rid, allocation| match allocation.can_be_freed() {
@@ -257,13 +263,9 @@ where
                 }
                 None => false,
             })
-            .map(|(rid, _)| rid)
-            .collect::<SmallVec<[_; 2]>>(); // Typically, we are only connected to 2 relays. Using a `SmallVec` here avoids allocations.
+            .count();
 
-        Gc {
-            removed_last: !removed.is_empty() && self.inner.is_empty(),
-            removed,
-        }
+        removed > 0 && self.inner.is_empty()
     }
 
     fn shared_candidates(&self) -> impl Iterator<Item = Candidate> {
@@ -352,14 +354,6 @@ pub(crate) enum UpsertResult {
     Added,
     Skipped,
     Replaced(Allocation),
-}
-
-/// The outcome of [`Allocations::gc`].
-pub(crate) struct Gc<RId> {
-    /// The removed allocations.
-    pub(crate) removed: SmallVec<[RId; 2]>,
-    /// Whether we removed the last remaining allocation.
-    pub(crate) removed_last: bool,
 }
 
 #[cfg(test)]
@@ -454,10 +448,10 @@ mod tests {
         );
 
         fail_allocations(&mut allocations, now);
-        let gc = allocations.gc();
+        let removed_last = allocations.gc();
 
-        assert_eq!(gc.removed.as_slice(), &[1]);
-        assert!(gc.removed_last);
+        assert!(removed_last);
+        assert!(allocations.get_by_id(&1).is_none());
     }
 
     #[test]
@@ -482,10 +476,10 @@ mod tests {
             Realm::new("firezone".to_owned()).unwrap(),
             now,
         );
-        let gc = allocations.gc();
+        let removed_last = allocations.gc();
 
-        assert_eq!(gc.removed.as_slice(), &[1]);
-        assert!(!gc.removed_last);
+        assert!(!removed_last);
+        assert!(allocations.get_by_id(&1).is_none());
     }
 
     /// Advances time without ever answering the relays, failing all current allocations.
@@ -571,10 +565,7 @@ mod tests {
                 Realm::new("firezone".to_owned()).unwrap(),
                 now,
             );
-            allocations
-                .get_mut_by_id(&rid)
-                .unwrap()
-                .set_rtt(Duration::from_millis(rtt_ms));
+            allocate(&mut allocations, rid, ms(rtt_ms));
         }
         for _ in 0..1000 {
             let rid = allocations.sample().unwrap();
@@ -597,10 +588,7 @@ mod tests {
                 Realm::new("firezone".to_owned()).unwrap(),
                 now,
             );
-            allocations
-                .get_mut_by_id(&rid)
-                .unwrap()
-                .set_rtt(Duration::from_millis(rtt_ms));
+            allocate(&mut allocations, rid, ms(rtt_ms));
         }
         let mut counts = [0u32; 2];
 
@@ -631,10 +619,7 @@ mod tests {
                 Realm::new("firezone".to_owned()).unwrap(),
                 now,
             );
-            allocations
-                .get_mut_by_id(&rid)
-                .unwrap()
-                .set_rtt(Duration::from_millis(rtt_ms));
+            allocate(&mut allocations, rid, ms(rtt_ms));
         }
         for _ in 0..100 {
             let rid = allocations.sample().unwrap();
@@ -655,16 +640,13 @@ mod tests {
             Realm::new("firezone".to_owned()).unwrap(),
             now,
         );
-        allocations
-            .get_mut_by_id(&1)
-            .unwrap()
-            .set_rtt(Duration::from_millis(500));
+        allocate(&mut allocations, 1, ms(500));
         let rid = allocations.sample().unwrap();
         assert_eq!(rid, 1);
     }
 
     #[test]
-    fn sample_excludes_allocations_without_rtt() {
+    fn sample_excludes_relays_without_an_allocation() {
         let now = Instant::now();
         let mut allocations = Allocations::for_test();
 
@@ -676,7 +658,8 @@ mod tests {
             Realm::new("firezone".to_owned()).unwrap(),
             now,
         );
-        assert_eq!(allocations.get_by_id(&1).unwrap().rtt(), None);
+        allocations.get_mut_by_id(&1).unwrap().set_rtt(ms(30));
+
         assert!(allocations.sample().is_none());
     }
 
@@ -702,14 +685,41 @@ mod tests {
             Realm::new("firezone".to_owned()).unwrap(),
             now,
         );
-        for rid in [1, 2] {
-            allocations.get_mut_by_id(&rid).unwrap().set_rtt(ms(30));
-        }
+        allocations.get_mut_by_id(&1).unwrap().set_rtt(ms(30));
+        allocate(&mut allocations, 2, ms(30));
         assert!(allocations.get_by_id(&1).unwrap().is_suspended());
 
         for _ in 0..100 {
             assert_eq!(allocations.sample(), Some(2));
         }
+    }
+
+    #[test]
+    fn suspended_and_unknown_relays_are_not_usable() {
+        let now = Instant::now();
+        let mut allocations = Allocations::for_test();
+
+        allocations.upsert(
+            1,
+            RelaySocket::from(SERVER_V4),
+            Username::new("test".to_owned()).unwrap(),
+            "password".to_owned(),
+            Realm::new("firezone".to_owned()).unwrap(),
+            now,
+        );
+        let now = fail_allocations(&mut allocations, now);
+        allocations.upsert(
+            2,
+            RelaySocket::from(SERVER2_V4),
+            Username::new("test".to_owned()).unwrap(),
+            "password".to_owned(),
+            Realm::new("firezone".to_owned()).unwrap(),
+            now,
+        );
+
+        assert!(!allocations.is_usable(&1));
+        assert!(allocations.is_usable(&2));
+        assert!(!allocations.is_usable(&3));
     }
 
     #[test]
@@ -745,5 +755,15 @@ mod tests {
 
     fn ms(n: u64) -> Duration {
         Duration::from_millis(n)
+    }
+
+    /// Pretends that the allocation on `rid` completed after the given RTT.
+    fn allocate<RId>(allocations: &mut Allocations<RId>, rid: RId, rtt: Duration)
+    where
+        RId: Ord + fmt::Display + Copy,
+    {
+        let allocation = allocations.get_mut_by_id(&rid).unwrap();
+        allocation.set_rtt(rtt);
+        allocation.set_ip4_allocation(SocketAddr::from(([203, 0, 113, 1], 50000)));
     }
 }

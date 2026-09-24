@@ -16,8 +16,8 @@ mod utils;
 pub use allocation::RelaySocket;
 pub use buffer::{BufferProvider, Reservation, TransmitBuffer};
 pub use node::{
-    Credentials, EncapsulateInfo, Event, IceConfig, IceRole, NoTurnServers, Node, StillConnecting,
-    Transmit, UnknownConnection,
+    Credentials, EncapsulateInfo, Event, IceConfig, IceRole, Node, StillConnecting, Transmit,
+    UnknownConnection,
 };
 
 pub fn is_wireguard(payload: &[u8]) -> bool {

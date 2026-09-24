@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeMap, BTreeSet, VecDeque},
+    collections::{BTreeMap, VecDeque},
     fmt,
     hash::Hash,
     iter,
@@ -25,7 +25,6 @@ pub struct Connections<TId, RId> {
     disconnected_public_keys: BTreeMap<[u8; 32], Instant>,
     disconnected_session_indices: BTreeMap<usize, Instant>,
 
-    connections_with_removed_relays: BTreeSet<TId>,
     disconnected_ufrags: BTreeMap<String, Instant>,
 }
 
@@ -38,7 +37,6 @@ impl<TId, RId> Default for Connections<TId, RId> {
             disconnected_ids: Default::default(),
             disconnected_public_keys: Default::default(),
             disconnected_session_indices: Default::default(),
-            connections_with_removed_relays: Default::default(),
             disconnected_ufrags: Default::default(),
         }
     }
@@ -101,16 +99,15 @@ where
         Some(connection)
     }
 
-    /// Soft-resets all connections for a roam and queues them for relay migration.
+    /// Soft-resets all connections for a roam.
     ///
-    /// The roam clears all allocations, so every connection's relay is gone until
-    /// [`update_relays`](crate::Node::update_relays) provides new ones.
+    /// The roam restarts all allocations, so every connection drops its relay until one is
+    /// usable again.
     pub(crate) fn reset_for_roam(&mut self, now: Instant) -> usize {
         let mut num_connections = 0;
 
-        for (cid, conn) in self.established.iter_mut() {
+        for conn in self.established.values_mut() {
             conn.reset_for_roam(now);
-            self.connections_with_removed_relays.insert(*cid);
 
             num_connections += 1;
         }
@@ -118,48 +115,23 @@ where
         num_connections
     }
 
-    pub(crate) fn migrate_relays(
+    /// Assigns a relay to every connection that has none or whose relay is no longer usable.
+    pub(crate) fn assign_relays(
         &mut self,
-        removed_allocations: impl Iterator<Item = RId>,
         allocations: &mut Allocations<RId>,
         pending_events: &mut VecDeque<Event<TId>>,
         now: Instant,
     ) {
-        // Temporarily take ownership of buffer to satisfy borrow-checker.
-        let mut connections_with_removed_relays =
-            std::mem::take(&mut self.connections_with_removed_relays);
-
-        for removed_relay in removed_allocations {
-            for (cid, c) in self.iter_mut_by_relay(removed_relay) {
-                let Some(new_relay) = allocations.sample() else {
-                    let was_inserted = connections_with_removed_relays.insert(cid);
-
-                    if was_inserted {
-                        tracing::debug!(%cid, "Failed to sample new relay for connection");
-                    }
-
-                    continue;
-                };
-
-                c.migrate_relay(cid, new_relay, allocations, pending_events, now);
-
-                // Already migrated; don't migrate again in the retry loop below.
-                connections_with_removed_relays.remove(&cid);
+        for (cid, c) in self.established.iter_mut() {
+            if c.relay.is_some_and(|relay| allocations.is_usable(&relay)) {
+                continue;
             }
-        }
 
-        for cid in connections_with_removed_relays {
-            let Some(new_relay) = allocations.sample() else {
-                self.connections_with_removed_relays.insert(cid);
-
-                continue;
+            let Some(relay) = allocations.sample() else {
+                return;
             };
 
-            let Ok(c) = self.get_mut(&cid, now) else {
-                continue;
-            };
-
-            c.migrate_relay(cid, new_relay, allocations, pending_events, now);
+            c.migrate_relay(*cid, relay, allocations, pending_events, now);
         }
     }
 
@@ -182,15 +154,6 @@ where
         }
 
         existing
-    }
-
-    pub(crate) fn iter_mut_by_relay(
-        &mut self,
-        id: RId,
-    ) -> impl Iterator<Item = (TId, &mut Connection<RId>)> + '_ {
-        self.established
-            .iter_mut()
-            .filter_map(move |(cid, c)| (c.relay.id == id).then_some((*cid, c)))
     }
 
     pub(crate) fn iter_mut(&mut self) -> impl Iterator<Item = (TId, &mut Connection<RId>)> {
@@ -462,7 +425,7 @@ mod tests {
 
     use crate::{
         IceConfig, RelaySocket,
-        node::{ConnectionState, SelectedRelay, allocations::Allocations},
+        node::{ConnectionState, allocations::Allocations},
     };
     use stun_codec::rfc5389::attributes::{Realm, Username};
 
@@ -524,38 +487,27 @@ mod tests {
     }
 
     #[test]
-    fn migrate_relay_retries_connections_that_previously_had_no_allocation() {
+    fn assign_relays_retries_connections_whose_relay_was_removed() {
         let mut connections: Connections<u32, u32> = Connections::default();
         let mut allocations: Allocations<u32> = Allocations::for_test();
         let now = Instant::now();
 
-        // Insert a connection that is using relay id 1.
+        // Insert a connection that is using relay id 1, which we do not know.
         let conn = new_connection(12345, 1, [1u8; 32]);
         connections.insert_established(1, conn.index, conn);
 
-        // First call: relay 1 is removed but no allocations are available.
         let mut pending_events = VecDeque::new();
-        connections.migrate_relays(
-            std::iter::once(1u32),
-            &mut allocations,
-            &mut pending_events,
-            now,
-        );
+        connections.assign_relays(&mut allocations, &mut pending_events, now);
 
         // The connection still uses relay 1 because no new relay was available.
-        assert_eq!(connections.get_mut(&1, now).unwrap().relay.id, 1);
+        assert_eq!(connections.get_mut(&1, now).unwrap().relay, Some(1));
 
         add_sampleable_allocation(&mut allocations, 2, now);
 
-        connections.migrate_relays(
-            std::iter::empty(),
-            &mut allocations,
-            &mut pending_events,
-            now,
-        );
+        connections.assign_relays(&mut allocations, &mut pending_events, now);
 
         // The connection should now be using the new relay (id 2).
-        assert_eq!(connections.get_mut(&1, now).unwrap().relay.id, 2);
+        assert_eq!(connections.get_mut(&1, now).unwrap().relay, Some(2));
     }
 
     #[test]
@@ -575,14 +527,9 @@ mod tests {
         add_sampleable_allocation(&mut allocations, 2, now);
 
         let mut pending_events = VecDeque::new();
-        connections.migrate_relays(
-            std::iter::empty(),
-            &mut allocations,
-            &mut pending_events,
-            now,
-        );
+        connections.assign_relays(&mut allocations, &mut pending_events, now);
 
-        assert_eq!(connections.get_mut(&1, now).unwrap().relay.id, 2);
+        assert_eq!(connections.get_mut(&1, now).unwrap().relay, Some(2));
     }
 
     fn add_sampleable_allocation(allocations: &mut Allocations<u32>, rid: u32, now: Instant) {
@@ -594,11 +541,10 @@ mod tests {
             Realm::new("firezone".to_owned()).unwrap(),
             now,
         );
-        // Simulate a successful response so the relay is eligible for sampling.
-        allocations
-            .get_mut_by_id(&rid)
-            .unwrap()
-            .set_rtt(Duration::from_millis(20));
+        // Simulate a successful allocation so the relay is eligible for sampling.
+        let allocation = allocations.get_mut_by_id(&rid).unwrap();
+        allocation.set_rtt(Duration::from_millis(20));
+        allocation.set_ip4_allocation(std::net::SocketAddr::from(([203, 0, 113, 1], 50000)));
     }
 
     fn insert_dummy_connection(connections: &mut Connections<u32, u32>) -> (u32, Index, PublicKey) {
@@ -669,7 +615,7 @@ mod tests {
             ),
             remote_pub_key: PublicKey::from(rand::random::<[u8; 32]>()),
             last_proactive_handshake_sent_at: None,
-            relay: SelectedRelay { id: relay_id },
+            relay: Some(relay_id),
             state: crate::node::ConnectionState::Connecting {
                 wg_buffer: AllocRingBuffer::new(1),
             },

@@ -1027,6 +1027,11 @@ impl Allocation {
         self.rtt = Some(rtt);
     }
 
+    #[cfg(test)]
+    pub(crate) fn set_ip4_allocation(&mut self, addr: SocketAddr) {
+        self.ip4_allocation = Some(Candidate::relayed(addr, addr, "udp").unwrap());
+    }
+
     fn update_rtt(&mut self, sample: Duration) {
         // RFC 6298 SRTT-style EMA: srtt = 7/8 * srtt + 1/8 * sample.
         self.rtt = Some(match self.rtt {
@@ -1106,7 +1111,7 @@ impl Allocation {
         Some(Socket { address })
     }
 
-    fn has_allocation(&self) -> bool {
+    pub(crate) fn has_allocation(&self) -> bool {
         self.ip4_allocation.is_some() || self.ip6_allocation.is_some()
     }
 
