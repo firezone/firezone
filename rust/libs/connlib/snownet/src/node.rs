@@ -101,7 +101,7 @@ pub struct Node<TId, RId> {
     buffered_candidates: BufferedCandidates<TId>,
     inflight_stun_requests: InflightStunRequests<TId>,
 
-    pending_events: VecDeque<Event<TId>>,
+    pending_events: VecDeque<Event<TId, RId>>,
     /// The most recent `now` passed to a mutating API; [`Node::poll_timeout`]
     /// returns it while transmits or events are queued so the driver drains
     /// them without delay.
@@ -623,7 +623,7 @@ where
 
     /// Returns a pending [`Event`] from the pool.
     #[must_use]
-    pub fn poll_event(&mut self) -> Option<Event<TId>> {
+    pub fn poll_event(&mut self) -> Option<Event<TId, RId>> {
         let event = self.pending_events.pop_front()?;
 
         if let Event::ConnectionClosed(id) | Event::ConnectionFailed(id) = &event {
@@ -703,7 +703,17 @@ where
         if gc.removed_last {
             tracing::info!("Removed last relay; requesting a new set");
 
-            self.pending_events.push_back(Event::NoRelays);
+            self.pending_events.push_back(Event::NoRelays {
+                suspended: Vec::new(),
+            });
+        }
+
+        if gc.became_all_suspended {
+            tracing::info!("All relays are suspended; requesting a new set");
+
+            self.pending_events.push_back(Event::NoRelays {
+                suspended: gc.suspended.to_vec(),
+            });
         }
 
         self.connections.migrate_relays(
@@ -1143,7 +1153,13 @@ where
 
     /// Sample a relay to use for a new connection.
     fn sample_relay(&mut self) -> Result<RId, NoTurnServers> {
-        let rid = self.allocations.sample().ok_or(NoTurnServers {})?;
+        let Some(rid) = self.allocations.sample() else {
+            self.pending_events.push_back(Event::NoRelays {
+                suspended: self.allocations.suspended().collect(),
+            });
+
+            return Err(NoTurnServers {});
+        };
 
         tracing::debug!(%rid, "Sampled relay");
 
@@ -1229,7 +1245,11 @@ fn generate_optimistic_candidates(agent: &mut Agent, now: Instant) {
     }
 }
 
-fn new_ice_candidate_event<TId>(id: TId, candidate: Candidate, iceless: bool) -> Event<TId> {
+fn new_ice_candidate_event<TId, RId>(
+    id: TId,
+    candidate: Candidate,
+    iceless: bool,
+) -> Event<TId, RId> {
     let candidate = crate::candidate::encode(iceless, &candidate);
 
     tracing::debug!(%candidate, "Signalling candidate to remote");
@@ -1243,7 +1263,7 @@ fn new_ice_candidate_event<TId>(id: TId, candidate: Candidate, iceless: bool) ->
 fn invalidate_allocation_candidates<TId, RId>(
     connections: &mut Connections<TId, RId>,
     allocation: &Allocation,
-    pending_events: &mut VecDeque<Event<TId>>,
+    pending_events: &mut VecDeque<Event<TId, RId>>,
     now: Instant,
 ) where
     TId: Eq + Hash + Copy + Ord + fmt::Display,
@@ -1288,7 +1308,7 @@ impl From<is::IceCreds> for Credentials {
 }
 
 #[derive(Debug, PartialEq, Clone)]
-pub enum Event<TId> {
+pub enum Event<TId, RId> {
     /// We created a new candidate for this connection and ask to signal it to the remote party.
     ///
     /// Already SDP-encoded (str0m for ICE, path-agent for ICE-less).
@@ -1313,10 +1333,14 @@ pub enum Event<TId> {
     /// We closed a connection (e.g. due to inactivity, roaming, etc).
     ConnectionClosed(TId),
 
-    /// The last remaining relay was removed and we need a new set to make relayed connections.
+    /// We have no relay to make relayed connections with: the last one was removed, all of them
+    /// are suspended, or none could be sampled for a new connection.
     ///
-    /// Upper layers should obtain new relays and pass them to [`Node::update_relays`].
-    NoRelays,
+    /// Upper layers should obtain new relays other than the `suspended` ones and pass them to
+    /// [`Node::update_relays`].
+    NoRelays {
+        suspended: Vec<RId>,
+    },
 }
 
 #[derive(Clone, PartialEq, PartialOrd, Eq, Ord)]
@@ -1440,7 +1464,7 @@ where
         now: Instant,
         allocations: &mut Allocations<RId>,
         transmits: &mut TransmitBuffer,
-        pending_events: &mut VecDeque<Event<TId>>,
+        pending_events: &mut VecDeque<Event<TId, RId>>,
         inflight_stun_requests: &mut InflightStunRequests<TId>,
     ) where
         TId: Copy + Ord + fmt::Display,
@@ -1725,7 +1749,7 @@ where
         peer_socket: PeerSocket,
         allocations: &mut Allocations<RId>,
         transmits: &mut TransmitBuffer,
-        pending_events: &mut VecDeque<Event<TId>>,
+        pending_events: &mut VecDeque<Event<TId, RId>>,
         cid: TId,
         now: Instant,
     ) where
@@ -2107,7 +2131,7 @@ where
         &mut self,
         cid: TId,
         candidate: &Candidate,
-        pending_events: &mut VecDeque<Event<TId>>,
+        pending_events: &mut VecDeque<Event<TId, RId>>,
         now: Instant,
     ) where
         TId: fmt::Display + Copy,
@@ -2125,7 +2149,7 @@ where
         &mut self,
         id: TId,
         candidate: &Candidate,
-        pending_events: &mut VecDeque<Event<TId>>,
+        pending_events: &mut VecDeque<Event<TId, RId>>,
         now: Instant,
     ) where
         TId: fmt::Display,
@@ -2191,7 +2215,7 @@ where
         cid: TId,
         new_relay: RId,
         allocations: &Allocations<RId>,
-        pending_events: &mut VecDeque<Event<TId>>,
+        pending_events: &mut VecDeque<Event<TId, RId>>,
         now: Instant,
     ) where
         TId: fmt::Display + Copy,
@@ -2312,6 +2336,53 @@ mod tests {
         IceConfig::server_idle().apply(&mut agent);
 
         assert_eq!(agent.ice_timeout(), Duration::from_secs(1000))
+    }
+
+    #[test]
+    fn requests_new_relays_once_when_all_allocations_become_suspended() {
+        let now = Instant::now();
+        let mut node = Node::<u64, u64>::new([0; 32], now, Duration::ZERO);
+        let relay = |password: &str| {
+            BTreeSet::from([(
+                1,
+                RelaySocket::from(SocketAddr::from((Ipv4Addr::LOCALHOST, 3478))),
+                "user".to_owned(),
+                password.to_owned(),
+                "firezone".to_owned(),
+            )])
+        };
+
+        node.update_relays(BTreeSet::new(), &relay("password"), now);
+        node.allocations
+            .get_mut_by_id(&1)
+            .unwrap()
+            .set_suspended(now);
+        node.handle_timeout(now);
+        node.handle_timeout(now);
+
+        assert_eq!(no_relays_events(&mut node), [vec![1]]);
+
+        node.update_relays(BTreeSet::new(), &relay("new-password"), now);
+        node.handle_timeout(now);
+        node.allocations
+            .get_mut_by_id(&1)
+            .unwrap()
+            .set_suspended(now);
+        node.handle_timeout(now);
+
+        assert_eq!(no_relays_events(&mut node), [vec![1]]);
+    }
+
+    fn no_relays_events(node: &mut Node<u64, u64>) -> Vec<Vec<u64>> {
+        iter::from_fn(|| node.poll_event())
+            .filter_map(|event| {
+                if let Event::NoRelays { suspended } = event {
+                    Some(suspended)
+                } else {
+                    None
+                }
+            })
+            .collect()
     }
 
     #[test]

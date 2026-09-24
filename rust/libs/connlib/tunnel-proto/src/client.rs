@@ -2262,8 +2262,10 @@ impl ClientState {
                     self.flush_pending_packets(ClientOrGatewayId::Client(id), now);
                     self.resource_list.update(self.resource_list_snapshot());
                 }
-                snownet::Event::NoRelays => {
-                    self.buffered_events.push_back(ClientEvent::NoRelays);
+                snownet::Event::NoRelays { suspended } => {
+                    self.buffered_events.push_back(ClientEvent::NoRelays {
+                        excluded_relay_ids: suspended,
+                    });
                 }
             }
         }

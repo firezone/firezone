@@ -51,7 +51,7 @@ where
 {
     const RECENT_DISCONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 
-    pub(crate) fn handle_timeout(&mut self, events: &mut VecDeque<Event<TId>>, now: Instant) {
+    pub(crate) fn handle_timeout(&mut self, events: &mut VecDeque<Event<TId, RId>>, now: Instant) {
         for (id, conn) in self.established.extract_if(.., |_, conn| conn.is_failed()) {
             events.push_back(Event::ConnectionFailed(id));
 
@@ -122,7 +122,7 @@ where
         &mut self,
         removed_allocations: impl Iterator<Item = RId>,
         allocations: &mut Allocations<RId>,
-        pending_events: &mut VecDeque<Event<TId>>,
+        pending_events: &mut VecDeque<Event<TId, RId>>,
         now: Instant,
     ) {
         // Temporarily take ownership of buffer to satisfy borrow-checker.

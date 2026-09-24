@@ -4,7 +4,9 @@ use crate::messages::{
     Filter, FlowLogsConfig, IceCredentials, IceRole, IngestToken, Interface, Key, Relay,
     RelaysPresence, SecretKey, SnownetCapabilities, WarnOnInvalidFilter,
 };
-use connlib_model::{ClientId, GatewayId, IceCandidate, IpStack, ResourceId, Site, SiteId};
+use connlib_model::{
+    ClientId, GatewayId, IceCandidate, IpStack, RelayId, ResourceId, Site, SiteId,
+};
 use ip_network::IpNetwork;
 use serde::{Deserialize, Serialize};
 use serde_with::{DurationSeconds, VecSkipError, serde_as};
@@ -402,7 +404,9 @@ pub enum EgressMessages {
     ResolveDeviceDomain {
         domain: String,
     },
-    NoRelays {},
+    NoRelays {
+        excluded_relay_ids: Vec<RelayId>,
+    },
     NewGatewayIceCandidates(GatewayIceCandidates),
     InvalidateGatewayIceCandidates(GatewayIceCandidates),
     NewClientIceCandidates(ClientIceCandidates),
@@ -915,8 +919,10 @@ mod tests {
 
     #[test]
     fn serialize_no_relays_message() {
-        let message = EgressMessages::NoRelays {};
-        let expected_json = r#"{"event":"no_relays","payload":{}}"#;
+        let message = EgressMessages::NoRelays {
+            excluded_relay_ids: vec!["c5a1b2d3-0e8f-4a6b-9c7d-2e1f0a3b4c5d".parse().unwrap()],
+        };
+        let expected_json = r#"{"event":"no_relays","payload":{"excluded_relay_ids":["c5a1b2d3-0e8f-4a6b-9c7d-2e1f0a3b4c5d"]}}"#;
         let actual_json = serde_json::to_string(&message).unwrap();
 
         assert_eq!(actual_json, expected_json);

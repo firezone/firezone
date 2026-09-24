@@ -21,6 +21,8 @@ use crate::{
 pub(crate) struct Allocations<RId> {
     inner: BTreeMap<RId, Allocation>,
     previous_relays_by_ip: AllocRingBuffer<IpAddr>,
+    /// The allocations that were all suspended at the last [`Allocations::gc`], if they were.
+    all_suspended: Option<SmallVec<[RId; 2]>>,
 
     buffer_pool: BufferPool<Vec<u8>>,
 
@@ -38,6 +40,7 @@ where
         Self {
             inner: BTreeMap::default(),
             previous_relays_by_ip: AllocRingBuffer::with_capacity_power_of_2(6), // 64 entries
+            all_suspended: None,
             buffer_pool: BufferPool::new(ip_packet::MAX_FZ_PAYLOAD, "turn-clients"),
             rng: StdRng::from_seed(seed),
         }
@@ -258,18 +261,26 @@ where
             })
             .map(|(rid, _)| rid)
             .collect::<SmallVec<[_; 2]>>(); // Typically, we are only connected to 2 relays. Using a `SmallVec` here avoids allocations.
-        let suspended = self
-            .inner
-            .iter()
-            .filter(|(_, allocation)| allocation.is_suspended())
-            .map(|(rid, _)| *rid)
-            .collect();
+        let suspended = self.suspended().collect::<SmallVec<[_; 2]>>();
+
+        let all_suspended = (!self.inner.is_empty() && suspended.len() == self.inner.len())
+            .then(|| suspended.clone());
+        let became_all_suspended = all_suspended.is_some() && all_suspended != self.all_suspended;
+        self.all_suspended = all_suspended;
 
         Gc {
             removed_last: !removed.is_empty() && self.inner.is_empty(),
             removed,
             suspended,
+            became_all_suspended,
         }
+    }
+
+    pub(crate) fn suspended(&self) -> impl Iterator<Item = RId> + '_ {
+        self.inner
+            .iter()
+            .filter(|(_, allocation)| allocation.is_suspended())
+            .map(|(rid, _)| *rid)
     }
 
     fn shared_candidates(&self) -> impl Iterator<Item = Candidate> {
@@ -368,6 +379,9 @@ pub(crate) struct Gc<RId> {
     pub(crate) removed_last: bool,
     /// The remaining allocations that are suspended and thus cannot relay anything.
     pub(crate) suspended: SmallVec<[RId; 2]>,
+    /// Whether all remaining allocations are suspended, and were not all (or not the same ones)
+    /// at the previous [`Allocations::gc`].
+    pub(crate) became_all_suspended: bool,
 }
 
 #[cfg(test)]
@@ -730,6 +744,36 @@ mod tests {
 
         assert_eq!(gc.suspended.as_slice(), &[1]);
         assert!(gc.removed.is_empty());
+    }
+
+    #[test]
+    fn gc_reports_once_that_all_allocations_became_suspended() {
+        let now = Instant::now();
+        let mut allocations = Allocations::for_test();
+
+        for (rid, server) in [(1, SERVER_V4), (2, SERVER2_V4)] {
+            allocations.upsert(
+                rid,
+                RelaySocket::from(server),
+                Username::new("test".to_owned()).unwrap(),
+                "password".to_owned(),
+                Realm::new("firezone".to_owned()).unwrap(),
+                now,
+            );
+        }
+        allocations.get_mut_by_id(&1).unwrap().set_suspended(now);
+
+        assert!(!allocations.gc().became_all_suspended);
+
+        allocations.get_mut_by_id(&2).unwrap().set_suspended(now);
+
+        assert!(allocations.gc().became_all_suspended);
+        assert!(!allocations.gc().became_all_suspended);
+
+        allocations.remove_by_id(&2);
+
+        assert!(allocations.gc().became_all_suspended);
+        assert!(!allocations.gc().became_all_suspended);
     }
 
     const SERVER_V4: SocketAddr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 11111));
