@@ -3451,14 +3451,9 @@ defmodule PortalAPI.Gateway.ChannelTest do
       site: site,
       token: token
     } do
-      relay1 = relay_fixture(%{lat: 37.0, lon: -120.0})
-      :ok = Portal.Presence.Relays.connect(relay1)
-
-      relay2 = relay_fixture(%{lat: 38.0, lon: -121.0})
-      :ok = Portal.Presence.Relays.connect(relay2)
-
-      relay3 = relay_fixture(%{lat: 39.0, lon: -122.0})
-      :ok = Portal.Presence.Relays.connect(relay3)
+      relay1 = connect_relay(%{lat: 37.0, lon: -120.0})
+      relay2 = connect_relay(%{lat: 38.0, lon: -121.0})
+      relay3 = connect_relay(%{lat: 39.0, lon: -122.0})
 
       socket = join_channel(gateway, site, token)
       assert_push "init", %{relays: _}
@@ -3476,11 +3471,8 @@ defmodule PortalAPI.Gateway.ChannelTest do
       site: site,
       token: token
     } do
-      relay1 = relay_fixture(%{lat: 37.0, lon: -120.0})
-      :ok = Portal.Presence.Relays.connect(relay1)
-
-      relay2 = relay_fixture(%{lat: 38.0, lon: -121.0})
-      :ok = Portal.Presence.Relays.connect(relay2)
+      relay1 = connect_relay(%{lat: 37.0, lon: -120.0})
+      relay2 = connect_relay(%{lat: 38.0, lon: -121.0})
 
       socket = join_channel(gateway, site, token)
       assert_push "init", %{relays: _}
@@ -3495,11 +3487,8 @@ defmodule PortalAPI.Gateway.ChannelTest do
       site: site,
       token: token
     } do
-      relay1 = relay_fixture(%{lat: 37.0, lon: -120.0})
-      :ok = Portal.Presence.Relays.connect(relay1)
-
-      relay2 = relay_fixture(%{lat: 38.0, lon: -121.0})
-      :ok = Portal.Presence.Relays.connect(relay2)
+      relay1 = connect_relay(%{lat: 37.0, lon: -120.0})
+      relay2 = connect_relay(%{lat: 38.0, lon: -121.0})
 
       socket = join_channel(gateway, site, token)
       assert_push "init", %{relays: _}
@@ -3519,11 +3508,8 @@ defmodule PortalAPI.Gateway.ChannelTest do
       site: site,
       token: token
     } do
-      relay1 = relay_fixture(%{lat: 37.0, lon: -120.0})
-      :ok = Portal.Presence.Relays.connect(relay1)
-
-      relay2 = relay_fixture(%{lat: 38.0, lon: -121.0})
-      :ok = Portal.Presence.Relays.connect(relay2)
+      relay1 = connect_relay(%{lat: 37.0, lon: -120.0})
+      relay2 = connect_relay(%{lat: 38.0, lon: -121.0})
 
       socket = join_channel(gateway, site, token)
       assert_push "init", %{relays: _}
