@@ -1155,7 +1155,7 @@ impl Allocation {
     /// Check whether this allocation is suspended.
     ///
     /// We call it suspended if we have given up making an allocation due to some error.
-    fn is_suspended(&self) -> bool {
+    pub(crate) fn is_suspended(&self) -> bool {
         let no_allocation = !self.has_allocation();
         let nothing_in_flight = self.sent_requests.is_empty();
         let nothing_buffered = self.buffered_transmits.is_empty();
