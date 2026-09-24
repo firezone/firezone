@@ -33,12 +33,10 @@ class FakeSession(
         events.close()
     }
 
-    private val eventStream =
+    val eventStream =
         object : EventStream(NoHandle) {
             override suspend fun next(): Event? = events.receiveCatching().getOrNull()
         }
-
-    override fun events(): EventStream = eventStream
 
     override fun disconnect() {
         commands.trySend("disconnect")

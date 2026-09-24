@@ -264,7 +264,7 @@ actor Adapter {
     let handoff: SessionHandoff
     let events: EventStream
     do {
-      let newSession = try Session.newApple(
+      let connection = try connectApple(
         apiUrl: apiURL,
         token: token.description,
         deviceId: deviceId,
@@ -273,8 +273,8 @@ actor Adapter {
         isInternetResourceActive: internetResourceEnabled,
         tlsIdentity: tlsIdentity
       )
-      events = newSession.events()
-      handoff = SessionHandoff(newSession)
+      events = connection.events
+      handoff = SessionHandoff(connection.session)
     } catch {
       throw AdapterError.connlibConnectError(String(describing: error))
     }

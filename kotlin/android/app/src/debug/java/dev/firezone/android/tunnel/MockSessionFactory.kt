@@ -19,7 +19,7 @@ object MockSessionFactory : SessionFactory {
     override fun open(
         config: AndroidSessionConfig,
         tlsIdentity: ClientTlsIdentity?,
-    ): TunnelSession = MockSession()
+    ): TunnelConnection = MockSession().let { TunnelConnection(it, it.eventStream) }
 }
 
 private class MockSession : TunnelSession {
@@ -31,12 +31,10 @@ private class MockSession : TunnelSession {
         events.trySend(Event.ResourcesUpdated(resources = mockResources, connectedDevices = mockConnectedDevices))
     }
 
-    private val eventStream =
+    val eventStream =
         object : EventStream(NoHandle) {
             override suspend fun next(): Event? = events.receiveCatching().getOrNull()
         }
-
-    override fun events(): EventStream = eventStream
 
     override fun disconnect() {
         events.close()
