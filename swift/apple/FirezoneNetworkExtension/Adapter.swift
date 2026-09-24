@@ -361,9 +361,6 @@ actor Adapter {
 
     sendCommand(.disconnect)
 
-    // Close command channel immediately - ensures event loop sees channel close
-    commandSender = nil
-
     // Cancel path monitoring - triggers CancellableTask.deinit -> Task cancellation
     // -> onTermination -> monitor.cancel()
     pathMonitorTask = nil
@@ -377,6 +374,9 @@ actor Adapter {
     // stopTunnel's completionHandler lets the OS reap this process. Capped so a
     // wedged loop can't hang stopTunnel; connlib's own flush wait is 10s.
     await eventLoopTask?.wait(timeout: .seconds(15))
+
+    // Closing the command channel drops the session, so only do it once connlib has shut down.
+    commandSender = nil
 
     pendingUnreachableResources.removeAll()
   }
