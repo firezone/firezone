@@ -33,6 +33,8 @@ pub struct ReferenceState {
     pub(crate) clients: BTreeMap<ClientId, Host<RefClient>>,
     pub(crate) gateways: BTreeMap<GatewayId, Host<RefGateway>>,
     pub(crate) relays: BTreeMap<RelayId, Host<u64>>,
+    /// Relays that answer new allocations with `508 Insufficient Capacity`.
+    pub(crate) exhausted_relays: BTreeSet<RelayId>,
 
     /// All IP addresses a domain resolves to in our test.
     ///
@@ -75,6 +77,7 @@ impl ReferenceState {
             clients,
             gateways,
             relays,
+            exhausted_relays: Default::default(),
             global_dns_records,
             tcp_resources,
             icmp_error_hosts,
@@ -402,6 +405,12 @@ impl ReferenceState {
             Transition::DeployNewRelays(new_relays) => self.deploy_new_relays(new_relays),
             Transition::RebootRelaysWhilePartitioned(new_relays) => {
                 self.reboot_relays_while_partitioned(new_relays)
+            }
+            Transition::ExhaustRelayPorts(relay) => {
+                self.exhausted_relays.insert(*relay);
+            }
+            Transition::FreeRelayPorts(relay) => {
+                self.exhausted_relays.remove(relay);
             }
             Transition::Idle => {}
             Transition::PartitionRelaysFromPortal => {
@@ -1432,6 +1441,10 @@ impl ReferenceState {
         {
             self.network.remove_host(&relay);
         }
+        for _ in self
+            .exhausted_relays
+            .extract_if(.., |relay| !new_relays.contains_key(relay))
+        {}
 
         for (rid, new_relay) in new_relays {
             if self.relays.contains_key(rid) {
@@ -1449,6 +1462,7 @@ impl ReferenceState {
             self.network.remove_host(relay);
         }
         self.relays.clear();
+        self.exhausted_relays.clear();
 
         for (rid, new_relay) in new_relays {
             self.relays.insert(*rid, new_relay.clone());

@@ -665,6 +665,25 @@ impl TunnelTest {
                 // If we are partitioned from the portal, we will only learn which relays to use, potentially replacing existing ones.
                 self.reboot_relays_while_partitioned(new_relays, now);
             }
+            Transition::ExhaustRelayPorts(relay) => {
+                self.relays
+                    .get_mut(&relay)
+                    .unwrap()
+                    .exec_mut(|r| r.rejects_allocations = true);
+            }
+            Transition::FreeRelayPorts(relay) => {
+                self.relays
+                    .get_mut(&relay)
+                    .unwrap()
+                    .exec_mut(|r| r.rejects_allocations = false);
+
+                for client in self.clients.values_mut() {
+                    client.exec_mut(|c| c.update_relays(iter::empty(), self.relays.iter(), now));
+                }
+                for gateway in self.gateways.values_mut() {
+                    gateway.exec_mut(|g| g.update_relays(iter::empty(), self.relays.iter(), now));
+                }
+            }
             Transition::DeauthorizeWhileGatewayIsPartitioned(rid) => {
                 let authorizations = self
                     .clients

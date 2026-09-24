@@ -50,6 +50,8 @@ enum TransitionKind {
     SendPacketOnExistingFlow,
     SendDnsQueries,
     UpdateDevicePoolMembers,
+    ExhaustRelayPorts,
+    FreeRelayPorts,
 }
 
 #[derive(Clone, Copy)]
@@ -93,6 +95,13 @@ pub(super) fn generate(
         .collect::<Vec<_>>();
     let dns_query_targets = dns_queries::targets(state, portal);
     let listed_device_pools = state.listed_device_pool_ids_on_any_client(portal);
+    let accepting_relays = state
+        .relays
+        .keys()
+        .filter(|relay| !state.exhausted_relays.contains(relay))
+        .copied()
+        .collect::<Vec<_>>();
+    let exhausted_relays = state.exhausted_relays.iter().copied().collect::<Vec<_>>();
 
     // Build the legal action list. Data-plane actions stay more frequent because
     // they drive most of the tunnel state machine; the fuzzer chooses the concrete
@@ -125,6 +134,10 @@ pub(super) fn generate(
         (!existing_flows.is_empty()).then_some((K::SendPacketOnExistingFlow, 25)),
         (!dns_query_targets.is_empty()).then_some((K::SendDnsQueries, 10)),
         (!listed_device_pools.is_empty()).then_some((K::UpdateDevicePoolMembers, 2)),
+        // A node whose allocations are all suspended cannot open any connection, so the
+        // reference model relies on every node keeping a working allocation on some relay.
+        (!portal.iceless() && accepting_relays.len() >= 2).then_some((K::ExhaustRelayPorts, 1)),
+        (!exhausted_relays.is_empty()).then_some((K::FreeRelayPorts, 1)),
     ]
     .into_iter()
     .flatten()
@@ -296,6 +309,12 @@ pub(super) fn generate(
                 members,
                 revoked,
             }
+        }
+        K::ExhaustRelayPorts => {
+            Transition::ExhaustRelayPorts(accepting_relays[g.choose_index(accepting_relays.len())])
+        }
+        K::FreeRelayPorts => {
+            Transition::FreeRelayPorts(exhausted_relays[g.choose_index(exhausted_relays.len())])
         }
     }
 }
