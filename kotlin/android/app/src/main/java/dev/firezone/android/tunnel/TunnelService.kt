@@ -716,11 +716,13 @@ class TunnelService : VpnService() {
         session: SessionInterface,
         commandChannel: Channel<TunnelCommand>,
     ): StopReason {
+        val events = session.events()
+
         @OptIn(ExperimentalCoroutinesApi::class)
         val eventChannel =
             serviceScope.produce {
                 while (isActive) {
-                    send(session.nextEvent())
+                    send(events.next())
                 }
             }
 

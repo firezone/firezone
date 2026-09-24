@@ -464,22 +464,10 @@ impl Session {
 
         Ok(())
     }
-}
 
-#[uniffi::export]
-#[cfg(not(target_os = "android"))]
-impl Session {
     /// Returns the stream of this session's events.
     pub fn events(&self) -> Arc<EventStream> {
         self.events.clone()
-    }
-}
-
-#[uniffi::export]
-#[cfg(target_os = "android")]
-impl Session {
-    pub async fn next_event(&self) -> Option<Event> {
-        self.events.next().await
     }
 }
 

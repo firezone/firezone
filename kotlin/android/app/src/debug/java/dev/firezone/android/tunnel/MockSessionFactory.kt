@@ -5,6 +5,8 @@ import kotlinx.coroutines.channels.Channel
 import uniffi.connlib.AndroidSessionConfig
 import uniffi.connlib.ClientTlsIdentity
 import uniffi.connlib.Event
+import uniffi.connlib.EventStream
+import uniffi.connlib.NoHandle
 
 /**
  * Plays connlib for a debug launch: it reports the deployment the screenshot fixtures describe and
@@ -29,7 +31,12 @@ private class MockSession : TunnelSession {
         events.trySend(Event.ResourcesUpdated(resources = mockResources, connectedDevices = mockConnectedDevices))
     }
 
-    override suspend fun nextEvent(): Event? = events.receiveCatching().getOrNull()
+    private val eventStream =
+        object : EventStream(NoHandle) {
+            override suspend fun next(): Event? = events.receiveCatching().getOrNull()
+        }
+
+    override fun events(): EventStream = eventStream
 
     override fun disconnect() {
         events.close()

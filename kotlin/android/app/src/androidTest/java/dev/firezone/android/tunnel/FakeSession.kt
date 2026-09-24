@@ -6,6 +6,8 @@ import kotlinx.coroutines.channels.Channel
 import uniffi.connlib.AndroidSessionConfig
 import uniffi.connlib.ClientTlsIdentity
 import uniffi.connlib.Event
+import uniffi.connlib.EventStream
+import uniffi.connlib.NoHandle
 
 // Stands in for a connlib session. `disconnect` ends the event stream, which is the part of the
 // real session's behaviour the service's event loop is built around.
@@ -31,7 +33,12 @@ class FakeSession(
         events.close()
     }
 
-    override suspend fun nextEvent(): Event? = events.receiveCatching().getOrNull()
+    private val eventStream =
+        object : EventStream(NoHandle) {
+            override suspend fun next(): Event? = events.receiveCatching().getOrNull()
+        }
+
+    override fun events(): EventStream = eventStream
 
     override fun disconnect() {
         commands.trySend("disconnect")
