@@ -511,7 +511,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
   private static let connectErrorReported = OSAllocatedUnfairLock(initialState: false)
 
-  /// Captures `connlibConnectError` once per process, since failed starts retry every ~30s.
+  /// Captures `connlibConnectError` once per process, since failed starts can keep repeating.
   private static func logStartError(_ error: Error) {
     let isRepeat =
       if case AdapterError.connlibConnectError = error {
