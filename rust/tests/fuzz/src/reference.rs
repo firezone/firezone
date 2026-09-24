@@ -189,6 +189,7 @@ impl ReferenceState {
                     });
                 }
 
+                // Queries through a resource connect us via the Gateway the portal hands us.
                 for (client_id, _) in queries {
                     let connected = self.clients[client_id]
                         .inner()
