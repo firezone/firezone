@@ -1,7 +1,7 @@
 [package]
 name = "firezone-cli"
 # mark:next-gui-version
-version = "1.5.18"
+version = "1.5.19"
 description = "Command-line remote control for the Firezone GUI Client"
 edition = { workspace = true }
 authors = ["Firezone, Inc."]
