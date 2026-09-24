@@ -73,6 +73,7 @@ edition = "2024"
 
 [workspace.dependencies]
 admx-macro = { path = "gui-client/src-admx-macro" }
+afl = "0.18.2"
 anyhow = { package = "anyhow-ext", path = "libs/anyhow-ext" }
 arbitrary = "1.4.2"
 arboard = { version = "3.6.1", default-features = false }
@@ -117,6 +118,7 @@ ebpf-shared = { path = "relay/ebpf-shared" }
 embed-resource = "3.0"
 etc-hosts-dns-client = { path = "libs/connlib/etc-hosts-dns-client" }
 eventloop-budget = { path = "libs/eventloop-budget" }
+fastrand = "2.3.0"
 fd-lock = "4.0.4"
 filetime = "0.2.29"
 flow-log-spool = { path = "libs/flow-log-spool" }
@@ -156,7 +158,6 @@ l3-udp-dns-client = { path = "libs/connlib/l3-udp-dns-client" }
 l4-tcp-dns-server = { path = "libs/connlib/l4-tcp-dns-server" }
 l4-udp-dns-server = { path = "libs/connlib/l4-udp-dns-server" }
 libc = "0.2.186"
-libfuzzer-sys = "0.4.13"
 logging = { path = "libs/logging" }
 lru = "0.18.0"
 memchr = "2.7.4"

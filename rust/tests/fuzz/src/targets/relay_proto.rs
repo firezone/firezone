@@ -1,5 +1,3 @@
-#![no_main]
-
 //! Drives the relay's message handling with arbitrary datagrams.
 //!
 //! `handle_client_input` is what the relay calls on every datagram, so anything
@@ -18,7 +16,6 @@
 
 use arbitrary::Arbitrary;
 use bytecodec::{DecodeExt as _, EncodeExt as _};
-use libfuzzer_sys::fuzz_target;
 use rand::{SeedableRng as _, rngs::StdRng};
 use relay_proto::{
     Attribute, ClientSocket, Command, Server,
@@ -33,7 +30,7 @@ use uuid::Uuid;
 const RELAY_IP: Ipv4Addr = Ipv4Addr::new(10, 0, 0, 1);
 const CLIENT: SocketAddr = SocketAddr::new(std::net::IpAddr::V4(Ipv4Addr::new(10, 0, 0, 2)), 51820);
 #[derive(Arbitrary, Debug)]
-struct Input<'a> {
+pub struct Input<'a> {
     /// Decode the datagram as a STUN message and re-encode it before handing it over.
     parse: bool,
     /// Give the message a nonce the relay issued and a matching HMAC.
@@ -41,11 +38,11 @@ struct Input<'a> {
     datagram: &'a [u8],
 }
 
-fuzz_target!(|input: Input<'_>| {
+pub fn test(input: Input<'_>) {
     let mut server = Server::new(RELAY_IP, StdRng::seed_from_u64(0), 3478, 49152..=65535);
     server.set_accounts([AccountId::from(Uuid::nil())]);
     let client = ClientSocket::new(CLIENT);
-    let now = Instant::now();
+    let now = *crate::START_TIME;
     // Fixed rather than `SystemTime::now`: the expiry checked against this is
     // fuzzer-controlled, so the verdict must not depend on when the target runs.
     let now_utc = SystemTime::UNIX_EPOCH + Duration::from_secs(1_700_000_000);
@@ -65,7 +62,7 @@ fuzz_target!(|input: Input<'_>| {
     };
 
     server.handle_client_input(&datagram, client, now, now_utc);
-});
+}
 
 /// Replaces the fields a fuzzer cannot guess, leaving the rest of the message alone.
 fn repair(datagram: &[u8], nonce: Option<&Nonce>, server: &Server<StdRng>) -> Option<Vec<u8>> {

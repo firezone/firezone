@@ -55,6 +55,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "afl"
+version = "0.18.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "97f234ba65eadcb51ea4e5c33dfdf05d6c512e297b4fb8fd31159e2dac4e7cc8"
+dependencies = [
+ "home",
+ "libc",
+ "rustc_version",
+ "xdg",
+]
+
+[[package]]
 name = "ahash"
 version = "0.8.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1160,8 +1172,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6354c81bbfd62d9cfa9cb3c773c2b7b2a3a482d569de977fd0e961f6e7c00583"
 dependencies = [
  "find-msvc-tools",
- "jobserver",
- "libc",
  "shlex",
 ]
 
@@ -3033,15 +3043,18 @@ dependencies = [
 name = "fuzz"
 version = "0.1.0"
 dependencies = [
+ "afl",
  "anyhow-ext",
  "arbitrary",
  "bufferpool",
  "bytecodec",
  "chrono",
+ "clap",
  "connlib-model",
  "derive_more",
  "dns-over-tcp",
  "dns-types",
+ "fastrand",
  "flow-tracker",
  "hex",
  "ip-packet",
@@ -3049,7 +3062,7 @@ dependencies = [
  "ip_network_table",
  "itertools 0.15.0",
  "l3-tcp",
- "libfuzzer-sys",
+ "libc",
  "rand 0.10.2",
  "relay-proto",
  "secrecy",
@@ -3629,6 +3642,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6303bc9732ae41b04cb554b844a762b4115a61bfaa81e3e83050991eeb56863f"
 dependencies = [
  "digest 0.11.3",
+]
+
+[[package]]
+name = "home"
+version = "0.5.12"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cc627f471c528ff0c4a49e1d5e60450c8f6461dd6d10ba9dcd3a61d3dff7728d"
+dependencies = [
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -4357,16 +4379,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "jobserver"
-version = "0.1.33"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "38f262f097c174adebe41eb73d66ae9c06b2844fb0da69969647bbddd9b0538a"
-dependencies = [
- "getrandom 0.3.4",
- "libc",
-]
-
-[[package]]
 name = "js-sys"
 version = "0.3.85"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4598,16 +4610,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "06085512b750d640299b79be4bad3d2fa90a9c00b1fd9e1b46364f66f0485c72"
 dependencies = [
  "pkg-config",
-]
-
-[[package]]
-name = "libfuzzer-sys"
-version = "0.4.13"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a9fd2f41a1cba099f79a0b6b6c35656cf7c03351a7bae8ff0f28f25270f929d2"
-dependencies = [
- "arbitrary",
- "cc",
 ]
 
 [[package]]
@@ -10465,6 +10467,12 @@ dependencies = [
  "thiserror 2.0.20",
  "time",
 ]
+
+[[package]]
+name = "xdg"
+version = "3.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2fb433233f2df9344722454bc7e96465c9d03bff9d77c248f9e7523fe79585b5"
 
 [[package]]
 name = "yasna"

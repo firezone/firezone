@@ -1,111 +1,53 @@
 # Fuzzing
 
-## Targets
+One executable exercises four targets, each with its own corpus and coverage check:
 
-- `ip-packet` — parses and mutates a single IP packet through `ip-packet`'s API.
-- `relay-proto`: drives the relay's message handling with arbitrary datagrams, repairing the nonce and HMAC on request so the authenticated path is reachable.
-- `tunnel-proto` — drives the connlib tunnel state machine with a reference model and system-under-test harness.
-- `x509-claims` parses arbitrary DER as a client identity certificate and exercises everything derived from it.
+- `ip-packet`: packet parsing and mutation.
+- `relay-proto`: relay message handling, including authenticated requests.
+- `tunnel-proto`: tunnel behavior checked against a reference model.
+- `x509-claims`: certificate parsing and identity claims.
 
-Every fuzz target is listed in `targets.json` and has the same name as the crate whose coverage it tracks.
-This list drives both pull-request CI and the nightly discovery matrix.
+## Execution model
 
-## Corpora
+[AFL++](https://github.com/AFLplusplus/AFLplusplus) discovers inputs through a forkserver, running each input in a fresh child process.
+Each parent initializes the same RNG seeds and simulation clock anchor, and children inherit that state.
+In-memory state left by one input cannot affect another; external state is not reset.
 
-Each target's corpus is committed as one deterministic archive under `corpora/<target>.tar.gz`.
-`unpack-corpus` materializes it into the ignored `corpus/<target>` directory, which is the working copy from there on.
-`fuzz` unpacks first because it starts from the committed inputs; `cmin` and `coverage` read the directory as it stands, so that what `cmin` drops stays dropped.
-Unpack explicitly before running either from a fresh checkout.
-`cmin` selects on edges rather than hit counts, so what stays committed is bounded by the coverage a corpus actually adds instead of by how often its inputs happen to re-run the same code.
-Fuzzing keeps the counters, because they are what lets libFuzzer notice progress inside a loop.
-Pull-request CI only replays these inputs, making fuzz regression and coverage checks deterministic.
-It never performs random coverage discovery.
+Replay runs saved inputs in persistent batches for speed, using the same target functions and assertions as discovery.
+Any failing input fails the replay.
+Because replay retains process state between inputs, it checks regressions but does not establish discovery determinism.
 
-The nightly `fuzz-nightly.yml` workflow runs every target from `targets.json` on `main`, minimizes and repacks the grown corpora, refreshes their coverage baselines, and opens a bot PR per target, so a corpus that carries a crashing input only holds up its own review.
-Where that PR is still open, the run seeds from it as well as from `main`, so a night's discoveries survive until someone reviews them.
-Each phase is a step of its own there, carrying its own time budget, so one that overruns ends up costing only itself.
-Dispatching it manually takes an optional `target` input to work on one entry of `targets.json` instead of all of them, and on a branch other than `main` it pushes the result back to that branch instead of opening a PR.
+## Corpora and coverage
 
-Tunnel inputs are decoded positionally with `arbitrary::Unstructured`.
-Changing the generator in `src/arb/` can therefore reinterpret existing inputs; after a substantial generator change, re-minimize and grow the corpus before updating the archive.
+Committed corpora serve as regression tests and starting points for further discovery.
+Minimization retains inputs that contribute edge coverage; differences in execution counts alone do not justify retaining an input.
+AFL edge coverage guides discovery and minimization, while LLVM source coverage measures how much of the code the corpus exercises.
 
-## Setup
+Pull-request CI checks that discovery coverage is stable within and across forkservers, replays the committed corpora, and rejects increases in uncovered source regions.
+The [nightly workflow](../../../.github/workflows/fuzz-nightly.yml) grows and minimizes corpora, refreshes coverage ceilings, and retains failing inputs for regression testing.
+On the default branch it proposes corpus PRs; dispatching it on another branch pushes results back to that branch.
+Use that workflow when changes require new inputs or coverage baselines, including changes to how the tunnel generator interprets existing inputs.
 
-Everything is managed through this directory's `mise.toml`: the pinned nightly toolchain, `cargo-fuzz`, and the profile overrides required by fuzz builds.
-The tasks themselves are shell scripts in `mise-tasks/`.
-Fuzzing tasks require Linux because `cargo-fuzz` is installed only for Linux.
+## Usage
 
-## Run
-
-Run a target locally; extra arguments are passed to libFuzzer:
+The tasks support x86-64 Linux.
+Install the tools declared in [mise.toml](mise.toml), then select a target:
 
 ```console
+mise install --cd rust/tests/fuzz
 mise run //rust/tests/fuzz:fuzz ip-packet
-mise run //rust/tests/fuzz:fuzz ip-packet -fork=4
-mise run //rust/tests/fuzz:fuzz tunnel-proto -fork=4
+mise run //rust/tests/fuzz:replay ip-packet
+mise run //rust/tests/fuzz:replay ip-packet --repeat 100
 ```
 
-`tunnel-proto` and `relay-proto` automatically use `-max_len=8192 -len_control=0` so deep state-machine runs remain reachable.
+Discovery accepts `--workers` and `--seconds`; replay reports iterations per second.
+For local discovery, follow AFL++'s startup diagnostics for host configuration.
 
-## Reproducing a crash
+To minimize and investigate a saved crash:
 
 ```console
-mise run //rust/tests/fuzz:replay-crashes tunnel-proto
-mise run //rust/tests/fuzz:tmin tunnel-proto artifacts/tunnel-proto/crash-<hash>
-mise run //rust/tests/fuzz:repro tunnel-proto <reduced-input> 2> repro.log
+mise run //rust/tests/fuzz:tmin tunnel-proto artifacts/tunnel-proto/crashes-<hash>
+mise run //rust/tests/fuzz:repro tunnel-proto artifacts/tunnel-proto/crashes-<hash>.minimized
 ```
 
-Set `RUST_LOG=trace` for detailed scenario and connlib traces.
-
-A fuzz job's findings arrive in the corpus instead, under the `crash-` name libFuzzer gave them, so they keep CI red until the bug is fixed.
-`coverage` names the one it died on and nothing needs pruning afterwards.
-
-## Coverage
-
-Replay a committed corpus and check its uncovered-region ceiling:
-
-```console
-mise run //rust/tests/fuzz:unpack-corpus ip-packet
-mise run //rust/tests/fuzz:coverage ip-packet
-mise run //rust/tests/fuzz:coverage-check ip-packet
-```
-
-Coverage growth passes without requiring a baseline update.
-An increase in uncovered regions fails.
-
-The ceiling spans every workspace crate the target links, not just the one sharing its name.
-A fuzz build instruments the dependencies too, so a target that drives `tunnel-proto` reports what it reached in `snownet`, `dns-types` and the rest as one number.
-Which lines a crate contributes is visible in the HTML coverage report.
-
-When the ceiling is genuinely exceeded, `grow` runs the whole recovery locally: it fuzzes for new coverage, minimizes the corpus, refreshes the baseline from what the grown corpus actually reaches, then repacks it.
-It fuzzes past a crash rather than stopping at the first, and runs its remaining steps even when one of them fails, so a run ends with a repacked corpus carrying what it found either way.
-
-```console
-mise run //rust/tests/fuzz:grow tunnel-proto
-```
-
-This runs the same phases as the nightly workflow, so commit both the repacked corpus and the refreshed baseline.
-Expect it to take a while: it fuzzes for 30 minutes before the remaining steps even start.
-
-It spreads that across three quarters of the cores, leaving you some to work with.
-Pass libFuzzer arguments to override both the parallelism and the duration, e.g. `-fork=8 -max_total_time=300`.
-Be wary of shortening it much for `tunnel-proto`: `-fork` re-merges the whole seed corpus before it discovers anything, `-max_total_time` does not bound that startup, and a short budget is spent entirely inside it.
-
-The measurement is taken on the machine that runs it.
-A local run that gets luckier than CI writes a ceiling CI cannot meet, so re-run `coverage-check` before pushing.
-
-After growing and minimizing a corpus yourself, the remaining steps run individually; `update-baseline` records the measurement without the risk of truncating the committed file on a failed one:
-
-```console
-mise run //rust/tests/fuzz:coverage tunnel-proto
-mise run //rust/tests/fuzz:update-baseline tunnel-proto
-mise run //rust/tests/fuzz:save-crashes tunnel-proto
-mise run //rust/tests/fuzz:pack-corpus tunnel-proto
-```
-
-For a local browsable report:
-
-```console
-mise run //rust/tests/fuzz:unpack-corpus tunnel-proto
-mise run //rust/tests/fuzz:coverage-report tunnel-proto
-```
+`repro` enables debug tracing; set `RUST_LOG=trace` for more detail.

@@ -1,21 +1,16 @@
-#![no_main]
-
 //! Exercises the connlib tunnel state machine with coverage-guided fuzzing.
-
-use std::time::Instant;
 
 use chrono::{DateTime, Utc};
 use fuzz::tunnel_proto::{
     FluxCapacitor, Generator, TunnelTest, check_invariants, init_fuzz_subscriber,
 };
-use libfuzzer_sys::fuzz_target;
 
 const MAX_TRANSITIONS: usize = 20;
 
-fuzz_target!(|data: &[u8]| {
+pub fn test(data: &[u8]) {
     let _guard = init_fuzz_subscriber();
+    let now = *crate::START_TIME;
 
-    let now = Instant::now();
     let utc_start = DateTime::<Utc>::from_timestamp(0, 0).expect("0 is a valid UNIX timestamp");
     let flux_capacitor = FluxCapacitor::new(now, utc_start);
     let mut generator = Generator::new(data);
@@ -42,4 +37,4 @@ fuzz_target!(|data: &[u8]| {
         tunnel = tunnel.apply(transition, &reference, &mut portal);
         check_invariants(&reference, &tunnel, &portal);
     }
-});
+}

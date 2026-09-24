@@ -4,3 +4,4 @@ artifacts
 coverage
 crash-*
 *.profraw
+afl-output
