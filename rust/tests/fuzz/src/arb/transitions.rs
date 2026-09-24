@@ -114,9 +114,17 @@ pub(super) fn generate(
         .copied()
         .collect::<Vec<_>>();
     let exhausted_relays = state.exhausted_relays.iter().copied().collect::<Vec<_>>();
-    let has_healthy_relay = accepting_relays
+    let healthy_relays = accepting_relays
         .iter()
-        .any(|relay| !state.recovering_relays.contains_key(relay));
+        .filter(|relay| !state.recovering_relays.contains_key(relay))
+        .count();
+    // An ICE-less connection without a relay for longer than a WireGuard handshake attempt
+    // expires, which the reference does not predict. ICE-less flows therefore keep a healthy relay.
+    let can_exhaust_relay = if portal.iceless() {
+        healthy_relays > 1
+    } else {
+        !accepting_relays.is_empty()
+    };
 
     // Build the legal action list. Data-plane actions stay more frequent because
     // they drive most of the tunnel state machine; the fuzzer chooses the concrete
@@ -149,12 +157,12 @@ pub(super) fn generate(
         (!existing_flows.is_empty()).then_some((K::SendPacketOnExistingFlow, 25)),
         (!dns_query_targets.is_empty()).then_some((K::SendDnsQueries, 10)),
         (!listed_device_pools.is_empty()).then_some((K::UpdateDevicePoolMembers, 2)),
-        (!accepting_relays.is_empty()).then_some((K::ExhaustRelayPorts, 1)),
+        can_exhaust_relay.then_some((K::ExhaustRelayPorts, 1)),
         (!exhausted_relays.is_empty()).then_some((K::FreeRelayPorts, 1)),
     ]
     .into_iter()
     .flatten()
-    .filter(|(kind, _)| has_healthy_relay || LEGAL_WITHOUT_HEALTHY_RELAY.contains(kind))
+    .filter(|(kind, _)| healthy_relays > 0 || LEGAL_WITHOUT_HEALTHY_RELAY.contains(kind))
     .collect::<SmallVec<[_; 22]>>();
 
     // Weighted pick over the legal list.
