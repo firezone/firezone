@@ -6,12 +6,14 @@
 //! flow-control hand-off once per batch instead of once per packet.
 
 use anyhow::{Context as _, ErrorExt as _, Result, bail};
+use futures::future::{self, Either};
 use ip_packet::{IpPacket, IpPacketBuf, IpVersion};
 use libc::{AF_INET, AF_INET6, iovec};
 use opentelemetry::KeyValue;
 use std::ffi::c_void;
 use std::io;
 use std::os::fd::{AsRawFd as _, RawFd};
+use std::pin::pin;
 use tokio::io::{Interest, unix::AsyncFd};
 
 use super::sys;
@@ -110,13 +112,21 @@ pub fn recv(
             let mut lens = [0usize; MAX_BATCH_SIZE];
 
             'recv: loop {
-                let n = fd
-                    .async_io(Interest::READABLE, |fd| {
+                let n = {
+                    let recv = pin!(fd.async_io(Interest::READABLE, |fd| {
                         // Safety: The file descriptor is valid within this module.
                         unsafe { recv_batch(syscalls, fd.as_raw_fd(), &mut bufs, &mut lens) }
-                    })
-                    .await
-                    .context("Failed to read from TUN FD")?;
+                    }));
+                    let closed = pin!(inbound_tx.closed());
+
+                    match future::select(recv, closed).await {
+                        Either::Left((n, _)) => n.context("Failed to read from TUN FD")?,
+                        Either::Right(((), _)) => {
+                            tracing::debug!("Inbound packet receiver gone, shutting down task");
+                            break;
+                        }
+                    }
+                };
 
                 // `recvmsg_x` reports "nothing to read" as `-1`/`EWOULDBLOCK` (which `async_io`
                 // parks on); `0` datagrams means EOF — the fd has been closed.
