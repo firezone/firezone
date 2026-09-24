@@ -147,8 +147,11 @@ defmodule Portal.Iru.ErrorHandler do
         |> Safe.unscoped()
         |> Safe.update()
 
-      if updated_provider.is_disabled and not provider.is_disabled,
-        do: :disabled, else: :ok
+      if updated_provider.is_disabled and not provider.is_disabled do
+        :disabled
+      else
+        :ok
+      end
     end
   end
 end
