@@ -22,7 +22,7 @@ use crate::sim_net::{EdgeConfig, Host};
 use crate::stub_portal::StubPortal;
 use crate::transition::{Seq, Transition};
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 enum TransitionKind {
     // Always-legal.
     UpdateSystemDnsServers,
@@ -53,6 +53,17 @@ enum TransitionKind {
     ExhaustRelayPorts,
     FreeRelayPorts,
 }
+
+/// The transitions that open no connection.
+///
+/// A node whose allocations are all suspended cannot open any connection, which the reference
+/// model does not predict. While no relay accepts allocations, only these are legal.
+const LEGAL_WITHOUT_ACCEPTING_RELAY: [TransitionKind; 4] = [
+    TransitionKind::RoamClient,
+    TransitionKind::PartitionRelaysFromPortal,
+    TransitionKind::RestartClient,
+    TransitionKind::FreeRelayPorts,
+];
 
 #[derive(Clone, Copy)]
 enum ExistingFlow {
@@ -134,13 +145,14 @@ pub(super) fn generate(
         (!existing_flows.is_empty()).then_some((K::SendPacketOnExistingFlow, 25)),
         (!dns_query_targets.is_empty()).then_some((K::SendDnsQueries, 10)),
         (!listed_device_pools.is_empty()).then_some((K::UpdateDevicePoolMembers, 2)),
-        // A node whose allocations are all suspended cannot open any connection, so the
-        // reference model relies on every node keeping a working allocation on some relay.
-        (!portal.iceless() && accepting_relays.len() >= 2).then_some((K::ExhaustRelayPorts, 1)),
+        (!portal.iceless() && !accepting_relays.is_empty()).then_some((K::ExhaustRelayPorts, 1)),
         (!exhausted_relays.is_empty()).then_some((K::FreeRelayPorts, 1)),
     ]
     .into_iter()
     .flatten()
+    .filter(|(kind, _)| {
+        !accepting_relays.is_empty() || LEGAL_WITHOUT_ACCEPTING_RELAY.contains(kind)
+    })
     .collect::<SmallVec<[_; 22]>>();
 
     // Weighted pick over the legal list.
