@@ -90,6 +90,10 @@ pub struct RefClient {
     #[debug(skip)]
     site_status: BTreeMap<SiteId, ResourceStatus>,
 
+    /// The Gateway we prefer per site when asking for access, until our connection to it fails.
+    #[debug(skip)]
+    gateways_by_site: BTreeMap<SiteId, GatewayId>,
+
     /// The expected TCP connections.
     #[debug(skip)]
     pub(crate) expected_tcp_connections: BTreeMap<(IpAddr, Destination, SPort, DPort), ResourceId>,
@@ -169,6 +173,7 @@ impl RefClient {
             resources: Default::default(),
             routes: Default::default(),
             site_status: Default::default(),
+            gateways_by_site: Default::default(),
             connection_resets: Default::default(),
             gateway_send_times: Default::default(),
             client_send_times: Default::default(),
@@ -470,6 +475,7 @@ impl RefClient {
 
     pub(crate) fn restart(&mut self, key: PrivateKey, now: Instant) {
         self.routes.clear();
+        self.gateways_by_site.clear();
 
         self.key = key;
 
@@ -477,43 +483,57 @@ impl RefClient {
         self.readd_all_resources();
     }
 
-    /// Resets the connections to the given gateways, as if only they had disconnected.
+    /// Fails the connections to the given gateways, as if only they had disconnected.
     ///
-    /// Resources served by other gateways stay connected.
-    pub(crate) fn reset_connections_to_gateways(
+    /// Resources served by other gateways stay connected. We stop preferring the gateways whose
+    /// connection failed.
+    pub(crate) fn fail_connections_to_gateways(
         &mut self,
         gateways: &BTreeSet<GatewayId>,
-        gateway_for_resource: impl Fn(ResourceId) -> Option<GatewayId>,
         now: Instant,
     ) {
-        let is_affected =
-            |rid: &ResourceId| gateway_for_resource(*rid).is_some_and(|g| gateways.contains(&g));
-
         for gateway in gateways {
             self.gateway_send_times.remove(gateway);
         }
 
-        let mut affected = self
-            .connected_cidr_resources
-            .iter()
-            .chain(self.connected_dns_resources.iter())
-            .copied()
-            .filter(is_affected)
+        let affected = self
+            .connected_resources()
+            .filter(|rid| {
+                self.gateway_for_resource(*rid)
+                    .is_some_and(|g| gateways.contains(&g))
+            })
             .collect::<Vec<_>>();
-
-        if self.connected_internet_resource
-            && let Some(internet) = self.internet_resource()
-            && is_affected(&internet)
-        {
-            affected.push(internet);
-        }
 
         if affected.is_empty() {
             return;
         }
 
+        let failed = affected
+            .iter()
+            .filter_map(|rid| self.gateway_for_resource(*rid))
+            .collect::<BTreeSet<_>>();
+        for _ in self
+            .gateways_by_site
+            .extract_if(.., |_, gateway| failed.contains(gateway))
+        {}
+
         self.connection_resets.push(now);
         self.discard_connections(affected);
+    }
+
+    /// The Gateway we are connected to, or would ask the portal to prefer, for `resource`.
+    pub(crate) fn gateway_for_resource(&self, resource: ResourceId) -> Option<GatewayId> {
+        let site = self.site_for_resource(resource).ok()?;
+
+        self.gateways_by_site.get(&site.id).copied()
+    }
+
+    pub(crate) fn preferred_gateway(&self, site: SiteId) -> Option<GatewayId> {
+        self.gateways_by_site.get(&site).copied()
+    }
+
+    pub(crate) fn prefer_gateway(&mut self, site: SiteId, gateway: GatewayId) {
+        self.gateways_by_site.insert(site, gateway);
     }
 
     /// The Gateway closed the connection, so everything we reached through it is gone.
