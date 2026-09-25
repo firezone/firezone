@@ -8,6 +8,10 @@ defmodule Portal.Mailer.PostureProviderInterestEmailTest do
   alias Portal.Mailer.PostureProviderInterestEmail
 
   setup do
+    Portal.Config.put_env_override(Portal.Mailer.PostureProviderInterestEmail,
+      feedback_email: "feedback@example.com"
+    )
+
     account = account_fixture()
     actor = actor_fixture(type: :account_admin_user, account: account)
     subject = subject_fixture(actor: actor, account: account)
@@ -18,7 +22,7 @@ defmodule Portal.Mailer.PostureProviderInterestEmailTest do
   test "builds an interest email for engineering", context do
     email = PostureProviderInterestEmail.interest_email(context.subject, "Jamf Pro")
 
-    assert email.to == [{"", "engineering@firezone.dev"}]
+    assert email.to == [{"", "feedback@example.com"}]
     assert email.subject == "Posture Provider interest"
     assert email.text_body =~ "Actor ID: #{context.actor.id}"
     assert email.text_body =~ "Account ID: #{context.account.id}"
@@ -34,7 +38,7 @@ defmodule Portal.Mailer.PostureProviderInterestEmailTest do
         "We need device compliance and encryption status."
       )
 
-    assert email.to == [{"", "engineering@firezone.dev"}]
+    assert email.to == [{"", "feedback@example.com"}]
     assert email.subject == "Posture Provider interest"
     assert email.text_body =~ "Actor ID: #{context.actor.id}"
     assert email.text_body =~ "Account ID: #{context.account.id}"

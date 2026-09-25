@@ -331,6 +331,8 @@ config :portal, Portal.Analytics.PostHog,
   project_api_key: nil,
   req_opts: [receive_timeout: 5_000, retry: :transient]
 
+config :portal, Portal.Mailer.PostureProviderInterestEmail, feedback_email: nil
+
 config :portal, Portal.Workers.SignUpFollowUp, from_email: nil, bcc_email: nil
 
 config :portal, Portal.Splunk.APIClient, req_opts: []

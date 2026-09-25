@@ -879,6 +879,18 @@ defmodule Portal.Config.Definitions do
   )
 
   @doc """
+  Recipient address for posture provider interest and feedback emails.
+  Interest registration and feedback are disabled when unset or blank.
+  """
+  defconfig(:feedback_email, :string,
+    default: nil,
+    dump: fn
+      value when is_binary(value) -> if String.trim(value) == "", do: nil, else: String.trim(value)
+      value -> value
+    end
+  )
+
+  @doc """
   Sender address of the founder follow-up email sent 15 minutes after a web sign-up.
 
   The follow-up email is disabled when this is unset or blank. The address must be

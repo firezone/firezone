@@ -740,6 +740,9 @@ if config_env() == :prod do
     endpoint: "https://bzr.openai.com/v1/events",
     req_opts: [receive_timeout: 5_000, retry: false]
 
+  config :portal, Portal.Mailer.PostureProviderInterestEmail,
+    feedback_email: env_var_to_config(:feedback_email)
+
   config :portal, Portal.Mailer.FeedbackEmail,
     recipient: env_var_to_config!(:feedback_email_recipient)
 

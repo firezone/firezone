@@ -4,8 +4,21 @@ defmodule Portal.Mailer.PostureProviderInterestEmail do
   import Portal.Mailer
   import Swoosh.Email
 
-  @engineering_email "engineering@firezone.dev"
   @subject "Posture Provider interest"
+
+  def enabled?, do: not is_nil(feedback_email_address())
+
+  defp feedback_email_address do
+    case Portal.Config.fetch_env!(:portal, __MODULE__)[:feedback_email] do
+      value when is_binary(value) ->
+        case String.trim(value) do
+          "" -> nil
+          address -> address
+        end
+
+      _ -> nil
+    end
+  end
 
   def interest_email(%Portal.Authentication.Subject{} = subject, provider) do
     subject
@@ -37,7 +50,7 @@ defmodule Portal.Mailer.PostureProviderInterestEmail do
   defp base_email(subject) do
     default_email()
     |> subject(@subject)
-    |> to(@engineering_email)
+    |> to(feedback_email_address())
     |> with_account_id(subject.account.id)
   end
 end
