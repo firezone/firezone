@@ -532,10 +532,6 @@ impl RefClient {
         self.gateways_by_site.get(&site).copied()
     }
 
-    pub(crate) fn prefer_gateway(&mut self, site: SiteId, gateway: GatewayId) {
-        self.gateways_by_site.insert(site, gateway);
-    }
-
     /// The Gateway closed the connection, so everything we reached through it is gone.
     ///
     /// Only the connection to that Gateway goes; the ICE state towards our peers, which
@@ -796,12 +792,26 @@ impl RefClient {
         })
     }
 
-    pub(crate) fn connect_to_resource(&mut self, resource: ResourceId, destination: Destination) {
+    pub(crate) fn connect_to_resource(
+        &mut self,
+        resource: ResourceId,
+        gateway: GatewayId,
+        destination: Destination,
+    ) {
         match destination {
             Destination::DomainName { .. } => {
                 self.connected_dns_resources.insert(resource);
             }
             Destination::IpAddr(_) => self.connect_to_internet_or_cidr_resource(resource),
+        }
+
+        self.connected_through(resource, Some(gateway));
+    }
+
+    /// `resource` is online, and we prefer the Gateway the portal handed us for its site.
+    fn connected_through(&mut self, resource: ResourceId, gateway: Option<GatewayId>) {
+        if let (Ok(site), Some(gateway)) = (self.site_for_resource(resource), gateway) {
+            self.gateways_by_site.insert(site.id, gateway);
         }
 
         self.set_resource_online(resource);
@@ -855,6 +865,7 @@ impl RefClient {
     pub(crate) fn on_dns_query(
         &mut self,
         query: &DnsQuery,
+        gateway: Option<GatewayId>,
         upstream_do53: &[UpstreamDo53],
         global_dns_records: &DnsRecords,
         icmp_error_hosts: &IcmpErrorHosts,
@@ -866,8 +877,8 @@ impl RefClient {
 
         if let Some(resource) = self.is_site_specific_dns_query(query) {
             self.prepare_dns_resource_connection(resource, global_dns_records);
-            self.set_resource_online(resource);
             self.connected_dns_resources.insert(resource);
+            self.connected_through(resource, gateway);
             self.expect_dns_response(query);
 
             return;
@@ -918,7 +929,7 @@ impl RefClient {
             }
 
             self.connect_to_internet_or_cidr_resource(resource);
-            self.set_resource_online(resource);
+            self.connected_through(resource, gateway);
 
             return;
         }

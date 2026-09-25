@@ -184,20 +184,21 @@ impl ReferenceState {
                 let icmp_error_hosts = &self.icmp_error_hosts;
 
                 for (client_id, query) in queries {
-                    self.clients.get_mut(client_id).unwrap().exec_mut(|c| {
-                        c.on_dns_query(query, upstream_do53, global_dns_records, icmp_error_hosts);
-                    });
-                }
+                    let client = self.clients[client_id].inner();
+                    let gateway = client
+                        .is_site_specific_dns_query(query)
+                        .or_else(|| client.dns_query_via_resource(query, upstream_do53))
+                        .and_then(|resource| self.select_gateway(portal, *client_id, resource));
 
-                // Queries through a resource connect us via the Gateway the portal hands us.
-                for (client_id, _) in queries {
-                    let connected = self.clients[client_id]
-                        .inner()
-                        .connected_resources()
-                        .collect::<Vec<_>>();
-                    for resource in connected {
-                        self.select_gateway(portal, *client_id, resource);
-                    }
+                    self.clients.get_mut(client_id).unwrap().exec_mut(|c| {
+                        c.on_dns_query(
+                            query,
+                            gateway,
+                            upstream_do53,
+                            global_dns_records,
+                            icmp_error_hosts,
+                        );
+                    });
                 }
             }
             Transition::SendDnsResourcePtrQuery {
@@ -628,8 +629,8 @@ impl ReferenceState {
         }
 
         self.clients.get_mut(&origin).unwrap().exec_mut(|client| {
-            if let Route::Resource { resource, .. } = route {
-                client.connect_to_resource(resource, request.destination().clone());
+            if let Route::Resource { resource, gateway } = route {
+                client.connect_to_resource(resource, gateway, request.destination().clone());
             }
             client.note_sent(Some(route.remote()), sent_at);
         });
@@ -778,7 +779,7 @@ impl ReferenceState {
         self.clients
             .get_mut(&origin)
             .unwrap()
-            .exec_mut(|client| client.connect_to_resource(resource, dst.clone()));
+            .exec_mut(|client| client.connect_to_resource(resource, gateway, dst.clone()));
 
         match rejection {
             Some(response) => ExpectedOutcome::Rejected {
@@ -814,20 +815,18 @@ impl ReferenceState {
         Ok(resource)
     }
 
-    /// The Gateway the portal hands `origin` for `resource`, which `origin` then prefers.
+    /// The Gateway the portal hands `origin` for `resource`.
     fn select_gateway(
-        &mut self,
+        &self,
         portal: &StubPortal,
         origin: ClientId,
         resource: ResourceId,
     ) -> Option<GatewayId> {
         let site = portal.site_for_resource(resource)?;
-        let client = self.clients.get_mut(&origin).unwrap();
-        let gateway = client
+        let gateway = self.clients[&origin]
             .inner()
             .preferred_gateway(site)
             .unwrap_or_else(|| portal.load_balanced_gateway(origin, site));
-        client.exec_mut(|c| c.prefer_gateway(site, gateway));
 
         Some(gateway)
     }
