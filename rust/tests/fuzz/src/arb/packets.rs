@@ -151,7 +151,7 @@ pub(super) fn targets(state: &ReferenceState, portal: &StubPortal) -> Vec<Packet
         )
         .chain(
             state
-                .connected_gateway_ipv4_ips(portal)
+                .connected_gateway_ipv4_ips()
                 .into_iter()
                 .map(|(client_id, network)| PacketTarget::ConnectedGateway {
                     client_id,
@@ -161,7 +161,7 @@ pub(super) fn targets(state: &ReferenceState, portal: &StubPortal) -> Vec<Packet
         )
         .chain(
             state
-                .connected_gateway_ipv6_ips(portal)
+                .connected_gateway_ipv6_ips()
                 .into_iter()
                 .map(|(client_id, network)| PacketTarget::ConnectedGateway {
                     client_id,
