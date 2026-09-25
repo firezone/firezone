@@ -388,13 +388,24 @@ impl SimGateway {
         dns_nat_generation: u64,
         proxy_ip: IpAddr,
     ) -> Option<&DnsResolution> {
-        self.dns_resolutions
-            .get(&(client, domain.clone()))?
-            .iter()
+        self.dns_resolutions(client, domain, dns_nat_generation, proxy_ip)
             .filter(|resolution| (resolution.at, resolution.order) < (at, order))
-            .filter(|resolution| resolution.dns_nat_generation == dns_nat_generation)
-            .filter(|resolution| resolution.proxy_ips.contains(&proxy_ip))
             .max_by_key(|resolution| (resolution.at, resolution.order))
+    }
+
+    pub(crate) fn dns_resolutions(
+        &self,
+        client: ClientId,
+        domain: &DomainName,
+        dns_nat_generation: u64,
+        proxy_ip: IpAddr,
+    ) -> impl Iterator<Item = &DnsResolution> {
+        self.dns_resolutions
+            .get(&(client, domain.clone()))
+            .into_iter()
+            .flatten()
+            .filter(move |resolution| resolution.dns_nat_generation == dns_nat_generation)
+            .filter(move |resolution| resolution.proxy_ips.contains(&proxy_ip))
     }
 
     pub(crate) fn record_authorization(
@@ -491,7 +502,7 @@ impl SimGateway {
             }));
     }
 
-    fn dns_nat_generation(&self, client: ClientId) -> u64 {
+    pub(crate) fn dns_nat_generation(&self, client: ClientId) -> u64 {
         self.dns_nat_generations
             .get(&client)
             .copied()

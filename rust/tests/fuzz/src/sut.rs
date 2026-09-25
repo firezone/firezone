@@ -184,6 +184,10 @@ impl TunnelTest {
         this
     }
 
+    pub(crate) fn now(&self) -> Instant {
+        self.flux_capacitor.now()
+    }
+
     /// Drops the bookkeeping that `transition` makes stale before it is applied.
     ///
     /// Runs after the reference model invalidated, so the flows it dropped are known.
@@ -875,6 +879,16 @@ impl TunnelTest {
             flow_id,
             submitted: submitted.clone(),
             received: received.clone(),
+            dns_addresses: ref_state
+                .global_dns_records
+                .domain_ips_iter(name)
+                .filter(|ip| ip.is_ipv6() == submitted.packet.destination().is_ipv6())
+                .collect(),
+            response_received_at: observations
+                .iter()
+                .filter_map(ProbeObservation::as_received_response)
+                .map(|response| response.at)
+                .next(),
         });
     }
 }
