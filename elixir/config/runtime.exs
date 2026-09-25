@@ -741,7 +741,7 @@ if config_env() == :prod do
     req_opts: [receive_timeout: 5_000, retry: false]
 
   config :portal, Portal.Mailer.PostureProviderInterestEmail,
-    feedback_email: env_var_to_config(:feedback_email)
+    recipient: env_var_to_config!(:posture_provider_interest_email_recipient)
 
   config :portal, Portal.Mailer.FeedbackEmail,
     recipient: env_var_to_config!(:feedback_email_recipient)

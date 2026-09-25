@@ -4,6 +4,13 @@ defmodule Portal.Mailer.FeedbackEmail do
   import Portal.Mailer
   import Swoosh.Email
 
+  def enabled? do
+    case Portal.Config.fetch_env!(:portal, __MODULE__)[:recipient] do
+      recipient when is_binary(recipient) -> String.trim(recipient) != ""
+      _ -> false
+    end
+  end
+
   def feedback_email(%Portal.Authentication.Subject{} = subject, message, url, screenshot \\ nil) do
     recipient = Portal.Config.fetch_env!(:portal, __MODULE__) |> Keyword.fetch!(:recipient)
 

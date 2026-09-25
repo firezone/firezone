@@ -12,7 +12,7 @@ defmodule PortalWeb.Settings.DevicePostureTest do
 
   setup do
     Portal.Config.put_env_override(Portal.Mailer.PostureProviderInterestEmail,
-      feedback_email: "feedback@example.com"
+      recipient: "feedback@example.com"
     )
 
     enable_device_posture()
@@ -184,7 +184,7 @@ defmodule PortalWeb.Settings.DevicePostureTest do
     @feedback_address address
     test "disables interest and feedback when the address is #{inspect(address)}", context do
       Portal.Config.put_env_override(Portal.Mailer.PostureProviderInterestEmail,
-        feedback_email: @feedback_address
+        recipient: @feedback_address
       )
 
       {:ok, lv, _html} =

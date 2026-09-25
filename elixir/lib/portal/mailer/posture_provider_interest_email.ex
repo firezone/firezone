@@ -9,7 +9,7 @@ defmodule Portal.Mailer.PostureProviderInterestEmail do
   def enabled?, do: not is_nil(feedback_email_address())
 
   defp feedback_email_address do
-    case Portal.Config.fetch_env!(:portal, __MODULE__)[:feedback_email] do
+    case Portal.Config.fetch_env!(:portal, __MODULE__)[:recipient] do
       value when is_binary(value) ->
         case String.trim(value) do
           "" -> nil

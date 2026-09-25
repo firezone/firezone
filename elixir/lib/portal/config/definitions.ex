@@ -879,18 +879,6 @@ defmodule Portal.Config.Definitions do
   )
 
   @doc """
-  Recipient address for posture provider interest and feedback emails.
-  Interest registration and feedback are disabled when unset or blank.
-  """
-  defconfig(:feedback_email, :string,
-    default: nil,
-    dump: fn
-      value when is_binary(value) -> if String.trim(value) == "", do: nil, else: String.trim(value)
-      value -> value
-    end
-  )
-
-  @doc """
   Sender address of the founder follow-up email sent 15 minutes after a web sign-up.
 
   The follow-up email is disabled when this is unset or blank. The address must be
@@ -989,13 +977,28 @@ defmodule Portal.Config.Definitions do
 
   @doc """
   Recipient address for feedback submitted through the portal.
+  Feedback is disabled when unset or blank.
   """
   defconfig(:feedback_email_recipient, :string,
-    default: "support@firezone.dev",
+    default: nil,
     changeset: fn changeset, key ->
       changeset
       |> Portal.Changeset.trim_change(key)
-      |> Ecto.Changeset.validate_required([key])
+      |> Ecto.Changeset.update_change(key, fn value -> if value == "", do: nil, else: value end)
+      |> Portal.Changeset.validate_email(key)
+    end
+  )
+
+  @doc """
+  Recipient address for posture provider interest and feedback emails.
+  Interest registration and feedback are disabled when unset or blank.
+  """
+  defconfig(:posture_provider_interest_email_recipient, :string,
+    default: nil,
+    changeset: fn changeset, key ->
+      changeset
+      |> Portal.Changeset.trim_change(key)
+      |> Ecto.Changeset.update_change(key, fn value -> if value == "", do: nil, else: value end)
       |> Portal.Changeset.validate_email(key)
     end
   )

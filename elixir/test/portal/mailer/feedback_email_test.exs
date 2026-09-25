@@ -20,21 +20,21 @@ defmodule Portal.Mailer.FeedbackEmailTest do
     assert email.subject == "In-portal feedback submission"
   end
 
-  test "recipient configuration defaults to support and accepts an environment override" do
-    assert Config.env_var_to_config!(Config.Definitions, :feedback_email_recipient, %{}) ==
-             "support@firezone.dev"
+  for key <- [:feedback_email_recipient, :posture_provider_interest_email_recipient] do
+    test "#{key} is optional and validates configured addresses" do
+      key = unquote(key)
+      env = key |> Atom.to_string() |> String.upcase()
+      assert is_nil(Config.env_var_to_config!(Config.Definitions, key, %{}))
 
-    assert Config.env_var_to_config!(Config.Definitions, :feedback_email_recipient, %{
-             "FEEDBACK_EMAIL_RECIPIENT" => "feedback@example.com"
-           }) == "feedback@example.com"
-  end
+      for value <- ["", "   "] do
+        assert is_nil(Config.env_var_to_config!(Config.Definitions, key, %{env => value}))
+      end
 
-  test "rejects invalid or blank recipient configuration" do
-    for recipient <- ["not-an-email", " "] do
+      assert Config.env_var_to_config!(Config.Definitions, key, %{env => " feedback@example.com "}) ==
+               "feedback@example.com"
+
       assert_raise RuntimeError, fn ->
-        Config.env_var_to_config!(Config.Definitions, :feedback_email_recipient, %{
-          "FEEDBACK_EMAIL_RECIPIENT" => recipient
-        })
+        Config.env_var_to_config!(Config.Definitions, key, %{env => "not-an-email"})
       end
     end
   end

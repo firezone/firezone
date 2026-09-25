@@ -331,7 +331,7 @@ config :portal, Portal.Analytics.PostHog,
   project_api_key: nil,
   req_opts: [receive_timeout: 5_000, retry: :transient]
 
-config :portal, Portal.Mailer.PostureProviderInterestEmail, feedback_email: nil
+config :portal, Portal.Mailer.PostureProviderInterestEmail, recipient: nil
 
 config :portal, Portal.Workers.SignUpFollowUp, from_email: nil, bcc_email: nil
 
@@ -611,7 +611,7 @@ config :phoenix, :json_library, JSON
 
 config :swoosh, :api_client, Swoosh.ApiClient.Req
 
-config :portal, Portal.Mailer.FeedbackEmail, recipient: "support@firezone.dev"
+config :portal, Portal.Mailer.FeedbackEmail, recipient: nil
 
 config :portal, Portal.Mailer,
   adapter: Portal.Mailer.NoopAdapter,

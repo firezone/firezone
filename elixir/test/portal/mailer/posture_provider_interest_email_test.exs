@@ -9,7 +9,7 @@ defmodule Portal.Mailer.PostureProviderInterestEmailTest do
 
   setup do
     Portal.Config.put_env_override(Portal.Mailer.PostureProviderInterestEmail,
-      feedback_email: "feedback@example.com"
+      recipient: "feedback@example.com"
     )
 
     account = account_fixture()

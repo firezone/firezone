@@ -8,7 +8,7 @@ defmodule PortalWeb.SupportForm do
   def mount(socket) do
     {:ok,
      socket
-     |> assign(open?: false, error: nil, sent?: false, url: nil)
+     |> assign(open?: false, error: nil, sent?: false, url: nil, enabled?: FeedbackEmail.enabled?())
      |> assign_form(%{})
      |> allow_upload(:screenshot,
        accept: ~w(.png .jpg .jpeg .gif .webp),
@@ -24,6 +24,7 @@ defmodule PortalWeb.SupportForm do
       <button
         id="support-link"
         type="button"
+        disabled={not @enabled?}
         phx-hook="SupportForm"
         phx-target={@myself}
         class="text-sm text-body hover:text-heading"
@@ -93,6 +94,11 @@ defmodule PortalWeb.SupportForm do
   end
 
   @impl true
+  def handle_event(event, _params, %{assigns: %{enabled?: false}} = socket)
+      when event in ["open", "validate", "submit"] do
+    {:noreply, socket}
+  end
+
   def handle_event("open", %{"url" => url}, socket) do
     {:noreply, assign(socket, open?: true, url: url, sent?: false, error: nil)}
   end

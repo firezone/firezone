@@ -5,13 +5,35 @@ defmodule PortalWeb.SupportFormTest do
   import Portal.ActorFixtures
   import Swoosh.TestAssertions
 
-  setup %{conn: conn} do
+  setup %{conn: conn} = context do
+    Portal.Config.put_env_override(Portal.Mailer.FeedbackEmail,
+      recipient: Map.get(context, :recipient, "support@firezone.dev")
+    )
     account = account_fixture()
     actor = admin_actor_fixture(account: account)
     {:ok, view, _} = conn |> authorize_conn(actor) |> live(~p"/#{account}/actors")
     url = "https://app.firezone.dev/#{account.slug}/actors?search=test&sort=name#details"
-    view |> element("#support-link") |> render_hook("open", %{url: url})
+    if Portal.Mailer.FeedbackEmail.enabled?() do
+      view |> element("#support-link") |> render_hook("open", %{url: url})
+    end
     %{view: view, account: account, actor: actor, url: url}
+  end
+
+  for recipient <- [nil, "", "   "] do
+    @tag recipient: recipient
+    test "disables feedback when recipient is #{inspect(recipient)}", %{view: view, account: account, url: url} do
+      assert has_element?(view, "#support-link[disabled]")
+      target = view |> render() |> Floki.parse_document!() |> Floki.find("#support-link") |> Floki.attribute("phx-target") |> hd() |> String.to_integer()
+      view |> with_target(target) |> render_hook("open", %{url: url})
+      view |> with_target(target) |> render_hook("submit", %{support: %{message: "Feedback"}})
+      refute has_element?(view, "#support-modal")
+      refute_email_sent()
+
+      assert %{rows: [[0]]} = Portal.Repo.query!(
+        "SELECT count(*) FROM feedback_submissions WHERE account_id = $1",
+        [Ecto.UUID.dump!(account.id)]
+      )
+    end
   end
 
   test "sends feedback with only requested context", %{
