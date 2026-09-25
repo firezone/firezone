@@ -3,7 +3,7 @@ defmodule Portal.FeaturesTest do
 
   import Portal.FeaturesFixtures
 
-  for feature <- [:x509_auth, :device_posture] do
+  for feature <- [:x509_auth] do
     test "enabled?/1 reads the #{feature} global rollout flag" do
       disable_feature(unquote(feature))
       refute Portal.Features.enabled?(unquote(feature))

@@ -930,27 +930,9 @@ defmodule PortalWeb.DevicesTest do
 
   describe ":show action posture tab" do
     setup do
-      enable_device_posture()
       account = device_posture_account_fixture()
       actor = admin_actor_fixture(account: account)
       %{account: account, actor: actor}
-    end
-
-    test "hides the tab while the feature is off for the deployment", %{
-      conn: conn,
-      account: account,
-      actor: actor
-    } do
-      enable_device_posture(false)
-      client = client_fixture(account: account, actor: actor)
-
-      {:ok, _lv, html} =
-        conn
-        |> authorize_conn(actor)
-        |> live(~p"/#{account}/devices/#{client.id}?tab=posture")
-
-      refute html =~ "phx-value-tab=\"posture\""
-      assert html =~ "Tunnel IPv4"
     end
 
     test "offers the tab to every device", %{conn: conn, account: account, actor: actor} do
@@ -1377,7 +1359,6 @@ defmodule PortalWeb.DevicesTest do
 
   describe "index serial column" do
     setup do
-      enable_device_posture()
       account = device_posture_account_fixture()
       actor = admin_actor_fixture(account: account)
       %{account: account, actor: actor}

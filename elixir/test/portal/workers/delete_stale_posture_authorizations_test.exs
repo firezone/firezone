@@ -19,7 +19,6 @@ defmodule Portal.Workers.DeleteStalePostureAuthorizationsTest do
   @compliant %{"field" => "intune.compliance_state", "op" => "is", "value" => "compliant"}
 
   setup do
-    enable_device_posture()
     account = device_posture_account_fixture()
     actor = actor_fixture(account: account)
     group = group_fixture(account: account)

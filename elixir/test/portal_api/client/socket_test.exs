@@ -1149,7 +1149,6 @@ defmodule PortalAPI.Client.SocketTest do
     end
 
     test "loads the matched provider rows onto the client", %{token: token, row: row} do
-      Portal.DevicePostureFixtures.enable_device_posture()
       attrs = connect_attrs(token: token, device_serial: "POSTURE-SER")
 
       assert {:ok, socket} = connect(Socket, attrs, connect_info: build_connect_info())
@@ -1157,8 +1156,8 @@ defmodule PortalAPI.Client.SocketTest do
       assert intune_id == row.intune_id
     end
 
-    test "loads nothing while the feature is off", %{token: token} do
-      Portal.DevicePostureFixtures.enable_device_posture(false)
+    test "loads nothing while the account feature is off", %{token: token, account: account} do
+      Portal.DevicePostureFixtures.disable_device_posture(account)
       attrs = connect_attrs(token: token, device_serial: "POSTURE-SER")
 
       assert {:ok, socket} = connect(Socket, attrs, connect_info: build_connect_info())

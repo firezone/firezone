@@ -3,13 +3,11 @@ defmodule Portal.Defender.SyncTest do
   use Oban.Testing, repo: Portal.Repo
 
   import Ecto.Query
-  import Portal.DevicePostureFixtures
   import Portal.DefenderFixtures
 
   alias Portal.Defender.{APIClient, Device, PostureProvider, Sync}
 
   setup do
-    enable_device_posture()
     Req.Test.stub(APIClient, fn conn -> Req.Test.json(conn, %{"error" => "not mocked"}) end)
     :ok
   end
@@ -280,16 +278,6 @@ defmodule Portal.Defender.SyncTest do
   test "skips a provider whose account lost the device_posture feature" do
     downgraded = Portal.AccountFixtures.account_fixture(features: %{device_posture: false})
     provider = defender_posture_provider_fixture(account: downgraded)
-
-    stub_machines([defender_api_machine_fixture(%{"id" => "machine-1"})])
-
-    assert :ok = perform_job(Sync, sync_args(provider))
-    assert Repo.aggregate(Device, :count) == 0
-  end
-
-  test "skips every provider when the global flag is off" do
-    provider = defender_posture_provider_fixture()
-    enable_device_posture(false)
 
     stub_machines([defender_api_machine_fixture(%{"id" => "machine-1"})])
 

@@ -51,7 +51,6 @@ defmodule PortalWeb.NavigationComponentsTest do
     end
 
     test "device posture carries a NEW badge too", %{conn: conn, account: account, actor: actor} do
-      Portal.DevicePostureFixtures.enable_device_posture()
 
       {:ok, lv, _html} =
         conn

@@ -147,18 +147,11 @@ defmodule Portal.Account do
   def locked?(%__MODULE__{lock_enabled_at: nil}), do: false
   def locked?(%__MODULE__{}), do: true
 
-  # All plan entitlements except device posture are account-local. Device posture
-  # additionally has a deployment-wide rollout flag in the features table.
   # sobelow_skip ["DOS.BinToAtom"]
-  for feature <- Portal.Accounts.Features.__schema__(:fields), feature != :device_posture do
+  for feature <- Portal.Accounts.Features.__schema__(:fields) do
     def unquote(:"#{feature}_enabled?")(account) do
       account_feature_enabled?(account, unquote(feature))
     end
-  end
-
-  def device_posture_enabled?(account) do
-    Portal.Features.enabled?(:device_posture) and
-      account_feature_enabled?(account, :device_posture)
   end
 
   defp account_feature_enabled?(account, feature) do

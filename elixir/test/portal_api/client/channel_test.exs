@@ -8551,7 +8551,6 @@ defmodule PortalAPI.Client.ChannelTest do
     alias Portal.Changes.Hooks
 
     setup do
-      Portal.DevicePostureFixtures.enable_device_posture()
       account = Portal.DevicePostureFixtures.device_posture_account_fixture()
       actor = actor_fixture(type: :account_admin_user, account: account)
       group = group_fixture(account: account)
@@ -8735,8 +8734,29 @@ defmodule PortalAPI.Client.ChannelTest do
       assert_push "resource_deleted", ^resource_id
     end
 
+    test "account entitlement changes refresh posture without reconnecting", ctx do
+      compliant_policy(ctx)
+      row = Portal.IntuneFixtures.intune_device_fixture(provider: ctx.provider, serial_number: "POSTURE-SER")
+      socket = join_channel(ctx.client, ctx.subject, posture: %{intune: [row]})
+      assert_push "init", %{resources: [%{id: resource_id}]}
+      assert resource_id == ctx.resource.id
+
+      disabled = Portal.DevicePostureFixtures.disable_device_posture(ctx.account)
+      send(socket.channel_pid, %Changes.Change{lsn: 10, op: :update, old_struct: ctx.account, struct: disabled})
+
+      assert_push "resource_deleted", ^resource_id
+      assert %{assigns: %{client: %{posture: %{}}}} = :sys.get_state(socket.channel_pid)
+
+      enabled = disabled |> Ecto.Changeset.change(features: ctx.account.features) |> Repo.update!()
+      send(socket.channel_pid, %Changes.Change{lsn: 11, op: :update, old_struct: disabled, struct: enabled})
+
+      assert_push "resource_created_or_updated", %{id: ^resource_id}
+      assert %{assigns: %{client: %{posture: %{intune: [_]}}}} = :sys.get_state(socket.channel_pid)
+    end
+
     test "rows are ignored while the feature is off", ctx do
-      Portal.DevicePostureFixtures.enable_device_posture(false)
+      account = Portal.DevicePostureFixtures.disable_device_posture(ctx.account)
+      ctx = %{ctx | subject: %{ctx.subject | account: account}}
       compliant_policy(ctx)
       socket = join_channel(ctx.client, ctx.subject)
       assert_push "init", %{resources: []}

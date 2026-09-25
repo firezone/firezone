@@ -9,7 +9,6 @@ defmodule Portal.Santa.SyncTest do
   alias Portal.Santa.{APIClient, Device, PostureProvider, Sync}
 
   setup do
-    enable_device_posture()
     stub_api([])
     :ok
   end
@@ -300,7 +299,7 @@ defmodule Portal.Santa.SyncTest do
     assert :ok = perform_job(Sync, sync_args(disabled))
     assert Repo.aggregate(Device, :count) == 0
 
-    enable_device_posture(false)
+    disable_device_posture(Repo.get!(Portal.Account, enabled.account_id))
     assert :ok = perform_job(Sync, sync_args(enabled))
     assert Repo.aggregate(Device, :count) == 0
   end

@@ -1455,7 +1455,6 @@ defmodule PortalWeb.PoliciesTest do
 
   describe ":device postures" do
     setup do
-      enable_device_posture()
       account = device_posture_account_fixture()
       actor = admin_actor_fixture(account: account)
       group = group_fixture(account: account)
@@ -1476,19 +1475,6 @@ defmodule PortalWeb.PoliciesTest do
     end
 
     defp toggle(lv, id), do: lv |> element("#policy-postures-checks-#{id}") |> render()
-
-    test "the section is hidden when the feature is off globally", %{conn: conn} do
-      enable_device_posture(false)
-      account = account_fixture()
-      actor = admin_actor_fixture(account: account)
-
-      {:ok, _lv, html} =
-        conn
-        |> authorize_conn(actor)
-        |> live(~p"/#{account}/policies/new")
-
-      refute html =~ "Device posture"
-    end
 
     test "the section is locked when the account lacks the feature", %{conn: conn} do
       account = account_fixture()

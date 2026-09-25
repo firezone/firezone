@@ -15,7 +15,6 @@ defmodule PortalWeb.Settings.DevicePostureTest do
       recipient: "feedback@example.com"
     )
 
-    enable_device_posture()
     account = device_posture_account_fixture()
     actor = admin_actor_fixture(account: account)
     %{account: account, actor: actor}
@@ -60,20 +59,7 @@ defmodule PortalWeb.Settings.DevicePostureTest do
   end
 
   describe "device_posture feature gate" do
-    test "hides the settings tab when the global flag is off", %{
-      conn: conn,
-      account: account,
-      actor: actor
-    } do
-      enable_device_posture(false)
-
-      {:ok, _lv, html} =
-        conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/directory_sync")
-
-      refute html =~ "settings/device_posture"
-    end
-
-    test "shows the settings tab when the global flag is on even without the account feature", %{
+    test "shows the settings tab without the account feature", %{
       conn: conn
     } do
       account = Portal.AccountFixtures.account_fixture(features: %{device_posture: false})
@@ -84,19 +70,6 @@ defmodule PortalWeb.Settings.DevicePostureTest do
 
       assert html =~ "settings/device_posture"
       assert html =~ "Device Posture"
-    end
-
-    test "redirects away from the page when the global flag is off", %{
-      conn: conn,
-      account: account,
-      actor: actor
-    } do
-      enable_device_posture(false)
-
-      assert {:error, {:live_redirect, %{to: to}}} =
-               conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/device_posture")
-
-      assert to =~ "/settings/account"
     end
 
     test "shows the upgrade splash when the account lacks the feature", %{conn: conn} do
@@ -130,7 +103,7 @@ defmodule PortalWeb.Settings.DevicePostureTest do
       {:ok, lv, _html} =
         conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/device_posture")
 
-      enable_device_posture(false)
+      disable_device_posture(account)
 
       render_click(lv, "toggle", %{"id" => provider.id})
 
@@ -396,7 +369,6 @@ defmodule PortalWeb.Settings.DevicePostureTest do
       account: account,
       actor: actor
     } do
-      enable_device_posture()
       other_account = device_posture_account_fixture()
       other_provider = intune_posture_provider_fixture(account: other_account)
 
@@ -426,7 +398,7 @@ defmodule PortalWeb.Settings.DevicePostureTest do
       {:ok, lv, _html} =
         conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/device_posture")
 
-      enable_device_posture(false)
+      disable_device_posture(account)
 
       render_click(lv, "sync", %{"id" => provider.id})
 
@@ -1184,8 +1156,6 @@ defmodule PortalWeb.Settings.DevicePostureTest do
     lv
     |> form("#device-posture-form", provider: %{name: "Renamed Iru", api_token: ""})
     |> render_submit()
-
-
 
     assert_patch(lv, ~p"/#{account}/settings/device_posture")
 

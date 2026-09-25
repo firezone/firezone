@@ -759,6 +759,108 @@ defmodule PortalAPI.MCPControllerTest do
     end
   end
 
+  describe "policy postures" do
+    import Portal.DevicePostureFixtures
+    import Portal.GroupFixtures
+    import Portal.PolicyFixtures
+
+    @postures %{
+      "and" => [
+        %{"field" => "intune.enrolled", "op" => "is", "value" => true},
+        %{"or" => [
+          %{"field" => "intune.compliance_state", "op" => "is", "value" => "compliant", "rows" => "all"},
+          %{"not" => %{"field" => "firezone.hostname", "op" => "starts_with", "value" => "test-"}}
+        ]}
+      ]
+    }
+
+    setup %{conn: conn} do
+      account = device_posture_account_fixture()
+      actor = actor_fixture(type: :account_admin_user, account: account)
+      conn = authorize_mcp_conn(conn, actor, ~w[policies:read policies:write])
+      %{conn: conn, account: account, actor: actor}
+    end
+
+    test "creates, reads, replaces, preserves, and clears recursive postures", %{conn: conn, account: account} do
+      attrs = %{
+        "group_id" => group_fixture(account: account).id,
+        "resource_id" => resource_fixture(account: account).id,
+        "postures" => @postures
+      }
+
+      assert %{"result" => %{"isError" => false, "structuredContent" => %{"data" => %{"id" => id, "postures" => @postures}}}} =
+               conn |> call_tool("create_policy", %{"policy" => attrs}) |> json_response(200)
+
+      for name <- ~w[get_policy list_policies] do
+        args = if name == "get_policy", do: %{"id" => id}, else: %{}
+        result = conn |> call_tool(name, args) |> json_response(200)
+        assert result["result"]["isError"] == false
+        data = result["result"]["structuredContent"]["data"]
+        policy = if is_list(data), do: hd(data), else: data
+        assert policy["postures"] == @postures
+      end
+
+      # Full supported nesting must survive MCP dispatch, not just shallow leaves.
+      replacement = Enum.reduce(1..10, %{"field" => "firezone.hostname", "op" => "exists"}, fn _, node -> %{"not" => node} end)
+      for attrs <- [%{"postures" => replacement}, %{"description" => "Keep postures"}] do
+        assert %{"result" => %{"isError" => false, "structuredContent" => %{"data" => %{"postures" => ^replacement}}}} =
+                 conn |> call_tool("update_policy", %{"id" => id, "policy" => attrs}) |> json_response(200)
+      end
+
+      assert %{"result" => %{"isError" => false, "structuredContent" => %{"data" => %{"postures" => nil}}}} =
+               conn |> call_tool("update_policy", %{"id" => id, "policy" => %{"postures" => nil}}) |> json_response(200)
+      assert Portal.Repo.get_by!(Portal.Policy, id: id, account_id: account.id).postures == nil
+    end
+
+    test "rejects invalid postures without updating the policy", %{conn: conn, account: account} do
+      policy = policy_fixture(account: account, postures: @postures)
+      invalid = %{"field" => "intune.enrolled", "op" => "is", "value" => "not a boolean"}
+      result = conn |> call_tool("update_policy", %{"id" => policy.id, "policy" => %{"postures" => invalid}}) |> json_response(200)
+      assert result["result"]["isError"] == true
+      assert [%{"text" => message}] = result["result"]["content"]
+      assert message =~ "postures"
+      saved = Portal.Repo.get_by!(Portal.Policy, id: policy.id, account_id: account.id)
+      assert Portal.Policies.Postures.to_map(saved.postures) == @postures
+    end
+
+    test "rechecks entitlement after downgrade and permits preserving or clearing postures", %{conn: conn, account: account} do
+      policy = policy_fixture(account: account, postures: @postures)
+      disable_device_posture(account)
+      attrs = %{
+        "group_id" => group_fixture(account: account).id,
+        "resource_id" => resource_fixture(account: account).id,
+        "postures" => @postures
+      }
+
+      for {name, args} <- [
+            {"create_policy", %{"policy" => attrs}},
+            {"update_policy", %{"id" => policy.id, "policy" => %{"postures" => @postures}}}
+          ] do
+        result = conn |> call_tool(name, args) |> json_response(200)
+        assert result["result"]["isError"] == true
+        assert [%{"text" => message}] = result["result"]["content"]
+        assert message =~ "Device posture is not enabled for this account"
+      end
+
+      for attrs <- [%{"description" => "Keep postures"}, %{"postures" => nil}] do
+        result = conn |> call_tool("update_policy", %{"id" => policy.id, "policy" => attrs}) |> json_response(200)
+        assert result["result"]["isError"] == false
+      end
+    end
+
+    test "requires policies write scope", %{conn: conn, account: account, actor: actor} do
+      policy = policy_fixture(account: account)
+      result =
+        conn
+        |> authorize_mcp_conn(actor, ["policies:read"])
+        |> call_tool("update_policy", %{"id" => policy.id, "policy" => %{"postures" => @postures}})
+        |> json_response(403)
+
+      assert result["error"]["message"] =~ "policies:write"
+      assert Portal.Repo.get_by!(Portal.Policy, id: policy.id, account_id: account.id).postures == nil
+    end
+  end
+
   defp request(method, params \\ %{}) do
     %{
       "jsonrpc" => "2.0",

@@ -3,16 +3,13 @@ defmodule PortalAPI.MCP.JSONSchema do
   Converts the OpenAPI 3.0 schemas behind `openapi.json` into the JSON Schema
   2020-12 dialect that MCP tool definitions use.
 
-  References are inlined rather than emitted as `$ref`. MCP clients are only
-  required to resolve local references, and an inlined schema is the shape
-  models handle most reliably. The spec's schemas are shallow enough that the
-  duplication costs little.
+  Non-recursive references are inlined. Recursive expressions use local
+  `$defs` references so clients can describe the full grammar without
+  truncating nested policy postures or exponentially expanding the schema.
   """
 
   alias OpenApiSpex.Reference
   alias OpenApiSpex.Schema
-
-  @max_depth 12
 
   @doc """
   Converts one OpenAPI schema into a JSON Schema map with string keys.
@@ -20,7 +17,9 @@ defmodule PortalAPI.MCP.JSONSchema do
   `schemas` is the spec's `components.schemas` map, used to inline references.
   """
   def convert(schema, schemas) do
-    convert(schema, schemas, 0)
+    schema
+    |> convert(schemas, [])
+    |> put_definitions(schemas)
   end
 
   @doc """
@@ -48,6 +47,7 @@ defmodule PortalAPI.MCP.JSONSchema do
           "required" => Enum.uniq(param_required ++ body_required),
           "additionalProperties" => false
         }
+        |> put_definitions(schemas)
 
       collisions ->
         raise ArgumentError,
@@ -58,7 +58,7 @@ defmodule PortalAPI.MCP.JSONSchema do
   defp convert_parameters(parameters, schemas) do
     Enum.reduce(parameters, {%{}, []}, fn parameter, {properties, required} ->
       name = to_string(parameter.name)
-      converted = convert(parameter.schema, schemas, 0)
+      converted = convert(parameter.schema, schemas, [])
       converted = path_identifier_schema(converted, parameter.in, name)
 
       converted =
@@ -91,7 +91,7 @@ defmodule PortalAPI.MCP.JSONSchema do
   defp convert_body(nil, _schemas), do: {%{}, []}
 
   defp convert_body(body_schema, schemas) do
-    case convert(body_schema, schemas, 0) do
+    case convert(body_schema, schemas, []) do
       %{"properties" => properties} = converted ->
         {properties, Map.get(converted, "required", [])}
 
@@ -100,41 +100,48 @@ defmodule PortalAPI.MCP.JSONSchema do
     end
   end
 
-  defp convert(_schema, _schemas, depth) when depth > @max_depth do
-    %{"type" => "object"}
-  end
-
-  defp convert(%Reference{"$ref": "#/components/schemas/" <> name}, schemas, depth) do
-    case Map.fetch(schemas, name) do
-      {:ok, schema} -> convert(schema, schemas, depth + 1)
-      :error -> %{}
+  defp convert(%Reference{"$ref": "#/components/schemas/" <> name}, schemas, seen) do
+    if name in seen do
+      %{"$ref" => "#/$defs/#{name}"}
+    else
+      schemas |> Map.fetch!(name) |> convert(schemas, [name | seen])
     end
   end
 
-  defp convert(%Schema{} = schema, schemas, depth) do
+  defp convert(%Schema{nullable: true} = schema, schemas, seen) do
+    converted = convert(%{schema | nullable: false}, schemas, seen)
+
+    if schema.type && is_nil(schema.enum) && is_nil(schema.allOf) &&
+         is_nil(schema.oneOf) && is_nil(schema.anyOf) do
+      Map.put(converted, "type", [to_string(schema.type), "null"])
+    else
+      {annotations, constraints} = Map.split(converted, ["description", "examples", "default"])
+      Map.put(annotations, "anyOf", [constraints, %{"type" => "null"}])
+    end
+  end
+
+  defp convert(%Schema{} = schema, schemas, seen) do
     %{}
     |> put_type(schema)
     |> put_description(schema)
     |> put_enum(schema)
     |> put_format(schema)
-    |> put_properties(schema, schemas, depth)
-    |> put_items(schema, schemas, depth)
-    |> put_composition(schema, schemas, depth)
+    |> put_properties(schema, schemas, seen)
+    |> put_additional_properties(schema, schemas, seen)
+    |> put_items(schema, schemas, seen)
+    |> put_composition(schema, schemas, seen)
     |> put_bounds(schema)
     |> put_example(schema)
+    |> put_default(schema)
   end
 
-  defp convert(schema, _schemas, _depth) when is_map(schema) do
+  defp convert(schema, _schemas, _seen) when is_map(schema) do
     schema
   end
 
-  defp convert(_schema, _schemas, _depth), do: %{}
+  defp convert(_schema, _schemas, _seen), do: %{}
 
   defp put_type(converted, %Schema{type: nil}), do: converted
-
-  defp put_type(converted, %Schema{type: type, nullable: true}) do
-    Map.put(converted, "type", [to_string(type), "null"])
-  end
 
   defp put_type(converted, %Schema{type: type}) do
     Map.put(converted, "type", to_string(type))
@@ -158,17 +165,24 @@ defmodule PortalAPI.MCP.JSONSchema do
     Map.put(converted, "format", to_string(format))
   end
 
-  defp put_properties(converted, %Schema{properties: nil}, _schemas, _depth), do: converted
+  defp put_properties(converted, %Schema{properties: nil}, _schemas, _seen), do: converted
 
-  defp put_properties(converted, %Schema{} = schema, schemas, depth) do
+  defp put_properties(converted, %Schema{} = schema, schemas, seen) do
     properties =
       Map.new(schema.properties, fn {name, property} ->
-        {to_string(name), convert(property, schemas, depth + 1)}
+        {to_string(name), convert(property, schemas, seen)}
       end)
 
     converted
     |> Map.put("properties", properties)
     |> put_required(schema)
+  end
+
+  defp put_additional_properties(converted, %Schema{additionalProperties: nil}, _schemas, _seen), do: converted
+
+  defp put_additional_properties(converted, %Schema{additionalProperties: value}, schemas, seen) do
+    value = if is_boolean(value), do: value, else: convert(value, schemas, seen)
+    Map.put(converted, "additionalProperties", value)
   end
 
   defp put_required(converted, %Schema{required: nil}), do: converted
@@ -178,13 +192,13 @@ defmodule PortalAPI.MCP.JSONSchema do
     Map.put(converted, "required", Enum.map(required, &to_string/1))
   end
 
-  defp put_items(converted, %Schema{items: nil}, _schemas, _depth), do: converted
+  defp put_items(converted, %Schema{items: nil}, _schemas, _seen), do: converted
 
-  defp put_items(converted, %Schema{items: items}, schemas, depth) do
-    Map.put(converted, "items", convert(items, schemas, depth + 1))
+  defp put_items(converted, %Schema{items: items}, schemas, seen) do
+    Map.put(converted, "items", convert(items, schemas, seen))
   end
 
-  defp put_composition(converted, %Schema{} = schema, schemas, depth) do
+  defp put_composition(converted, %Schema{} = schema, schemas, seen) do
     Enum.reduce([{:oneOf, "oneOf"}, {:anyOf, "anyOf"}, {:allOf, "allOf"}], converted, fn
       {key, json_key}, acc ->
         case Map.get(schema, key) do
@@ -195,7 +209,7 @@ defmodule PortalAPI.MCP.JSONSchema do
             acc
 
           subschemas ->
-            Map.put(acc, json_key, Enum.map(subschemas, &convert(&1, schemas, depth + 1)))
+            Map.put(acc, json_key, Enum.map(subschemas, &convert(&1, schemas, seen)))
         end
     end)
   end
@@ -207,6 +221,8 @@ defmodule PortalAPI.MCP.JSONSchema do
         {:maximum, "maximum"},
         {:minLength, "minLength"},
         {:maxLength, "maxLength"},
+        {:minProperties, "minProperties"},
+        {:maxProperties, "maxProperties"},
         {:minItems, "minItems"},
         {:maxItems, "maxItems"},
         {:pattern, "pattern"}
@@ -226,6 +242,38 @@ defmodule PortalAPI.MCP.JSONSchema do
   defp put_example(converted, %Schema{example: example}) do
     Map.put(converted, "examples", [example])
   end
+
+  defp put_default(converted, %Schema{default: nil}), do: converted
+  defp put_default(converted, %Schema{default: default}), do: Map.put(converted, "default", default)
+
+  # Definitions live at the tool schema's root, including when a request body
+  # is flattened into its parameters. Resolve mutual recursion as well as a
+  # schema that references itself.
+  defp put_definitions(converted, schemas) do
+    case collect_definitions(converted, schemas, %{}) do
+      definitions when map_size(definitions) == 0 -> converted
+      definitions -> Map.put(converted, "$defs", definitions)
+    end
+  end
+
+  defp collect_definitions(%{"$ref" => "#/$defs/" <> name}, schemas, definitions) do
+    if Map.has_key?(definitions, name) do
+      definitions
+    else
+      definition = convert(Map.fetch!(schemas, name), schemas, [name])
+      collect_definitions(definition, schemas, Map.put(definitions, name, definition))
+    end
+  end
+
+  defp collect_definitions(map, schemas, definitions) when is_map(map) do
+    map |> Map.values() |> Enum.reduce(definitions, &collect_definitions(&1, schemas, &2))
+  end
+
+  defp collect_definitions(list, schemas, definitions) when is_list(list) do
+    Enum.reduce(list, definitions, &collect_definitions(&1, schemas, &2))
+  end
+
+  defp collect_definitions(_value, _schemas, definitions), do: definitions
 
   defp bound_value(%Regex{} = regex), do: Regex.source(regex)
   defp bound_value(value), do: value

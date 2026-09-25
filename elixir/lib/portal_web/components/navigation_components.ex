@@ -4,11 +4,6 @@ defmodule PortalWeb.NavigationComponents do
   import PortalWeb.CoreComponents
 
   @doc """
-  Returns whether the global `device_posture` rollout flag is enabled.
-  """
-  def device_posture_enabled?, do: Portal.Features.enabled?(:device_posture)
-
-  @doc """
   Renders the top navigation bar.
   """
   attr :subject, :any, required: true
@@ -407,7 +402,6 @@ defmodule PortalWeb.NavigationComponents do
   """
   attr :account, :any, required: true
   attr :current_path, :string, required: true
-  attr :device_posture_enabled?, :boolean, default: false
   slot :actions
 
   def settings_nav(assigns) do
@@ -494,7 +488,6 @@ defmodule PortalWeb.NavigationComponents do
           Directory Sync
         </.settings_tab>
         <.settings_tab
-          :if={@device_posture_enabled?}
           current_path={@current_path}
           navigate={~p"/#{@account}/settings/device_posture"}
           tab_path="settings/device_posture"

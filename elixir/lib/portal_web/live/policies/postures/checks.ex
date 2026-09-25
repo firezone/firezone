@@ -170,8 +170,8 @@ defmodule PortalWeb.Policies.Postures.Checks do
     },
     %{
       name: :supervised,
-      label: "Supervised",
-      description: "The Apple device is supervised by the MDM.",
+      label: "Apple supervision",
+      description: "Intune reports Apple supervision, which enables additional administrative controls.",
       providers: [:intune],
       expansion: %{"field" => "intune.is_supervised", "op" => "is", "value" => true}
     },
@@ -213,8 +213,8 @@ defmodule PortalWeb.Policies.Postures.Checks do
     },
     %{
       name: :managed,
-      label: "Managed by an MDM",
-      description: "An MDM holds a record for the device at all.",
+      label: "MDM record exists",
+      description: "Intune or Iru has a record for the device. Apple supervision is not required.",
       providers: [:intune, :iru],
       expansion: %{
         "or" => [
@@ -225,7 +225,9 @@ defmodule PortalWeb.Policies.Postures.Checks do
     }
   ]
 
-  @checks Enum.map(@checks, &Map.put(&1, :platforms, Platforms.of(&1.expansion)))
+  @checks @checks
+          |> Enum.map(&Map.put(&1, :platforms, Platforms.of(&1.expansion)))
+          |> Enum.sort_by(&String.downcase(&1.label))
 
   @by_name Map.new(@checks, &{&1.name, &1})
   @names Enum.map(@checks, & &1.name)
