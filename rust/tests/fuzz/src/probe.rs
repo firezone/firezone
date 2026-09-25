@@ -1,4 +1,4 @@
-use std::{net::IpAddr, time::Instant};
+use std::{collections::BTreeSet, net::IpAddr, time::Instant};
 
 use connlib_model::{ClientId, GatewayId, ResourceId};
 use ip_packet::{IpPacket, Protocol};
@@ -227,6 +227,7 @@ pub(crate) struct ReceivedRequest {
 #[derive(Debug, Clone)]
 pub(crate) struct ReceivedResponse {
     pub(crate) id: ProbeId,
+    pub(crate) at: Instant,
     pub(crate) client: ClientId,
     pub(crate) packet: IpPacket,
 }
@@ -244,6 +245,8 @@ pub(crate) struct DnsNatObservation {
     pub(crate) flow_id: FlowId,
     pub(crate) submitted: SubmittedRequest,
     pub(crate) received: ReceivedRequest,
+    pub(crate) response_received_at: Option<Instant>,
+    pub(crate) dns_addresses: BTreeSet<IpAddr>,
 }
 
 impl ProbeObservation {
