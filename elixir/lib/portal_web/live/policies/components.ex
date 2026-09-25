@@ -169,6 +169,23 @@ defmodule PortalWeb.Policies.Components do
         mode={:edit}
       />
 
+      <.modal
+        :if={@panel.panel_view == :edit_form and @confirm_state.confirm_breaking_change}
+        id="policy-breaking-change-modal"
+        on_close="cancel_policy_breaking_change"
+        on_cancel="cancel_policy_breaking_change"
+        on_confirm="save_policy_breaking_change"
+      >
+        <:title>Save these changes?</:title>
+        <:body>
+          <p>
+            Existing connections using this policy will be reset.
+          </p>
+        </:body>
+        <:cancel_button>Cancel</:cancel_button>
+        <:confirm_button>Save Changes</:confirm_button>
+      </.modal>
+
       <.policy_details_view
         :if={@policy && @panel.panel_view == :list}
         account={@account}

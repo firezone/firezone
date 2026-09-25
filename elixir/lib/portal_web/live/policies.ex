@@ -404,7 +404,8 @@ defmodule PortalWeb.Policies do
   defp policy_confirm_state(assigns) do
     %{
       confirm_disable_policy: assigns.policy_confirm.disable?,
-      confirm_delete_policy: assigns.policy_confirm.delete?
+      confirm_delete_policy: assigns.policy_confirm.delete?,
+      confirm_breaking_change: not is_nil(assigns.policy_confirm.breaking_params)
     }
   end
 
@@ -435,7 +436,8 @@ defmodule PortalWeb.Policies do
       },
       policy_confirm: %{
         disable?: false,
-        delete?: false
+        delete?: false,
+        breaking_params: nil
       },
       policy_postures: Postures.for_account(socket.assigns.account)
     ]
@@ -473,6 +475,12 @@ defmodule PortalWeb.Policies do
     |> change_policy(params)
     |> validate_internet_resource_allowed(socket.assigns.subject)
     |> Policy.default_flow_log_uploads_for_internet_resource(params, socket.assigns.subject)
+  end
+
+  # The same set the policies hook treats as breaking: saving it revokes every
+  # authorization the policy granted.
+  defp breaking_change?(changeset) do
+    Enum.any?(~w[group_id resource_id conditions postures flow_log_uploads_enabled]a, &Map.has_key?(changeset.changes, &1))
   end
 
   defp update_policy(socket, changeset) do
@@ -668,8 +676,26 @@ defmodule PortalWeb.Policies do
           {:noreply, merge_state(socket, :policy_panel, form: to_form(changeset))}
       end
     else
-      update_policy(socket, edit_changeset(socket, params))
+      changeset = edit_changeset(socket, params)
+
+      if changeset.valid? and breaking_change?(changeset) do
+        {:noreply, merge_state(socket, :policy_confirm, breaking_params: params)}
+      else
+        update_policy(socket, changeset)
+      end
     end
+  end
+
+  def handle_event("save_policy_breaking_change", _params, socket) do
+    params = socket.assigns.policy_confirm.breaking_params
+
+    socket
+    |> merge_state(:policy_confirm, breaking_params: nil)
+    |> update_policy(edit_changeset(socket, params))
+  end
+
+  def handle_event("cancel_policy_breaking_change", _params, socket) do
+    {:noreply, merge_state(socket, :policy_confirm, breaking_params: nil)}
   end
 
   def handle_event("toggle_conditions_dropdown", _params, socket) do
