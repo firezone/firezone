@@ -88,7 +88,7 @@ impl NatTable {
         outside_dst: IpAddr,
         now: Instant,
     ) -> Result<(Protocol, IpAddr)> {
-        if let Some(outside) = self.translate_outgoing_existing(packet, now)? {
+        if let Some(outside) = self.try_translate_outgoing_existing(packet, now)? {
             return Ok(outside);
         }
 
@@ -114,7 +114,7 @@ impl NatTable {
         Ok(outside.into_inner())
     }
 
-    pub(crate) fn translate_outgoing_existing(
+    pub(crate) fn try_translate_outgoing_existing(
         &mut self,
         packet: &IpPacket,
         now: Instant,

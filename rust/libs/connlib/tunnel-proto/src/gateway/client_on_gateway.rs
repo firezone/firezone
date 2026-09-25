@@ -422,7 +422,9 @@ impl ClientOnGateway {
 
         flow_tracker::record_domain(state.domain.clone());
 
-        let existing = self.nat_table.translate_outgoing_existing(&packet, now)?;
+        let existing = self
+            .nat_table
+            .try_translate_outgoing_existing(&packet, now)?;
         let (source_protocol, real_ip) = match existing {
             Some(existing) => existing,
             None => {
