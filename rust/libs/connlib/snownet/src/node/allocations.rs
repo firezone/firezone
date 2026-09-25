@@ -15,12 +15,17 @@ use stun_codec::rfc5389::attributes::{Realm, Username};
 
 use crate::{
     RelaySocket, Transmit,
-    allocation::{self, Allocation},
+    allocation::{self, Allocation, FreeReason},
 };
+
+/// How long we ignore a relay after freeing its allocation because of a failure.
+const BLOCK_DURATION: Duration = Duration::from_secs(60);
 
 pub(crate) struct Allocations<RId> {
     inner: BTreeMap<RId, Allocation>,
     previous_relays_by_ip: AllocRingBuffer<IpAddr>,
+    /// Relays we freed an allocation of because of a failure, and until when we ignore them.
+    blocked: BTreeMap<RId, Instant>,
 
     buffer_pool: BufferPool<Vec<u8>>,
 
@@ -38,6 +43,7 @@ where
         Self {
             inner: BTreeMap::default(),
             previous_relays_by_ip: AllocRingBuffer::with_capacity_power_of_2(6), // 64 entries
+            blocked: BTreeMap::default(),
             buffer_pool: BufferPool::new(ip_packet::MAX_FZ_PAYLOAD, "turn-clients"),
             rng: StdRng::from_seed(seed),
         }
@@ -54,6 +60,8 @@ where
     /// Used on a network reset: the credentials outlive the reset, so we re-allocate
     /// immediately instead of waiting for the portal to re-deliver the relay list.
     pub(crate) fn restart(&mut self, now: Instant) {
+        self.blocked.clear();
+
         let ids = self.inner.keys().copied().collect::<SmallVec<[RId; 2]>>();
 
         for id in ids {
@@ -139,6 +147,11 @@ where
         realm: Realm,
         now: Instant,
     ) -> UpsertResult {
+        if self.blocked.get(&rid).is_some_and(|until| now < *until) {
+            return UpsertResult::Blocked;
+        }
+        self.blocked.remove(&rid);
+
         match self.inner.entry(rid) {
             Entry::Vacant(v) => {
                 let mut seed = [0u8; 32];
@@ -213,10 +226,25 @@ where
     }
 
     pub(crate) fn poll_timeout(&mut self) -> Option<(Instant, &'static str)> {
+        let unblock = self
+            .blocked
+            .values()
+            .min()
+            .map(|until| (*until, "unblock relay"));
+
         self.inner
             .values_mut()
             .filter_map(|a| a.poll_timeout())
+            .chain(unblock)
             .min_by_key(|(t, _)| *t)
+    }
+
+    /// The relays we currently ignore.
+    pub(crate) fn blocked(&self, now: Instant) -> impl Iterator<Item = RId> + '_ {
+        self.blocked
+            .iter()
+            .filter(move |(_, until)| now < **until)
+            .map(|(rid, _)| *rid)
     }
 
     pub(crate) fn poll_event(&mut self) -> Option<(RId, allocation::Event)> {
@@ -240,7 +268,7 @@ where
     }
 
     /// Performs garbage-collection across all our allocations.
-    pub(crate) fn gc(&mut self) -> Gc<RId> {
+    pub(crate) fn gc(&mut self, now: Instant) -> Gc<RId> {
         let removed = self
             .inner
             .extract_if(.., |rid, allocation| match allocation.can_be_freed() {
@@ -250,15 +278,29 @@ where
                     self.previous_relays_by_ip
                         .extend(server_addresses(allocation));
 
+                    match e {
+                        FreeReason::NoResponseReceived => {}
+                        FreeReason::AuthenticationError
+                        | FreeReason::ProtocolFailure
+                        | FreeReason::UnhandledResponse => {
+                            self.blocked.insert(*rid, now + BLOCK_DURATION);
+                        }
+                    }
+
                     true
                 }
                 None => false,
             })
             .map(|(rid, _)| rid)
             .collect::<SmallVec<[_; 2]>>(); // Typically, we are only connected to 2 relays. Using a `SmallVec` here avoids allocations.
+        let unblocked = self
+            .blocked
+            .extract_if(.., |_, until| now >= *until)
+            .count();
 
         Gc {
             removed_last: !removed.is_empty() && self.inner.is_empty(),
+            unblocked_without_allocations: unblocked > 0 && self.inner.is_empty(),
             removed,
         }
     }
@@ -348,6 +390,7 @@ fn server_addresses(allocation: &Allocation) -> impl Iterator<Item = IpAddr> {
 pub(crate) enum UpsertResult {
     Added,
     Skipped,
+    Blocked,
     Replaced(Allocation),
 }
 
@@ -357,6 +400,8 @@ pub(crate) struct Gc<RId> {
     pub(crate) removed: SmallVec<[RId; 2]>,
     /// Whether we removed the last remaining allocation.
     pub(crate) removed_last: bool,
+    /// Whether we stopped ignoring a relay while we have no allocation at all.
+    pub(crate) unblocked_without_allocations: bool,
 }
 
 #[cfg(test)]
@@ -450,8 +495,8 @@ mod tests {
             now,
         );
 
-        fail_allocations(&mut allocations, now);
-        let gc = allocations.gc();
+        let now = fail_allocations(&mut allocations, now);
+        let gc = allocations.gc(now);
 
         assert_eq!(gc.removed.as_slice(), &[1]);
         assert!(gc.removed_last);
@@ -479,10 +524,126 @@ mod tests {
             Realm::new("firezone".to_owned()).unwrap(),
             now,
         );
-        let gc = allocations.gc();
+        let gc = allocations.gc(now);
 
         assert_eq!(gc.removed.as_slice(), &[1]);
         assert!(!gc.removed_last);
+    }
+
+    #[test]
+    fn ignores_failed_relay_until_block_expires() {
+        let mut allocations = Allocations::for_test();
+        let now = Instant::now();
+        upsert(&mut allocations, 1, SERVER_V4, now);
+
+        allocations
+            .get_mut_by_id(&1)
+            .unwrap()
+            .fail(FreeReason::UnhandledResponse);
+        allocations.gc(now);
+
+        assert_eq!(allocations.blocked(now).collect::<Vec<_>>(), [1]);
+        assert_eq!(
+            allocations.poll_timeout().map(|(t, _)| t),
+            Some(now + BLOCK_DURATION)
+        );
+        assert!(matches!(
+            upsert(
+                &mut allocations,
+                1,
+                SERVER_V4,
+                now + Duration::from_secs(59)
+            ),
+            UpsertResult::Blocked
+        ));
+        assert!(matches!(
+            upsert(&mut allocations, 1, SERVER_V4, now + BLOCK_DURATION),
+            UpsertResult::Added
+        ));
+    }
+
+    #[test]
+    fn does_not_block_unresponsive_relay() {
+        let mut allocations = Allocations::for_test();
+        let now = Instant::now();
+        upsert(&mut allocations, 1, SERVER_V4, now);
+
+        let now = fail_allocations(&mut allocations, now);
+        allocations.gc(now);
+
+        assert!(matches!(
+            upsert(&mut allocations, 1, SERVER_V4, now),
+            UpsertResult::Added
+        ));
+    }
+
+    #[test]
+    fn restart_unblocks_relays() {
+        let mut allocations = Allocations::for_test();
+        let now = Instant::now();
+        upsert(&mut allocations, 1, SERVER_V4, now);
+
+        allocations
+            .get_mut_by_id(&1)
+            .unwrap()
+            .fail(FreeReason::UnhandledResponse);
+        allocations.gc(now);
+        allocations.restart(now);
+
+        assert!(matches!(
+            upsert(&mut allocations, 1, SERVER_V4, now),
+            UpsertResult::Added
+        ));
+    }
+
+    #[test]
+    fn gc_reports_unblocking_only_without_allocations() {
+        let mut allocations = Allocations::for_test();
+        let now = Instant::now();
+        upsert(&mut allocations, 1, SERVER_V4, now);
+        upsert(&mut allocations, 2, SERVER2_V4, now);
+
+        for rid in [1, 2] {
+            allocations
+                .get_mut_by_id(&rid)
+                .unwrap()
+                .fail(FreeReason::UnhandledResponse);
+        }
+        assert!(allocations.gc(now).removed_last);
+
+        let now = now + BLOCK_DURATION;
+        assert!(allocations.gc(now).unblocked_without_allocations);
+        assert!(!allocations.gc(now).unblocked_without_allocations);
+
+        upsert(&mut allocations, 1, SERVER_V4, now);
+        allocations
+            .get_mut_by_id(&1)
+            .unwrap()
+            .fail(FreeReason::UnhandledResponse);
+        allocations.gc(now);
+        upsert(&mut allocations, 2, SERVER2_V4, now);
+
+        assert!(
+            !allocations
+                .gc(now + BLOCK_DURATION)
+                .unblocked_without_allocations
+        );
+    }
+
+    fn upsert(
+        allocations: &mut Allocations<u64>,
+        rid: u64,
+        server: SocketAddr,
+        now: Instant,
+    ) -> UpsertResult {
+        allocations.upsert(
+            rid,
+            RelaySocket::from(server),
+            Username::new("test".to_owned()).unwrap(),
+            "password".to_owned(),
+            Realm::new("firezone".to_owned()).unwrap(),
+            now,
+        )
     }
 
     /// Advances time without ever answering the relays, failing all current allocations.

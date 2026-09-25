@@ -1039,6 +1039,11 @@ impl Allocation {
         self.rtt = Some(rtt);
     }
 
+    #[cfg(test)]
+    pub(crate) fn fail(&mut self, reason: FreeReason) {
+        self.explicit_failure = Some(reason);
+    }
+
     fn update_rtt(&mut self, sample: Duration) {
         // RFC 6298 SRTT-style EMA: srtt = 7/8 * srtt + 1/8 * sample.
         self.rtt = Some(match self.rtt {
