@@ -46,6 +46,9 @@ pub struct StubPortal {
     /// Stable index used to pick a gateway within a site (`index % len`).
     #[debug(skip)]
     gateway_selector: u32,
+    /// How often each Client was handed a Gateway it did not prefer since it started, per site.
+    #[debug(skip)]
+    load_balanced_requests: BTreeMap<(ClientId, SiteId), u32>,
 
     /// Stable index used to pick a resource candidate (`index % len`).
     resource_selector: u32,
@@ -172,6 +175,7 @@ impl StubPortal {
             gateways_by_site,
             regular_sites,
             gateway_selector,
+            load_balanced_requests: Default::default(),
             resource_selector,
             sites_by_resource: BTreeMap::from_iter(
                 cidr_sites.chain(dns_sites).chain(internet_site),
@@ -245,7 +249,12 @@ impl StubPortal {
             Transition::UpdateSystemDnsServers { .. } => {}
             Transition::RoamClient { .. } => {}
             Transition::ReconnectPortal { .. } => {}
-            Transition::RestartClient { .. } => {}
+            Transition::RestartClient { client_id, .. } => {
+                for _ in self
+                    .load_balanced_requests
+                    .extract_if(.., |(client, _), _| client == client_id)
+                {}
+            }
             Transition::DeployNewRelays(_) => {}
             Transition::PartitionRelaysFromPortal => {}
             Transition::Idle => {}
@@ -426,11 +435,10 @@ impl StubPortal {
         resource: ResourceId,
         reference: &ReferenceState,
     ) {
-        let Some(gateway) = self.gateway_for_resource(resource).copied() else {
-            return;
-        };
-
         for (client_id, client) in &reference.clients {
+            let Some(gateway) = self.authorized_gateway(*client_id, resource) else {
+                continue;
+            };
             let connected = client
                 .inner()
                 .connected_resources()
@@ -438,7 +446,7 @@ impl StubPortal {
             if !connected.contains(&resource)
                 || connected.iter().any(|candidate| {
                     *candidate != resource
-                        && self.gateway_for_resource(*candidate) == Some(&gateway)
+                        && self.authorized_gateway(*client_id, *candidate) == Some(gateway)
                 })
             {
                 continue;
@@ -577,21 +585,37 @@ impl StubPortal {
     }
 
     /// Authorizes `client` to reach `resource`, naming the Gateway that serves it.
+    ///
+    /// Like the portal, restricts the choice to the Client's preferred Gateways if any of them
+    /// serve the resource's site and load-balances across the site otherwise.
     pub(crate) fn request_resource_access(
         &mut self,
         client: ClientId,
         resource: ResourceId,
-        _connected_gateway_ids: Vec<GatewayId>,
+        connected_gateway_ids: Vec<GatewayId>,
     ) -> (GatewayId, SiteId) {
         let site_id = *self
             .sites_by_resource
             .get(&resource)
             .expect("resource to be known");
 
-        let gateways = &self.gateways_by_site[&site_id];
-        let (gateway, _, _) =
-            select_by_index(gateways, self.gateway_selector).expect("site to have a gateway");
-        let gateway = *gateway;
+        let preferred = self.gateways_by_site[&site_id]
+            .iter()
+            .map(|(gateway, _, _)| *gateway)
+            .filter(|gateway| connected_gateway_ids.contains(gateway))
+            .collect::<SmallVec<[_; 3]>>();
+        let gateway = match select_by_index(&preferred, self.gateway_selector) {
+            Some(gateway) => *gateway,
+            None => {
+                let gateway = self.load_balanced_gateway(client, site_id);
+                *self
+                    .load_balanced_requests
+                    .entry((client, site_id))
+                    .or_default() += 1;
+
+                gateway
+            }
+        };
 
         self.gateway_policy_authorizations.insert(
             (client, resource),
@@ -638,26 +662,47 @@ impl StubPortal {
             .expect("resource to be a known CIDR, DNS or Internet resource")
     }
 
-    pub(crate) fn gateway_for_resource(&self, rid: ResourceId) -> Option<&GatewayId> {
-        let cidr_site = self
-            .cidr_resources
+    /// The Gateway the portal hands `client` for `site` when the Client prefers none of its Gateways.
+    ///
+    /// Each such request moves on to the site's next Gateway, standing in for the portal's
+    /// random choice.
+    pub(crate) fn load_balanced_gateway(&self, client: ClientId, site: SiteId) -> GatewayId {
+        let requests = self
+            .load_balanced_requests
+            .get(&(client, site))
+            .copied()
+            .unwrap_or_default();
+        let (gateway, _, _) = select_by_index(
+            &self.gateways_by_site[&site],
+            self.gateway_selector.wrapping_add(requests),
+        )
+        .expect("site to have a gateway");
+
+        *gateway
+    }
+
+    pub(crate) fn site_for_resource(&self, rid: ResourceId) -> Option<SiteId> {
+        self.sites_by_resource.get(&rid).copied()
+    }
+
+    /// The Gateway that `client` was last authorized to reach `resource` through.
+    pub(crate) fn authorized_gateway(
+        &self,
+        client: ClientId,
+        resource: ResourceId,
+    ) -> Option<GatewayId> {
+        self.gateway_policy_authorizations
+            .get(&(client, resource))
+            .map(|authorization| authorization.gateway)
+    }
+
+    /// The Gateways that any Client was authorized to reach `resource` through.
+    pub(crate) fn gateways_authorized_for(&self, resource: ResourceId) -> BTreeSet<GatewayId> {
+        self.gateway_policy_authorizations
             .iter()
-            .find_map(|(_, r)| (r.id == rid).then_some(r.sites.first()?.id));
-
-        let dns_site = self
-            .dns_resources
-            .get(&rid)
-            .and_then(|r| Some(r.sites.first()?.id));
-
-        let internet_site = (self.internet_resource.id == rid)
-            .then(|| Some(self.internet_resource.sites.first()?.id))
-            .flatten();
-
-        let sid = cidr_site.or(dns_site).or(internet_site)?;
-        let gateways = self.gateways_by_site.get(&sid)?;
-        let (gid, _, _) = select_by_index(gateways, self.gateway_selector)?;
-
-        Some(gid)
+            .filter(|((_, candidate), _)| *candidate == resource)
+            .map(|(_, authorization)| authorization.gateway)
+            .collect()
     }
 
     pub(crate) fn gateway_by_ip(&self, ip: IpAddr) -> Option<GatewayId> {
