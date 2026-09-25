@@ -15,7 +15,8 @@ defmodule PortalWeb.WebsiteAttribution do
   @session_key "website_attribution"
   @source "www.firezone.dev"
   @click_params ~w[oppref gclid gbraid wbraid]
-  @marketing_params ["fz_mktg" | Enum.map(@click_params, &("fz_" <> &1))]
+  @google_click_params ~w[gclid gbraid wbraid]
+  @marketing_params ["fz_mktg" | Enum.map(@click_params, &("fz_" <> &1))] ++ @google_click_params
   # Keep aligned with website/src/lib/consent-region.ts (EU/EEA and UK).
   @opt_in_countries ~w[AT BE BG HR CY CZ DK EE FI FR DE GR HU IE IT LV LT LU MT NL PL PT RO SK SI ES SE IS LI NO GB]
 
@@ -30,6 +31,7 @@ defmodule PortalWeb.WebsiteAttribution do
       conn
       |> maybe_store_attribution(conn.query_params)
       |> signup_marketing_default()
+      |> store_consented_clicks()
       |> Phoenix.Controller.redirect(to: clean_request_target(conn))
       |> halt()
     else
@@ -70,11 +72,13 @@ defmodule PortalWeb.WebsiteAttribution do
         {country, _city, _coordinates} = Portal.Geo.locate(conn.remote_ip, conn.req_headers)
         allowed = country in Portal.Geo.all_country_codes!() and country not in @opt_in_countries
 
-        put_session(conn, @session_key, Map.put(attribution, "marketing", %{
+        previous_clicks = if allowed and Portal.Analytics.marketing_allowed?(marketing), do: Map.take(marketing, @click_params), else: %{}
+
+        put_session(conn, @session_key, Map.put(attribution, "marketing", Map.merge(previous_clicks, %{
           "marketing_allowed" => allowed,
           "captured_at" => System.os_time(:second),
           "source" => "region"
-        }))
+        })))
     end
   end
 
@@ -82,7 +86,7 @@ defmodule PortalWeb.WebsiteAttribution do
 
   defp attribution_params_present?(params) do
     Map.has_key?(params, @distinct_id_param) or Map.has_key?(params, @pathname_param) or
-      Map.has_key?(params, "fz_mktg")
+      Enum.any?(@marketing_params, &Map.has_key?(params, &1))
   end
 
   defp maybe_store_attribution(conn, params) do
@@ -122,9 +126,21 @@ defmodule PortalWeb.WebsiteAttribution do
 
   defp store_marketing_attribution(conn, _params), do: conn
 
+  defp store_consented_clicks(conn) do
+    attribution = fetch(get_session(conn)) || %{}
+    marketing = attribution["marketing"]
+
+    if Portal.Analytics.marketing_allowed?(marketing) and "1" not in get_req_header(conn, "sec-gpc") do
+      marketing = Map.merge(marketing, click_references(conn.query_params))
+      put_session(conn, @session_key, Map.put(attribution, "marketing", marketing))
+    else
+      conn
+    end
+  end
+
   defp click_references(params) do
     Enum.reduce(@click_params, %{}, fn key, acc ->
-      value = params["fz_" <> key]
+      value = params["fz_" <> key] || if(key in @google_click_params, do: params[key])
 
       if is_binary(value) and byte_size(value) in 1..2048 do
         Map.put(acc, key, value)

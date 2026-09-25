@@ -24,9 +24,9 @@ defmodule Portal.Analytics do
   end
 
   defp enqueue(account, email, event_type, data_type, opts) do
-    enqueue_openai(account, email, event_type, data_type, opts)
-    Portal.Analytics.GoogleAds.enqueue(account, email, event_type, opts)
-    :ok
+    with :ok <- enqueue_openai(account, email, event_type, data_type, opts) do
+      Portal.Analytics.GoogleAds.enqueue(account, email, event_type, opts)
+    end
   end
 
   defp enqueue_openai(account, email, event_type, data_type, opts) do
@@ -51,15 +51,15 @@ defmodule Portal.Analytics do
 
       case OpenAI.new(%{"account_id" => account.id, "event" => event}) |> Oban.insert() do
         {:ok, _job} -> :ok
-        {:error, _reason} -> Logger.warning("Could not enqueue OpenAI conversion", event: event_type)
+        {:error, _reason} -> {:error, :conversion_enqueue_failed}
       end
+    else
+      :ok
     end
-
-    :ok
   rescue
     _ ->
       Logger.warning("Could not enqueue OpenAI conversion", event: event_type)
-      :ok
+      {:error, :conversion_enqueue_failed}
   end
 
   @doc "Checks the latest saved consent before a queued conversion is delivered."
