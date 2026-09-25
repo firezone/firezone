@@ -337,7 +337,12 @@ public final class Store: ObservableObject {
               // Every early return in the provider's `startTunnel` reports a
               // `PacketTunnelProviderError`, which carries neither a reason nor an id and
               // would otherwise be dropped silently.
-              Log.error(error)
+              if PacketTunnelProviderError.isCredentialNotConfigured(error) {
+                // The system started the tunnel while signed out.
+                Log.info(error.localizedDescription)
+              } else {
+                Log.error(error)
+              }
 
               // Deduplicated on the error itself, since only connlib mints an id.
               let id = "\(nsError.domain):\(nsError.code)"

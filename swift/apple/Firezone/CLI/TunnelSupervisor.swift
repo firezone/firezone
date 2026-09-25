@@ -143,7 +143,9 @@ struct TunnelWatcher {
       // The tunnel is started before this is watching it, so a provider that gave up
       // for want of a token can do so unobserved. Timing out would be an unhelpful way
       // to say that a token is all it needed.
-      guard let error = await lastDisconnectError(), Self.isMissingCredential(error) else {
+      guard let error = await lastDisconnectError(),
+        PacketTunnelProviderError.isCredentialNotConfigured(error)
+      else {
         return CLIError("Timed out waiting for the tunnel to connect.")
       }
 
@@ -157,7 +159,7 @@ struct TunnelWatcher {
     case .disconnected:
       let error = await lastDisconnectError()
 
-      if let error, Self.isMissingCredential(error) {
+      if let error, PacketTunnelProviderError.isCredentialNotConfigured(error) {
         return CLIError(noTokenAdvice)
       }
 
@@ -190,12 +192,6 @@ struct TunnelWatcher {
     await withCheckedContinuation { continuation in
       session.fetchLastDisconnectError { continuation.resume(returning: $0) }
     }
-  }
-
-  private static func isMissingCredential(_ error: any Error) -> Bool {
-    let expected = PacketTunnelProviderError.credentialNotConfigured as NSError
-    let actual = error as NSError
-    return actual.domain == expected.domain && actual.code == expected.code
   }
 
   private func announce(disconnect error: (any Error)?) {
