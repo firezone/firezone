@@ -9,7 +9,7 @@ use super::{
     reference::ReferenceState,
     resource::Resource,
     sim_client::SimClient,
-    sim_gateway::SimGateway,
+    sim_gateway::{DnsResolution, SimGateway},
     stub_portal::StubPortal,
     sut::TunnelTest,
     transition::Destination,
@@ -18,16 +18,18 @@ use connlib_model::{ClientId, GatewayId, ResourceId, ResourceStatus, ResourceVie
 use ip_packet::{Icmpv4Type, Icmpv6Type, IpPacket, Layer4Protocol};
 use itertools::Itertools;
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     iter,
     marker::PhantomData,
     net::{IpAddr, SocketAddr},
     sync::atomic::{AtomicBool, Ordering},
-    time::Duration,
+    time::{Duration, Instant},
 };
 use tracing::{Level, Subscriber};
 use tracing_subscriber::Layer;
 use tunnel_proto::dns;
+
+const DNS_NAT_SESSION_TTL: Duration = Duration::from_secs(2 * 60);
 
 /// Checks the simulated tunnel against the reference state.
 pub fn check_invariants(ref_state: &ReferenceState, state: &TunnelTest, portal: &StubPortal) {
@@ -54,6 +56,12 @@ pub fn check_invariants(ref_state: &ReferenceState, state: &TunnelTest, portal: 
         &ref_state.icmp_error_hosts,
     );
     assert_dns_nat(&state.dns_nat_observations, &sim_gateways);
+    record_live_dns_flow_feedback(
+        ref_state,
+        &state.dns_nat_observations,
+        &sim_gateways,
+        state.now(),
+    );
 
     for (client_id, ref_client_host) in &ref_state.clients {
         let ref_client = ref_client_host.inner();
@@ -215,8 +223,6 @@ fn assert_dns_nat(
     observations: &[DnsNatObservation],
     sim_gateways: &BTreeMap<GatewayId, &SimGateway>,
 ) {
-    const SESSION_TTL: Duration = Duration::from_secs(2 * 60);
-
     let observations_by_flow = observations
         .iter()
         .map(|observation| (observation.flow_id, observation))
@@ -296,7 +302,7 @@ fn assert_dns_nat(
                         .received
                         .at
                         .saturating_duration_since(previous.received.at)
-                        < SESSION_TTL
+                        < DNS_NAT_SESSION_TTL
                 })
                 .filter_map(|session| {
                     let [first, remaining @ ..] = session else {
@@ -355,6 +361,13 @@ fn assert_dns_nat(
                         return None;
                     };
 
+                    record_dns_refresh_feedback(
+                        session,
+                        gateway_state
+                            .dns_resolutions(client, &first.domain, dns_nat_generation, proxy)
+                            .filter(|candidate| candidate.order >= resolution.order),
+                    );
+
                     Some((
                         (
                             client,
@@ -383,6 +396,94 @@ fn assert_dns_nat(
         for (actual, _) in remaining {
             if actual != expected {
                 tracing::error!(target: "assertions", %client, %gateway, dns_nat_generation, %domain, resolution_order, %proxy, %expected, %actual, "DNS proxy mapped to different destinations within one resolution");
+            }
+        }
+    }
+}
+
+fn record_live_dns_flow_feedback(
+    reference: &ReferenceState,
+    observations: &[DnsNatObservation],
+    gateways: &BTreeMap<GatewayId, &SimGateway>,
+    now: Instant,
+) {
+    for observation in observations {
+        if observation.response_received_at.is_none()
+            || now.duration_since(observation.received.at) >= DNS_NAT_SESSION_TTL
+            || !(reference.udp_flows.contains_key(&observation.flow_id)
+                || reference.icmp_flows.contains_key(&observation.flow_id))
+        {
+            continue;
+        }
+        let Remote::Gateway(gateway) = observation.received.remote else {
+            continue;
+        };
+        let Some(gateway) = gateways.get(&gateway) else {
+            continue;
+        };
+        if observation.received.dns_nat_generation
+            != Some(gateway.dns_nat_generation(observation.submitted.client))
+        {
+            continue;
+        }
+
+        let ipv6 = observation.submitted.packet.destination().is_ipv6();
+        let addresses = reference
+            .global_dns_records
+            .domain_ips_iter(&observation.domain)
+            .filter(|ip| ip.is_ipv6() == ipv6)
+            .collect::<BTreeSet<_>>();
+        let answers_changed = addresses != observation.dns_addresses;
+        let old_destination_absent =
+            !addresses.contains(&observation.received.packet.destination());
+        let udp = observation.submitted.packet.as_udp().is_some();
+        crate::record_fuzzer_feedback!(ipv6, udp, answers_changed, old_destination_absent);
+    }
+}
+
+fn record_dns_refresh_feedback<'a>(
+    session: &[&DnsNatObservation],
+    resolutions: impl Iterator<Item = &'a DnsResolution>,
+) {
+    for (previous, refreshed) in resolutions.tuple_windows() {
+        for before in session {
+            let Some(response_at) = before.response_received_at else {
+                continue;
+            };
+            if response_at >= refreshed.at
+                || refreshed.at.duration_since(before.received.at) >= DNS_NAT_SESSION_TTL
+            {
+                continue;
+            }
+
+            let ipv6 = before.submitted.packet.destination().is_ipv6();
+            let previous_addresses = previous
+                .addresses
+                .iter()
+                .filter(|ip| ip.is_ipv6() == ipv6)
+                .collect::<BTreeSet<_>>();
+            let refreshed_addresses = refreshed
+                .addresses
+                .iter()
+                .filter(|ip| ip.is_ipv6() == ipv6)
+                .collect::<BTreeSet<_>>();
+            let answers_changed = previous_addresses != refreshed_addresses;
+            let old_destination_absent = !refreshed
+                .addresses
+                .contains(&before.received.packet.destination());
+            let udp = before.submitted.packet.as_udp().is_some();
+            crate::record_fuzzer_feedback!(ipv6, udp, answers_changed, old_destination_absent);
+
+            let flow_exercised_after_refresh = session.iter().any(|after| {
+                after.flow_id == before.flow_id
+                    && after
+                        .received
+                        .gateway_order
+                        .is_some_and(|order| order > refreshed.order)
+                    && after.response_received_at.is_some()
+            });
+            if flow_exercised_after_refresh {
+                crate::record_fuzzer_feedback!(ipv6, udp, answers_changed, old_destination_absent);
             }
         }
     }
@@ -474,12 +575,25 @@ fn assert_received_response(
     remote: Remote,
     icmp_error_hosts: &IcmpErrorHosts,
 ) {
-    if remote_responds_with_icmp_error(expected, received_request, remote, icmp_error_hosts) {
+    let responds_with_icmp_error =
+        remote_responds_with_icmp_error(expected, received_request, remote, icmp_error_hosts);
+
+    if responds_with_icmp_error {
         assert_icmp_error_response(expected, submitted_request, received_response, None);
-        return;
+    } else {
+        assert_echo_response(expected, submitted_request, received_response);
     }
 
-    assert_echo_response(expected, submitted_request, received_response);
+    let destination_was_translated =
+        submitted_request.packet.destination() != received_request.packet.destination();
+    if matches!(remote, Remote::Gateway(_)) && destination_was_translated {
+        crate::record_fuzzer_feedback!(
+            submitted_request.packet.destination().is_ipv6(),
+            received_request.packet.destination().is_ipv6(),
+            matches!(expected.request, ProbeRequest::Udp { .. }),
+            responds_with_icmp_error,
+        );
+    }
 }
 
 fn remote_responds_with_icmp_error(
