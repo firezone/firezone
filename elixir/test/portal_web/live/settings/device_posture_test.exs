@@ -80,9 +80,9 @@ defmodule PortalWeb.Settings.DevicePostureTest do
         conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/device_posture")
 
       assert html =~ "Upgrade to Unlock"
-      assert html =~ "Inventory Your Managed Devices"
+      assert html =~ "Device Posture"
       assert html =~
-               "Integrate with MDM and EDR solutions to provide device telemetry to use in policy conditions"
+               "Restrict access to resources based on device telemetry provided by MDM and EDR solutions"
 
       assert html =~ "settings/device_posture"
       refute html =~ "Add posture provider"

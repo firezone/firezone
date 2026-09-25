@@ -18,6 +18,63 @@ defmodule PortalWeb.Policies.PostureComponents do
   attr :id, :string, required: true
   attr :account, :any, required: true
   attr :state, :map, required: true
+  slot :inner_block, required: true
+
+  def policy_restrictions(assigns) do
+    assigns = assign(assigns, :conditions_enabled?, Portal.Account.policy_conditions_enabled?(assigns.account))
+
+    ~H"""
+    <div class="space-y-4">
+      <%= if not @conditions_enabled? and @state.availability == :locked do %>
+        <.upgrade_locked_section
+          account={@account}
+          message="Upgrade your plan to unlock policy conditions and device posture checks."
+          description="Restrict access by location, identity, time, and device security."
+          data-locked-section="policy-restrictions"
+        >
+          <.conditions_preview />
+          <div class="mt-4 border-t border-border pt-4">
+            <h4 class="mb-3 text-[10px] font-semibold tracking-widest uppercase text-subtle">Device posture</h4>
+            <.postures_preview />
+          </div>
+        </.upgrade_locked_section>
+      <% else %>
+        {render_slot(@inner_block)}
+        <.postures_section id={@id} account={@account} state={@state} />
+      <% end %>
+    </div>
+    """
+  end
+
+  def conditions_preview(assigns) do
+    ~H"""
+    <div aria-hidden="true">
+      <h4 class="mb-3 text-[10px] font-semibold tracking-widest uppercase text-subtle">Conditions</h4>
+      <div class="space-y-2">
+        <div :for={{label, value} <- [{"Location", "Allowed countries"}, {"IP range", "10.0.0.0/8"}, {"Time of day", "Monday – Friday, 9:00 – 17:00"}]} class="flex justify-between rounded-lg border border-border bg-raised p-3 text-xs">
+          <span class="font-medium text-body">{label}</span>
+          <span class="text-subtle">{value}</span>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  def postures_preview(assigns) do
+    ~H"""
+    <div aria-hidden="true" class="min-h-52 rounded-lg border border-border overflow-hidden">
+      <div class="bg-raised px-3 py-2 text-[10px] font-semibold uppercase tracking-widest text-subtle">Device checks</div>
+      <div :for={label <- ["Client is up to date", "Disk encryption enabled", "Device is compliant", "Endpoint protection enabled"]} class="flex items-center justify-between border-t border-border px-3 py-3 text-xs text-body">
+        <span>{label}</span>
+        <.icon name="ri-checkbox-circle-line" class="h-4 w-4 text-subtle" />
+      </div>
+    </div>
+    """
+  end
+
+  attr :id, :string, required: true
+  attr :account, :any, required: true
+  attr :state, :map, required: true
   def postures_section(assigns) do
     ~H"""
     <div id={@id} class="border-t border-border pt-4">
@@ -79,16 +136,14 @@ defmodule PortalWeb.Policies.PostureComponents do
           description="Require devices to pass MDM and EDR checks before access is granted."
           data-locked-section="device-posture"
         >
-          <p class="text-xs text-body text-center py-4 rounded-lg border border-dashed border-border">
-            No posture checks — any device is allowed
-          </p>
+          <.postures_preview />
         </.upgrade_locked_section>
       <% else %>
         <input type="hidden" name="policy[postures]" value={Postures.hidden_value(@state)} />
         <.postures_checks :if={@state.tab == :simple} id={@id <> "-checks"} state={@state} />
         <.postures_json_editor :if={@state.tab == :json} id={@id <> "-json"} state={@state} />
       <% end %>
-      <p class="mt-2 text-xs text-subtle">
+      <p :if={@state.availability == :enabled} class="mt-2 text-xs text-subtle">
         Check the <.website_link path="/kb/device-posture/grammar">grammar reference</.website_link> to configure over 300 posture fields.
       </p>
     </div>

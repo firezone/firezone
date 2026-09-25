@@ -736,10 +736,13 @@ defmodule PortalWeb.ResourcesTest do
 
       html = render_click(lv, "open_grant_form")
 
-      assert html =~ "Upgrade your plan to unlock policy conditions."
+      assert html =~ "Upgrade your plan to unlock policy conditions and device posture checks."
+      assert length(Floki.find(Floki.parse_fragment!(html), "[data-locked-section]")) == 1
+      assert [_, _] = String.split(html, "Upgrade to Unlock")
+      assert :binary.match(html, "Flow log reporting") < :binary.match(html, "data-locked-section")
       assert html =~ "Upgrade to Unlock"
       assert html =~ ~s(href="/#{account.slug}/settings/account")
-      assert html =~ ~s(id="resource-grant-conditions-locked-container")
+      assert html =~ ~s(data-locked-section="policy-restrictions")
       assert html =~ "blur-[2px]"
       assert html =~ "ri-lock-2-line"
       refute html =~ "Add condition"
