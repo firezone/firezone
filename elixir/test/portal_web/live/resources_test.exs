@@ -107,7 +107,7 @@ defmodule PortalWeb.ResourcesTest do
       refute html =~ "No Site Associated"
     end
 
-    test "shows an own devices pool with the device domain and no site", %{
+    test "shows an own devices pool with multiple addresses and no site", %{
       conn: conn,
       account: account,
       actor: actor
@@ -121,7 +121,8 @@ defmodule PortalWeb.ResourcesTest do
 
       assert html =~ "Personal devices"
       assert html =~ "Your devices"
-      assert html =~ "&lt;slug&gt;.firezone.network"
+      assert html =~ "Multiple Addresses"
+      refute html =~ "&lt;slug&gt;"
       assert html =~ "No Site Needed"
     end
 
@@ -522,6 +523,17 @@ defmodule PortalWeb.ResourcesTest do
       assert length(results) == 10
       assert [%{id: id, online?: true} | _] = results
       assert id == online_device.id
+    end
+
+    test "device picker search matches the device slug", %{account: account, actor: actor} do
+      subject = admin_subject_fixture(account: account, actor: actor)
+      device = client_fixture(account: account, actor: actor, slug: "build-box-7")
+      client_fixture(account: account, actor: actor)
+
+      assert [%{id: id}] =
+               PortalWeb.Resources.Components.Database.search_devices("build-box", subject, [])
+
+      assert id == device.id
     end
   end
 
@@ -1843,10 +1855,17 @@ defmodule PortalWeb.ResourcesTest do
         |> live(~p"/#{account}/resources/#{resource.id}")
 
       refute html =~ "Tunnel IPv6"
+      refute html =~ Portal.Device.fqdn(device)
 
       html = render_click(lv, "toggle_pool_device_row", %{"id" => device.id})
       assert html =~ "Tunnel IPv6"
       assert html =~ to_string(device.ipv6)
+
+      assert has_element?(
+               lv,
+               "#pool-member-#{device.id}-detail-dns-name-code",
+               Portal.Device.fqdn(device)
+             )
       assert html =~ "SERIAL-1234"
       assert has_element?(lv, ~s|a[href="/#{account.slug}/devices/#{device.id}"]|)
 
