@@ -707,7 +707,7 @@ where
         }
 
         self.connections.migrate_relays(
-            gc.removed.into_iter().chain(gc.suspended),
+            gc.removed.into_iter(),
             &mut self.allocations,
             &mut self.pending_events,
             now,

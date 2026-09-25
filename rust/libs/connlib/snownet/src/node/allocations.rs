@@ -191,13 +191,11 @@ where
     /// We compute an inclusion threshold from the observed RTT distribution
     /// (see [`inclusion_threshold`]) and uniformly sample among the relays at
     /// or below it. Allocations without an RTT measurement are skipped: we
-    /// don't know whether they are healthy yet. Suspended allocations are
-    /// skipped too: they cannot relay anything.
+    /// don't know whether they are healthy yet.
     pub(crate) fn sample(&mut self) -> Option<RId> {
         let candidates = self
             .inner
             .iter()
-            .filter(|(_, a)| !a.is_suspended())
             .filter_map(|(id, a)| Some((*id, a.rtt()?)))
             .collect::<SmallVec<[_; 8]>>();
 
@@ -258,17 +256,10 @@ where
             })
             .map(|(rid, _)| rid)
             .collect::<SmallVec<[_; 2]>>(); // Typically, we are only connected to 2 relays. Using a `SmallVec` here avoids allocations.
-        let suspended = self
-            .inner
-            .iter()
-            .filter(|(_, allocation)| allocation.is_suspended())
-            .map(|(rid, _)| *rid)
-            .collect();
 
         Gc {
             removed_last: !removed.is_empty() && self.inner.is_empty(),
             removed,
-            suspended,
         }
     }
 
@@ -366,8 +357,6 @@ pub(crate) struct Gc<RId> {
     pub(crate) removed: SmallVec<[RId; 2]>,
     /// Whether we removed the last remaining allocation.
     pub(crate) removed_last: bool,
-    /// The remaining allocations that are suspended and thus cannot relay anything.
-    pub(crate) suspended: SmallVec<[RId; 2]>,
 }
 
 #[cfg(test)]
@@ -686,50 +675,6 @@ mod tests {
         );
         assert_eq!(allocations.get_by_id(&1).unwrap().rtt(), None);
         assert!(allocations.sample().is_none());
-    }
-
-    #[test]
-    fn sample_excludes_suspended_allocations() {
-        let now = Instant::now();
-        let mut allocations = Allocations::for_test();
-
-        for (rid, server) in [(1, SERVER_V4), (2, SERVER2_V4)] {
-            allocations.upsert(
-                rid,
-                RelaySocket::from(server),
-                Username::new("test".to_owned()).unwrap(),
-                "password".to_owned(),
-                Realm::new("firezone".to_owned()).unwrap(),
-                now,
-            );
-            allocations.get_mut_by_id(&rid).unwrap().set_rtt(ms(30));
-        }
-        allocations.get_mut_by_id(&1).unwrap().set_suspended(now);
-
-        for _ in 0..100 {
-            assert_eq!(allocations.sample(), Some(2));
-        }
-    }
-
-    #[test]
-    fn gc_reports_suspended_allocations_without_removing_them() {
-        let now = Instant::now();
-        let mut allocations = Allocations::for_test();
-
-        allocations.upsert(
-            1,
-            RelaySocket::from(SERVER_V4),
-            Username::new("test".to_owned()).unwrap(),
-            "password".to_owned(),
-            Realm::new("firezone".to_owned()).unwrap(),
-            now,
-        );
-        allocations.get_mut_by_id(&1).unwrap().set_suspended(now);
-
-        let gc = allocations.gc();
-
-        assert_eq!(gc.suspended.as_slice(), &[1]);
-        assert!(gc.removed.is_empty());
     }
 
     const SERVER_V4: SocketAddr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 11111));
