@@ -420,31 +420,38 @@ impl ClientOnGateway {
             });
         };
 
-        let Some(resolved_ip) = state.resolved_ip else {
-            return Ok(TranslateOutboundResult::IcmpError {
-                reply: ip_packet::make::icmp_dest_unreachable_network(&packet)?,
-                no_authorization: None,
-            });
-        };
-
-        if resolved_ip.is_ipv4() != dst.is_ipv4() {
-            tracing::debug!(
-                %dst,
-                resolved = %resolved_ip,
-                "Cannot translate between IP versions"
-            );
-
-            return Ok(TranslateOutboundResult::IcmpError {
-                reply: ip_packet::make::icmp_dest_unreachable_network(&packet)?,
-                no_authorization: None,
-            });
-        }
-
         flow_tracker::record_domain(state.domain.clone());
 
-        let (source_protocol, real_ip) =
-            self.nat_table
-                .translate_outgoing(&packet, resolved_ip, now)?;
+        let existing = self
+            .nat_table
+            .try_translate_outgoing_existing(&packet, now)?;
+        let (source_protocol, real_ip) = match existing {
+            Some(existing) => existing,
+            None => {
+                let Some(resolved_ip) = state.resolved_ip else {
+                    return Ok(TranslateOutboundResult::IcmpError {
+                        reply: ip_packet::make::icmp_dest_unreachable_network(&packet)?,
+                        no_authorization: None,
+                    });
+                };
+
+                if resolved_ip.is_ipv4() != dst.is_ipv4() {
+                    tracing::debug!(
+                        %dst,
+                        resolved = %resolved_ip,
+                        "Cannot translate between IP versions"
+                    );
+
+                    return Ok(TranslateOutboundResult::IcmpError {
+                        reply: ip_packet::make::icmp_dest_unreachable_network(&packet)?,
+                        no_authorization: None,
+                    });
+                }
+
+                self.nat_table
+                    .translate_outgoing(&packet, resolved_ip, now)?
+            }
+        };
 
         packet
             .translate_destination(source_protocol, real_ip)
