@@ -23,7 +23,7 @@ Committed corpora serve as regression tests and starting points for further disc
 Minimization retains inputs that contribute edge coverage or fuzzer feedback; differences in execution counts alone do not justify retaining an input.
 AFL edge coverage and IJON feedback guide discovery and minimization, while LLVM source coverage measures how much of the code the corpus exercises.
 
-`fuzz::record_fuzzer_feedback!(predicate, ...)` records [IJON feedback](https://github.com/AFLplusplus/AFLplusplus/blob/stable/docs/IJON.md) for meaningful observed states, such as an ICMP error successfully translated through gateway NAT back to the client.
+The tunnel-proto feedback pass records [IJON feedback](https://github.com/AFLplusplus/AFLplusplus/blob/stable/docs/IJON.md) for meaningful observed states, such as an ICMP error successfully translated through gateway NAT back to the client.
 Each combination of boolean predicates is a feature scoped to its annotation site; repeating a combination does not add feedback.
 Replay evaluates annotations without recording feedback.
 

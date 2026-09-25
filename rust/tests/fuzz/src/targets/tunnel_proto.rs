@@ -1,9 +1,9 @@
 //! Exercises the connlib tunnel state machine with coverage-guided fuzzing.
 
 use chrono::{DateTime, Utc};
-use fuzz::tunnel_proto::{
-    FluxCapacitor, Generator, TunnelTest, check_invariants, init_fuzz_subscriber,
-    record_fuzzer_feedback,
+use fuzz::{
+    feedback,
+    tunnel_proto::{FluxCapacitor, Generator, TunnelTest, check_invariants, init_fuzz_subscriber},
 };
 
 const MAX_TRANSITIONS: usize = 20;
@@ -20,7 +20,6 @@ pub fn test(data: &[u8]) {
 
     let mut tunnel = TunnelTest::init_test(&reference, &mut portal, flux_capacitor.clone());
     check_invariants(&reference, &tunnel, &portal);
-    record_fuzzer_feedback(&reference, &tunnel);
 
     for applied in 0..MAX_TRANSITIONS {
         if generator.is_empty() {
@@ -38,6 +37,6 @@ pub fn test(data: &[u8]) {
         reference = reference.apply(&transition, &portal, flux_capacitor.now());
         tunnel = tunnel.apply(transition, &reference, &mut portal);
         check_invariants(&reference, &tunnel, &portal);
-        record_fuzzer_feedback(&reference, &tunnel);
+        feedback::record(&reference, &tunnel);
     }
 }

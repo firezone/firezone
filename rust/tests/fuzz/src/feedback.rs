@@ -1,3 +1,15 @@
+//! Adds domain-specific signals to coverage-guided fuzzing.
+//!
+//! Edge coverage tells AFL++ which control-flow paths an input reaches, but not
+//! whether those paths occur in a meaningful combination of protocol states.
+//! [`record`] inspects the reference and simulated states after their invariants
+//! have been checked and records selected combinations as IJON set features.
+//! Each annotation site has its own feature space, and observing the same value
+//! again does not make an input interesting.
+//!
+//! `prepare_runtime` enables the IJON map before discovery starts. Replay still
+//! evaluates the observations, but does not record feedback.
+
 use std::collections::BTreeSet;
 
 use itertools::Itertools as _;
@@ -12,8 +24,69 @@ use crate::{
     sut::TunnelTest,
 };
 
+// The AFL runtime defines this symbol weakly. Rust's IJON macros already emit
+// the recording calls; this is the enable flag normally emitted by its LLVM pass.
+#[cfg(fuzzing)]
+#[used]
+#[unsafe(no_mangle)]
+static mut __afl_ijon_enabled: u32 = 1;
+
+/// Prepares IJON before starting AFL's deferred forkserver.
+#[cfg(fuzzing)]
+pub fn prepare_runtime() {
+    if std::env::var_os("__AFL_SHM_ID").is_none() {
+        return;
+    }
+
+    unsafe extern "C" {
+        static mut __afl_ijon_map_increased: u32;
+    }
+
+    // AFL++ 4.40c resets the negotiated map size after sanitizer coverage
+    // initializes, but leaves this flag set. Rearm the expansion before
+    // the deferred forkserver reports its map size.
+    unsafe { __afl_ijon_map_increased = 0 };
+}
+
+/// Records a numeric state category as feedback for the fuzzer.
+///
+/// Each call site records its values independently. The argument is a `u16`
+/// evaluated once, including during replay. Prefer small enums or bounded buckets
+/// over raw identifiers and counters. Annotations must run on a single thread.
+macro_rules! record_value {
+    ($value:expr $(,)?) => {{
+        let value: u16 = $value;
+        ::core::cfg_select! {
+            fuzzing => { ::afl::ijon_set!(u32::from(value)); }
+            _ => { let _ = value; }
+        }
+    }};
+}
+
+/// Records a combination of boolean state predicates as feedback for the fuzzer.
+///
+/// Each call site records its combinations independently. Arguments are evaluated
+/// once, in order, with the first argument in the lowest bit. At most 16 booleans
+/// fit in AFL++'s IJON set bitmap. Annotations must run on a single thread.
+/// Replay evaluates the predicates without recording feedback.
+macro_rules! record {
+    ($($flag:expr),+ $(,)?) => {{
+        const {
+            assert!(
+                [$(stringify!($flag)),+].len() <= 16,
+                "fuzzer feedback supports at most 16 booleans",
+            );
+        }
+        let flags: &[bool] = &[$($flag),+];
+        let value = flags.iter().enumerate().fold(0, |value, (bit, flag)| {
+            value | (u16::from(*flag) << bit)
+        });
+        record_value!(value);
+    }};
+}
+
 /// Records observed state combinations that should guide future fuzzing.
-pub fn record_fuzzer_feedback(reference: &ReferenceState, state: &TunnelTest) {
+pub fn record(reference: &ReferenceState, state: &TunnelTest) {
     record_translated_icmp_error_feedback(reference, state);
     record_dns_refresh_feedback(state);
     record_live_dns_flow_feedback(reference, state);
@@ -49,7 +122,7 @@ fn record_translated_icmp_error_feedback(reference: &ReferenceState, state: &Tun
             remote,
             &reference.icmp_error_hosts,
         );
-        crate::record_fuzzer_feedback!(
+        record!(
             submitted_request.packet.destination().is_ipv6(),
             received_request.packet.destination().is_ipv6(),
             matches!(expected.request, ProbeRequest::Udp { .. }),
@@ -89,7 +162,7 @@ fn record_live_dns_flow_feedback(reference: &ReferenceState, state: &TunnelTest)
         let old_destination_absent =
             !addresses.contains(&observation.received.packet.destination());
         let udp = observation.submitted.packet.as_udp().is_some();
-        crate::record_fuzzer_feedback!(ipv6, udp, answers_changed, old_destination_absent);
+        record!(ipv6, udp, answers_changed, old_destination_absent);
     }
 }
 
@@ -162,7 +235,7 @@ fn record_dns_refresh_session_feedback<'a>(
                 .addresses
                 .contains(&before.received.packet.destination());
             let udp = before.submitted.packet.as_udp().is_some();
-            crate::record_fuzzer_feedback!(ipv6, udp, answers_changed, old_destination_absent);
+            record!(ipv6, udp, answers_changed, old_destination_absent);
 
             let flow_exercised_after_refresh = session.iter().any(|after| {
                 after.flow_id == before.flow_id
@@ -173,7 +246,7 @@ fn record_dns_refresh_session_feedback<'a>(
                     && after.response_received_at.is_some()
             });
             if flow_exercised_after_refresh {
-                crate::record_fuzzer_feedback!(ipv6, udp, answers_changed, old_destination_absent);
+                record!(ipv6, udp, answers_changed, old_destination_absent);
             }
         }
     }
