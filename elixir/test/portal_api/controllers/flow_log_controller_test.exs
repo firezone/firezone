@@ -173,7 +173,7 @@ defmodule PortalAPI.FlowLogControllerTest do
       account: account
     } do
       Portal.Config.put_env_override(:portal, PortalAPI.Plugs.IngestionRateLimit,
-        refill_rate: 0,
+        refill_rate: 1,
         capacity: 1
       )
 
