@@ -1,9 +1,11 @@
 use anyhow::{Context as _, ErrorExt, Result, bail};
+use futures::future::{self, Either};
 use ip_packet::{IpPacket, IpPacketBuf};
 use opentelemetry::KeyValue;
 use std::io;
 use std::mem;
 use std::os::fd::AsRawFd;
+use std::pin::pin;
 use tokio::io::unix::AsyncFd;
 
 use crate::PacketBatch;
@@ -169,7 +171,17 @@ where
             let mut batch = PacketBatch::default();
 
             loop {
-                let mut guard = fd.readable().await?;
+                let readable = pin!(fd.readable());
+                let closed = pin!(inbound_tx.closed());
+
+                let mut guard = match future::select(readable, closed).await {
+                    Either::Left((guard, _)) => guard?,
+                    Either::Right(((), _)) => {
+                        tracing::debug!("Inbound packet receiver gone, shutting down task");
+
+                        return anyhow::Ok(());
+                    }
+                };
 
                 // Drain the FD before handing the packets off as a single batch, so one
                 // channel item feeds a whole read burst into the state loop instead of

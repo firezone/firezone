@@ -10,6 +10,114 @@ defmodule PortalAPI.ResourceController do
 
   tags ["Resources"]
 
+  @site_id "0642e09d-b3a2-47e4-9cd1-c2195faeeb67"
+  @group_id "b3a1c6e2-5f4d-4e7a-9c8b-1d2e3f4a5b6c"
+  @client_ids ["7cb89288-1fb3-433e-a522-2d087e45988d", "cc9f561a-444d-4083-ab38-0abc6cf2314c"]
+
+  @listed_devices %{"device" => %{"field" => "id", "op" => "in", "value" => @client_ids}}
+  @own_devices %{"device" => %{"field" => "actor_id", "op" => "eq", "value" => %{"subject" => "actor_id"}}}
+  @all_devices %{
+    "device" => %{"field" => "account_id", "op" => "eq", "value" => %{"subject" => "account_id"}}
+  }
+  @actor_group %{"actor_group" => %{"field" => "id", "op" => "eq", "value" => @group_id}}
+
+  @ip_resource %{
+    "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
+    "name" => "Prod DB",
+    "type" => "ip",
+    "address" => "10.0.0.10",
+    "address_description" => "Production Database",
+    "site_id" => @site_id,
+    "filters" => [%{"protocol" => "tcp", "ports" => ["5432"]}]
+  }
+
+  @device_pool %{
+    "id" => "5f0d3c1a-8e2b-4b7d-9a6c-3e4f5a6b7c8d",
+    "name" => "My Devices",
+    "type" => "device_pool",
+    "address" => nil,
+    "address_description" => nil,
+    "filters" => [],
+    "device_membership_criteria" => @own_devices
+  }
+
+  @create_examples %{
+    "ip" => %OpenApiSpex.Example{
+      summary: "IP Resource",
+      value: %{"resource" => Map.drop(@ip_resource, ["id"])}
+    },
+    "listed_devices" => %OpenApiSpex.Example{
+      summary: "Device pool of the Clients named",
+      value: %{
+        "resource" => %{
+          "name" => "Build Machines",
+          "type" => "device_pool",
+          "device_membership_criteria" => @listed_devices
+        }
+      }
+    },
+    "own_devices" => %OpenApiSpex.Example{
+      summary: "Device pool of the asking Actor's own Clients",
+      value: %{
+        "resource" => %{
+          "name" => "My Devices",
+          "type" => "device_pool",
+          "device_membership_criteria" => @own_devices
+        }
+      }
+    },
+    "all_devices" => %OpenApiSpex.Example{
+      summary: "Device pool of every Client in the Account",
+      value: %{
+        "resource" => %{
+          "name" => "All Devices",
+          "type" => "device_pool",
+          "device_membership_criteria" => @all_devices
+        }
+      }
+    },
+    "actor_group" => %OpenApiSpex.Example{
+      summary: "Device pool of the Clients of every Actor in one Group",
+      value: %{
+        "resource" => %{
+          "name" => "Engineering Devices",
+          "type" => "device_pool",
+          "device_membership_criteria" => @actor_group
+        }
+      }
+    }
+  }
+
+  @update_examples %{
+    "rename" => %OpenApiSpex.Example{
+      summary: "Rename a Resource",
+      value: %{"resource" => %{"name" => "Prod DB (primary)"}}
+    },
+    "set_pool_members" => %OpenApiSpex.Example{
+      summary: "Replace the Clients a device pool names",
+      value: %{"resource" => %{"device_membership_criteria" => @listed_devices}}
+    },
+    "convert_to_device_pool" => %OpenApiSpex.Example{
+      summary: "Convert a Resource to a device pool",
+      value: %{"resource" => %{"type" => "device_pool", "device_membership_criteria" => @actor_group}}
+    }
+  }
+
+  @resource_examples %{
+    "ip" => %OpenApiSpex.Example{summary: "IP Resource", value: %{"data" => @ip_resource}},
+    "device_pool" => %OpenApiSpex.Example{summary: "Device pool", value: %{"data" => @device_pool}}
+  }
+
+  @list_examples %{
+    "resources" => %OpenApiSpex.Example{
+      summary: "An IP Resource and a device pool",
+      value: %{
+        "data" => [@ip_resource, @device_pool],
+        "metadata" => %{"limit" => 10, "count" => 2, "next_page" => nil, "prev_page" => nil}
+      }
+    }
+  }
+
   # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :index,
     summary: "List Resources",
@@ -45,7 +153,11 @@ defmodule PortalAPI.ResourceController do
       ]
     ],
     responses:
-      [ok: {"Resource Response", "application/json", PortalAPI.Schemas.Resource.ListResponse}] ++
+      [
+        ok:
+          {"Resource Response", "application/json", PortalAPI.Schemas.Resource.ListResponse,
+           examples: @list_examples}
+      ] ++
         ProblemDetails.responses([:bad_request, :unauthorized, :too_many_requests])
 
   # coveralls-ignore-stop
@@ -83,7 +195,11 @@ defmodule PortalAPI.ResourceController do
       ]
     ],
     responses:
-      [ok: {"Resource Response", "application/json", PortalAPI.Schemas.Resource.Response}] ++
+      [
+        ok:
+          {"Resource Response", "application/json", PortalAPI.Schemas.Resource.Response,
+           examples: @resource_examples}
+      ] ++
         ProblemDetails.responses([:bad_request, :unauthorized, :not_found, :too_many_requests])
 
   # coveralls-ignore-stop
@@ -103,9 +219,13 @@ defmodule PortalAPI.ResourceController do
     parameters: [],
     request_body:
       {"Resource Attributes", "application/json", PortalAPI.Schemas.Resource.CreateRequest,
-       required: true},
+       required: true, examples: @create_examples},
     responses:
-      [created: {"Resource Response", "application/json", PortalAPI.Schemas.Resource.Response}] ++
+      [
+        created:
+          {"Resource Response", "application/json", PortalAPI.Schemas.Resource.Response,
+           examples: @resource_examples}
+      ] ++
         ProblemDetails.responses([
           :bad_request,
           :unauthorized,
@@ -147,9 +267,13 @@ defmodule PortalAPI.ResourceController do
     ],
     request_body:
       {"Resource Attributes", "application/json", PortalAPI.Schemas.Resource.UpdateRequest,
-       required: true},
+       required: true, examples: @update_examples},
     responses:
-      [ok: {"Resource Response", "application/json", PortalAPI.Schemas.Resource.Response}] ++
+      [
+        ok:
+          {"Resource Response", "application/json", PortalAPI.Schemas.Resource.Response,
+           examples: @resource_examples}
+      ] ++
         ProblemDetails.responses([
           :bad_request,
           :unauthorized,
@@ -190,7 +314,11 @@ defmodule PortalAPI.ResourceController do
       ]
     ],
     responses:
-      [ok: {"Resource Response", "application/json", PortalAPI.Schemas.Resource.Response}] ++
+      [
+        ok:
+          {"Resource Response", "application/json", PortalAPI.Schemas.Resource.Response,
+           examples: @resource_examples}
+      ] ++
         ProblemDetails.responses([
           :bad_request,
           :unauthorized,

@@ -77,6 +77,7 @@ defmodule PortalAPI.Plugs.RequestValidationError do
   defp message(%Error{reason: :invalid_type}), do: "is invalid"
   defp message(%Error{reason: :invalid_enum}), do: "is invalid"
   defp message(%Error{reason: :invalid_format}), do: "is invalid"
+  defp message(%Error{reason: :one_of}), do: "is invalid"
   defp message(%Error{reason: :unexpected_field}), do: "is not a known parameter"
   defp message(%Error{reason: :min_length, length: n}), do: "should be at least #{n} character(s)"
   defp message(%Error{reason: :max_length, length: n}), do: "should be at most #{n} character(s)"
