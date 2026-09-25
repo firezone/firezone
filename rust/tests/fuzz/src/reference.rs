@@ -707,6 +707,13 @@ impl ReferenceState {
             return ExpectedOutcome::Dropped;
         }
 
+        if dst
+            .ip_addr()
+            .is_some_and(|ip| self.clients[&origin].inner().tunnel_ip_for(ip) == ip)
+        {
+            return ExpectedOutcome::Dropped;
+        }
+
         if let Some(ip) = dst.ip_addr().filter(|ip| tunnel_proto::is_peer(*ip)) {
             let client = self.clients[&origin].inner();
             let connected_gateway = portal.gateway_by_ip(ip).filter(|gateway| {

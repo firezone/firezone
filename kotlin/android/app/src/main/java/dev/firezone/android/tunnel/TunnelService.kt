@@ -57,6 +57,7 @@ import uniffi.connlib.AndroidSessionConfig
 import uniffi.connlib.ConnlibException
 import uniffi.connlib.DeviceInfo
 import uniffi.connlib.Event
+import uniffi.connlib.EventStream
 import uniffi.connlib.ProtectSocket
 import uniffi.connlib.SessionInterface
 import uniffi.connlib.configureLogger
@@ -480,12 +481,12 @@ class TunnelService : VpnService() {
                                 // The token authenticates the user. A configured certificate attests
                                 // the device, and the portal decides whether to accept it.
                                 tlsIdentity = certificate?.tlsIdentity,
-                            ).use { session ->
+                            ).use { (session, events) ->
                                 startNetworkMonitoring()
                                 startLogCleanup()
                                 startFeatureFlagPoll()
 
-                                val stopReason = eventLoop(session, commandChannel!!)
+                                val stopReason = eventLoop(session, events, commandChannel!!)
 
                                 Log.i(TAG, "Event-loop finished: $stopReason")
 
@@ -714,13 +715,14 @@ class TunnelService : VpnService() {
 
     private suspend fun eventLoop(
         session: SessionInterface,
+        events: EventStream,
         commandChannel: Channel<TunnelCommand>,
     ): StopReason {
         @OptIn(ExperimentalCoroutinesApi::class)
         val eventChannel =
             serviceScope.produce {
                 while (isActive) {
-                    send(session.nextEvent())
+                    send(events.next())
                 }
             }
 

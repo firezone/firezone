@@ -26,7 +26,7 @@ pub fn send(fd: RawFd, outbound_rx: crate::OutboundRx) -> Result<()> {
     }
 }
 
-/// Receives packets from the TUN `fd` into `inbound_tx` until the fd closes.
+/// Receives packets from the TUN `fd` into `inbound_tx` until the fd or the channel closes.
 pub fn recv(fd: RawFd, inbound_tx: crate::InboundTx) -> Result<()> {
     match sys::batch_syscalls() {
         Some(syscalls) => bulk::recv(fd, syscalls, inbound_tx),
