@@ -1045,13 +1045,13 @@ defmodule PortalWeb.Settings.DevicePosture do
 
         <div class="absolute inset-0 flex items-end justify-center pb-[20%]">
           <div class="flex flex-col items-center gap-3 bg-elevated border border-border rounded-lg shadow-lg px-8 py-6 text-subtle">
-            <.icon name="ri-device-line" class="w-8 h-8" />
+            <.icon name="ri-shield-star-fill" class="w-8 h-8" />
             <div class="flex flex-col items-center gap-1 text-center">
               <p class="text-sm font-medium text-heading">
-                Inventory Your Managed Devices
+                Device Posture
               </p>
               <p class="text-xs">
-                Integrate with MDM and EDR solutions to provide device telemetry to use in policy conditions
+                Restrict access to resources based on device telemetry provided by MDM and EDR solutions
               </p>
             </div>
             <.button

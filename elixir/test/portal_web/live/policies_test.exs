@@ -137,10 +137,13 @@ defmodule PortalWeb.PoliciesTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/policies/new")
 
-      assert html =~ "Upgrade your plan to unlock policy conditions."
+      assert html =~ "Upgrade your plan to unlock policy conditions and device posture checks."
+      assert length(Floki.find(Floki.parse_fragment!(html), "[data-locked-section]")) == 1
+      assert [_, _] = String.split(html, "Upgrade to Unlock")
+      assert :binary.match(html, "Flow log reporting") < :binary.match(html, "data-locked-section")
       assert html =~ "Upgrade to Unlock"
       assert html =~ ~s(href="/#{account.slug}/settings/account")
-      assert html =~ ~s(data-locked-section="policy-conditions")
+      assert html =~ ~s(data-locked-section="policy-restrictions")
       assert html =~ "blur-[2px]"
       assert html =~ "ri-lock-2-line"
       refute html =~ "Add condition"
@@ -552,7 +555,7 @@ defmodule PortalWeb.PoliciesTest do
                "Enabling flow log collection for the internet resource can result in substantial log volume."
     end
 
-    test "asks before saving a change that revokes access, and only then", %{
+    test "saves policy changes without confirmation", %{
       conn: conn,
       account: account,
       actor: actor
@@ -580,19 +583,18 @@ defmodule PortalWeb.PoliciesTest do
         |> form("[phx-submit='submit_policy_form']", policy: %{group_id: other_group.id})
         |> render_submit()
 
-      assert html =~ "Save these changes?"
-      assert html =~ "resets all access previously granted by this policy"
-      assert Repo.get_by!(Policy, id: policy.id, account_id: account.id).group_id == group.id
-
-      html = render_click(lv, "cancel_policy_breaking_change")
       refute html =~ "Save these changes?"
-      assert Repo.get_by!(Policy, id: policy.id, account_id: account.id).group_id == group.id
+      assert html =~ "updated successfully"
+      assert Repo.get_by!(Policy, id: policy.id, account_id: account.id).group_id == other_group.id
 
-      lv
-      |> form("[phx-submit='submit_policy_form']", policy: %{flow_log_uploads_enabled: false})
-      |> render_submit()
+      {:ok, lv, _html} = live(conn, ~p"/#{account}/policies/#{policy.id}/edit")
 
-      html = render_click(lv, "save_policy_breaking_change")
+      html =
+        lv
+        |> form("[phx-submit='submit_policy_form']", policy: %{flow_log_uploads_enabled: false})
+        |> render_submit()
+
+      refute html =~ "Save these changes?"
       assert html =~ "updated successfully"
       assert Repo.get_by!(Policy, id: policy.id, account_id: account.id).flow_log_uploads_enabled == false
     end
@@ -631,8 +633,6 @@ defmodule PortalWeb.PoliciesTest do
         )
         |> render_submit()
 
-      assert html =~ "Save these changes?"
-      html = render_click(lv, "save_policy_breaking_change")
       assert html =~ "updated successfully"
 
       reloaded = Repo.get_by!(Policy, id: policy.id, account_id: account.id)
@@ -788,8 +788,6 @@ defmodule PortalWeb.PoliciesTest do
         )
         |> render_submit()
 
-      assert html =~ "Save these changes?"
-      html = render_click(lv, "save_policy_breaking_change")
       assert html =~ "updated successfully"
 
       policy = Repo.get_by!(Policy, id: policy.id, account_id: account.id)
@@ -840,8 +838,6 @@ defmodule PortalWeb.PoliciesTest do
         )
         |> render_submit()
 
-      assert html =~ "Save these changes?"
-      html = render_click(lv, "save_policy_breaking_change")
       assert html =~ "updated successfully"
 
       policy = Repo.get_by!(Policy, id: policy.id, account_id: account.id)
@@ -1098,8 +1094,6 @@ defmodule PortalWeb.PoliciesTest do
         )
         |> render_submit()
 
-      assert html =~ "Save these changes?"
-      html = render_click(lv, "save_policy_breaking_change")
       assert html =~ "updated successfully"
 
       policy = Repo.get_by!(Policy, id: policy.id, account_id: account.id)
@@ -1165,8 +1159,6 @@ defmodule PortalWeb.PoliciesTest do
         )
         |> render_submit()
 
-      assert html =~ "Save these changes?"
-      html = render_click(lv, "save_policy_breaking_change")
       assert html =~ "updated successfully"
 
       policy = Repo.get_by!(Policy, id: policy.id, account_id: account.id)
@@ -1326,8 +1318,6 @@ defmodule PortalWeb.PoliciesTest do
         )
         |> render_submit()
 
-      assert html =~ "Save these changes?"
-      html = render_click(lv, "save_policy_breaking_change")
       assert html =~ "updated successfully"
 
       policy = Repo.get_by!(Policy, id: policy.id, account_id: account.id)
@@ -1411,8 +1401,6 @@ defmodule PortalWeb.PoliciesTest do
         )
         |> render_submit()
 
-      assert html =~ "Save these changes?"
-      html = render_click(lv, "save_policy_breaking_change")
       assert html =~ "updated successfully"
 
       policy = Repo.get_by!(Policy, id: policy.id, account_id: account.id)
@@ -1613,8 +1601,6 @@ defmodule PortalWeb.PoliciesTest do
         |> form("[phx-submit='submit_policy_form']", policy: %{description: "fewer checks"})
         |> render_submit()
 
-      assert html =~ "Save these changes?"
-      html = render_click(lv, "save_policy_breaking_change")
       assert html =~ "updated successfully"
       assert saved_postures(group, resource) == expansion(:client_up_to_date)
     end
@@ -1690,8 +1676,6 @@ defmodule PortalWeb.PoliciesTest do
         |> form("[phx-submit='submit_policy_form']", policy: %{description: "no checks"})
         |> render_submit()
 
-      assert html =~ "Save these changes?"
-      html = render_click(lv, "save_policy_breaking_change")
       assert html =~ "updated successfully"
       assert Repo.get_by!(Policy, group_id: group.id, resource_id: resource.id).postures == nil
     end
@@ -1743,11 +1727,11 @@ defmodule PortalWeb.PoliciesTest do
       render_click(lv, "postures_tab", %{"tab" => "simple"})
       assert toggle(lv, "client_up_to_date") =~ "checked"
 
-      lv
-      |> form("[phx-submit='submit_policy_form']", policy: %{description: "from json"})
-      |> render_submit()
+      html =
+        lv
+        |> form("[phx-submit='submit_policy_form']", policy: %{description: "from json"})
+        |> render_submit()
 
-      html = render_click(lv, "save_policy_breaking_change")
       assert html =~ "updated successfully"
       assert saved_postures(group, resource) == %{"and" => [expansion(:compliant), expansion(:client_up_to_date)]}
     end
