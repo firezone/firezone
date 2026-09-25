@@ -9,7 +9,7 @@
 #![cfg_attr(test, allow(clippy::print_stderr))]
 
 use connlib_model::{
-    ClientId, ClientOrGatewayId, GatewayId, IceCandidate, ResourceId, ResourceList,
+    ClientId, ClientOrGatewayId, GatewayId, IceCandidate, RelayId, ResourceId, ResourceList,
 };
 use dns_types::DomainName;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
@@ -93,8 +93,10 @@ pub enum ClientEvent {
         records: BTreeSet<DnsResourceRecord>,
     },
     TunInterfaceUpdated(TunConfig),
-    /// We ran out of relays and need a new set from the portal.
-    NoRelays,
+    /// We ran out of relays and need a new set from the portal, without the excluded ones.
+    NoRelays {
+        excluded_relay_ids: Vec<RelayId>,
+    },
 }
 
 #[derive(Clone, derive_more::Debug, PartialEq, Eq, Hash)]
@@ -139,8 +141,10 @@ pub enum GatewayEvent {
         candidates: BTreeSet<IceCandidate>,
     },
     ResolveDns(ResolveDnsRequest),
-    /// We ran out of relays and need a new set from the portal.
-    NoRelays,
+    /// We ran out of relays and need a new set from the portal, without the excluded ones.
+    NoRelays {
+        excluded_relay_ids: Vec<RelayId>,
+    },
 }
 
 #[derive(Debug, thiserror::Error)]

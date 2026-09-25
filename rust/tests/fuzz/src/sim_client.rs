@@ -8,7 +8,7 @@ use super::{
     },
     reference::PrivateKey,
     sim_net::{ExecMutScope, Host},
-    sim_relay::{SimRelay, map_explode},
+    sim_relay::{RelayRequests, SimRelay, map_explode},
     transition::{DPort, DnsTransport, Identifier, IpFamily, SPort, Seq},
 };
 use chrono::{DateTime, Utc};
@@ -75,6 +75,8 @@ pub(crate) struct SimClient {
 
     /// Collects datagrams encapsulated via [`ClientState::handle_tun_input`].
     transmit_buffer: snownet::TransmitBuffer,
+
+    pub(crate) relay_requests: RelayRequests,
 }
 
 impl SimClient {
@@ -107,6 +109,7 @@ impl SimClient {
             failed_tcp_packets: Default::default(),
             dns_resource_record_cache: Default::default(),
             transmit_buffer: snownet::TransmitBuffer::new(),
+            relay_requests: Default::default(),
         }
     }
 
