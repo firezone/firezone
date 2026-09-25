@@ -8,7 +8,6 @@ use arbitrary::{Arbitrary, Unstructured};
 use clap::{Parser, ValueEnum};
 
 mod clock;
-mod ijon;
 mod seeded_rng;
 mod targets;
 
@@ -29,7 +28,7 @@ fn main() -> anyhow::Result<()> {
     if cli.replay.is_empty() {
         cfg_select! {
             fuzzing => {
-                ijon::prepare_runtime();
+                fuzz::feedback::prepare_runtime();
                 afl::fuzz(true, target);
 
                 return Ok(());
