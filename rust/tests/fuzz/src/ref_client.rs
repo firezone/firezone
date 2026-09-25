@@ -857,10 +857,18 @@ impl RefClient {
             && matches!(query.r_type, RecordType::A | RecordType::AAAA)
         {
             let record_types = global_dns_records.domain_rtypes(&query.domain);
-            for ((_, domain), records) in &mut self.dns_resource_resolutions {
-                if domain == &query.domain {
-                    *records = record_types.clone();
+            for resource in self.connected_dns_resources.clone() {
+                if !self.dns_resource_serves(
+                    resource,
+                    &query.domain,
+                    record_types.contains(&RecordType::A),
+                    record_types.contains(&RecordType::AAAA),
+                ) {
+                    continue;
                 }
+
+                self.dns_resource_resolutions
+                    .insert((resource, query.domain.clone()), record_types.clone());
             }
         }
 

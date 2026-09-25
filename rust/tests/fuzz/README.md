@@ -20,8 +20,12 @@ Because replay retains process state between inputs, it checks regressions but d
 ## Corpora and coverage
 
 Committed corpora serve as regression tests and starting points for further discovery.
-Minimization retains inputs that contribute edge coverage; differences in execution counts alone do not justify retaining an input.
-AFL edge coverage guides discovery and minimization, while LLVM source coverage measures how much of the code the corpus exercises.
+Minimization retains inputs that contribute edge coverage or fuzzer feedback; differences in execution counts alone do not justify retaining an input.
+AFL edge coverage and IJON feedback guide discovery and minimization, while LLVM source coverage measures how much of the code the corpus exercises.
+
+`fuzz::record_fuzzer_feedback!(predicate, ...)` records [IJON feedback](https://github.com/AFLplusplus/AFLplusplus/blob/stable/docs/IJON.md) for meaningful observed states, such as an ICMP error successfully translated through gateway NAT back to the client.
+Each combination of boolean predicates is a feature scoped to its annotation site; repeating a combination does not add feedback.
+Replay evaluates annotations without recording feedback.
 
 Pull-request CI checks that discovery coverage is stable within and across forkservers, replays the committed corpora, and rejects increases in uncovered source regions.
 The [nightly workflow](../../../.github/workflows/fuzz-nightly.yml) grows and minimizes corpora, refreshes coverage ceilings, and retains failing inputs for regression testing.
