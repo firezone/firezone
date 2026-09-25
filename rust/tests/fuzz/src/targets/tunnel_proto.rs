@@ -17,6 +17,7 @@ pub fn test(data: &[u8]) {
     let mut generator = Generator::new(data);
     let mut portal = generator.portal();
     let mut reference = generator.reference_state(&portal);
+    let mut feedback_recorder = feedback::Recorder::default();
 
     let mut tunnel = TunnelTest::init_test(&reference, &mut portal, flux_capacitor.clone());
     check_invariants(&reference, &tunnel, &portal);
@@ -29,6 +30,7 @@ pub fn test(data: &[u8]) {
         let transition = generator.transition(&reference, &portal);
 
         tracing::debug!("Applying transition {applied}: {transition:?}");
+        feedback_recorder.observe(&transition);
 
         reference.invalidate(&transition, &portal);
         tunnel.invalidate(&transition, &reference);
@@ -37,6 +39,6 @@ pub fn test(data: &[u8]) {
         reference = reference.apply(&transition, &portal, flux_capacitor.now());
         tunnel = tunnel.apply(transition, &reference, &mut portal);
         check_invariants(&reference, &tunnel, &portal);
-        feedback::record(&reference, &tunnel);
+        feedback_recorder.record(&reference, &tunnel);
     }
 }
