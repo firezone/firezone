@@ -24,6 +24,7 @@ import dev.firezone.android.tunnel.mockConnectedDevices
 import dev.firezone.android.tunnel.mockResources
 import dev.firezone.android.tunnel.model.ConnectedDevice
 import dev.firezone.android.tunnel.model.toModel
+import dev.firezone.android.ui.theme.FirezoneTheme
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toImmutableList

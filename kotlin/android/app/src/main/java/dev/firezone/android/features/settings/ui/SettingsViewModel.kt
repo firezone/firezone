@@ -230,6 +230,8 @@ internal class SettingsViewModel
         private fun getLogZipPath(context: Context) = "${context.cacheDir.absolutePath}/logs.zip"
 
         private fun onFieldUpdated() {
+            // The fields render from this flow, so an edit only shows up once it is published.
+            _configStateFlow.value = config
             _uiState.value =
                 _uiState.value.copy(
                     isSaveButtonEnabled = areFieldsValid(),
