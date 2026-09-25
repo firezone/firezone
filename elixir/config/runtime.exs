@@ -740,6 +740,12 @@ if config_env() == :prod do
     endpoint: "https://bzr.openai.com/v1/events",
     req_opts: [receive_timeout: 5_000, retry: false]
 
+  config :portal, Portal.Mailer.PostureProviderInterestEmail,
+    recipient: env_var_to_config!(:posture_provider_interest_email_recipient)
+
+  config :portal, Portal.Mailer.FeedbackEmail,
+    recipient: env_var_to_config!(:feedback_email_recipient)
+
   config :portal, Portal.Workers.SignUpFollowUp,
     from_email: env_var_to_config(:sign_up_follow_up_from_email),
     bcc_email: env_var_to_config(:sign_up_follow_up_bcc_email)

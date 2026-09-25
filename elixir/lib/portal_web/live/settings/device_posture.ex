@@ -109,6 +109,7 @@ defmodule PortalWeb.Settings.DevicePosture do
        verifying: false,
        open_provider_actions_id: nil,
        coming_soon_providers: @coming_soon_providers,
+       feedback_enabled?: PostureProviderInterestEmail.enabled?(),
        feedback_max_length: @feedback_max_length,
        interest_provider: nil,
        feedback_sent?: false,
@@ -185,6 +186,12 @@ defmodule PortalWeb.Settings.DevicePosture do
   end
 
   def handle_event("handle_keydown", _params, socket), do: {:noreply, socket}
+
+  def handle_event(event, _params, socket)
+      when event in ["register_interest", "submit_interest_feedback"] and
+             not socket.assigns.feedback_enabled? do
+    {:noreply, socket}
+  end
 
   def handle_event("register_interest", %{"provider" => type}, socket)
       when type in @coming_soon_types do
@@ -820,6 +827,7 @@ defmodule PortalWeb.Settings.DevicePosture do
                 <button
                   id={"register-interest-#{provider.type}"}
                   type="button"
+                  disabled={not @feedback_enabled?}
                   phx-click="register_interest"
                   phx-value-provider={provider.type}
                   class={select_type_classes()}
@@ -878,7 +886,7 @@ defmodule PortalWeb.Settings.DevicePosture do
               </div>
 
               <form
-                :if={not @feedback_sent?}
+                :if={@feedback_enabled? and not @feedback_sent?}
                 id="posture-provider-feedback-form"
                 phx-submit="submit_interest_feedback"
                 class="mt-6 space-y-3"

@@ -27,6 +27,13 @@ Hooks.SidebarCollapse = SidebarCollapse;
 Hooks.DatetimeRangeFilter = DatetimeRangeFilter;
 Hooks.PostureJsonEditor = PostureJsonEditor;
 Hooks.PageSizePreference = PageSizePreference;
+Hooks.SupportForm = {
+  mounted() {
+    this.el.addEventListener("click", () => {
+      this.pushEventTo(this.el, "open", { url: window.location.href });
+    });
+  },
+};
 
 // Read CSRF token from the meta tag and use it in the LiveSocket params
 let csrfToken = document

@@ -976,6 +976,34 @@ defmodule Portal.Config.Definitions do
   ##############################################
 
   @doc """
+  Recipient address for feedback submitted through the portal.
+  Feedback is disabled when unset or blank.
+  """
+  defconfig(:feedback_email_recipient, :string,
+    default: nil,
+    changeset: fn changeset, key ->
+      changeset
+      |> Portal.Changeset.trim_change(key)
+      |> Ecto.Changeset.update_change(key, fn value -> if value == "", do: nil, else: value end)
+      |> Portal.Changeset.validate_email(key)
+    end
+  )
+
+  @doc """
+  Recipient address for posture provider interest and feedback emails.
+  Interest registration and feedback are disabled when unset or blank.
+  """
+  defconfig(:posture_provider_interest_email_recipient, :string,
+    default: nil,
+    changeset: fn changeset, key ->
+      changeset
+      |> Portal.Changeset.trim_change(key)
+      |> Ecto.Changeset.update_change(key, fn value -> if value == "", do: nil, else: value end)
+      |> Portal.Changeset.validate_email(key)
+    end
+  )
+
+  @doc """
   From address to use for sending outbound emails. If not set, sending email will be disabled (default).
   """
   defconfig(:outbound_email_from, :string,
