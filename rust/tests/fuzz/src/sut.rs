@@ -9,7 +9,7 @@ use super::sim_relay::SimRelay;
 use super::stub_portal::StubPortal;
 use super::transition::{DPort, Destination, DnsQuery, Identifier, SPort, Seq};
 use crate::flux_capacitor::FluxCapacitor;
-use crate::probe::{DnsNatObservation, FlowId, ProbeId, ProbeObservation, Remote};
+use crate::probe::{DnsNatObservation, FlowId, ProbeId, ProbeObservation, ProbeTrace, Remote};
 use crate::resource as client;
 use crate::transition::Transition;
 use bufferpool::BufferPool;
@@ -17,7 +17,6 @@ use connlib_model::{ClientId, ClientOrGatewayId, GatewayId, PublicKey, RelayId};
 use dns_types::ResponseCode;
 use dns_types::prelude::*;
 use ip_packet::Ecn;
-use itertools::Itertools;
 use rand::SeedableRng;
 use rand::distr::SampleString;
 use sha2::Digest;
@@ -186,6 +185,35 @@ impl TunnelTest {
 
     pub(crate) fn now(&self) -> Instant {
         self.flux_capacitor.now()
+    }
+
+    pub(crate) fn probe_observations(&self) -> impl Iterator<Item = &ProbeObservation> {
+        iter::empty()
+            .chain(
+                self.clients
+                    .values()
+                    .flat_map(|client| client.inner().probe_observations.iter()),
+            )
+            .chain(
+                self.gateways
+                    .values()
+                    .flat_map(|gateway| gateway.inner().probe_observations.iter()),
+            )
+    }
+
+    pub(crate) fn probe_trace(&self, id: ProbeId) -> ProbeTrace<'_> {
+        ProbeTrace::new(
+            self.probe_observations()
+                .filter(|observation| observation.id() == id),
+        )
+    }
+
+    pub(crate) fn dns_nat_observations(&self) -> &[DnsNatObservation] {
+        &self.dns_nat_observations
+    }
+
+    pub(crate) fn gateway(&self, id: GatewayId) -> Option<&SimGateway> {
+        Some(self.gateways.get(&id)?.inner())
     }
 
     /// Drops the bookkeeping that `transition` makes stale before it is applied.
@@ -841,31 +869,11 @@ impl TunnelTest {
         let Destination::DomainName { name, .. } = expected.request.destination() else {
             return;
         };
-        let observations = iter::empty()
-            .chain(
-                self.clients
-                    .values()
-                    .flat_map(|client| client.inner().probe_observations.iter()),
-            )
-            .chain(
-                self.gateways
-                    .values()
-                    .flat_map(|gateway| gateway.inner().probe_observations.iter()),
-            )
-            .filter(|observation| observation.id() == probe_id)
-            .cloned()
-            .collect_vec();
-        let submitted = observations
-            .iter()
-            .filter_map(ProbeObservation::as_submitted_request)
-            .cloned()
-            .collect_vec();
-        let received = observations
-            .iter()
-            .filter_map(ProbeObservation::as_received_request)
-            .cloned()
-            .collect_vec();
-        let ([submitted], [received]) = (submitted.as_slice(), received.as_slice()) else {
+        let trace = self.probe_trace(probe_id);
+        let ([submitted], [received]) = (
+            trace.submitted_requests.as_slice(),
+            trace.received_requests.as_slice(),
+        ) else {
             return;
         };
 
@@ -877,16 +885,16 @@ impl TunnelTest {
         self.dns_nat_observations.push(DnsNatObservation {
             domain: name.clone(),
             flow_id,
-            submitted: submitted.clone(),
-            received: received.clone(),
+            submitted: (*submitted).clone(),
+            received: (*received).clone(),
             dns_addresses: ref_state
                 .global_dns_records
                 .domain_ips_iter(name)
                 .filter(|ip| ip.is_ipv6() == submitted.packet.destination().is_ipv6())
                 .collect(),
-            response_received_at: observations
+            response_received_at: trace
+                .received_responses
                 .iter()
-                .filter_map(ProbeObservation::as_received_response)
                 .map(|response| response.at)
                 .next(),
         });

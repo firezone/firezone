@@ -9,6 +9,7 @@ mod dns_records;
 mod dns_server_resource;
 mod echo;
 mod flux_capacitor;
+mod fuzzer_feedback;
 mod icmp_error_hosts;
 mod os;
 mod probe;
@@ -77,6 +78,7 @@ pub mod tunnel_proto {
     pub use super::arb::Generator;
     pub use super::assertions::check_invariants;
     pub use super::flux_capacitor::FluxCapacitor;
+    pub use super::fuzzer_feedback::record as record_fuzzer_feedback;
     pub use super::reference::ReferenceState;
     pub use super::stub_portal::StubPortal;
     pub use super::sut::TunnelTest;
