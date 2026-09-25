@@ -5,7 +5,7 @@ use super::{
     icmp_error_hosts::{IcmpErrorHosts, icmp_error_reply},
     probe::{ProbeId, ProbeObservation, ReceivedRequest, Remote},
     sim_net::{ExecMutScope, Host},
-    sim_relay::{SimRelay, map_explode},
+    sim_relay::{RelayRequests, SimRelay, map_explode},
 };
 use connlib_model::{ClientId, GatewayId, RelayId, ResourceId};
 use dns_types::DomainName;
@@ -42,6 +42,8 @@ pub(crate) struct SimGateway {
 
     /// Collects datagrams encapsulated via [`GatewayState::handle_tun_input`].
     transmit_buffer: snownet::TransmitBuffer,
+
+    pub(crate) relay_requests: RelayRequests,
 }
 
 #[derive(Debug, Clone)]
@@ -88,6 +90,7 @@ impl SimGateway {
                 })
                 .collect(),
             transmit_buffer: snownet::TransmitBuffer::new(),
+            relay_requests: Default::default(),
         }
     }
 

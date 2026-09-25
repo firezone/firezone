@@ -416,7 +416,7 @@ impl ReferenceState {
             }
             Transition::DeployNewRelays(new_relays) => self.deploy_new_relays(new_relays),
             Transition::RebootRelaysWhilePartitioned(new_relays) => {
-                self.reboot_relays_while_partitioned(new_relays)
+                self.reboot_relays_while_partitioned(new_relays, now)
             }
             Transition::ExhaustRelayPorts(relay) => {
                 self.exhausted_relays.insert(*relay);
@@ -1482,13 +1482,19 @@ impl ReferenceState {
         }
     }
 
-    fn reboot_relays_while_partitioned(&mut self, new_relays: &BTreeMap<RelayId, Host<u64>>) {
+    fn reboot_relays_while_partitioned(
+        &mut self,
+        new_relays: &BTreeMap<RelayId, Host<u64>>,
+        now: Instant,
+    ) {
         for relay in self.relays.values() {
             self.network.remove_host(relay);
         }
         self.relays.clear();
-        self.exhausted_relays.clear();
-        self.recovering_relays.clear();
+        // Nodes keep ignoring the relays that failed them before the reboot.
+        for relay in std::mem::take(&mut self.exhausted_relays) {
+            self.recovering_relays.insert(relay, now);
+        }
 
         for (rid, new_relay) in new_relays {
             self.relays.insert(*rid, new_relay.clone());

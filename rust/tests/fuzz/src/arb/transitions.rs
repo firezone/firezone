@@ -59,9 +59,11 @@ enum TransitionKind {
 /// A node whose allocations all failed cannot open any connection until it gets a relay back,
 /// which the reference model does not predict. While every relay is exhausted or recovering,
 /// only these are legal.
-const LEGAL_WITHOUT_HEALTHY_RELAY: [TransitionKind; 5] = [
+const LEGAL_WITHOUT_HEALTHY_RELAY: [TransitionKind; 7] = [
     TransitionKind::RoamClient,
+    TransitionKind::DeployNewRelays,
     TransitionKind::PartitionRelaysFromPortal,
+    TransitionKind::RebootRelaysWhilePartitioned,
     TransitionKind::RestartClient,
     TransitionKind::FreeRelayPorts,
     TransitionKind::Idle,

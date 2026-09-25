@@ -8,7 +8,7 @@ use relay_proto::{AddressFamily, AllocationPort, Attribute, ClientSocket, IpStac
 use secrecy::SecretString;
 use snownet::{RelaySocket, Transmit};
 use std::{
-    collections::HashSet,
+    collections::{HashSet, VecDeque},
     net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
     time::{Duration, Instant, SystemTime},
 };
@@ -277,4 +277,31 @@ impl ExecMutScope for u64 {
     type Guard = ();
 
     fn enter(&self) -> Self::Guard {}
+}
+
+/// How often a node may ask the portal for relays within a minute before we call it a loop.
+const MAX_RELAY_REQUESTS_PER_MINUTE: usize = 10;
+
+/// When a node recently asked the portal for relays.
+#[derive(Debug, Default)]
+pub(crate) struct RelayRequests(VecDeque<Instant>);
+
+impl RelayRequests {
+    pub(crate) fn record(&mut self, now: Instant) {
+        self.0.push_back(now);
+        while self
+            .0
+            .front()
+            .is_some_and(|at| now.duration_since(*at) >= Duration::from_secs(60))
+        {
+            self.0.pop_front();
+        }
+
+        if self.0.len() > MAX_RELAY_REQUESTS_PER_MINUTE {
+            tracing::error!(
+                requests = self.0.len(),
+                "Node asks the portal for relays in a loop"
+            );
+        }
+    }
 }

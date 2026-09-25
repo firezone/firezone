@@ -1581,7 +1581,10 @@ impl TunnelTest {
                     .iter()
                     .filter(|(id, _)| !excluded_relay_ids.contains(id));
                 let client = self.clients.get_mut(&src).unwrap();
-                client.exec_mut(|c| c.update_relays(iter::empty(), relays, now));
+                client.exec_mut(|c| {
+                    c.relay_requests.record(now);
+                    c.update_relays(iter::empty(), relays, now);
+                });
 
                 Ok(())
             }
@@ -1840,7 +1843,10 @@ fn on_gateway_event(
             let relays = relays
                 .iter()
                 .filter(|(id, _)| !excluded_relay_ids.contains(id));
-            gateway.exec_mut(|g| g.update_relays(iter::empty(), relays, now));
+            gateway.exec_mut(|g| {
+                g.relay_requests.record(now);
+                g.update_relays(iter::empty(), relays, now);
+            });
         }
     }
 }
