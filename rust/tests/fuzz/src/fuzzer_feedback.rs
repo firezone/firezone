@@ -13,7 +13,7 @@ use crate::{
 };
 
 /// Records observed state combinations that should guide future fuzzing.
-pub fn record(reference: &ReferenceState, state: &TunnelTest) {
+pub fn record_fuzzer_feedback(reference: &ReferenceState, state: &TunnelTest) {
     record_translated_icmp_error_feedback(reference, state);
     record_dns_refresh_feedback(state);
     record_live_dns_flow_feedback(reference, state);
