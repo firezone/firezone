@@ -58,7 +58,8 @@ where
     /// re-running the TURN handshake from our new socket (see [`Allocation::restart`]).
     ///
     /// Used on a network reset: the credentials outlive the reset, so we re-allocate
-    /// immediately instead of waiting for the portal to re-deliver the relay list.
+    /// immediately instead of waiting for the portal to re-deliver the relay list. We also stop
+    /// ignoring relays that failed us, as their failures may have been specific to the old network.
     pub(crate) fn restart(&mut self, now: Instant) {
         self.blocked.clear();
 
